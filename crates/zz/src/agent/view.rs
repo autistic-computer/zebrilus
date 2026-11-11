@@ -19,20 +19,20 @@ use zz_ui::agent::presentation::rendered_error;
 use zz_ui::agent::presentation::{agent_resume_welcome, agent_welcome, error_card};
 use zz_ui::agent::preview::ViewRequest;
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
-use zz_ui::agent::resume::{RESUME_FILTER_PLACEHOLDER, RESUME_WIDTH, resume_filter, resume_rows};
+use zz_ui::agent::resume::{folder_button, resume_button, resume_menu, resume_rows};
 use zz_ui::agent::tasks::plan_tray;
 
 use ala::{
-    Bounds, Context, Entity, EntityId, FocusHandle, Focusable, Image, IntoElement, KeyDownEvent,
-    MouseButton, MouseDownEvent, Pixels, Render, ScrollStrategy, SharedString, Subscription,
-    UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
+    Anchor, Bounds, Context, Entity, EntityId, FocusHandle, Focusable, Image, IntoElement,
+    KeyDownEvent, MouseButton, MouseDownEvent, Pixels, Render, ScrollHandle, ScrollStrategy,
+    SharedString, Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use zz_client::agent_ask::{DENY_PLACEHOLDER, REPLAN_PLACEHOLDER};
 use zz_client::agent_completion::{
     CommandCompletion, active_command_hint, command_label, composer_completions,
     meaningful_command_description, pane_commands,
 };
-use zz_client::agent_resume::ResumeRow;
+use zz_client::agent_resume::{Menu, ResumeRow, folder_name};
 use zz_client::agent_settings::{self, ComposerSetter, composer_setter, mode_risk};
 use zz_ui::{
     command::target_picker,
@@ -42,8 +42,12 @@ use zz_ui::{
 use crate::command::palette::palette_backend;
 use penna::{
     ActiveTheme as _, Ground,
-    components::input::{
-        IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight, MoveUp, OutdentInline,
+    components::{
+        input::{
+            Escape, IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight, MoveUp,
+            OutdentInline,
+        },
+        popover::Popover,
     },
     h_flex, v_flex,
 };
@@ -213,13 +217,34 @@ impl PermissionWizard {
     clippy::struct_excessive_bools,
     reason = "independent visibility, completion, and history UI states"
 )]
+fn snapshot_folder(
+    mux: &Entity<MuxClient>,
+    pane: PaneId,
+    cx: &ala::App,
+) -> Option<std::path::PathBuf> {
+    mux.read(cx)
+        .snapshot()
+        .sessions
+        .iter()
+        .flat_map(|session| &session.windows)
+        .find_map(|window| window.panes.get(&pane))
+        .map(|pane| match &pane.kind {
+            zz_protocol::PaneKindSnapshot::Agent(zz_protocol::AgentDescriptor {
+                cwd: Some(cwd),
+                ..
+            }) if pane.summary.cwd.is_empty() => cwd.clone(),
+            _ => std::path::PathBuf::from(&pane.summary.cwd),
+        })
+        .filter(|cwd| cwd.is_absolute())
+}
+
 pub(crate) struct AgentView {
     pane: PaneId,
     mux: Entity<MuxClient>,
     controller: Entity<AgentController>,
     input: Entity<InputState>,
     reply: Entity<InputState>,
-    filter: Entity<InputState>,
+    search: Entity<InputState>,
     visible: bool,
     pane_state: AgentPaneState,
     chat_revision: u64,
@@ -241,8 +266,29 @@ pub(crate) struct AgentView {
     chat: zz_ui::agent::chat::ChatPane,
     pane_canvas: Rc<Cell<Bounds<Pixels>>>,
     resume_for: Option<(Option<Arc<str>>, std::path::PathBuf)>,
+    folder_seen: Option<std::path::PathBuf>,
     resume_revision: u64,
+    account: Option<String>,
+    accounts: Option<Vec<zz_protocol::AgentAccount>>,
+    resume_scroll: ScrollHandle,
+    focus_search: bool,
     _subscriptions: Vec<Subscription>,
+}
+
+pub(crate) struct AgentAccountPicked {
+    pub(crate) account: Option<String>,
+}
+
+impl ala::EventEmitter<AgentAccountPicked> for AgentView {}
+
+fn pane_accounts(
+    mux: &MuxClient,
+    pane: PaneId,
+) -> (Option<String>, Option<&[zz_protocol::AgentAccount]>) {
+    (
+        agent_settings::pane_account(&mux.snapshot(), pane).map(str::to_owned),
+        mux.host_agent_accounts(mux.attached_host()),
+    )
 }
 
 impl AgentView {
@@ -289,11 +335,10 @@ impl AgentView {
                 _ => {}
             },
         );
-        let filter =
-            cx.new(|cx| InputState::new(window, cx).placeholder(RESUME_FILTER_PLACEHOLDER));
-        let filter_observer = cx.observe(&filter, |view, _, cx| view.synchronize_filter(cx));
-        let filter_subscription = cx.subscribe_in(
-            &filter,
+        let search = cx.new(|cx| InputState::new(window, cx));
+        let search_observer = cx.observe(&search, |view, _, cx| view.synchronize_search(cx));
+        let search_subscription = cx.subscribe_in(
+            &search,
             window,
             |view, _, event: &InputEvent, window, cx| {
                 if matches!(event, InputEvent::PressEnter { shift: false, .. })
@@ -303,24 +348,15 @@ impl AgentView {
                 }
             },
         );
-        let cwd = mux
-            .read(cx)
-            .snapshot()
-            .sessions
-            .iter()
-            .flat_map(|session| &session.windows)
-            .find_map(|window| window.panes.get(&pane))
-            .map(|pane| match &pane.kind {
-                zz_protocol::PaneKindSnapshot::Agent(zz_protocol::AgentDescriptor {
-                    cwd: Some(cwd),
-                    ..
-                }) if pane.summary.cwd.is_empty() => cwd.clone(),
-                _ => std::path::PathBuf::from(&pane.summary.cwd),
-            })
-            .filter(|cwd| cwd.is_absolute())
-            .unwrap_or_else(|| std::path::PathBuf::from("/"));
-        controller.update(cx, |controller, _| {
-            controller.ensure_pane(pane, provider, cwd);
+        let folder_seen = snapshot_folder(&mux, pane, cx);
+        controller.update(cx, |controller, cx| {
+            let cwd = folder_seen
+                .clone()
+                .unwrap_or_else(|| std::path::PathBuf::from("/"));
+            controller.ensure_pane(pane, provider, cwd.clone());
+            if folder_seen.is_some() {
+                controller.move_pane(pane, cwd, cx);
+            }
         });
         let (pane_state, chat_revision) = {
             let controller = controller.read(cx);
@@ -338,13 +374,38 @@ impl AgentView {
         });
         let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), pane);
         let active = mux.read(cx).active_pane() == Some(pane);
+        let (account, accounts) = {
+            let mux = mux.read(cx);
+            let (account, accounts) = pane_accounts(mux, pane);
+            if accounts.is_none() {
+                mux.request_agent_accounts(mux.attached_host());
+            }
+            (account, accounts.map(<[_]>::to_vec))
+        };
         let mux_observer = cx.observe(&mux, |view, mux, cx| {
             let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), view.pane);
             let active = mux.read(cx).active_pane() == Some(view.pane);
-            if view.floats != floats || view.active != active {
+            let (account, accounts) = pane_accounts(mux.read(cx), view.pane);
+            let accounts_changed = view.accounts.as_deref() != accounts;
+            if view.floats != floats
+                || view.active != active
+                || view.account != account
+                || accounts_changed
+            {
+                if accounts_changed {
+                    view.accounts = accounts.map(<[_]>::to_vec);
+                }
                 view.floats = floats;
                 view.active = active;
+                view.account = account;
                 cx.notify();
+            }
+            let folder = snapshot_folder(&mux, view.pane, cx);
+            if let Some(cwd) = folder.clone().filter(|_| folder != view.folder_seen) {
+                view.folder_seen = folder;
+                let pane = view.pane;
+                view.controller
+                    .update(cx, |controller, cx| controller.move_pane(pane, cwd, cx));
             }
         });
         let mention = target_picker(&palette_backend(mux.clone()), Some(input.clone()), cx);
@@ -359,7 +420,7 @@ impl AgentView {
             controller,
             input,
             reply,
-            filter,
+            search,
             visible: false,
             pane_state,
             chat_revision,
@@ -381,13 +442,18 @@ impl AgentView {
             chat: zz_ui::agent::chat::ChatPane::default(),
             pane_canvas: Rc::default(),
             resume_for: None,
+            folder_seen,
             resume_revision: 0,
+            account,
+            accounts,
+            resume_scroll: ScrollHandle::new(),
+            focus_search: false,
             _subscriptions: vec![
                 input_observer,
                 input_subscription,
                 reply_subscription,
-                filter_observer,
-                filter_subscription,
+                search_observer,
+                search_subscription,
                 controller_observer,
                 mux_observer,
                 chat_release,
@@ -533,28 +599,29 @@ impl AgentView {
                 .is_some_and(zz_ui::agent::chat::shows_chat)
     }
 
-    fn synchronize_filter(&mut self, cx: &mut Context<Self>) {
-        let text = self.filter.read(cx).value();
+    fn synchronize_search(&mut self, cx: &mut Context<Self>) {
+        let text = self.search.read(cx).value();
         let pane = self.pane;
         let same = self
             .controller
             .read(cx)
             .pane_resume(pane)
-            .is_none_or(|(resume, _)| resume.filter() == text.as_ref());
+            .is_none_or(|(resume, _)| resume.search() == text.as_ref());
         if same {
             return;
         }
+        self.resume_scroll = ScrollHandle::new();
         self.controller.update(cx, |controller, cx| {
             controller.update_resume(pane, cx, |resume, _| {
-                resume.set_filter(&text);
+                resume.set_search(&text);
                 None
             });
         });
     }
 
-    fn clear_filter(&self, window: &mut Window, cx: &mut Context<Self>) {
-        self.filter
-            .update(cx, |filter, cx| filter.set_value("", window, cx));
+    fn clear_search(&self, window: &mut Window, cx: &mut Context<Self>) {
+        self.search
+            .update(cx, |search, cx| search.set_value("", window, cx));
     }
 
     fn request_resume(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -569,10 +636,20 @@ impl AgentView {
             return;
         }
         self.resume_for = Some(key);
-        self.clear_filter(window, cx);
+        self.clear_search(window, cx);
         let pane = self.pane;
         self.controller
             .update(cx, |controller, cx| controller.request_resume(pane, cx));
+    }
+
+    fn open_menu(&self, cx: &ala::App) -> Option<Menu> {
+        if !self.lists_chats(cx) {
+            return None;
+        }
+        self.controller
+            .read(cx)
+            .pane_resume(self.pane)
+            .and_then(|(resume, _)| resume.menu())
     }
 
     fn resume(&self, cx: &ala::App) -> (Vec<ResumeRow>, Option<usize>) {
@@ -596,43 +673,77 @@ impl AgentView {
         )
     }
 
-    fn step_resume(&mut self, down: bool, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if self.composer_has_content() {
-            return false;
-        }
-        let (rows, _) = self.resume(cx);
-        let listed = self.filter.read(cx).focus_handle(cx).is_focused(window);
-        if rows.is_empty() || (down && !listed) {
-            return false;
-        }
+    fn show_menu(&mut self, menu: Menu, window: &mut Window, cx: &mut Context<Self>) {
         let pane = self.pane;
+        self.clear_search(window, cx);
+        self.search.update(cx, |search, cx| {
+            search.set_placeholder(menu.placeholder(), cx);
+        });
+        self.resume_scroll = ScrollHandle::new();
+        self.focus_search = true;
         self.controller.update(cx, |controller, cx| {
             controller.update_resume(pane, cx, |resume, _| {
-                resume.step(&rows, down);
+                resume.open(menu);
                 None
             });
         });
-        if !listed {
-            self.filter
-                .update(cx, |filter, cx| filter.focus(window, cx));
-        } else if self.resume(cx).1.is_none() {
+        cx.notify();
+    }
+
+    fn hide_menu(&mut self, refocus: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let pane = self.pane;
+        self.clear_search(window, cx);
+        self.controller.update(cx, |controller, cx| {
+            controller.update_resume(pane, cx, |resume, _| {
+                resume.close();
+                None
+            });
+        });
+        if refocus {
             self.input.update(cx, |input, cx| input.focus(window, cx));
+        }
+        cx.notify();
+    }
+
+    fn toggle_menu(&mut self, menu: Menu, open: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if open {
+            self.show_menu(menu, window, cx);
+        } else if self.open_menu(cx) == Some(menu) {
+            self.hide_menu(false, window, cx);
+        }
+    }
+
+    fn step_menu(&mut self, down: bool, cx: &mut Context<Self>) -> bool {
+        if self.open_menu(cx).is_none() {
+            return false;
+        }
+        let (rows, _) = self.resume(cx);
+        let pane = self.pane;
+        let mut stepped = None;
+        self.controller.update(cx, |controller, cx| {
+            controller.update_resume(pane, cx, |resume, _| {
+                stepped = resume.step(&rows, down);
+                None
+            });
+        });
+        if let Some(index) = stepped {
+            self.resume_scroll.scroll_to_item(index);
         }
         true
     }
 
     fn pick_resume(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         let (rows, _) = self.resume(cx);
-        let Some(row) = rows.get(index).cloned() else {
+        let Some(row) = rows.get(index).filter(|row| row.picks()).cloned() else {
             return;
         };
         let pane = self.pane;
         self.controller.update(cx, |controller, cx| {
             controller.update_resume(pane, cx, |resume, cwd| resume.pick(&row, cwd));
         });
-        if matches!(row, ResumeRow::Project { .. }) {
-            self.clear_filter(window, cx);
-        }
+        self.clear_search(window, cx);
+        self.input.update(cx, |input, cx| input.focus(window, cx));
+        cx.notify();
     }
 
     fn hover_resume(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -643,36 +754,23 @@ impl AgentView {
         let pane = self.pane;
         self.controller.update(cx, |controller, cx| {
             controller.update_resume(pane, cx, |resume, _| {
-                resume.select(index);
+                resume.select(&rows, index);
                 None
             });
         });
     }
 
-    fn leave_resume(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if !self.filter.read(cx).value().is_empty() {
-            self.clear_filter(window, cx);
-            return true;
+    fn escape_menu(&mut self, _: &Escape, window: &mut Window, cx: &mut Context<Self>) {
+        if self.open_menu(cx).is_none() {
+            cx.propagate();
+            return;
         }
-        let (rows, selected) = self.resume(cx);
-        let opened = matches!(rows.first(), Some(ResumeRow::Heading { back: true, .. }));
-        let listed = self.filter.read(cx).focus_handle(cx).is_focused(window);
-        if selected.is_none() && !opened {
-            if listed {
-                self.input.update(cx, |input, cx| input.focus(window, cx));
-            }
-            return listed;
+        if self.search.read(cx).value().is_empty() {
+            self.hide_menu(true, window, cx);
+        } else {
+            self.clear_search(window, cx);
         }
-        let pane = self.pane;
-        self.controller.update(cx, |controller, cx| {
-            controller.update_resume(pane, cx, |resume, _| {
-                if !resume.clear_selection() {
-                    resume.back();
-                }
-                None
-            });
-        });
-        true
+        cx.stop_propagation();
     }
 
     fn next_mode(&mut self, _: &OutdentInline, _: &mut Window, cx: &mut Context<Self>) {
@@ -693,40 +791,79 @@ impl AgentView {
         cx.stop_propagation();
     }
 
-    fn render_resume(
+    fn render_empty_chat(
         &self,
         rows: &[ResumeRow],
         selected: Option<usize>,
+        open: Option<Menu>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let pick = cx.entity();
-        let hover = pick.clone();
-        let items = resume_rows(
-            self.pane.0,
-            rows,
-            selected,
-            move |index, window, cx| {
-                pick.update(cx, |view, cx| view.pick_resume(index, window, cx));
-            },
-            move |index, _, cx| hover.update(cx, |view, cx| view.hover_resume(index, cx)),
-            cx,
+        let pane = self.pane.0;
+        let view = cx.entity();
+        let searching = !self.search.read(cx).value().trim().is_empty();
+        let menu = |which: Menu, trigger: penna::components::button::Button| {
+            let toggle = view.clone();
+            let pick = view.clone();
+            let hover = view.clone();
+            let search = self.search.clone();
+            let scroll = self.resume_scroll.clone();
+            let rows = rows.to_vec();
+            let shown = open == Some(which);
+            Popover::new(match which {
+                Menu::Folders => ("agent-folder-menu", pane),
+                Menu::Chats => ("agent-resume-menu", pane),
+            })
+            .anchor(Anchor::TopCenter)
+            .p(px(0.0))
+            .trigger(trigger)
+            .open(shown)
+            .on_toggle(move |open, window, cx| {
+                toggle.update(cx, |view, cx| view.toggle_menu(which, open, window, cx));
+            })
+            .content(move |_, _, cx| {
+                let pick = pick.clone();
+                let hover = hover.clone();
+                let items = resume_rows(
+                    pane,
+                    &rows,
+                    selected,
+                    searching,
+                    move |index, window, cx| {
+                        pick.update(cx, |view, cx| view.pick_resume(index, window, cx));
+                    },
+                    move |index, _, cx| {
+                        hover.update(cx, |view, cx| view.hover_resume(index, cx));
+                    },
+                    cx,
+                );
+                resume_menu(&search, &scroll, items, cx)
+            })
+        };
+        let folder = menu(
+            Menu::Folders,
+            folder_button(
+                ("agent-folder-button", pane),
+                &folder_name(&self.pane_state.cwd),
+                cx,
+            ),
+        );
+        let resume = menu(
+            Menu::Chats,
+            resume_button(("agent-resume-button", pane), cx),
         );
         div().size_full().px_3().child(
             v_flex()
                 .size_full()
-                .max_w(px(RESUME_WIDTH))
-                .mx_auto()
-                .pt(px(36.0))
-                .pb_3()
+                .items_center()
+                .justify_center()
+                .py_3()
                 .child(agent_resume_welcome(self.pane_state.provider, cx))
-                .child(resume_filter(&self.filter, cx))
                 .child(
-                    div()
-                        .id(("agent-resume", self.pane.0))
-                        .flex_1()
-                        .min_h_0()
-                        .overflow_y_scroll()
-                        .child(v_flex().w_full().gap(px(2.0)).children(items)),
+                    h_flex()
+                        .flex_none()
+                        .gap(px(6.0))
+                        .child(folder)
+                        .child(resume),
                 ),
         )
     }
@@ -757,12 +894,6 @@ impl AgentView {
     fn enter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.completions.is_empty() {
             self.accept_selected_completion(window, cx);
-            return;
-        }
-        if !self.composer_has_content()
-            && let (_, Some(index)) = self.resume(cx)
-        {
-            self.pick_resume(index, window, cx);
             return;
         }
         if self.confirm_permission(window, cx) {
@@ -940,8 +1071,13 @@ impl AgentView {
     }
 
     fn move_completion_up(&mut self, _: &MoveUp, window: &mut Window, cx: &mut Context<Self>) {
+        if self.step_menu(false, cx) {
+            cx.stop_propagation();
+            return;
+        }
         if self.completions.is_empty() {
-            if self.step_resume(false, window, cx) {
+            if self.lists_chats(cx) && !self.composer_has_content() {
+                self.show_menu(Menu::Chats, window, cx);
                 cx.stop_propagation();
                 return;
             }
@@ -953,11 +1089,11 @@ impl AgentView {
     }
 
     fn move_completion_down(&mut self, _: &MoveDown, window: &mut Window, cx: &mut Context<Self>) {
+        if self.step_menu(true, cx) {
+            cx.stop_propagation();
+            return;
+        }
         if self.completions.is_empty() {
-            if self.step_resume(true, window, cx) {
-                cx.stop_propagation();
-                return;
-            }
             self.ask_arrow("down", window, cx);
             return;
         }
@@ -979,9 +1115,6 @@ impl AgentView {
             return;
         }
         if self.completions.is_empty() {
-            if event.keystroke.key == "escape" && self.leave_resume(window, cx) {
-                cx.stop_propagation();
-            }
             return;
         }
         let modifiers = event.keystroke.modifiers;
@@ -1639,7 +1772,7 @@ impl AgentView {
             .is_open()
             .then(|| self.mention.clone().into_any_element())
             .filter(|_| prompting);
-        let controls = self.render_harness_controls(state, cx);
+        let controls = self.render_harness_controls(state, view, cx);
         let attachments = self
             .render_attachments(view, inside)
             .filter(|_| prompting)
@@ -1751,10 +1884,20 @@ impl Render for AgentView {
         let view = cx.entity();
         let input_focus = self.focus(cx);
         let chat_body = use_chat.then(|| self.render_chat(window, cx));
-        let resume = Some(self.resume(cx))
-            .filter(|(rows, _)| !rows.is_empty())
-            .map(|(rows, selected)| self.render_resume(&rows, selected, cx).into_any_element());
-        let listing = resume.is_some();
+        let listing = self.lists_chats(cx);
+        let open = self.open_menu(cx);
+        if self.focus_search && open.is_some() {
+            self.focus_search = false;
+            let search = self.search.clone();
+            window.defer(cx, move |window, cx| {
+                search.update(cx, |search, cx| search.focus(window, cx));
+            });
+        }
+        let resume = listing.then(|| {
+            let (rows, selected) = self.resume(cx);
+            self.render_empty_chat(&rows, selected, open, cx)
+                .into_any_element()
+        });
         let root = div()
             .id(("agent-pane", self.pane.0))
             .key_context(AGENT_KEY_CONTEXT)
@@ -1771,6 +1914,7 @@ impl Render for AgentView {
             .capture_action(cx.listener(Self::move_ask_right))
             .capture_action(cx.listener(Self::complete))
             .capture_action(cx.listener(Self::next_mode))
+            .capture_action(cx.listener(Self::escape_menu))
             .map(|root| mention_keys(root, &self.mention))
             .on_key_down(cx.listener(Self::on_key_down))
             .child(

@@ -129,7 +129,7 @@ if [[ "$mode" == testflight ]]; then
 fi
 
 if [[ "$mode" == device || "$mode" == bench ]]; then
-    bundle_id=dev.zz.ala-poc
+    bundle_id=dev.zz.ios-dev
     devices_json="$(mktemp)"
     trap 'rm -f "$devices_json"' EXIT
     xcrun devicectl list devices --json-output "$devices_json" >/dev/null
@@ -175,22 +175,22 @@ PY
     dev_build="${ZZ_DEV_BUILD-1}"
     cargo_profile="${ZZ_ALA_CARGO_PROFILE:-release}"
     ZZ_DEV_BUILD="$dev_build" IPHONEOS_DEPLOYMENT_TARGET=26.0 cargo build --locked --profile "$cargo_profile" -p zz-ios "${build_target[@]}" --target aarch64-apple-ios
-    app="$repo_root/target/ios-ala-device/ZZ Ala.app"
+    app="$repo_root/target/ios-device/ZZ Dev.app"
     rm -rf "$app"
     mkdir -p "$app"
-    cp "$repo_root/target/aarch64-apple-ios/$cargo_profile/$binary" "$app/ZZAla"
+    cp "$repo_root/target/aarch64-apple-ios/$cargo_profile/$binary" "$app/ZZ"
     cp "$repo_root/clients/ios/Info.plist" "$app/Info.plist"
     plutil -replace CFBundleSupportedPlatforms -json '["iPhoneOS"]' "$app/Info.plist"
     compile_icon "$app" iphoneos zz-dev
     cp "$profile" "$app/embedded.mobileprovision"
-    entitlements="$repo_root/target/ios-ala-device/entitlements.plist"
+    entitlements="$repo_root/target/ios-device/entitlements.plist"
     write_entitlements "$entitlements" "$team" "$bundle_id" 1
     codesign --force --timestamp=none --sign "$identity" --entitlements "$entitlements" "$app"
     [[ "${3:-}" == --build-only ]] && exit 0
     [[ "$mode" == bench ]] && exec "$repo_root/scripts/ios-bench.sh" "$udid" "$app" "$endpoint"
     xcrun devicectl device install app --device "$udid" "$app"
     if ! xcrun devicectl device info lockState --device "$udid" 2>/dev/null | grep -q "passcodeRequired: false"; then
-        echo "installed; the phone is locked, so open zz ala from the home screen"
+        echo "installed; the phone is locked, so open zz dev from the home screen"
         exit 0
     fi
     launch_env="$(ZZ_ALA_ENDPOINT="$endpoint" python3 -c 'import json, os; print(json.dumps({key: os.environ[key] for key in ("ZZ_ALA_ENDPOINT", "ZZ_ALA_SESSION", "ALA_FRAME_LOG", "ALA_BENCH", "ZZ_ALA_GLASS", "ALA_FRAME_STATS") if os.environ.get(key)}))')"
@@ -200,9 +200,9 @@ PY
 fi
 
 IPHONEOS_DEPLOYMENT_TARGET=26.0 cargo build --locked -p zz-ios "${build_target[@]}" --target aarch64-apple-ios-sim
-app="$repo_root/target/ios-ala/ZZ Ala.app"
+app="$repo_root/target/ios/ZZ Dev.app"
 mkdir -p "$app"
-cp "$repo_root/target/aarch64-apple-ios-sim/debug/$binary" "$app/ZZAla"
+cp "$repo_root/target/aarch64-apple-ios-sim/debug/$binary" "$app/ZZ"
 cp "$repo_root/clients/ios/Info.plist" "$app/Info.plist"
 compile_icon "$app" iphonesimulator zz-dev
 codesign --force --sign - "$app"
@@ -259,6 +259,6 @@ if [[ -d "$developer_dir/../Applications/DeviceHub.app" ]]; then
 else
     open -a Simulator
 fi
-xcrun simctl terminate "$udid" dev.zz.ala-poc 2>/dev/null || true
+xcrun simctl terminate "$udid" dev.zz.ios-dev 2>/dev/null || true
 xcrun simctl install "$udid" "$app"
-exec xcrun simctl launch --console-pty "$udid" dev.zz.ala-poc
+exec xcrun simctl launch --console-pty "$udid" dev.zz.ios-dev

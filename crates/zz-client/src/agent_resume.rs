@@ -8,16 +8,18 @@ use zz_protocol::{
     agent_stream::{AgentSessionSummary, AgentStreamPayload},
 };
 
-use crate::{providers::home_relative, window_summary::short_age};
+use crate::{fuzzy::fuzzy_match, providers::home_relative, window_summary::short_age};
 
-pub const HERE_ROWS: usize = 3;
-pub const PROJECT_ROWS: usize = 5;
 pub const UNTITLED: &str = "Untitled chat";
 pub const NOTHING_MATCHES: &str = "Nothing matches";
-const BACKFILL_PAGES: usize = 8;
-const FILTER_PAGES: usize = 40;
-const FOUND_FOLDERS: usize = 8;
-const FOUND_CHATS: usize = 40;
+pub const NO_CHATS_HERE: &str = "No chats here yet";
+pub const OTHER_FOLDERS: &str = "Other folders";
+pub const LOADING: &str = "Loading";
+const HERE_CHATS: usize = 8;
+const OTHER_CHATS: usize = 8;
+const PATH_MATCH: usize = 1_000;
+const PAGES: usize = 40;
+const FOUND: usize = 40;
 const TEMP_ROOTS: [&str; 4] = [
     "/tmp",
     "/private/tmp",
@@ -45,9 +47,22 @@ impl Listing {
         self.more = more;
     }
 
-    fn page(&mut self, cwd: Option<PathBuf>, limit: usize) -> Option<AgentSessionOpKind> {
+    fn waiting(&self) -> bool {
+        self.pages == 0 || (self.asked.is_some() && self.asked == self.more)
+    }
+
+    fn fail(&mut self) {
+        if self.waiting() {
+            self.pages = self.pages.max(1);
+            if self.asked == self.more {
+                self.more = None;
+            }
+        }
+    }
+
+    fn page(&mut self, cwd: Option<PathBuf>) -> Option<AgentSessionOpKind> {
         let more = self.more.clone()?;
-        if self.pages >= limit || self.asked.as_ref() == Some(&more) {
+        if self.pages >= PAGES || self.asked.as_ref() == Some(&more) {
             return None;
         }
         self.asked = Some(more.clone());
@@ -55,11 +70,31 @@ impl Listing {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Menu {
+    Folders,
+    Chats,
+}
+
+impl Menu {
+    #[must_use]
+    pub const fn placeholder(self) -> &'static str {
+        match self {
+            Self::Folders => "Search folders",
+            Self::Chats => "Search chats",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResumeRow {
-    Heading {
-        text: String,
-        back: bool,
+    Label(String),
+    Folder {
+        cwd: PathBuf,
+        name: String,
+        path: String,
+        age: Option<String>,
+        current: bool,
     },
     Chat {
         chat: AgentSessionSummary,
@@ -67,38 +102,22 @@ pub enum ResumeRow {
         place: Option<String>,
         age: Option<String>,
     },
-    Project {
-        cwd: PathBuf,
-        name: String,
-        path: String,
-        age: Option<String>,
-    },
-    More(More),
-    Empty,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum More {
-    Here,
-    Projects,
-    Chats,
-}
-
-impl More {
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Here => "More chats here",
-            Self::Projects => "More projects",
-            Self::Chats => "More chats",
-        }
-    }
+    Loading,
+    Note(&'static str),
 }
 
 impl ResumeRow {
     #[must_use]
     pub const fn picks(&self) -> bool {
-        !matches!(self, Self::Heading { .. } | Self::Empty)
+        matches!(self, Self::Folder { .. } | Self::Chat { .. })
+    }
+
+    fn key(&self) -> Option<String> {
+        match self {
+            Self::Folder { cwd, .. } => Some(cwd.to_string_lossy().into_owned()),
+            Self::Chat { chat, .. } => Some(chat.session_id.clone()),
+            Self::Label(_) | Self::Loading | Self::Note(_) => None,
+        }
     }
 }
 
@@ -106,10 +125,9 @@ impl ResumeRow {
 pub struct Resume {
     here: Listing,
     recent: Listing,
-    open: Option<(PathBuf, Listing)>,
-    every_project: bool,
-    filter: String,
-    selected: Option<usize>,
+    menu: Option<Menu>,
+    search: String,
+    picked: Option<String>,
 }
 
 impl Resume {
@@ -119,174 +137,199 @@ impl Resume {
     }
 
     pub fn apply(&mut self, cwd: &Path, reply: &str) -> bool {
-        let Ok(AgentStreamPayload::SessionsListed {
-            sessions,
-            next_cursor,
-            cwd_filter,
-            replace,
-            ..
-        }) = serde_json::from_str(reply)
-        else {
-            return false;
+        let (sessions, next_cursor, cwd_filter, replace) = match serde_json::from_str(reply) {
+            Ok(AgentStreamPayload::SessionsListed {
+                sessions,
+                next_cursor,
+                cwd_filter,
+                replace,
+                ..
+            }) => (sessions, next_cursor, cwd_filter, replace),
+            Ok(AgentStreamPayload::SessionListFailed { .. }) => {
+                self.here.fail();
+                self.recent.fail();
+                return true;
+            }
+            _ => return false,
         };
         match cwd_filter {
             None => self.recent.take(sessions, next_cursor, replace),
-            Some(filter) => {
-                if let Some((open, listing)) = &mut self.open
-                    && *open == filter
-                {
-                    listing.take(sessions.clone(), next_cursor.clone(), replace);
-                }
-                if filter == cwd {
-                    self.here.take(sessions, next_cursor, replace);
-                }
-            }
+            Some(filter) if filter == cwd => self.here.take(sessions, next_cursor, replace),
+            Some(_) => return false,
         }
-        self.selected = None;
         true
     }
 
     pub fn wanted(&mut self, cwd: &Path) -> Option<AgentSessionOpKind> {
-        let filtering = !self.query().is_empty();
-        if let Some((folder, listing)) = &mut self.open {
-            return filtering
-                .then(|| listing.page(Some(folder.clone()), FILTER_PAGES))
-                .flatten();
-        }
-        if filtering {
-            return self.recent.page(None, FILTER_PAGES);
-        }
-        if self.projects(cwd, false).len() > PROJECT_ROWS {
+        let menu = self.menu?;
+        if self.here.waiting() || self.recent.waiting() {
             return None;
         }
-        self.recent.page(None, BACKFILL_PAGES)
+        (menu == Menu::Chats)
+            .then(|| self.here.page(Some(cwd.to_path_buf())))
+            .flatten()
+            .or_else(|| self.recent.page(None))
     }
 
     #[must_use]
-    pub fn filter(&self) -> &str {
-        &self.filter
+    pub const fn menu(&self) -> Option<Menu> {
+        self.menu
     }
 
-    pub fn set_filter(&mut self, text: &str) -> bool {
-        if self.filter == text {
+    pub fn open(&mut self, menu: Menu) {
+        self.menu = Some(menu);
+        self.search.clear();
+        self.picked = None;
+    }
+
+    pub fn close(&mut self) -> bool {
+        self.search.clear();
+        self.picked = None;
+        self.menu.take().is_some()
+    }
+
+    #[must_use]
+    pub fn search(&self) -> &str {
+        &self.search
+    }
+
+    pub fn set_search(&mut self, text: &str) -> bool {
+        if self.search == text {
             return false;
         }
-        text.clone_into(&mut self.filter);
-        self.selected = None;
+        text.clone_into(&mut self.search);
+        self.picked = None;
         true
     }
 
     fn query(&self) -> String {
-        self.filter.trim().to_lowercase()
+        self.search.trim().to_lowercase()
     }
 
     #[must_use]
     pub fn rows(&self, cwd: &Path, session: Option<&str>, now: u64) -> Vec<ResumeRow> {
+        match self.menu {
+            None => Vec::new(),
+            Some(Menu::Folders) => self.folders(cwd, now),
+            Some(Menu::Chats) => self.chats(cwd, session, now),
+        }
+    }
+
+    fn folders(&self, cwd: &Path, now: u64) -> Vec<ResumeRow> {
+        if self.recent.pages == 0 {
+            return vec![ResumeRow::Loading];
+        }
         let query = self.query();
-        let has = |text: &str| text.to_lowercase().contains(&query);
-        let chat = |chat: &AgentSessionSummary, place: bool| ResumeRow::Chat {
-            chat: chat.clone(),
-            title: title(chat),
-            place: place.then(|| folder_name(&chat.cwd)),
-            age: age(chat.updated_at.as_deref(), now),
-        };
-        let project = |(folder, updated): &(&Path, Option<&str>)| ResumeRow::Project {
+        let score = |text: &str| fuzzy_match(&query, text).map(|(score, _)| score);
+        let row = |(folder, updated): (&Path, Option<&str>)| ResumeRow::Folder {
             cwd: folder.to_path_buf(),
             name: folder_name(folder),
             path: folder
                 .parent()
                 .map(|parent| home_relative(&parent.to_string_lossy()))
                 .unwrap_or_default(),
-            age: age(*updated, now),
+            age: age(updated, now).filter(|_| folder != cwd),
+            current: folder == cwd,
+        };
+        let folders = std::iter::once((cwd, None)).chain(self.projects(cwd, !query.is_empty()));
+        let mut rows = if query.is_empty() {
+            folders.map(row).collect::<Vec<_>>()
+        } else {
+            let mut found = folders
+                .filter_map(|folder| {
+                    let named = score(&folder_name(folder.0));
+                    let pathed = || {
+                        score(&home_relative(&folder.0.to_string_lossy()))
+                            .map(|score| score + PATH_MATCH)
+                    };
+                    Some((named.or_else(pathed)?, folder))
+                })
+                .collect::<Vec<_>>();
+            found.sort_by_key(|(score, _)| *score);
+            found
+                .into_iter()
+                .take(FOUND)
+                .map(|(_, folder)| row(folder))
+                .collect()
+        };
+        if self.recent.waiting() {
+            rows.push(ResumeRow::Loading);
+        } else if rows.is_empty() {
+            rows.push(ResumeRow::Note(NOTHING_MATCHES));
+        }
+        rows
+    }
+
+    fn chats(&self, cwd: &Path, session: Option<&str>, now: u64) -> Vec<ResumeRow> {
+        if self.here.pages == 0 || self.recent.pages == 0 {
+            return vec![ResumeRow::Loading];
+        }
+        let query = self.query();
+        let score = |text: &str| fuzzy_match(&query, text).map(|(score, _)| score);
+        let row = |chat: &AgentSessionSummary, place: bool| ResumeRow::Chat {
+            chat: chat.clone(),
+            title: title(chat),
+            place: place.then(|| folder_name(&chat.cwd)),
+            age: age(chat.updated_at.as_deref(), now),
         };
         let other = |chat: &&AgentSessionSummary| Some(chat.session_id.as_str()) != session;
         let mut rows = Vec::new();
-        if let Some((folder, listing)) = &self.open {
-            rows.push(ResumeRow::Heading {
-                text: folder_name(folder),
-                back: true,
-            });
-            rows.extend(
-                listing
-                    .chats
-                    .iter()
-                    .filter(other)
-                    .filter(|chat| query.is_empty() || has(&title(chat)))
-                    .map(|found| chat(found, false)),
-            );
-            if query.is_empty() {
-                if listing.more.is_some() {
-                    rows.push(ResumeRow::More(More::Chats));
-                }
-            } else if rows.len() == 1 {
-                rows.push(ResumeRow::Empty);
-            }
-            return rows;
-        }
-        if !query.is_empty() {
-            let folders = self
-                .projects(cwd, true)
-                .into_iter()
-                .filter(|(folder, _)| has(&home_relative(&folder.to_string_lossy())))
-                .take(FOUND_FOLDERS)
+        if query.is_empty() {
+            rows.push(ResumeRow::Label(format!("In {}", folder_name(cwd))));
+            let here = self
+                .here
+                .chats
+                .iter()
+                .filter(other)
+                .take(HERE_CHATS)
                 .collect::<Vec<_>>();
+            if here.is_empty() {
+                rows.push(ResumeRow::Note(NO_CHATS_HERE));
+            }
+            rows.extend(here.into_iter().map(|chat| row(chat, false)));
+            let others = self
+                .recent
+                .chats
+                .iter()
+                .filter(other)
+                .filter(|chat| chat.cwd != cwd)
+                .take(OTHER_CHATS)
+                .collect::<Vec<_>>();
+            if !others.is_empty() {
+                rows.push(ResumeRow::Label(OTHER_FOLDERS.to_owned()));
+                rows.extend(others.into_iter().map(|chat| row(chat, true)));
+            }
+        } else {
             let mut seen = HashSet::new();
-            let mut chats = self
+            let mut found = self
                 .here
                 .chats
                 .iter()
                 .chain(&self.recent.chats)
                 .filter(other)
                 .filter(|chat| seen.insert(chat.session_id.as_str()))
-                .filter(|chat| has(&title(chat)) || has(&folder_name(&chat.cwd)))
+                .filter_map(|chat| {
+                    let titled = score(&title(chat));
+                    let placed = score(&folder_name(&chat.cwd)).map(|score| score + PATH_MATCH);
+                    Some((titled.into_iter().chain(placed).min()?, chat))
+                })
                 .collect::<Vec<_>>();
-            chats.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
-            chats.truncate(FOUND_CHATS);
-            if !folders.is_empty() {
-                rows.push(ResumeRow::Heading {
-                    text: "Folders".to_owned(),
-                    back: false,
-                });
-                rows.extend(folders.iter().map(project));
-            }
-            if !chats.is_empty() {
-                rows.push(ResumeRow::Heading {
-                    text: "Chats".to_owned(),
-                    back: false,
-                });
-                rows.extend(chats.into_iter().map(|found| chat(found, true)));
-            }
-            if rows.is_empty() {
-                rows.push(ResumeRow::Empty);
-            }
-            return rows;
-        }
-        let here = self.here.chats.iter().filter(other).collect::<Vec<_>>();
-        if !here.is_empty() {
-            rows.push(ResumeRow::Heading {
-                text: "Recent here".to_owned(),
-                back: false,
+            found.sort_by(|(left_score, left), (right_score, right)| {
+                left_score
+                    .cmp(right_score)
+                    .then_with(|| right.updated_at.cmp(&left.updated_at))
             });
-            rows.extend(here.iter().take(HERE_ROWS).map(|found| chat(found, false)));
-            if here.len() > HERE_ROWS || self.here.more.is_some() {
-                rows.push(ResumeRow::More(More::Here));
-            }
+            rows.extend(
+                found
+                    .into_iter()
+                    .take(FOUND)
+                    .map(|(_, chat)| row(chat, true)),
+            );
         }
-        let projects = self.projects(cwd, false);
-        if !projects.is_empty() {
-            rows.push(ResumeRow::Heading {
-                text: "Projects".to_owned(),
-                back: false,
-            });
-            let shown = if self.every_project {
-                projects.len()
-            } else {
-                PROJECT_ROWS
-            };
-            rows.extend(projects.iter().take(shown).map(project));
-            if projects.len() > shown || self.recent.more.is_some() {
-                rows.push(ResumeRow::More(More::Projects));
-            }
+        if self.here.waiting() || self.recent.waiting() {
+            rows.push(ResumeRow::Loading);
+        } else if rows.is_empty() {
+            rows.push(ResumeRow::Note(NOTHING_MATCHES));
         }
         rows
     }
@@ -306,98 +349,53 @@ impl Resume {
 
     #[must_use]
     pub fn selection(&self, rows: &[ResumeRow]) -> Option<usize> {
-        self.selected
-            .filter(|at| rows.get(*at).is_some_and(ResumeRow::picks))
-            .or_else(|| {
-                if self.query().is_empty() {
-                    None
-                } else {
-                    rows.iter().position(ResumeRow::picks)
-                }
+        self.picked
+            .as_ref()
+            .and_then(|picked| {
+                rows.iter()
+                    .position(|row| row.key().as_ref() == Some(picked))
             })
+            .or_else(|| rows.iter().position(ResumeRow::picks))
     }
 
-    pub fn clear_selection(&mut self) -> bool {
-        self.selected.take().is_some()
-    }
-
-    pub fn select(&mut self, index: usize) {
-        self.selected = Some(index);
-    }
-
-    pub fn step(&mut self, rows: &[ResumeRow], down: bool) -> bool {
-        let picks = rows
-            .iter()
-            .enumerate()
-            .filter(|(_, row)| row.picks())
-            .map(|(index, _)| index)
-            .collect::<Vec<_>>();
-        let current = self.selection(rows);
-        let filtering = !self.query().is_empty();
-        let next = match (current, down) {
-            (None, false) => picks.last().copied(),
-            (None, true) => None,
-            (Some(at), false) => picks
-                .iter()
-                .rev()
-                .find(|index| **index < at)
-                .copied()
-                .or(Some(at)),
-            (Some(at), true) => picks
-                .iter()
-                .find(|index| **index > at)
-                .copied()
-                .or_else(|| filtering.then_some(at)),
+    pub fn select(&mut self, rows: &[ResumeRow], index: usize) -> bool {
+        let Some(key) = rows.get(index).and_then(ResumeRow::key) else {
+            return false;
         };
-        let moved = next != current;
-        self.selected = next;
-        moved
+        let changed = self.picked.as_ref() != Some(&key);
+        self.picked = Some(key);
+        changed
     }
 
-    pub fn back(&mut self) -> bool {
-        self.selected = None;
-        self.open.take().is_some()
+    pub fn step(&mut self, rows: &[ResumeRow], down: bool) -> Option<usize> {
+        let at = self.selection(rows)?;
+        let picks = |(_, row): &(usize, &ResumeRow)| row.picks();
+        let next = if down {
+            rows.iter().enumerate().skip(at + 1).find(picks)
+        } else {
+            rows.iter().enumerate().take(at).rev().find(picks)
+        }
+        .map_or(at, |(index, _)| index);
+        self.select(rows, next);
+        Some(next)
     }
 
     pub fn pick(&mut self, row: &ResumeRow, cwd: &Path) -> Option<AgentSessionOpKind> {
-        match row {
-            ResumeRow::Heading { back: true, .. } => {
-                self.back();
-                None
+        let op = match row {
+            ResumeRow::Folder { cwd: folder, .. } => {
+                (folder != cwd).then(|| AgentSessionOpKind::New {
+                    cwd: folder.clone(),
+                })
             }
-            ResumeRow::Heading { .. } | ResumeRow::Empty => None,
             ResumeRow::Chat { chat, .. } => Some(AgentSessionOpKind::Switch {
                 session_id: chat.session_id.clone(),
                 cwd: chat.cwd.clone(),
                 additional_directories: chat.additional_directories.clone(),
             }),
-            ResumeRow::Project { cwd: folder, .. } => {
-                self.selected = None;
-                self.filter.clear();
-                self.open = Some((folder.clone(), Listing::default()));
-                Some(list(Some(folder.clone()), None))
-            }
-            ResumeRow::More(More::Here) => {
-                self.selected = None;
-                self.open = Some((cwd.to_path_buf(), self.here.clone()));
-                None
-            }
-            ResumeRow::More(More::Chats) => {
-                self.selected = None;
-                let (folder, listing) = self.open.as_mut()?;
-                listing.page(Some(folder.clone()), usize::MAX)
-            }
-            ResumeRow::More(More::Projects) => {
-                self.selected = None;
-                let loaded = self.projects(cwd, false).len();
-                if !self.every_project && loaded > PROJECT_ROWS {
-                    self.every_project = true;
-                    return None;
-                }
-                self.every_project = true;
-                self.recent.page(None, usize::MAX)
-            }
-        }
+            ResumeRow::Label(_) | ResumeRow::Loading | ResumeRow::Note(_) => return None,
+        };
+        self.close();
+        op
     }
 }
 
@@ -424,7 +422,8 @@ fn scratch(folder: &Path) -> bool {
         || home_relative(&folder.to_string_lossy()).starts_with("~/Library/")
 }
 
-fn folder_name(folder: &Path) -> String {
+#[must_use]
+pub fn folder_name(folder: &Path) -> String {
     folder.file_name().map_or_else(
         || folder.to_string_lossy().into_owned(),
         |name| name.to_string_lossy().into_owned(),
@@ -465,147 +464,253 @@ mod tests {
     }
 
     fn listed(chats: Vec<AgentSessionSummary>, filter: Option<&str>, more: Option<&str>) -> String {
+        paged(chats, filter, more, true)
+    }
+
+    fn paged(
+        chats: Vec<AgentSessionSummary>,
+        filter: Option<&str>,
+        more: Option<&str>,
+        replace: bool,
+    ) -> String {
         serde_json::to_string(&AgentStreamPayload::SessionsListed {
             client: zz_protocol::ClientId(1),
             sessions: chats,
             next_cursor: more.map(str::to_owned),
             cwd_filter: filter.map(PathBuf::from),
-            replace: true,
+            replace,
         })
         .expect("reply")
     }
 
     const NOW: u64 = 1_794_312_000;
 
+    fn folder(name: &str, path: &str, age: Option<&str>, current: bool) -> ResumeRow {
+        ResumeRow::Folder {
+            cwd: PathBuf::from(format!("{path}/{name}")),
+            name: name.to_owned(),
+            path: path.to_owned(),
+            age: age.map(str::to_owned),
+            current,
+        }
+    }
+
+    fn listed_both(
+        resume: &mut Resume,
+        cwd: &Path,
+        here: Vec<AgentSessionSummary>,
+        recent: Vec<AgentSessionSummary>,
+    ) {
+        assert!(resume.apply(cwd, &listed(here, Some(&cwd.to_string_lossy()), None)));
+        assert!(resume.apply(cwd, &listed(recent, None, None)));
+    }
+
     #[test]
-    fn the_empty_chat_lists_this_folders_chats_then_the_other_folders() {
+    fn the_folder_menu_lists_this_folder_checked_then_the_others_and_a_pick_starts_a_chat_there() {
         let cwd = Path::new("/src/zz");
         let mut resume = Resume::default();
-        assert!(resume.apply(
+        listed_both(
+            &mut resume,
             cwd,
-            &listed(
-                vec![
-                    chat("a", "/src/zz", "Fix the stack", "2026-11-10T10:00:00Z"),
-                    chat("own", "/src/zz", "This chat", "2026-11-10T09:00:00Z"),
-                ],
-                Some("/src/zz"),
-                None,
-            ),
-        ));
-        assert!(resume.apply(
+            Vec::new(),
+            vec![
+                chat("f", "/scratch/old", "Old notes", "2026-11-10T11:00:00Z"),
+                chat("a", "/src/penna", "Focus ring", "2026-11-10T09:00:00Z"),
+                chat("b", "/tmp/scratch", "Try it", "2026-11-10T08:00:00Z"),
+                chat("c", "/src/zz", "Fix the stack", "2026-11-10T07:00:00Z"),
+                chat("d", "/src/nidus", "Wayland", "2026-11-08T12:00:00Z"),
+                chat("e", "/src/scratchpad", "Notes", "2026-11-01T12:00:00Z"),
+            ],
+        );
+        resume.open(Menu::Folders);
+        let rows = resume.rows(cwd, None, NOW);
+        assert_eq!(
+            rows,
+            [
+                folder("zz", "/src", None, true),
+                folder("old", "/scratch", Some("1h"), false),
+                folder("penna", "/src", Some("3h"), false),
+                folder("nidus", "/src", Some("2d"), false),
+                folder("scratchpad", "/src", Some("9d"), false),
+            ]
+        );
+        assert_eq!(resume.selection(&rows), Some(0));
+        assert_eq!(resume.pick(&rows[0], cwd), None);
+        assert_eq!(resume.menu(), None);
+
+        resume.open(Menu::Folders);
+        resume.set_search("scratch");
+        let rows = resume.rows(cwd, None, NOW);
+        assert_eq!(
+            rows,
+            [
+                folder("scratch", "/tmp", Some("4h"), false),
+                folder("scratchpad", "/src", Some("9d"), false),
+                folder("old", "/scratch", Some("1h"), false),
+            ]
+        );
+        assert_eq!(resume.step(&rows, true), Some(1));
+        assert_eq!(resume.step(&rows, false), Some(0));
+        assert_eq!(resume.step(&rows, false), Some(0));
+        assert_eq!(
+            resume.pick(&rows[0], cwd),
+            Some(AgentSessionOpKind::New {
+                cwd: PathBuf::from("/tmp/scratch"),
+            })
+        );
+        assert_eq!(resume.menu(), None);
+    }
+
+    #[test]
+    fn resume_lists_this_folders_chats_then_the_newest_elsewhere_and_search_ranks_titles_first() {
+        let cwd = Path::new("/src/zz");
+        let mut resume = Resume::default();
+        let elsewhere = (0..10)
+            .map(|n| {
+                chat(
+                    &format!("p{n}"),
+                    "/src/penna",
+                    &format!("Penna {n}"),
+                    &format!("2026-11-09T{:02}:00:00Z", 20 - n),
+                )
+            })
+            .collect::<Vec<_>>();
+        listed_both(
+            &mut resume,
             cwd,
-            &listed(
-                vec![
-                    chat("a", "/src/zz", "Fix the stack", "2026-11-10T10:00:00Z"),
-                    chat("b", "/src/penna", "Focus ring", "2026-11-10T09:00:00Z"),
-                    chat("c", "/src/penna", "Chip tones", "2026-11-08T12:00:00Z"),
-                    chat("d", "/src/nidus", "", "2026-11-08T12:00:00Z"),
-                ],
-                None,
-                None,
-            ),
-        ));
+            vec![
+                chat("own", "/src/zz", "This chat", "2026-11-10T11:00:00Z"),
+                chat("a", "/src/zz", "Fix the stack", "2026-11-10T10:00:00Z"),
+            ],
+            [
+                vec![chat(
+                    "a",
+                    "/src/zz",
+                    "Fix the stack",
+                    "2026-11-10T10:00:00Z",
+                )],
+                elsewhere,
+            ]
+            .concat(),
+        );
+        resume.open(Menu::Chats);
+        let rows = resume.rows(cwd, Some("own"), NOW);
+        let titles = rows
+            .iter()
+            .map(|row| match row {
+                ResumeRow::Label(text) => format!("# {text}"),
+                ResumeRow::Chat { title, place, .. } => {
+                    format!("{title} {}", place.as_deref().unwrap_or("-"))
+                }
+                other => format!("{other:?}"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            titles,
+            [
+                "# In zz",
+                "Fix the stack -",
+                "# Other folders",
+                "Penna 0 penna",
+                "Penna 1 penna",
+                "Penna 2 penna",
+                "Penna 3 penna",
+                "Penna 4 penna",
+                "Penna 5 penna",
+                "Penna 6 penna",
+                "Penna 7 penna",
+            ]
+        );
+        assert_eq!(resume.selection(&rows), Some(1));
+        assert_eq!(resume.step(&rows, false), Some(1));
+        assert_eq!(resume.step(&rows, true), Some(3));
+
+        resume.set_search("penna 9");
+        let rows = resume.rows(cwd, Some("own"), NOW);
+        assert_eq!(rows.len(), 1);
+        resume.set_search("pen");
+        let rows = resume.rows(cwd, Some("own"), NOW);
+        assert_eq!(rows.len(), 10);
+        assert_eq!(resume.selection(&rows), Some(0));
+        resume.set_search("zz");
         assert_eq!(
             resume.rows(cwd, Some("own"), NOW),
-            [
-                ResumeRow::Heading {
-                    text: "Recent here".to_owned(),
-                    back: false
-                },
-                ResumeRow::Chat {
-                    chat: chat("a", "/src/zz", "Fix the stack", "2026-11-10T10:00:00Z"),
-                    title: "Fix the stack".to_owned(),
-                    place: None,
-                    age: Some("2h".to_owned()),
-                },
-                ResumeRow::Heading {
-                    text: "Projects".to_owned(),
-                    back: false
-                },
-                ResumeRow::Project {
-                    cwd: PathBuf::from("/src/penna"),
-                    name: "penna".to_owned(),
-                    path: "/src".to_owned(),
-                    age: Some("3h".to_owned()),
-                },
-                ResumeRow::Project {
-                    cwd: PathBuf::from("/src/nidus"),
-                    name: "nidus".to_owned(),
-                    path: "/src".to_owned(),
-                    age: Some("2d".to_owned()),
-                },
-            ]
+            [ResumeRow::Chat {
+                chat: chat("a", "/src/zz", "Fix the stack", "2026-11-10T10:00:00Z"),
+                title: "Fix the stack".to_owned(),
+                place: Some("zz".to_owned()),
+                age: Some("2h".to_owned()),
+            }]
+        );
+        resume.set_search("qqq");
+        assert_eq!(
+            resume.rows(cwd, Some("own"), NOW),
+            [ResumeRow::Note(NOTHING_MATCHES)]
+        );
+        let rows = [ResumeRow::Chat {
+            chat: chat("a", "/src/zz", "Fix the stack", "2026-11-10T10:00:00Z"),
+            title: "Fix the stack".to_owned(),
+            place: None,
+            age: None,
+        }];
+        assert_eq!(
+            resume.pick(&rows[0], cwd),
+            Some(AgentSessionOpKind::Switch {
+                session_id: "a".to_owned(),
+                cwd: PathBuf::from("/src/zz"),
+                additional_directories: Vec::new(),
+            })
         );
     }
 
     #[test]
-    fn a_project_opens_its_chats_and_a_chat_switches_the_pane_to_it() {
+    fn an_open_menu_pages_the_listing_one_request_at_a_time_until_it_runs_out() {
         let cwd = Path::new("/src/zz");
-        let mut resume = Resume::default();
-        resume.apply(
-            cwd,
-            &listed(
-                vec![chat(
-                    "b",
-                    "/src/penna",
-                    "Focus ring",
-                    "2026-11-10T09:00:00Z",
-                )],
-                None,
-                None,
-            ),
-        );
-        let rows = resume.rows(cwd, None, NOW);
-        assert!(!resume.step(&rows, true));
-        assert!(resume.step(&rows, false));
-        assert_eq!(resume.selection(&rows), Some(1));
-        assert_eq!(
-            resume.pick(&rows[1], cwd),
+        let folders = |from: usize, to: usize| {
+            (from..to)
+                .map(|n| {
+                    chat(
+                        &n.to_string(),
+                        &format!("/src/p{n}"),
+                        "Work",
+                        "2026-11-10T09:00:00Z",
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let page = |cwd: Option<&str>, cursor: &str| {
             Some(AgentSessionOpKind::List {
-                cwd: Some(PathBuf::from("/src/penna")),
-                cursor: None,
-                replace: true,
-            })
-        );
-        resume.apply(
-            cwd,
-            &listed(
-                vec![chat(
-                    "b",
-                    "/src/penna",
-                    "Focus ring",
-                    "2026-11-10T09:00:00Z",
-                )],
-                Some("/src/penna"),
-                Some("50"),
-            ),
-        );
-        let rows = resume.rows(cwd, None, NOW);
-        assert_eq!(
-            rows[0],
-            ResumeRow::Heading {
-                text: "penna".to_owned(),
-                back: true
-            }
-        );
-        assert_eq!(rows[2], ResumeRow::More(More::Chats));
-        assert_eq!(
-            resume.pick(&rows[2], cwd),
-            Some(AgentSessionOpKind::List {
-                cwd: Some(PathBuf::from("/src/penna")),
-                cursor: Some("50".to_owned()),
+                cwd: cwd.map(PathBuf::from),
+                cursor: Some(cursor.to_owned()),
                 replace: false,
             })
-        );
+        };
+        let mut resume = Resume::default();
+        resume.open(Menu::Folders);
+        assert_eq!(resume.rows(cwd, None, NOW), [ResumeRow::Loading]);
+        assert_eq!(resume.wanted(cwd), None);
+        resume.apply(cwd, &listed(Vec::new(), Some("/src/zz"), Some("h50")));
+        resume.apply(cwd, &listed(folders(0, 3), None, Some("50")));
+        resume.close();
+        assert_eq!(resume.wanted(cwd), None);
+
+        resume.open(Menu::Folders);
+        assert_eq!(resume.wanted(cwd), page(None, "50"));
+        assert_eq!(resume.wanted(cwd), None);
         assert_eq!(
-            resume.pick(&rows[1], cwd),
-            Some(AgentSessionOpKind::Switch {
-                session_id: "b".to_owned(),
-                cwd: PathBuf::from("/src/penna"),
-                additional_directories: Vec::new(),
-            })
+            resume.rows(cwd, None, NOW).last(),
+            Some(&ResumeRow::Loading)
         );
-        assert!(resume.back());
-        assert_eq!(resume.rows(cwd, None, NOW).len(), 2);
+        resume.apply(cwd, &paged(folders(3, 6), None, Some("100"), false));
+        assert_eq!(resume.wanted(cwd), page(None, "100"));
+        resume.apply(cwd, &paged(folders(6, 7), None, None, false));
+        assert_eq!(resume.wanted(cwd), None);
+        let rows = resume.rows(cwd, None, NOW);
+        assert_eq!(rows.len(), 8);
+        assert_eq!(rows[7], folder("p6", "/src", Some("3h"), false));
+
+        resume.open(Menu::Chats);
+        assert_eq!(resume.wanted(cwd), page(Some("/src/zz"), "h50"));
+        assert_eq!(resume.wanted(cwd), None);
     }
 }

@@ -1,67 +1,121 @@
 use std::rc::Rc;
 
-use ala::{AnyElement, App, Entity, IntoElement, SharedString, Window, div, prelude::*, px};
+use ala::{
+    AnyElement, App, Entity, IntoElement, ScrollHandle, SharedString, Window, div, prelude::*, px,
+};
 use penna::{
     Label, Row, RowLook, TextStyle,
-    components::input::{Input, InputState},
+    components::{
+        button::{Button, ButtonLook},
+        input::{Input, InputState},
+        spinner::Spinner,
+    },
 };
-use zz_client::agent_resume::{NOTHING_MATCHES, ResumeRow};
+use zz_client::agent_resume::{LOADING, ResumeRow};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, StyledExt as _, h_flex,
     kbd::Kbd, muted_on, row_state, tooltip::Tooltip,
 };
 
-pub const RESUME_WIDTH: f32 = 440.0;
-pub const RESUME_FILTER_PLACEHOLDER: &str = "Filter chats and folders";
-const AGE_WIDTH: f32 = 28.0;
+pub const MENU_WIDTH: f32 = 300.0;
+pub const RESUME: &str = "Resume";
+const MENU_INSET: f32 = 6.0;
+const MENU_ROWS: f32 = 8.0;
+const ROW_HEIGHT: f32 = 32.0;
+const SEARCH_HEIGHT: f32 = 30.0;
+const LABEL_HEIGHT: f32 = 24.0;
+const BUTTON_HEIGHT: f32 = 30.0;
+const ICON_SIZE: f32 = 14.0;
+const CHEVRON_SIZE: f32 = 10.0;
+const CHECK_SIZE: f32 = 12.0;
+const AGE_WIDTH: f32 = 26.0;
+
+pub fn folder_button(id: impl Into<ala::ElementId>, name: &str, cx: &App) -> Button {
+    menu_button(id, IconName::Folder, name.to_owned(), cx)
+}
+
+pub fn resume_button(id: impl Into<ala::ElementId>, cx: &App) -> Button {
+    menu_button(id, IconName::History, RESUME.to_owned(), cx).look(ButtonLook::Quiet)
+}
+
+fn menu_button(id: impl Into<ala::ElementId>, icon: IconName, text: String, cx: &App) -> Button {
+    let muted = cx.theme().foreground.muted();
+    Button::new(id)
+        .h(px(BUTTON_HEIGHT))
+        .pl(px(9.0))
+        .pr(px(10.0))
+        .gap(px(8.0))
+        .child(Icon::new(icon).with_size(px(ICON_SIZE)).text_color(muted))
+        .child(text)
+        .child(
+            Icon::new(IconName::ChevronDown)
+                .with_size(px(CHEVRON_SIZE))
+                .text_color(muted),
+        )
+}
+
+pub fn resume_menu(
+    search: &Entity<InputState>,
+    scroll: &ScrollHandle,
+    items: Vec<AnyElement>,
+    cx: &App,
+) -> AnyElement {
+    crate::v_flex()
+        .w(px(MENU_WIDTH))
+        .p(px(MENU_INSET))
+        .child(
+            Input::new(search)
+                .cleanable(true)
+                .h(px(SEARCH_HEIGHT))
+                .mb(px(4.0))
+                .prefix(
+                    Icon::new(IconName::Search)
+                        .with_size(px(ICON_SIZE))
+                        .text_color(cx.theme().foreground.muted()),
+                ),
+        )
+        .child(
+            crate::v_flex()
+                .id("agent-menu-rows")
+                .flex_none()
+                .max_h(px(ROW_HEIGHT * MENU_ROWS))
+                .overflow_y_scroll()
+                .track_scroll(scroll)
+                .children(items),
+        )
+        .into_any_element()
+}
 
 #[derive(Default)]
 struct Line {
     icon: Option<IconName>,
     title: String,
-    detail: Option<String>,
+    path: Option<String>,
     place: Option<String>,
     age: Option<String>,
+    current: bool,
     tooltip: Option<String>,
-}
-
-pub fn resume_filter(input: &Entity<InputState>, cx: &App) -> AnyElement {
-    div()
-        .flex_none()
-        .w_full()
-        .pb(px(4.0))
-        .child(
-            Input::new(input).cleanable(true).prefix(
-                Icon::new(IconName::Search)
-                    .size(px(14.0))
-                    .text_color(cx.theme().foreground.muted()),
-            ),
-        )
-        .into_any_element()
 }
 
 pub fn resume_rows(
     pane: u64,
     rows: &[ResumeRow],
     selected: Option<usize>,
+    searching: bool,
     on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
     on_hover: impl Fn(usize, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Vec<AnyElement> {
     let on_pick = Rc::new(on_pick);
-    let on_hover = Rc::new(on_hover);
+    let on_hover: Rc<dyn Fn(usize, &mut Window, &mut App)> = Rc::new(on_hover);
     rows.iter()
         .enumerate()
         .map(|(index, row)| {
-            let pick = on_pick.clone();
-            let click = move |window: &mut Window, cx: &mut App| pick(index, window, cx);
             let line = match row {
-                ResumeRow::Heading { text, back: false } => return heading(text.clone(), cx),
-                ResumeRow::Heading { text, back: true } => {
-                    return back(pane, text.clone(), click, cx);
-                }
-                ResumeRow::Empty => return nothing(cx),
+                ResumeRow::Label(text) => return label(text.clone(), cx),
+                ResumeRow::Note(text) => return note(text, cx),
+                ResumeRow::Loading => return loading(pane, cx),
                 ResumeRow::Chat {
                     title,
                     place,
@@ -74,41 +128,32 @@ pub fn resume_rows(
                     tooltip: Some(chat.cwd.to_string_lossy().into_owned()),
                     ..Line::default()
                 },
-                ResumeRow::Project {
+                ResumeRow::Folder {
+                    cwd,
                     name,
                     path,
                     age,
-                    cwd,
+                    current,
                 } => Line {
                     icon: Some(IconName::Folder),
                     title: name.clone(),
-                    detail: Some(path.clone()).filter(|path| !path.is_empty()),
+                    path: Some(path.clone()).filter(|path| !path.is_empty()),
                     age: age.clone(),
+                    current: *current,
                     tooltip: Some(cwd.to_string_lossy().into_owned()),
                     ..Line::default()
                 },
-                ResumeRow::More(more) => {
-                    return item(
-                        (pane, index),
-                        Line {
-                            title: more.label().to_owned(),
-                            ..Line::default()
-                        },
-                        selected == Some(index),
-                        click,
-                        on_hover.clone(),
-                        cx,
-                    )
-                    .text_color(cx.theme().foreground.muted())
-                    .into_any_element();
-                }
             };
+            let pick = on_pick.clone();
+            let hover = on_hover.clone();
+            let picked = selected == Some(index);
             item(
                 (pane, index),
                 line,
-                selected == Some(index),
-                click,
-                on_hover.clone(),
+                picked,
+                picked && searching,
+                move |window, cx| pick(index, window, cx),
+                move |window, cx| hover(index, window, cx),
                 cx,
             )
             .into_any_element()
@@ -116,42 +161,41 @@ pub fn resume_rows(
         .collect()
 }
 
-fn heading(text: String, cx: &App) -> AnyElement {
-    crate::pane::pane_picker_label(text, cx).into_any_element()
-}
-
-fn nothing(cx: &App) -> AnyElement {
-    Label::new(TextStyle::Small, NOTHING_MATCHES)
+fn label(text: String, cx: &App) -> AnyElement {
+    Label::new(TextStyle::Caption, text)
+        .strong()
         .flex_none()
-        .px(px(12.0))
-        .py(px(8.0))
+        .h(px(LABEL_HEIGHT))
+        .px(px(10.0))
+        .pt(px(4.0))
         .text_color(cx.theme().foreground.muted())
         .into_any_element()
 }
 
-fn back(
-    pane: u64,
-    text: String,
-    click: impl Fn(&mut Window, &mut App) + 'static,
-    cx: &App,
-) -> AnyElement {
-    let foreground = cx.theme().foreground;
-    h_flex()
-        .id(("agent-resume-back", pane))
+fn note(text: &'static str, cx: &App) -> AnyElement {
+    Label::new(TextStyle::Small, text)
         .flex_none()
-        .gap(px(6.0))
-        .px(px(12.0))
-        .pt(px(8.0))
-        .pb(px(2.0))
-        .type_style(TextStyle::Caption, cx)
-        .text_color(foreground.muted())
-        .click_cursor()
-        .hover(move |this| this.text_color(foreground))
-        .on_click(move |_, window, cx| click(window, cx))
-        .child(Icon::new(IconName::ChevronLeft).size(px(12.0)))
-        .child(Label::new(TextStyle::Caption, text).strong())
-        .child(div().flex_1())
-        .child(Kbd::new(ala::Keystroke::parse("escape").expect("static key")).lowercase())
+        .px(px(10.0))
+        .py(px(7.0))
+        .text_color(cx.theme().foreground.muted())
+        .into_any_element()
+}
+
+fn loading(pane: u64, cx: &App) -> AnyElement {
+    let muted = cx.theme().foreground.muted();
+    h_flex()
+        .flex_none()
+        .h(px(ROW_HEIGHT))
+        .w_full()
+        .gap(px(8.0))
+        .px(px(10.0))
+        .child(
+            Spinner::new()
+                .id(("agent-menu-loading", pane))
+                .with_size(px(ICON_SIZE))
+                .color(muted),
+        )
+        .child(Label::new(TextStyle::Small, LOADING).text_color(muted))
         .into_any_element()
 }
 
@@ -159,34 +203,32 @@ fn item(
     id: (u64, usize),
     line: Line,
     selected: bool,
+    enter: bool,
     click: impl Fn(&mut Window, &mut App) + 'static,
-    hover: Rc<dyn Fn(usize, &mut Window, &mut App)>,
+    hover: impl Fn(&mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Row {
     let state = row_state(selected, true);
-    let ground = cx.theme().ground_at(RowLook::MenuCard, state);
-    let height = crate::picker::list_row_height(cx);
-    let index = id.1;
+    let ground = cx.theme().ground_at(RowLook::Menu, state);
     let note = |text: String| Label::new(TextStyle::Caption, text).muted().on(ground);
-    let named = line.detail.is_some();
     let row = Row::new(
-        ala::ElementId::NamedInteger(format!("agent-resume-{}", id.0).into(), id.1 as u64),
-        RowLook::MenuCard,
+        ala::ElementId::NamedInteger(format!("agent-menu-{}", id.0).into(), id.1 as u64),
+        RowLook::Menu,
     )
     .state(state)
-    .row_height(height)
+    .row_height(px(ROW_HEIGHT))
     .h_flex()
     .flex_none()
-    .h(height)
+    .h(px(ROW_HEIGHT))
     .w_full()
-    .gap(px(10.0))
-    .px(px(12.0))
+    .gap(px(8.0))
+    .px(px(10.0))
     .click_cursor()
     .on_click(move |_, window, cx| click(window, cx))
-    .on_mouse_move(move |_, window, cx| hover(index, window, cx))
+    .on_mouse_move(move |_, window, cx| hover(window, cx))
     .children(line.icon.map(|icon| {
         Icon::new(icon)
-            .with_size(px(16.0))
+            .with_size(px(ICON_SIZE))
             .text_color(muted_on(ground, cx))
     }))
     .child(
@@ -199,7 +241,7 @@ fn item(
                 Label::new(TextStyle::Small, line.title)
                     .truncate()
                     .map(|title| {
-                        if named {
+                        if line.path.is_some() {
                             title.flex_none()
                         } else {
                             title.flex_1().min_w_0()
@@ -207,19 +249,28 @@ fn item(
                     }),
             )
             .children(
-                line.detail
-                    .map(|detail| note(detail).truncate().flex_1().min_w_0()),
+                line.path
+                    .map(|path| note(path).truncate().flex_1().min_w_0()),
             ),
     )
     .children(line.place.map(|place| note(place).flex_none()))
-    .children(line.age.map(|age| {
-        div()
-            .flex()
-            .flex_none()
-            .justify_end()
-            .w(px(AGE_WIDTH))
-            .child(note(age))
-    }));
+    .map(|row| {
+        if line.current {
+            row.child(Icon::new(IconName::Check).with_size(px(CHECK_SIZE)))
+        } else {
+            row.children(line.age.map(|age| {
+                div()
+                    .flex()
+                    .flex_none()
+                    .justify_end()
+                    .w(px(AGE_WIDTH))
+                    .child(note(age))
+            }))
+        }
+    })
+    .children(
+        enter.then(|| Kbd::new(ala::Keystroke::parse("enter").expect("static key")).lowercase()),
+    );
     match line.tooltip.map(SharedString::from) {
         Some(tooltip) => {
             row.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))

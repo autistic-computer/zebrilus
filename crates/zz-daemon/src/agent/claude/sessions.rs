@@ -1,11 +1,13 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs::File,
+    fs::{File, Metadata},
     io::{Read as _, Seek as _, SeekFrom},
     path::{Path, PathBuf},
-    time::UNIX_EPOCH,
+    sync::LazyLock,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
+use parking_lot::Mutex;
 use serde_json::Value;
 
 use super::translate::{INTERRUPTED, Translator, interrupted, user_prompt};
@@ -163,8 +165,15 @@ fn lines(text: &str) -> impl DoubleEndedIterator<Item = Value> + '_ {
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
 }
 
+fn lines_naming<'a>(text: &'a str, key: &str) -> impl DoubleEndedIterator<Item = Value> + use<'a> {
+    let quoted = format!("\"{key}\"");
+    text.lines()
+        .filter(move |line| line.contains(&quoted))
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+}
+
 fn last_field(text: &str, key: &str) -> Option<String> {
-    lines(text).rev().find_map(|entry| {
+    lines_naming(text, key).rev().find_map(|entry| {
         entry[key]
             .as_str()
             .filter(|value| !value.is_empty())
@@ -173,7 +182,7 @@ fn last_field(text: &str, key: &str) -> Option<String> {
 }
 
 fn first_field(text: &str, key: &str) -> Option<String> {
-    lines(text).find_map(|entry| {
+    lines_naming(text, key).find_map(|entry| {
         entry[key]
             .as_str()
             .filter(|value| !value.is_empty())
@@ -232,11 +241,22 @@ fn clip(text: &str) -> String {
     clipped
 }
 
-fn summary(
-    session_id: &str,
-    path: &Path,
-    project: Option<&Path>,
-) -> Option<(u128, AgentSessionSummary)> {
+#[derive(Clone)]
+struct Digest {
+    modified_ms: u128,
+    cwd: Option<PathBuf>,
+    title: String,
+}
+
+struct Cached {
+    modified: Option<SystemTime>,
+    size: u64,
+    digest: Option<Digest>,
+}
+
+static DIGESTS: LazyLock<Mutex<HashMap<PathBuf, Cached>>> = LazyLock::new(Mutex::default);
+
+fn digest(path: &Path) -> Option<Digest> {
     let lite = read_lite(path)?;
     let first_line = lite.head.lines().next().unwrap_or_default();
     if first_line.contains("\"isSidechain\":true") {
@@ -246,18 +266,50 @@ fn summary(
         .or_else(|| last_field(&lite.tail, "lastPrompt"))
         .or_else(|| last_field(&lite.tail, "summary"))
         .or_else(|| first_prompt(&lite.head))?;
-    let cwd = first_field(&lite.head, "cwd")
-        .map(PathBuf::from)
-        .or_else(|| project.map(Path::to_path_buf))?;
-    let updated_at = rfc3339(lite.modified_ms);
+    Some(Digest {
+        modified_ms: lite.modified_ms,
+        cwd: first_field(&lite.head, "cwd").map(PathBuf::from),
+        title: clip(&title),
+    })
+}
+
+fn cached_digest(path: &Path, metadata: &Metadata) -> Option<Digest> {
+    let modified = metadata.modified().ok();
+    let size = metadata.len();
+    if let Some(cached) = DIGESTS.lock().get(path)
+        && cached.modified == modified
+        && cached.size == size
+    {
+        return cached.digest.clone();
+    }
+    let digest = digest(path);
+    DIGESTS.lock().insert(
+        path.to_path_buf(),
+        Cached {
+            modified,
+            size,
+            digest: digest.clone(),
+        },
+    );
+    digest
+}
+
+fn summary(
+    session_id: &str,
+    path: &Path,
+    metadata: &Metadata,
+    project: Option<&Path>,
+) -> Option<(u128, AgentSessionSummary)> {
+    let digest = cached_digest(path, metadata)?;
+    let cwd = digest.cwd.or_else(|| project.map(Path::to_path_buf))?;
     Some((
-        lite.modified_ms,
+        digest.modified_ms,
         AgentSessionSummary {
             session_id: session_id.to_owned(),
             cwd,
             additional_directories: Vec::new(),
-            title: Some(clip(&title)),
-            updated_at,
+            title: Some(digest.title),
+            updated_at: rfc3339(digest.modified_ms),
         },
     ))
 }
@@ -306,22 +358,35 @@ pub(crate) fn list(config: &Path, cwd: Option<&Path>) -> Vec<AgentSessionSummary
             .unwrap_or_default(),
     };
     let mut seen = HashSet::new();
-    let mut sessions = dirs
+    let transcripts = dirs
         .iter()
         .flat_map(|dir| {
             std::fs::read_dir(dir)
                 .into_iter()
                 .flatten()
                 .filter_map(Result::ok)
-                .map(|entry| entry.path())
                 .collect::<Vec<_>>()
         })
-        .filter_map(|path| {
+        .filter_map(|entry| {
+            let path = entry.path();
             let stem = path.file_stem()?.to_str()?.to_owned();
             (path.extension().and_then(|ext| ext.to_str()) == Some("jsonl") && valid_uuid(&stem))
-                .then_some((stem, path))
+                .then_some((stem, path, entry))
         })
-        .filter_map(|(session_id, path)| summary(&session_id, &path, cwd))
+        .filter_map(|(session_id, path, entry)| Some((session_id, path, entry.metadata().ok()?)))
+        .collect::<Vec<_>>();
+    if cwd.is_none() {
+        let listed = transcripts
+            .iter()
+            .map(|(_, path, _)| path.as_path())
+            .collect::<HashSet<_>>();
+        DIGESTS
+            .lock()
+            .retain(|path, _| listed.contains(path.as_path()));
+    }
+    let mut sessions = transcripts
+        .iter()
+        .filter_map(|(session_id, path, metadata)| summary(session_id, path, metadata, cwd))
         .collect::<Vec<_>>();
     sessions.sort_by_key(|(modified, _)| std::cmp::Reverse(*modified));
     sessions
@@ -663,6 +728,17 @@ mod tests {
             session_file(config.path(), &cwd, first),
             Some(dir.join(format!("{first}.jsonl")))
         );
+        let mut transcript = std::fs::OpenOptions::new()
+            .append(true)
+            .open(dir.join(format!("{first}.jsonl")))
+            .expect("transcript");
+        std::io::Write::write_all(
+            &mut transcript,
+            b"{\"type\":\"custom-title\",\"customTitle\":\"Release notes\"}\n",
+        )
+        .expect("rename");
+        let renamed = list(config.path(), Some(&cwd));
+        assert_eq!(renamed[0].title.as_deref(), Some("Release notes"));
     }
 
     #[test]

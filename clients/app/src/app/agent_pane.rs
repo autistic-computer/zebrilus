@@ -43,8 +43,8 @@ use zz_ui::{
         chat::{ChatHost, ChatLook, ChatPane, chat_surface, shows_chat},
         composer_attachment,
         controls::{
-            ComposerAction, agent_mode_chip, agent_model_picker, composer_action,
-            composer_action_button, context_usage_meter, git_summary_footer,
+            AccountAction, ComposerAction, agent_account_chip, agent_mode_chip, agent_model_picker,
+            composer_action, composer_action_button, context_usage_meter, git_summary_footer,
         },
         presentation::{agent_welcome, error_card},
         preview::ViewRequest,
@@ -154,14 +154,39 @@ impl AgentPane {
         backend.activate(target.host, place, cx);
     }
 
+    fn account_chip(&self, enabled: bool, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let provider = self.provider(cx)?;
+        let pane = self.pane;
+        let connection = self.connection.clone();
+        let read = self.connection.read(cx);
+        agent_account_chip(
+            ("agent-account", pane.0),
+            provider,
+            agent_settings::pane_account(read.core.snapshot(), pane),
+            read.core.agent_accounts(),
+            enabled,
+            move |action, _, cx| {
+                connection.update(cx, |connection, cx| match action {
+                    AccountAction::Refresh => connection.request_agent_accounts(cx),
+                    AccountAction::Add => connection.add_agent_account(provider, cx),
+                    AccountAction::Use(account) => {
+                        connection.switch_agent_account(pane, account.as_deref(), cx);
+                    }
+                });
+            },
+            cx,
+        )
+    }
+
     fn harness_controls(
         &self,
         state: &AgentPaneWire,
         enabled: bool,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
+        let account = self.account_chip(enabled, cx);
         let Some(settings) = self.lens_settings(state) else {
-            return Vec::new();
+            return account.into_iter().collect();
         };
         let pane = self.pane;
         let connection = self.connection.clone();
@@ -195,7 +220,7 @@ impl AgentPane {
             pick,
             cx,
         );
-        mode.into_iter().chain([picker]).collect()
+        account.into_iter().chain(mode).chain([picker]).collect()
     }
 
     fn fork_from(&mut self, item: &str, cx: &mut Context<Self>) {
@@ -210,6 +235,7 @@ impl AgentPane {
             &self.chat_cwd(cx),
             Some(message),
             self.transcript.lens.settings.as_ref(),
+            agent_settings::pane_account(self.connection.read(cx).core.snapshot(), self.pane),
         );
         self.connection.update(cx, |connection, cx| {
             connection.invoke(command, cx);
@@ -294,6 +320,7 @@ impl AgentPane {
                 } else if matches!(event,
                 zz_client::CoreEvent::AgentUpdates { pane: changed, .. }
                 | zz_client::CoreEvent::AgentStateChanged { pane: changed, .. } if *changed == pane)
+                    || matches!(event, zz_client::CoreEvent::AgentAccountsChanged)
                 {
                     cx.notify();
                 }
@@ -341,6 +368,11 @@ impl AgentPane {
             cx,
         );
         mention.update(cx, |picker, _| picker.set_own_chat(Some(pane)));
+        connection.update(cx, |connection, cx| {
+            if connection.core.agent_accounts().is_none() {
+                connection.request_agent_accounts(cx);
+            }
+        });
         let chat_release = ChatPane::close_on_release(window, cx, |lens: &mut Self| &mut lens.chat);
         Self {
             pane,

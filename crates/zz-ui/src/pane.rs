@@ -413,6 +413,54 @@ pub fn pane_flip_busy(
 ) -> Chip {
     let on_choice: std::rc::Rc<dyn Fn(FlipChoice, &mut Window, &mut App)> =
         std::rc::Rc::new(on_choice);
+    busy_chip(
+        pane,
+        zz_client::agent_flip::busy_detail(reason),
+        &on_choice,
+        cx,
+    )
+    .child(
+        div()
+            .flex()
+            .justify_end()
+            .gap(px(6.0))
+            .child(flip_choice_button(
+                ("pane-flip-when-idle", pane.0),
+                zz_client::agent_flip::WHEN_IDLE_LABEL,
+                FlipChoice::WhenIdle,
+                &on_choice,
+            ))
+            .child(flip_choice_button(
+                ("pane-flip-now", pane.0),
+                zz_client::agent_flip::NOW_LABEL,
+                FlipChoice::Now,
+                &on_choice,
+            )),
+    )
+}
+
+pub fn pane_account_busy(
+    pane: zz_protocol::PaneId,
+    reason: &str,
+    on_choice: impl Fn(FlipChoice, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Chip {
+    let on_choice: std::rc::Rc<dyn Fn(FlipChoice, &mut Window, &mut App)> =
+        std::rc::Rc::new(on_choice);
+    busy_chip(
+        pane,
+        zz_client::agent_flip::account_busy_detail(reason),
+        &on_choice,
+        cx,
+    )
+}
+
+fn busy_chip(
+    pane: zz_protocol::PaneId,
+    detail: String,
+    on_choice: &std::rc::Rc<dyn Fn(FlipChoice, &mut Window, &mut App)>,
+    cx: &App,
+) -> Chip {
     pane_chip(("pane-flip-busy", pane.0), PaintState::Rest, cx)
         .multiline(true)
         .debug_selector(|| "pane-flip-busy".into())
@@ -454,7 +502,7 @@ pub fn pane_flip_busy(
                         .child(
                             div()
                                 .text_color(cx.theme().foreground.muted())
-                                .child(zz_client::agent_flip::busy_detail(reason)),
+                                .child(detail),
                         ),
                 )
                 .child(
@@ -462,29 +510,11 @@ pub fn pane_flip_busy(
                         ("pane-flip-dismiss", pane.0),
                         "",
                         FlipChoice::Dismiss,
-                        &on_choice,
+                        on_choice,
                     )
                     .icon(IconName::Xmark)
                     .tooltip("Keep this pane as it is"),
                 ),
-        )
-        .child(
-            div()
-                .flex()
-                .justify_end()
-                .gap(px(6.0))
-                .child(flip_choice_button(
-                    ("pane-flip-when-idle", pane.0),
-                    zz_client::agent_flip::WHEN_IDLE_LABEL,
-                    FlipChoice::WhenIdle,
-                    &on_choice,
-                ))
-                .child(flip_choice_button(
-                    ("pane-flip-now", pane.0),
-                    zz_client::agent_flip::NOW_LABEL,
-                    FlipChoice::Now,
-                    &on_choice,
-                )),
         )
 }
 
@@ -522,6 +552,9 @@ pub fn pane_flip_overlay(
 ) -> Option<AnyElement> {
     if let Some(reason) = flip.busy() {
         return Some(pane_flip_busy(pane, reason, on_choice, cx).into_any_element());
+    }
+    if let Some(reason) = flip.account_busy() {
+        return Some(pane_account_busy(pane, reason, on_choice, cx).into_any_element());
     }
     flip.armed().then(|| {
         pane_flip_armed(

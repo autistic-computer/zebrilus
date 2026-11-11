@@ -222,6 +222,22 @@ fn codex_fork_with(arguments: &[&str], thread: &str, turn: Option<&str>) -> Resu
 }
 
 fn codex_exchange(child: &mut Child, thread: &str, turn: Option<&str>) -> Result<String, String> {
+    let params = match turn {
+        Some(turn) => json!({ "threadId": thread, "lastTurnId": turn, "excludeTurns": true }),
+        None => json!({ "threadId": thread, "excludeTurns": true }),
+    };
+    codex_request(child, "thread/fork", &params, CODEX_REPLY)?["thread"]["id"]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| "the fork came back without a thread id".to_owned())
+}
+
+pub(crate) fn codex_request(
+    child: &mut Child,
+    method: &str,
+    params: &Value,
+    wait: Duration,
+) -> Result<Value, String> {
     let mut input = child.stdin.take().ok_or("no stdin")?;
     let output = child.stdout.take().ok_or("no stdout")?;
     let (sender, replies) = mpsc::channel();
@@ -242,7 +258,7 @@ fn codex_exchange(child: &mut Child, thread: &str, turn: Option<&str>) -> Result
     let reply = |id: u64| -> Result<Value, String> {
         loop {
             let message = replies
-                .recv_timeout(CODEX_REPLY)
+                .recv_timeout(wait)
                 .map_err(|_| "no answer from the app server".to_owned())?;
             if message["id"] != id {
                 continue;
@@ -260,18 +276,8 @@ fn codex_exchange(child: &mut Child, thread: &str, turn: Option<&str>) -> Result
     }))?;
     reply(1)?;
     send(json!({ "method": "initialized" }))?;
-    send(json!({
-        "id": 2,
-        "method": "thread/fork",
-        "params": match turn {
-            Some(turn) => json!({ "threadId": thread, "lastTurnId": turn, "excludeTurns": true }),
-            None => json!({ "threadId": thread, "excludeTurns": true }),
-        },
-    }))?;
-    reply(2)?["thread"]["id"]
-        .as_str()
-        .map(str::to_owned)
-        .ok_or_else(|| "the fork came back without a thread id".to_owned())
+    send(json!({ "id": 2, "method": method, "params": params }))?;
+    reply(2)
 }
 
 #[cfg(test)]

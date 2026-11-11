@@ -664,6 +664,8 @@ pub static DAEMON_COMMAND_NAMES: &[&str] = &[
     "agent-send",
     "agent-respond",
     "flip-agent",
+    "agent-account",
+    "agent-accounts",
     "send-last-output",
     "show-last-output",
     "inspect",
@@ -801,6 +803,7 @@ pub static INTERNAL_COMMAND_NAMES: &[&str] = &[
     "select-pane-kind",
     "agent-catalog",
     "providers",
+    "agent-accounts",
 ];
 
 pub static NATIVE_COMMAND_NAMES: &[&str] = &[
@@ -815,6 +818,8 @@ pub static NATIVE_COMMAND_NAMES: &[&str] = &[
     "fleet",
     "tailnet",
     "flip-agent",
+    "agent-account",
+    "agent-accounts",
     "html",
     "focus-sidebar",
     "import-tmux-config",
@@ -1030,6 +1035,28 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
             CommandOptionSpec::flag("--when-idle", "flip once nothing is running"),
             CommandOptionSpec::flag("--cancel", "disarm a flip waiting for idle"),
         ],
+        positionals: &[],
+        variadic: None,
+    },
+    CommandSpec {
+        name: "agent-account",
+        aliases: &[],
+        description: "Move an agent chat to another account, resuming the same session",
+        usage: "[-t target-pane] account|default",
+        options: &[CommandOptionSpec::value("-t", Pane, "agent pane")],
+        positionals: &[FreeForm],
+        variadic: None,
+    },
+    CommandSpec {
+        name: "agent-accounts",
+        aliases: &[],
+        description: "List the agent CLI accounts on this host and who is signed in to each, or add one and open its login in a new window; the list arrives on the client event stream, not stdout",
+        usage: "[--add provider]",
+        options: &[CommandOptionSpec::value(
+            "--add",
+            FreeForm,
+            "add a claude or codex account and open its login",
+        )],
         positionals: &[],
         variadic: None,
     },
@@ -1892,7 +1919,7 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "select-pane-kind",
         aliases: &[],
         description: "Materialize a pending pane as a terminal, browser, editor, or agent chat, or turn a terminal into an agent chat and back",
-        usage: "[-c start-directory] [-t target-pane] [--resume session-id] [--fork] [--at message-id] [--model model] [--effort effort] pane-kind [shell-command [argument ...]]",
+        usage: "[-c start-directory] [-t target-pane] [--resume session-id] [--fork] [--at message-id] [--model model] [--effort effort] [--account account] pane-kind [shell-command [argument ...]]",
         options: &[
             CommandOptionSpec::value("-t", Pane, "target pane"),
             CommandOptionSpec::value(
@@ -1909,6 +1936,11 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
             ),
             CommandOptionSpec::value("--model", FreeForm, "model the agent starts with"),
             CommandOptionSpec::value("--effort", FreeForm, "effort the agent starts with"),
+            CommandOptionSpec::value(
+                "--account",
+                FreeForm,
+                "account the agent runs on, or default for the CLI's own login",
+            ),
         ],
         positionals: &[PaneKind],
         variadic: Some(FreeForm),

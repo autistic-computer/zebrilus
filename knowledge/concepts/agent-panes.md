@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
+description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and add one, and the composer chip that shows and switches it), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
 timestamp: 2026-11-10T00:00:00-03:00
@@ -37,9 +37,10 @@ over.
 | `cwd` | the folder the driver runs in; filled from `-c`, else the terminal or donor pane's folder, else the daemon's |
 | `session_id` | the vendor session to resume; the driver's session goes back into it, so a `/clear` or a fork shows here |
 | `model`, `effort` | what the driver is set to once its session is ready (`SetConfigOption` after `SessionReady`) |
+| `account` | the [account](#accounts) the pane runs on (wire 122); `None` is the CLI's own login |
 
 **Opening one.** `select-pane-kind [-t pane] [-c dir] [--resume id] [--model m] [--effort e]
-agent <claude|codex>` (`--resume id` may also follow the provider) turns a picker, or a terminal,
+[--account id] agent <claude|codex>` (`--resume id` may also follow the provider) turns a picker, or a terminal,
 into an agent pane. A terminal keeps its pane id and place: its process is stopped and the driver
 starts once it has exited (`AGENT_CLI_EXIT_GRACE`, 5 s). `select-pane-kind [-c dir] terminal
 [command ...]` turns an agent pane back into a terminal (the mux emits `PaneRespawned`), closing
@@ -61,9 +62,12 @@ pane's session. Clients open a fork or side chat in a new pane with one command 
 window's or float's pane becomes the target of the next command:
 
 - Fork from a message: `new-window -c <dir> ; select-pane-kind --resume <session> --fork --at
-  <message> agent <claude|codex>`
-- Side chat in a PiP: `new-pane -c <dir> ; select-pane-kind --resume <session> --fork agent
-  <claude|codex>`
+  <message> [--account <id>] agent <claude|codex>`
+- Side chat in a PiP: `new-pane -c <dir> ; select-pane-kind --resume <session> --fork
+  [--account <id>] agent <claude|codex>`
+
+Both carry the source pane's account (`zz_client::agent_settings::pane_account`), so the copy runs
+on the same login.
 
 # Chat titles
 
@@ -132,6 +136,129 @@ A chat is named after its session, the name each CLI gives its own sessions.
   the CLI drops the flip.
 - The pane keeps its id and place. `inspect` lists `flip-agent` among the verbs of an agent pane
   and of a terminal running either CLI.
+- Both directions keep the pane's [account](#accounts).
+
+# Accounts
+
+A pane can run on an account: a directory zz keeps per provider,
+`<data>/zz/accounts/claude/<id>` or `<data>/zz/accounts/codex/<id>` (`zz-dev` for dev builds;
+`<data>` is `~/Library/Application Support` on macOS and `$XDG_DATA_HOME` or `~/.local/share` on
+Linux), created 0700 (`crates/zz-daemon/src/agent/accounts.rs`). Ids are
+`[a-z0-9][a-z0-9_-]{0,31}`. Everything the daemon runs for the pane gets `CLAUDE_CONFIG_DIR` or
+`CODEX_HOME` set to it, and the CLI keeps that account's login there. A pane with no account
+leaves both variables as the daemon has them, since `CLAUDE_CONFIG_DIR=~/.claude` set explicitly
+picks a different Keychain item than leaving it unset. zz never reads or writes tokens.
+
+- **Shared by link.** An account directory links everything but the login into the default
+  directory (`~/.claude`, or `$CODEX_HOME` or `~/.codex`, as `accounts::default_home` resolves
+  them), so sessions, settings, skills and the Codex state databases are one set for every
+  account, and the daemon's readers (session lists, titles, transcript replay, the Claude peer
+  registry, `agent_fork`) keep reading the default directory. Claude Code links `projects`,
+  `settings.json`, `settings.local.json`, `skills`, `agents`, `commands`, `output-styles`,
+  `plugins`, `history.jsonl`, `file-history`, `session-env`, `plans`, `paste-cache`, `uploads`,
+  `todos`, `tasks`, `sessions`, `teams`, `dev-mods`, `scripts`, `CLAUDE.md` and
+  `keybindings.json`. Codex links `sessions`, `archived_sessions`, `session_index.jsonl` and its
+  `.lock`, `thread-writer-locks`, `rollout-migrations`, `.sqlite-maintenance.lock`, `config.toml`,
+  `AGENTS.md`, `skills`, `agents`, `plugins`, `hooks.json`, `keybindings.json`, `history.jsonl`,
+  `attachments` and `worktrees`, and every `state_*`, `thread_history_*`, `goals_*` and `queue_*`
+  `.sqlite` file (never its `-wal`, `-shm` or `-journal`). Logins (`.credentials.json`,
+  `.claude.json`, `auth.json`), caches, logs, memories and the Codex daemon files stay per account.
+  `accounts::link` runs when an account is created and before every spawn on it, adds only the
+  links that are missing, and never replaces or removes an entry.
+- **Seed.** A new Claude Code account gets `.claude.json` from the global config
+  (`~/.claude.json`, or `.claude.json` in the daemon's `CLAUDE_CONFIG_DIR`): `hasCompletedOnboarding`,
+  `mcpServers` and each project's `hasTrustDialogAccepted`, nothing else, so the TUI skips
+  onboarding and the trust dialog. A missing or broken global config seeds
+  `{"hasCompletedOnboarding": true}`.
+- **Spawn.** `agent_pane_spec` puts the descriptor's account (`accounts::Account`: the id and its
+  resolved directory) on the pane's `AgentWorkspaceEnvironment`, outside `entries()`, which also
+  feeds Codex's `thread_config`. Before spawning, `accounts::prepare` checks the directory and
+  links it. The Claude Code driver sets `CLAUDE_CONFIG_DIR` beside the workspace entries, so a
+  configured command's own environment still wins. The Codex driver starts the app server daemon
+  for the account with `CODEX_HOME` set and connects to
+  `<dir>/app-server-control/app-server-control.sock`, one daemon per home; its per-pane
+  `codex app-server` fallback gets `CODEX_HOME` too. An ACP adapter gets the variable unless its
+  command sets it. A named account whose directory is missing fails the pane with
+  `Claude Code account a1 has no directory at <dir>; ...` and runs nothing on another login.
+- **No login from the environment.** A credential in the environment comes before the login in
+  the config directory, so a daemon started with `ANTHROPIC_API_KEY` set would run every account
+  pane on that key. Everything that runs for an account (the driver, the app server daemon and its
+  fallback, an ACP adapter, the identity probe, the flip's CLI and the login window) goes without
+  `accounts::login_overrides`: for Claude Code `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`,
+  `CLAUDE_CODE_OAUTH_TOKEN`, and `CLAUDE_CODE_USER_EMAIL`, `CLAUDE_CODE_ACCOUNT_UUID` and
+  `CLAUDE_CODE_ORGANIZATION_UUID`, which a daemon started inside a hosted session inherits and the
+  CLI writes into a fresh account's `.claude.json`; for Codex `CODEX_ACCESS_TOKEN`,
+  `OPENAI_FEDERATION_RULE_ID` and `OPENAI_IDENTITY_TOKEN_FILE`, each of which wins over
+  `auth.json` (codex-cli 0.167: `login status` and the app server's `account/read` follow them),
+  where `OPENAI_API_KEY` and `CODEX_API_KEY` do not. `accounts::run_on` removes them from a
+  `Command` before the command's own environment applies, so a configured value still wins; an
+  ACP adapter runs under `/usr/bin/env -u ...` for each one its command does not set; the shell
+  lines start with `unset ...;`. The default account keeps the daemon's environment as it is.
+- **Flips.** Chat to CLI runs the CLI as `unset ...; CLAUDE_CONFIG_DIR=<dir> claude --resume ...`
+  (or `CODEX_HOME=<dir> codex resume ...`) inside the user's interactive shell
+  (`cli_session::interactive_shell`), so the variable reaches the TUI after the shell's startup
+  files and the user's aliases still apply. CLI to chat reads the variable from the TUI's process (`process_info::environment`:
+  `/proc/<pid>/environ` on Linux, the strings after argv in `KERN_PROCARGS2` on macOS) and, when it
+  names an account directory (`accounts::account_of`), adds `--account`. macOS shows no environment
+  for Apple-signed binaries, which the CLIs are not. A chat whose account directory is missing
+  refuses to flip to the CLI.
+- **Switching a live chat.** `agent-account [-t pane] <id|default>`
+  (`crates/zz-daemon/src/daemon/agent_account.rs`). Anything running fails it with an error that
+  starts with `busy:`, using the flip's `chat_running`, which for Codex also counts a running turn,
+  since that turn lives in the old home's app server. Otherwise the daemon closes the driver and
+  waits (`AgentRuntime::close_for_reopen`), sets the account (`MuxState::update_agent`), and opens
+  the pane again on its session. The reopened stream carries on from the old one's sequence
+  numbers, so a client keeps its cursor and takes the resume as a session reset.
+- **`default`** means no account everywhere: `agent-account default` and `select-pane-kind
+  --account default` both run the CLI's own login, and `valid_agent_account` refuses `default`, so
+  a directory of that name is never listed, created or flipped into.
+- **In the chat.** The composer footer's account chip shows the account and switches it (see
+  [the footer](#the-empty-chat-and-the-footer)).
+- **Not built yet.** Removing an account: a signed-out account directory is reused by the next add
+  instead.
+
+## Listing and adding accounts
+
+`agent-accounts [--add claude|codex]` (`crates/zz-daemon/src/daemon/accounts.rs`, internal, like
+`providers`) answers on the client event stream with `EventPayload::AgentAccounts(Vec<AgentAccount>)`
+(wire 122), never on stdout.
+
+- **The list.** One `AgentAccount { provider, id, signed_in, email, organization, plan }` per
+  account of each CLI installed on the daemon's host (found as `providers` finds it: the login-shell
+  PATH plus `~/.local/bin`). `id: None` is the CLI's own login and always comes first for its
+  provider, signed in or not; after it come the accounts under `accounts/<cli>/` that are signed in,
+  in id order (`accounts::ids`: a2 before a10). A signed-out account is left out, and a CLI that is
+  not installed has no rows.
+- **Who is signed in.** Each account is asked in its own thread with the account's variable set,
+  and the default with the variable left as the daemon has it; zz reads no token. Claude Code runs
+  `claude auth status --json` and reads its stdout only: `loggedIn`, `email`, `orgName`, and for
+  `plan` the `planTier` (`max_20x`) when present, else `subscriptionType` (`max`); it exits 1 when
+  signed out and still prints the JSON. Codex starts `codex app-server` on stdio, sends
+  `initialize`, `initialized` and `account/read` with `refreshToken: false`
+  (`agent_fork::codex_request`, the fork's handshake), and is signed in when `account` is not null:
+  `email`, `workspaceName` as the organization and `planType` as the plan; an API key login is
+  signed in with no email or plan. The server's stdin is closed, it gets 2 s to exit, and then its
+  process group is killed. Both probes drop the parent Claude Code session variables and `ZZ_PANE`,
+  `ZZ_SESSION`, `TMUX` and `TMUX_PANE` (and for an account the login overrides above), give up
+  after 10 s, and count as signed out when they fail.
+  An account directory is linked (`accounts::prepare`) before its probe, so a Codex home has its
+  state databases before its first app server.
+- **Watching.** A plain call adds the client to the watchers, sends the list the daemon already has
+  (nothing before the first probe ends), and refreshes in a worker thread; a call during a refresh
+  asks for one more pass. The whole list goes to every watcher still connected when it changes.
+  Every plain call refreshes, which is how a login that finished shows up: the daemon does not
+  follow the login window.
+- **Adding.** `--add` subscribes the caller too, then in a worker thread asks that CLI's accounts,
+  picks the first account that is not signed in, else the lowest `aN` not taken (`a1`, `a2`, ...),
+  creates or completes it (`accounts::create`: 0700, links, Claude seed), and opens a new window
+  named after the provider and id in the caller's session, running `claude auth login` or
+  `codex login` through the user's interactive shell with `CLAUDE_CONFIG_DIR` or `CODEX_HOME` set
+  (`cli_session::interactive_shell`). The login itself is the CLI's own; zz types nothing into it.
+- **Clients.** zz-client's core keeps the last list (`ClientCore::agent_accounts`) and emits
+  `CoreEvent::AgentAccountsChanged`. The desktop keeps one list per host beside the providers report
+  (`MuxClient::host_agent_accounts`, `request_agent_accounts`, `add_agent_account`); zz-app reads the
+  core (`Connection::request_agent_accounts`, `add_agent_account`, `switch_agent_account`). The
+  composer's account chip is their one reader.
 
 # Finding the TUI's session
 
@@ -208,7 +335,8 @@ end no turn.
 - **The flip button.** A terminal running either CLI and an agent pane carry a flip button in their
   header (`ButtonLook::Toggle`, `zz_ui::pane::pane_flip_button`) that sends `flip-agent -t <pane>`.
   A `busy:` answer offers Switch when idle and Switch now; an armed flip shows with Cancel.
-  `zz_client::agent_flip` (`AgentFlips`) keeps that state per pane for every client.
+  `zz_client::agent_flip` (`AgentFlips`) keeps that state per pane for every client, and the
+  composer's account switch (`agent-account`) rides the same requests and busy card.
 - **The chat.** `crates/zz/src/agent` on the desktop and `clients/app/src/app/agent_pane.rs` on
   web, iPad and iPhone draw an agent pane with `zz_ui::agent::chat`: the composer, the model and
   effort menu, questions and approvals asked in the composer, subagent rows, images, references,
@@ -221,56 +349,106 @@ end no turn.
 
 # The empty chat and the footer
 
-zz keeps no chats of its own. A chat with nothing in it lists what its CLI already has, and
-picking one resumes it in the same pane.
+zz keeps no chats of its own. A chat with nothing in it shows the welcome and, centered under it,
+two buttons 6 px apart (`zz_ui::agent::resume::folder_button` and `resume_button`): the folder
+the next chat starts in, and Resume, for a chat the CLI already has. Each opens a menu.
 
-- **The lists.** While the pane is ready and its chat is empty, the desktop asks the pane's driver
-  for two lists with `AgentSessionOp::List` (`zz_client::agent_resume::Resume::start`): the chats
-  in the pane's folder, and the newest chats in any folder. Claude Code's come from
-  `~/.claude/projects`, Codex's from `thread/list`. The reply is `EventPayload::AgentSessions`,
-  which `MuxClient` hands to `AgentController::apply_sessions`. `Resume::rows` turns them into
-  Recent here (three chats, then More chats here) and Projects (the other folders the newest chats
-  are in, five, then More projects, which also asks for the next page). The pane's own session is
-  left out. A folder row shows its parent path and its last chat's age; there is no chat count,
-  since the driver pages the list.
+- **The listings.** While the pane is ready and its chat is empty, the desktop asks the pane's
+  driver for two lists with `AgentSessionOp::List` (`zz_client::agent_resume::Resume::start`): the
+  chats in the pane's folder, and the newest chats in any folder. Claude Code's come from
+  `~/.claude/projects`: the driver reads the first and last 64 KiB of each transcript once and
+  keeps that summary while the file's mtime and size stay the same (`sessions::list`), and keeps
+  the whole sorted list per folder filter so a page after the first is a slice of it, about 12 ms,
+  not a new walk. Codex's come from `thread/list` with `archived: false` and `useStateDbOnly:
+  true`, so Codex answers from its state database instead of scanning its rollouts. The reply is
+  `EventPayload::AgentSessions`, which `MuxClient` hands to `AgentController::apply_sessions`.
+  The pane's own session is left out of both menus.
+- **The menus.** One popover shape for both (`zz_ui::agent::resume::resume_menu`): 300 px wide,
+  6 px in, a 30 px search field ("Search folders" or "Search chats"), then 32 px rows in a list
+  at most eight rows tall that scrolls. Only one is open at a time, and neither drills into
+  another. The model (`Resume`: which menu is open, the search text, the picked row and each
+  menu's rows) is in `zz-client`; the view draws the rows and forwards keys.
+  - **Folder menu.** The folders the CLI has chats in: the pane's folder first, with a check where
+    the age would be, then the others newest first, each with its parent path (home-relative) and
+    its last chat's age. There is no chat count, since the driver pages the list. Picking a folder
+    sends `AgentSessionOp::New { cwd }` and starts a new chat there in this pane; picking the
+    folder the chat is already in just closes the menu.
+  - **Resume menu.** "In" and the folder's name, then the eight newest chats in the pane's folder,
+    or "No chats here yet"; a search reaches the older ones; then "Other folders" and the eight newest chats elsewhere, each
+    with its folder's name and age. Picking a chat sends `AgentSessionOp::Switch` with its session
+    and folder: the driver restarts on that session and the transcript replays as it does on a
+    restart.
+- **Search.** `zz_client::fuzzy::fuzzy_match`, the palette's matcher. In the folder menu it
+  matches a folder's name, else its path, name matches first. In Resume it gives one flat list of
+  up to 40 chats whose title, else folder name, matches, title matches first and the newest among
+  equals, each with its folder's name. Nothing matches is a row of its own.
+- **Loading and paging.** Until the first listings arrive a menu is one `ResumeRow::Loading` row,
+  a spinner and "Loading". While a menu is open, `Resume::wanted` asks for the next page of the
+  all-folders listing, one request at a time, until it runs out or reaches 40 pages; with Resume
+  open the pane-folder listing pages the same way. The spinner row ends the menu while a page is
+  out. A `SessionListFailed` reply ends the wait.
 - **What is left out.** The daemon drops a chat whose folder no longer exists on its host
   (`zz-daemon/src/agent/runtime.rs`), since it cannot be resumed there: temp dirs, deleted
-  worktrees, chats that ran on another machine. Projects also leaves out scratch folders (under a
-  temp dir, `~/Library` or a dot folder; `scratch` in `agent_resume`), which the filter still
-  finds. Because a page of the newest chats can then hold few folders, `Resume::wanted` asks for
-  more pages, up to eight, until Projects has more than five.
-- **The filter.** A field over the lists (`resume_filter`, the view's own `InputState`). With text
-  in it `Resume::rows` returns one flat result instead: Folders whose path matches, then Chats
-  whose title or folder name matches, newest first, each chat with its folder's name; the first
-  row is picked. Inside an opened folder it narrows that folder's chats by title. While it has text
-  `Resume::wanted` pages through the rest of the list, up to forty pages, so the match is not only
-  the newest chats. Nothing matches is a row of its own.
-- **Picking.** A chat sends `AgentSessionOp::Switch` with its session and folder: the driver
-  restarts on that session, the pane moves to that folder and the transcript replays as it does on
-  a restart. A folder asks for that folder's chats and shows them in place of the lists, with a
-  back row; More chats asks for the next page. Up from an empty composer moves focus to the
-  filter with the last row picked; from there typing filters, Up and Down move, Down past the last
-  row returns to the composer, and Enter picks. Escape clears the filter, then drops the selection,
-  then leaves a folder, then returns to the composer. The pointer selects the row under it. `zz_ui::agent::resume::resume_rows` draws the rows under
-  `agent_resume_welcome`.
+  worktrees, chats that ran on another machine. The folder menu also leaves out scratch folders
+  (under a temp dir, `~/Library` or a dot folder; `scratch` in `agent_resume`) unless the search
+  matches them.
+- **Archived chats.** Codex's listing asks for unarchived threads only. Claude Code keeps no
+  archive or hidden mark of its own (none in its transcripts, `~/.claude.json`, `~/.claude/` or
+  `claude --help`), so every Claude Code chat whose folder exists is listed.
+- **Keys.** Up from the empty composer opens Resume. With a menu open, typing goes to its search
+  field; Up and Down move the picked row past labels and the spinner and keep it in view; Enter
+  picks; Escape clears the search, then closes the menu. The first pickable row is picked when
+  nothing else is. Closing puts focus back in the composer; a press outside closes the menu too.
+  The menus are penna `Popover`s the view opens and closes itself (`Popover::open` and
+  `on_toggle`).
+- **The pane's folder.** After a `New` or a `Switch`, the driver answers `SessionSwitched` with
+  the session's folder. `AgentController` takes it as the pane's folder, which the folder button
+  and the next listings use, and the pane header reads it for an agent pane
+  (`AppView::pane_folder`). The daemon's fanout sends the same folder to
+  `Shared::apply_agent_folder`, which writes it into the pane's `AgentDescriptor` and publishes
+  the snapshot, so the sidebar, the palette and a restart of the pane use the folder the chat
+  is in now, not the one the pane opened in. `AgentView` takes the snapshot's folder for its
+  pane whenever that changes (`AgentController::move_pane`), so a view built before the
+  snapshot named the pane does not stay on `/`.
 - **The footer.** The folder chip and the side chat button are gone: the header pill shows the
-  folder, and `/side` opens a side chat. What is left is the branch summary on the left and two
+  folder, and `/side` opens a side chat. What is left is the branch summary on the left and three
   controls on the right (`zz_ui::agent::controls`):
+  - `agent_account_chip`: the [account](#accounts) the pane runs on, as its email
+    (`agent_settings::account_label`), or "Default" when the CLI's own login has no known email, or
+    the id when a named account is not in the list; an email longer than 180px ends in an
+    ellipsis. It is hidden until the host's first `agent-accounts` list arrives; a chat asks for
+    one when it mounts if there is none, and the chip asks again every time it is clicked, which
+    is how a finished login shows up. Its popover lists the pane provider's accounts as 40px rows
+    (penna's `suggestion_row`): the email over the plan and organization (`account_detail`:
+    `max_20x` reads Max 20x), or Signed out for a default that is not signed in, the current one
+    picked and checked. Picking another sends `agent-account -t %N <id|default>` through
+    `zz_client::agent_flip::AgentFlips::switch_account`, the flip's own request tracking: a `busy:`
+    answer shows the flip's busy card over the pane with "Wait for ..., then pick the account
+    again." and only its close button (`Flip::AccountBusy`, `pane::pane_account_busy`), and any
+    other error, the missing-directory one included, becomes a notification that starts with
+    `agent-account:`. Add account sends `agent-accounts --add` for the pane's provider. Both close
+    the popover.
   - `agent_mode_chip`: the driver's `mode` option, the permissions the CLI runs with. A click or
     Shift-Tab steps to the next mode (`LensSettings::next_mode`). `agent_settings::mode_risk` gives
     it a tone, and the send button takes the same one: none while the agent asks first (Claude's
     Ask, Codex's Auto), success when it cannot write (Plan, Read only), warning when it acts
     without asking (Accept edits, Claude's Auto), danger with nothing guarding it (Bypass
-    permissions, Full access).
-  - `agent_model_picker`: a popover over the footer. On top the models, a check on the current
-    one: the first five the driver lists (`LensSettings::listed_models`) plus the current one when
-    it is further down, and a More models row that adds the rest to the same list, which scrolls
-    past eight rows. Under a rule the efforts as penna's `StepRail`, one horizontal rail with a dot
-    per step that sets the effort when the knob is let go. Claude's first effort is `default`, so
-    its first step is a ring (`effort_starts_unset`).
-- **Where.** The desktop has all of it. Web, iPad and iPhone have the footer but not the lists yet,
-  and the HTML client has neither. The storybook's Agent story shows the lists (Empty chat) and the
-  controls (Composer controls).
+    permissions, Full access). Claude Code always offers Bypass permissions; the driver starts the
+    CLI with `--allow-dangerously-skip-permissions` unless its command already has that flag or
+    `--dangerously-skip-permissions`, since without one the CLI refuses to switch a running
+    session to it.
+  - `agent_model_picker`: a popover over the footer. The button names the model by its choice's
+    display name (`LensSettings::model_label`), the raw value only when no choice matches. On top
+    every model the driver lists, in its order, a check on the current one, in one list six rows
+    tall that scrolls and opens with the current model in view. Under a rule the efforts as
+    penna's `StepRail`, one horizontal rail with a dot per step that sets the effort when the knob
+    is let go. Claude's first effort is `default`, so its first step is a ring
+    (`effort_starts_unset`).
+- **Where.** The desktop has all of it. Web, iPad and iPhone have the footer, the account chip
+  included, but not the menus yet, and the HTML client has neither. The storybook's Agent story
+  shows the menus (Empty chat: at rest, each menu open, searching, loading and Nothing matches) and
+  the controls (Composer controls, with the account chip on the CLI's own login, two accounts with
+  the second picked, and a signed-out default).
 
 # References in the chat
 

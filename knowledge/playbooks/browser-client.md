@@ -204,7 +204,7 @@ reject foreign origins, invalid frames, and asset paths outside the served direc
 - `crates/zz-client/src/agent_transcript.rs`: shared streaming transcript, plan, permission, and tool reduction.
 - `crates/zz-client/src/pane_separator.rs`: active pane separator spans for desktop and thin clients.
 - `crates/zz-client/src/agent_completion.rs`: shared provider command matching, query replacement, and hints; the slash list leaves out commands that need the CLI's own screen.
-- `crates/zz-client/src/agent_flip.rs`: the flip button's state (idle, busy choice, armed) and the `flip-agent` commands every client sends.
+- `crates/zz-client/src/agent_flip.rs`: the flip button's state (idle, busy choice, armed), the `flip-agent` commands every client sends, and the composer's `agent-account` switch, which shares the busy card.
 - `crates/zz-client/src/agent_lens.rs`: the agent stream cursor (replay, gaps, command catalog), the chat journal reducer, parked permissions, restored drafts and context usage.
 - `crates/zz-client/src/agent_timeline.rs`: timeline rows, turn folding, trace labels and counts, plan and composer labels, shared by zz-ui and the HTML client.
 - `crates/zz-ui/src/agent/slash.rs`: shared Agent command suggestion rows and list.

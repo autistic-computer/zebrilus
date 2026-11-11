@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Split updates . the client and the daemon update apart
-description: Proposed plan to let a client update without restarting the daemon and ending its sessions. PROTOCOL_VERSION becomes a wire epoch that only bumps for changes an existing peer cannot decode or would get wrong, additive changes travel as messages gated by the capabilities both hellos already carry, a build revision on each side sets floors for behavior, and restarting the daemon onto a newer build becomes its own action that states how many sessions it ends. Step 1, the setup epoch (v122), step 2, the capability rule, and step 3, the client UI, are built.
-status: In progress
+description: Plan to let a client update without restarting the daemon and ending its sessions. PROTOCOL_VERSION becomes a wire epoch that only bumps for changes an existing peer cannot decode or would get wrong, additive changes travel as messages gated by the capabilities both hellos already carry, a build revision on each side sets floors for behavior, and restarting the daemon onto a newer build becomes its own action that states how many sessions it ends. All four steps are built: the setup epoch (v123), the capability rule, the client UI, and the macOS pty helper pinned to the daemon's build.
+status: Built
 tags:
 - protocol
 - versioning
@@ -14,10 +14,9 @@ timestamp: 2026-11-10T00:00:00-03:00
 
 # Overview
 
-> **Status: proposed 2026-11-10.** The counts below were read from the protocol version history at
-> `PROTOCOL_VERSION = 121`.
+> The counts below were read from the protocol version history at `PROTOCOL_VERSION = 121`.
 >
-> **2026-11-10: step 1 is built.** Wire v122 is the setup epoch. Both sides send their `REVISION` in
+> **2026-11-10: step 1 is built.** Wire v123 is the setup epoch (v122 went to agent accounts). Both sides send their `REVISION` in
 > the handshake and hold a floor for the other's; every revision and floor is 1, so nothing is
 > refused yet. A client below the daemon's floor gets `ServerError::ClientTooOld`, and a daemon below
 > the client's floor fails the attach with `DaemonError::DaemonTooOld`, which clients show as a
@@ -27,7 +26,7 @@ timestamp: 2026-11-10T00:00:00-03:00
 >
 > **2026-11-10: step 2 is built.** `ProtocolMessage::required_capability` and
 > `EventPayload::required_capability` name each variant's capability in exhaustive matches, and
-> every v122 variant answers `None`. `CLIENT_CAPABILITY_NAMES` (empty) sits beside
+> every v123 variant answers `None`. `CLIENT_CAPABILITY_NAMES` (empty) sits beside
 > `CAPABILITY_NAMES`; the Rust, browser and HTML clients append it to their hello, and each daemon
 > `OutboundMailbox` keeps the declared names and drops a gated message for a client without one.
 > `zz-daemon-client`'s `ProtocolSender` refuses a gated message the daemon did not list with
@@ -83,7 +82,7 @@ Not in this plan: keeping sessions alive across a daemon restart. A daemon resta
   mismatch. The web, iOS and Android clients show a status line with no action. See
   [wire protocol](/protocol/wire-protocol.md) and
   [session persistence](/concepts/session-persistence.md).
-- The version moves about once per release: 107 at v0.15.1, 112 at v0.22.0, 121 now.
+- The version moves about once per release: 107 at v0.15.1, 112 at v0.22.0, 123 now.
 - Control payloads are postcard, which has no field tags and no struct boundaries. Terminal payloads
   are zz's own packing (`crates/zz-protocol/src/terminal_codec.rs`).
 - The daemon encodes a tree delta once per group of clients with the same scope and hands them the
@@ -111,11 +110,10 @@ Not in this plan: keeping sessions alive across a daemon restart. A daemon resta
   never runs on connect. It runs when the person accepts "Update zz on {host}?", when the binary is
   missing, or from `zz fleet install`, and it reinstalls unless both the version string and the
   protocol version already match.
-- What the daemon launches later mostly stays on its own build: `pinned_executable`
-  (`crates/zz-daemon/src/daemon.rs`) pins the `zz` and `tmux` that panes and status jobs run. The
-  macOS pty helper is the exception: `pty_exec_helper`
-  (`crates/zz-terminal/src/session/unix_pty.rs`) runs whatever binary now sits at the daemon's
-  path, and falls back to fork if that fails.
+- What the daemon launches later stays on its own build: `pinned_executable`
+  (`crates/zz-daemon/src/daemon.rs`) pins the `zz` and `tmux` that panes and status jobs run, and
+  since step 4 the macOS pty helper runs the daemon's pinned copy (`pin_pty_exec_helper` in
+  `crates/zz-terminal/src/session/unix_pty.rs`), then the bundle path, then fork.
 
 # Decisions
 
@@ -256,7 +254,7 @@ in.
 
 # Build order
 
-1. **Setup epoch (v122).** `REVISION` and the two floors in `zz-protocol`, the revision in
+1. **Setup epoch (v123).** `REVISION` and the two floors in `zz-protocol`, the revision in
    `ClientHello` and `Welcome`, the too-old error, `PaneKindSnapshot::Other` and its placeholder in
    every client. Done when a client below `MIN_CLIENT_REVISION` is refused with the update message
    and a pane of kind `Other` draws the placeholder.

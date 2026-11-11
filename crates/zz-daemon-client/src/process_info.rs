@@ -54,6 +54,10 @@ pub fn working_directory(pid: u32) -> Option<PathBuf> {
     platform::working_directory(pid)
 }
 
+pub fn environment(pid: u32, name: &str) -> Option<OsString> {
+    platform::environment(pid, name)
+}
+
 pub fn parent(pid: u32) -> Option<u32> {
     platform::parent(pid)
 }
@@ -323,6 +327,16 @@ fn unix_host_name() -> Option<String> {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+fn variable<'a>(variables: impl IntoIterator<Item = &'a [u8]>, name: &str) -> Option<OsString> {
+    use std::os::unix::ffi::OsStrExt as _;
+
+    variables
+        .into_iter()
+        .find_map(|variable| variable.strip_prefix(name.as_bytes())?.strip_prefix(b"="))
+        .map(|value| OsStr::from_bytes(value).to_os_string())
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
 fn unix_terminate(pid: u32) -> bool {
     libc::pid_t::try_from(pid)
@@ -535,11 +549,28 @@ mod platform {
             .take(count)
             .map(|argument| OsStr::from_bytes(argument).to_os_string())
             .collect();
-        let search_path = strings
-            .take_while(|variable| !variable.is_empty())
-            .find_map(|variable| variable.strip_prefix(b"PATH="))
-            .map(|path| OsStr::from_bytes(path).to_os_string());
+        let search_path =
+            super::variable(strings.take_while(|variable| !variable.is_empty()), "PATH");
         Some((arguments, search_path))
+    }
+
+    pub(super) fn environment(pid: u32, name: &str) -> Option<OsString> {
+        let raw = raw_pid(pid)?;
+        with_process_arguments(raw, |data| {
+            let (count, rest) = data.split_at_checked(std::mem::size_of::<libc::c_int>())?;
+            let count = usize::try_from(libc::c_int::from_ne_bytes(count.try_into().ok()?)).ok()?;
+            let executable = rest
+                .iter()
+                .position(|byte| *byte == 0)
+                .unwrap_or(rest.len());
+            let rest = &rest[executable..];
+            let start = rest.iter().position(|byte| *byte != 0)?;
+            let variables = rest[start..]
+                .split(|byte| *byte == 0)
+                .skip(count)
+                .take_while(|variable| !variable.is_empty());
+            super::variable(variables, name)
+        })
     }
 
     fn c_text(characters: &[libc::c_char]) -> Option<String> {
@@ -1222,11 +1253,16 @@ mod platform {
     }
 
     fn search_path(pid: u32) -> Option<OsString> {
-        fs::read(format!("/proc/{pid}/environ"))
-            .ok()?
-            .split(|byte| *byte == 0)
-            .find_map(|variable| variable.strip_prefix(b"PATH="))
-            .map(|path| OsStr::from_bytes(path).to_os_string())
+        environment(pid, "PATH")
+    }
+
+    pub(super) fn environment(pid: u32, name: &str) -> Option<OsString> {
+        super::variable(
+            fs::read(format!("/proc/{pid}/environ"))
+                .ok()?
+                .split(|byte| *byte == 0),
+            name,
+        )
     }
 
     pub(super) fn program_start(foreground: u32, _shell: Option<u32>) -> u32 {
@@ -1434,6 +1470,10 @@ mod platform {
         .map(PathBuf::from)
     }
 
+    pub(super) fn environment(_pid: u32, _name: &str) -> Option<OsString> {
+        None
+    }
+
     pub(super) fn parent(pid: u32) -> Option<u32> {
         let key = Pid::from_u32(pid);
         refreshed(&[key], ProcessRefreshKind::nothing())
@@ -1622,9 +1662,13 @@ mod platform {
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 mod platform {
-    use std::path::PathBuf;
+    use std::{ffi::OsString, path::PathBuf};
 
     use super::{ProcessRecord, ProcessSample, ProgramProcess};
+
+    pub(super) fn environment(_pid: u32, _name: &str) -> Option<OsString> {
+        None
+    }
 
     pub(super) fn start_time(_pid: u32) -> Option<u64> {
         None

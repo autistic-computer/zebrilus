@@ -2791,7 +2791,32 @@ impl AppView {
             view.share_pane_canvas(pane_canvas);
             view
         });
+        #[cfg(feature = "agent-pane")]
+        cx.subscribe_in(
+            &view,
+            window,
+            move |this, _, picked: &crate::agent::AgentAccountPicked, window, cx| {
+                this.switch_agent_account(pane, picked.account.as_deref(), window, cx);
+            },
+        )
+        .detach();
         self.agents.insert(pane, view);
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn switch_agent_account(
+        &mut self,
+        pane: PaneId,
+        account: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mux = self.mux.clone();
+        if self.flips.switch_account(pane, account, |command| {
+            mux.read(cx).execute_answered(command)
+        }) {
+            self.refresh_flip(pane, window, cx);
+        }
     }
 
     fn flip_pane(&mut self, pane: PaneId, window: &mut Window, cx: &mut Context<Self>) {
@@ -2857,11 +2882,7 @@ impl AppView {
                 .settle(request, result.as_ref().copied().map_err(String::as_str))
             {
                 self.mux.update(cx, |_, cx| {
-                    MuxClient::emit_notification(
-                        ClientMessageKind::Error,
-                        format!("flip-agent: {error}"),
-                        cx,
-                    );
+                    MuxClient::emit_notification(ClientMessageKind::Error, error, cx);
                 });
             }
         }
@@ -2906,10 +2927,11 @@ impl AppView {
             return;
         }
         let registered = self.agent_controller.read(cx).registered_panes();
+        let before = self.agent_controller.read(cx).moves();
         let events = self
             .mux
             .update(cx, |mux, _| mux.take_agent_events_for(&registered));
-        self.agent_controller.update(cx, |controller, cx| {
+        let moved = self.agent_controller.update(cx, |controller, cx| {
             for (pane, items) in events.items {
                 controller.apply_stream_items(pane, items, cx);
             }
@@ -2919,7 +2941,11 @@ impl AppView {
             for (pane, reply) in events.sessions {
                 controller.apply_sessions(pane, &reply, cx);
             }
+            controller.moves() != before
         });
+        if moved {
+            cx.notify();
+        }
     }
 
     #[cfg(not(feature = "agent-pane"))]
@@ -3783,7 +3809,7 @@ impl AppView {
                             lone: window.panes.len() == 1,
                             zoomed: window.zoomed_pane == Some(*pane),
                         },
-                        folder: zz_client::navigation::pane_folder(snapshot),
+                        folder: self.pane_folder(snapshot, cx),
                         flip: None,
                         keys: self.pane_action_keys(cx),
                         buttons: self.pane_kind_buttons(*pane, cx),
@@ -4481,6 +4507,15 @@ impl AppView {
         )
     }
 
+    fn pane_folder(&self, pane: &zz_protocol::PaneSnapshot, cx: &App) -> Option<String> {
+        match self.agent_controller.read(cx).pane_cwd(pane.id) {
+            Some(cwd) if matches!(pane.kind, PaneKindSnapshot::Agent(_)) => {
+                Some(zz_client::providers::home_relative(&cwd.to_string_lossy()))
+            }
+            _ => zz_client::navigation::pane_folder(pane),
+        }
+    }
+
     fn pip_header(
         &self,
         pane: PaneId,
@@ -4506,7 +4541,7 @@ impl AppView {
                     floats: true,
                     ..zz_ui::pane::PaneState::default()
                 },
-                folder: snapshot.and_then(zz_client::navigation::pane_folder),
+                folder: snapshot.and_then(|snapshot| self.pane_folder(snapshot, cx)),
                 flip: None,
                 keys: self.pane_action_keys(cx),
                 buttons: self.pane_kind_buttons(pane, cx),
@@ -4534,7 +4569,7 @@ impl AppView {
                 active,
                 label.clone(),
                 snapshot
-                    .and_then(zz_client::navigation::pane_folder)
+                    .and_then(|snapshot| self.pane_folder(snapshot, cx))
                     .map(Into::into),
                 PaneDragSource::new(pane, label, connected, |_, _, _| {}),
                 zz_ui::pane::PaneState {
@@ -5661,6 +5696,7 @@ mod tests {
             | CoreEvent::AgentLagged { .. }
             | CoreEvent::AgentSessions { .. }
             | CoreEvent::ProvidersChanged
+            | CoreEvent::AgentAccountsChanged
             | CoreEvent::Message(_) => None,
         }
     }

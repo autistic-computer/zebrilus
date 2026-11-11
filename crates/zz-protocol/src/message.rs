@@ -23,7 +23,7 @@ use crate::{
     },
 };
 
-pub const PROTOCOL_VERSION: u16 = 122;
+pub const PROTOCOL_VERSION: u16 = 123;
 pub const REVISION: u32 = 1;
 pub const MIN_DAEMON_REVISION: u32 = 1;
 pub const MIN_CLIENT_REVISION: u32 = 1;
@@ -3441,6 +3441,7 @@ pub enum EventPayload {
         application_escape: Vec<String>,
     },
     Providers(crate::ProvidersReport),
+    AgentAccounts(Vec<crate::AgentAccount>),
 }
 
 impl EventPayload {
@@ -3512,7 +3513,8 @@ impl EventPayload {
             | Self::ControlCommandStarted { .. }
             | Self::ClipboardQuery
             | Self::TerminalNegotiation { .. }
-            | Self::Providers(_) => None,
+            | Self::Providers(_)
+            | Self::AgentAccounts(_) => None,
         }
     }
 
@@ -5534,7 +5536,7 @@ mod tests {
 
     #[test]
     fn detached_reason_holds_its_appended_wire_field() {
-        assert_eq!(super::PROTOCOL_VERSION, 122);
+        assert_eq!(super::PROTOCOL_VERSION, 123);
         for (reason, tag) in [
             (super::DetachReason::Requested, 0),
             (super::DetachReason::Evicted, 1),

@@ -41,6 +41,7 @@ fn setup() -> (Runtime, Receiver<AgentStreamPayload>) {
         verbs: 0,
         reply: None,
         title: Title::default(),
+        listed: HashMap::new(),
     };
     smol::block_on(runtime.apply(&Fact::SessionReady)).expect("ready");
     (runtime, receiver)

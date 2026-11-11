@@ -12,7 +12,7 @@ mod view;
 #[cfg(feature = "agent-pane")]
 pub use controller::AgentController;
 #[cfg(feature = "agent-pane")]
-pub(crate) use view::AgentView;
+pub(crate) use view::{AgentAccountPicked, AgentView};
 
 #[cfg(not(feature = "agent-pane"))]
 mod stub;

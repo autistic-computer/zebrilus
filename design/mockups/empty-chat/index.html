@@ -27,29 +27,36 @@
   .zz-frame [data-penna="button.title"] { flex: none; max-width: none; color: var(--penna-fg); }
   .zz-cwd { color: var(--penna-muted); }
 
-  .zz-empty { display: flex; flex: 1; flex-direction: column; align-items: center; min-height: 0; padding: 36px 16px 12px; overflow: hidden; }
-  .zz-empty-col { display: flex; flex: 1; flex-direction: column; width: 100%; max-width: 440px; min-height: 0; }
+  .zz-empty { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; min-height: 0; padding: 12px 16px; }
+  .zz-empty-col { display: flex; flex: 0 1 auto; flex-direction: column; width: 100%; max-width: 440px; min-height: 0; }
   .zz-hero { display: flex; flex: none; flex-direction: column; align-items: center; gap: 4px; padding-bottom: 18px; text-align: center; }
   .zz-hero > [data-icon] { margin-bottom: 8px; color: var(--penna-fg-muted, var(--penna-muted)); --penna-icon-size: 34px; }
   .zz-hero > b { font-size: 17px; line-height: 24px; font-weight: 600; }
   .zz-hero > span { color: var(--penna-fg-muted, var(--penna-muted)); }
 
-  .zz-filter[data-penna] { flex: none; width: 100%; height: 32px; margin-bottom: 4px; padding: 0 10px; font-size: 13px; --penna-icon-size: 14px; }
+  .zz-project { position: relative; display: flex; flex: none; justify-content: center; gap: 6px; }
+  .zz-pbtn[data-penna] { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 9px; font-size: 13px; cursor: var(--penna-click-cursor); --penna-icon-size: 14px; }
+  .zz-pbtn > [data-icon="folder"] { color: var(--penna-muted); }
+  .zz-pbtn > [data-icon="chevron-down"] { opacity: 0.6; --penna-icon-size: 10px; }
+  .zz-menu[data-penna="popover"] { position: absolute; z-index: 5; top: calc(100% + 6px); left: calc(50% - 150px); display: flex; flex-direction: column; width: 300px; padding: 6px; }
+  .zz-menu[hidden] { display: none; }
+  .zz-filter[data-penna] { flex: none; width: 100%; height: 30px; margin-bottom: 4px; padding: 0 8px; font-size: 13px; --penna-icon-size: 14px; }
   .zz-filter > [data-icon="search"] { color: var(--penna-muted); }
-  .zz-filter > button { display: none; width: 20px; height: 20px; --penna-icon-size: 10px; }
-  .zz-filter[data-filled] > button { display: inline-flex; }
-  .zz-list { display: flex; flex: 1; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; }
-
-  .zz-plabel { display: flex; flex: none; align-items: center; gap: 6px; padding: 8px 12px 2px; font-size: 11px; font-weight: 600; color: var(--penna-fg-muted, var(--penna-muted)); --penna-icon-size: 12px; }
-  .zz-hint { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-weight: 400; }
-  .zz-prow[data-penna] { display: flex; flex: none; align-items: center; gap: 10px; height: 34px; padding: 0 12px; font-size: 13px; cursor: var(--penna-click-cursor); --penna-icon-size: 16px; }
-  .zz-prow > [data-icon] { color: var(--penna-muted); }
-  .zz-prow[data-quiet] { color: var(--penna-muted); }
+  .zz-rows { display: flex; flex-direction: column; max-height: calc(8 * 32px); overflow-y: auto; }
+  .zz-menu [data-penna="menu-item"] { flex: none; height: 32px; gap: 8px; padding: 0 10px; font-size: 13px; font-weight: 400; cursor: var(--penna-click-cursor); --penna-icon-size: 14px; }
+  .zz-menu [data-penna="menu-item"] > [data-icon="folder"] { color: var(--penna-muted); }
+  .zz-menu [data-penna="menu-item"] > [data-icon="check"] { --penna-icon-size: 12px; }
+  .zz-menu [data-penna="keycap"] { flex: none; }
+  .zz-plabel { display: flex; flex: none; align-items: center; height: 24px; padding: 4px 10px 0; font-size: 11px; font-weight: 600; color: var(--penna-fg-muted, var(--penna-muted)); }
+  .zz-loading { display: flex; flex: none; align-items: center; gap: 8px; height: 32px; padding: 0 10px; font-size: 13px; color: var(--penna-muted); --penna-icon-size: 14px; }
+  .zz-loading > [data-icon] { animation: zz-turn 900ms linear infinite; }
+  @keyframes zz-turn { to { transform: rotate(1turn); } }
+  @media (prefers-reduced-motion: reduce) { .zz-loading > [data-icon] { animation: none; } }
+  .zz-none { flex: none; padding: 7px 10px; font-size: 13px; color: var(--penna-muted); }
   .zz-ptitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .zz-path { margin-left: 8px; font-size: 12px; color: var(--penna-muted); }
   .zz-pnote { flex: none; font-size: 11px; color: var(--penna-muted); font-variant-numeric: tabular-nums; }
   .zz-age { width: 26px; text-align: right; }
-  .zz-prow > [data-penna="keycap"] { flex: none; }
 
   .zz-dock { flex: none; padding: 0 16px 14px; }
   .zz-dock > * { max-width: 682px; margin-inline: auto; }
@@ -71,11 +78,7 @@
   .zz-pop [data-penna="menu-item"] { flex: none; height: 32px; gap: 8px; padding: 0 10px; font-size: 13px; font-weight: 400; --penna-icon-size: 12px; }
   .zz-pop [data-penna="menu-item"] > span { flex: 1; min-width: 0; }
   .zz-pop [data-model]:not([data-state]) > [data-icon] { visibility: hidden; }
-  .zz-more[data-penna] { color: var(--penna-muted); }
-  .zz-more > em { font-style: normal; font-size: 11px; font-variant-numeric: tabular-nums; }
-  .zz-more > [data-icon] { --penna-icon-size: 10px; }
-  .zz-models { display: flex; flex-direction: column; max-height: 256px; overflow-y: auto; }
-  .zz-pop [hidden] { display: none; }
+  .zz-models { display: flex; flex-direction: column; max-height: calc(6 * 32px); overflow-y: auto; }
 
 
   .zz-slide { --h: 26px; --k: 30px; --n: 6; --at: 3; --pad: calc((var(--k) - 4px) / 2); --step: calc((100% - 2 * var(--pad)) / (var(--n) - 1)); position: relative; flex: none; height: var(--h); margin: 2px 10px 10px; border-radius: calc(var(--h) / 2); background: color-mix(in srgb, var(--penna-fg) 10%, transparent); cursor: var(--penna-click-cursor); user-select: none; touch-action: none; }
@@ -91,94 +94,35 @@
 <main class="zz-page">
   <div class="zz-intro">
     <h1>Empty agent chat</h1>
-    <p>The New chat picker stays as it is. A chat with nothing in it is where you pick one up: it lists what this CLI already has, from the CLI's own store. This round adds a filter to the list, drops folders you cannot resume in, and tries a horizontal effort slider under a shorter model list.</p>
+    <p>The New chat picker stays as it is. A chat with nothing in it is where you pick one up, from the CLI's own store. It shows the welcome and two buttons: one for the folder the next chat starts in, one to resume a chat the CLI already has. The model picker is one list that scrolls.</p>
   </div>
 
   <section>
-    <h2>1. A filter, and only folders you can resume in</h2>
-    <p><b>Left out for good:</b> folders that no longer exist, since a chat cannot be resumed there. That covers temp dirs, deleted worktrees and chats that ran on another machine, which is where the repeated names came from. <b>Left out of the list, kept in the filter:</b> scratch folders, meaning anything under the temp dir, <code>~/Library</code> or a dot folder. Every folder row shows its parent path, so two folders with one name can be told apart. The list scrolls in its own space and never runs under the composer.</p>
+    <h2>1. Two buttons: where, and what to pick up</h2>
+    <p>The empty chat shows the welcome and two buttons. The first names the folder the next message goes to; its menu is a plain picker, and picking a folder moves this empty chat there, so the button and the pane title change. <b>Resume</b> lists chats to pick up: the ones in that folder first, then the newest from other folders, and its search looks through every chat the CLI has. No nested menu, so nothing leaves the pane. <b>Left out as before:</b> folders that no longer exist never show, and scratch folders (temp dir, <code>~/Library</code>, dot folders) only show when a search matches them.</p>
     <div class="penna-variants zz-variants zz-panes">
       <figure>
-        <div class="penna-gaps zz-frame">
-          <section data-penna="pane">
-            <div data-penna="bar.pane">
-              <div data-penna="button.title"><i data-icon="asterisk"></i>Claude Code<span class="zz-cwd">~/dev/autistic-computer/zebrilus</span></div>
-              <span class="zz-grow"></span>
-              <button data-penna="icon-button.bar"><i data-icon="panel-bottom"></i></button>
-              <button data-penna="icon-button.bar"><i data-icon="layout-columns"></i></button>
-              <button data-penna="icon-button.bar"><i data-icon="xmark"></i></button>
-            </div>
-            <div class="zz-empty">
-              <div class="zz-empty-col" data-live>
-                <div class="zz-hero"><i data-icon="asterisk"></i><b>Claude Code is ready</b><span>Ask it anything, or pick up a chat.</span></div>
-                <label class="zz-filter" data-penna="field"><i data-icon="search"></i><input placeholder="Filter chats and folders" spellcheck="false" autocomplete="off"><button data-penna="icon-button" type="button"><i data-icon="xmark"></i></button></label>
-                <div class="zz-list"></div>
-              </div>
-            </div>
-            <div class="zz-dock">
-              <div class="zz-composer" data-penna="field.composer">
-                <button class="zz-plus" data-penna="icon-button"><i data-icon="plus"></i></button>
-                <div class="zz-input penna-muted">Message Claude Code...</div>
-                <button data-penna="button.send" data-prominent data-state="disabled"><i data-icon="arrow-up"></i></button>
-              </div>
-              <div class="zz-foot">
-                <span class="zz-grow"></span>
-                <span class="zz-chip" data-penna="chip"><i data-icon="circle-user"></i>Ask</span>
-                <span class="zz-chip" data-penna="chip">Opus 5.5<span class="zz-dim">High</span><i data-icon="chevron-down"></i></span>
-              </div>
-            </div>
-          </section>
-        </div>
-        <figcaption><b>At rest, live</b>Three chats from this folder, five other folders, newest first. Type in the filter to try it: <code>clair</code>, <code>ring</code>, <code>scratch</code>. Up or Down from the empty composer moves into the list; from there typing goes to the filter, Enter resumes, and Escape clears the filter, then returns to the composer.</figcaption>
+        <div class="penna-gaps zz-frame" data-project data-live></div>
+        <figcaption><b>At rest, live</b>Click either button. The first open shows a spinner row until the listing arrives; while a menu is open the rest keeps arriving a page at a time, with the spinner row at the end. Pick a folder and watch the button, the pane title and Resume's first group follow it. Type to search: <code>clair</code>, <code>ring</code>, <code>scratch</code>. Up and Down move, Enter picks, Escape clears the search, then closes.</figcaption>
       </figure>
-
       <figure>
-        <div class="penna-gaps zz-frame">
-          <section data-penna="pane">
-            <div data-penna="bar.pane">
-              <div data-penna="button.title"><i data-icon="asterisk"></i>Claude Code<span class="zz-cwd">~/dev/autistic-computer/zebrilus</span></div>
-              <span class="zz-grow"></span>
-              <button data-penna="icon-button.bar"><i data-icon="panel-bottom"></i></button>
-              <button data-penna="icon-button.bar"><i data-icon="layout-columns"></i></button>
-              <button data-penna="icon-button.bar"><i data-icon="xmark"></i></button>
-            </div>
-            <div class="zz-empty">
-              <div class="zz-empty-col">
-                <div class="zz-hero"><i data-icon="asterisk"></i><b>Claude Code is ready</b><span>Ask it anything, or pick up a chat.</span></div>
-                <label class="zz-filter" data-penna="field" data-state="focused" data-filled><i data-icon="search"></i><input value="clair" spellcheck="false" autocomplete="off" readonly><button data-penna="icon-button" type="button"><i data-icon="xmark"></i></button></label>
-                <div class="zz-list">
-                  <div class="zz-plabel">Folders<span class="zz-hint"><span data-penna="keycap">esc</span>clear</span></div>
-                  <div class="zz-prow" data-penna="menu-item.card" data-state="current"><i data-icon="folder"></i><span class="zz-ptitle">clairvo<span class="zz-path">~/dev</span></span><span class="zz-pnote zz-age">now</span><span data-penna="keycap">↵</span></div>
-                  <div class="zz-plabel">Chats</div>
-                  <div class="zz-prow" data-penna="menu-item.card"><span class="zz-ptitle">Clairvo invoice import fails on empty rows</span><span class="zz-pnote">clairvo</span><span class="zz-pnote zz-age">now</span></div>
-                  <div class="zz-prow" data-penna="menu-item.card"><span class="zz-ptitle">Queue retries for the mailer</span><span class="zz-pnote">clairvo</span><span class="zz-pnote zz-age">1d</span></div>
-                  <div class="zz-prow" data-penna="menu-item.card"><span class="zz-ptitle">Clairvo landing copy</span><span class="zz-pnote">landing-page</span><span class="zz-pnote zz-age">3d</span></div>
-                  <div class="zz-prow" data-penna="menu-item.card"><span class="zz-ptitle">Seed data for the demo tenant</span><span class="zz-pnote">clairvo</span><span class="zz-pnote zz-age">6d</span></div>
-                </div>
-              </div>
-            </div>
-            <div class="zz-dock">
-              <div class="zz-composer" data-penna="field.composer">
-                <button class="zz-plus" data-penna="icon-button"><i data-icon="plus"></i></button>
-                <div class="zz-input penna-muted">Message Claude Code...</div>
-                <button data-penna="button.send" data-prominent data-state="disabled"><i data-icon="arrow-up"></i></button>
-              </div>
-              <div class="zz-foot">
-                <span class="zz-grow"></span>
-                <span class="zz-chip" data-penna="chip"><i data-icon="circle-user"></i>Ask</span>
-                <span class="zz-chip" data-penna="chip">Opus 5.5<span class="zz-dim">High</span><i data-icon="chevron-down"></i></span>
-              </div>
-            </div>
-          </section>
-        </div>
-        <figcaption><b>Filtering</b>One flat result: folders whose name or path matches, then chats whose title or folder matches, each with its folder and age. The first row is picked, so Enter opens it. The filter looks through every chat the CLI has here, not only the newest page.</figcaption>
+        <div class="penna-gaps zz-frame" data-project data-open="folders"></div>
+        <figcaption><b>The folder menu</b>A search field, then the folders with chats, newest first, the current one checked. Eight rows tall, then it scrolls; more folders keep arriving while it is open, with a spinner row at the end until the last page is in. Picking one starts the next chat there.</figcaption>
+      </figure>
+      <figure>
+        <div class="penna-gaps zz-frame" data-project data-open="chats"></div>
+        <figcaption><b>Resume</b>Chats in the picked folder under its name, then the newest from other folders, each with its folder and age. Picking one resumes it in this pane.</figcaption>
+      </figure>
+      <figure>
+        <div class="penna-gaps zz-frame" data-project data-open="chats" data-query="clair"></div>
+        <figcaption><b>Searching chats</b>One flat result of chats whose title or folder matches. The first row is picked, so Enter resumes it.</figcaption>
       </figure>
     </div>
   </section>
 
   <section>
     <h2>2. The model picker, effort along the bottom</h2>
-    <p>The list is the first five the CLI offers, which is its default plus the current generation. <b>More models</b> adds the rest to the same list, which then scrolls, and an older model you have picked stays as a sixth row when the list is short again. Effort is one fat horizontal slider with a dot per stop. <b>Default</b> is the first stop, drawn as a ring with no fill, because the CLI does not say which level it stands for. Live: click, drag, open More models.</p>
+    <p>Every model the CLI offers, in its order, in one list six rows tall that scrolls. When it opens, the current model is scrolled into view. The button names the model by its display name. Effort is one fat horizontal slider with a dot per stop. <b>Default</b> is the first stop, drawn as a ring with no fill, because the CLI does not say which level it stands for. Live: click, drag, scroll the list.</p>
     <div class="penna-variants zz-variants zz-takes">
       <figure>
         <div class="zz-demo" data-pick>
@@ -200,7 +144,7 @@
             <span class="zz-chip" data-penna="chip" data-state="current" data-model-chip><span></span><span class="zz-dim"></span><i data-icon="chevron-down"></i></span>
           </div>
         </div>
-        <figcaption><b>List over slider</b>Everything in view. The level's name sits on the Effort line, the slider under it has a 26 px track and a 30 px round knob.</figcaption>
+        <figcaption><b>List over slider</b>Opened on Opus 4.8, an older pick, so the list starts scrolled to it. The level's name sits on the Effort line, the slider under it has a 26 px track and a 30 px round knob.</figcaption>
       </figure>
 
     </div>
@@ -231,6 +175,17 @@
     ["penna", "~/dev/autistic-computer", "4d"],
     ["ala-cef", "~/dev/autistic-computer", "1w"],
     ["dev", "~", "2w"],
+    ["pele-rs", "~/dev/autistic-computer", "2w"],
+    ["ghostty-rs", "~/dev/autistic-computer", "2w"],
+    ["mjui", "~/dev/autistic-computer", "3w"],
+    ["plumula", "~/dev/autistic-computer", "3w"],
+    ["dotfiles", "~/dev", "1mo"],
+    ["blog", "~/dev", "1mo"],
+    ["invoices", "~/dev/clairvo", "1mo"],
+    ["mailer", "~/dev/clairvo", "1mo"],
+    ["ppapi", "~/dev/PsicoPilot", "2mo"],
+    ["ppmobile", "~/dev/PsicoPilot", "2mo"],
+    ["zz-bench", "~/dev", "2mo"],
   ];
   const scratch = [
     ["2026-11-09-this-is-a-ui-test", "~/.t3/scratch", "1d"],
@@ -247,77 +202,254 @@
     ["Seed data for the demo tenant", "clairvo", "6d"],
     ["This is a UI test of the chat view", "2026-11-09-this-is-a-ui-test", "1d"],
   ];
-  const label = (text, hint) => `<div class="zz-plabel">${text}${hint ? `<span class="zz-hint"><span data-penna="keycap">${hint[0]}</span>${hint[1]}</span>` : ""}</div>`;
-  const chat = (title, folder, age) => `<div class="zz-prow" data-penna="menu-item.card"><span class="zz-ptitle">${title}</span>${folder ? `<span class="zz-pnote">${folder}</span>` : ""}<span class="zz-pnote zz-age">${age}</span></div>`;
-  const folder = ([name, path, age]) => `<div class="zz-prow" data-penna="menu-item.card"><i data-icon="folder"></i><span class="zz-ptitle">${name}<span class="zz-path">${path}</span></span><span class="zz-pnote zz-age">${age}</span></div>`;
-  const quiet = (text) => `<div class="zz-prow" data-penna="menu-item.card" data-quiet><span class="zz-ptitle">${text}</span></div>`;
+  const projects = [["zebrilus", "~/dev/autistic-computer", "2h"], ...folders];
+  const chatsOf = { zebrilus: here };
+  for (const [title, place, age] of elsewhere) (chatsOf[place] ??= []).push([title, age]);
+  for (const [name, , age] of [...projects, ...scratch]) chatsOf[name] ??= [["Fix the failing build", age], ["Review notes", "2mo"]];
+  const pathOf = Object.fromEntries([...projects, ...scratch].map(([name, path]) => [name, `${path}/${name}`]));
+  const HERE = "zebrilus";
+  const PAGE = 4;
+  const WELCOME = "Ask it anything, or pick up a chat.";
+  const SEARCH = { folders: "Search folders", chats: "Search chats" };
 
-  for (const live of document.querySelectorAll("[data-live]")) {
-    const field = live.querySelector(".zz-filter");
-    const input = field.querySelector("input");
-    const list = live.querySelector(".zz-list");
-    const draw = () => {
+  const pane = `
+    <section data-penna="pane">
+      <div data-penna="bar.pane">
+        <div data-penna="button.title"><i data-icon="asterisk"></i>Claude Code<span class="zz-cwd">${pathOf[HERE]}</span></div>
+        <span class="zz-grow"></span>
+        <button data-penna="icon-button.bar"><i data-icon="panel-bottom"></i></button>
+        <button data-penna="icon-button.bar"><i data-icon="layout-columns"></i></button>
+        <button data-penna="icon-button.bar"><i data-icon="xmark"></i></button>
+      </div>
+      <div class="zz-empty">
+        <div class="zz-empty-col">
+          <div class="zz-hero"><i data-icon="asterisk"></i><b>Claude Code is ready</b><span>${WELCOME}</span></div>
+          <div class="zz-project">
+            <button class="zz-pbtn" data-penna="button" data-opens="folders" type="button"><i data-icon="folder"></i><span>${HERE}</span><i data-icon="chevron-down"></i></button>
+            <button class="zz-pbtn" data-penna="button.quiet" data-opens="chats" type="button"><i data-icon="history"></i><span>Resume</span><i data-icon="chevron-down"></i></button>
+            <div class="zz-menu" data-penna="popover" hidden>
+              <label class="zz-filter" data-penna="field"><i data-icon="search"></i><input spellcheck="false" autocomplete="off"></label>
+              <div class="zz-rows"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="zz-dock">
+        <div class="zz-composer" data-penna="field.composer">
+          <button class="zz-plus" data-penna="icon-button"><i data-icon="plus"></i></button>
+          <div class="zz-input penna-muted">Message Claude Code...</div>
+          <button data-penna="button.send" data-prominent data-state="disabled"><i data-icon="arrow-up"></i></button>
+        </div>
+        <div class="zz-foot">
+          <span class="zz-grow"></span>
+          <span class="zz-chip" data-penna="chip"><i data-icon="circle-user"></i>Ask</span>
+          <span class="zz-chip" data-penna="chip">Opus 5.5<span class="zz-dim">High</span><i data-icon="chevron-down"></i></span>
+        </div>
+      </div>
+    </section>`;
+  const loading = `<div class="zz-loading"><i data-icon="loader"></i><span>Loading</span></div>`;
+
+  for (const frame of document.querySelectorAll("[data-project]")) {
+    frame.innerHTML = pane;
+    const box = frame.querySelector(".zz-project");
+    const buttons = [...box.querySelectorAll(".zz-pbtn")];
+    const menu = box.querySelector(".zz-menu");
+    const input = menu.querySelector("input");
+    const list = menu.querySelector(".zz-rows");
+    const hero = frame.querySelector(".zz-hero > span");
+    const cwd = frame.querySelector(".zz-cwd");
+    const state = {
+      mode: frame.dataset.open || null,
+      place: HERE,
+      listed: !frame.hasAttribute("data-live"),
+      fetching: false,
+      timer: 0,
+      shown: 8,
+      at: 0,
+      rows: [],
+    };
+    input.value = frame.dataset.query || "";
+
+    const view = () => {
       const query = input.value.trim().toLowerCase();
-      field.toggleAttribute("data-filled", query !== "");
       const has = (...parts) => parts.some((part) => part.toLowerCase().includes(query));
-      let html;
-      if (!query) {
-        html = label("Recent here", ["↑", "to pick"]) + here.slice(0, 3).map(([title, age]) => chat(title, "", age)).join("") + quiet("More chats here")
-          + label("Projects") + folders.slice(0, 5).map(folder).join("") + quiet("More projects");
-      } else {
-        const found = [...folders, ...scratch].filter(([name, path]) => has(name, path));
-        const chats = [...here.map(([title, age]) => [title, "zebrilus", age]), ...elsewhere].filter(([title, place]) => has(title, place));
-        html = (found.length ? label("Folders", ["esc", "clear"]) + found.map(folder).join("") : "")
-          + (chats.length ? label("Chats", found.length ? null : ["esc", "clear"]) + chats.map(([title, place, age]) => chat(title, place, age)).join("") : "")
-          || quiet("Nothing matches");
+      const none = [{ kind: "none", text: "Nothing matches" }];
+      if (!state.listed) return [{ kind: "loading" }];
+      const tail = (rows) => (state.fetching ? [...rows, { kind: "loading" }] : rows.length ? rows : none);
+      if (state.mode === "chats") {
+        const every = Object.entries(chatsOf).flatMap(([place, titles]) => titles.map(([title, age]) => ({ kind: "chat", title, place, age })));
+        if (query) return tail(every.filter(({ title, place }) => has(title, place)));
+        const mine = every.filter(({ place }) => place === state.place).map((chat) => ({ ...chat, shown: "" }));
+        const rest = every.filter(({ place }) => place !== state.place).slice(0, 8);
+        return tail([
+          { kind: "label", text: `In ${state.place}` },
+          ...(mine.length ? mine : [{ kind: "none", text: "No chats here yet" }]),
+          { kind: "label", text: "Other folders" },
+          ...rest,
+        ]);
       }
-      list.innerHTML = html;
-      const first = query && list.querySelector(".zz-prow:not([data-quiet])");
-      if (first) {
-        first.dataset.state = "current";
-        first.append(make(`<span data-penna="keycap">↵</span>`));
+      const known = projects.slice(0, state.shown);
+      if (query) return tail([...known, ...scratch].filter(([name, path]) => has(name, path)).map((folder) => ({ kind: "folder", folder })));
+      return tail(known.map((folder) => ({ kind: "folder", folder })));
+    };
+    const picks = (row) => row && (row.kind === "folder" || row.kind === "chat");
+
+    const row = (item, at) => {
+      if (item.kind === "loading") return loading;
+      if (item.kind === "label") return `<div class="zz-plabel">${item.text}</div>`;
+      if (item.kind === "none") return `<div class="zz-none">${item.text}</div>`;
+      if (item.kind === "chat") {
+        const place = item.shown ?? item.place;
+        return `<div data-penna="menu-item" data-row="${at}"><span class="zz-ptitle">${item.title}</span>${place ? `<span class="zz-pnote">${place}</span>` : ""}<span class="zz-pnote zz-age">${item.age}</span></div>`;
+      }
+      const [name, path, age] = item.folder;
+      const note = name === state.place ? `<i data-icon="check"></i>` : `<span class="zz-pnote zz-age">${age}</span>`;
+      return `<div data-penna="menu-item" data-row="${at}"><i data-icon="folder"></i><span class="zz-ptitle">${name}<span class="zz-path">${path}</span></span>${note}</div>`;
+    };
+
+    const mark = () => {
+      for (const item of list.querySelectorAll("[data-row]")) {
+        const at = Number(item.dataset.row);
+        if (at === state.at) item.dataset.state = "current";
+        else item.removeAttribute("data-state");
+        item.querySelector("[data-penna='keycap']")?.remove();
+        if (input.value.trim() && at === state.at) item.append(make(`<span data-penna="keycap">↵</span>`));
       }
       tidy();
     };
-    input.addEventListener("input", draw);
+    const draw = () => {
+      menu.hidden = !state.mode;
+      input.placeholder = SEARCH[state.mode] ?? "";
+      for (const button of buttons) {
+        if (button.dataset.opens === state.mode) button.dataset.state = "current";
+        else button.removeAttribute("data-state");
+      }
+      state.rows = view();
+      if (!picks(state.rows[state.at])) state.at = state.rows.findIndex(picks);
+      list.innerHTML = state.rows.map(row).join("");
+      mark();
+    };
+
+    const move = (name) => {
+      state.place = name;
+      buttons[0].children[1].textContent = name;
+      cwd.textContent = pathOf[name] ?? name;
+    };
+    const more = () => {
+      clearTimeout(state.timer);
+      state.fetching = Boolean(state.mode && state.listed && state.shown < projects.length);
+      if (!state.fetching) return;
+      state.timer = setTimeout(() => {
+        state.shown = Math.min(projects.length, state.shown + PAGE);
+        more();
+        draw();
+      }, 400);
+    };
+    const close = () => {
+      state.mode = null;
+      input.value = "";
+      more();
+      draw();
+    };
+    const pick = (data) => {
+      if (data?.kind === "folder") {
+        move(data.folder[0]);
+        close();
+      } else if (data?.kind === "chat") {
+        const from = state.place;
+        move(data.place);
+        close();
+        hero.textContent = `Resuming "${data.title}"`;
+        setTimeout(() => {
+          hero.textContent = WELCOME;
+          move(from);
+        }, 1600);
+      }
+    };
+    const step = (by) => {
+      let at = state.at + by;
+      while (state.rows[at] && !picks(state.rows[at])) at += by;
+      if (!state.rows[at]) return;
+      state.at = at;
+      mark();
+      list.querySelector(`[data-row="${at}"]`)?.scrollIntoView({ block: "nearest" });
+    };
+
+    for (const button of buttons) {
+      button.addEventListener("click", () => {
+        if (state.mode === button.dataset.opens) return close();
+        state.mode = button.dataset.opens;
+        state.at = 0;
+        input.value = "";
+        more();
+        draw();
+        list.scrollTop = 0;
+        input.focus({ preventScroll: true });
+        if (!state.listed) {
+          setTimeout(() => {
+            state.listed = true;
+            more();
+            draw();
+          }, 900);
+        }
+      });
+    }
+    input.addEventListener("input", () => {
+      state.at = -1;
+      list.scrollTop = 0;
+      draw();
+    });
     input.addEventListener("keydown", (event) => {
-      if (event.key !== "Escape") return;
-      input.value = "";
-      draw();
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        step(event.key === "ArrowDown" ? 1 : -1);
+      } else if (event.key === "Enter") {
+        pick(state.rows[state.at]);
+      } else if (event.key === "Escape") {
+        if (input.value) {
+          input.value = "";
+          draw();
+        } else close();
+      }
     });
-    field.querySelector("button").addEventListener("click", () => {
-      input.value = "";
-      draw();
-      input.focus();
+    list.addEventListener("mousemove", (event) => {
+      const item = event.target.closest("[data-row]");
+      if (!item || Number(item.dataset.row) === state.at) return;
+      state.at = Number(item.dataset.row);
+      mark();
     });
+    list.addEventListener("click", (event) => {
+      const item = event.target.closest("[data-row]");
+      if (item) pick(state.rows[Number(item.dataset.row)]);
+    });
+    frame.addEventListener("mousedown", (event) => {
+      if (state.mode && !box.contains(event.target)) close();
+    });
+
+    more();
     draw();
   }
 
   const efforts = ["Default", "Low", "Medium", "High", "Extra high", "Max"];
   const short = ["Default", "Low", "Medium", "High", "XHigh", "Max"];
-  const latest = ["Default", "Opus 5.5", "Fable 5.2", "Sonnet 5.5", "Haiku 5.5"];
-  const older = ["Fable 5.1", "Haiku 4.5", "Sonnet 5", "Opus 5", "Fable 5", "Opus 4.8", "Opus 4.7", "Opus 4.6", "Sonnet 4.6", "Haiku 4"];
+  const models = ["Default", "Opus 5.5", "Fable 5.2", "Sonnet 5.5", "Haiku 5.5", "Fable 5.1", "Haiku 4.5", "Sonnet 5", "Opus 5", "Fable 5", "Opus 4.8", "Opus 4.7", "Opus 4.6", "Sonnet 4.6", "Haiku 4"];
   const row = (name) => `<div data-penna="menu-item" data-model="${name}"><span>${name}</span><i data-icon="check"></i></div>`;
 
   for (const demo of document.querySelectorAll("[data-pick]")) {
     const chip = demo.querySelector("[data-model-chip]");
     const list = demo.querySelector("[data-models]");
     const slide = demo.querySelector("[data-slide]");
-    let model = "Opus 5.5";
+    let model = "Opus 4.8";
     let level = 3;
 
-    list.innerHTML = `<div class="zz-models">${latest.map(row).join("")}<div data-pinned></div><div data-rest hidden>${older.map(row).join("")}</div></div>`
-      + `<div data-penna="menu-item" class="zz-more"><span>More models</span><em>${older.length}</em><i data-icon="chevron-down"></i></div>`;
-    const pinned = list.querySelector("[data-pinned]");
-    const more = list.querySelector(".zz-more");
-    const rest = list.querySelector("[data-rest]");
+    list.innerHTML = `<div class="zz-models">${models.map(row).join("")}</div>`;
+    const scroller = list.querySelector(".zz-models");
 
     slide.innerHTML = `<i class="zz-fill"></i>` + efforts.map((_, at) => `<b style="--i: ${at}"></b>`).join("") + `<i class="zz-knob"></i>`;
     const knob = slide.querySelector(".zz-knob");
     const dots = [...slide.querySelectorAll("b")];
 
     const paint = () => {
-      pinned.innerHTML = rest.hidden && older.includes(model) ? row(model) : "";
       for (const item of list.querySelectorAll("[data-model]")) {
         if (item.dataset.model === model) item.dataset.state = "selected";
         else item.removeAttribute("data-state");
@@ -347,16 +479,6 @@
       if (event.buttons) from(event);
     });
 
-    const open = (show) => {
-      rest.hidden = !show;
-      more.querySelector("span").textContent = show ? "Fewer models" : "More models";
-      more.querySelector("em").hidden = show;
-      more.querySelector("[data-icon]").dataset.icon = show ? "chevron-up" : "chevron-down";
-    };
-    more.addEventListener("click", () => {
-      open(rest.hidden);
-      paint();
-    });
     list.addEventListener("click", (event) => {
       const item = event.target.closest("[data-model]");
       if (!item) return;
@@ -364,6 +486,8 @@
       paint();
     });
     paint();
+    const current = scroller.querySelector(`[data-model="${model}"]`);
+    scroller.scrollTop = current.offsetTop - scroller.offsetTop - (scroller.clientHeight - current.offsetHeight) / 2;
   }
 })();
 </script>

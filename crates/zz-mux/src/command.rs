@@ -7955,13 +7955,13 @@ impl MuxEngine {
             ));
         }
         if selection.as_str() != "agent"
-            && (["--resume", "--model", "--effort", "--at"]
+            && (["--resume", "--model", "--effort", "--at", "--account"]
                 .iter()
                 .any(|option| options.value(option).is_some())
                 || options.has("--fork"))
         {
             return Err(ServerError::CommandParse(
-                "select-pane-kind: --resume, --fork, --at, --model and --effort need the agent kind"
+                "select-pane-kind: --resume, --fork, --at, --model, --effort and --account need the agent kind"
                     .to_owned(),
             ));
         }
@@ -19449,6 +19449,17 @@ fn agent_selection(options: &Options, args: &[RawText]) -> Result<AgentDescripto
     };
     let model = setting("--model")?;
     let effort = setting("--effort")?;
+    let account =
+        setting("--account")?.filter(|account| account != zz_protocol::DEFAULT_AGENT_ACCOUNT);
+    if account
+        .as_deref()
+        .is_some_and(|account| !zz_protocol::valid_agent_account(account))
+    {
+        return Err(ServerError::InvalidCommand(
+            "select-pane-kind: --account takes an account id (a-z, 0-9, - and _, starting with a letter or digit, at most 32 bytes) or default"
+                .to_owned(),
+        ));
+    }
     if options.has("--fork") && session_id.is_none() {
         return Err(ServerError::CommandParse(
             "select-pane-kind: --fork needs --resume".to_owned(),
@@ -19481,6 +19492,7 @@ fn agent_selection(options: &Options, args: &[RawText]) -> Result<AgentDescripto
         session_id: session_id.map(str::to_owned),
         model,
         effort,
+        account,
     })
 }
 
@@ -28710,7 +28722,8 @@ mod tests {
         .expect("agent with a trailing resume");
         let option_effect = select(&["-t", &option, "--resume", "thread-2", "agent", "codex"])
             .expect("agent with a resume option");
-        let bare_effect = select(&["-t", &bare, "agent", "claude-code"]).expect("bare agent");
+        let bare_effect = select(&["-t", &bare, "--account", "default", "agent", "claude-code"])
+            .expect("bare agent on the default account");
 
         let expected = [
             (
@@ -28780,8 +28793,20 @@ mod tests {
                 &command(
                     "select-pane-kind",
                     &[
-                        "-t", &target, "-c", "/work", "--resume", "s-1", "--model", "haiku",
-                        "--effort", "low", "agent", "claude",
+                        "-t",
+                        &target,
+                        "-c",
+                        "/work",
+                        "--resume",
+                        "s-1",
+                        "--model",
+                        "haiku",
+                        "--effort",
+                        "low",
+                        "--account",
+                        "a1",
+                        "agent",
+                        "claude",
                     ],
                 ),
             )
@@ -28792,6 +28817,7 @@ mod tests {
             session_id: Some("s-1".to_owned()),
             model: Some("haiku".to_owned()),
             effort: Some("low".to_owned()),
+            account: Some("a1".to_owned()),
         };
         assert_eq!(
             to_chat.effects.first(),
@@ -28817,6 +28843,26 @@ mod tests {
                 .is_err(),
             "a chat is already an agent pane"
         );
+        for account in ["A1", "-a", "a/b", &"a".repeat(33)] {
+            assert_eq!(
+                engine
+                    .execute(
+                        &mut ExecutionContext::default(),
+                        &command(
+                            "select-pane-kind",
+                            &["-t", &target, "--account", account, "agent", "claude"]
+                        ),
+                    )
+                    .map(|_| ())
+                    .map_err(|error| error.to_string()),
+                Err(if account == "-a" {
+                    "invalid command: select-pane-kind: --account takes one word".to_owned()
+                } else {
+                    "invalid command: select-pane-kind: --account takes an account id (a-z, 0-9, - and _, starting with a letter or digit, at most 32 bytes) or default".to_owned()
+                }),
+                "{account}"
+            );
+        }
 
         let to_cli = engine
             .execute(

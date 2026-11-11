@@ -9,6 +9,7 @@ use zz_protocol::{AgentConnectionPhase, AgentPaneWire, AgentProvider};
 
 pub(crate) use crate::agent::codex::codex_home;
 use crate::agent::{
+    accounts,
     claude::sessions,
     claude_peers::{self, PeerRecord},
     codex::rollout::RolloutMeta,
@@ -617,12 +618,29 @@ pub(crate) fn cli_command(
     words
 }
 
-pub(crate) fn interactive_shell(words: &[String]) -> Vec<String> {
-    let line = words
-        .iter()
-        .map(|word| shell_word(word))
+pub(crate) fn interactive_shell(
+    account: Option<(AgentProvider, &Path)>,
+    words: &[String],
+) -> Vec<String> {
+    let command = account
+        .map(|(provider, home)| {
+            format!(
+                "{}={}",
+                accounts::variable(provider),
+                shell_word(&home.to_string_lossy())
+            )
+        })
+        .into_iter()
+        .chain(words.iter().map(|word| shell_word(word)))
         .collect::<Vec<_>>()
         .join(" ");
+    let line = match account {
+        Some((provider, _)) => format!(
+            "unset {}; {command}",
+            accounts::login_overrides(provider).join(" ")
+        ),
+        None => command,
+    };
     vec![
         FALLBACK_SHELL.to_owned(),
         "-c".to_owned(),

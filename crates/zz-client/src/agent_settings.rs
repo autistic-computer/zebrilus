@@ -1,9 +1,10 @@
 use serde_json::Value;
-use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
+use zz_protocol::{
+    AgentAccount, AgentProvider, CommandInvocation, MuxSnapshot, PaneId, PaneKindSnapshot,
+};
 
 pub const MODEL: &str = "model";
 pub const EFFORT: &str = "effort";
-pub const LATEST_MODELS: usize = 5;
 const UNSET_EFFORT: &str = "default";
 pub const MODE: &str = "mode";
 
@@ -47,14 +48,15 @@ impl LensSettings {
                 .collect::<Vec<_>>()
         };
         let current = text(&model["currentValue"]);
-        let label = model["_meta"]["zz"]["label"]
-            .as_str()
-            .filter(|label| !label.is_empty())
-            .map_or_else(|| current.clone(), str::to_owned);
+        let models = choices(Some(model));
+        let label = models
+            .iter()
+            .find(|choice| choice.value == current && !choice.name.is_empty())
+            .map_or_else(|| current.clone(), |choice| choice.name.clone());
         Some(Self {
             model: current,
             model_label: label,
-            models: choices(Some(model)),
+            models,
             effort: effort
                 .map(|effort| text(&effort["currentValue"]))
                 .unwrap_or_default(),
@@ -87,26 +89,6 @@ impl LensSettings {
         self.efforts
             .first()
             .is_some_and(|choice| choice.value == UNSET_EFFORT)
-    }
-
-    #[must_use]
-    pub fn listed_models(&self, all: bool) -> Vec<&Choice> {
-        if all {
-            return self.models.iter().collect();
-        }
-        let mut listed = self.models.iter().take(LATEST_MODELS).collect::<Vec<_>>();
-        listed.extend(
-            self.models
-                .iter()
-                .skip(LATEST_MODELS)
-                .find(|choice| choice.value == self.model),
-        );
-        listed
-    }
-
-    #[must_use]
-    pub fn older_models(&self) -> usize {
-        self.models.len().saturating_sub(LATEST_MODELS)
     }
 
     #[must_use]
@@ -235,6 +217,74 @@ pub const fn agent_program(provider: AgentProvider) -> &'static str {
     }
 }
 
+#[must_use]
+pub fn pane_account(snapshot: &MuxSnapshot, pane: PaneId) -> Option<&str> {
+    snapshot
+        .sessions
+        .iter()
+        .flat_map(|session| &session.windows)
+        .find_map(|window| window.panes.get(&pane))
+        .and_then(|pane| match &pane.kind {
+            PaneKindSnapshot::Agent(agent) => agent.account.as_deref(),
+            _ => None,
+        })
+}
+
+pub const DEFAULT_ACCOUNT_NAME: &str = "Default";
+pub const SIGNED_OUT: &str = "Signed out";
+
+#[must_use]
+pub fn account_name(account: &AgentAccount) -> String {
+    account
+        .email
+        .clone()
+        .or_else(|| account.id.clone())
+        .unwrap_or_else(|| DEFAULT_ACCOUNT_NAME.to_owned())
+}
+
+#[must_use]
+pub fn account_label(
+    accounts: &[AgentAccount],
+    provider: AgentProvider,
+    current: Option<&str>,
+) -> String {
+    accounts
+        .iter()
+        .find(|account| account.provider == provider && account.id.as_deref() == current)
+        .map_or_else(
+            || current.unwrap_or(DEFAULT_ACCOUNT_NAME).to_owned(),
+            account_name,
+        )
+}
+
+#[must_use]
+pub fn account_detail(account: &AgentAccount) -> Option<String> {
+    if !account.signed_in {
+        return Some(SIGNED_OUT.to_owned());
+    }
+    let parts = account
+        .plan
+        .as_deref()
+        .map(plan_name)
+        .into_iter()
+        .chain(account.organization.clone())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    (!parts.is_empty()).then(|| parts.join(" · "))
+}
+
+fn plan_name(plan: &str) -> String {
+    let words = plan
+        .split('_')
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut characters = words.chars();
+    characters.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(characters).collect()
+    })
+}
+
 pub const SIDE_CHAT_WIDTH: &str = "46%";
 pub const SIDE_CHAT_HEIGHT: &str = "72%";
 
@@ -252,6 +302,7 @@ fn forked_chat(
     session: &str,
     message: Option<&str>,
     settings: Option<&LensSettings>,
+    account: Option<&str>,
 ) -> CommandInvocation {
     let mut select = vec!["select-pane-kind", "--resume", session, "--fork"];
     if let Some(message) = message {
@@ -265,6 +316,9 @@ fn forked_chat(
             select.extend(["--effort", &settings.effort]);
         }
     }
+    if let Some(account) = account {
+        select.extend(["--account", account]);
+    }
     select.extend(["agent", agent_program(provider)]);
     let line = format!("{} ; {}", command_line(opener), command_line(&select));
     CommandInvocation::new("if-shell", ["-F", "1", &line])
@@ -277,6 +331,7 @@ pub fn fork_chat_command(
     cwd: &str,
     message: Option<&str>,
     settings: Option<&LensSettings>,
+    account: Option<&str>,
 ) -> CommandInvocation {
     forked_chat(
         &["new-window", "-c", cwd],
@@ -284,6 +339,7 @@ pub fn fork_chat_command(
         session,
         message,
         settings,
+        account,
     )
 }
 
@@ -294,6 +350,7 @@ pub fn side_chat_command(
     cwd: &str,
     from: PaneId,
     settings: Option<&LensSettings>,
+    account: Option<&str>,
 ) -> CommandInvocation {
     let from = from.to_string();
     forked_chat(
@@ -314,6 +371,7 @@ pub fn side_chat_command(
         session,
         None,
         settings,
+        account,
     )
 }
 
@@ -328,13 +386,45 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn an_account_reads_as_its_email_else_its_id_else_default() {
+        let account = |id: Option<&str>, email: Option<&str>, plan: Option<&str>| AgentAccount {
+            provider: AgentProvider::ClaudeCode,
+            id: id.map(str::to_owned),
+            signed_in: email.is_some(),
+            email: email.map(str::to_owned),
+            organization: None,
+            plan: plan.map(str::to_owned),
+        };
+        let accounts = [
+            account(None, Some("me@home.dev"), Some("max_20x")),
+            AgentAccount {
+                organization: Some("Acme".to_owned()),
+                ..account(Some("a1"), Some("me@acme.dev"), Some("team"))
+            },
+        ];
+        let label = |current| account_label(&accounts, AgentProvider::ClaudeCode, current);
+        assert_eq!(label(None), "me@home.dev");
+        assert_eq!(label(Some("a1")), "me@acme.dev");
+        assert_eq!(label(Some("a7")), "a7");
+        assert_eq!(
+            account_label(&accounts, AgentProvider::Codex, None),
+            "Default"
+        );
+        assert_eq!(account_detail(&accounts[0]).as_deref(), Some("Max 20x"));
+        assert_eq!(account_detail(&accounts[1]).as_deref(), Some("Team · Acme"));
+        let signed_out = account(None, None, None);
+        assert_eq!(account_name(&signed_out), "Default");
+        assert_eq!(account_detail(&signed_out).as_deref(), Some("Signed out"));
+    }
+
+    #[test]
     fn lens_settings_read_the_daemons_config_options() {
         let options = json!([
-            {"id":"model","currentValue":"opus","options":[{"value":"opus","name":"Opus"},{"value":"haiku","name":"Haiku"}],"_meta":{"zz":{"label":"Opus 5.5"}}},
+            {"id":"model","currentValue":"haiku","options":[{"value":"opus","name":"Opus 5.5"},{"value":"haiku","name":"Haiku 5.5"}]},
             {"id":"effort","currentValue":"xhigh","options":[{"value":"high","name":"High"},{"value":"xhigh","name":"Extra high"}]},
         ]);
         let settings = LensSettings::parse(&options).expect("settings");
-        assert_eq!(settings.summary(), "Opus 5.5 · Extra high");
+        assert_eq!(settings.summary(), "Haiku 5.5 · Extra high");
         assert_eq!(settings.models.len(), 2);
         assert_eq!(
             settings.choices(EFFORT).map(|(_, current)| current),
@@ -350,7 +440,7 @@ mod tests {
         );
         assert_eq!(short_folder("/", None), "/");
         let codex = LensSettings::parse(&json!([
-            {"id":"model","currentValue":"gpt-6-luna","options":[{"value":"gpt-6-luna","name":"GPT-6-Luna","_meta":{"zz":{"efforts":["low","high"],"defaultEffort":"low"}}}],"_meta":{"zz":{"label":"GPT-6-Luna"}}},
+            {"id":"model","currentValue":"gpt-6-luna","options":[{"value":"gpt-6-luna","name":"GPT-6-Luna","_meta":{"zz":{"efforts":["low","high"],"defaultEffort":"low"}}}]},
             {"id":"effort","currentValue":"high","options":[{"value":"low","name":"Low"},{"value":"high","name":"High"}]},
         ]))
         .expect("codex");
@@ -384,27 +474,6 @@ mod tests {
                 ModeRisk::Unguarded,
             ]
         );
-    }
-
-    #[test]
-    fn the_model_list_is_the_first_five_and_keeps_an_older_pick() {
-        let options = (1..=7)
-            .map(|n| json!({"value": format!("m{n}"), "name": format!("M{n}")}))
-            .collect::<Vec<_>>();
-        let settings = LensSettings::parse(&json!([
-            {"id":"model","currentValue":"m7","options":options},
-        ]))
-        .expect("settings");
-        let listed = |all| {
-            settings
-                .listed_models(all)
-                .iter()
-                .map(|choice| choice.value.as_str())
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(listed(false), ["m1", "m2", "m3", "m4", "m5", "m7"]);
-        assert_eq!(listed(true), ["m1", "m2", "m3", "m4", "m5", "m6", "m7"]);
-        assert_eq!(settings.older_models(), 2);
     }
 
     #[test]
@@ -481,6 +550,7 @@ mod tests {
                 "t",
                 "/src/my app",
                 Some("i"),
+                None,
                 None
             )),
             "new-window -c '/src/my app' ; select-pane-kind --resume t --fork --at i agent codex"
@@ -490,6 +560,7 @@ mod tests {
                 AgentProvider::ClaudeCode,
                 "s",
                 "/a",
+                None,
                 None,
                 None
             )),
@@ -501,9 +572,10 @@ mod tests {
                 "s",
                 "/a/it's $HOME",
                 PaneId(4),
-                None
+                None,
+                Some("a2")
             )),
-            "new-pane -t %4 -c \"/a/it's \\$HOME\" -x 46% -y 72% -T 'Side chat' ; select-pane-kind --resume s --fork agent claude"
+            "new-pane -t %4 -c \"/a/it's \\$HOME\" -x 46% -y 72% -T 'Side chat' ; select-pane-kind --resume s --fork --account a2 agent claude"
         );
         let settings = LensSettings {
             model: "haiku".to_owned(),
@@ -516,9 +588,10 @@ mod tests {
                 "s",
                 "/a",
                 Some("m"),
-                Some(&settings)
+                Some(&settings),
+                Some("a1")
             )),
-            "new-window -c /a ; select-pane-kind --resume s --fork --at m --model haiku --effort low agent claude"
+            "new-window -c /a ; select-pane-kind --resume s --fork --at m --model haiku --effort low --account a1 agent claude"
         );
         assert!(!real_session("lens-%3"));
     }

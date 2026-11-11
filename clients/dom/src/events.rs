@@ -183,6 +183,7 @@ pub fn describe(client: &mut Client, event: CoreEvent) -> Value {
             "result": result,
         }),
         CoreEvent::ProvidersChanged => json!({ "type": "providers" }),
+        CoreEvent::AgentAccountsChanged => json!({ "type": "agentAccounts" }),
         CoreEvent::Message(message) => {
             json!({ "type": "message", "name": variant(&format!("{message:?}")) })
         }

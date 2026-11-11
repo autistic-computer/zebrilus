@@ -937,6 +937,7 @@ struct HostConnection {
     background_core: ClientCore,
     providers: Option<zz_protocol::ProvidersReport>,
     providers_requested: bool,
+    agent_accounts: Option<Vec<zz_protocol::AgentAccount>>,
     platform: zz_protocol::HostPlatform,
 }
 
@@ -970,6 +971,7 @@ impl HostConnection {
             background_core: ClientCore::new(),
             providers: None,
             providers_requested: false,
+            agent_accounts: None,
             platform: zz_protocol::HostPlatform::Unknown,
         }
     }
@@ -1053,6 +1055,7 @@ impl HostConnection {
             background_core: ClientCore::new(),
             providers: None,
             providers_requested: false,
+            agent_accounts: None,
             platform,
         })
     }
@@ -3456,6 +3459,24 @@ impl MuxClient {
         );
     }
 
+    pub(crate) fn host_agent_accounts(&self, host: HostId) -> Option<&[zz_protocol::AgentAccount]> {
+        self.connections.get(&host)?.agent_accounts.as_deref()
+    }
+
+    pub(crate) fn request_agent_accounts(&self, host: HostId) {
+        self.execute_on_host(
+            host,
+            CommandInvocation::new("agent-accounts", Vec::<String>::new()),
+        );
+    }
+
+    pub(crate) fn add_agent_account(&self, host: HostId, provider: zz_protocol::AgentProvider) {
+        self.execute_on_host(
+            host,
+            CommandInvocation::new("agent-accounts", ["--add", provider.as_str()]),
+        );
+    }
+
     pub fn new_session(&self, host: HostId) {
         let Some(connection) = self.connections.get(&host) else {
             log::warn!("cannot create a session on unknown fleet host {host:?}");
@@ -4395,6 +4416,16 @@ impl MuxClient {
                 cx.notify();
                 return;
             }
+            ProtocolMessage::Event(Event {
+                payload: EventPayload::AgentAccounts(accounts),
+                ..
+            }) => {
+                if let Some(connection) = self.connections.get_mut(&host) {
+                    connection.agent_accounts = Some(accounts);
+                }
+                cx.notify();
+                return;
+            }
             ProtocolMessage::Batch(batch) => {
                 match batch.messages() {
                     Ok(messages) => {
@@ -4816,7 +4847,8 @@ impl MuxClient {
             | CoreEvent::ViewportChanged { .. }
             | CoreEvent::StatusChanged
             | CoreEvent::CommandOutputChanged
-            | CoreEvent::ProvidersChanged => {}
+            | CoreEvent::ProvidersChanged
+            | CoreEvent::AgentAccountsChanged => {}
             CoreEvent::AgentSessions { pane, result, .. } => {
                 #[cfg(feature = "agent-pane")]
                 if self.watched_agents.contains(&pane) {

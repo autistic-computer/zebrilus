@@ -1,6 +1,6 @@
 ---
 type: Protocol
-title: zz wire protocol (v122)
+title: zz wire protocol (v123)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
@@ -15,8 +15,8 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 122`** (`crates/zz-protocol/src/message.rs`). Each side also states its
-build `REVISION` in the handshake and holds a floor for the other side's (see v122 below).
+**`PROTOCOL_VERSION = 123`** (`crates/zz-protocol/src/message.rs`). Each side also states its
+build `REVISION` in the handshake and holds a floor for the other side's (see v123 below).
 
 `PROTOCOL_VERSION` is a wire epoch. It is checked for equality, never negotiated: a frame whose
 envelope version differs from the running build's is rejected outright. Before disconnecting, a
@@ -53,7 +53,7 @@ was not built with. The capability rule makes sure it never receives one. Each t
 names the capability its receiver must have, in `ProtocolMessage::required_capability` and
 `EventPayload::required_capability` (`crates/zz-protocol/src/message.rs`). Both are exhaustive
 matches with no wildcard arm, so a new variant does not compile until it answers.
-`ProtocolMessage::Event` answers with its payload's. Every variant shipped at v122 answers `None`.
+`ProtocolMessage::Event` answers with its payload's. Every variant shipped at v123 answers `None`.
 
 The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only inside an epoch:
 
@@ -64,7 +64,7 @@ The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only
 - `CLIENT_CAPABILITY_NAMES` is what a client can decode. Every client built from this source
   appends all of them to `ClientHello.capabilities`: `connect_stream_hello` in `zz-daemon-client`,
   `browser::hello` in the browser client, `hello` in the HTML client. A message the daemon sends
-  names one of these. It is empty at v122.
+  names one of these. It is empty at v123.
 
 The sender checks, so the receiver never sees what it cannot decode:
 
@@ -73,7 +73,7 @@ The sender checks, so the receiver never sees what it cannot decode:
   `connect_stream_hello` hands the sender the hello's list; a connection that opens with `Exec`
   gets none, so every gated message on it is refused. `InteractiveClient` and `CommandClient` both
   write through it, and `InteractiveClient::send_with_fd` makes the same check. Two writes skip it
-  and carry fixed v122 messages only: the key-input fast path (`InputMessage::Key`) and the control
+  and carry fixed v123 messages only: the key-input fast path (`InputMessage::Key`) and the control
   client's `ControlStdio` handoff in `zz-cli`.
 - The browser client: `Connection::send` checks `Welcome::has_capability` and drops the message with
   a warning. The HTML client checks nothing, so it must not send a gated message until it does.
@@ -179,7 +179,7 @@ Relevant constants (`framing.rs`): `MAX_FRAME_BYTES = 64 * 1024 * 1024`, `ENVELO
 | length | 0..4 | `u32` LE | Bytes following the prefix (`4 + payload`) |
 | lane | 4 | `u8` | `0` = Control, `1` = Terminal |
 | flags | 5 | `u8` | `0x00` only; every other value is rejected |
-| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (122) |
+| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (123) |
 | payload | 8.. | bytes | `postcard(ProtocolMessage)` (Control) or packed terminal sections |
 
 # Schema . `ProtocolMessage` (Control lane)
@@ -624,7 +624,7 @@ Protocol v104 appends `NativeCommandParse(String)` at tag 14 for zz-native verbs
 `NativeInvalidCommand(String)` at tag 16 for native usage errors promoted to command-time
 failures by callback construction. The latter retains the runtime error phase of `InvalidCommand`.
 Both parse variants support the same parse-error checks and diagnostic rendering. Command clients
-return 2 for the native variants, and 1 for `CommandParse` or `UnsupportedCommand`. Protocol v122
+return 2 for the native variants, and 1 for `CommandParse` or `UnsupportedCommand`. Protocol v123
 appends `ClientTooOld { client: u32, minimum: u32 }` at tag 17: the daemon's answer to a hello whose
 `revision` is below its `MIN_CLIENT_REVISION`, carrying both numbers.
 
@@ -1181,7 +1181,21 @@ pane it belongs to and `content` is a `ViewContent`: `Diagram { language, source
 checked when a descriptor decodes, so the kind stays small in every snapshot and delta.
 `view-pane` joins the command catalog ([agent panes](/concepts/agent-panes.md#previews-and-the-view-pane)).
 
-v122 is the setup epoch for [split updates](/designs/split-updates.md). `zz-protocol` gains
+v122 appends `AgentDescriptor.account`, an `Option<String>` naming the account an agent pane runs
+on: a directory zz keeps per provider under its data directory, whose id is
+`[a-z0-9][a-z0-9_-]{0,31}` (`zz_protocol::valid_agent_account`). `None` is the CLI's own login.
+`select-pane-kind --account id` sets it and `agent-account [-t pane] id|default` changes it on a
+live chat ([agent panes](/concepts/agent-panes.md#accounts)); `default` in both means no account and
+is never an id. v122 also appends `EventPayload::AgentAccounts(Vec<AgentAccount>)`, the answer to the
+internal `agent-accounts [--add provider]` command. `AgentAccount { provider, id, signed_in, email,
+organization, plan }` is one account of one CLI on the daemon's host: `id: None` is the CLI's own
+login and comes first for its provider, followed by the accounts that are signed in; an account that
+is not signed in is left out, and a CLI that is not installed has no rows. Each text field is at most
+`MAX_PROVIDER_TEXT_BYTES`. Every plain call sends the list the daemon already has, if it has one,
+asks the CLIs again, and sends the whole list to every client that asked when it changes. The
+account work stays on v122.
+
+v123 is the setup epoch for [split updates](/designs/split-updates.md). `zz-protocol` gains
 `REVISION: u32`, a build revision bumped by hand when behavior the other side relies on changes, and
 two floors, `MIN_DAEMON_REVISION` and `MIN_CLIENT_REVISION`, all 1. `ClientHello`, `Welcome` and
 `ServerHello` append `revision: u32`, which every sender fills with its `REVISION`. The daemon checks
@@ -1209,12 +1223,14 @@ to go idle ([agent panes](/concepts/agent-panes.md)).
 
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 122`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 123`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
-- v122 requires updated clients and daemon together, including the daemon on every ssh host.
-  v122 appends `ClientHello.revision`, `Welcome.revision`, `ServerHello.revision`,
+- v123 requires updated clients and daemon together, including the daemon on every ssh host.
+  v123 appends `ClientHello.revision`, `Welcome.revision`, `ServerHello.revision`,
   `ServerError::ClientTooOld` and `PaneKindSnapshot::Other`.
+- v122 requires updated clients and daemon together, including the daemon on every ssh host.
+  v122 appends `AgentDescriptor.account` and `EventPayload::AgentAccounts`.
 - v121 requires updated clients and daemon together, including the daemon on every ssh host.
   v121 appends `PaneKindSnapshot::View(ViewDescriptor)`.
 - v120 requires updated clients and daemon together, including the daemon on every ssh host.
@@ -1830,12 +1846,12 @@ to go idle ([agent panes](/concepts/agent-panes.md)).
 - v59 appends `TimedClientMessage` and adds automatic-rename plus retained-dead metadata to mux
   snapshots. Older clients cannot decode either shape, so the normal exact-version restart path is
   required.
-- **From v122 on, the version bumps only for a change an existing peer cannot decode or would get
+- **From v123 on, the version bumps only for a change an existing peer cannot decode or would get
   wrong**: a removed, reordered or reshaped message, variant or field, a changed integer width, a
   changed meaning, a variant appended to a nested enum, or any change to the terminal lane's
   packing ([wire epochs](#wire-epochs)). A `ProtocolMessage` or `EventPayload` variant appended
   inside the epoch is gated by a capability and needs no bump
-  ([adding a message inside an epoch](#adding-a-message-inside-an-epoch)). Through v122 every
+  ([adding a message inside an epoch](#adding-a-message-inside-an-epoch)). Through v123 every
   appended variant and field bumped it. The envelope's `VersionMismatch` guard then forces the
   peers to agree. A rejected first frame gets a best-effort mismatch response before
   disconnect; clients also classify the received envelope version or the daemon's versioned identity

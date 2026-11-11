@@ -22,6 +22,8 @@ use parking_lot::{Condvar, Mutex};
 #[cfg(windows)]
 use std::io::{Seek, SeekFrom};
 
+mod accounts;
+mod agent_account;
 mod agent_flip;
 #[cfg(feature = "agent")]
 mod agent_inbox;
@@ -4562,7 +4564,13 @@ const INSPECT_VERBS: &[(&str, &[&str])] = &[
     ("picker", &["resize-pane", "kill-pane", "select-pane-kind"]),
     (
         "agent",
-        &["agent-send", "flip-agent", "resize-pane", "kill-pane"],
+        &[
+            "agent-send",
+            "flip-agent",
+            "agent-account",
+            "resize-pane",
+            "kill-pane",
+        ],
     ),
 ];
 
@@ -4594,6 +4602,8 @@ enum DaemonCommandDispatch {
     AgentSend,
     AgentRespond,
     FlipAgent,
+    AgentAccount,
+    AgentAccounts,
     SendLastOutput,
     ShowLastOutput,
     Inspect,
@@ -4632,6 +4642,8 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("agent-send", DaemonCommandDispatch::AgentSend),
     ("agent-respond", DaemonCommandDispatch::AgentRespond),
     ("flip-agent", DaemonCommandDispatch::FlipAgent),
+    ("agent-account", DaemonCommandDispatch::AgentAccount),
+    ("agent-accounts", DaemonCommandDispatch::AgentAccounts),
     ("send-last-output", DaemonCommandDispatch::SendLastOutput),
     ("show-last-output", DaemonCommandDispatch::ShowLastOutput),
     ("inspect", DaemonCommandDispatch::Inspect),
@@ -4746,6 +4758,8 @@ struct SharedServer {
     #[cfg(feature = "agent")]
     agent_catalog_pending: Mutex<BTreeSet<(ClientId, PaneId, AgentProvider)>>,
     providers: Mutex<providers::Providers>,
+    #[cfg(all(feature = "agent", unix))]
+    agent_accounts: Mutex<accounts::Accounts>,
     #[cfg(feature = "agent")]
     agent_stopped: AtomicBool,
     #[cfg(all(feature = "agent", unix))]
@@ -5710,6 +5724,8 @@ impl Shared {
             #[cfg(feature = "agent")]
             agent_catalog_pending: Mutex::new(BTreeSet::new()),
             providers: Mutex::new(providers::Providers::default()),
+            #[cfg(all(feature = "agent", unix))]
+            agent_accounts: Mutex::new(accounts::Accounts::default()),
             #[cfg(feature = "agent")]
             agent_stopped: AtomicBool::new(false),
             #[cfg(all(feature = "agent", unix))]
@@ -8459,6 +8475,12 @@ impl Shared {
                         self.agent_respond(kind, context, &command.args)
                     }
                     DaemonCommandDispatch::FlipAgent => self.flip_agent(context, &command.args),
+                    DaemonCommandDispatch::AgentAccount => {
+                        self.agent_account(context, &command.args)
+                    }
+                    DaemonCommandDispatch::AgentAccounts => {
+                        self.agent_accounts(client, context, &command.args)
+                    }
                     DaemonCommandDispatch::SendLastOutput => {
                         self.send_last_output(client, context, &command.args)
                     }
@@ -32841,6 +32863,7 @@ impl Shared {
                 tmux_pane: None,
                 tools,
                 tools_executable,
+                account: None,
             },
         }
     }
@@ -33213,6 +33236,10 @@ impl Shared {
                 socket: None,
                 tmux: session.map(|session| tmux_environment(&self.socket_path, Some(session))),
                 tmux_pane: Some(pane.to_string()),
+                account: descriptor
+                    .account
+                    .as_deref()
+                    .map(|id| crate::agent::accounts::Account::resolve(descriptor.provider, id)),
                 ..AgentWorkspaceEnvironment::default()
             },
         })
@@ -33818,6 +33845,19 @@ impl Shared {
         let payload = EventPayload::AgentState { pane, state };
         for subscriber in subscribers {
             Self::send_event(&subscriber, payload.clone());
+        }
+    }
+
+    fn apply_agent_folder(self: &Arc<Self>, pane: PaneId, cwd: PathBuf) {
+        let moved = self
+            .inner
+            .lock()
+            .engine
+            .state
+            .update_agent(pane, |agent| agent.cwd = Some(cwd))
+            .unwrap_or(false);
+        if moved {
+            self.publish_snapshot_state();
         }
     }
 
@@ -51741,11 +51781,15 @@ Commands that set an explicit exit code keep that code.
 ";
     WORKSPACE_TOOLS_AGENT = r#"## Agents
 
-Claude Code and Codex run two ways in a pane, and a pane flips between them on the same session. In a terminal pane the CLI runs as its own TUI, started like any program (`zz split-window -h claude`). In an agent pane the daemon runs the CLI headless and the clients draw the conversation as a chat: `zz select-pane-kind -t %N [-c DIR] [--resume ID] [--model M] [--effort E] agent claude|codex` turns a picker or a terminal into one.
+Claude Code and Codex run two ways in a pane, and a pane flips between them on the same session. In a terminal pane the CLI runs as its own TUI, started like any program (`zz split-window -h claude`). In an agent pane the daemon runs the CLI headless and the clients draw the conversation as a chat: `zz select-pane-kind -t %N [-c DIR] [--resume ID] [--model M] [--effort E] [--account ID] agent claude|codex` turns a picker or a terminal into one.
 
 ### `zz flip-agent [-t %N] [--now | --when-idle | --cancel]`
 
 Flip a terminal running Claude Code or Codex into a chat on the same session, or a chat into a terminal running the CLI with that session resumed, through the user's interactive shell. The pane keeps its id and place. When something runs (a turn, background shells or subagents, queued prompts) the flip fails with an error that starts with `busy:` and says what runs; `--now` flips anyway and stops it, `--when-idle` flips once nothing runs, and `--cancel` drops a waiting flip. Codex on its shared app server never refuses: the turn lives in the server and the other side picks it up.
+
+### `zz agent-account [-t %N] ID|default`
+
+Move a chat to another account and resume the same session there. An account is a directory in zz's data directory (`accounts/claude/ID` or `accounts/codex/ID`) that shares sessions, settings and skills with the CLI's own directory and keeps its own login; everything the daemon runs for the pane gets `CLAUDE_CONFIG_DIR` or `CODEX_HOME` pointing at it. `default` goes back to the CLI's own login. While anything runs, a Codex turn included, it fails with an error that starts with `busy:`. A chat whose account directory is gone fails instead of running on another login. Flips keep the account: the CLI starts with the variable set, and a CLI started with an account's directory flips into a chat on that account. Forks and side chats opened from a chat stay on its account.
 
 `zz select-pane-kind --resume ID --fork [--at MESSAGE] agent claude|codex` opens a chat on a copy of a session, through that message's turn when `--at` names one.
 
@@ -51769,7 +51813,7 @@ Terminal agents keep their own permission settings: Codex `approval_policy`, Cla
 ### `zz inspect [-a | -t %N] [--json]`
 
 Describe a pane's kind, process, geometry, exit status, progress, agent facts, and browser URL.
-Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `verbs` lists what applies to this pane's kind; agent panes list `agent-send`, `flip-agent` and `agent-respond`, a terminal running Claude Code or Codex lists `flip-agent`, and another terminal with a nonempty `agent_state` lists `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
+Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `verbs` lists what applies to this pane's kind; agent panes list `agent-send`, `flip-agent`, `agent-account` and `agent-respond`, a terminal running Claude Code or Codex lists `flip-agent`, and another terminal with a nonempty `agent_state` lists `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
 
 ```sh
 zz inspect -a --json | jq -c 'select(.agent_state!="") | {pane_id,agent_state}'
@@ -83941,6 +83985,7 @@ set-option -g @alias-mixed-next yes
             "agent-send",
             "agent-respond",
             "flip-agent",
+            "agent-account",
             "send-last-output",
             "show-last-output",
             "send-text",

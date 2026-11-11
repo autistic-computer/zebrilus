@@ -63,6 +63,20 @@ pub fn flip_command(pane: PaneId, mode: FlipMode) -> CommandInvocation {
     CommandInvocation::new("flip-agent", args)
 }
 
+pub const DEFAULT_ACCOUNT: &str = "default";
+
+#[must_use]
+pub fn account_command(pane: PaneId, account: Option<&str>) -> CommandInvocation {
+    CommandInvocation::new(
+        "agent-account",
+        [
+            "-t".to_owned(),
+            pane.to_string(),
+            account.unwrap_or(DEFAULT_ACCOUNT).to_owned(),
+        ],
+    )
+}
+
 #[must_use]
 pub fn busy_reason(error: &str) -> Option<&str> {
     let start = error.find("busy:")?;
@@ -85,12 +99,14 @@ pub enum Flip {
     Sending(FlipMode),
     Busy(String),
     Armed,
+    SwitchingAccount,
+    AccountBusy(String),
 }
 
 impl Flip {
     #[must_use]
     pub const fn pending(&self) -> bool {
-        matches!(self, Self::Sending(_))
+        matches!(self, Self::Sending(_) | Self::SwitchingAccount)
     }
 
     #[must_use]
@@ -105,6 +121,36 @@ impl Flip {
             _ => None,
         }
     }
+
+    #[must_use]
+    pub fn account_busy(&self) -> Option<&str> {
+        match self {
+            Self::AccountBusy(reason) => Some(reason),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Sent {
+    Flip(FlipMode),
+    Account,
+}
+
+impl Sent {
+    const fn command(self) -> &'static str {
+        match self {
+            Self::Flip(_) => "flip-agent",
+            Self::Account => "agent-account",
+        }
+    }
+
+    const fn awaits(self) -> Flip {
+        match self {
+            Self::Flip(mode) => Flip::Sending(mode),
+            Self::Account => Flip::SwitchingAccount,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -117,7 +163,7 @@ struct PaneFlip {
 pub struct AgentFlips {
     panes: BTreeMap<PaneId, PaneFlip>,
     armed: BTreeMap<PaneId, FlipTo>,
-    requests: BTreeMap<u64, (PaneId, FlipMode)>,
+    requests: BTreeMap<u64, (PaneId, Sent)>,
 }
 
 static IDLE: Flip = Flip::Idle;
@@ -148,13 +194,29 @@ impl AgentFlips {
     ) -> bool {
         match self.state(pane) {
             Flip::Idle => self.send(pane, to, FlipMode::Ask, send),
-            Flip::Busy(_) => {
+            Flip::Busy(_) | Flip::AccountBusy(_) => {
                 self.dismiss(pane);
                 true
             }
             Flip::Armed => self.send(pane, to, FlipMode::Cancel, send),
-            Flip::Sending(_) => false,
+            Flip::Sending(_) | Flip::SwitchingAccount => false,
         }
+    }
+
+    pub fn switch_account(
+        &mut self,
+        pane: PaneId,
+        account: Option<&str>,
+        send: impl FnOnce(CommandInvocation) -> Option<u64>,
+    ) -> bool {
+        if !matches!(self.state(pane), Flip::Idle | Flip::AccountBusy(_)) {
+            return false;
+        }
+        let Some(request) = send(account_command(pane, account)) else {
+            return false;
+        };
+        self.track(pane, FlipTo::Cli, Sent::Account, request);
+        true
     }
 
     pub fn choose(
@@ -177,7 +239,7 @@ impl AgentFlips {
         if self
             .panes
             .get(&pane)
-            .is_some_and(|entry| matches!(entry.flip, Flip::Busy(_)))
+            .is_some_and(|entry| matches!(entry.flip, Flip::Busy(_) | Flip::AccountBusy(_)))
         {
             self.panes.remove(&pane);
         }
@@ -193,15 +255,19 @@ impl AgentFlips {
         let Some(request) = send(flip_command(pane, mode)) else {
             return false;
         };
-        self.requests.insert(request, (pane, mode));
+        self.track(pane, to, Sent::Flip(mode), request);
+        true
+    }
+
+    fn track(&mut self, pane: PaneId, to: FlipTo, sent: Sent, request: u64) {
+        self.requests.insert(request, (pane, sent));
         self.panes.insert(
             pane,
             PaneFlip {
                 to,
-                flip: Flip::Sending(mode),
+                flip: sent.awaits(),
             },
         );
-        true
     }
 
     #[must_use]
@@ -210,20 +276,20 @@ impl AgentFlips {
     }
 
     pub fn settle(&mut self, request: u64, result: Result<(), &str>) -> Option<String> {
-        let (pane, mode) = self.requests.remove(&request)?;
+        let (pane, sent) = self.requests.remove(&request)?;
+        let failed = |error: &str| format!("{}: {error}", sent.command());
         let entry = self.panes.get_mut(&pane)?;
-        if entry.flip != Flip::Sending(mode) {
-            return result.err().map(str::to_owned);
+        if entry.flip != sent.awaits() {
+            return result.err().map(failed);
         }
-        let (next, error) = match (mode, result) {
-            (FlipMode::WhenIdle, Ok(())) => (Flip::Armed, None),
-            (FlipMode::Ask, Err(error)) if busy_reason(error).is_some() => (
-                Flip::Busy(busy_reason(error).unwrap_or_default().to_owned()),
-                None,
-            ),
-            (FlipMode::Cancel, Err(error)) => (Flip::Armed, Some(error.to_owned())),
-            (_, Ok(())) => (Flip::Idle, None),
-            (_, Err(error)) => (Flip::Idle, Some(error.to_owned())),
+        let busy = result.err().and_then(busy_reason).map(str::to_owned);
+        let (next, error) = match (sent, result, busy) {
+            (Sent::Flip(FlipMode::WhenIdle), Ok(()), _) => (Flip::Armed, None),
+            (Sent::Flip(FlipMode::Ask), Err(_), Some(reason)) => (Flip::Busy(reason), None),
+            (Sent::Account, Err(_), Some(reason)) => (Flip::AccountBusy(reason), None),
+            (Sent::Flip(FlipMode::Cancel), Err(error), _) => (Flip::Armed, Some(failed(error))),
+            (_, Ok(()), _) => (Flip::Idle, None),
+            (_, Err(error), _) => (Flip::Idle, Some(failed(error))),
         };
         if next == Flip::Idle {
             self.panes.remove(&pane);
@@ -271,6 +337,11 @@ pub const CANCEL_LABEL: &str = "Cancel";
 #[must_use]
 pub fn busy_detail(reason: &str) -> String {
     format!("Switching now stops {reason}.")
+}
+
+#[must_use]
+pub fn account_busy_detail(reason: &str) -> String {
+    format!("Wait for {reason}, then pick the account again.")
 }
 
 #[must_use]
@@ -362,7 +433,7 @@ mod tests {
         assert!(flips.state(PANE).armed());
         assert_eq!(
             flips.settle(3, Err("no flip is armed")),
-            Some("no flip is armed".to_owned())
+            Some("flip-agent: no flip is armed".to_owned())
         );
         assert_eq!(flips.state(PANE), &Flip::Armed);
         assert!(flips.press(PANE, FlipTo::Cli, sender(&log)));
@@ -402,12 +473,55 @@ mod tests {
                 1,
                 Err("invalid command: flip-agent: pane %7 cannot flip yet")
             ),
-            Some("invalid command: flip-agent: pane %7 cannot flip yet".to_owned())
+            Some("flip-agent: invalid command: flip-agent: pane %7 cannot flip yet".to_owned())
         );
         assert_eq!(flips.state(PANE), &Flip::Idle);
         assert!(!flips.owns(1));
         assert_eq!(flips.settle(9, Ok(())), None);
         assert!(!flips.press(PANE, FlipTo::Chat, |_| None));
+        assert_eq!(flips.state(PANE), &Flip::Idle);
+    }
+
+    #[test]
+    fn an_account_switch_shows_busy_like_a_flip_and_names_its_command_on_errors() {
+        let log = sent();
+        let mut flips = AgentFlips::default();
+        assert!(flips.switch_account(PANE, Some("a2"), sender(&log)));
+        assert_eq!(log.0.borrow()[0].name, "agent-account");
+        assert_eq!(args(&log.0.borrow()[0]), ["-t", "%7", "a2"]);
+        assert_eq!(flips.state(PANE), &Flip::SwitchingAccount);
+        assert!(!flips.switch_account(PANE, None, sender(&log)));
+        assert!(!flips.press(PANE, FlipTo::Cli, sender(&log)));
+        assert_eq!(
+            flips.settle(
+                1,
+                Err("invalid command: busy: a turn and 1 background task")
+            ),
+            None
+        );
+        assert_eq!(
+            flips.state(PANE),
+            &Flip::AccountBusy("a turn and 1 background task".to_owned())
+        );
+        assert_eq!(flips.state(PANE).busy(), None);
+        assert!(!flips.choose(PANE, FlipMode::Now, sender(&log)));
+
+        assert!(flips.switch_account(PANE, None, sender(&log)));
+        assert_eq!(args(&log.0.borrow()[1]), ["-t", "%7", "default"]);
+        assert_eq!(
+            flips.settle(
+                2,
+                Err("invalid command: Claude Code account a2 has no directory at /a/a2")
+            ),
+            Some(
+                "agent-account: invalid command: Claude Code account a2 has no directory at /a/a2"
+                    .to_owned()
+            )
+        );
+        assert_eq!(flips.state(PANE), &Flip::Idle);
+
+        flips.switch_account(PANE, Some("a1"), sender(&log));
+        assert_eq!(flips.settle(3, Ok(())), None);
         assert_eq!(flips.state(PANE), &Flip::Idle);
     }
 

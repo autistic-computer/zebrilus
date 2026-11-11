@@ -19,11 +19,11 @@ use zz_client::agent_settings::{Choice, LensSettings};
 use zz_ui::agent::{
     agent_attachment_thumbnail,
     controls::{
-        ComposerAction, agent_mode_chip, agent_model_picker, composer_action,
+        ComposerAction, agent_account_chip, agent_mode_chip, agent_model_picker, composer_action,
         composer_action_button, context_usage_meter, git_summary_footer,
     },
     presentation::{agent_resume_welcome, error_card},
-    resume::{RESUME_FILTER_PLACEHOLDER, RESUME_WIDTH, resume_filter, resume_rows},
+    resume::{folder_button, resume_button, resume_menu, resume_rows},
 };
 
 use super::{
@@ -32,7 +32,7 @@ use super::{
 };
 use crate::stories::console::palette::chat_backend;
 use crate::story::{row, states};
-use zz_protocol::PaneId;
+use zz_protocol::{AgentAccount, AgentProvider, PaneId};
 use zz_ui::{command::target_picker, target::TargetPicker};
 
 pub const PLACEHOLDER: &str = "Message Claude Code…";
@@ -146,7 +146,13 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
             cx,
         )],
         prefix: draft.prefix,
-        controls: footer_controls(&id, &draft.settings, draft.writable, cx),
+        controls: footer_controls(
+            &id,
+            &draft.settings,
+            &Accounts::default_only(),
+            draft.writable,
+            cx,
+        ),
     }
     .into_any_element()
 }
@@ -194,6 +200,7 @@ pub fn claude_settings() -> LensSettings {
             ("acceptEdits", "Accept edits"),
             ("plan", "Plan"),
             ("auto", "Auto"),
+            ("bypassPermissions", "Bypass permissions"),
         ]),
     }
 }
@@ -234,26 +241,96 @@ pub fn codex_settings() -> LensSettings {
     }
 }
 
+pub struct Accounts {
+    pub list: Vec<AgentAccount>,
+    pub current: Option<&'static str>,
+}
+
+impl Accounts {
+    fn account(id: Option<&str>, email: Option<&str>, plan: Option<&str>) -> AgentAccount {
+        AgentAccount {
+            provider: AgentProvider::ClaudeCode,
+            id: id.map(str::to_owned),
+            signed_in: email.is_some(),
+            email: email.map(str::to_owned),
+            organization: None,
+            plan: plan.map(str::to_owned),
+        }
+    }
+
+    #[must_use]
+    pub fn default_only() -> Self {
+        Self {
+            list: vec![Self::account(None, Some("me@example.com"), Some("max_20x"))],
+            current: None,
+        }
+    }
+
+    #[must_use]
+    pub fn two_with_the_second_picked() -> Self {
+        Self {
+            list: vec![
+                Self::account(None, Some("me@example.com"), Some("max_20x")),
+                AgentAccount {
+                    organization: Some("Acme Robotics".to_owned()),
+                    ..Self::account(
+                        Some("a1"),
+                        Some("sam.rivera@acme-robotics.example.com"),
+                        Some("team"),
+                    )
+                },
+            ],
+            current: Some("a1"),
+        }
+    }
+
+    #[must_use]
+    pub fn signed_out_default() -> Self {
+        Self {
+            list: vec![Self::account(None, None, None)],
+            current: None,
+        }
+    }
+}
+
 pub fn footer_controls(
     id: &str,
     settings: &LensSettings,
+    accounts: &Accounts,
     enabled: bool,
     cx: &App,
 ) -> Vec<AnyElement> {
     let provider = if settings.modes.iter().any(|mode| mode.value == "read-only") {
-        zz_protocol::AgentProvider::Codex
+        AgentProvider::Codex
     } else {
-        zz_protocol::AgentProvider::ClaudeCode
+        AgentProvider::ClaudeCode
     };
-    agent_mode_chip(
+    let list = accounts
+        .list
+        .iter()
+        .map(|account| AgentAccount {
+            provider,
+            ..account.clone()
+        })
+        .collect::<Vec<_>>();
+    agent_account_chip(
+        SharedString::from(format!("{id}-account")),
+        provider,
+        accounts.current,
+        Some(&list),
+        enabled,
+        |_, _, _| {},
+        cx,
+    )
+    .into_iter()
+    .chain(agent_mode_chip(
         SharedString::from(format!("{id}-mode")),
         provider,
         settings,
         enabled,
         |_, _, _| {},
         cx,
-    )
-    .into_iter()
+    ))
     .chain([agent_model_picker(
         SharedString::from(format!("{id}-settings")),
         settings,
@@ -267,138 +344,158 @@ pub fn footer_controls(
 pub fn resume(_: &mut Window, cx: &mut App) -> AnyView {
     crate::story::stateless(
         |window, cx| {
-            use zz_client::agent_resume::{More, ResumeRow};
-            let mut filter = |id: &'static str, text: &'static str, cx: &mut App| {
+            use penna::{
+                Selectable as _,
+                components::panel::{Panel, PanelLook},
+            };
+            use zz_client::agent_resume::{Menu, NOTHING_MATCHES, OTHER_FOLDERS, ResumeRow};
+            let mut search = |id: &'static str, menu: Menu, text: &'static str, cx: &mut App| {
                 window.use_keyed_state(id, cx, |window, cx| {
                     InputState::new(window, cx)
-                        .placeholder(RESUME_FILTER_PLACEHOLDER)
+                        .placeholder(menu.placeholder())
                         .default_value(text)
                 })
             };
-            let filters = [
-                filter("resume-filter-rest", "", cx),
-                filter("resume-filter-open", "", cx),
-                filter("resume-filter-found", "clair", cx),
-                filter("resume-filter-none", "zzz", cx),
+            let searches = [
+                search("resume-search-folders", Menu::Folders, "", cx),
+                search("resume-search-chats", Menu::Chats, "", cx),
+                search("resume-search-found", Menu::Chats, "clair", cx),
+                search("resume-search-loading", Menu::Chats, "", cx),
+                search("resume-search-none", Menu::Chats, "zzz", cx),
             ];
-            let found = |title: &str, place: &str, age: &str| ResumeRow::Chat {
-                chat: zz_protocol::agent_stream::AgentSessionSummary {
+            let summary =
+                |title: &str, place: &str| zz_protocol::agent_stream::AgentSessionSummary {
                     session_id: title.to_owned(),
                     cwd: format!("/Users/me/dev/{place}").into(),
                     additional_directories: Vec::new(),
                     title: Some(title.to_owned()),
                     updated_at: None,
-                },
+                };
+            let chat = |title: &str, place: Option<&str>, age: &str| ResumeRow::Chat {
+                chat: summary(title, place.unwrap_or("zebrilus")),
                 title: title.to_owned(),
-                place: Some(place.to_owned()),
+                place: place.map(str::to_owned),
                 age: Some(age.to_owned()),
             };
-            let chat = |title: &str, age: &str| ResumeRow::Chat {
-                chat: zz_protocol::agent_stream::AgentSessionSummary {
-                    session_id: title.to_owned(),
-                    cwd: "/Users/me/src/zebrilus".into(),
-                    additional_directories: Vec::new(),
-                    title: Some(title.to_owned()),
-                    updated_at: None,
-                },
-                title: title.to_owned(),
-                place: None,
-                age: Some(age.to_owned()),
-            };
-            let project = |name: &str, path: &str, age: &str| ResumeRow::Project {
+            let folder = |name: &str, path: &str, age: Option<&str>| ResumeRow::Folder {
                 cwd: format!("/Users/me/dev/{name}").into(),
                 name: name.to_owned(),
                 path: path.to_owned(),
-                age: Some(age.to_owned()),
+                age: age.map(str::to_owned),
+                current: age.is_none(),
             };
-            let heading = |text: &str, back| ResumeRow::Heading {
-                text: text.to_owned(),
-                back,
+            let buttons = |id: u64, open: Option<Menu>, cx: &App| {
+                h_flex()
+                    .flex_none()
+                    .gap(px(6.0))
+                    .child(
+                        folder_button(("story-folder-button", id), "zebrilus", cx)
+                            .selected(open == Some(Menu::Folders)),
+                    )
+                    .child(
+                        resume_button(("story-resume-button", id), cx)
+                            .selected(open == Some(Menu::Chats)),
+                    )
             };
-            let column = |id: u64, rows: &[ResumeRow], selected: Option<usize>, cx: &App| {
+            let screen = |id: u64, open: Option<(Menu, &[ResumeRow], Option<usize>)>, cx: &App| {
+                let menu = open.map(|(_, rows, selected)| {
+                    let search = &searches[usize::try_from(id).unwrap_or_default() - 1];
+                    let searching = !search.read(cx).value().is_empty();
+                    Panel::new(("story-resume-menu", id), PanelLook::Popover)
+                        .flex_none()
+                        .mt(px(4.0))
+                        .child(resume_menu(
+                            search,
+                            &ala::ScrollHandle::new(),
+                            resume_rows(
+                                id,
+                                rows,
+                                selected,
+                                searching,
+                                |_, _, _| {},
+                                |_, _, _| {},
+                                cx,
+                            ),
+                            cx,
+                        ))
+                });
                 penna::v_flex()
-                    .w(px(RESUME_WIDTH))
-                    .gap(px(2.0))
+                    .w(px(440.0))
+                    .items_center()
                     .child(agent_resume_welcome(
                         zz_protocol::AgentProvider::ClaudeCode,
                         cx,
                     ))
-                    .children(
-                        usize::try_from(id)
-                            .ok()
-                            .and_then(|at| filters.get(at.wrapping_sub(1)))
-                            .map(|filter| resume_filter(filter, cx)),
-                    )
-                    .children(resume_rows(
-                        id,
-                        rows,
-                        selected,
-                        |_, _, _| {},
-                        |_, _, _| {},
-                        cx,
-                    ))
+                    .child(buttons(id, open.map(|(menu, ..)| menu), cx))
+                    .children(menu)
             };
+            let folders = [
+                folder("zebrilus", "~/dev/autistic-computer", None),
+                folder("clairvo", "~/dev", Some("now")),
+                folder("autistic-computer", "~/dev", Some("now")),
+                folder("ppweb", "~/dev/PsicoPilot", Some("15h")),
+                folder("nidus", "~/dev/autistic-computer", Some("2d")),
+                folder("landing-page", "~/dev/autistic-computer", Some("3d")),
+                folder("penna", "~/dev/autistic-computer", Some("4d")),
+                folder("ala-cef", "~/dev/autistic-computer", Some("1w")),
+                folder("dev", "~", Some("2w")),
+                folder("pele-rs", "~/dev/autistic-computer", Some("2w")),
+                ResumeRow::Loading,
+            ];
+            let chats = [
+                ResumeRow::Label("In zebrilus".to_owned()),
+                chat("Fix pane stack hit testing", None, "2h"),
+                chat("Gantt bars in pele", None, "1d"),
+                chat("Flip keeps the model and effort", None, "3d"),
+                ResumeRow::Label(OTHER_FOLDERS.to_owned()),
+                chat(
+                    "Clairvo invoice import fails on empty rows",
+                    Some("clairvo"),
+                    "now",
+                ),
+                chat("Segmented focus ring", Some("penna"), "3h"),
+                chat("Queue retries for the mailer", Some("clairvo"), "1d"),
+                chat("Pointer warp on Wayland", Some("nidus"), "2d"),
+                chat("Clairvo landing copy", Some("landing-page"), "3d"),
+                chat("Slider knob ring on yaru", Some("penna"), "6d"),
+                chat("Seed data for the demo tenant", Some("clairvo"), "6d"),
+                chat("Docs site figure fences", Some("penna"), "1w"),
+            ];
+            let found = [
+                chat(
+                    "Clairvo invoice import fails on empty rows",
+                    Some("clairvo"),
+                    "now",
+                ),
+                chat("Clairvo landing copy", Some("landing-page"), "3d"),
+                chat("Queue retries for the mailer", Some("clairvo"), "1d"),
+                chat("Seed data for the demo tenant", Some("clairvo"), "6d"),
+            ];
             states()
+                .state("at rest: the welcome over the folder and Resume buttons", screen(0, None, cx))
                 .state(
-                    "a folder with chats: its newest, then the other folders the CLI has chats in",
-                    column(
-                        1,
-                        &[
-                            heading("Recent here", false),
-                            chat("Fix pane stack hit testing", "2h"),
-                            chat("Gantt bars in pele", "1d"),
-                            chat("Flip keeps the model and effort", "3d"),
-                            ResumeRow::More(More::Here),
-                            heading("Projects", false),
-                            project("clairvo", "~/dev", "now"),
-                            project("penna", "~/dev/autistic-computer", "3h"),
-                            project("nidus", "~/dev/autistic-computer", "2d"),
-                            project("ppweb", "~/dev/PsicoPilot", "4d"),
-                            project("ala-cef", "~/dev/autistic-computer", "1w"),
-                            ResumeRow::More(More::Projects),
-                        ],
-                        Some(2),
-                        cx,
-                    ),
+                    "the folder menu: this folder checked, then the others newest first, eight rows that scroll, the spinner while more pages arrive",
+                    screen(1, Some((Menu::Folders, &folders, Some(0))), cx),
                 )
                 .state(
-                    "a project opened: its chats take the list, Escape goes back",
-                    column(
-                        2,
-                        &[
-                            heading("penna", true),
-                            chat("Segmented focus ring", "3h"),
-                            chat("Chip tones on glass", "2d"),
-                            chat("Docs site figure fences", "2d"),
-                            ResumeRow::More(More::Chats),
-                        ],
-                        Some(1),
-                        cx,
-                    ),
+                    "Resume: this folder's chats, then the newest from other folders",
+                    screen(2, Some((Menu::Chats, &chats, Some(1))), cx),
                 )
                 .state(
-                    "filtering: folders that match, then chats, the first row picked",
-                    column(
-                        3,
-                        &[
-                            heading("Folders", false),
-                            project("clairvo", "~/dev", "now"),
-                            heading("Chats", false),
-                            found(
-                                "Clairvo invoice import fails on empty rows",
-                                "clairvo",
-                                "now",
-                            ),
-                            found("Queue retries for the mailer", "clairvo", "1d"),
-                            found("Clairvo landing copy", "landing-page", "3d"),
-                        ],
-                        Some(1),
-                        cx,
-                    ),
+                    "searching chats: one flat result, the first row picked",
+                    screen(3, Some((Menu::Chats, &found, Some(0))), cx),
                 )
                 .state(
-                    "a filter that matches nothing",
-                    column(4, &[ResumeRow::Empty], None, cx),
+                    "the first listing on its way",
+                    screen(4, Some((Menu::Chats, &[ResumeRow::Loading], None)), cx),
+                )
+                .state(
+                    "a search that matches nothing",
+                    screen(
+                        5,
+                        Some((Menu::Chats, &[ResumeRow::Note(NOTHING_MATCHES)], None)),
+                        cx,
+                    ),
                 )
                 .into_any_element()
         },
@@ -667,12 +764,24 @@ impl Render for Controls {
             .state("context usage meter", usage)
             .state("git summary", git)
             .state(
-                "permissions, model and effort: Claude Code's own lists",
-                row().children(footer_controls("claude", &claude_settings(), true, cx)),
+                "account, permissions, model and effort: Claude Code's own lists",
+                row().children(footer_controls(
+                    "claude",
+                    &claude_settings(),
+                    &Accounts::default_only(),
+                    true,
+                    cx,
+                )),
             )
             .state(
                 "the same controls on Codex, with the modes, models and levels it lists",
-                row().children(footer_controls("codex", &codex_settings(), true, cx)),
+                row().children(footer_controls(
+                    "codex",
+                    &codex_settings(),
+                    &Accounts::default_only(),
+                    true,
+                    cx,
+                )),
             )
             .state(
                 "a mode that acts without asking tints its chip",
@@ -682,6 +791,63 @@ impl Render for Controls {
                         mode: "acceptEdits".to_owned(),
                         ..claude_settings()
                     },
+                    &Accounts::default_only(),
+                    true,
+                    cx,
+                )),
+            )
+            .state(
+                "two accounts, the second picked: a long email ends in an ellipsis",
+                row().children(footer_controls(
+                    "claude-accounts",
+                    &claude_settings(),
+                    &Accounts::two_with_the_second_picked(),
+                    true,
+                    cx,
+                )),
+            )
+            .state(
+                "the CLI's own login, signed out",
+                row().children(footer_controls(
+                    "claude-signed-out",
+                    &claude_settings(),
+                    &Accounts::signed_out_default(),
+                    true,
+                    cx,
+                )),
+            )
+            .state(
+                "an account picked during a turn: the pane shows the busy card, with no choices",
+                row().child(zz_ui::pane::pane_account_busy(
+                    PaneId(10),
+                    "a turn and 1 background task",
+                    |_, _, _| {},
+                    cx,
+                )),
+            )
+            .state(
+                "Bypass permissions: nothing guards it, so the chip turns danger",
+                row().children(footer_controls(
+                    "claude-bypass",
+                    &LensSettings {
+                        mode: "bypassPermissions".to_owned(),
+                        ..claude_settings()
+                    },
+                    &Accounts::default_only(),
+                    true,
+                    cx,
+                )),
+            )
+            .state(
+                "an older model picked: the list opens scrolled to it",
+                row().children(footer_controls(
+                    "claude-older",
+                    &LensSettings {
+                        model: "opus-4-8".to_owned(),
+                        model_label: "Opus 4.8".to_owned(),
+                        ..claude_settings()
+                    },
+                    &Accounts::default_only(),
                     true,
                     cx,
                 )),

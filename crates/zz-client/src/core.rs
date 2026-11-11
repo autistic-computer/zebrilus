@@ -207,6 +207,7 @@ pub enum CoreEvent {
         result: String,
     },
     ProvidersChanged,
+    AgentAccountsChanged,
     Message(Box<ProtocolMessage>),
 }
 
@@ -282,6 +283,7 @@ pub struct ClientCore {
     history_limit: usize,
     agent_states: HashMap<PaneId, AgentPaneWire>,
     providers: Option<zz_protocol::ProvidersReport>,
+    agent_accounts: Option<Vec<zz_protocol::AgentAccount>>,
     full_pending: HashSet<PaneId>,
     prefix_armed: bool,
     key_table: Option<(String, bool)>,
@@ -653,6 +655,11 @@ impl ClientCore {
     #[must_use]
     pub const fn providers(&self) -> Option<&zz_protocol::ProvidersReport> {
         self.providers.as_ref()
+    }
+
+    #[must_use]
+    pub fn agent_accounts(&self) -> Option<&[zz_protocol::AgentAccount]> {
+        self.agent_accounts.as_deref()
     }
 
     #[must_use]
@@ -1175,6 +1182,10 @@ impl ClientCore {
             EventPayload::Providers(report) => {
                 self.providers = Some(report);
                 self.events.push_back(CoreEvent::ProvidersChanged);
+            }
+            EventPayload::AgentAccounts(accounts) => {
+                self.agent_accounts = Some(accounts);
+                self.events.push_back(CoreEvent::AgentAccountsChanged);
             }
             EventPayload::ControlExit { .. }
             | EventPayload::HookEvent { .. }

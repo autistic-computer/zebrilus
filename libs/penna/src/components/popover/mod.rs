@@ -24,6 +24,8 @@ type DismissHandler = std::rc::Rc<dyn Fn(&mut Window, &mut App)>;
 
 type TriggerBuilder = Box<dyn FnOnce(bool) -> AnyElement>;
 
+type ToggleHandler = Rc<dyn Fn(bool, &mut Window, &mut App)>;
+
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("escape", Cancel, Some(CONTEXT))]);
 }
@@ -38,6 +40,8 @@ pub struct Popover {
     trigger: Option<TriggerBuilder>,
     content: Option<ContentBuilder>,
     on_dismiss: Option<DismissHandler>,
+    open: Option<bool>,
+    on_toggle: Option<ToggleHandler>,
 }
 
 impl Popover {
@@ -52,7 +56,21 @@ impl Popover {
             trigger: None,
             content: None,
             on_dismiss: None,
+            open: None,
+            on_toggle: None,
         }
+    }
+
+    #[must_use]
+    pub fn open(mut self, open: bool) -> Self {
+        self.open = Some(open);
+        self
+    }
+
+    #[must_use]
+    pub fn on_toggle(mut self, handler: impl Fn(bool, &mut Window, &mut App) + 'static) -> Self {
+        self.on_toggle = Some(Rc::new(handler));
+        self
     }
 
     #[must_use]
@@ -176,7 +194,12 @@ impl RenderOnce for Popover {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| PopoverState::new(cx));
 
-        state.update(cx, |state, _| state.on_dismiss = self.on_dismiss);
+        state.update(cx, |state, cx| {
+            state.on_dismiss = self.on_dismiss;
+            if self.open.is_some_and(|open| open != state.open) {
+                state.toggle_open(window, cx);
+            }
+        });
 
         let (open, focus_handle, trigger_bounds, trigger_bounds_captured, panel_size) = {
             let state = state.read(cx);
@@ -194,16 +217,33 @@ impl RenderOnce for Popover {
         };
 
         let parent_view_id = window.current_view();
+        let ask: Option<ToggleHandler> = self
+            .open
+            .map(|_| self.on_toggle.unwrap_or_else(|| Rc::new(|_, _, _| {})));
+        let dismiss = Rc::new({
+            let state = state.clone();
+            let ask = ask.clone();
+            move |window: &mut Window, cx: &mut App| {
+                match &ask {
+                    Some(ask) => ask(false, window, cx),
+                    None => state.update(cx, |state, cx| state.dismiss(window, cx)),
+                }
+                cx.notify(parent_view_id);
+            }
+        });
         let press = Rc::new({
             let state = state.clone();
             move |window: &mut Window, cx: &mut App| {
-                state.update(cx, |state, cx| {
-                    if open {
-                        state.dismiss(window, cx);
-                    } else if !state.open {
-                        state.toggle_open(window, cx);
-                    }
-                });
+                match &ask {
+                    Some(ask) => ask(!open, window, cx),
+                    None => state.update(cx, |state, cx| {
+                        if open {
+                            state.dismiss(window, cx);
+                        } else if !state.open {
+                            state.toggle_open(window, cx);
+                        }
+                    }),
+                }
                 cx.notify(parent_view_id);
             }
         });
@@ -279,23 +319,14 @@ impl RenderOnce for Popover {
             .track_focus(&focus_handle)
             .key_context(CONTEXT)
             .on_action({
-                let state = state.clone();
-                move |_: &Cancel, window, cx| {
-                    state.update(cx, |state, cx| state.dismiss(window, cx));
-                    cx.notify(parent_view_id);
-                }
+                let dismiss = Rc::clone(&dismiss);
+                move |_: &Cancel, window, cx| dismiss(window, cx)
             })
             .when_some(self.content, |this, content| {
                 this.child(state.update(cx, |state, cx| content(state, window, cx)))
             })
             .when(self.overlay_closable, |this| {
-                this.on_mouse_down_out({
-                    let state = state.clone();
-                    move |_, window, cx| {
-                        state.update(cx, |state, cx| state.dismiss(window, cx));
-                        cx.notify(parent_view_id);
-                    }
-                })
+                this.on_mouse_down_out(move |_, window, cx| dismiss(window, cx))
             })
             .refine_style(&self.style);
 
@@ -446,6 +477,68 @@ mod tests {
                     .on_dismiss(move |_, _| dismissed.set(dismissed.get() + 1)),
             )
         }
+    }
+
+    struct Controlled {
+        open: std::rc::Rc<std::cell::Cell<bool>>,
+        asked: std::rc::Rc<std::cell::RefCell<Vec<bool>>>,
+        dismissed: std::rc::Rc<std::cell::Cell<usize>>,
+    }
+
+    impl Render for Controlled {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let asked = self.asked.clone();
+            let dismissed = self.dismissed.clone();
+            div().size_full().child(
+                Popover::new("popover")
+                    .trigger(Button::new("open").label("Open"))
+                    .content(|_, _, _| div().child("panel"))
+                    .open(self.open.get())
+                    .on_toggle(move |open, _, _| asked.borrow_mut().push(open))
+                    .on_dismiss(move |_, _| dismissed.set(dismissed.get() + 1)),
+            )
+        }
+    }
+
+    #[ala::test]
+    fn a_controlled_popover_follows_the_app_and_asks_on_presses_and_escape(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let open = std::rc::Rc::new(std::cell::Cell::new(false));
+        let asked = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let dismissed = std::rc::Rc::new(std::cell::Cell::new(0));
+        let (view, cx) = cx.add_window_view({
+            let (open, asked, dismissed) = (open.clone(), asked.clone(), dismissed.clone());
+            move |_, _| Controlled {
+                open,
+                asked,
+                dismissed,
+            }
+        });
+        let draw = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| _ = window.draw(cx));
+        };
+        draw(cx);
+        cx.simulate_click(point(8., 8.), Modifiers::default());
+        draw(cx);
+        cx.simulate_keystrokes("escape");
+        draw(cx);
+        assert_eq!(*asked.borrow(), [true]);
+
+        open.set(true);
+        cx.update(|_, cx| view.update(cx, |_, cx| cx.notify()));
+        draw(cx);
+        cx.simulate_keystrokes("escape");
+        draw(cx);
+        assert_eq!(*asked.borrow(), [true, false]);
+        assert_eq!(dismissed.get(), 0);
+
+        open.set(false);
+        cx.update(|_, cx| view.update(cx, |_, cx| cx.notify()));
+        draw(cx);
+        assert_eq!(dismissed.get(), 1);
     }
 
     #[ala::test]

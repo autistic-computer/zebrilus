@@ -880,21 +880,16 @@ impl BrowserPane {
                     |(action, icon, label)| {
                         let connection = self.connection.clone();
                         let float_rows = self.float_rows_handler.clone();
-                        pane_header_icon_button(
-                            ("ios-browser-action", action as usize),
-                            icon,
-                            writable,
-                            cx,
-                        )
-                        .tooltip(label)
-                        .on_click(move |_, _, cx| {
-                            let rows = float_rows.as_ref().and_then(|rows| rows(cx));
-                            connection.update(cx, |connection, cx| {
-                                for command in action.commands(pane, rows) {
-                                    connection.invoke(command, cx);
-                                }
-                            });
-                        })
+                        pane_header_icon_button(label, icon, writable, cx)
+                            .tooltip(label)
+                            .on_click(move |_, _, cx| {
+                                let rows = float_rows.as_ref().and_then(|rows| rows(cx));
+                                connection.update(cx, |connection, cx| {
+                                    for command in action.commands(pane, rows) {
+                                        connection.invoke(command, cx);
+                                    }
+                                });
+                            })
                     },
                 ));
         (strip, actions)

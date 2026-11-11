@@ -26,6 +26,7 @@ use zz_protocol::{
 };
 
 use crate::agent::{
+    accounts,
     child::{
         ChildEvent, Input, Process, Rewind, Title, cancelled, clean_title, fit_update, new_uuid,
         next_input, option, prompt_outcome, random_u64, rewind_shortfall,
@@ -39,7 +40,7 @@ use crate::agent::{
     },
     stream::{
         AgentPromptOutcome, AgentQuestion, AgentQuestionOption, AgentSessionCapabilities,
-        AgentStreamPayload,
+        AgentSessionSummary, AgentStreamPayload,
     },
     turn::{self, Effect, End, Fact, Reject, TurnMachine, TurnState},
     zz_command,
@@ -85,6 +86,8 @@ const BASE_ARGS: [&str; 11] = [
     "--await-initialize",
 ];
 const ALLOWED_TOOLS_FLAGS: [&str; 2] = ["--allowedTools", "--allowed-tools"];
+const ALLOW_BYPASS: &str = "--allow-dangerously-skip-permissions";
+const BYPASS_FLAGS: [&str; 2] = [ALLOW_BYPASS, "--dangerously-skip-permissions"];
 const ZZ_ALLOWED_TOOL: &str = "Bash(zz:*)";
 const SYSTEM_PROMPT_FLAGS: [&str; 4] = [
     "--system-prompt",
@@ -172,6 +175,12 @@ impl ClaudeCommand {
         })
     }
 
+    fn allows_bypass(&self) -> bool {
+        self.args
+            .iter()
+            .any(|arg| BYPASS_FLAGS.contains(&arg.as_str()))
+    }
+
     fn mode_flag(&self) -> Option<String> {
         let mut args = self.args.iter();
         while let Some(arg) = args.next() {
@@ -225,6 +234,7 @@ pub(crate) async fn run_claude_runtime(
         verbs: 0,
         reply: None,
         title: Title::default(),
+        listed: HashMap::new(),
     };
     let commands = channels.commands;
     let controls = channels.controls;
@@ -370,11 +380,7 @@ impl Settings {
         MODES
             .iter()
             .copied()
-            .filter(|(id, ..)| match *id {
-                "auto" => auto || self.mode == "auto",
-                "bypassPermissions" => self.mode == "bypassPermissions",
-                _ => true,
-            })
+            .filter(|(id, ..)| *id != "auto" || auto || self.mode == "auto")
             .collect()
     }
 
@@ -472,6 +478,7 @@ struct Runtime {
     verbs: u64,
     reply: Option<String>,
     title: Title,
+    listed: HashMap<Option<PathBuf>, Arc<[AgentSessionSummary]>>,
 }
 
 impl Runtime {
@@ -639,13 +646,21 @@ impl Runtime {
                 cursor,
                 replace,
             } => {
-                let filter = cwd.clone();
-                let all = smol::unblock(move || {
-                    sessions::config_home()
-                        .map(|config| sessions::list(&config, filter.as_deref()))
-                        .unwrap_or_default()
-                })
-                .await;
+                let kept = self.listed.get(&cwd).filter(|_| cursor.is_some()).cloned();
+                let all = if let Some(all) = kept {
+                    all
+                } else {
+                    let filter = cwd.clone();
+                    let all: Arc<[_]> = smol::unblock(move || {
+                        sessions::config_home()
+                            .map(|config| sessions::list(&config, filter.as_deref()))
+                            .unwrap_or_default()
+                    })
+                    .await
+                    .into();
+                    self.listed.insert(cwd.clone(), all.clone());
+                    all
+                };
                 let offset = cursor
                     .and_then(|cursor| cursor.parse::<usize>().ok())
                     .unwrap_or(0)
@@ -921,6 +936,12 @@ impl Runtime {
                 self.command.program
             )
         })?;
+        let account = self
+            .workspace
+            .account
+            .as_ref()
+            .map(|account| accounts::prepare(AgentProvider::ClaudeCode, account))
+            .transpose()?;
         let mut command = Command::new(program);
         command.args(BASE_ARGS);
         match launch {
@@ -952,11 +973,17 @@ impl Runtime {
         {
             command.args(["--allowedTools", ZZ_ALLOWED_TOOL]);
         }
+        if !self.command.allows_bypass() {
+            command.arg(ALLOW_BYPASS);
+        }
         if let Some(path) = self.workspace.path(agent_path()) {
             command.env("PATH", path);
         }
         for (name, value) in self.workspace.entries() {
             command.env(name, value);
+        }
+        if let Some(home) = &account {
+            accounts::run_on(&mut command, AgentProvider::ClaudeCode, home);
         }
         command.env("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS", "1");
         command.env("CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES", "1");
@@ -2351,15 +2378,31 @@ mod tests {
         >(options.clone())
         .expect("ACP config options");
         assert_eq!(parsed.len(), 3);
-        assert!(
+        let modes = |options: &Value| {
             options[1]["options"]
                 .as_array()
                 .expect("modes")
                 .iter()
-                .any(|mode| mode["value"] == "auto")
+                .map(|mode| mode["value"].as_str().unwrap_or_default().to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            modes(&options),
+            [
+                "default",
+                "acceptEdits",
+                "plan",
+                "auto",
+                "bypassPermissions"
+            ]
         );
         settings.model = "haiku".to_owned();
-        assert_eq!(settings.config_options().as_array().map(Vec::len), Some(2));
+        let options = settings.config_options();
+        assert_eq!(options.as_array().map(Vec::len), Some(2));
+        assert_eq!(
+            modes(&options),
+            ["default", "acceptEdits", "plan", "bypassPermissions"]
+        );
         serde_json::from_value::<agent_client_protocol::v1::schema::SessionModeState>(
             settings.mode_state(),
         )
@@ -2563,6 +2606,146 @@ while read -r line; do :; done
         };
         let (result, ()) = smol::block_on(futures_lite::future::zip(runtime, driver));
         assert_eq!(result, Ok(()));
+    }
+
+    #[cfg(unix)]
+    const FAKE_ACCOUNT_CLAUDE: &str = r#"#!/bin/sh
+printf '%s\n%s' "${CLAUDE_CONFIG_DIR-unset}" "${ANTHROPIC_API_KEY-unset}" > seen
+read -r init
+printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[],"models":[],"current_permission_mode":"default"}}}'
+while read -r line; do :; done
+"#;
+
+    #[cfg(unix)]
+    fn opened_with(
+        program: &Path,
+        workspace: AgentWorkspaceEnvironment,
+    ) -> (AgentStreamPayload, Option<String>) {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let command = ClaudeCommand::parse(&program.display().to_string()).expect("native");
+        let (commands, command_rx) = async_channel::unbounded();
+        let (_controls, control_rx) = async_channel::unbounded();
+        let (events, event_rx) = async_channel::unbounded();
+        let runtime = run_claude_runtime(
+            command,
+            workspace,
+            AgentProvider::ClaudeCode,
+            RuntimeChannels {
+                auto_approve: Arc::new(Mutex::new(AgentAutoApprove::Off)),
+                permission_ids: Arc::new(AtomicU64::new(1)),
+                journal: None,
+                commands: command_rx,
+                controls: control_rx,
+                events,
+            },
+        );
+        let driver = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: directory.path().to_path_buf(),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            let first = futures_lite::future::or(
+                async {
+                    loop {
+                        let event = event_rx.recv().await.expect("event");
+                        if matches!(
+                            event,
+                            AgentStreamPayload::Ready { .. }
+                                | AgentStreamPayload::PaneFailed { .. }
+                        ) {
+                            break event;
+                        }
+                    }
+                },
+                async {
+                    smol::Timer::after(Duration::from_secs(20)).await;
+                    panic!("timed out waiting for the runtime");
+                },
+            )
+            .await;
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+            first
+        };
+        let (_, first) = smol::block_on(futures_lite::future::zip(runtime, driver));
+        let seen = std::fs::read_to_string(directory.path().join("seen")).ok();
+        (first, seen)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_account_pane_runs_claude_on_its_config_directory_and_no_other() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        const CHILD: &str = "ZZ_TEST_ACCOUNT_LOGIN_OVERRIDES";
+        if std::env::var_os(CHILD).is_none() {
+            let status = Command::new(std::env::current_exe().expect("test binary"))
+                .args([
+                    "--exact",
+                    "agent::claude::tests::an_account_pane_runs_claude_on_its_config_directory_and_no_other",
+                    "--test-threads=1",
+                ])
+                .env(CHILD, "1")
+                .env("ANTHROPIC_API_KEY", "zz-test-key")
+                .status()
+                .expect("isolated login environment");
+            assert!(status.success());
+            return;
+        }
+        let directory = tempfile::tempdir().expect("tempdir");
+        let program = directory.path().join("claude");
+        std::fs::write(&program, FAKE_ACCOUNT_CLAUDE).expect("fake claude");
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+            .expect("executable");
+        let home = directory.path().join("a1");
+        std::fs::create_dir(&home).expect("account home");
+        let account = |id: &str, home: PathBuf| AgentWorkspaceEnvironment {
+            account: Some(accounts::Account {
+                id: id.to_owned(),
+                home: Some(home),
+            }),
+            ..AgentWorkspaceEnvironment::default()
+        };
+
+        let (ready, seen) = opened_with(&program, account("a1", home.clone()));
+        assert!(
+            matches!(ready, AgentStreamPayload::Ready { .. }),
+            "{ready:?}"
+        );
+        assert_eq!(seen, Some(format!("{}\nunset", home.display())));
+
+        let (ready, seen) = opened_with(&program, AgentWorkspaceEnvironment::default());
+        assert!(
+            matches!(ready, AgentStreamPayload::Ready { .. }),
+            "{ready:?}"
+        );
+        assert_eq!(
+            seen,
+            Some(format!(
+                "{}\nzz-test-key",
+                std::env::var("CLAUDE_CONFIG_DIR")
+                    .as_deref()
+                    .unwrap_or("unset")
+            ))
+        );
+
+        let missing = directory.path().join("a2");
+        let (failed, seen) = opened_with(&program, account("a2", missing.clone()));
+        assert_eq!(
+            failed,
+            AgentStreamPayload::PaneFailed {
+                message: format!(
+                    "Claude Code account a2 has no directory at {}; add the account again or move this chat to another with agent-account",
+                    missing.display()
+                )
+            }
+        );
+        assert_eq!(seen, None, "nothing runs on the default account");
     }
 
     #[cfg(unix)]

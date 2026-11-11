@@ -1,7 +1,8 @@
 use std::rc::Rc;
 
 use ala::{
-    Anchor, AnyElement, App, ElementId, IntoElement, SharedString, Window, div, prelude::*, px,
+    Anchor, AnyElement, App, ElementId, IntoElement, ScrollHandle, SharedString, Window, div,
+    prelude::*, px,
 };
 
 use crate::{
@@ -13,11 +14,15 @@ use crate::{
 };
 use penna::{
     Label, Row, RowLook, TextStyle,
-    components::{popover::Popover, slider::StepRail},
+    components::{
+        popover::{Popover, PopoverState},
+        slider::StepRail,
+    },
 };
 use zz_client::agent_settings::{self, LensSettings, ModeRisk};
+use zz_protocol::{AgentAccount, AgentProvider};
 
-use penna::blocks::chat::{self, COMPOSER_FOOTER_HEIGHT};
+use penna::blocks::chat::{self, COMPOSER_FOOTER_HEIGHT, suggestion_row};
 
 pub use zz_client::agent_timeline::{
     ComposerAction, composer_action, context_usage_fraction, context_usage_tooltip,
@@ -41,7 +46,7 @@ pub fn composer_action_button(
 const STEP: f32 = 32.0;
 const HEAD: f32 = 26.0;
 const PANEL: f32 = 264.0;
-const LIST_ROWS: f32 = 8.0;
+const LIST_ROWS: f32 = 6.0;
 
 pub fn agent_model_picker(
     id: impl Into<ElementId>,
@@ -92,9 +97,25 @@ fn model_panel(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
-    let all = window.use_keyed_state("agent-model-all", cx, |_, _| false);
-    let open = *all.read(cx);
-    let rows = settings.listed_models(open).into_iter().map(|choice| {
+    let current = settings
+        .models
+        .iter()
+        .position(|choice| choice.value == settings.model);
+    let scroll = window
+        .use_keyed_state("agent-model-scroll", cx, |window, _| {
+            let scroll = ScrollHandle::new();
+            if let Some(current) = current {
+                let painted = scroll.clone();
+                window.on_next_frame(move |window, _| {
+                    painted.scroll_to_item(current);
+                    window.refresh();
+                });
+            }
+            scroll
+        })
+        .read(cx)
+        .clone();
+    let rows = settings.models.iter().map(|choice| {
         let pick = on_pick.clone();
         let value = choice.value.clone();
         let chosen = choice.value == settings.model;
@@ -115,15 +136,13 @@ fn model_panel(
         .flex_none()
         .max_h(px(STEP * LIST_ROWS))
         .overflow_y_scroll()
+        .track_scroll(&scroll)
         .children(rows);
-    let older = settings.older_models();
-    let more = (older > 0).then(|| more_row(open, older, all, cx));
     let panel = crate::v_flex()
         .w(px(PANEL))
         .p(px(6.0))
         .child(head("Model", cx))
-        .child(list)
-        .children(more);
+        .child(list);
     if settings.efforts.is_empty() {
         return panel.into_any_element();
     }
@@ -143,49 +162,6 @@ fn model_panel(
                 .child(effort_rail(settings, on_pick)),
         )
         .into_any_element()
-}
-
-fn more_row(open: bool, older: usize, all: ala::Entity<bool>, cx: &App) -> Row {
-    let muted = cx.theme().foreground.muted();
-    Row::new("agent-model-more", RowLook::Menu)
-        .state(crate::row_state(false, true))
-        .row_height(px(STEP))
-        .h_flex()
-        .flex_none()
-        .h(px(STEP))
-        .w_full()
-        .gap(px(8.0))
-        .px(px(10.0))
-        .click_cursor()
-        .on_click(move |_, _, cx| {
-            all.update(cx, |all, cx| {
-                *all = !*all;
-                cx.notify();
-            });
-        })
-        .child(
-            Label::new(
-                TextStyle::Small,
-                if open { "Fewer models" } else { "More models" },
-            )
-            .flex_1()
-            .min_w_0()
-            .text_color(muted),
-        )
-        .children((!open).then(|| {
-            Label::new(TextStyle::Caption, older.to_string())
-                .flex_none()
-                .text_color(muted)
-        }))
-        .child(
-            Icon::new(if open {
-                IconName::ChevronUp
-            } else {
-                IconName::ChevronDown
-            })
-            .with_size(px(10.0))
-            .text_color(muted),
-        )
 }
 
 fn head(text: &'static str, cx: &App) -> Label {
@@ -243,6 +219,142 @@ fn effort_rail(settings: &LensSettings, on_pick: &Pick) -> StepRail {
     } else {
         rail
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AccountAction {
+    Refresh,
+    Use(Option<String>),
+    Add,
+}
+
+type OnAccount = Rc<dyn Fn(AccountAction, &mut Window, &mut App)>;
+
+const ACCOUNT_LABEL_WIDTH: f32 = 180.0;
+
+pub fn agent_account_chip(
+    id: impl Into<ElementId>,
+    provider: AgentProvider,
+    current: Option<&str>,
+    accounts: Option<&[AgentAccount]>,
+    enabled: bool,
+    on_action: impl Fn(AccountAction, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Option<AnyElement> {
+    let accounts = accounts?;
+    let id = id.into();
+    let on_action: OnAccount = Rc::new(on_action);
+    let refresh = Rc::clone(&on_action);
+    let muted = cx.theme().foreground.muted();
+    let trigger = chat::chrome_button(SharedString::from(format!("{id}-trigger")))
+        .text_color(muted)
+        .disabled(!enabled)
+        .tooltip("Choose the account this chat runs on")
+        .child(
+            div()
+                .min_w_0()
+                .max_w(px(ACCOUNT_LABEL_WIDTH))
+                .overflow_hidden()
+                .text_ellipsis()
+                .whitespace_nowrap()
+                .child(agent_settings::account_label(accounts, provider, current)),
+        )
+        .child(Icon::new(IconName::ChevronDown).small().text_color(muted))
+        .on_click(move |_, window, cx| refresh(AccountAction::Refresh, window, cx));
+    let accounts = accounts
+        .iter()
+        .filter(|account| account.provider == provider)
+        .cloned()
+        .collect::<Vec<_>>();
+    let current = current.map(str::to_owned);
+    Some(
+        Popover::new(id)
+            .anchor(Anchor::BottomRight)
+            .p(px(0.0))
+            .trigger(trigger)
+            .content(move |_, _, cx| account_panel(&accounts, current.as_deref(), &on_action, cx))
+            .into_any_element(),
+    )
+}
+
+fn account_panel(
+    accounts: &[AgentAccount],
+    current: Option<&str>,
+    on_action: &OnAccount,
+    cx: &mut ala::Context<PopoverState>,
+) -> AnyElement {
+    let popover = cx.entity();
+    let pick = |action: Option<AccountAction>| {
+        let on_action = Rc::clone(on_action);
+        let popover = popover.clone();
+        move |_: &ala::ClickEvent, window: &mut Window, cx: &mut App| {
+            popover.update(cx, |popover, cx| popover.dismiss(window, cx));
+            if let Some(action) = action.clone() {
+                on_action(action, window, cx);
+            }
+        }
+    };
+    let rows = accounts.iter().enumerate().map(|(index, account)| {
+        let chosen = account.id.as_deref() == current;
+        suggestion_row(
+            ("agent-account-row", index),
+            agent_settings::account_name(account),
+            agent_settings::account_detail(account).map(SharedString::from),
+            None,
+            chosen,
+            cx,
+        )
+        .px(px(10.0))
+        .on_click(pick(
+            (!chosen).then(|| AccountAction::Use(account.id.clone())),
+        ))
+        .when(chosen, |row| {
+            row.child(Icon::new(IconName::Check).with_size(px(12.0)))
+        })
+    });
+    crate::v_flex()
+        .w(px(PANEL))
+        .p(px(6.0))
+        .child(head("Account", cx))
+        .children(rows)
+        .child(
+            div()
+                .flex_none()
+                .h(px(1.0))
+                .mx(px(-6.0))
+                .my(px(6.0))
+                .bg(cx.theme().border()),
+        )
+        .child(add_account_row(cx).on_click(pick(Some(AccountAction::Add))))
+        .into_any_element()
+}
+
+fn add_account_row(cx: &App) -> Row {
+    let muted = cx.theme().foreground.muted();
+    Row::new("agent-account-add", RowLook::Menu)
+        .state(crate::row_state(false, true))
+        .row_height(px(STEP))
+        .h_flex()
+        .flex_none()
+        .h(px(STEP))
+        .w_full()
+        .gap(px(8.0))
+        .px(px(10.0))
+        .click_cursor()
+        .child(
+            Icon::new(IconName::Plus)
+                .with_size(px(12.0))
+                .flex_none()
+                .text_color(muted)
+                .relative()
+                .top(crate::icon::cap_center_drop(px(12.0), px(12.0), cx)),
+        )
+        .child(
+            Label::new(TextStyle::Small, "Add account")
+                .flex_1()
+                .min_w_0()
+                .text_color(muted),
+        )
 }
 
 #[must_use]

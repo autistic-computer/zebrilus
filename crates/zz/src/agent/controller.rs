@@ -327,6 +327,7 @@ pub struct AgentController {
     pending_images: BTreeMap<PaneId, Vec<Arc<Image>>>,
     retained_panes: BTreeSet<PaneId>,
     shutting_down: bool,
+    moves: u64,
 }
 
 impl Default for AgentController {
@@ -345,6 +346,7 @@ impl AgentController {
             pending_images: BTreeMap::new(),
             retained_panes: BTreeSet::new(),
             shutting_down: false,
+            moves: 0,
         }
     }
 
@@ -611,6 +613,22 @@ impl AgentController {
         self.mux
             .as_ref()
             .is_some_and(|mux| mux.read(cx).send_agent_request(pane, request))
+    }
+
+    pub(crate) fn move_pane(&mut self, pane: PaneId, cwd: PathBuf, cx: &mut Context<Self>) {
+        if let Some(thread) = self.panes.get_mut(&pane).filter(|thread| thread.cwd != cwd) {
+            thread.cwd = cwd;
+            self.moves += 1;
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn pane_cwd(&self, pane: PaneId) -> Option<&std::path::Path> {
+        self.panes.get(&pane).map(|thread| thread.cwd.as_path())
+    }
+
+    pub(crate) const fn moves(&self) -> u64 {
+        self.moves
     }
 
     pub(crate) fn pane_resume(&self, pane: PaneId) -> Option<(&Resume, u64)> {
@@ -1071,7 +1089,10 @@ impl AgentController {
                     if !thread.session_reset {
                         thread.reset_for_open(true);
                     }
-                    thread.cwd = cwd;
+                    if thread.cwd != cwd {
+                        thread.cwd = cwd;
+                        self.moves += 1;
+                    }
                     for update in replay {
                         thread.apply_update(update);
                     }
@@ -2923,13 +2944,21 @@ mod tests {
     }
 
     #[ala::test]
-    fn an_empty_chat_lists_the_clis_chats_and_a_pick_switches_the_pane(cx: &mut TestAppContext) {
-        use zz_client::agent_resume::ResumeRow;
+    fn a_folder_pick_starts_a_chat_there_and_the_pane_follows_the_reply(cx: &mut TestAppContext) {
+        use zz_client::agent_resume::{Menu, ResumeRow};
         use zz_daemon::AgentSessionSummary;
         use zz_protocol::AgentSessionOpKind;
 
+        let list = |cwd: Option<PathBuf>| {
+            AgentRequest::SessionOp(AgentSessionOpKind::List {
+                cwd,
+                cursor: None,
+                replace: true,
+            })
+        };
         let (controller, sink) = proxy_controller(cx);
         let pane = PaneId(8);
+        let penna = PathBuf::from("/src/penna");
         let cwd = cx.update(|cx| {
             controller.update(cx, |controller, cx| {
                 ready_pane(controller, pane);
@@ -2939,79 +2968,79 @@ mod tests {
         });
         assert_eq!(
             &*sink.borrow(),
-            &[
-                (
-                    pane,
-                    AgentRequest::SessionOp(AgentSessionOpKind::List {
-                        cwd: Some(cwd.clone()),
-                        cursor: None,
-                        replace: true,
-                    })
-                ),
-                (
-                    pane,
-                    AgentRequest::SessionOp(AgentSessionOpKind::List {
-                        cwd: None,
-                        cursor: None,
-                        replace: true,
-                    })
-                ),
-            ]
+            &[(pane, list(Some(cwd.clone()))), (pane, list(None))]
         );
         sink.borrow_mut().clear();
 
+        let reply = |sessions, cwd_filter| {
+            serde_json::to_string(&AgentStreamPayload::SessionsListed {
+                client: zz_protocol::ClientId(1),
+                sessions,
+                next_cursor: None,
+                cwd_filter,
+                replace: true,
+            })
+            .expect("reply")
+        };
         let chat = AgentSessionSummary {
             session_id: "11111111-1111-4111-8111-111111111111".to_owned(),
-            cwd: PathBuf::from("/src/penna"),
+            cwd: penna.clone(),
             additional_directories: Vec::new(),
             title: Some("Focus ring".to_owned()),
             updated_at: None,
         };
-        let reply = serde_json::to_string(&AgentStreamPayload::SessionsListed {
-            client: zz_protocol::ClientId(1),
-            sessions: vec![chat.clone()],
-            next_cursor: None,
-            cwd_filter: Some(PathBuf::from("/src/penna")),
-            replace: true,
-        })
-        .expect("reply");
         cx.update(|cx| {
             controller.update(cx, |controller, cx| {
-                controller.update_resume(pane, cx, |resume, cwd| {
-                    resume.pick(
-                        &ResumeRow::Project {
-                            cwd: PathBuf::from("/src/penna"),
-                            name: "penna".to_owned(),
-                            path: "/src".to_owned(),
-                            age: None,
-                        },
-                        cwd,
-                    )
+                controller.apply_sessions(pane, &reply(Vec::new(), Some(cwd.clone())), cx);
+                controller.apply_sessions(pane, &reply(vec![chat], None), cx);
+                controller.update_resume(pane, cx, |resume, _| {
+                    resume.open(Menu::Folders);
+                    None
                 });
-                controller.apply_sessions(pane, &reply, cx);
                 let rows = controller.panes[&pane].resume.rows(&cwd, None, 0);
-                assert_eq!(
-                    rows[1],
-                    ResumeRow::Chat {
-                        chat: chat.clone(),
-                        title: "Focus ring".to_owned(),
-                        place: None,
-                        age: None,
-                    }
-                );
+                assert!(matches!(&rows[1], ResumeRow::Folder { cwd, .. } if *cwd == penna));
                 controller.update_resume(pane, cx, |resume, cwd| resume.pick(&rows[1], cwd));
             });
         });
         assert_eq!(
-            sink.borrow().last(),
-            Some(&(
+            &*sink.borrow(),
+            &[(
                 pane,
-                AgentRequest::SessionOp(AgentSessionOpKind::Switch {
-                    session_id: chat.session_id,
-                    cwd: chat.cwd,
-                    additional_directories: Vec::new(),
-                })
-            ))
+                AgentRequest::SessionOp(AgentSessionOpKind::New { cwd: penna.clone() })
+            )]
+        );
+        sink.borrow_mut().clear();
+
+        cx.update(|cx| {
+            controller.update(cx, |controller, cx| {
+                controller.apply_stream_items(
+                    pane,
+                    vec![item(
+                        1,
+                        AgentStreamPayload::SessionSwitched {
+                            session_id: "s-new".to_owned(),
+                            cwd: penna.clone(),
+                            modes: None,
+                            config_options: None,
+                            replay: Vec::new(),
+                        },
+                    )],
+                    cx,
+                );
+                assert_eq!(controller.pane_cwd(pane), Some(penna.as_path()));
+                assert_eq!(controller.moves(), 1);
+                assert_eq!(controller.panes[&pane].resume.menu(), None);
+                controller.move_pane(pane, PathBuf::from("/src/nidus"), cx);
+                controller.move_pane(pane, penna.clone(), cx);
+                controller.move_pane(pane, penna.clone(), cx);
+                assert_eq!(controller.pane_cwd(pane), Some(penna.as_path()));
+                assert_eq!(controller.moves(), 3);
+                controller.request_resume(pane, cx);
+            });
+        });
+        assert_eq!(
+            &*sink.borrow(),
+            &[(pane, list(Some(penna))), (pane, list(None))]
         );
     }
 

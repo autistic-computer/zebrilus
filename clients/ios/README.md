@@ -108,7 +108,7 @@ just ios device iPad
 ```
 
 Device mode builds a release arm64 binary, signs it with your first Apple Development identity
-and a provisioning profile that covers `dev.zz.ala-poc` (a team wildcard works), installs it with
+and a provisioning profile that covers `dev.zz.ios-dev` (a team wildcard works), installs it with
 `devicectl`, and launches it with `ZZ_ALA_ENDPOINT=ssh://$USER@<this Mac>.local`. That launch
 connects straight away and adds the host to the saved list; later launches from the home screen
 open the connection screen with it at the top. The Mac needs Remote Login
@@ -143,8 +143,8 @@ ZZ_ALA_ENDPOINT=/tmp/my-zz.sock ZZ_ALA_SESSION=work just ios run
 ```
 
 `ZZ_DEV_SOCKET` also selects a local socket. Set `ZZ_ALA_SIMULATOR` to a simulator
-UDID to choose an exact device. The bundle ID is `dev.zz.ala-poc`, its display name
-is **zz ala**, and build products live in `target/ios-gpui/ZZ ala.app`.
+UDID to choose an exact device. The bundle ID is `dev.zz.ios-dev`, its display name
+is **zz dev**, and build products live in `target/ios/ZZ Dev.app`.
 
 The tree shows the connected host, its sessions, windows, and panes. Tap a marker to expand or
 collapse it, or a row to select it. Arrow keys navigate the tree; Enter selects
@@ -465,8 +465,7 @@ Copy/paste of text copied within the app was verified. Text injected through
 `simctl pbcopy` was not readable from UIKit in this simulator session; cross-app
 paste still needs a device check. Physical keyboard layouts, dead keys, SSH
 authentication, rotation, suspension/reconnect, and GPU recovery have not been
-verified on hardware. The arm64 device binary builds, but the launcher currently
-packages simulator apps only.
+verified on hardware.
 
 ```sh
 cargo test --locked -p zz-app
