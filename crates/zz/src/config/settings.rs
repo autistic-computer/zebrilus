@@ -1272,7 +1272,7 @@ impl SettingsView {
     fn updates_stack(&self, cx: &Context<Self>) -> SettingsStack {
         use crate::{
             mux::hosts::HostId,
-            update::{self, CheckState},
+            update::{self, CheckState, Stage},
         };
 
         let mux = self.mux.read(cx);
@@ -1286,50 +1286,119 @@ impl SettingsView {
             .disabled(checking)
             .on_click(|_, _, cx| update::check_now(cx))
             .into_any_element();
-        let (state, control): (SharedString, AnyElement) = match (status.as_ref(), check) {
-            (Some(status), Some(CheckState::Available(release))) => {
-                let notes_url = release.url.clone();
-                let out = format!("zz {} is out, you have {}", release.version, status.current);
-                (
-                    match update::daemon_note(release, mux) {
-                        Some(note) => format!("{out}. {note}"),
-                        None => out,
-                    }
-                    .into(),
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Button::new("settings-update-install")
-                                .primary()
-                                .label(format!("Update to {}", release.version))
-                                .on(settings_card_ground(cx))
-                                .on_click(|_, window, cx| update::install(window, cx)),
-                        )
-                        .child(
-                            Button::new("settings-update-notes")
-                                .icon(penna::IconName::ExternalLink)
-                                .label("What's new")
-                                .on(settings_card_ground(cx))
-                                .on_click(move |_, _, cx| cx.open_url(&notes_url)),
-                        )
-                        .into_any_element(),
-                )
-            }
-            (Some(status), Some(CheckState::UpToDate)) => (
-                format!(
-                    "zz {} is the newest {} release",
-                    status.current,
-                    status.channel.label()
-                )
-                .into(),
-                check_button,
-            ),
-            (_, Some(CheckState::Failed(error))) => {
-                (format!("The check failed: {error}").into(), check_button)
-            }
-            (_, Some(CheckState::Checking)) => ("Asking GitHub".into(), check_button),
-            _ => ("Not checked yet".into(), check_button),
+        let notes_button = |url: String| {
+            Button::new("settings-update-notes")
+                .icon(penna::IconName::ExternalLink)
+                .label("What's new")
+                .on(settings_card_ground(cx))
+                .on_click(move |_, _, cx| cx.open_url(&url))
         };
+        let install = status.as_ref().and_then(|status| status.install.as_ref());
+        let bar = install.and_then(|(_, stage)| stage.bar());
+        let (state, control): (SharedString, Option<AnyElement>) =
+            match (status.as_ref(), check, install) {
+                (_, _, Some((version, stage))) => match stage {
+                    Stage::Downloading { received, total } => (
+                        format!(
+                            "Downloading zz {version}, {}",
+                            update::download_text(*received, *total)
+                        )
+                        .into(),
+                        Some(
+                            Button::new("settings-update-cancel")
+                                .label("Cancel")
+                                .on(settings_card_ground(cx))
+                                .on_click(|_, _, cx| update::cancel(cx))
+                                .into_any_element(),
+                        ),
+                    ),
+                    Stage::Verifying => (format!("Verifying zz {version}").into(), None),
+                    Stage::Staging => (format!("Preparing zz {version}").into(), None),
+                    Stage::Restarting => (format!("Installing zz {version}").into(), None),
+                    Stage::Ready(_) => {
+                        let release = match check {
+                            Some(CheckState::Available(release)) if release.version == *version => {
+                                Some(release)
+                            }
+                            _ => None,
+                        };
+                        let ready = format!("zz {version} is ready to install");
+                        (
+                            match release.and_then(|release| update::daemon_note(release, mux)) {
+                                Some(note) => format!("{ready}. {note}"),
+                                None => ready,
+                            }
+                            .into(),
+                            Some(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        Button::new("settings-update-restart")
+                                            .primary()
+                                            .label("Restart to update")
+                                            .on(settings_card_ground(cx))
+                                            .on_click(|_, _, cx| update::restart(cx)),
+                                    )
+                                    .children(
+                                        release.map(|release| notes_button(release.url.clone())),
+                                    )
+                                    .into_any_element(),
+                            ),
+                        )
+                    }
+                    Stage::Failed(message) => (
+                        format!("The update failed: {message}").into(),
+                        Some(
+                            Button::new("settings-update-retry")
+                                .primary()
+                                .label("Try again")
+                                .on(settings_card_ground(cx))
+                                .on_click(|_, window, cx| update::install(window, cx))
+                                .into_any_element(),
+                        ),
+                    ),
+                },
+                (Some(status), Some(CheckState::Available(release)), None) => {
+                    let out = format!("zz {} is out, you have {}", release.version, status.current);
+                    (
+                        match update::daemon_note(release, mux) {
+                            Some(note) => format!("{out}. {note}"),
+                            None => out,
+                        }
+                        .into(),
+                        Some(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("settings-update-install")
+                                        .primary()
+                                        .label(format!("Update to {}", release.version))
+                                        .on(settings_card_ground(cx))
+                                        .on_click(|_, window, cx| update::install(window, cx)),
+                                )
+                                .child(notes_button(release.url.clone()))
+                                .into_any_element(),
+                        ),
+                    )
+                }
+                (Some(status), Some(CheckState::UpToDate), None) => (
+                    format!(
+                        "zz {} is the newest {} release",
+                        status.current,
+                        status.channel.label()
+                    )
+                    .into(),
+                    Some(check_button),
+                ),
+                (_, Some(CheckState::Failed(error)), None) => (
+                    format!("The check failed: {error}").into(),
+                    Some(check_button),
+                ),
+                (_, Some(CheckState::Checking), None) => {
+                    ("Asking GitHub".into(), Some(check_button))
+                }
+                _ => ("Not checked yet".into(), Some(check_button)),
+            };
         let daemon = mux.daemon_behind(HostId::LOCAL).map(|behind| {
             let restart_mux = self.mux.clone();
             SettingEntry::new("Daemon")
@@ -1356,11 +1425,14 @@ impl SettingsView {
                 )
                 .description("Once a day, one anonymous request to GitHub"),
             )
-            .child(
-                SettingEntry::new("Latest release")
-                    .description(state)
-                    .control(control),
-            )
+            .child({
+                let entry = SettingEntry::new("Latest release").description(state);
+                match control {
+                    Some(control) => entry.control(control),
+                    None => entry,
+                }
+                .children(bar.map(|bar| bar.element("Update")))
+            })
             .children(daemon)
     }
 

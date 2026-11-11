@@ -355,6 +355,7 @@ fn run_app(
                         }
                         if config::quit_daemon_on_exit(cx)
                             && !cx.global::<tray::DesktopTray>().stopping_daemon
+                            && !update::restarting(cx)
                         {
                             shutdown_mux
                                 .read(cx)
