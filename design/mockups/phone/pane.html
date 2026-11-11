@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone pane</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/badge/badge.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/kbd/kbd.css">
+<link rel="stylesheet" href="/penna-src/components/row/row.css">
+<link rel="stylesheet" href="/penna-src/components/input/input.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/penna-src/blocks/touch/touch.js" defer></script>
+<style>
+  .zz-story > figure > figcaption > i, .zz-page > section > p > i, .zz-compare > figure > p > i { color: var(--penna-warning-ink); }
+
+  .zz-pane { position: absolute; inset: 0; --zz-dock: 156px; }
+  .zz-tx { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 16px; padding: 70px 16px var(--zz-dock); overflow: hidden; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-tx > p { margin: 0; }
+  .zz-tx > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 85%; padding: 10px 14px; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-tx > .penna-chat-bubble[data-held] { box-shadow: 0 0 0 2px var(--penna-accent); }
+  .zz-steps { display: flex; flex-direction: column; margin: -8px 0; }
+  .zz-fade { position: absolute; z-index: 5; top: 0; right: 0; left: 0; height: 70px; background: linear-gradient(var(--penna-bg) 54px, transparent); pointer-events: none; }
+  .zz-flip { position: absolute; z-index: 10; top: 62px; right: 16px; }
+  .zz-dock { position: absolute; z-index: 15; right: 16px; bottom: 84px; left: 16px; display: flex; flex-direction: column; }
+  .zz-dock > .zz-jump { position: absolute; top: -52px; left: 50%; margin-left: -22px; }
+  .zz-phone[data-kb] .zz-dock { bottom: 300px; }
+  .zz-phone[data-kb] > .zz-bar, .zz-phone[data-kb] .zz-pane > .zz-bar { display: none; }
+  .zz-phone > .zz-kb { position: absolute; z-index: 30; right: 0; bottom: 0; left: 0; }
+  .zz-phone:not([data-kb]) > .zz-kb { display: none; }
+  .zz-phone > .penna-sheet, .zz-phone > .penna-pill-menu { z-index: 35; }
+  .zz-phone .penna-sheet-panel { padding-bottom: 20px; }
+  .zz-phone[data-kb] .penna-sheet-panel { padding-bottom: 0; }
+  .zz-phone[data-kb] > .penna-sheet { z-index: 25; }
+
+  .zz-menu-stack { position: absolute; right: 0; bottom: 96px; left: 0; display: flex; flex-direction: column; align-items: center; gap: var(--penna-gap-group); }
+  .zz-phone > .penna-pill-menu > :is(.penna-pill-menu-well, .penna-pill-menu-close) { top: auto; bottom: 20px; left: 173px; }
+  .zz-phone[data-menu] :is(.zz-bar, .zz-dock) { visibility: hidden; }
+
+  .zz-empty { position: absolute; top: 150px; right: 16px; left: 16px; display: flex; flex-direction: column; gap: 32px; }
+  .zz-empty > .penna-touch-group { width: 100%; }
+
+  .zz-chord { display: flex; align-items: center; gap: 1px; --penna-icon-size: 14px; }
+  .zz-keys { position: absolute; z-index: 20; right: 16px; bottom: 300px; left: 16px; }
+  .zz-term { position: absolute; inset: 54px 0 auto; margin: 0; padding: 8px 16px; font: 13px/18px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; overflow: hidden; }
+  .zz-term > b { font-weight: 400; color: var(--penna-fg); }
+  .zz-term > [data-ink="success"] { color: var(--penna-success-ink); }
+  .zz-term > [data-ink="danger"] { color: var(--penna-danger-ink); }
+  .zz-cursor { display: inline-block; width: 8px; height: 15px; vertical-align: -3px; background: var(--penna-fg); }
+  .zz-slide { position: absolute; inset: 0; overflow: hidden; background: var(--penna-bg); }
+  .zz-slide[data-out] { transform: translateX(-46%); opacity: 0.6; }
+  .zz-slide[data-in] { transform: translateX(54%); box-shadow: -1px 0 0 var(--penna-divider); }
+  .zz-dot-move { width: 9px !important; background: var(--penna-fg) !important; }
+
+  .zz-old { position: absolute; inset: 0; }
+  .zz-old-tx { position: absolute; inset: 0 0 auto; bottom: var(--zz-old-dock, 330px); display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; padding: 70px 12px 12px; overflow: hidden; font-size: var(--penna-text-read-body-size); line-height: var(--penna-text-read-body-line); }
+  .zz-old-tx > p { margin: 0; }
+  .zz-old-tx .penna-chat-bubble[data-penna] { max-width: 85%; }
+  .zz-old-acts { display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin-top: 4px; color: var(--penna-fg-muted); font-size: var(--penna-text-caption-size); }
+  .zz-old-acts[data-start] { justify-content: flex-start; margin-top: -6px; }
+  .zz-old-acts > span { padding: 0 4px; }
+  .zz-old-acts .penna-button[data-penna] { width: 24px; height: 24px; color: var(--penna-fg-muted); --penna-icon-size: 13px; }
+  .zz-old-dock { position: absolute; right: 0; bottom: 84px; left: 0; }
+  .zz-old-flip { position: absolute; z-index: 10; top: 62px; right: 8px; }
+  .zz-old-flip .penna-button[data-penna] { width: 22px; height: 22px; --penna-icon-size: 13px; }
+  .zz-old .penna-chat-frame-foot { margin-bottom: 0; }
+  .zz-old .penna-chat-chrome { flex: none; }
+  .zz-old .penna-chat-chrome .zz-dim { color: var(--penna-fg-muted); }
+  .zz-old .penna-chat-chrome [data-icon="chevron-down"] { color: var(--penna-fg-muted); --penna-icon-size: 11px; }
+  .zz-old .penna-chat-ask-hints { display: flex; gap: 14px; color: var(--penna-fg-muted); font-size: var(--penna-text-caption-size); white-space: nowrap; overflow: hidden; }
+
+  .zz-compare { display: flex; flex-wrap: wrap; gap: 28px 40px; align-items: flex-start; }
+  .zz-compare > figure { display: grid; flex: none; gap: 10px; width: 402px; margin: 0; }
+  .zz-compare > figure > figcaption { font-size: 11px; line-height: 16px; font-weight: 600; color: var(--penna-fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .zz-compare > figure > p { margin: 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-compare > figure > p > b { color: var(--penna-fg); font-weight: 600; }
+  .zz-cut { position: relative; overflow: hidden; border-radius: 28px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-divider); }
+  .zz-cut > .zz-old, .zz-cut > .zz-pane { position: relative; inset: auto; }
+  .zz-cut .zz-old-dock, .zz-cut .zz-dock { position: relative; inset: auto; padding: 12px 0; }
+  .zz-cut .zz-dock { margin: 0 16px; }
+  .zz-cut .zz-bar { position: relative; inset: auto; margin: 0 16px 16px; }
+
+  .zz-states { display: grid; grid-template-columns: repeat(auto-fill, 370px); gap: 24px 32px; }
+  .zz-states > figure { display: grid; gap: 8px; margin: 0; }
+  .zz-states > figure > figcaption { font-size: 11px; line-height: 16px; font-weight: 600; color: var(--penna-fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+  .zz-live { display: grid; grid-template-columns: 424px minmax(0, 1fr); gap: 32px; align-items: start; }
+  .zz-live > figcaption { display: grid; gap: 10px; max-width: 64ch; padding-top: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
+  .zz-live > figcaption b { color: var(--penna-fg); font-weight: 600; }
+  .zz-live > figcaption code { font: 12px/16px var(--penna-mono); color: var(--penna-fg); }
+  .zz-live [data-act] { cursor: var(--penna-click-cursor); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>A pane</h1>
+    <p>Step 3 of the phone redesign, after <a href="machines.html">Machines</a> and <a href="machine.html">A machine</a>: inside a pane. First the chrome every pane shares, then the agent chat. A pane has no header, as today: its content runs to the edges and the pill at the bottom is the one handle, saying what the pane is and what state it is in, the way a window tile does. When the keyboard comes up the pill gives its place to what you type with. The chat is the desktop's chat drawn for a thumb: one composer row with a plus and a send, a card in the composer's place when the agent asks, and nothing small under the messages. Terminal and browser panes get their own steps; they appear here only where a shared rule needs them. Caption text in <i>italics</i> says what the native app does today where it differs.</p>
+  </div>
+
+  <section>
+    <h2>Storyboard</h2>
+    <div class="penna-variants zz-phones zz-story">
+      <figure>
+        <div class="zz-phone" data-frame="today"></div>
+        <figcaption><b>0. Today</b>The chat pane mid-turn as the phone draws it now, the desktop's chat at desktop sizes. No header; a 22 flip button floats at the top right (<code>compact.rs:865</code>). The transcript is the shared list (<code>chat.rs:636</code>): text at 13, tool steps 28 tall, a time and the 24 Copy and Fork buttons under each message. Over the composer a 24 "2 queued" chip. The ask grows inside the composer with 1 to 9 key caps, a hint line and a 28 Deny button beside Stop (<code>ask.rs:55-112</code>); under it the 24 account and model chips. The pill says Needs your permission (<code>compact.rs:1610</code>).</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="rest"></div>
+        <figcaption><b>1. Chat at rest</b>The transcript at phone sizes: your message a bubble, the reply plain text, both at 17; a tool step is a 44 row with a 20 glyph, the whole row a target that opens it. Under it one composer row: a 44 plus, the field, a 44 send that stays off while the field is empty. Then the pill: the chat glyph, the chat's title, and where it works in muted ink beside one dot per pane of the session, grouped by window. The flip to the agent's terminal floats top right at 44. <i>Today the text is 13, the rows 28, the flip 22, and the composer carries a context ring, chips and a git line.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="typing" data-kb></div>
+        <figcaption><b>2. Typing</b>Tap the field and the keyboard comes up. The pill gives its place to the composer, which rides 8 above the keyboard; nothing else rides with it. The field grows with the text to five lines, the plus and send staying at the bottom. With text, send is solid. Lower the keyboard and the pill is back. <i>Today the pill stays, squeezed above the keyboard, and the composer sits over it (<code>compact.rs:1330</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="working"></div>
+        <figcaption><b>3. Working</b>Stop takes send's place while the agent works and the field is empty; typing turns it to queue. The running step has the spinner in place of its glyph. Two messages wait their turn: one muted 44 row, "2 queued", that opens a sheet of them, where tapping one takes it back into the field. The pill's second line is the agent's working message. <i>Today the queue is a 24 chip and stop is 28.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="approval"></div>
+        <figcaption><b>4. Needs approval</b>The ask takes the composer's place: a card where the composer was, no scrim, so the chat above still scrolls. One line says what it would do, the next the command, cut short; a tap on it shows the whole command. Then the answers as touch rows, each the whole row, each answering on tap. No key caps, no answer button. The pill's second line is Needs approval in warning ink, the tile's words. <i>Today the ask grows out of the composer at desktop size with key caps 1 to 4, a field "Deny and say what to do instead", a Deny button and Stop, and the pill says Needs your permission.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="question"></div>
+        <figcaption><b>5. Has a question</b>A question is its own words, two lines at most, with "1 of 2" when more wait. Its answers are rows with their detail as a second line. "Something else", last and muted, brings the composer back with the keyboard up and the question one line over the field. A question that takes several answers is the one case with a confirm: rows take a check, and a last row "Send 2 answers" sends them. <i>Today: the same key caps, a Skip and a Send button in the composer.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="empty"></div>
+        <figcaption><b>6. Empty chat</b>The phone empty state, then two rows in a group: Folder with the chat's folder, Resume with the last chat's title, each opening a sheet list, as the desktop's folder and Resume menus do. The composer under it as usual. <i>Today it says "Claude Code is ready" and nothing else (<code>agent_pane.rs:1550</code>); the folder and Resume menus are desktop only. New chat's own picker stays as it is.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="plus"></div>
+        <figcaption><b>7. The plus</b>A sheet titled with the agent: Mention a file first, then the chat's settings as rows with their value at the end, and one muted line for the context. The mode shows here and, while you type, only as send's tint (see Composer states). <i>Today the plus mentions a file; model, mode and effort sit behind a 24 chip in a popover of 32 rows, the account in another chip, the context in a 16 ring.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="mode"></div>
+        <figcaption><b>7b. Mode</b>A settings row opens its choices in the same sheet, under a back control: one row per choice with its line of description, the current one checked. A tap picks it and goes back. The glyphs are the desktop's mode glyphs. <i>Today: a 32 row list inside the model popover.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="hold"></div>
+        <figcaption><b>8. Hold a message</b>No buttons under messages: holding one opens the press and hold sheet, titled with its first words over when it was sent, with Copy and Fork from here. <i>Today a time and 24 Copy and Fork buttons sit under every message, always shown on a touch screen (<code>chat.rs:1567</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="menu" data-menu></div>
+        <figcaption><b>9. Pill menu in a pane</b>The machine screen's shape. "New in zz" over New browser, New terminal and New chat, chat nearest the thumb and solid: each makes a window holding that one thing and zooms into it. Then this pane: Rename, and Close in danger ink. Then Overview, back to the machine. In a terminal, All bindings sits apart at the top. The composer steps aside with the pill while the menu is open. <i>Today: All bindings and Kill pane, then Rename pane, New window, New pane, Last pane, Overview and the flip (<code>compact.rs:141-164</code>). Last pane is a swipe away and stays a key binding; the flip is already on screen.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="close"></div>
+        <figcaption><b>10. Close pane</b>Close asks first: a sheet with the question as its title, one muted line on what stops and what stays, Close as the one main action in danger, Cancel quiet over it. <i>Today Kill pane runs at once (<code>compact.rs:578</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="rename" data-kb></div>
+        <figcaption><b>10b. Rename</b>A sheet with a 56 field holding the name, selected, the keyboard up, and Save riding it, off until the name changes. <i>Today rename opens the desktop palette pinned to the top, with 28 rows.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="swipe"></div>
+        <figcaption><b>11. Next pane</b>Mid-swipe on the pill: the chat slides off, the terminal beside it in the same window slides in, the long dot travels to the next one, and the pill's lines turn to the terminal's: its command over where it runs. The dots group by window, so a swipe across a gap leaves the window. <i>As today, but for the tile's words.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="keys" data-kb></div>
+        <figcaption><b>12. The keyboard in a terminal</b>The same rule: the key row takes the pill's place and shape, 8 above the keyboard. Keys are 44. The prefix is pinned at the start, the arrow pad and hide at the end, and the keys between scroll, fading where more wait. The terminal's own step comes next. <i>Today keys are 40 in a 48 pill, and everything after the prefix scrolls: on a 393 phone the arrow pad and hide start off screen (<code>key_row.rs:20-30</code>).</i></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Composer states</h2>
+    <p>The row at its real size. The action is send, stop or queue, never two at once. With text to send it takes the tone of the chat's mode, as the desktop's does: warning when the agent edits without asking, danger when it runs everything, green when it only plans. Nothing else in the row shows the mode.</p>
+    <div class="zz-states" data-states></div>
+  </section>
+
+  <section>
+    <h2>13. Today and the new one</h2>
+    <p>The same moment drawn both ways, at the phone's width.</p>
+    <div class="zz-compare" data-compare></div>
+  </section>
+
+  <section>
+    <h2>Live</h2>
+    <figure class="zz-live" style="margin: 0">
+      <div class="zz-phone" data-live></div>
+      <figcaption>
+        <span><b>Live.</b> Tap the field: the keyboard comes up and the pill gives way to the composer. Tap the chat to lower it. Tap the pill for its menu, the plus for its sheet; a chip, a row, the scrim or a close control puts them away.</span>
+        <span><b>Not wired here:</b> typing, swiping the pill, holding a message, the ask card's rows and the sheet's drill in.</span>
+      </figcaption>
+    </figure>
+  </section>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+  const GROUPS = [3, 1, 2, 1, 1];
+  const dots = (on, warn = -1, move = -1, groups = GROUPS) => {
+    let n = 0;
+    return `<span class="penna-dots">${groups.map((count) => `<span class="penna-dots-group">${Array.from({ length: count }, () => {
+      const i = n++;
+      if (i === move || (move >= 0 && i === on)) return `<span class="penna-dot zz-dot-move"></span>`;
+      return `<span class="penna-dot"${i === on ? " data-active" : ""}${i === warn ? " data-attention" : ""}></span>`;
+    }).join("")}</span>`).join("")}</span>`;
+  };
+  const pill = ({ glyph = "chat", title, meta, tone, on = 0, move = -1, act = false, groups }) => `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating"${act ? ` data-act="menu"` : ""}><span class="penna-pill-tile" data-penna="phone.pill.icon">${ic(glyph)}</span><span class="penna-pill-copy"><span class="penna-pill-title">${title}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text"${tone ? ` data-tone="${tone}"` : ""}>${meta}</span>${dots(on, -1, move, groups)}</span></span></button></div>`;
+
+  const TITLE = "Make the pill menu offer New chat";
+  const WHERE = "zebrilus · main";
+  const restPill = (act) => pill({ title: TITLE, meta: WHERE, act });
+
+  const flip = `<button class="penna-touch-icon zz-flip" data-penna="floating" aria-label="Show the terminal">${ic("square-terminal")}</button>`;
+  const fade = `<div class="zz-fade"></div>`;
+
+  const you = (text, held) => `<div class="penna-card penna-chat-bubble" data-penna="card.bubble" role="group"${held ? " data-held" : ""}><span>${text}</span></div>`;
+  const reply = (text) => `<p>${text}</p>`;
+  const step = (glyph, label, detail, extra = "") => `<div class="penna-chat-activity" data-size="touch" data-clickable${extra}><span class="penna-chat-glyph">${glyph === "spin" ? `<i class="penna-touch-spinner" data-icon="loader"></i>` : ic(glyph)}</span><span class="penna-chat-label"${glyph === "spin" ? " data-strong" : ""}>${label}</span>${detail ? `<span class="penna-chat-detail">${detail}</span>` : ""}</div>`;
+  const steps = (...rows) => `<div class="zz-steps">${rows.join("")}</div>`;
+
+  const ASKED = "Make the pill menu offer New chat, nearest the thumb.";
+  const PLAN = "The order lives in pill_menu.rs. I'll put New chat last in the New group and make it the solid chip.";
+  const DONE = "Done. New chat sits nearest the thumb, and the pill tests pass.";
+  const restTx = (held) => [you(ASKED, held), reply(PLAN), steps(step("file", "Read pill_menu.rs"), step("pencil", "Edited pill_menu.rs", "+14 −3"), step("square-terminal", "cargo test -p penna pill", "14 passed")), reply(DONE)].join("");
+  const workTx = [you(ASKED), reply(PLAN), steps(step("file", "Read pill_menu.rs"), step("pencil", "Edited pill_menu.rs", "+14 −3"), step("spin", "cargo test -p penna pill"))].join("");
+  const askTx = [you(ASKED), reply(PLAN), steps(step("file", "Read pill_menu.rs"), step("pencil", "Edited pill_menu.rs", "+14 −3"))].join("");
+
+  const sendBtn = (state) => {
+    if (state === "off") return `<button class="penna-button" data-penna="button.send" data-shape="icon" disabled aria-label="Send">${ic("arrow-up")}</button>`;
+    if (state === "stop") return `<button class="penna-button" data-penna="button.send" data-shape="icon" data-emphasis="solid" data-solid="primary" aria-label="Stop">${ic("stop")}</button>`;
+    if (state === "queue") return `<button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Queue">${ic("clock")}</button>`;
+    const tone = state === "send" ? "primary" : state;
+    return `<button class="penna-button" data-penna="button.send" data-shape="icon" data-emphasis="solid" data-solid="${tone}" aria-label="Send">${ic("arrow-up")}</button>`;
+  };
+  const composer = ({ text = "", state = "off", caret = false, thumb = false, live = false } = {}) => `<div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer" data-size="touch">${thumb ? `<div class="penna-chat-attach"><span class="penna-chat-thumb" style="background-image: linear-gradient(160deg, color-mix(in srgb, var(--penna-accent) 40%, transparent), transparent 60%), repeating-linear-gradient(0deg, color-mix(in srgb, var(--penna-fg) 18%, transparent) 0 6px, transparent 6px 14px)"><button class="penna-touch-icon penna-chat-thumb-remove" data-penna="floating" aria-label="Remove the image">${ic("xmark")}</button></span></div>` : ""}<button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Chat options"${live ? ` data-act="plus"` : ""}>${ic("plus")}</button><span class="penna-chat-input${caret ? " zz-caret" : ""}" role="textbox"${text ? "" : ` data-placeholder="Message Claude Code…"`}${live ? ` data-act="type"` : ""}>${text}</span>${sendBtn(state)}</div></div>`;
+  const queued = `<div class="penna-touch-row penna-chat-queued" data-penna="phone.row" role="button">${ic("list")}<span class="penna-touch-row-lines"><span>2 queued</span></span></div>`;
+  const jump = `<button class="penna-touch-icon zz-jump" data-penna="floating" aria-label="Jump to latest">${ic("arrow-down")}</button>`;
+
+  const row = (label, { glyph, detail, value, check, tone, quiet, send } = {}) => `<div class="penna-touch-row" data-penna="phone.row" role="button"${detail ? ` data-lines="2"` : ""}${tone ? ` data-tone="${tone}"` : ""}${quiet ? " data-quiet" : ""}${send ? " data-send" : ""}>${glyph ? ic(glyph) : ""}<span class="penna-touch-row-lines"><span>${label}</span>${detail ? `<span>${detail}</span>` : ""}</span>${value ? `<span class="penna-touch-row-value"><span>${value}</span></span>` : ""}${check ? `<span class="penna-touch-row-state">${ic("check")}</span>` : ""}</div>`;
+  const askCard = (title, detail, rows, count) => `<div class="penna-chat-ask-card" data-penna="field.composer"><div class="penna-chat-ask-what" role="button"><div class="penna-chat-ask-what-head"><span class="penna-chat-ask-what-title">${title}</span>${count ? `<span class="penna-chat-ask-what-count">${count}</span>` : ""}</div>${detail ? `<span class="penna-chat-ask-what-detail">${detail}</span>` : ""}</div>${rows.join("")}</div>`;
+
+  const pane = (tx, dock, bar, extra = "") => `<div class="zz-pane"><div class="zz-tx">${tx}</div>${fade}${flip}<div class="zz-dock">${dock}</div>${extra}${bar}</div>`;
+
+  const kb = () => {
+    const keys = (s) => [...s].map((k) => `<i>${k}</i>`).join("");
+    return `<div class="zz-kb"><div class="zz-kb-row">${keys("qwertyuiop")}</div><div class="zz-kb-row">${keys("asdfghjkl")}</div><div class="zz-kb-row"><i data-w>⇧</i>${keys("zxcvbnm")}<i data-w>⌫</i></div><div class="zz-kb-row"><i data-w>123</i><i data-space>space</i><i data-ret>return</i></div></div>`;
+  };
+
+  const sheet = ({ title, detail, back, close = true, body, rest = "8px" }) => `<div class="penna-sheet" style="--penna-sheet-rest: ${rest}"><div class="penna-sheet-scrim" data-act="dismiss"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header">${back ? `<button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Back" style="margin-left: -10px">${ic("chevron-left")}</button>` : ""}${detail ? `<span class="penna-sheet-copy"><span class="penna-sheet-title">${title}</span><span class="penna-sheet-detail">${detail}</span></span>` : `<span class="penna-sheet-title">${title}</span>`}${close ? `<button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close" data-act="dismiss">${ic("xmark")}</button>` : ""}</div>${body}</div></div></div>`;
+  const list = (rows) => `<div class="penna-sheet-list">${rows.join("")}</div>`;
+  const note = (text) => `<div class="penna-touch-row" data-penna="phone.row" style="min-height: 44px; cursor: default; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size)"><span class="penna-touch-row-lines"><span>${text}</span></span></div>`;
+  const plusSheet = sheet({ title: "Claude Code", body: list([row("Mention a file", { glyph: "file" }), `<div style="height: 8px"></div>`, row("Model", { glyph: "sparkle", value: "Opus 5.5" }), row("Mode", { glyph: "circle-user", value: "Ask" }), row("Effort", { glyph: "cpu", value: "High" }), row("Account", { glyph: "user", value: "Default" }), note("34% of the context used")]) });
+  const modeSheet = sheet({ title: "Mode", back: true, body: list([
+    row("Ask", { glyph: "circle-user", detail: "Ask before edits and commands", check: true }),
+    row("Accept edits", { glyph: "pencil", detail: "Edit files without asking" }),
+    row("Plan", { glyph: "eye", detail: "Plan before changing anything" }),
+    row("Auto", { glyph: "pencil", detail: "Claude decides which actions need approval" }),
+    row("Bypass permissions", { glyph: "triangle-alert", detail: "Run everything without asking" }),
+  ]) });
+  const holdSheet = sheet({ title: ASKED, detail: "You, 2 minutes ago", body: list([row("Copy", { glyph: "copy" }), row("Fork from here", { glyph: "git-branch" })]) });
+  const closeSheet = sheet({ title: "Close this pane?", detail: "The chat stops. Its transcript stays.", close: false, body: `<div class="penna-action-bar" style="padding-top: 8px"><button class="penna-button" data-penna="button.quiet" data-size="touch-large"><span class="penna-label">Cancel</span></button><button class="penna-button" data-penna="button" data-tone="danger" data-prominent data-size="touch-large" data-emphasis="solid" data-solid="danger" style="color: var(--penna-on-danger)"><span class="penna-label">Close</span></button></div>` });
+  const renameSheet = sheet({ title: "Rename pane", rest: "300px", body: `<div style="padding: 4px 16px 8px"><label class="penna-input" data-penna="field" data-size="touch-large" data-state="focused" style="width: 100%"><span style="min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis"><span style="background: color-mix(in srgb, var(--penna-accent) 35%, transparent)">${TITLE}</span></span></label></div><div class="penna-action-bar" data-keys><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled><span class="penna-label">Save</span></button></div>` });
+
+  const chip = (glyph, label, extra = ` data-penna="floating"`) => `<button class="penna-pill-chip"${extra}>${ic(glyph)}<span>${label}</span></button>`;
+  const group = (chips) => `<div class="penna-pill-menu-group">${chips}</div>`;
+  const menu = (terminal) => `<div class="penna-pill-menu" data-open><div class="penna-pill-menu-scrim" data-act="dismiss"></div><div class="zz-menu-stack">${terminal ? group(chip("keyboard", "All bindings", ` data-penna="floating" data-look="quiet"`)) : ""}${group(chip("layout-dashboard", "Overview"))}${group(chip("pencil", "Rename") + chip("xmark", "Close", ` data-penna="floating" data-tone="danger"`))}${group(`<span class="penna-pill-menu-label" data-penna="floating">New in zz</span>${chip("globe", "New browser")}${chip("square-terminal", "New terminal")}${chip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}`)}</div><div class="penna-pill-menu-well"></div><button class="penna-pill-menu-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close" data-act="dismiss">${ic("xmark")}</button></div>`;
+
+  const TERM = ["~/dev/zebrilus main", "❯ cargo test -p penna pill", "   Compiling penna v0.42.0", "running 14 tests", "test pill::menu_order ... ok", "test pill::new_chat ... ok", "test pill::label_chip ... ok", "✓test result: ok. 14 passed", "❯ "];
+  const termLine = (line) => {
+    if (line.startsWith("✓")) return `<span data-ink="success">${esc(line.slice(1))}</span>`;
+    if (line.startsWith("✗")) return `<span data-ink="danger">${esc(line.slice(1))}</span>`;
+    if (line.startsWith("❯")) return `<b>${esc(line)}</b>`;
+    return esc(line);
+  };
+  const term = (cursor) => `<pre class="zz-term">${TERM.map(termLine).join("\n")}${cursor ? `<span class="zz-cursor"></span>` : ""}</pre>`;
+
+  const key = (inner, label) => `<span class="penna-key-row-slot"><button class="penna-key" data-penna="phone.key"${label ? ` aria-label="${label}"` : ""}>${inner}</button></span>`;
+  const txt = (t) => `<span class="penna-text" data-penna-text>${t}</span>`;
+  const keyRow = `<div class="zz-keys"><div class="penna-key-row" data-size="touch"><div class="penna-key-row-pill" data-penna="floating"></div><span class="penna-key-row-pin">${key(`<span class="zz-chord">${ic("key-control")}${txt("b")}</span>`, "Prefix")}</span><div class="penna-key-row-scroll">${key(ic("key-control"), "Control")}${key(ic("key-option"), "Alt")}${key(ic("key-tab-iso"), "Tab")}${key(ic("key-escape"), "Escape")}${key(txt("/"))}${key(txt("@"))}</div><span class="penna-key-row-pin">${key(ic("arrows-move"), "Arrows")}${key(ic("chevron-down"), "Hide keyboard")}</span><button class="penna-key-row-more" data-penna="phone.pill" data-side="back" aria-label="Scroll back">${ic("chevron-left")}</button><button class="penna-key-row-more" data-penna="phone.pill" data-side="ahead" aria-label="Scroll ahead">${ic("chevron-right")}</button></div></div>`;
+
+  const old = () => {
+    const acts = (stamp, fork, start) => `<div class="zz-old-acts"${start ? " data-start" : ""}>${stamp ? `<span>${stamp}</span>` : ""}<button class="penna-button" data-penna="icon-button.row" data-shape="icon" aria-label="Copy">${ic("copy")}</button>${fork ? `<button class="penna-button" data-penna="icon-button.row" data-shape="icon" aria-label="Fork">${ic("git-branch")}</button>` : ""}</div>`;
+    const oldStep = (glyph, label, detail) => `<div class="penna-chat-activity" data-clickable><span class="penna-chat-glyph">${ic(glyph)}</span><span class="penna-chat-label">${label}</span>${detail ? `<span class="penna-chat-detail">${detail}</span>` : ""}</div>`;
+    const tx = `<div class="zz-old-tx"><div class="penna-chat-message"><div class="penna-card penna-chat-bubble" data-penna="card.bubble" role="group"><span>${ASKED}</span></div>${acts("2m", true)}</div><p>${PLAN}</p>${acts("", true, true)}<div>${oldStep("file", "Read pill_menu.rs")}${oldStep("pencil", "Edited pill_menu.rs", "+14 −3")}<div class="penna-chat-activity"><span class="penna-chat-glyph" data-tint="warning">${ic("square-terminal")}</span><span class="penna-chat-label">cargo test -p penna pill</span><span style="display:flex;flex:none"><span class="penna-badge" data-penna="badge"><span class="badge-text">needs approval</span></span></span></div></div></div>`;
+    const ask = `<div class="penna-chat-frame"><div class="penna-chat-frame-top"><div class="penna-chat-queue"><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small" style="color: var(--penna-fg-muted)">${ic("undo-2")}<span class="penna-label">2 queued</span></button></div><div class="penna-chat-composer"><span class="input-underlay" data-penna="field.composer"></span><div class="penna-chat-field input-chrome" data-penna="field.composer" data-asking><div class="penna-chat-ask"><div class="penna-chat-ask-header">${ic("square-terminal")}<span class="penna-chat-ask-title">Run this command?</span></div><div class="penna-chat-ask-body"><div class="penna-well penna-chat-ask-inset" data-penna="well"><span>cargo test -p penna pill_menu --all-features</span></div><span class="penna-chat-ask-note">in ~/dev/zebrilus</span></div><div class="penna-chat-ask-options"><div class="penna-row penna-chat-ask-option" data-penna="menu-item" role="listitem" data-state="selected" aria-selected="true"><div class="penna-chat-ask-text"><span class="penna-chat-ask-label">Allow once</span></div><kbd class="penna-kbd" data-penna="keycap" data-size="small"><span>1</span></kbd></div><div class="penna-row penna-chat-ask-option" data-penna="menu-item" role="listitem"><div class="penna-chat-ask-text"><span class="penna-chat-ask-label">Always allow cargo test</span><span class="penna-chat-ask-detail">this session</span></div><kbd class="penna-kbd" data-penna="keycap" data-size="small"><span>2</span></kbd></div><span class="penna-chat-ask-divider" data-penna="rule.list"></span><div class="penna-row penna-chat-ask-option" data-penna="menu-item" role="listitem"><div class="penna-chat-ask-text"><span class="penna-chat-ask-label">Deny</span></div><kbd class="penna-kbd" data-penna="keycap" data-size="small"><span>3</span></kbd></div></div></div><span class="penna-chat-ask-rule" data-penna="rule.list"></span><div class="penna-chat-input-row"><span class="penna-chat-ask-leading"><kbd class="penna-kbd" data-penna="keycap" data-size="small"><span>4</span></kbd></span><span class="penna-chat-input" role="textbox" data-placeholder="Deny and say what to do instead"></span><button class="penna-button penna-chat-ask-send" data-penna="button" data-emphasis="solid" data-solid="primary"><span class="penna-label">Deny</span>${ic("key-return")}</button><button class="penna-button" data-penna="button.send" data-shape="icon" data-emphasis="solid" data-solid="primary" aria-label="Stop">${ic("stop")}</button></div></div></div></div><div class="penna-chat-frame-foot"><div class="penna-chat-ask-hints"><span>1 to 3 pick</span><span>↵ deny</span><span>esc deny</span></div><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small">${ic("circle-user")}<span class="penna-label">Default</span></button><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small"><span class="penna-label">Opus 5.5</span><span class="zz-dim">High</span>${ic("chevron-down")}</button></div></div>`;
+    return { tx, ask };
+  };
+  const oldComposer = `<div class="penna-chat-frame"><div class="penna-chat-frame-top"><div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer"><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Mention a file">${ic("plus")}</button><span class="penna-chat-input" role="textbox" data-placeholder="Message Claude Code…"></span><span class="penna-chat-meter" role="progressbar" style="--penna-chat-used: 0.34"><span></span></span><button class="penna-button" data-penna="button.send" data-shape="icon" disabled aria-label="Send">${ic("arrow-up")}</button></div></div></div><div class="penna-chat-frame-foot"><div><span class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small" style="color: var(--penna-fg-muted)">${ic("git-branch")}<span class="penna-label">main · 2 files <span style="color: var(--penna-success-ink)">+14</span> <span style="color: var(--penna-danger-ink)">−3</span></span></span></div><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small">${ic("circle-user")}<span class="penna-label">Default</span></button><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small"><span class="penna-label">Opus 5.5</span><span class="zz-dim">High</span>${ic("chevron-down")}</button></div></div>`;
+  const oldPill = pill({ title: TITLE, meta: "Needs your permission", tone: "warning" });
+  const approvalCard = askCard("Run this command?", "cargo test -p penna pill_menu --all-features", [row("Allow once"), row("Always allow cargo test"), row("Deny")]);
+
+  const frames = {
+    today: () => { const o = old(); return `<div class="zz-old">${o.tx}${fade}<div class="zz-old-flip"><button class="penna-button" data-penna="icon-button.row" data-shape="icon" aria-label="Show the terminal">${ic("square-terminal")}</button></div><div class="zz-old-dock">${o.ask}</div>${oldPill}</div>`; },
+    rest: () => pane(restTx(false), composer(), restPill()),
+    typing: () => pane(restTx(false), composer({ text: "Also open the menu story so I can look at it", state: "send", caret: true }), "") + kb(),
+    working: () => pane(workTx, queued + composer({ state: "stop" }), pill({ title: TITLE, meta: "Running cargo test -p penna pill" })),
+    approval: () => pane(askTx, approvalCard, pill({ title: TITLE, meta: "Needs approval", tone: "warning" })),
+    question: () => pane([you("Pick a tailnet library for zz."), reply("Two fit, and they differ in who runs the node."), steps(step("file", "Read tailnet-node.md"))].join(""), askCard("Should the daemon embed the tailnet node, or talk to tailscaled?", "", [row("Embed it", { detail: "One process, no system service" }), row("Talk to tailscaled", { detail: "Uses the node the machine already runs" }), row("Something else", { quiet: true })], "1 of 2"), pill({ title: "Pick a tailnet library", meta: "Has a question", tone: "warning" })),
+    empty: () => `<div class="zz-pane">${flip}<div class="zz-empty"><div class="penna-empty">${ic("chat")}<b>Claude Code is ready</b><span>Write below to start a chat.</span></div><div class="penna-touch-group" data-penna="settings.card">${row("Folder", { glyph: "folder", value: "~/dev/zebrilus" })}${row("Resume", { glyph: "history", value: "Fix pane stack hit testing on iPad" })}</div></div><div class="zz-dock">${composer()}</div>${pill({ title: "Claude Code", meta: WHERE, on: 8, groups: [...GROUPS, 1] })}</div>`,
+    plus: () => pane(restTx(false), composer(), restPill()) + plusSheet,
+    mode: () => pane(restTx(false), composer(), restPill()) + modeSheet,
+    hold: () => pane(restTx(true), composer(), restPill()) + holdSheet,
+    menu: () => pane(restTx(false), composer(), restPill()) + menu(false),
+    close: () => pane(restTx(false), composer(), restPill()) + closeSheet,
+    rename: () => pane(restTx(false), composer(), "") + renameSheet + kb(),
+    swipe: () => `<div class="zz-slide" data-out>${pane(restTx(false), composer(), "")}</div><div class="zz-slide" data-in>${term(true)}</div>${pill({ glyph: "square-terminal", title: "cargo test", meta: WHERE, on: 0, move: 1 })}`,
+    keys: () => `${term(true)}${keyRow}${kb()}`,
+  };
+
+  for (const phone of document.querySelectorAll("[data-frame]")) phone.innerHTML = frames[phone.dataset.frame]();
+
+  const live = document.querySelector("[data-live]");
+  live.innerHTML = `${pane(restTx(false), composer({ live: true }), restPill(true))}${kb()}`;
+
+  const states = [
+    ["Empty: send off", composer()],
+    ["Typed", composer({ text: "Run the menu story too", state: "send" })],
+    ["Typed, mode edits without asking", composer({ text: "Run the menu story too", state: "warning" })],
+    ["Typed, mode runs everything", composer({ text: "Run the menu story too", state: "danger" })],
+    ["Typed, mode only plans", composer({ text: "Run the menu story too", state: "success" })],
+    ["Working: stop", composer({ state: "stop" })],
+    ["Typing while it works: queue", composer({ text: "Then the swipe test", state: "queue" })],
+    ["Five lines, then it scrolls", composer({ text: "Make New chat the solid chip, put it last in the New group so it sits nearest the thumb, keep the label chip at 28 and muted with no glyph, and run the pill tests and the menu story when you are done.", state: "send" })],
+    ["A pasted image", composer({ text: "This is the menu now", state: "send", thumb: true })],
+    ["Queued, over the composer", `<div style="display: flex; flex-direction: column">${queued}${composer({ state: "stop" })}</div>`],
+    ["Jump to latest, scrolled up", `<div style="position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px">${jump.replace("zz-jump", "")}${composer()}</div>`],
+  ];
+  document.querySelector("[data-states]").innerHTML = states.map(([label, html]) => `<figure><figcaption>${label}</figcaption><div style="width: 370px">${html}</div></figure>`).join("");
+
+  const o = old();
+  const compare = [
+    ["Composer today", `<div class="zz-cut" style="width: 402px"><div class="zz-old"><div class="zz-old-dock">${oldComposer}</div></div></div>`, "<b>Today.</b> The desktop's composer: a 40 field with a 28 plus, a 16 context ring and a 28 send, then git's line and 24 chips for the account and the model with its effort. Five targets, every one under 44."],
+    ["Composer new", `<div class="zz-cut" style="width: 402px"><div class="zz-pane"><div class="zz-dock">${composer()}</div></div></div>`, "<b>New.</b> One row: a 44 plus, the field at 17, a 44 send. The settings move into the plus's sheet and the mode into send's tint."],
+    ["Ask today", `<div class="zz-cut" style="width: 402px"><div class="zz-old"><div class="zz-old-dock">${o.ask}</div>${oldPill.replace('class="zz-bar"', 'class="zz-bar" style="position: relative; inset: auto; margin: 0 16px 16px"')}</div></div>`, "<b>Today.</b> The ask grows inside the composer at desktop size: answers with 1 to 4 key caps, a field to deny with words, a Deny button, Stop, a hint line for keys a phone lacks, and the chips."],
+    ["Ask new", `<div class="zz-cut" style="width: 402px"><div class="zz-pane"><div class="zz-dock">${approvalCard}</div>${pill({ title: TITLE, meta: "Needs approval", tone: "warning" })}</div></div>`, "<b>New.</b> A card in the composer's place: what it would run in two lines, then three rows, each answering on tap. The pill says the tile's words."],
+  ];
+  document.querySelector("[data-compare]").innerHTML = compare.map(([label, html, say]) => `<figure><figcaption>${label}</figcaption>${html}<p>${say}</p></figure>`).join("");
+
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  for (const phone of document.querySelectorAll(".zz-phone")) {
+    phone.insertAdjacentHTML("afterbegin", status);
+    phone.insertAdjacentHTML("beforeend", `<span class="zz-home"></span>`);
+  }
+
+  live.addEventListener("click", (event) => {
+    const act = event.target.closest("[data-act]")?.dataset.act;
+    const open = live.querySelector(":scope > .penna-sheet, :scope > .penna-pill-menu");
+    if (open) {
+      if (act === "dismiss" || event.target.closest(".penna-pill-chip, .penna-touch-row")) {
+        open.remove();
+        live.removeAttribute("data-menu");
+      }
+      return;
+    }
+    if (act === "type") {
+      live.setAttribute("data-kb", "");
+      event.target.closest(".penna-chat-input").classList.add("zz-caret");
+      return;
+    }
+    if (act === "menu") {
+      live.setAttribute("data-menu", "");
+      live.insertAdjacentHTML("beforeend", menu(false));
+      window.pennaKit?.roundAll?.();
+      return;
+    }
+    if (act === "plus") {
+      live.insertAdjacentHTML("beforeend", plusSheet);
+      window.pennaKit?.roundAll?.();
+      return;
+    }
+    if (live.hasAttribute("data-kb") && event.target.closest(".zz-tx, .zz-kb")) {
+      live.removeAttribute("data-kb");
+      live.querySelector(".zz-caret")?.classList.remove("zz-caret");
+    }
+  });
+
+  const fit = (root) => {
+    for (const dock of root.querySelectorAll(".zz-dock, .zz-old-dock")) {
+      const host = dock.parentElement;
+      if (dock.closest(".zz-cut")) continue;
+      host.style.setProperty(dock.classList.contains("zz-dock") ? "--zz-dock" : "--zz-old-dock", `${host.clientHeight - dock.offsetTop + 16}px`);
+    }
+  };
+  fit(document);
+  addEventListener("load", () => fit(document));
+  document.fonts.ready.then(() => fit(document));
+  new MutationObserver(() => fit(live)).observe(live, { attributes: true, attributeFilter: ["data-kb"] });
+
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>
