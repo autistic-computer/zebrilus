@@ -12108,6 +12108,7 @@ impl Shared {
             self.close_agent_panes(&agent_panes_closed);
             for (pane, replaced) in agent_panes_opened {
                 self.open_agent_pane(pane, replaced);
+                self.request_pane_location(pane);
             }
         }
         #[cfg(not(feature = "agent"))]
@@ -33858,6 +33859,7 @@ impl Shared {
             .unwrap_or(false);
         if moved {
             self.publish_snapshot_state();
+            self.request_pane_location(pane);
         }
     }
 

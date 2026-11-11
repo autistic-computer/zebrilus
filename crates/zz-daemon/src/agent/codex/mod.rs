@@ -1911,6 +1911,7 @@ impl Runtime {
                             }),
                         })
                     })
+                    .filter(|session| session.cwd.is_dir())
                     .collect();
                 self.emit(AgentStreamPayload::SessionsListed {
                     client,

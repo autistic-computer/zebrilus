@@ -655,6 +655,9 @@ impl Runtime {
                         sessions::config_home()
                             .map(|config| sessions::list(&config, filter.as_deref()))
                             .unwrap_or_default()
+                            .into_iter()
+                            .filter(|session| session.cwd.is_dir())
+                            .collect::<Vec<_>>()
                     })
                     .await
                     .into();

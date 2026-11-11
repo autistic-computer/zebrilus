@@ -103,8 +103,10 @@ pub fn newer_pane_text(kind: &str) -> String {
 #[must_use]
 pub fn pane_folder(pane: &PaneSnapshot) -> Option<String> {
     let cwd = match &pane.kind {
+        PaneKindSnapshot::Agent(agent) if agent.cwd.is_some() => {
+            agent.cwd.as_deref()?.to_string_lossy().into_owned()
+        }
         _ if !pane.summary.cwd.is_empty() => pane.summary.cwd.clone(),
-        PaneKindSnapshot::Agent(agent) => agent.cwd.as_deref()?.to_string_lossy().into_owned(),
         PaneKindSnapshot::Editor(editor) if !editor.cwd.is_empty() => editor.cwd.clone(),
         _ => return None,
     };
@@ -183,4 +185,39 @@ pub(crate) fn last_component(path: &str) -> &str {
     path.rsplit(['/', '\\'])
         .find(|component| !component.is_empty())
         .unwrap_or(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use zz_protocol::{AgentDescriptor, PaneId, PaneSummary};
+
+    use super::*;
+
+    #[test]
+    fn a_chat_in_a_former_terminal_pane_names_its_own_folder() {
+        let pane = PaneSnapshot {
+            id: PaneId(1),
+            title: String::new(),
+            kind: PaneKindSnapshot::Agent(AgentDescriptor {
+                cwd: Some(PathBuf::from("/Users/me/dev/clairvo")),
+                ..AgentDescriptor::default()
+            }),
+            synchronized_input: false,
+            bell: false,
+            dead: false,
+            dead_status: None,
+            border_colour: None,
+            active_border_colour: None,
+            border_status_text: String::new(),
+            mode: None,
+            status: None,
+            summary: PaneSummary {
+                cwd: "~/dev/autistic-computer/zebrilus".to_owned(),
+                ..PaneSummary::default()
+            },
+        };
+        assert_eq!(pane_folder(&pane).as_deref(), Some("~/dev/clairvo"));
+    }
 }

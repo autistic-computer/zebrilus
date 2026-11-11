@@ -753,6 +753,7 @@ fn location_source(inner: &ServerState, pane: PaneId) -> Option<LocationSource> 
                 })
                 .unwrap_or_default(),
         ),
+        PaneKind::Agent(agent) => agent.cwd.clone().map(|cwd| (String::new(), cwd)),
         _ => None,
     }
 }
