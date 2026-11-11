@@ -62,7 +62,7 @@
 .zz-meta { flex: none; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); font-variant-numeric: tabular-nums; }
 .zz-row [data-penna="button"], .zz-row [data-penna="button.quiet"] { flex: none; height: 32px; }
 
-.zz-bar { position: absolute; z-index: 20; right: 16px; bottom: 28px; left: 16px; display: flex; gap: 8px; }
+.zz-bar { position: absolute; z-index: 20; right: 16px; bottom: 20px; left: 16px; display: flex; gap: 8px; }
 .zz-pill[data-penna="phone.pill"] { display: flex; flex: 1; gap: 10px; min-width: 0; padding: 0 16px 0 8px; }
 .zz-pill > .zz-tile[data-penna] { display: grid; place-items: center; width: 40px; height: 40px; color: var(--penna-muted); --penna-icon-size: 20px; }
 .zz-pill > .zz-tile[data-penna][data-warn] { background: color-mix(in srgb, var(--penna-warning) 14%, transparent); color: var(--penna-warning-ink); }

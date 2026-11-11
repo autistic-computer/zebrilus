@@ -25,7 +25,7 @@
   .zz-say { margin: 0; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
   .zz-upper { margin-top: 96px; }
   .zz-phone .penna-input > .penna-input-caret { margin-left: -3px; background: var(--penna-accent); }
-  .zz-finder { position: relative; flex: none; aspect-ratio: 1; overflow: hidden; border-radius: var(--penna-radius); background: radial-gradient(circle at 40% 35%, #4a4f57, #1c1e22 75%); }
+  .zz-finder { position: relative; flex: none; aspect-ratio: 1; overflow: hidden; border-radius: calc(var(--penna-phone-radius) * var(--penna-corner-grow)); corner-shape: superellipse(var(--penna-window-k)); background: radial-gradient(circle at 40% 35%, #4a4f57, #1c1e22 75%); }
   .zz-finder > i { position: absolute; width: 48px; height: 48px; border: 4px solid #fff; }
   .zz-finder > i:nth-child(1) { top: 56px; left: 56px; border-right: 0; border-bottom: 0; border-top-left-radius: 16px; }
   .zz-finder > i:nth-child(2) { top: 56px; right: 56px; border-left: 0; border-bottom: 0; border-top-right-radius: 16px; }
@@ -92,8 +92,8 @@
               <div>
                 <div class="penna-touch-header"><span>Found on your tailnet</span><span class="penna-touch-count">3</span></div>
                 <div class="penna-touch-group" data-penna="settings.card">
-                  <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>macbook</span><span>macOS · runs zz</span></span><i data-icon="plus" data-add></i></div>
-                  <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>alienware</span><span>Linux · runs zz</span></span><i data-icon="plus" data-add></i></div>
+                  <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>macbook</span><span>macOS · runs zz</span></span><i data-icon="plus"></i></div>
+                  <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>alienware</span><span>Linux · runs zz</span></span><i data-icon="plus"></i></div>
                   <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>homelab</span><span>No zz on it yet</span></span></div>
                 </div>
               </div>
@@ -237,7 +237,7 @@
         <div>
           <div class="penna-touch-header"><span>Found on your tailnet</span><span class="penna-touch-count">2</span></div>
           <div class="penna-touch-group" data-penna="settings.card">
-            <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>studio</span><span>Linux · runs zz</span></span><i data-icon="plus" data-add></i></div>
+            <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>studio</span><span>Linux · runs zz</span></span><i data-icon="plus"></i></div>
             <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>homelab</span><span>No zz on it yet</span></span></div>
           </div>
         </div>
@@ -356,7 +356,7 @@
     if (child) return;
     const box = from.getBoundingClientRect();
     const frameBox = phone.getBoundingClientRect();
-    const radius = parseFloat(getComputedStyle(from).borderTopLeftRadius) || 12;
+    const radius = parseFloat(getComputedStyle(from).getPropertyValue("--penna-corner")) || parseFloat(getComputedStyle(from).borderTopLeftRadius) || 0;
     tile = { x: box.left - frameBox.left, y: box.top - frameBox.top, width: box.width, height: box.height, radius };
     child = document.createElement("div");
     child.className = "zz-layer zz-child";
