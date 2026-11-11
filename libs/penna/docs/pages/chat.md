@@ -102,6 +102,21 @@ welcome_state(Icon::new(IconName::Bot).size(px(40.0)), "Ask the agent", detail, 
 empty_state("No messages yet", false, view, cx)
 ```
 
+## On a phone
+
+The same chat drawn for a thumb. The composer is one row: a 44 plus, the field at `touch-body` growing to five lines, and a 44 action that sends, stops or queues. With text, send takes the tone of the chat's mode. The plus opens a sheet with Mention a file and the chat's settings. Tool steps are 44 rows, and a held message opens a sheet with Copy and Fork from here.
+
+A permission request or a question takes the composer's place as a card, with no scrim: what is asked in one or two lines, then the answers as touch rows, each answering on tap. No key caps and no answer button.
+
+```figure uses=chat,touch,button,label
+<div class="docs-show" data-gap="wide" style="align-items: flex-end">
+  <div class="docs-cell" style="width: 370px"><div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer" data-size="touch"><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Chat options"><i data-icon="plus"></i></button><span class="penna-chat-input" role="textbox">Run the menu story too</span><button class="penna-button" data-penna="button.send" data-shape="icon" data-emphasis="solid" data-solid="primary" aria-label="Send"><i data-icon="arrow-up"></i></button></div></div><span class="docs-note">Composer row</span></div>
+  <div class="docs-cell" style="width: 370px"><div class="penna-chat-ask-card" data-penna="field.composer"><div class="penna-chat-ask-what" role="button"><div class="penna-chat-ask-what-head"><span class="penna-chat-ask-what-title">Run this command?</span></div><span class="penna-chat-ask-what-detail">cargo test -p penna pill_menu --all-features</span></div><div class="penna-touch-row" data-penna="phone.row" role="button"><span class="penna-touch-row-lines"><span>Allow once</span></span></div><div class="penna-touch-row" data-penna="phone.row" role="button"><span class="penna-touch-row-lines"><span>Always allow cargo test</span></span></div><div class="penna-touch-row" data-penna="phone.row" role="button"><span class="penna-touch-row-lines"><span>Deny</span></span></div></div><span class="docs-note">Ask card</span></div>
+</div>
+```
+
+Not built natively yet: the phone draws the desktop's composer, chips and inline ask.
+
 ## API
 
 | Rust | HTML | What it does |

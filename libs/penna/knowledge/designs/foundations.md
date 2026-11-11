@@ -354,6 +354,12 @@ Layout, top to bottom:
 
 A screen of things is the same at every level: the top row, the large title, then tiles (Tile, Phone tile), under a section header per group when they fall in groups. Machines are square tiles two to a row with the add tile last. Inside a machine, each session's windows are a bento grid of tiles sized by what they hold, under the session's header, which is the session's name alone; the grid has no add tile, since one fixed-size tile among mixed widths leaves holes, and the header has no button. Windows and sessions are made in one place, the pill's menu (Blocks, Pill), and the pill says where they will land: inside a machine its second line is the session in view. An empty screen is the title and one add tile alone; inside a machine with no sessions that tile opens the pill's menu, so the first session starts from the same choice. Going into a tile is a zoom (rule 4), and the screen it opens may be another screen of tiles; the close control, dragging the pill up or a pinch goes back one level.
 
+Inside a pane there is no top row, no title and no header: the pane's content runs from the status area to the bottom of the screen, padded by the safe area, and the pill is the one handle (Blocks, Pill). A control that belongs to the pane's kind floats at the top right, a 44 icon button `inset-pane` 16 from the side and 8 under the status area: the agent's flip between its chat and its terminal is the only one today. Status: the flip floats there at its desktop size (`compact.rs`, `pane_flip_button`); the 44 size is not built.
+
+The keyboard rule: when the keyboard is up, the pill gives its place to what you type with: the composer in a chat (Chat on a phone), the key row in a terminal (Key row), the address field in a browser. It sits 8 above the keyboard, 16 from the sides, and nothing else rides with it. Keyboard down, the pill is back. Status: in a terminal the pill turns into the key row (`compact.rs`); in a chat or a browser the pill stays, squeezed above the keyboard, and the composer sits over it: not built.
+
+The mini pill is the one thing drawn smaller than its target (rule 2). Scrolling a pane's content 24 shrinks the pill to it (`compact_pill_morph`): 32 tall, its label in strong `body`, 14 lower than the pill's spot; scrolling back or a tap brings the pill back. Its target is 44, reaching 6 past the drawing on every side. It is a handle like a sheet's grabber: it marks where the pill waits while you read, and drawn at 44 it would cover the last line you are reading. Status: built at 32 (`COMPACT_MINI_PILL_HEIGHT`); the 44 target is not built.
+
 Components (each specified in its own section):
 
 | Component | Section | Status |
@@ -364,6 +370,13 @@ Components (each specified in its own section):
 | Phone tile, machine and window content | Tile, Phone tile | the bento grid, sizing by pane count, mini panes with terminal text and a browser's URL, and the add tile built; machine states, the window header and marks, the chat preview and the corner not built |
 | Session header | List, Touch rows | a 44 heading built; the hold not built |
 | Pill and its menu | Blocks, Pill | the pill, its menu and its groups built; the second line naming the session in view, the group label and New chat not built |
+| Pill inside a pane | Blocks, Pill | the pill, its two lines with the tile's words, its dots, the swipe and drag built; "Needs approval" (it says "Needs your permission"), the danger tone and the pane menu not built |
+| Mini pill | Phone, Layout | built at 32; the 44 target not built |
+| Keyboard rule | Phone, Layout | built in a terminal; in a chat and a browser the pill stays: not built |
+| Phone composer, ask card, queued row, chat rows | Blocks, Chat on a phone | not built: the phone draws the desktop's composer, its chips and the inline ask with key caps |
+| Hold a message | Blocks, Chat on a phone | not built: Copy and Fork are 24 buttons under the message |
+| Key row | Blocks, Key row | built with 40 keys and the prefix leading; 44 keys and the pinned end not built |
+| Confirm and rename sheets | Blocks, Sheet | not built: Kill pane runs at once, Rename opens the desktop palette |
 | Press and hold sheet | Phone, Sheet | not built |
 | Action bar | Blocks, Action bar | not built |
 | Zoom card | Blocks, Zoom card | the zoom built; the card not built |
@@ -404,7 +417,8 @@ Surfaces: the Look's rule, applied to the phone: flat by default, glass only for
 | Pill menu chips | glass, floating over the scrim | a floating surface without glass (Look); not built: natively each chip is a `phone.pill` tint with no glass, hairline or shadow, glass on or off (`compact_pill_menu`) |
 | Floating buttons (the gear disc) | glass, the `floating` look (`compact_floating_group`) | a floating surface without glass (Look) |
 | Folding title bar | a frost of its own over the scrolled page: blur 20, the ground at 72%, saturation 1.8 (`folding_title_bar`), with the `phone.bar` hairline under it | should be the ground, opaque, under the hairline; today it keeps its frost with glass off: not built |
-| Chat composer | glass, as Chat composer says | its opaque card surface |
+| Chat composer, the phone composer row and the ask card | glass, as Chat composer says | its opaque card surface |
+| Jump to latest | glass, the `floating` look, a 44 icon button | a floating surface without glass (Look) |
 | Sheet | the `drawer` look, floating: glass with the float shadow | a floating surface without glass (Look) |
 | Key row | its pill a floating surface, glass; its keys `phone.key`, flat, a wash when pressed or latched, solid when inverted | the pill a floating surface without glass (Look), the keys the same; not built: natively the pill is a `phone.pill` tint with no glass, hairline or shadow, glass on or off (`KeyRow`) |
 
@@ -420,6 +434,10 @@ Corners: the four corner rules (Corners, under Look) hold on the phone unchanged
 | Floating disc (56) | control | 17.5 | 28, a circle | 14.3 | under Pill matches; under Rounded not built: `compact_floating_group` takes the pill's corner, a circle on a phone with round corners |
 | Icon button in the disc | control, concentric | 11.5 | 22, a circle | 8.3 | under Pill matches; under Rounded not built (13.7) |
 | Floating action bar | floating, concentric | 25.5 | 36 | 22.3 | not built |
+| Phone composer row | floating, concentric: its 44 buttons' corner plus its 6 inset, kept as it grows | 19.7 | 28 | 17.2 | not built |
+| Ask card | phone container | 24 | 24 | 16 | not built |
+| Key row pill (56) | control | 17.5 | 28, a capsule | 14.3 | not built: the pill is 48 inside a 56 row |
+| Key (44) | control, concentric: the key row pill's corner less 6 | 11.5 | 22, a circle | 8.3 | not built: keys are 40 |
 | Touch row, 52 and 64 | control, never a capsule | 16.2, 20 | 16.2, 20 | 13.2, 16.3 | matches in sheets (`row_radius`) |
 | Touch row in a group | the same, at most the group's corner less 4 | 16.2, 20 | 16.2, 20 | 12, 12 | not built |
 | Row in a sheet | the same, at most the sheet's corner less 6 | 16.2, 18 | 16.2, 18 | 10, 10 | not built: rows keep 16.2 and 20 in a 12 sheet |
@@ -431,7 +449,7 @@ Corners: the four corner rules (Corners, under Look) hold on the phone unchanged
 
 Decisions: a tile's title is strong `touch-body`, 500, since strong is 500 for the touch styles (Type); a tile's inset is `inset-card` 12; a main action that is loading keeps its label (Button).
 
-HTML: the phone components' twins live with their tiers: the rung in `button.css`, `input.css` and `penna.css` (`data-size="touch-large"`); rows, groups, headers, the action bar, the empty state and the marks (`.penna-tone-dot` with `data-tone`, `.penna-touch-spinner`, `.penna-touch-badge`) in `blocks/touch/touch.css`; the phone tile, the bento grid and the window tile, the zoom card, the icon button (`.penna-touch-icon`) and its disc (`.penna-touch-disc[data-penna="floating"]`) in `blocks/compact/compact.css`; the 44 close in `blocks/sheet/sheet.css`. The phone container corner is `--penna-phone-radius` (`penna.css`, twice `--penna-radius`); a row nested in a group or a sheet caps its corner with `--penna-nest-inset` and `--penna-nest-outer`, and a wrapper marked `data-penna-clip` (the swipe) takes its first row's drawn corner (`kit.js`).
+HTML: the phone components' twins live with their tiers: the rung in `button.css`, `input.css` and `penna.css` (`data-size="touch-large"`); rows, groups, headers, the action bar, the empty state and the marks (`.penna-tone-dot` with `data-tone`, `.penna-touch-spinner`, `.penna-touch-badge`) in `blocks/touch/touch.css`; the phone tile, the bento grid and the window tile, the zoom card, the icon button (`.penna-touch-icon`) and its disc (`.penna-touch-disc[data-penna="floating"]`) in `blocks/compact/compact.css`; the 44 close in `blocks/sheet/sheet.css`; the 44 key row in `blocks/touch/touch.css`; the composer row, the ask card, the queued row and the touch transcript step in `blocks/chat/chat.css`. The phone container corner is `--penna-phone-radius` (`penna.css`, twice `--penna-radius`); a row nested in a group or a sheet caps its corner with `--penna-nest-inset` and `--penna-nest-outer`, and a wrapper marked `data-penna-clip` (the swipe) takes its first row's drawn corner (`kit.js`).
 
 Status: not built natively; drawn in HTML on the docs Phone pages.
 
@@ -1936,9 +1954,22 @@ Menu: a scrim over the screen, then chips in a column centered over the pill, wi
 - Inside a machine, top to bottom: Settings; All machines; New session; then "New in" and the session in view over New browser, New terminal and New chat, New chat nearest the thumb. What the group makes lands in the session the label names, which is the one the second line names. New chat goes on to the chat picker; New terminal and New browser make the window and zoom into it.
 - With no sessions the label reads "In a new session" and New session is left out, since each chip under it starts one. The empty machine's add tile opens this same menu.
 
+Inside a pane: the pill is the pane's only chrome (Phone, Layout). The icon tile holds the pane's kind (chat, terminal, browser) and the title is the pane's title. The second line uses a window tile's words and tones (Phone, Window tiles): "Needs approval" or "Has a question" in `warning` ink, "Failed" or "Exit 1" in `danger` ink, the agent's working message in muted ink while it works ("Running cargo test"), and otherwise where the pane works, muted: folder and branch for a chat or a terminal ("zebrilus · main"), the host for a browser, as today (`pane_detail`). Not the window's name: a window is usually named after its chat, so it would repeat the title. The dots are one per pane of the session, in a `space-2` group per window with `space-6` between groups, the pane in view the long one and a pane that waits for you in `warning`. A tap opens the menu; a sideways swipe pages to the next pane, the content sliding with the finger and the long dot moving with it; dragging up goes to the machine. Keyboard up, the pill gives its place to what you type with (Phone, Layout).
+
+The menu inside a pane has the machine screen's shape. Top to bottom:
+
+- All bindings, quiet, alone, and only in a terminal: the tmux bindings are a terminal's.
+- Overview, alone: back to the machine, as dragging the pill up.
+- This pane: Rename, then Close in `danger` ink. Close asks first in a sheet; Rename opens a sheet with the field (Sheet).
+- "New in" and the session over New browser, New terminal and New chat, New chat nearest the thumb and the one solid chip. Each makes a window holding that one thing in the pill's session, and zooms into it; New chat goes on to the chat picker.
+
+Not in it: New window and New pane apart (a phone shows one pane at a time, so the three New chips make a window, and splitting stays on the desktop), Last pane (a swipe away, and still a key binding), and the agent's flip (its button is on screen).
+
 HTML: `.penna-compact-pill[data-penna="floating"]` holding `.penna-pill-tile[data-penna="phone.pill.icon"]` and `.penna-pill-copy` (`.penna-pill-title`, then `.penna-pill-meta` with `.penna-pill-meta-text` and `.penna-dots`); `.penna-pill-menu[data-open]` holding `.penna-pill-menu-scrim`, `.penna-pill-menu-stack` of `.penna-pill-menu-group`s, each an optional `.penna-pill-menu-label[data-penna="floating"]` and `.penna-pill-chip[data-penna="floating"]`s (`data-look="quiet"` or `"primary"`), then `.penna-pill-menu-well` and `.penna-pill-menu-close`.
 
-Status: the pill, the menu, its groups, the stagger and the fitting chip sizes are built (`compact_pill_menu` takes groups of `PillMenuItem`). Not built: the second line inside a machine shows a session count ("3 sessions"); the group label; New chat; and new windows land in the attached session, not the one in view.
+A chip that destroys takes `danger` ink (`data-tone="danger"` in HTML, `PillMenuLook::Danger` natively).
+
+Status: the pill, the menu, its groups, the stagger and the fitting chip sizes are built (`compact_pill_menu` takes groups of `PillMenuItem`). Not built: the second line inside a machine shows a session count ("3 sessions"); the group label; New chat; and new windows land in the attached session, not the one in view. Inside a pane the pill, its lines, its dots, the swipe and the drag are built; the second line is already `pane_detail`, the tile's words included, except that a waiting agent says "Needs your permission" and only the warning takes its tone, and the menu is two groups, All bindings and Kill pane, then Rename pane, New window, New pane, Last pane, Overview and the flip (`compact.rs`). Kill pane runs with no question and Rename opens the desktop palette pinned to the top.
 
 ### Zoom card
 
@@ -1973,11 +2004,15 @@ Phone: the close control is a 44 icon button (Phone, rule 2), its corner a contr
 
 Press and hold (Phone) opens a sheet: the header titled with the thing's name, with one line under the title in `touch-small` muted for the details the tile leaves out (a window's work in progress, then where it works and its age: "Testing, 62% · zebrilus · pane-stack · now"), ending in an ellipsis; then a `.penna-sheet-list` of one-line touch rows, the danger row last (List, Touch rows), and no action bar, since each row is an action. HTML: `.penna-sheet-copy` around `.penna-sheet-title` and `.penna-sheet-detail` in the header. Not built.
 
+Confirm: a sheet that asks before something is destroyed. The title is the question ("Close this pane?"), one line under it in `touch-small` muted says what goes ("The chat stops. Its transcript stays."), then the action bar: the main action says the verb ("Close") in the `danger` tone at 56, and Cancel over it as a quiet button at 56. No close control in the header, since Cancel is one. Not built.
+
+Rename: titled with the verb and the thing ("Rename pane"), the body a 56 field (Field, Phone) holding the current name, selected, with the keyboard up; Save is the main action in the action bar, riding the keyboard, off while the name is empty or unchanged. Return saves too. Not built: rename opens the desktop palette pinned to the top, with 28 rows.
+
 Content: a question from ssh is titled for the machine ("Sign in to xps"), shows ssh's own prompt word for word over a 56 field, and its main action says what it does ("Sign in"). It comes up over whatever is on screen, the overview or a card, and closing it cancels the connect. Not built: the thin client asks in a centered dialog whose action reads "Continue".
 
 HTML: `.penna-sheet` with `.penna-sheet-scrim`, `.penna-sheet-frame`, `.penna-sheet-panel`, `.penna-sheet-grip`, `.penna-sheet-header`, `.penna-sheet-title`, `.penna-sheet-close` (`data-size="touch"` for 44) and `.penna-sheet-row`.
 
-Status: built, but for the 44 close, the panel's phone corner, the cap on its rows' corners, the action bar and the press and hold sheet.
+Status: built, but for the 44 close, the panel's phone corner, the cap on its rows' corners, the action bar, the press and hold sheet, and the confirm and rename sheets.
 
 ### Empty state on a phone
 
@@ -2101,9 +2136,61 @@ Content: the title names an approval in a few words ("Run this command?", "Plan"
 
 Placement: at the bottom of a chat, at most `COMPOSER_MAX_WIDTH` wide. On a narrow pane the input row's buttons keep their size and the field shrinks.
 
+On a phone the composer is one row and an ask is a card in its place (Chat on a phone).
+
 HTML: `.penna-chat-composer` holds `.penna-chat-field` (`data-penna="field.composer"`, `data-asking` while asking). Inside it `.penna-chat-ask` holds `.penna-chat-ask-header` (`data-question` for a question, with `.penna-chat-ask-glyph` and `.penna-chat-ask-question`; otherwise `.penna-chat-ask-title`; `.penna-chat-ask-count` either way), `.penna-chat-ask-inset` (`data-penna="well"`), `.penna-chat-ask-note` and `.penna-chat-ask-options` with `.penna-chat-ask-option` rows (`data-penna="menu-item"`, `aria-selected` on the highlighted one, `role="checkbox"` and `aria-checked` when several answers can be picked, a lit keycap or `.penna-chat-ask-tick` cap when picked) and `.penna-chat-ask-divider`; `.penna-chat-input-row` is the input row, with `.penna-chat-ask-leading`, `.penna-chat-ask-skip` and `.penna-chat-ask-send`. `.penna-chat-ask-hints` sits in the footer, its count in a `b`.
 
 Status: matches.
+
+### Chat on a phone
+
+The chat at phone sizes: the same transcript, composer and asks as the desktop, each drawn for a thumb. Everything here follows the Phone rules; what is not said is as Chat composer says.
+
+The transcript:
+
+- Your turn is a bubble at the trailing side, at most 85% of the width; the agent's reply is plain text. Both in `touch-body`, on its line.
+- A tool step or a subagent is a row at least 44 tall, the whole row the target: a 20 glyph in muted ink, the label in `touch-small` muted, its detail after it; a running step has the spinner in place of its glyph. A tap opens it as on the desktop.
+- No buttons under a message. Holding a message opens a sheet titled with its first words (Phone, Press and hold) with Copy, then Fork from here.
+- An image in the transcript zooms to the screen on a tap (rule 4), not a dialog.
+- Jump to latest is a 44 icon button on the floating surface, its corner a control's from its height, centered 8 above the composer, there only while the transcript is scrolled away from its end.
+
+The composer row:
+
+- The `field.composer` surface, 16 from the sides and 8 above the pill, or 8 above the keyboard while it is up (Phone, Layout). At least 56 tall: a 44 plus at the start, the field in `touch-body`, the 44 action at the end, all inset 6. The field grows with the text to five lines, then scrolls; the two buttons stay at the bottom. Its corner is its buttons' plus the 6 inset and stays that as it grows (Phone, Corners).
+- Nothing else is in the row: no chips, no context ring, no hints.
+- The action: send, solid, with the up arrow, off while the field is empty; stop, solid with the stop glyph, while the agent works and the field is empty; queue, the soft look with the clock glyph, once you type while it works. With text to send it takes the tone of the chat's mode, as the desktop's does: `warning` when the mode edits or runs without asking, `danger` when it runs everything, `success` when it only reads or plans. That tint is the only place the mode shows outside the plus sheet.
+- A pasted image is a thumbnail inside the surface above the field, 88 square, at the surface's corner less its inset, with a 44 remove control on the floating surface inside its top right corner, inset 4.
+- The plus opens a sheet titled with the agent's name: Mention a file first, then the chat's settings as touch rows with their value at the trailing end in muted `touch-small` (the app picks the rows; zz has Model, Mode, Effort and Account), and a last muted line in `touch-small` for how much of the context is used. A settings row opens its choices in the same sheet, under a back control: one row per choice, a second line for its description, the current one checked at the trailing end. A tap picks and goes back.
+
+Queued messages: one row above the composer, 44 tall, 16 from the sides, its 20 glyph and "2 queued" in muted `touch-small`, the whole row the target. It opens a sheet titled "Queued" with a row per message; tapping one takes it back into the field, as the desktop's chip does.
+
+The ask card: a permission request or a question takes the composer's place.
+
+- Where: docked where the composer was, 16 from the sides and 8 above the pill, with no scrim, so the transcript above still scrolls. The `field.composer` floating surface at the phone container corner (Phone, Corners), its rows inset 4 like a row group. At most half the screen tall; past that its options scroll.
+- What is asked, in one or two lines, inset 16: a permission says what it would do in strong `touch-body` ("Run this command?", "Edit this file?") over the command or the path in `touch-small` mono, muted, one line ending in an ellipsis; a tap on it shows the whole command. A question is its own text in strong `touch-body`, two lines at most before it ends in an ellipsis, a tap shows the rest. Several asks waiting add "1 of 3" at the end of the first line, `touch-small` muted.
+- Then the options as touch rows (List, Touch rows), 52 tall or 64 with a detail, each the whole row and each answering on tap. A permission offers "Allow once", "Always allow" and what ("Always allow cargo test"), then "Deny". A question offers its own answers, then "Something else" last in muted ink, which brings the composer back with the keyboard up and the question one line above the field. No key caps and no send button.
+- A question that takes several answers is the one exception: a tap marks a row with a check at its trailing end, and a last row "Send 2 answers" in `accent` ink sends them.
+- The pill's second line says "Needs approval" or "Has a question" in `warning` ink (Pill).
+
+Empty chat: the phone empty state in the upper middle (Empty state on a phone), the agent's glyph over "<agent> is ready", then a row group of two touch rows: Folder, with the chat's folder at the trailing end, and Resume, with the last chat's title; each opens a sheet list. The composer is under it as usual.
+
+HTML: the composer row is `.penna-chat-field[data-size="touch"]` holding the plus, `.penna-chat-input` and the action, both `button.send` buttons drawn at 44: the action solid with `data-solid` naming its tone (`primary`, or the mode's `warning`, `danger`, `success`), queue with no `data-solid` for the soft look. Thumbnails come first, in `.penna-chat-attach`, which takes its own line: `.penna-chat-thumb` with a `.penna-touch-icon.penna-chat-thumb-remove[data-penna="floating"]`. The ask card is `.penna-chat-ask-card[data-penna="field.composer"]` with `.penna-chat-ask-what` (`.penna-chat-ask-what-title`, `.penna-chat-ask-what-detail`, `.penna-chat-ask-what-count`) and `.penna-touch-row`s. The queued row is `.penna-touch-row.penna-chat-queued`. Jump to latest is `.penna-touch-icon[data-penna="floating"]`. A transcript step is `.penna-chat-activity[data-size="touch"]`.
+
+Status: not built. The phone draws the desktop's chat: 13 text, 28 tool rows, 36 subagent rows, Copy, Fork and Jump to latest at 24; the desktop composer with the plus, the context ring and the action at 28, account and model chips at 24 under it and mode and effort in the model popover with 32 rows; a "2 queued" chip at 24; asks inline in the composer with 1 to 9 key caps and a 28 answer button; an empty chat that says "<agent> is ready" and nothing else. Send is not tinted by mode on the phone.
+
+### Key row
+
+The key row gives a terminal the keys a phone keyboard lacks. It takes the pill's place while the keyboard is up (Phone, Layout).
+
+Anatomy: the pill's shape and spot, 56 tall, 16 from the sides and 8 above the keyboard, a floating surface (Phone, Surfaces). Keys are 44, `phone.key`, `space-2` apart, inset 6 from the pill's ends, their corner the pill's less 6 (Phone, Corners); a glyph key's glyph is 20, a text key's label `touch-small`. Three parts: the prefix pinned at the start, `gap-related` 8 before the rest; then the keys that scroll; then the arrow pad and hide pinned at the end, `gap-related` after the scrolling keys. The scrolling keys fade out under 16 at an edge where more wait.
+
+Content (zz's): prefix; ctrl, alt, tab, esc, `/`, `@` scrolling; arrow pad and hide. On a 393 phone the scrolling part shows four keys and part of a fifth, and the pinned ends never leave the screen.
+
+Behavior: as today: ctrl and alt latch, the prefix arms, holding the arrow pad opens its bubble, hide lowers the keyboard and gives the pill back.
+
+HTML: `.penna-key-row[data-size="touch"]` holding `.penna-key-row-pill`, then `.penna-key-row-pin` (the prefix), `.penna-key-row-scroll` and a second `.penna-key-row-pin` (arrow pad and hide), with `.penna-key-row-more` kept for the script.
+
+Status: built with 40 keys in a 48 pill inside a 56 row, `space-8` from the sides, the prefix leading (`KeyRow`, `key_row.rs`); every key after it scrolls, so on a 393 phone the arrow pad and hide start off screen, behind a 44 more control at each end. 44 keys and the pinned end are not built.
 
 ## Work order
 
@@ -2130,5 +2217,6 @@ Status: matches.
 | 19 | PiPs follow Glass: a PiP is glass when glass is on and its pane's ground, opaque, under the `divider` hairline when it is off | PiPs lose their frosted blur with glass off and gain the pane's hairline | built |
 | 20 | One corner rule: controls round to a share of their height, containers keep `radius`, nested corners are concentric on drawn corners, and smoothing no longer changes how round a corner looks | controls on macOS (`smoothing` 4) read as round as their radius says instead of about half; rows, sidebar entries, tabs and the segmented pill match at every Corner radius; zz's flat sidebar entries follow the knob instead of a fixed 24 | built |
 | 21 | Phone components: the `control-touch-lg` rung, phone buttons and fields on the touch rungs, touch rows outside sheets, phone tile states and window content, press and hold, the action bar, the zoom card, a 44 sheet close and the phone empty state | phone buttons grow from about 32 to 44 and 56, tiles lose their buttons, text in tiles grows to 17 and 15 | not built |
+| 22 | Inside a pane: the pill's tile words and pane menu, the keyboard rule, the confirm and rename sheets, the chat on a phone (composer row, plus sheet, ask card, queued row, touch transcript rows, hold a message) and the 44 key row with pinned ends | the phone chat loses its chips, key caps and 24 buttons; terminal keys grow to 44 and the arrow pad stays in view | not built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

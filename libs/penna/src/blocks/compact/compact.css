@@ -710,3 +710,27 @@
   --penna-inside: 6px;
   --penna-inside-rows: 56px;
 }
+
+.penna-touch-icon[data-penna="floating"][data-penna][data-penna] {
+  --penna-r: var(--penna-control-radius);
+  --penna-share: var(--penna-control-share);
+  --penna-k: var(--penna-style-k);
+}
+
+@container style(--penna-control-radius: 9999px) {
+  .penna-touch-icon[data-penna="floating"][data-penna][data-penna] {
+    --penna-k: 1;
+  }
+}
+
+.penna-pill-chip[data-penna][data-tone="danger"] {
+  color: var(--penna-danger-ink);
+}
+
+.penna-pill-meta-text[data-tone="warning"] {
+  color: var(--penna-warning-ink);
+}
+
+.penna-pill-meta-text[data-tone="danger"] {
+  color: var(--penna-danger-ink);
+}
