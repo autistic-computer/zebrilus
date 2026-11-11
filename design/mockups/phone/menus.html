@@ -114,7 +114,7 @@
     <div class="penna-variants zz-phones zz-story">
       <figure>
         <div class="zz-phone" data-frame="tapped"></div>
-        <figcaption><b>1. The pill, tapped</b>A tap opens the pill's stack and leaves it open. Chips rise out of the pill, 52 tall, 8 apart inside a group and 16 between groups, New chat nearest the thumb and the one solid chip. The pill turns into the close: a tap on it or on the scrim closes, a tap on a chip picks it. <i>Today the same menu on a tap, its chips 44 and shrinking to 40 or 36 when room is short (<code>pill_menu.rs</code>).</i></figcaption>
+        <figcaption><b>1. The pill, tapped</b>A tap opens the pill's stack and leaves it open. Chips rise out of the pill, 52 tall, 8 apart inside a group and 16 between groups, New chat nearest the thumb, resting like the rest. The pill turns into the close: a tap on it or on the scrim closes, a tap on a chip picks it. <i>Today the same menu on a tap, its chips 44 and shrinking to 40 or 36 when room is short (<code>pill_menu.rs</code>).</i></figcaption>
       </figure>
 
       <figure>
@@ -269,7 +269,7 @@
     ...(terminal ? [{ chips: [{ glyph: "keyboard", label: "All bindings", quiet: true }] }] : []),
     { chips: [{ glyph: "layout-dashboard", label: "Overview" }] },
     { chips: [{ glyph: "search", label: "Find" }, { glyph: "pencil", label: "Rename" }, { glyph: "xmark", label: "Close", danger: true }] },
-    { label: "New in zz", chips: [{ glyph: "globe", label: "New browser" }, { glyph: "square-terminal", label: "New terminal" }, { glyph: "chat-plus", label: "New chat", primary: true }] },
+    { label: "New in zz", chips: [{ glyph: "globe", label: "New browser" }, { glyph: "square-terminal", label: "New terminal" }, { glyph: "chat-plus", label: "New chat" }] },
   ];
   const CTRL = [["^C", "Interrupt"], ["^D", "End input"], ["^Z", "Suspend"], ["^L", "Clear"], ["^R", "History"], ["^U", "Kill line"], ["^W", "Kill word"], ["^K", "Kill to end"], ["^A", "Line start"], ["^E", "Line end"]];
   const ALT = [["M-b", "Word back"], ["M-f", "Word ahead"], ["M-d", "Kill word"], ["M-.", "Last arg"]];
@@ -283,7 +283,7 @@
 
   const chipKey = (c) => (c.cap ? `${c.cap} ${c.label}` : c.label);
   const chip = (c, marks = {}) => {
-    const look = c.primary ? ` data-penna="button" data-tone="primary" data-prominent data-look="primary"` : ` data-penna="floating"${c.quiet ? ` data-look="quiet"` : ""}${c.danger ? ` data-tone="danger"` : ""}`;
+    const look = ` data-penna="floating"${c.quiet ? ` data-look="quiet"` : ""}${c.danger ? ` data-tone="danger"` : ""}`;
     const state = marks.selected === chipKey(c) ? ` data-state="selected"` : "";
     const picked = marks.picked === chipKey(c) ? " data-picked" : "";
     const off = c.disabled ? " disabled" : "";
@@ -395,7 +395,6 @@
     ["Disabled", chip({ glyph: "search", label: "Find", disabled: true }), "no lift, no tick, no pick"],
     ["Danger", chip({ glyph: "xmark", label: "Close", danger: true }), "danger ink; picking asks first"],
     ["Danger, under the finger", chip({ glyph: "xmark", label: "Close", danger: true }, { selected: "Close" }), "the danger solid"],
-    ["Primary", chip({ glyph: "chat-plus", label: "New chat", primary: true }), "one per stack, nearest the thumb"],
     ["Quiet", chip({ glyph: "keyboard", label: "All bindings", quiet: true }), "set apart at the far end"],
     ["Group label", `<span class="penna-stack-label" data-penna="floating">New in zz</span>`, "28 tall, not a target"],
     ["Chord", `<div class="penna-stack-group" data-chords>${chip({ cap: "^C", label: "Interrupt" })}</div>`, "the chord in mono, 32 wide at least"],
@@ -406,7 +405,7 @@
 
   const oldChip = (glyph, label, extra = ` data-penna="floating"`) => `<button class="penna-pill-chip"${extra}>${ic(glyph)}<span>${label}</span></button>`;
   const oldGroup = (chips) => `<div class="penna-pill-menu-group">${chips}</div>`;
-  const oldMenu = `<div class="penna-pill-menu" data-open><div class="penna-pill-menu-scrim"></div><div class="penna-pill-menu-stack">${oldGroup(oldChip("keyboard", "All bindings", ` data-penna="floating" data-look="quiet"`))}${oldGroup(oldChip("layout-dashboard", "Overview"))}${oldGroup(oldChip("search", "Find") + oldChip("pencil", "Rename") + oldChip("xmark", "Close", ` data-penna="floating" data-tone="danger"`))}${oldGroup(`<span class="penna-pill-menu-label" data-penna="floating">New in zz</span>${oldChip("globe", "New browser")}${oldChip("square-terminal", "New terminal")}${oldChip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}`)}</div><div class="penna-pill-menu-well"></div><button class="penna-pill-menu-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close">${ic("xmark")}</button></div>`;
+  const oldMenu = `<div class="penna-pill-menu" data-open><div class="penna-pill-menu-scrim"></div><div class="penna-pill-menu-stack">${oldGroup(oldChip("keyboard", "All bindings", ` data-penna="floating" data-look="quiet"`) + oldChip("xmark", "Kill pane", ` data-penna="floating" data-tone="danger"`))}${oldGroup(oldChip("pencil", "Rename pane") + oldChip("app-window", "New window") + oldChip("plus", "New pane") + oldChip("history", "Last pane") + oldChip("layout-dashboard", "Overview"))}</div><div class="penna-pill-menu-well"></div><button class="penna-pill-menu-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close">${ic("xmark")}</button></div>`;
   const oldCard = `<div class="zz-old-card" data-penna="popover">${CTRL.map(([cap, label]) => `<div data-penna="menu-item"${cap === "^C" ? ` data-state="selected"` : ""}><b>${cap}</b><span>${label}</span></div>`).join("")}</div>`;
   const newChords = `<div class="penna-stack-column" style="position: static">${group(chordGroups(CTRL)[0], { selected: "^C Interrupt" })}</div>`;
   const oldPad = `<span class="zz-old-pad" data-penna="popover">${["", "up", "", "left", "hub", "right", "", "down", ""].map((name) => name === "hub" ? `<span class="penna-arrow-hub"></span>` : name ? `<span${name === "up" ? " data-lit" : ""}>${ic(`arrow-${name}`)}</span>` : "<span></span>").join("")}</span>`;

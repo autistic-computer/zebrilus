@@ -160,7 +160,7 @@
 
       <figure>
         <div class="zz-phone" data-frame="menu" data-menu></div>
-        <figcaption><b>9. Pill menu in a pane</b>The machine screen's shape, as a stack menu of 52 chips that a tap or a hold opens (<a href="menus.html">Menus</a>). "New in zz" over New browser, New terminal and New chat, chat nearest the thumb and solid: each makes a window holding that one thing and zooms into it. Then this pane: Rename, and Close in danger ink. Then Overview, back to the machine. In a terminal, All bindings sits apart at the top. The composer steps aside with the pill while the menu is open. <i>Today: All bindings and Kill pane, then Rename pane, New window, New pane, Last pane, Overview and, in a chat, the flip (<code>compact.rs:141-164</code>). Last pane is a swipe away and stays a key binding; the new design drops the flip.</i></figcaption>
+        <figcaption><b>9. Pill menu in a pane</b>The machine screen's shape, as a stack menu of 52 chips that a tap or a hold opens (<a href="menus.html">Menus</a>). "New in zz" over New browser, New terminal and New chat, chat nearest the thumb: each makes a window holding that one thing and zooms into it. Then this pane: Rename, and Close in danger ink. Then Overview, back to the machine. In a terminal, All bindings sits apart at the top. The composer steps aside with the pill while the menu is open. <i>Today: All bindings and Kill pane, then Rename pane, New window, New pane, Last pane, Overview and, in a chat, the flip (<code>compact.rs:141-164</code>). Last pane is a swipe away and stays a key binding; the new design drops the flip.</i></figcaption>
       </figure>
 
       <figure>
@@ -236,7 +236,7 @@
   const steps = (...rows) => `<div class="zz-steps">${rows.join("")}</div>`;
 
   const ASKED = "Make the pill menu offer New chat, nearest the thumb.";
-  const PLAN = "The order lives in pill_menu.rs. I'll put New chat last in the New group and make it the solid chip.";
+  const PLAN = "The order lives in pill_menu.rs. I'll put New chat last in the New group, where it sits nearest the thumb.";
   const DONE = "Done. New chat sits nearest the thumb, and the pill tests pass.";
   const restTx = (held) => [you(ASKED, held), reply(PLAN), steps(step("file", "Read pill_menu.rs"), step("pencil", "Edited pill_menu.rs", "+14 −3"), step("square-terminal", "cargo test -p penna pill", "14 passed")), reply(DONE)].join("");
   const workTx = [you(ASKED), reply(PLAN), steps(step("file", "Read pill_menu.rs"), step("pencil", "Edited pill_menu.rs", "+14 −3"), step("spin", "cargo test -p penna pill"))].join("");
@@ -279,7 +279,7 @@
 
   const chip = (glyph, label, extra = ` data-penna="floating"`) => `<button class="penna-stack-chip"${extra}>${ic(glyph)}<span>${label}</span></button>`;
   const group = (chips) => `<div class="penna-stack-group">${chips}</div>`;
-  const menu = (terminal) => `<div class="penna-stack" data-open data-anchor="pill"><div class="penna-stack-scrim" data-act="dismiss"></div><div class="penna-stack-column">${terminal ? group(chip("keyboard", "All bindings", ` data-penna="floating" data-look="quiet"`)) : ""}${group(chip("layout-dashboard", "Overview"))}${group(chip("pencil", "Rename") + chip("xmark", "Close", ` data-penna="floating" data-tone="danger"`))}${group(`<span class="penna-stack-label" data-penna="floating">New in zz</span>${chip("globe", "New browser")}${chip("square-terminal", "New terminal")}${chip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}`)}</div><button class="penna-stack-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close" data-act="dismiss">${ic("xmark")}</button></div>`;
+  const menu = (terminal) => `<div class="penna-stack" data-open data-anchor="pill"><div class="penna-stack-scrim" data-act="dismiss"></div><div class="penna-stack-column">${terminal ? group(chip("keyboard", "All bindings", ` data-penna="floating" data-look="quiet"`)) : ""}${group(chip("layout-dashboard", "Overview"))}${group(chip("pencil", "Rename") + chip("xmark", "Close", ` data-penna="floating" data-tone="danger"`))}${group(`<span class="penna-stack-label" data-penna="floating">New in zz</span>${chip("globe", "New browser")}${chip("square-terminal", "New terminal")}${chip("chat-plus", "New chat")}`)}</div><button class="penna-stack-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close" data-act="dismiss">${ic("xmark")}</button></div>`;
 
   const TERM = ["~/dev/zebrilus main", "❯ cargo test -p penna pill", "   Compiling penna v0.42.0", "running 14 tests", "test pill::menu_order ... ok", "test pill::new_chat ... ok", "test pill::label_chip ... ok", "✓test result: ok. 14 passed", "❯ "];
   const termLine = (line) => {
@@ -333,7 +333,7 @@
     ["Typed", composer({ text: "Run the menu story too", state: "send" })],
     ["Working: stop", composer({ state: "stop" })],
     ["Typing while it works: queue", composer({ text: "Then the swipe test", state: "queue" })],
-    ["Five lines, then it scrolls", composer({ text: "Make New chat the solid chip, put it last in the New group so it sits nearest the thumb, keep the label chip at 28 and muted with no glyph, and run the pill tests and the menu story when you are done.", state: "send" })],
+    ["Five lines, then it scrolls", composer({ text: "Put New chat last in the New group so it sits nearest the thumb, rest it like its neighbours, keep the label chip at 28 and muted with no glyph, and run the pill tests and the menu story when you are done.", state: "send" })],
     ["A pasted image", composer({ text: "This is the menu now", state: "send", thumb: true })],
     ["Queued, over the composer", `<div style="display: flex; flex-direction: column">${queued}${composer({ state: "stop" })}</div>`],
     ["Jump to latest, scrolled up", `<div style="position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px">${jump.replace("zz-jump", "")}${composer()}</div>`],
