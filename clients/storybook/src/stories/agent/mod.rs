@@ -37,13 +37,13 @@ const STORY: Story = Story {
         Section {
             id: "composer-controls",
             name: "Composer controls",
-            summary: "The pieces of the composer on their own: the action button, the + that starts a mention, the context meter, the git summary, and the footer's account chip, permissions chip and model picker. The account chip shows the pane's account as its email and opens a list of the CLI's accounts with Add account under it; picking one sends agent-account, and a busy: answer shows the flip's busy card without its choices. The picker lists the first five models, with the rest behind More models in the same list, over a horizontal effort slider with a dot per step.",
+            summary: "The pieces of the composer on their own: the action button, the + that starts a mention, the context meter, the git summary, and the footer's account chip, permissions chip and model picker. The account chip shows the pane's account as its email and opens a list of the CLI's accounts with Add account under it; picking one sends agent-account, and a busy: answer shows the flip's busy card without its choices. The picker is every model in one list six rows tall that scrolls, opened on the current one, over a horizontal effort slider with a dot per step. Bypass permissions draws the chip in danger.",
             build: composer::controls,
         },
         Section {
             id: "empty-chat",
             name: "Empty chat",
-            summary: "A chat with nothing in it lists what its CLI already has, read from the CLI's own store: the newest chats in this folder, then the other folders with chats. Picking a chat resumes it in this pane; picking a folder lists its chats. The filter narrows it to the folders and chats that match. Up from the empty composer moves into the list.",
+            summary: "A chat with nothing in it shows the welcome and two buttons. The folder button names the folder the next chat starts in; its menu lists the folders the CLI has chats in, this one checked, and picking one starts a new chat there in this pane. Resume lists this folder's chats, then the newest from other folders, and its search looks through every chat the CLI has; picking one resumes it here. Each menu has a search field over eight rows that scroll, and a spinner row while pages are still arriving. Up from the empty composer opens Resume.",
             build: composer::resume,
         },
         Section {

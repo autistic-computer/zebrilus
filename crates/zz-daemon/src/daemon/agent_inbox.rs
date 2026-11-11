@@ -72,6 +72,10 @@ impl AgentInbox {
                     shared.apply_agent_state(pane, state);
                     None
                 }
+                Payload::Folder(cwd) => {
+                    shared.apply_agent_folder(pane, cwd);
+                    None
+                }
                 Payload::ToolCall(call) => shared.agent_tool_call_event(pane, call),
                 Payload::Reply(reply) => {
                     shared.send_agent_reply(pane, reply);

@@ -349,38 +349,67 @@ end no turn.
 
 # The empty chat and the footer
 
-zz keeps no chats of its own. A chat with nothing in it lists what its CLI already has, and
-picking one resumes it in the same pane.
+zz keeps no chats of its own. A chat with nothing in it shows the welcome and, centered under it,
+two buttons 6 px apart (`zz_ui::agent::resume::folder_button` and `resume_button`): the folder
+the next chat starts in, and Resume, for a chat the CLI already has. Each opens a menu.
 
-- **The lists.** While the pane is ready and its chat is empty, the desktop asks the pane's driver
-  for two lists with `AgentSessionOp::List` (`zz_client::agent_resume::Resume::start`): the chats
-  in the pane's folder, and the newest chats in any folder. Claude Code's come from
-  `~/.claude/projects`, Codex's from `thread/list`. The reply is `EventPayload::AgentSessions`,
-  which `MuxClient` hands to `AgentController::apply_sessions`. `Resume::rows` turns them into
-  Recent here (three chats, then More chats here) and Projects (the other folders the newest chats
-  are in, five, then More projects, which also asks for the next page). The pane's own session is
-  left out. A folder row shows its parent path and its last chat's age; there is no chat count,
-  since the driver pages the list.
+- **The listings.** While the pane is ready and its chat is empty, the desktop asks the pane's
+  driver for two lists with `AgentSessionOp::List` (`zz_client::agent_resume::Resume::start`): the
+  chats in the pane's folder, and the newest chats in any folder. Claude Code's come from
+  `~/.claude/projects`: the driver reads the first and last 64 KiB of each transcript once and
+  keeps that summary while the file's mtime and size stay the same (`sessions::list`), and keeps
+  the whole sorted list per folder filter so a page after the first is a slice of it, about 12 ms,
+  not a new walk. Codex's come from `thread/list` with `archived: false` and `useStateDbOnly:
+  true`, so Codex answers from its state database instead of scanning its rollouts. The reply is
+  `EventPayload::AgentSessions`, which `MuxClient` hands to `AgentController::apply_sessions`.
+  The pane's own session is left out of both menus.
+- **The menus.** One popover shape for both (`zz_ui::agent::resume::resume_menu`): 300 px wide,
+  6 px in, a 30 px search field ("Search folders" or "Search chats"), then 32 px rows in a list
+  at most eight rows tall that scrolls. Only one is open at a time, and neither drills into
+  another. The model (`Resume`: which menu is open, the search text, the picked row and each
+  menu's rows) is in `zz-client`; the view draws the rows and forwards keys.
+  - **Folder menu.** The folders the CLI has chats in: the pane's folder first, with a check where
+    the age would be, then the others newest first, each with its parent path (home-relative) and
+    its last chat's age. There is no chat count, since the driver pages the list. Picking a folder
+    sends `AgentSessionOp::New { cwd }` and starts a new chat there in this pane; picking the
+    folder the chat is already in just closes the menu.
+  - **Resume menu.** "In" and the folder's name, then the eight newest chats in the pane's folder,
+    or "No chats here yet"; a search reaches the older ones; then "Other folders" and the eight newest chats elsewhere, each
+    with its folder's name and age. Picking a chat sends `AgentSessionOp::Switch` with its session
+    and folder: the driver restarts on that session and the transcript replays as it does on a
+    restart.
+- **Search.** `zz_client::fuzzy::fuzzy_match`, the palette's matcher. In the folder menu it
+  matches a folder's name, else its path, name matches first. In Resume it gives one flat list of
+  up to 40 chats whose title, else folder name, matches, title matches first and the newest among
+  equals, each with its folder's name. Nothing matches is a row of its own.
+- **Loading and paging.** Until the first listings arrive a menu is one `ResumeRow::Loading` row,
+  a spinner and "Loading". While a menu is open, `Resume::wanted` asks for the next page of the
+  all-folders listing, one request at a time, until it runs out or reaches 40 pages; with Resume
+  open the pane-folder listing pages the same way. The spinner row ends the menu while a page is
+  out. A `SessionListFailed` reply ends the wait.
 - **What is left out.** The daemon drops a chat whose folder no longer exists on its host
   (`zz-daemon/src/agent/runtime.rs`), since it cannot be resumed there: temp dirs, deleted
-  worktrees, chats that ran on another machine. Projects also leaves out scratch folders (under a
-  temp dir, `~/Library` or a dot folder; `scratch` in `agent_resume`), which the filter still
-  finds. Because a page of the newest chats can then hold few folders, `Resume::wanted` asks for
-  more pages, up to eight, until Projects has more than five.
-- **The filter.** A field over the lists (`resume_filter`, the view's own `InputState`). With text
-  in it `Resume::rows` returns one flat result instead: Folders whose path matches, then Chats
-  whose title or folder name matches, newest first, each chat with its folder's name; the first
-  row is picked. Inside an opened folder it narrows that folder's chats by title. While it has text
-  `Resume::wanted` pages through the rest of the list, up to forty pages, so the match is not only
-  the newest chats. Nothing matches is a row of its own.
-- **Picking.** A chat sends `AgentSessionOp::Switch` with its session and folder: the driver
-  restarts on that session, the pane moves to that folder and the transcript replays as it does on
-  a restart. A folder asks for that folder's chats and shows them in place of the lists, with a
-  back row; More chats asks for the next page. Up from an empty composer moves focus to the
-  filter with the last row picked; from there typing filters, Up and Down move, Down past the last
-  row returns to the composer, and Enter picks. Escape clears the filter, then drops the selection,
-  then leaves a folder, then returns to the composer. The pointer selects the row under it. `zz_ui::agent::resume::resume_rows` draws the rows under
-  `agent_resume_welcome`.
+  worktrees, chats that ran on another machine. The folder menu also leaves out scratch folders
+  (under a temp dir, `~/Library` or a dot folder; `scratch` in `agent_resume`) unless the search
+  matches them.
+- **Archived chats.** Codex's listing asks for unarchived threads only. Claude Code keeps no
+  archive or hidden mark of its own (none in its transcripts, `~/.claude.json`, `~/.claude/` or
+  `claude --help`), so every Claude Code chat whose folder exists is listed.
+- **Keys.** Up from the empty composer opens Resume. With a menu open, typing goes to its search
+  field; Up and Down move the picked row past labels and the spinner and keep it in view; Enter
+  picks; Escape clears the search, then closes the menu. The first pickable row is picked when
+  nothing else is. Closing puts focus back in the composer; a press outside closes the menu too.
+  The menus are penna `Popover`s the view opens and closes itself (`Popover::open` and
+  `on_toggle`).
+- **The pane's folder.** After a `New` or a `Switch`, the driver answers `SessionSwitched` with
+  the session's folder. `AgentController` takes it as the pane's folder, which the folder button
+  and the next listings use, and the pane header reads it for an agent pane
+  (`AppView::pane_folder`). The daemon's fanout sends the same folder to
+  `Shared::apply_agent_folder`, which writes it into the pane's `AgentDescriptor` and publishes
+  the snapshot, so the sidebar, the palette and a restart of the pane use the folder the chat
+  is in now, not the one the pane opened in. `AgentView` takes the snapshot's folder for its
+  pane whenever that changes (`AgentController::move_pane`), so a view built before the
+  snapshot named the pane does not stay on `/`.
 - **The footer.** The folder chip and the side chat button are gone: the header pill shows the
   folder, and `/side` opens a side chat. What is left is the branch summary on the left and three
   controls on the right (`zz_ui::agent::controls`):
@@ -404,17 +433,22 @@ picking one resumes it in the same pane.
     it a tone, and the send button takes the same one: none while the agent asks first (Claude's
     Ask, Codex's Auto), success when it cannot write (Plan, Read only), warning when it acts
     without asking (Accept edits, Claude's Auto), danger with nothing guarding it (Bypass
-    permissions, Full access).
-  - `agent_model_picker`: a popover over the footer. On top the models, a check on the current
-    one: the first five the driver lists (`LensSettings::listed_models`) plus the current one when
-    it is further down, and a More models row that adds the rest to the same list, which scrolls
-    past eight rows. Under a rule the efforts as penna's `StepRail`, one horizontal rail with a dot
-    per step that sets the effort when the knob is let go. Claude's first effort is `default`, so
-    its first step is a ring (`effort_starts_unset`).
+    permissions, Full access). Claude Code always offers Bypass permissions; the driver starts the
+    CLI with `--allow-dangerously-skip-permissions` unless its command already has that flag or
+    `--dangerously-skip-permissions`, since without one the CLI refuses to switch a running
+    session to it.
+  - `agent_model_picker`: a popover over the footer. The button names the model by its choice's
+    display name (`LensSettings::model_label`), the raw value only when no choice matches. On top
+    every model the driver lists, in its order, a check on the current one, in one list six rows
+    tall that scrolls and opens with the current model in view. Under a rule the efforts as
+    penna's `StepRail`, one horizontal rail with a dot per step that sets the effort when the knob
+    is let go. Claude's first effort is `default`, so its first step is a ring
+    (`effort_starts_unset`).
 - **Where.** The desktop has all of it. Web, iPad and iPhone have the footer, the account chip
-  included, but not the lists yet, and the HTML client has neither. The storybook's Agent story
-  shows the lists (Empty chat) and the controls (Composer controls, with the account chip on the
-  CLI's own login, two accounts with the second picked, and a signed-out default).
+  included, but not the menus yet, and the HTML client has neither. The storybook's Agent story
+  shows the menus (Empty chat: at rest, each menu open, searching, loading and Nothing matches) and
+  the controls (Composer controls, with the account chip on the CLI's own login, two accounts with
+  the second picked, and a signed-out default).
 
 # References in the chat
 

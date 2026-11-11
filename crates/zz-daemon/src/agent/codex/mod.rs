@@ -660,7 +660,11 @@ impl Runtime {
                 cursor,
                 replace,
             } => {
-                let mut params = json!({ "limit": SESSION_PAGE });
+                let mut params = json!({
+                    "limit": SESSION_PAGE,
+                    "archived": false,
+                    "useStateDbOnly": true,
+                });
                 if let Some(cwd) = &cwd {
                     params["cwd"] = Value::from(cwd.display().to_string());
                 }

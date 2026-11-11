@@ -48,6 +48,7 @@ Popover::new("rename")
 - A press on the trigger, or Enter, Space or Down while it has focus, opens it; the same again closes it.
 - Focus moves in, and back to the trigger on close.
 - Escape or a press outside closes it.
+- `.open()` lets the app open and close it from code; presses and Escape then ask it through `.on_toggle()`.
 - It stays 8 inside the window and moves up for the keyboard.
 
 ## Content
@@ -71,5 +72,6 @@ One short task with its actions. A list of actions belongs in a menu.
 | `.anchor(anchor)` | `data-anchor`: `right`, `center`, `bottom`, `bottom right`, `bottom center` | Corner it hangs from |
 | `.overlay_closable(false)` | `data-closable="false"` | Stays open on a press outside |
 | `.on_dismiss(handler)` | `penna-dismiss` | Runs when it closes |
+| `.open(open)`, `.on_toggle(handler)` | `pennaPopover.setOpen()` | The app holds the open state; presses and Escape ask through `on_toggle` |
 | `.appearance(false)` | | Drops the look, inset and text style |
 | | `data-open`, `pennaPopover.setOpen()` | Open state |

@@ -33847,6 +33847,19 @@ impl Shared {
         }
     }
 
+    fn apply_agent_folder(self: &Arc<Self>, pane: PaneId, cwd: PathBuf) {
+        let moved = self
+            .inner
+            .lock()
+            .engine
+            .state
+            .update_agent(pane, |agent| agent.cwd = Some(cwd))
+            .unwrap_or(false);
+        if moved {
+            self.publish_snapshot_state();
+        }
+    }
+
     fn apply_agent_title(self: &Arc<Self>, pane: PaneId, title: Option<&str>) {
         let events = {
             let mut inner = self.inner.lock();

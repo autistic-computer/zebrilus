@@ -1,6 +1,9 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+use std::{
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
 };
 
 use zz_protocol::{AgentPaneWire, ClientId, PaneId};
@@ -44,6 +47,7 @@ pub(super) enum Payload {
         also: Option<ClientId>,
     },
     State(AgentPaneWire),
+    Folder(PathBuf),
     ToolCall(AgentToolCall),
     Reply(AgentRequestReply),
 }
@@ -136,6 +140,10 @@ impl AgentPublisher for Publisher {
 
     fn publish_agent_state(&self, generation: u64, pane: PaneId, state: AgentPaneWire) {
         self.post(generation, pane, Payload::State(state));
+    }
+
+    fn publish_agent_folder(&self, generation: u64, pane: PaneId, cwd: PathBuf) {
+        self.post(generation, pane, Payload::Folder(cwd));
     }
 
     fn publish_agent_tool_call(&self, generation: u64, pane: PaneId, call: AgentToolCall) {

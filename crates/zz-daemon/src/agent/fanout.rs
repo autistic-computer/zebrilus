@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, VecDeque},
+    path::PathBuf,
     sync::{
         Arc, Weak,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -69,6 +70,7 @@ pub(crate) trait AgentPublisher: Send + Sync + 'static {
         also: Option<ClientId>,
     );
     fn publish_agent_state(&self, generation: u64, pane: PaneId, state: AgentPaneWire);
+    fn publish_agent_folder(&self, generation: u64, pane: PaneId, cwd: PathBuf);
     fn publish_agent_tool_call(&self, generation: u64, pane: PaneId, call: AgentToolCall);
     fn send_agent_reply(&self, generation: u64, pane: PaneId, reply: AgentRequestReply);
 }
@@ -607,6 +609,7 @@ impl AgentFanout {
         };
         let mut reply = None;
         let mut tool_call = None;
+        let mut folder = None;
         let mut lanes = self.lanes.lock();
         let Some(lane) = lanes.get_mut(&pane) else {
             return;
@@ -646,10 +649,12 @@ impl AgentFanout {
                 }
                 AgentStreamPayload::SessionSwitched {
                     session_id,
+                    cwd,
                     modes,
                     config_options,
                     ..
                 } => {
+                    folder = Some(cwd.clone());
                     lane.turn_id = None;
                     lane.session_id = Some(session_id.clone());
                     lane.modes = blob(modes.as_ref());
@@ -760,6 +765,9 @@ impl AgentFanout {
         }
         if let Some(reply) = reply {
             publisher.send_agent_reply(generation, pane, reply);
+        }
+        if let Some(cwd) = folder {
+            publisher.publish_agent_folder(generation, pane, cwd);
         }
         if let Some(next_state) = next_state {
             publisher.publish_agent_state(generation, pane, next_state);
@@ -1362,6 +1370,8 @@ mod tests {
         fn publish_agent_state(&self, _generation: u64, pane: PaneId, state: AgentPaneWire) {
             self.states.lock().push((pane, state));
         }
+
+        fn publish_agent_folder(&self, _generation: u64, _pane: PaneId, _cwd: PathBuf) {}
 
         fn publish_agent_tool_call(&self, _generation: u64, _pane: PaneId, _call: AgentToolCall) {}
 
