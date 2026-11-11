@@ -73,7 +73,7 @@ The scan accessory turns the same card into the scanner: the camera's picture, s
 </div>
 ```
 
-Behind the add tile at the end of a group of things you make rather than find. A header says where the new thing goes, then one row per kind; the whole row is the target and picking it is the action, so there is no action bar. A row that leads to another choice ends in a chevron; one that makes the thing at once has no mark, and the card zooms on into what it made. The kinds are the app's.
+Behind the plus at the end of a session's header, or the add tile of a machine with no sessions yet: a group of things you make rather than find. A header says where the new thing goes, then one row per kind; the whole row is the target and picking it is the action, so there is no action bar. A row that leads to another choice ends in a chevron; one that makes the thing at once has no mark, and the card zooms on into what it made. The kinds are the app's.
 
 ## Connecting card
 
@@ -90,7 +90,7 @@ Behind a connecting tile. Cancel is its one action, drawn as a secondary since s
 
 ## A card of tiles
 
-What you went into can be a screen of tiles in turn, a machine holding its windows: then the pill sits at the bottom in place of the action bar, and its tiles zoom one level further. When what the card shows goes away, as when a machine disconnects, it zooms back out to its tile, which says why.
+What you went into can be a screen of tiles in turn, a machine holding its windows: then the pill sits at the bottom in place of the action bar, and its tiles zoom one level further. Going into a window, what grows is the mini pane the tap opens, so its preview becomes the pane. When what the card shows goes away, as when a machine disconnects, it zooms back out to its tile, which says why.
 
 ## Motion
 

@@ -22,7 +22,7 @@ A phone screen is built from phone components, sized for a thumb from the start.
 </div>
 ```
 
-**Press and hold** a tile, or the header over a group of tiles, for a sheet of what you can do to it: touch rows, the one that closes or removes last in danger ink. One rule for every tile, so nothing that acts on a tile sits inside it. A header that can be held is 44 tall. Not built natively yet.
+**Press and hold** a tile, or the header over a group of tiles, for a sheet of what you can do to it: touch rows, the one that closes or removes last in danger ink. One rule for every tile, so nothing that acts on a tile sits inside it. Under the sheet's title, one muted line holds what the tile leaves out: a window's work, folder, branch and age. A header that can be held is 44 tall. Not built natively yet.
 
 ```figure uses=sheet,touch,label
 <div style="position: relative; width: 370px; height: 330px; overflow: hidden; border-radius: 28px; background: var(--penna-bg)">
@@ -31,7 +31,7 @@ A phone screen is built from phone components, sized for a thumb from the start.
     <div class="penna-sheet-frame">
       <div class="penna-sheet-panel" data-penna="drawer">
         <div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div>
-        <div class="penna-sheet-header"><span class="penna-sheet-title" data-penna-text>Port the bento grid</span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close"><i data-icon="xmark"></i></button></div>
+        <div class="penna-sheet-header"><span class="penna-sheet-copy"><span class="penna-sheet-title" data-penna-text>Fix pane stack hit testing</span><span class="penna-sheet-detail" data-penna-text>Testing, 62% · zebrilus · pane-stack · now</span></span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close"><i data-icon="xmark"></i></button></div>
         <div class="penna-sheet-list">
           <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="pencil"></i><span class="penna-touch-row-lines"><span>Rename</span></span></div>
           <div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button"><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span>Close window</span></span></div>
@@ -78,7 +78,7 @@ A phone screen is built from phone components, sized for a thumb from the start.
 3. **Body**: `inset-pane` 16 at the sides, groups `gap-group` 16 apart.
 4. **Bottom**: the pill on the overview and on a pane, or the action bar on a zoom card or sheet. Same spot, so never both.
 
-A screen of things is the same at every level: the large title, tiles two to a row under a section header per group, the add tile last in each grid. Going into a tile is a zoom, and what opens may be another screen of tiles; the close control, dragging the pill up or a pinch goes back one level.
+A screen of things is the same at every level: the large title, then tiles under a section header per group. Machines are square tiles two to a row with the add tile last. A machine's windows are a bento grid per session, sized by what each holds, and the session's header ends in a plus that makes a new window there; a bento grid has no add tile, since it would leave holes. An empty screen is the title and one add tile. Going into a tile is a zoom, and what opens may be another screen of tiles; the close control, dragging the pill up or a pinch goes back one level.
 
 ## Surfaces
 
@@ -137,7 +137,7 @@ Not built natively yet: tiles take the control radius (12, 25, 8), the sheet kee
 </div>
 ```
 
-- **Tone dot**: 8, always beside its word, which takes its tone's ink: green connected, amber waiting for you, red failed, the ink for done and not yet seen, faint off. Idle has no mark. No state takes the accent: it is a person's pick, and Yaru's orange would read as waiting.
+- **Tone dot**: 8, beside its word, which takes its tone's ink: green connected, amber waiting for you, red failed, the ink for done and not yet seen, faint off. Idle has no mark. A window tile drops the word for its calm states (working, done and not yet seen, idle) and keeps it for waiting and failed: on a screen of many windows the ones with words are the ones to look at. No state takes the accent: it is a person's pick, and Yaru's orange would read as waiting.
 - **Spinner**: 16, one turn every 900ms, for working and connecting. Working is never a green dot: green only means connected.
 - **Count badge**: 20, the `touch-small` line.
 - **Icon button**: 44 with a 20 icon; over the content, in a 56 disc.

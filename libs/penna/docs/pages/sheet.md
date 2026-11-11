@@ -64,4 +64,4 @@ Titled for the machine, ssh's own prompt word for word over a 56 field, and an a
 </div>
 ```
 
-Holding a tile, or the header over a group of tiles, opens a sheet titled with its name: one row per thing you can do to it, the one that closes or removes last in danger ink, and no action bar, since each row is an action. Not built natively yet.
+Holding a tile, or the header over a group of tiles, opens a sheet titled with its name, with one muted line under the title for what a tile leaves out (a window's work, folder, branch and age): then one row per thing you can do to it, the one that closes or removes last in danger ink, and no action bar, since each row is an action. Not built natively yet.

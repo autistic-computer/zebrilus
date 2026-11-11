@@ -103,6 +103,29 @@
   font-weight: var(--penna-text-display-weight);
 }
 
+.penna-sheet-header:has(> .penna-sheet-copy) {
+  height: auto;
+  min-height: 60px;
+  padding-block: var(--penna-space-8);
+}
+
+.penna-sheet-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.penna-sheet-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--penna-fg-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--penna-text-touch-small-size);
+  line-height: var(--penna-text-touch-small-line);
+}
+
 .penna-sheet-close.penna-button {
   width: 36px;
   height: 36px;
