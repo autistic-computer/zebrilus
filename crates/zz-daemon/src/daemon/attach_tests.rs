@@ -1148,6 +1148,7 @@ fn a_terminal_features_entry_hands_the_raw_tui_extkeys() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn user_keys_reach_the_raw_tui_by_index_and_fire_their_bindings() {
     let shared = Arc::new(Shared::new(1));

@@ -986,7 +986,7 @@ Proof commands:
 - `python3 compat/tui/tracker.py check`
 - `python3 compat/wire-version.py`
 - `python3 compat/evidence-secrets.py`
-- `python3 ~/.agents/skills/okf/scripts/okf.py validate knowledge`
+- `python3 .agents/skills/okf/scripts/okf.py validate knowledge`
 - `mapfile -t rows < compat/tui/evidence/TUI-017/attempt-10/corpus-shard-1.rows; ZZ_COMPAT_ZZ="$PWD/target/residuals-2/zz" compat/run.sh --strict-geometry "${rows[@]}"`
 - `mapfile -t rows < compat/tui/evidence/TUI-017/attempt-10/corpus-shard-2.rows; ZZ_COMPAT_ZZ="$PWD/target/residuals-2/zz" compat/run.sh --strict-geometry "${rows[@]}"`
 - `mapfile -t rows < compat/tui/evidence/TUI-017/attempt-10/corpus-shard-3.rows; ZZ_COMPAT_ZZ="$PWD/target/residuals-2/zz" compat/run.sh --strict-geometry "${rows[@]}"`
@@ -1152,7 +1152,7 @@ Proof commands:
 - `python3 compat/tui/tracker.py check`
 - `python3 compat/wire-version.py`
 - `python3 compat/evidence-secrets.py`
-- `python3 ~/.agents/skills/okf/scripts/okf.py validate knowledge`
+- `python3 .agents/skills/okf/scripts/okf.py validate knowledge`
 - `mapfile -t rows < compat/tui/evidence/TUI-017/attempt-10/corpus-shard-1.rows; ZZ_COMPAT_ZZ="$PWD/target/residuals-2/zz" compat/run.sh --strict-geometry "${rows[@]}"`
 - `mapfile -t rows < compat/tui/evidence/TUI-017/attempt-10/corpus-shard-2.rows; ZZ_COMPAT_ZZ="$PWD/target/residuals-2/zz" compat/run.sh --strict-geometry "${rows[@]}"`
 - `mapfile -t rows < compat/tui/evidence/TUI-017/attempt-10/corpus-shard-3.rows; ZZ_COMPAT_ZZ="$PWD/target/residuals-2/zz" compat/run.sh --strict-geometry "${rows[@]}"`

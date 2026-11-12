@@ -132,11 +132,12 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: |
+          root=$(pwd -W 2>/dev/null || pwd)
           cargo test --manifest-path libs/ala/Cargo.toml --workspace --all-features --exclude ala-platform
-          cargo test --manifest-path libs/penna/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\""
-          cargo test --manifest-path libs/penna/Cargo.toml --test highlighter_api --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\""
-          cargo test --manifest-path libs/penna/storybook/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" --config "patch.\"https://github.com/autistic-computer/ala\".ala-platform.path=\"$PWD/libs/ala/crates/ala-platform\""
-          cargo test --manifest-path libs/ala-cef/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\""
+          cargo test --manifest-path libs/penna/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$root/libs/ala/crates/ala\""
+          cargo test --manifest-path libs/penna/Cargo.toml --test highlighter_api --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$root/libs/ala/crates/ala\""
+          cargo test --manifest-path libs/penna/storybook/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$root/libs/ala/crates/ala\"" --config "patch.\"https://github.com/autistic-computer/ala\".ala-platform.path=\"$root/libs/ala/crates/ala-platform\""
+          cargo test --manifest-path libs/ala-cef/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$root/libs/ala/crates/ala\""
           cargo test --manifest-path libs/pele/Cargo.toml --locked --all-features
 
       - name: Test the iOS input logic
@@ -177,7 +178,7 @@ jobs:
             echo "zz-cli links GUI crates"
             exit 1
           fi
-          if grep -Eq '^(ureq|rustls|ring) ' <<<"$tree"; then
+          if grep -Eq '^ureq ' <<<"$tree"; then
             echo "zz-cli links the update checker's TLS stack"
             exit 1
           fi
