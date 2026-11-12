@@ -87,7 +87,7 @@
 .penna-popup-separator {
   flex: none;
   height: 1px;
-  margin: var(--penna-space-2) var(--penna-row-inset);
+  margin: var(--penna-space-2) var(--penna-space-8);
   border-bottom: 1px solid var(--penna-divider);
 }
 

@@ -30,6 +30,11 @@ pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("escape", Cancel, Some(CONTEXT))]);
 }
 
+pub trait PopoverTrigger: Selectable + IntoElement + 'static {
+    #[must_use]
+    fn opened(self, open: bool) -> Self;
+}
+
 #[derive(IntoElement)]
 pub struct Popover {
     id: ElementId,
@@ -80,13 +85,9 @@ impl Popover {
     }
 
     #[must_use]
-    pub fn trigger<T>(mut self, trigger: T) -> Self
-    where
-        T: Selectable + IntoElement + 'static,
-    {
+    pub fn trigger<T: PopoverTrigger>(mut self, trigger: T) -> Self {
         self.trigger = Some(Box::new(|is_open| {
-            let selected = trigger.is_selected();
-            trigger.selected(selected || is_open).into_any_element()
+            trigger.opened(is_open).into_any_element()
         }));
         self
     }
@@ -498,6 +499,56 @@ mod tests {
                     .on_dismiss(move |_, _| dismissed.set(dismissed.get() + 1)),
             )
         }
+    }
+
+    struct Tipped;
+
+    impl Render for Tipped {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                Popover::new("popover")
+                    .trigger(Button::new("open").label("Open").tooltip("Open the panel"))
+                    .content(|_, _, _| div().child("panel")),
+            )
+        }
+    }
+
+    #[ala::test]
+    fn an_open_popover_hides_its_trigger_tooltip(cx: &mut TestAppContext) {
+        cx.update(crate::init_without_theme);
+        let (_, cx) = cx.add_window_view(|_, _| Tipped);
+        let quads = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+                window
+                    .painted_quads()
+                    .into_iter()
+                    .map(|quad| quad.bounds)
+                    .collect::<Vec<_>>()
+            })
+        };
+        let rest = |cx: &mut VisualTestContext| {
+            cx.simulate_mouse_move(point(8., 8.), None, Modifiers::default());
+            cx.run_until_parked();
+            cx.executor()
+                .advance_clock(std::time::Duration::from_secs(1));
+        };
+        let bare = quads(cx);
+        rest(cx);
+        let tip = quads(cx)
+            .into_iter()
+            .filter(|bounds| !bare.contains(bounds))
+            .collect::<Vec<_>>();
+        assert!(!tip.is_empty(), "resting on the trigger showed no tooltip");
+
+        cx.simulate_click(point(8., 8.), Modifiers::default());
+        rest(cx);
+        let open = quads(cx);
+        assert!(
+            tip.iter().all(|bounds| !open.contains(bounds)),
+            "the tooltip stayed over the open popover"
+        );
     }
 
     #[ala::test]

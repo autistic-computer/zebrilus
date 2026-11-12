@@ -1113,7 +1113,7 @@ Anatomy:
 - Shortcut (optional): `small`, at the end, `space-12` after the label, in the row's ink at 0.8 opacity. It comes from the keymap binding of the row's action, never from the label.
 - Mark (optional): a 12 chevron at the end of a submenu row, a 12 external-link mark after a link's label (`space-6`), at 0.8 opacity.
 - Section label: `caption`, muted, as tall as its line, with the icon slot before it.
-- Separator: a hairline rule, `space-2` above and below and the row inset at the sides. A separator first, doubled or last is not drawn.
+- Separator: a hairline rule, `space-2` above and below, from the rows' leading content edge to their trailing one (`space-8` in from the highlight at each side). A separator first, doubled or last is not drawn.
 - Stepper: the label, then `space-10` later a field-ground group of three small flat ghost buttons (minus, the value at least 48 wide, plus).
 - Search field (optional): a `md` field on the popover's ground, the row inset from the top and sides, with a 14 search icon in the muted ink before the text and a clear button once there is text. It stays put and the rows scroll under it, so the rows' scroll area is the menu's height less the field and one row inset. The menu keeps the width it opened at while the rows filter. When nothing matches, one faint `small` row says "No matches", `space-8` in.
 - Scopes (optional): a `md` segmented control at full width (Segmented control) on the popover's ground, under the search field or on top without one, the row inset from the sides and from what is above it. It stays put like the field, so the rows' scroll area also loses its height and one row inset.

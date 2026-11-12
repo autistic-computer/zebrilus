@@ -1122,7 +1122,7 @@ impl PopupMenu {
                 .h_auto()
                 .p_0()
                 .my(Space::S2)
-                .mx(cx.theme().row_inset)
+                .mx(Space::S8)
                 .rounded(px(0.0))
                 .border_0()
                 .rule(RuleLook::Plain, Edge::Bottom, cx)

@@ -13,7 +13,7 @@ use crate::{
     IconName, Kind, Layer, PaintState, Selectable, Sizable, Size, Smoothing, StyledExt as _,
     Surface, SurfaceRole, Tone,
     components::tooltip::Tooltip,
-    components::{input::trailing_size, spinner::Spinner},
+    components::{input::trailing_size, popover::PopoverTrigger, spinner::Spinner},
     foundation::roles,
     h_flex, rems_from_px,
 };
@@ -236,6 +236,7 @@ pub struct Button {
     children: Vec<AnyElement>,
     disabled: bool,
     selected: bool,
+    opened: bool,
     variant: ButtonVariant,
     surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
@@ -274,6 +275,7 @@ impl Button {
             label: None,
             disabled: false,
             selected: false,
+            opened: false,
             variant: ButtonVariant::default(),
             surface_role: None,
             on: None,
@@ -461,6 +463,14 @@ impl Selectable for Button {
     }
 }
 
+impl PopoverTrigger for Button {
+    fn opened(mut self, open: bool) -> Self {
+        self.selected |= open;
+        self.opened = open;
+        self
+    }
+}
+
 impl Sizable for Button {
     fn with_size(mut self, size: impl Into<Size>) -> Self {
         self.size = size.into();
@@ -621,6 +631,7 @@ impl RenderOnce for Button {
             }
         });
 
+        let tip = self.tooltip.clone().filter(|_| !self.opened);
         let element = self
             .base
             .role(if self.variant.is_link() {
@@ -779,7 +790,7 @@ impl RenderOnce for Button {
                     .border_color(rest.border.opacity(0.8))
                     .text_color(rest.text.opacity(0.8))
             })
-            .when_some(self.tooltip.clone(), |this, tooltip| {
+            .when_some(tip.clone(), |this, tooltip| {
                 let keys = self.tooltip_keys.clone();
                 this.tooltip(move |window, cx| {
                     Tooltip::new(tooltip.clone())
@@ -791,7 +802,7 @@ impl RenderOnce for Button {
             element,
             &self.id,
             is_focused,
-            self.tooltip,
+            tip,
             &self.tooltip_keys,
             window,
             cx,
