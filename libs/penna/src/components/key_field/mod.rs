@@ -389,7 +389,7 @@ mod tests {
     fn recording_takes_the_next_key_before_any_binding_and_escape_cancels(cx: &mut TestAppContext) {
         cx.update(|cx| {
             crate::init(cx);
-            cx.bind_keys([ala::KeyBinding::new("cmd-w", Close, Some("Preview"))]);
+            cx.bind_keys([ala::KeyBinding::new("ctrl-w", Close, Some("Preview"))]);
         });
         let closed = Rc::new(Cell::new(0));
         let shared = closed.clone();
@@ -415,14 +415,14 @@ mod tests {
         });
         let field = cx.debug_bounds("field").expect("the field draws");
 
-        cx.simulate_keystrokes("cmd-w");
+        cx.simulate_keystrokes("ctrl-w");
         assert_eq!(closed.get(), 1);
 
         cx.simulate_click(field.center(), ala::Modifiers::default());
         assert!(state.read_with(cx, |state, _| state.is_recording()));
-        cx.simulate_keystrokes("cmd-w");
+        cx.simulate_keystrokes("ctrl-w");
         assert_eq!(closed.get(), 1);
-        assert_eq!(*recorded.borrow(), ["cmd-w"]);
+        assert_eq!(*recorded.borrow(), ["ctrl-w"]);
         assert!(state.read_with(cx, |state, _| !state.is_recording()));
 
         cx.simulate_keystrokes("enter");
@@ -431,19 +431,19 @@ mod tests {
         assert!(state.read_with(cx, |state, _| !state.is_recording()));
         assert_eq!(
             state.read_with(cx, |state, _| state.keystroke().map(Keystroke::unparse)),
-            Some("cmd-w".into())
+            Some("ctrl-w".into())
         );
 
         cx.simulate_keystrokes("space");
         cx.simulate_keystrokes("shift-'->\"");
-        assert_eq!(*recorded.borrow(), ["cmd-w", "\""]);
+        assert_eq!(*recorded.borrow(), ["ctrl-w", "\""]);
 
         cx.simulate_keystrokes("enter");
         cx.update(|window, cx| {
             let focus = preview.read(cx).focus.clone();
             focus.focus(window, cx);
         });
-        cx.simulate_keystrokes("cmd-w");
+        cx.simulate_keystrokes("ctrl-w");
         assert_eq!(closed.get(), 2);
         assert_eq!(recorded.borrow().len(), 2);
         assert!(state.read_with(cx, |state, _| !state.is_recording()));
