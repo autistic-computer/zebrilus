@@ -36,7 +36,7 @@ pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(32.0);
 pub const WORKSPACE_STATUS_TAB_HEIGHT: Pixels = px(28.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(18.0);
-const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
+pub(crate) const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
 const WORKSPACE_STATUS_WINDOW_MIN_WIDTH: Pixels = px(36.0);
 
 #[must_use]
@@ -207,12 +207,29 @@ pub fn workspace_status_bar_ground(cx: &App) -> Ground {
 }
 
 #[must_use]
-pub fn workspace_status_tab_ground(alone: bool, cx: &App) -> Ground {
-    TabStrip::ground(
-        workspace_status_bar_ground(cx),
-        if alone { 1 } else { 2 },
-        cx,
-    )
+pub fn workspace_status_tab_ground(on: Ground, alone: bool, cx: &App) -> Ground {
+    TabStrip::ground(on, if alone { 1 } else { 2 }, cx)
+}
+
+#[must_use]
+pub fn workspace_tab_strip(id: impl Into<ElementId>, look: TabLook, on: Ground) -> TabStrip {
+    TabStrip::new(id, look)
+        .on(on)
+        .with_size(WORKSPACE_STATUS_TAB_HEIGHT)
+        .flex_shrink_1()
+        .min_w_0()
+        .overflow_hidden()
+}
+
+#[must_use]
+pub fn workspace_tab_name(name: impl IntoElement) -> ala::Div {
+    div()
+        .flex_1()
+        .min_w_0()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .text_fade(crate::LABEL_FADE)
+        .child(name)
 }
 
 #[must_use]
@@ -225,16 +242,32 @@ pub fn workspace_status_window(
     deck: Option<pane_stack::PaneStack>,
     cx: &App,
 ) -> Tab {
+    let name = workspace_tab_name(name);
+    workspace_tab(
+        id,
+        TabLook::Window,
+        workspace_status_bar_ground(cx),
+        state,
+        cx,
+    )
+    .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+    .map(|item| match deck {
+        Some(deck) => item.child(deck.beside(name, px(5.0))),
+        None => item.child(name),
+    })
+}
+
+#[must_use]
+pub fn workspace_tab(
+    id: impl Into<ElementId>,
+    look: TabLook,
+    on: Ground,
+    state: WorkspaceStatusWindowState,
+    cx: &App,
+) -> Tab {
     let foreground = cx.theme().foreground;
-    let name = div()
-        .flex_1()
-        .min_w_0()
-        .overflow_hidden()
-        .whitespace_nowrap()
-        .text_fade(crate::LABEL_FADE)
-        .child(name);
-    Tab::new(id, TabLook::Window)
-        .on(workspace_status_tab_ground(state.alone, cx))
+    Tab::new(id, look)
+        .on(workspace_status_tab_ground(on, state.alone, cx))
         .state(state.paint_state())
         .interactive(state.connected)
         .when(state.connected, penna::StyledExt::click_cursor)
@@ -258,11 +291,6 @@ pub fn workspace_status_window(
         .when(!state.active, |item| item.text_color(foreground.muted()))
         .type_style(TextStyle::Lead, cx)
         .line_height(WORKSPACE_STATUS_LINE_HEIGHT)
-        .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-        .map(|item| match deck {
-            Some(deck) => item.child(deck.beside(name, px(5.0))),
-            None => item.child(name),
-        })
 }
 
 #[must_use]

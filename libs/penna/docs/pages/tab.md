@@ -14,7 +14,7 @@ Switches between open things in one place: windows, pages, tasks. To pick a view
 ```
 
 - **Window**: windows in the title bar.
-- **Page**: pages in a browser.
+- **Page**: pages in a browser, drawn like window tabs.
 - **Tray**: tasks over a composer.
 - **Title**: a pane's title in its header.
 
@@ -49,7 +49,7 @@ Inset and content are yours; the stories use 10 at the sides. A tab is as wide a
 </div>
 ```
 
-Window tabs sit in one strip: a wash with no edge, 2 inside and 2 between tabs. Its corner is the tabs' corner plus 2, so the open tab sits concentric in it. With one tab there is no strip, just the tab.
+Window tabs, and a browser's page tabs, sit in one strip: a wash with no edge, 2 inside and 2 between tabs. Its corner is the tabs' corner plus 2, so the open tab sits concentric in it. With one tab there is no strip, just the tab.
 
 ```rust
 let on = TabStrip::ground(bar, windows.len(), cx);

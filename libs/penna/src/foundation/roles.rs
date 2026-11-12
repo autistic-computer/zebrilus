@@ -168,7 +168,7 @@ pub const TAB_STRIP: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TAB,
     "tab.strip",
     "Tab strips",
-    "The track the window tabs sit in, in the title bar",
+    "The track window tabs and page tabs sit in",
 )
 .with(
     P.fill(Fill::Tint)
@@ -181,7 +181,7 @@ pub const TAB_PAGE: SurfaceRole = SurfaceRole::under(
     "Browser tabs",
     "Tabs in a browser pane",
 )
-.with(P.selected(Highlight::Glass));
+.with(P.ink(Ink::Rest).selected(Highlight::Glass));
 pub const TAB_TRAY: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TAB,
     "tab.tray",

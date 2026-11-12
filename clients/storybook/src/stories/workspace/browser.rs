@@ -52,7 +52,7 @@ pub const STORY: Story = Story {
         Section {
             id: "tabs",
             name: "Tab strip",
-            summary: "BrowserTabStrip. Tabs share the row's width, up to 180px each and down to their favicon alone. A title too long for its tab fades out under the close button, which appears on hover when there is more than one tab.",
+            summary: "BrowserTabStrip, drawn with the title bar's window tab strip: one track holding up to five tabs, 240px each and shrinking evenly, the rest in the overflow menu. A title too long for its tab fades out before the close button, which appears on hover when there is more than one tab.",
             build: |_, cx| stateless(tabs, cx),
         },
         Section {
@@ -459,7 +459,8 @@ fn strip(id: &'static str, width: f32, count: usize, active: usize) -> AnyElemen
         .id(id)
         .flex()
         .w(px(width))
-        .h(px(28.0))
+        .h(px(40.0))
+        .items_center()
         .child(BrowserTabStrip::new(tab_infos(count), active))
         .into_any_element()
 }
@@ -476,7 +477,7 @@ fn tabs(_: &mut Window, _: &mut App) -> AnyElement {
             strip("tabs-squeezed", 520.0, 5, 0),
         )
         .state(
-            "nine tabs, the eighth active, down to their favicons",
+            "nine tabs, the eighth active, the rest in the overflow menu",
             strip("tabs-scrolled", 640.0, 9, 7),
         )
         .into_any_element()

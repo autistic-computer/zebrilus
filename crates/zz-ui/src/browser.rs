@@ -7,16 +7,24 @@ use crate::{
     feedback::{alert_actions, inline_alert},
     input::{FieldLook, Input, InputContentType, InputState, field_chrome},
     menu::{PopupMenu, PopupMenuItem},
+    navigation::{
+        WorkspaceStatusWindowState,
+        status::{
+            MAX_VISIBLE_WINDOWS, StatusWindowEntry, tab_overflow, visible_window_range,
+            with_tab_close,
+        },
+        workspace_status_tab_ground, workspace_tab, workspace_tab_name, workspace_tab_strip,
+    },
     separator::Separator,
     tooltip::Tooltip,
 };
 use ala::{
     AnyElement, App, Context, Entity, Focusable as _, Hsla, IntoElement, MouseButton,
     ParentElement as _, Pixels, RenderOnce, SharedString, Styled as _, StyledImage as _, Window,
-    canvas, deferred, div, prelude::*, px,
+    deferred, div, prelude::*, px,
 };
 use penna::{
-    Bar, BarLook, Chip, ChipLook, Label, Panel, PanelLook, Row, RowLook, RuleLook, Tab, TabLook,
+    Bar, BarLook, Chip, ChipLook, Label, Panel, PanelLook, Row, RowLook, RuleLook, TabLook,
     TextStyle,
 };
 
@@ -25,11 +33,7 @@ const BROWSER_CONTROL_HEIGHT: f32 = 28.0;
 const COMPACT_BAR_HEIGHT: f32 = 52.0;
 const COMPACT_CONTROL_HEIGHT: f32 = 40.0;
 const BROWSER_TAB_ROW_HEIGHT: f32 = BROWSER_CONTROL_HEIGHT + 2.0 * crate::CHROME_GAP;
-const BROWSER_TAB_MAX_WIDTH: f32 = 180.0;
-const BROWSER_TAB_MIN_WIDTH: f32 = 36.0;
-const BROWSER_TAB_LABEL_WIDTH: f32 = 84.0;
 const BROWSER_TAB_GAP: f32 = 4.0;
-const BROWSER_TAB_RIM_ROOM: f32 = 2.0;
 const SITE_CONTROLS_INSET: Pixels = px(1.5);
 const ADDRESS_EDGE_WIDTH: Pixels = px(1.0);
 
@@ -432,7 +436,7 @@ impl BrowserTabStrip {
 }
 
 impl RenderOnce for BrowserTabStrip {
-    fn render(self, window: &mut ala::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let Self {
             tabs,
             active,
@@ -444,23 +448,6 @@ impl RenderOnce for BrowserTabStrip {
         let title = title.map(|drag| {
             crate::pane::PaneTitle::new("browser-pane-title", IconName::Globe, "Browser", drag)
         });
-        let width = window.use_keyed_state("browser-tab-strip-width", cx, |_, _| None::<Pixels>);
-        let count = f32::from(u16::try_from(tabs.len().max(1)).unwrap_or(u16::MAX));
-        let narrow = width.read(cx).is_some_and(|width| {
-            (width - px(BROWSER_TAB_GAP) * (count - 1.0)) / count < px(BROWSER_TAB_LABEL_WIDTH)
-        });
-        let measure = canvas(
-            move |bounds, window, cx| {
-                let tabs = bounds.size.width - px(BROWSER_TAB_RIM_ROOM * 2.0);
-                let changed = width.update(cx, |width, _| width.replace(tabs) != Some(tabs));
-                if changed {
-                    window.request_animation_frame();
-                }
-            },
-            |_, (), _, _| {},
-        )
-        .absolute()
-        .size_full();
         let new_tab = browser_toolbar_button(
             cx,
             "browser-new-tab",
@@ -471,7 +458,50 @@ impl RenderOnce for BrowserTabStrip {
         )
         .debug_selector(|| "browser-new-tab".into())
         .on_click(move |_, window, cx| on_new_tab(window, cx));
-        let closable = tabs.len() > 1;
+        let on = cx.theme().ground_of(BarLook::Pane);
+        let alone = tabs.len() == 1;
+        let shown = visible_window_range(tabs.len(), active, MAX_VISIBLE_WINDOWS);
+        let overflow = (tabs.len() > MAX_VISIBLE_WINDOWS).then(|| {
+            let entries = tabs
+                .iter()
+                .enumerate()
+                .map(|(index, tab)| {
+                    let activate = Rc::clone(&on_activate);
+                    let id = tab.id;
+                    StatusWindowEntry {
+                        label: tab.label.clone(),
+                        active: index == active,
+                        select: Rc::new(move |window, cx| activate(id, window, cx)),
+                    }
+                })
+                .collect();
+            tab_overflow(
+                "browser-tab-overflow",
+                "All tabs",
+                IconName::Globe,
+                entries,
+                true,
+            )
+        });
+        let pills = tabs
+            .into_iter()
+            .enumerate()
+            .filter(|(index, _)| shown.contains(index))
+            .map(|(index, tab)| {
+                browser_tab_pill(
+                    tab,
+                    WorkspaceStatusWindowState {
+                        connected: true,
+                        active: index == active,
+                        alone,
+                    },
+                    on,
+                    &on_activate,
+                    &on_close,
+                    cx,
+                )
+            })
+            .collect::<Vec<_>>();
         div()
             .h_full()
             .flex()
@@ -491,27 +521,14 @@ impl RenderOnce for BrowserTabStrip {
                         div()
                             .id("browser-tabs")
                             .debug_selector(|| "browser-tabs".into())
-                            .relative()
                             .flex()
                             .flex_initial()
                             .min_w_0()
-                            .overflow_hidden()
-                            .p(px(BROWSER_TAB_RIM_ROOM))
-                            .m(px(-BROWSER_TAB_RIM_ROOM))
-                            .items_center()
-                            .gap(px(BROWSER_TAB_GAP))
-                            .child(measure)
-                            .children(tabs.into_iter().enumerate().map(|(index, tab)| {
-                                browser_tab_pill(
-                                    tab,
-                                    index == active,
-                                    closable,
-                                    narrow,
-                                    &on_activate,
-                                    &on_close,
-                                    cx,
-                                )
-                            })),
+                            .child(
+                                workspace_tab_strip("browser-tab-strip", TabLook::Page, on)
+                                    .children(pills)
+                                    .children(overflow),
+                            ),
                     )
                     .child(new_tab),
             )
@@ -520,13 +537,12 @@ impl RenderOnce for BrowserTabStrip {
 
 fn browser_tab_pill(
     tab: BrowserTabInfo,
-    active: bool,
-    closable: bool,
-    narrow: bool,
+    state: WorkspaceStatusWindowState,
+    on: crate::Ground,
     on_activate: &BrowserTabAction,
     on_close: &BrowserTabAction,
     cx: &App,
-) -> impl IntoElement {
+) -> AnyElement {
     let BrowserTabInfo {
         id,
         label,
@@ -535,87 +551,20 @@ fn browser_tab_pill(
     } = tab;
     let activate = Rc::clone(on_activate);
     let close_middle = Rc::clone(on_close);
-    let state = if active {
-        PaintState::Current
-    } else {
-        PaintState::Rest
-    };
-    let ground = cx.theme().ground_at(TabLook::Page, state);
-    let muted = crate::muted_on(ground, cx);
+    let close = Rc::clone(on_close);
+    let ground = cx.theme().ground_at(
+        penna::Surface::from(TabLook::Page).on(workspace_status_tab_ground(on, state.alone, cx)),
+        state.paint_state(),
+    );
     let favicon = div()
         .flex_none()
         .relative()
         .top(px(0.5))
-        .child(browser_favicon(favicon, muted));
-    Tab::new(("browser-tab", id), TabLook::Page)
-        .state(state)
+        .child(browser_favicon(favicon, crate::muted_on(ground, cx)));
+    let pill = workspace_tab(("browser-tab", id), TabLook::Page, on, state, cx)
         .debug_selector(move || format!("browser-tab-{id}"))
-        .group(browser_tab_group(id))
-        .h(px(BROWSER_CONTROL_HEIGHT))
-        .w(px(BROWSER_TAB_MAX_WIDTH))
-        .min_w(px(BROWSER_TAB_MIN_WIDTH))
-        .flex()
-        .items_center()
-        .when(!active, |tab| tab.text_color(muted))
-        .map(|tab| {
-            if narrow {
-                tab.justify_center().child(
-                    div()
-                        .relative()
-                        .flex()
-                        .flex_none()
-                        .size(px(BROWSER_CONTROL_HEIGHT))
-                        .items_center()
-                        .justify_center()
-                        .child(favicon.when(closable, |favicon| {
-                            favicon.group_hover(browser_tab_group(id), ala::Styled::invisible)
-                        }))
-                        .when(closable, |slot| {
-                            slot.child(
-                                div()
-                                    .absolute()
-                                    .inset_0()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .child(browser_tab_close_button(id, on_close, muted, ground)),
-                            )
-                        }),
-                )
-            } else {
-                tab.relative()
-                    .gap(px(6.0))
-                    .pl(px(12.0))
-                    .pr(px(if closable {
-                        BROWSER_CONTROL_HEIGHT
-                    } else {
-                        12.0
-                    }))
-                    .child(favicon)
-                    .child(
-                        Label::new(TextStyle::Body, label)
-                            .flex_1()
-                            .min_w_0()
-                            .line_height(px(16.0))
-                            .whitespace_nowrap()
-                            .overflow_hidden()
-                            .text_fade(crate::LABEL_FADE),
-                    )
-                    .when(closable, |tab| {
-                        tab.child(
-                            div()
-                                .absolute()
-                                .top_0()
-                                .bottom_0()
-                                .right(crate::button::INSIDE_GAP)
-                                .flex()
-                                .items_center()
-                                .child(browser_tab_close_button(id, on_close, muted, ground)),
-                        )
-                    })
-            }
-        })
-        .click_cursor()
+        .child(favicon)
+        .child(workspace_tab_name(label))
         .when(!detail.is_empty(), |this| {
             this.tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
         })
@@ -623,37 +572,21 @@ fn browser_tab_pill(
         .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
         .on_mouse_down(MouseButton::Middle, move |_, window, cx| {
             close_middle(id, window, cx);
-        })
-}
-
-fn browser_tab_group(id: u64) -> SharedString {
-    format!("browser-tab-{id}").into()
-}
-
-fn browser_tab_close_button(
-    id: u64,
-    on_close: &BrowserTabAction,
-    color: Hsla,
-    ground: crate::Ground,
-) -> impl IntoElement {
-    let close = Rc::clone(on_close);
-    div()
-        .flex_none()
-        .invisible()
-        .group_hover(browser_tab_group(id), ala::Styled::visible)
-        .child(
-            Button::new(("browser-tab-close", id))
-                .ghost()
-                .icon(IconName::Xmark)
-                .inside(TabLook::Page, px(BROWSER_CONTROL_HEIGHT))
-                .on(ground)
-                .text_color(color)
-                .debug_selector(move || format!("browser-tab-close-{id}"))
-                .on_click(move |_, window, cx| {
-                    cx.stop_propagation();
-                    close(id, window, cx);
-                }),
-        )
+        });
+    if state.alone {
+        return pill.into_any_element();
+    }
+    with_tab_close(
+        pill,
+        format!("browser-tab-close-{id}").into(),
+        TabLook::Page,
+        on,
+        state,
+        "Close tab",
+        Some(Rc::new(move |window, cx| close(id, window, cx))),
+        cx,
+    )
+    .into_any_element()
 }
 
 pub fn browser_toolbar_button(
@@ -1337,7 +1270,7 @@ mod tests {
     use ala::{Context, Modifiers, Render, TestAppContext, VisualTestContext, point};
 
     use super::*;
-    use crate::menu::DropdownMenu as _;
+    use crate::{menu::DropdownMenu as _, navigation::WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH};
 
     struct BrowserTabStripTest {
         width: f32,
@@ -1472,7 +1405,8 @@ mod tests {
             );
             assert_eq!(bounds.center().y, tabs.center().y, "{id}");
         }
-        for id in ["browser-new-tab", "browser-tab-0", "browser-tab-7"] {
+        assert!(cx.debug_bounds("browser-tab-5").is_none());
+        for id in ["browser-new-tab", "browser-tab-0", "browser-tab-4"] {
             let bounds = cx.debug_bounds(id).unwrap();
             assert!(bounds.origin.x >= tabs.origin.x && bounds.right() <= tabs.right());
             assert_eq!(bounds.size.height, px(BROWSER_CONTROL_HEIGHT), "{id}");
@@ -1504,10 +1438,9 @@ mod tests {
         assert!(strip.right() <= new_tab.origin.x);
         assert!(new_tab.right() <= cx.debug_bounds("split-bottom").unwrap().origin.x);
         let first = cx.debug_bounds("browser-tab-0").unwrap();
-        let last = cx.debug_bounds("browser-tab-7").unwrap();
+        let last = cx.debug_bounds("browser-tab-4").unwrap();
         assert_eq!(first.size.width, last.size.width);
-        assert!(first.size.width >= px(BROWSER_TAB_MIN_WIDTH));
-        assert!(first.size.width < px(BROWSER_TAB_LABEL_WIDTH));
+        assert!(first.size.width < WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH);
         assert!(last.right() <= strip.right());
         cx.simulate_mouse_down(title.center(), MouseButton::Left, Modifiers::none());
         let target = title.center() + point(px(40.0), px(0.0));
@@ -1553,6 +1486,7 @@ mod tests {
             _ = window.draw(cx);
         });
         assert!(cx.debug_bounds("browser-tab-7").is_some());
+        assert!(cx.debug_bounds("browser-tab-2").is_none());
     }
 
     impl Render for BrowserOmniboxTest {
@@ -1606,7 +1540,7 @@ mod tests {
         let activated_for_view = Arc::clone(&activated);
         let closed_for_view = Arc::clone(&closed);
         let (_, cx) = cx.add_window_view(move |_, _| BrowserTabStripTest {
-            width: 420.0,
+            width: 640.0,
             active: 0,
             activated: activated_for_view,
             closed: closed_for_view,
@@ -1623,10 +1557,18 @@ mod tests {
         let inactive_tab = cx
             .debug_bounds("browser-tab-2")
             .expect("the inactive tab renders");
-        assert_eq!(inactive_tab.size.width, px(BROWSER_TAB_MAX_WIDTH));
+        let strip = cx.debug_bounds("browser-tabs").unwrap();
+        assert_eq!(
+            inactive_tab.size.width,
+            WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH
+        );
+        assert_eq!(inactive_tab.size.height, px(BROWSER_CONTROL_HEIGHT));
+        assert_eq!(strip.size.height, px(BROWSER_CONTROL_HEIGHT + 4.0));
+        assert_eq!(inactive_tab.origin.x - active_tab.right(), px(2.0));
+        assert_eq!(strip.right(), inactive_tab.right() + px(2.0));
         assert_eq!(
             cx.debug_bounds("browser-new-tab").unwrap().origin.x,
-            inactive_tab.right() + px(BROWSER_TAB_GAP)
+            strip.right() + px(BROWSER_TAB_GAP)
         );
 
         cx.simulate_mouse_move(active_tab.center(), None, Modifiers::none());
@@ -1671,7 +1613,7 @@ mod tests {
     fn switching_active_tab_preserves_equal_tab_widths(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (view, cx) = cx.add_window_view(move |_, _| BrowserTabStripTest {
-            width: 420.0,
+            width: 640.0,
             active: 0,
             activated: Arc::default(),
             closed: Arc::default(),
@@ -1703,7 +1645,10 @@ mod tests {
         assert_eq!(first_after.size.width, second_after.size.width);
         assert_eq!(first_before.size.width, first_after.size.width);
         assert_eq!(second_before.size.width, second_after.size.width);
-        assert_eq!(first_after.size.width, px(BROWSER_TAB_MAX_WIDTH));
+        assert_eq!(
+            first_after.size.width,
+            WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH
+        );
         view.update(cx, |view, cx| {
             view.width = 300.0;
             cx.notify();
@@ -1715,26 +1660,7 @@ mod tests {
         let second = cx.debug_bounds("browser-tab-2").unwrap();
         let strip = cx.debug_bounds("browser-tabs").unwrap();
         assert_eq!(first.size.width, second.size.width);
-        assert!(first.size.width < px(BROWSER_TAB_MAX_WIDTH));
-        assert!(first.size.width >= px(BROWSER_TAB_MIN_WIDTH));
-        assert!(first.origin.x >= strip.origin.x && second.right() <= strip.right());
-
-        view.update(cx, |view, cx| {
-            view.width = 120.0;
-            view.active = 0;
-            cx.notify();
-        });
-        for _ in 0..2 {
-            cx.update(|window, cx| {
-                _ = window.draw(cx);
-            });
-        }
-        let first = cx.debug_bounds("browser-tab-1").unwrap();
-        let second = cx.debug_bounds("browser-tab-2").unwrap();
-        let strip = cx.debug_bounds("browser-tabs").unwrap();
-        assert_eq!(first.size.width, second.size.width);
-        assert!(first.size.width >= px(BROWSER_TAB_MIN_WIDTH));
-        assert!(first.size.width < px(BROWSER_TAB_LABEL_WIDTH));
+        assert!(first.size.width < WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH);
         assert!(first.origin.x >= strip.origin.x && second.right() <= strip.right());
         cx.simulate_mouse_move(second.center(), None, Modifiers::none());
         cx.update(|window, cx| {
@@ -1747,8 +1673,10 @@ mod tests {
             view.read_with(cx, |view, _| view.closed.lock().unwrap().clone()),
             [2]
         );
+
         view.update(cx, |view, cx| {
-            view.width = 420.0;
+            view.width = 120.0;
+            view.active = 0;
             cx.notify();
         });
         cx.update(|window, cx| {
@@ -1757,8 +1685,7 @@ mod tests {
         let first = cx.debug_bounds("browser-tab-1").unwrap();
         let second = cx.debug_bounds("browser-tab-2").unwrap();
         let strip = cx.debug_bounds("browser-tabs").unwrap();
-        assert_eq!(first.size.width, px(BROWSER_TAB_MAX_WIDTH));
-        assert_eq!(second.size.width, px(BROWSER_TAB_MAX_WIDTH));
+        assert_eq!(first.size.width, second.size.width);
         assert!(first.origin.x >= strip.origin.x && second.right() <= strip.right());
     }
 
