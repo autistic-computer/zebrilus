@@ -31,13 +31,13 @@ use zz_daemon_client::{
 #[cfg(test)]
 use zz_protocol::StatusLine;
 use zz_protocol::{
-    BrowserCommand, ChooseBufferState, ChooseTreeState, ClientMessageKind, ClipboardProducer,
-    CommandInvocation, CommandPromptState, CommandResponse, ConfirmState, DisplayPanesState, Event,
-    EventPayload, GitMark, GuiResponse, InputMessage, KeyBindingSnapshot, KeyTableSnapshot,
-    LayoutNode, MenuState, MuxOptionKey, MuxSnapshot, NEW_SESSION_ATTACH_CAPABILITY,
-    PROTOCOL_VERSION, PaneId, PaneKindSnapshot, PastedImageFormat, PathEntry, PathListRoot,
-    ProtocolError, ProtocolMessage, ServerError, ServerHello, SessionId, TerminalUiCommand,
-    WindowSnapshot,
+    BrowserCommand, CONFIG_RELOADED_MESSAGE, ChooseBufferState, ChooseTreeState, ClientMessageKind,
+    ClipboardProducer, CommandInvocation, CommandPromptState, CommandResponse, ConfirmState,
+    DisplayPanesState, Event, EventPayload, GitMark, GuiResponse, InputMessage, KeyBindingSnapshot,
+    KeyTableSnapshot, LayoutNode, MenuState, MuxOptionKey, MuxSnapshot,
+    NEW_SESSION_ATTACH_CAPABILITY, PROTOCOL_VERSION, PaneId, PaneKindSnapshot, PastedImageFormat,
+    PathEntry, PathListRoot, ProtocolError, ProtocolMessage, ServerError, ServerHello, SessionId,
+    TerminalUiCommand, WindowSnapshot,
 };
 use zz_terminal::{
     AppearanceProvenance, ClipboardTarget, IMAGE_PLACEHOLDER_SCHEME, PackedCell,
@@ -758,6 +758,7 @@ pub(crate) struct ClientNotification {
     pub(crate) text: String,
     pub(crate) duration_ms: Option<u32>,
     pub(crate) message_id: Option<u64>,
+    pub(crate) key: Option<String>,
 }
 
 pub(crate) struct ClientNotificationCleared {
@@ -2435,9 +2436,10 @@ impl MuxClient {
                 self.error = Some(Arc::from(format!("fleet host {name} disconnected")));
             } else {
                 self.error = None;
-                Self::emit_notification(
+                Self::emit_keyed_notification(
                     ClientMessageKind::Warning,
                     format!("connection to {name} lost: reconnecting…"),
+                    Some(format!("connection-{name}")),
                     cx,
                 );
             }
@@ -2964,11 +2966,21 @@ impl MuxClient {
         text: impl Into<String>,
         cx: &mut Context<Self>,
     ) {
+        Self::emit_keyed_notification(kind, text, None, cx);
+    }
+
+    fn emit_keyed_notification(
+        kind: ClientMessageKind,
+        text: impl Into<String>,
+        key: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
         cx.emit(ClientNotification {
             kind,
             text: text.into(),
             duration_ms: None,
             message_id: None,
+            key,
         });
     }
 
@@ -4764,6 +4776,9 @@ impl MuxClient {
                 message_id,
                 ..
             } => cx.emit(ClientNotification {
+                key: text
+                    .starts_with(CONFIG_RELOADED_MESSAGE)
+                    .then(|| CONFIG_RELOADED_MESSAGE.to_owned()),
                 kind,
                 text,
                 duration_ms,
@@ -4904,9 +4919,10 @@ impl MuxClient {
                 .registry
                 .get(host)
                 .map_or_else(|| format!("{host:?}"), |entry| entry.name.clone());
-            Self::emit_notification(
+            Self::emit_keyed_notification(
                 ClientMessageKind::Success,
                 format!("reconnected to {name}"),
+                Some(format!("connection-{name}")),
                 cx,
             );
         }

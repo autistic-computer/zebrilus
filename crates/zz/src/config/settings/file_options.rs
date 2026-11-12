@@ -697,7 +697,7 @@ impl SettingsView {
                 cx,
             );
         } else {
-            config::request_daemon_reload(cx);
+            config::reload(cx);
         }
     }
 
@@ -798,7 +798,11 @@ impl SettingsView {
             match config::import::import_ghostty_config_from(path, import_color_scheme(cx)) {
                 Ok(_) => {
                     self.reload_config_editor(kind, cx);
-                    config::request_daemon_reload(cx);
+                    config::reload(cx);
+                    toast::push(
+                        Notification::success(format!("Imported {}", path.display())),
+                        cx,
+                    );
                 }
                 Err(error) => report_write_error("import", kind.file_name(), &error, cx),
             }

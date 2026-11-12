@@ -99,9 +99,9 @@ use zz_mux::{
 #[cfg(windows)]
 use zz_protocol::read_protocol_message_into;
 use zz_protocol::{
-    BrowserCommand, COMMAND_ARGS_PARSE_BEHAVES, ChooseBufferAction, ChooseBufferItem,
-    ChooseBufferSearchState, ChooseBufferState, ChooseTreeAction, ChooseTreeItem, ChooseTreeKind,
-    ChooseTreePaneKind, ChooseTreeSearchState, ChooseTreeState, ChooseTreeTarget,
+    BrowserCommand, COMMAND_ARGS_PARSE_BEHAVES, CONFIG_RELOADED_MESSAGE, ChooseBufferAction,
+    ChooseBufferItem, ChooseBufferSearchState, ChooseBufferState, ChooseTreeAction, ChooseTreeItem,
+    ChooseTreeKind, ChooseTreePaneKind, ChooseTreeSearchState, ChooseTreeState, ChooseTreeTarget,
     ChooserPreviewSize, ChooserRow, ClientEnvironmentBlob, ClientExitAction, ClientFileOperation,
     ClientFileRequest, ClientFileResponse, ClientHello, ClientId, ClientInstanceId, ClientKind,
     ClientMessageKind, ClientPath, ClipboardProducer, CommandInvocation, CommandPromptAction,
@@ -31409,11 +31409,11 @@ impl Shared {
             let (kind, text) = match report.summary() {
                 Some(summary) => (
                     ClientMessageKind::Warning,
-                    format!("Reloaded zz configuration; {summary}"),
+                    format!("{CONFIG_RELOADED_MESSAGE}; {summary}"),
                 ),
                 None => (
                     ClientMessageKind::Success,
-                    "Reloaded zz configuration".to_owned(),
+                    CONFIG_RELOADED_MESSAGE.to_owned(),
                 ),
             };
             self.publish_to_client(

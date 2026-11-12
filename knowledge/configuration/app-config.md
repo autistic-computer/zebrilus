@@ -808,8 +808,12 @@ file selection, including explicit `-f` files.
 Terminal's Appearance rows read the saved parsed `zz/config` entries. Scalars replace the last
 line; Font family replaces its whole stack with one line. The existing watcher applies these
 edits. macOS exposes `font-thicken` as Font smoothing and `font-thicken-strength` as Smoothing
-strength (0–255); the strength control is disabled while smoothing is off. Changes update the
-terminal preview and live panes through the existing reload path. Both pages offer one
+strength (0–255); the strength control is disabled while smoothing is off. A change reloads
+`zz/config` in the app at once, which sends its entries to the daemon and updates the terminal
+preview and live panes. Settings sends no `reload-config` for these rows or for a Ghostty import,
+so its own edits raise no "Reloaded zz configuration" toast; that toast is for `reload-config`
+itself (prefix `r`, the CLI) and for an edit made outside zz that Settings picks up when the
+window comes back to the front. It is keyed, so a new one replaces the one showing. Both pages offer one
 **Import…** button that opens the system file picker and imports the picked file right away, with
 no confirmation: tmux through `import-tmux-config`, Ghostty through
 `config::import::import_ghostty_config_from`. tmux import requires a local connection.

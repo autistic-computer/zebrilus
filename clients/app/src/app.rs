@@ -282,6 +282,8 @@ fn watch_connection(
                     };
                     let notification = if let Some(id) = message_id {
                         notification.key(format!("web-message-{id}"))
+                    } else if text.starts_with(zz_protocol::CONFIG_RELOADED_MESSAGE) {
+                        notification.key(zz_protocol::CONFIG_RELOADED_MESSAGE)
                     } else {
                         notification
                     };
