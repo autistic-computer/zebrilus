@@ -313,7 +313,7 @@ impl PaneStack {
         });
         let tile = if let Some(program) = front.and_then(|front| front.program).filter(|_| colors) {
             self.face(program, layer.smoothing, dark, self.dimmed)
-                .tile()
+                .tile(cx)
         } else {
             let layer = Layer {
                 fill: self.dim(layer.fill),
@@ -325,7 +325,7 @@ impl PaneStack {
                 .when(layer.glass.is_none(), |tile| {
                     tile.bg(Lit::background(layer.fill))
                 })
-                .shadow(self.lit(dark, self.dimmed).shadows())
+                .shadow(self.lit(dark, self.dimmed).shadows(cx))
                 .children(front.map(|front| glyph(front, size.glyph(), self.dim(layer.text))))
         };
         tile.absolute()
@@ -395,12 +395,12 @@ impl PaneStack {
                 let element = match program.filter(|_| colors) {
                     Some(program) => self
                         .face(program, layer.smoothing, dark, 0.0)
-                        .paint(element),
+                        .paint(element, cx),
                     None => element
                         .when(layer.glass.is_none(), |element| {
                             element.bg(Lit::background(layer.fill))
                         })
-                        .shadow(self.lit(dark, 0.0).shadows())
+                        .shadow(self.lit(dark, 0.0).shadows(cx))
                         .when_some(hover, |element, hover| {
                             element.hover(move |style| {
                                 style
