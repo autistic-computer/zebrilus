@@ -427,7 +427,7 @@ fn data_uri(svg: &str) -> String {
 
 fn drawn(theme: &Theme, surface: Surface, state: PaintState) -> Layer {
     match surface.role.kind {
-        Kind::Field => field_layer(theme, surface, state, true),
+        Kind::Field => field_layer(theme, surface, state),
         _ => theme.layer(surface, state),
     }
 }

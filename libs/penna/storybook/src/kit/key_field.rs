@@ -32,7 +32,7 @@ pub const STORY: Story = Story {
         Section {
             id: "key-field-recording",
             name: "Recording",
-            summary: "While recording the field holds focus and its focused edge, with the prompt at its start instead of the value.",
+            summary: "While recording the field holds focus and its focused fill, with the prompt at its start instead of the value.",
             build: |window, cx| Recording::view(window, cx),
         },
     ],

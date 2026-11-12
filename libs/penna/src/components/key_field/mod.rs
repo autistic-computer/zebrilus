@@ -343,7 +343,7 @@ impl RenderOnce for KeyField {
             size,
             cx,
         );
-        field_chrome_on(element, surface, paint_state, true, true, cx)
+        field_chrome_on(element, surface, paint_state, true, cx)
             .refine_style(&self.style)
             .child(content)
     }

@@ -217,20 +217,9 @@ class CodeEditor {
     this.layout();
   }
 
-  restFill() {
-    const root = this.root;
-    const state = root.getAttribute("data-state");
-    root.removeAttribute("data-state");
-    root.style.removeProperty("--ce-rest-fill");
-    const fill = getComputedStyle(root).getPropertyValue("--penna-fill").trim();
-    if (state !== null) root.setAttribute("data-state", state);
-    if (fill) root.style.setProperty("--ce-rest-fill", fill);
-  }
-
   layout() {
     const root = this.root;
     if (!root.isConnected || !root.clientWidth || !this.ready) return;
-    if (!root.matches(":hover")) this.restFill();
     this.lh = parseFloat(getComputedStyle(this.linesEl).lineHeight);
     const digits = Math.max(2, String(this.starts.length).length);
     this.probe.textContent = "8".repeat(digits);

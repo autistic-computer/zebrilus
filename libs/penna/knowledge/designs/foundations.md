@@ -200,7 +200,7 @@ Base colors from a theme (`colors`) and a person's own accent color are fitted t
 
 - Corners: the `radius`, `control-radius` and `smoothing` knobs (Look); 12, 12 and 3 by default. A control rounds to a share of its height, a container to `radius` in pixels, a corner inside another concentrically, and smoothing never changes how round a corner looks (Corners, under Look).
 - Depth: steps of fill separate surfaces; controls, panes and cards draw no shadow. `shadow-float` (y 10, blur 30, spread -6) for menus, popovers, dialogs and the window, drawn tight (0.4 of its offset, blur and spread: y 4, blur 12, spread -2.4) under a floating surface without glass, whose hairline already marks its edge, `shadow-lifted` for cards that move, and `shadow-contact` (0 1 4 #00000033) only for the knob of a switch or slider. Never let a shadow alone separate two surfaces.
-- Focus: a 1.5px ring (`FOCUS_RING_WIDTH`) drawn outside the border box with its own adaptive radius (`foundation::focus::with_focus_ring`), from the keyboard only; see Focus and keys. Only fields change their fill or edge on focus.
+- Focus: a 1.5px ring (`FOCUS_RING_WIDTH`) drawn outside the border box with its own adaptive radius (`foundation::focus::with_focus_ring`), from the keyboard only; see Focus and keys. Only fields change their fill on focus.
 - Motion: appear 120ms, enter 200ms, turn 220ms, at half those under Fast motion. Respect reduced motion.
 - Live motion, for work under way with no end in sight, keeps one steady speed and never eases: a spinner turns once every 900ms; a live line (a chat's activity row while the agent works) rests in `fg-muted` and sweeps a crest of `fg` across its label, left to right, once every 2600ms (a 2000ms pass, then 600ms still). The crest is 12 characters wide with a raised-cosine falloff, its colors mixed in 32 steps so no step shows, and it moves with time, not a character at a time. The glyph beside it breathes on the same cycle, opacity 0.5 to 1 and scale 0.9 to 1 on a cosine, brightest as the crest leaves it. Under reduced motion all of it holds still: the label in `fg-muted`, the glyph whole.
 - A chat activity row's label is `body` in `fg-muted` on a 16 line; the detail after it (a path, a pattern, an error) is `small` in the same `fg-muted`, on the label's baseline, so the step between them is size, not ink, and both read at 4.5:1. On a touch row the label is `touch-small` and the detail `body`, since nothing on a phone is under 13. A caller can give the detail its own ink, as zz does with `fg` for an answered question.
@@ -223,17 +223,17 @@ How each kind draws, at rest and under the pointer:
 | Quiet button, icon button, menu row | no fill | a wash | the highlight |
 | Item (list, menu and tree rows, tabs in content) | no fill | a wash | the highlight |
 | Chrome item (sidebar rows and entries, window and page tabs) | no fill | a wash | glass |
-| Field | a wash of the ink, no edge | a deeper wash | while typing, an edge in the ink |
+| Field | a wash of the ink, no edge | a deeper wash | while typing, the highlight, no edge |
 | Label (badge, keycap) | a soft wash in its tone, no edge | | |
 | Rule | a hairline in `divider` | | |
 
-- The highlight on a selected row is a wash of the ink, whatever the tint. A toned row's highlight is its tone's solid fill.
+- The highlight on a selected row is a wash of the ink, whatever the tint. A toned row's highlight is its tone's solid fill. A field being typed in takes the same wash a selected menu row takes on its ground, so a search field and the picked row under it read as one.
 - A picker tile in Settings (`settings.tile`: the theme, mode and app icon tiles) has no fill and shows its pick as a menu row does, in the same wash around its preview; it rings only for keyboard focus.
 - On that solid fill everything in the row takes the selected ink: label, muted text, icons, and a toned chip or badge, which draws as a wash of the selected ink in place of its tone. The word still says the status (Content). Natively the row hands its fill to its children as their ground (`.on(ground)`, with `cx.theme().ground_at(look, state)`); in HTML a row with `data-state~="selected"` or `"current"` and a solid highlight sets the ground inside it.
 - A chrome item draws its selection as glass, a pill of the material over its bar or sidebar, under the material's rim and light. Its tint is the highlight it replaces, pushed away from the ground by the material's opacity, so over a flat bar or sidebar the pill reads exactly as strong as the highlight does where glass is off, and the blur adds only what lies behind; the highlight is its fallback. The chrome items are sidebar rows (`sidebar.row`, the Settings sections too), the flat sidebar's entries (`row.nav`), window tabs in the title bar (`tab.window`) and a browser's page tabs (`tab.page`). Glass is neutral, so the item keeps the window's ink and hands its children a glass ground, not a solid one. Where glass can't draw (glass `none`, the system's reduced transparency, or a glass ground under the item) it takes the highlight like any row, and a picked window or page tab adds the control edge (its ground's ink at 10%, `outline` wide) in place of the rim, so it still stands apart from its strip or tab bar.
 - The rule is one for every solid ground, whatever its color, so a primary row in the ink counts as much as a danger one: a tone's solid fill under a selected or current row, and a prominent surface (a solid button, chip or badge). Natively the ground says so (`Ground::solid`: a layer's when it sits on a solid ground, its highlight is the solid fill, or it is prominent and not glass; a paint's when its ground is solid or its fill in that state is more than half opaque). There every tone but a solid one reads as neutral, and muted ink is the ink itself; faint keeps its mix toward the fill. A solid chip or badge keeps its tone, since its own fill carries its label. A status dot turns to the muted ink with the rest, and a dot on a solid chip takes the chip's ink.
 - In HTML the tokens write one scope per solid ground, listing every role whose selected or current highlight is that fill in the theme (rows, list items, menu and tree rows, tabs, toggled buttons, and the chrome items where glass is off). A role with toned rules lists its untoned rows (`:not([data-tone])`) in the neutral highlight's scope and each `[data-tone]` in its tone's. A scope carries the inks that differ and `--penna-dot` for dots. The looks painted on a solid fill are written once for every scope they fit: the labels (badges, chips, keycaps) and the buttons rows hold (quiet, icon, flat icon and row icon buttons, not prominent ones and none inside a field set in the row), each button with every value it sets and every other value at its initial, so a toned one loses its tone as it does natively. Soft and prominent buttons keep their window paint there, and rows hold neither. A button inside a field set in the row (a menu stepper's quiet buttons) paints on that field's ground natively, so the scopes leave it alone. The solid scopes come last in the tokens, after the reduced-transparency block, so they beat a ground scope around the row at equal specificity. A dot reads `--penna-dot` before its own color, and `data-solid` sets it to the tone's on-ink. Tree rows, like list items, switch their icons to the row's muted ink on selection.
-- Hairlines appear only where they mean something: rules, the outline variants (`button.outline`, `field.outline`, `badge.outline`, `chip.outline`), a field being typed in, the edge of a gapped pane or a floating surface where glass draws no rim, and a picked window or page tab where glass draws none. Increase contrast adds none. Outlines are 1 wide.
+- Hairlines appear only where they mean something: rules, the outline variants (`button.outline`, `field.outline`, `badge.outline`, `chip.outline`), the edge of a gapped pane or a floating surface where glass draws no rim, and a picked window or page tab where glass draws none. Increase contrast adds none. Outlines are 1 wide.
 - The knob of a switch or a slider keeps `shadow-contact`, the one control shadow in the look, so a light knob reads on a light ground.
 - Variants (quiet, outline, solid, ghost) are drawn by the kit from their kind's style, so no knob can change one without the others.
 
@@ -887,11 +887,11 @@ Kinds (`Input` on an `InputState`):
 
 | Kind | Call | Paint | Use |
 |---|---|---|---|
-| Field | default | the field role: a soft fill and a hairline edge | every text field |
+| Field | default | the field role: a soft fill, no edge | every text field |
 | Outline | `.emphasis(Emphasis::Outline)` | an edge, no fill at rest | on a ground with its own fill, where the soft fill would blend in |
 | Multi-line | `auto_grow(min, max)` on the state | the text area role | notes and messages: grows from `min` to `max` rows, then scrolls |
 | Number | `NumberInput::new(&state)` with `step`, `min`, `max` on the state | a field with a ghost minus and plus button at its ends, the value centered | a number people nudge |
-| Bare | `.appearance(false)` | no fill, edge or focus edge | a field drawn by its container, such as a title in a rule |
+| Bare | `.appearance(false)` | no fill, edge or focus look | a field drawn by its container, such as a title in a rule |
 | Borderless | `.bordered(false)` | the fill with no edge | a field on a ground where a hairline is noise |
 
 Password fields are a field with `.content_type(InputContentType::Password)`: the text is masked.
@@ -911,12 +911,12 @@ States:
 |---|---|---|
 | rest | the kind's fill and edge | |
 | hover | the fill's hover step | not when disabled |
-| focused | the edge turns to the ink; the fill stays | from a click or the keyboard; the caret blinks only while the window is active |
+| focused | the fill takes the highlight a selected menu row takes on the same ground; no edge, and the outline kind keeps its rest edge | from a click or the keyboard; the caret blinks only while the window is active |
 | disabled | a fainter fill and edge; text, placeholder and affixes at half strength | no editing |
 | loading | a spinner in the suffix | the text stays editable |
 | error | `.tone(Tone::Danger)` paints the field in the danger tone: its edge, at rest and focused | its Field shows the message with an icon (Field) |
 
-A tone paints only the edge: the tone's outline ink at rest and hovered, its focus ink when focused, and half of it when disabled. The fill, its hover step, the text and the placeholder stay the field's, and the edge draws even though a field has none at rest. Every tone paints this way; forms use danger.
+A tone paints only the edge: the tone's outline ink at rest and hovered, its focus ink when focused, and half of it when disabled. The fill, its hover step, its focused highlight, the text and the placeholder stay the field's, and the edge draws even though a field has none at rest. Every tone paints this way; forms use danger.
 
 A selection stays painted while the field is not focused.
 
@@ -990,7 +990,7 @@ States:
 |---|---|---|
 | rest | the field's fill and edge, the value centered | |
 | hover | the fill's hover step | not when disabled |
-| focused | the field's focus edge, the value centered | from Tab, or after a recording |
+| focused | the field's focused fill, the value centered | from Tab, or after a recording |
 | recording | the focused look with the prompt at the start | the field holds focus |
 | disabled | the field's disabled paint | leaves the focus order and never records |
 | error | `.tone(Tone::Danger)` paints the edge in the danger tone, like a field | |
@@ -1370,7 +1370,7 @@ States:
 | hover | the quiet button's hover fill behind the segment, the pill's height and radius, and its label in the hover ink | not on the picked segment |
 | pressed | the quiet button's active fill behind the segment, while held | as hover |
 | selected | the pill under it, its label in the selected ink | exactly one segment |
-| focused | the focus ring, 1.5 outside the track; the track takes the field's focused edge, which only the default theme sets apart | from the keyboard only, never from a click |
+| focused | the focus ring, 1.5 outside the track; the track takes the field's focused fill | from the keyboard only, never from a click |
 | disabled | the track takes the field's disabled paint; the pill keeps its selected paint at half strength (fill and edge, no shadow), and every label takes its ink at half strength | presses, keys and hover are ignored, and it leaves the focus order; the pick still shows |
 
 Behavior: a click on a segment picks it and calls `on_select` with its index; the caller sets `selected`. With `on_select` the control is one tab stop: Left and Up pick the previous segment, Right and Down the next, Home and End the first and last, each through `on_select`, and they stop at the ends. A click picks without focusing. The pill slides to the new segment in 220ms (`turn`) with an ease out, and holds still with reduced motion. Under a coarse pointer each segment's hit area grows to the touch slop.
@@ -1405,7 +1405,7 @@ States:
 |---|---|---|
 | rest | the field's fill and edge | |
 | hover | the fill's hover step | not when disabled |
-| focused | the field's focus edge | also while the menu is open |
+| focused | the field's focused fill | also while the menu is open |
 | open | the focused look, with the menu under it and the picked row highlighted | |
 | disabled | the field's disabled paint, faint value | leaves the focus order and never opens |
 | error | `.tone(Tone::Danger)` paints the trigger in the danger tone, like a field: its edge only | its Field shows the message with an icon (Field) |
@@ -1492,7 +1492,7 @@ States:
 | hover | the quiet button's hover fill behind the segment, the pill's height and radius, and its label in the hover ink | not on the picked segment |
 | pressed | the quiet button's active fill behind the segment, while held | as hover |
 | selected | the pill under it, its label in the selected ink | exactly one segment |
-| focused | the focus ring, 1.5 outside the track; the track takes the field's focused edge, which only the default theme sets apart | from the keyboard only, never from a click |
+| focused | the focus ring, 1.5 outside the track; the track takes the field's focused fill | from the keyboard only, never from a click |
 | disabled | the track takes the field's disabled paint; the pill keeps its selected paint at half strength (fill and edge, no shadow), and every label takes its ink at half strength | presses, keys and hover are ignored, and it leaves the focus order; the pick still shows |
 
 Behavior: a click on a segment picks it and calls `on_select` with its index; the caller sets `selected`. With `on_select` the control is one tab stop: Left and Up pick the previous segment, Right and Down the next, Home and End the first and last, each through `on_select`, and they stop at the ends. A click picks without focusing. The pill slides to the new segment in 220ms (`turn`) with an ease out, and holds still with reduced motion. Under a coarse pointer each segment's hit area grows to the touch slop.
@@ -1527,7 +1527,7 @@ States:
 |---|---|---|
 | rest | the field's fill and edge | |
 | hover | the fill's hover step | not when disabled |
-| focused | the field's focus edge | also while the menu is open |
+| focused | the field's focused fill | also while the menu is open |
 | open | the focused look, with the menu under it and the picked row highlighted | |
 | disabled | the field's disabled paint, faint value | leaves the focus order and never opens |
 | error | `.tone(Tone::Danger)` paints the trigger in the danger tone, like a field: its edge only | its Field shows the message with an icon (Field) |

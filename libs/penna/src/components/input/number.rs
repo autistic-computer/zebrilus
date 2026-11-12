@@ -355,7 +355,7 @@ impl RenderOnce for NumberInput {
             .h(self.size.control_h())
             .items_center()
             .when(self.appearance, |this| {
-                field_chrome_on(this, surface, state, true, true, cx)
+                field_chrome_on(this, surface, state, true, cx)
             })
             .refine_style(&self.style)
             .child(Self::stepper(

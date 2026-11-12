@@ -156,7 +156,7 @@ How parity drives the pages:
   `pennaKit.focusRing(element)` for one without a role). `--penna-focus` doesn't inherit, so the ring reads it
   through `--penna-ring` set on the element. Link and text buttons have no role, so their ring takes the root
   `--penna-focus-neutral`. Only fields change their
-  fill or edge on focus, and only their rule also follows `:focus-within`.
+  fill on focus, and only their rule also follows `:focus-within`.
 - `kit.js` and a page's own script are classic scripts sharing one global scope, so a top-level function
   named like one of kit.js's (`settle`, `round`) replaces it and kit.js stops rounding corners.
 - `story.css` takes `data-columns="3"` for a grid that snaps its tracks to device pixels like ala does.

@@ -129,8 +129,7 @@ impl RenderOnce for Composer {
                                     input.content_type(InputContentType::Password)
                                 })
                                 .appearance(false)
-                                .bordered(false)
-                                .focus_bordered(false),
+                                .bordered(false),
                         )
                         .when_some(self.command_hint, |column, hint| {
                             column.child(

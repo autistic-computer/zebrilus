@@ -40,7 +40,7 @@ pub const STORY: Story = Story {
         Section {
             id: "field-focused",
             name: "Focused field",
-            summary: "Focus turns the border to the primary tone. The caret only paints while the window is active, so a background tab shows the ring alone.",
+            summary: "Focus fills the field with the highlight a selected menu row takes, with no edge. The caret only paints while the window is active, so a background tab shows the fill alone.",
             build: |window, cx| Focused::view(window, cx),
         },
         Section {

@@ -36,10 +36,6 @@
   cursor: default;
 }
 
-.penna-code-editor[data-penna][data-state~="focused"]:not([aria-disabled="true"]) {
-  --penna-fill: var(--ce-rest-fill);
-}
-
 .penna-code-editor > .ce-surface,
 .penna-code-editor > .ce-gutter {
   position: absolute;

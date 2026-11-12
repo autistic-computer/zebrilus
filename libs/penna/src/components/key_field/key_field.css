@@ -52,10 +52,6 @@
   line-height: var(--penna-text-touch-body-line);
 }
 
-.penna-key-field:not([aria-disabled="true"])[data-state~="focused"] {
-  --penna-fill: var(--key-field-rest-fill);
-}
-
 .penna-key-field[data-state~="recording"] {
   justify-content: flex-start;
 }

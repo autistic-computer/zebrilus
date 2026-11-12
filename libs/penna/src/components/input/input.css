@@ -305,10 +305,6 @@
   cursor: ew-resize;
 }
 
-:is(.penna-input, .penna-number)[data-penna]:not([data-disabled]):active {
+:is(.penna-input, .penna-number)[data-penna]:not([data-disabled], [data-state~="focused"]):active {
   --penna-fill: var(--input-hover-fill);
-}
-
-:is(.penna-input, .penna-number)[data-penna]:not([data-disabled])[data-state~="focused"] {
-  --penna-fill: var(--input-rest-fill);
 }

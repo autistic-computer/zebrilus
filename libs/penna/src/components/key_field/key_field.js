@@ -45,7 +45,6 @@
     const base = rgba(style.getPropertyValue("--penna-bg"));
     if (saved === null) field.removeAttribute("data-state");
     else field.setAttribute("data-state", saved);
-    if (fillValue && !field.matches(":hover")) field.style.setProperty("--key-field-rest-fill", fillValue);
     const fill = rgba(fillValue);
     const mix = (channel) => Math.round(base[channel] * (1 - fill.a) + fill[channel] * fill.a);
     field.style.setProperty("--key-field-ground", `rgb(${mix("r")} ${mix("g")} ${mix("b")})`);

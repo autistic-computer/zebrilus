@@ -18,7 +18,6 @@ pub struct CodeEditor {
     state: Entity<CodeEditorState>,
     style: StyleRefinement,
     bordered: bool,
-    focus_bordered: bool,
     disabled: bool,
     background_opacity: f32,
     tab_index: isize,
@@ -30,7 +29,6 @@ impl CodeEditor {
             state: state.clone(),
             style: StyleRefinement::default(),
             bordered: false,
-            focus_bordered: false,
             disabled: false,
             background_opacity: 1.0,
             tab_index: 0,
@@ -40,12 +38,6 @@ impl CodeEditor {
     #[must_use]
     pub fn bordered(mut self, bordered: bool) -> Self {
         self.bordered = bordered;
-        self
-    }
-
-    #[must_use]
-    pub fn focus_bordered(mut self, bordered: bool) -> Self {
-        self.focus_bordered = bordered;
         self
     }
 
@@ -76,7 +68,7 @@ impl Styled for CodeEditor {
 
 impl RenderOnce for CodeEditor {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let framed = self.bordered || self.focus_bordered;
+        let framed = self.bordered;
         let surface = Surface::new(SurfaceRole::TEXT_AREA);
         let frame = cx.theme().layer(surface, PaintState::Rest);
         let surface_frame = framed.then(|| SurfaceFrame {
@@ -120,7 +112,7 @@ impl RenderOnce for CodeEditor {
             .track_focus(&focus_handle)
             .tab_index(self.tab_index)
             .when(framed, |this| {
-                field_chrome_on(this, surface, paint_state, true, self.focus_bordered, cx)
+                field_chrome_on(this, surface, paint_state, true, cx)
             })
             .when(!self.disabled, |this| {
                 this.on_action(window.listener_for(&self.state, CodeEditorState::backspace))

@@ -47,7 +47,7 @@ Medium is the default and follows density. Same size as the controls beside it.
 ```
 
 - Hover: the fill steps up.
-- Open: the focus edge, with the menu under it.
+- Open: the focused fill, with the menu under it.
 - Off: faint, leaves the keyboard path, never opens.
 - Error: the edge turns to danger, like a field. Its [Field](field.html) says what is wrong.
 

@@ -274,11 +274,10 @@ impl RenderOnce for SegmentedControl {
             } else {
                 PaintState::Rest
             },
-            true,
         );
-        let mut hover = field_layer(cx.theme(), track, PaintState::Hover, true);
+        let mut hover = field_layer(cx.theme(), track, PaintState::Hover);
         hover.border = chrome.border;
-        let mut held = field_layer(cx.theme(), track, PaintState::Active, true);
+        let mut held = field_layer(cx.theme(), track, PaintState::Active);
         held.border = chrome.border;
         let control = h_flex()
             .id(self.id)
@@ -291,7 +290,7 @@ impl RenderOnce for SegmentedControl {
             })
             .p(Space::S2)
             .layer(&chrome)
-            .when(!disabled, |this| {
+            .when(!disabled && !focused, |this| {
                 this.hover(move |style| crate::foundation::restyle(style, &hover))
                     .active(move |style| crate::foundation::restyle(style, &held))
             })

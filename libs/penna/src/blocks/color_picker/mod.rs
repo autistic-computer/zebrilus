@@ -575,7 +575,6 @@ impl ColorPicker {
             Surface::new(Kind::Field.role()),
             state,
             true,
-            true,
             cx,
         )
         .child(div().min_w_0().truncate().child(chosen))

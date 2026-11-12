@@ -32,7 +32,7 @@ Input::new(&search).cleanable(true)
 </div>
 ```
 
-1. **Container**: a wash and corners; an edge only while typing. The size sets its height and side padding.
+1. **Container**: a wash and corners, a deeper one while typing. The size sets its height and side padding.
 2. **Prefix**: optional, before the text. Icons are muted.
 3. **Text**: the value, or a faint placeholder.
 4. **Suffix**: optional. Also holds the spinner and the clear button.
@@ -68,10 +68,18 @@ Medium is the default and follows density. Same size as the controls beside it.
 </div>
 ```
 
-- Focused: the edge turns to the ink, the fill stays.
+- Focused: the fill takes a selected row's highlight, with no edge.
 - Off: faint text, no editing.
 - Busy: a spinner at the end; the text stays editable.
-- Error: the edge turns to danger, at rest and focused. The fill and text stay. Its [Field](field.html) says what is wrong.
+- Error: the edge turns to danger, at rest and focused. The fill and text stay the field's. Its [Field](field.html) says what is wrong.
+
+A search field and the picked row under it share one highlight.
+
+```figure uses=input,list
+<div class="docs-show" data-gap="wide">
+  <div class="docs-cell" style="width: 240px"><label class="penna-input" data-penna="field" data-state="focused"><span class="penna-input-prefix"><i data-icon="search"></i></span><input value="dev" aria-label="Search folders" /></label><div class="penna-list" role="listbox" style="width: 240px"><div class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><div class="penna-list-content"><i class="penna-list-icon" data-icon="folder"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>dev</span></span></div></div><div class="penna-list-item" data-penna="menu-item" role="option"><div class="penna-list-content"><i class="penna-list-icon" data-icon="folder"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>dev-notes</span></span></div></div></div><span class="docs-note">Focused, over the picked row</span></div>
+</div>
+```
 
 ## Labels
 

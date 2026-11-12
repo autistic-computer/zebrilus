@@ -28,11 +28,9 @@
       else field.removeAttribute("data-state");
       return getComputedStyle(field).getPropertyValue("--penna-fill").trim();
     };
-    const rest = read(null);
     const hover = read("hover");
     if (saved === null) field.removeAttribute("data-state");
     else field.setAttribute("data-state", saved);
-    if (rest) field.style.setProperty("--input-rest-fill", rest);
     if (hover) field.style.setProperty("--input-hover-fill", hover);
   }
 

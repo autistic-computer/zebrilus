@@ -182,7 +182,6 @@ impl Render for Editors {
             div().relative().h(px(300.0)).child(
                 CodeEditor::new(state)
                     .bordered(true)
-                    .focus_bordered(true)
                     .disabled(disabled),
             )
         };

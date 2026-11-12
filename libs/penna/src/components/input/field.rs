@@ -48,7 +48,6 @@ pub struct Input {
     suffix: Option<AnyElement>,
     appearance: bool,
     bordered: bool,
-    focus_bordered: bool,
     cleanable: bool,
     disabled: bool,
     tab_index: isize,
@@ -109,7 +108,7 @@ pub fn field_chrome<E: Styled + InteractiveElement>(
     cx: &App,
 ) -> E {
     let surface = Surface::from(look).on_maybe(ground);
-    field_chrome_on(element, surface, state, true, true, cx)
+    field_chrome_on(element, surface, state, true, cx)
 }
 
 pub(crate) fn field_paint_on(surface: impl Into<Surface>, cx: &App) -> Paint {
@@ -127,12 +126,11 @@ pub(crate) fn field_chrome_on<E: Styled + InteractiveElement>(
     surface: impl Into<Surface>,
     state: PaintState,
     bordered: bool,
-    focus_bordered: bool,
     cx: &App,
 ) -> E {
     let surface = surface.into();
     let theme = cx.theme();
-    let layer = field_layer(theme, surface, state, focus_bordered);
+    let layer = field_layer(theme, surface, state);
     let element = element.layer(&layer);
     let element = if bordered {
         element
@@ -140,42 +138,34 @@ pub(crate) fn field_chrome_on<E: Styled + InteractiveElement>(
         element.border(px(0.0))
     };
     if state == PaintState::Rest {
-        let hover = field_layer(theme, surface, PaintState::Hover, focus_bordered);
+        let hover = field_layer(theme, surface, PaintState::Hover);
         element.hover(move |style| restyle(style, &hover))
     } else {
         element
     }
 }
 
-pub(crate) fn field_layer(
-    theme: &Theme,
-    surface: Surface,
-    state: PaintState,
-    focus_bordered: bool,
-) -> Layer {
+pub(crate) fn field_layer(theme: &Theme, surface: Surface, state: PaintState) -> Layer {
     let tone = surface.tone;
     let surface = surface.tone(Tone::Neutral);
     let ground = surface.ground.unwrap_or_else(|| theme.ground());
     let mut layer = theme.layer(surface, state);
     layer.border_width = layer.border_width.max(px(1.0));
-    if tone != Tone::Neutral {
-        let edge = match state {
-            PaintState::Focused if !focus_bordered => PaintState::Rest,
-            state => state,
-        };
-        layer.border = theme
-            .paint_on(ground, tone, Emphasis::Outline)
-            .border_at(edge);
-        return layer;
-    }
-    let style = theme.style(surface.role);
     if state == PaintState::Focused
-        && style.selected == Highlight::Edge
-        && focus_bordered
-        && theme.outlined()
+        && theme.style(surface.role).selected == Highlight::Edge
         && layer.glass.is_none()
     {
-        layer.border = theme.paint_on(ground, Tone::Neutral, Emphasis::Ghost).focus;
+        layer.fill = theme
+            .layer(
+                Surface::new(SurfaceRole::MENU_ITEM).on(ground),
+                PaintState::Selected,
+            )
+            .fill;
+    }
+    if tone != Tone::Neutral {
+        layer.border = theme
+            .paint_on(ground, tone, Emphasis::Outline)
+            .border_at(state);
     }
     layer
 }
@@ -204,7 +194,6 @@ impl Input {
             suffix: None,
             appearance: true,
             bordered: true,
-            focus_bordered: true,
             cleanable: false,
             disabled: false,
             tab_index: 0,
@@ -268,12 +257,6 @@ impl Input {
     #[must_use]
     pub fn bordered(mut self, bordered: bool) -> Self {
         self.bordered = bordered;
-        self
-    }
-
-    #[must_use]
-    pub fn focus_bordered(mut self, bordered: bool) -> Self {
-        self.focus_bordered = bordered;
         self
     }
 
@@ -437,14 +420,7 @@ impl RenderOnce for Input {
 
         element
             .when(self.appearance, |this| {
-                field_chrome_on(
-                    this,
-                    surface,
-                    paint_state,
-                    self.bordered,
-                    self.focus_bordered,
-                    cx,
-                )
+                field_chrome_on(this, surface, paint_state, self.bordered, cx)
             })
             .refine_style(&self.style)
             .when(editable, |this| {
@@ -538,6 +514,15 @@ mod tests {
     use super::*;
     use crate::{Fill, StylePatch, ThemeColor};
 
+    fn row_highlight(theme: &Theme, ground: Ground) -> ala::Hsla {
+        theme
+            .layer(
+                Surface::new(SurfaceRole::MENU_ITEM).on(ground),
+                PaintState::Selected,
+            )
+            .fill
+    }
+
     #[test]
     fn a_field_role_with_no_fill_and_no_outline_draws_no_box() {
         let theme = Theme::from(&*ThemeColor::dark());
@@ -545,15 +530,16 @@ mod tests {
             SurfaceRole::new("test.field", Kind::Field, "Bare fields", "")
                 .with(StylePatch::EMPTY.fill(Fill::None).outline(false)),
         );
-        let rest = field_layer(&theme, bare, PaintState::Rest, true);
+        let rest = field_layer(&theme, bare, PaintState::Rest);
         assert_eq!(rest.fill.a, 0.0);
         assert!(rest.glass.is_none() && rest.shadow.is_empty());
         assert_eq!(rest.border.a, 0.0);
         assert!(rest.border_width >= px(1.0));
 
-        let focused = field_layer(&theme, bare, PaintState::Focused, true);
+        let focused = field_layer(&theme, bare, PaintState::Focused);
         assert_eq!(focused.border_width, rest.border_width);
-        assert!(focused.border.a > 0.0);
+        assert_eq!(focused.border.a, 0.0);
+        assert_eq!(focused.fill, row_highlight(&theme, theme.ground()));
     }
 
     #[test]
@@ -566,27 +552,40 @@ mod tests {
             (PaintState::Hover, danger.border),
             (PaintState::Focused, danger.focus),
         ] {
-            let plain = field_layer(&theme, field, state, true);
-            let toned = field_layer(&theme, field.tone(Tone::Danger), state, true);
+            let plain = field_layer(&theme, field, state);
+            let toned = field_layer(&theme, field.tone(Tone::Danger), state);
             assert_eq!(toned.fill, plain.fill);
             assert_eq!(toned.text, plain.text);
             assert_eq!(toned.border, edge);
         }
-        assert_eq!(
-            field_layer(&theme, field, PaintState::Rest, true).border.a,
-            0.0
-        );
+        assert_eq!(field_layer(&theme, field, PaintState::Rest).border.a, 0.0);
     }
 
     #[test]
-    fn focus_draws_an_edge_in_the_ink_except_on_glass() {
-        let theme = Theme::from(&*ThemeColor::dark());
-        let field = Surface::new(Kind::Field.role());
-        let focused = field_layer(&theme, field, PaintState::Focused, true);
-        assert_eq!(
-            focused.border,
-            theme.paint(Tone::Neutral, Emphasis::Ghost).focus
-        );
+    fn focus_takes_the_row_highlight_with_no_edge_except_on_glass() {
+        for theme in [ThemeColor::light(), ThemeColor::dark()].map(|colors| Theme::from(&*colors)) {
+            let card = theme.ground_at(Surface::new(Kind::Card.role()), PaintState::Rest);
+            for ground in [theme.ground(), card] {
+                let highlight = row_highlight(&theme, ground);
+                for role in [
+                    Kind::Field.role(),
+                    roles::FIELD_ADDRESS,
+                    SurfaceRole::TEXT_AREA,
+                ] {
+                    let focused =
+                        field_layer(&theme, Surface::new(role).on(ground), PaintState::Focused);
+                    assert_eq!(focused.fill, highlight, "{}", role.id());
+                    assert_eq!(focused.border.a, 0.0, "{}", role.id());
+                }
+                let outline = Surface::new(SurfaceRole::OUTLINE_FIELD).on(ground);
+                let focused = field_layer(&theme, outline, PaintState::Focused);
+                assert_eq!(focused.fill, highlight);
+                assert_eq!(
+                    focused.border,
+                    field_layer(&theme, outline, PaintState::Rest).border
+                );
+            }
+        }
 
         let mut theme = Theme::from(&*ThemeColor::dark());
         theme.glass = ala::GlassMaterial::preset("regular");
@@ -594,8 +593,10 @@ mod tests {
             SurfaceRole::new("test.glass-field", Kind::Field, "Glass fields", "")
                 .with(StylePatch::EMPTY.fill(Fill::Glass)),
         );
-        let focused = field_layer(&theme, glass, PaintState::Focused, true);
+        let rest = field_layer(&theme, glass, PaintState::Rest);
+        let focused = field_layer(&theme, glass, PaintState::Focused);
         assert!(focused.glass.is_some());
+        assert_eq!(focused.fill, rest.fill);
         assert_eq!(focused.border.a, 0.0);
     }
 }

@@ -383,7 +383,6 @@ impl<D: SelectDelegate> SelectState<D> {
             surface,
             state,
             true,
-            true,
             cx,
         )
         .child(
@@ -906,7 +905,7 @@ mod tests {
             let quads = window.painted_quads();
             let selected = quads
                 .iter()
-                .find(|quad| quad.background == ala::solid_background(crate::picked_menu_fill(cx)))
+                .rfind(|quad| quad.background == ala::solid_background(crate::picked_menu_fill(cx)))
                 .expect("selected font row");
             assert!(
                 selected.bounds.size.width.0
