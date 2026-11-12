@@ -5,5 +5,6 @@ use std::process::ExitCode;
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() -> ExitCode {
+    ala_cef::install_early_malloc_zone();
     zz::run()
 }

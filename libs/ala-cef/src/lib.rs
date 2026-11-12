@@ -12,6 +12,12 @@ mod frame;
 mod ime;
 mod input;
 mod lifecycle;
+#[cfg(target_os = "macos")]
+#[allow(
+    unsafe_code,
+    reason = "libmalloc takes a zone of raw function pointers and calls them from any thread"
+)]
+mod malloc_zone;
 #[cfg(any(feature = "cef-runtime", test))]
 mod page_zoom;
 #[cfg(any(feature = "cef-runtime", all(test, feature = "host")))]
@@ -68,6 +74,11 @@ pub use input::{
     PointerPhase, Viewport, WheelEvent, named_key_input,
 };
 pub use lifecycle::{RuntimePhase, SessionPhase};
+#[cfg(target_os = "macos")]
+pub use malloc_zone::install_early_malloc_zone;
+
+#[cfg(not(target_os = "macos"))]
+pub fn install_early_malloc_zone() {}
 pub use profile::{
     BrowserProfileError, BrowserProfileNameError, BrowserProfilePaths, DEFAULT_BROWSER_PROFILE,
     MAX_BROWSER_PROFILE_NAME_BYTES, normalize_browser_profile_name,

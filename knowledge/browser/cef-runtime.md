@@ -4,7 +4,7 @@ title: CEF runtime & subprocess dispatch
 description: CEF Alloy OSR bootstrap with deferred loading and initialization, platform-specific subprocess dispatch, frame-rate policy, external BeginFrames, message pumping, and safe foreground command dispatch.
 resource: libs/ala-cef/src/cef_runtime.rs
 tags: [browser, cef, runtime, subprocess, begin-frame, frame-pacing]
-timestamp: 2026-10-29T21:18:08Z
+timestamp: 2026-11-12T15:40:00Z
 ---
 
 # Overview
@@ -63,6 +63,13 @@ loaded version against the compiled bindings before entering versioned CEF APIs.
 Missing or mismatched frameworks produce a browser-pane error; a mismatch asks
 the user to restart zz. Dedicated macOS helpers still load before subprocess
 dispatch. Linux ARM64 and Windows retain upstream loading behavior.
+
+The macOS framework makes its allocator the default malloc zone while it loads,
+and a `free` on another thread during that swap traps. Every binary that can
+load it calls `ala_cef::install_early_malloc_zone()` first thing in `main`,
+while it has one thread, so the swap at load is a single pointer store
+(`libs/ala-cef/src/malloc_zone.rs`).
+
 `BrowserController::new` leaves its message pump stopped while the runtime is
 `Uninitialized`.
 

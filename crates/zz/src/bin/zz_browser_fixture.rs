@@ -166,6 +166,7 @@ const SHARED_TEXTURE_SPIKE_HTML: &str = r#"<!doctype html>
 </html>"#;
 
 fn main() -> ExitCode {
+    ala_cef::install_early_malloc_zone();
     if env::args_os().skip(1).any(|argument| {
         argument == OsStr::new("--type") || argument.to_string_lossy().starts_with("--type=")
     }) {
