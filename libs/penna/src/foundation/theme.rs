@@ -10,7 +10,9 @@ use ala::{
 
 use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, foundation::highlighter::HighlightTheme};
 
-use super::{Colorize as _, ShadowMaterial, Smoothing, Space, Surface, ThemeColor, color};
+use super::{
+    Colorize as _, ShadowMaterial, Smoothing, Space, Surface, ThemeColor, color, glass::GlassLook,
+};
 
 pub const CHROME_GAP: f32 = Space::INSET_CHROME.design_px();
 
@@ -80,11 +82,12 @@ pub struct Theme {
     pub float_shadow: ShadowMaterial,
     pub row_inset: Pixels,
     pub glass: Option<GlassMaterial>,
+    pub glass_look: Option<GlassLook>,
     pub inspect: Option<SharedString>,
     pub inspect_strength: f32,
     pub pane_margin: Pixels,
     window_opacity: f32,
-    backdrop: f32,
+    backdrop: [f32; 2],
     pub transparent: Hsla,
     pub scrollbar_show: ScrollbarShow,
     pub notification: NotificationSettings,
@@ -228,7 +231,7 @@ impl Theme {
         self.window_opacity
     }
 
-    pub fn set_window(&mut self, opacity: f32, backdrop: f32) {
+    pub fn set_window(&mut self, opacity: f32, backdrop: [f32; 2]) {
         self.window_opacity = opacity;
         self.backdrop = backdrop;
         self.show_window();
@@ -337,11 +340,12 @@ impl From<&ThemeColor> for Theme {
             float_shadow: ShadowMaterial::FLOAT,
             row_inset: px(6.0),
             glass: None,
+            glass_look: None,
             inspect: None,
             inspect_strength: 1.0,
             pane_margin: px(0.0),
             window_opacity: 1.0,
-            backdrop: 1.0,
+            backdrop: [0.0, 1.0],
             scrollbar_show: ScrollbarShow::default(),
             notification: NotificationSettings::default(),
             colors: *colors,

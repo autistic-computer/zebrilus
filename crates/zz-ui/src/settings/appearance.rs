@@ -9,6 +9,7 @@ pub enum ZzRow {
     ProgramColors,
     AppIcon,
     WindowCornerRadius,
+    GlassLab,
 }
 
 impl ZzRow {
@@ -23,6 +24,7 @@ impl ZzRow {
             Self::ProgramColors => "Program colors",
             Self::AppIcon => "App Icon",
             Self::WindowCornerRadius => "Window corner radius",
+            Self::GlassLab => "Glass lab",
         }
     }
 }
@@ -58,7 +60,6 @@ pub fn interface_page_items(macos: bool) -> Vec<AppearancePageItem> {
         Item::Title,
         Item::Group { title: "Material" },
         Item::Glass,
-        Item::Frost,
         Item::Controls,
         Item::CornerRadius,
         Item::Group { title: "Text" },

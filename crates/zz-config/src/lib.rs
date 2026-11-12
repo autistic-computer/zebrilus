@@ -43,7 +43,6 @@ pub const MAX_PANE_INACTIVE_OPACITY: f32 = 1.0;
 pub const DEFAULT_PANE_MARGIN: f32 = 6.0;
 pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 12.0;
 pub const DEFAULT_CHROME_CONTRAST: f32 = 1.0;
-pub const DEFAULT_INTERFACE_FROST: f32 = 0.5;
 pub const DEFAULT_POINTING_HAND: bool = true;
 pub const DEFAULT_CHROME_TINT: f32 = 0.15;
 pub const DEFAULT_TRAY: bool = true;
@@ -93,7 +92,6 @@ pub enum ConfigKey {
     PaneMargin,
     WidgetCornerRadius,
     ChromeContrast,
-    InterfaceFrost,
     PointingHand,
     ChromeAccent,
     ChromeTint,
@@ -140,7 +138,6 @@ impl ConfigKey {
             Self::PaneMargin => "pane-margin",
             Self::WidgetCornerRadius => "widget-corner-radius",
             Self::ChromeContrast => "chrome-contrast",
-            Self::InterfaceFrost => "interface-frost",
             Self::PointingHand => "pointing-hand",
             Self::ChromeAccent => "chrome-accent",
             Self::ChromeTint => "chrome-tint",
@@ -187,7 +184,6 @@ impl ConfigKey {
             "pane-margin" => Some(Self::PaneMargin),
             "widget-corner-radius" => Some(Self::WidgetCornerRadius),
             "chrome-contrast" => Some(Self::ChromeContrast),
-            "interface-frost" => Some(Self::InterfaceFrost),
             "pointing-hand" => Some(Self::PointingHand),
             "chrome-accent" => Some(Self::ChromeAccent),
             "chrome-tint" => Some(Self::ChromeTint),
@@ -214,7 +210,7 @@ impl ConfigKey {
 
     pub const fn numeric_range(self) -> Option<(f32, f32)> {
         match self {
-            Self::ChromeTint | Self::InterfaceFrost => Some((0.0, 1.0)),
+            Self::ChromeTint => Some((0.0, 1.0)),
             Self::PaneGlowStrength => Some((0.0, 2.0)),
             Self::PaneInactiveOpacity => {
                 Some((MIN_PANE_INACTIVE_OPACITY, MAX_PANE_INACTIVE_OPACITY))
@@ -375,7 +371,6 @@ pub struct AppConfig {
     pub pane_margin: ConfigValue<f32>,
     pub widget_corner_radius: ConfigValue<f32>,
     pub chrome_contrast: ConfigValue<f32>,
-    pub interface_frost: ConfigValue<f32>,
     pub pointing_hand: ConfigValue<bool>,
     pub chrome_accent: ConfigValue<AccentSetting>,
     pub chrome_tint: ConfigValue<f32>,
@@ -416,7 +411,6 @@ impl Default for AppConfig {
             pane_margin: ConfigValue::from_default(DEFAULT_PANE_MARGIN),
             widget_corner_radius: ConfigValue::from_default(DEFAULT_WIDGET_CORNER_RADIUS),
             chrome_contrast: ConfigValue::from_default(DEFAULT_CHROME_CONTRAST),
-            interface_frost: ConfigValue::from_default(DEFAULT_INTERFACE_FROST),
             pointing_hand: ConfigValue::from_default(DEFAULT_POINTING_HAND),
             chrome_accent: ConfigValue::from_default(AccentSetting::Theme),
             chrome_tint: ConfigValue::from_default(DEFAULT_CHROME_TINT),
@@ -466,7 +460,6 @@ impl AppConfig {
             | ConfigKey::PaneMargin
             | ConfigKey::WidgetCornerRadius
             | ConfigKey::ChromeContrast
-            | ConfigKey::InterfaceFrost
             | ConfigKey::Motion
             | ConfigKey::ChromeAccent
             | ConfigKey::ChromeTint
@@ -817,7 +810,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
 
         if RETIRED_MOTION_KEYS.contains(&key) {
             let instead = if key == "window-background-opacity" {
-                "set how see-through the window is with `interface-frost`"
+                "set how see-through the window is with `interface-glass`"
             } else {
                 "set `motion` to off, default or fast"
             };
@@ -898,6 +891,9 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
                 }
                 "reduce-transparency" => {
                     "zz follows the system's Reduce transparency; set `interface-glass` to none to turn glass off"
+                }
+                "interface-frost" => {
+                    "set `interface-glass` to none or liquid, or Glass in Settings > Interface"
                 }
                 _ => "set the look in Settings > Interface",
             };
@@ -1117,7 +1113,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             ConfigKey::PaneMargin => &mut parsed.config.pane_margin,
             ConfigKey::WidgetCornerRadius => &mut parsed.config.widget_corner_radius,
             ConfigKey::ChromeContrast => &mut parsed.config.chrome_contrast,
-            ConfigKey::InterfaceFrost => &mut parsed.config.interface_frost,
             ConfigKey::ChromeTint => &mut parsed.config.chrome_tint,
             ConfigKey::ChromeTintHue => &mut parsed.config.chrome_tint_hue,
             ConfigKey::EditorFontSize => &mut parsed.config.editor_font_size,
@@ -1329,7 +1324,6 @@ pub fn parse_numeric_value(
             | ConfigKey::PaneGlowStrength
             | ConfigKey::ChromeContrast
             | ConfigKey::ChromeTint
-            | ConfigKey::InterfaceFrost
     ) {
         ""
     } else if key == ConfigKey::WhichKeyDelay {
@@ -1456,7 +1450,7 @@ pub const RETIRED_APPEARANCE_KEYS: [&str; 8] = [
     "chrome-danger",
 ];
 
-pub const RETIRED_MATERIAL_KEYS: [&str; 8] = [
+pub const RETIRED_MATERIAL_KEYS: [&str; 9] = [
     "interface-style",
     "widget-outline-width",
     "widget-shadow-strength",
@@ -1465,6 +1459,7 @@ pub const RETIRED_MATERIAL_KEYS: [&str; 8] = [
     "widget-glass",
     "window-background-blur",
     "reduce-transparency",
+    "interface-frost",
 ];
 
 pub const RETIRED_LOOK_KEYS: [&str; 4] = [
@@ -2328,7 +2323,7 @@ mod tests {
             [
                 "invalid `motion`: expected off, default or fast",
                 "`animations` was removed: set `motion` to off, default or fast",
-                "`window-background-opacity` was removed: set how see-through the window is with `interface-frost`",
+                "`window-background-opacity` was removed: set how see-through the window is with `interface-glass`",
             ]
         );
     }
@@ -2394,6 +2389,25 @@ mod tests {
             "monospace",
         );
         assert_eq!(parsed.diagnostics.len(), 3, "{:?}", parsed.diagnostics);
+        assert_eq!(parsed.glass.value, None);
+
+        let parsed = parse_config(
+            "interface-glass = thin\ninterface-frost = 0.00\n",
+            "monospace",
+        );
+        assert_eq!(
+            parsed.diagnostics,
+            [
+                ConfigDiagnostic {
+                    line: 1,
+                    message: "invalid `interface-glass`: expected none, liquid or a JSON glass material".to_owned(),
+                },
+                ConfigDiagnostic {
+                    line: 2,
+                    message: "`interface-frost` was removed: set `interface-glass` to none or liquid, or Glass in Settings > Interface".to_owned(),
+                },
+            ]
+        );
         assert_eq!(parsed.glass.value, None);
     }
 

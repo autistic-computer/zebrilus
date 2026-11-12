@@ -76,7 +76,7 @@ pub const STORY: Story = Story {
         Section {
             id: "floating",
             name: "Floating surface",
-            summary: "FloatingSurface hosts display-popup and command output over the panes: bordered with a title in the frame, borderless, and recolored from a popup style. It takes the theme's glass like every popover; set backdrop=code to see it frost the panes behind.",
+            summary: "FloatingSurface hosts display-popup and command output over the panes: bordered with a title in the frame, borderless, and recolored from a popup style. It takes the theme's glass like every popover; set backdrop=code to see it blur the panes behind.",
             build: |_, cx| stateless(floating, cx),
         },
         Section {

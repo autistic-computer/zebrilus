@@ -50,11 +50,11 @@ use zz_ui::{
     pane::{
         DropPreview, DropPreviewFrame, FloatingSurface, PaneArrivals, PaneChrome, PaneDrag,
         PaneDragOverlayState, PaneDragSource, PaneFlip, PaneMotion, PaneOverlayCorner,
-        PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, PipGrab, TerminalPaneAction, moving_pane,
-        pane_border_color, pane_drag_overlay, pane_drag_preview, pane_drop_preview,
-        pane_header_frame, pane_indicator, pane_indicator_overlay, pane_overlay_stack,
-        pane_split_hit_target, pane_split_slot, pane_split_surface, pane_surface, pane_sync_badge,
-        pane_waiting_state,
+        PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, PipGrab, TerminalPaneAction,
+        content_pane, moving_pane, pane_border_color, pane_drag_overlay, pane_drag_preview,
+        pane_drop_preview, pane_header_frame, pane_indicator, pane_indicator_overlay,
+        pane_overlay_stack, pane_split_hit_target, pane_split_slot, pane_split_surface,
+        pane_surface, pane_sync_badge, pane_waiting_state,
     },
     pane_look::{PaneLook, pane_color},
     shell::{app_connection_state, app_workspace_surface},
@@ -4899,22 +4899,23 @@ impl Render for AppView {
                 window.request_animation_frame();
             }
         }
-        let content = if let Some(settings) = settings_view {
-            if crate::theme::shell_frame(cx).is_none()
-                || crate::theme::chrome_background(cx).a < 1.0
-            {
-                settings.into_any_element()
+        let plated = |id: &'static str, content: AnyElement, cx: &App| {
+            if config::pane_gaps(cx) {
+                content_pane(
+                    id,
+                    content,
+                    config::pane_margin(cx),
+                    config::pane_content_radii(cx, layout_corners),
+                    crate::theme::chrome_background(cx),
+                    cx,
+                )
+                .into_any_element()
             } else {
-                layout_corners
-                    .round_div(
-                        div()
-                            .size_full()
-                            .bg(crate::theme::chrome_background(cx))
-                            .child(settings),
-                        frame_content_corner_radius(cx),
-                    )
-                    .into_any_element()
+                content
             }
+        };
+        let content = if let Some(settings) = settings_view {
+            plated("settings-pane", settings.into_any_element(), cx)
         } else if let Some(active_window) = active_window {
             if let Some(pane) = active_window.zoomed_pane {
                 self.render_layout(
@@ -4941,11 +4942,12 @@ impl Render for AppView {
                 error.is_some(),
             )
         {
-            if has_hosts && self.sidebar.read(cx).chat_mode() {
+            let landing = if has_hosts && self.sidebar.read(cx).chat_mode() {
                 self.empty_picker.clone().into_any_element()
             } else {
                 self.new_session.clone().into_any_element()
-            }
+            };
+            plated("landing-pane", landing, cx)
         } else {
             let update = self
                 .mux
@@ -4953,7 +4955,7 @@ impl Render for AppView {
                 .attached_client_too_old()
                 .then(|| crate::update::available_release(cx))
                 .flatten();
-            app_connection_state(
+            let state = app_connection_state(
                 error.map_or_else(
                     || "connecting to zz daemon…".to_owned(),
                     |error| error.to_string(),
@@ -4968,7 +4970,8 @@ impl Render for AppView {
                         .on_click(|_, window, cx| crate::update::install(window, cx)),
                 )
             })
-            .into_any_element()
+            .into_any_element();
+            plated("connection-pane", state, cx)
         };
         log::trace!(
             target: "zz::diagnostics::app_render",

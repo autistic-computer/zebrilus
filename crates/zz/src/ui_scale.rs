@@ -46,7 +46,7 @@ pub fn set_percent(percent: f32, cx: &mut App) {
         next,
     );
     cx.defer(|cx| {
-        for window in cx.windows() {
+        for window in crate::window::glass_lab::app_windows(cx) {
             window.update(cx, |_, window, cx| apply(window, cx)).ok();
         }
     });

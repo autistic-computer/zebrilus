@@ -289,7 +289,7 @@ impl RenderOnce for SettingsScrollColumn {
             })
             .read(cx)
             .clone();
-        let fade = cx.theme().ground().fill;
+        let fade = cx.theme().content_ground().fill;
         let title = self.large_title.map(|(title, fold)| {
             fold.0.set((-f32::from(handle.offset().y)).max(0.0));
             settings_large_title(title, cx)
@@ -440,7 +440,7 @@ impl RenderOnce for SettingsVirtualColumn {
             });
             title
         });
-        let fade = cx.theme().ground().fill;
+        let fade = cx.theme().content_ground().fill;
         let mut render_item = self.render_item;
         let rows = list(list_state.clone(), move |index, window, cx| {
             let row = match (&title, index.checked_sub(lead)) {
@@ -902,7 +902,10 @@ impl RenderOnce for SettingEntry {
         };
 
         let theme = cx.theme();
-        let card = theme.layer(Surface::new(roles::SETTINGS_CARD), PaintState::Rest);
+        let card = theme.layer(
+            Surface::new(roles::SETTINGS_CARD).on(theme.content_ground()),
+            PaintState::Rest,
+        );
         let (inset, cast): (Vec<_>, Vec<_>) =
             card.shadow.iter().cloned().partition(|shadow| shadow.inset);
         let radius = card.radius;
@@ -1094,7 +1097,8 @@ impl RenderOnce for SettingCopy {
 
 #[must_use]
 pub fn settings_card_ground(cx: &App) -> Ground {
-    cx.theme().ground_of(Surface::new(roles::SETTINGS_CARD))
+    let theme = cx.theme();
+    theme.ground_of(Surface::new(roles::SETTINGS_CARD).on(theme.content_ground()))
 }
 
 #[must_use]

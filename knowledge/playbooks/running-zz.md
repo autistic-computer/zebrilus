@@ -261,6 +261,41 @@ each frame's `imageOffset` out of the `.ips` JSON body, and run
 function names for the whole stack. This is how the 2026-08-03 Immersive-Reading-Mode login crash
 was pinned (see the [update log](/log.md)).
 
+## Glass lab
+
+zz Dev has a Glass lab: an opaque panel with a slider for every number in the glass look,
+applied live to every zz window. On macOS it is a floating panel that takes clicks without becoming
+the key window, so zz keeps drawing its active look while you tune; it hides while another app is
+in front. On Linux it still takes focus when clicked. Open it from Settings > Interface > Material
+(Glass lab, Open), the palette's `glass lab` entry, or at launch with `ZZ_GLASS_LAB=1 just run mac`.
+
+The lab edits the look of the mode zz is in, and the section titles name that mode: Backdrop
+(chrome opacity, the opacity without a shaped backdrop, blur, saturation, contrast, brightness, the
+brightness cap, where 1 is none, and the wallpaper hue amount), Planes (the content plate), Floating
+material and Pane rim (every field the look overrides on `liquid`). Shared holds what the looks
+don't: the panel wash step, the inactive pane veil per mode, border and divider weight, the text
+floor on glass, the inactive rim dim, and the backdrop's sample scale and fallback blur radius.
+Switch the system's mode to tune the other look.
+
+Copy puts the shown look on the clipboard as `name = value` lines (every backdrop and plane value,
+and the material and rim lines that differ from the mode's shared edges), ready to paste over that
+mode's entry in `LOOK` in `libs/penna/src/foundation/glass.rs`. Reset returns every value in both
+modes to the shipped looks; a row's own reset returns that value.
+
+The lab saves what differs from the shipped looks on every change to `glass-lab.toml` in the dev
+data directory (`~/Library/Application Support/zz-dev/` on macOS, `$XDG_DATA_HOME/zz-dev/` or
+`~/.local/share/zz-dev/` on Linux) and loads it at start, so a tweak survives relaunching: look
+lines as `<mode>.<name> = value` (`dark.cap = 0.6`) and shared lines under their own names
+(`plane.raise_step = 0.05`). The file is removed when nothing differs, and a line it doesn't know is
+logged and skipped. It never touches the config file. The lab, its settings row, its palette entry
+and the file exist only in dev builds (`ZZ_DEV_BUILD=1`); a release build always draws the shipped
+looks. The knobs are `penna::foundation::tuning::GlassTuning` (the shared values and the two looks)
+and `window::background::BackdropTuning`, and `crates/zz/src/window/glass_lab.rs` holds the window.
+
+To judge a look before opening the app, composite it the way the window does: the backdrop through
+saturation, the curve and the cap, then the chrome over it, all in sRGB-encoded values. penna's
+`glass` tests compute the same numbers for black and white backdrops.
+
 ## Linux allocator memory
 
 The Linux desktop and CLI enable mimalloc's `no_thp` feature. On the pinned

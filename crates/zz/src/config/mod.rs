@@ -252,7 +252,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
 
     log::info!(
         target: "zz::config",
-        "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_margin={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} interface_frost={} motion={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} daemon_override_entries={}",
+        "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_margin={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} motion={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} daemon_override_entries={}",
         path.display(),
         parsed.config.pane_gaps.value,
         parsed.config.pane_inactive_opacity.value,
@@ -268,7 +268,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         parsed.browser.element_selector_hotkey.value,
         parsed.browser.search_provider.value.as_str(),
         parsed.config.browser_egress.value,
-        parsed.config.interface_frost.value,
         parsed.config.motion.value.as_str(),
         parsed.config.tray.value,
         parsed.config.quit_daemon_on_exit.value,
@@ -398,8 +397,6 @@ pub(crate) fn pane_margin(cx: &App) -> Pixels {
     ))
 }
 
-const WALLPAPER_TINT: f32 = 0.8;
-
 pub(crate) fn shown_theme(cx: &App) -> InterfaceTheme {
     let appearance = appearance(cx);
     let mut theme = appearance.shown_theme();
@@ -409,8 +406,10 @@ pub(crate) fn shown_theme(cx: &App) -> InterfaceTheme {
         && crate::theme::chrome_blur(cx)
     {
         theme.neutral.hue = hue;
-        if config.chrome_tint.provenance != ConfigProvenance::Override {
-            theme.neutral.amount = WALLPAPER_TINT;
+        if config.chrome_tint.provenance != ConfigProvenance::Override
+            && let Some(look) = theme.glass_look(crate::theme::asked_mode(cx))
+        {
+            theme.neutral.amount = look.wallpaper_tint;
         }
     }
     if config.chrome_terminal_colors.value
@@ -450,7 +449,6 @@ pub(crate) fn appearance(cx: &App) -> Appearance {
         mode: Some(resolved.theme_mode.value.as_str().to_owned()),
         overrides: theme_overrides_from(&resolved, &interface_glass(cx)),
         contrast: resolved.chrome_contrast.value,
-        frost: penna::foundation::interface_theme::Frost::new(resolved.interface_frost.value),
         ui_font_family: ui_font_family(cx).value.unwrap_or_default(),
         mono_font_family: ui_mono_font_family(cx).value.unwrap_or_default(),
         zoom: penna::UiZoom::get(cx),
@@ -590,8 +588,9 @@ pub(crate) fn apply_window_background_appearance(cx: &mut App) {
     let requested_appearance = requested_window_background_appearance(cx);
     let native_appearance = crate::window::background::native_appearance(requested_appearance);
     let corner_radius = window_corner_radius(cx);
-    let frost = crate::theme::frost(cx);
-    for window in cx.windows() {
+    let look = crate::theme::glass_look(cx);
+    let tuning = crate::window::background::BackdropTuning::get(cx);
+    for window in crate::window::glass_lab::app_windows(cx) {
         window
             .update(cx, |_, window, _| {
                 window.set_background_appearance(native_appearance);
@@ -599,7 +598,8 @@ pub(crate) fn apply_window_background_appearance(cx: &mut App) {
                     window,
                     requested_appearance,
                     corner_radius,
-                    frost,
+                    look.as_ref(),
+                    tuning,
                 );
             })
             .ok();
@@ -618,7 +618,8 @@ pub(crate) fn observe_window_background<T: 'static>(
         window,
         requested_appearance,
         window_corner_radius(cx),
-        crate::theme::frost(cx),
+        crate::theme::glass_look(cx).as_ref(),
+        crate::window::background::BackdropTuning::get(cx),
     );
 
     #[cfg(target_os = "linux")]
@@ -627,7 +628,8 @@ pub(crate) fn observe_window_background<T: 'static>(
             window,
             requested_window_background_appearance(cx),
             window_corner_radius(cx),
-            crate::theme::frost(cx),
+            crate::theme::glass_look(cx).as_ref(),
+            crate::window::background::BackdropTuning::get(cx),
         );
     })
     .detach();
@@ -1257,7 +1259,6 @@ mod tests {
              pane-inactive-opacity = 0.85\n\
              pane-margin = 6 # inline comments are allowed\n\
              window-corner-radius = 10\n\
-             interface-frost = 0.8\n\
              motion = off\n\
              notifications = false\n\
              quit-daemon-on-exit = true\n\
@@ -1316,11 +1317,6 @@ mod tests {
         assert_f32_eq(parsed.config.window_corner_radius.value, 10.0);
         assert_eq!(
             parsed.config.window_corner_radius.provenance,
-            ConfigProvenance::Override
-        );
-        assert_f32_eq(parsed.config.interface_frost.value, 0.8);
-        assert_eq!(
-            parsed.config.interface_frost.provenance,
             ConfigProvenance::Override
         );
         assert_eq!(
@@ -2635,7 +2631,7 @@ mod tests {
     }
 
     #[ala::test]
-    fn glass_blurs_the_window_until_frost_or_the_system_makes_it_opaque(
+    fn glass_blurs_the_window_until_it_is_off_or_the_system_makes_it_opaque(
         cx: &mut ala::TestAppContext,
     ) {
         let requested = |cx: &mut ala::TestAppContext| {
@@ -2650,14 +2646,6 @@ mod tests {
 
         cx.update(|cx| {
             cx.set_global(GlassConfig::default());
-            cx.set_global(AppConfig::from(
-                parse_config("interface-frost = 1\n").config,
-            ));
-        });
-        assert_eq!(requested(cx), UNBLURRED_WINDOW_BACKGROUND);
-
-        cx.update(|cx| {
-            cx.set_global(AppConfig::default());
             cx.set_global(SystemReducesTransparency(true));
         });
         assert_eq!(requested(cx), UNBLURRED_WINDOW_BACKGROUND);
@@ -3000,7 +2988,6 @@ mod tests {
             "pane-margin",
             "widget-corner-radius",
             "chrome-contrast",
-            "interface-frost",
             "pointing-hand",
             "chrome-accent",
             "chrome-tint",

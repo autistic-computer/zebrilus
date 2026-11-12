@@ -140,12 +140,12 @@ The client-local schema includes these scalar settings and chrome colors.
 | `program-colors` | `true` | `true` or `false` | Whether a flat sidebar tile takes the colors of the program running in it. Off, tiles keep the theme's color and draw the program's mark in its ink. Settings › Appearance › Sidebar sets it; the web and iPad clients keep their own switch |
 | `experimental-editor-pane` | `false` | `true` or `false` | Whether new Editor panes can be created at all . picker row, palette completion, and the daemon's `select-pane-kind editor` |
 | `pane-gaps` | `false` | `true` or `false` | Whether panes use the gapped treatment: margin, radius, a glass frame, and no split dividers |
-| `pane-glow-strength` | `1` | `0..=2` | How far the active gapped pane stands apart: its fill lightens while the others' darken and their rims dim; Panes settings display it as Selected pane contrast, 0–200%. `0` draws it like the others |
+| `pane-glow-strength` | `1` | `0..=2` | How far the active gapped pane stands apart: the others' fills darken and their rims dim while it keeps the content plate; Panes settings display it as Selected pane contrast, 0–200%. `0` draws it like the others |
 | `pane-inactive-opacity` | `0.7` | `0..=1` | Retained strength of inactive pane content and chrome; `1` disables dimming |
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps`. The window's top strip grows with it, and the sidebar's buttons move in with it, so they stay on the pane headers' center lines |
 | `widget-corner-radius` | the platform's (`12`) | `0..=25` | The look's `radius` knob in pixels: the corner of containers, of controls unless they are pills, and the base of a gapped pane's corner. 25 is a round corner, never a pill. Settings shows it as Corner radius, a slider from 0 to 100% where the pixels are 25 × share² (12 is 69%), written with two decimals |
 | `control-shape` | the platform's (`pill` on macOS, `rounded` elsewhere) | `rounded`, `pill` | Whether controls follow the corner radius or are pills (`control-radius` `full`). Settings shows it as Controls |
-| `interface-glass` | `liquid` | `none`, `liquid`, or a glass material as one line of JSON | The glass popovers, menus and glass roles draw, and whether the window is see-through: while it is on, the desktop shows through the chrome, blurred, where the compositor can blur (`interface-frost` sets how much); `none` keeps the window opaque. The system's Reduce transparency (macOS, iOS), Transparency effects off (Windows) and `prefers-reduced-transparency: reduce` (the browser clients) draw it as `none` without changing the key. Pasting a theme file with its own material writes the material here; Settings shows it as the Glass switch, on for `liquid` or a material and off for `none` |
+| `interface-glass` | `liquid` | `none`, `liquid`, or a glass material as one line of JSON | The glass popovers, menus and glass roles draw, and whether the window is see-through. While it is on, the desktop shows through the chrome, blurred, where the compositor can blur, and less of it through panes and the settings page, which sit on a plate of the background; `none` keeps the window opaque. Glass has one look for light and one for dark (penna's Glass looks): on macOS the chrome takes 0.82 in light and 0.65 in dark, and content 0.95 and 0.85; where zz can't shape the backdrop the window takes 0.97. The system's Reduce transparency (macOS, iOS), Transparency effects off (Windows) and `prefers-reduced-transparency: reduce` (the browser clients) draw it as `none` without changing the key. Pasting a theme file with its own material writes the material here, drawn over the mode's backdrop and planes. Settings shows it as Glass, a switch: on writes `liquid`, off `none`. Any other word is reported as invalid and the window draws `liquid` |
 | `chrome-accent` | `theme` | `theme`, `ink`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or `#rrggbb` | The accent, which becomes the highlight: primary fills, switches, selection. `theme` (or no line) keeps the platform's (blue on macOS, ink elsewhere); `ink` draws primary fills in the text color. Each name is a pair of colors tuned for light and for dark; a hex color is used in both modes |
 | `chrome-terminal-colors` | `true` | `true` or `false` | Whether the window takes its colors from the terminal theme: the background exactly, the text lifted to 7:1 when the theme's reads under that, the accent and status colors from the palette, fitted to read. Only a themed terminal counts; zz's built-in terminal colors leave the look alone. Settings › Appearance › Terminal sets it |
 | `chrome-tint` | the platform's (`0.15`) | `0..=1` | The amount of the look's `neutral`: how far the window's background leans toward `chrome-tint-hue`; everything drawn from the background leans with it, and the text leans about a third as far. Settings shows it as Tint strength, 0–100% |
@@ -165,7 +165,6 @@ The client-local schema includes these scalar settings and chrome colors.
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
 | `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations (surface steps, fills, dividers and muted text) and adds no edges; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as Increase contrast, a slider from 0% (1.0) to 100% (2.0), written with two decimals. |
-| `interface-frost` | `0.5` | `0.0`–`1.0` | How thick glass is, while `interface-glass` is on. It scales every material's blur by 0.5 + frost and, above 0.5, raises its tint toward 0.92 opacity; the window chrome takes 0.86 + 0.14 × frost (0.93 at the default, opaque at 1.0). On macOS, where the window's backdrop layer is available, the chrome instead takes 0.65 + 0.70 × (frost − 0.5) (0.30 at 0, 0.65 at the default, opaque at 1.0) and frost sets the backdrop's brightness cap, 0.25 − 0.30 × frost but at least 0.04; without it the WindowServer blur radius is 160 × (0.5 + frost). Settings shows it as Frost under Interface › Material, a percent slider written with two decimals, only while Glass is on; Paste and Reset keep it. The thin clients keep it in their preferences as `frost`, and the HTML client shows the same row |
 | `pointing-hand` | `true` | `true` or `false` | The pointer over anything you can click in the chrome: a hand when on, the arrow when off. Pages in a browser pane and links in a terminal keep their own pointer. Settings shows it as Pointing hand under Interface › Behavior; the thin clients keep it in their preferences as `pointer` (`hand` or `arrow`) and leave it off the phone, and the HTML client shows the same row and sets `data-pointer` on its root |
 | `chrome-density` | `regular` | `compact`, `regular`, `comfortable` | The default control and row height in the chrome: 24, 28 or 32px for buttons, fields, selects and list, menu and picker rows; text, gaps and the other control sizes stay. Invalid values are reported and fall back to `regular`. Settings shows it as Density under Interface › Text. |
 
@@ -184,6 +183,9 @@ with `` set `interface-glass`, or Glass in Settings > Interface ``) and ignored.
 over the window blur and zz began following the system's setting: the first is reported with
 `` glass blurs the window now; set `interface-glass` to none for an opaque one `` and the second with
 `` zz follows the system's Reduce transparency; set `interface-glass` to none to turn glass off ``.
+`interface-frost` joined it on 2026-11-12, when glass took one look per mode: a line with it is
+reported with `` `interface-frost` was removed: set `interface-glass` to none or liquid, or Glass in
+Settings > Interface `` and ignored. zz never rewrites it; it stays, reported, until it is deleted.
 `pane-glass`, `pane-corner-radius`, `pane-border-width`, `pane-background-opacity` and
 `pip-background-opacity` are retired pane keys (`zz_config::RETIRED_PANE_KEYS`), each reported with
 what replaced it: gapped panes always draw a glass frame, pane corners follow `widget-corner-radius`,
@@ -214,7 +216,7 @@ Settings > About. Each is otherwise ignored.
 `animations`, `animation-speed` and `window-background-opacity` went on 2026-11-06
 (`zz_config::RETIRED_MOTION_KEYS`): the first two are reported with `` `<key>` was removed: set
 `motion` to off, default or fast `` and the third with `` `window-background-opacity` was removed: set
-how see-through the window is with `interface-frost` ``.
+how see-through the window is with `interface-glass` ``.
 
 The title bar holds the sidebar toggle and the window pills with their pane decks, with nothing
 to set. The clock never shows seconds. `AppShell` aligns its first wake to
@@ -222,11 +224,11 @@ the next minute boundary, then requests one redraw per minute while the bar and 
 `time-date` renders `%H:%M · %b %d`.
 
 `widget-corner-radius`, `control-shape`, `interface-glass`, `chrome-accent`, `chrome-tint`,
-`chrome-tint-hue`, `ui-font-family`, `ui-mono-font-family`, `chrome-contrast`, `interface-frost`, and `theme-mode`
+`chrome-tint-hue`, `ui-font-family`, `ui-mono-font-family`, `chrome-contrast`, and `theme-mode`
 land on the **zz-ui theme** rather than being read per-frame by a renderer:
 `zz::theme` activates `config::shown_theme`, the platform's theme file with the keys the file sets
 applied over it (see Interface themes for the order), which puts its colors and knobs on the `Theme` global,
-and `apply_zz_overrides` then sets the contrast, thickens the glass by `interface-frost` (or drops it while the system reduces transparency), and sets the window opacity. Every surface already resolves
+and `apply_zz_overrides` then sets the contrast, drops the glass and its look while the system reduces transparency, and sets the window opacity and the backdrop's darkest and brightest values from the mode's glass look. Every surface already resolves
 its role from there, so no component is plumbed individually. Because the theme and the overrides
 are reapplied on every theme rebuild, they survive a light/dark switch, the same treatment
 `mono_font_family` gets. A gapped pane's corner follows the same radius: `config::pane_content_radii` starts from
@@ -370,12 +372,12 @@ close on Linux and Windows. `use-system-titlebar` went on 2026-11-08
 compositor that still insists on server-side decorations gets its own titlebar, ala reports
 `Decorations::Server`, and zz draws no controls.
 
-While glass is on and `interface-frost` is under 1, zz requests `WindowBackgroundAppearance::Blurred` for both newly created and
+While glass is on, zz requests `WindowBackgroundAppearance::Blurred` for both newly created and
 already-open windows (`theme::chrome_blur`). zz reads the system's reduced transparency at start and again whenever its window becomes
 active (`config::follow_system_transparency`): `NSWorkspace`'s `accessibilityDisplayShouldReduceTransparency` on macOS and
 `EnableTransparency` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize` on Windows; Linux has none. `window/background.rs` maps that request to a transparent ala surface plus
-a backdrop layer under ala's view on macOS (blur 60, saturation 1.8 and a brightness cap; the
-WindowServer's background-blur radius where that layer is missing), retains ala's optional KDE
+a backdrop layer under ala's view on macOS (the glass look's blur, saturation, curve and brightness
+cap; the WindowServer's background-blur radius, 160, where that layer is missing), retains ala's optional KDE
 `org_kde_kwin_blur_manager` protocol on Wayland, and sets KDE's
 `_KDE_NET_WM_BLUR_BEHIND_REGION` property on X11. The X11 region follows window size, scale, and
 exposed rounded corners so resize and tiling do not leave a stale rectangular effect.
@@ -404,7 +406,7 @@ With gaps the pane frame owns the single fill (`PaneLook::frames` in the
 frame, and `PaneLook::frame(theme, plane, active)` gives the frame the pane's own color over the
 window plane. Under a theme with glass, a pane whose role takes glass draws the frame in the theme's
 glass with blur, refraction and dispersion off: tiled panes sit on the flat app background, so
-there is nothing to frost. On an opaque window the tint is solid and the glass draws in place with
+there is nothing to blur. On an opaque window the tint is solid and the glass draws in place with
 no backdrop copy, costing about what a bordered fill does. The glass edge (glint, fresnel, thin
 contour) is the frame, drawn as the theme's glass defines it: its own glint width, specular,
 fresnel, edge and noise, so a glass theme with no outline keeps its rim light on panes. No color marks
@@ -432,13 +434,17 @@ The transcript clips before the footer. Prefix cards disable the overlap. Text k
 
 A terminal first blends its Ghostty background color with the theme base using
 `background-opacity`, then applies the shared pane factor to that result. Ghostty's
-`background-blur` stays ignored; Glass and Frost own the native compositor request.
+`background-blur` stays ignored; Glass owns the native compositor request.
 
 `app_shell_surface` paints one continuous app background beneath the sidebar, titlebar,
 Settings, and pane layout. It uses `theme::chrome_background`: the theme background at `Theme::window_opacity`, which
-`apply_zz_overrides` sets from Frost (93% at the default) while the window is blurred and to 1 otherwise. Margins, split gaps, and rounded pane corners reveal
-this same root surface. They do not paint separate fills. Pane surfaces and their shadows
-sit above it; the fixed sidebar, titlebar, workspace, and Settings inherit the root fill.
+`apply_zz_overrides` sets from the mode's glass look (on macOS its chrome opacity, 0.82 in light and 0.65 in dark; elsewhere 0.97) while the window is blurred and to 1 otherwise. Margins, split gaps, and rounded pane corners reveal
+this same root surface, or with pane gaps the sidebar-colored frame over it. Panes and Settings
+sit on the content plate (`Theme::content_plate()`): with gaps each is a rounded plate in the frame
+(`zz_ui::pane::content_pane` for Settings, the New chat and new-session screens and the connection state),
+and without gaps the pane column paints the plate on a see-through window and nothing on an opaque
+one, where the plate is the root fill itself. The fixed sidebar inherits the root fill; the titlebar
+sits in the pane column and takes what the column paints.
 The slideover sidebar keeps its own background because it overlays pane content.
 
 Linux window geometry starts from `window-corner-radius` (default 13.5px, targeting the macOS 27
@@ -716,7 +722,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | Page | Groups |
 | --- | --- |
 | Appearance | **Theme** (`theme-mode` as Mode, a System, Light and Dark segmented control, `chrome-accent` as Accent swatches with a custom color picker, `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength) · **Terminal** (a live preview, Light theme and Dark theme, searchable lists of the installed themes that open on their own kind and write `theme = light:A,dark:B`, `chrome-terminal-colors` as Window follows the theme, and `background-opacity` as Background opacity) · **Sidebar** (`program-colors`) · **Contrast** (`chrome-contrast` as Increase contrast, a slider, `minimum-contrast` as Terminal text contrast, a switch for 4.5 or 1) |
-| Interface | **Material** (`interface-glass` as Glass, a switch, `interface-frost` as Frost, a percent slider shown while Glass is on, `control-shape` as Controls, a segmented control, `widget-corner-radius` as Corner radius in percent) · **Text** (`UI font`, Mono font, transient `UI zoom` as Text size, `chrome-density` as Density) · **Behavior** (`pointing-hand` as Pointing hand, a switch, `motion` as Motion, an Off, Default and Fast segmented control) · **Window**, where it has rows (macOS `app-icon` as three icon tiles, Linux `window-corner-radius`) |
+| Interface | **Material** (`interface-glass` as Glass, a switch, `control-shape` as Controls, a segmented control, `widget-corner-radius` as Corner radius in percent) · **Text** (`UI font`, Mono font, transient `UI zoom` as Text size, `chrome-density` as Density) · **Behavior** (`pointing-hand` as Pointing hand, a switch, `motion` as Motion, an Off, Default and Fast segmented control) · **Window**, where it has rows (macOS `app-icon` as three icon tiles, Linux `window-corner-radius`) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
 | Panes | **Layout** (`pane-gaps`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, disabled without gaps) |
@@ -840,9 +846,6 @@ provenance, and refreshes the open Settings route.
 ```ini
 # Blend the terminal color over its opaque pane base.
 background-opacity = 0.85
-
-# Thicker glass: more blur, less of the desktop through the window.
-interface-frost = 0.8
 
 # Set every interface transition to its static state.
 motion = off

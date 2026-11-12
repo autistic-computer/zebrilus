@@ -31,8 +31,9 @@ pub const PANE_GAPS: &str = "pane-gaps";
 pub const GLASS: &str = "interface-glass";
 pub const ACCENT: &str = "chrome-accent";
 pub const SIDEBAR_LAYOUT: &str = "flat-sidebar";
+pub const GLASS_LAB: &str = "glass-lab";
 
-pub const GUI_ACTIONS: [GuiAction; 5] = [
+pub const GUI_ACTIONS: [GuiAction; 6] = [
     GuiAction {
         id: TITLEBAR_MODE,
         title: "Titlebar mode",
@@ -64,7 +65,7 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
         id: GLASS,
         title: "Glass",
         verb: "glass",
-        aliases: &["blur", "translucent", "window blur", "frost"],
+        aliases: &["blur", "translucent", "window blur", "material"],
         values: &[
             GuiChoice {
                 value: "liquid",
@@ -136,6 +137,24 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
             },
         ],
         config_key: Some(SIDEBAR_LAYOUT),
+        preview: false,
+    },
+    GuiAction {
+        id: GLASS_LAB,
+        title: "Glass lab",
+        verb: "glass lab",
+        aliases: &["tune glass", "material knobs"],
+        values: &[
+            GuiChoice {
+                value: "true",
+                title: "Open",
+            },
+            GuiChoice {
+                value: "false",
+                title: "Closed",
+            },
+        ],
+        config_key: None,
         preview: false,
     },
 ];

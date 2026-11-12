@@ -1287,7 +1287,7 @@ impl Theme {
         let glass = glass.map(|material| {
             if pane {
                 let tint = if see_through {
-                    self.transparent
+                    self.content_plate()
                 } else {
                     ground.fill
                 };
@@ -1722,8 +1722,11 @@ mod tests {
     fn a_see_through_window_stays_see_through_under_panels_and_gapped_panes() {
         let mut theme = theme();
         theme.glass = Some(liquid());
+        theme.glass_look = Some(crate::foundation::glass::GlassLook::of(
+            crate::ThemeMode::Dark,
+        ));
         theme.pane_margin = px(8.0);
-        theme.set_window(0.93, 1.0);
+        theme.set_window(0.93, [0.0, 1.0]);
         let window = theme.ground();
         assert_eq!(window.fill, theme.background.alpha(0.93));
         let panel = theme.layer(
@@ -1743,7 +1746,17 @@ mod tests {
         );
         assert_eq!(send.fill, theme.background.opaque().washed(1));
         let pane = theme.layer(Surface::new(Kind::Pane.role()).on(window), PaintState::Rest);
-        assert_eq!(pane.glass.expect("a gapped pane is glass").tint.a, 0.0);
+        assert_eq!(
+            pane.glass.expect("a gapped pane is glass").tint,
+            theme.background.alpha(0.57)
+        );
+        let content = theme.content_ground();
+        assert_eq!(crate::to_hex(content.fill), "#1a1a19f7");
+        let card = theme.layer(
+            Surface::new(super::super::roles::SETTINGS_CARD).on(content),
+            PaintState::Rest,
+        );
+        assert_eq!(card.fill, theme.background.opaque().washed(1));
     }
 
     #[test]

@@ -87,7 +87,15 @@ struct HostsSectionState {
 use zz_ui::settings::appearance::{AppearancePageItem, ZzRow};
 
 fn interface_page_items() -> Vec<AppearancePageItem> {
-    zz_ui::settings::appearance::interface_page_items(cfg!(target_os = "macos"))
+    let mut items = zz_ui::settings::appearance::interface_page_items(cfg!(target_os = "macos"));
+    if crate::window::glass_lab::available()
+        && let Some(at) = items
+            .iter()
+            .position(|item| *item == AppearancePageItem::CornerRadius)
+    {
+        items.insert(at + 1, AppearancePageItem::App(ZzRow::GlassLab));
+    }
+    items
 }
 
 pub(crate) struct SettingsView {
@@ -695,11 +703,10 @@ impl SettingsView {
 
     fn appearance_section(&self, resolved: &AppConfig, cx: &Context<Self>) -> AnyElement {
         let appearance = config::appearance(cx);
-        let mut items = match self.section {
+        let items = match self.section {
             SettingsSection::Interface => interface_page_items(),
             _ => zz_ui::settings::appearance::appearance_page_items(),
         };
-        items.retain(|item| item.shown(&appearance));
         let view = cx.entity();
         let resolved = *resolved;
         penna::blocks::appearance::appearance_page(
@@ -755,6 +762,13 @@ impl SettingsView {
             AppearancePageItem::App(row @ ZzRow::WindowCornerRadius) => {
                 Self::numeric_setting(row.title(), &self.window_corner_radius, cx)
             }
+            AppearancePageItem::App(row @ ZzRow::GlassLab) => SettingEntry::new(row.title())
+                .control(
+                    Button::new("settings-glass-lab")
+                        .label("Open")
+                        .on(settings_card_ground(cx))
+                        .on_click(|_, _, cx| crate::window::glass_lab::set_open(true, cx)),
+                ),
             item => {
                 return kit_row(
                     item,
@@ -2000,10 +2014,6 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
             let key = ConfigKey::ChromeContrast;
             (key, set_config_key(key, &format!("{contrast:.2}")))
         }
-        AppearanceChange::Frost(frost) => {
-            let key = ConfigKey::InterfaceFrost;
-            (key, set_config_key(key, &format!("{:.2}", frost.get())))
-        }
         AppearanceChange::Pointer(pointer) => {
             let key = ConfigKey::PointingHand;
             let hand = pointer == penna::PointerCursor::Hand;
@@ -2152,7 +2162,6 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
             key,
             ConfigKey::WidgetCornerRadius
                 | ConfigKey::ChromeContrast
-                | ConfigKey::InterfaceFrost
                 | ConfigKey::PointingHand
                 | ConfigKey::ControlShape
                 | ConfigKey::InterfaceGlass
@@ -2248,7 +2257,6 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         ConfigKey::PaneMargin => config.pane_margin,
         ConfigKey::WidgetCornerRadius => config.widget_corner_radius,
         ConfigKey::ChromeContrast => config.chrome_contrast,
-        ConfigKey::InterfaceFrost => config.interface_frost,
         ConfigKey::ChromeTint => config.chrome_tint,
         ConfigKey::ChromeTintHue => config.chrome_tint_hue,
         ConfigKey::WindowCornerRadius => config.window_corner_radius,

@@ -104,7 +104,6 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
                 ..ThemeOverrides::default()
             },
             contrast: 1.4,
-            frost: penna::foundation::interface_theme::Frost::DEFAULT,
             ui_font_family: "Inter Variable".into(),
             mono_font_family: String::new(),
             zoom: 1.35,
@@ -125,7 +124,6 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     let mut expected = parsed(source);
     expected["density"] = "regular".into();
     expected["pointer"] = "hand".into();
-    expected["frost"] = 0.5.into();
     expected["motion"] = "default".into();
     expected["mono_font_family"] = "".into();
     let fields = expected.as_object_mut().unwrap();

@@ -35,9 +35,6 @@ fn color(color: Hsla) -> String {
 fn kit(preferences: &Preferences, mode: ThemeMode) -> Theme {
     let mut kit = theme_css::kit_theme(&preferences.shown_theme(), mode);
     kit.set_contrast(preferences.appearance.contrast);
-    kit.glass = kit
-        .glass
-        .map(|material| preferences.appearance.frost.material(material));
     kit.pane_margin = preferences.margin();
     let font = preferences.shown_ui_font();
     kit.font_family = if font.is_empty() { WEB_UI_FONT } else { font }

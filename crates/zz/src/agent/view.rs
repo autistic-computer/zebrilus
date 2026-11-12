@@ -1243,8 +1243,11 @@ impl AgentView {
     }
 
     fn pane_ground(&self, cx: &ala::App) -> Ground {
-        if self.floats || !crate::config::pane_gaps(cx) {
+        if self.floats {
             return cx.theme().ground();
+        }
+        if !crate::config::pane_gaps(cx) {
+            return cx.theme().content_ground();
         }
         zz_ui::pane_look::PaneLook::global(cx).ground(
             cx.theme(),

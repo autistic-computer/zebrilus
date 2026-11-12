@@ -105,8 +105,8 @@ Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`defaul
 `yaru`: the kit's theme file the knobs start from, picked under Start from; the app itself has no
 presets and starts from the platform's), the theme's knobs (`name`,
 `tint-color` or `light-tint-color` and `dark-tint-color`, `neutral-hue`, `neutral-amount`,
-`radius`, `control-radius`, `smoothing`, `face`, `lock` for the mode lock, and `glass` with its
-sliders), the person's settings over it (`accent`, `contrast`, the tint as `tint-hue` and `tint`,
+`radius`, `control-radius`, `smoothing`, `face`, `lock` for the mode lock, and `glass`, which is
+`theme`, `none` or `liquid`, with its material sliders), the person's settings over it (`accent`, `contrast`, the tint as `tint-hue` and `tint`,
 which set the neutral as `chrome-tint-hue` and `chrome-tint` do in the app,
 `reduce-transparency`), `zoom`, zz's pane knobs
 (`pane-gaps`, `pane-margin`,
@@ -120,7 +120,7 @@ animations off and freezes spinners). Two more keys only steer the page: `step` 
 on the Roles step. The tint and pane knobs are app config, not theme, so Copy JSON leaves them out;
 they stay in the URL. penna's Appearance story (`#/appearance/page` on penna's page) draws the
 Interface page's kit rows with the builders the app uses: Mode, the accent swatches, the tint
-sliders (which follow the tint knobs), Corner radius, Controls, Glass, Frost while Glass is on, UI font,
+sliders (which follow the tint knobs), Corner radius, Controls, Glass, UI font,
 Mono font and the Theme file menu, then the Size and Accessibility rows. zz's Settings
 story keeps only the row zz adds (`#/settings/appearance`): Program colors.
 

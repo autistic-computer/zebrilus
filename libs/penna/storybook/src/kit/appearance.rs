@@ -20,7 +20,7 @@ pub const STORY: Story = Story {
         Section {
             id: "page",
             name: "Page",
-            summary: "Three groups, none folded away: Look (mode, accent, tint, corner radius in percent, controls, glass, frost while glass is on, UI font and Mono font, whose list opens on Monospaced), Size (text size and density) and Accessibility (increase contrast, motion in three steps and the pointing hand).",
+            summary: "Three groups, none folded away: Look (mode, accent, tint, corner radius in percent, controls, glass (off, thin, regular or thick), UI font and Mono font, whose list opens on Monospaced), Size (text size and density) and Accessibility (increase contrast, motion in three steps and the pointing hand).",
             build: |window, cx| page(false, window, cx),
         },
         Section {
@@ -68,8 +68,7 @@ impl Render for AppearanceStory {
             self.knobs = knobs;
         }
         let view = cx.entity();
-        let mut items = appearance_page_items::<()>();
-        items.retain(|item| item.shown(&self.appearance));
+        let items = appearance_page_items::<()>();
         let page = appearance_page("Appearance", items, move |item, position, window, cx| {
             view.update(cx, |story, cx| story.row(item, position, window, cx))
         });

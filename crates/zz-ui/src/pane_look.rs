@@ -1,11 +1,7 @@
 use ala::{App, GlassMaterial, Global, Hsla, Pixels, px};
-use penna::{ContentLook, Theme};
+use penna::{ContentLook, Theme, foundation::tuning::read_glass_tuning};
 
 use crate::{Colorize as _, Ground, Highlight};
-
-const VEIL: [f32; 2] = [0.05, 0.18];
-const WASH: [f32; 2] = [0.3, 0.05];
-const RIM_DIM: f32 = 0.3;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PaneLook {
@@ -34,34 +30,28 @@ impl PaneLook {
     }
 
     fn focus(self, theme: &Theme, tint: Hsla, active: bool) -> Hsla {
-        if !self.lights_active_pane(theme) {
+        if active || !self.lights_active_pane(theme) {
             return tint;
         }
-        let (pole, weights) = if active {
-            (ala::white(), WASH)
-        } else {
-            (ala::black(), VEIL)
-        };
-        let weight = weights[usize::from(theme.mode.is_dark())] * self.glow_strength;
-        let wash = pole.alpha(weight.min(1.0));
-        if tint.a > 0.0 { tint.blend(wash) } else { wash }
+        let weight = read_glass_tuning(|tuning| tuning.veil(theme.mode)) * self.glow_strength;
+        tint.blend(ala::black().alpha(weight.min(1.0)))
     }
 
     fn rim(self, theme: &Theme, active: bool) -> f32 {
         if active || !self.lights_active_pane(theme) {
             1.0
         } else {
-            (1.0 - RIM_DIM * self.glow_strength).max(0.0)
+            (1.0 - read_glass_tuning(|tuning| tuning.rim_dim) * self.glow_strength).max(0.0)
         }
     }
 
     pub fn frame(self, theme: &Theme, plane: Hsla, active: bool) -> GlassMaterial {
-        let tint = if plane.a < 1.0 {
-            plane.alpha(0.0)
+        let content = if plane.a < 1.0 {
+            theme.content_plate()
         } else {
             plane
         };
-        let tint = self.focus(theme, tint, active);
+        let tint = self.focus(theme, content, active);
         let frame = theme
             .glass_effect()
             .unwrap_or_else(|| {
@@ -78,13 +68,22 @@ impl PaneLook {
             .dispersion(0.0)
             .tint(tint)
             .fallback(tint);
+        let frame = theme.glass_look.map_or(frame, |look| look.rim.apply(frame));
         frame.specular(frame.specular * self.rim(theme, active))
     }
 
     pub fn ground(self, theme: &Theme, plane: Hsla, active: bool) -> Ground {
+        let content = if plane.a < 1.0 {
+            theme.content_ground()
+        } else {
+            Ground {
+                fill: plane,
+                ..theme.ground()
+            }
+        };
         Ground {
-            fill: self.focus(theme, plane, active),
-            ..theme.ground()
+            fill: self.focus(theme, content.fill, active),
+            ..content
         }
     }
 
@@ -95,6 +94,17 @@ impl PaneLook {
 
     pub fn edge_width(self, theme: &Theme) -> Pixels {
         if self.frames { outline(theme) } else { px(0.0) }
+    }
+}
+
+pub fn rim_only(frame: GlassMaterial, theme: &Theme) -> GlassMaterial {
+    let rim = frame.rim();
+    match theme.glass_look.and_then(|look| {
+        look.rim
+            .get(penna::foundation::tuning::MaterialField::EdgeShadow)
+    }) {
+        Some(shadow) => rim.edge_shadow(shadow),
+        None => rim,
     }
 }
 
@@ -169,31 +179,35 @@ mod tests {
     }
 
     #[test]
-    fn a_see_through_pane_frame_stays_clear_but_for_the_active_panes_wash() {
-        let mut theme = Theme::default();
-        let plane = theme.background.alpha(0.93);
-        assert_eq!(UNLIT.frame(&theme, plane, false).tint, plane.alpha(0.0));
-        assert_eq!(
-            UNLIT.frame(&theme, plane.opaque(), false).tint,
-            plane.opaque()
-        );
+    fn the_active_pane_sits_on_the_content_plate_below_the_sidebar() {
+        use penna::{Elevation, ThemeColor, to_hex};
+        let mode = ThemeMode::Dark;
+        let mut theme = Theme::from(&*ThemeColor::for_mode(mode));
+        theme.mode = mode;
+        crate::interface_theme::builtin_theme("default")
+            .expect("the default theme")
+            .apply(&mut theme);
+        theme.glass = None;
         let look = PaneLook::default();
-        for (mode, active, inactive) in [
-            (
-                ThemeMode::Light,
-                ala::white().alpha(0.3),
-                ala::black().alpha(0.05),
-            ),
-            (
-                ThemeMode::Dark,
-                ala::white().alpha(0.05),
-                ala::black().alpha(0.18),
-            ),
-        ] {
-            theme.mode = mode;
-            assert_eq!(look.frame(&theme, plane, true).tint, active, "{mode:?}");
-            assert_eq!(look.frame(&theme, plane, false).tint, inactive, "{mode:?}");
-        }
+        let window = theme.ground();
+        let sidebar = theme.surface(Elevation::Panel).fill;
+        assert_eq!(
+            [
+                look.frame(&theme, window.fill, true).tint,
+                look.frame(&theme, window.fill, false).tint,
+                sidebar,
+            ]
+            .map(to_hex),
+            ["#1a1a19", "#151515", "#212120"]
+        );
+
+        theme.set_window(0.93, [0.0, 1.0]);
+        let window = theme.ground().fill;
+        assert_eq!(
+            look.frame(&theme, window, true).tint,
+            theme.background.alpha(0.57)
+        );
+        assert_eq!(to_hex(look.ground(&theme, window, true).fill), "#1a1a19f7");
     }
 
     #[test]
@@ -207,7 +221,7 @@ mod tests {
             .apply(&mut theme);
         theme.glass = None;
         let look = PaneLook::default();
-        for (active, pane, card) in [(true, "#252525", "#2e2e2d"), (false, "#151515", "#1f1f1e")] {
+        for (active, pane, card) in [(true, "#1a1a19", "#232322"), (false, "#151515", "#1f1f1e")] {
             let lit = look.ground(&theme, theme.background, active);
             let activity = theme
                 .ground_of(Surface::from(CardLook::Activity).on(lit))

@@ -245,6 +245,27 @@ impl Theme {
         }
     }
 
+    pub fn content_plate(&self) -> Hsla {
+        match self.glass_look {
+            Some(look) if self.window_opacity() < 1.0 => {
+                self.background.opacity(look.content_plate)
+            }
+            _ => self.background,
+        }
+    }
+
+    pub fn content_ground(&self) -> Ground {
+        let window = self.ground();
+        let plate = self.content_plate();
+        Ground {
+            fill: window
+                .fill
+                .blend(plate)
+                .alpha(1.0 - (1.0 - window.fill.a) * (1.0 - plate.a)),
+            ..window
+        }
+    }
+
     pub fn raise(&self, color: Hsla, level: u8) -> Hsla {
         color.raised(level)
     }

@@ -79,8 +79,8 @@ marks the load `fatal`.
 | Ghostty (supported) | `theme`, `font-family` plus `-bold` / `-italic` / `-bold-italic` stacks, `font-size`, `font-feature`, `font-synthetic-style`, `font-thicken`, `font-thicken-strength`, `adjust-cell-height`, `window-padding-x/y`, `foreground`, `background`, `cursor-color`, `selection-foreground`, `selection-background`, `palette`, `minimum-contrast`, `cursor-style`, `cursor-style-blink`, `background-opacity`, `config-file` |
 | zz/config-native extensions (Ghostty compatibility accepted) | `zz-font-weight`, `zz-cursor-blink-interval-ms`, `zz-search-match-color`, `zz-search-current-color`, `zz-link-color`, `zz-copy-cursor-color`, `zz-rounded-selection` |
 
-Ghostty's `background-blur` is unsupported and ignored. zz's Glass and Frost settings
-(`interface-glass`, `interface-frost`) decide whether and how much the chrome shows the desktop. Ghostty contributes the terminal background color and its
+Ghostty's `background-blur` is unsupported and ignored. zz's Glass setting
+(`interface-glass`: `none` or `liquid`) decides whether the chrome shows the desktop. Ghostty contributes the terminal background color and its
 tint strength inside the opaque pane.
 
 Each entry produces an `AppearanceConfigDiagnostic` with a disposition (`Applied`, `Included`,

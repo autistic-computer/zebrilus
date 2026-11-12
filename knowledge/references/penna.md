@@ -185,7 +185,7 @@ meant. The file format is in [interface themes](/designs/interface-themes.md).
 
 `penna::foundation::interface_theme::Appearance` is the model: `mode` (`system`, `light` or `dark`),
 the `ThemeOverrides` flattened in (`radius`, `accent`, `tint`, `tint-hue`, `controls`, `glass`),
-`contrast`, `frost` (`Frost`, 0 to 1, 0.5 by default), `ui_font_family`, `zoom`, `motion` (`off`, `default` or
+`contrast`, `ui_font_family`, `zoom`, `motion` (`off`, `default` or
 `fast`) and `density`. It is serde with defaults, so an app keeps it in its own preferences with
 `#[serde(flatten)]` (`clients/app/src/preferences.rs`), and those key names are what users' files
 hold. There is no theme to pick: the look starts from `platform_theme()` (the `macos` file on macOS

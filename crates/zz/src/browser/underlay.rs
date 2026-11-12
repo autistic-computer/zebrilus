@@ -19,7 +19,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 const CORNER_SEGMENTS: u32 = 16;
 
-type MaskShape = (f64, f64, [f64; 4], f64);
+type MaskShape = (f64, f64, [f64; 4], f64, f64);
 
 struct Layer(Retained<CALayer>, Mutex<Option<MaskShape>>);
 
@@ -52,7 +52,8 @@ impl Layer {
         reason = "CALayer.mask is marked unsafe in objc2-quartz-core"
     )]
     fn round(&self, size: CGSize, radii: [f64; 4], smoothing: f64) {
-        let shape = (size.width, size.height, radii, smoothing);
+        let scale = self.0.contentsScale();
+        let shape = (size.width, size.height, radii, smoothing, scale);
         let mut current = self.1.lock().unwrap_or_else(PoisonError::into_inner);
         if *current == Some(shape) {
             return;
@@ -63,6 +64,7 @@ impl Layer {
             return;
         }
         let mask = CAShapeLayer::new();
+        mask.setContentsScale(scale);
         mask.setFrame(CGRect::new(CGPoint::new(0.0, 0.0), size));
         mask.setPath(Some(&corner_path(
             size.width,

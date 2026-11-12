@@ -60,9 +60,9 @@ use zz_ui::{
     },
     pane::{
         DropPreview, DropPreviewFrame, PaneArrivals, PaneChrome, PaneDrag, PaneDragOverlayState,
-        PaneDragSource, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_drag_overlay,
-        pane_drag_preview, pane_drop_preview, pane_header_frame, pane_split_hit_target,
-        pane_split_surface, pane_surface,
+        PaneDragSource, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, content_pane,
+        pane_drag_overlay, pane_drag_preview, pane_drop_preview, pane_header_frame,
+        pane_split_hit_target, pane_split_surface, pane_surface,
     },
     pane_look::PaneLook,
     settings::{SettingsSection, settings_section_navigation},
@@ -1527,6 +1527,27 @@ impl AppShell {
         picker
     }
 
+    pub(super) fn plated(
+        &self,
+        id: &'static str,
+        content: AnyElement,
+        window: &Window,
+        cx: &App,
+    ) -> AnyElement {
+        if !self.preferences.gaps || Self::narrow(window) {
+            return content;
+        }
+        content_pane(
+            id,
+            content,
+            self.preferences.margin(),
+            Corners::all(cx.theme().pane_radius()),
+            cx.theme().background,
+            cx,
+        )
+        .into_any_element()
+    }
+
     fn landing(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.preferences.flat_sidebar
             || !self.flat.place.landing()
@@ -1963,7 +1984,7 @@ impl AppShell {
         }
         if let Some(landing) = self.landing(window, cx) {
             self.pane_layout_override = None;
-            return landing;
+            return self.plated("web-landing-pane", landing, window, cx);
         }
         let Some(active_window) = self.active_window(cx) else {
             if self.pane_drag.take().is_some() {
@@ -1975,20 +1996,23 @@ impl AppShell {
                 let sheet = self.host_sheets(window, cx);
                 #[cfg(not(any(target_os = "ios", target_os = "android")))]
                 let sheet: Option<AnyElement> = None;
-                return div()
-                    .flex()
-                    .size_full()
-                    .child(self.hosts_page(
+                let page = self
+                    .hosts_page(
                         "web-connect-page",
                         Some("Connect to zz"),
                         Self::narrow(window),
                         cx,
-                    ))
+                    )
+                    .into_any_element();
+                return div()
+                    .flex()
+                    .size_full()
+                    .child(self.plated("web-connect-pane", page, window, cx))
                     .children(sheet)
                     .into_any_element();
             }
             let has_sessions = !self.connection.read(cx).core.snapshot().sessions.is_empty();
-            return div()
+            let empty = div()
                 .flex()
                 .flex_col()
                 .size_full()
@@ -2025,6 +2049,7 @@ impl AppShell {
                         })),
                 )
                 .into_any_element();
+            return self.plated("web-empty-pane", empty, window, cx);
         };
         self.reconcile_pane_drag(&active_window, window, cx);
         self.reconcile_split_drag(&active_window, cx);
@@ -2145,8 +2170,10 @@ impl AppShell {
                             cx.theme().background,
                             pane_id == active_window.active_pane,
                         )
-                    } else {
+                    } else if is_float {
                         cx.theme().ground()
+                    } else {
+                        cx.theme().content_ground()
                     };
                     agent.update(cx, |agent, cx| {
                         agent.set_ground(ground, cx);

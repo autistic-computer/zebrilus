@@ -41,7 +41,7 @@ defines roles: zz has none of its own, and no widget takes a role from outside p
   `sheet::sheet_ground(cx)`. These take only a look: a role is not a surface.
 - Text is `Label::new(TextStyle::X, text)` or `.type_style(TextStyle::X, cx)` on a container.
 - Content that a protocol, tmux or the user's terminal decides (terminal cells, a tmux popup or
-  menu, a PiP's frost, the pane frame and stack) may paint a `ContentLook` by hand with
+  menu, a PiP's glass, the pane frame and stack) may paint a `ContentLook` by hand with
   `.surface`, `.layer` or `theme.layer`, under
   `#[allow(clippy::disallowed_methods, reason = "...")]` on the narrowest fn.
 - A new piece of UI that no look covers gets a look in penna first.
@@ -141,7 +141,9 @@ defines roles: zz has none of its own, and no widget takes a role from outside p
    foreground, without a button fill. Other embedded actions keep their wash.
    Gapped panes cast the `pane` role's shadow (the contact shadow in every built-in) and draw their frame
    only in glass: no border, the glass edge (glint, fresnel, thin contour) is the frame, tinted
-   with the pane's own color, its rim the theme's glass as the theme defines it (glint width,
+   with the content plate (`Theme::content_plate()`: the background, or the background at the glass look's plate
+   opacity on a see-through window, where the plate is a plain fill under a rim-only glass because a glass
+   tint keeps the window's opacity), its rim the theme's glass as the theme defines it (glint width,
    specular, fresnel, edge, noise) and its corners `Theme::pane_radius()`: the theme radius up to
    10.24, then a parabola from there to 16 at 100% Corner radius, whatever the control shape (11.8
    at the default 12). A theme without glass (Default) draws a hairline the outline's width
@@ -462,7 +464,8 @@ Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), w
   family, so Agent Markdown and code blocks match the terminal typeface until Mono font picks
   another, else the platform's code face;
 - the contrast (`Theme::set_contrast`) from `chrome-contrast`, preserved across the same refreshes;
-- glass thickened by `interface-frost`, or none while the system reduces transparency;
+- the mode's glass look (floating material, pane rim, content plate, window opacity
+  and backdrop range), or no glass and no look while the system reduces transparency;
 - the pane glow and gaps (the `zz_ui::pane_look::PaneLook` global) from `pane-glow-strength` and
   `pane-gaps`, and the margin from `pane-margin`.
 
@@ -471,10 +474,9 @@ The thin clients keep their knobs in their preferences as a
 contrast, zoom and animations for the platform, turns glass off while the system reduces
 transparency (iOS's Reduce transparency, the browser's `prefers-reduced-transparency`), and calls
 `Appearance::apply`, which activates the platform's theme file with the device's `ThemeOverrides`
-applied as on desktop and thickens the glass by `frost`; it then sets the UI font from the
+applied as on desktop, so the mode's glass look sets the floating material and the pane rim; it then sets the UI font from the
 preference, else the platform file's face, else the bundled Inter. The HTML client's theme engine
-(`clients/dom/theme`) builds its kit theme from the same preferences, sets the contrast and applies
-`frost` to the glass before `theme_css::stylesheet` writes the tokens; the tokens' own
+(`clients/dom/theme`) builds its kit theme from the same preferences, and sets the contrast before `theme_css::stylesheet` writes the tokens; the tokens' own
 `prefers-reduced-transparency: reduce` block gives every glass role the `popover` fill there.
 
 `chrome-contrast` defaults to 1.0 and accepts 1.0–2.0; other values are reported like any numeric

@@ -208,7 +208,7 @@ Multiplexer, Browser, Terminal, Hosts, Agents, System, About:
 | Section | Contents |
 |---------|----------|
 | Appearance | Theme (a Mode segmented control for `theme-mode`, the Accent swatches for `chrome-accent`, the Tint and Tint strength sliders for `chrome-tint-hue` and `chrome-tint`), Terminal (a live preview, Light theme and Dark theme, Window follows the theme for `chrome-terminal-colors`, Background opacity), Sidebar (`program-colors`), Contrast (`chrome-contrast` as Increase contrast, `minimum-contrast` as Terminal text contrast) |
-| Interface | Material (the Glass switch for `interface-glass`, which also blurs the window, Frost for `interface-frost` while Glass is on, the Controls segmented control for `control-shape`, Corner radius for `widget-corner-radius`), Text (the system UI font picker, Mono font for `ui-mono-font-family`, opening on Monospaced, transient UI zoom as Text size, `chrome-density` as Density), Behavior (`pointing-hand` as Pointing hand, `motion` as Motion), Window (macOS app-icon pickers, Linux `window-corner-radius`) |
+| Interface | Material (Glass for `interface-glass`, a switch that also blurs the window; the Controls segmented control for `control-shape`, Corner radius for `widget-corner-radius`), Text (the system UI font picker, Mono font for `ui-mono-font-family`, opening on Monospaced, transient UI zoom as Text size, `chrome-density` as Density), Behavior (`pointing-hand` as Pointing hand, `motion` as Motion), Window (macOS app-icon pickers, Linux `window-corner-radius`) |
 | Editor | Editor-pane typography and display controls, when compiled in |
 | Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners that follow Interface's Corner radius up to 16 at 100% (`Theme::pane_radius()`), and the rim from the theme's glass (a hairline the outline's width without glass). PiPs take the same corner and follow Glass like a menu |
 | Multiplexer | Navigation, split shortcuts, Options rows, Import from tmux (one button over the system file picker), and the `zz/mux.conf` path with Reload |
@@ -248,12 +248,17 @@ The background-blur switch becomes a platform blur request in `window/background
 creation uses the resolved value, and every watcher update reapplies it to all open ala windows in
 place. macOS keeps a transparent ala surface and puts a layer-backed view under ala's view (found
 again by its `zz-window-backdrop` identifier, so a second apply updates it and blur off removes it)
-whose backdrop layer filters what is behind the window: blur radius 60, saturation 1.8, then a
-brightness cap that turns white into a gray at the cap, 0.25 at Frost 0, 0.10 at the default and
-0.04 from 0.7 up. zz hands that cap to the theme with the chrome opacity (`Theme::set_window`) as the brightest the backdrop can get, read as a relative luminance, so muted and faint text keep their opaque-window contrast over the lightest ground the window can show; without the backdrop layer it hands 1, white. The chrome over it takes 0.65 + 0.70 × (frost − 0.5), so 0.30 at Frost 0, 0.65
-at the default and opaque at 1. Where the backdrop layer is missing at runtime, zz falls back to
-the WindowServer background-blur radius, 160 × (0.5 + frost), with the chrome at Frost's own
-opacity; the backdrop and that radius are never on together. At startup it also reads the
+whose backdrop layer filters what is behind the window with the mode's glass look
+(penna's `GlassLook::of`): blur, saturation, a color matrix for the look's curve when it is not
+1 and 1, then `compressLuminance` at the look's cap (1 changes nothing). zz hands the darkest and
+brightest values that chain makes of black and white to the theme with the look's chrome opacity
+(`Theme::set_window(opacity, [darkest, brightest])`, sRGB gray values), so muted and faint text keep
+their opaque-window contrast over the worst ground the window can show; without the backdrop layer
+it hands 0 and 1. Where the backdrop layer is missing at runtime, zz falls back to the
+WindowServer background-blur radius, 160, with the chrome at the look's window opacity (0.86, 0.93,
+0.97); the backdrop and that radius are never on together. The window's pixels, the color matrix
+and the cap all work on sRGB-encoded values: a test window with white at 0.5 over black reads 128,
+not 188, and a matrix scale of 0.5 turns white into 128. At startup it also reads the
 desktop picture of the main screen, decodes a 64-pixel thumbnail off the main thread, and keeps the
 mean OKLab hue of its colors (none for a near-gray picture); while the window is blurred and
 `chrome-tint-hue` is not set, that hue becomes the chrome's tint hue, at tint strength 0.8 unless
@@ -312,8 +317,8 @@ per-component plumbing.
   family, so Agent Markdown, tool previews, and code blocks match the terminal typeface until Mono
   font picks another;
 - `contrast` from `chrome-contrast`, which scales derived colors and survives mode changes;
-- glass thickened by `interface-frost`, or none while the system reduces transparency, and the window
-  opacity from Frost while the window is blurred;
+- the mode's glass look, or no glass and no look while the system reduces transparency, and the
+  window opacity and backdrop range from that look while the window is blurred;
 - `pane_margin` from `pane-margin`, the `zz_ui::pane_look::PaneLook` global (`glow_strength` and
   `frames`) from `pane-glow-strength` and `pane-gaps`, and the `zz_ui::pip::PipOpacity` global from
   `pip-background-opacity`.

@@ -1,16 +1,30 @@
 use ala::{App, Global, Pixels, Window, WindowBackgroundAppearance};
-use penna::foundation::interface_theme::Frost;
+use penna::foundation::glass::GlassLook;
 
-#[cfg(any(target_os = "macos", test))]
-const BACKDROP_OPACITY: f32 = 0.65;
-#[cfg(any(target_os = "macos", test))]
-const BACKDROP_OPACITY_SPAN: f32 = 0.70;
-#[cfg(any(target_os = "macos", test))]
-const BACKDROP_CAP: f32 = 0.10;
-#[cfg(any(target_os = "macos", test))]
-const BACKDROP_CAP_SPAN: f32 = 0.30;
-#[cfg(any(target_os = "macos", test))]
-const BACKDROP_CAP_FLOOR: f32 = 0.04;
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct BackdropTuning {
+    pub(crate) scale: f32,
+    pub(crate) fallback_blur: f32,
+}
+
+impl BackdropTuning {
+    pub(crate) const DEFAULT: Self = Self {
+        scale: 0.125,
+        fallback_blur: 160.0,
+    };
+
+    pub(crate) fn get(cx: &App) -> Self {
+        cx.try_global::<Self>().copied().unwrap_or(Self::DEFAULT)
+    }
+}
+
+impl Default for BackdropTuning {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl Global for BackdropTuning {}
 
 struct CompositorBlurSupport(bool);
 
@@ -97,35 +111,21 @@ fn mean_hue(rgba: &[u8]) -> Option<f32> {
     (a.hypot(b) >= GRAY_CHROMA).then(|| b.atan2(a).to_degrees().rem_euclid(360.0))
 }
 
-#[cfg(any(target_os = "macos", test))]
-fn backdrop_brightness_cap(frost: Frost) -> f32 {
-    (BACKDROP_CAP - (frost.get() - Frost::DEFAULT.get()) * BACKDROP_CAP_SPAN)
-        .max(BACKDROP_CAP_FLOOR)
-}
-
-#[cfg(any(target_os = "macos", test))]
-fn backdrop_chrome_opacity(frost: Frost) -> f32 {
-    if frost.get() >= 1.0 {
-        return 1.0;
-    }
-    (BACKDROP_OPACITY + (frost.get() - Frost::DEFAULT.get()) * BACKDROP_OPACITY_SPAN).min(1.0)
-}
-
-pub(crate) fn chrome_opacity(frost: Frost) -> f32 {
+pub(crate) fn chrome_opacity(look: &GlassLook) -> f32 {
     #[cfg(target_os = "macos")]
     if macos::backdrop_available() {
-        return backdrop_chrome_opacity(frost);
+        return look.chrome_opacity;
     }
-    frost.window_opacity()
+    look.window_opacity
 }
 
-pub(crate) fn backdrop_ceiling(frost: Frost) -> f32 {
+pub(crate) fn backdrop_range(look: &GlassLook) -> [f32; 2] {
     #[cfg(target_os = "macos")]
     if macos::backdrop_available() {
-        return backdrop_brightness_cap(frost);
+        return look.backdrop_range();
     }
-    let _ = frost;
-    1.0
+    let _ = look;
+    [0.0, 1.0]
 }
 
 #[cfg(test)]
@@ -177,21 +177,21 @@ pub(crate) fn apply(
     window: &Window,
     requested: WindowBackgroundAppearance,
     corner_radius: Pixels,
-    frost: Frost,
+    look: Option<&GlassLook>,
+    tuning: BackdropTuning,
 ) {
     let enabled = requested == WindowBackgroundAppearance::Blurred;
 
     #[cfg(target_os = "macos")]
     {
         let backdrop = enabled && macos::backdrop_available();
-        if let Err(error) =
-            macos::set_backdrop(window, backdrop.then(|| backdrop_brightness_cap(frost)))
-        {
+        if let Err(error) = macos::set_backdrop(window, look.filter(|_| backdrop), tuning) {
             log::warn!(target: "zz::window_background", "could not update macOS window backdrop: {error}");
         }
-        if let Err(error) =
-            macos::set_blur(window, (enabled && !backdrop).then(|| frost.blur_scale()))
-        {
+        if let Err(error) = macos::set_blur(
+            window,
+            (enabled && !backdrop).then_some(tuning.fallback_blur),
+        ) {
             log::warn!(target: "zz::window_background", "could not update macOS window blur: {error}");
         }
     }
@@ -202,13 +202,13 @@ pub(crate) fn apply(
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    let _ = (window, enabled, corner_radius, frost);
+    let _ = (window, enabled, corner_radius, look, tuning);
 
     #[cfg(target_os = "macos")]
     let _ = corner_radius;
 
     #[cfg(target_os = "linux")]
-    let _ = frost;
+    let _ = (look, tuning);
 }
 
 #[cfg(any(target_os = "linux", test))]
@@ -321,18 +321,19 @@ mod macos {
         CGBitmapContextCreate, CGColorSpace, CGContext, CGImage, CGImageAlphaInfo,
         CGImageByteOrderInfo, kCGColorSpaceSRGB,
     };
-    use objc2_foundation::{NSArray, NSNumber, NSString};
+    use objc2_foundation::{NSArray, NSNumber, NSString, NSValue};
     use objc2_quartz_core::{CAAutoresizingMask, CALayer};
+    use penna::foundation::glass::GlassLook;
     use raw_window_handle::RawWindowHandle;
 
-    const BLUR_RADIUS: i32 = 160;
     const THUMBNAIL_PIXELS: i32 = 64;
     const BACKDROP_VIEW: &str = "zz-window-backdrop";
     const BACKDROP_GROUP: &str = "NSCGSWindowBehindWindowCaptureBackdropGroup";
-    const BACKDROP_SCALE: f64 = 0.125;
-    const BACKDROP_BLUR: f64 = 60.0;
-    const BACKDROP_SATURATION: f64 = 1.8;
     const BRIGHTNESS_CAP: &str = "compressLuminance";
+    const BLUR: &str = "gaussianBlur";
+    const SATURATE: &str = "colorSaturate";
+    const CURVE: &str = "colorMatrix";
+    const COLOR_MATRIX_TYPE: &std::ffi::CStr = c"{CAColorMatrix=ffffffffffffffffffff}";
 
     type ConnectionId = u32;
     type WindowId = u32;
@@ -453,7 +454,11 @@ mod macos {
         AnyClass::get(c"CABackdropLayer").is_some() && AnyClass::get(c"CAFilter").is_some()
     }
 
-    pub(super) fn set_backdrop(window: &Window, cap: Option<f32>) -> Result<(), BlurError> {
+    pub(super) fn set_backdrop(
+        window: &Window,
+        look: Option<&GlassLook>,
+        tuning: super::BackdropTuning,
+    ) -> Result<(), BlurError> {
         let main_thread = MainThreadMarker::new().ok_or(BlurError::NotMainThread)?;
         let view = ala_view(window)?;
         let superview = unsafe { view.superview() }.ok_or(BlurError::MissingView)?;
@@ -462,21 +467,53 @@ mod macos {
             .subviews()
             .iter()
             .find(|subview| subview.identifier().is_some_and(|id| *id == *identifier));
-        match (existing, cap) {
+        match (existing, look) {
             (Some(host), None) => host.removeFromSuperview(),
-            (Some(host), Some(cap)) => {
+            (Some(host), Some(look)) => {
                 let backdrop = unsafe { host.layer().and_then(|layer| layer.sublayers()) }
                     .and_then(|layers| layers.firstObject())
                     .ok_or(BlurError::MissingView)?;
-                let path = NSString::from_str(&format!("filters.{BRIGHTNESS_CAP}.inputAmount"));
-                let amount = NSNumber::new_f64(f64::from(cap));
-                unsafe {
-                    let _: () = msg_send![&*backdrop, setValue: &*amount, forKeyPath: &*path];
+                let shown = backdrop.filters().map_or(0, |filters| filters.count());
+                let curve = look.curve();
+                if shown != filter_count(curve) {
+                    let filters = backdrop_filters(look).ok_or(BlurError::MissingView)?;
+                    unsafe { backdrop.setFilters(Some(&NSArray::from_retained_slice(&filters))) };
+                    set_value(
+                        &backdrop,
+                        "scale",
+                        &NSNumber::new_f64(decimal(tuning.scale)),
+                    );
+                    return Ok(());
+                }
+                if let Some(curve) = curve {
+                    let path = NSString::from_str(&format!("filters.{CURVE}.inputColorMatrix"));
+                    let matrix = color_matrix(curve);
+                    unsafe {
+                        let _: () = msg_send![&*backdrop, setValue: &*matrix, forKeyPath: &*path];
+                    }
+                }
+                for (path, value) in [
+                    (
+                        format!("filters.{BRIGHTNESS_CAP}.inputAmount"),
+                        decimal(look.cap),
+                    ),
+                    (format!("filters.{BLUR}.inputRadius"), decimal(look.blur)),
+                    (
+                        format!("filters.{SATURATE}.inputAmount"),
+                        decimal(look.saturation),
+                    ),
+                    ("scale".to_owned(), decimal(tuning.scale)),
+                ] {
+                    let path = NSString::from_str(&path);
+                    let value = NSNumber::new_f64(value);
+                    unsafe {
+                        let _: () = msg_send![&*backdrop, setValue: &*value, forKeyPath: &*path];
+                    }
                 }
             }
-            (None, Some(cap)) => {
-                let host =
-                    backdrop_view(main_thread, &superview, cap).ok_or(BlurError::MissingView)?;
+            (None, Some(look)) => {
+                let host = backdrop_view(main_thread, &superview, look, tuning)
+                    .ok_or(BlurError::MissingView)?;
                 host.setIdentifier(Some(&identifier));
                 superview.addSubview_positioned_relativeTo(
                     &host,
@@ -492,7 +529,8 @@ mod macos {
     fn backdrop_view(
         main_thread: MainThreadMarker,
         superview: &NSView,
-        cap: f32,
+        look: &GlassLook,
+        tuning: super::BackdropTuning,
     ) -> Option<Retained<NSView>> {
         let host = NSView::initWithFrame(NSView::alloc(main_thread), superview.bounds());
         host.setAutoresizingMask(
@@ -504,33 +542,69 @@ mod macos {
         let backdrop: Retained<CALayer> =
             unsafe { msg_send![AnyClass::get(c"CABackdropLayer")?, layer] };
         set_value(&backdrop, "windowServerAware", &NSNumber::new_bool(true));
-        set_value(&backdrop, "scale", &NSNumber::new_f64(BACKDROP_SCALE));
+        set_value(
+            &backdrop,
+            "scale",
+            &NSNumber::new_f64(decimal(tuning.scale)),
+        );
         set_value(&backdrop, "groupName", &NSString::from_str(BACKDROP_GROUP));
         backdrop.setFrame(backing.bounds());
         backdrop.setAutoresizingMask(
             CAAutoresizingMask::LayerWidthSizable | CAAutoresizingMask::LayerHeightSizable,
         );
-        let filters = [
+        let filters = backdrop_filters(look)?;
+        unsafe { backdrop.setFilters(Some(&NSArray::from_retained_slice(&filters))) };
+        backing.addSublayer(&backdrop);
+        Some(host)
+    }
+
+    const fn filter_count(curve: Option<(f32, f32)>) -> usize {
+        if curve.is_some() { 5 } else { 4 }
+    }
+
+    fn backdrop_filters(look: &GlassLook) -> Option<Vec<Retained<AnyObject>>> {
+        let mut filters = vec![
             filter("sdrNormalize", &[])?,
             filter(
-                "gaussianBlur",
+                BLUR,
                 &[
-                    ("inputRadius", &NSNumber::new_f64(BACKDROP_BLUR)),
+                    ("inputRadius", &NSNumber::new_f64(decimal(look.blur))),
                     ("inputNormalizeEdges", &NSNumber::new_bool(true)),
                 ],
             )?,
             filter(
-                "colorSaturate",
-                &[("inputAmount", &NSNumber::new_f64(BACKDROP_SATURATION))],
-            )?,
-            filter(
-                BRIGHTNESS_CAP,
-                &[("inputAmount", &NSNumber::new_f64(f64::from(cap)))],
+                SATURATE,
+                &[("inputAmount", &NSNumber::new_f64(decimal(look.saturation)))],
             )?,
         ];
-        unsafe { backdrop.setFilters(Some(&NSArray::from_retained_slice(&filters))) };
-        backing.addSublayer(&backdrop);
-        Some(host)
+        if let Some(curve) = look.curve() {
+            filters.push(filter(
+                CURVE,
+                &[("inputColorMatrix", &color_matrix(curve))],
+            )?);
+        }
+        filters.push(filter(
+            BRIGHTNESS_CAP,
+            &[("inputAmount", &NSNumber::new_f64(decimal(look.cap)))],
+        )?);
+        Some(filters)
+    }
+
+    fn color_matrix((scale, offset): (f32, f32)) -> Retained<NSValue> {
+        let matrix: [f32; 20] = [
+            scale, 0.0, 0.0, 0.0, offset, 0.0, scale, 0.0, 0.0, offset, 0.0, 0.0, scale, 0.0,
+            offset, 0.0, 0.0, 0.0, 1.0, 0.0,
+        ];
+        unsafe {
+            NSValue::valueWithBytes_objCType(
+                NonNull::from(&matrix).cast(),
+                NonNull::from(COLOR_MATRIX_TYPE).cast(),
+            )
+        }
+    }
+
+    fn decimal(value: f32) -> f64 {
+        value.to_string().parse().unwrap_or(f64::from(value))
     }
 
     fn filter(kind: &str, inputs: &[(&str, &AnyObject)]) -> Option<Retained<AnyObject>> {
@@ -565,7 +639,7 @@ mod macos {
             .ok_or(BlurError::MissingView)
     }
 
-    pub(super) fn set_blur(window: &Window, scale: Option<f32>) -> Result<(), BlurError> {
+    pub(super) fn set_blur(window: &Window, radius: Option<f32>) -> Result<(), BlurError> {
         MainThreadMarker::new().ok_or(BlurError::NotMainThread)?;
         let view = ala_view(window)?;
         let native_window = view.window().ok_or(BlurError::MissingWindow)?;
@@ -573,7 +647,7 @@ mod macos {
             .ok()
             .filter(|id| *id != 0)
             .ok_or(BlurError::MissingWindow)?;
-        let radius = scale.map_or(0, |scale| (BLUR_RADIUS as f32 * scale).round() as i32);
+        let radius = radius.map_or(0, |radius| radius.round() as i32);
         let status =
             unsafe { CGSSetWindowBackgroundBlurRadius(CGSMainConnectionID(), window_id, radius) };
         if status == 0 {
@@ -803,22 +877,6 @@ mod tests {
 
         assert_eq!(&region[..4], &[0, 0, 100, 56]);
         assert_eq!(region.len(), (1 + 4) * 4);
-    }
-
-    #[test]
-    fn frost_sets_the_backdrop_brightness_cap_and_the_chrome_opacity() {
-        for (frost, cap, opacity) in [(0.0, 0.25, 0.30), (0.5, 0.10, 0.65), (1.0, 0.04, 1.0)] {
-            let frost = Frost::new(frost);
-            assert!(
-                (backdrop_brightness_cap(frost) - cap).abs() < 1e-6,
-                "cap at {frost:?}"
-            );
-            assert!(
-                (backdrop_chrome_opacity(frost) - opacity).abs() < 1e-6,
-                "opacity at {frost:?}"
-            );
-        }
-        assert_eq!(backdrop_chrome_opacity(Frost::new(1.0)), 1.0);
     }
 
     #[test]

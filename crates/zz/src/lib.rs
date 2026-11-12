@@ -260,6 +260,7 @@ fn run_app(
             start_heap_trim(cx);
             #[cfg(target_os = "macos")]
             cx.activate(true);
+            window::glass_lab::init(cx);
             config::init(cx);
             tailnet::start(cx);
             cx.set_global(tray::DesktopTray::default());
@@ -284,7 +285,8 @@ fn run_app(
             let window_state = window::state::MainWindowState::load_persistent();
 
             cx.on_window_closed(|cx, _window_id| {
-                if cx.windows().is_empty() {
+                window::glass_lab::forget_closed(cx);
+                if window::glass_lab::app_windows(cx).is_empty() {
                     cx.quit();
                 }
             })
@@ -447,6 +449,9 @@ fn run_app(
             .expect("failed to open zz window");
             window::toast::set_host(main_window, cx);
             cx.activate(true);
+            if window::glass_lab::opens_at_launch() {
+                window::glass_lab::set_open(true, cx);
+            }
         });
 }
 

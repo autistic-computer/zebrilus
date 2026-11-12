@@ -77,7 +77,7 @@ Drawn at `radius` 24, where the curve shows.
 
 ## Glass
 
-Glass is for what sits over something: what floats over the content (menus, popovers, tooltips, toasts, a button over a transcript), panes when they have gaps, and the selected row or tab in a sidebar or title bar. It is a switch: on, `liquid` blurs what is under it and bends it at the rim; off, `none` draws the popover fill.
+Glass is for what sits over something: what floats over the content (menus, popovers, tooltips, toasts, a button over a transcript), panes when they have gaps, and the selected row or tab in a sidebar or title bar. It is a switch: on, `liquid` blurs what is under it and bends it at the rim, with one look tuned for light and one for dark; off, `none`, draws the popover fill.
 
 ```figure uses=menu
 <div class="docs-show" data-gap="wide">

@@ -425,7 +425,8 @@ impl AppShell {
             SettingsSection::Appearance
         };
         if !narrow {
-            return self.settings_page(section, None, cx);
+            let page = self.settings_page(section, None, cx);
+            return self.plated("web-settings-pane", page, window, cx);
         }
         let view = cx.entity().downgrade();
         let shell = cx.entity().downgrade();
@@ -585,7 +586,6 @@ impl AppShell {
                         !matches!(item, AppearancePageItem::App(row) if *row != ZzRow::ProgramColors)
                     })
                     .filter(|item| !phone || !matches!(item, AppearancePageItem::Pointer))
-                    .filter(|item| item.shown(&self.preferences.appearance))
                     .filter(|item| !narrow || !matches!(item, AppearancePageItem::Title))
                     .collect::<Vec<_>>();
                 let empty = |at: usize, items: &[AppearancePageItem]| {

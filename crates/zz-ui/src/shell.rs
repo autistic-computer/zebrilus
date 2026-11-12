@@ -14,15 +14,16 @@ use ala::{
 
 #[must_use]
 pub fn shell_frame(window: ala::Hsla, gaps: bool, cx: &App) -> Option<ala::Hsla> {
-    gaps.then(|| {
-        penna::blocks::sidebar::sidebar_fill(
-            Ground {
-                fill: window,
-                ..cx.theme().ground()
-            },
-            cx,
-        )
-    })
+    if !gaps {
+        return (window.a < 1.0).then(|| cx.theme().content_plate());
+    }
+    Some(penna::blocks::sidebar::sidebar_fill(
+        Ground {
+            fill: window,
+            ..cx.theme().ground()
+        },
+        cx,
+    ))
 }
 
 #[must_use]

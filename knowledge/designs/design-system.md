@@ -90,13 +90,15 @@ Without it, the keycap would compute muted gray against the window.
 
 A surface floating over content takes its fill `.opaque()` (`Ground::opaque` keeps the elevation).
 
+The window has two planes. The chrome plane is the window's ground (`chrome_background`): the sidebar, the title bar and the gaps between panes sit on it, and the sidebar is the `Panel` step over it. The content plane is a plate of the background over the window (`theme.content_plate()`): every pane, gapped or flush, and the settings page sit on it, and whatever is drawn in them resolves against `theme.content_ground()`. On an opaque window the plate is the background itself, so a flush pane needs nothing painted; on a see-through window it is the background at the glass look's plate opacity (0.57 in dark and 0.72 in light), so content lets less of the desktop through than the chrome, and its ground stays short of full opacity so cards and controls on it keep drawing as washes. In dark the default theme draws content at #1a1a19 and the sidebar at #212120.
+
 Surfaces take their fill, edge, corners and shadow from their **surface role**, described in [surface roles](/designs/surface-roles.md): `theme.layer(surface, state)` resolves the role's style against the theme's materials and returns one `Layer`. Kit components paint it in a typed look that picks the role (`Button::look(ButtonLook::X)`, `Row`, `Panel`, `Chip` and the rest, see penna's `knowledge/designs/kit.md`), and a widget with no look draws as its kind; only content code paints a role by hand, with `.surface(role)` or `.surface_at(role, state)` under a lint allow. A `Surface` is a role or a look with a tone, a `prominent` flag (the solid main action) and the ground it sits on (`.on(ground)`).
 
 A ground remembers its `elevation` and whether it is glass, and `paint.ground_at` and `Layer::ground` pass them on. Controls (rows, tabs, chips, buttons, icon buttons, fields, badges, keycaps) cast their shadow only on the window: on a panel or a popover they keep the outline and drop the shadow, so a stepper in a menu or a field on a settings card does not stack a third layer on a surface that already stands off the window. Glass on a glass ground paints a tint instead.
 
 ala draws a shadow under the whole box, not only outside it, so a translucent fill over a shadow turns muddy (a 12% wash over a 20% shadow reads as 30%). A surface that casts a shadow or shows a ring composites its fill over its ground first.
 
-A pane paints no fill of its own: the window shows through it. `zz_ui::pane_look::pane_color(theme, fill)` is the solid color of a pane's fill (the window color, or a terminal's background) over the window, which a PiP tints its glass with, or paints opaque while glass is off.
+A flush pane paints no fill of its own: the column's plate shows through it, and a gapped pane's frame is tinted with the plate. `zz_ui::pane_look::pane_color(theme, fill)` is the solid color of a pane's fill (the window color, or a terminal's background) over the window, which a PiP tints its glass with, or paints opaque while glass is off.
 
 ## Lines and backdrops
 
@@ -127,7 +129,7 @@ Text, number and select fields are neutral paints at their field role's emphasis
 - `Input::emphasis(Emphasis::Ghost)` is for a field that shows its edge only on hover or focus.
 - `Input::on(ground)` puts a field inside a tile or card on that surface's ground, and `Input::emphasis` draws it filled, outlined or bare.
 - `NumberInput` takes the same three, and `Select` and `Button` take `.on(ground)` too.
-- Settings controls sit on `settings_card_ground(cx)`, the opaque panel a settings card fills with, so their fills step up from the card instead of a hand-picked control fill.
+- Settings controls sit on `settings_card_ground(cx)`, the card's step above the content plate (`theme.content_ground()`), so their fills step up from the card instead of a hand-picked control fill.
 
 The shared field chrome in penna's `input/field.rs` does three things:
 - it always draws at least a 1px border, clear unless the role draws one, so focusing never moves the text (a role with no fill and no outline draws no box);

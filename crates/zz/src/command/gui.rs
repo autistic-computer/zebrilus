@@ -1,6 +1,6 @@
 use ala::{App, Entity};
 use zz_client::gui_actions::{
-    ACCENT, GLASS, GuiAction, GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, TITLEBAR_MODE,
+    ACCENT, GLASS, GLASS_LAB, GuiAction, GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, TITLEBAR_MODE,
 };
 
 use crate::{
@@ -27,6 +27,9 @@ pub(crate) fn offers(sidebar: &Entity<WorkspaceSidebar>, cx: &App) -> Vec<GuiOff
         ),
         GuiOffer::fixed(ACCENT, &config::appearance(cx).accent()),
         GuiOffer::toggle(SIDEBAR_LAYOUT, sidebar.is_flat()),
+        crate::window::glass_lab::available()
+            .then(|| GuiOffer::toggle(GLASS_LAB, crate::window::glass_lab::is_open(cx)))
+            .flatten(),
     ]
     .into_iter()
     .flatten()
@@ -57,6 +60,7 @@ pub(crate) fn apply(
             }
         }),
         SIDEBAR_LAYOUT => sidebar.update(cx, |sidebar, cx| sidebar.set_flat(value == "true", cx)),
+        GLASS_LAB => crate::window::glass_lab::set_open(value == "true", cx),
         _ => {
             if let Some(key) = action.config_key.and_then(ConfigKey::parse) {
                 config::settings::written(key, config::set_config_key(key, value), cx);

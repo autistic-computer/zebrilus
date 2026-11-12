@@ -253,22 +253,6 @@ function followLook(frame) {
   });
 }
 
-function showFrost(frame) {
-  frame.querySelectorAll(".appearance-look-glass").forEach((glass) => {
-    const run = glass.closest(".appearance-run");
-    const frost = run?.querySelector(".appearance-frost");
-    if (!frost) return;
-    const shown = glass.getAttribute("aria-checked") === "true";
-    const rule = frost.previousElementSibling;
-    frost.style.display = shown ? "" : "none";
-    if (rule?.classList.contains("appearance-rule")) rule.style.display = shown ? "" : "none";
-    if (!glass.appearanceFrost) {
-      glass.appearanceFrost = true;
-      glass.addEventListener("change", () => showFrost(frame));
-    }
-  });
-}
-
 function pickMode(frame) {
   frame.querySelectorAll(".appearance-mode").forEach((control) => {
     if (control.dataset.touched) return;
@@ -284,7 +268,6 @@ function settleAppearance() {
   document.querySelectorAll(".appearance-frame").forEach((frame) => {
     pickMode(frame);
     followLook(frame);
-    showFrost(frame);
     wireSwatches(frame);
     wireCustom(frame);
     pennaKit.ceilText(frame);

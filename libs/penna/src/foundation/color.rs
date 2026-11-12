@@ -1,6 +1,8 @@
 use ala::{Hsla, Rgba, hsla};
 use std::cell::{Cell, RefCell};
 
+use super::tuning::read_glass_tuning;
+
 #[inline]
 #[cfg(test)]
 pub fn hsl(h: f32, s: f32, l: f32) -> Hsla {
@@ -49,9 +51,9 @@ pub fn oklab_lightness(color: Hsla) -> f32 {
     oklab::rgb_to_oklab(color.into()).0
 }
 
-const RAISE_STEP: f32 = 0.04;
-const EDGE_WEIGHT: f32 = 0.14;
-const DIVIDER_WEIGHT: f32 = 0.08;
+pub(super) const RAISE_STEP: f32 = 0.04;
+pub(super) const EDGE_WEIGHT: f32 = 0.14;
+pub(super) const DIVIDER_WEIGHT: f32 = 0.08;
 const HOVER: f32 = 0.06;
 const ACTIVE: f32 = 0.12;
 const REST: f32 = 0.15;
@@ -72,7 +74,7 @@ const FIT_STEPS: usize = 20;
 thread_local! {
     static CONTRAST: Cell<f32> = const { Cell::new(1.0) };
     static MUTED_CEILING: Cell<f32> = const { Cell::new(MUTED) };
-    static SEE_THROUGH: Cell<Option<(Hsla, f32)>> = const { Cell::new(None) };
+    static SEE_THROUGH: Cell<Option<(Hsla, [f32; 2])>> = const { Cell::new(None) };
     static MEMO: RefCell<Box<[Option<(MemoKey, Hsla)>]>> =
         RefCell::new(vec![None; MEMO_SLOTS].into_boxed_slice());
 }
@@ -162,10 +164,14 @@ fn muted_ceiling(foreground: Hsla, background: Hsla) -> f32 {
     low
 }
 
-pub(super) fn set_see_through(window: Option<(Hsla, f32)>) {
+pub(super) fn set_see_through(window: Option<(Hsla, [f32; 2])>) {
     if SEE_THROUGH.replace(window) != window {
-        MEMO.with_borrow_mut(|memo| memo.fill(None));
+        forget_memo();
     }
+}
+
+pub(super) fn forget_memo() {
+    MEMO.with_borrow_mut(|memo| memo.fill(None));
 }
 
 pub(super) fn ink_on(ink: Hsla, ground: Hsla, weight: f32) -> Hsla {
@@ -188,17 +194,23 @@ fn ink_toward_contrast(ink: Hsla, weight: f32) -> Hsla {
     }
 }
 
-fn share_over(ink: Hsla, mixed: Hsla, ground: Hsla, backdrop: f32) -> Hsla {
+fn share_over(ink: Hsla, mixed: Hsla, ground: Hsla, [darkest, lightest]: [f32; 2]) -> Hsla {
     let target = contrast_ratio(mixed, ground.opaque());
     memo(memo_key(2, ink, ground, target), || {
         let behind = if oklab_lightness(ink) > oklab_lightness(ground.opaque()) {
-            backdrop.clamp(0.0, 1.0).cbrt()
+            lightest
         } else {
-            0.0
-        };
-        let lightest = oklch(behind, 0.0, 0.0).blend(ground);
-        let reads =
-            |share: f32| contrast_ratio(lightest.blend(ink.opacity(share)), lightest) >= target;
+            darkest
+        }
+        .clamp(0.0, 1.0);
+        let worst = Hsla::from(Rgba {
+            r: behind,
+            g: behind,
+            b: behind,
+            a: 1.0,
+        })
+        .blend(ground);
+        let reads = |share: f32| contrast_ratio(worst.blend(ink.opacity(share)), worst) >= target;
         if !reads(1.0) {
             return ink;
         }
@@ -343,11 +355,15 @@ pub(super) fn contrast_ratio(left: Hsla, right: Hsla) -> f32 {
 }
 
 pub(super) fn edge_weight() -> f32 {
-    scaled(EDGE_WEIGHT)
+    scaled(read_glass_tuning(|tuning| tuning.edge_weight))
 }
 
 pub(super) fn divider_weight() -> f32 {
-    scaled(DIVIDER_WEIGHT)
+    scaled(read_glass_tuning(|tuning| tuning.divider_weight))
+}
+
+fn raise_step() -> f32 {
+    scaled(read_glass_tuning(|tuning| tuning.raise_step))
 }
 
 #[must_use]
@@ -527,11 +543,11 @@ fn toward_contrast(color: Hsla, amount: f32) -> Hsla {
 
 impl Colorize for Hsla {
     fn raised(&self, level: u8) -> Self {
-        toward_contrast(*self, scaled(RAISE_STEP) * f32::from(level))
+        toward_contrast(*self, raise_step() * f32::from(level))
     }
 
     fn washed(&self, level: u8) -> Self {
-        contrast_pole(*self).opacity(scaled(RAISE_STEP) * f32::from(level))
+        contrast_pole(*self).opacity(raise_step() * f32::from(level))
     }
 
     fn hover(&self) -> Self {
@@ -824,12 +840,12 @@ mod tests {
         };
         let opaque = ["#908f8c", "#4d4c4b", "#a4a3a0", "#6f6e6b"];
         assert_eq!(inks(&theme), opaque);
-        theme.set_window(0.545, 0.145);
+        theme.set_window(0.545, [0.0, 0.4]);
         assert_eq!(
             inks(&theme),
-            ["#e9e7e3b9", "#e9e7e346", "#e9e7e3dc", "#e9e7e37e"]
+            ["#e9e7e3b5", "#e9e7e345", "#e9e7e3d8", "#e9e7e37c"]
         );
-        theme.set_window(1.0, 1.0);
+        theme.set_window(1.0, [0.0, 1.0]);
         assert_eq!(inks(&theme), opaque);
     }
 

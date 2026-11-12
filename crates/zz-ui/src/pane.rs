@@ -812,8 +812,8 @@ pub fn pane_surface(
     };
     let rim = chrome
         .frame
-        .filter(|_| glass && chrome.rim_over_content)
-        .map(|frame| frame.rim());
+        .filter(|frame| glass && (chrome.rim_over_content || frame.tint.a < 1.0))
+        .map(|frame| crate::pane_look::rim_only(frame, theme));
     let frame = chrome.frame.map(|frame| {
         let frame = if rim.is_some() {
             frame.specular(0.0).fresnel(0.0)
@@ -893,8 +893,27 @@ fn paint_material(surface: Stateful<ala::Div>, material: &Layer) -> Stateful<ala
     surface.layer(material)
 }
 
+pub fn content_pane(
+    id: impl Into<ElementId>,
+    content: impl IntoElement,
+    gap: Pixels,
+    radii: Corners<Pixels>,
+    plane: Hsla,
+    cx: &App,
+) -> ala::Div {
+    div().size_full().p(gap).child(pane_surface(
+        id,
+        content,
+        [],
+        PaneChrome::new(radii, true)
+            .active(true)
+            .frame(Some(PaneLook::global(cx).frame(cx.theme(), plane, true))),
+        cx,
+    ))
+}
+
 fn pane_frame_layer(frame: GlassMaterial, glass: bool, rest: Layer) -> Layer {
-    if glass {
+    if glass && frame.tint.a >= 1.0 {
         return Layer {
             glass: Some(frame),
             border_width: Pixels::ZERO,
@@ -903,6 +922,7 @@ fn pane_frame_layer(frame: GlassMaterial, glass: bool, rest: Layer) -> Layer {
     }
     Layer {
         fill: frame.tint,
+        glass: None,
         border_width: Pixels::ZERO,
         ..rest
     }
@@ -1927,6 +1947,35 @@ pub fn pane_picker_choices(rows: impl IntoIterator<Item = AnyElement>) -> ala::D
 mod tests {
     use super::*;
     use ala::point;
+
+    #[ala::test]
+    fn a_see_through_gapped_pane_paints_its_plate_as_a_fill_under_the_rim(
+        cx: &mut ala::TestAppContext,
+    ) {
+        cx.update(|cx| {
+            crate::init(cx);
+            let theme = penna::Theme::global_mut(cx);
+            theme.glass = Some(penna::foundation::interface_theme::liquid(
+                penna::ThemeMode::Dark,
+            ));
+            theme.glass_look = Some(penna::foundation::glass::GlassLook::of(
+                penna::ThemeMode::Dark,
+            ));
+            theme.pane_margin = px(8.0);
+            theme.set_window(0.796, [0.0, 1.0]);
+            let theme = cx.theme();
+            let frame = PaneLook::default().frame(theme, theme.ground().fill, true);
+            let layer = pane_frame_layer(frame, true, pane_material(cx));
+            assert_eq!(layer.glass, None);
+            assert_eq!(layer.fill, theme.background.alpha(0.57));
+
+            penna::Theme::global_mut(cx).set_window(1.0, [0.0, 1.0]);
+            let theme = cx.theme();
+            let frame = PaneLook::default().frame(theme, theme.ground().fill, true);
+            let layer = pane_frame_layer(frame, true, pane_material(cx));
+            assert_eq!(layer.glass.map(|glass| glass.tint), Some(theme.background));
+        });
+    }
 
     struct TitleTest {
         label: &'static str,
