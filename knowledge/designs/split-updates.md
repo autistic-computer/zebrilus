@@ -62,7 +62,7 @@ timestamp: 2026-11-11T00:00:00-03:00
 > copy once in the background before panes use it, because macOS scans a new executable file on its
 > first run: without that the first pane of every daemon start waited about 1.3 s (debug build)
 > and its window was named after the helper. Until the run finishes, panes use the bundle path. Linux and Windows
-> are unchanged. All four steps are built; no message is gated yet and every revision is 1.
+> are unchanged. All four steps are built; no message is gated yet and both floors are 1.
 >
 > **2026-11-11: the app installs the update itself.** Update in the toast or on the About page
 > downloads the release's asset for this install (a `zz.app` bundle, a tarball prefix or an

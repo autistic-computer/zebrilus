@@ -28852,10 +28852,18 @@ impl Shared {
                     .replace(next_streamed);
             }
             refresh_preview_watches(&mut inner);
+            forget_floating_pane_reports(&mut inner);
             let layout_changed = write_back_terminal_geometries(&mut inner, &affected_panes);
             for (_, client) in attachments {
                 sync_client_view_areas(&inner, client);
             }
+            affected_panes.extend(inner.engine.state.windows.values().flat_map(|window| {
+                window
+                    .panes
+                    .keys()
+                    .copied()
+                    .filter(|pane| window.is_floating(*pane))
+            }));
             let resizes = terminal_resizes_for_panes(&inner, &affected_panes);
             (changes, resizes, layout_changed)
         };
@@ -43091,10 +43099,13 @@ fn resolve_popup_client(
     if eligible.contains(&invoking_client) {
         return Ok(invoking_client);
     }
-    if let Some(owner) = context
-        .pane
-        .and_then(|pane| terminal_geometry_owner(inner, pane))
-        && eligible.contains(&owner)
+    if let Some(owner) = context.pane.and_then(|pane| {
+        terminal_geometry_owner(inner, pane).or_else(|| {
+            let window = inner.engine.state.window_for_pane(pane)?;
+            window_geometry_owner(inner, inner.engine.state.windows.get(&window)?)
+                .map(|(_, owner)| owner)
+        })
+    }) && eligible.contains(&owner)
     {
         return Ok(owner);
     }
@@ -46087,6 +46098,26 @@ fn remove_client_terminal_geometries(
     affected
 }
 
+fn forget_floating_pane_reports(inner: &mut ServerState) {
+    let floats = inner
+        .engine
+        .state
+        .windows
+        .values()
+        .flat_map(|window| {
+            window
+                .panes
+                .keys()
+                .copied()
+                .filter(|pane| window.is_floating(*pane) && window.zoomed_pane != Some(*pane))
+        })
+        .collect::<Vec<_>>();
+    for pane in floats {
+        inner.terminal_geometries.remove(&pane);
+        inner.reported_pane_places.remove(&pane);
+    }
+}
+
 fn sync_view_area(inner: &ServerState, pane: PaneId, client: ClientId) {
     if let Some(terminal) = inner.terminals.get(&pane) {
         terminal.set_view_area(
@@ -46155,6 +46186,16 @@ fn terminal_geometry_owner(inner: &ServerState, pane: PaneId) -> Option<ClientId
             )
         })
         .copied()
+}
+
+fn window_geometry_owner(
+    inner: &ServerState,
+    window: &zz_mux::Window,
+) -> Option<(PaneId, ClientId)> {
+    window
+        .panes
+        .keys()
+        .find_map(|pane| Some((*pane, terminal_geometry_owner(inner, *pane)?)))
 }
 
 fn client_terminal_geometry(
@@ -46341,16 +46382,16 @@ fn floating_terminal_geometry(
         return None;
     }
     let (columns, rows) = inner.engine.pane_geometry(pane)?;
-    let (cell_width_px, cell_height_px) = inner
-        .attached
-        .get(&window.session)
-        .into_iter()
-        .flatten()
-        .find_map(|client| {
-            client_terminal_geometry(inner, *client, pane)
-                .or_else(|| client_terminal_geometry(inner, *client, window.active_pane))
-                .map(|geometry| (geometry.cell_width_px, geometry.cell_height_px))
-                .or_else(|| inner.client(*client).and_then(|c| c.cell_pixels))
+    let (cell_width_px, cell_height_px) = window_geometry_owner(inner, window)
+        .and_then(|(reported, owner)| client_terminal_geometry(inner, owner, reported))
+        .map(|geometry| (geometry.cell_width_px, geometry.cell_height_px))
+        .or_else(|| {
+            inner
+                .attached
+                .get(&window.session)
+                .into_iter()
+                .flatten()
+                .find_map(|client| inner.client(*client).and_then(|c| c.cell_pixels))
         })
         .unwrap_or_default();
     Some(TerminalGeometry {
@@ -121698,6 +121739,34 @@ bind - split-window -v -c "#{pane_current_path}"
             .expect("open a float");
         let float = context.pane.expect("float pane");
         wait_for_terminal_size(&shared, float, (20, 6));
+        let float_cell = |shared: &Shared| {
+            terminal_resize_for_pane(&shared.inner.lock(), float)
+                .map(|(_, geometry)| (geometry.cell_width_px, geometry.cell_height_px))
+        };
+        assert_eq!(float_cell(&shared), Some((8, 18)));
+        for focus in [tile, float] {
+            shared
+                .execute(
+                    client,
+                    ClientKind::Interactive,
+                    &mut context,
+                    &CommandInvocation::new("select-pane", ["-t", &focus.to_string()]),
+                )
+                .expect("focus a pane");
+            assert_eq!(float_cell(&shared), Some((8, 18)), "focus on {focus}");
+        }
+        shared
+            .execute(
+                client,
+                ClientKind::Interactive,
+                &mut context,
+                &CommandInvocation::new(
+                    "resize-pane",
+                    ["-t", &float.to_string(), "-x", "30", "-y", "10"],
+                ),
+            )
+            .expect("resize the float");
+        wait_for_terminal_size(&shared, float, (28, 8));
         let window = context.window.expect("float window");
         let window_extent = |shared: &Shared| {
             let inner = shared.inner.lock();
@@ -121725,7 +121794,7 @@ bind - split-window -v -c "#{pane_current_path}"
             )
             .expect("a client size report for the float");
         assert_eq!(window_extent(&shared), (Some(80), Some(24)));
-        wait_for_terminal_size(&shared, float, (20, 6));
+        wait_for_terminal_size(&shared, float, (28, 8));
 
         let toggle_zoom = |context: &mut ExecutionContext| {
             shared
@@ -121756,7 +121825,7 @@ bind - split-window -v -c "#{pane_current_path}"
         assert_eq!(window_extent(&shared), (Some(60), Some(20)));
         wait_for_terminal_size(&shared, float, (60, 20));
         toggle_zoom(&mut context);
-        wait_for_terminal_size(&shared, float, (20, 6));
+        wait_for_terminal_size(&shared, float, (28, 8));
 
         shared
             .execute(
@@ -121776,7 +121845,7 @@ bind - split-window -v -c "#{pane_current_path}"
             )
             .expect("zoom a tile under the float");
         thread::sleep(Duration::from_millis(200));
-        wait_for_terminal_size(&shared, float, (20, 6));
+        wait_for_terminal_size(&shared, float, (28, 8));
         shared
             .execute(
                 client,
@@ -121795,6 +121864,111 @@ bind - split-window -v -c "#{pane_current_path}"
             )
             .expect("shrink the window");
         wait_for_terminal_size(&shared, float, (13, 3));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_float_tiled_back_takes_its_unchanged_tile_report() {
+        let (shared, client, _, mut context) = popup_test_workspace("float-tile-back");
+        let pane = context.pane.expect("popup test pane");
+        shared.inner.lock().client_entry(client).ctrl_subscriptions =
+            Some(zz_protocol::Subscriptions::terminal());
+        let mut run = |name: &str, args: &[&str]| {
+            shared
+                .execute(
+                    client,
+                    ClientKind::Interactive,
+                    &mut context,
+                    &CommandInvocation::new(name, args.iter().copied()),
+                )
+                .expect(name);
+        };
+        let target = pane.to_string();
+        run("break-pane", &["-W", "-x", "22", "-y", "8", "-s", &target]);
+        wait_for_terminal_size(&shared, pane, (20, 6));
+        run("join-pane", &["-s", &target, "-t", &target]);
+        shared.compact_tree_messages(client, true);
+        let layout_generation = shared.inner.lock().clients[&client]
+            .ctrl_layout
+            .expect("a layout generation")
+            .1;
+        shared
+            .input(
+                client,
+                ClientKind::Interactive,
+                &mut context,
+                InputMessage::ResizeTerminalV2 {
+                    pane,
+                    columns: 80,
+                    rows: 24,
+                    cell_width_px: 8,
+                    cell_height_px: 18,
+                    layout_generation,
+                },
+            )
+            .expect("the tile's report");
+        wait_for_terminal_size(&shared, pane, (80, 24));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_popup_from_a_floated_pane_goes_to_the_client_that_typed_last() {
+        let (shared, first, _, mut context) = popup_test_workspace("float-popup-first");
+        let floated = context.pane.expect("popup test pane");
+        let (second, _) = shared.register_subscribed(
+            ClientKind::Interactive,
+            Some("float-popup-second".to_owned()),
+            None,
+            OutboundMailbox::new(),
+        );
+        shared
+            .attach(second, context.session.expect("popup test session"))
+            .expect("attach the second client");
+        shared
+            .execute(
+                first,
+                ClientKind::Interactive,
+                &mut context,
+                &CommandInvocation::new("split-window", ["-h", "-t", &floated.to_string()]),
+            )
+            .expect("split the pane");
+        let tile = context.pane.expect("split pane");
+        let report = InputMessage::ResizeTerminal {
+            pane: tile,
+            columns: 40,
+            rows: 24,
+            cell_width_px: 8,
+            cell_height_px: 18,
+        };
+        for (client, message) in [
+            (first, report.clone()),
+            (second, report),
+            (second, InputMessage::ClientFocus { focused: true }),
+        ] {
+            shared
+                .input(
+                    client,
+                    ClientKind::Interactive,
+                    &mut ExecutionContext::default(),
+                    message,
+                )
+                .expect("a client input");
+        }
+        shared
+            .execute(
+                first,
+                ClientKind::Interactive,
+                &mut context,
+                &CommandInvocation::new("break-pane", ["-W", "-s", &floated.to_string()]),
+            )
+            .expect("float the pane");
+        let inner = shared.inner.lock();
+        let invoked = ExecutionContext::for_pane(&inner.engine.state, floated)
+            .expect("the floated pane's context");
+        assert_eq!(
+            resolve_popup_client(&inner, ClientId(u64::MAX), &invoked, None).ok(),
+            Some(second)
+        );
     }
 
     fn popup_test_workspace(

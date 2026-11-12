@@ -1208,7 +1208,7 @@ account work stays on v122.
 
 v123 is the setup epoch for [split updates](/designs/split-updates.md). `zz-protocol` gains
 `REVISION: u32`, a build revision bumped by hand when behavior the other side relies on changes, and
-two floors, `MIN_DAEMON_REVISION` and `MIN_CLIENT_REVISION`, all 1. `ClientHello`, `Welcome` and
+two floors, `MIN_DAEMON_REVISION` and `MIN_CLIENT_REVISION`, both 1. `ClientHello`, `Welcome` and
 `ServerHello` append `revision: u32`, which every sender fills with its `REVISION`. The daemon checks
 the hello after the version: a revision below `MIN_CLIENT_REVISION` gets
 `ServerError::ClientTooOld { client, minimum }` and the connection closes, the same way a version

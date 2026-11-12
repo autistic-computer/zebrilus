@@ -2977,14 +2977,19 @@ impl TerminalSession {
     }
 
     pub fn resize(&self, columns: u16, rows: u16, cell_width_px: u32, cell_height_px: u32) {
-        let geometry = Geometry {
-            columns: columns.max(1),
-            rows: rows.max(1),
-            cell_width_px: cell_width_px.max(1),
-            cell_height_px: cell_height_px.max(1),
-        };
         self.commands.with_slot(|slot| {
-            if slot.requested_geometry == Some(geometry) {
+            let requested = slot.requested_geometry;
+            let pixels = |reported: u32, previous: Option<u32>| match reported {
+                0 => previous.unwrap_or(1),
+                reported => reported,
+            };
+            let geometry = Geometry {
+                columns: columns.max(1),
+                rows: rows.max(1),
+                cell_width_px: pixels(cell_width_px, requested.map(|kept| kept.cell_width_px)),
+                cell_height_px: pixels(cell_height_px, requested.map(|kept| kept.cell_height_px)),
+            };
+            if requested == Some(geometry) {
                 return false;
             }
             slot.requested_geometry = Some(geometry);
