@@ -14,7 +14,7 @@ Asks a short question and returns you where you were: a password, a confirmation
         <div class="penna-sheet-header"><span class="penna-sheet-title" data-penna-text>Sign in to xps</span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close"><i data-icon="xmark"></i></button></div>
         <div class="penna-sheet-content" style="gap: 8px; padding: 0 16px">
           <span class="penna-type" data-type="touch-body" data-muted data-penna-text>fabrico@xps's password:</span>
-          <label class="penna-input" data-penna="field" data-size="touch-large"><input type="password" value="hunter22" /></label>
+          <label class="penna-input" data-penna="field" data-size="touch-large" data-state="focused"><input type="password" value="hunter22" /></label>
         </div>
         <div class="penna-action-bar" data-keys><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large"><span class="penna-label" data-penna-text>Sign in</span></button></div>
       </div>
@@ -89,7 +89,7 @@ Holding a tile, or the header over a group of tiles, opens a sheet titled with i
         <div class="penna-sheet-panel" data-penna="drawer">
           <div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div>
           <div class="penna-sheet-header"><span class="penna-sheet-title" data-penna-text>Rename pane</span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close"><i data-icon="xmark"></i></button></div>
-          <div style="padding: 4px 16px 8px"><label class="penna-input" data-penna="field" data-size="touch-large"><input value="Make the pill menu offer New chat" /></label></div>
+          <div style="padding: 4px 16px 8px"><label class="penna-input" data-penna="field" data-size="touch-large" data-state="focused"><input value="Make the pill menu offer New chat" /></label></div>
           <div class="penna-action-bar" data-keys><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled><span class="penna-label" data-penna-text>Save</span></button></div>
         </div>
       </div>

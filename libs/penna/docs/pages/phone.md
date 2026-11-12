@@ -172,7 +172,7 @@ Picking the address raises the keyboard and the address field takes the pill's p
 
 ## Surfaces
 
-Flat by default; glass only for what sits over something. Tiles, rows, fields and the main action are flat fills. The pill, its menu, floating buttons, sheets, the key row's pill and the chat composer float: glass when glass is on, and with glass off the popover fill, a hairline all round and a close shadow.
+Flat by default; glass only for what sits over something. Tiles, rows, fields and the main action are flat fills on the screen, which is the window's own background. The pill, its menu, floating buttons, sheets, the key row's pill and the chat composer float: glass in the mode's look when glass is on, with the look's float shadow, and with glass off the popover fill, a hairline all round and a close shadow.
 
 ```figure uses=compact,touch,label
 <div class="docs-show" data-gap="wide">

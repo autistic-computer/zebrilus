@@ -28,13 +28,13 @@ plan_list(&[(PlanState::Current, "Give pinned tabs a 28px floor".into())], cx)
 
 ## Composer
 
-The field with a leading button, the context meter and the action button, which sends, queues behind a running turn or stops it. ChatComposer adds a prefix above and a footer below. It is glass when glass is on; otherwise it rests on the activity cards' wash, opaque and with no edge.
+The field with a leading button, the context meter and the action button, which sends, queues behind a running turn or stops it. ChatComposer adds a prefix above, a footer below and an `over` layer that floats over the chat from the composer's top edge without moving it, where zz puts its @ menu. It is glass when glass is on; otherwise it rests on the activity cards' wash, opaque and with no edge.
 
 ```rust example story=chat/composer
 ChatComposer {
     composer: Composer {
         input,
-        leading: Some(composer_add_button("add", "Mention a file", cx).into_any_element()),
+        leading: Some(composer_add_button("add", "Mention a chat, host, session or file", cx).into_any_element()),
         usage: Some(context_meter("usage", 0.34, "34% of the context used", cx)),
         action: composer_action_button("send", ComposerAction::Send, true, cx).into_any_element(),
         attachments: None,
@@ -44,6 +44,7 @@ ChatComposer {
         ground: None,
     },
     prefix: vec![queue_chip("queued", 2, true, on_return, cx).into_any_element()],
+    over: None,
     footer: vec![chrome_button("folder").label("~/src/app").into_any_element()],
     controls: vec![],
 }
@@ -104,7 +105,7 @@ empty_state("No messages yet", false, view, cx)
 
 ## On a phone
 
-The same chat drawn for a thumb. The composer is one row: a 44 plus, the field at `touch-body` growing to five lines, and a 44 action that sends, stops or queues. Send is one look whatever the mode. The plus opens a sheet with Mention a file and the chat's settings, the mode among them. A pasted image sits over the field as an 88 thumbnail, its remove control a 24 badge on its corner with a 44 target. Tool steps are 44 rows, and a held message opens a sheet with Copy and Fork from here.
+The same chat drawn for a thumb. The composer is one row: a 44 plus, the field at `touch-body` growing to five lines, and a 44 action that sends, stops or queues. Send is one look whatever the permission mode. The plus opens a sheet with Mention, which lists what the desktop's @ menu does and writes the picked one into the field by name, then the chat's settings (Model, Effort, Permissions, Account) and one muted line for the context and the account's limits. A pasted image sits over the field as an 88 thumbnail, its remove control a 24 badge on its corner with a 44 target. Tool steps are 44 rows, and a held message opens a sheet with Copy and Fork from here.
 
 A permission request or a question takes the composer's place as a card, with no scrim: what is asked in one or two lines, then the answers as touch rows, each answering on tap. No key caps and no answer button.
 
