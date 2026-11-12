@@ -77,7 +77,7 @@ pub struct PaneTitle {
     icon: Icon,
     label: AnyElement,
     drag: PaneDragSource,
-    fill: bool,
+    capped: bool,
     folder: Option<SharedString>,
 }
 
@@ -93,14 +93,14 @@ impl PaneTitle {
             icon: icon.into(),
             label: label.into_any_element(),
             drag,
-            fill: false,
+            capped: true,
             folder: None,
         }
     }
 
     #[must_use]
-    pub fn fill(mut self, folder: Option<SharedString>) -> Self {
-        self.fill = true;
+    pub fn folder(mut self, folder: Option<SharedString>) -> Self {
+        self.capped = false;
         self.folder = folder;
         self
     }
@@ -155,11 +155,12 @@ impl RenderOnce for PaneTitle {
             .group(PANE_TITLE_GROUP)
             .debug_selector(|| "pane-title".into())
             .flex()
+            .flex_initial()
             .map(|title| {
-                if self.fill {
-                    title.flex_1().min_w_0()
+                if self.capped {
+                    title.max_w(px(PANE_TITLE_MAX_WIDTH))
                 } else {
-                    title.flex_initial().max_w(px(PANE_TITLE_MAX_WIDTH))
+                    title.min_w_0()
                 }
             })
             .h(crate::PANE_HEADER_CONTROL_HEIGHT)
@@ -631,7 +632,7 @@ pub fn pane_header(
                     title.into(),
                     drag.floating(state.floats),
                 )
-                .fill(folder),
+                .folder(folder),
             ),
         )
         .children(flip.map(|flip| {
@@ -2047,6 +2048,47 @@ mod tests {
         assert!(!arrivals.fading());
         arrivals.observe(WindowId(2), [PaneId(3), PaneId(4)], settled);
         assert!(!arrivals.fading());
+    }
+
+    struct HeaderTitleTest {
+        width: f32,
+    }
+
+    impl Render for HeaderTitleTest {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().w(px(self.width)).h(px(40.0)).flex().child(
+                div().flex().flex_1().min_w_0().items_center().child(
+                    PaneTitle::new(
+                        "title",
+                        IconName::SquareTerminal,
+                        "bash",
+                        PaneDragSource::new(zz_protocol::PaneId(3), "bash", true, |_, _, _| {}),
+                    )
+                    .folder(Some("~/dev/zebrilus".into())),
+                ),
+            )
+        }
+    }
+
+    #[ala::test]
+    fn a_header_title_hugs_its_content_within_its_slot(cx: &mut ala::TestAppContext) {
+        cx.update(crate::init);
+        let (view, cx) = cx.add_window_view(|_, _| HeaderTitleTest { width: 600.0 });
+        let width = |slot: f32, cx: &mut ala::VisualTestContext| {
+            view.update(cx, |view, cx| {
+                view.width = slot;
+                cx.notify();
+            });
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                let _ = window.draw(cx);
+            });
+            cx.debug_bounds("pane-title").unwrap().size.width
+        };
+        let wide = width(600.0, cx);
+        assert!(wide < px(300.0), "{wide:?}");
+        assert_eq!(width(400.0, cx), wide);
+        assert_eq!(width(60.0, cx), px(60.0));
     }
 
     #[ala::test]

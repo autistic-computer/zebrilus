@@ -1727,7 +1727,7 @@ Looks (`TabLook`):
 | Look | Recipe | Use |
 |---|---|---|
 | Window | `tab.window` | window pills in the title bar, in a strip; selected as glass (Look) |
-| Page | `tab.page` | a browser's page tabs; selected as glass |
+| Page | `tab.page` | a browser's page tabs, in a strip; paints as Window |
 | Tray | `tab.tray` | chips in the tray over a composer |
 | Title | `button.title` | a pane's title in its header, quiet, with a muted path |
 
@@ -1736,7 +1736,7 @@ Anatomy:
 - Container: the rung's height, `control-lg` 32 by default; the look's fill, outline and corners (its radius, capped at 45% of the height).
 - Inset, gap, icon and label are the caller's. A close button sits inside the tab (`Button::inside`, Button), the tab's trailing inset `INSIDE_GAP` 4 so the button is as far from the end as from the top. The story and `tab.css` use `space-10` at the sides and `space-6` gaps, a 12 icon, a `small` label and an optional `caption` aside in muted ink; a title uses `space-8` and a `small` muted path.
 - Focus ring: 1.5px, outside the container, with its own radius.
-- Strip (`TabStrip::new(id, look)`, `tab.strip`): the window tabs sit in one track, a wash of its ground with no edge, `space-2` inside it and `space-2` apart. `.with_size()` sets its tabs' height (28 in the title bar), and the strip is that plus `space-2` above and below. Its corner is the tabs' corner plus `space-2`, so the picked tab's glass sits concentric in it: square at a `radius` of 0, a capsule when the tabs are. A strip holding one tab draws no track and no inset, and the tab fills it (`.h_full()`), so a lone window tab is 32 in the title bar, as tall as the buttons beside it, and the strip keeps its height when a second tab opens. `TabStrip::ground(on, tabs, cx)` is the ground the tabs inside paint on: the strip's, or `on` for a lone tab.
+- Strip (`TabStrip::new(id, look)`, `tab.strip`): window tabs and a browser's page tabs each sit in one track, a wash of its ground with no edge, `space-2` inside it and `space-2` apart. `.with_size()` sets its tabs' height (28 in the title bar and a browser header), and the strip is that plus `space-2` above and below. Its corner is the tabs' corner plus `space-2`, so the picked tab's glass sits concentric in it: square at a `radius` of 0, a capsule when the tabs are. A strip holding one tab draws no track and no inset, and the tab fills it (`.h_full()`), so a lone window tab is 32 in the title bar, as tall as the buttons beside it, and the strip keeps its height when a second tab opens. `TabStrip::ground(on, tabs, cx)` is the ground the tabs inside paint on: the strip's, or `on` for a lone tab.
 
 Sizes: `.with_size()` (or `.xsmall()` to `.touch()`) moves only the height along the control ladder: 20, 24, 28 (follows density), 32 (the default), 40, 44. Text, inset and icons stay the caller's. Every tab in a bar has the same size (Rules 6).
 

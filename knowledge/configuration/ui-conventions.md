@@ -4,7 +4,7 @@ title: UI design conventions
 description: The component, palette, and styling rules that keep zz application chrome consistent and theme-aware.
 resource: crates/zz-ui/src/command/palette_view.rs
 tags: [ui, ala, zz-ui, theme, chrome, clippy]
-timestamp: 2026-11-08T00:00:00Z
+timestamp: 2026-11-12T00:00:00Z
 ---
 
 # Overview
@@ -202,12 +202,17 @@ in from the pane's top and sides, so a terminal header is 34px; the sidebar's
 28px buttons and the titlebar's 32px tabs stay larger. A Browser header's first row is 40px so
 its 28px tabs, as tall as the URL field, keep the 6px inset: the title, the tabs, New tab right
 after the last tab, then the split buttons at the row's end; under it the navigation row, then 6px
-(`crates/zz-ui/src/browser.rs`, `BrowserHeader`). The tabs share the row like a desktop browser's,
-never scrolling: each up to 180px, shrinking evenly, and below 84px a tab shows only its favicon,
-which turns into its X on hover.
+(`crates/zz-ui/src/browser.rs`, `BrowserHeader`). The page tabs are drawn by the same builders as
+the title bar's window tabs (`navigation::workspace_tab_strip`, `workspace_tab`,
+`status::with_tab_close`, `status::tab_overflow`): one `tab.strip` track 2px around 28px tabs, each
+up to 240px and shrinking evenly, its title fading before an X that shows on hover, at most five
+tabs with the rest in an overflow menu, and a lone tab filling the strip with no track and no X.
 Every header's title is the drag handle: `pane::PaneTitle`, a 22px button
 (a `Tab` in `TabLook::Title`, `button.title`) holding the kind icon, the title and the pane's
-folder (`navigation::pane_folder`, home as `~`, one ink step under the title). A terminal is
+folder (`navigation::pane_folder`, home as `~`, one ink step under the title). It is as wide as
+its content and no wider than the space before the header's buttons, where the folder truncates
+first and then the title; the rest of a tiled pane's header moves the window, and a click
+anywhere outside the buttons focuses the pane. A terminal is
 headed by the program in its foreground, never by the title the program writes: a program in
 the catalog shows its mark and name (`nvim`, also through a `vim` alias, is the Neovim mark and
 "Neovim"), another program its command name under the terminal icon, and a shell at its prompt

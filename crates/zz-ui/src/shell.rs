@@ -4,7 +4,7 @@ use crate::StyledExt as _;
 use crate::kbd::Kbd;
 use crate::{Edge, Ground};
 pub use penna::blocks::shell::*;
-use penna::{Bar, BarLook, Label, RowLook, RuleLook, Sizable as _, TabLook, TabStrip, TextStyle};
+use penna::{Bar, BarLook, Label, RowLook, RuleLook, TabLook, TextStyle};
 
 use ala::{
     AnyElement, App, ElementId, InteractiveElement as _, IntoElement, Keystroke,
@@ -77,13 +77,12 @@ pub fn workspace_status_bar(
 ) -> Stateful<ala::Div> {
     let height = cx.theme().title_bar_over_panes_height();
     let windows = (!slots.windows.is_empty()).then(|| {
-        TabStrip::new("gui-status-windows", TabLook::Window)
-            .on(crate::navigation::workspace_status_bar_ground(cx))
-            .with_size(crate::navigation::WORKSPACE_STATUS_TAB_HEIGHT)
-            .flex_shrink_1()
-            .min_w_0()
-            .overflow_hidden()
-            .children(slots.windows)
+        crate::navigation::workspace_tab_strip(
+            "gui-status-windows",
+            TabLook::Window,
+            crate::navigation::workspace_status_bar_ground(cx),
+        )
+        .children(slots.windows)
     });
     let window_strip = div()
         .flex()

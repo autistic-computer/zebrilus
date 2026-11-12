@@ -126,12 +126,12 @@ impl Lit {
     }
 
     #[must_use]
-    pub fn shadows(&self) -> Vec<BoxShadow> {
+    pub fn shadows(&self, cx: &App) -> Vec<BoxShadow> {
         let zero = Pixels::ZERO;
         let (contact, edge, ring, width) = if self.dark {
-            (0.4, 0.5, Hsla::white().alpha(0.12 * self.strength), 0.75)
+            (0.4, 0.25, Hsla::white().alpha(0.12 * self.strength), 0.75)
         } else {
-            (0.2, 0.18, Hsla::white().alpha(0.8 * self.strength), 0.5)
+            (0.2, 0.09, Hsla::white().alpha(0.8 * self.strength), 0.5)
         };
         vec![
             shadow(
@@ -145,7 +145,7 @@ impl Lit {
                 zero,
                 zero,
                 self.unit(width),
-                Hsla::black().alpha(edge * self.strength),
+                cx.theme().shadow_color.alpha(edge * self.strength),
                 false,
             ),
             shadow(
@@ -212,13 +212,13 @@ impl Face {
         Lit::background(self.dim(program_background(self.program)))
     }
 
-    pub fn paint<E: Styled + ParentElement>(self, tile: E) -> E {
+    pub fn paint<E: Styled + ParentElement>(self, tile: E, cx: &App) -> E {
         tile.bg(self.background())
-            .shadow(self.lit().shadows())
+            .shadow(self.lit().shadows(cx))
             .child(self.glyph())
     }
 
-    pub fn tile(self) -> ala::Div {
+    pub fn tile(self, cx: &App) -> ala::Div {
         let tile = div()
             .flex()
             .flex_none()
@@ -227,7 +227,7 @@ impl Face {
             .size(self.size)
             .rounded(self.radius)
             .corner_smoothing(self.smoothing);
-        self.paint(tile)
+        self.paint(tile, cx)
     }
 }
 
@@ -257,7 +257,7 @@ pub fn program_tile(program: &'static Program, size: Pixels, dimmed: f32, cx: &A
         ground: theme.ground().fill,
         dimmed,
     }
-    .tile()
+    .tile(cx)
 }
 
 const BRAND_INK_SEPARATION: f32 = 0.28;

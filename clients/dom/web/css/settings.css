@@ -632,27 +632,26 @@
 
 .settings-panes [data-penna="tab.page"] {
   display: flex;
-  flex: none;
+  flex: 0 1 240px;
   align-items: center;
-  width: 106px;
-  height: 28px;
-  margin-left: -8px;
-  padding-right: 8px;
-  gap: 12px;
+  min-width: 36px;
+  height: 32px;
+  padding: 0 9px;
+  gap: 5px;
+  overflow: hidden;
 }
 
 .settings-panes [data-penna="tab.page"] > .favicon {
   display: grid;
+  flex: none;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  margin-right: -12px;
+  width: 14px;
+  height: 14px;
 }
 
 .settings-panes [data-penna="tab.page"] > .label {
   flex: 1;
   min-width: 0;
-  margin-left: 12px;
   overflow: hidden;
   white-space: nowrap;
 }
