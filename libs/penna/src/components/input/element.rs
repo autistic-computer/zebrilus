@@ -2,9 +2,9 @@ use std::{ops::Range, rc::Rc};
 
 use ala::{
     App, Bounds, ContentMask, DispatchPhase, Element, ElementId, ElementInputHandler, Entity,
-    GlobalElementId, InspectorElementId, IntoElement, LayoutId, MouseButton, MouseMoveEvent,
-    MouseUpEvent, Pixels, Point, ShapedLine, SharedString, Size, Style, TextAlign, TextRun, Window,
-    WrappedLine, fill, point, px, relative, size,
+    GlobalElementId, HighlightStyle, InspectorElementId, IntoElement, LayoutId, MouseButton,
+    MouseMoveEvent, MouseUpEvent, Pixels, Point, ShapedLine, SharedString, Size, Style, TextAlign,
+    TextRun, Window, WrappedLine, fill, point, px, relative, size,
 };
 use unicode_segmentation::UnicodeSegmentation as _;
 
@@ -74,6 +74,34 @@ fn line_left(align: TextAlign, viewport_width: Pixels, line_width: Pixels) -> Pi
         TextAlign::Center => slack / 2.,
         TextAlign::Right => slack,
     }
+}
+
+fn highlight_runs(
+    text: &str,
+    highlights: &[(Range<usize>, HighlightStyle)],
+    base: &ala::TextStyle,
+) -> Vec<TextRun> {
+    let mut runs = Vec::with_capacity(highlights.len() * 2 + 1);
+    let mut at = 0;
+    for (range, style) in highlights {
+        let end = range.end.min(text.len());
+        if range.start < at
+            || range.start >= end
+            || !text.is_char_boundary(range.start)
+            || !text.is_char_boundary(end)
+        {
+            continue;
+        }
+        if range.start > at {
+            runs.push(base.to_run(range.start - at));
+        }
+        runs.push(base.clone().highlight(*style).to_run(end - range.start));
+        at = end;
+    }
+    if at < text.len() || runs.is_empty() {
+        runs.push(base.to_run(text.len() - at));
+    }
+    runs
 }
 
 fn row_starts(line: &WrappedLine) -> Vec<usize> {
@@ -356,15 +384,20 @@ impl Element for TextElement {
             text_style.color
         };
         let color = if disabled { color.opacity(0.5) } else { color };
-        let run = TextRun {
+        let base = ala::TextStyle {
             color,
-            ..text_style.to_run(display_text.len())
+            ..text_style.clone()
+        };
+        let runs = if mask.is_some() || is_placeholder {
+            vec![base.to_run(display_text.len())]
+        } else {
+            highlight_runs(&display_text, state.highlights(), &base)
         };
 
         let wrap_width = mode.is_multi_line().then_some(bounds.size.width);
         let lines: Vec<WrappedLine> = window
             .text_system()
-            .shape_text(display_text, font_size, &[run], wrap_width, None)
+            .shape_text(display_text, font_size, &runs, wrap_width, None)
             .unwrap_or_default()
             .into_iter()
             .collect();
@@ -489,6 +522,23 @@ impl Element for TextElement {
                 bounds: layout.bounds,
             }),
             |window| {
+                for ((line, top), left) in layout
+                    .lines
+                    .iter()
+                    .zip(layout.line_tops.iter())
+                    .zip(layout.line_lefts.iter())
+                {
+                    let origin = layout.origin + point(*left, *top);
+                    _ = line.paint_background(
+                        origin,
+                        layout.line_height,
+                        TextAlign::Left,
+                        None,
+                        window,
+                        cx,
+                    );
+                }
+
                 for quad in &prepaint.selection_quads {
                     window.paint_quad(fill(*quad, selection_color));
                 }

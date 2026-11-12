@@ -454,6 +454,7 @@ impl Render for Composers {
                         prefix: vec![
                             queue_chip("composer-queue", 2, true, |_, _| {}, cx).into_any_element(),
                         ],
+                        over: None,
                         footer: vec![
                             chrome_button("composer-folder")
                                 .icon(IconName::Folder)
@@ -602,6 +603,7 @@ fn asking(input: &Entity<InputState>, ask: Asking, cx: &App) -> AnyElement {
                 ground,
             },
             prefix: Vec::new(),
+            over: None,
             footer: vec![ask_hints(ask.hints, ground).into_any_element()],
             controls: Vec::new(),
         })

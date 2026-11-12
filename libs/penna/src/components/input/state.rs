@@ -4,9 +4,9 @@ use std::{borrow::Cow, ops::Range, rc::Rc, sync::Arc};
 
 use ala::{
     App, AppContext as _, Bounds, ClipboardEntry, ClipboardItem, Context, DismissEvent, Entity,
-    EntityInputHandler, EventEmitter, FocusHandle, Focusable, Hsla, Image, IntoElement,
-    KeyDownEvent, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point, Render,
-    ScrollKey, ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, TextAlign,
+    EntityInputHandler, EventEmitter, FocusHandle, Focusable, HighlightStyle, Hsla, Image,
+    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point,
+    Render, ScrollKey, ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, TextAlign,
     TextInputConfiguration, TextInputMode, UTF16Selection, Window, anchored, deferred, div, point,
     prelude::FluentBuilder as _, px,
 };
@@ -76,6 +76,7 @@ pub struct InputState {
 
     text: SharedString,
     placeholder: SharedString,
+    highlights: Vec<(Range<usize>, HighlightStyle)>,
 
     selection: Range<usize>,
     selection_reversed: bool,
@@ -151,6 +152,7 @@ impl InputState {
             focus_handle,
             text: SharedString::default(),
             placeholder: SharedString::default(),
+            highlights: Vec::new(),
             selection: 0..0,
             selection_reversed: false,
             marked_range: None,
@@ -302,6 +304,17 @@ impl InputState {
         cx.notify();
     }
 
+    pub fn set_highlights(
+        &mut self,
+        highlights: Vec<(Range<usize>, HighlightStyle)>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.highlights != highlights {
+            self.highlights = highlights;
+            cx.notify();
+        }
+    }
+
     pub fn set_normal_mode(&mut self, normal: bool, cx: &mut Context<Self>) {
         if self.normal_mode == normal {
             return;
@@ -389,6 +402,10 @@ impl InputState {
 
     pub(super) fn placeholder_text(&self) -> &SharedString {
         &self.placeholder
+    }
+
+    pub(super) fn highlights(&self) -> &[(Range<usize>, HighlightStyle)] {
+        &self.highlights
     }
 
     pub(super) fn selection(&self) -> Range<usize> {

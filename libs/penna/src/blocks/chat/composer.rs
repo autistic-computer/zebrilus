@@ -2,7 +2,7 @@ use std::f32::consts::PI;
 
 use ala::{
     AnyElement, App, ElementId, Entity, Focusable as _, Hsla, IntoElement, PathBuilder, Pixels,
-    RenderOnce, Role, SharedString, Window, canvas, div, point, prelude::*, px,
+    RenderOnce, Role, SharedString, Window, canvas, deferred, div, point, prelude::*, px, relative,
 };
 
 use crate::{
@@ -151,6 +151,7 @@ impl RenderOnce for Composer {
 pub struct ChatComposer {
     pub composer: Composer,
     pub prefix: Vec<AnyElement>,
+    pub over: Option<AnyElement>,
     pub footer: Vec<AnyElement>,
     pub controls: Vec<AnyElement>,
 }
@@ -186,7 +187,19 @@ impl RenderOnce for ChatComposer {
                                     .relative()
                                     .w_full()
                                     .children(backing)
-                                    .child(self.composer),
+                                    .child(self.composer)
+                                    .children(self.over.map(|over| {
+                                        deferred(
+                                            div()
+                                                .absolute()
+                                                .left_0()
+                                                .right_0()
+                                                .bottom(relative(1.0))
+                                                .pb(px(COMPOSER_SECTION_GAP))
+                                                .child(over),
+                                        )
+                                        .with_priority(1)
+                                    })),
                             ),
                     ),
             )
