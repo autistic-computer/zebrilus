@@ -49,7 +49,7 @@ function applyLayout() {
   nav.toggleAttribute("data-divider", !(preferences.gaps && inline));
   scrim.hidden = inline || !slideover;
   viewButton.title = preferences.flat_sidebar ? "Show the session tree" : "Show chats";
-  viewButton.querySelector("[data-icon]").dataset.icon = preferences.flat_sidebar ? "chat-duotone" : "chat";
+  viewButton.querySelector("[data-icon]").dataset.icon = preferences.flat_sidebar ? "chat-fill" : "chat";
 }
 
 function hoverFill(row) {
