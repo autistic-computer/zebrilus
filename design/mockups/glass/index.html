@@ -1,0 +1,972 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glass</title>
+<script>
+  (() => {
+    const number = (name, value) => {
+      try {
+        CSS.registerProperty({ name, syntax: "<number>", inherits: true, initialValue: String(value) });
+      } catch {}
+    };
+    number("--f", 0.5);
+    for (const kind of ["chrome", "content", "float"]) {
+      number(`--${kind}-a`, 0);
+      number(`--${kind}-blur`, 0);
+      number(`--${kind}-sat`, 1);
+      number(`--${kind}-bright`, 1);
+      number(`--${kind}-con`, 1);
+    }
+    for (const name of ["--cap", "--band", "--leak", "--float-band", "--grain-chrome", "--grain-content", "--grain-float", "--cell", "--pitch", "--rib", "--reed"]) number(name, 0);
+  })();
+</script>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-page { display: grid; gap: 20px; padding: 32px 32px 96px; }
+  .zz-page h1 { margin: 0; font-size: var(--penna-text-title-size); line-height: var(--penna-text-title-line); font-weight: 600; }
+
+  .zz-controls { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; margin: 0 -32px; padding: 10px 32px; background: color-mix(in srgb, var(--penna-bg) 88%, transparent); backdrop-filter: blur(14px); font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-control { display: flex; align-items: center; gap: 8px; }
+  .zz-seg { display: flex; gap: 2px; padding: 2px; border-radius: 10px; background: color-mix(in srgb, var(--penna-fg) 6%, transparent); }
+  .zz-seg > [data-penna] { --penna-share: 0; --penna-r: 0px; height: 24px; padding: 0 10px; border-radius: 8px; font-size: var(--penna-text-small-size); font-weight: 500; }
+  .zz-frost { width: 180px; accent-color: var(--penna-accent); }
+  .zz-frost-value { min-width: 2ch; font-variant-numeric: tabular-nums; color: var(--penna-fg); }
+
+  [data-penna-switcher] { display: none; }
+  .gv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(600px, 1fr)); gap: 32px 28px; }
+  .gv-grid[data-solo] { grid-template-columns: minmax(0, 1fr); }
+  .gv-grid[data-solo] > figure:not([data-solo]) { display: none; }
+  .gv-grid > figure { display: grid; gap: 10px; min-width: 0; margin: 0; }
+  .gv-frame { position: relative; overflow: hidden; border-radius: 14px; cursor: zoom-in; }
+  .gv-grid[data-solo] .gv-frame { cursor: zoom-out; }
+  .gv-grid > figure > figcaption { display: grid; grid-template-columns: 96px 1fr; align-items: start; gap: 6px 12px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .gv-grid > figure > figcaption > b { min-width: 76px; font-size: 15px; line-height: 20px; font-weight: 600; color: var(--penna-fg); }
+  .gv-read { justify-self: start; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .gv-read th { padding: 0 14px 2px 0; font-weight: 500; text-align: left; color: var(--penna-fg-faint, var(--penna-fg-muted)); }
+  .gv-read td { padding: 0 14px 0 0; white-space: nowrap; }
+  .gv-read td:first-child { color: var(--penna-fg-faint, var(--penna-fg-muted)); }
+  .gv-read td[colspan] { color: var(--penna-fg-muted); }
+  .gv-read td:not(:first-child) { color: var(--penna-fg); }
+
+  .gv-tile { position: relative; width: 1640px; height: 720px; overflow: hidden; font-family: var(--penna-font); font-size: 13px; color: var(--penna-fg); }
+  .gv-wall { position: absolute; inset: 0; overflow: hidden; }
+  .gv-wall i { position: absolute; display: block; }
+
+  .gv-tile [data-penna] { --penna-glass: 0 !important; --penna-backdrop: none !important; --penna-rim: 0 0 #0000 !important; }
+  .gv-tile [data-penna="sidebar"], .gv-tile [data-penna="titlebar"] { --penna-fill: transparent !important; }
+  .gv-tile :where(.s) { position: relative; }
+  .gv-tile .s { --penna-fill: transparent !important; --penna-edge: transparent !important; --penna-bw: 0px !important; --penna-shadow: 0 0 #0000 !important; box-shadow: var(--_out, 0 0 #0000); }
+  .gv-tile .s > .l { position: absolute; inset: 0; z-index: 0; border-radius: inherit; corner-shape: inherit; pointer-events: none; }
+  .gv-tile .s > :not(.l, .penna-lights) { position: relative; }
+  .gv-tile .s > .l-blur {
+    -webkit-backdrop-filter: var(--_filter, blur(calc(var(--_blur) * 1px)) saturate(var(--_sat)) contrast(var(--_con)) brightness(var(--_bri)));
+    backdrop-filter: var(--_filter, blur(calc(var(--_blur) * 1px)) saturate(var(--_sat)) contrast(var(--_con)) brightness(var(--_bri)));
+    background: linear-gradient(rgb(128 128 128 / 0.004), rgb(128 128 128 / 0.004)), var(--_under, transparent);
+  }
+  .gv-tile .s > .l-fill { inset: calc(var(--_inset, 0) * 1px); background: var(--_fill, rgb(from var(--_tint) r g b / var(--_a))); -webkit-mask: var(--_mask, none); mask: var(--_mask, none); box-shadow: var(--_glow, 0 0 #0000); }
+  .gv-tile .s > .l-tex { background: var(--_tex, none); opacity: var(--_texo, 1); mix-blend-mode: var(--_blend, normal); }
+  .gv-tile .s > .l-edge { box-shadow: var(--_in, 0 0 #0000); }
+  .gv-tile .s[data-s="chrome"] > .l { clip-path: var(--holes, none); }
+
+  .gv-tile .s[data-s="chrome"] { --_a: var(--chrome-a); --_blur: var(--chrome-blur); --_sat: var(--chrome-sat); --_bri: var(--chrome-bright); --_con: var(--chrome-con); --_tint: var(--chrome-tint, var(--tint, var(--penna-bg))); --_fill: var(--chrome-fill); --_under: var(--chrome-under); --_filter: var(--chrome-filter); --_mask: var(--chrome-mask); --_tex: var(--chrome-tex); --_texo: var(--chrome-texo, 1); --_blend: var(--tex-blend); --_in: var(--chrome-in); --_out: var(--chrome-out); --_inset: var(--chrome-inset); --_glow: var(--chrome-glow); }
+  .gv-tile .s[data-s="content"] { --_a: var(--content-a); --_blur: var(--content-blur); --_sat: var(--content-sat); --_bri: var(--content-bright); --_con: var(--content-con); --_tint: var(--content-tint, var(--tint, var(--penna-bg))); --_fill: var(--content-fill); --_under: var(--content-under); --_filter: var(--content-filter); --_mask: var(--content-mask); --_tex: var(--content-tex); --_texo: var(--content-texo, 1); --_blend: var(--tex-blend); --_in: var(--content-in); --_out: var(--content-out); --_inset: var(--content-inset); --_glow: var(--content-glow); }
+  .gv-tile .s[data-s="content"][data-active] { --_in: var(--active-in, var(--content-in)); --_out: var(--active-out, var(--content-out)); --_under: var(--active-under, var(--content-under)); }
+  .gv-tile .s[data-s="float"] { --_a: var(--float-a); --_blur: var(--float-blur); --_sat: var(--float-sat); --_bri: var(--float-bright); --_con: var(--float-con); --_tint: var(--float-tint, var(--tint, var(--penna-bg))); --_fill: var(--float-fill); --_under: var(--float-under); --_filter: var(--float-filter); --_mask: var(--float-mask); --_tex: var(--float-tex); --_texo: var(--float-texo, 1); --_blend: var(--tex-blend); --_in: var(--float-in); --_out: var(--float-out); --_inset: var(--float-inset); --_glow: var(--float-glow); }
+  .gv-tile .s[data-s="field"] { --_a: var(--field-a, var(--float-a)); --_blur: var(--field-blur, var(--float-blur)); --_sat: var(--field-sat, var(--float-sat)); --_bri: var(--field-bright, var(--float-bright)); --_con: var(--field-con, var(--float-con)); --_tint: var(--field-tint, var(--float-tint, var(--tint, var(--penna-bg)))); --_fill: var(--field-fill, var(--float-fill)); --_under: var(--field-under, var(--float-under)); --_filter: var(--field-filter, var(--float-filter)); --_mask: var(--field-mask, var(--float-mask)); --_tex: var(--field-tex, var(--float-tex)); --_texo: var(--field-texo, var(--float-texo, 1)); --_blend: var(--tex-blend); --_in: var(--field-in, var(--float-in)); --_out: var(--field-out); --_inset: var(--field-inset, var(--float-inset)); --_glow: var(--field-glow, var(--float-glow)); }
+  .gv-tile .s[data-s="sel"] { --_a: var(--sel-a, 0); --_blur: var(--sel-blur, 0); --_sat: var(--sel-sat, 1); --_bri: 1; --_con: 1; --_tint: var(--sel-tint, var(--penna-fg)); --_fill: var(--sel-fill); --_under: var(--sel-under); --_filter: var(--sel-filter, none); --_mask: var(--sel-mask); --_tex: var(--sel-tex); --_texo: 1; --_blend: normal; --_in: var(--sel-in); --_out: var(--sel-out); --_inset: 0; --_glow: 0 0 #0000; }
+
+  .gv-win { position: absolute; left: 56px; top: 52px; width: 940px; height: 612px; --penna-sidebar-width: 210px; box-shadow: var(--_out, 0 0 #0000), var(--win-shadow, 0 0 #0000); }
+  .gv-win .penna-strip { padding-right: 8px; }
+  .gv-win [data-penna="titlebar"] { padding-right: 10px; }
+  .gv-tile [data-penna="tab.window"] { width: 150px; }
+  .gv-split { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-height: 0; padding: 0 6px 6px; }
+  .gv-split > [data-penna="pane"] { --zz-pane-header-height: 34px; }
+  .gv-term { font-size: 13px; line-height: 19px; }
+  .gv-term .p { color: var(--penna-accent-ink); }
+  .gv-term .g { color: var(--penna-syntax-keyword); }
+  .gv-term .y { color: var(--penna-success-ink); font-weight: 700; }
+  .gv-term .ok { color: var(--penna-success-ink); }
+  .gv-term .bad { color: var(--penna-danger-ink); }
+  .gv-term .dim { color: var(--penna-muted); }
+  .gv-term .cur { background: var(--penna-fg); color: transparent; }
+  .gv-chat { display: flex; flex: 1; flex-direction: column; gap: 12px; min-height: 0; padding: 4px 16px 0; overflow: hidden; line-height: 19px; }
+  .gv-chat > [data-penna="card.bubble"] { align-self: flex-end; max-width: 80%; padding: 8px 12px; }
+  .gv-step { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--penna-muted); --penna-icon-size: 13px; }
+  .gv-step > b { font-weight: 500; color: var(--penna-fg); }
+  .gv-composer { padding: 10px 12px 12px; }
+
+  .gv-pop { position: absolute; left: 860px; top: 128px; width: 220px; }
+  .gv-pop [data-penna="menu-item"], .gv-menu [data-penna="menu-item"] { font-size: 13px; --penna-icon-size: 14px; }
+  .gv-pip { position: absolute; left: 404px; top: 470px; display: flex; flex-direction: column; width: 216px; height: 132px; overflow: hidden; }
+  .gv-pip > [data-penna="bar.pane"] { height: 30px; padding: 0 6px 0 10px; gap: 6px; color: var(--penna-fg); --penna-icon-size: 13px; }
+  .gv-pip pre { margin: 0; padding: 2px 10px; font: 11px/16px var(--penna-mono); color: var(--penna-muted); }
+
+  .gv-sheet { position: absolute; left: calc(1108px / 1.15); top: calc(34px / 1.15); display: grid; gap: 14px; width: 440px; zoom: 1.15; }
+  .gv-sheet [data-penna="popover"] { width: 100%; }
+  .gv-palette > .zz-palette-input { font-size: 13px; color: var(--penna-fg); --penna-icon-size: 14px; }
+  .gv-palette > .zz-palette-input > [data-icon] { color: var(--penna-muted); }
+  .gv-palette .caret { width: 1.5px; height: 16px; margin-left: -4px; background: var(--penna-accent); }
+  .gv-row2 { display: grid; grid-template-columns: 196px 1fr; gap: 14px; align-items: start; }
+  .gv-menu[data-penna="popover"] { width: 196px; }
+  .gv-card[data-penna="popover"] { display: grid; gap: 12px; padding: 14px; }
+  .gv-card b { font-weight: 600; }
+  .gv-card p { margin: 0; color: var(--penna-muted); }
+  .gv-card .gv-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+  .gv-card [data-penna="button"] { height: 28px; padding: 0 14px; font-size: 13px; }
+  .gv-swatch { display: grid; gap: 8px; padding: 8px 8px 10px; border-radius: 16px; }
+  .gv-swatch .gv-rows { display: grid; gap: 2px; }
+
+  :root[data-bg="glow"] { --hue: 292; }
+  :root[data-bg="busy"] { --hue: 225; }
+  :root[data-bg="day"] { --hue: 245; }
+
+  .wall-glow { background: linear-gradient(155deg, #251b60 0%, #18113f 38%, #0e0a2b 72%, #07051a 100%); }
+  .wall-glow .beam { inset: -30%; background: linear-gradient(122deg, transparent 35%, rgb(104 74 255 / 0.42) 43.5%, rgb(212 66 196 / 0.72) 50%, rgb(122 66 255 / 0.38) 57%, transparent 66%); filter: blur(42px); }
+  .wall-glow .core { inset: -30%; background: linear-gradient(122deg, transparent 48.7%, rgb(255 176 238 / 0.6) 50%, transparent 51.3%); filter: blur(14px); }
+  .wall-glow .haze { inset: 0; background: radial-gradient(36% 48% at 64% 28%, rgb(176 112 255 / 0.32), transparent 70%), radial-gradient(28% 36% at 30% 76%, rgb(90 70 220 / 0.22), transparent 70%); }
+  .wall-glow .corner { inset: 0; background: radial-gradient(60% 85% at 0% 100%, rgb(2 1 8 / 0.9), transparent 72%); }
+
+  .wall-day { background: radial-gradient(28% 42% at 80% 14%, rgb(255 241 214 / 0.95), transparent 72%), radial-gradient(44% 56% at 16% 26%, rgb(172 206 244 / 0.85), transparent 72%), radial-gradient(58% 52% at 56% 104%, rgb(246 208 190 / 0.85), transparent 72%), linear-gradient(180deg, #e1ecf8 0%, #f4f1eb 56%, #f5e7dd 100%); }
+  .wall-day .streak { inset: -20%; background: linear-gradient(112deg, transparent 40%, rgb(255 255 255 / 0.7) 48%, transparent 56%); filter: blur(36px); }
+  .wall-day svg { position: absolute; left: 0; bottom: 0; width: 100%; height: 300px; filter: blur(6px); }
+
+  .wall-busy { background: linear-gradient(135deg, #1f5f86 0%, #4d93b8 45%, #9fd0e2 100%); font-family: serif; color: #1b1b1b; }
+  .wall-busy .w { position: absolute; overflow: hidden; border-radius: 10px; background: #fdfdfb; box-shadow: 0 10px 30px rgb(0 0 0 / 0.35); }
+  .wall-busy .bar { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; background: #e9e7e2; font: 600 12px/1 system-ui, sans-serif; color: #444; }
+  .wall-busy .bar::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #c9c5bd; box-shadow: 14px 0 #c9c5bd, 28px 0 #c9c5bd; margin-right: 36px; }
+  .wall-busy .doc { left: 110px; top: 66px; width: 560px; height: 600px; }
+  .wall-busy .doc > div { padding: 22px 30px; }
+  .wall-busy h3 { margin: 0 0 14px; font: 700 40px/1.1 serif; color: #111; }
+  .wall-busy p { margin: 0 0 14px; font-size: 19px; line-height: 1.45; }
+  .wall-busy .doc .big { font: 700 30px/1.2 system-ui, sans-serif; color: #c4122f; }
+  .wall-busy .doc a { color: #0b57d0; text-decoration: underline; }
+  .wall-busy .sheet { left: 610px; top: 268px; width: 520px; height: 400px; }
+  .wall-busy table { border-collapse: collapse; width: 100%; font: 15px/1 system-ui, sans-serif; }
+  .wall-busy td { height: 30px; padding: 0 8px; border: 1px solid #d2d0ca; }
+  .wall-busy td.h { background: #2e7d32; color: #fff; font-weight: 700; }
+  .wall-busy td.r { background: #ff6b6b; color: #fff; }
+  .wall-busy td.y { background: #ffe066; }
+  .wall-busy td.b { background: #4dabf7; color: #fff; }
+  .wall-busy .photo { left: 900px; top: 30px; width: 420px; height: 250px; }
+  .wall-busy .photo svg { display: block; width: 100%; height: 100%; }
+  .wall-busy .note { position: absolute; left: 1190px; top: 330px; width: 236px; height: 236px; padding: 18px; background: #ffd43b; box-shadow: 0 8px 20px rgb(0 0 0 / 0.3); transform: rotate(-3deg); font: italic 22px/1.45 cursive; color: #3a2f00; }
+  .wall-busy .list { left: 1150px; top: 64px; width: 330px; height: 230px; }
+  .wall-busy .list > div { padding: 14px 18px; font: 16px/1.6 system-ui, sans-serif; }
+  .wall-busy .list b { display: block; font-size: 22px; }
+  .wall-busy .cal { position: absolute; left: 1230px; top: 600px; width: 300px; height: 92px; padding: 14px 18px; border-radius: 12px; background: #f76707; color: #fff; font: 700 24px/1.2 system-ui, sans-serif; box-shadow: 0 8px 20px rgb(0 0 0 / 0.3); }
+  .wall-busy .cal span { display: block; font-size: 16px; font-weight: 500; }
+  .wall-busy .icons { position: absolute; right: 30px; top: 40px; display: grid; gap: 22px; font: 600 13px/1.2 system-ui, sans-serif; color: #fff; text-align: center; text-shadow: 0 1px 2px rgb(0 0 0 / 0.6); }
+  .wall-busy .icons i { position: static; width: 58px; height: 46px; margin: 0 auto 6px; border-radius: 8px; background: linear-gradient(#7cc0ff, #2f86e0); }
+
+  .gv[data-v="today"] {
+    --tint: oklch(0.25 0.06 var(--hue));
+    --chrome-a: clamp(0, calc(0.65 + (var(--f) - 0.5) * 0.75), 1);
+    --chrome-blur: 60;
+    --chrome-sat: 1.8;
+    --cap: max(0.04, min(0.1, calc(0.1 - (var(--f) - 0.5) * 0.3)));
+    --chrome-filter: blur(calc(var(--chrome-blur) * 1px)) saturate(var(--chrome-sat)) brightness(calc(var(--cap) * 2.5));
+    --chrome-in: inset 0 0 0 1px rgb(from var(--penna-fg) r g b / 0.08);
+    --win-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.4), 0 24px 64px rgb(0 0 0 / 0.33);
+    --content-a: 0.5;
+    --content-filter: none;
+    --content-in: inset 0 0 0 1px rgb(from var(--penna-fg) r g b / 0.07);
+    --content-out: -16px 0 40px -22px oklch(0.62 0.16 var(--hue) / 0.55), 16px 0 40px -22px oklch(0.62 0.16 var(--hue) / 0.55);
+    --active-out: -18px 0 44px -20px oklch(0.66 0.18 var(--hue) / 0.75), 18px 0 44px -20px oklch(0.66 0.18 var(--hue) / 0.75);
+    --float-filter: var(--penna-glass-backdrop);
+    --float-fill: rgb(from var(--penna-popover) r g b / 0.706);
+    --float-in: var(--penna-glass-rim);
+    --float-out: var(--penna-shadow-float);
+    --field-fill: rgb(from var(--penna-panel) r g b / 0.706);
+    --sel-fill: rgb(from color-mix(in srgb, var(--penna-fg) 12%, var(--penna-bg)) r g b / 0.706);
+    --sel-filter: var(--penna-glass-backdrop);
+    --sel-in: var(--penna-glass-rim);
+  }
+  :root[data-penna-mode="light"] .gv[data-v="today"] { --tint: oklch(0.95 0.03 var(--hue)); }
+  .gv-svgf .gv[data-v="today"] { --chrome-filter: blur(calc(var(--chrome-blur) * 1px)) saturate(var(--chrome-sat)) url(#gv-cap); }
+  .gv[data-v="today"] .s > .l { clip-path: none !important; }
+
+  .gv[data-v="smoke"] {
+    --chrome-a: calc(0.25 + var(--f) * 0.4);
+    --chrome-blur: calc(28 + var(--f) * 24);
+    --chrome-sat: 1.8;
+    --chrome-con: 0.75;
+    --chrome-bright: 0.55;
+    --content-a: calc(0.52 + var(--f) * 0.4);
+    --content-blur: calc(28 + var(--f) * 24);
+    --content-sat: 1.2;
+    --content-con: 0.85;
+    --content-bright: 0.7;
+    --float-a: calc(0.4 + var(--f) * 0.4);
+    --float-blur: calc(18 + var(--f) * 24);
+    --float-sat: 1.5;
+    --float-con: 0.85;
+    --float-bright: 0.7;
+    --chrome-out: 0 0 0 1px rgb(0 0 0 / 0.5);
+    --chrome-in: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+    --win-shadow: 0 20px 50px -12px rgb(0 0 0 / 0.45);
+    --content-out: 0 0 0 1px rgb(0 0 0 / 0.38);
+    --content-in: inset 0 0 0 1px rgb(255 255 255 / 0.07);
+    --active-in: inset 0 0 0 1px rgb(255 255 255 / 0.17);
+    --float-out: 0 0 0 1px rgb(0 0 0 / 0.5), 0 6px 18px -6px rgb(0 0 0 / 0.5);
+    --float-in: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+    --field-out: 0 0 0 1px rgb(0 0 0 / 0.3);
+    --sel-a: 0.1;
+    --sel-in: inset 0 0 0 1px rgb(255 255 255 / 0.07);
+  }
+  :root[data-penna-mode="light"] .gv[data-v="smoke"] {
+    --chrome-bright: 1.08;
+    --content-bright: 1.08;
+    --float-bright: 1.08;
+    --chrome-out: 0 0 0 1px rgb(0 0 0 / 0.14);
+    --chrome-in: inset 0 0 0 1px rgb(255 255 255 / 0.55);
+    --content-out: 0 0 0 1px rgb(0 0 0 / 0.1);
+    --content-in: inset 0 0 0 1px rgb(255 255 255 / 0.6);
+    --active-in: inset 0 0 0 1px rgb(255 255 255 / 0.9);
+    --active-out: 0 0 0 1px rgb(0 0 0 / 0.2);
+    --float-out: 0 0 0 1px rgb(0 0 0 / 0.14), 0 6px 18px -6px rgb(0 0 0 / 0.3);
+    --float-in: inset 0 0 0 1px rgb(255 255 255 / 0.6);
+    --field-out: 0 0 0 1px rgb(0 0 0 / 0.1);
+    --sel-a: 0.07;
+    --sel-in: inset 0 0 0 1px rgb(255 255 255 / 0.5);
+  }
+
+  .gv[data-v="dither"] {
+    --cell: 2;
+    --chrome-a: calc(0.3 + var(--f) * 0.4);
+    --content-a: calc(0.7 + var(--f) * 0.3);
+    --float-a: calc(0.62 + var(--f) * 0.36);
+    --chrome-blur: 16;
+    --chrome-sat: 1.5;
+    --chrome-con: 0.75;
+    --chrome-bright: 0.45;
+    --content-blur: 24;
+    --content-sat: 1.2;
+    --content-bright: 0.42;
+    --float-blur: 20;
+    --float-sat: 1.3;
+    --float-con: 0.8;
+    --float-bright: 0.5;
+    --field-mask: var(--content-mask);
+    --field-bright: var(--content-bright);
+    --ink: color-mix(in srgb, var(--penna-fg) 45%, var(--penna-bg));
+    --chrome-fill: var(--penna-bg);
+    --content-fill: var(--penna-bg);
+    --float-fill: var(--penna-bg);
+    --chrome-out: 0 0 0 1px color-mix(in srgb, var(--penna-fg) 22%, var(--penna-bg));
+    --win-shadow: 4px 4px 0 rgb(0 0 0 / 0.35);
+    --content-out: 0 0 0 1px color-mix(in srgb, var(--penna-fg) 20%, var(--penna-bg));
+    --active-out: 0 0 0 1px color-mix(in srgb, var(--penna-accent) 80%, var(--penna-bg));
+    --float-out: 0 0 0 1px var(--ink), 3px 3px 0 rgb(0 0 0 / 0.4);
+    --field-out: 0 0 0 1px var(--ink);
+    --sel-fill: color-mix(in srgb, var(--penna-fg) 16%, var(--penna-bg));
+    --sel-out: 0 0 0 1px color-mix(in srgb, var(--penna-fg) 28%, var(--penna-bg));
+  }
+  :root[data-penna-mode="light"] .gv[data-v="dither"] {
+    --chrome-bright: 1.1;
+    --content-bright: 1.15;
+    --float-bright: 1.12;
+    --win-shadow: 4px 4px 0 rgb(0 0 0 / 0.18);
+    --float-out: 0 0 0 1px var(--ink), 3px 3px 0 rgb(0 0 0 / 0.2);
+    --sel-fill: color-mix(in srgb, var(--penna-fg) 9%, var(--penna-bg));
+  }
+
+  .gv[data-v="vellum"] {
+    --chrome-a: calc(0.35 + var(--f) * 0.4);
+    --content-a: calc(0.62 + var(--f) * 0.36);
+    --float-a: calc(0.55 + var(--f) * 0.4);
+    --chrome-blur: calc(72 + var(--f) * 48);
+    --content-blur: calc(72 + var(--f) * 48);
+    --float-blur: calc(56 + var(--f) * 32);
+    --chrome-sat: 1.4;
+    --content-sat: 1.1;
+    --float-sat: 1.2;
+    --chrome-con: 0.8;
+    --content-con: 0.9;
+    --float-con: 0.9;
+    --chrome-bright: 0.6;
+    --content-bright: 0.85;
+    --float-bright: 0.85;
+    --grain-chrome: 0.06;
+    --grain-content: 0.04;
+    --grain-float: 0.04;
+    --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 2.6 0 0 0 -1.4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E") 0 0 / 220px 220px repeat, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.6 0 0 0 -1.4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E") 0 0 / 220px 220px repeat;
+    --chrome-tex: var(--grain);
+    --content-tex: var(--grain);
+    --float-tex: var(--grain);
+    --chrome-texo: calc(var(--grain-chrome) * 4);
+    --content-texo: calc(var(--grain-content) * 4);
+    --float-texo: calc(var(--grain-float) * 4);
+    --chrome-in: inset 0 0 0 1px rgb(from var(--penna-fg) r g b / 0.1);
+    --content-in: inset 0 0 0 1px rgb(from var(--penna-fg) r g b / 0.1);
+    --active-in: inset 0 0 0 1px rgb(from var(--penna-fg) r g b / 0.2);
+    --float-in: inset 0 0 0 1px rgb(from var(--penna-fg) r g b / 0.1);
+    --win-shadow: 0 16px 40px -14px rgb(0 0 0 / 0.4);
+    --float-out: 0 10px 28px -12px rgb(0 0 0 / 0.45);
+    --sel-a: 0.08;
+    --sel-in: inset 0 0 0 1px rgb(from var(--penna-fg) r g b / 0.06);
+  }
+  :root[data-penna-mode="light"] .gv[data-v="vellum"] {
+    --chrome-bright: 1.05;
+    --content-bright: 1.05;
+    --float-bright: 1.05;
+    --win-shadow: 0 16px 40px -14px rgb(0 0 0 / 0.22);
+    --float-out: 0 10px 28px -12px rgb(0 0 0 / 0.25);
+    --sel-a: 0.06;
+  }
+
+  .gv[data-v="edgelit"] {
+    --chrome-a: calc(0.15 + var(--f) * 0.3);
+    --chrome-blur: calc(16 + var(--f) * 28);
+    --chrome-sat: 1.6;
+    --chrome-con: 0.75;
+    --chrome-bright: 0.5;
+    --band: calc(20 - var(--f) * 16);
+    --float-band: calc(16 - var(--f) * 12);
+    --leak: calc(0.8 - var(--f) * 0.6);
+    --content-blur: 22;
+    --content-sat: 2;
+    --content-bright: 1.2;
+    --float-blur: 18;
+    --float-sat: 2;
+    --float-bright: 1.2;
+    --content-a: 0.96;
+    --float-a: 0.96;
+    --content-inset: var(--band);
+    --float-inset: var(--float-band);
+    --content-glow: 0 0 calc(var(--band) * 1px) calc(var(--band) * 0.5px) rgb(from var(--penna-bg) r g b / 0.96);
+    --float-glow: 0 0 calc(var(--float-band) * 1px) calc(var(--float-band) * 0.5px) rgb(from var(--penna-bg) r g b / 0.96);
+    --content-under: rgb(from var(--penna-bg) r g b / calc(1 - var(--leak)));
+    --active-under: rgb(from var(--penna-bg) r g b / calc(0.85 - var(--leak)));
+    --float-under: rgb(from var(--penna-bg) r g b / calc(1 - var(--leak)));
+    --field-inset: 6;
+    --field-glow: 0 0 6px 3px rgb(from var(--penna-bg) r g b / 0.96);
+    --chrome-out: 0 0 0 1px rgb(0 0 0 / 0.4);
+    --chrome-in: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+    --win-shadow: 0 20px 50px -12px rgb(0 0 0 / 0.45);
+    --content-out: 0 0 0 1px rgb(0 0 0 / 0.45);
+    --content-in: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+    --active-in: inset 0 0 0 1px rgb(255 255 255 / 0.3);
+    --float-out: 0 0 0 1px rgb(0 0 0 / 0.5), 0 8px 22px -8px rgb(0 0 0 / 0.55);
+    --float-in: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+    --sel-a: 0.12;
+    --sel-in: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+  }
+  :root[data-penna-mode="light"] .gv[data-v="edgelit"] {
+    --chrome-bright: 1.08;
+    --content-bright: 1.05;
+    --float-bright: 1.05;
+    --chrome-out: 0 0 0 1px rgb(0 0 0 / 0.14);
+    --chrome-in: inset 0 0 0 1px rgb(255 255 255 / 0.5);
+    --content-out: 0 0 0 1px rgb(0 0 0 / 0.14);
+    --content-in: inset 0 0 0 1px rgb(255 255 255 / 0.7);
+    --active-in: inset 0 0 0 1px rgb(255 255 255 / 1);
+    --float-out: 0 0 0 1px rgb(0 0 0 / 0.14), 0 8px 22px -8px rgb(0 0 0 / 0.3);
+    --float-in: inset 0 0 0 1px rgb(255 255 255 / 0.7);
+    --sel-a: 0.07;
+    --sel-in: inset 0 0 0 1px rgb(255 255 255 / 0.5);
+  }
+
+  .gv[data-v="reeded"] {
+    --chrome-a: calc(0.28 + var(--f) * 0.34);
+    --chrome-blur: calc(8 + var(--f) * 20);
+    --chrome-sat: 1.7;
+    --chrome-con: 0.75;
+    --chrome-bright: 0.55;
+    --rib: calc(0.16 - var(--f) * 0.06);
+    --reed: calc(16 - var(--f) * 10);
+    --chrome-tex: linear-gradient(90deg, rgb(255 255 255 / var(--rib)) 0%, rgb(255 255 255 / 0) 34%, rgb(0 0 0 / 0) 56%, rgb(0 0 0 / calc(var(--rib) * 1.4)) 100%) 0 0 / calc(var(--pitch) * 1px) 100% repeat-x;
+    --content-a: calc(0.58 + var(--f) * 0.4);
+    --content-blur: 40;
+    --content-sat: 1.2;
+    --content-con: 0.85;
+    --content-bright: 0.75;
+    --float-a: calc(0.42 + var(--f) * 0.4);
+    --float-blur: 30;
+    --float-sat: 1.4;
+    --float-con: 0.85;
+    --float-bright: 0.75;
+    --chrome-out: 0 0 0 1px rgb(0 0 0 / 0.5);
+    --chrome-in: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+    --win-shadow: 0 20px 50px -12px rgb(0 0 0 / 0.45);
+    --content-out: 0 0 0 1px rgb(0 0 0 / 0.4);
+    --content-in: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+    --active-in: inset 0 0 0 1px rgb(255 255 255 / 0.18);
+    --float-out: 0 0 0 1px rgb(0 0 0 / 0.5), 0 6px 18px -6px rgb(0 0 0 / 0.5);
+    --float-in: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+    --field-out: 0 0 0 1px rgb(0 0 0 / 0.3);
+    --sel-a: 0.08;
+    --sel-filter: blur(6px);
+    --sel-in: inset 0 0 0 1px rgb(255 255 255 / 0.09);
+  }
+  :root[data-penna-mode="light"] .gv[data-v="reeded"] {
+    --chrome-bright: 1.05;
+    --content-bright: 1.08;
+    --float-bright: 1.08;
+    --chrome-out: 0 0 0 1px rgb(0 0 0 / 0.14);
+    --chrome-in: inset 0 0 0 1px rgb(255 255 255 / 0.55);
+    --content-out: 0 0 0 1px rgb(0 0 0 / 0.1);
+    --content-in: inset 0 0 0 1px rgb(255 255 255 / 0.6);
+    --active-in: inset 0 0 0 1px rgb(255 255 255 / 0.9);
+    --active-out: 0 0 0 1px rgb(0 0 0 / 0.2);
+    --float-out: 0 0 0 1px rgb(0 0 0 / 0.14), 0 6px 18px -6px rgb(0 0 0 / 0.3);
+    --float-in: inset 0 0 0 1px rgb(255 255 255 / 0.6);
+    --field-out: 0 0 0 1px rgb(0 0 0 / 0.1);
+    --sel-a: 0.06;
+    --sel-in: inset 0 0 0 1px rgb(255 255 255 / 0.5);
+  }
+  .gv-svgf .gv[data-v="reeded"] { --chrome-blur: calc(2 + var(--f) * 8); --chrome-filter: url(#gv-reed) blur(calc(var(--chrome-blur) * 1px)) saturate(var(--chrome-sat)) contrast(var(--chrome-con)) brightness(var(--chrome-bright)); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+  <filter id="gv-cap" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feComponentTransfer><feFuncR type="table"/><feFuncG type="table"/><feFuncB type="table"/></feComponentTransfer>
+  </filter>
+  <filter id="gv-reed" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" primitiveUnits="userSpaceOnUse">
+    <feImage x="0" y="0" width="8" height="8" preserveAspectRatio="none" result="ramp"/>
+    <feTile in="ramp" result="ribs"/>
+    <feDisplacementMap in="SourceGraphic" in2="ribs" scale="0" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
+<main class="zz-page">
+  <h1>Glass</h1>
+
+  <div class="zz-controls">
+    <span class="zz-control"><span>Backdrop</span><span class="zz-seg" data-tune="bg"><button data-penna="button.quiet" data-value="glow">Glow</button><button data-penna="button.quiet" data-value="busy">Busy</button><button data-penna="button.quiet" data-value="day">Day</button></span></span>
+    <span class="zz-control"><span>Mode</span><span class="zz-seg" data-tune="mode"><button data-penna="button.quiet" data-value="dark">Dark</button><button data-penna="button.quiet" data-value="light">Light</button></span></span>
+    <label class="zz-control"><span>Frost</span><input class="zz-frost" type="range" min="0" max="100" step="1" data-frost><span class="zz-frost-value" data-frost-value></span></label>
+    <span class="zz-control"><span>View</span><span class="zz-seg" data-tune="solo"></span></span>
+  </div>
+
+  <div class="gv-grid" data-grid></div>
+</main>
+
+<template id="gv-figure">
+  <figure>
+    <div class="gv-frame"><div class="gv-tile gv"></div></div>
+    <figcaption><b></b><table class="gv-read"></table></figcaption>
+  </figure>
+</template>
+
+<template id="gv-scene">
+  <div class="gv-wall"></div>
+
+  <div class="penna-window penna-gaps gv-win s" data-s="chrome" data-penna="window">
+    <i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-tex"></i><i class="l l-edge"></i>
+    <div class="penna-lights"><i></i><i></i><i></i></div>
+    <nav data-penna="sidebar">
+      <div class="penna-strip">
+        <button data-penna="chrome.button" title="New session"><i data-icon="plus"></i></button>
+        <button data-penna="chrome.button" title="Settings"><i data-icon="settings"></i></button>
+      </div>
+      <div data-penna="sidebar.row" style="--depth: 0"><span class="penna-marker"><i data-icon="laptop"></i></span><span class="penna-label">laptop</span></div>
+      <div data-penna="sidebar.row" style="--depth: 1"><span class="penna-marker"><i data-icon="chevron-down" class="penna-muted"></i></span><span class="penna-label">zz</span></div>
+      <div class="s" data-s="sel" data-penna="sidebar.row" style="--depth: 2" aria-current="true"><i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-edge"></i><span class="penna-marker"><i data-icon="terminal"></i></span><span class="penna-label">editor</span></div>
+      <div data-penna="sidebar.row" style="--depth: 2"><span class="penna-marker"><i data-icon="sparkle"></i></span><span class="penna-label">agent</span></div>
+      <div data-penna="sidebar.row" style="--depth: 2"><span class="penna-marker"><i data-icon="globe"></i></span><span class="penna-label">docs</span></div>
+      <div data-penna="sidebar.row" style="--depth: 0"><span class="penna-marker"><i data-icon="server"></i></span><span class="penna-label">desktop</span></div>
+      <div data-penna="sidebar.row" style="--depth: 1"><span class="penna-marker"><i data-icon="chevron-right" class="penna-muted"></i></span><span class="penna-label">build</span></div>
+    </nav>
+    <header data-penna="titlebar">
+      <div data-penna="tab.strip">
+        <div class="s" data-s="sel" data-penna="tab.window" aria-selected="true"><i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-edge"></i><i data-icon="terminal"></i><span>editor</span></div>
+        <div data-penna="tab.window"><i data-icon="globe"></i><span>docs</span></div>
+      </div>
+      <span style="flex: 1"></span>
+      <div data-penna="chip.bar"><i data-icon="sparkle"></i><span>2 agents</span></div>
+    </header>
+    <div class="gv-split">
+      <section class="s" data-s="content" data-penna="pane" data-active>
+        <i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-tex"></i><i class="l l-edge"></i>
+        <div data-penna="bar.pane"><div data-penna="button.title"><i data-icon="terminal"></i>cargo</div><span style="flex: 1"></span><button data-penna="icon-button.bar"><i data-icon="xmark"></i></button></div>
+        <pre class="zz-terminal gv-term"><span class="p">~/dev/zebrilus</span> <span class="g">main</span> ❯ cargo test -p zz-ui glass
+<span class="y">   Compiling</span> zz-ui v0.22.0
+<span class="y">    Finished</span> `test` profile in 6.41s
+<span class="y">     Running</span> unittests src/lib.rs
+test pane_look::frost_maps_tint ... <span class="ok">ok</span>
+test pane_look::edge_holds_at_zero ... <span class="ok">ok</span>
+test pane_look::band_fades_inward ... <span class="bad">FAILED</span>
+
+<span class="dim">thread 'band_fades_inward' panicked:</span>
+<span class="dim">  left: 0.96</span>
+<span class="dim"> right: 0.82</span>
+
+test result: <span class="bad">FAILED</span>. 2 passed; 1 failed
+<span class="p">~/dev/zebrilus</span> <span class="g">main</span> ❯ <span class="cur">_</span></pre>
+      </section>
+      <section class="s" data-s="content" data-penna="pane">
+        <i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-tex"></i><i class="l l-edge"></i>
+        <div data-penna="bar.pane"><div data-penna="button.title"><i data-icon="sparkle"></i>agent</div><span style="flex: 1"></span><button data-penna="icon-button.bar" data-state="current"><i data-icon="ellipsis"></i></button></div>
+        <div class="gv-chat">
+          <div data-penna="card.bubble">Why does the pane glass look flat?</div>
+          <div>The fill is tinted toward the backdrop's hue before anything is sampled, and the backdrop is clamped dark first. Most of the color you see is paint.</div>
+          <div class="gv-step"><i data-icon="file"></i><b>Read</b>pane_look.rs</div>
+          <div class="gv-step"><i data-icon="file"></i><b>Read</b>window/background.rs</div>
+          <div>Trying a neutral fill that keeps the backdrop's light, and a softer curve instead of the clamp.</div>
+        </div>
+        <div class="gv-composer">
+          <div class="s" data-s="field" data-penna="field.composer"><i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-tex"></i><i class="l l-edge"></i><div class="zz-input penna-muted">Ask about this pane</div><button data-penna="button.send" data-prominent><i data-icon="arrow-up"></i></button></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="gv-pip s" data-s="float" data-penna="floating.pip">
+    <i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-tex"></i><i class="l l-edge"></i>
+    <div data-penna="bar.pane"><i data-icon="terminal"></i><span>design</span><span style="flex: 1"></span><button data-penna="icon-button.bar"><i data-icon="xmark"></i></button></div>
+    <pre>Serving design on 127.0.0.1:8090
+GET /mockups/glass/ 200
+GET /zz.css 200
+GET /penna/kit.js 200</pre>
+  </div>
+
+  <div class="gv-pop s penna-menu" data-s="float" data-penna="popover">
+    <i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-tex"></i><i class="l l-edge"></i>
+    <div data-penna="menu-item"><i data-icon="panel-bottom"></i>Split bottom</div>
+    <div data-penna="menu-item" data-state="selected"><i data-icon="panel-right"></i>Split right</div>
+    <div data-penna="menu-item"><i data-icon="layers"></i>Float</div>
+    <div data-penna="menu-item"><i data-icon="expand"></i>Zoom</div>
+    <div class="penna-separator"></div>
+    <div data-penna="menu-item"><i data-icon="xmark"></i>Close pane</div>
+  </div>
+
+  <div class="gv-sheet">
+    <div class="gv-palette s" data-s="float" data-penna="popover">
+      <i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-tex"></i><i class="l l-edge"></i>
+      <div class="zz-palette-input"><i data-icon="search"></i><span>split</span><span class="caret"></span></div>
+      <div class="penna-separator" style="margin: 0"></div>
+      <div class="penna-menu">
+        <div data-penna="menu-item" data-state="selected">Split right<span class="zz-detail">prefix %</span></div>
+        <div data-penna="menu-item">Split bottom<span class="zz-detail">prefix "</span></div>
+        <div data-penna="menu-item">Split the window into a grid</div>
+        <div data-penna="menu-item">Choose a session<span class="zz-detail">prefix s</span></div>
+      </div>
+    </div>
+    <div class="gv-row2">
+      <div class="gv-menu s penna-menu" data-s="float" data-penna="popover">
+        <i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-tex"></i><i class="l l-edge"></i>
+        <div data-penna="menu-item"><i data-icon="panel-bottom"></i>Split bottom</div>
+        <div data-penna="menu-item" data-state="selected"><i data-icon="panel-right"></i>Split right</div>
+        <div data-penna="menu-item"><i data-icon="layers"></i>Float</div>
+        <div data-penna="menu-item"><i data-icon="expand"></i>Zoom</div>
+        <div class="penna-separator"></div>
+        <div data-penna="menu-item"><i data-icon="xmark"></i>Close pane</div>
+      </div>
+      <div class="gv-card s" data-s="float" data-penna="popover">
+        <i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-tex"></i><i class="l l-edge"></i>
+        <b>Detach this client?</b>
+        <p>2 panes keep running on desktop.</p>
+        <div class="gv-buttons"><button data-penna="button">Cancel</button><button data-penna="button" data-prominent>Detach</button></div>
+      </div>
+    </div>
+    <div class="s" data-s="field" data-penna="field.composer">
+      <i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-tex"></i><i class="l l-edge"></i>
+      <button data-penna="icon-button.bar"><i data-icon="plus"></i></button>
+      <div class="zz-input penna-muted">Ask about this pane</div>
+      <button data-penna="button.send" data-prominent><i data-icon="arrow-up"></i></button>
+    </div>
+    <div class="gv-swatch s" data-s="chrome">
+      <i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-tex"></i><i class="l l-edge"></i>
+      <div data-penna="tab.strip" style="justify-self: start">
+        <div class="s" data-s="sel" data-penna="tab.window" aria-selected="true"><i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-edge"></i><i data-icon="terminal"></i><span>editor</span></div>
+        <div data-penna="tab.window"><i data-icon="globe"></i><span>docs</span></div>
+      </div>
+      <div class="gv-rows">
+        <div class="s" data-s="sel" data-penna="sidebar.row" aria-current="true"><i class="l l-blur"></i><i class="l l-fill"></i><i class="l l-edge"></i><span class="penna-marker"><i data-icon="terminal"></i></span><span class="penna-label">editor</span></div>
+        <div data-penna="sidebar.row"><span class="penna-marker"><i data-icon="sparkle"></i></span><span class="penna-label">agent</span></div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<template id="wall-glow">
+  <div class="gv-wall wall-glow"><i class="beam"></i><i class="core"></i><i class="haze"></i><i class="corner"></i></div>
+</template>
+
+<template id="wall-day">
+  <div class="gv-wall wall-day">
+    <i class="streak"></i>
+    <svg viewBox="0 0 1640 300" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0 170 C220 110 380 150 560 120 S900 60 1100 110 S1440 150 1640 90 V300 H0Z" fill="#c9d6ec" opacity="0.7"/>
+      <path d="M0 230 C260 180 520 220 760 190 S1200 150 1640 200 V300 H0Z" fill="#d8c8e4" opacity="0.65"/>
+      <path d="M0 280 C300 250 700 270 1000 250 S1400 240 1640 262 V300 H0Z" fill="#b7d8cf" opacity="0.6"/>
+    </svg>
+  </div>
+</template>
+
+<template id="wall-busy">
+  <div class="gv-wall wall-busy">
+    <div class="w doc"><div class="bar">notes.txt</div><div>
+      <h3>Field notes, week 46</h3>
+      <p>Moved the bench to the north window. Morning light covers the left half of the desk until ten, then the whole surface goes flat and blue.</p>
+      <p><b>To do:</b> glue the drawer runner, order two more clamps, return the borrowed level before Friday. <a>Supplier list</a></p>
+      <p>The kettle on the second shelf still leaks at the seam. Try the food-safe epoxy, not the hardware one.</p>
+      <p class="big">Call the glazier back</p>
+      <p>Measurements for the cabinet doors: 412 × 690, twice, with 3 mm reveal on every side.</p>
+    </div></div>
+    <div class="w photo"><svg viewBox="0 0 420 250" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff7b54"/><stop offset="0.55" stop-color="#ffd56b"/><stop offset="1" stop-color="#ffb26b"/></linearGradient></defs>
+      <rect width="420" height="250" fill="url(#sky)"/>
+      <circle cx="300" cy="120" r="46" fill="#fff4d6"/>
+      <path d="M0 190 L90 120 L170 175 L250 110 L340 180 L420 140 V250 H0Z" fill="#3d405b"/>
+      <path d="M0 220 L120 170 L230 215 L330 175 L420 205 V250 H0Z" fill="#1b998b"/>
+    </svg></div>
+    <div class="w list"><div class="bar">packing</div><div>
+      <b>Saturday trip</b>
+      Rain shell, two wool layers<br>
+      Stove, fuel, lighter<br>
+      Map 1:25 000, compass<br>
+      Water filter, spare cartridge
+    </div></div>
+    <div class="w sheet"><div class="bar">budget</div>
+      <table>
+        <tr><td class="h">Month</td><td class="h">Rent</td><td class="h">Food</td><td class="h">Travel</td><td class="h">Total</td></tr>
+        <tr><td>Jan</td><td>1 200</td><td class="y">418</td><td>96</td><td>1 714</td></tr>
+        <tr><td>Feb</td><td>1 200</td><td>377</td><td class="r">640</td><td>2 217</td></tr>
+        <tr><td>Mar</td><td>1 200</td><td>402</td><td>88</td><td>1 690</td></tr>
+        <tr><td>Apr</td><td>1 250</td><td class="b">455</td><td>120</td><td>1 825</td></tr>
+        <tr><td>May</td><td>1 250</td><td>391</td><td class="r">910</td><td>2 551</td></tr>
+        <tr><td>Jun</td><td>1 250</td><td class="y">433</td><td>72</td><td>1 755</td></tr>
+        <tr><td>Jul</td><td>1 250</td><td>380</td><td>140</td><td>1 770</td></tr>
+        <tr><td>Aug</td><td>1 250</td><td>412</td><td class="b">305</td><td>1 967</td></tr>
+        <tr><td>Sep</td><td>1 250</td><td>399</td><td>64</td><td>1 713</td></tr>
+        <tr><td>Oct</td><td>1 250</td><td class="y">441</td><td>118</td><td>1 809</td></tr>
+      </table>
+    </div>
+    <div class="note">Water the fern<br>Pay the gas bill<br><b>Thu</b> dentist 9:30<br>Buy lamp oil</div>
+    <div class="cal">Standup<span>14:00 to 14:15, room 3</span></div>
+    <div class="icons"><div><i></i>Projects</div><div><i></i>Scans</div><div><i></i>Invoices</div><div><i></i>Music</div><div><i></i>Old drives</div></div>
+  </div>
+</template>
+
+<script>
+(() => {
+  const W = 1640;
+  const H = 720;
+  const VARIANTS = [
+    ["today", "Today"],
+    ["smoke", "Smoke"],
+    ["dither", "Dither"],
+    ["vellum", "Vellum"],
+    ["edgelit", "Edge-lit"],
+    ["reeded", "Reeded"],
+  ];
+  const BACKDROPS = ["glow", "busy", "day"];
+  const svgFilters = Boolean(navigator.userAgentData) && CSS.supports("backdrop-filter", "url(#gv-cap)");
+  if (svgFilters) document.documentElement.classList.add("gv-svgf");
+
+  const state = { bg: "glow", mode: window.pennaKit?.choice.mode ?? "dark", frost: 50, solo: "" };
+  const readHash = () => {
+    const hash = new URLSearchParams(location.hash.slice(1));
+    if (BACKDROPS.includes(hash.get("bg"))) state.bg = hash.get("bg");
+    if (["dark", "light"].includes(hash.get("mode"))) state.mode = hash.get("mode");
+    const frost = Number(hash.get("frost"));
+    if (hash.has("frost") && Number.isFinite(frost)) state.frost = Math.min(100, Math.max(0, Math.round(frost)));
+    state.solo = VARIANTS.some(([id]) => id === hash.get("solo")) ? hash.get("solo") : "";
+  };
+  const writeHash = () => {
+    const hash = new URLSearchParams({ bg: state.bg, mode: state.mode, frost: String(state.frost) });
+    if (state.solo) hash.set("solo", state.solo);
+    history.replaceState(null, "", `#${hash}`);
+  };
+
+  const grid = document.querySelector("[data-grid]");
+  const figures = VARIANTS.map(([id, name]) => {
+    const figure = document.getElementById("gv-figure").content.firstElementChild.cloneNode(true);
+    figure.dataset.v = id;
+    const tile = figure.querySelector(".gv-tile");
+    tile.dataset.v = id;
+    tile.append(document.getElementById("gv-scene").content.cloneNode(true));
+    figure.querySelector("figcaption > b").textContent = name;
+    figure.querySelector(".gv-frame").addEventListener("click", () => {
+      state.solo = state.solo === id ? "" : id;
+      render();
+    });
+    grid.append(figure);
+    return figure;
+  });
+
+  const soloSeg = document.querySelector('[data-tune="solo"]');
+  soloSeg.innerHTML = [["", "All"], ...VARIANTS].map(([id, name]) => `<button data-penna="button.quiet" data-value="${id}">${name}</button>`).join("");
+
+  const n = (element, name) => parseFloat(getComputedStyle(element).getPropertyValue(name)) || 0;
+  const f2 = (value) => String(Math.round(value * 100) / 100).replace(/^0\./, ".").replace(/^-0\./, "-.");
+  const f0 = (value) => String(Math.round(value));
+  const kitGlass = () => getComputedStyle(document.documentElement).getPropertyValue("--penna-glass-backdrop").trim();
+  const kitValue = (name) => kitGlass().match(new RegExp(`${name}\\(([^)]+)\\)`))?.[1] ?? "";
+  const kitTint = () => {
+    const hex = getComputedStyle(document.documentElement).getPropertyValue("--penna-glass-tint").trim();
+    return hex.length === 9 ? f2(parseInt(hex.slice(7), 16) / 255) : "";
+  };
+
+  const trio = (tile, label, suffix, format) => [label, ...["chrome", "content", "float"].map((kind) => format(n(tile, `--${kind}-${suffix}`)))];
+  const READOUTS = {
+    today: (t) => [
+      ["tint", f2(n(t, "--chrome-a")), ".5 over chrome", `.71, kit`],
+      ["blur", f0(n(t, "--chrome-blur")), "none", kitValue("blur")],
+      ["saturate", f2(n(t, "--chrome-sat")), "none", kitValue("saturate")],
+      ["light", `clamped at ${f2(n(t, "--cap"))}${svgFilters ? "" : " (brightness stand-in)"}`],
+      ["fill", "tinted to the backdrop hue"],
+      ["edge", "1px at 7%, 40px side glow, floating uses the kit rim"],
+    ],
+    smoke: (t) => [
+      trio(t, "tint", "a", f2),
+      trio(t, "blur", "blur", f0),
+      trio(t, "saturate", "sat", f2),
+      trio(t, "contrast", "con", f2),
+      trio(t, "brightness", "bright", f2),
+      ["fill", "neutral, no hue shift"],
+      ["edge", "dark 1px outside, bright 1px inside, no glow"],
+    ],
+    dither: (t) => [
+      trio(t, "stipple", "a", f2),
+      trio(t, "blur", "blur", f0),
+      trio(t, "saturate", "sat", f2),
+      trio(t, "contrast", "con", f2),
+      trio(t, "brightness", "bright", f2),
+      ["cell", `${f0(n(t, "--cell"))}px, 8×8 threshold, opaque fill`],
+      ["edge", "solid 1px ink, hard drop, no glint"],
+    ],
+    vellum: (t) => [
+      trio(t, "tint", "a", f2),
+      trio(t, "blur", "blur", f0),
+      trio(t, "saturate", "sat", f2),
+      [ "grain", f2(n(t, "--grain-chrome")), f2(n(t, "--grain-content")), f2(n(t, "--grain-float"))],
+      trio(t, "contrast", "con", f2),
+      trio(t, "brightness", "bright", f2),
+      ["edge", "inner hairline, fg at 10%"],
+    ],
+    edgelit: (t) => [
+      ["interior", f2(n(t, "--chrome-a")), f2(n(t, "--content-a")), f2(n(t, "--float-a"))],
+      ["band", "none", `${f0(n(t, "--band"))}px`, `${f0(n(t, "--float-band"))}px`],
+      ["leak", "", f2(n(t, "--leak")), f2(n(t, "--leak"))],
+      trio(t, "blur", "blur", f0),
+      trio(t, "saturate", "sat", f2),
+      trio(t, "contrast", "con", f2),
+      trio(t, "brightness", "bright", f2),
+      ["edge", "1px dark outside, lit 1px inside"],
+    ],
+    reeded: (t) => [
+      trio(t, "tint", "a", f2),
+      trio(t, "blur", "blur", f0),
+      trio(t, "saturate", "sat", f2),
+      trio(t, "contrast", "con", f2),
+      trio(t, "brightness", "bright", f2),
+      ["ribs", `chrome only, pitch ${f2(n(t, "--pitch"))}px (one cell), shade ${f2(n(t, "--rib"))}`],
+      ["bend", svgFilters ? `${f0(n(t, "--reed"))}px displacement per rib` : "off, gradient only"],
+      ["floating", "smooth, no ribs; selection is a smooth lens"],
+      ["note", "approximation"],
+    ],
+  };
+
+  const readout = (figure) => {
+    const tile = figure.querySelector(".gv-tile");
+    const rows = READOUTS[figure.dataset.v](tile);
+    const head = `<tr><th></th><th>chrome</th><th>content</th><th>floating</th></tr>`;
+    figure.querySelector(".gv-read").innerHTML =
+      head +
+      rows
+        .map(([label, ...cells]) =>
+          cells.length === 1 ? `<tr><td>${label}</td><td colspan="3">${cells[0]}</td></tr>` : `<tr><td>${label}</td>${cells.map((cell) => `<td>${cell}</td>`).join("")}</tr>`,
+        )
+        .join("");
+  };
+
+  const BAYER = [0, 32, 8, 40, 2, 34, 10, 42, 48, 16, 56, 24, 50, 18, 58, 26, 12, 44, 4, 36, 14, 46, 6, 38, 60, 28, 52, 20, 62, 30, 54, 22, 3, 35, 11, 43, 1, 33, 9, 41, 51, 19, 59, 27, 49, 17, 57, 25, 15, 47, 7, 39, 13, 45, 5, 37, 63, 31, 55, 23, 61, 29, 53, 21];
+  const tiles = new Map();
+  const bayerTile = (level, cell) => {
+    const scale = Math.max(1, Math.round(devicePixelRatio));
+    const key = `${level}/${cell}/${scale}`;
+    if (tiles.has(key)) return tiles.get(key);
+    const side = 8 * cell * scale;
+    const canvas = Object.assign(document.createElement("canvas"), { width: side, height: side });
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#000";
+    for (let i = 0; i < 64; i++) {
+      if (BAYER[i] < level) context.fillRect((i % 8) * cell * scale, Math.floor(i / 8) * cell * scale, cell * scale, cell * scale);
+    }
+    const url = `url(${canvas.toDataURL()}) 0 0 / ${8 * cell}px ${8 * cell}px repeat`;
+    tiles.set(key, url);
+    return url;
+  };
+
+  const dither = (tile) => {
+    const cell = Math.max(1, Math.round(n(tile, "--cell")));
+    for (const kind of ["chrome", "content", "float"]) {
+      const level = Math.round(Math.min(1, Math.max(0, n(tile, `--${kind}-a`))) * 64);
+      tile.style.setProperty(`--${kind}-mask`, bayerTile(level, cell));
+    }
+  };
+
+  const roundRect = (x, y, w, h, r) =>
+    `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`;
+  const holes = (win) => {
+    const box = win.getBoundingClientRect();
+    const zoom = box.width / win.offsetWidth || 1;
+    let path = `M0 0H${win.offsetWidth}V${win.offsetHeight}H0Z`;
+    for (const pane of win.querySelectorAll('[data-s="content"]')) {
+      const rect = pane.getBoundingClientRect();
+      const x = (rect.left - box.left) / zoom;
+      const y = (rect.top - box.top) / zoom;
+      const r = parseFloat(getComputedStyle(pane).borderTopLeftRadius) || 0;
+      path += roundRect(+x.toFixed(2), +y.toFixed(2), +(rect.width / zoom).toFixed(2), +(rect.height / zoom).toFixed(2), r);
+    }
+    win.style.setProperty("--holes", `path(evenodd, "${path}")`);
+  };
+
+  const cap = () => {
+    const today = document.querySelector('.gv-tile[data-v="today"]');
+    const limit = n(today, "--cap");
+    const values = Array.from({ length: 33 }, (_, i) => f2(Math.min(i / 32, limit))).join(" ");
+    document.querySelectorAll("#gv-cap feComponentTransfer > *").forEach((func) => func.setAttribute("tableValues", values));
+  };
+
+  const pitch = () => {
+    const probe = document.createElement("span");
+    probe.className = "zz-terminal";
+    probe.style.cssText = "position:absolute;visibility:hidden;padding:0;flex:none";
+    probe.textContent = "M".repeat(40);
+    document.body.append(probe);
+    const width = probe.getBoundingClientRect().width / 40;
+    probe.remove();
+    document.documentElement.style.setProperty("--pitch", width.toFixed(3));
+    return width;
+  };
+
+  const reed = () => {
+    const tile = document.querySelector('.gv-tile[data-v="reeded"]');
+    const width = n(tile, "--pitch");
+    const strength = n(tile, "--reed");
+    const canvas = Object.assign(document.createElement("canvas"), { width: 32, height: 2 });
+    const context = canvas.getContext("2d");
+    const image = context.createImageData(32, 2);
+    for (let x = 0; x < 32; x++) {
+      const t = (x + 0.5) / 32;
+      const r = Math.round(255 * (1 - t));
+      for (let y = 0; y < 2; y++) {
+        const i = (y * 32 + x) * 4;
+        image.data[i] = r;
+        image.data[i + 1] = 128;
+        image.data[i + 2] = 128;
+        image.data[i + 3] = 255;
+      }
+    }
+    context.putImageData(image, 0, 0);
+    const filter = document.getElementById("gv-reed");
+    const ramp = filter.querySelector("feImage");
+    ramp.setAttribute("width", width.toFixed(3));
+    ramp.setAttribute("height", "8");
+    ramp.setAttribute("href", canvas.toDataURL());
+    filter.querySelector("feDisplacementMap").setAttribute("scale", f2(strength));
+  };
+
+  const fit = () => {
+    for (const figure of figures) {
+      if (figure.offsetParent === null) continue;
+      const frame = figure.querySelector(".gv-frame");
+      const zoom = Math.min(1, frame.clientWidth / W);
+      frame.style.height = `${H * zoom}px`;
+      figure.querySelector(".gv-tile").style.zoom = zoom;
+    }
+  };
+
+  const settle = () => {
+    pitch();
+    cap();
+    reed();
+    for (const figure of figures) {
+      const tile = figure.querySelector(".gv-tile");
+      holes(tile.querySelector(".gv-win"));
+      if (figure.dataset.v === "dither") dither(tile);
+      readout(figure);
+    }
+  };
+
+  const walls = () => {
+    for (const figure of figures) {
+      figure.querySelector(".gv-wall").replaceWith(document.getElementById(`wall-${state.bg}`).content.firstElementChild.cloneNode(true));
+    }
+  };
+
+  const mark = () => {
+    for (const group of document.querySelectorAll("[data-tune]")) {
+      for (const button of group.children) {
+        if (state[group.dataset.tune] === button.dataset.value) button.dataset.state = "selected";
+        else button.removeAttribute("data-state");
+      }
+    }
+    document.querySelector("[data-frost]").value = state.frost;
+    document.querySelector("[data-frost-value]").textContent = state.frost;
+  };
+
+  let shownBg = "";
+  const render = () => {
+    document.documentElement.dataset.bg = state.bg;
+    document.documentElement.style.setProperty("--f", String(state.frost / 100));
+    if (shownBg !== state.bg) {
+      walls();
+      shownBg = state.bg;
+    }
+    if (window.pennaKit && window.pennaKit.choice.mode !== state.mode) {
+      window.pennaKit.choice.mode = state.mode;
+      window.pennaKit.apply();
+    }
+    if (state.solo) grid.dataset.solo = "";
+    else delete grid.dataset.solo;
+    figures.forEach((figure) => figure.toggleAttribute("data-solo", figure.dataset.v === state.solo));
+    mark();
+    writeHash();
+    fit();
+    settle();
+  };
+
+  document.querySelectorAll("[data-tune]").forEach((group) =>
+    group.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-value]");
+      if (!button) return;
+      state[group.dataset.tune] = button.dataset.value;
+      render();
+    }),
+  );
+  document.querySelector("[data-frost]").addEventListener("input", (event) => {
+    state.frost = Number(event.target.value);
+    render();
+  });
+  addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.solo) {
+      state.solo = "";
+      render();
+    }
+  });
+  addEventListener("hashchange", () => {
+    readHash();
+    render();
+  });
+  document.addEventListener("penna-theme", (event) => {
+    state.mode = event.detail.mode;
+    mark();
+    writeHash();
+    setTimeout(settle, 120);
+    setTimeout(settle, 600);
+  });
+  new ResizeObserver(fit).observe(grid);
+
+  readHash();
+  render();
+  addEventListener("load", () => {
+    fit();
+    settle();
+    window.pennaKit?.roundAll?.();
+    setTimeout(settle, 300);
+  });
+  document.fonts?.ready.then(settle);
+  window.glassBoard = { state, render, settle };
+})();
+</script>
+</body>
+</html>
