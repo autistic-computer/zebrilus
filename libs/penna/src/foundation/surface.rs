@@ -800,6 +800,18 @@ impl ShadowMaterial {
         spread: -6.0,
         strength: 0.8,
     };
+    pub const SELECTION: Self = Self {
+        y: 2.0,
+        blur: 6.0,
+        spread: 0.0,
+        strength: 0.0,
+    };
+    pub const PANE: Self = Self {
+        y: 3.0,
+        blur: 14.0,
+        spread: 0.0,
+        strength: 0.0,
+    };
 }
 
 impl Default for ShadowMaterial {
@@ -979,7 +991,32 @@ impl Theme {
     }
 
     pub fn float_shadows(&self) -> Vec<BoxShadow> {
-        let material = self.float_shadow;
+        self.shadows_from(self.float_shadow)
+    }
+
+    pub fn glass_float_shadows(&self) -> Vec<BoxShadow> {
+        self.shadows_from(
+            self.glass_look
+                .map_or(self.float_shadow, |look| look.float_shadow),
+        )
+    }
+
+    pub fn selection_shadows(&self) -> Vec<BoxShadow> {
+        self.glass_look
+            .map_or_else(Vec::new, |look| self.shadows_from(look.selection_shadow))
+    }
+
+    pub fn pane_shadows(&self) -> Vec<BoxShadow> {
+        self.glass_look
+            .map_or_else(Vec::new, |look| self.shadows_from(look.pane_shadow))
+    }
+
+    fn selection_material(&self, material: GlassMaterial) -> GlassMaterial {
+        self.glass_look
+            .map_or(material, |look| look.selection.apply(material))
+    }
+
+    fn shadows_from(&self, material: ShadowMaterial) -> Vec<BoxShadow> {
         if material.strength <= 0.0 {
             return Vec::new();
         }
@@ -1137,7 +1174,9 @@ impl Theme {
             highlight => highlight,
         };
         if highlight == Highlight::Glass {
-            glass = self.drawn_glass();
+            glass = self
+                .drawn_glass()
+                .map(|material| self.selection_material(material));
         }
         let washed = |paint: &super::Paint| match state {
             PaintState::Hover => paint.hover,
@@ -1241,6 +1280,8 @@ impl Theme {
             Vec::new()
         } else if floating && glass.is_none() && style.shadow == Shadow::Float {
             self.tight_float_shadows()
+        } else if glass.is_some() && style.shadow == Shadow::Float {
+            self.glass_float_shadows()
         } else {
             self.shadows_of(style.shadow)
         };
@@ -1261,6 +1302,9 @@ impl Theme {
                 inset: true,
             }),
             _ => {}
+        }
+        if highlight == Highlight::Glass && state != PaintState::Disabled {
+            shadow.extend(self.selection_shadows());
         }
         if shadow.iter().any(|shadow| !shadow.inset)
             && glass.is_none()
@@ -1308,9 +1352,14 @@ impl Theme {
             } else {
                 tint
             };
-            material
+            let material = material
                 .tint(tint.alpha(material.tint.a))
-                .fallback(fallback)
+                .fallback(fallback);
+            if highlight == Highlight::Glass {
+                self.selection_material(material)
+            } else {
+                material
+            }
         });
         let mark =
             (highlight == Highlight::Bar && surface.role.row && state != PaintState::Disabled)

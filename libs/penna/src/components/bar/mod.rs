@@ -71,7 +71,10 @@ impl RenderOnce for Bar {
             BarLook::Plain | BarLook::Pane => theme.pane_header_height(),
             BarLook::Window => theme.title_bar_height(),
         };
-        let mut style = StyleRefinement::default().h(height).px(Space::INSET_CHROME);
+        let mut style = StyleRefinement::default()
+            .h(height)
+            .px(Space::INSET_CHROME)
+            .contain_shadows();
         style.refine(&self.plate.style);
         self.plate.style = style;
         self.plate.paint(window, cx)

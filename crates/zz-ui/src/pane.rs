@@ -805,8 +805,17 @@ pub fn pane_surface(
     let rest = pane_material(cx);
     let hairline = rest.border_width;
     let outlined = hairline > Pixels::ZERO;
+    let cast = if chrome.shadow && glass && chrome.frame.is_some() {
+        theme.pane_shadows()
+    } else {
+        Vec::new()
+    };
     let shadow = if chrome.shadow {
-        rest.shadow.clone()
+        rest.shadow
+            .iter()
+            .cloned()
+            .chain(cast.iter().cloned())
+            .collect()
     } else {
         Vec::new()
     };
@@ -822,6 +831,10 @@ pub fn pane_surface(
         };
         pane_frame_layer(frame, glass, rest)
     });
+    let caster = chrome
+        .frame
+        .filter(|_| !cast.is_empty() && frame.as_ref().is_some_and(|frame| frame.glass.is_none()))
+        .map(|frame| frame.rim().specular(0.0).fresnel(0.0));
     div()
         .id(id)
         .relative()
@@ -830,6 +843,10 @@ pub fn pane_surface(
         .overflow_hidden()
         .when_some(frame, |surface, frame| paint_material(surface, &frame))
         .shadow(shadow)
+        .when(!cast.is_empty(), |surface| {
+            surface.shadow_reach(theme.pane_margin)
+        })
+        .when_some(caster, Styled::glass)
         .rounded_tl(chrome.radii.top_left)
         .rounded_tr(chrome.radii.top_right)
         .rounded_bl(chrome.radii.bottom_left)

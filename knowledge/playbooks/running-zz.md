@@ -272,7 +272,10 @@ in front. On Linux it still takes focus when clicked. Open it from Settings > In
 The lab edits the look of the mode zz is in, and the section titles name that mode: Backdrop
 (chrome opacity, the opacity without a shaped backdrop, blur, saturation, contrast, brightness, the
 brightness cap, where 1 is none, and the wallpaper hue amount), Planes (the content plate), Floating
-material and Pane rim (every field the look overrides on `liquid`). Shared holds what the looks
+material (the float shadow's strength, blur, offset and spread first, then every field the look
+overrides on `liquid`), Pane rim (likewise), Pane shadow (the shadow gapped panes cast, outside
+their shape and within the pane margin) and Selection material (the selected sidebar row and the
+active tab pill: their shadow first, then the fields they take over the floating material). Shared holds what the looks
 don't: the panel wash step, the inactive pane veil per mode, border and divider weight, the text
 floor on glass, the inactive rim dim, and the backdrop's sample scale and fallback blur radius.
 Switch the system's mode to tune the other look.

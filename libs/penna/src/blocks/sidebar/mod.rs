@@ -168,6 +168,7 @@ pub fn sidebar_panel(
         .min_h_0()
         .flex_none()
         .overflow_hidden()
+        .contain_shadows()
         .relative()
         .surface(Surface::new(roles::SIDEBAR).on(ground), cx)
         .when(divider, |this| {

@@ -533,6 +533,7 @@ impl InterfaceTheme {
             Glass::Material(_) => Some(GlassLook {
                 floating: MaterialTuning::NONE,
                 rim: MaterialTuning::NONE,
+                selection: MaterialTuning::NONE,
                 ..look
             }),
         }
@@ -1054,7 +1055,7 @@ mod tests {
     #[test]
     fn glass_holds_text_at_four_and_a_half_over_any_backdrop() {
         for (glass, mode, floor, alpha) in [
-            (Glass::Liquid, ThemeMode::Light, 0.596, 0.88),
+            (Glass::Liquid, ThemeMode::Light, 0.596, 0.8),
             (Glass::Liquid, ThemeMode::Dark, 0.705, 0.75),
         ] {
             let theme = InterfaceTheme {

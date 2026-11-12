@@ -225,7 +225,21 @@ fn look_spec(field: LookField) -> (&'static str, (f32, f32), f32) {
         LookField::Cap => ("Brightness cap", (0.0, 1.0), 0.01),
         LookField::WallpaperTint => ("Wallpaper hue amount", (0.0, 1.0), 0.01),
         LookField::ContentPlate => ("Content plate", (0.0, 1.0), 0.01),
-        LookField::Floating(field) | LookField::Rim(field) => material_spec(field),
+        LookField::FloatShadow | LookField::SelectionShadow | LookField::PaneShadow => {
+            ("Shadow strength", (0.0, 20.0), 0.1)
+        }
+        LookField::FloatShadowBlur => ("Shadow blur", (0.0, 160.0), 1.0),
+        LookField::FloatShadowY => ("Shadow offset", (0.0, 40.0), 0.5),
+        LookField::FloatShadowSpread => ("Shadow spread", (-20.0, 20.0), 0.5),
+        LookField::SelectionShadowBlur => ("Shadow blur", (0.0, 40.0), 0.5),
+        LookField::SelectionShadowY | LookField::PaneShadowY => ("Shadow offset", (0.0, 20.0), 0.5),
+        LookField::SelectionShadowSpread | LookField::PaneShadowSpread => {
+            ("Shadow spread", (-10.0, 10.0), 0.5)
+        }
+        LookField::PaneShadowBlur => ("Shadow blur", (0.0, 60.0), 0.5),
+        LookField::Floating(field) | LookField::Rim(field) | LookField::Selection(field) => {
+            material_spec(field)
+        }
     }
 }
 
@@ -244,11 +258,27 @@ fn groups(mode: ThemeMode) -> Vec<(String, Vec<Knob>)> {
         ),
         (
             format!("Floating material, {mode}"),
-            look(&mut MaterialField::ALL.into_iter().map(LookField::Floating)),
+            look(
+                &mut LookField::FLOAT_SHADOW
+                    .into_iter()
+                    .chain(MaterialField::ALL.map(LookField::Floating)),
+            ),
         ),
         (
             format!("Pane rim, {mode}"),
             look(&mut RIM_FIELDS.into_iter().map(LookField::Rim)),
+        ),
+        (
+            format!("Pane shadow, {mode}"),
+            look(&mut LookField::PANE_SHADOW.into_iter()),
+        ),
+        (
+            format!("Selection material, {mode}"),
+            look(
+                &mut LookField::SELECTION_SHADOW
+                    .into_iter()
+                    .chain(MaterialField::ALL.map(LookField::Selection)),
+            ),
         ),
         ("Shared".to_owned(), SHARED.to_vec()),
     ]
@@ -288,7 +318,9 @@ impl Knob {
             Self::Look(field) => field.get(&look).unwrap_or_else(|| match field {
                 LookField::Floating(field) => field.get(base),
                 LookField::Rim(MaterialField::EdgeShadow) => 0.0,
-                LookField::Rim(field) => field.get(&look.floating.apply(*base)),
+                LookField::Rim(field) | LookField::Selection(field) => {
+                    field.get(&look.floating.apply(*base))
+                }
                 _ => 0.0,
             }),
         }
@@ -310,7 +342,8 @@ impl Knob {
     fn shown(self, value: f32) -> SharedString {
         if let Self::Look(
             LookField::Floating(MaterialField::LightAngle)
-            | LookField::Rim(MaterialField::LightAngle),
+            | LookField::Rim(MaterialField::LightAngle)
+            | LookField::Selection(MaterialField::LightAngle),
         ) = self
         {
             return format!("{:.1}°", value.to_degrees()).into();

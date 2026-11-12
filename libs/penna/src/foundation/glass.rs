@@ -2,7 +2,10 @@ use std::sync::OnceLock;
 
 use ala::Rgba;
 
-use super::tuning::{MaterialField, MaterialTuning, read_glass_tuning};
+use super::{
+    surface::ShadowMaterial,
+    tuning::{MaterialField, MaterialTuning, read_glass_tuning},
+};
 use crate::ThemeMode;
 
 pub(super) fn side(mode: ThemeMode) -> usize {
@@ -20,8 +23,12 @@ pub struct GlassLook {
     pub cap: f32,
     pub wallpaper_tint: f32,
     pub content_plate: f32,
+    pub float_shadow: ShadowMaterial,
+    pub selection_shadow: ShadowMaterial,
+    pub pane_shadow: ShadowMaterial,
     pub floating: MaterialTuning,
     pub rim: MaterialTuning,
+    pub selection: MaterialTuning,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,8 +42,21 @@ pub enum LookField {
     Cap,
     WallpaperTint,
     ContentPlate,
+    FloatShadow,
+    FloatShadowBlur,
+    FloatShadowY,
+    FloatShadowSpread,
+    SelectionShadow,
+    SelectionShadowBlur,
+    SelectionShadowY,
+    SelectionShadowSpread,
+    PaneShadow,
+    PaneShadowBlur,
+    PaneShadowY,
+    PaneShadowSpread,
     Floating(MaterialField),
     Rim(MaterialField),
+    Selection(MaterialField),
 }
 
 impl LookField {
@@ -52,11 +72,36 @@ impl LookField {
         Self::ContentPlate,
     ];
 
+    pub const FLOAT_SHADOW: [Self; 4] = [
+        Self::FloatShadow,
+        Self::FloatShadowBlur,
+        Self::FloatShadowY,
+        Self::FloatShadowSpread,
+    ];
+
+    pub const SELECTION_SHADOW: [Self; 4] = [
+        Self::SelectionShadow,
+        Self::SelectionShadowBlur,
+        Self::SelectionShadowY,
+        Self::SelectionShadowSpread,
+    ];
+
+    pub const PANE_SHADOW: [Self; 4] = [
+        Self::PaneShadow,
+        Self::PaneShadowBlur,
+        Self::PaneShadowY,
+        Self::PaneShadowSpread,
+    ];
+
     pub fn every() -> impl Iterator<Item = Self> {
         Self::SCALARS
             .into_iter()
+            .chain(Self::FLOAT_SHADOW)
+            .chain(Self::SELECTION_SHADOW)
+            .chain(Self::PANE_SHADOW)
             .chain(MaterialField::ALL.map(Self::Floating))
             .chain(MaterialField::ALL.map(Self::Rim))
+            .chain(MaterialField::ALL.map(Self::Selection))
     }
 
     pub fn key(self) -> String {
@@ -70,8 +115,21 @@ impl LookField {
             Self::Cap => "cap".to_owned(),
             Self::WallpaperTint => "wallpaper_tint".to_owned(),
             Self::ContentPlate => "content_plate".to_owned(),
+            Self::FloatShadow => "float_shadow".to_owned(),
+            Self::FloatShadowBlur => "float_shadow_blur".to_owned(),
+            Self::FloatShadowY => "float_shadow_y".to_owned(),
+            Self::FloatShadowSpread => "float_shadow_spread".to_owned(),
+            Self::SelectionShadow => "selection_shadow".to_owned(),
+            Self::SelectionShadowBlur => "selection_shadow_blur".to_owned(),
+            Self::SelectionShadowY => "selection_shadow_y".to_owned(),
+            Self::SelectionShadowSpread => "selection_shadow_spread".to_owned(),
+            Self::PaneShadow => "pane_shadow".to_owned(),
+            Self::PaneShadowBlur => "pane_shadow_blur".to_owned(),
+            Self::PaneShadowY => "pane_shadow_y".to_owned(),
+            Self::PaneShadowSpread => "pane_shadow_spread".to_owned(),
             Self::Floating(field) => format!("floating.{}", field.name()),
             Self::Rim(field) => format!("rim.{}", field.name()),
+            Self::Selection(field) => format!("selection.{}", field.name()),
         }
     }
 
@@ -90,8 +148,21 @@ impl LookField {
             Self::Cap => look.cap,
             Self::WallpaperTint => look.wallpaper_tint,
             Self::ContentPlate => look.content_plate,
+            Self::FloatShadow => look.float_shadow.strength,
+            Self::FloatShadowBlur => look.float_shadow.blur,
+            Self::FloatShadowY => look.float_shadow.y,
+            Self::FloatShadowSpread => look.float_shadow.spread,
+            Self::SelectionShadow => look.selection_shadow.strength,
+            Self::SelectionShadowBlur => look.selection_shadow.blur,
+            Self::SelectionShadowY => look.selection_shadow.y,
+            Self::SelectionShadowSpread => look.selection_shadow.spread,
+            Self::PaneShadow => look.pane_shadow.strength,
+            Self::PaneShadowBlur => look.pane_shadow.blur,
+            Self::PaneShadowY => look.pane_shadow.y,
+            Self::PaneShadowSpread => look.pane_shadow.spread,
             Self::Floating(field) => return look.floating.get(field),
             Self::Rim(field) => return look.rim.get(field),
+            Self::Selection(field) => return look.selection.get(field),
         })
     }
 
@@ -99,6 +170,7 @@ impl LookField {
         let scalar = match self {
             Self::Floating(field) => return look.floating.set(field, value),
             Self::Rim(field) => return look.rim.set(field, value),
+            Self::Selection(field) => return look.selection.set(field, value),
             Self::ChromeOpacity => &mut look.chrome_opacity,
             Self::WindowOpacity => &mut look.window_opacity,
             Self::Blur => &mut look.blur,
@@ -108,6 +180,18 @@ impl LookField {
             Self::Cap => &mut look.cap,
             Self::WallpaperTint => &mut look.wallpaper_tint,
             Self::ContentPlate => &mut look.content_plate,
+            Self::FloatShadow => &mut look.float_shadow.strength,
+            Self::FloatShadowBlur => &mut look.float_shadow.blur,
+            Self::FloatShadowY => &mut look.float_shadow.y,
+            Self::FloatShadowSpread => &mut look.float_shadow.spread,
+            Self::SelectionShadow => &mut look.selection_shadow.strength,
+            Self::SelectionShadowBlur => &mut look.selection_shadow.blur,
+            Self::SelectionShadowY => &mut look.selection_shadow.y,
+            Self::SelectionShadowSpread => &mut look.selection_shadow.spread,
+            Self::PaneShadow => &mut look.pane_shadow.strength,
+            Self::PaneShadowBlur => &mut look.pane_shadow.blur,
+            Self::PaneShadowY => &mut look.pane_shadow.y,
+            Self::PaneShadowSpread => &mut look.pane_shadow.spread,
         };
         if let Some(value) = value {
             *scalar = value;
@@ -125,8 +209,12 @@ const BLANK: GlassLook = GlassLook {
     cap: 1.0,
     wallpaper_tint: 0.0,
     content_plate: 1.0,
+    float_shadow: ShadowMaterial::FLOAT,
+    selection_shadow: ShadowMaterial::SELECTION,
+    pane_shadow: ShadowMaterial::PANE,
     floating: MaterialTuning::NONE,
     rim: MaterialTuning::NONE,
+    selection: MaterialTuning::NONE,
 };
 
 const SHARED: [&str; 2] = [
@@ -184,16 +272,54 @@ rim.edge_spread = 1
 
 const LOOK: [&str; 2] = [
     "\
-chrome_opacity = 0.82
+chrome_opacity = 0.86
 window_opacity = 0.97
 blur = 40
-saturation = 1.1
-contrast = 0.33
+saturation = 3
+contrast = 0.6
 brightness = 1.47
 cap = 1
 wallpaper_tint = 0
-content_plate = 0.72
-floating.tint_alpha = 0.88
+content_plate = 0.5
+float_shadow = 3.5
+float_shadow_blur = 15
+float_shadow_y = 0
+float_shadow_spread = -9
+selection_shadow = 1
+selection_shadow_blur = 3
+selection_shadow_y = 0
+pane_shadow = 1.1
+pane_shadow_blur = 3
+pane_shadow_y = 0
+pane_shadow_spread = 1.5
+floating.bezel = 1.5
+floating.tint_alpha = 0.8
+floating.saturation = 2
+floating.brightness = 0.3
+floating.contrast = 1.5
+floating.specular = 0.2
+floating.glint_width = 0.85
+floating.light_angle = 1.5707964
+floating.fresnel = 0.05
+floating.edge_shadow = 0.2
+floating.edge_alpha = 1
+floating.noise = 0.025
+floating.glow_radius = 0
+rim.bezel = 4.5
+rim.specular = 0.2
+rim.glint_width = 1.7
+rim.light_angle = 1.5707964
+rim.light_alpha = 1
+rim.fresnel = 0.05
+rim.edge_shadow = 0.2
+rim.edge_width = 0.3
+rim.opacity = 1
+selection.bezel = 1
+selection.dispersion = 0
+selection.tint_alpha = 0.6
+selection.saturation = 2.6
+selection.noise = 0
+selection.glow_radius = 0
 ",
     "\
 chrome_opacity = 0.65
@@ -269,7 +395,7 @@ impl GlassLook {
         LookField::every()
             .filter_map(|field| {
                 let value = field.get(self)?;
-                let scalar = !matches!(field, LookField::Floating(_) | LookField::Rim(_));
+                let scalar = LookField::SCALARS.contains(&field);
                 (scalar || field.get(&shared) != Some(value))
                     .then(|| format!("{} = {value}\n", field.key()))
             })
@@ -357,7 +483,48 @@ mod tests {
                 floating[side].set(field, Some(value));
             }
         }
-        floating[0].set(MaterialField::TintAlpha, Some(0.88));
+        let quarter_turn = std::f32::consts::FRAC_PI_2;
+        for (field, value) in [
+            (MaterialField::Bezel, 1.5),
+            (MaterialField::TintAlpha, 0.8),
+            (MaterialField::Saturation, 2.0),
+            (MaterialField::Brightness, 0.3),
+            (MaterialField::Contrast, 1.5),
+            (MaterialField::Specular, 0.2),
+            (MaterialField::GlintWidth, 0.85),
+            (MaterialField::LightAngle, quarter_turn),
+            (MaterialField::Fresnel, 0.05),
+            (MaterialField::EdgeShadow, 0.2),
+            (MaterialField::EdgeAlpha, 1.0),
+            (MaterialField::Noise, 0.025),
+            (MaterialField::GlowRadius, 0.0),
+        ] {
+            floating[0].set(field, Some(value));
+        }
+        for (field, value) in [
+            (MaterialField::Bezel, 4.5),
+            (MaterialField::Specular, 0.2),
+            (MaterialField::GlintWidth, 1.7),
+            (MaterialField::LightAngle, quarter_turn),
+            (MaterialField::LightAlpha, 1.0),
+            (MaterialField::Fresnel, 0.05),
+            (MaterialField::EdgeShadow, 0.2),
+            (MaterialField::EdgeWidth, 0.3),
+            (MaterialField::Opacity, 1.0),
+        ] {
+            rim[0].set(field, Some(value));
+        }
+        let mut selection = MaterialTuning::NONE;
+        for (field, value) in [
+            (MaterialField::Bezel, 1.0),
+            (MaterialField::Dispersion, 0.0),
+            (MaterialField::TintAlpha, 0.6),
+            (MaterialField::Saturation, 2.6),
+            (MaterialField::Noise, 0.0),
+            (MaterialField::GlowRadius, 0.0),
+        ] {
+            selection.set(field, Some(value));
+        }
         for (field, value) in [
             (MaterialField::TintAlpha, 0.75),
             (MaterialField::EdgeShadow, 0.0),
@@ -383,17 +550,36 @@ mod tests {
             [GlassLook::shipped(light), GlassLook::shipped(dark)],
             [
                 GlassLook {
-                    chrome_opacity: 0.82,
+                    chrome_opacity: 0.86,
                     window_opacity: 0.97,
                     blur: 40.0,
-                    saturation: 1.1,
-                    contrast: 0.33,
+                    saturation: 3.0,
+                    contrast: 0.6,
                     brightness: 1.47,
                     cap: 1.0,
                     wallpaper_tint: 0.0,
-                    content_plate: 0.72,
+                    content_plate: 0.5,
+                    float_shadow: ShadowMaterial {
+                        y: 0.0,
+                        blur: 15.0,
+                        spread: -9.0,
+                        strength: 3.5,
+                    },
+                    selection_shadow: ShadowMaterial {
+                        y: 0.0,
+                        blur: 3.0,
+                        spread: 0.0,
+                        strength: 1.0,
+                    },
+                    pane_shadow: ShadowMaterial {
+                        y: 0.0,
+                        blur: 3.0,
+                        spread: 1.5,
+                        strength: 1.1,
+                    },
                     floating: floating[0],
                     rim: rim[0],
+                    selection,
                 },
                 GlassLook {
                     chrome_opacity: 0.65,
@@ -405,8 +591,27 @@ mod tests {
                     cap: 0.55,
                     wallpaper_tint: 0.0,
                     content_plate: 0.57,
+                    float_shadow: ShadowMaterial {
+                        y: 10.0,
+                        blur: 30.0,
+                        spread: -6.0,
+                        strength: 0.8,
+                    },
+                    selection_shadow: ShadowMaterial {
+                        y: 2.0,
+                        blur: 6.0,
+                        spread: 0.0,
+                        strength: 0.0,
+                    },
+                    pane_shadow: ShadowMaterial {
+                        y: 3.0,
+                        blur: 14.0,
+                        spread: 0.0,
+                        strength: 0.0,
+                    },
                     floating: floating[1],
                     rim: rim[1],
+                    selection: MaterialTuning::NONE,
                 },
             ]
         );
@@ -493,7 +698,7 @@ mod tests {
                 (
                     ThemeMode::Light,
                     vec![
-                        86.05, 11.88, 6.51, 94.7, 14.94, 93.59, 14.52, 7.37, 96.87, 15.79
+                        85.27, 11.63, 6.53, 92.64, 14.16, 93.82, 14.6, 7.53, 97.03, 15.85
                     ]
                 ),
                 (
