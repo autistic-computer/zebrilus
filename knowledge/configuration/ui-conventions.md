@@ -209,7 +209,10 @@ up to 240px and shrinking evenly, its title fading before an X that shows on hov
 tabs with the rest in an overflow menu, and a lone tab filling the strip with no track and no X.
 Every header's title is the drag handle: `pane::PaneTitle`, a 22px button
 (a `Tab` in `TabLook::Title`, `button.title`) holding the kind icon, the title and the pane's
-folder (`navigation::pane_folder`, home as `~`, one ink step under the title). A terminal is
+folder (`navigation::pane_folder`, home as `~`, one ink step under the title). It is as wide as
+its content and no wider than the space before the header's buttons, where the folder truncates
+first and then the title; the rest of a tiled pane's header moves the window, and a click
+anywhere outside the buttons focuses the pane. A terminal is
 headed by the program in its foreground, never by the title the program writes: a program in
 the catalog shows its mark and name (`nvim`, also through a `vim` alias, is the Neovim mark and
 "Neovim"), another program its command name under the terminal icon, and a shell at its prompt
