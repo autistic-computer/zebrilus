@@ -1003,9 +1003,10 @@ impl AppView {
                     }
                     None => notification,
                 };
-                let notification = match event.message_id {
-                    Some(message_id) => notification.key(timed_message_key(message_id)),
-                    None => notification,
+                let notification = match (event.message_id, &event.key) {
+                    (Some(message_id), _) => notification.key(timed_message_key(message_id)),
+                    (None, Some(key)) => notification.key(key.clone()),
+                    (None, None) => notification,
                 };
                 window.push_notification(notification, cx);
             },

@@ -2324,7 +2324,7 @@ pub(crate) fn run_import(cx: &mut App) {
                 Notification::success(format!("Imported {}", copied.join(" and "))),
                 cx,
             );
-            config::request_daemon_reload(cx);
+            config::reload(cx);
         }
         Ok(_) => {
             toast::push(

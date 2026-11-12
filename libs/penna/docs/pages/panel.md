@@ -14,7 +14,7 @@ A surface that holds chrome where the app puts it. For one that opens from a but
 - **Popover**: menus, the find bar, the palette.
 - **Inline**: raised inside a view: a question, a failed step.
 - **Picker**: searches a list and picks from it.
-- **Toast**: notifications. Announced as a status.
+- **Toast**: notifications. Announced as a status. One with the key of a toast showing, or with no key and the same kind and text, replaces it in place.
 - **Plain**: an opaque cover, such as a slide-over.
 
 The four floating looks paint the same.
