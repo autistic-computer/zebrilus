@@ -24,7 +24,7 @@ const DISMISS_ANIMATION: Duration = Duration::from_millis(150);
 const SLIDE_ANIMATION: Duration = Duration::from_millis(250);
 const SLIDE_DISTANCE: f32 = 45.;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NotificationType {
     Info,
     Success,
@@ -151,6 +151,15 @@ impl Notification {
     ) -> Self {
         self.content_builder = Some(Rc::new(content));
         self
+    }
+
+    fn repeats(&self, other: &Self) -> bool {
+        self.key.is_none()
+            && self.content_builder.is_none()
+            && other.content_builder.is_none()
+            && self.type_ == other.type_
+            && self.title == other.title
+            && self.message == other.message
     }
 
     fn with_type(mut self, type_: NotificationType) -> Self {
@@ -337,7 +346,7 @@ impl NotificationList {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(index) = self.showing(notification.key.as_deref(), cx) {
+        if let Some(index) = self.showing(&notification, cx) {
             self.swap(index, notification, window, cx);
             return;
         }
@@ -364,18 +373,21 @@ impl NotificationList {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(index) = self.showing(notification.key.as_deref(), cx) else {
+        let Some(index) = self.showing(&notification, cx) else {
             return false;
         };
         self.swap(index, notification, window, cx);
         true
     }
 
-    fn showing(&self, key: Option<&str>, cx: &App) -> Option<usize> {
-        let key = key?;
+    fn showing(&self, notification: &Notification, cx: &App) -> Option<usize> {
         self.entries.iter().position(|entry| {
             let note = entry.view.read(cx);
-            !note.closing && note.key.as_deref() == Some(key)
+            !note.closing
+                && match &notification.key {
+                    Some(key) => note.key.as_ref() == Some(key),
+                    None => note.repeats(notification),
+                }
         })
     }
 

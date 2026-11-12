@@ -35,6 +35,8 @@ pub fn replace_toast(notification: Notification, cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use ala::{AppContext as _, Context, Render, TestAppContext, Window, div};
 
     use super::*;
@@ -86,5 +88,38 @@ mod tests {
             cx.update(|_, cx| last[0].read(cx).message.clone()),
             Some("Ready".into())
         );
+    }
+
+    #[ala::test]
+    fn an_unkeyed_repeat_replaces_the_toast_showing(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let content = cx.new(|_| Content);
+            Root::new(content, window, cx)
+        });
+        cx.update(|window, cx| set_toast_host(window.window_handle().downcast().unwrap(), cx));
+        cx.update(|_, cx| push_toast(Notification::success("Reloaded"), cx));
+        cx.run_until_parked();
+        let first = cx.update(|window, cx| window.notifications(cx));
+
+        cx.executor().advance_clock(Duration::from_secs(4));
+        cx.update(|_, cx| push_toast(Notification::success("Reloaded"), cx));
+        cx.run_until_parked();
+        let repeated = cx.update(|window, cx| window.notifications(cx));
+        assert_eq!(repeated.len(), 1);
+        assert_eq!(repeated[0].entity_id(), first[0].entity_id());
+
+        cx.executor().advance_clock(Duration::from_secs(4));
+        cx.run_until_parked();
+        assert_eq!(cx.update(|window, cx| window.notifications(cx).len()), 1);
+
+        cx.update(|_, cx| push_toast(Notification::warning("Reloaded"), cx));
+        cx.update(|_, cx| push_toast(Notification::success("Reloaded").key("reload"), cx));
+        cx.run_until_parked();
+        assert_eq!(cx.update(|window, cx| window.notifications(cx).len()), 3);
+
+        cx.executor().advance_clock(Duration::from_millis(1200));
+        cx.run_until_parked();
+        assert_eq!(cx.update(|window, cx| window.notifications(cx).len()), 2);
     }
 }
