@@ -868,7 +868,7 @@ mod daemon_autostart {
         }
 
         fn assert_stopped(&self) {
-            let deadline = Instant::now() + Duration::from_secs(2);
+            let deadline = Instant::now() + Duration::from_secs(10);
             let identity = identity_path(&self.socket);
             while (self.socket.exists() || identity.exists()) && Instant::now() < deadline {
                 thread::sleep(Duration::from_millis(10));

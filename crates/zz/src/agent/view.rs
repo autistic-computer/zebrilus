@@ -2168,12 +2168,14 @@ mod completion_tests {
             let controller = cx.new(|_| AgentController::new());
             let mention = mention_picker(&palette_backend(mux.clone()), input.clone(), window, cx);
             let reply = cx.new(|cx| InputState::new(window, cx));
+            let search = cx.new(|cx| InputState::new(window, cx));
             let view = cx.new(|_| AgentView {
                 pane: PaneId(7),
                 mux,
                 controller,
                 input,
                 reply,
+                search,
                 visible: false,
                 pane_state: disconnected_pane_state(),
                 chat_revision: 0,
@@ -2201,8 +2203,17 @@ mod completion_tests {
                 last_cursor: 1,
                 window_corners: WindowCorners::NONE,
                 floats: false,
+                active: false,
                 chat: zz_ui::agent::chat::ChatPane::default(),
                 pane_canvas: Rc::default(),
+                resume_for: None,
+                folder_seen: None,
+                resume_revision: 0,
+                account: None,
+                accounts: None,
+                quotas: Vec::new(),
+                resume_scroll: ScrollHandle::new(),
+                focus_search: false,
                 _subscriptions: Vec::new(),
             });
             view.read(cx).focus(cx).focus(window, cx);
