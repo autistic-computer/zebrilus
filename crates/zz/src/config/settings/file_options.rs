@@ -176,14 +176,6 @@ impl SettingsView {
                         false,
                     ),
                 );
-                definitions.insert(
-                    3,
-                    (
-                        FileKey::Appearance(AppearanceConfigKey::FontThickenStrength),
-                        "Smoothing strength",
-                        true,
-                    ),
-                );
             }
             let themes = if kind == ConfigFileKind::Terminal {
                 zz_terminal::enumerate_ghostty_themes_for(
@@ -212,8 +204,6 @@ impl SettingsView {
                     };
                     if key.name() == "background-opacity" {
                         input.min(0.0).max(100.0)
-                    } else if key.name() == "font-thicken-strength" {
-                        input.min(0.0).max(255.0)
                     } else if matches!(key.name(), "window-padding-x" | "window-padding-y") {
                         input.min(0.0)
                     } else {
@@ -475,21 +465,15 @@ impl SettingsView {
         let controls = &self.file_options[&kind];
         let row = &controls.rows[index];
         let disabled = self.file_controls_disabled(kind, cx);
-        let smoothing_enabled = controls.rows.iter().any(|row| {
-            row.key.name() == "font-thicken"
-                && matches!(row.value.as_deref(), Some("true" | "yes" | "on" | "1"))
-        });
         let description = match row.key.name() {
             "light-theme" | "dark-theme" => Some("Replaces custom terminal colors"),
             "minimum-contrast" => Some("Lifts terminal text under 4.5:1 against its background"),
             "prefix" => Some("The key you press before each shortcut"),
-            "font-thicken-strength" if !smoothing_enabled => Some("Needs font smoothing"),
-            "font-thicken-strength" => Some("0 to 255"),
             _ => None,
         };
         let entry = SettingEntry::new(row.title)
             .when_some(description, SettingEntry::description)
-            .disabled(disabled || row.key.name() == "font-thicken-strength" && !smoothing_enabled);
+            .disabled(disabled);
         let control = if matches!(row.key.name(), "mouse" | "font-thicken") {
             let default = row.key.default_value();
             let enabled = matches!(
@@ -1064,7 +1048,7 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[ala::test]
-    fn font_smoothing_controls_save_strength_toggle_and_reset(cx: &mut ala::TestAppContext) {
+    fn font_smoothing_control_saves_toggle_and_reset(cx: &mut ala::TestAppContext) {
         use std::{cell::RefCell, rc::Rc};
 
         cx.update(zz_ui::init);
@@ -1098,9 +1082,7 @@ mod tests {
                 settings.synchronize_file_options(window, cx);
                 for (key, value) in [
                     (AppearanceConfigKey::FontThicken, Some("true")),
-                    (AppearanceConfigKey::FontThickenStrength, Some("173")),
                     (AppearanceConfigKey::FontThicken, Some("false")),
-                    (AppearanceConfigKey::FontThickenStrength, None),
                     (AppearanceConfigKey::FontThicken, None),
                 ] {
                     let index = settings.file_options[&ConfigFileKind::Terminal]
