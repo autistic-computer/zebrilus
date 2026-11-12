@@ -69,7 +69,8 @@ and the chat you are in last, so Enter goes to another chat. Typing matches chat
 the Chats section leads when it holds the best match. The rows come from the same summary the
 sidebar draws (`palette_chats`, built on `window_summary::summarize_chat`), and Enter on one goes to
 its window. The lens composer's `@` picker lists the other chats first in either mode and inserts
-the agent's pane, `@macbook:%12`.
+the chat's title, which goes out as the agent's pane, `@macbook:%12`
+([agent panes](/concepts/agent-panes.md#in-the-composer)).
 
 # Chips and keys
 

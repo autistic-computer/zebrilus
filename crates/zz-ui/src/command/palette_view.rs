@@ -192,16 +192,23 @@ impl TargetBackend for PaletteTargets {
     }
 }
 
-pub fn target_picker(
+pub fn target_picker(backend: &Rc<dyn PaletteBackend>, cx: &mut App) -> Entity<TargetPicker> {
+    let targets: Rc<dyn TargetBackend> = Rc::new(PaletteTargets(Rc::clone(backend)));
+    let picker = cx.new(|cx| TargetPicker::new(targets, cx));
+    if let Some(feed) = backend.feed_targets(&picker, cx) {
+        picker.update(cx, |picker, _| picker.keep(feed));
+    }
+    picker
+}
+
+pub fn mention_picker(
     backend: &Rc<dyn PaletteBackend>,
-    composer: Option<Entity<InputState>>,
+    input: Entity<InputState>,
+    window: &mut Window,
     cx: &mut App,
 ) -> Entity<TargetPicker> {
     let targets: Rc<dyn TargetBackend> = Rc::new(PaletteTargets(Rc::clone(backend)));
-    let picker = cx.new(|cx| match composer {
-        Some(input) => TargetPicker::for_composer(targets, input, cx),
-        None => TargetPicker::new(targets, cx),
-    });
+    let picker = cx.new(|cx| TargetPicker::for_composer(targets, input, window, cx));
     if let Some(feed) = backend.feed_targets(&picker, cx) {
         picker.update(cx, |picker, _| picker.keep(feed));
     }
@@ -921,7 +928,7 @@ impl CommandPaletteView {
         let picker = if let Some((picker, _)) = &self.target {
             picker.clone()
         } else {
-            let picker = target_picker(&self.backend, None, cx);
+            let picker = target_picker(&self.backend, cx);
             let events = cx.subscribe_in(&picker, window, |palette, _, event, window, cx| {
                 let TargetPickerEvent::Picked { open } = event;
                 palette.activate_target(*open, window, cx);

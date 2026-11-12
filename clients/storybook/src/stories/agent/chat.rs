@@ -390,6 +390,7 @@ impl Thread {
             ChatComposer {
                 composer,
                 prefix: Vec::new(),
+                over: None,
                 footer: vec![hints],
                 controls: Vec::new(),
             }

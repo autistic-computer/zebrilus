@@ -1,13 +1,18 @@
 use std::{ops::Range, rc::Rc, sync::Arc};
 
 use ala::{
-    Action, App, Context, Entity, EventEmitter, InteractiveElement, IntoElement, MouseButton,
-    Pixels, Render, ScrollStrategy, SharedString, Subscription, Task, UniformListScrollHandle,
-    Window, div, prelude::*, px, uniform_list,
+    Action, AnyElement, App, ClickEvent, Context, ElementId, Entity, EventEmitter,
+    InteractiveElement, IntoElement, MouseButton, Pixels, Point, Render, ScrollStrategy,
+    SharedString, Subscription, Task, UniformListScrollHandle, Window, canvas, div, prelude::*, px,
+    uniform_list,
 };
 use zz_protocol::{GitMark, PaneId, PathEntry, PathKind, PathListRoot, SessionId, WindowId};
 
-use penna::{Panel, PanelLook, TextStyle};
+use penna::{
+    Ground, Panel, PanelLook, TextStyle,
+    blocks::chat::composer_add_button,
+    components::{button::Button, popover::PopoverTrigger as _},
+};
 
 use penna::blocks::palette::{
     PaletteHint, PaletteRow, PaletteStatus, palette_hint, palette_row, palette_row_height,
@@ -19,6 +24,7 @@ use crate::{
     files::{FileRow, GitMarks, Listing, file_rows, mark_letter},
     h_flex,
     input::{Enter, Escape, IndentInline, InputState, MoveDown, MoveUp},
+    mention::{Mentions, ref_highlight},
 };
 
 pub const TARGET_MAX_ROWS: usize = 200;
@@ -26,6 +32,7 @@ pub const TARGET_VISIBLE_ROWS: usize = 8;
 const HEADER_HEIGHT: f32 = 28.0;
 const BOTTOM_PADDING: f32 = 6.0;
 const CHROME_HEIGHT: f32 = HEADER_HEIGHT + 2.0 * BOTTOM_PADDING + 2.0;
+const ROOM_MARGIN: f32 = 8.0;
 
 pub trait TargetBackend {
     fn hosts(&self, cx: &App) -> Vec<TargetHost>;
@@ -1033,6 +1040,11 @@ pub struct TargetPicker {
     generation: u64,
     ranking: Option<Task<()>>,
     dirty: bool,
+    mentions: Mentions,
+    planted: Option<Range<usize>>,
+    closed_at: Option<Point<Pixels>>,
+    raw_before: Option<String>,
+    room: Option<Pixels>,
     subscriptions: Vec<Subscription>,
 }
 
@@ -1061,6 +1073,11 @@ impl TargetPicker {
             generation: 0,
             ranking: None,
             dirty: false,
+            mentions: Mentions::default(),
+            planted: None,
+            closed_at: None,
+            raw_before: None,
+            room: None,
             subscriptions: Vec::new(),
         }
     }
@@ -1068,9 +1085,13 @@ impl TargetPicker {
     pub fn for_composer(
         backend: Rc<dyn TargetBackend>,
         input: Entity<InputState>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        cx.observe(&input, |picker, _, cx| picker.sync(cx)).detach();
+        cx.observe_in(&input, window, |picker, _, window, cx| {
+            picker.follow(window, cx);
+        })
+        .detach();
         Self {
             composer: Some(input),
             ..Self::new(backend, cx)
@@ -1141,15 +1162,71 @@ impl TargetPicker {
         self.rebuild(cx);
     }
 
+    pub fn raw_text(&mut self, text: &str) -> String {
+        self.mentions.follow(text);
+        self.mentions.raw()
+    }
+
+    fn follow(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(input) = self.composer.clone() {
+            let (value, cursor) = {
+                let input = input.read(cx);
+                (input.value(), input.cursor())
+            };
+            let changed = self.mentions.follow(&value);
+            if self.raw_before.as_deref() == Some(value.as_ref()) {
+                self.raw_before = None;
+            } else if changed.len() > 1 && value[changed.clone()].contains('@') {
+                let hosts = self.backend.hosts(cx);
+                let named = self.mentions.name_refs(changed.clone(), |body| {
+                    resolve_target(body, &hosts).map(|target| target.label)
+                });
+                if let Some(named) = named {
+                    let caret = if cursor >= changed.end {
+                        cursor - changed.len() + named.len()
+                    } else if cursor > changed.start {
+                        changed.start + named.len()
+                    } else {
+                        cursor
+                    };
+                    self.raw_before = Some(value.to_string());
+                    input.update(cx, |input, cx| {
+                        input.set_selected_range(changed, cx);
+                        input.replace(named, window, cx);
+                        input.set_selected_range(caret..caret, cx);
+                    });
+                }
+            }
+        }
+        self.sync(cx);
+    }
+
     pub fn sync(&mut self, cx: &mut Context<Self>) {
-        let Some(input) = &self.composer else {
+        let Some(input) = self.composer.clone() else {
             return;
         };
-        let token = {
+        let (value, cursor) = {
             let input = input.read(cx);
-            target_at(&input.value(), input.cursor())
+            (input.value(), input.cursor())
         };
+        self.mentions.follow(&value);
+        let style = ref_highlight(cx);
+        let highlights = self
+            .mentions
+            .spans()
+            .into_iter()
+            .map(|span| (span, style))
+            .collect();
+        input.update(cx, |input, cx| input.set_highlights(highlights, cx));
+        let token = target_at(&value, cursor).filter(|_| !self.mentions.covers(cursor));
         let start = token.as_ref().map(|token| token.range.start);
+        if self
+            .planted
+            .as_ref()
+            .is_some_and(|planted| start != Some(planted.end - 1))
+        {
+            self.planted = None;
+        }
         if self.dismissed.is_some() && self.dismissed != start {
             self.dismissed = None;
         }
@@ -1390,26 +1467,116 @@ impl TargetPicker {
         let Some(token) = self.token.clone() else {
             return false;
         };
-        let text = self.selected_item().map_or_else(
-            || {
-                self.composer.as_ref().map_or_else(String::new, |input| {
-                    format!("{} ", &input.read(cx).value()[token.range.clone()])
-                })
-            },
-            TargetItem::insertion,
-        );
+        self.planted = None;
+        let text = match self.selected_item().cloned() {
+            Some(item) => {
+                let hosts = self.backend.hosts(cx);
+                match resolve_target(&item.token, &hosts) {
+                    Some(target) => self.mentions.place(
+                        token.range.clone(),
+                        &format!("@{}", item.token),
+                        &target.label,
+                        " ",
+                    ),
+                    None => item.insertion(),
+                }
+            }
+            None => self.composer.as_ref().map_or_else(String::new, |input| {
+                format!("{} ", &input.read(cx).value()[token.range.clone()])
+            }),
+        };
         self.replace(token.range, text, window, cx);
         true
     }
 
-    pub fn dismiss(&mut self, cx: &mut Context<Self>) -> bool {
+    pub fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some(token) = self.token.take() else {
             return false;
         };
         self.dismissed = Some(token.range.start);
         self.body = None;
+        self.unplant(window, cx);
         self.rebuild(cx);
         true
+    }
+
+    pub fn toggle(
+        &mut self,
+        press: Option<Point<Pixels>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(input) = self.composer.clone() else {
+            return;
+        };
+        let closed_at = self.closed_at.take();
+        input.update(cx, |input, cx| input.focus(window, cx));
+        if press.is_some() && closed_at == press {
+            return;
+        }
+        if self.is_open() {
+            self.dismiss(window, cx);
+            return;
+        }
+        let (value, cursor) = {
+            let input = input.read(cx);
+            (input.value().to_string(), input.cursor())
+        };
+        let bare = target_at(&value, cursor)
+            .is_some_and(|token| token.range == (cursor.saturating_sub(1)..cursor))
+            && !self.mentions.covers(cursor);
+        if bare {
+            self.dismissed = None;
+            self.sync(cx);
+            return;
+        }
+        let text = if value[..cursor]
+            .chars()
+            .next_back()
+            .is_none_or(char::is_whitespace)
+        {
+            "@"
+        } else {
+            " @"
+        };
+        self.planted = Some(cursor..cursor + text.len());
+        input.update(cx, |input, cx| input.insert(text, window, cx));
+    }
+
+    fn close_from(&mut self, at: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
+        if self.dismiss(window, cx) {
+            self.closed_at = Some(at);
+        }
+    }
+
+    fn unplant(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (Some(planted), Some(input)) = (self.planted.take(), self.composer.clone()) else {
+            return;
+        };
+        let (value, cursor) = {
+            let input = input.read(cx);
+            (input.value().to_string(), input.cursor())
+        };
+        let bare = value
+            .get(planted.clone())
+            .is_some_and(|text| text == "@" || text == " @")
+            && value[planted.end..]
+                .chars()
+                .next()
+                .is_none_or(char::is_whitespace);
+        if !bare {
+            return;
+        }
+        let caret = if cursor >= planted.end {
+            cursor - planted.len()
+        } else {
+            cursor.min(planted.start)
+        };
+        input.update(cx, |input, cx| {
+            input.set_selected_range(planted, cx);
+            input.replace("", window, cx);
+            input.set_selected_range(caret..caret, cx);
+        });
     }
 
     fn replace(
@@ -1530,6 +1697,9 @@ impl TargetPicker {
 
 impl Render for TargetPicker {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(room) = self.room.filter(|_| self.composer.is_some()) {
+            self.fit(room);
+        }
         let Some(query) = &self.query else {
             return div().into_any_element();
         };
@@ -1562,12 +1732,27 @@ impl Render for TargetPicker {
             )
             .children(HINTS.map(|hint| palette_hint(hint, cx)));
         let body = self.list(cx);
+        let measure = cx.entity();
+        let outside = cx.entity();
         div()
             .id("target-picker")
             .debug_selector(|| "target-picker".to_owned())
+            .relative()
             .w_full()
-            .px(px(8.0))
-            .pb(px(BOTTOM_PADDING))
+            .child(
+                canvas(
+                    move |bounds, _, cx| {
+                        measure.update(cx, |picker, _| {
+                            picker.room = Some(bounds.bottom() - px(ROOM_MARGIN));
+                        });
+                    },
+                    |_, (), _, _| {},
+                )
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full(),
+            )
             .child(
                 Panel::new("target-picker-panel", PanelLook::Popover)
                     .v_flex()
@@ -1575,6 +1760,13 @@ impl Render for TargetPicker {
                     .overflow_hidden()
                     .occlude()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down_out(move |event, window, cx| {
+                        let at = event.position;
+                        let picker = outside.clone();
+                        window.defer(cx, move |window, cx| {
+                            picker.update(cx, |picker, cx| picker.close_from(at, window, cx));
+                        });
+                    })
                     .child(header)
                     .child(div().list_inset(cx).pb(px(BOTTOM_PADDING)).child(body)),
             )
@@ -1582,15 +1774,32 @@ impl Render for TargetPicker {
     }
 }
 
-pub fn mention_at_caret(input: &Entity<InputState>, text: &str, window: &mut Window, cx: &mut App) {
-    input.update(cx, |input, cx| {
-        let before = input.value()[..input.cursor()].chars().next_back();
-        if !before.is_none_or(char::is_whitespace) {
-            input.insert(" ", window, cx);
-        }
-        input.insert(text, window, cx);
-        input.focus(window, cx);
-    });
+pub fn mention_button(
+    id: impl Into<ElementId>,
+    picker: &Entity<TargetPicker>,
+    on: Ground,
+    cx: &App,
+) -> Button {
+    let open = picker.read(cx).is_open();
+    let picker = picker.clone();
+    composer_add_button(id, "Mention a chat, host, session or file", on)
+        .opened(open)
+        .on_click(move |event, window, cx| {
+            let press = match event {
+                ClickEvent::Mouse(click) => Some(click.down.position),
+                ClickEvent::Touch(tap) => Some(tap.position),
+                ClickEvent::Keyboard(_) => None,
+            };
+            picker.update(cx, |picker, cx| picker.toggle(press, window, cx));
+        })
+}
+
+#[must_use]
+pub fn mention_layer(picker: &Entity<TargetPicker>, cx: &App) -> Option<AnyElement> {
+    picker
+        .read(cx)
+        .is_open()
+        .then(|| picker.clone().into_any_element())
 }
 
 pub fn mention_keys<E: InteractiveElement>(element: E, picker: &Entity<TargetPicker>) -> E {
@@ -1603,7 +1812,7 @@ pub fn mention_keys<E: InteractiveElement>(element: E, picker: &Entity<TargetPic
             picker.navigate(1, cx)
         }))
         .capture_action(on::<IndentInline>(picker, TargetPicker::complete))
-        .capture_action(on::<Escape>(picker, |picker, _, cx| picker.dismiss(cx)))
+        .capture_action(on::<Escape>(picker, TargetPicker::dismiss))
         .capture_action(move |action: &Enter, window, cx| {
             if !action.shift && enter.update(cx, |picker, cx| picker.accept(window, cx)) {
                 cx.stop_propagation();

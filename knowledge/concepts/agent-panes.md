@@ -543,6 +543,43 @@ link that `RefLinks` resolves again on click. The pane keeps one `ChatMarkdown` 
 one, so every reply parses again, only when the hosts or the working directory change. The user's
 bubble draws refs as clickable ranges.
 
+## In the composer
+
+The composer's `@` menu is `zz_ui::target::TargetPicker`, made for a composer by
+`zz_ui::command::mention_picker`. The desktop (`crates/zz/src/agent/view.rs`) and the thin
+clients (`clients/app/src/app/agent_pane.rs`) build its button and its layer with the same two
+calls:
+
+- **The + button** (`target::mention_button`) toggles the menu. With the menu closed it writes `@`
+  at the caret, with a space before it when the caret follows a word, unless the caret already sits
+  after a bare `@` that starts a mention, which it opens again instead. With the menu open it
+  closes it. Closing it this way, with Escape or with a press outside it takes back the `@` the
+  button wrote when nothing was typed after it (`TargetPicker::unplant`); an `@` you typed stays.
+  The press outside is the panel's `on_mouse_down_out`, deferred so the press lands first; the
+  picker keeps where it was (`closed_at`), so the click on + that caused it does not open the menu
+  again.
+- **The menu floats.** penna's `ChatComposer` has an `over` slot: a deferred layer positioned on
+  the composer box, its left and right edges, 8 px above its top edge and growing up
+  (`target::mention_layer` puts the open picker in it). Opening and closing it changes nothing in
+  the chat's layout or scroll. The list keeps at most eight rows and fewer when the window has no
+  room above the composer (the picker measures where it sits and `fit`s to it). Typing goes on in
+  the input, and `mention_keys` keeps Up, Down, Tab, Enter and Escape.
+- **Picked targets show by name.** Picking a row writes `@` and the name `resolve_target` gives it,
+  the name the chat shows for that reference, and the input draws it in the reference highlight
+  (penna's `InputState::set_highlights`): a chat as `@fix the atlas tests`, a terminal pane as
+  `@cargo watch · zz:1`, a browser pane as `@localhost:8097 · zz:2`, anything on another host with
+  ` · host` (`@tune the lr schedule · gpu-box`). Two targets with the same name read `@name` and
+  `@name (2)`, and the same target twice keeps one name. The input holds the name;
+  `zz_ui::mention::Mentions` keeps each name's range and raw reference, moves the ranges as the
+  text changes, and drops a name when an edit touches it, so an edited name goes out as the plain
+  text it now reads. A name with text glued to its end goes out plain too.
+- **What leaves.** Sending and queueing take `TargetPicker::raw_text`, which puts each name's raw
+  reference back (`@local:%12`), so the agent gets exactly what the menu used to write. Text with
+  raw references that enters the composer (a queued prompt returned to it, a reclaimed prompt,
+  a paste) gets names for every reference that resolves; one that resolves to nothing stays as
+  written. Undoing that naming brings the raw text back and leaves it raw. There is no draft
+  saving or prompt history in the composer for the names to pass through.
+
 # How the chat reads
 
 `zz_ui::agent::chat` draws the folded chat (`chat_thread`):

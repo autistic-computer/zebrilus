@@ -1,15 +1,14 @@
-use std::{ops::Range, sync::Arc};
+use std::sync::Arc;
 
 use ala::{
-    AnyElement, App, FontWeight, HighlightStyle, InteractiveText, IntoElement, SharedString,
-    StyledText, Window,
+    AnyElement, App, HighlightStyle, InteractiveText, IntoElement, SharedString, StyledText, Window,
 };
 
 use zz_client::agent_launch::interactive_shell;
 use zz_protocol::{CommandInvocation, PaneId};
 
 use crate::{
-    ActiveTheme as _, Emphasis, Tone,
+    mention::{ref_end, ref_highlight, ref_spans},
     target::{RefTarget, ResolvedTarget, TargetHost, resolve_target},
     text::{InlineLink, InlineSource, LinkClick, TextLinks},
 };
@@ -65,53 +64,6 @@ impl ChatRefs {
     }
 }
 
-fn starts_ref(text: &str, at: usize) -> bool {
-    text[..at]
-        .chars()
-        .next_back()
-        .is_none_or(|before| before.is_whitespace() || "([{'\"*_".contains(before))
-}
-
-fn ref_end(text: &str, start: usize) -> usize {
-    let mut end = text.len();
-    let mut escaped = false;
-    for (offset, character) in text[start + 1..].char_indices() {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        if character == '\\' {
-            escaped = true;
-            continue;
-        }
-        if character.is_whitespace() || "`)]}<>\"',".contains(character) {
-            end = start + 1 + offset;
-            break;
-        }
-    }
-    let trimmed = text[..end].trim_end_matches(['.', ';', ':', '!', '?']);
-    trimmed.len().max(start + 1)
-}
-
-#[must_use]
-pub fn ref_spans(text: &str) -> Vec<Range<usize>> {
-    let mut spans = Vec::new();
-    let mut from = 0;
-    while let Some(found) = text[from..].find('@') {
-        let start = from + found;
-        if starts_ref(text, start) {
-            let end = ref_end(text, start);
-            if end > start + 1 {
-                spans.push(start..end);
-                from = end;
-                continue;
-            }
-        }
-        from = start + 1;
-    }
-    spans
-}
-
 #[must_use]
 pub fn ref_links(refs: &ChatRefs, text: &str, source: InlineSource) -> Vec<InlineLink> {
     match source {
@@ -137,16 +89,6 @@ pub fn ref_links(refs: &ChatRefs, text: &str, source: InlineSource) -> Vec<Inlin
                 .into_iter()
                 .collect()
         }
-    }
-}
-
-fn ref_highlight(cx: &App) -> HighlightStyle {
-    let paint = cx.theme().paint(Tone::Primary, Emphasis::Soft);
-    HighlightStyle {
-        color: Some(paint.text),
-        background_color: Some(paint.fill),
-        font_weight: Some(FontWeight::MEDIUM),
-        ..HighlightStyle::default()
     }
 }
 

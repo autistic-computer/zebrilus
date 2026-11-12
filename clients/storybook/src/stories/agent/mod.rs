@@ -35,6 +35,12 @@ const STORY: Story = Story {
             build: composer::composers,
         },
         Section {
+            id: "composer-mentions",
+            name: "Mentions",
+            summary: "The + button opens the @ picker over the chat, as wide as the composer, without moving the chat; + again, Escape or a press outside closes it and takes back the @ the button wrote. A picked target shows in the composer by its name, the name the chat shows for it, with the host when it is on another machine: a chat by its title, a terminal or browser pane by its program or title and its window. What the agent gets is the raw reference. A reference that resolves to nothing stays as written.",
+            build: composer::mentions,
+        },
+        Section {
             id: "composer-controls",
             name: "Composer controls",
             summary: "The pieces of the composer on their own: the action button, the + that starts a mention, the git summary, and the footer's usage pill and model picker. The usage pill is the context ring and how full the context is; it turns warning when the account's 5-hour or weekly limit is at 80% or more, and shows the ring alone while the context size is unknown. Its menu meters the context, the 5-hour window and the week with when each resets, then lists the CLI's accounts with Add account under them; picking one sends agent-account, and a busy: answer shows the flip's busy card without its choices. The picker's button leads with the permission mode's glyph in its tone; its menu is every model in one list six rows tall that scrolls, opened on the current one, then a horizontal effort slider with a dot per step, then the permission modes. Bypass permissions draws the glyph in danger.",

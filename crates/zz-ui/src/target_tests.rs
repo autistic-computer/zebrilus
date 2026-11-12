@@ -488,7 +488,7 @@ fn the_picker_follows_the_composer_and_owns_its_keys(cx: &mut TestAppContext) {
     let captured = Rc::clone(&slot);
     let (_, cx) = cx.add_window_view(move |window, cx| {
         let input = cx.new(|cx| InputState::new(window, cx));
-        let picker = cx.new(|cx| TargetPicker::for_composer(backend, input.clone(), cx));
+        let picker = cx.new(|cx| TargetPicker::for_composer(backend, input.clone(), window, cx));
         input.read(cx).focus_handle(cx).focus(window, cx);
         captured.replace(Some((input.clone(), picker.clone())));
         let composer = cx.new(|_| Composer {
@@ -526,13 +526,18 @@ fn the_picker_follows_the_composer_and_owns_its_keys(cx: &mut TestAppContext) {
     cx.simulate_keystrokes("backspace backspace");
     cx.simulate_input("2");
     cx.simulate_keystrokes("enter");
-    assert_eq!(value(cx), "ask @ubuntu:work:2 ");
+    assert_eq!(value(cx), "ask @work › agents · ubuntu ");
     assert!(!open(cx));
 
     cx.simulate_input("@main:");
     cx.simulate_keystrokes("enter");
-    let said = "ask @ubuntu:work:2 @macbook:main:1 ";
-    assert_eq!(value(cx), said, "a target here goes out with its host");
+    let said = "ask @work › agents · ubuntu @main › shell ";
+    assert_eq!(value(cx), said);
+    assert_eq!(
+        picker.update(cx, |picker, _| picker.raw_text(said)),
+        "ask @ubuntu:work:2 @macbook:main:1 ",
+        "a target here goes out with its host"
+    );
 
     cx.simulate_input("and @ubuntu:");
     cx.simulate_keystrokes("up");
@@ -575,6 +580,63 @@ fn the_picker_follows_the_composer_and_owns_its_keys(cx: &mut TestAppContext) {
     );
     cx.simulate_keystrokes("escape escape");
     assert_eq!(keys.borrow().last().map(String::as_str), Some("escape"));
+}
+
+#[ala::test]
+fn the_plus_button_toggles_one_mention_and_takes_back_its_own_at(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let backend: Rc<dyn TargetBackend> = Rc::new(FakeBackend {
+        calls: Rc::default(),
+        next: Cell::new(0),
+    });
+    let slot = Rc::new(RefCell::new(None));
+    let captured = Rc::clone(&slot);
+    let (_, cx) = cx.add_window_view(move |window, cx| {
+        let input = cx.new(|cx| InputState::new(window, cx));
+        let picker = cx.new(|cx| TargetPicker::for_composer(backend, input.clone(), window, cx));
+        input.read(cx).focus_handle(cx).focus(window, cx);
+        captured.replace(Some((input.clone(), picker.clone())));
+        let composer = cx.new(|_| Composer {
+            input,
+            picker,
+            keys: Rc::default(),
+        });
+        Root::new(composer, window, cx)
+    });
+    let (input, picker) = slot.borrow_mut().take().expect("composer captured");
+    let state = |cx: &mut VisualTestContext| {
+        (
+            input.read_with(cx, |input, _| input.value().to_string()),
+            picker.read_with(cx, |picker, _| picker.is_open()),
+        )
+    };
+    let plus = |press: Option<Point<Pixels>>, cx: &mut VisualTestContext| {
+        cx.update(|window, cx| picker.update(cx, |picker, cx| picker.toggle(press, window, cx)));
+    };
+
+    cx.simulate_input("ask");
+    plus(None, cx);
+    assert_eq!(state(cx), ("ask @".to_owned(), true));
+    plus(None, cx);
+    assert_eq!(state(cx), ("ask".to_owned(), false));
+    plus(None, cx);
+    cx.simulate_keystrokes("escape");
+    assert_eq!(state(cx), ("ask".to_owned(), false));
+    plus(None, cx);
+    let press = ala::point(px(4.0), px(4.0));
+    cx.update(|window, cx| picker.update(cx, |picker, cx| picker.close_from(press, window, cx)));
+    plus(Some(press), cx);
+    assert_eq!(state(cx), ("ask".to_owned(), false));
+
+    cx.simulate_input(" @");
+    cx.simulate_keystrokes("escape");
+    assert_eq!(state(cx), ("ask @".to_owned(), false));
+    plus(None, cx);
+    assert_eq!(state(cx), ("ask @".to_owned(), true));
+    plus(None, cx);
+    assert_eq!(state(cx), ("ask @".to_owned(), false));
+    plus(None, cx);
+    assert_eq!(state(cx), ("ask @".to_owned(), true));
 }
 
 fn chat_hosts() -> Vec<TargetHost> {

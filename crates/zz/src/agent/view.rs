@@ -1,6 +1,6 @@
 use penna::blocks::chat::{
-    CHAT_CONTENT_MAX_WIDTH, ChatComposer, Composer, composer_add_button, composer_ground,
-    empty_state, queue_chip, suggestion_list, suggestion_list_height, suggestion_row,
+    CHAT_CONTENT_MAX_WIDTH, ChatComposer, Composer, composer_ground, empty_state, queue_chip,
+    suggestion_list, suggestion_list_height, suggestion_row,
 };
 use std::{cell::Cell, collections::BTreeSet, rc::Rc, sync::Arc};
 use zz_ui::agent::ask::{
@@ -36,8 +36,8 @@ use zz_client::agent_completion::{
 use zz_client::agent_resume::{Menu, ResumeRow, folder_name};
 use zz_client::agent_settings::{self, ComposerSetter, composer_setter};
 use zz_ui::{
-    command::target_picker,
-    target::{TargetPicker, mention_at_caret, mention_keys},
+    command::mention_picker,
+    target::{TargetPicker, mention_button, mention_keys, mention_layer},
 };
 
 use crate::command::palette::palette_backend;
@@ -417,7 +417,7 @@ impl AgentView {
                     .update(cx, |controller, cx| controller.move_pane(pane, cwd, cx));
             }
         });
-        let mention = target_picker(&palette_backend(mux.clone()), Some(input.clone()), cx);
+        let mention = mention_picker(&palette_backend(mux.clone()), input.clone(), window, cx);
         mention.update(cx, |picker, _| picker.set_own_chat(Some(pane)));
         let chat_release =
             zz_ui::agent::chat::ChatPane::close_on_release(window, cx, |view: &mut Self| {
@@ -1172,7 +1172,8 @@ impl AgentView {
     }
 
     fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let value = self.input.read(cx).value().to_string();
+        let shown = self.input.read(cx).value().to_string();
+        let value = self.mention.update(cx, |picker, _| picker.raw_text(&shown));
         if value.trim().is_empty() && self.attachments.is_empty() {
             return;
         }
@@ -1758,21 +1759,13 @@ impl AgentView {
         )
         .filter(|_| prompting);
         let completions = self.render_completions(view, cx).filter(|_| prompting);
-        let add = {
-            let input = self.input.clone();
-            composer_add_button(
-                format!("agent-mention-{}", self.pane.0),
-                "Mention a chat, host, session or file",
-                inside,
-            )
-            .on_click(move |_, window, cx| mention_at_caret(&input, "@", window, cx))
-        };
-        let mention = self
-            .mention
-            .read(cx)
-            .is_open()
-            .then(|| self.mention.clone().into_any_element())
-            .filter(|_| prompting);
+        let add = mention_button(
+            format!("agent-mention-{}", self.pane.0),
+            &self.mention,
+            inside,
+            cx,
+        );
+        let over = mention_layer(&self.mention, cx).filter(|_| prompting);
         let controls = self.render_harness_controls(state, view, cx);
         let attachments = self
             .render_attachments(view, inside)
@@ -1826,8 +1819,8 @@ impl AgentView {
                         .map(IntoElement::into_any_element),
                 )
                 .chain(completions)
-                .chain(mention)
                 .collect(),
+            over,
         }
     }
 }
@@ -2173,7 +2166,7 @@ mod completion_tests {
                 )
             });
             let controller = cx.new(|_| AgentController::new());
-            let mention = target_picker(&palette_backend(mux.clone()), Some(input.clone()), cx);
+            let mention = mention_picker(&palette_backend(mux.clone()), input.clone(), window, cx);
             let reply = cx.new(|cx| InputState::new(window, cx));
             let view = cx.new(|_| AgentView {
                 pane: PaneId(7),

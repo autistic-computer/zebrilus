@@ -16,8 +16,8 @@ pub use palette_model::{
 };
 pub use palette_places::palette_fleet;
 pub use palette_view::{
-    CommandPaletteEvent, CommandPaletteView, FolderPick, GuiEvent, PaletteBackend, target_hosts,
-    target_picker,
+    CommandPaletteEvent, CommandPaletteView, FolderPick, GuiEvent, PaletteBackend, mention_picker,
+    target_hosts, target_picker,
 };
 
 pub(crate) use palette_model::fuzzy_match;

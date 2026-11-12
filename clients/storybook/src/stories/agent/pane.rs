@@ -487,6 +487,7 @@ impl AgentPaneStory {
                 writable: true,
                 images: Vec::new(),
                 prefix,
+                mention: None,
                 settings: match self.scene.provider() {
                     AgentProvider::Codex => codex_settings(),
                     AgentProvider::ClaudeCode => claude_settings(),

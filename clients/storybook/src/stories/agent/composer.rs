@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use ala::{
-    AnyElement, AnyView, App, AppContext as _, Context, Entity, Image, IntoElement,
-    ParentElement as _, Render, SharedString, Styled as _, Window, div, px,
+    AnyElement, AnyView, App, AppContext as _, Context, Entity, Image, InteractiveElement as _,
+    IntoElement, ParentElement as _, Render, SharedString, Styled as _, Window, div, px,
 };
 use penna::{
     ActiveTheme as _, Disableable as _, IconName,
@@ -28,12 +28,16 @@ use zz_ui::agent::{
 
 use super::{
     cards::{slash_commands, slash_list},
-    fixtures::{chart_screenshot, tab_strip_screenshot},
+    chat::{Frame, Thread, pane_fill},
+    fixtures::{Script, chart_screenshot, completed, tab_strip_screenshot},
 };
 use crate::stories::console::palette::chat_backend;
-use crate::story::{row, states};
+use crate::story::{Framed as _, row, states};
 use zz_protocol::{AgentAccount, AgentProvider, AgentQuota, PaneId, QuotaWindow, QuotaWindows};
-use zz_ui::{command::target_picker, target::TargetPicker};
+use zz_ui::{
+    command::mention_picker,
+    target::{TargetPicker, mention_button, mention_layer},
+};
 
 pub const PLACEHOLDER: &str = "Message Claude Code…";
 
@@ -55,7 +59,6 @@ pub enum Prefix {
     Queued(usize),
     Slash,
     Error(&'static str),
-    Mention(Entity<TargetPicker>),
 }
 
 pub struct Draft {
@@ -65,6 +68,7 @@ pub struct Draft {
     pub writable: bool,
     pub images: Vec<Arc<Image>>,
     pub prefix: Vec<AnyElement>,
+    pub mention: Option<Entity<TargetPicker>>,
     pub settings: LensSettings,
 }
 
@@ -107,12 +111,24 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
     });
     let ground = cx.theme().ground();
     let inside = composer_ground(ground, cx);
-    let leading = composer_add_button(
-        SharedString::from(format!("{id}-mention")),
-        "Mention a chat, host, session or file",
-        inside,
-    )
+    let leading = match &draft.mention {
+        Some(picker) => mention_button(
+            SharedString::from(format!("{id}-mention")),
+            picker,
+            inside,
+            cx,
+        ),
+        None => composer_add_button(
+            SharedString::from(format!("{id}-mention")),
+            "Mention a chat, host, session or file",
+            inside,
+        ),
+    }
     .into_any_element();
+    let over = draft
+        .mention
+        .as_ref()
+        .and_then(|picker| mention_layer(picker, cx));
     let command_hint = active_command_hint(&value, &pane_commands(&[], true)).map(Into::into);
     ChatComposer {
         composer: Composer {
@@ -141,6 +157,7 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
             cx,
         )],
         prefix: draft.prefix,
+        over,
         controls: footer_controls(&id, &draft.settings, &Usage::normal(), draft.writable, cx),
     }
     .into_any_element()
@@ -643,13 +660,6 @@ pub fn composers(window: &mut Window, cx: &mut App) -> AnyView {
             cx,
         ),
         case(
-            "@ lists the other chats first",
-            "Compare with @",
-            false,
-            Prefix::None,
-            cx,
-        ),
-        case(
             "error above the input",
             "Switch to plan mode",
             false,
@@ -669,16 +679,6 @@ pub fn composers(window: &mut Window, cx: &mut App) -> AnyView {
     let mut read_only = case("read-only attach", "", false, Prefix::None, cx);
     read_only.writable = false;
     cases.push(read_only);
-    for case in &mut cases {
-        if case.input.read(cx).value().ends_with('@') {
-            let picker = target_picker(&chat_backend(), Some(case.input.clone()), cx);
-            picker.update(cx, |picker, cx| {
-                picker.set_own_chat(Some(PaneId(10)));
-                picker.set_body("", cx);
-            });
-            case.prefix = Prefix::Mention(picker);
-        }
-    }
     cx.new(|_| Composers { cases }).into()
 }
 
@@ -702,7 +702,6 @@ impl Render for Composers {
                     cx,
                 )],
                 Prefix::Error(error) => vec![error_card(error, false, cx).into_any_element()],
-                Prefix::Mention(picker) => vec![picker.clone().into_any_element()],
             };
             let element = composer(
                 Draft {
@@ -712,6 +711,7 @@ impl Render for Composers {
                     writable: case.writable,
                     images: case.images.clone(),
                     prefix,
+                    mention: None,
                     settings: claude_settings(),
                 },
                 cx,
@@ -722,6 +722,115 @@ impl Render for Composers {
                     .w_full()
                     .max_w(px(COMPOSER_MAX_WIDTH + 2.0 * COMPOSER_OUTER_PADDING))
                     .pt(px(COMPOSER_OUTER_PADDING))
+                    .child(element),
+            );
+        }
+        states
+    }
+}
+
+const MENTION_DRAFT: &str = "Compare @local:%12 with @gpu-box:%16, tail @local:%11, open \
+@local:%13 and @gpu-box:%15, skip @local:%99 for now";
+
+const MENTION_PANE_HEIGHT: f32 = 480.0;
+
+struct MentionCase {
+    label: &'static str,
+    thread: Entity<Thread>,
+    input: Entity<InputState>,
+    picker: Entity<TargetPicker>,
+}
+
+pub struct Mentions {
+    cases: Vec<MentionCase>,
+}
+
+fn mention_script() -> Script {
+    let mut script = Script::new();
+    script
+        .turn("Pinned tabs shrink to nothing when I open thirty tabs. Can you make them keep their icon width?")
+        .reply(
+            "a1",
+            "Pinned tabs now keep a **28px floor**, and only the unpinned tabs share what is left \
+of the strip. The new `thirty_tabs_three_pinned` test covers it.",
+        )
+        .finish(completed());
+    script
+        .turn("Does the drop preview still land under the pointer?")
+        .reply(
+            "a2",
+            "Yes. The preview reads the widths the layout pass stored, so it no longer lands one \
+slot off, and `drop_preview_tracks_pointer` passes ten runs in a row.",
+        )
+        .finish(completed());
+    script
+}
+
+pub fn mentions(window: &mut Window, cx: &mut App) -> AnyView {
+    let mut cases = Vec::new();
+    for (label, value) in [
+        ("+ picker closed", "Compare with "),
+        ("+ picker open over the chat", "Compare with @"),
+        ("named references", ""),
+    ] {
+        let input = composer_input(value, window, cx);
+        let picker = mention_picker(&chat_backend(), input.clone(), window, cx);
+        picker.update(cx, |picker, cx| {
+            picker.set_own_chat(Some(PaneId(10)));
+            picker.sync(cx);
+        });
+        if value.is_empty() {
+            input.update(cx, |input, cx| input.set_value(MENTION_DRAFT, window, cx));
+        }
+        let thread = Thread::new(mention_script())
+            .framed(Frame::Scroll(None))
+            .view(window, cx);
+        cases.push(MentionCase {
+            label,
+            thread,
+            input,
+            picker,
+        });
+    }
+    cx.new(|_| Mentions { cases }).into()
+}
+
+impl Render for Mentions {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut states = states();
+        for (index, case) in self.cases.iter().enumerate() {
+            let element = composer(
+                Draft {
+                    id: SharedString::from(format!("mention-{index}")),
+                    input: case.input.clone(),
+                    running: false,
+                    writable: true,
+                    images: Vec::new(),
+                    prefix: Vec::new(),
+                    mention: Some(case.picker.clone()),
+                    settings: claude_settings(),
+                },
+                cx,
+            );
+            states = states.state(
+                case.label,
+                pane_fill(cx)
+                    .id(("mention-pane", index))
+                    .debug_selector(move || format!("mention-pane-{index}"))
+                    .h(px(MENTION_PANE_HEIGHT))
+                    .max_w(px(COMPOSER_MAX_WIDTH + 2.0 * COMPOSER_OUTER_PADDING))
+                    .flex()
+                    .flex_col()
+                    .overflow_hidden()
+                    .rounded(cx.theme().radius)
+                    .framed(cx)
+                    .child(
+                        div()
+                            .relative()
+                            .flex_1()
+                            .min_h_0()
+                            .child(case.thread.clone()),
+                    )
                     .child(element),
             );
         }
@@ -749,27 +858,24 @@ impl Render for Controls {
         ]
         .into_iter()
         .enumerate()
-        .fold(
-            states().columns(6),
-            |states, (index, (label, context))| {
-                states.state(
-                    label,
-                    row().child(agent_usage_pill(
-                        ("usage", index),
-                        &UsagePill {
-                            provider: AgentProvider::ClaudeCode,
-                            account: None,
-                            accounts: None,
-                            quotas: &[],
-                            context,
-                            enabled: true,
-                        },
-                        |_, _, _| {},
-                        cx,
-                    )),
-                )
-            },
-        );
+        .fold(states().columns(6), |states, (index, (label, context))| {
+            states.state(
+                label,
+                row().child(agent_usage_pill(
+                    ("usage", index),
+                    &UsagePill {
+                        provider: AgentProvider::ClaudeCode,
+                        account: None,
+                        accounts: None,
+                        quotas: &[],
+                        context,
+                        enabled: true,
+                    },
+                    |_, _, _| {},
+                    cx,
+                )),
+            )
+        });
         let git = states()
             .columns(2)
             .state(
@@ -851,7 +957,12 @@ impl Render for Controls {
             .state("context in the usage pill", usage)
             .state(
                 "every Claude Code mode: Ask, Accept edits, Plan, Auto, Bypass permissions",
-                mode_pills("claude-mode", AgentProvider::ClaudeCode, &claude_settings(), cx),
+                mode_pills(
+                    "claude-mode",
+                    AgentProvider::ClaudeCode,
+                    &claude_settings(),
+                    cx,
+                ),
             )
             .state(
                 "every Codex mode: Read only, Auto, Full access",

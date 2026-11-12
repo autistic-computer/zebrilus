@@ -25,6 +25,7 @@ pub mod dialogs;
 pub mod files;
 pub mod interface_theme;
 pub mod mend;
+pub mod mention;
 pub mod navigation;
 pub mod pane;
 pub mod pane_look;

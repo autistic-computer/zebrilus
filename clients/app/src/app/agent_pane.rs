@@ -7,8 +7,8 @@ use ala::{
 use penna::{
     ActiveTheme as _, Ground,
     blocks::chat::{
-        ChatComposer, Composer, composer_add_button, composer_ground, empty_state, queue_chip,
-        suggestion_list, suggestion_list_height, suggestion_row,
+        ChatComposer, Composer, composer_ground, empty_state, queue_chip, suggestion_list,
+        suggestion_list_height, suggestion_row,
     },
     components::input::{
         IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight, MoveUp,
@@ -52,8 +52,10 @@ use zz_ui::{
         refs::{ChatRefs, open_path},
         tasks::plan_tray,
     },
-    command::{PaletteSettings, PaletteTarget, target_hosts, target_picker},
-    target::{RefTarget, ResolvedTarget, TargetPicker, mention_at_caret, mention_keys},
+    command::{PaletteSettings, PaletteTarget, mention_picker, target_hosts},
+    target::{
+        RefTarget, ResolvedTarget, TargetPicker, mention_button, mention_keys, mention_layer,
+    },
 };
 
 use crate::{command_palette::palette_backend, connection::Connection};
@@ -362,9 +364,10 @@ impl AgentPane {
                 InputEvent::Change => cx.notify(),
                 _ => {}
             });
-        let mention = target_picker(
+        let mention = mention_picker(
             &palette_backend(connection.clone(), PaletteSettings::default()),
-            Some(input.clone()),
+            input.clone(),
+            window,
             cx,
         );
         mention.update(cx, |picker, _| picker.set_own_chat(Some(pane)));
@@ -733,7 +736,8 @@ impl AgentPane {
     }
 
     fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = self.input.read(cx).value().to_string();
+        let shown = self.input.read(cx).value().to_string();
+        let text = self.mention.update(cx, |picker, _| picker.raw_text(&shown));
         let settings = self
             .connection
             .read(cx)
@@ -1402,13 +1406,8 @@ impl Render for AgentPane {
         prefix.extend(self.render_error(&state, cx));
         if prompting {
             prefix.extend(self.render_completions(cx));
-            prefix.extend(
-                self.mention
-                    .read(cx)
-                    .is_open()
-                    .then(|| self.mention.clone().into_any_element()),
-            );
         }
+        let over = mention_layer(&self.mention, cx).filter(|_| prompting);
         let has_content =
             !self.input.read(cx).value().trim().is_empty() || !self.attachments.is_empty();
         let action_kind = composer_action(running, has_content);
@@ -1487,16 +1486,8 @@ impl Render for AgentPane {
             let command_hint = active_command_hint(&self.last_input, &self.commands)
                 .filter(|_| prompting)
                 .map(Into::into);
-            let add = {
-                let input = self.input.clone();
-                composer_add_button(
-                    ("agent-mention", self.pane.0),
-                    "Mention a chat, host, session or file",
-                    inside,
-                )
-                .on_click(move |_, window, cx| mention_at_caret(&input, "@", window, cx))
-                .into_any_element()
-            };
+            let add = mention_button(("agent-mention", self.pane.0), &self.mention, inside, cx)
+                .into_any_element();
             let (composer, footer) = match ask {
                 Some(ask) => {
                     let (composer, hints) = ask.composer(
@@ -1547,6 +1538,7 @@ impl Render for AgentPane {
                 composer,
                 footer,
                 prefix,
+                over,
             }
             .into_any_element()
         };
