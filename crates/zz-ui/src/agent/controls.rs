@@ -10,7 +10,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, Icon, IconName,
-    Sizable as _, StyledExt as _, Tone,
+    RULE_WIDTH, Sizable as _, StyledExt as _, Tone,
     button::{Button, ButtonVariant, ButtonVariants as _},
     h_flex,
     tooltip::Tooltip,
@@ -20,6 +20,7 @@ use penna::{
     components::{
         popover::{Popover, PopoverState},
         progress::Progress,
+        separator::Separator,
         slider::StepRail,
     },
 };
@@ -158,7 +159,7 @@ fn model_panel(
         .child(head("Model", cx))
         .child(list)
         .when(!settings.efforts.is_empty(), |panel| {
-            panel.child(rule(cx)).child(
+            panel.child(rule()).child(
                 div()
                     .px(px(10.0))
                     .pb(px(10.0))
@@ -167,7 +168,7 @@ fn model_panel(
         })
         .when(!settings.modes.is_empty(), |panel| {
             panel
-                .child(rule(cx))
+                .child(rule())
                 .child(head("Permissions", cx))
                 .child(choice_rows(
                     "agent-mode",
@@ -211,13 +212,12 @@ fn choice_rows(
         .children(rows)
 }
 
-fn rule(cx: &App) -> Div {
-    div()
-        .flex_none()
-        .h(px(1.0))
-        .mx(px(-6.0))
+fn rule() -> Separator {
+    Separator::horizontal()
+        .w_auto()
+        .h(RULE_WIDTH)
+        .mx(px(10.0))
         .my(px(6.0))
-        .bg(cx.theme().border())
 }
 
 fn head(text: &'static str, cx: &App) -> Label {
@@ -471,7 +471,7 @@ fn usage_panel(
                         .pb(px(6.0))
                         .children(meters),
                 )
-                .child(rule(cx))
+                .child(rule())
         })
         .when(!accounts.is_empty(), |panel| {
             panel
@@ -480,7 +480,7 @@ fn usage_panel(
                         .when_some(cx.theme().row_gap(), Styled::gap_y)
                         .children(rows),
                 )
-                .child(rule(cx))
+                .child(rule())
         })
         .child(add_account_row(cx).on_click(pick(Some(AccountAction::Add))))
         .into_any_element()
