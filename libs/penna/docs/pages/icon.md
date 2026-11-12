@@ -16,6 +16,19 @@ A glyph beside a label, or alone on an icon button in a bar. One set, drawn for 
 Icon::new(IconName::GitBranch).small()
 ```
 
+## Toggles
+
+A chrome toggle draws its outline glyph off and its fill glyph on, in the same color.
+
+```figure uses=icon
+<div class="docs-show" data-gap="wide">
+  <div class="docs-cell"><i data-icon="panel-left" data-size="6"></i><span class="docs-note">Off</span></div>
+  <div class="docs-cell"><i data-icon="panel-left-fill" data-size="6"></i><span class="docs-note">On</span></div>
+  <div class="docs-cell"><i data-icon="chat" data-size="6"></i><span class="docs-note">Off</span></div>
+  <div class="docs-cell"><i data-icon="chat-fill" data-size="6"></i><span class="docs-note">On</span></div>
+</div>
+```
+
 ## Sizes
 
 ```figure uses=icon,label

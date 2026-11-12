@@ -87,7 +87,7 @@ a missing scale means a sharp vertex.
 | `gear` | `teeth, root, tip, tipWidth, rootWidth[, scale]` | Centered on 12, 12 |
 | `curve`, `cubic` | quadratic / cubic Bézier points | Fixed curves |
 | `solid` | `[part]` | Fills the inner part, no stroke |
-| `fade` | `opacity, [part]` | Draws the inner part at that opacity |
+| `cut` | `[part]` | Strokes the inner part out of every other part of the glyph, as negative space |
 | `d` | SVG path data | Escape hatch for organic outlines (palette, moon, the undo and redo loops) |
 
 # Solar rules
@@ -100,6 +100,9 @@ a missing scale means a sharp vertex.
 - Organic outlines Solar draws with curves (bell, moon, braces, the palette, the steam over the
   cup) stay fixed `d` paths; they have no corners for the radius to change. The chat bubble is
   zz's own: a `shape` with `panel-left`'s corners, so the two title bar toggles round together.
+- A toggle's on glyph is `<name>-fill`: the outline glyph's frame as a `solid` part plus the same frame
+  stroked, so the two share an outer edge, with the inner strokes as `cut` parts (`panel-left-fill`,
+  `chat-fill`). A cut stops a stroke's width short of the frame, so the frame stays whole.
 - Dots are filled `dot` parts, never smaller than the stroke: 1.75 for the small accents (window lights, the `i` and `!` dots, the
   keyboard's keys, the drive's lights), 3 for grips, ellipses and palette wells. Round things stay circles.
 - Arrow shafts stop about 1.25 units short of the tip, so at radius 0 the shaft's square cap does

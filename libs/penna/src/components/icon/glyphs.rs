@@ -64,8 +64,23 @@ pub fn svg(name: &str, radius: f32, smoothing: f32) -> Option<String> {
     let mut out = format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{stroke}" stroke-linecap="{cap}" stroke-linejoin="{join}">"#
     );
+    let mut body = String::new();
+    let mut cuts = String::new();
     for part in icon["parts"].as_array()? {
-        out.push_str(&draw(part.as_array()?, radius, smoothing)?);
+        let part = part.as_array()?;
+        if part.first()?.as_str()? == "cut" {
+            cuts.push_str(&draw(part.get(1)?.as_array()?, radius, smoothing)?);
+        } else {
+            body.push_str(&draw(part, radius, smoothing)?);
+        }
+    }
+    if cuts.is_empty() {
+        out.push_str(&body);
+    } else {
+        let _ = write!(
+            out,
+            r#"<mask id="cut-{name}" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="white" stroke="none"/><g stroke="black">{cuts}</g></mask><g mask="url(#cut-{name})">{body}</g>"#
+        );
     }
     out.push_str("</svg>");
     Some(out)
@@ -198,14 +213,6 @@ fn draw(part: &[Value], radius: f32, smoothing: f32) -> Option<String> {
             format!(
                 r#"{} fill="currentColor" stroke="none"/>"#,
                 inner.strip_suffix("/>")?
-            )
-        }
-        "fade" => {
-            let inner = draw(args.get(1)?.as_array()?, radius, smoothing)?;
-            format!(
-                r#"{} opacity="{}"/>"#,
-                inner.strip_suffix("/>")?,
-                num(n(0)?)
             )
         }
         "d" => stroke(args.first()?.as_str()?.to_owned()),

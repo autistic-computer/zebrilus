@@ -96,8 +96,6 @@
         return path(`M${num(args[0])} ${num(args[1])}C${args.slice(2).map(num).join(" ")}`);
       case "solid":
         return part(args[0][0], args[0].slice(1), radius, smoothing).replace(/\/>$/, ' fill="currentColor" stroke="none"/>');
-      case "fade":
-        return part(args[1][0], args[1].slice(1), radius, smoothing).replace(/\/>$/, ` opacity="${num(args[0])}"/>`);
       case "d":
         return path(args[0]);
       default:
@@ -107,10 +105,15 @@
 
   function svg(set, icon, radius, smoothing) {
     const round = radius > 0;
-    const body = icon.parts.map(([kind, ...args]) => part(kind, args, radius, Math.max(smoothing, 2))).join("");
+    const draw = ([kind, ...args]) => part(kind, args, radius, Math.max(smoothing, 2));
+    const body = icon.parts.filter(([kind]) => kind !== "cut").map(draw).join("");
+    const cuts = icon.parts.filter(([kind]) => kind === "cut").map(([, inner]) => draw(inner)).join("");
+    const inner = cuts
+      ? `<mask id="cut-${icon.name}" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="white" stroke="none"/><g stroke="black">${cuts}</g></mask><g mask="url(#cut-${icon.name})">${body}</g>`
+      : body;
     return (
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${set.stroke}" ` +
-      `stroke-linecap="${round ? "round" : "square"}" stroke-linejoin="${round ? "round" : "miter"}">${body}</svg>`
+      `stroke-linecap="${round ? "round" : "square"}" stroke-linejoin="${round ? "round" : "miter"}">${inner}</svg>`
     );
   }
 

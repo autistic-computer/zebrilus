@@ -69,7 +69,7 @@ impl WorkspaceStatusWindowState {
 #[must_use]
 pub fn workspace_layout_button(id: impl Into<ElementId>, open: bool) -> Button {
     let icon = if open {
-        IconName::PanelLeftDuotone
+        IconName::PanelLeftFill
     } else {
         IconName::PanelLeft
     };
@@ -89,7 +89,7 @@ pub fn workspace_settings_button(id: impl Into<ElementId>) -> Button {
 #[must_use]
 pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Button {
     let (icon, tooltip) = if flat {
-        (IconName::ChatDuotone, "Show the session tree")
+        (IconName::ChatFill, "Show the session tree")
     } else {
         (IconName::Chat, "Show chats")
     };
