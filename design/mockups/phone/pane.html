@@ -25,6 +25,7 @@
   .zz-pane { position: absolute; inset: 0; --zz-dock: 156px; }
   .zz-tx { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 16px; padding: 70px 16px var(--zz-dock); overflow: hidden; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
   .zz-tx > p { margin: 0; }
+  .zz-ref { border-radius: 4px; background: color-mix(in srgb, var(--penna-fg) 10%, transparent); color: var(--penna-fg); font-weight: 500; }
   .zz-tx > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 85%; padding: 10px 14px; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
   .zz-tx > .penna-chat-bubble[data-held] { box-shadow: 0 0 0 2px var(--penna-accent); }
   .zz-steps { display: flex; flex-direction: column; margin: -8px 0; }
@@ -110,12 +111,12 @@
     <div class="penna-variants zz-phones zz-story">
       <figure>
         <div class="zz-phone" data-frame="today"></div>
-        <figcaption><b>0. Today</b>The chat pane mid-turn as the phone draws it now, the desktop's chat at desktop sizes. No header; a 22 flip button floats at the top right (<code>compact.rs:865</code>). <i>The new design drops the flip.</i> The transcript is the shared list (<code>chat.rs:636</code>): text at 13, tool steps 28 tall, a time and the 24 Copy and Fork buttons under each message. Over the composer a 24 "2 queued" chip. The ask grows inside the composer with 1 to 9 key caps, a hint line and a 28 Deny button beside Stop (<code>ask.rs:55-112</code>); under it the 24 context pill, a ring and its percentage, and the model chip, which leads with the mode's glyph in its tone (<code>controls.rs:58</code>). The pill says Needs your permission (<code>compact.rs:1610</code>).</figcaption>
+        <figcaption><b>0. Today</b>The chat pane mid-turn as the phone draws it now, the desktop's chat at desktop sizes. No header; a 22 flip button floats at the top right (<code>compact.rs:865</code>). <i>The new design drops the flip.</i> The transcript is the shared list (<code>chat.rs:653</code>): text at 13, tool steps 28 tall, a time and the 24 Copy and Fork buttons under each message. Over the composer a 24 "2 queued" chip. The ask grows inside the composer with 1 to 9 key caps, a hint line and a 28 Deny button beside Stop (<code>ask.rs:55-112</code>); under it the 24 usage pill, a ring and the context's percentage, and the model chip, which leads with the permission mode's glyph in its tone (<code>controls.rs:59</code>). The pill says Needs your permission (<code>compact.rs:1610</code>).</figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone" data-frame="rest"></div>
-        <figcaption><b>1. Chat at rest</b>The transcript at phone sizes: your message a bubble, the reply plain text, both at 17; a tool step is a 44 row with a 20 glyph, the whole row a target that opens it. Under it one composer row: a 44 plus, the field, a 44 send that stays off while the field is empty. Then the pill: the chat glyph, the chat's title, and where it works in muted ink beside one dot per pane of the session, grouped by window. <i>Today the text is 13, the rows 28, and under the composer sit a git line, the context pill and the model chip.</i></figcaption>
+        <figcaption><b>1. Chat at rest</b>The transcript at phone sizes: your message a bubble, the reply plain text, both at 17; a tool step is a 44 row with a 20 glyph, the whole row a target that opens it. Under it one composer row: a 44 plus, the field, a 44 send that stays off while the field is empty. Then the pill: the chat glyph, the chat's title, and where it works in muted ink beside one dot per pane of the session, grouped by window. <i>Today the text is 13, the rows 28, and under the composer sit a git line, the usage pill and the model chip.</i></figcaption>
       </figure>
 
       <figure>
@@ -140,22 +141,27 @@
 
       <figure>
         <div class="zz-phone" data-frame="empty"></div>
-        <figcaption><b>6. Empty chat</b>The phone empty state, then two rows in a group: Folder with the chat's folder, Resume with the last chat's title, each opening a sheet list, as the desktop's folder and Resume menus do. The composer under it as usual. <i>Today it says "Claude Code is ready" and nothing else (<code>agent_pane.rs:1550</code>); the folder and Resume menus are desktop only. New chat's own picker stays as it is.</i></figcaption>
+        <figcaption><b>6. Empty chat</b>The phone empty state, then two rows in a group: Folder with the chat's folder, Resume with the last chat's title, each opening a sheet list, as the desktop's folder and Resume menus do. The composer under it as usual. <i>Today it says "Claude Code is ready" and nothing else (<code>agent_pane.rs:1551</code>); the folder and Resume menus are desktop only. New chat's own picker stays as it is.</i></figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone" data-frame="plus"></div>
-        <figcaption><b>7. The plus</b>A sheet titled with the agent: Mention a file first, then the chat's settings as rows with their value at the end, and one muted line for the context. The mode shows here and nowhere else in the chat. <i>Today the plus mentions a file. The model chip leads with the mode's glyph in its tone, muted for Ask, green for Plan, amber for Accept edits and Auto, red for Bypass permissions, and its popover holds Model, Effort and Permissions in 32 rows. The context pill, a 16 ring and its percentage, holds the account in its menu. Shift-Tab steps the mode. Send is one look.</i></figcaption>
+        <figcaption><b>7. The plus</b>A sheet titled with the agent: Mention first, then the chat's settings in the desktop's order and words, Model, Effort, Permissions and Account, each with its value at the end, and one muted line for the context and the account's 5-hour and weekly limits, a limit at 80% or more in warning ink. The permission mode shows here and nowhere else in the chat. <i>Today the plus opens the @ menu, floating over the chat from the composer's top edge (<code>target.rs:1777</code>). The model chip leads with the mode's glyph in its tone, muted for Ask, green for Plan, amber for Accept edits and Auto, red for Bypass permissions, and its popover holds Model, the effort and Permissions in 32 rows. The usage pill, a 16 ring and the context's percentage, turns amber when the account's 5-hour or weekly limit reaches 80%; its menu meters Context, 5-hour and Week, then lists the accounts and Add account. Shift-Tab steps the mode. Send is one look.</i></figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone" data-frame="mode"></div>
-        <figcaption><b>7b. Mode</b>A settings row opens its choices in the same sheet, under a back control: one row per choice, its glyph and name, the current one checked. A tap picks it and goes back. The glyphs are the desktop's mode glyphs. <i>Today: the Permissions section of the model popover, 32 rows of names.</i></figcaption>
+        <figcaption><b>7b. Permissions</b>A settings row opens its choices in the same sheet, under a back control: one row per choice, its glyph and name, the current one checked. A tap picks it and goes back. The glyphs are the desktop's mode glyphs. <i>Today: the Permissions section of the model popover, 32 rows of names.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="mention"></div>
+        <figcaption><b>7c. Mention</b>Mention lists what the desktop's @ menu lists, in its order, in the same sheet under a back control: the other chats first, then this machine's sessions, the other hosts, and <code>~/</code> for files, each its name over where it is. A session, a host or a folder opens what is inside it, down to a pane. A tap closes the sheet and writes @ and the name into the field at the caret, in the reference highlight, as the desktop does; the agent gets the reference. <i>Today: the desktop's @ menu, 28 rows over the composer, with the same names and highlight (<code>mention.rs:54</code>).</i></figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone" data-frame="hold"></div>
-        <figcaption><b>8. Hold a message</b>No buttons under messages: holding one opens the press and hold sheet, titled with its first words over when it was sent, with Copy and Fork from here. <i>Today a time and 24 Copy and Fork buttons sit under every message, always shown on a touch screen (<code>chat.rs:1567</code>).</i></figcaption>
+        <figcaption><b>8. Hold a message</b>No buttons under messages: holding one opens the press and hold sheet, titled with its first words over when it was sent, with Copy and Fork from here. <i>Today a time and 24 Copy and Fork buttons sit under every message, always shown on a touch screen (<code>chat.rs:1602</code>).</i></figcaption>
       </figure>
 
       <figure>
@@ -187,7 +193,7 @@
 
   <section>
     <h2>Composer states</h2>
-    <p>The row at its real size. The action is send, stop or queue, never two at once. Send is one look whatever the mode; the mode is in the plus sheet.</p>
+    <p>The row at its real size. The action is send, stop or queue, never two at once. Send is one look whatever the permission mode; the mode is in the plus sheet's Permissions row.</p>
     <div class="zz-states" data-states></div>
   </section>
 
@@ -252,7 +258,7 @@
   const queued = `<div class="penna-touch-row penna-chat-queued" data-penna="phone.row" role="button">${ic("list")}<span class="penna-touch-row-lines"><span>2 queued</span></span></div>`;
   const jump = `<button class="penna-touch-icon zz-jump" data-penna="floating" aria-label="Jump to latest">${ic("arrow-down")}</button>`;
 
-  const row = (label, { glyph, detail, value, check, tone, quiet, send } = {}) => `<div class="penna-touch-row" data-penna="phone.row" role="button"${detail ? ` data-lines="2"` : ""}${tone ? ` data-tone="${tone}"` : ""}${quiet ? " data-quiet" : ""}${send ? " data-send" : ""}>${glyph ? ic(glyph) : ""}<span class="penna-touch-row-lines"><span>${label}</span>${detail ? `<span>${detail}</span>` : ""}</span>${value ? `<span class="penna-touch-row-value"><span>${value}</span></span>` : ""}${check ? `<span class="penna-touch-row-state">${ic("check")}</span>` : ""}</div>`;
+  const row = (label, { glyph, detail, value, check, tone, quiet, send, more } = {}) => `<div class="penna-touch-row" data-penna="phone.row" role="button"${detail ? ` data-lines="2"` : ""}${tone ? ` data-tone="${tone}"` : ""}${quiet ? " data-quiet" : ""}${send ? " data-send" : ""}>${glyph ? ic(glyph) : ""}<span class="penna-touch-row-lines"><span>${label}</span>${detail ? `<span>${detail}</span>` : ""}</span>${value ? `<span class="penna-touch-row-value"><span>${value}</span></span>` : ""}${check ? `<span class="penna-touch-row-state">${ic("check")}</span>` : ""}${more ? ic("chevron-right") : ""}</div>`;
   const askCard = (title, detail, rows, count) => `<div class="penna-chat-ask-card" data-penna="field.composer"><div class="penna-chat-ask-what" role="button"><div class="penna-chat-ask-what-head"><span class="penna-chat-ask-what-title">${title}</span>${count ? `<span class="penna-chat-ask-what-count">${count}</span>` : ""}</div>${detail ? `<span class="penna-chat-ask-what-detail">${detail}</span>` : ""}</div>${rows.join("")}</div>`;
 
   const pane = (tx, dock, bar, extra = "") => `<div class="zz-pane"><div class="zz-tx">${tx}</div>${fade}<div class="zz-dock">${dock}</div>${extra}${bar}</div>`;
@@ -265,13 +271,21 @@
   const sheet = ({ title, detail, back, close = true, body, rest = "8px" }) => `<div class="penna-sheet" style="--penna-sheet-rest: ${rest}"><div class="penna-sheet-scrim" data-act="dismiss"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header">${back ? `<button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Back" style="margin-left: -10px">${ic("chevron-left")}</button>` : ""}${detail ? `<span class="penna-sheet-copy"><span class="penna-sheet-title">${title}</span><span class="penna-sheet-detail">${detail}</span></span>` : `<span class="penna-sheet-title">${title}</span>`}${close ? `<button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close" data-act="dismiss">${ic("xmark")}</button>` : ""}</div>${body}</div></div></div>`;
   const list = (rows) => `<div class="penna-sheet-list">${rows.join("")}</div>`;
   const note = (text) => `<div class="penna-touch-row" data-penna="phone.row" style="min-height: 44px; cursor: default; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size)"><span class="penna-touch-row-lines"><span>${text}</span></span></div>`;
-  const plusSheet = sheet({ title: "Claude Code", body: list([row("Mention a file", { glyph: "file" }), `<div style="height: 8px"></div>`, row("Model", { glyph: "sparkle", value: "Opus 5.5" }), row("Mode", { glyph: "hand", value: "Ask" }), row("Effort", { glyph: "cpu", value: "High" }), row("Account", { glyph: "user", value: "Default" }), note("34% of the context used")]) });
-  const modeSheet = sheet({ title: "Mode", back: true, body: list([
+  const plusSheet = sheet({ title: "Claude Code", body: list([row("Mention", { glyph: "list-tree" }), `<div style="height: 8px"></div>`, row("Model", { glyph: "sparkle", value: "Opus 5.5" }), row("Effort", { glyph: "cpu", value: "High" }), row("Permissions", { glyph: "hand", value: "Ask" }), row("Account", { glyph: "user", value: "Default" }), note("Context 34% · 5-hour 41% · Week 12%")]) });
+  const modeSheet = sheet({ title: "Permissions", back: true, body: list([
     row("Ask", { glyph: "hand", check: true }),
     row("Accept edits", { glyph: "pencil" }),
     row("Plan", { glyph: "map" }),
     row("Auto", { glyph: "bolt" }),
     row("Bypass permissions", { glyph: "shield-off" }),
+  ]) });
+  const mentionSheet = sheet({ title: "Mention", back: true, body: list([
+    row("Fix the atlas tests", { glyph: "chat", detail: "Claude Code · zz:1" }),
+    row("Tune the lr schedule", { glyph: "chat", detail: "Codex · ml:2 · gpu-box" }),
+    row("zz", { glyph: "layers", detail: "3 windows", more: true }),
+    row("dotfiles", { glyph: "layers", detail: "1 window", more: true }),
+    row("gpu-box", { glyph: "server", detail: "2 sessions", more: true }),
+    row("~/", { glyph: "folder", detail: "files", more: true }),
   ]) });
   const holdSheet = sheet({ title: ASKED, detail: "You, 2 minutes ago", body: list([row("Copy", { glyph: "copy" }), row("Fork from here", { glyph: "git-branch" })]) });
   const closeSheet = sheet({ title: "Close this pane?", detail: "The chat stops. Its transcript stays.", close: false, body: `<div class="penna-action-bar" style="padding-top: 8px"><button class="penna-button" data-penna="button.quiet" data-size="touch-large"><span class="penna-label">Cancel</span></button><button class="penna-button" data-penna="button" data-tone="danger" data-prominent data-size="touch-large" data-emphasis="solid" data-solid="danger" style="color: var(--penna-on-danger)"><span class="penna-label">Close</span></button></div>` });
@@ -301,7 +315,7 @@
     const ask = `<div class="penna-chat-frame"><div class="penna-chat-frame-top"><div class="penna-chat-queue"><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small" style="color: var(--penna-fg-muted)">${ic("undo-2")}<span class="penna-label">2 queued</span></button></div><div class="penna-chat-composer"><span class="input-underlay" data-penna="field.composer"></span><div class="penna-chat-field input-chrome" data-penna="field.composer" data-asking><div class="penna-chat-ask"><div class="penna-chat-ask-header">${ic("square-terminal")}<span class="penna-chat-ask-title">Run this command?</span></div><div class="penna-chat-ask-body"><div class="penna-well penna-chat-ask-inset" data-penna="well"><span>cargo test -p penna pill_menu --all-features</span></div><span class="penna-chat-ask-note">in ~/dev/zebrilus</span></div><div class="penna-chat-ask-options"><div class="penna-row penna-chat-ask-option" data-penna="menu-item" role="listitem" data-state="selected" aria-selected="true"><div class="penna-chat-ask-text"><span class="penna-chat-ask-label">Allow once</span></div><kbd class="penna-kbd" data-penna="keycap" data-size="small"><span>1</span></kbd></div><div class="penna-row penna-chat-ask-option" data-penna="menu-item" role="listitem"><div class="penna-chat-ask-text"><span class="penna-chat-ask-label">Always allow cargo test</span><span class="penna-chat-ask-detail">this session</span></div><kbd class="penna-kbd" data-penna="keycap" data-size="small"><span>2</span></kbd></div><span class="penna-chat-ask-divider" data-penna="rule.list"></span><div class="penna-row penna-chat-ask-option" data-penna="menu-item" role="listitem"><div class="penna-chat-ask-text"><span class="penna-chat-ask-label">Deny</span></div><kbd class="penna-kbd" data-penna="keycap" data-size="small"><span>3</span></kbd></div></div></div><span class="penna-chat-ask-rule" data-penna="rule.list"></span><div class="penna-chat-input-row"><span class="penna-chat-ask-leading"><kbd class="penna-kbd" data-penna="keycap" data-size="small"><span>4</span></kbd></span><span class="penna-chat-input" role="textbox" data-placeholder="Deny and say what to do instead"></span><button class="penna-button penna-chat-ask-send" data-penna="button" data-emphasis="solid" data-solid="primary"><span class="penna-label">Deny</span>${ic("key-return")}</button><button class="penna-button" data-penna="button.send" data-shape="icon" data-emphasis="solid" data-solid="primary" aria-label="Stop">${ic("stop")}</button></div></div></div></div><div class="penna-chat-frame-foot"><div class="penna-chat-ask-hints"><span>1 to 3 pick</span><span>↵ deny</span><span>esc deny</span></div><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small" style="color: var(--penna-fg-muted)"><span class="penna-chat-meter" style="width: 16px; height: 16px; --penna-chat-used: 0.34"><span></span></span><span class="penna-label">34%</span></button><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small"><i class="zz-dim" data-icon="hand"></i><span class="penna-label">Opus 5.5</span><span class="zz-dim">High</span>${ic("chevron-down")}</button></div></div>`;
     return { tx, ask };
   };
-  const oldComposer = `<div class="penna-chat-frame"><div class="penna-chat-frame-top"><div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer"><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Mention a file">${ic("plus")}</button><span class="penna-chat-input" role="textbox" data-placeholder="Message Claude Code…"></span><button class="penna-button" data-penna="button.send" data-shape="icon" disabled aria-label="Send">${ic("arrow-up")}</button></div></div></div><div class="penna-chat-frame-foot"><div><span class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small" style="color: var(--penna-fg-muted)">${ic("git-branch")}<span class="penna-label">main · 2 files <span style="color: var(--penna-success-ink)">+14</span> <span style="color: var(--penna-danger-ink)">−3</span></span></span></div><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small" style="color: var(--penna-fg-muted)"><span class="penna-chat-meter" style="width: 16px; height: 16px; --penna-chat-used: 0.34"><span></span></span><span class="penna-label">34%</span></button><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small"><i class="zz-dim" data-icon="hand"></i><span class="penna-label">Opus 5.5</span><span class="zz-dim">High</span>${ic("chevron-down")}</button></div></div>`;
+  const oldComposer = `<div class="penna-chat-frame"><div class="penna-chat-frame-top"><div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer"><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Mention a chat, host, session or file">${ic("plus")}</button><span class="penna-chat-input" role="textbox" data-placeholder="Message Claude Code…"></span><button class="penna-button" data-penna="button.send" data-shape="icon" disabled aria-label="Send">${ic("arrow-up")}</button></div></div></div><div class="penna-chat-frame-foot"><div><span class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small" style="color: var(--penna-fg-muted)">${ic("git-branch")}<span class="penna-label">main · 2 files <span style="color: var(--penna-success-ink)">+14</span> <span style="color: var(--penna-danger-ink)">−3</span></span></span></div><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small" style="color: var(--penna-fg-muted)"><span class="penna-chat-meter" style="width: 16px; height: 16px; --penna-chat-used: 0.34"><span></span></span><span class="penna-label">34%</span></button><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small"><i class="zz-dim" data-icon="hand"></i><span class="penna-label">Opus 5.5</span><span class="zz-dim">High</span>${ic("chevron-down")}</button></div></div>`;
   const oldPill = pill({ title: TITLE, meta: "Needs your permission", tone: "warning" });
   const approvalCard = askCard("Run this command?", "cargo test -p penna pill_menu --all-features", [row("Allow once"), row("Always allow cargo test"), row("Deny")]);
 
@@ -315,6 +329,7 @@
     empty: () => `<div class="zz-pane"><div class="zz-empty"><div class="penna-empty">${ic("chat")}<b>Claude Code is ready</b></div><div class="penna-touch-group" data-penna="settings.card">${row("Folder", { glyph: "folder", value: "~/dev/zebrilus" })}${row("Resume", { glyph: "history", value: "Fix pane stack hit testing on iPad" })}</div></div><div class="zz-dock">${composer()}</div>${pill({ title: "Claude Code", meta: WHERE, on: 8, groups: [...GROUPS, 1] })}</div>`,
     plus: () => pane(restTx(false), composer(), restPill()) + plusSheet,
     mode: () => pane(restTx(false), composer(), restPill()) + modeSheet,
+    mention: () => pane(restTx(false), composer({ text: "Compare with " }), restPill()) + mentionSheet,
     hold: () => pane(restTx(true), composer(), restPill()) + holdSheet,
     menu: () => pane(restTx(false), composer(), restPill()) + menu(false),
     close: () => pane(restTx(false), composer(), restPill()) + closeSheet,
@@ -331,6 +346,7 @@
   const states = [
     ["Empty: send off", composer()],
     ["Typed", composer({ text: "Run the menu story too", state: "send" })],
+    ["A picked target", composer({ text: `Compare with <span class="zz-ref">@fix the atlas tests</span>`, state: "send" })],
     ["Working: stop", composer({ state: "stop" })],
     ["Typing while it works: queue", composer({ text: "Then the swipe test", state: "queue" })],
     ["Five lines, then it scrolls", composer({ text: "Put New chat last in the New group so it sits nearest the thumb, rest it like its neighbours, keep the label chip at 28 and muted with no glyph, and run the pill tests and the menu story when you are done.", state: "send" })],
@@ -342,8 +358,8 @@
 
   const o = old();
   const compare = [
-    ["Composer today", `<div class="zz-cut" style="width: 402px"><div class="zz-old"><div class="zz-old-dock">${oldComposer}</div></div></div>`, "<b>Today.</b> The desktop's composer: a 40 field with a 28 plus and a 28 send, then git's line, a 24 context pill with its ring and percentage, and a 24 model chip led by the mode's glyph in its tone, with the effort after the model. Four targets, every one under 44."],
-    ["Composer new", `<div class="zz-cut" style="width: 402px"><div class="zz-pane"><div class="zz-dock">${composer()}</div></div></div>`, "<b>New.</b> One row: a 44 plus, the field at 17, a 44 send. The settings, the mode among them, move into the plus's sheet."],
+    ["Composer today", `<div class="zz-cut" style="width: 402px"><div class="zz-old"><div class="zz-old-dock">${oldComposer}</div></div></div>`, "<b>Today.</b> The desktop's composer: a 40 field with a 28 plus and a 28 send, then git's line, a 24 usage pill with its ring and the context's percentage, and a 24 model chip led by the permission mode's glyph in its tone, with the effort after the model. Four targets, every one under 44."],
+    ["Composer new", `<div class="zz-cut" style="width: 402px"><div class="zz-pane"><div class="zz-dock">${composer()}</div></div></div>`, "<b>New.</b> One row: a 44 plus, the field at 17, a 44 send. Mention, the settings and the use move into the plus's sheet."],
     ["Ask today", `<div class="zz-cut" style="width: 402px"><div class="zz-old"><div class="zz-old-dock">${o.ask}</div>${oldPill.replace('class="zz-bar"', 'class="zz-bar" style="position: relative; inset: auto; margin: 0 16px 16px"')}</div></div>`, "<b>Today.</b> The ask grows inside the composer at desktop size: answers with 1 to 4 key caps, a field to deny with words, a Deny button, Stop, a hint line for keys a phone lacks, and the chips."],
     ["Ask new", `<div class="zz-cut" style="width: 402px"><div class="zz-pane"><div class="zz-dock">${approvalCard}</div>${pill({ title: TITLE, meta: "Needs approval", tone: "warning" })}</div></div>`, "<b>New.</b> A card in the composer's place: what it would run in two lines, then three rows, each answering on tap. The pill says the tile's words."],
   ];
