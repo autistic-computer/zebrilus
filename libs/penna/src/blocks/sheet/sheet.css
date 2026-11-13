@@ -108,7 +108,7 @@
 .penna-sheet-disc {
   position: absolute;
   top: 0;
-  right: 9px;
+  right: var(--penna-space-16);
   display: grid;
   place-items: center;
   width: var(--penna-control-touch);
@@ -122,19 +122,19 @@
 
 .penna-sheet-disc[data-side="start"] {
   right: auto;
-  left: 9px;
+  left: var(--penna-space-16);
 }
 
 .penna-sheet-disc > span {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   border: 0;
   box-shadow: none;
   color: var(--penna-muted);
-  --penna-icon-size: 12px;
+  --penna-icon-size: 20px;
 }
 
 .penna-sheet-groups {
@@ -221,7 +221,7 @@
   flex-direction: column;
   gap: var(--penna-space-16);
   width: min(calc(100% - 64px), 340px);
-  padding: 20px;
+  padding: 12px 20px 20px;
   font-family: var(--penna-font);
 }
 
@@ -242,7 +242,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
+  min-height: 44px;
   text-align: center;
   font-size: var(--penna-text-touch-body-size);
   line-height: var(--penna-text-touch-body-line);
@@ -250,16 +250,16 @@
 }
 
 .penna-modal-head:has(> .penna-sheet-disc) {
-  padding: 0 40px;
+  padding: 0 44px;
 }
 
 .penna-modal-head > .penna-sheet-disc {
-  top: -7px;
-  right: -7px;
+  top: 0;
+  right: -8px;
 }
 
 .penna-modal-detail {
-  margin: calc(var(--penna-space-12) * -1) 0 0;
+  margin: calc(var(--penna-space-4) - var(--penna-space-16) - (44px - var(--penna-text-touch-body-line)) / 2) 0 0;
   color: var(--penna-fg-muted);
   text-align: center;
   font-size: var(--penna-text-touch-small-size);

@@ -32,7 +32,7 @@ pub const STORY: Story = Story {
         Section {
             id: "modal",
             name: "Modal",
-            summary: "The centered card for a short ask: a hold menu titled with the thing's name over its actions, the one that removes in its own group, and a confirm with the question, what goes, Cancel and the verb.",
+            summary: "The centered card for a short ask: a hold menu titled with the thing's name over its actions, the one that removes last in danger ink, and a confirm with the question, what goes, Cancel and the verb.",
             build: |_, cx| cx.new(|_| Modals { open: [true; 2] }).into(),
         },
     ],
@@ -254,19 +254,16 @@ impl Render for Modals {
             "machine-sheet",
             "xps",
             [close("machine-sheet", "machine-close", cx)],
-            modal_groups()
-                .child(
-                    TouchGroup::new()
-                        .ruled()
-                        .row(TouchRow::new("machine-connect", "Connect").icon(IconName::Server)),
-                )
-                .child(
-                    TouchGroup::new().ruled().row(
+            modal_groups().child(
+                TouchGroup::new()
+                    .ruled()
+                    .row(TouchRow::new("machine-connect", "Connect").icon(IconName::Server))
+                    .row(
                         TouchRow::new("machine-remove", "Remove machine")
                             .icon(IconName::Xmark)
                             .danger(),
                     ),
-                ),
+            ),
             px(SAFE_BOTTOM),
             dismissed(cx, |this: &mut Self| this.open[0] = false),
         )

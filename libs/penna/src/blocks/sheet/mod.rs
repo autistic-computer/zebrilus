@@ -22,14 +22,14 @@ const GRABBER_HEIGHT: f32 = 5.0;
 const HEADER_HEIGHT: f32 = 44.0;
 const HEADER_SIDE: f32 = 60.0;
 const CLOSE: f32 = crate::blocks::touch::TOUCH_TARGET;
-const DISC: f32 = 30.0;
-const DISC_GLYPH: f32 = 12.0;
+const DISC_GLYPH: f32 = 20.0;
 const CONTENT_EDGE: f32 = 16.0;
 const MODAL_PAD: f32 = 20.0;
 const MODAL_GUTTER: f32 = 64.0;
 const MODAL_MAX_WIDTH: f32 = 340.0;
-const MODAL_TITLE: f32 = 30.0;
-const MODAL_TITLE_SIDE: f32 = 40.0;
+const MODAL_TITLE: f32 = CLOSE;
+const MODAL_TOP: f32 = 12.0;
+const MODAL_TITLE_SIDE: f32 = 44.0;
 const MODAL_CONTROL: f32 = 48.0;
 const MODAL_RISE: f32 = 6.0;
 const MODAL_SCRIM_LIGHT: f32 = 0.28;
@@ -199,7 +199,7 @@ fn disc_button(id: impl Into<ElementId>, icon: IconName, label: &'static str, cx
                 .flex_none()
                 .items_center()
                 .justify_center()
-                .size(px(DISC))
+                .size(px(CLOSE))
                 .rounded_full()
                 .bg(paint.fill)
                 .child(
@@ -748,7 +748,9 @@ impl BottomSheet {
         };
         let x = !self.actions.is_empty();
         let title_style = TextStyle::TouchBody;
-        let slot = -px((CLOSE - DISC) / 2.0);
+        let slot = px(MODAL_TOP - MODAL_PAD);
+        let rem = theme.font_size;
+        let title_slack = (px(MODAL_TITLE) - title_style.line_height().to_pixels(rem)) / 2.0;
         let head = div()
             .relative()
             .flex()
@@ -764,7 +766,7 @@ impl BottomSheet {
                 head.child(
                     div()
                         .absolute()
-                        .top(slot)
+                        .top_0()
                         .right(slot)
                         .flex()
                         .children(self.actions),
@@ -773,11 +775,11 @@ impl BottomSheet {
         let heading = div()
             .flex()
             .flex_col()
-            .gap(Space::S4)
             .px(px(MODAL_PAD))
             .child(head)
             .children(self.detail.map(|detail| {
                 div()
+                    .mt(Space::S4.rems().to_pixels(rem) - title_slack)
                     .w_full()
                     .text_center()
                     .type_style(TextStyle::TouchSmall, cx)
@@ -794,7 +796,7 @@ impl BottomSheet {
             .w(measured
                 .get()
                 .map_or_else(|| modal_width(window), |own| card_width(own.size.width)))
-            .pt(px(MODAL_PAD))
+            .pt(px(MODAL_TOP))
             .surface(drawer, cx)
             .rounded(corner)
             .occlude()
@@ -931,7 +933,7 @@ impl BottomSheet {
                 PaintState::Rest,
             )
         };
-        let slot = px(CONTENT_EDGE - (CLOSE - DISC) / 2.0);
+        let slot = px(CONTENT_EDGE);
         let title_style = TextStyle::TouchSmall;
         let header = div()
             .debug_selector(|| "bottom-sheet-header".to_owned())
