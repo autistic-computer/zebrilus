@@ -278,10 +278,13 @@ impl PanePickerView {
 
     fn chat(&self, cx: &App) -> Option<Chat> {
         let mux = self.mux.read(cx);
-        chat_picker(&mux.snapshot(), self.pane, self.chat_view).map(|chat| Chat {
-            machines: machines(mux),
-            ..chat
-        })
+        let machines = if self.pane.is_some() && !mux.attached_is_local() {
+            Vec::new()
+        } else {
+            machines(mux)
+        };
+        chat_picker(&mux.snapshot(), self.pane, self.chat_view)
+            .map(|chat| Chat { machines, ..chat })
     }
 
     fn choose_machine(&mut self, chat: &Chat, index: usize, cx: &mut Context<Self>) {
