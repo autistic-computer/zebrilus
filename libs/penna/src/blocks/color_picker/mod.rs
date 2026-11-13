@@ -447,6 +447,7 @@ impl ColorPicker {
     fn hex_row(
         state: &Entity<ColorPickerState>,
         author: Option<&SharedString>,
+        size: Size,
         cx: &App,
     ) -> impl IntoElement {
         let hex = state.read(cx).hex.clone();
@@ -458,6 +459,7 @@ impl ColorPicker {
                     .when_some(author, |input, author| {
                         input.id(SharedString::from(format!("{author}-hex")))
                     })
+                    .with_size(size)
                     .flex_1()
                     .min_w_0(),
             )
@@ -470,6 +472,7 @@ impl ColorPicker {
                 .ghost()
                 .flat()
                 .compact()
+                .with_size(size)
                 .icon(crate::IconName::Undo2)
                 .tooltip("Clear the override")
                 .on_click(move |_, window, cx| Self::clear(&state, window, cx)),
@@ -481,6 +484,7 @@ impl ColorPicker {
         author: Option<&SharedString>,
         inherited: Hsla,
         field_height: f32,
+        size: Size,
         cx: &App,
     ) -> impl IntoElement {
         let hsv = state.read(cx).shown(inherited);
@@ -488,7 +492,7 @@ impl ColorPicker {
             .gap(Space::S8)
             .child(Self::field(state, author, hsv, px(field_height), cx))
             .child(Self::hue(state, author, hsv, cx))
-            .child(Self::hex_row(state, author, cx))
+            .child(Self::hex_row(state, author, size, cx))
     }
 
     fn trigger(&self, shown: Hsla, coarse: bool, cx: &App) -> Button {
@@ -617,6 +621,7 @@ impl ColorPicker {
                         self.author.as_ref(),
                         self.inherited,
                         SHEET_FIELD_HEIGHT,
+                        Size::Touch,
                         cx,
                     )),
                 sheet_inset(window),
@@ -693,6 +698,7 @@ impl RenderOnce for ColorPicker {
                         author.as_ref(),
                         inherited,
                         FIELD_HEIGHT,
+                        Size::Medium,
                         cx,
                     ))
             })
