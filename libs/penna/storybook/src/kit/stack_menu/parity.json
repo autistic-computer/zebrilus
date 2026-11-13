@@ -1,0 +1,10 @@
+{
+  "story": "stack-menu",
+  "page": "index.html",
+  "steps": [
+    { "name": "press-chip", "section": "from-pill", "press": { "id": "stack-chip-rename", "nth": 1 } },
+    { "name": "press-chord", "section": "ctrl", "press": "stack-chip-ctrl-z" },
+    { "name": "hover-chip", "section": "from-pill", "hover": { "id": "stack-chip-overview", "nth": 1 }, "still": true },
+    { "name": "hover-disabled", "section": "kinds", "hover": { "id": "stack-chip-find", "nth": 1 }, "still": true }
+  ]
+}

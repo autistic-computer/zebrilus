@@ -824,6 +824,7 @@
 .penna-stack-cap {
   flex: none;
   min-width: 32px;
+  text-align: start;
   color: var(--penna-muted);
   font-family: var(--penna-mono);
   font-size: var(--penna-text-touch-small-size);
@@ -846,6 +847,11 @@
 
 .penna-stack-chip[data-penna][data-state~="selected"]:not(:disabled) {
   scale: 1.04;
+}
+
+.penna-stack-chip[data-penna]:active:not(:disabled) {
+  background: var(--penna-primary);
+  color: var(--penna-on-primary);
 }
 
 .penna-stack-close[data-penna] {

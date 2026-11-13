@@ -12,9 +12,11 @@ mod key_row;
 mod lift;
 mod mark;
 mod pager;
-mod popover_key;
 mod press;
 mod row;
+mod stack;
+mod stack_gesture;
+mod stack_key;
 mod sticky;
 mod swipe_back;
 mod which_key_list;
@@ -27,7 +29,6 @@ pub use key_row::{
 pub use lift::{Lift, LiftEvent, LiftResponse};
 pub use mark::{MARK_DOT, MARK_SPINNER, StatusMark};
 pub use pager::{Pager, PagerEvent, PagerLayout, PagerResponse};
-pub use popover_key::{PopoverKey, PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap};
 pub(crate) use press::over_hover;
 pub use press::{
     PressCorners, PressFeedback, instant_press_highlight, press_feedback, press_highlight,
@@ -37,6 +38,12 @@ pub use row::{
     TOUCH_DETAIL_ROW_HEIGHT, TOUCH_HEADER_HEIGHT, TOUCH_ROW_HEIGHT, TouchGroup, TouchHeader,
     TouchRow, TouchTrailing,
 };
+pub use stack::{
+    STACK_CHIP_HEIGHT, STACK_HOLD, StackChip, StackClose, StackGroup, StackLook, StackMenu,
+    StackMenuEvent, stack_scrim,
+};
+pub use stack_gesture::{StackGesture, StackSlide, StackTarget, StackTouch};
+pub use stack_key::{StackKey, StackKeyTap};
 pub use sticky::{StickyModifier, StickyModifiers};
 pub use swipe_back::{SwipeBack, claim_back_swipe, swipe_back, yield_back_swipe};
 pub use which_key_list::WhichKeyList;

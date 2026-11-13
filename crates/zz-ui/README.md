@@ -88,7 +88,7 @@ a scroll starts, fading in 120ms and out 180ms, shown at least 130ms); buttons s
 page, tree rows, menu items, which-key rows, and key row keys. `yield_back_swipe` marks a
 horizontal scroller that keeps a rightward pan while it can still scroll back, since `swipe_back`
 now takes a pan that starts anywhere on the page. Its tool keys share one gesture: a tap does the key's own job, and a
-hold or a slide raises a card above it, where releasing on an item picks it. `ArrowPad` is the
-direction card and repeats while held; `PopoverKey` is a menu or chord grid (zz-ui's
-`compact::ToolKeys` builds the ctrl, alt, and prefix set). A long press released in place leaves the
-card open for taps. Colors come from the theme; nothing here depends on a platform.
+hold or a slide up raises a stack menu above it, where releasing on a chip picks it. `ArrowPad` is
+the direction bubble and repeats while held; `StackKey` anchors a `StackMenu` of chords or the pill's
+own menu (zz-ui's `compact::ToolKeys` builds the ctrl, alt, and prefix set). A hold released on the
+key leaves the stack open for taps. Colors come from the theme; nothing here depends on a platform.

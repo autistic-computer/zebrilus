@@ -15,15 +15,15 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, IconName,
     blocks::compact::{
-        BENTO_INSET, PillLabel, PillMenuAlign, PillMenuItem, PillMenuLook, PillPlacement,
-        PillSpring, compact_floating_bar, compact_floating_pill, compact_hud,
-        compact_pill_collapse, compact_pill_label, compact_pill_menu, compact_pill_morph,
-        mini_pill_width, pill_bounds, pill_corner, pill_glass_over,
+        BENTO_INSET, PillLabel, PillPlacement, PillSpring, compact_floating_bar,
+        compact_floating_pill, compact_hud, compact_pill_collapse, compact_pill_label,
+        compact_pill_morph, mini_pill_width, pill_bounds, pill_corner, pill_glass_over,
     },
     blocks::sheet::{bottom_sheet, close_sheet},
     blocks::touch::{
         ArrowPadEvent, KEY_ROW_HEIGHT, KeyRow, Lift, LiftEvent, PageDot, Pager, PagerEvent,
-        PopoverKey, PopoverKeyEvent, WhichKeyList, page_dots_in,
+        StackChip, StackClose, StackGroup, StackLook, StackMenu, StackMenuEvent, WhichKeyList,
+        page_dots_in,
     },
     blocks::which_key::{WhichKeyCap, WhichKeyRow},
     components::kbd::Kbd,
@@ -103,15 +103,7 @@ pub(super) struct CompactState {
     cards: Rc<RefCell<BTreeMap<PaneId, Bounds<Pixels>>>>,
     text: Option<TerminalText>,
     page_background: Option<ala::Hsla>,
-    menu: Option<(MenuFrom, PillSpring)>,
-    pill_at: Rc<Cell<Bounds<Pixels>>>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum MenuFrom {
-    Pill,
-    Prefix,
-    Host,
+    menu: Option<(Entity<StackMenu>, Subscription)>,
 }
 
 impl CompactState {
@@ -130,6 +122,7 @@ impl CompactState {
         self.previous = None;
         self.bindings = std::env::var("ALA_BENCH").is_ok_and(|bench| bench.starts_with("sheet"));
         self.menu = None;
+        self.tool_keys = None;
         self.close_sheets();
     }
 
@@ -138,46 +131,41 @@ impl CompactState {
     }
 }
 
-fn pill_menu(flip: Option<zz_ui::pane::PaneFlip>) -> Vec<Vec<PillMenuItem>> {
-    let mut panes = vec![
-        PillMenuItem::new(RENAME_PANE, "Rename pane", IconName::Pencil),
-        PillMenuItem::new(NEW_WINDOW, "New window", IconName::AppWindow),
-        PillMenuItem::new(NEW_PANE, "New pane", IconName::Plus),
-        PillMenuItem::new(LAST_PANE, "Last pane", IconName::History),
-        PillMenuItem::new(OVERVIEW, "Overview", IconName::LayoutDashboard),
-    ];
-    if let Some(flip) = flip {
+fn pill_menu(flip: Option<zz_ui::pane::PaneFlip>) -> Vec<StackGroup> {
+    let flip = flip.map(|flip| {
         let label = zz_client::agent_flip::flip_tooltip(flip.to, flip.armed);
-        panes.push(
-            PillMenuItem::new(FLIP, label, zz_ui::pane::flip_icon(flip.to))
-                .look(PillMenuLook::Primary),
-        );
-    }
+        StackChip::new(FLIP, label, zz_ui::pane::flip_icon(flip.to))
+    });
+    let panes = flip.into_iter().chain([
+        StackChip::new(OVERVIEW, "Overview", IconName::LayoutDashboard),
+        StackChip::new(LAST_PANE, "Last pane", IconName::History),
+        StackChip::new(NEW_PANE, "New pane", IconName::Plus),
+        StackChip::new(NEW_WINDOW, "New window", IconName::AppWindow),
+        StackChip::new(RENAME_PANE, "Rename pane", IconName::Pencil),
+    ]);
     vec![
-        vec![
-            PillMenuItem::new(ALL_BINDINGS, "All bindings", IconName::Keyboard)
-                .look(PillMenuLook::Quiet),
-            PillMenuItem::new(KILL_PANE, "Kill pane", IconName::Xmark).look(PillMenuLook::Danger),
-        ],
-        panes,
+        StackGroup::new(panes),
+        StackGroup::new([
+            StackChip::new(KILL_PANE, "Kill pane", IconName::Xmark).look(StackLook::Danger),
+            StackChip::new(ALL_BINDINGS, "All bindings", IconName::Keyboard).look(StackLook::Quiet),
+        ]),
     ]
 }
 
-fn host_menu(connected: bool) -> Vec<Vec<PillMenuItem>> {
+fn host_menu(connected: bool) -> Vec<StackGroup> {
     let new = [
-        PillMenuItem::new(NEW_SESSION, "New session", IconName::Layers),
-        PillMenuItem::new(NEW_BROWSER, "New browser", IconName::Globe),
-        PillMenuItem::new(NEW_TERMINAL, "New terminal", IconName::SquareTerminal),
+        StackChip::new(NEW_TERMINAL, "New terminal", IconName::SquareTerminal),
+        StackChip::new(NEW_BROWSER, "New browser", IconName::Globe),
+        StackChip::new(NEW_SESSION, "New session", IconName::Layers),
     ];
-    let host = connected
-        .then_some(new)
+    let host = [StackChip::new(ALL_HOSTS, "All hosts", IconName::Server)]
         .into_iter()
-        .flatten()
-        .chain([PillMenuItem::new(ALL_HOSTS, "All hosts", IconName::Server)])
-        .collect();
+        .chain(connected.then_some(new).into_iter().flatten());
     vec![
-        vec![PillMenuItem::new(SETTINGS, "Settings", IconName::Settings).look(PillMenuLook::Quiet)],
-        host,
+        StackGroup::new(host),
+        StackGroup::new([
+            StackChip::new(SETTINGS, "Settings", IconName::Settings).look(StackLook::Quiet)
+        ]),
     ]
 }
 
@@ -266,14 +254,13 @@ fn dispatch_key(keystroke: Keystroke, window: &mut Window, cx: &mut App) {
 
 fn send_chord(
     _: &mut AppShell,
-    _: &Entity<PopoverKey>,
-    event: &PopoverKeyEvent,
+    _: &Entity<StackMenu>,
+    event: &StackMenuEvent,
     window: &mut Window,
     cx: &mut Context<AppShell>,
 ) {
-    if let PopoverKeyEvent::Pick(id) = event
-        && let Ok(keystroke) = Keystroke::parse(id)
-    {
+    let StackMenuEvent::Pick(id) = event;
+    if let Ok(keystroke) = Keystroke::parse(id) {
         let keystroke = penna::blocks::touch::StickyModifiers::apply(&keystroke, cx);
         dispatch_key(keystroke, window, cx);
     }
@@ -456,6 +443,7 @@ impl AppShell {
             return keys.clone();
         }
         let keys = ToolKeys::new(cx);
+        let [control, alt, prefix] = keys.menus(cx);
         let subscriptions = [
             cx.subscribe_in(
                 &keys.arrows,
@@ -469,38 +457,65 @@ impl AppShell {
                     }
                 },
             ),
-            cx.subscribe_in(&keys.control, window, send_chord),
-            cx.subscribe_in(&keys.alt, window, send_chord),
-            cx.subscribe_in(
-                &keys.prefix,
-                window,
-                |this, _, event: &PopoverKeyEvent, _, cx| {
-                    if *event == PopoverKeyEvent::Press {
-                        this.open_pill_menu(MenuFrom::Prefix, cx);
-                    }
-                },
-            ),
+            cx.subscribe_in(&control, window, send_chord),
+            cx.subscribe_in(&alt, window, send_chord),
+            cx.subscribe_in(&prefix, window, Self::stack_pick),
         ];
         self.compact.tool_keys = Some((keys.clone(), subscriptions));
         keys
     }
 
-    fn open_pill_menu(&mut self, from: MenuFrom, cx: &mut Context<Self>) {
-        let mut spring = PillSpring::shut();
-        spring.aim(true, Instant::now());
-        self.compact.menu = Some((from, spring));
-        cx.notify();
+    pub(super) fn pill_stack(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<StackMenu> {
+        if let Some((menu, _)) = &self.compact.menu {
+            return menu.clone();
+        }
+        let menu = cx.new(|cx| StackMenu::new(StackClose::Disc, cx).scrim_apart());
+        let subscription = cx.subscribe_in(&menu, window, Self::stack_pick);
+        self.compact.menu = Some((menu.clone(), subscription));
+        menu
     }
 
-    fn close_pill_menu(&mut self, cx: &mut Context<Self>) {
-        if let Some((_, spring)) = self.compact.menu.as_mut() {
-            spring.aim(false, Instant::now());
-            cx.notify();
+    #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
+    pub(super) fn shown_stack(&self, cx: &App) -> Option<Entity<StackMenu>> {
+        self.compact
+            .menu
+            .as_ref()
+            .map(|(menu, _)| menu.clone())
+            .filter(|menu| menu.read(cx).is_shown())
+    }
+
+    pub(super) fn open_pill_menu(&mut self, cx: &mut Context<Self>) {
+        if let Some((menu, _)) = &self.compact.menu {
+            menu.update(cx, StackMenu::open);
         }
     }
 
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    fn close_pill_menu(&mut self, cx: &mut Context<Self>) {
+        if let Some((menu, _)) = &self.compact.menu {
+            menu.update(cx, StackMenu::close);
+        }
+        if let Some((keys, _)) = &self.compact.tool_keys {
+            keys.clone().close(cx);
+        }
+    }
+
+    fn stack_pick(
+        &mut self,
+        _: &Entity<StackMenu>,
+        event: &StackMenuEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let StackMenuEvent::Pick(id) = event;
+        self.pill_menu_pick(id, window, cx);
+    }
+
     fn pill_menu_pick(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.close_pill_menu(cx);
         let new = match id {
             NEW_TERMINAL => Some(overview::NewThing::Terminal),
             NEW_BROWSER => Some(overview::NewThing::Browser),
@@ -508,26 +523,17 @@ impl AppShell {
             _ => None,
         };
         if let Some(new) = new {
-            self.compact.menu = None;
             self.create(new, window, cx);
             return;
         }
         match id {
-            ALL_HOSTS => {
-                self.compact.menu = None;
-                self.open_hosts(cx);
-            }
-            SETTINGS => {
-                self.compact.menu = None;
-                self.open_settings(cx);
-            }
+            ALL_HOSTS => self.open_hosts(cx),
+            SETTINGS => self.open_settings(cx),
             OVERVIEW => {
-                self.compact.menu = None;
                 window.dismiss_virtual_keyboard();
                 self.open_overview(cx);
             }
             FLIP => {
-                self.compact.menu = None;
                 if let Some(pane) = self.active_window(cx).map(|window| window.active_pane) {
                     self.flip_pane(pane, cx);
                 }
@@ -1021,7 +1027,7 @@ impl AppShell {
         if self.compact_lifted() || self.compact.bindings {
             return BTreeSet::new();
         }
-        if self.compact.menu.is_some() {
+        if self.shown_stack(cx).is_some() {
             return self
                 .active_window(cx)
                 .map(|window| window.active_pane)
@@ -1257,43 +1263,40 @@ impl AppShell {
         if !keyboard && let Some((keys, _)) = &self.compact.tool_keys {
             keys.clone().close(cx);
         }
-        if !keyboard && matches!(self.compact.menu, Some((MenuFrom::Prefix, _))) {
-            self.compact.menu = None;
+        let stack = self.pill_stack(window, cx);
+        let groups = if open {
+            host_menu(self.shown_host_connected(cx))
+        } else {
+            pill_menu(shown_page.and_then(|page| self.pane_flip(page.pane, cx)))
+        };
+        if let Some((keys, _)) = &self.compact.tool_keys {
+            let prefix = keys.prefix.read(cx).menu().clone();
+            let groups = groups.clone();
+            prefix.update(cx, |menu, cx| menu.set_groups(groups, cx));
         }
-        if let Some((_, spring)) = self.compact.menu.as_mut() {
-            if cx.reduce_motion() {
-                spring.finish();
-            }
-            if spring.tick(now) {
-                window.request_animation_frame();
-            }
-            if !spring.full() && spring.progress() <= 0.0 {
-                self.compact.menu = None;
-            }
+        stack.update(cx, |menu, cx| menu.set_groups(groups, cx));
+        if keyboard && !keyless && stack.read(cx).is_shown() {
+            stack.update(cx, StackMenu::close);
         }
         #[cfg(any(target_os = "ios", target_os = "android"))]
         {
-            let frozen = matches!(
-                self.compact.menu,
-                Some((MenuFrom::Pill | MenuFrom::Prefix, _))
-            )
-            .then_some(current_pane)
-            .flatten();
+            let prefix_open = self
+                .compact
+                .tool_keys
+                .as_ref()
+                .is_some_and(|(keys, _)| keys.prefix.read(cx).menu().read(cx).is_shown());
+            let frozen = (!open && (stack.read(cx).is_shown() || prefix_open))
+                .then_some(current_pane)
+                .flatten();
             for (pane, browser) in &self.browsers {
                 let still = frozen == Some(*pane);
                 browser.update(cx, |browser, cx| browser.set_frozen(still, window, cx));
             }
         }
-        let menu_progress = match self.compact.menu {
-            Some((MenuFrom::Pill, spring)) => spring.progress().clamp(0.0, 1.0),
-            _ => 0.0,
-        };
-        let pill_at = self.compact.pill_at.clone();
-        let track_pill = move || {
-            let at = pill_at.clone();
-            canvas(move |bounds, _, _| at.set(bounds), |_, (), _, _| {})
-                .absolute()
-                .inset_0()
+        let menu_progress = if open {
+            0.0
+        } else {
+            stack.read(cx).close_shown()
         };
         let page_background = self
             .compact
@@ -1330,8 +1333,8 @@ impl AppShell {
         let bottom = if keyboard && keyless {
             let pill = compact_floating_pill("compact-pill", label, dots, &placement, cx)
                 .opacity(1.0 - menu_progress)
-                .child(track_pill())
-                .on_click(cx.listener(|this, _, _, cx| this.open_pill_menu(MenuFrom::Pill, cx)));
+                .child(StackMenu::pill_anchor(&stack, cx))
+                .on_click(cx.listener(|this, _, _, cx| this.open_pill_menu(cx)));
             div()
                 .relative()
                 .flex_none()
@@ -1410,10 +1413,10 @@ impl AppShell {
                 cx,
             )
             .opacity(fade * (1.0 - menu_progress))
-            .child(track_pill())
+            .when(full, |pill| pill.child(StackMenu::pill_anchor(&stack, cx)))
             .on_click(cx.listener(move |this, _, _, cx| {
                 if full {
-                    this.open_pill_menu(MenuFrom::Pill, cx);
+                    this.open_pill_menu(cx);
                 } else {
                     this.expand_pill(cx);
                 }
@@ -1456,12 +1459,14 @@ impl AppShell {
             let picker = self.picker_entity(page.pane, cx);
             sheets.extend(picker.update(cx, |picker, cx| picker.sheet(sheet_inset, cx)));
         }
+        let scrim = (!open).then(|| StackMenu::scrim(&stack, window, cx));
         let screen = div()
             .relative()
             .size_full()
             .flex()
             .flex_col()
             .child(pager_area)
+            .children(scrim)
             .child(bottom);
         let content = if open {
             #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -1473,6 +1478,7 @@ impl AppShell {
                 .relative()
                 .size_full()
                 .child(pages)
+                .child(StackMenu::scrim(&stack, window, cx))
                 .child(bars)
                 .into_any_element()
         } else if lifting {
@@ -1533,42 +1539,7 @@ impl AppShell {
         } else {
             screen.into_any_element()
         };
-        let menu = self.compact.menu.map(|(from, spring)| {
-            let (close, align) = match from {
-                MenuFrom::Pill | MenuFrom::Host => {
-                    (self.compact.pill_at.get(), PillMenuAlign::Center)
-                }
-                MenuFrom::Prefix => (
-                    self.compact
-                        .tool_keys
-                        .as_ref()
-                        .map(|(keys, _)| keys.prefix.read(cx).bounds())
-                        .unwrap_or_default(),
-                    PillMenuAlign::Start,
-                ),
-            };
-            let items = if from == MenuFrom::Host {
-                host_menu(self.shown_host_connected(cx))
-            } else {
-                pill_menu(shown_page.and_then(|page| self.pane_flip(page.pane, cx)))
-            };
-            let pick = cx.weak_entity();
-            let shut = cx.weak_entity();
-            compact_pill_menu(
-                items,
-                close,
-                top_inset,
-                align,
-                spring.progress(),
-                move |id, window, cx| {
-                    let _ = pick.update(cx, |this, cx| this.pill_menu_pick(id, window, cx));
-                },
-                move |_, cx| {
-                    let _ = shut.update(cx, Self::close_pill_menu);
-                },
-                cx,
-            )
-        });
+        let menu = stack.read(cx).is_shown().then(|| stack.clone());
         div()
             .id("compact-shell")
             .relative()
@@ -1741,7 +1712,13 @@ impl AppShell {
             }
             None => {}
         }
-        if self.compact.menu.is_some() {
+        if self.shown_stack(cx).is_some()
+            || self
+                .compact
+                .tool_keys
+                .as_ref()
+                .is_some_and(|(keys, _)| keys.is_open(cx))
+        {
             return Some(BackTarget::Menu);
         }
         let core = &self.connection.read(cx).core;

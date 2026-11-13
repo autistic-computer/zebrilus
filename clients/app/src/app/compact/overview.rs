@@ -14,7 +14,7 @@ use penna::{
     },
     blocks::settings::large_title,
     blocks::touch::StatusMark,
-    blocks::touch::{PageDot, PagerEvent, page_dots},
+    blocks::touch::{PageDot, PagerEvent, StackMenu, page_dots},
     components::button::{Button, ButtonVariants as _},
 };
 use web_time::Instant;
@@ -32,7 +32,7 @@ use zz_ui::{
     terminal::terminal_background,
 };
 
-use super::{AppShell, MenuFrom, Page, pages};
+use super::{AppShell, Page, pages};
 use crate::{connection::Connection, terminal::phone_colors};
 
 const PREVIEW_ROWS: u16 = 40;
@@ -633,11 +633,10 @@ impl AppShell {
                 cx,
             )
         });
-        let menu = match self.compact.menu {
-            Some((MenuFrom::Host, spring)) => spring.progress().clamp(0.0, 1.0),
-            _ => 0.0,
-        };
-        let at = self.compact.pill_at.clone();
+        let stack = self.compact.menu.as_ref().map(|(menu, _)| menu.clone());
+        let menu = stack
+            .as_ref()
+            .map_or(0.0, |stack| stack.read(cx).close_shown());
         let pill = compact_floating_pill(
             "overview-host",
             PillLabel {
@@ -653,12 +652,8 @@ impl AppShell {
             cx,
         )
         .opacity(1.0 - menu)
-        .child(
-            canvas(move |bounds, _, _| at.set(bounds), |_, (), _, _| {})
-                .absolute()
-                .inset_0(),
-        )
-        .on_click(cx.listener(|this, _, _, cx| this.open_pill_menu(MenuFrom::Host, cx)))
+        .children(stack.map(|stack| StackMenu::pill_anchor(&stack, cx)))
+        .on_click(cx.listener(|this, _, _, cx| this.open_pill_menu(cx)))
         .on_scroll_wheel(cx.listener(Self::host_pill_scroll));
         compact_floating_bar(pill, placement, cx).into_any_element()
     }

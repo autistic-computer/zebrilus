@@ -3,7 +3,7 @@
 A phone screen is built from phone components, sized for a thumb from the start. It is not the desktop made bigger: desktop components under a coarse pointer keep their layout and only grow their targets.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The phone components are drawn here with the HTML kit. Natively there are the 44 and 56 touch rungs, the touch text styles, the 56 button and field, touch rows, row groups and headers, the status marks, the phone tile with machine and window content, sheets with the 44 close, the pill and the bento overview; the rest of the components below are next.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The phone components are drawn here with the HTML kit. Natively there are the 44 and 56 touch rungs, the touch text styles, the 56 button and field, touch rows, row groups and headers, the status marks, the phone tile with machine and window content, sheets with the 44 close, the pill and the bento overview, the stack menu on the pill and the key row with the arrow pad's bubble; the rest of the components below are next.</span></div></div></div>
 ```
 
 ## Rules
@@ -106,7 +106,7 @@ The phone's one menu: chips that rise out of what you pressed, the pill or a key
 | Sideways swipe | pages | moved 10 before 280 ms, across |
 | Drag up | the lift, back one level | moved 10 before 280 ms, upward |
 
-Chips are 52, the floating surface, a 20 glyph and the label in strong `touch-body`, 8 apart in a group and 16 between groups. The chip under the finger inverts and grows 4%, with a tick. Letting go on the anchor keeps the stack open; anywhere else closes it. Close and other danger chips ask first in a sheet. More than six chips in a group go in two columns. Chips never shrink: what does not fit folds behind More. Not built natively yet: the pill's menu opens on a tap only, at 44, and nothing ticks.
+Chips are 52, the floating surface, a 20 glyph and the label in strong `touch-body`, 8 apart in a group and 16 between groups. The chip under the finger inverts and grows 4%, with a tick. Letting go on the anchor keeps the stack open; anywhere else closes it. Close and other danger chips ask first in a sheet. More than six chips in a group go in two columns. Chips never shrink: what does not fit folds behind More. Not built natively yet: a danger chip's sheet.
 
 ```figure uses=touch,compact,button,label
 <div class="docs-show" data-gap="wide" style="align-items: flex-end">
@@ -185,7 +185,7 @@ Flat by default; glass only for what sits over something. Tiles, rows, fields an
 - **Solid**: the main action, never glass.
 - **Floating**: the pill, the stack menu's chips, the arrow pad's bubble, the gear disc, sheets, the key row's pill, the chat composer, the find and address fields and the address suggestions, and the action bar when content scrolls under it.
 
-Not built natively yet: the pill menu's chips and the key row's pill draw a flat tint today, glass on or off, and the arrow pad's bubble is a popover.
+Not built natively yet: the key row's pill draws a flat tint today, glass on or off.
 
 ## Corners
 

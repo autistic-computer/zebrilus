@@ -1,0 +1,63 @@
+.penna-text {
+  display: inline-block;
+}
+
+.penna-phone {
+  overflow: hidden;
+  background: var(--penna-bg);
+  border: 1px solid var(--penna-border);
+  border-radius: calc(var(--penna-radius) * var(--penna-corner-grow, 1));
+  corner-shape: superellipse(var(--penna-window-k));
+}
+
+.stack-phone {
+  position: relative;
+  width: 390px;
+  height: 680px;
+}
+
+.stack-phone[data-keys] {
+  height: 560px;
+}
+
+.stack-bar {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+
+.stack-keys {
+  position: absolute;
+  right: 0;
+  bottom: 8px;
+  left: 0;
+}
+
+.penna-page-lines {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  font-family: var(--penna-mono);
+  color: var(--penna-fg);
+  white-space: pre;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
+  font-weight: var(--penna-text-small-weight);
+}
+
+.penna-page-lines > div {
+  height: var(--penna-text-small-line);
+}
+
+section:is([data-section="ctrl"], [data-section="alt"]) {
+  position: relative;
+}
+
+section:is([data-section="ctrl"], [data-section="alt"]) .stack-keys {
+  z-index: 1;
+}
+
+section:is([data-section="ctrl"], [data-section="alt"]) > .penna-stack {
+  z-index: 0;
+}

@@ -3,8 +3,8 @@
   "page": "index.html",
   "steps": [
     { "name": "press-pill", "section": "pill", "press": { "selector": ".penna-compact-pill" } },
-    { "name": "press-chip", "section": "pill-menu", "press": { "selector": ".penna-pill-chip", "nth": 3 } },
-    { "name": "press-key", "section": "keys", "press": { "selector": ".penna-key" } },
+    { "name": "press-chip", "section": "pill-menu", "press": "stack-chip-rename" },
+    { "name": "press-key", "section": "keys", "press": { "selector": ".penna-key", "nth": 3 } },
     { "name": "press-arrows", "section": "keys", "press": { "selector": ".penna-arrow-pad" } },
     { "name": "press-row-key", "section": "key-row", "press": { "selector": ".penna-key-row .penna-key", "nth": 3 } },
     { "name": "click-more", "section": "key-row", "click": { "selector": "[data-narrow] .penna-key-row-more[data-side=\"ahead\"]" } },

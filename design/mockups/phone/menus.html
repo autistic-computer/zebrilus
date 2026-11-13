@@ -16,7 +16,6 @@
 <script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
 <script src="/penna-src/blocks/touch/touch.js" defer></script>
 <style>
-  .zz-story > figure > figcaption > i, .zz-page > section > p > i, .zz-compare > figure > p > i { color: var(--penna-warning-ink); }
 
   .zz-term { position: absolute; inset: 54px 0 auto; margin: 0; padding: 8px 16px; font: 13px/18px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; }
   .zz-term b { font-weight: 400; color: var(--penna-fg); }
@@ -61,7 +60,7 @@
 
   .zz-strip-set { display: flex; flex-wrap: wrap; gap: 28px 32px; align-items: flex-start; }
   .zz-strip-set > figure { display: grid; gap: 10px; justify-items: start; margin: 0; }
-  .zz-strip-set > figure > figcaption, .zz-compare > figure > figcaption { font-size: 11px; line-height: 16px; font-weight: 600; color: var(--penna-fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .zz-strip-set > figure > figcaption { font-size: 11px; line-height: 16px; font-weight: 600; color: var(--penna-fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
   .zz-strip-set > figure > p { margin: 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); font-variant-numeric: tabular-nums; }
   .zz-ground { position: relative; padding: 16px; border-radius: 20px; background: color-mix(in srgb, var(--penna-fg) 6%, var(--penna-bg)); box-shadow: 0 0 0 1px var(--penna-divider); }
   .zz-ground .penna-stack-column { position: static; }
@@ -74,24 +73,7 @@
   .zz-ticks > span::before { top: 0; }
   .zz-ticks > span::after { bottom: 0; }
 
-  .zz-compare { display: flex; flex-wrap: wrap; gap: 28px 40px; align-items: flex-end; }
-  .zz-compare > figure { display: grid; flex: none; gap: 10px; margin: 0; }
-  .zz-compare > figure > p { max-width: 393px; margin: 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
-  .zz-compare > figure > p > b { color: var(--penna-fg); font-weight: 600; }
-  .zz-cut { position: relative; width: 402px; overflow: hidden; border-radius: 28px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-divider); }
-  .zz-cut > .penna-stack, .zz-cut > .penna-pill-menu { position: absolute; z-index: 35; inset: 0; }
-  .zz-cut > .zz-bar { position: absolute; }
-  .zz-cut[data-on="pill"] > .zz-bar { visibility: hidden; }
-  .zz-cut .penna-stack-close { bottom: 20px; left: 173px; }
-  .zz-cut .penna-pill-menu-stack { top: auto; bottom: 96px; left: 0; width: 100%; height: auto; }
-  .zz-cut .penna-pill-menu > :is(.penna-pill-menu-well, .penna-pill-menu-close) { top: auto; bottom: 20px; left: 173px; }
 
-  .zz-old-card[data-penna] { display: grid; width: max-content; grid-template-columns: repeat(2, 140px); gap: 2px; padding: 6px; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
-  .zz-old-card > div[data-penna] { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 8px; white-space: nowrap; }
-  .zz-old-card > div > b { flex: none; min-width: 32px; font: var(--penna-text-touch-small-weight) var(--penna-text-touch-small-size)/var(--penna-text-touch-small-line) var(--penna-mono); color: var(--penna-muted); }
-  .zz-old-pad[data-penna] { display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); gap: 4px; width: 132px; height: 132px; padding: 6px; --penna-icon-size: 18px; }
-  .zz-old-pad > span { display: grid; place-items: center; color: var(--penna-muted); }
-  .zz-old-pad > span[data-lit] { color: var(--penna-ink); }
 
   .zz-live { display: grid; grid-template-columns: 424px minmax(0, 1fr); gap: 32px; align-items: start; }
   .zz-live > figcaption { display: grid; gap: 10px; max-width: 64ch; padding-top: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
@@ -106,7 +88,7 @@
 <main class="zz-page">
   <div class="zz-intro">
     <h1>Menus</h1>
-    <p>One menu for the whole phone: the stack menu. Chips rise in a column out of the thing you pressed, the pill or a key in the key row, nearest first, the most used nearest the thumb. Tap the anchor and the stack stays for a tap on a chip. Or hold it, slide up and let go on a chip, in one stroke. It replaces the look of the pill's menu from <a href="machine.html">A machine</a> and <a href="pane.html">A pane</a>, and the chord card from <a href="terminal.html">A terminal</a>; the arrow pad keeps its bubble, redrawn as a sibling. <a href="browser.html">A browser</a> adds a row of glyph chips for Back, Forward and Reload. Caption text in <i>italics</i> says what the native app does today where it differs.</p>
+    <p>One menu for the whole phone: the stack menu. Chips rise in a column out of the thing you pressed, the pill or a key in the key row, nearest first, the most used nearest the thumb. Tap the anchor and the stack stays for a tap on a chip. Or hold it, slide up and let go on a chip, in one stroke. The pill's menu in <a href="machine.html">A machine</a> and <a href="pane.html">A pane</a> and the chords in <a href="terminal.html">A terminal</a> are stack menus; the arrow pad keeps its bubble, drawn as a sibling. <a href="browser.html">A browser</a> adds a row of glyph chips for Back, Forward and Reload.</p>
   </div>
 
   <section>
@@ -114,17 +96,17 @@
     <div class="penna-variants zz-phones zz-story">
       <figure>
         <div class="zz-phone" data-frame="tapped"></div>
-        <figcaption><b>1. The pill, tapped</b>A tap opens the pill's stack and leaves it open. Chips rise out of the pill, 52 tall, 8 apart inside a group and 16 between groups, New chat nearest the thumb, resting like the rest. The pill turns into the close: a tap on it or on the scrim closes, a tap on a chip picks it. <i>Today the same menu on a tap, its chips 44 and shrinking to 40 or 36 when room is short (<code>pill_menu.rs</code>).</i></figcaption>
+        <figcaption><b>1. The pill, tapped</b>A tap opens the pill's stack and leaves it open. Chips rise out of the pill, 52 tall, 8 apart inside a group and 16 between groups, New chat nearest the thumb, resting like the rest. The pill turns into the close: a tap on it or on the scrim closes, a tap on a chip picks it.</figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone" data-frame="held"></div>
-        <figcaption><b>2. The pill, held</b>The finger stays within 10 of where it landed for 280 ms: the same stack opens under it, with a tick. While the finger is on it the pill stays itself, under its press wash. Letting go here leaves the stack open, as a tap does. A finger that moves 10 sooner is a swipe or the lift, as today. <i>Today holding the pill does nothing until the finger lifts, and then it is a tap.</i></figcaption>
+        <figcaption><b>2. The pill, held</b>The finger stays within 10 of where it landed for 280 ms: the same stack opens under it, with a tick. While the finger is on it the pill stays itself, under its press wash. Letting go here leaves the stack open, as a tap does. A finger that moves 10 sooner is a swipe or the lift, as today.</figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone" data-frame="slide"></div>
-        <figcaption><b>3. Sliding</b>Without lifting, the finger slides up the stack. The chip under it inverts and grows 4%, with a tick each time the finger enters a chip. Every chip owns half the gap around it, so the finger is never over nothing between two chips; the label is not a target. From the hold on, the touch belongs to the stack: sliding up never lifts to the overview. <i>Today the menu takes taps only.</i></figcaption>
+        <figcaption><b>3. Sliding</b>Without lifting, the finger slides up the stack. The chip under it inverts and grows 4%, with a tick each time the finger enters a chip. Every chip owns half the gap around it, so the finger is never over nothing between two chips; the label is not a target. From the hold on, the touch belongs to the stack: sliding up never lifts to the overview.</figcaption>
       </figure>
 
       <figure>
@@ -134,12 +116,12 @@
 
       <figure>
         <div class="zz-phone" data-frame="ctrl" data-kb></div>
-        <figcaption><b>5. Holding ctrl</b>Keyboard up, the key row has the pill's place. A tap on ctrl still latches it. Held 280 ms, or slid up 10, it opens its chords as a stack over the key: ten chips in two columns, the chord in mono and then its name, ^C and ^D nearest. The scrim stops at the keyboard. <i>Today a popover card of 44 rows with ^C at the top, farthest from the thumb (<code>tool_keys.rs</code>, <code>popover_key.rs</code>).</i></figcaption>
+        <figcaption><b>5. Holding ctrl</b>Keyboard up, the key row has the pill's place. A tap on ctrl still latches it. Held 280 ms, or slid up 10, it opens its chords as a stack over the key: ten chips in two columns, the chord in mono and then its name, ^C and ^D nearest. The scrim stops at the keyboard.</figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone" data-frame="chord" data-kb></div>
-        <figcaption><b>6. Sliding over ^C</b>^C lifts under the finger; letting go sends it and the stack folds back into ctrl. Letting go on ctrl instead keeps the stack open until a tap on a chip, on ctrl, on the scrim or on the keyboard. <i>Today letting go on the key after a slide closes the card.</i></figcaption>
+        <figcaption><b>6. Sliding over ^C</b>^C lifts under the finger; letting go sends it and the stack folds back into ctrl. Letting go on ctrl instead keeps the stack open until a tap on a chip, on ctrl, on the scrim or on the keyboard.</figcaption>
       </figure>
 
       <figure>
@@ -149,12 +131,12 @@
 
       <figure>
         <div class="zz-phone" data-frame="prefix" data-kb></div>
-        <figcaption><b>8. The prefix</b>The prefix stands in for the pill while the keyboard is up, so a tap or a hold opens the pill's own stack from it, its chips along the start, 16 from the side. Above the keyboard the stack does not fit, and chips never shrink: the groups furthest from the key fold behind More, and picking More shows them in its place. <i>Today a tap opens the pill's menu lined up on the prefix, its chips shrunk to fit (<code>MenuFrom::Prefix</code>); holding the prefix does nothing.</i></figcaption>
+        <figcaption><b>8. The prefix</b>The prefix stands in for the pill while the keyboard is up, so a tap or a hold opens the pill's own stack from it, its chips along the start, 16 from the side. Above the keyboard the stack does not fit, and chips never shrink: the groups furthest from the key fold behind More, and picking More shows them in its place.</figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone" data-frame="arrows" data-kb></div>
-        <figcaption><b>9. The arrow pad, held</b>The sibling: held only, never a menu. Its bubble opens above the pad at once, on the floating surface, 44 cells inset 6, its corner its cells' plus 6. Dragged 10, the nearest arrow's cell inverts and grows like a chip under the finger, ticks, and repeats after 300 ms, then every 80. <i>Today a 132 popover whose lit arrow only darkens (<code>arrow_pad.rs</code>).</i></figcaption>
+        <figcaption><b>9. The arrow pad, held</b>The sibling: held only, never a menu. Its bubble opens above the pad at once, on the floating surface, 44 cells inset 6, its corner its cells' plus 6. Dragged 10, the nearest arrow's cell inverts and grows like a chip under the finger, ticks, and repeats after 300 ms, then every 80.</figcaption>
       </figure>
     </div>
   </section>
@@ -162,11 +144,6 @@
   <section>
     <h2>Chips at real size</h2>
     <div class="zz-strip-set" data-strip></div>
-  </section>
-
-  <section>
-    <h2>Today and the stack menu</h2>
-    <div class="zz-compare" data-compare></div>
   </section>
 
   <section>
@@ -402,22 +379,6 @@
   ];
   const measure = `<div class="zz-measure"><div class="penna-stack-column" style="align-items: flex-start">${group({ chips: [{ glyph: "search", label: "Find" }, { glyph: "pencil", label: "Rename" }] }, {})}${group({ chips: [{ glyph: "layout-dashboard", label: "Overview" }] }, {})}</div><div class="zz-ticks"><span style="top: 0; height: 52px">52</span><span style="top: 52px; height: 8px">8</span><span style="top: 112px; height: 16px">16</span></div></div>`;
   document.querySelector("[data-strip]").innerHTML = strip.map(([label, html, say]) => `<figure><figcaption>${label}</figcaption><div class="zz-ground">${html}</div><p>${say}</p></figure>`).join("") + `<figure><figcaption>Spacing</figcaption><div class="zz-ground">${measure}</div><p>8 inside a group, 16 between groups</p></figure>`;
-
-  const oldChip = (glyph, label, extra = ` data-penna="floating"`) => `<button class="penna-pill-chip"${extra}>${ic(glyph)}<span>${label}</span></button>`;
-  const oldGroup = (chips) => `<div class="penna-pill-menu-group">${chips}</div>`;
-  const oldMenu = `<div class="penna-pill-menu" data-open><div class="penna-pill-menu-scrim"></div><div class="penna-pill-menu-stack">${oldGroup(oldChip("keyboard", "All bindings", ` data-penna="floating" data-look="quiet"`) + oldChip("xmark", "Kill pane", ` data-penna="floating" data-tone="danger"`))}${oldGroup(oldChip("pencil", "Rename pane") + oldChip("app-window", "New window") + oldChip("plus", "New pane") + oldChip("history", "Last pane") + oldChip("layout-dashboard", "Overview"))}</div><div class="penna-pill-menu-well"></div><button class="penna-pill-menu-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close">${ic("xmark")}</button></div>`;
-  const oldCard = `<div class="zz-old-card" data-penna="popover">${CTRL.map(([cap, label]) => `<div data-penna="menu-item"${cap === "^C" ? ` data-state="selected"` : ""}><b>${cap}</b><span>${label}</span></div>`).join("")}</div>`;
-  const newChords = `<div class="penna-stack-column" style="position: static">${group(chordGroups(CTRL)[0], { selected: "^C Interrupt" })}</div>`;
-  const oldPad = `<span class="zz-old-pad" data-penna="popover">${["", "up", "", "left", "hub", "right", "", "down", ""].map((name) => name === "hub" ? `<span class="penna-arrow-hub"></span>` : name ? `<span${name === "up" ? " data-lit" : ""}>${ic(`arrow-${name}`)}</span>` : "<span></span>").join("")}</span>`;
-  const newPad = arrowBubble("up").replace('class="penna-arrow-bubble"', 'class="penna-arrow-bubble" style="position: static; transform: none"');
-  document.querySelector("[data-compare]").innerHTML = [
-    ["Today, the pill menu", `<div class="zz-cut" style="height: 700px" data-on="pill">${term(SESSION)}${pill()}${oldMenu}</div>`, "<b>Today.</b> 44 chips with 18 glyphs in 15 text, taken by a tap only, and shrinking to 40 or 36 when the screen is short."],
-    ["New, the pill's stack", `<div class="zz-cut" style="height: 700px" data-on="pill">${term(SESSION)}${pill()}${stack("pill")}</div>`, "<b>New.</b> 52 chips with 20 glyphs in 17 text that never shrink, taken by a tap or by a hold, a slide and a release."],
-    ["Today, the chord card", `<div class="zz-ground">${oldCard}</div>`, "<b>Today.</b> A popover of 44 rows, ^C at the top, farthest from the thumb that holds ctrl."],
-    ["New, ctrl's stack", `<div class="zz-ground">${newChords}</div>`, "<b>New.</b> The same chords as 52 chips, ^C nearest the key, picked the way the pill's chips are."],
-    ["Today, the arrow pad", `<div class="zz-ground">${oldPad}</div>`, "<b>Today.</b> A 132 popover whose lit arrow only darkens."],
-    ["New, the arrow pad", `<div class="zz-ground">${newPad}</div>`, "<b>New.</b> 44 cells on the floating surface, the one under the finger inverted and grown like a chip."],
-  ].map(([label, html, say]) => `<figure><figcaption>${label}</figcaption>${html}<p>${say}</p></figure>`).join("");
 
   const live = document.querySelector("[data-live]");
   const lastEl = document.querySelector("[data-last]");

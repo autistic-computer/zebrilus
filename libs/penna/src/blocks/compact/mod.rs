@@ -3,7 +3,6 @@ mod bento;
 mod header;
 mod hud;
 mod morph;
-mod pill_menu;
 mod tile;
 
 pub use bar::{
@@ -18,7 +17,6 @@ pub use morph::{
     COMPACT_MINI_PILL_HEIGHT, PillSpring, compact_pill_collapse, compact_pill_morph,
     mini_pill_width, pill_bounds, pill_corner,
 };
-pub use pill_menu::{PillMenuAlign, PillMenuItem, PillMenuLook, compact_pill_menu};
 pub use tile::{
     MINI_GAP, MINI_LINE, MINI_TEXT, MiniPane, MiniPreview, PhoneTile, TILE_INSET, mini_radius,
     window_span,

@@ -30,6 +30,7 @@ mod scrollbars;
 mod selection;
 mod settings;
 mod sheet;
+mod stack_menu;
 mod status;
 mod support;
 mod title_bar;
@@ -54,6 +55,7 @@ pub const STORIES: &[Story] = &[
     sheet::STORY,
     phone::STORY,
     phone_tiles::STORY,
+    stack_menu::STORY,
     scrollbars::STORY,
     markdown::STORY,
     #[cfg(feature = "editor")]

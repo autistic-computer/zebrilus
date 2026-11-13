@@ -1,17 +1,19 @@
 use ala::{
-    AnyElement, AnyView, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
-    Styled as _, Window, div, prelude::*, px,
+    AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
+    Render, Styled as _, Window, div, prelude::*, px,
 };
 use penna::{
     ActiveTheme as _, IconName, Label, TextStyle,
     blocks::compact::{
-        BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, MiniPane, PhoneTile, PillLabel, PillMenuAlign,
-        PillMenuItem, PillMenuLook, PillPlacement, bento_grid, compact_bar_button,
-        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_pill_menu,
+        BENTO_INSET, BentoSpan, MiniPane, PhoneTile, PillLabel, PillPlacement, bento_grid,
+        compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
         window_span,
     },
     blocks::settings::large_title,
-    blocks::touch::{KEY_ROW_HEIGHT, KeyRow, PageDot, StatusMark, page_dots},
+    blocks::touch::{
+        KeyRow, PageDot, StackChip, StackClose, StackGroup, StackLook, StackMenu, StatusMark,
+        page_dots,
+    },
     components::button::{Button, ButtonVariants as _},
     v_flex,
 };
@@ -35,8 +37,14 @@ pub const STORY: Story = Story {
         Section {
             id: "pill-menu",
             name: "Pill menu",
-            summary: "What tapping the pill, or the prefix key over the keyboard, opens. Overview sits nearest the thumb; Kill pane and All bindings sit furthest. A pane running Claude Code or Codex adds Switch to chat, which reads Switch to the CLI on an agent pane. From the prefix key the menu rises from the key instead of the pill.",
+            summary: "What tapping the pill opens, as a stack menu. Switch to chat or Overview sits nearest the thumb; Kill pane and All bindings sit furthest. A pane running Claude Code or Codex adds Switch to chat, which reads Switch to the CLI on an agent pane.",
             build: |_, cx| cx.new(Menus::new).into(),
+        },
+        Section {
+            id: "prefix-menu",
+            name: "Prefix menu",
+            summary: "The same stack from the prefix key over the keyboard: it rises from the key, its chips lined up along the start.",
+            build: |_, cx| cx.new(PrefixMenu::new).into(),
         },
         Section {
             id: "key-row",
@@ -304,31 +312,22 @@ fn overview(_: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 const MENU_HEIGHT: f32 = 700.0;
-const MENU_TOP: f32 = 12.0;
-const PREFIX_AT: (f32, f32) = (12.0, 8.0);
-const PREFIX_SIZE: f32 = 40.0;
 
-fn menu_items(flip: Option<FlipTo>) -> Vec<Vec<PillMenuItem>> {
-    let mut panes = vec![
-        PillMenuItem::new("rename-pane", "Rename pane", IconName::Pencil),
-        PillMenuItem::new("new-window", "New window", IconName::AppWindow),
-        PillMenuItem::new("new-pane", "New pane", IconName::Plus),
-        PillMenuItem::new("last-pane", "Last pane", IconName::History),
-        PillMenuItem::new("overview", "Overview", IconName::LayoutDashboard),
-    ];
-    if let Some(to) = flip {
-        panes.push(
-            PillMenuItem::new("flip", to.label(), zz_ui::pane::flip_icon(to))
-                .look(PillMenuLook::Primary),
-        );
-    }
+fn menu_groups(flip: Option<FlipTo>) -> Vec<StackGroup> {
+    let flip = flip.map(|to| StackChip::new("flip", to.label(), zz_ui::pane::flip_icon(to)));
     vec![
-        vec![
-            PillMenuItem::new("all-bindings", "All bindings", IconName::Keyboard)
-                .look(PillMenuLook::Quiet),
-            PillMenuItem::new("kill-pane", "Kill pane", IconName::Xmark).look(PillMenuLook::Danger),
-        ],
-        panes,
+        StackGroup::new(flip.into_iter().chain([
+            StackChip::new("overview", "Overview", IconName::LayoutDashboard),
+            StackChip::new("last-pane", "Last pane", IconName::History),
+            StackChip::new("new-pane", "New pane", IconName::Plus),
+            StackChip::new("new-window", "New window", IconName::AppWindow),
+            StackChip::new("rename-pane", "Rename pane", IconName::Pencil),
+        ])),
+        StackGroup::new([
+            StackChip::new("kill-pane", "Kill pane", IconName::Xmark).look(StackLook::Danger),
+            StackChip::new("all-bindings", "All bindings", IconName::Keyboard)
+                .look(StackLook::Quiet),
+        ]),
     ]
 }
 
@@ -348,89 +347,95 @@ fn screen_lines(cx: &App) -> impl IntoElement {
 }
 
 struct Menus {
-    keys: ToolKeys,
+    menu: Entity<StackMenu>,
 }
 
 impl Menus {
     fn new(cx: &mut Context<Self>) -> Self {
-        Self {
-            keys: tool_keys(cx),
-        }
-    }
-
-    fn from_pill(items: Vec<Vec<PillMenuItem>>, cx: &App) -> impl IntoElement {
-        let placement = placement();
-        let top = px(MENU_HEIGHT) - placement.zone() + placement.pill_top();
-        let close = ala::Bounds::new(
-            ala::point(placement.inset, top),
-            ala::size(
-                px(PHONE_WIDTH) - placement.inset * 2.0,
-                px(COMPACT_PILL_HEIGHT),
-            ),
-        );
-        phone(
-            div()
-                .relative()
-                .h(px(MENU_HEIGHT))
-                .child(screen_lines(cx))
-                .child(compact_pill_menu(
-                    items,
-                    close,
-                    px(MENU_TOP),
-                    PillMenuAlign::Center,
-                    1.0,
-                    |_, _, _| {},
-                    |_, _| {},
-                    cx,
-                )),
-            cx,
-        )
+        let menu = cx.new(|cx| {
+            let mut menu = StackMenu::new(StackClose::Disc, cx);
+            menu.set_groups(menu_groups(Some(FlipTo::Chat)), cx);
+            menu.open(cx);
+            menu
+        });
+        cx.observe(&menu, |_, _, cx| cx.notify()).detach();
+        Self { menu }
     }
 }
 
 impl Render for Menus {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (x, y) = PREFIX_AT;
-        let row_top = MENU_HEIGHT - KEY_ROW_HEIGHT;
-        let prefix = ala::Bounds::new(
-            ala::point(px(x), px(row_top + y)),
-            ala::size(px(PREFIX_SIZE), px(PREFIX_SIZE)),
-        );
-        states()
-            .columns(2)
-            .state(
-                "on a terminal running Claude Code: Switch to chat",
-                Self::from_pill(menu_items(Some(FlipTo::Chat)), cx),
-            )
-            .state(
-                "tapping the prefix key over the keyboard",
-                phone(
+        let placement = placement();
+        let pill = compact_floating_pill(
+            "menu-pill",
+            PillLabel {
+                icon: IconName::SquareTerminal,
+                title: "claude".into(),
+                meta: "zebrilus · main".into(),
+                warning: false,
+            },
+            page_dots(&groups(), cx),
+            &placement,
+            cx,
+        )
+        .opacity(1.0 - self.menu.read(cx).close_shown())
+        .child(self.menu.read(cx).track_anchor());
+        states().columns(1).state(
+            "on a terminal running Claude Code: Switch to chat",
+            phone(
+                div()
+                    .relative()
+                    .h(px(MENU_HEIGHT))
+                    .child(screen_lines(cx))
+                    .child(
+                        div()
+                            .absolute()
+                            .left_0()
+                            .right_0()
+                            .bottom_0()
+                            .child(compact_floating_bar(pill, &placement, cx)),
+                    )
+                    .child(self.menu.clone()),
+                cx,
+            ),
+        )
+    }
+}
+
+struct PrefixMenu {
+    keys: ToolKeys,
+}
+
+impl PrefixMenu {
+    fn new(cx: &mut Context<Self>) -> Self {
+        let keys = tool_keys(cx);
+        let prefix = keys.prefix.read(cx).menu().clone();
+        prefix.update(cx, |menu, cx| {
+            menu.set_groups(menu_groups(None), cx);
+            menu.open(cx);
+        });
+        Self { keys }
+    }
+}
+
+impl Render for PrefixMenu {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        phone(
+            div()
+                .id("menu-prefix")
+                .relative()
+                .h(px(MENU_HEIGHT))
+                .child(screen_lines(cx))
+                .child(
                     div()
-                        .id("menu-prefix")
-                        .relative()
-                        .h(px(MENU_HEIGHT))
-                        .child(screen_lines(cx))
-                        .child(
-                            div()
-                                .absolute()
-                                .left_0()
-                                .right_0()
-                                .bottom_0()
-                                .child(key_row(&self.keys)),
-                        )
-                        .child(compact_pill_menu(
-                            menu_items(None),
-                            prefix,
-                            px(MENU_TOP),
-                            PillMenuAlign::Start,
-                            1.0,
-                            |_, _, _| {},
-                            |_, _| {},
-                            cx,
-                        )),
-                    cx,
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .bottom_0()
+                        .child(key_row(&self.keys)),
                 ),
-            )
+            cx,
+        )
     }
 }
 

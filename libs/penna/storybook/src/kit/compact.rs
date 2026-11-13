@@ -7,14 +7,14 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, IconName, StyledExt as _, TextStyle,
     blocks::compact::{
-        BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, PhoneTile, PillLabel, PillMenuAlign,
-        PillMenuItem, PillMenuLook, PillPlacement, bento_grid, compact_bar_button,
-        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
-        compact_pill_menu, folding_title_bar, pill_glass_over,
+        BENTO_INSET, BentoSpan, PhoneTile, PillLabel, PillPlacement, bento_grid,
+        compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
+        compact_hud, folding_title_bar, pill_glass_over,
     },
     blocks::settings::large_title,
     blocks::touch::{
-        ArrowPad, KeyRow, KeyRowKey, PageDot, PopoverKey, PopoverKeyTap, WhichKeyList, page_dots,
+        ArrowPad, KeyRow, KeyRowKey, PageDot, StackChip, StackClose, StackGroup, StackKey,
+        StackKeyTap, StackLook, StackMenu, WhichKeyList, page_dots,
     },
     blocks::which_key::WhichKeyRow,
     v_flex,
@@ -43,8 +43,8 @@ pub const STORY: Story = Story {
         Section {
             id: "pill-menu",
             name: "Pill menu",
-            summary: "compact_pill_menu rises out of the pill: the page dims, the pill turns into a close button and the actions stack above it in groups. Items can be quiet, danger or primary.",
-            build: |_, cx| stateless(menus, cx),
+            summary: "The pill's StackMenu, tapped: the page dims, the pill turns into the close and the chips rise above it in groups, nearest first. Chips can be quiet or danger.",
+            build: |_, cx| cx.new(Menus::new).into(),
         },
         Section {
             id: "hud",
@@ -55,7 +55,7 @@ pub const STORY: Story = Story {
         Section {
             id: "keys",
             name: "Keys",
-            summary: "PopoverKey at rest and armed, a popover key with nothing behind it, and the ArrowPad at rest.",
+            summary: "StackKey at rest and armed, a stack key with nothing behind it, and the ArrowPad at rest.",
             build: |_, cx| cx.new(Keys::new).into(),
         },
         Section {
@@ -88,7 +88,6 @@ pub const STORY: Story = Story {
 const PHONE_WIDTH: f32 = 390.0;
 const GRID: f32 = PHONE_WIDTH - BENTO_INSET * 2.0;
 const MENU_HEIGHT: f32 = 560.0;
-const MENU_TOP: f32 = 12.0;
 const NARROW_WIDTH: f32 = 220.0;
 const SCROLLED: f32 = 72.0;
 
@@ -244,66 +243,98 @@ fn dots(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn menu(items: Vec<Vec<PillMenuItem>>, cx: &App) -> impl IntoElement {
-    let placement = placement();
-    let top = px(MENU_HEIGHT) - placement.zone() + placement.pill_top();
-    let close = ala::Bounds::new(
-        ala::point(placement.inset, top),
-        ala::size(
-            px(PHONE_WIDTH) - placement.inset * 2.0,
-            px(COMPACT_PILL_HEIGHT),
-        ),
-    );
-    phone(
-        div()
-            .relative()
-            .h(px(MENU_HEIGHT))
-            .child(page_lines(cx))
-            .child(compact_pill_menu(
-                items,
-                close,
-                px(MENU_TOP),
-                PillMenuAlign::Center,
-                1.0,
-                |_, _, _| {},
-                |_, _| {},
-                cx,
-            )),
-        cx,
-    )
+fn menu(groups: Vec<StackGroup>, cx: &mut App) -> Entity<StackMenu> {
+    cx.new(|cx| {
+        let mut menu = StackMenu::new(StackClose::Disc, cx);
+        menu.set_groups(groups, cx);
+        menu.open(cx);
+        menu
+    })
 }
 
-fn menus(_: &mut Window, cx: &mut App) -> AnyElement {
-    let cx: &App = cx;
-    let page = vec![
-        vec![
-            PillMenuItem::new("all-keys", "All keys", IconName::Keyboard).look(PillMenuLook::Quiet),
-            PillMenuItem::new("close-page", "Close page", IconName::Xmark)
-                .look(PillMenuLook::Danger),
-        ],
-        vec![
-            PillMenuItem::new("rename", "Rename", IconName::Pencil),
-            PillMenuItem::new("new-window", "New window", IconName::AppWindow),
-            PillMenuItem::new("new-page", "New page", IconName::Plus),
-            PillMenuItem::new("overview", "Overview", IconName::LayoutDashboard),
-            PillMenuItem::new("preview", "Preview", IconName::Eye).look(PillMenuLook::Primary),
-        ],
-    ];
-    let home = vec![
-        vec![
-            PillMenuItem::new("settings", "Settings", IconName::Settings).look(PillMenuLook::Quiet),
-        ],
-        vec![
-            PillMenuItem::new("new-folder", "New folder", IconName::Folder),
-            PillMenuItem::new("new-file", "New file", IconName::File),
-            PillMenuItem::new("search", "Search", IconName::Search),
-        ],
-    ];
-    states()
-        .columns(2)
-        .state("on a page", menu(page, cx))
-        .state("on the home page", menu(home, cx))
-        .into_any_element()
+struct Menus {
+    page: Entity<StackMenu>,
+    home: Entity<StackMenu>,
+}
+
+impl Menus {
+    fn new(cx: &mut Context<Self>) -> Self {
+        let page = menu(
+            vec![
+                StackGroup::new([
+                    StackChip::new("overview", "Overview", IconName::LayoutDashboard),
+                    StackChip::new("new-page", "New page", IconName::Plus),
+                    StackChip::new("new-window", "New window", IconName::AppWindow),
+                    StackChip::new("rename", "Rename", IconName::Pencil),
+                ]),
+                StackGroup::new([
+                    StackChip::new("close-page", "Close page", IconName::Xmark)
+                        .look(StackLook::Danger),
+                    StackChip::new("all-keys", "All keys", IconName::Keyboard)
+                        .look(StackLook::Quiet),
+                ]),
+            ],
+            cx,
+        );
+        let home = menu(
+            vec![
+                StackGroup::new([
+                    StackChip::new("search", "Search", IconName::Search),
+                    StackChip::new("new-file", "New file", IconName::File),
+                    StackChip::new("new-folder", "New folder", IconName::Folder),
+                ]),
+                StackGroup::new([StackChip::new("settings", "Settings", IconName::Settings)
+                    .look(StackLook::Quiet)]),
+            ],
+            cx,
+        );
+        cx.observe(&page, |_, _, cx| cx.notify()).detach();
+        cx.observe(&home, |_, _, cx| cx.notify()).detach();
+        Self { page, home }
+    }
+
+    fn phone(id: &'static str, menu: &Entity<StackMenu>, cx: &App) -> impl IntoElement {
+        let placement = placement();
+        let pill = compact_floating_pill(
+            id,
+            PillLabel {
+                icon: IconName::SquareTerminal,
+                title: "make test".into(),
+                meta: "work · build".into(),
+                warning: false,
+            },
+            page_dots(&groups(), cx),
+            &placement,
+            cx,
+        )
+        .opacity(1.0 - menu.read(cx).close_shown())
+        .child(menu.read(cx).track_anchor());
+        phone(
+            div()
+                .relative()
+                .h(px(MENU_HEIGHT))
+                .child(page_lines(cx))
+                .child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .bottom_0()
+                        .child(compact_floating_bar(pill, &placement, cx)),
+                )
+                .child(menu.clone()),
+            cx,
+        )
+    }
+}
+
+impl Render for Menus {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        states()
+            .columns(2)
+            .state("on a page", Self::phone("menu-page", &self.page, cx))
+            .state("on the home page", Self::phone("menu-home", &self.home, cx))
+    }
 }
 
 fn hud(text: &'static str, cx: &App) -> impl IntoElement {
@@ -330,23 +361,32 @@ fn huds(_: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 struct Keys {
-    rest: Entity<PopoverKey>,
-    armed: Entity<PopoverKey>,
-    plain: Entity<PopoverKey>,
+    rest: Entity<StackKey>,
+    armed: Entity<StackKey>,
+    plain: Entity<StackKey>,
     arrows: Entity<ArrowPad>,
 }
 
 impl Keys {
     fn new(cx: &mut Context<Self>) -> Self {
-        let popover = |cx: &mut Context<Self>, armed: bool| {
-            let key = cx.new(|cx| PopoverKey::new("ctrl", PopoverKeyTap::Press, cx));
+        let stacked = |cx: &mut Context<Self>, armed: bool| {
+            let key = cx.new(|cx| {
+                StackKey::new("ctrl", StackKeyTap::Open, cx).groups(
+                    vec![StackGroup::new([StackChip::chord(
+                        "ctrl-c",
+                        "^C",
+                        "Interrupt",
+                    )])],
+                    cx,
+                )
+            });
             key.update(cx, |key, cx| key.set_armed(armed, cx));
             key
         };
         Self {
-            rest: popover(cx, false),
-            armed: popover(cx, true),
-            plain: cx.new(|cx| PopoverKey::new("menu", PopoverKeyTap::Open, cx)),
+            rest: stacked(cx, false),
+            armed: stacked(cx, true),
+            plain: cx.new(|cx| StackKey::new("menu", StackKeyTap::Open, cx)),
             arrows: cx.new(ArrowPad::new),
         }
     }
@@ -365,11 +405,11 @@ impl Render for Keys {
         states()
             .columns(4)
             .state(
-                "popover key, rest",
+                "stack key, rest",
                 row().child(slot("key-rest", self.rest.clone().into_any_element())),
             )
             .state(
-                "popover key, armed",
+                "stack key, armed",
                 row().child(slot("key-armed", self.armed.clone().into_any_element())),
             )
             .state(

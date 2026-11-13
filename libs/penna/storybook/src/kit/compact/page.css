@@ -40,6 +40,13 @@
   height: 560px;
 }
 
+.stack-bar {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+
 .penna-hud-page {
   position: relative;
   height: 140px;

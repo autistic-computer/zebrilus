@@ -1,17 +1,4 @@
 (() => {
-  function wireMenus() {
-    document.querySelectorAll(".penna-pill-menu-page").forEach((page) => {
-      const menu = page.querySelector(".penna-pill-menu");
-      const shut = () => menu.removeAttribute("data-open");
-      menu.querySelector(".penna-pill-menu-scrim").addEventListener("click", shut);
-      menu.querySelector(".penna-pill-menu-close").addEventListener("click", shut);
-      menu.querySelectorAll(".penna-pill-chip").forEach((chip) => chip.addEventListener("click", shut));
-      page.addEventListener("click", (event) => {
-        if (!menu.hasAttribute("data-open") && !menu.contains(event.target)) menu.setAttribute("data-open", "");
-      });
-    });
-  }
-
   function groups() {
     document.querySelectorAll(".penna-compact-group").forEach((group) => {
       const face = group.querySelector(".penna-compact-group-face");
@@ -84,22 +71,6 @@
     });
   }
 
-  function prominent() {
-    const probe = document.createElement("div");
-    probe.dataset.penna = "phone.pill";
-    probe.hidden = true;
-    document.body.append(probe);
-    const style = getComputedStyle(probe);
-    const backdrop = style.getPropertyValue("--penna-backdrop").trim();
-    const alpha = rgba(style.getPropertyValue("--penna-fill").trim() || "transparent").a;
-    probe.remove();
-    const glassy = Boolean(backdrop) && backdrop !== "none";
-    document.querySelectorAll('.penna-pill-menu-close, .penna-pill-chip[data-look="primary"]').forEach((element) => {
-      element.toggleAttribute("data-glass", glassy);
-      element.style.setProperty("--penna-pill-alpha", alpha.toFixed(3));
-    });
-  }
-
   function presses() {
     document.querySelectorAll(".penna-bento-tile").forEach((tile) => {
       if (tile.querySelector(":scope > .penna-press")) return;
@@ -110,11 +81,9 @@
   }
 
   presses();
-  prominent();
   groups();
   tones();
   glassOver();
   frames();
-  wireMenus();
-  document.addEventListener("load", (event) => event.target.id === "penna-tokens" && (prominent(), groups(), frames(), tones(), glassOver()), true);
+  document.addEventListener("load", (event) => event.target.id === "penna-tokens" && (groups(), frames(), tones(), glassOver()), true);
 })();

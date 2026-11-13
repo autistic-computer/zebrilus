@@ -2,6 +2,8 @@
   const SLACK = 1;
   const THRESHOLD = 10;
   const MARGIN = 8;
+  const EDGE = 16;
+  const GAP = 8;
   const ARROWS = ["up", "left", "right", "down"];
 
   function edges(row) {
@@ -36,7 +38,8 @@
   function bubble() {
     const card = document.createElement("div");
     card.className = "penna-arrow-bubble";
-    card.dataset.penna = "popover";
+    card.dataset.penna = "floating";
+    card.dataset.size = "touch";
     const cells = ["", "up", "", "left", "hub", "right", "", "down", ""];
     for (const name of cells) {
       const cell = document.createElement("span");
@@ -143,9 +146,45 @@
     });
   }
 
+  function placeStack(stack) {
+    if (!stack) return;
+    const anchor = stack.parentElement.querySelector(stack.dataset.from);
+    const column = stack.querySelector(".penna-stack-column");
+    if (!anchor || !column) return;
+    const frame = stack.getBoundingClientRect();
+    const at = anchor.getBoundingClientRect();
+    column.removeAttribute("data-align");
+    column.style.left = "0px";
+    const width = column.offsetWidth;
+    let left = at.left - frame.left + at.width / 2 - width / 2;
+    if (left < EDGE) {
+      left = EDGE;
+      column.dataset.align = "start";
+    } else if (left + width > frame.width - EDGE) {
+      left = Math.max(EDGE, frame.width - EDGE - width);
+      column.dataset.align = "end";
+    }
+    column.style.left = `${left}px`;
+    column.style.top = `${at.top - frame.top - GAP - column.offsetHeight}px`;
+    const close = stack.querySelector(".penna-stack-close");
+    if (close) {
+      close.style.left = `${at.left - frame.left + at.width / 2 - close.offsetWidth / 2}px`;
+      close.style.top = `${at.top - frame.top + at.height / 2 - close.offsetHeight / 2}px`;
+    }
+  }
+
+  function stacks() {
+    document.querySelectorAll(".penna-stack[data-from]").forEach(placeStack);
+  }
+
+  const resized = new ResizeObserver((entries) => entries.forEach((entry) => placeStack(entry.target.closest(".penna-stack"))));
+  document.querySelectorAll(".penna-stack[data-from] > .penna-stack-column").forEach((column) => resized.observe(column));
+
   grounds();
   still();
-  document.addEventListener("load", (event) => event.target.id === "penna-tokens" && (grounds(), still()), true);
+  stacks();
+  document.fonts.ready.then(stacks);
+  document.addEventListener("load", (event) => event.target.id === "penna-tokens" && (grounds(), still(), stacks()), true);
   document.querySelectorAll(".penna-key-row").forEach(wireRow);
   document.fonts.ready.then(() => requestAnimationFrame(settleRows));
   document.querySelectorAll(".penna-key:not(.penna-arrow-pad)").forEach((key) => key.closest(".penna-key-row") || press(key));

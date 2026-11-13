@@ -9,7 +9,7 @@ use ala::{
 use super::{
     arrow_pad::ArrowPad,
     concentric,
-    popover_key::PopoverKey,
+    stack_key::StackKey,
     sticky::{StickyModifier, StickyModifiers},
 };
 use crate::{
@@ -130,7 +130,7 @@ pub enum KeyRowKey {
         keystroke: Keystroke,
     },
     Modifier(StickyModifier),
-    Popover(Entity<PopoverKey>),
+    Stack(Entity<StackKey>),
     Arrows(Entity<ArrowPad>),
 }
 
@@ -334,7 +334,7 @@ impl KeyRow {
                 })
                 .into_any_element()
             }
-            KeyRowKey::Popover(key) => Self::slot(ElementId::named_usize("key-row-slot", index))
+            KeyRowKey::Stack(key) => Self::slot(ElementId::named_usize("key-row-slot", index))
                 .child(key)
                 .into_any_element(),
             KeyRowKey::Arrows(pad) => Self::slot(ElementId::named_usize("key-row-slot", index))
@@ -501,16 +501,16 @@ fn edges(scroll: &ScrollHandle) -> (bool, bool) {
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
-    use ala::{Context, Render, Subscription, TestAppContext, VisualTestContext};
+    use ala::{Context, Render, TestAppContext, VisualTestContext};
 
     use super::*;
-    use crate::blocks::touch::{PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap};
+    use crate::blocks::touch::{StackChip, StackGroup, StackKeyTap};
 
     struct Keys {
         arrows: Entity<ArrowPad>,
-        control: Entity<PopoverKey>,
-        alt: Entity<PopoverKey>,
-        lead: Entity<PopoverKey>,
+        control: Entity<StackKey>,
+        alt: Entity<StackKey>,
+        lead: Entity<StackKey>,
         scroll: ScrollHandle,
     }
 
@@ -519,26 +519,28 @@ mod tests {
             let scroll = ScrollHandle::new();
             let latch = |modifier: StickyModifier, label: &'static str, item, cx: &mut App| {
                 cx.new(|cx| {
-                    PopoverKey::new(label, PopoverKeyTap::Latch(modifier), cx)
+                    StackKey::new(label, StackKeyTap::Latch(modifier), cx)
                         .icon(modifier.icon())
-                        .items(vec![PopoverKeyItem::new(item, item)])
-                        .columns(2)
                         .scrolls(scroll.clone())
+                        .groups(
+                            vec![StackGroup::new([StackChip::chord(item, item, item)])],
+                            cx,
+                        )
                 })
             };
             Self {
                 arrows: cx.new(ArrowPad::new),
                 control: latch(StickyModifier::Control, "ctrl", "ctrl-c", cx),
                 alt: latch(StickyModifier::Alt, "alt", "alt-b", cx),
-                lead: cx.new(|cx| PopoverKey::new("lead", PopoverKeyTap::Press, cx)),
+                lead: cx.new(|cx| StackKey::new("lead", StackKeyTap::Open, cx)),
                 scroll,
             }
         }
 
         fn row(&self) -> Vec<KeyRowKey> {
             vec![
-                KeyRowKey::Popover(self.control.clone()),
-                KeyRowKey::Popover(self.alt.clone()),
+                KeyRowKey::Stack(self.control.clone()),
+                KeyRowKey::Stack(self.alt.clone()),
                 KeyRowKey::tab(),
                 KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
                 KeyRowKey::text("/"),
@@ -553,7 +555,6 @@ mod tests {
         keys: Keys,
         sent: Rc<RefCell<Vec<String>>>,
         width: Option<ala::Pixels>,
-        _press: Subscription,
     }
 
     impl Render for Host {
@@ -569,7 +570,7 @@ mod tests {
                     .when(self.width.is_none(), Styled::right_0)
                     .child(
                         KeyRow::new(self.keys.row())
-                            .lead(KeyRowKey::Popover(self.keys.lead.clone()))
+                            .lead(KeyRowKey::Stack(self.keys.lead.clone()))
                             .track_scroll(&self.keys.scroll)
                             .on_key(move |keystroke, _, _| {
                                 sent.borrow_mut().push(keystroke.unparse());
@@ -596,21 +597,10 @@ mod tests {
         width: Option<ala::Pixels>,
     ) -> (ala::Entity<Host>, &mut VisualTestContext) {
         cx.update(crate::init);
-        let (host, cx) = cx.add_window_view(move |_, cx| {
-            let keys = Keys::new(cx);
-            let sent: Rc<RefCell<Vec<String>>> = Rc::default();
-            let pressed = Rc::clone(&sent);
-            let press = cx.subscribe(&keys.lead, move |_, _, event: &PopoverKeyEvent, _| {
-                if *event == PopoverKeyEvent::Press {
-                    pressed.borrow_mut().push("lead".into());
-                }
-            });
-            Host {
-                keys,
-                sent,
-                width,
-                _press: press,
-            }
+        let (host, cx) = cx.add_window_view(move |_, cx| Host {
+            keys: Keys::new(cx),
+            sent: Rc::default(),
+            width,
         });
         redraw(cx);
         (host, cx)
@@ -628,16 +618,15 @@ mod tests {
         assert!(cx.debug_bounds("arrow-pad").is_some());
 
         tap(cx, "key-row-key-3");
-        tap(cx, "popover-key-ctrl");
+        tap(cx, "stack-key-ctrl");
         assert!(cx.update(|_, cx| StickyModifiers::get(cx).control));
         tap(cx, "key-row-key-4");
         assert!(cx.update(|_, cx| StickyModifiers::get(cx).is_empty()));
         tap(cx, "key-row-key-5");
         tap(cx, "key-row-key-7");
-        tap(cx, "popover-key-lead");
+        tap(cx, "stack-key-lead");
         let sent = host.read_with(cx, |host, _| host.sent.borrow().clone());
-        assert_eq!(sent, ["escape", "ctrl-/", "@", "hide", "lead"]);
-        assert!(cx.debug_bounds("popover-key-card").is_none());
+        assert_eq!(sent, ["escape", "ctrl-/", "@", "hide"]);
     }
 
     #[ala::test]
@@ -662,7 +651,7 @@ mod tests {
         let sent = host.read_with(cx, |host, _| host.sent.borrow().clone());
         assert_eq!(sent, ["escape", "escape", "escape", "escape"]);
 
-        let ctrl = cx.debug_bounds("popover-key-ctrl").expect("ctrl");
+        let ctrl = cx.debug_bounds("stack-key-ctrl").expect("ctrl");
         let above = ala::point(ctrl.center().x, row.top() + ala::px(1.0));
         for phase in [ala::TouchPhase::Started, ala::TouchPhase::Ended] {
             cx.simulate_event(ala::TouchDragEvent {
@@ -679,9 +668,9 @@ mod tests {
     fn keys_share_one_width_in_the_set_order(cx: &mut TestAppContext) {
         let (_, cx) = host(cx);
         let keys = [
-            "popover-key-lead",
-            "popover-key-ctrl",
-            "popover-key-alt",
+            "stack-key-lead",
+            "stack-key-ctrl",
+            "stack-key-alt",
             "key-row-key-2",
             "key-row-key-3",
             "key-row-key-4",
@@ -703,7 +692,7 @@ mod tests {
         let (host, cx) = host_with_width(cx, Some(ala::px(200.0)));
         let scroll = host.read_with(cx, |host, _| host.keys.scroll.clone());
         assert!(scroll.max_offset().x > ala::px(0.0));
-        let alt = cx.debug_bounds("popover-key-alt").expect("alt").center();
+        let alt = cx.debug_bounds("stack-key-alt").expect("alt").center();
         let drag = |phase, x: f32, cx: &mut VisualTestContext| {
             cx.simulate_event(ala::TouchDragEvent {
                 phase,
@@ -717,7 +706,7 @@ mod tests {
         drag(ala::TouchPhase::Moved, -60.0, cx);
         drag(ala::TouchPhase::Ended, -60.0, cx);
         assert_eq!(scroll.offset().x, ala::px(-40.0));
-        assert!(cx.debug_bounds("popover-key-item-alt-b").is_none());
+        assert!(!host.read_with(cx, |host, cx| host.keys.alt.read(cx).is_open(cx)));
         assert!(cx.update(|_, cx| StickyModifiers::get(cx).is_empty()));
     }
 
@@ -725,11 +714,11 @@ mod tests {
     fn the_lead_key_stays_put_while_the_row_scrolls(cx: &mut TestAppContext) {
         let (host, cx) = host_with_width(cx, Some(ala::px(200.0)));
         let scroll = host.read_with(cx, |host, _| host.keys.scroll.clone());
-        let lead = cx.debug_bounds("popover-key-lead").expect("lead");
+        let lead = cx.debug_bounds("stack-key-lead").expect("lead");
         scroll.set_offset(ala::point(-scroll.max_offset().x, ala::px(0.0)));
         redraw(cx);
-        assert_eq!(cx.debug_bounds("popover-key-lead"), Some(lead));
-        let ctrl = cx.debug_bounds("popover-key-ctrl");
+        assert_eq!(cx.debug_bounds("stack-key-lead"), Some(lead));
+        let ctrl = cx.debug_bounds("stack-key-ctrl");
         assert!(ctrl.is_none_or(|ctrl| ctrl.right() <= lead.right()));
     }
 

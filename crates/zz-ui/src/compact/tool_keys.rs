@@ -2,15 +2,18 @@ use ala::{App, AppContext as _, Entity, ScrollHandle};
 
 use crate::{
     IconName,
-    touch::{ArrowPad, KeyRowKey, PopoverKey, PopoverKeyItem, PopoverKeyTap, StickyModifier},
+    touch::{
+        ArrowPad, KeyRowKey, StackChip, StackGroup, StackKey, StackKeyTap, StackMenu,
+        StickyModifier,
+    },
 };
 
 #[derive(Clone)]
 pub struct ToolKeys {
     pub arrows: Entity<ArrowPad>,
-    pub control: Entity<PopoverKey>,
-    pub alt: Entity<PopoverKey>,
-    pub prefix: Entity<PopoverKey>,
+    pub control: Entity<StackKey>,
+    pub alt: Entity<StackKey>,
+    pub prefix: Entity<StackKey>,
     pub scroll: ScrollHandle,
 }
 
@@ -19,33 +22,32 @@ impl ToolKeys {
         let scroll = ScrollHandle::new();
         let latch = |label: &'static str,
                      modifier: StickyModifier,
-                     items: Vec<PopoverKeyItem>,
+                     chords: Vec<StackChip>,
                      cx: &mut App| {
             cx.new(|cx| {
-                PopoverKey::new(label, PopoverKeyTap::Latch(modifier), cx)
+                StackKey::new(label, StackKeyTap::Latch(modifier), cx)
                     .icon(modifier.icon())
-                    .items(items)
-                    .columns(2)
                     .scrolls(scroll.clone())
+                    .groups(vec![StackGroup::new(chords)], cx)
             })
         };
         Self {
             arrows: cx.new(ArrowPad::new),
             control: latch("ctrl", StickyModifier::Control, control_chords(), cx),
             alt: latch("alt", StickyModifier::Alt, alt_chords(), cx),
-            prefix: cx.new(|cx| PopoverKey::new("prefix", PopoverKeyTap::Press, cx)),
+            prefix: cx.new(|cx| StackKey::new("prefix", StackKeyTap::Open, cx)),
             scroll,
         }
     }
 
     pub fn lead(&self) -> KeyRowKey {
-        KeyRowKey::Popover(self.prefix.clone())
+        KeyRowKey::Stack(self.prefix.clone())
     }
 
     pub fn row(&self) -> Vec<KeyRowKey> {
         vec![
-            KeyRowKey::Popover(self.control.clone()),
-            KeyRowKey::Popover(self.alt.clone()),
+            KeyRowKey::Stack(self.control.clone()),
+            KeyRowKey::Stack(self.alt.clone()),
             KeyRowKey::tab(),
             KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
             KeyRowKey::text("/"),
@@ -55,23 +57,33 @@ impl ToolKeys {
         ]
     }
 
+    pub fn menus(&self, cx: &App) -> [Entity<StackMenu>; 3] {
+        [&self.control, &self.alt, &self.prefix].map(|key| key.read(cx).menu().clone())
+    }
+
+    pub fn is_open(&self, cx: &App) -> bool {
+        [&self.control, &self.alt, &self.prefix]
+            .iter()
+            .any(|key| key.read(cx).is_open(cx))
+    }
+
     pub fn close(&self, cx: &mut App) {
         for key in [&self.control, &self.alt, &self.prefix] {
-            if key.read(cx).is_open() {
-                key.update(cx, PopoverKey::close);
+            if key.read(cx).menu().read(cx).is_shown() {
+                key.update(cx, StackKey::close);
             }
         }
     }
 }
 
-fn chords(chords: &[(&'static str, &'static str, &'static str)]) -> Vec<PopoverKeyItem> {
+fn chords(chords: &[(&'static str, &'static str, &'static str)]) -> Vec<StackChip> {
     chords
         .iter()
-        .map(|(keystroke, cap, label)| PopoverKeyItem::new(*keystroke, *label).cap(*cap))
+        .map(|(keystroke, chord, label)| StackChip::chord(*keystroke, *chord, *label))
         .collect()
 }
 
-fn control_chords() -> Vec<PopoverKeyItem> {
+fn control_chords() -> Vec<StackChip> {
     chords(&[
         ("ctrl-c", "^C", "Interrupt"),
         ("ctrl-d", "^D", "End input"),
@@ -86,7 +98,7 @@ fn control_chords() -> Vec<PopoverKeyItem> {
     ])
 }
 
-fn alt_chords() -> Vec<PopoverKeyItem> {
+fn alt_chords() -> Vec<StackChip> {
     chords(&[
         ("alt-b", "M-b", "Word back"),
         ("alt-f", "M-f", "Word ahead"),

@@ -1,24 +1,26 @@
 use ala::{
-    AnyElement, App, Context, EventEmitter, IntoElement, ParentElement as _, Pixels, Point, Render,
-    Styled as _, Task, Window, div, prelude::*,
+    Anchor, AnyElement, App, Context, EventEmitter, IntoElement, ParentElement as _, Pixels, Point,
+    Render, Styled as _, Task, Window, anchored, deferred, div, point, prelude::*, px, relative,
 };
 use web_time::Duration;
 
 use super::{
     key_press::{Grip, Press, press_listeners},
     key_row::{KEY_SIZE, KeyLook, key_surface},
-    popover_key::popover_above,
 };
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, Space, StyledExt as _,
-    Surface, SurfaceRole, Tone, foundation::roles, rems_from_px,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Kind, Layer, PaintState, Space,
+    StyledExt as _, Surface, Tone, rems_from_px,
 };
 
 const THRESHOLD: f32 = 10.0;
 const REPEAT_DELAY: Duration = Duration::from_millis(300);
 const REPEAT_INTERVAL: Duration = Duration::from_millis(80);
-const BUBBLE: f32 = 132.0;
+const CELL: f32 = 44.0;
+const GLYPH: f32 = 20.0;
+const GROW: f32 = 0.04;
 const HUB: f32 = 6.0;
+const WINDOW_MARGIN: f32 = 8.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArrowDirection {
@@ -122,54 +124,65 @@ impl ArrowPad {
 
 pub fn arrow_pad_bubble(direction: Option<ArrowDirection>, cx: &App) -> AnyElement {
     let theme = cx.theme();
+    let cell_size = px(CELL);
+    let cell_corner = if theme.pill_controls() {
+        cell_size / 2.0
+    } else {
+        theme.control_corner(cell_size)
+    };
+    let inset = Space::S6;
+    let floating = theme.layer(Surface::new(Kind::Floating.role()), PaintState::Rest);
+    let layer = Layer {
+        radius: cell_corner + px(inset.design_px()),
+        share: None,
+        ..floating.clone()
+    };
     let muted = theme
-        .paint_on(
-            theme.ground_of(Surface::new(roles::ARROW_PAD)),
-            Tone::Neutral,
-            Emphasis::Ghost,
-        )
+        .paint_on(floating.ground, Tone::Neutral, Emphasis::Ghost)
         .muted_at(PaintState::Rest);
+    let solid = theme.paint(Tone::Primary, Emphasis::Solid);
+    let reduced = cx.reduce_motion();
     let cell = |slot: Option<ArrowDirection>, hub: bool| {
         let active = slot.is_some() && slot == direction;
+        let grown = if active && !reduced { CELL * GROW } else { 0.0 };
         div()
             .flex()
-            .flex_1()
+            .flex_none()
             .items_center()
             .justify_center()
+            .size(px(CELL + grown))
+            .m(px(-grown / 2.0))
+            .rounded(cell_corner * (1.0 + grown / CELL))
             .when_some(slot, |cell, direction| {
                 let selector = format!("arrow-pad-cell-{}", direction.key());
                 cell.debug_selector(move || selector)
-                    .surface_at(
-                        Surface::new(roles::ARROW_PAD),
+                    .map(|cell| {
                         if active {
-                            PaintState::Selected
+                            cell.bg(solid.fill).text_color(solid.text)
                         } else {
-                            PaintState::Rest
-                        },
-                        cx,
-                    )
-                    .when(!active, |cell| cell.text_color(muted))
-                    .child(Icon::new(direction.icon()).size(rems_from_px(18.0)))
+                            cell.text_color(muted)
+                        }
+                    })
+                    .child(Icon::new(direction.icon()).size(px(GLYPH)))
             })
             .when(hub, |cell| {
                 cell.child(
                     div()
-                        .size(rems_from_px(HUB))
+                        .size(px(HUB))
                         .rounded_full()
                         .bg(theme.foreground.muted()),
                 )
             })
     };
-    let line = |cells: [AnyElement; 3]| div().flex().flex_1().gap(Space::S4).children(cells);
+    let line = |cells: [AnyElement; 3]| div().flex().gap(Space::S4).children(cells);
     let blank = || cell(None, false).into_any_element();
     div()
         .debug_selector(|| "arrow-pad-bubble".to_owned())
         .flex()
         .flex_col()
-        .size(rems_from_px(BUBBLE))
-        .p(Space::S6)
+        .p(inset)
         .gap(Space::S4)
-        .surface(Surface::new(SurfaceRole::POPOVER), cx)
+        .layer(&layer)
         .child(line([
             blank(),
             cell(Some(ArrowDirection::Up), false).into_any_element(),
@@ -186,6 +199,20 @@ pub fn arrow_pad_bubble(direction: Option<ArrowDirection>, cx: &App) -> AnyEleme
             blank(),
         ]))
         .into_any_element()
+}
+
+fn popover_above(card: impl IntoElement, window: &Window) -> impl IntoElement {
+    let gap = Space::S8.rems().to_pixels(window.rem_size());
+    div().absolute().top_0().left(relative(0.5)).child(
+        deferred(
+            anchored()
+                .anchor(Anchor::BottomCenter)
+                .offset(point(px(0.0), -gap))
+                .snap_to_window_with_margin(px(WINDOW_MARGIN))
+                .child(card),
+        )
+        .with_priority(2),
+    )
 }
 
 impl Press for ArrowPad {
@@ -214,6 +241,7 @@ impl Press for ArrowPad {
         }
         self.direction = direction;
         self.repeat = direction.map(|direction| {
+            cx.selection_haptic();
             cx.emit(ArrowPadEvent::Arrow(direction));
             Self::repeat(direction, cx)
         });
