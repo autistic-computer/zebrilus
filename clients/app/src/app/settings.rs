@@ -23,7 +23,7 @@ use zz_ui::{
         about::{ABOUT_LOGO_SIZE, ZZ_ABOUT},
         appearance::{AppearancePageItem, ZzRow, appearance_page_items, interface_page_items},
         settings_card_ground, settings_page_heading, settings_preview, settings_scroll_column,
-        settings_title_bar,
+        settings_select_box, settings_title_bar,
     },
 };
 
@@ -984,7 +984,7 @@ fn font_select(
     placeholder: &'static str,
     cx: &App,
 ) -> ala::Div {
-    div().w(px(200.0)).max_w_full().flex_none().child(
+    settings_select_box(cx).child(
         Select::new(select)
             .title(title)
             .placeholder(placeholder)

@@ -780,7 +780,7 @@ pub fn kit_row<T: Copy>(
         AppearancePageItem::UiFontFamily => {
             let select = controls.ui_font_select(appearance, window, cx);
             entry.control(
-                div().w(px(200.0)).max_w_full().flex_none().child(
+                crate::blocks::settings::settings_select_box(cx).child(
                     Select::new(&select)
                         .title(title)
                         .placeholder(SYSTEM_DEFAULT_FONT)
@@ -792,7 +792,7 @@ pub fn kit_row<T: Copy>(
         AppearancePageItem::MonoFontFamily => {
             let (select, scopes) = controls.mono_font_select(appearance, window, cx);
             entry.control(
-                div().w(px(200.0)).max_w_full().flex_none().child(
+                crate::blocks::settings::settings_select_box(cx).child(
                     Select::new(&select)
                         .title(title)
                         .placeholder(controls.mono_default.clone())

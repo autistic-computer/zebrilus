@@ -501,6 +501,9 @@ const REVEAL: Duration = Duration::from_millis(280);
 const REVEAL_STAGGER: Duration = Duration::from_millis(30);
 const REVEAL_DROP: f32 = 10.0;
 const SETTINGS_DISCLOSURE_WIDTH: f32 = 14.0;
+const LABEL_GROW: f32 = 1000.0;
+const SELECT_WIDTH: f32 = 200.0;
+const SELECT_MIN_WIDTH: f32 = 120.0;
 
 pub fn settings_list_disclosure_header(
     id: &'static str,
@@ -850,7 +853,7 @@ impl ParentElement for SettingEntry {
 }
 
 impl RenderOnce for SettingEntry {
-    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let disabled = self.disabled;
         let position = self.position;
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
@@ -858,6 +861,14 @@ impl RenderOnce for SettingEntry {
             let description = self
                 .description
                 .map(|description| settings_description(description, cx));
+            let lead = if self.title_icon.is_some() {
+                crate::rems_from_px(crate::Size::Medium.icon_px() + Space::S8.design_px())
+            } else {
+                ala::rems(0.0)
+            };
+            let measure = title_widths(&self.title, window, cx);
+            let floor = lead + measure.word;
+            let line = (self.title_actions.is_none()).then_some(lead + measure.line);
             div()
                 .flex()
                 .flex_col()
@@ -865,13 +876,18 @@ impl RenderOnce for SettingEntry {
                 .child(
                     div()
                         .flex()
+                        .flex_wrap()
                         .items_center()
-                        .justify_between()
-                        .gap(Space::S16)
+                        .gap_x(Space::S16)
+                        .gap_y(Space::S8)
                         .child(
                             div()
                                 .flex()
-                                .flex_none()
+                                .flex_basis(floor)
+                                .min_w(floor)
+                                .flex_grow(LABEL_GROW)
+                                .flex_shrink_0()
+                                .when_some(line, ala::Styled::max_w)
                                 .items_center()
                                 .gap(Space::S8)
                                 .when_some(self.title_icon, |this, icon| {
@@ -879,8 +895,8 @@ impl RenderOnce for SettingEntry {
                                 })
                                 .child(
                                     div()
+                                        .min_w_0()
                                         .type_style(crate::TextStyle::Body, cx)
-                                        .whitespace_nowrap()
                                         .child(self.title),
                                 )
                                 .when_some(self.title_actions, ala::ParentElement::child),
@@ -889,8 +905,8 @@ impl RenderOnce for SettingEntry {
                             this.child(
                                 div()
                                     .flex()
-                                    .flex_1()
-                                    .min_w_0()
+                                    .flex_grow_1()
+                                    .flex_shrink_0()
                                     .items_center()
                                     .justify_end()
                                     .child(control),
@@ -1104,6 +1120,45 @@ impl RenderOnce for SettingCopy {
             .when_some(self.description, |this, description| {
                 this.child(settings_description(description, cx))
             })
+    }
+}
+
+struct TitleWidths {
+    word: ala::Rems,
+    line: ala::Rems,
+}
+
+fn title_widths(text: &str, window: &mut Window, cx: &App) -> TitleWidths {
+    let rem = window.rem_size();
+    let style = crate::TextStyle::Body;
+    let mut font = ala::font(cx.theme().font_family.clone());
+    font.weight = style.weight();
+    let size = style.size().to_pixels(rem);
+    let text_system = window.text_system();
+    let font_id = text_system.resolve_font(&font);
+    let width = |run: &str| {
+        run.chars()
+            .map(|character| text_system.layout_width(font_id, size, character))
+            .fold(px(0.0), |width, advance| width + advance)
+    };
+    let rems = |width: Pixels| ala::rems((width + px(1.0)).ceil() / rem);
+    TitleWidths {
+        word: rems(
+            text.split_whitespace()
+                .map(width)
+                .fold(px(0.0), Pixels::max),
+        ),
+        line: rems(width(text.trim())),
+    }
+}
+
+#[must_use]
+pub fn settings_select_box(cx: &App) -> ala::Div {
+    let width = px(SELECT_WIDTH);
+    if crate::blocks::touch::CoarsePointer::get(cx) {
+        div().w(px(SELECT_MIN_WIDTH)).flex_grow_1().max_w(width)
+    } else {
+        div().w(width).max_w_full().flex_none()
     }
 }
 
