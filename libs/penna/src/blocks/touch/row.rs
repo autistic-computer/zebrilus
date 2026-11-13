@@ -1,16 +1,18 @@
 use std::{rc::Rc, sync::Arc};
 
 use ala::{
-    AnyElement, App, ClickEvent, Div, ElementId, FontFeatures, Hsla, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, RenderOnce, Role, SharedString, Stateful,
-    StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
+    AnyElement, App, ClickEvent, Corners, Div, ElementId, FontFeatures, Hsla,
+    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, RenderOnce, Role,
+    SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
     prelude::FluentBuilder as _, px, relative,
 };
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable, Emphasis, Ground, Icon, IconName, PaintState,
-    Space, StyledExt as _, Surface, TextStyle, Tone,
+    RULE_WIDTH, RuleLook, Space, StyledExt as _, Surface, TextStyle, Tone,
+    blocks::settings::StackPosition,
     blocks::touch::StatusMark,
+    components::separator::Separator,
     foundation::{
         InteractiveSurfaceExt as _, author_name, nested_radius, roles, row_radius, shared_corners,
     },
@@ -22,6 +24,14 @@ pub const TOUCH_DETAIL_ROW_HEIGHT: f32 = 64.0;
 pub const TOUCH_HEADER_HEIGHT: f32 = 28.0;
 const GLYPH: f32 = 20.0;
 const GROUP_INSET: Space = Space::S4;
+const RULED_INSET: Space = Space::S16;
+const RULED_GAP: Space = Space::S12;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Listed {
+    position: StackPosition,
+    corner: Pixels,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Nest {
@@ -89,11 +99,13 @@ pub struct TouchRow {
     checked: bool,
     detail: Option<SharedString>,
     trailing: Option<TouchTrailing>,
+    more: bool,
     end: Option<AnyElement>,
     danger: bool,
     ink: Option<TouchInk>,
     disabled: bool,
     nest: Option<Nest>,
+    listed: Option<Listed>,
     ground: Option<Ground>,
     on_click: Option<ClickHandler>,
 }
@@ -109,14 +121,27 @@ impl TouchRow {
             checked: false,
             detail: None,
             trailing: None,
+            more: false,
             end: None,
             danger: false,
             ink: None,
             disabled: false,
             nest: None,
+            listed: None,
             ground: None,
             on_click: None,
         }
+    }
+
+    #[must_use]
+    pub fn more(mut self) -> Self {
+        self.more = true;
+        self
+    }
+
+    #[must_use]
+    pub fn is_danger(&self) -> bool {
+        self.danger
     }
 
     #[must_use]
@@ -207,6 +232,57 @@ impl TouchRow {
         self.ground = Some(ground);
         self
     }
+
+    fn listed(mut self, position: StackPosition, corner: Pixels, ground: Ground) -> Self {
+        self.listed = Some(Listed { position, corner });
+        self.ground = Some(ground);
+        self
+    }
+}
+
+fn listed_frame(
+    id: ElementId,
+    surface: Surface,
+    height: Pixels,
+    listed: Listed,
+    state: PaintState,
+    cx: &App,
+) -> Stateful<Div> {
+    let theme = cx.theme();
+    let layer = theme.layer(surface, PaintState::Rest);
+    let corner = |rounds: bool| if rounds { listed.corner } else { px(0.0) };
+    let corners = Corners {
+        top_left: corner(listed.position.rounds_top()),
+        top_right: corner(listed.position.rounds_top()),
+        bottom_left: corner(listed.position.rounds_bottom()),
+        bottom_right: corner(listed.position.rounds_bottom()),
+    };
+    let row = h_flex().id(id.clone()).flex_none().h(height);
+    let row = if state == PaintState::Disabled {
+        row.text_color(layer.text)
+    } else {
+        row.surface_hover(surface, PaintState::Rest, cx)
+            .click_cursor()
+            .child(crate::blocks::touch::instant_press_highlight(
+                id,
+                crate::blocks::touch::over_hover(
+                    theme.layer(surface, PaintState::Hover).fill,
+                    theme.layer(surface, PaintState::Active).fill,
+                ),
+                crate::blocks::touch::PressCorners::Each(corners),
+            ))
+    };
+    row.when(listed.position.rounds_top(), |row| {
+        row.rounded_t(listed.corner)
+    })
+    .when(listed.position.rounds_bottom(), |row| {
+        row.rounded_b(listed.corner)
+    })
+    .corner_smoothing(layer.smoothing)
+    .relative()
+    .w_full()
+    .gap(RULED_GAP)
+    .px(RULED_INSET)
 }
 
 impl Disableable for TouchRow {
@@ -307,7 +383,29 @@ impl RenderOnce for TouchRow {
             });
         let disabled = self.disabled;
         let author = author_name(&self.id);
-        touch_row_frame(self.id, surface, height, self.nest, state, cx)
+        let led = self.icon.is_some() || self.checked || self.slot;
+        let listed = self.listed;
+        let frame = match listed {
+            Some(listed) => listed_frame(self.id, surface, height, listed, state, cx),
+            None => touch_row_frame(self.id, surface, height, self.nest, state, cx),
+        };
+        let rule = listed
+            .filter(|listed| listed.position.rules_above())
+            .map(|_| {
+                let edge = if led {
+                    RULED_INSET.rems() + crate::rems_from_px(GLYPH) + RULED_GAP.rems()
+                } else {
+                    RULED_INSET.rems()
+                };
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .left(edge)
+                    .child(Separator::horizontal().look(RuleLook::List).h(RULE_WIDTH))
+            });
+        frame
+            .children(rule)
             .role(Role::Button)
             .accessibility_id(author)
             .aria_label(self.title)
@@ -322,6 +420,9 @@ impl RenderOnce for TouchRow {
             })
             .child(lines)
             .children(trailing)
+            .when(self.more && !disabled, |row| {
+                row.child(glyph(IconName::ChevronRight, muted))
+            })
             .when_some(self.end, |row, end| row.pr(Space::S4).child(end))
             .when_some(self.on_click.filter(|_| !disabled), |row, on_click| {
                 row.on_click(move |event, window, cx| on_click(event, window, cx))
@@ -332,6 +433,7 @@ impl RenderOnce for TouchRow {
 #[derive(Default, IntoElement)]
 pub struct TouchGroup {
     rows: Vec<TouchRow>,
+    ruled: bool,
     style: StyleRefinement,
 }
 
@@ -352,6 +454,17 @@ impl TouchGroup {
         self.rows.extend(rows);
         self
     }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    #[must_use]
+    pub fn ruled(mut self) -> Self {
+        self.ruled = true;
+        self
+    }
 }
 
 impl Styled for TouchGroup {
@@ -370,6 +483,22 @@ impl RenderOnce for TouchGroup {
             outer,
             inset: px(GROUP_INSET.design_px()),
         };
+        if self.ruled {
+            let card = card.on(theme.content_ground());
+            let layer = theme.layer(card, PaintState::Rest);
+            let ground = layer.ground;
+            let corner = (outer - px(Space::S8.design_px())).max(px(0.0));
+            let last = self.rows.len().saturating_sub(1);
+            return v_flex()
+                .w_full()
+                .items_stretch()
+                .layer(&layer)
+                .rounded(corner)
+                .refine_style(&self.style)
+                .children(self.rows.into_iter().enumerate().map(|(index, row)| {
+                    row.listed(StackPosition::at(index, last), corner, ground)
+                }));
+        }
         let ground = layer.ground;
         v_flex()
             .w_full()

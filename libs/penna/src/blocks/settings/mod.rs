@@ -785,15 +785,15 @@ impl StackPosition {
         matches!(self, Self::Only | Self::Last)
     }
 
-    const fn rounds_top(self) -> bool {
+    pub(crate) const fn rounds_top(self) -> bool {
         matches!(self, Self::Only | Self::First)
     }
 
-    const fn rounds_bottom(self) -> bool {
+    pub(crate) const fn rounds_bottom(self) -> bool {
         self.ends_run()
     }
 
-    const fn rules_above(self) -> bool {
+    pub(crate) const fn rules_above(self) -> bool {
         matches!(self, Self::Middle | Self::Last)
     }
 }

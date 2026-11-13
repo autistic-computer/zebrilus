@@ -2,14 +2,12 @@
   "story": "sheet",
   "page": "index.html",
   "steps": [
-    { "name": "hover-close", "section": "bottom-sheet", "hover": "language-close" },
-    { "name": "press-close", "section": "bottom-sheet", "press": "language-close" },
     { "name": "close-picker", "section": "bottom-sheet", "click": "language-close" },
     { "name": "reopen-picker", "section": "bottom-sheet", "click": { "at": [213, 400] }, "keep": true },
-    { "name": "scrim-commands", "section": "bottom-sheet", "click": { "at": [730, 200] } },
-    { "name": "hover-option", "section": "bottom-sheet", "hover": { "selector": ".penna-sheet-row", "nth": 3 } },
-    { "name": "press-option", "section": "bottom-sheet", "press": { "selector": ".penna-sheet-row", "nth": 3 } },
-    { "name": "hover-action", "section": "bottom-sheet", "hover": { "selector": ".penna-sheet-row", "nth": 8 } },
-    { "name": "hover-detail", "section": "bottom-sheet", "hover": { "selector": ".penna-sheet-row", "nth": 11 } }
+    { "name": "scrim-model", "section": "bottom-sheet", "click": { "at": [730, 200] } },
+    { "name": "hover-option", "section": "bottom-sheet", "hover": "language-2" },
+    { "name": "press-option", "section": "bottom-sheet", "press": "language-2" },
+    { "name": "close-menu", "section": "modal", "click": "machine-close" },
+    { "name": "scrim-confirm", "section": "modal", "click": { "at": [730, 60] } }
   ]
 }

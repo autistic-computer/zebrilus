@@ -964,8 +964,8 @@ pub fn middle_line(text: impl Into<SharedString>, style: TextStyle) -> impl Into
             let _ = line.paint(
                 bounds.origin,
                 bounds.size.height,
-                ala::TextAlign::Left,
-                None,
+                ala::TextAlign::Center,
+                Some(bounds.size.width),
                 window,
                 cx,
             );

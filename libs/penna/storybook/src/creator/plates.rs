@@ -30,7 +30,7 @@ use penna::{
         SETTINGS_PAGE_PADDING, SettingEntry, SettingsStack, large_title, settings_card_ground,
         settings_navigation_button, settings_page_content,
     },
-    blocks::sheet::{bottom_sheet, sheet_row},
+    blocks::sheet::{bottom_sheet, sheet_close, sheet_row},
     blocks::shell::{app_shell_surface, app_titlebar_strip},
     blocks::sidebar::{
         chrome_button, sidebar_footer, sidebar_heading, sidebar_panel, sidebar_titlebar,
@@ -975,7 +975,7 @@ impl Phone {
         let sheet = bottom_sheet(
             "creator-windows-sheet",
             "Windows",
-            [compact_bar_button("creator-windows-close", IconName::Xmark).into_any_element()],
+            [sheet_close("creator-windows-close", cx).into_any_element()],
             v_flex()
                 .list_inset(cx)
                 .pb(px(8.0))

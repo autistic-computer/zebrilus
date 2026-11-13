@@ -11,7 +11,7 @@ use ala::{
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable, Emphasis, Kind, Label,
     Paint, PaintState, Sizable, Size, Smoothing, StyledExt as _, Surface, TextStyle, Tone,
-    blocks::sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset},
+    blocks::sheet::{bottom_sheet, close_sheet, floating_sheet, modal_body, sheet_close},
     blocks::touch::CoarsePointer,
     components::input::{field_chrome_on, field_text},
     components::tooltip::Tooltip,
@@ -845,29 +845,36 @@ impl Slider {
     ) -> AnyElement {
         let id = drag.entity_id();
         let dismiss = drag.clone();
+        let muted = crate::foundation::muted_on(crate::blocks::sheet::sheet_ground(cx), cx);
         floating_sheet(
             bottom_sheet(
                 ("penna-slider-sheet", id),
                 self.label.clone(),
-                [sheet_close(("penna-slider-sheet-close", id))
+                [sheet_close(("penna-slider-sheet-close", id), cx)
                     .on_click(move |_, _, cx| close_sheet(("penna-slider-sheet", id), cx))
                     .into_any_element()],
-                v_flex()
-                    .px(Space::INSET_PANE)
-                    .pb(Space::S16)
-                    .gap(Space::S8)
-                    .child(
-                        div()
-                            .w_full()
-                            .text_center()
-                            .type_style(TextStyle::Title, cx)
-                            .text_color(cx.theme().foreground)
-                            .child(shown),
-                    )
-                    .child(self.slider(drag, window, cx)),
-                sheet_inset(window),
+                modal_body().child(
+                    h_flex()
+                        .w_full()
+                        .gap(Space::S12)
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .child(self.slider(drag, window, cx)),
+                        )
+                        .child(
+                            div()
+                                .flex_none()
+                                .type_style(TextStyle::TouchSmall, cx)
+                                .text_color(muted)
+                                .child(shown),
+                        ),
+                ),
+                px(0.0),
                 move |_, cx| dismiss.update(cx, |drag, cx| drag.set_sheet(false, cx)),
-            ),
+            )
+            .modal(),
             window,
         )
     }

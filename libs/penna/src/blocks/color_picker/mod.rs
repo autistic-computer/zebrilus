@@ -605,7 +605,7 @@ impl ColorPicker {
             bottom_sheet(
                 ("penna-color-picker-sheet", id),
                 self.label.clone().unwrap_or_else(|| "Color".into()),
-                [sheet_close("penna-color-picker-sheet-close")
+                [sheet_close("penna-color-picker-sheet-close", cx)
                     .on_click(move |_, _, cx| close_sheet(("penna-color-picker-sheet", id), cx))
                     .into_any_element()],
                 div()

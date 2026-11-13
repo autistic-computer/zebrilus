@@ -6,10 +6,10 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, Space, StyledExt as _, TextStyle,
     blocks::sheet::{
-        BottomSheet, bottom_sheet, close_sheet, sheet_action, sheet_close, sheet_detail_row,
-        sheet_option,
+        BottomSheet, ModalAction, ModalTone, bottom_sheet, close_sheet, modal_body, modal_buttons,
+        modal_groups, sheet_back, sheet_close, sheet_groups, sheet_note,
     },
-    blocks::touch::TouchRow,
+    blocks::touch::{TouchGroup, TouchRow, TouchTrailing},
     h_flex, v_flex,
 };
 
@@ -21,31 +21,32 @@ pub const STORY: Story = Story {
     id: "sheet",
     name: "Sheet",
     group: "Kit",
-    summary: "The bottom sheet a touch screen opens in place of a dropdown. It floats up from the bottom of its parent over a scrim, rounded on every corner, and drags down to dismiss.",
+    summary: "What a touch screen opens over itself. A list or a page you drill into rises as a bottom sheet with a quiet caption and a close disc; a short ask (confirm, rename, a few actions, one control) is a card in the middle of the screen.",
     sections: &[
         Section {
             id: "bottom-sheet",
             name: "Bottom sheet",
-            summary: "Phone-sized frames, each sheet 8pt in from the sides and resting on a 34pt bottom safe area: a picker with a checked option and an action row, a short sheet of commands, and choices that each say what they do. The close button and the scrim dismiss a sheet; a press on its empty frame, or any theme change, brings it back.",
+            summary: "Phone-sized frames, each sheet 8pt in from the sides and resting on a 34pt bottom safe area: a picker, a page drilled into with its back chevron, and rows in two groups over a muted line. The close disc and the scrim dismiss a sheet; a press on its empty frame, or any theme change, brings it back.",
             build: |window, cx| Sheets::view(window, cx),
         },
         Section {
-            id: "hold-sheet",
-            name: "Hold sheet",
-            summary: "What holding a tile opens: titled with the thing's name over one muted line of what the tile leaves out, then one-line touch rows, the one that removes last in danger ink.",
-            build: |_, cx| cx.new(|_| Held { open: true }).into(),
+            id: "modal",
+            name: "Modal",
+            summary: "The centered card for a short ask: a hold menu titled with the thing's name over its actions, the one that removes in its own group, and a confirm with the question, what goes, Cancel and the verb.",
+            build: |_, cx| cx.new(|_| Modals { open: [true; 2] }).into(),
         },
     ],
 };
 
 const LANGUAGES: [&str; 5] = ["English", "Deutsch", "Español", "Português", "Français"];
+const MODELS: [&str; 4] = ["Default (recommended)", "Opus", "Sonnet", "Haiku"];
 
-fn phone(
+fn phone<V: 'static>(
     id: &'static str,
     title: &'static str,
     sheet: Option<BottomSheet>,
-    cx: &mut Context<Sheets>,
-    at: usize,
+    cx: &mut Context<V>,
+    reopen: impl Fn(&mut V) + 'static,
 ) -> impl IntoElement {
     let theme = cx.theme();
     let closed = sheet.is_none();
@@ -62,7 +63,7 @@ fn phone(
         .children(sheet)
         .when(closed, |frame| {
             frame.on_click(cx.listener(move |this, _, _, cx| {
-                this.open[at] = true;
+                reopen(this);
                 cx.notify();
             }))
         })
@@ -102,20 +103,23 @@ impl Sheets {
         })
         .into()
     }
+}
 
-    fn dismissed(at: usize, cx: &mut Context<Self>) -> impl Fn(&mut Window, &mut App) + 'static {
-        let view = cx.entity().downgrade();
-        move |_, cx| {
-            let _ = view.update(cx, |this, cx| {
-                this.open[at] = false;
-                cx.notify();
-            });
-        }
+fn dismissed<V: 'static>(
+    cx: &mut Context<V>,
+    shut: impl Fn(&mut V) + 'static,
+) -> impl Fn(&mut Window, &mut App) + 'static {
+    let view = cx.entity().downgrade();
+    move |_, cx| {
+        let _ = view.update(cx, |this, cx| {
+            shut(this);
+            cx.notify();
+        });
     }
 }
 
-fn close(sheet: &'static str, button: &'static str) -> ala::AnyElement {
-    sheet_close(button)
+fn close(sheet: &'static str, button: &'static str, cx: &App) -> ala::AnyElement {
+    sheet_close(button, cx)
         .on_click(move |_, _, cx| close_sheet(sheet, cx))
         .into_any_element()
 }
@@ -125,150 +129,189 @@ impl Render for Sheets {
         let picker = bottom_sheet(
             "language-sheet",
             "Language",
-            [close("language-sheet", "language-close")],
-            v_flex()
-                .list_inset(cx)
-                .pb(px(8.0))
-                .children(LANGUAGES.iter().enumerate().map(|(ix, name)| {
-                    sheet_option(("language", ix), SharedString::from(*name), ix == 1, cx)
-                }))
-                .child(sheet_action(
-                    "language-add",
-                    IconName::Plus,
-                    "Add a language",
-                    cx,
-                )),
-            px(SAFE_BOTTOM),
-            Self::dismissed(0, cx),
-        );
-        let commands = bottom_sheet(
-            "pane-sheet",
-            "Pane",
-            [close("pane-sheet", "pane-close")],
-            v_flex()
-                .list_inset(cx)
-                .pb(px(8.0))
-                .child(sheet_action(
-                    "pane-split",
-                    IconName::PanelRight,
-                    "Split right",
-                    cx,
-                ))
-                .child(sheet_action("pane-zoom", IconName::ZoomIn, "Zoom pane", cx))
-                .child(sheet_action(
-                    "pane-close-row",
-                    IconName::Xmark,
-                    "Close pane",
-                    cx,
-                )),
-            px(SAFE_BOTTOM),
-            Self::dismissed(1, cx),
-        );
-        let muted = cx.theme().foreground.muted();
-        let choices = bottom_sheet(
-            "new-sheet",
-            "New",
-            [close("new-sheet", "new-close")],
-            v_flex()
-                .list_inset(cx)
-                .pb(px(8.0))
+            [close("language-sheet", "language-close", cx)],
+            sheet_groups()
                 .child(
-                    div()
-                        .px(px(12.0))
-                        .pb(px(10.0))
-                        .type_style(TextStyle::Body, cx)
-                        .text_color(muted)
-                        .child("Opens as a new window on macbook."),
+                    TouchGroup::new()
+                        .ruled()
+                        .rows(LANGUAGES.iter().enumerate().map(|(ix, name)| {
+                            let row = TouchRow::new(("language", ix), SharedString::from(*name));
+                            if ix == 1 {
+                                row.trailing(TouchTrailing::Check)
+                            } else {
+                                row
+                            }
+                        })),
                 )
-                .child(sheet_detail_row(
-                    "new-terminal",
-                    Some(Icon::new(IconName::SquareTerminal)),
-                    "Terminal",
-                    "A shell in the current folder",
-                    cx,
-                ))
-                .child(sheet_detail_row(
-                    "new-browser",
-                    Some(Icon::new(IconName::Globe)),
-                    "Browser",
-                    "A web page on macbook, localhost included",
-                    cx,
-                )),
+                .child(
+                    TouchGroup::new()
+                        .ruled()
+                        .row(TouchRow::new("language-add", "Add a language").icon(IconName::Plus)),
+                ),
             px(SAFE_BOTTOM),
-            Self::dismissed(2, cx),
+            dismissed(cx, |this: &mut Self| this.open[0] = false),
         );
-        let [picker_open, commands_open, choices_open] = self.open;
-        let picker = picker_open.then_some(picker);
-        let commands = commands_open.then_some(commands);
-        let choices = choices_open.then_some(choices);
+        let model =
+            bottom_sheet(
+                "model-sheet",
+                "Model",
+                [close("model-sheet", "model-close", cx)],
+                sheet_groups().child(TouchGroup::new().ruled().rows(
+                    MODELS.iter().enumerate().map(|(ix, name)| {
+                        let row = TouchRow::new(("model", ix), SharedString::from(*name));
+                        if ix == 0 {
+                            row.trailing(TouchTrailing::Check)
+                        } else {
+                            row
+                        }
+                    }),
+                )),
+                px(SAFE_BOTTOM),
+                dismissed(cx, |this: &mut Self| this.open[1] = false),
+            )
+            .back(sheet_back("model-back", cx));
+        let setting = |id: &'static str, title: &'static str, icon, value: &'static str| {
+            TouchRow::new(id, title)
+                .icon(icon)
+                .trailing(TouchTrailing::Value(value.into()))
+                .more()
+        };
+        let options = bottom_sheet(
+            "options-sheet",
+            "Claude Code",
+            [close("options-sheet", "options-close", cx)],
+            sheet_groups()
+                .child(
+                    TouchGroup::new().ruled().row(
+                        TouchRow::new("options-mention", "Mention")
+                            .icon(IconName::ListTree)
+                            .more(),
+                    ),
+                )
+                .child(TouchGroup::new().ruled().rows([
+                    setting(
+                        "options-model",
+                        "Model",
+                        IconName::Sparkle,
+                        "Default (recommended)",
+                    ),
+                    setting("options-effort", "Effort", IconName::Cpu, "Default"),
+                    setting("options-mode", "Permissions", IconName::Hand, "Ask"),
+                ]))
+                .child(sheet_note("Context 0%", cx)),
+            px(SAFE_BOTTOM),
+            dismissed(cx, |this: &mut Self| this.open[2] = false),
+        );
+        let [picker_open, model_open, options_open] = self.open;
         states()
             .columns(2)
-            .state("picker", phone("phone-picker", "Settings", picker, cx, 0))
-            .state("commands", phone("phone-commands", "work", commands, cx, 1))
             .state(
-                "choices with a line",
-                phone("phone-choices", "macbook", choices, cx, 2),
+                "picker",
+                phone(
+                    "phone-picker",
+                    "Settings",
+                    picker_open.then_some(picker),
+                    cx,
+                    |this| {
+                        this.open[0] = true;
+                    },
+                ),
+            )
+            .state(
+                "a page drilled into",
+                phone(
+                    "phone-model",
+                    "work",
+                    model_open.then_some(model),
+                    cx,
+                    |this| {
+                        this.open[1] = true;
+                    },
+                ),
+            )
+            .state(
+                "groups over a muted line",
+                phone(
+                    "phone-options",
+                    "macbook",
+                    options_open.then_some(options),
+                    cx,
+                    |this| {
+                        this.open[2] = true;
+                    },
+                ),
             )
     }
 }
 
-struct Held {
-    open: bool,
+struct Modals {
+    open: [bool; 2],
 }
 
-impl Render for Held {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().downgrade();
-        let sheet = self.open.then(|| {
-            bottom_sheet(
-                "machine-sheet",
-                "xps",
-                [close("machine-sheet", "machine-close")],
-                v_flex()
-                    .gap(px(2.0))
-                    .px(cx.theme().row_inset)
-                    .pb(px(8.0))
-                    .child(
-                        TouchRow::new("machine-connect", "Connect")
-                            .icon(IconName::Server)
-                            .in_sheet(cx),
-                    )
-                    .child(
+impl Render for Modals {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let menu = bottom_sheet(
+            "machine-sheet",
+            "xps",
+            [close("machine-sheet", "machine-close", cx)],
+            modal_groups()
+                .child(
+                    TouchGroup::new()
+                        .ruled()
+                        .row(TouchRow::new("machine-connect", "Connect").icon(IconName::Server)),
+                )
+                .child(
+                    TouchGroup::new().ruled().row(
                         TouchRow::new("machine-remove", "Remove machine")
                             .icon(IconName::Xmark)
-                            .danger()
-                            .in_sheet(cx),
+                            .danger(),
                     ),
-                px(SAFE_BOTTOM),
-                move |_, cx| {
-                    let _ = view.update(cx, |this, cx| {
-                        this.open = false;
-                        cx.notify();
-                    });
-                },
-            )
-            .detail("fabrico@xps")
-        });
-        let closed = sheet.is_none();
-        states().state(
-            "a machine",
-            div()
-                .id("phone-held")
-                .relative()
-                .w(px(390.0))
-                .h(px(600.0))
-                .overflow_hidden()
-                .rounded(px(SCREEN_RADIUS))
-                .framed(cx)
-                .bg(cx.theme().surface(Elevation::Panel).fill)
-                .child(backdrop("Machines", cx))
-                .children(sheet)
-                .when(closed, |frame| {
-                    frame.on_click(cx.listener(|this, _, _, cx| {
-                        this.open = true;
-                        cx.notify();
-                    }))
-                }),
+                ),
+            px(SAFE_BOTTOM),
+            dismissed(cx, |this: &mut Self| this.open[0] = false),
         )
+        .modal();
+        let confirm = bottom_sheet(
+            "confirm-sheet",
+            "Close this pane?",
+            Vec::new(),
+            modal_body().child(modal_buttons(
+                "confirm-sheet",
+                ModalAction::new("confirm-close", "Close", ModalTone::Danger, |_, _| {}),
+                window,
+                cx,
+            )),
+            px(SAFE_BOTTOM),
+            dismissed(cx, |this: &mut Self| this.open[1] = false),
+        )
+        .modal()
+        .detail("The chat stops. Its transcript stays.");
+        let [menu_open, confirm_open] = self.open;
+        states()
+            .columns(2)
+            .state(
+                "hold a machine",
+                phone(
+                    "phone-held",
+                    "Machines",
+                    menu_open.then_some(menu),
+                    cx,
+                    |this| {
+                        this.open[0] = true;
+                    },
+                ),
+            )
+            .state(
+                "close asks first",
+                phone(
+                    "phone-confirm",
+                    "work",
+                    confirm_open.then_some(confirm),
+                    cx,
+                    |this| {
+                        this.open[1] = true;
+                    },
+                ),
+            )
     }
 }

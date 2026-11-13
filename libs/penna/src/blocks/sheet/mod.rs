@@ -3,24 +3,36 @@ use std::rc::Rc;
 use ala::{
     Animation, AnimationExt as _, AnyElement, App, Context, DispatchPhase, Div, ElementId, Global,
     HitboxBehavior, IntoElement, MouseButton, ParentElement as _, Pixels, Point, RenderOnce,
-    ScrollHandle, ScrollWheelEvent, SharedString, Stateful, Styled, TouchPhase, Window, anchored,
-    canvas, deferred, div, ease_out_quint, prelude::*, px, relative,
+    ScrollHandle, ScrollWheelEvent, SharedString, Stateful, Styled, TextRun, TouchPhase, Window,
+    anchored, canvas, deferred, div, ease_out_quint, prelude::*, px, relative,
 };
 use web_time::{Duration, Instant};
 
 use crate::foundation::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 use crate::{
-    ActiveTheme as _, Emphasis, Ground, Icon, IconName, Layer, PaintState, Space, StyledExt as _,
-    Surface, SurfaceRole, Tone, components::button::Button, foundation::muted_on,
-    foundation::roles,
+    ActiveTheme as _, Disableable as _, Emphasis, Ground, Icon, IconName, Layer, PaintState,
+    Sizable as _, Size, Space, StyledExt as _, Surface, SurfaceRole, TextStyle, Tone,
+    components::button::{Button, ButtonVariant, ButtonVariants as _},
+    foundation::{SURFACE_ENTER_DURATION, muted_on, roles},
 };
 
 const ENTER: Duration = Duration::from_millis(240);
 const GRABBER_WIDTH: f32 = 36.0;
 const GRABBER_HEIGHT: f32 = 5.0;
-const HEADER_HEIGHT: f32 = 60.0;
+const HEADER_HEIGHT: f32 = 44.0;
+const HEADER_SIDE: f32 = 60.0;
 const CLOSE: f32 = crate::blocks::touch::TOUCH_TARGET;
-const CLOSE_GLYPH: f32 = 20.0;
+const DISC: f32 = 30.0;
+const DISC_GLYPH: f32 = 12.0;
+const CONTENT_EDGE: f32 = 16.0;
+const MODAL_PAD: f32 = 20.0;
+const MODAL_GUTTER: f32 = 64.0;
+const MODAL_MAX_WIDTH: f32 = 340.0;
+const MODAL_TITLE: f32 = 30.0;
+const MODAL_TITLE_SIDE: f32 = 40.0;
+const MODAL_CONTROL: f32 = 48.0;
+const MODAL_RISE: f32 = 6.0;
+const MODAL_SCRIM_LIGHT: f32 = 0.28;
 const OPTION_HEIGHT: f32 = crate::blocks::touch::TOUCH_ROW_HEIGHT;
 const DETAIL_HEIGHT: f32 = crate::blocks::touch::TOUCH_DETAIL_ROW_HEIGHT;
 const TILE: f32 = 40.0;
@@ -70,10 +82,11 @@ pub struct BottomSheet {
     bottom_inset: Pixels,
     on_dismiss: Dismiss,
     content_scroll: Option<ScrollHandle>,
-    heading: Option<AnyElement>,
+    back: Option<AnyElement>,
     detail: Option<SharedString>,
     full: Option<Pixels>,
     cut_middle: bool,
+    modal: bool,
 }
 
 pub fn bottom_sheet(
@@ -92,10 +105,11 @@ pub fn bottom_sheet(
         bottom_inset,
         on_dismiss: Rc::new(on_dismiss),
         content_scroll: None,
-        heading: None,
+        back: None,
         detail: None,
         full: None,
         cut_middle: false,
+        modal: false,
     }
 }
 
@@ -107,8 +121,14 @@ impl BottomSheet {
     }
 
     #[must_use]
-    pub fn heading(mut self, heading: impl IntoElement) -> Self {
-        self.heading = Some(heading.into_any_element());
+    pub fn back(mut self, back: impl IntoElement) -> Self {
+        self.back = Some(back.into_any_element());
+        self
+    }
+
+    #[must_use]
+    pub fn modal(mut self) -> Self {
+        self.modal = true;
         self
     }
 
@@ -156,12 +176,238 @@ pub fn floating_sheet(sheet: impl IntoElement, window: &Window) -> AnyElement {
     .into_any_element()
 }
 
-pub fn sheet_close(id: impl Into<ElementId>) -> Button {
+pub fn sheet_close(id: impl Into<ElementId>, cx: &App) -> Button {
+    disc_button(id, IconName::Xmark, "Close", cx)
+}
+
+pub fn sheet_back(id: impl Into<ElementId>, cx: &App) -> Button {
+    disc_button(id, IconName::ChevronLeft, "Back", cx)
+}
+
+fn disc_button(id: impl Into<ElementId>, icon: IconName, label: &'static str, cx: &App) -> Button {
+    let ground = sheet_ground(cx);
+    let paint = cx.theme().paint_on(ground, Tone::Neutral, Emphasis::Soft);
     Button::new(id)
+        .text()
         .compact()
         .tab_stop(false)
         .size(px(CLOSE))
-        .child(Icon::new(IconName::Xmark).size(px(CLOSE_GLYPH)))
+        .tooltip(label)
+        .child(
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(px(DISC))
+                .rounded_full()
+                .bg(paint.fill)
+                .child(
+                    Icon::new(icon)
+                        .size(px(DISC_GLYPH))
+                        .text_color(muted_on(ground, cx)),
+                ),
+        )
+}
+
+#[must_use]
+pub fn sheet_groups() -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .gap(Space::GAP_GROUP)
+        .px(Space::S8)
+        .pb(Space::S8)
+}
+
+#[must_use]
+pub fn modal_groups() -> Div {
+    sheet_groups().gap(Space::S8)
+}
+
+#[must_use]
+pub fn modal_body() -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .gap(Space::S16)
+        .px(px(MODAL_PAD))
+        .pb(px(MODAL_PAD))
+}
+
+pub fn sheet_note(text: impl Into<SharedString>, cx: &App) -> Div {
+    div()
+        .mt(-Space::S8.rems())
+        .px(Space::S16)
+        .pb(Space::S4)
+        .type_style(TextStyle::TouchSmall, cx)
+        .text_color(muted_on(sheet_ground(cx), cx))
+        .child(text.into())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModalTone {
+    Danger,
+    Accent,
+}
+
+type ModalHandler = Rc<dyn Fn(&mut Window, &mut App)>;
+
+pub struct ModalAction {
+    id: ElementId,
+    label: SharedString,
+    tone: ModalTone,
+    disabled: bool,
+    on_click: ModalHandler,
+}
+
+impl ModalAction {
+    pub fn new(
+        id: impl Into<ElementId>,
+        label: impl Into<SharedString>,
+        tone: ModalTone,
+        on_click: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            tone,
+            disabled: false,
+            on_click: Rc::new(on_click),
+        }
+    }
+}
+
+impl crate::Disableable for ModalAction {
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+}
+
+const CANCEL: &str = "Cancel";
+
+fn label_width(text: &str, window: &Window, cx: &App) -> Pixels {
+    let style = TextStyle::TouchBody;
+    let mut font = ala::font(cx.theme().font_family.clone());
+    font.weight = style.strong_weight();
+    let run = TextRun {
+        len: text.len(),
+        font,
+        color: ala::black(),
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
+    window
+        .text_system()
+        .shape_line(
+            SharedString::from(text.to_owned()),
+            style.size().to_pixels(window.rem_size()),
+            &[run],
+            None,
+        )
+        .width
+}
+
+fn card_width(room: Pixels) -> Pixels {
+    (room - px(MODAL_GUTTER))
+        .min(px(MODAL_MAX_WIDTH))
+        .max(px(0.0))
+}
+
+fn modal_width(window: &Window) -> Pixels {
+    card_width(window.viewport_size().width)
+}
+
+#[must_use]
+pub fn modal_buttons_stack(labels: [Pixels; 2], room: Pixels) -> bool {
+    let each = (room - px(Space::S8.design_px())) / 2.0 - px(MODAL_CONTROL) / 5.0 * 2.0;
+    labels.into_iter().any(|label| label > each)
+}
+
+pub fn modal_buttons(
+    sheet: impl Into<ElementId>,
+    action: ModalAction,
+    window: &Window,
+    cx: &App,
+) -> Div {
+    let sheet = sheet.into();
+    let ground = sheet_ground(cx);
+    let size = Size::Size(px(MODAL_CONTROL));
+    let room = modal_width(window) - px(MODAL_PAD * 2.0);
+    let stack = modal_buttons_stack(
+        [
+            label_width(CANCEL, window, cx),
+            label_width(&action.label, window, cx),
+        ],
+        room,
+    );
+    let cancelled = sheet.clone();
+    let cancel = Button::new("modal-cancel")
+        .label(CANCEL)
+        .with_size(size)
+        .w_full()
+        .on(ground)
+        .on_click(move |_, _, cx| close_sheet(cancelled.clone(), cx));
+    let tone = match action.tone {
+        ModalTone::Danger => Tone::Danger,
+        ModalTone::Accent => Tone::Accent,
+    };
+    let on_click = action.on_click;
+    let act = Button::new(action.id)
+        .with_variant(ButtonVariant::Paint(tone, Emphasis::Solid))
+        .label(action.label)
+        .with_size(size)
+        .w_full()
+        .on(ground)
+        .disabled(action.disabled)
+        .on_click(move |_, window, cx| {
+            on_click(window, cx);
+            close_sheet(sheet.clone(), cx);
+        });
+    if stack {
+        div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .gap(Space::S8)
+            .child(act)
+            .child(cancel)
+    } else {
+        div()
+            .flex()
+            .w_full()
+            .gap(Space::S8)
+            .child(div().flex_1().min_w_0().child(cancel))
+            .child(div().flex_1().min_w_0().child(act))
+    }
+}
+
+#[must_use]
+pub fn modal_scrim(cx: &App) -> ala::Hsla {
+    let theme = cx.theme();
+    if theme.mode.is_dark() {
+        theme.scrim
+    } else {
+        theme.foreground.opacity(MODAL_SCRIM_LIGHT)
+    }
+}
+
+fn title_text(title: SharedString, cut_middle: bool, style: TextStyle) -> AnyElement {
+    if cut_middle {
+        crate::blocks::touch::middle_line(title, style).into_any_element()
+    } else {
+        div()
+            .min_w_0()
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .text_ellipsis()
+            .child(title)
+            .into_any_element()
+    }
 }
 
 pub fn sheet_option(
@@ -426,6 +672,198 @@ impl SheetState {
 
 impl RenderOnce for BottomSheet {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        if self.modal {
+            return self.render_modal(window, cx);
+        }
+        self.render_sheet(window, cx)
+    }
+}
+
+struct ModalState {
+    since: Instant,
+    leaving: bool,
+    dismissed: bool,
+    bounds: Rc<std::cell::Cell<Option<ala::Bounds<Pixels>>>>,
+}
+
+impl BottomSheet {
+    fn render_modal(self, window: &mut Window, cx: &mut App) -> AnyElement {
+        let id = self.id.clone();
+        let now = cx.background_executor().now();
+        let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| {
+            take_close(&id, cx);
+            ModalState {
+                since: cx.background_executor().now(),
+                leaving: false,
+                dismissed: false,
+                bounds: Rc::default(),
+            }
+        });
+        let closing = take_close(&self.id, cx);
+        let reduce_motion = cx.reduce_motion();
+        let (shown, moving, dismiss) = state.update(cx, |state, _| {
+            if closing && !state.leaving {
+                state.leaving = true;
+                state.since = now;
+            }
+            let elapsed = now.saturating_duration_since(state.since).as_secs_f32()
+                / SURFACE_ENTER_DURATION.as_secs_f32();
+            let done = elapsed >= 1.0;
+            let eased = ease_out_quint()(elapsed.clamp(0.0, 1.0));
+            let shown = if state.leaving { 1.0 - eased } else { eased };
+            let dismiss = state.leaving && done && !state.dismissed;
+            if dismiss {
+                state.dismissed = true;
+            }
+            (shown, !done, dismiss)
+        });
+        if moving {
+            window.request_animation_frame();
+        }
+        if dismiss {
+            let on_dismiss = Rc::clone(&self.on_dismiss);
+            window.defer(cx, move |window, cx| on_dismiss(window, cx));
+        }
+        let theme = cx.theme();
+        let measured = Rc::clone(&state.read(cx).bounds);
+        let visible = window.fully_visible_bounds();
+        let visual = window.visual_viewport_bounds();
+        let (pad_top, pad_bottom, pad_left, pad_right) =
+            measured
+                .get()
+                .map_or((px(0.0), px(0.0), px(0.0), px(0.0)), |own| {
+                    (
+                        (visible.top().max(visual.top()) - own.top()).max(px(0.0)),
+                        (own.bottom() - visible.bottom().min(visual.bottom())).max(px(0.0)),
+                        (visible.left() - own.left()).max(px(0.0)),
+                        (own.right() - visible.right()).max(px(0.0)),
+                    )
+                });
+        let drawer = Surface::new(SurfaceRole::DRAWER);
+        let ground = theme.ground_of(drawer);
+        let layer = Layer {
+            radius: theme.phone_radius(),
+            share: None,
+            ..theme.layer(drawer, PaintState::Rest)
+        };
+        let rise = if reduce_motion {
+            px(0.0)
+        } else {
+            px(MODAL_RISE * (1.0 - shown))
+        };
+        let x = !self.actions.is_empty();
+        let title_style = TextStyle::TouchBody;
+        let slot = -px((CLOSE - DISC) / 2.0);
+        let head = div()
+            .relative()
+            .flex()
+            .items_center()
+            .justify_center()
+            .min_h(px(MODAL_TITLE))
+            .when(x, |head| head.px(px(MODAL_TITLE_SIDE)))
+            .type_style(title_style, cx)
+            .font_semibold()
+            .text_color(theme.foreground)
+            .child(title_text(self.title, self.cut_middle, title_style))
+            .when(x, |head| {
+                head.child(
+                    div()
+                        .absolute()
+                        .top(slot)
+                        .right(slot)
+                        .flex()
+                        .children(self.actions),
+                )
+            });
+        let heading = div()
+            .flex()
+            .flex_col()
+            .gap(Space::S4)
+            .px(px(MODAL_PAD))
+            .child(head)
+            .children(self.detail.map(|detail| {
+                div()
+                    .w_full()
+                    .text_center()
+                    .type_style(TextStyle::TouchSmall, cx)
+                    .text_color(muted_on(ground, cx))
+                    .child(detail)
+            }));
+        let card = div()
+            .id("modal-card")
+            .debug_selector(|| "modal-card".to_owned())
+            .relative()
+            .top(rise)
+            .flex()
+            .flex_col()
+            .w(measured
+                .get()
+                .map_or_else(|| modal_width(window), |own| card_width(own.size.width)))
+            .pt(px(MODAL_PAD))
+            .layer(&layer)
+            .occlude()
+            .opacity(shown)
+            .font_family(theme.font_family.clone())
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(|_, _, cx| cx.stop_propagation())
+            .child(heading)
+            .child(div().flex_none().h(Space::S16))
+            .child(self.content);
+        let leave = state.clone();
+        let scrim = div()
+            .id("modal-scrim")
+            .debug_selector(|| "modal-scrim".to_owned())
+            .absolute()
+            .inset_0()
+            .bg(modal_scrim(cx))
+            .opacity(shown)
+            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+            .on_click(move |_, _, cx| {
+                let now = cx.background_executor().now();
+                leave.update(cx, |state, cx| {
+                    if !state.leaving {
+                        state.leaving = true;
+                        state.since = now;
+                        cx.notify();
+                    }
+                });
+            });
+        div()
+            .id(self.id)
+            .absolute()
+            .inset_0()
+            .occlude()
+            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+            .child(
+                canvas(
+                    move |bounds, window, _| {
+                        if measured.get() != Some(bounds) {
+                            measured.set(Some(bounds));
+                            window.refresh();
+                        }
+                    },
+                    |_, (), _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            )
+            .child(scrim)
+            .child(
+                div()
+                    .absolute()
+                    .top(pad_top)
+                    .bottom(pad_bottom)
+                    .left(pad_left)
+                    .right(pad_right)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(card),
+            )
+            .into_any_element()
+    }
+
+    fn render_sheet(self, window: &mut Window, cx: &mut App) -> AnyElement {
         let id = self.id.clone();
         let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| {
             take_close(&id, cx);
@@ -485,7 +923,47 @@ impl RenderOnce for BottomSheet {
                 PaintState::Rest,
             )
         };
-        let header = Surface::new(roles::PHONE_BAR).on(ground);
+        let slot = px(CONTENT_EDGE - (CLOSE - DISC) / 2.0);
+        let title_style = TextStyle::TouchSmall;
+        let header = div()
+            .debug_selector(|| "bottom-sheet-header".to_owned())
+            .relative()
+            .flex_none()
+            .h(px(HEADER_HEIGHT))
+            .mb(Space::S16)
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .px(px(HEADER_SIDE))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .type_style(title_style, cx)
+                    .font_semibold()
+                    .text_color(theme.foreground)
+                    .child(title_text(self.title, self.cut_middle, title_style)),
+            )
+            .children(self.back.map(|back| {
+                div()
+                    .absolute()
+                    .top_0()
+                    .left(slot)
+                    .h(px(HEADER_HEIGHT))
+                    .flex()
+                    .items_center()
+                    .child(back)
+            }))
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .right(slot)
+                    .h(px(HEADER_HEIGHT))
+                    .flex()
+                    .items_center()
+                    .children(self.actions),
+            );
         let close = state.clone();
         let scrim = div()
             .id("bottom-sheet-scrim")
@@ -537,125 +1015,78 @@ impl RenderOnce for BottomSheet {
         )
         .absolute()
         .inset_0();
-        let panel =
-            div()
-                .id("bottom-sheet-panel")
-                .debug_selector(|| "bottom-sheet-panel".to_owned())
-                .absolute()
-                .left_0()
-                .right_0()
-                .bottom_0()
-                .map(|panel| match full {
-                    Some(_) => panel.top_0(),
-                    None => panel.max_h(relative(MAX_HEIGHT)),
-                })
-                .flex()
-                .flex_col()
-                .occlude()
-                .surface(sheet, cx)
-                .rounded(theme.phone_radius())
-                .font_family(theme.font_family.clone())
-                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .on_click(|_, _, cx| cx.stop_propagation())
-                .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
-                .child(listener)
-                .child(
-                    div()
-                        .flex()
-                        .flex_none()
-                        .justify_center()
-                        .pt(Space::S6)
-                        .child(
-                            div()
-                                .w(px(GRABBER_WIDTH))
-                                .h(px(GRABBER_HEIGHT))
-                                .layer(&grabber),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_none()
-                        .items_center()
-                        .gap(Space::GAP_RELATED)
-                        .map(|header| match self.detail {
-                            Some(_) => header.min_h(px(HEADER_HEIGHT)).py(Space::S8),
-                            None => header.h(px(HEADER_HEIGHT)),
-                        })
-                        .px(Space::INSET_PANE)
-                        .surface(header, cx)
-                        .child(self.heading.unwrap_or_else(|| {
-                            let line = || {
-                                div()
-                                    .min_w_0()
-                                    .overflow_hidden()
-                                    .whitespace_nowrap()
-                                    .text_ellipsis()
-                            };
-                            div()
-                                .flex()
-                                .flex_col()
-                                .flex_1()
-                                .min_w_0()
-                                .child(line().type_style(crate::TextStyle::Display, cx).map(
-                                    |line| {
-                                        if self.cut_middle {
-                                            line.child(crate::blocks::touch::middle_line(
-                                                self.title,
-                                                crate::TextStyle::Display,
-                                            ))
-                                        } else {
-                                            line.child(self.title)
-                                        }
-                                    },
-                                ))
-                                .children(self.detail.map(|detail| {
-                                    line()
-                                        .type_style(crate::TextStyle::TouchSmall, cx)
-                                        .text_color(muted_on(ground, cx))
-                                        .child(detail)
-                                }))
-                                .into_any_element()
-                        }))
-                        .children(self.actions),
-                )
-                .child(match full {
-                    Some(_) => div()
-                        .id("bottom-sheet-content")
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_h_0()
-                        .child(self.content),
-                    None => div()
-                        .id("bottom-sheet-content")
-                        .flex()
-                        .flex_col()
-                        .min_h_0()
-                        .overflow_y_scroll()
-                        .track_scroll(&scroll)
-                        .child(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .flex_none()
-                                .w_full()
-                                .child(self.content),
-                        ),
-                })
-                .with_animation(
-                    "bottom-sheet-panel-enter",
-                    Animation::new(enter).with_easing(ease_out_quint()),
-                    move |panel, delta| {
-                        let rise = RISE * (1.0 - delta);
-                        let panel = panel.bottom(relative(-rise));
-                        if full.is_some() {
-                            panel.top(relative(rise))
-                        } else {
-                            panel
-                        }
-                    },
-                );
+        let panel = div()
+            .id("bottom-sheet-panel")
+            .debug_selector(|| "bottom-sheet-panel".to_owned())
+            .absolute()
+            .left_0()
+            .right_0()
+            .bottom_0()
+            .map(|panel| match full {
+                Some(_) => panel.top_0(),
+                None => panel.max_h(relative(MAX_HEIGHT)),
+            })
+            .flex()
+            .flex_col()
+            .occlude()
+            .surface(sheet, cx)
+            .rounded(theme.phone_radius())
+            .font_family(theme.font_family.clone())
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(|_, _, cx| cx.stop_propagation())
+            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+            .child(listener)
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .justify_center()
+                    .pt(Space::S6)
+                    .child(
+                        div()
+                            .w(px(GRABBER_WIDTH))
+                            .h(px(GRABBER_HEIGHT))
+                            .layer(&grabber),
+                    ),
+            )
+            .child(header)
+            .child(match full {
+                Some(_) => div()
+                    .id("bottom-sheet-content")
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .child(self.content),
+                None => div()
+                    .id("bottom-sheet-content")
+                    .flex()
+                    .flex_col()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .track_scroll(&scroll)
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_none()
+                            .w_full()
+                            .child(self.content),
+                    ),
+            })
+            .with_animation(
+                "bottom-sheet-panel-enter",
+                Animation::new(enter).with_easing(ease_out_quint()),
+                move |panel, delta| {
+                    let rise = RISE * (1.0 - delta);
+                    let panel = panel.bottom(relative(-rise));
+                    if full.is_some() {
+                        panel.top(relative(rise))
+                    } else {
+                        panel
+                    }
+                },
+            );
         div()
             .id(self.id)
             .absolute()
@@ -671,6 +1102,7 @@ impl RenderOnce for BottomSheet {
                     .bottom(rest - offset)
                     .child(panel),
             )
+            .into_any_element()
     }
 }
 
@@ -919,5 +1351,52 @@ mod tests {
         settle(cx);
         assert_eq!(panel(cx).top(), rest.top());
         assert_eq!(dismissed.get(), 0);
+    }
+
+    struct ModalHost {
+        dismissed: Rc<Cell<usize>>,
+    }
+
+    impl Render for ModalHost {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let dismissed = Rc::clone(&self.dismissed);
+            div().size_full().child(
+                bottom_sheet(
+                    "modal",
+                    "Close this pane?",
+                    Vec::new(),
+                    modal_body().child(div().h(px(48.0))),
+                    px(0.0),
+                    move |_, _| dismissed.set(dismissed.get() + 1),
+                )
+                .modal(),
+            )
+        }
+    }
+
+    #[ala::test]
+    fn a_tap_on_the_modal_scrim_cancels_and_a_tap_on_its_card_does_not(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let dismissed = Rc::new(Cell::new(0));
+        let count = Rc::clone(&dismissed);
+        let (_, cx) = cx.add_window_view(move |_, _| ModalHost { dismissed: count });
+        settle(cx);
+        let card = cx.debug_bounds("modal-card").expect("card");
+        let scrim = cx.debug_bounds("modal-scrim").expect("scrim");
+        assert_eq!(card.center().x, scrim.center().x);
+
+        cx.simulate_click(card.center(), Modifiers::none());
+        settle(cx);
+        assert_eq!(dismissed.get(), 0);
+
+        cx.simulate_click(
+            point(scrim.left() + px(4.0), scrim.top() + px(4.0)),
+            Modifiers::none(),
+        );
+        settle(cx);
+        assert_eq!(dismissed.get(), 1);
     }
 }

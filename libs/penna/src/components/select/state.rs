@@ -471,7 +471,7 @@ impl<D: SelectDelegate> SelectState<D> {
         let sheet = bottom_sheet(
             ("select-sheet", cx.entity_id()),
             title,
-            [sheet_close("select-sheet-close")
+            [sheet_close("select-sheet-close", cx)
                 .on_click(cx.listener(|_, _, _, cx| {
                     close_sheet(("select-sheet", cx.entity_id()), cx);
                 }))

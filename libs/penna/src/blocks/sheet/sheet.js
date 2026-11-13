@@ -85,8 +85,16 @@ function sheetSetup(sheet) {
   sheet.querySelectorAll("[data-sheet-close]").forEach((button) => button.addEventListener("click", () => sheetClose(sheet)));
 }
 
+function modalSetup(modal) {
+  const close = () => modal.setAttribute("data-closed", "");
+  modal.querySelector(".penna-modal-scrim").addEventListener("click", close);
+  modal.querySelectorAll("[data-sheet-close]").forEach((button) => button.addEventListener("click", close));
+}
+
 document.querySelectorAll(".penna-sheet").forEach(sheetSetup);
+document.querySelectorAll(".penna-modal").forEach(modalSetup);
 
 new MutationObserver(() => {
   document.querySelectorAll(".penna-sheet[data-closed]").forEach(sheetOpen);
+  document.querySelectorAll(".penna-modal[data-closed]").forEach((modal) => modal.removeAttribute("data-closed"));
 }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-penna-theme", "data-penna-mode"] });
