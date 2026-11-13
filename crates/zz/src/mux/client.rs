@@ -8,7 +8,7 @@ use std::{
 };
 
 use ala::{
-    AppContext as _, ClipboardItem, Context, Entity, EventEmitter, Image, RenderImage, Task,
+    App, AppContext as _, ClipboardItem, Context, Entity, EventEmitter, Image, RenderImage, Task,
     WeakEntity,
 };
 use ala_cef::{ArtifactFile, ArtifactReply, ArtifactRequest};
@@ -40,7 +40,7 @@ use zz_protocol::{
     TerminalUiCommand, WindowSnapshot,
 };
 use zz_terminal::{
-    AppearanceProvenance, ClipboardTarget, IMAGE_PLACEHOLDER_SCHEME, PackedCell,
+    AppearanceProvenance, ClipboardTarget, IMAGE_PLACEHOLDER_SCHEME, LocalColors, PackedCell,
     TerminalAppearance, TerminalColorScheme, TerminalDictionary, TerminalDiffScratch,
     TerminalViewAction, TerminalViewport, TerminalViewportPatch,
 };
@@ -997,6 +997,8 @@ impl HostConnection {
             client.server_hello().appearance_provenance.clone(),
         ));
         let platform = client.server_hello().platform;
+        let mut background_core = ClientCore::new();
+        background_core.adopt_hello(client.server_hello().clone());
         let receiver = Arc::clone(&client);
         let (messages, incoming) = decoded_message_channel();
         let reader_thread = thread::Builder::new()
@@ -1055,7 +1057,7 @@ impl HostConnection {
             answered_commands: RwLock::new(BTreeSet::new()),
             ssh_auth_declined: false,
             color_scheme_sent: None,
-            background_core: ClientCore::new(),
+            background_core,
             providers: None,
             providers_requested: false,
             agent_accounts: None,
@@ -1320,6 +1322,13 @@ impl MuxClient {
             client.reconcile_hosts(cx);
         })
         .detach();
+        cx.observe_global::<crate::config::DaemonConfigOverrides>(|client, cx| {
+            if client.attached_host != HostId::LOCAL {
+                client.adopt_core_appearance(cx);
+                cx.notify();
+            }
+        })
+        .detach();
         let local_host_policy = crate::profile::profile(cx).local_host;
         let registry = HostRegistry::new(
             local_socket_path,
@@ -1485,7 +1494,7 @@ impl MuxClient {
     ) -> Result<(), String> {
         self.ingest_server_hello(client.server_hello().clone(), cx);
         let client = Arc::new(client);
-        crate::config::register_config_override_client(&client, false, cx);
+        crate::config::register_config_override_client(&client, cx);
         if !client.is_initially_attached() {
             match std::env::current_dir()
                 .ok()
@@ -1504,10 +1513,28 @@ impl MuxClient {
         Ok(())
     }
 
+    fn shown_appearance(&self, cx: &App) -> (TerminalAppearance, AppearanceProvenance) {
+        let host = self.core.appearance().cloned().unwrap_or_default();
+        if self.attached_host == HostId::LOCAL {
+            return (host, self.core.appearance_provenance().clone());
+        }
+        let local = crate::config::local_terminal_appearance(self.color_scheme, cx);
+        let mut appearance = local.appearance;
+        let mut colors = [appearance.foreground; 18];
+        colors[1] = appearance.background;
+        colors[2..].copy_from_slice(&appearance.palette.as_array()[..16]);
+        appearance.local_colors = Some(LocalColors::new(
+            host.foreground,
+            host.background,
+            &host.palette,
+            colors,
+        ));
+        (appearance, local.provenance)
+    }
+
     fn ingest_server_hello(&mut self, hello: ServerHello, cx: &mut Context<Self>) {
         self.core.adopt_hello(hello);
-        let provenance = self.core.appearance_provenance().clone();
-        let mut appearance = self.core.appearance().cloned().unwrap_or_default();
+        let (mut appearance, provenance) = self.shown_appearance(cx);
         let requested_primary_font = appearance.font_families.first().cloned();
         localize_terminal_font_families(
             &mut appearance,
@@ -2061,6 +2088,11 @@ impl MuxClient {
                         connection.last_attached_session = last_attached_session;
                         connection.snapshot = snapshot;
                         connection.reconnect_generation = reconnect_generation;
+                        if host == HostId::LOCAL
+                            && let Some(client) = &connection.client
+                        {
+                            crate::config::register_config_override_client(client, cx);
+                        }
                         self.connections.insert(host, connection);
                         self.report_color_scheme();
                         if reconnect_attempt.is_some() && self.attached_host == host {
@@ -2326,7 +2358,6 @@ impl MuxClient {
             ReconnectAttachState::DefaultSession
         });
         let result = if let Some(client) = client {
-            crate::config::register_config_override_client(&client, true, cx);
             client.attach(session.map_or_else(String::new, |session| session.to_string()))
         } else {
             #[cfg(test)]
@@ -2574,8 +2605,26 @@ impl MuxClient {
     }
 
     #[must_use]
+    pub(crate) fn local_prefix_bindings(&self) -> &[KeyBindingSnapshot] {
+        if self.attached_host == HostId::LOCAL {
+            return self.prefix_bindings();
+        }
+        self.connections
+            .get(&HostId::LOCAL)
+            .filter(|local| local.client.is_some())
+            .map_or(&[], |local| local.background_core.prefix_bindings())
+    }
+
+    #[must_use]
     pub fn is_connected(&self) -> bool {
         self.attached_connection().is_connected()
+    }
+
+    #[must_use]
+    pub(crate) fn local_is_connected(&self) -> bool {
+        self.connections
+            .get(&HostId::LOCAL)
+            .is_some_and(HostConnection::is_connected)
     }
 
     #[cfg(test)]
@@ -3528,9 +3577,14 @@ impl MuxClient {
         }
     }
 
-    pub fn set_color_scheme(&mut self, color_scheme: TerminalColorScheme) {
+    pub fn set_color_scheme(&mut self, color_scheme: TerminalColorScheme, cx: &mut Context<Self>) {
+        let changed = self.color_scheme != color_scheme;
         self.color_scheme = color_scheme;
         self.report_color_scheme();
+        if changed && self.attached_host != HostId::LOCAL {
+            self.adopt_core_appearance(cx);
+            cx.notify();
+        }
     }
 
     fn report_color_scheme(&mut self) {
@@ -3678,9 +3732,6 @@ impl MuxClient {
         self.attached_host = host;
         self.report_color_scheme();
         self.ingest_server_hello(hello, cx);
-        if let Some(client) = &client {
-            crate::config::register_config_override_client(client, host != HostId::LOCAL, cx);
-        }
         if let Some(target) = target {
             self.execute_on_host(
                 host,
@@ -3734,7 +3785,6 @@ impl MuxClient {
             .expect("a connected host has an interactive client");
         self.ingest_server_hello(hello, cx);
         let result = if let Some(client) = client {
-            crate::config::register_config_override_client(&client, false, cx);
             client.attach("")
         } else {
             #[cfg(test)]
@@ -4526,6 +4576,8 @@ impl MuxClient {
                 EventPayload::Snapshot(_)
                     | EventPayload::TreeDelta(_)
                     | EventPayload::ClientView(_)
+                    | EventPayload::KeyTablesChanged { .. }
+                    | EventPayload::KeyTablesPatched { .. }
             )
             && let Some(connection) = self.connections.get_mut(&host)
         {
@@ -4538,7 +4590,9 @@ impl MuxClient {
                 ProtocolMessage::Event(event) => match event.payload {
                     payload @ (EventPayload::Snapshot(_)
                     | EventPayload::TreeDelta(_)
-                    | EventPayload::ClientView(_)) => {
+                    | EventPayload::ClientView(_)
+                    | EventPayload::KeyTablesChanged { .. }
+                    | EventPayload::KeyTablesPatched { .. }) => {
                         if let Some(connection) = self.connections.get_mut(&host) {
                             connection
                                 .background_core
@@ -4937,11 +4991,14 @@ impl MuxClient {
 
     fn adopt_core_appearance(&mut self, cx: &mut Context<Self>) {
         let previous_hash = self.appearance.stable_hash();
-        let provenance = self.core.appearance_provenance().clone();
-        let mut appearance = self.core.appearance().cloned().unwrap_or_default();
+        let host = (
+            self.core.appearance().cloned().unwrap_or_default(),
+            self.core.appearance_provenance().clone(),
+        );
+        self.attached_connection_mut().appearance = Some(host);
+        let (mut appearance, provenance) = self.shown_appearance(cx);
         let configured_font_size = appearance.font_size_points;
         let requested_primary_font = appearance.font_families.first().cloned();
-        self.attached_connection_mut().appearance = Some((appearance.clone(), provenance.clone()));
         localize_terminal_font_families(
             &mut appearance,
             &provenance,
@@ -5353,7 +5410,10 @@ mod tests {
     };
     #[cfg(unix)]
     use zz_protocol::{read_protocol_message, write_protocol_message};
-    use zz_terminal::{AppearanceProvenance, CellWidth, PackedCell, ScrollbarState, SessionStatus};
+    use zz_terminal::{
+        AppearanceProvenance, CellWidth, Color, PackedCell, PackedStyle, ScrollbarState,
+        SessionStatus, UnderlineStyle,
+    };
 
     use super::*;
 
@@ -5865,9 +5925,9 @@ mod tests {
                     .expect("install test connection");
                 mux.connections.insert(HostId::LOCAL, connection);
                 mux.report_color_scheme();
-                mux.set_color_scheme(TerminalColorScheme::Light);
-                mux.set_color_scheme(TerminalColorScheme::Dark);
-                mux.set_color_scheme(TerminalColorScheme::Dark);
+                mux.set_color_scheme(TerminalColorScheme::Light, cx);
+                mux.set_color_scheme(TerminalColorScheme::Dark, cx);
+                mux.set_color_scheme(TerminalColorScheme::Dark, cx);
             });
         });
         assert_eq!(
@@ -9207,13 +9267,20 @@ mod tests {
     }
 
     #[ala::test]
-    fn switching_hosts_uses_the_latest_background_appearance(cx: &mut TestAppContext) {
+    fn a_remote_host_renders_with_the_local_appearance(cx: &mut TestAppContext) {
         cx.update(|cx| {
             crate::config::set_fleet_hosts_for_test(
                 vec![test_host(
                     "remote",
                     "unix:///tmp/zz-background-appearance.sock",
                 )],
+                cx,
+            );
+            crate::config::set_daemon_config_overrides_for_test(
+                vec![
+                    ("font-size".to_owned(), "13".to_owned()),
+                    ("background".to_owned(), "#102030".to_owned()),
+                ],
                 cx,
             );
             let mux = cx.new(|cx| {
@@ -9228,8 +9295,12 @@ mod tests {
             mux.update(cx, |mux, cx| {
                 install_fake_connection(mux, HostId::LOCAL);
                 install_fake_connection(mux, remote);
+                let remote_foreground = Color::rgb(0x01, 0x02, 0x03);
+                let remote_background = Color::rgb(0x04, 0x05, 0x06);
                 let appearance = TerminalAppearance {
                     font_size_points: 27.0,
+                    foreground: remote_foreground,
+                    background: remote_background,
                     ..TerminalAppearance::default()
                 };
                 mux.handle_message(
@@ -9245,9 +9316,146 @@ mod tests {
                 );
 
                 assert!(mux.attach_to_host(remote, SessionId(9), cx));
-                assert_eq!(mux.appearance.font_size_points, 27.0);
+                let local_background = Color::rgb(0x10, 0x20, 0x30);
+                assert_eq!(mux.appearance.font_size_points, 13.0);
+                assert_eq!(mux.appearance.background, local_background);
+                let cell = mux
+                    .appearance
+                    .local_colors
+                    .expect("remote panes are recolored")
+                    .recolor(PackedStyle::new(
+                        remote_foreground,
+                        remote_background,
+                        None,
+                        0,
+                        UnderlineStyle::None,
+                    ));
+                assert_eq!(
+                    (cell.foreground(), cell.background()),
+                    (
+                        TerminalAppearance::default_for(TerminalColorScheme::Dark).foreground,
+                        local_background,
+                    ),
+                );
+
+                assert!(mux.attach_to_host(HostId::LOCAL, SessionId(1), cx));
+                assert_eq!(mux.appearance.local_colors, None);
             });
         });
+    }
+
+    #[cfg(unix)]
+    #[ala::test]
+    fn config_overrides_reach_only_the_local_daemon(cx: &mut TestAppContext) {
+        use std::os::unix::net::UnixListener;
+
+        fn serve(name: &str) -> Option<(PathBuf, mpsc::Receiver<ProtocolMessage>)> {
+            let socket = std::env::temp_dir().join(format!(
+                "zco-{name}-{}-{}.sock",
+                std::process::id(),
+                TEST_SOCKET_ID.fetch_add(1, Ordering::Relaxed),
+            ));
+            let _ = std::fs::remove_file(&socket);
+            let listener = match UnixListener::bind(&socket) {
+                Ok(listener) => listener,
+                Err(error) if error.kind() == io::ErrorKind::PermissionDenied => return None,
+                Err(error) => panic!("bind fake daemon socket: {error}"),
+            };
+            let (heard, hearing) = mpsc::channel();
+            thread::spawn(move || {
+                let (mut stream, _) = listener.accept().expect("accept test client");
+                read_protocol_message(&mut stream).expect("read ClientHello");
+                let mut hello = test_server_hello();
+                hello.capabilities.push("config-overrides-v1".to_owned());
+                write_protocol_message(&mut stream, &ProtocolMessage::ServerHello(Box::new(hello)))
+                    .expect("write ServerHello");
+                while let Ok(message) = read_protocol_message(&mut stream) {
+                    if heard.send(message).is_err() {
+                        break;
+                    }
+                }
+            });
+            Some((socket, hearing))
+        }
+
+        fn heard_until(
+            hearing: &mpsc::Receiver<ProtocolMessage>,
+            last: &ProtocolMessage,
+        ) -> Vec<ProtocolMessage> {
+            let mut heard = Vec::new();
+            while heard.last() != Some(last) {
+                heard.push(
+                    hearing
+                        .recv_timeout(Duration::from_secs(5))
+                        .unwrap_or_else(|_| panic!("waiting for {last:?}, heard {heard:?}")),
+                );
+            }
+            heard
+        }
+
+        cx.executor().allow_parking();
+        let (Some((local_socket, local_hearing)), Some((remote_socket, remote_hearing))) =
+            (serve("local"), serve("remote"))
+        else {
+            return;
+        };
+        let connect = |socket: &Path| {
+            InteractiveClient::connect_endpoint(
+                &zz_daemon_client::Endpoint::Local(socket.to_path_buf()),
+                TerminalColorScheme::Dark,
+            )
+            .expect("connect test client")
+        };
+        let local_client = connect(&local_socket);
+        let remote_client = connect(&remote_socket);
+        let overrides = vec![("font-size".to_owned(), "13".to_owned())];
+
+        cx.update(|cx| {
+            crate::config::set_fleet_hosts_for_test(
+                vec![test_host(
+                    "remote",
+                    &format!("unix://{}", remote_socket.display()),
+                )],
+                cx,
+            );
+            crate::config::set_daemon_config_overrides_for_test(overrides.clone(), cx);
+            let mux = cx.new(|cx| {
+                MuxClient::new(
+                    Err(DaemonError::Thread("local comes up later".to_owned())),
+                    local_socket.clone(),
+                    cx,
+                )
+            });
+            let remote = mux.read(cx).registry.get_by_name("remote").unwrap().0;
+            mux.update(cx, |mux, cx| {
+                for (host, client) in [(HostId::LOCAL, local_client), (remote, remote_client)] {
+                    mux.connections.get_mut(&host).unwrap().state = HostState::Connecting;
+                    mux.handle_connect_result(host, Ok(client), cx);
+                }
+                assert!(mux.attach_to_host(remote, SessionId(5), cx));
+            });
+        });
+
+        assert_eq!(
+            heard_until(&local_hearing, &ProtocolMessage::Detach),
+            [
+                ProtocolMessage::Resync,
+                ProtocolMessage::SetConfigOverrides { entries: overrides },
+                ProtocolMessage::SetColorScheme(TerminalColorScheme::Dark),
+                ProtocolMessage::Detach,
+            ]
+        );
+        let attach = ProtocolMessage::Attach {
+            session: SessionId(5).to_string(),
+        };
+        assert_eq!(
+            heard_until(&remote_hearing, &attach),
+            [
+                ProtocolMessage::Resync,
+                ProtocolMessage::SetColorScheme(TerminalColorScheme::Dark),
+                attach.clone(),
+            ]
+        );
     }
 
     #[ala::test]

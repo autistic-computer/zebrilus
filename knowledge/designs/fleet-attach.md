@@ -10,7 +10,7 @@ tags:
 - ssh
 - choose-tree
 - design-plan
-timestamp: 2026-10-20T12:00:00-03:00
+timestamp: 2026-11-13T12:00:00-03:00
 ---
 
 # Overview
@@ -80,7 +80,7 @@ Settled up front; not to be re-litigated without new information.
 | Aggregation actor | GUI, plus the CLI's `--host` | v1 was GUI-only; the CLI later learned to dial hosts itself (shape (a) below, shipped), so agents reach other machines without a GUI and still without daemon relaying |
 | Mixing granularity | Per-session | Closest to today's one-session attach; the attach flow grows a host dimension instead of the pane/tab model growing one |
 | Transport | Transport-agnostic endpoint seam; unix + ssh arms implemented, `quic://` reserved | ssh already owns auth/encryption/identity; M0 proved the protocol is location-transparent over a forwarded socket; QUIC slots in behind the same seam at M1 |
-| Remote pane kinds | Terminal + browser | PTY-on-remote is the point; browser panes are already client-local by design. Agent/editor panes are behind the experimental flags for the zz v1 launch, and the GUI never pushes those two config keys to remote hosts, so remote daemons keep them off . the daemon-side hard gate enforces it with no new code |
+| Remote pane kinds | Terminal + browser | PTY-on-remote is the point; browser panes are already client-local by design. Agent/editor panes are behind the experimental flags for the zz v1 launch, and the GUI pushes its config overrides only to its own machine's daemon, so a remote daemon keeps them off unless that host's own config turns them on . the daemon-side hard gate enforces it with no new code |
 
 # Architecture
 
@@ -140,11 +140,20 @@ agent, and `~/.ssh/config` aliases just work. The ssh child's lifetime is owned 
   [multi-device attach](/designs/multi-device-attach.md): `SessionAlreadyAttached` no longer
   exists; any number of the user's devices co-attach with per-client views, focus, and
   presence, and `attach-session -d` steals.
-- Config overrides: the client pushes its `zz/config` daemon-key overrides
-  ([layered configuration](/designs/layered-config-and-settings-view.md)) to whichever host it
-  attaches, minus the two experimental pane-kind keys. Terminal font names are resolved against the
-  GUI machine that renders them: a daemon platform default becomes the GUI platform default, while
-  an explicit stack keeps only locally installed families and falls back locally when none remain.
+- Config: a desktop client always renders with, and edits, its own machine's config. It pushes its
+  `zz/config` daemon-key overrides ([layered configuration](/designs/layered-config-and-settings-view.md))
+  only to the local daemon, on connect (the initial one or a background one) and on every config
+  change; attaching to another host never changes that host's settings. While attached to a remote
+  host the client resolves the terminal appearance (fonts, padding, cursor, theme and colors,
+  opacity, minimum contrast, the rest of `AppearanceConfigKey::ALL`) from the local overrides itself
+  (`config::local_terminal_appearance`), follows local config and color-scheme changes live, and
+  recolors the remote frames' default and palette 0-15 cells to the local colors (`LocalColors`).
+  Selection and search colors on remote panes come from the local config, not the remote's tmux
+  copy-mode styles. Mux options and key tables stay the attached host's own, as in tmux; Settings
+  edits the local daemon's options and prefix table whichever host is attached. Terminal font names
+  are resolved against the GUI machine that renders them: a daemon platform default becomes the GUI
+  platform default, while an explicit stack keeps only locally installed families and falls back
+  locally when none remain.
 
 ## Version skew
 
@@ -247,9 +256,9 @@ Recorded so later phases inherit intent, ordered roughly by expected sequence.
 
 # Open questions
 
-- Which `zz/config` daemon keys should push to *remote* hosts on attach? Local prefs as
-  overrides is the layered-config "remote-attach-clean shape", but some keys are arguably
-  per-host, and two clients pushing different overrides is last-writer-wins today
+- Which `zz/config` daemon keys should push to *remote* hosts on attach? Answered 2026-11-13:
+  none. The client renders remote panes with its local appearance and leaves the host's config
+  alone, so two desktops attached to one host no longer overwrite each other's overrides
   ([layered configuration](/designs/layered-config-and-settings-view.md)).
 - Host identity across config edits: the `host` name keys `HostId`; what happens to a live
   connection when its endpoint line changes or disappears on config reload?
@@ -265,7 +274,7 @@ Recorded so later phases inherit intent, ordered roughly by expected sequence.
 - [Scene-streaming remote attach](/designs/scene-streaming-remote.md) . the transport groundwork
   (M0) this rides and the milestone ladder (M1–M6) it composes with
 - [Layered configuration & native settings view](/designs/layered-config-and-settings-view.md) .
-  the override push channel that gains a per-host dimension
+  the override push channel, which reaches only the local daemon
 - [zz wire protocol](/protocol/wire-protocol.md) . unchanged by this design; the point
 - [Session persistence & detach](/concepts/session-persistence.md) . the attach semantics that
   grow a host dimension

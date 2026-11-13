@@ -361,9 +361,7 @@ impl SettingsView {
         let file = self.config_file_editor(kind);
         file.error.is_some()
             || self.pending_file_command.is_some()
-            || (kind == ConfigFileKind::Mux
-                && (!self.mux.read(cx).is_connected()
-                    || self.mux.read(cx).attached_host() != HostId::LOCAL))
+            || (kind == ConfigFileKind::Mux && !self.mux.read(cx).local_is_connected())
     }
 
     pub(super) fn terminal_preview_source(&self, cx: &App) -> String {
@@ -417,14 +415,10 @@ impl SettingsView {
         let Some(controls) = self.file_options.get(&kind) else {
             return div().into_any_element();
         };
-        let disabled = self.file_controls_disabled(kind, cx);
         let mut stack = SettingsStack::titled(if kind == ConfigFileKind::Mux {
             "Options"
         } else {
             "Display"
-        })
-        .when(disabled && kind == ConfigFileKind::Mux, |stack| {
-            stack.note("Connect to a local session to edit these")
         });
         for (index, row) in controls.rows.iter().enumerate() {
             if kind == ConfigFileKind::Terminal && row.key.on_interface() {

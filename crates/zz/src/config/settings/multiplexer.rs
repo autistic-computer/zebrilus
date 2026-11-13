@@ -95,7 +95,7 @@ impl SettingsView {
             });
         }
 
-        let bindings = self.mux.read(cx).prefix_bindings().to_vec();
+        let bindings = self.mux.read(cx).local_prefix_bindings().to_vec();
         let controls = self.mux_split_controls.as_mut().unwrap();
         if controls.pending.as_ref().is_some_and(|pending| {
             bindings.iter().any(|binding| {
@@ -105,8 +105,7 @@ impl SettingsView {
                 .removed_key
                 .as_ref()
                 .is_none_or(|key| !bindings.iter().any(|binding| &binding.key == key))
-        }) || !self.mux.read(cx).is_connected()
-            || self.mux.read(cx).attached_host() != HostId::LOCAL
+        }) || !self.mux.read(cx).local_is_connected()
         {
             controls.pending = None;
             controls.timeout = None;
@@ -147,9 +146,8 @@ impl SettingsView {
     }
 
     fn mux_split_disabled_reason(&self, cx: &App) -> Option<&'static str> {
-        let mux = self.mux.read(cx);
-        if !mux.is_connected() || mux.attached_host() != HostId::LOCAL {
-            return Some("Connect to a local session to edit split shortcuts.");
+        if !self.mux.read(cx).local_is_connected() {
+            return Some("The local daemon is not connected.");
         }
         if self.pending_file_command.is_some() {
             return Some("Applying multiplexer configuration…");
@@ -291,7 +289,7 @@ impl SettingsView {
         if row.binding.as_ref().is_some_and(|original| {
             self.mux
                 .read(cx)
-                .prefix_bindings()
+                .local_prefix_bindings()
                 .iter()
                 .find(|binding| binding.key == original.key)
                 != Some(original)
@@ -314,7 +312,7 @@ impl SettingsView {
         let file = self.config_file_editor(ConfigFileKind::Mux);
         let source = match update_split_binding(
             &file.saved,
-            self.mux.read(cx).prefix_bindings(),
+            self.mux.read(cx).local_prefix_bindings(),
             row.binding.as_ref(),
             DIRECTIONS[index],
             &key,

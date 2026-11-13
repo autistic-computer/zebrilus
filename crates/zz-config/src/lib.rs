@@ -1961,24 +1961,6 @@ pub fn append_config_line(source: &str, key: &str, value: &str) -> String {
     edited
 }
 
-pub fn config_overrides_for_host(
-    entries: Vec<ConfigOverrideEntry>,
-    remote: bool,
-) -> Vec<ConfigOverrideEntry> {
-    if !remote {
-        return entries;
-    }
-    entries
-        .into_iter()
-        .filter(|(key, _)| {
-            !matches!(
-                MuxOptionKey::from_config_key(key),
-                Some(MuxOptionKey::ExperimentalEditorPane)
-            )
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

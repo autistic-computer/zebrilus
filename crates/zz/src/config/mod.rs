@@ -9,6 +9,9 @@ use zz_client::url_input::SearchProvider;
 use zz_daemon_client::{Endpoint, InteractiveClient};
 pub(crate) use zz_daemon_client::{HostEntry, validate_fleet_host};
 use zz_protocol::{CommandInvocation, ConfigOverrideEntry, PROTOCOL_VERSION};
+use zz_terminal::{
+    AppearanceConfigKey, AppearanceLoad, TerminalColorScheme, apply_appearance_overrides,
+};
 use zz_ui::interface_theme::{self, Appearance, InterfaceTheme};
 
 use crate::{
@@ -162,7 +165,6 @@ impl Global for DiscoveredHosts {}
 #[derive(Default)]
 struct ConfigOverrideTransport {
     client: Option<Weak<InteractiveClient>>,
-    remote: bool,
 }
 
 impl Global for ConfigOverrideTransport {}
@@ -782,6 +784,14 @@ pub(crate) fn set_fleet_hosts_for_test(entries: Vec<HostEntry>, cx: &mut App) {
     cx.set_global(FleetHosts { entries });
 }
 
+#[cfg(test)]
+pub(crate) fn set_daemon_config_overrides_for_test(
+    entries: Vec<ConfigOverrideEntry>,
+    cx: &mut App,
+) {
+    cx.set_global(DaemonConfigOverrides { entries });
+}
+
 fn log_fleet_hosts(cx: &App) {
     let configured = fleet_hosts(cx);
     if configured.is_empty() {
@@ -816,11 +826,20 @@ pub fn daemon_config_overrides(cx: &App) -> Vec<ConfigOverrideEntry> {
         .unwrap_or_default()
 }
 
-pub(crate) fn register_config_override_client(
-    client: &Arc<InteractiveClient>,
-    remote: bool,
-    cx: &mut App,
-) {
+pub(crate) fn local_terminal_appearance(
+    color_scheme: TerminalColorScheme,
+    cx: &App,
+) -> AppearanceLoad {
+    let mut load = AppearanceLoad::defaults_for(color_scheme);
+    load.root = config_path_for_write().ok();
+    let entries = daemon_config_overrides(cx)
+        .into_iter()
+        .filter(|(key, _)| AppearanceConfigKey::from_config_key(key).is_some())
+        .collect::<Vec<_>>();
+    apply_appearance_overrides(load, &entries)
+}
+
+pub(crate) fn register_config_override_client(client: &Arc<InteractiveClient>, cx: &mut App) {
     cx.set_global(ConfigOverrideTransport::default());
     let hello = client.server_hello();
     if hello.protocol_version != PROTOCOL_VERSION {
@@ -845,26 +864,19 @@ pub(crate) fn register_config_override_client(
     }
     cx.set_global(ConfigOverrideTransport {
         client: Some(Arc::downgrade(client)),
-        remote,
     });
     send_current_config_overrides(cx);
 }
 
 fn send_current_config_overrides(cx: &App) {
-    let Some((client, remote)) = cx
+    let Some(client) = cx
         .try_global::<ConfigOverrideTransport>()
-        .and_then(|transport| {
-            transport
-                .client
-                .as_ref()
-                .and_then(Weak::upgrade)
-                .map(|client| (client, transport.remote))
-        })
+        .and_then(|transport| transport.client.as_ref())
+        .and_then(Weak::upgrade)
     else {
         return;
     };
-    let entries = config_overrides_for_host(daemon_config_overrides(cx), remote);
-    if let Err(error) = client.set_config_overrides(entries) {
+    if let Err(error) = client.set_config_overrides(daemon_config_overrides(cx)) {
         log::warn!(target: "zz::config", "failed to send configuration overrides: {error}");
     }
 }
@@ -940,7 +952,6 @@ pub(crate) fn remove_fleet_host_live(name: &str, cx: &mut App) -> io::Result<boo
 mod tests {
     use crate::keymap::ChromeOverride;
     use std::{env, fs, path::PathBuf};
-    use zz_protocol::MuxOptionKey;
     use zz_terminal::{
         AppearanceColor, AppearanceConfigKey, CellHeightAdjustment, Color, CursorBlinkPolicy,
         CursorStyle, TerminalAppearance,
@@ -1457,31 +1468,6 @@ mod tests {
                 ("agent-auto-approve".to_owned(), "false".to_owned()),
             ],
             "the daemon spawns the adapter, so its keys travel as mux options"
-        );
-    }
-
-    #[test]
-    fn remote_override_filter_strips_only_experimental_pane_keys() {
-        let entries = vec![
-            ("background".to_owned(), "#101010".to_owned()),
-            (MuxOptionKey::Prefix.as_str().to_owned(), "C-a".to_owned()),
-            (
-                MuxOptionKey::ExperimentalEditorPane.as_str().to_owned(),
-                "true".to_owned(),
-            ),
-        ];
-
-        assert_eq!(
-            config_overrides_for_host(entries.clone(), false),
-            entries,
-            "local pushes stay byte-for-byte unchanged"
-        );
-        assert_eq!(
-            config_overrides_for_host(entries, true),
-            [
-                ("background".to_owned(), "#101010".to_owned()),
-                (MuxOptionKey::Prefix.as_str().to_owned(), "C-a".to_owned(),),
-            ]
         );
     }
 

@@ -62,7 +62,7 @@ pub(crate) fn report_terminal_color_scheme(mux: &Entity<MuxClient>, cx: &mut App
     let mux = mux.downgrade();
     cx.observe_global::<Theme>(move |cx| {
         let color_scheme = crate::terminal_color_scheme(asked_mode(cx));
-        mux.update(cx, |mux, _| mux.set_color_scheme(color_scheme))
+        mux.update(cx, |mux, cx| mux.set_color_scheme(color_scheme, cx))
             .ok();
     })
     .detach();

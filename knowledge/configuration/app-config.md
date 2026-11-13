@@ -9,7 +9,7 @@ tags:
 - window
 - appearance
 - mux
-timestamp: 2026-10-31T00:00:00Z
+timestamp: 2026-11-13T00:00:00Z
 ---
 
 # Overview
@@ -61,9 +61,11 @@ mux `set-option` engine.
 On Linux the GUI watches the candidate directories, the selected file's resolved directory and the
 `themes` folder with inotify, and re-checks path, mtime and size after each change; other platforms
 poll every 500ms. Either way it live-applies edits, file appearance, precedence changes, and deletion.
-On connect and every detected change it sends the complete
+On connect to the local daemon and every detected change it sends the complete
 ordered daemon-owned set through `SetConfigOverrides`, including an empty set after the
-last override is removed. The daemon never reads `zz/config`; it stores the latest appearance and
+last override is removed. Only the local daemon receives it: attaching to another host never
+changes that host's settings, and the client draws remote panes with the appearance it resolves
+from these same local overrides (see [fleet attach](/designs/fleet-attach.md)). The daemon never reads `zz/config`; it stores the latest appearance and
 mux subsets, layers appearance above built-in defaults (it reads no donor appearance config of its
 own; the one external file it opens is the Ghostty theme a `theme` override names, see
 [Terminal appearance](/terminal/appearance.md)), and

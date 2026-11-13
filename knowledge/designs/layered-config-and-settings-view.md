@@ -10,7 +10,7 @@ tags:
 - theme
 - provenance
 - design-plan
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-11-13T00:00:00-03:00
 last_updated: 2026-09-11
 ---
 
@@ -91,9 +91,9 @@ subsets, stores the latest of each, and logs any key it does not recognize.
 Sending raw pairs (rather than typed values) keeps validation in the daemon-side loader and command
 engine that already own those grammars, and lets the client stay ignorant of appearance semantics.
 
-This is also the remote-attach-clean shape: under
-[scene-streaming remote attach](/designs/scene-streaming-remote.md), a client's local preferences
-still arrive as overrides against whatever the remote daemon resolves.
+Overrides reach only the client's own machine's daemon. Attached to another host, the client runs
+the same appearance loader on its local overrides and recolors that host's frames, so the remote
+daemon never sees the client's preferences ([fleet attach](/designs/fleet-attach.md)).
 
 # Import, not adoption
 
