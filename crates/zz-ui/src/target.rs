@@ -556,7 +556,7 @@ pub fn resolve_target(body: &str, hosts: &[TargetHost]) -> Option<ResolvedTarget
             RefTarget::Host,
         );
     }
-    if rest.starts_with(['/', '~']) {
+    if rest.starts_with(['/', '~']) || drive_path(rest) {
         let (path, line) = split_line(rest);
         let dir = path.ends_with('/');
         let name = path
@@ -657,6 +657,14 @@ fn pane_ref(
         pane.icon.clone(),
         RefTarget::Pane(pane.id),
     )
+}
+
+pub(crate) fn drive_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'/' | b'\\')
 }
 
 fn split_line(path: &str) -> (&str, Option<u32>) {

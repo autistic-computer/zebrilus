@@ -9,7 +9,7 @@ use zz_protocol::{CommandInvocation, PaneId};
 
 use crate::{
     mention::{ref_end, ref_highlight, ref_spans},
-    target::{RefTarget, ResolvedTarget, TargetHost, resolve_target},
+    target::{RefTarget, ResolvedTarget, TargetHost, drive_path, resolve_target},
     text::{InlineLink, InlineSource, LinkClick, TextLinks},
 };
 
@@ -62,6 +62,100 @@ impl ChatRefs {
         let relative = code.strip_prefix("./").unwrap_or(code);
         Some(format!("{cwd}/{relative}"))
     }
+
+    pub fn resolve_link(&self, url: &str) -> Option<ResolvedTarget> {
+        if let Some(token) = url.strip_prefix(REF_SCHEME) {
+            return self.resolve_code(token);
+        }
+        let path = self.link_path(url.trim())?;
+        self.resolve(&path.replace('\\', "\\\\"))
+    }
+
+    fn link_path(&self, url: &str) -> Option<String> {
+        let local = match strip_file_scheme(url) {
+            Some(rest) => {
+                let rest = rest.strip_prefix("localhost").unwrap_or(rest);
+                let rest = rest.strip_prefix('/').unwrap_or(rest);
+                if drive_path(rest) {
+                    rest.to_owned()
+                } else {
+                    format!("/{rest}")
+                }
+            }
+            None if has_scheme(url) => return None,
+            None => url.to_owned(),
+        };
+        let (local, fragment) = local
+            .split_once('#')
+            .map_or((local.as_str(), None), |(path, fragment)| {
+                (path, Some(fragment))
+            });
+        let line = fragment
+            .and_then(|fragment| fragment.strip_prefix('L'))
+            .map(|line| {
+                line.split(|c: char| !c.is_ascii_digit())
+                    .next()
+                    .unwrap_or("")
+            })
+            .filter(|line| !line.is_empty());
+        let path = percent_decode(local);
+        if path.is_empty() {
+            return None;
+        }
+        let path = if path.starts_with(['/', '~']) || drive_path(&path) {
+            path
+        } else {
+            let cwd = self.cwd.as_deref()?.trim_end_matches('/');
+            let relative = path.strip_prefix("./").unwrap_or(&path);
+            format!("{cwd}/{relative}")
+        };
+        Some(match line {
+            Some(line) => format!("{path}:{line}"),
+            None => path,
+        })
+    }
+}
+
+fn strip_file_scheme(url: &str) -> Option<&str> {
+    let (scheme, rest) = url.split_at_checked(7)?;
+    scheme.eq_ignore_ascii_case("file://").then_some(rest)
+}
+
+fn has_scheme(url: &str) -> bool {
+    let Some((scheme, rest)) = url.split_once(':') else {
+        return false;
+    };
+    let mut characters = scheme.chars();
+    let named = characters.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && characters.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    let line = rest.split(':').next().unwrap_or(rest);
+    let file_line =
+        scheme.contains('.') && !line.is_empty() && line.chars().all(|c| c.is_ascii_digit());
+    named && !drive_path(url) && !file_line
+}
+
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        let escape = bytes
+            .get(index + 1..index + 3)
+            .filter(|pair| pair.iter().all(u8::is_ascii_hexdigit))
+            .and_then(|pair| std::str::from_utf8(pair).ok())
+            .and_then(|pair| u8::from_str_radix(pair, 16).ok());
+        match (bytes[index], escape) {
+            (b'%', Some(byte)) => {
+                decoded.push(byte);
+                index += 3;
+            }
+            (byte, _) => {
+                decoded.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8(decoded).unwrap_or_else(|_| text.to_owned())
 }
 
 #[must_use]
@@ -109,11 +203,7 @@ impl TextLinks for RefLinks {
     }
 
     fn click(&self, click: &LinkClick, window: &mut Window, cx: &mut App) -> bool {
-        let Some(target) = click
-            .url
-            .strip_prefix(REF_SCHEME)
-            .and_then(|token| self.refs.resolve_code(token))
-        else {
+        let Some(target) = self.refs.resolve_link(&click.url) else {
             return false;
         };
         (self.refs.open)(&target, window, cx);
@@ -308,6 +398,50 @@ mod tests {
                 .map(|target| target.label),
             Some("bash · zebrilus 0:1".to_owned())
         );
+    }
+
+    #[test]
+    fn markdown_link_paths_resolve_to_files_and_web_links_do_not() {
+        let refs = refs();
+        let path = |path: &str, line: Option<u32>| {
+            Some(RefTarget::Path {
+                path: path.to_owned(),
+                line,
+            })
+        };
+        let cases = [
+            (
+                "/Users/u/p/evidence.png",
+                path("/Users/u/p/evidence.png", None),
+            ),
+            ("/abs/a.rs:12", path("/abs/a.rs", Some(12))),
+            ("/abs/a.rs:12:5", path("/abs/a.rs", Some(12))),
+            ("crates/a.rs", path("/repo/crates/a.rs", None)),
+            ("./a.rs", path("/repo/a.rs", None)),
+            ("crates/a.rs:12", path("/repo/crates/a.rs", Some(12))),
+            ("a.rs", path("/repo/a.rs", None)),
+            ("a.rs:12", path("/repo/a.rs", Some(12))),
+            ("~/notes.md", path("~/notes.md", None)),
+            ("file:///abs/x.png", path("/abs/x.png", None)),
+            ("file:///abs/x.rs:12", path("/abs/x.rs", Some(12))),
+            ("file://localhost/abs/x", path("/abs/x", None)),
+            ("/a%20b.md", path("/a b.md", None)),
+            ("/a b.md", path("/a b.md", None)),
+            ("/abs/a.rs#L12", path("/abs/a.rs", Some(12))),
+            ("C:/src/a.rs", path("C:/src/a.rs", None)),
+            ("C:\\src\\a.rs:3", path("C:\\src\\a.rs", Some(3))),
+            ("https://zzmux.sh/install.sh", None),
+            ("http://localhost:8080/a.rs", None),
+            ("mailto:me@host.com", None),
+            ("#section", None),
+        ];
+        for (url, expected) in cases {
+            assert_eq!(
+                refs.resolve_link(url).map(|target| target.target),
+                expected,
+                "{url}"
+            );
+        }
     }
 
     #[ala::test]
