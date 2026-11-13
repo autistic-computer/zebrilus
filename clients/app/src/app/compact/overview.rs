@@ -6,16 +6,25 @@ use ala::{
     linear_color_stop, linear_gradient, point, prelude::*, px, size,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, IconName, Label, TextStyle,
+    ActiveTheme as _, Colorize as _, IconName,
     blocks::compact::{
         BENTO_INSET, BentoSpan, MiniPane, PhoneTile, PillLabel, PillPlacement, bento_grid,
         compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
-        folding_title_bar, scrolled, window_span,
+        folding_title_bar, scrolled, window_span, zoom_card_ground,
     },
     blocks::settings::large_title,
     blocks::touch::StatusMark,
-    blocks::touch::{PageDot, PagerEvent, StackMenu, page_dots},
+    blocks::touch::{ACTION_BAR_KEYBOARD, PageDot, PagerEvent, StackMenu, page_dots},
     components::button::{Button, ButtonVariants as _},
+};
+#[cfg(any(target_os = "ios", target_os = "android"))]
+use penna::{
+    Disableable as _, Sizable as _,
+    blocks::compact::ZoomCard,
+    blocks::sheet::{bottom_sheet, close_sheet, sheet_close},
+    blocks::touch::{PhoneEmpty, TouchRow},
+    components::field::Field,
+    components::input::Input,
 };
 use web_time::Instant;
 use zz_client::{
@@ -24,10 +33,12 @@ use zz_client::{
 };
 use zz_protocol::{PaneId, PaneKindSnapshot, SessionId, WindowId};
 use zz_terminal::{Glyph, LocalColors, TerminalAppearance, TerminalPalette, TerminalViewport};
+#[cfg(any(target_os = "ios", target_os = "android"))]
+use zz_ui::compact::found_machines;
 use zz_ui::{
     compact::{
-        HostState, host_mark, overview_count, overview_host_empty, overview_session_heading,
-        window_mark,
+        HostState, host_mark, host_state, overview_count, overview_host_empty,
+        overview_session_heading, window_mark,
     },
     terminal::terminal_background,
 };
@@ -42,6 +53,10 @@ const ZOOM_FADE_START: f32 = 0.3;
 const ZOOM_FADE_SPAN: f32 = 0.4;
 const TILE_FALLBACK_TOP: f32 = 160.0;
 const TILE_FALLBACK_HEIGHT: f32 = 178.0;
+#[cfg(any(target_os = "ios", target_os = "android"))]
+const CARD_EMPTY_TOP: f32 = 96.0;
+#[cfg(any(target_os = "ios", target_os = "android"))]
+pub(super) const MACHINE_SHEET: &str = "machine-sheet";
 
 fn page_host(url: &str) -> &str {
     if url == "about:blank" {
@@ -390,6 +405,13 @@ impl AppShell {
                 pages.child(div().id("hosts-zoom-block").absolute().inset_0().occlude())
             })
             .into_any_element();
+        if self.compact.card.is_some() {
+            let card = self.compact.card_zoom.progress().clamp(0.0, 1.0);
+            if card >= 1.0 && !self.compact.card_zoom.is_moving() {
+                return (pages, div().into_any_element());
+            }
+            return (pages, bars.opacity(1.0 - card).into_any_element());
+        }
         (pages, bars.into_any_element())
     }
 
@@ -475,20 +497,70 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let grid = self.machines_grid(top_inset, placement, window, cx);
+        let Some(card) = self.compact.card.clone() else {
+            return grid;
+        };
+        if cx.reduce_motion() {
+            self.compact.card_zoom.finish();
+        }
+        if self.compact.card_zoom.tick(Instant::now()) {
+            window.request_animation_frame();
+        }
+        let open = self.compact.card_zoom.progress().clamp(0.0, 1.0);
+        let moving = self.compact.card_zoom.is_moving();
+        if !moving && open <= 0.0 {
+            self.compact.card = None;
+            return grid;
+        }
+        if !moving && self.follow_card(&card, window, cx) {
+            return grid;
+        }
+        let bottom = self.card_bottom(placement);
+        let view = self.machine_card(&card, top_inset, bottom, window, cx);
+        if !moving && open >= 1.0 {
+            return view;
+        }
+        let stage = window.viewport_size();
+        let tile = self.card_tile(&card, cx).unwrap_or_else(|| {
+            Bounds::new(
+                point(px(BENTO_INSET), top_inset + px(TILE_FALLBACK_TOP)),
+                size(
+                    stage.width / 2.0 - px(BENTO_INSET),
+                    px(TILE_FALLBACK_HEIGHT),
+                ),
+            )
+        });
+        div()
+            .relative()
+            .size_full()
+            .child(zoom_layers(
+                grid,
+                view,
+                &Zoom {
+                    tile,
+                    stage,
+                    progress: 1.0 - open,
+                    ground: zoom_card_ground(cx).fill,
+                    corner: cx.theme().phone_radius(),
+                },
+            ))
+            .child(div().id("card-zoom-block").absolute().inset_0().occlude())
+            .into_any_element()
+    }
+
+    fn machines_grid(
+        &mut self,
+        top_inset: Pixels,
+        placement: &PillPlacement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let hosts = self.host_pages(cx);
         let width = window.viewport_size().width;
         let grid = (width - px(BENTO_INSET * 2.0)).max(px(0.0));
-        let connected = hosts.iter().filter(|host| host.connected(cx)).count();
         #[cfg(any(target_os = "ios", target_os = "android"))]
-        let add = Some((
-            BentoSpan::new(2, 2),
-            PhoneTile::add("hosts-add", "Add host")
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.compact.add_host = true;
-                    cx.notify();
-                }))
-                .into_any_element(),
-        ));
+        let add = Some((BentoSpan::new(2, 2), self.add_tile(cx)));
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let add: Option<(BentoSpan, AnyElement)> = None;
         let tiles: Vec<(BentoSpan, AnyElement)> = hosts
@@ -497,11 +569,6 @@ impl AppShell {
             .map(|(index, host)| (BentoSpan::new(2, 2), self.host_bento_tile(index, host, cx)))
             .chain(add)
             .collect();
-        let subtitle = format!(
-            "{} · {} connected",
-            overview_count(hosts.len(), "host"),
-            connected
-        );
         let theme = cx.theme();
         let scroll = self.compact.hosts_scroll.clone();
         div()
@@ -517,12 +584,7 @@ impl AppShell {
                     .track_scroll(&scroll)
                     .pt(top_inset)
                     .pb(placement.zone() + px(16.0))
-                    .child(large_title("Hosts", cx))
-                    .child(
-                        Label::new(TextStyle::Heading, subtitle)
-                            .muted()
-                            .px(px(BENTO_INSET)),
-                    )
+                    .child(large_title("Machines", cx))
                     .child(
                         div()
                             .px(px(BENTO_INSET))
@@ -530,7 +592,32 @@ impl AppShell {
                             .child(bento_grid(grid, tiles)),
                     ),
             )
-            .child(folding_title_bar("Hosts", scrolled(&scroll), top_inset, cx))
+            .child(folding_title_bar(
+                "Machines",
+                scrolled(&scroll),
+                top_inset,
+                cx,
+            ))
+            .into_any_element()
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn add_tile(&self, cx: &mut Context<Self>) -> AnyElement {
+        let bounds = Rc::clone(&self.compact.add_tile);
+        PhoneTile::add("hosts-add", "Add machine")
+            .child(
+                canvas(
+                    move |tile, _, _| {
+                        bounds.borrow_mut().replace(tile);
+                    },
+                    |_, (), _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            )
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.open_machine_card(MachineCard::Add, window, cx);
+            }))
             .into_any_element()
     }
 
@@ -547,7 +634,8 @@ impl AppShell {
                     .chain((counts.working > 0).then(|| format!("{} working", counts.working)))
                     .collect()
             }
-            (HostState::Connecting, _) => host.endpoint.clone().into_iter().collect(),
+            (HostState::Connecting, _) => host.location().into_iter().collect(),
+            (HostState::Failed, _) => vec![host.status(cx)],
             _ => Vec::new(),
         };
         let tiles = Rc::clone(&self.compact.host_tiles);
@@ -557,6 +645,7 @@ impl AppShell {
             .is_some_and(|connection| *connection == self.connection);
         let enterable = attached || state == HostState::Connected;
         let endpoint = host.endpoint.clone();
+        let held = host.endpoint.clone();
         foot.into_iter()
             .fold(
                 PhoneTile::new(("hosts-tile", index), host.title.clone())
@@ -577,12 +666,14 @@ impl AppShell {
             .on_click(
                 cx.listener(move |this, _, window, cx| match (state, &endpoint) {
                     (HostState::Connecting, Some(endpoint)) => {
-                        #[cfg(any(target_os = "ios", target_os = "android"))]
-                        this.disconnect_host(endpoint, window, cx);
-                        let _ = endpoint;
+                        this.open_machine_card(
+                            MachineCard::Connecting(endpoint.clone()),
+                            window,
+                            cx,
+                        );
                     }
                     _ if enterable => this.enter_host(index, window, cx),
-                    (HostState::Offline, Some(endpoint)) => {
+                    (HostState::Offline | HostState::Failed, Some(endpoint)) => {
                         #[cfg(any(target_os = "ios", target_os = "android"))]
                         this.connect_host(endpoint.clone(), window, cx);
                         let _ = endpoint;
@@ -590,7 +681,312 @@ impl AppShell {
                     _ => {}
                 }),
             )
+            .when_some(held, |tile, endpoint| {
+                let view = cx.entity().downgrade();
+                tile.on_hold(move |_, cx| {
+                    let _ = view.update(cx, |this, cx| {
+                        this.compact.held = Some(endpoint.clone());
+                        cx.notify();
+                    });
+                })
+            })
             .into_any_element()
+    }
+
+    fn open_machine_card(
+        &mut self,
+        card: MachineCard,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        if card == MachineCard::Add {
+            self.hosts.error = None;
+            if self.found_machines(cx).is_empty() {
+                cx.on_next_frame(window, |this, window, cx| {
+                    this.hosts
+                        .destination
+                        .update(cx, |input, cx| input.focus(window, cx));
+                });
+            }
+        }
+        let _ = window;
+        self.compact.held = None;
+        self.compact.card = Some(card);
+        self.compact.card_zoom.snap(false);
+        self.compact.card_zoom.animate(true, Instant::now());
+        cx.notify();
+    }
+
+    pub(in super::super) fn close_machine_card(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        super::super::settings::finish_field(window, cx);
+        if self.compact.card.is_some() {
+            self.compact.card_zoom.animate(false, Instant::now());
+            cx.notify();
+        }
+    }
+
+    fn follow_card(
+        &mut self,
+        card: &MachineCard,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let MachineCard::Connecting(endpoint) = card else {
+            return false;
+        };
+        let hosts = self.host_pages(cx);
+        let Some((index, host)) = hosts
+            .iter()
+            .enumerate()
+            .find(|(_, host)| host.endpoint.as_ref() == Some(endpoint))
+        else {
+            self.close_machine_card(window, cx);
+            return false;
+        };
+        match host.state(cx) {
+            HostState::Connected => {
+                self.compact.card = None;
+                self.compact.card_zoom.snap(false);
+                cx.defer_in(window, move |this, window, cx| {
+                    this.show_host(index, window, cx);
+                    let count = this.host_pages(cx).len();
+                    this.compact.host_pager.sync(index, count);
+                    this.compact.host_pager.go_to(index, Instant::now());
+                    this.compact.host_pager.finish();
+                    this.compact.overview_reveal = true;
+                    this.compact.hosts.snap(false);
+                    cx.notify();
+                });
+                true
+            }
+            HostState::Connecting => false,
+            HostState::Offline | HostState::Failed => {
+                self.close_machine_card(window, cx);
+                false
+            }
+        }
+    }
+
+    fn card_tile(&self, card: &MachineCard, cx: &App) -> Option<Bounds<Pixels>> {
+        match card {
+            MachineCard::Add => *self.compact.add_tile.borrow(),
+            MachineCard::Connecting(endpoint) => {
+                let index = self
+                    .host_pages(cx)
+                    .iter()
+                    .position(|host| host.endpoint.as_ref() == Some(endpoint))?;
+                self.compact.host_tiles.borrow().get(&index).copied()
+            }
+        }
+    }
+
+    fn card_bottom(&self, placement: &PillPlacement) -> Pixels {
+        let keyboard = self.compact.keyboard_overlap;
+        if keyboard > px(0.0) {
+            keyboard + px(ACTION_BAR_KEYBOARD)
+        } else {
+            placement.bottom
+        }
+    }
+
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    fn machine_card(
+        &mut self,
+        _: &MachineCard,
+        _: Pixels,
+        _: Pixels,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) -> AnyElement {
+        div().into_any_element()
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn found_machines(&self, cx: &App) -> Vec<crate::connection::FoundHost> {
+        let saved = self.hosts.saved.endpoints();
+        let open: Vec<String> = self
+            .host_connections()
+            .iter()
+            .filter_map(|connection| connection.read(cx).endpoint().map(ToOwned::to_owned))
+            .collect();
+        self.hosts
+            .found
+            .iter()
+            .filter(|host| !saved.contains(&host.endpoint) && !open.contains(&host.endpoint))
+            .cloned()
+            .collect()
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn machine_card(
+        &mut self,
+        card: &MachineCard,
+        top_inset: Pixels,
+        bottom: Pixels,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        use super::super::hosts::{host_title, waiting_for};
+        let ground = zoom_card_ground(cx);
+        let close = cx.listener(|this, _, window, cx| this.close_machine_card(window, cx));
+        match card {
+            MachineCard::Add => {
+                let found = self.found_machines(cx);
+                let rows: Vec<_> = found.iter().map(|host| host.machine.clone()).collect();
+                let endpoints: Vec<String> = found.into_iter().map(|host| host.endpoint).collect();
+                let view = cx.entity().downgrade();
+                let rows = found_machines(&rows, move |index, window, cx| {
+                    let Some(endpoint) = endpoints.get(index).cloned() else {
+                        return;
+                    };
+                    let _ = view.update(cx, |this, cx| {
+                        this.hosts.saved.add(&endpoint);
+                        this.connect_host(endpoint, window, cx);
+                        this.close_machine_card(window, cx);
+                    });
+                });
+                let label = if rows.is_some() {
+                    "Or an address"
+                } else {
+                    "Address"
+                };
+                let empty = self.hosts.destination.read(cx).value().trim().is_empty();
+                ZoomCard::new("add-machine-card", "Add machine")
+                    .top_inset(top_inset)
+                    .bottom_inset(bottom)
+                    .on_close(close)
+                    .children(rows)
+                    .child(
+                        Field::new()
+                            .with_size(penna::Size::TouchLarge)
+                            .label(label)
+                            .when_some(self.hosts.error.clone(), Field::error)
+                            .child(
+                                Input::new(&self.hosts.destination)
+                                    .with_size(penna::Size::TouchLarge)
+                                    .on(ground),
+                            ),
+                    )
+                    .action(
+                        Button::new("add-machine-connect")
+                            .primary()
+                            .label("Connect")
+                            .with_size(penna::Size::TouchLarge)
+                            .w_full()
+                            .on(ground)
+                            .disabled(empty)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                if this.add_host(window, cx) {
+                                    this.close_machine_card(window, cx);
+                                }
+                            })),
+                    )
+                    .into_any_element()
+            }
+            MachineCard::Connecting(endpoint) => {
+                let target = endpoint.clone();
+                ZoomCard::new("connecting-card", host_title(endpoint))
+                    .top_inset(top_inset)
+                    .bottom_inset(bottom)
+                    .on_close(close)
+                    .child(
+                        div().mt(px(CARD_EMPTY_TOP)).child(
+                            PhoneEmpty::spinner("Connecting")
+                                .line(waiting_for(endpoint))
+                                .on(ground),
+                        ),
+                    )
+                    .action(
+                        Button::new("connecting-cancel")
+                            .label("Cancel")
+                            .with_size(penna::Size::TouchLarge)
+                            .w_full()
+                            .on(ground)
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.disconnect_host(&target, window, cx);
+                                this.close_machine_card(window, cx);
+                            })),
+                    )
+                    .into_any_element()
+            }
+        }
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    pub(super) fn machine_sheet(
+        &self,
+        endpoint: &str,
+        bottom_inset: Pixels,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        use super::super::hosts::{host_location, host_title};
+        let state = self
+            .host_connection(endpoint, cx)
+            .map_or(HostState::Offline, |connection| {
+                let connection = connection.read(cx);
+                host_state(connection.connected, connection.busy(), &connection.status)
+            });
+        let toggle = endpoint.to_owned();
+        let toggle_row = match state {
+            HostState::Connected => Some(
+                TouchRow::new("machine-sheet-disconnect", "Disconnect")
+                    .icon(IconName::Stop)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.disconnect_host(&toggle, window, cx);
+                        close_sheet(MACHINE_SHEET, cx);
+                    })),
+            ),
+            HostState::Offline | HostState::Failed => Some(
+                TouchRow::new("machine-sheet-connect", "Connect")
+                    .icon(IconName::Server)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.connect_host(toggle.clone(), window, cx);
+                        close_sheet(MACHINE_SHEET, cx);
+                    })),
+            ),
+            HostState::Connecting => None,
+        };
+        let removed = endpoint.to_owned();
+        let remove = TouchRow::new("machine-sheet-remove", "Remove machine")
+            .icon(IconName::Xmark)
+            .danger()
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.disconnect_host(&removed, window, cx);
+                this.hosts.saved.remove(&removed);
+                this.hosts.saved.save();
+                close_sheet(MACHINE_SHEET, cx);
+                cx.notify();
+            }));
+        let dismiss = cx.weak_entity();
+        bottom_sheet(
+            MACHINE_SHEET,
+            host_title(endpoint),
+            [sheet_close("machine-sheet-close")
+                .on_click(|_, _, cx| close_sheet(MACHINE_SHEET, cx))
+                .into_any_element()],
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(2.0))
+                .px(cx.theme().row_inset)
+                .pb(px(8.0))
+                .children(toggle_row.map(|row| row.in_sheet(cx)))
+                .child(remove.in_sheet(cx)),
+            bottom_inset,
+            move |_, cx| {
+                let _ = dismiss.update(cx, |this, cx| {
+                    this.compact.held = None;
+                    cx.notify();
+                });
+            },
+        )
+        .detail(host_location(endpoint))
+        .into_any_element()
     }
 
     pub(super) fn open_settings(&mut self, cx: &mut Context<Self>) {
@@ -1157,32 +1553,6 @@ impl AppShell {
         }
         self.close_overview(cx);
     }
-
-    #[cfg(any(target_os = "ios", target_os = "android"))]
-    pub(super) fn overview_add_host_sheet(
-        &self,
-        bottom_inset: Pixels,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        self.add_host_sheet(
-            bottom_inset,
-            |this, cx| {
-                this.compact.add_host = false;
-                let count = this.host_pages(cx).len();
-                let shown = this.compact.host_pager.index();
-                this.compact.host_pager.sync(shown, count);
-                this.compact
-                    .host_pager
-                    .go_to(count.saturating_sub(1), Instant::now());
-                cx.notify();
-            },
-            |this, cx| {
-                this.compact.add_host = false;
-                cx.notify();
-            },
-            cx,
-        )
-    }
 }
 
 #[derive(Clone)]
@@ -1199,6 +1569,13 @@ struct WindowShape {
     mark: Option<StatusMark>,
     state: Option<String>,
     rects: Vec<(PaneId, [f32; 4])>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
+pub(super) enum MachineCard {
+    Add,
+    Connecting(String),
 }
 
 #[derive(Clone, Copy)]
@@ -1223,10 +1600,35 @@ impl HostPage {
     }
 
     fn state(&self, cx: &App) -> HostState {
-        match &self.connection {
-            Some(connection) if connection.read(cx).connected => HostState::Connected,
-            Some(connection) if connection.read(cx).busy_or_connecting() => HostState::Connecting,
-            _ => HostState::Offline,
+        self.connection
+            .as_ref()
+            .map_or(HostState::Offline, |connection| {
+                let connection = connection.read(cx);
+                host_state(
+                    connection.connected,
+                    connection.busy_or_connecting(),
+                    &connection.status,
+                )
+            })
+    }
+
+    fn status(&self, cx: &App) -> String {
+        self.connection
+            .as_ref()
+            .map(|connection| connection.read(cx).status.clone())
+            .unwrap_or_default()
+    }
+
+    fn location(&self) -> Option<String> {
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        {
+            self.endpoint
+                .as_deref()
+                .map(super::super::hosts::host_location)
+        }
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        {
+            None
         }
     }
 

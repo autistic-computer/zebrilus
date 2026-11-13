@@ -3,7 +3,7 @@
 Holds a phone screen's one main action at the bottom, where the thumb is. For moving around, the pill.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>Drawn with the HTML kit.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Floating surface not built</span><span class="penna-text penna-notice-detail" data-penna-text>The bar and its keyboard ride are native; the floating surface with its 8 inset is drawn here with the HTML kit.</span></div></div></div>
 ```
 
 ## Layouts

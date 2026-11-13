@@ -190,5 +190,67 @@
         </div>
       </div>
     </section>
+    <section data-section="action-bar">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">main action</div>
+          <div class="phone-bar"><div class="penna-action-bar"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-id="bar-connect"><span class="penna-label" data-penna-text>Connect</span></button></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">secondary above</div>
+          <div class="phone-bar"><div class="penna-action-bar"><button class="penna-button" data-penna="button.quiet" data-size="touch-large" data-id="bar-scan"><span class="penna-label" data-penna-text>Scan QR instead</span></button><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-id="bar-add"><span class="penna-label" data-penna-text>Add machine</span></button></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="empty-state">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">icon</div>
+          <div class="phone-column"><div class="penna-empty"><i data-icon="laptop"></i><b data-penna-text>No machines yet</b></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">spinner and a line</div>
+          <div class="phone-column"><div class="penna-empty"><i class="penna-touch-spinner" data-icon="loader"></i><b data-penna-text>Connecting</b><span data-penna-text>Waiting for ssh on fabrico@xps</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="zoom-card">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">add card</div>
+          <div class="penna-zoom-card phone-card" data-penna="phone.card" data-ground>
+            <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" data-id="zoom-card-close" aria-label="Close"><i data-icon="xmark"></i></button></div>
+            <div class="penna-zoom-title"><span data-penna-text>Add machine</span></div>
+            <div class="penna-zoom-body">
+              <div>
+                <div class="penna-touch-header"><span data-penna-text>Found on your tailnet</span><span class="penna-touch-count" data-penna-text>2</span></div>
+                <div class="penna-touch-group" data-penna="settings.card" data-ground>
+                  <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-id="card-found-macbook"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span data-penna-text>macbook</span><span data-penna-text>macOS · runs zz</span></span><i data-icon="plus"></i></div>
+                  <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true" role="button" data-id="card-found-homelab"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span data-penna-text>homelab</span><span data-penna-text>No zz on it yet</span></span></div>
+                </div>
+              </div>
+              <div class="penna-field" data-size="touch-large">
+                <span class="penna-field-label" data-penna-text>Or an address</span>
+                <label class="penna-input" data-penna="field" data-size="touch-large" data-id="card-address"><input placeholder="user@host" /></label>
+              </div>
+            </div>
+            <div class="penna-action-bar"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled aria-disabled="true" data-id="card-connect"><span class="penna-label" data-penna-text>Connect</span></button></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">connecting card</div>
+          <div class="penna-zoom-card phone-card" data-penna="phone.card" data-ground>
+            <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" data-id="zoom-card-close" aria-label="Close"><i data-icon="xmark"></i></button></div>
+            <div class="penna-zoom-title"><span data-penna-text>xps</span></div>
+            <div class="penna-zoom-body">
+              <div class="penna-empty" style="margin-top: 96px"><i class="penna-touch-spinner" data-icon="loader"></i><b data-penna-text>Connecting</b><span data-penna-text>Waiting for ssh on fabrico@xps</span></div>
+            </div>
+            <div class="penna-action-bar"><button class="penna-button" data-penna="button" data-size="touch-large" data-id="card-cancel"><span class="penna-label" data-penna-text>Cancel</span></button></div>
+          </div>
+        </div>
+      </div>
+    </section>
   </body>
 </html>

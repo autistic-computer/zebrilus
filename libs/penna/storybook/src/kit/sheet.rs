@@ -9,6 +9,7 @@ use penna::{
         BottomSheet, bottom_sheet, close_sheet, sheet_action, sheet_close, sheet_detail_row,
         sheet_option,
     },
+    blocks::touch::TouchRow,
     h_flex, v_flex,
 };
 
@@ -21,12 +22,20 @@ pub const STORY: Story = Story {
     name: "Sheet",
     group: "Kit",
     summary: "The bottom sheet a touch screen opens in place of a dropdown. It floats up from the bottom of its parent over a scrim, rounded on every corner, and drags down to dismiss.",
-    sections: &[Section {
-        id: "bottom-sheet",
-        name: "Bottom sheet",
-        summary: "Phone-sized frames, each sheet 8pt in from the sides and resting on a 34pt bottom safe area: a picker with a checked option and an action row, a short sheet of commands, and choices that each say what they do. The close button and the scrim dismiss a sheet; a press on its empty frame, or any theme change, brings it back.",
-        build: |window, cx| Sheets::view(window, cx),
-    }],
+    sections: &[
+        Section {
+            id: "bottom-sheet",
+            name: "Bottom sheet",
+            summary: "Phone-sized frames, each sheet 8pt in from the sides and resting on a 34pt bottom safe area: a picker with a checked option and an action row, a short sheet of commands, and choices that each say what they do. The close button and the scrim dismiss a sheet; a press on its empty frame, or any theme change, brings it back.",
+            build: |window, cx| Sheets::view(window, cx),
+        },
+        Section {
+            id: "hold-sheet",
+            name: "Hold sheet",
+            summary: "What holding a tile opens: titled with the thing's name over one muted line of what the tile leaves out, then one-line touch rows, the one that removes last in danger ink.",
+            build: |_, cx| cx.new(|_| Held { open: true }).into(),
+        },
+    ],
 };
 
 const LANGUAGES: [&str; 5] = ["English", "Deutsch", "Español", "Português", "Français"];
@@ -200,5 +209,66 @@ impl Render for Sheets {
                 "choices with a line",
                 phone("phone-choices", "macbook", choices, cx, 2),
             )
+    }
+}
+
+struct Held {
+    open: bool,
+}
+
+impl Render for Held {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity().downgrade();
+        let sheet = self.open.then(|| {
+            bottom_sheet(
+                "machine-sheet",
+                "xps",
+                [close("machine-sheet", "machine-close")],
+                v_flex()
+                    .gap(px(2.0))
+                    .px(cx.theme().row_inset)
+                    .pb(px(8.0))
+                    .child(
+                        TouchRow::new("machine-connect", "Connect")
+                            .icon(IconName::Server)
+                            .in_sheet(cx),
+                    )
+                    .child(
+                        TouchRow::new("machine-remove", "Remove machine")
+                            .icon(IconName::Xmark)
+                            .danger()
+                            .in_sheet(cx),
+                    ),
+                px(SAFE_BOTTOM),
+                move |_, cx| {
+                    let _ = view.update(cx, |this, cx| {
+                        this.open = false;
+                        cx.notify();
+                    });
+                },
+            )
+            .detail("fabrico@xps")
+        });
+        let closed = sheet.is_none();
+        states().state(
+            "a machine",
+            div()
+                .id("phone-held")
+                .relative()
+                .w(px(390.0))
+                .h(px(600.0))
+                .overflow_hidden()
+                .rounded(px(SCREEN_RADIUS))
+                .framed(cx)
+                .bg(cx.theme().surface(Elevation::Panel).fill)
+                .child(backdrop("Machines", cx))
+                .children(sheet)
+                .when(closed, |frame| {
+                    frame.on_click(cx.listener(|this, _, _, cx| {
+                        this.open = true;
+                        cx.notify();
+                    }))
+                }),
+        )
     }
 }

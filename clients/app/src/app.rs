@@ -325,11 +325,11 @@ fn watch_connection(
     let found = cx.subscribe_in(
         connection,
         window,
-        |this, _, event: &crate::connection::FoundHosts, window, cx| {
+        |this, _, event: &crate::connection::FoundHosts, _, cx| {
             #[cfg(any(target_os = "ios", target_os = "android"))]
-            this.add_found_hosts(&event.0, window, cx);
+            this.found_hosts(&event.0, cx);
             #[cfg(not(any(target_os = "ios", target_os = "android")))]
-            let _ = (this, event, window, cx);
+            let _ = (this, event, cx);
         },
     );
     [observer, events, found]
@@ -3183,6 +3183,8 @@ impl Render for AppShell {
         {
             self.release_sidebar_focus(window, cx);
         }
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        self.open_machines_when_unattached(window, cx);
         let compact = self.compact_active(window, cx);
         self.sync_compact_mode(compact, cx);
         self.sync_keyboard_motion(window);

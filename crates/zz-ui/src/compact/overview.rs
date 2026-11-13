@@ -31,6 +31,7 @@ pub enum HostState {
     Connected,
     Connecting,
     Offline,
+    Failed,
 }
 
 pub fn overview_host_empty(

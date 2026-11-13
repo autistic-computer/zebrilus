@@ -3,23 +3,28 @@ use ala::{
     Render, Styled as _, Window, div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, IconName, Label, TextStyle,
+    ActiveTheme as _, Disableable as _, IconName, Sizable as _, Size,
     blocks::compact::{
-        BENTO_INSET, BentoSpan, MiniPane, PhoneTile, PillLabel, PillPlacement, bento_grid,
-        compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
-        window_span,
+        BENTO_INSET, BentoSpan, MiniPane, PhoneTile, PillLabel, PillPlacement, ZoomCard,
+        bento_grid, compact_bar_button, compact_floating_bar, compact_floating_group,
+        compact_floating_pill, window_span, zoom_card_ground,
     },
     blocks::settings::large_title,
     blocks::touch::{
-        KeyRow, PageDot, StackChip, StackClose, StackGroup, StackLook, StackMenu, StatusMark,
-        page_dots,
+        KeyRow, PageDot, PhoneEmpty, StackChip, StackClose, StackGroup, StackLook, StackMenu,
+        StatusMark, page_dots,
     },
     components::button::{Button, ButtonVariants as _},
+    components::field::Field,
+    components::input::{Input, InputState},
     v_flex,
 };
 use zz_protocol::AgentProvider;
 use zz_ui::{
-    compact::{HostState, ToolKeys, host_mark, overview_host_empty, overview_session_heading},
+    compact::{
+        FoundMachine, HostState, ToolKeys, found_machines, host_mark, overview_host_empty,
+        overview_session_heading,
+    },
     pane::agent_provider_icon,
 };
 
@@ -53,9 +58,15 @@ pub const STORY: Story = Story {
             build: |_, cx| cx.new(KeyRows::new).into(),
         },
         Section {
+            id: "machines",
+            name: "Machines",
+            summary: "Where the app opens: the large title, machine tiles two to a row in words and a mark, and the add tile last, with the gear disc at the bottom. Empty, it is the title and the add tile alone. The add tile zooms into the add card, found machines first; a connecting tile zooms into the connecting card, Cancel its one action.",
+            build: |window, cx| cx.new(|cx| Machines::new(window, cx)).into(),
+        },
+        Section {
             id: "overview",
             name: "Overview",
-            summary: "Three levels you zoom through, the way Calendar goes from year to month to day. Hosts lists every host as a tile, with settings in the bar. Tapping a host zooms into its page: each session's windows as a bento grid, every window drawn the way it splits its panes, the one it opens to ringed, over the host pill alone. Swiping the pill sideways pages hosts, swiping it up zooms back out to Hosts, and tapping it opens the host's menu. Tapping a window zooms into the pane it was last on. A host that is not connected shows why and one thing to do.",
+            summary: "Inside a machine: each session's windows as a bento grid, every window drawn the way it splits its panes, over the host pill. Swiping the pill sideways pages machines, swiping it up zooms back out to Machines, and tapping it opens the machine's menu. Tapping a window zooms into the pane it was last on. A machine that is not connected shows why and one thing to do.",
             build: |_, cx| stateless(overview, cx),
         },
         Section {
@@ -137,53 +148,208 @@ pub(crate) fn hosts_bar(cx: &App) -> AnyElement {
 
 const GRID: f32 = PHONE_WIDTH - BENTO_INSET * 2.0;
 
-fn subtitle(text: &str) -> impl IntoElement {
-    Label::new(TextStyle::Heading, text.to_owned())
-        .muted()
-        .px(px(BENTO_INSET))
-        .pb(px(16.0))
+fn machine(
+    id: &'static str,
+    name: &'static str,
+    state: HostState,
+    waiting: usize,
+    foot: &[&'static str],
+) -> (BentoSpan, AnyElement) {
+    let (mark, word) = host_mark(state, waiting);
+    let tile = PhoneTile::new(id, name).mark(mark).state(word);
+    let tile = foot.iter().fold(tile, |tile, line| tile.foot(*line));
+    (BentoSpan::new(2, 2), tile.into_any_element())
 }
 
-pub(crate) fn hosts_page(cx: &App) -> impl IntoElement {
-    let host = |id: &'static str, name: &'static str, state, waiting, foot: &[&'static str]| {
-        let (mark, word) = host_mark(state, waiting);
-        let tile = PhoneTile::new(id, name).mark(mark).state(word);
-        let tile = foot.iter().fold(tile, |tile, line| tile.foot(*line));
-        (BentoSpan::new(2, 2), tile.into_any_element())
-    };
-    let tiles = vec![
-        host(
+fn add_tile() -> (BentoSpan, AnyElement) {
+    (
+        BentoSpan::new(2, 2),
+        PhoneTile::add("hosts-add", "Add machine").into_any_element(),
+    )
+}
+
+pub(crate) fn machines_page(tiles: Vec<(BentoSpan, AnyElement)>, cx: &App) -> impl IntoElement {
+    v_flex()
+        .h(px(SCREEN_HEIGHT))
+        .child(
+            v_flex().flex_1().child(large_title("Machines", cx)).child(
+                div()
+                    .px(px(BENTO_INSET))
+                    .pt(px(16.0))
+                    .child(bento_grid(px(GRID), tiles)),
+            ),
+        )
+        .child(hosts_bar(cx))
+}
+
+fn every_machine() -> Vec<(BentoSpan, AnyElement)> {
+    vec![
+        machine(
             "hosts-macbook",
             "macbook",
             HostState::Connected,
             1,
-            &["2 sessions", "2 working"],
+            &["3 sessions", "2 working"],
         ),
-        host(
-            "hosts-xps",
-            "xps",
-            HostState::Connected,
-            0,
-            &["1 session", "1 working"],
-        ),
-        host("hosts-alienware", "alienware", HostState::Offline, 0, &[]),
-        host(
+        machine("hosts-xps", "xps", HostState::Connected, 0, &["2 sessions"]),
+        machine(
             "hosts-ubuntu",
             "ubuntu",
             HostState::Connecting,
             0,
             &["fabrico@ubuntu"],
         ),
-        (
-            BentoSpan::new(2, 2),
-            PhoneTile::add("hosts-add", "Add host").into_any_element(),
+        machine("hosts-thinkpad", "thinkpad", HostState::Offline, 0, &[]),
+        machine(
+            "hosts-alienware",
+            "alienware",
+            HostState::Failed,
+            0,
+            &["Connection refused"],
         ),
-    ];
-    v_flex()
-        .pb(px(16.0))
-        .child(large_title("Hosts", cx))
-        .child(subtitle("4 hosts · 2 connected"))
-        .child(div().px(px(BENTO_INSET)).child(bento_grid(px(GRID), tiles)))
+        add_tile(),
+    ]
+}
+
+const SCREEN_HEIGHT: f32 = 760.0;
+
+struct Machines {
+    found: Entity<InputState>,
+    alone: Entity<InputState>,
+}
+
+impl Machines {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self {
+            found: cx.new(|cx| InputState::new(window, cx).placeholder("user@host")),
+            alone: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder("user@host")
+                    .default_value("fabrico@xps")
+            }),
+        }
+    }
+}
+
+fn card(card: ZoomCard, cx: &App) -> impl IntoElement {
+    phone(
+        div()
+            .h(px(SCREEN_HEIGHT))
+            .child(card.top_inset(px(16.0)).bottom_inset(px(34.0))),
+        cx,
+    )
+}
+
+fn address(
+    input: &Entity<InputState>,
+    id: &'static str,
+    label: &'static str,
+    ground: penna::Ground,
+) -> Field {
+    Field::new().with_size(Size::TouchLarge).label(label).child(
+        Input::new(input)
+            .id(id)
+            .with_size(Size::TouchLarge)
+            .on(ground),
+    )
+}
+
+fn connect(id: &'static str, ground: penna::Ground, empty: bool) -> Button {
+    Button::new(id)
+        .primary()
+        .label("Connect")
+        .with_size(Size::TouchLarge)
+        .w_full()
+        .on(ground)
+        .disabled(empty)
+}
+
+fn connecting_card(id: &'static str, name: &'static str, line: &'static str, cx: &App) -> ZoomCard {
+    let ground = zoom_card_ground(cx);
+    ZoomCard::new(id, name)
+        .child(
+            div()
+                .mt(px(96.0))
+                .child(PhoneEmpty::spinner("Connecting").line(line).on(ground)),
+        )
+        .action(
+            Button::new((id, 1usize))
+                .label("Cancel")
+                .with_size(Size::TouchLarge)
+                .w_full()
+                .on(ground),
+        )
+}
+
+impl Render for Machines {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let ground = zoom_card_ground(cx);
+        let found = [
+            FoundMachine {
+                name: "macbook".into(),
+                system: "macOS".into(),
+                runs_zz: true,
+            },
+            FoundMachine {
+                name: "alienware".into(),
+                system: "linux".into(),
+                runs_zz: true,
+            },
+            FoundMachine {
+                name: "homelab".into(),
+                system: "linux".into(),
+                runs_zz: false,
+            },
+        ];
+        let tailnet = ZoomCard::new("add-found", "Add machine")
+            .children(found_machines(&found, |_, _, _| {}))
+            .child(address(
+                &self.found,
+                "add-found-address",
+                "Or an address",
+                ground,
+            ))
+            .action(connect("add-found-connect", ground, true));
+        let alone = ZoomCard::new("add-alone", "Add machine")
+            .child(address(&self.alone, "add-alone-address", "Address", ground))
+            .action(connect("add-alone-connect", ground, false));
+        states()
+            .columns(2)
+            .state(
+                "empty: the title and the add tile",
+                phone(machines_page(vec![add_tile()], cx), cx),
+            )
+            .state(
+                "connected, waiting, connecting, not connected, failed",
+                phone(machines_page(every_machine(), cx), cx),
+            )
+            .state("add card, found on your tailnet", card(tailnet, cx))
+            .state("add card, no tailnet, typed", card(alone, cx))
+            .state(
+                "connecting card, over ssh",
+                card(
+                    connecting_card(
+                        "connecting-ssh",
+                        "xps",
+                        "Waiting for ssh on fabrico@xps",
+                        cx,
+                    ),
+                    cx,
+                ),
+            )
+            .state(
+                "connecting card, on your tailnet",
+                card(
+                    connecting_card(
+                        "connecting-tailnet",
+                        "studio",
+                        "Waiting for studio on your tailnet",
+                        cx,
+                    ),
+                    cx,
+                ),
+            )
+    }
 }
 
 #[allow(
@@ -260,10 +426,6 @@ fn overview(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
     states()
         .columns(2)
-        .state(
-            "hosts, where you start",
-            phone(v_flex().child(hosts_page(cx)).child(hosts_bar(cx)), cx),
-        )
         .state(
             "a connected host",
             phone(

@@ -7,3 +7,14 @@
 .phone-column > .penna-button {
   width: 100%;
 }
+
+.phone-bar {
+  width: 375px;
+}
+
+.phone-card {
+  box-sizing: border-box;
+  width: 370px;
+  height: 640px;
+  padding-top: 16px;
+}

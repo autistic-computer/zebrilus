@@ -1,9 +1,10 @@
 use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, ClickEvent, Div, ElementId, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement, Pixels, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,
-    Styled as _, Window, div, prelude::FluentBuilder as _, px, relative,
+    AnyElement, App, ClickEvent, Div, ElementId, HitboxBehavior, Hsla, InteractiveElement as _,
+    IntoElement, LongPressEvent, ParentElement, Pixels, RenderOnce, Role, SharedString,
+    StatefulInteractiveElement as _, Styled as _, TouchPhase, Window, canvas, div,
+    prelude::FluentBuilder as _, px, relative,
 };
 
 use crate::{
@@ -41,6 +42,7 @@ pub fn mini_radius(cx: &App) -> Pixels {
 }
 
 type ClickHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+type HoldHandler = Rc<dyn Fn(&mut Window, &mut App)>;
 
 #[derive(IntoElement)]
 pub struct PhoneTile {
@@ -53,6 +55,7 @@ pub struct PhoneTile {
     panes: Vec<([f32; 4], MiniPane)>,
     children: Vec<AnyElement>,
     on_click: Option<ClickHandler>,
+    on_hold: Option<HoldHandler>,
 }
 
 impl PhoneTile {
@@ -68,6 +71,7 @@ impl PhoneTile {
             panes: Vec::new(),
             children: Vec::new(),
             on_click: None,
+            on_hold: None,
         }
     }
 
@@ -117,6 +121,33 @@ impl PhoneTile {
         self.on_click = Some(Rc::new(handler));
         self
     }
+
+    #[must_use]
+    pub fn on_hold(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_hold = Some(Rc::new(handler));
+        self
+    }
+}
+
+fn hold_listener(on_hold: HoldHandler) -> impl IntoElement {
+    canvas(
+        |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
+        move |_, hitbox, window, _| {
+            window.on_mouse_event(move |event: &LongPressEvent, phase, window, cx| {
+                if phase.bubble()
+                    && event.phase == TouchPhase::Started
+                    && !window.default_prevented()
+                    && hitbox.is_hovered_at(event.start_position, window)
+                {
+                    window.prevent_default();
+                    cx.stop_propagation();
+                    on_hold(window, cx);
+                }
+            });
+        },
+    )
+    .absolute()
+    .inset_0()
 }
 
 impl ParentElement for PhoneTile {
@@ -218,6 +249,7 @@ impl RenderOnce for PhoneTile {
         };
         let on_click = self.on_click;
         tile.children(self.children)
+            .children(self.on_hold.map(hold_listener))
             .child(press_highlight(self.id, None, radius))
             .when_some(on_click, |tile, on_click| {
                 tile.on_click(move |event, window, cx| on_click(event, window, cx))

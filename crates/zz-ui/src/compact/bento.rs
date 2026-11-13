@@ -11,6 +11,7 @@ pub fn host_mark(state: HostState, waiting: usize) -> (StatusMark, String) {
         HostState::Connected => (StatusMark::Success, "Connected".to_owned()),
         HostState::Connecting => (StatusMark::Spinner, "Connecting".to_owned()),
         HostState::Offline => (StatusMark::Off, "Not connected".to_owned()),
+        HostState::Failed => (StatusMark::Danger, "Failed".to_owned()),
     }
 }
 

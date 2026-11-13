@@ -99,7 +99,13 @@ pub struct Connection {
 
 impl EventEmitter<CoreEvent> for Connection {}
 
-pub struct FoundHosts(pub Vec<String>);
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FoundHost {
+    pub endpoint: String,
+    pub machine: zz_ui::compact::FoundMachine,
+}
+
+pub struct FoundHosts(pub Vec<FoundHost>);
 
 impl EventEmitter<FoundHosts> for Connection {}
 
@@ -853,17 +859,23 @@ impl Connection {
             return;
         }
         cx.spawn(async move |this, cx| {
-            let found = cx
+            let probed = offers.clone();
+            let reachable = cx
                 .background_executor()
-                .spawn(async move { zz_daemon_client::tailnet_offer::reachable(offers) })
+                .spawn(async move { zz_daemon_client::tailnet_offer::reachable(probed) })
                 .await;
-            let endpoints = found
-                .iter()
-                .map(|offer| zz_daemon_client::Endpoint::Tailnet(offer.endpoint()).to_string())
-                .collect::<Vec<_>>();
-            if !endpoints.is_empty() {
-                this.update(cx, |_, cx| cx.emit(FoundHosts(endpoints))).ok();
-            }
+            let found = offers
+                .into_iter()
+                .map(|offer| FoundHost {
+                    endpoint: zz_daemon_client::Endpoint::Tailnet(offer.endpoint()).to_string(),
+                    machine: zz_ui::compact::FoundMachine {
+                        runs_zz: reachable.contains(&offer),
+                        name: offer.name,
+                        system: offer.os,
+                    },
+                })
+                .collect();
+            this.update(cx, |_, cx| cx.emit(FoundHosts(found))).ok();
         })
         .detach();
     }

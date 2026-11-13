@@ -3,7 +3,7 @@
 A phone screen is built from phone components, sized for a thumb from the start. It is not the desktop made bigger: desktop components under a coarse pointer keep their layout and only grow their targets.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The phone components are drawn here with the HTML kit. Natively there are the 44 and 56 touch rungs, the touch text styles, the 56 button and field, touch rows, row groups and headers, the status marks, the phone tile with machine and window content, sheets with the 44 close, the pill and the bento overview, the stack menu on the pill and the key row with the arrow pad's bubble; the rest of the components below are next.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The phone components are drawn here with the HTML kit. Natively there are the 44 and 56 touch rungs, the touch text styles, the 56 button and field, touch rows, row groups and headers, the status marks, the phone tile with machine and window content and its hold, sheets with the 44 close and the hold sheet's muted line, the action bar, the empty state, the zoom card, the pill and the bento overview, the stack menu on the pill and the key row with the arrow pad's bubble; the rest of the components below are next.</span></div></div></div>
 ```
 
 ## Rules
@@ -23,7 +23,7 @@ A phone screen is built from phone components, sized for a thumb from the start.
 </div>
 ```
 
-**Press and hold** a tile, or the header over a group of tiles, for a sheet of what you can do to it: touch rows, the one that closes or removes last in danger ink. One rule for every tile, so nothing that acts on a tile sits inside it. Under the sheet's title, one muted line holds what the tile leaves out: a window's work, folder, branch and age. A header that can be held is 44 tall. Not built natively yet.
+**Press and hold** a tile, or the header over a group of tiles, for a sheet of what you can do to it: touch rows, the one that closes or removes last in danger ink. One rule for every tile, so nothing that acts on a tile sits inside it. Under the sheet's title, one muted line holds what the tile leaves out: a window's work, folder, branch and age. A header that can be held is 44 tall. Natively a machine tile takes the hold; window tiles and headers don't yet.
 
 ```figure uses=sheet,touch,label
 <div style="position: relative; width: 370px; height: 330px; overflow: hidden; border-radius: 28px; background: var(--penna-bg)">
@@ -214,7 +214,7 @@ The desktop's four corner rules, unchanged. Controls round from their height, th
 | Touch row in a group | at most the group's less 4 | 16.2, 20 | 16.2, 20 | 12, 12 |
 | Tile, row group, sheet, zoom card, address suggestions | phone container, twice `radius` | 24 | 24 | 16 |
 
-Not built natively yet: the pill follows the screen's corner, and the zoom card itself.
+Not built natively yet: the pill follows the screen's corner.
 
 ## Status marks
 

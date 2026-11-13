@@ -2,7 +2,7 @@ use ala::{AppContext as _, Context, Entity, Window};
 use zz_protocol::{PaneId, SessionId};
 
 use super::{AppShell, compact, floating, sidebar, watch_connection};
-use crate::connection::Connection;
+use crate::connection::{Connection, FoundHost};
 
 impl AppShell {
     pub(super) fn reconnect_saved_hosts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -21,21 +21,19 @@ impl AppShell {
         }
     }
 
-    pub(super) fn add_found_hosts(
-        &mut self,
-        endpoints: &[String],
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        for endpoint in endpoints {
-            if self.hosts.saved.endpoints().contains(endpoint)
-                || self.host_connection(endpoint, cx).is_some()
-                || self.is_attached_host(endpoint, cx)
+    pub(super) fn found_hosts(&mut self, found: &[FoundHost], cx: &mut Context<Self>) {
+        for host in found {
+            match self
+                .hosts
+                .found
+                .iter_mut()
+                .find(|known| known.endpoint == host.endpoint)
             {
-                continue;
+                Some(known) => known.clone_from(host),
+                None => self.hosts.found.push(host.clone()),
             }
-            self.connect_host(endpoint.clone(), window, cx);
         }
+        cx.notify();
     }
 
     pub(super) fn open_host(
@@ -106,8 +104,8 @@ impl AppShell {
         self.fleet_found.push(cx.subscribe_in(
             &connection,
             window,
-            |this, _, event: &crate::connection::FoundHosts, window, cx| {
-                this.add_found_hosts(&event.0, window, cx);
+            |this, _, event: &crate::connection::FoundHosts, _, cx| {
+                this.found_hosts(&event.0, cx);
             },
         ));
         self.fleet.push((connection, observer));

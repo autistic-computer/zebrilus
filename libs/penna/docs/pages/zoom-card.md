@@ -3,7 +3,7 @@
 What a tile becomes when it grows to fill the screen: the machine you went into, or the form behind the add tile. For a short question, a sheet.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Zoom built, card not yet</span><span class="penna-text penna-notice-detail" data-penna-text>The zoom between tile and screen is native; the card's close control, drag down and pinch out, the add card's found rows and scanner, and the connecting card are drawn here with the HTML kit.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Drag down, pinch out and the scanner not built</span><span class="penna-text penna-notice-detail" data-penna-text>The zoom, the card with its close control, the add card's found rows and field, and the connecting card are native. Drag down, pinch out and the scanner are drawn here with the HTML kit.</span></div></div></div>
 ```
 
 ## Anatomy
@@ -32,7 +32,7 @@ What a tile becomes when it grows to fill the screen: the machine you went into,
 3. **Body**: `inset-pane` 16, groups `gap-group` 16 apart.
 4. **Action bar**: the one main action.
 
-While it is smaller than the screen the card has the phone container corner, twice `radius`, the tile's; once it fills the screen it takes the screen's. Natively the zoom starts it at 10.
+While it is smaller than the screen the card has the phone container corner, twice `radius`, the tile's; once it fills the screen it takes the screen's.
 
 ## Add card
 

@@ -1,5 +1,6 @@
 mod bar;
 mod bento;
+mod card;
 mod header;
 mod hud;
 mod morph;
@@ -11,6 +12,7 @@ pub use bar::{
     compact_nav_bar, compact_pill_label, pill_backdrop_reach, pill_glass_over,
 };
 pub use bento::{BENTO_COLUMNS, BENTO_GAP, BENTO_INSET, BentoSpan, bento_grid, bento_pack};
+pub use card::{ZoomCard, zoom_card_ground};
 pub use header::{COMPACT_TITLE_BAR_HEIGHT, folding_title_bar, scrolled};
 pub use hud::compact_hud;
 pub use morph::{

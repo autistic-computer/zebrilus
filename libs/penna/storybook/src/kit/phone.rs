@@ -4,8 +4,10 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _, Size,
-    blocks::compact::compact_bar_button,
-    blocks::touch::{TouchGroup, TouchHeader, TouchRow, TouchTrailing},
+    blocks::compact::{ZoomCard, compact_bar_button, zoom_card_ground},
+    blocks::touch::{
+        ACTION_BAR_BOTTOM, PhoneEmpty, TouchGroup, TouchHeader, TouchRow, TouchTrailing, action_bar,
+    },
     components::button::{Button, ButtonVariants as _},
     components::field::Field,
     components::input::{Input, InputContentType, InputState},
@@ -56,6 +58,24 @@ pub const STORY: Story = Story {
             name: "Row groups",
             summary: "TouchHeader over a TouchGroup: the group takes the phone container corner, its rows sit 4 in and 2 apart with their corners capped by the group's. A holdable header is 44 tall.",
             build: |_, cx| stateless(groups, cx),
+        },
+        Section {
+            id: "action-bar",
+            name: "Action bar",
+            summary: "action_bar: a column 8 apart, 16 from the sides and 20 above the bottom edge, holding the one main action at 56 and at most one secondary above it.",
+            build: |_, cx| stateless(action_bars, cx),
+        },
+        Section {
+            id: "empty-state",
+            name: "Empty state",
+            summary: "PhoneEmpty: a 32 muted icon or spinner, the title in title, and a touch-small muted line only when there is a state to say.",
+            build: |_, cx| stateless(empty_states, cx),
+        },
+        Section {
+            id: "zoom-card",
+            name: "Zoom card",
+            summary: "ZoomCard on the phone.card look: a 44 top row with the close control at its end, the 52 large title, the body 16 in with groups 16 apart, then the action bar. The add card and the connecting card.",
+            build: |window, cx| cx.new(|cx| Cards::new(window, cx)).into(),
         },
     ],
 };
@@ -366,4 +386,132 @@ fn groups(_: &mut Window, _: &mut App) -> AnyElement {
             ),
         )
         .into_any_element()
+}
+
+const BAR_WIDTH: f32 = WIDTH + 32.0;
+
+fn main_button(id: &'static str, label: &'static str) -> Button {
+    Button::new(id)
+        .label(label)
+        .with_size(Size::TouchLarge)
+        .w_full()
+}
+
+fn action_bars(_: &mut Window, _: &mut App) -> AnyElement {
+    let bar = |bar: ala::Div| div().w(px(BAR_WIDTH)).child(bar);
+    states()
+        .columns(2)
+        .state(
+            "main action",
+            bar(action_bar(px(ACTION_BAR_BOTTOM))
+                .child(main_button("bar-connect", "Connect").primary())),
+        )
+        .state(
+            "secondary above",
+            bar(action_bar(px(ACTION_BAR_BOTTOM))
+                .child(main_button("bar-scan", "Scan QR instead").ghost())
+                .child(main_button("bar-add", "Add machine").primary())),
+        )
+        .into_any_element()
+}
+
+fn empty_states(_: &mut Window, _: &mut App) -> AnyElement {
+    states()
+        .columns(2)
+        .state(
+            "icon",
+            column(PhoneEmpty::new(IconName::Laptop, "No machines yet")),
+        )
+        .state(
+            "spinner and a line",
+            column(PhoneEmpty::spinner("Connecting").line("Waiting for ssh on fabrico@xps")),
+        )
+        .into_any_element()
+}
+
+const CARD_WIDTH: f32 = 370.0;
+const CARD_HEIGHT: f32 = 640.0;
+
+struct Cards {
+    address: Entity<InputState>,
+}
+
+impl Cards {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self {
+            address: field(window, cx, |s| s.placeholder("user@host")),
+        }
+    }
+}
+
+fn card_frame(card: ZoomCard, cx: &App) -> impl IntoElement {
+    div()
+        .w(px(CARD_WIDTH))
+        .h(px(CARD_HEIGHT))
+        .child(card.top_inset(px(16.0)).rounded(cx.theme().phone_radius()))
+}
+
+impl Render for Cards {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let ground = zoom_card_ground(cx);
+        let found = |id: &'static str, name: &'static str, icon, detail: &'static str| {
+            TouchRow::new(id, name)
+                .icon(icon)
+                .detail(detail)
+                .trailing(TouchTrailing::Glyph(IconName::Plus))
+        };
+        let add = ZoomCard::new("card-add", "Add machine")
+            .child(
+                v_flex()
+                    .child(TouchHeader::new("Found on your tailnet").count(2))
+                    .child(
+                        TouchGroup::new()
+                            .row(found(
+                                "card-found-macbook",
+                                "macbook",
+                                IconName::Laptop,
+                                "macOS · runs zz",
+                            ))
+                            .row(
+                                found(
+                                    "card-found-homelab",
+                                    "homelab",
+                                    IconName::HardDrive,
+                                    "No zz on it yet",
+                                )
+                                .disabled(true),
+                            ),
+                    ),
+            )
+            .child(
+                Field::new()
+                    .with_size(Size::TouchLarge)
+                    .label("Or an address")
+                    .child(
+                        Input::new(&self.address)
+                            .id("card-address")
+                            .with_size(Size::TouchLarge)
+                            .on(ground),
+                    ),
+            )
+            .action(
+                main_button("card-connect", "Connect")
+                    .primary()
+                    .on(ground)
+                    .disabled(true),
+            );
+        let connecting = ZoomCard::new("card-connecting", "xps")
+            .child(
+                div().mt(px(96.0)).child(
+                    PhoneEmpty::spinner("Connecting")
+                        .line("Waiting for ssh on fabrico@xps")
+                        .on(ground),
+                ),
+            )
+            .action(main_button("card-cancel", "Cancel").on(ground));
+        states()
+            .columns(2)
+            .state("add card", card_frame(add, cx))
+            .state("connecting card", card_frame(connecting, cx))
+    }
 }

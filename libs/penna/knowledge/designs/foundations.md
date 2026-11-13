@@ -387,7 +387,7 @@ Rules:
 6. Text is `touch-body` 17 by default and `touch-small` 15 for details. Nothing is under 13 (`body`).
 7. Text says a state, a value or a name. No eyebrows, subheads, helper lines or microcopy that explains what the screen already shows.
 
-Press and hold: holding a tile, or a section header that heads a group of tiles, opens a sheet (Sheet) of what can be done to that thing, titled with its name: one-line touch rows, each a 20 glyph and a verb, the plain actions first and the one that destroys or removes last in `danger` ink. The rule is one for every tile, whatever it holds, so nothing that acts on a tile ever sits inside it (rule 1). A tap still goes in. A header that can be held is 44 tall (rule 2; List, Touch rows). A session's header is its name and nothing else; holding it gives Rename session and Close session. What a tile leaves out to stay quiet (a window's folder, branch, age, and the work's message and percent) is one muted line under the sheet's title (Sheet). Not built: natively no tile or header takes a long press.
+Press and hold: holding a tile, or a section header that heads a group of tiles, opens a sheet (Sheet) of what can be done to that thing, titled with its name: one-line touch rows, each a 20 glyph and a verb, the plain actions first and the one that destroys or removes last in `danger` ink. The rule is one for every tile, whatever it holds, so nothing that acts on a tile ever sits inside it (rule 1). A tap still goes in. A header that can be held is 44 tall (rule 2; List, Touch rows). A session's header is its name and nothing else; holding it gives Rename session and Close session. What a tile leaves out to stay quiet (a window's folder, branch, age, and the work's message and percent) is one muted line under the sheet's title (Sheet). Status: a tile takes the hold (`PhoneTile::on_hold`, `src/blocks/compact/tile.rs`), and zz's machine tile opens its sheet with it; a window tile's sheet and a header's hold are not built.
 
 Layout, top to bottom:
 
@@ -412,10 +412,10 @@ Components (each specified in its own section):
 
 | Component | Section | Status |
 |---|---|---|
-| Main action and icon button | Button, Phone | built: the 56 rung (`Size::TouchLarge`) and the 44 icon button (`compact_bar_button`); phone screens don't use the 56 rung yet |
-| Field | Field, Phone | built at 56 (`Field` and `Input` at `Size::TouchLarge`); phone screens don't use it yet |
-| Touch row, row group, section header | List, Touch rows | built (`TouchRow`, `TouchGroup`, `TouchHeader` in `src/blocks/touch/row.rs`), with the mark trailing kind (`TouchTrailing::State`, `src/blocks/touch/row.rs:72`); phone screens don't use them yet; the swipe and the header's hold not built |
-| Phone tile, machine and window content | Tile, Phone tile | built (`PhoneTile`, `MiniPane`, `src/blocks/compact/tile.rs:46`, `:254`), and zz's overview draws it; press and hold, a machine's last seen and the tap into the pane that asks not built |
+| Main action and icon button | Button, Phone | built: the 56 rung (`Size::TouchLarge`) and the 44 icon button (`compact_bar_button`); zz's add card and connecting card use the 56 rung |
+| Field | Field, Phone | built at 56 (`Field` and `Input` at `Size::TouchLarge`); zz's add card uses it |
+| Touch row, row group, section header | List, Touch rows | built (`TouchRow`, `TouchGroup`, `TouchHeader` in `src/blocks/touch/row.rs`), with the mark trailing kind (`TouchTrailing::State`, `src/blocks/touch/row.rs:72`) and rows in a sheet (`TouchRow::in_sheet`); zz's add card and machine hold sheet use them; the swipe and the header's hold not built |
+| Phone tile, machine and window content | Tile, Phone tile | built (`PhoneTile`, `MiniPane`, `src/blocks/compact/tile.rs:46`, `:254`) with the hold (`PhoneTile::on_hold`), and zz's overview draws it; a window tile's hold, a machine's last seen and the tap into the pane that asks not built |
 | Session header | List, Touch rows | a 44 heading built; the hold not built |
 | Pill and its menu | Blocks, Pill | the pill, its tap, swipe and lift, and its menu as a stack menu with the hold, the slide and the release built (`StackMenu::pill_anchor`, `src/blocks/touch/stack.rs:565`), with today's items; the second line naming the session in view, the group label and New chat in zz's menu not built |
 | Stack menu | Blocks, Stack menu | built (`StackMenu`, `src/blocks/touch/stack.rs:267`; the gesture `StackGesture`, `src/blocks/touch/stack_gesture.rs:45`; key anchors `StackKey`, `src/blocks/touch/stack_key.rs:35`), with the tick (`App::selection_haptic`); the danger chip's confirm sheet not built |
@@ -430,11 +430,11 @@ Components (each specified in its own section):
 | Browser on a phone | Blocks, Browser on a phone | the native web view, its scrolling, pull to refresh, the iOS edge swipe, the pill's title over the host, the tabs sheet and the picker built in today's shapes; the pill as the bar, the browser's stack, the address field, suggestions, the progress line, the touch tabs sheet, the empty state for a failed page and the hidden pill under a page's keyboard not built |
 | Keycap at touch size | Keycap | not built: All bindings spells keys as mono text at the leading end |
 | Confirm and rename sheets | Blocks, Sheet | not built: Kill pane runs at once, Rename opens the desktop palette |
-| Press and hold sheet | Phone, Sheet | not built |
-| Action bar | Blocks, Action bar | not built |
-| Zoom card | Blocks, Zoom card | the zoom built; the card not built |
+| Press and hold sheet | Phone, Sheet | built for a machine: the title's muted line (`BottomSheet::detail`) over touch rows (`TouchRow::in_sheet`); for windows and sessions not built |
+| Action bar | Blocks, Action bar | built (`action_bar`, `src/blocks/touch/screen.rs`), riding the keyboard in zz's cards; the floating surface not built |
+| Zoom card | Blocks, Zoom card | built (`ZoomCard`, `src/blocks/compact/card.rs`), with zz's add card and connecting card; drag down, pinch out and the scanner not built |
 | Sheet | Blocks, Sheet | built, with the 44 close, the phone corner and rows capped by it (`src/blocks/sheet/mod.rs:22`, `:285`, `:539`); the action bar not built |
-| Empty state | Blocks, Empty state on a phone | not built |
+| Empty state | Blocks, Empty state on a phone | built (`PhoneEmpty`, `src/blocks/touch/screen.rs`) |
 | Status marks | below | built (`StatusMark`, `src/blocks/touch/mark.rs:12`); the count badge not built |
 
 Status marks: a tone dot 8 across, always beside its word; the spinner at the touch rung's icon, 16, one turn every 900ms, in the ink of the text it leads (the title's in a tile, the word's in a row); a count badge 20 tall, the `touch-small` line, strong `touch-small`, where a desktop badge follows a `body` line (18). The word takes its tone's ink. Natively the mark is `StatusMark` (`src/blocks/touch/mark.rs:12`): `Success`, `Warning`, `Danger`, `Ink`, `Off` and `Spinner`, and `StatusMark::word_ink` gives its word's ink; a tile, a row (`TouchTrailing::State`, the mark `space-6` before its word) or the pill leads with it.
@@ -512,13 +512,13 @@ Corners: the four corner rules (Corners, under Look) hold on the phone unchanged
 | Mini pane in a window tile | concentric, the tile's corner less 12 | 12 | 12 | 4 | matches (`mini_radius`, `src/blocks/compact/tile.rs:39`) |
 | Row group | phone container | 24 | 24 | 16 | matches (`Theme::phone_radius`, `src/foundation/theme.rs:161`) |
 | Sheet panel | phone container | 24 | 24 | 16 | matches (`src/blocks/sheet/mod.rs:539`) |
-| Zoom card, scanner picture | phone container | 24 | 24 | 16 | zz's zoom starts from the corner of what grows: the phone corner from a machine tile, the mini pane's from a window (`Zoom::corner`); no card and no scanner |
+| Zoom card, scanner picture | phone container | 24 | 24 | 16 | zz's zoom starts from the corner of what grows: the phone corner from a machine tile or the add tile, the mini pane's from a window (`Zoom::corner`); the card matches (`ZoomCard`); no scanner |
 
 Decisions: a tile's title is strong `touch-body`, 500, since strong is 500 for the touch styles (Type); a tile's inset is `inset-card` 12; a main action that is loading keeps its label (Button).
 
 HTML: the phone components' twins live with their tiers: the rung in `button.css`, `input.css` and `penna.css` (`data-size="touch-large"`); rows, groups, headers, the action bar, the empty state and the marks (`.penna-tone-dot` with `data-tone` `warning`, `danger`, `strong` for the ink and `off`, no tone for success; `.penna-touch-spinner`, `.penna-touch-badge`) in `blocks/touch/touch.css`; the phone tile, the bento grid and the window tile, the zoom card, the icon button (`.penna-touch-icon`) and its disc (`.penna-touch-disc[data-penna="floating"]`) in `blocks/compact/compact.css`; the 44 close in `blocks/sheet/sheet.css`; the 44 key row in `blocks/touch/touch.css`; the composer row, the ask card, the queued row and the touch transcript step in `blocks/chat/chat.css`. The phone container corner is `--penna-phone-radius` (`penna.css`, twice `--penna-radius`), natively `Theme::phone_radius()`; a row nested in a group or a sheet caps its corner with `--penna-nest-inset` and `--penna-nest-outer`, and a wrapper marked `data-penna-clip` (the swipe) takes its first row's drawn corner (`kit.js`).
 
-Status: drawn in HTML on the docs Phone pages; natively the 56 rung, the 56 button and field, the 44 icon button, touch rows, the row group, the section header, the status marks, the phone tile with both contents, the sheet's 44 close, the phone container corner on tiles, groups, sheets and the disc, the stack menu on the pill and the key row's keys, and the arrow pad's 44 bubble are built (the Phone components table), and the rest is not.
+Status: drawn in HTML on the docs Phone pages; natively the 56 rung, the 56 button and field, the 44 icon button, touch rows, the row group, the section header, the status marks, the phone tile with both contents and its hold, the sheet's 44 close, the machine hold sheet, the phone container corner on tiles, groups, sheets and the disc, the stack menu on the pill and the key row's keys, the arrow pad's 44 bubble, the action bar, the empty state and the zoom card are built (the Phone components table), and the rest is not.
 
 ## Layout primitives (built)
 
@@ -1893,13 +1893,13 @@ A bento grid has no add tile and its session's header no button: windows are mad
 
 Nothing on a screen of tiles is drawn as a ghost: machines not yet added are rows in the add card.
 
-Status for the phone tile: built in `src/blocks/compact/tile.rs`: `PhoneTile` (`:46`) with machine content (`.mark`, `.state`, `.foot`) and window content (`.pane`, `.panes` of `MiniPane`, `:254`: `terminal`, `browser`, `chat`, `blank`), the add tile (`PhoneTile::add`, `:75`), `window_span` (`:30`), the phone corner and the concentric mini pane (`mini_radius`, `:39`), and the bento press over the whole tile; the grid and its packing are `bento_grid` and `bento_pack` (`src/blocks/compact/bento.rs:52`, `:21`). The whole tile is a button named by its title and its words. zz-ui maps its states to marks and words (`host_mark`, `window_mark`). Not built: press and hold; a machine's last seen (zz does not keep it, so an offline tile has no foot line) and the connecting card; until it is built, a tap on a connecting tile cancels the connect and the tile goes back to "Not connected" (zz's `host_bento_tile`); the tap into the pane that asks (zz opens the window's active pane).
+Status for the phone tile: built in `src/blocks/compact/tile.rs`: `PhoneTile` (`:46`) with machine content (`.mark`, `.state`, `.foot`) and window content (`.pane`, `.panes` of `MiniPane`, `:254`: `terminal`, `browser`, `chat`, `blank`), the add tile (`PhoneTile::add`, `:75`), `window_span` (`:30`), the phone corner and the concentric mini pane (`mini_radius`, `:39`), and the bento press over the whole tile; the grid and its packing are `bento_grid` and `bento_pack` (`src/blocks/compact/bento.rs:52`, `:21`). The whole tile is a button named by its title and its words, and `PhoneTile::on_hold` takes the hold. zz-ui maps its states to marks and words (`host_mark`, `host_state`, `window_mark`); a machine whose connect failed says "Failed" in `danger` ink with the reason as its foot line. Not built: a machine's last seen (zz does not keep it, so an offline tile has no foot line); a window tile's hold sheet; the tap into the pane that asks (zz opens the window's active pane).
 
 HTML: a machine is `.penna-machine-tile[data-penna="phone.card"]` in a `.penna-machine-grid` (`data-penna="phone.add"` and `data-add` for the add tile), with `.penna-machine-name`, `.penna-machine-state` (`data-tone` `warning` or `danger`), `.penna-machine-foot` and a `.penna-press` (`data-state="active"` for the pressed state). A window is `.penna-bento-tile.penna-window-tile[data-penna="phone.card"]` placed in a `.penna-bento` by `--column`, `--row`, `--columns` and `--span` (`--rows` on the grid, `--penna-bento-width` for the body's width), holding the same `.penna-machine-name` and `.penna-machine-state`, then `.penna-window-preview` with a `.penna-window-pane[data-penna="tile.mini"]` per pane placed by `--x`, `--y`, `--w` and `--h` (fractions of the window), and a `.penna-press`. In a pane: `.penna-window-term` (a `pre`, `data-ink` on a span for `success` or `danger` ink), `.penna-window-host` over `.penna-window-page`, or `.penna-window-chat` holding `.penna-window-bubble` and `.penna-window-lines`; their bars are `i` elements with `--w` as a share of the pane.
 
 HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` draws the variants and states, the lift as `--penna-shadow-lifted` under an inset `--penna-wash` (one wash step, laid over whatever fill the tile or its well draws), the selected ring in `::before` and the focus ring in `::after`; size, inset, placement and a mini's fill and corners are the page's, as natively. `tile.js` runs a focusable tile on Space and Enter and keeps a click from focusing it. Picking and dragging are the page's, as natively the app's.
 
-Status: matches, but for Phone tile above, whose press and hold is not built.
+Status: matches, but for Phone tile above, whose last seen and window hold sheet are not built.
 
 ### Tooltip
 
@@ -2004,7 +2004,7 @@ Placement: on a zoom card or a sheet. A screen of tiles and a pane have the pill
 
 HTML: `.penna-action-bar` (`data-row` for two side by side, `data-keys` riding the keyboard, `data-penna="floating"` when it is a floating surface), holding `.penna-button[data-size="touch-large"]`.
 
-Status: not built.
+Status: built as `action_bar` (`src/blocks/touch/screen.rs`), a column whose bottom inset the caller sets: `ACTION_BAR_BOTTOM` at rest, the keyboard's height plus `ACTION_BAR_KEYBOARD` while it is up. Not built: the floating surface.
 
 ### Stack menu
 
@@ -2125,7 +2125,7 @@ The connecting card, behind a connecting tile, titled with the machine's name: t
 
 HTML: `.penna-zoom-card[data-penna]` holding `.penna-zoom-top`, `.penna-zoom-title`, `.penna-zoom-body` and `.penna-action-bar`. The scanner's picture is the app's, not the kit's.
 
-Status: the zoom is built, its growing card starting from the corner of what grew (the phone corner from a machine, the mini pane's from a window); the card, its close control, drag down and pinch out, and the zoom back out when a machine disconnects are not. The add card and the connecting card are not built: Add host is a bottom sheet with a field and no found rows, the phone has no camera of its own (the system camera opens the code's link), and a connecting tile carries its own Cancel button.
+Status: built. `ZoomCard` (`src/blocks/compact/card.rs`) draws the card on the `phone.card` look (`zoom_card_ground`) with its 44 close, the large title, the body and the action bar, and zz grows it out of its tile with the zoom (`zoom_layers`), the phone corner from a machine or the add tile and the mini pane's from a window. zz's add card has the found rows, the field and Connect; its connecting card has the empty state with the spinner and Cancel, zooms back to its tile when the connect stops, and becomes the machine when it lands. Not built: drag down and pinch out, the scanner and the field's scan accessory (the phone has no camera of its own; the system camera opens the code's link), and the zoom back out when a machine that was in view disconnects.
 
 ### Sheet
 
@@ -2135,7 +2135,7 @@ Anatomy (`penna::blocks::sheet`): floating `space-8` from the screen's sides on 
 
 Phone: the close control is a 44 icon button (Phone, rule 2) with a 20 glyph, its corner a control's from its height like every icon button's (13.7 by default, a circle under Pill) (`CLOSE`, `src/blocks/sheet/mod.rs:22`). The panel takes the phone container corner (`src/blocks/sheet/mod.rs:539`), and its rows cap their corner at it less the row inset (`src/blocks/sheet/mod.rs:285`).
 
-Press and hold (Phone) opens a sheet: the header titled with the thing's name, with one line under the title in `touch-small` muted for the details the tile leaves out (a window's work in progress, then where it works and its age: "Testing, 62% · zebrilus · pane-stack · now"), ending in an ellipsis; then a `.penna-sheet-list` of one-line touch rows, the danger row last (List, Touch rows), and no action bar, since each row is an action. HTML: `.penna-sheet-copy` around `.penna-sheet-title` and `.penna-sheet-detail` in the header. Not built.
+Press and hold (Phone) opens a sheet: the header titled with the thing's name, with one line under the title in `touch-small` muted for the details the tile leaves out (a window's work in progress, then where it works and its age: "Testing, 62% · zebrilus · pane-stack · now"), ending in an ellipsis; then a `.penna-sheet-list` of one-line touch rows, the danger row last (List, Touch rows), and no action bar, since each row is an action. HTML: `.penna-sheet-copy` around `.penna-sheet-title` and `.penna-sheet-detail` in the header. Natively the line is `BottomSheet::detail` and the rows `TouchRow::in_sheet`; zz's machine tile opens one (Connect or Disconnect, then Remove machine), and window tiles and session headers do not yet.
 
 Confirm: a sheet that asks before something is destroyed. The title is the question ("Close this pane?"), one line under it in `touch-small` muted says what goes ("The chat stops. Its transcript stays."), then the action bar: the main action says the verb ("Close") in the `danger` tone at 56, and Cancel over it as a quiet button at 56. No close control in the header, since Cancel is one. Not built.
 
@@ -2145,7 +2145,7 @@ Content: a question from ssh is titled for the machine ("Sign in to xps"), shows
 
 HTML: `.penna-sheet` with `.penna-sheet-scrim`, `.penna-sheet-frame`, `.penna-sheet-panel`, `.penna-sheet-grip`, `.penna-sheet-header`, `.penna-sheet-title`, `.penna-sheet-close` (`data-size="touch"` for 44) and `.penna-sheet-row`.
 
-Status: built, but for the action bar, the press and hold sheet, and the confirm and rename sheets.
+Status: built, but for the action bar in a sheet, the press and hold sheet for windows and sessions, and the confirm and rename sheets.
 
 ### Empty state on a phone
 
@@ -2157,7 +2157,7 @@ Content: the title says what is missing ("No machines yet") or what is ready ("C
 
 HTML: `.penna-empty` with an `<i data-icon>`, a `b` and a `span`.
 
-Status: not built; the desktop's empty state (`small` text, a `body` title at 600) stays as it is.
+Status: built as `PhoneEmpty` (`src/blocks/touch/screen.rs`), its mark an icon or the 32 spinner; the desktop's empty state (`small` text, a `body` title at 600) stays as it is.
 
 ### Palette
 

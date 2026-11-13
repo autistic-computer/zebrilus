@@ -161,7 +161,7 @@ pub(crate) fn host_title(endpoint: &str) -> String {
 }
 
 #[cfg(any(target_os = "ios", target_os = "android", test))]
-fn host_location(endpoint: &str) -> String {
+pub(super) fn host_location(endpoint: &str) -> String {
     if let Some(rest) = endpoint
         .strip_prefix("ssh://")
         .or_else(|| endpoint.strip_prefix("tailnet://"))
@@ -175,6 +175,17 @@ fn host_location(endpoint: &str) -> String {
     match parts.as_slice() {
         [.., parent, file] if parts.len() > 3 => format!("…/{parent}/{file}"),
         _ => endpoint.to_owned(),
+    }
+}
+
+#[cfg(any(target_os = "ios", target_os = "android", test))]
+pub(super) fn waiting_for(endpoint: &str) -> String {
+    if endpoint.starts_with("tailnet://") {
+        format!("Waiting for {} on your tailnet", host_title(endpoint))
+    } else if endpoint.starts_with("ssh://") {
+        format!("Waiting for ssh on {}", host_location(endpoint))
+    } else {
+        format!("Waiting for {}", host_location(endpoint))
     }
 }
 
@@ -196,20 +207,27 @@ pub(super) struct Hosts {
     pub(super) destination: Entity<InputState>,
     pub(super) error: Option<SharedString>,
     pub(super) sheet: Option<HostSheet>,
+    pub(super) found: Vec<crate::connection::FoundHost>,
     _destination_events: Subscription,
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
 impl Hosts {
     pub(super) fn new(window: &mut Window, cx: &mut Context<AppShell>) -> Self {
-        let destination = cx.new(|cx| InputState::new(window, cx).placeholder("user@my-mac.local"));
+        let destination = cx.new(|cx| InputState::new(window, cx).placeholder("user@host"));
         let destination_events = cx.subscribe_in(
             &destination,
             window,
-            |this: &mut AppShell, _, event: &InputEvent, window, cx| {
-                if matches!(event, InputEvent::PressEnter { .. }) && this.add_host(window, cx) {
+            |this: &mut AppShell, _, event: &InputEvent, window, cx| match event {
+                InputEvent::PressEnter { .. } if this.add_host(window, cx) => {
                     close_sheet(ADD_HOST_SHEET, cx);
+                    this.close_machine_card(window, cx);
                 }
+                InputEvent::Change => {
+                    this.hosts.error = None;
+                    cx.notify();
+                }
+                _ => {}
             },
         );
         Self {
@@ -217,6 +235,7 @@ impl Hosts {
             destination,
             error: None,
             sheet: None,
+            found: Vec::new(),
             _destination_events: destination_events,
         }
     }
@@ -800,7 +819,7 @@ fn gateway_address() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{SavedHosts, destination_endpoint, host_location, host_title};
+    use super::{SavedHosts, destination_endpoint, host_location, host_title, waiting_for};
 
     #[test]
     fn destinations_default_to_ssh_and_reject_blank_or_spaced_input() {
@@ -845,6 +864,14 @@ mod tests {
         assert_eq!(
             host_location("/var/folders/5v/y9xj/T//zz-dev-me/default.sock"),
             "…/zz-dev-me/default.sock"
+        );
+        assert_eq!(
+            waiting_for("ssh://fabrico@xps"),
+            "Waiting for ssh on fabrico@xps"
+        );
+        assert_eq!(
+            waiting_for("tailnet://xps.example.ts.net:9923"),
+            "Waiting for xps on your tailnet"
         );
     }
 

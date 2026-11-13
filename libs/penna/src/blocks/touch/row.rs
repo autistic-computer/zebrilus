@@ -153,6 +153,16 @@ impl TouchRow {
         })
     }
 
+    #[must_use]
+    pub fn in_sheet(self, cx: &App) -> Self {
+        let theme = cx.theme();
+        let nest = Nest {
+            outer: theme.phone_radius(),
+            inset: theme.row_inset,
+        };
+        self.nested(nest, crate::blocks::sheet::sheet_ground(cx))
+    }
+
     fn nested(mut self, nest: Nest, ground: Ground) -> Self {
         self.nest = Some(nest);
         self.ground = Some(ground);

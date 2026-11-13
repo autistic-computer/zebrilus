@@ -71,6 +71,7 @@ pub struct BottomSheet {
     on_dismiss: Dismiss,
     content_scroll: Option<ScrollHandle>,
     heading: Option<AnyElement>,
+    detail: Option<SharedString>,
     full: Option<Pixels>,
 }
 
@@ -91,6 +92,7 @@ pub fn bottom_sheet(
         on_dismiss: Rc::new(on_dismiss),
         content_scroll: None,
         heading: None,
+        detail: None,
         full: None,
     }
 }
@@ -105,6 +107,12 @@ impl BottomSheet {
     #[must_use]
     pub fn heading(mut self, heading: impl IntoElement) -> Self {
         self.heading = Some(heading.into_any_element());
+        self
+    }
+
+    #[must_use]
+    pub fn detail(mut self, detail: impl Into<SharedString>) -> Self {
+        self.detail = Some(detail.into());
         self
     }
 
@@ -561,18 +569,36 @@ impl RenderOnce for BottomSheet {
                     .flex_none()
                     .items_center()
                     .gap(Space::GAP_RELATED)
-                    .h(px(HEADER_HEIGHT))
+                    .map(|header| match self.detail {
+                        Some(_) => header.min_h(px(HEADER_HEIGHT)).py(Space::S8),
+                        None => header.h(px(HEADER_HEIGHT)),
+                    })
                     .px(Space::INSET_PANE)
                     .surface(header, cx)
                     .child(self.heading.unwrap_or_else(|| {
+                        let line = || {
+                            div()
+                                .min_w_0()
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_ellipsis()
+                        };
                         div()
+                            .flex()
+                            .flex_col()
                             .flex_1()
                             .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .type_style(crate::TextStyle::Display, cx)
-                            .child(self.title)
+                            .child(
+                                line()
+                                    .type_style(crate::TextStyle::Display, cx)
+                                    .child(self.title),
+                            )
+                            .children(self.detail.map(|detail| {
+                                line()
+                                    .type_style(crate::TextStyle::TouchSmall, cx)
+                                    .text_color(muted_on(ground, cx))
+                                    .child(detail)
+                            }))
                             .into_any_element()
                     }))
                     .children(self.actions),

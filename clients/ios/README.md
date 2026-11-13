@@ -32,8 +32,9 @@ window drawn the way it splits its panes with a live preview of each, the pane i
 in the accent. Tap a window and it zooms into that pane. Its bar is the host pill alone: swipe it
 sideways to page hosts, and tap it for the host's menu, which stacks New terminal, New browser
 and New session (while the host is connected) and All hosts above it, with Settings
-furthest. All hosts, or dragging the pill up, zooms out to Hosts: every host as a tile with what its agents are doing, or Connect or Cancel,
-with Settings in its bar; tap a host to zoom into it. Entering a host, or paging to it with the pill, puts it on screen, since the
+furthest. All hosts, or dragging the pill up, zooms out to Machines: every saved machine as a tile saying its state in words and a mark,
+then the add tile, with Settings in its bar; tap a machine to zoom into it, a connecting one to zoom into its connecting card,
+the add tile to zoom into the add card, and hold a tile for its sheet. With nothing attached the app opens on Machines. Entering a host, or paging to it with the pill, puts it on screen, since the
 daemon streams previews only to the client attached to it. The phone has no session tree: the sidebar toggle and `focus-sidebar` open the
 overview instead. The keyboard opens only from that button or a tap on the terminal.
 While it is up, a key row replaces the pill: the prefix key in a pill of its own, then ctrl,

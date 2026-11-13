@@ -87,7 +87,10 @@ pub(super) struct CompactState {
     keyboard_moving: bool,
     extra_height: Pixels,
     pub(super) overview: bool,
-    add_host: bool,
+    card: Option<overview::MachineCard>,
+    card_zoom: Lift,
+    add_tile: Rc<RefCell<Option<Bounds<Pixels>>>>,
+    held: Option<String>,
     host_pager: Pager,
     host_scrolls: BTreeMap<usize, ScrollHandle>,
     hosts_scroll: ScrollHandle,
@@ -127,7 +130,7 @@ impl CompactState {
     }
 
     pub(super) fn close_sheets(&mut self) {
-        self.add_host = false;
+        self.held = None;
     }
 }
 
@@ -332,6 +335,20 @@ fn binding_rows(core: &zz_client::ClientCore, prefix: &str) -> Arc<[WhichKeyRow]
 }
 
 impl AppShell {
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    pub(super) fn open_machines_when_unattached(&mut self, window: &Window, cx: &App) {
+        if Self::narrow(window)
+            && self.settings.is_none()
+            && !self.compact.overview
+            && !self.connection.read(cx).connected
+            && self.active_window(cx).is_none()
+        {
+            self.compact.overview = true;
+            self.compact.lift.snap(true);
+            self.compact.hosts.snap(true);
+        }
+    }
+
     pub(super) fn compact_active(&self, window: &Window, cx: &App) -> bool {
         Self::narrow(window)
             && self.settings.is_none()
@@ -1470,8 +1487,8 @@ impl AppShell {
             .child(bottom);
         let content = if open {
             #[cfg(any(target_os = "ios", target_os = "android"))]
-            if self.compact.add_host {
-                sheets.push(self.overview_add_host_sheet(safe_bottom, cx));
+            if let Some(endpoint) = self.compact.held.clone() {
+                sheets.push(self.machine_sheet(&endpoint, safe_bottom, cx));
             }
             let (pages, bars) = self.overview_layers(&model, top_inset, &placement, window, cx);
             div()
@@ -1688,6 +1705,7 @@ impl AppShell {
 #[cfg(target_os = "android")]
 enum BackTarget {
     Sheet(&'static str),
+    Card,
     Menu,
     Overlay,
     Settings,
@@ -1700,8 +1718,11 @@ impl AppShell {
         if self.compact.bindings {
             return Some(BackTarget::Sheet(BINDINGS_SHEET));
         }
-        if self.compact.add_host {
-            return Some(BackTarget::Sheet(super::hosts::ADD_HOST_SHEET));
+        if self.compact.held.is_some() {
+            return Some(BackTarget::Sheet(overview::MACHINE_SHEET));
+        }
+        if self.compact.card.is_some() {
+            return Some(BackTarget::Card);
         }
         match self.hosts.sheet {
             Some(super::hosts::HostSheet::Add) => {
@@ -1770,6 +1791,7 @@ impl AppShell {
             .is_some_and(|root| root.read(cx).has_active_dialog());
         match self.back_target(dialog, window, cx) {
             Some(BackTarget::Sheet(id)) => close_sheet(id, cx),
+            Some(BackTarget::Card) => self.close_machine_card(window, cx),
             Some(BackTarget::Menu) => self.close_pill_menu(cx),
             Some(BackTarget::Overlay) => {
                 if let Ok(escape) = ala::Keystroke::parse("escape") {
