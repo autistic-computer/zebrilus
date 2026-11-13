@@ -25,8 +25,8 @@ use zz_client::{
     },
 };
 use zz_daemon_client::{
-    AskpassPrompt, AskpassReply, DaemonError, Endpoint, EndpointError, InteractiveClient,
-    RemoteInstall, RemoteRestart, terminate_incompatible_daemon,
+    AskpassPrompt, AskpassPromptKind, AskpassReply, DaemonError, Endpoint, EndpointError,
+    InteractiveClient, RemoteInstall, RemoteRestart, terminate_incompatible_daemon,
 };
 #[cfg(test)]
 use zz_protocol::StatusLine;
@@ -191,7 +191,7 @@ impl TerminalFontSizeAdjustment {
 }
 
 const DIAGNOSTIC_TARGET: &str = "zz::diagnostics::mux";
-const MAX_UNATTACHED_RECONNECT_ATTEMPTS: u32 = 3;
+const MAX_SIGN_IN_RECONNECT_ATTEMPTS: u32 = 3;
 
 fn reconnect_delay(attempt: u32) -> Duration {
     Duration::from_secs(match attempt {
@@ -934,6 +934,7 @@ struct HostConnection {
     watched_commands: RwLock<VecDeque<(u64, bool)>>,
     answered_commands: RwLock<BTreeSet<u64>>,
     ssh_auth_declined: bool,
+    asked_to_sign_in: bool,
     color_scheme_sent: Option<TerminalColorScheme>,
     background_core: ClientCore,
     providers: Option<zz_protocol::ProvidersReport>,
@@ -969,6 +970,7 @@ impl HostConnection {
             watched_commands: RwLock::new(VecDeque::new()),
             answered_commands: RwLock::new(BTreeSet::new()),
             ssh_auth_declined: false,
+            asked_to_sign_in: false,
             color_scheme_sent: None,
             background_core: ClientCore::new(),
             providers: None,
@@ -1056,6 +1058,7 @@ impl HostConnection {
             watched_commands: RwLock::new(VecDeque::new()),
             answered_commands: RwLock::new(BTreeSet::new()),
             ssh_auth_declined: false,
+            asked_to_sign_in: false,
             color_scheme_sent: None,
             background_core,
             providers: None,
@@ -1964,10 +1967,13 @@ impl MuxClient {
             async_channel::bounded::<(AskpassPrompt, async_channel::Sender<AskpassReply>)>(1);
         cx.spawn(async move |this, cx| {
             while let Ok((prompt, reply)) = incoming.recv().await {
-                let emitted = this.update(cx, |_, cx| {
+                let emitted = this.update(cx, |client, cx| {
                     let Some(host) = *route.read() else {
                         return false;
                     };
+                    if let Some(connection) = client.connections.get_mut(&host) {
+                        connection.asked_to_sign_in = prompt.kind() != AskpassPromptKind::KeyAdded;
+                    }
                     cx.emit(SshPromptRequest {
                         host,
                         label: label.clone(),
@@ -2077,6 +2083,7 @@ impl MuxClient {
         let snapshot = connection.snapshot.as_ref().map(Arc::clone);
         let reconnect_generation = connection.reconnect_generation;
         let reconnect_attempt = connection.reconnect_attempt_in_flight;
+        let asked_to_sign_in = connection.asked_to_sign_in;
         match result {
             Ok(client) => {
                 if let Err(error) = client.request_resync() {
@@ -2088,6 +2095,7 @@ impl MuxClient {
                         connection.last_attached_session = last_attached_session;
                         connection.snapshot = snapshot;
                         connection.reconnect_generation = reconnect_generation;
+                        connection.asked_to_sign_in = asked_to_sign_in;
                         if host == HostId::LOCAL
                             && let Some(client) = &connection.client
                         {
@@ -2152,10 +2160,12 @@ impl MuxClient {
         reconnect_attempt: Option<u32>,
         cx: &mut Context<Self>,
     ) {
-        let declined = self
+        let (declined, asked_to_sign_in) = self
             .connections
             .get(&host)
-            .is_some_and(|connection| connection.ssh_auth_declined);
+            .map_or((false, false), |connection| {
+                (connection.ssh_auth_declined, connection.asked_to_sign_in)
+            });
         let platform = self.host_platform(host);
         let mut connection = HostConnection::disconnected_with_route(route);
         connection.platform = platform;
@@ -2163,8 +2173,11 @@ impl MuxClient {
         connection.snapshot = snapshot;
         connection.reconnect_generation = reconnect_generation;
         connection.ssh_auth_declined = declined;
+        connection.asked_to_sign_in = asked_to_sign_in;
         let next_attempt = reconnect_attempt.filter(|_| !declined).and_then(|attempt| {
-            (self.attached_host == host || attempt < MAX_UNATTACHED_RECONNECT_ATTEMPTS)
+            (self.attached_host == host
+                || !asked_to_sign_in
+                || attempt < MAX_SIGN_IN_RECONNECT_ATTEMPTS)
                 .then(|| attempt.saturating_add(1))
         });
         if declined {
@@ -2444,6 +2457,7 @@ impl MuxClient {
         disconnected.last_attached_session = last_attached_session;
         disconnected.reconnect_generation = reconnect_generation;
         disconnected.platform = connection.platform;
+        disconnected.asked_to_sign_in = connection.asked_to_sign_in;
 
         if self.shutting_down {
             disconnected.state = HostState::Unreachable {
@@ -7440,22 +7454,20 @@ mod tests {
     }
 
     #[ala::test]
-    fn non_attached_reconnect_stops_after_three_failures_and_manual_retry_rearms(
-        cx: &mut TestAppContext,
-    ) {
+    fn an_unattached_host_keeps_retrying_until_it_asks_to_sign_in(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
-        let mux = cx.update(|cx| {
+        let (mux, remote) = cx.update(|cx| {
             crate::config::set_fleet_hosts_for_test(
                 vec![test_host(
                     "remote",
-                    "unix:///tmp/zz-reconnect-capped-does-not-exist.sock",
+                    "unix:///tmp/zz-reconnect-backoff-does-not-exist.sock",
                 )],
                 cx,
             );
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(DaemonError::Thread("local unavailable".to_owned())),
-                    zz_daemon_client::default_socket_path(),
+                    PathBuf::from("/tmp/zz-reconnect-backoff-local-does-not-exist.sock"),
                     cx,
                 )
             });
@@ -7463,32 +7475,55 @@ mod tests {
             mux.update(cx, |mux, cx| {
                 install_fake_connection(mux, remote);
                 mux.handle_host_disconnected(remote, cx);
+            });
+            (mux, remote)
+        });
+        let state = |cx: &mut TestAppContext| {
+            cx.update(|cx| mux.read(cx).connections[&remote].state.clone())
+        };
+        cx.run_until_parked();
 
-                for attempt in 1..=MAX_UNATTACHED_RECONNECT_ATTEMPTS {
-                    let connection = mux.connections.get_mut(&remote).unwrap();
-                    assert_eq!(connection.state, HostState::Reconnecting { attempt });
-                    connection.bump_reconnect_generation();
-                    connection.state = HostState::Connecting;
-                    connection.reconnect_attempt_in_flight = Some(attempt);
-                    mux.handle_connect_result(
-                        remote,
-                        Err(DaemonError::Thread(format!("failure {attempt}"))),
-                        cx,
-                    );
-                }
+        let mut delays = Vec::new();
+        for attempt in 1..=9 {
+            if attempt == 9 {
+                cx.update(|cx| {
+                    mux.update(cx, |mux, _| {
+                        mux.connections.get_mut(&remote).unwrap().asked_to_sign_in = true;
+                    });
+                });
+            }
+            let mut waited = 0;
+            while state(cx) == (HostState::Reconnecting { attempt }) {
+                assert!(waited < 60, "attempt {attempt} never redialed");
+                cx.executor().advance_clock(Duration::from_secs(1));
+                cx.run_until_parked();
+                waited += 1;
+            }
+            delays.push(waited);
+            if attempt < 9 {
+                wait_for_mux(cx, &mux, "the next reconnect rung", |mux| {
+                    mux.connections[&remote].state
+                        == (HostState::Reconnecting {
+                            attempt: attempt + 1,
+                        })
+                });
+            }
+        }
+        assert_eq!(delays, [1, 2, 4, 8, 16, 30, 30, 30, 30]);
+        wait_for_mux(cx, &mux, "a sign-in host giving up", |mux| {
+            matches!(
+                mux.connections[&remote].state,
+                HostState::Unreachable { .. }
+            )
+        });
 
-                let HostState::Unreachable { reason } =
-                    &mux.connections.get(&remote).unwrap().state
-                else {
-                    panic!("the third background reconnect must stop at unreachable");
-                };
-                assert!(reason.contains("failure 3"));
+        cx.update(|cx| {
+            mux.update(cx, |mux, cx| {
                 mux.retry_host_now(remote, cx);
                 let connection = mux.connections.get(&remote).unwrap();
                 assert_eq!(connection.state, HostState::Connecting);
                 assert_eq!(connection.reconnect_attempt_in_flight, Some(1));
             });
-            mux
         });
         std::thread::sleep(Duration::from_millis(50));
         cx.run_until_parked();
@@ -7632,7 +7667,7 @@ mod tests {
                 seed_attachment(mux, SessionId(9), MuxSnapshot::default());
                 mux.handle_host_disconnected(remote, cx);
 
-                for attempt in 1..=(MAX_UNATTACHED_RECONNECT_ATTEMPTS + 2) {
+                for attempt in 1..=(MAX_SIGN_IN_RECONNECT_ATTEMPTS + 2) {
                     let connection = mux.connections.get_mut(&remote).unwrap();
                     assert_eq!(connection.state, HostState::Reconnecting { attempt });
                     connection.bump_reconnect_generation();
@@ -7649,7 +7684,7 @@ mod tests {
                 assert_eq!(
                     mux.connections[&remote].state,
                     HostState::Reconnecting {
-                        attempt: MAX_UNATTACHED_RECONNECT_ATTEMPTS + 3
+                        attempt: MAX_SIGN_IN_RECONNECT_ATTEMPTS + 3
                     }
                 );
             });

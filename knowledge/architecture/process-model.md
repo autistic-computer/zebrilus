@@ -4,7 +4,7 @@ title: Process & threading model
 description: How zz splits work across the persistent daemon, GUI and CLI clients, CEF subprocesses, agent lens runtimes, and per-PTY worker threads.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [architecture, process-model, daemon, threading, ipc]
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-11-13T00:00:00-03:00
 ---
 
 # Overview
@@ -103,8 +103,9 @@ A dead forward starts a roaming loop. The client moves that host to
 `HostState::Reconnecting { attempt }`, leaves the last snapshot and frames on screen, and redials on
 a 1/2/4/8/16/30-second backoff; a successful dial re-attaches the same session, or the default
 session when one exists. An empty replacement daemon lazily creates the next numeric session on
-that fallback attach. The attached host retries until it comes back, while
-background fleet hosts give up after three attempts and keep their typed error state.
+that fallback attach. The attached host retries until it comes back, and so does every saved
+background fleet host while it stays in the config; only a background host that asked the user to
+sign in gives up after three attempts and keeps its typed error state.
 
 `kill-server` never starts a missing daemon, and when an older daemon cannot complete the current
 protocol handshake, zz verifies the process that owns the exact local socket (identity, ownership,
