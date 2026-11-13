@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat stacks</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/chip/chip.css">
+<link rel="stylesheet" href="/penna-src/components/kbd/kbd.css">
+<link rel="stylesheet" href="/penna-src/components/menu/menu.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/penna-src/components/kbd/kbd.js" defer></script>
+<style>
+  .zz-page { display: grid; gap: 24px; max-width: 1760px; margin: 0 auto; padding: 40px 32px 96px; }
+  .zz-page h1 { margin: 0; font-size: var(--penna-text-title-size); line-height: var(--penna-text-title-line); font-weight: 600; }
+  .zz-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+  .zz-intro p { margin: 4px 0 0; max-width: 92ch; color: var(--penna-fg-muted); }
+  .zz-intro a { color: var(--penna-fg); }
+  .zz-hold { display: flex; align-items: center; gap: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); cursor: var(--penna-click-cursor); }
+
+  .zz-board { display: grid; grid-template-columns: repeat(3, 256px) minmax(600px, 1fr); gap: 0 32px; align-items: start; }
+  .zz-heads { position: sticky; z-index: 50; top: 0; display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; padding: 14px 0 12px; background: var(--penna-bg); box-shadow: 0 1px 0 var(--penna-divider); }
+  .zz-heads > div { display: grid; gap: 2px; }
+  .zz-heads b { font-size: 15px; line-height: 20px; font-weight: 600; }
+  .zz-heads span, .zz-cap, .zz-note, .zz-decided li { color: var(--penna-fg-muted); }
+  .zz-take { grid-column: 1 / -1; display: grid; gap: 2px; margin: 44px 0 14px; }
+  .zz-take b { font-size: 17px; line-height: 22px; font-weight: 600; }
+  .zz-take span { color: var(--penna-fg-muted); }
+  .zz-cell { display: grid; grid-template-rows: auto 1fr; gap: 8px; align-self: stretch; min-width: 0; }
+  .zz-cap { margin: 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-note { grid-column: 1 / 4; margin: 14px 0 0; max-width: 110ch; }
+  .zz-decided { display: grid; gap: 8px; align-content: start; margin: 0; padding-left: 18px; }
+  .zz-decided b { color: var(--penna-fg); font-weight: 600; }
+
+  .zz-side.penna-window { grid-template-columns: 256px; grid-template-rows: 40px auto; width: 256px; }
+  .zz-nav[data-penna="sidebar"] { display: flex; flex-direction: column; gap: 0; height: 100%; min-height: 0; padding: 0; --zz-ground: var(--penna-fill); }
+  .zz-nav > .penna-strip { padding-right: 10px; }
+  .zz-nav [data-penna="chrome.button"] { display: grid; place-items: center; padding: 0; color: var(--penna-fg-muted); }
+  .zz-actions { display: flex; flex: none; flex-direction: column; padding: 0 8px 8px 0; }
+  .zz-foot { display: flex; flex: none; flex-direction: column; margin-top: auto; padding: 16px 8px 6px 0; }
+  .zz-action[data-penna] { height: 32px; margin: 0 var(--penna-row-inset); padding: 0 10px; gap: 8px; font-size: 13px; line-height: 16px; --penna-icon-size: 16px; cursor: var(--penna-click-cursor); }
+  .zz-list { position: relative; display: flex; flex-direction: column; padding-right: 8px; }
+
+  .zz-host { display: flex; flex: none; align-items: center; gap: 8px; height: 30px; padding: 0 16px; font-size: 13px; font-weight: 600; line-height: 16px; color: color-mix(in oklab, var(--penna-fg) 85%, transparent); }
+  .zz-list > :not(.zz-host) + .zz-host { margin-top: 18px; }
+  .zz-host > [data-icon] { color: var(--penna-fg-muted); --penna-icon-size: 16px; }
+
+  .zz-row[data-penna="row.nav"] { position: relative; flex: none; flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; padding: 0 13px 0 10px; font-weight: 400; cursor: var(--penna-click-cursor); --zz-row-fill: var(--penna-fill); }
+  .zz-row.zz-child[data-penna="row.nav"] { height: 40px; padding-left: 32px; }
+  .zz-stack { position: relative; flex: none; width: 42px; height: 28px; }
+  .zz-child .zz-stack { width: 20px; height: 20px; }
+  .zz-tile[data-penna] { position: absolute; top: 0; display: grid; place-items: center; width: 28px; height: 28px; background: linear-gradient(color-mix(in srgb, var(--penna-fg) 6%, var(--penna-fill)), var(--penna-fill)); box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--penna-fg) 16%, transparent), var(--penna-shadow-contact); --penna-icon-size: 16px; }
+  .zz-child .zz-tile[data-penna] { width: 20px; height: 20px; --penna-icon-size: 14px; }
+  .zz-stack[data-open] { z-index: 5; }
+  .zz-stack[data-open] .zz-tile:not([data-state~="current"]) > [data-icon] { color: var(--penna-muted); }
+  .zz-dot { position: absolute; right: -2.5px; bottom: -2.5px; display: grid; place-items: center; width: 11px; height: 11px; border-radius: 50%; background: linear-gradient(var(--zz-row-fill), var(--zz-row-fill)), var(--zz-ground); }
+  .zz-dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--zz-tone); }
+  .zz-child .zz-dot { width: 9px; height: 9px; }
+  .zz-child .zz-dot::after { width: 6px; height: 6px; }
+  .zz-stack[data-open] .zz-dot { background: var(--zz-ground); }
+  [data-tone="accent"] { --zz-tone: var(--penna-accent); }
+  [data-tone="warning"] { --zz-tone: var(--penna-warning); }
+  [data-tone="danger"] { --zz-tone: var(--penna-danger); }
+  [data-tone="success"] { --zz-tone: var(--penna-success); }
+  [data-tone="primary"] { --zz-tone: var(--penna-primary); }
+
+  .zz-text { display: flex; flex: 1; flex-direction: column; gap: 1px; min-width: 0; }
+  .zz-row[data-open] .zz-text { -webkit-mask-image: linear-gradient(to right, transparent var(--zz-hide), #000 calc(var(--zz-hide) + 28px)); mask-image: linear-gradient(to right, transparent var(--zz-hide), #000 calc(var(--zz-hide) + 28px)); }
+  .zz-title { display: flex; align-items: center; gap: 6px; height: 17px; font-size: 13px; font-weight: 500; line-height: 17px; }
+  .zz-title > .penna-spinner { color: var(--penna-muted); }
+  .zz-label, .zz-parts { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; -webkit-mask-image: linear-gradient(to left, transparent, #000 16px); mask-image: linear-gradient(to left, transparent, #000 16px); }
+  .zz-line { display: flex; align-items: center; gap: 8px; height: 15px; font-size: 12px; line-height: 15px; color: var(--penna-muted); }
+  .zz-parts > [data-tone="normal"] { color: var(--penna-ink); }
+  .zz-parts > [data-tone="warning"] { color: var(--penna-warning); }
+  .zz-parts > [data-tone="danger"] { color: var(--penna-danger); }
+  .zz-parts > [data-tone="accent"], .zz-parts > [data-tone="success"], .zz-parts > [data-tone="primary"] { color: inherit; }
+  .zz-age { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .zz-chev { flex: none; color: var(--penna-muted); visibility: hidden; transition: transform 150ms cubic-bezier(0.22, 1, 0.36, 1); --penna-icon-size: 10px; }
+  .zz-chev[data-open] { transform: rotate(90deg); }
+  .zz-row:is(:hover, [data-state~="hover"]) .zz-chev, .zz-chev[data-open] { visibility: visible; }
+  .zz-row > .penna-kbd { display: none; flex: none; }
+  :is(.zz-board[data-keys], .zz-side[data-keys]) .zz-row > .penna-kbd { display: inline-flex; }
+  :is(.zz-board[data-keys], .zz-side[data-keys]) .zz-row:not(.zz-child) .zz-age { display: none; }
+
+  .zz-chips { display: flex; flex: 1; flex-wrap: wrap; align-content: center; gap: 4px; min-width: 0; height: 44px; overflow: hidden; }
+  .zz-chips > .penna-chip { max-width: 100%; }
+  .zz-chips .penna-chip-label { min-width: 0; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+  .zz-chips .penna-chip > [data-icon] { color: var(--penna-muted); }
+  .zz-chips .penna-chip[data-state~="current"] > [data-icon] { color: var(--penna-ink); }
+
+  .zz-tip[data-penna="tooltip"] { position: absolute; z-index: 6; white-space: nowrap; pointer-events: none; }
+
+  .zz-work.penna-window { grid-template-columns: 1fr; grid-template-rows: 1fr; height: 600px; }
+  .zz-panes { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr) 168px; gap: 1px; min-height: 0; background: var(--penna-divider); }
+  .zz-panes > [data-penna="pane"] { position: relative; background: var(--penna-bg); }
+  .zz-panes > .zz-wide { grid-column: 1 / -1; }
+  .zz-panes [data-penna="button.title"] { max-width: 240px; }
+  .zz-panes [data-penna="button.title"] > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .zz-panes [data-penna="bar.pane"] > .zz-grow { flex: 1; }
+  .zz-tx { display: flex; flex: 1; flex-direction: column; gap: 12px; min-height: 0; padding: 8px 16px; overflow: hidden; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); }
+  .zz-tx > p { margin: 0; }
+  .zz-tx code { font-family: var(--penna-mono); font-size: 12px; }
+  .zz-tx .penna-chat-bubble[data-penna] { max-width: 88%; }
+  .zz-dock { flex: none; padding: 0 12px 12px; }
+  .zz-caret { position: relative; }
+  .zz-caret::after { content: ""; position: absolute; top: 6px; left: 0; width: 1.5px; height: 16px; background: var(--penna-fg); animation: zz-blink 1s steps(1) infinite; }
+  @keyframes zz-blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .zz-caret::after { animation: none; } }
+  .zz-terminal b { font-weight: 600; }
+  .zz-terminal [data-ink="success"] { color: var(--penna-success-ink); }
+  .zz-terminal [data-ink="muted"] { color: var(--penna-fg-muted); }
+
+  .zz-snip { position: relative; width: 256px; }
+  .zz-snip > .zz-nav[data-penna] { height: 132px; padding-top: 18px; overflow: hidden; border-radius: calc(12px * var(--penna-corner-grow, 1)); corner-shape: superellipse(var(--penna-window-k, 2)); }
+  .zz-menu.penna-popup[data-penna] { position: absolute; z-index: 5; top: 44px; left: 118px; }
+  .zz-menu .penna-popup-row[data-penna] { padding: 0 var(--penna-space-8); font-weight: inherit; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <div>
+      <h1>Chat stacks</h1>
+      <p>One row per window, and the stack says how many chats live in it. Same machines and windows in every take: row 3 holds two chats split side by side and a terminal, row 4 a chat and its fork floating over it. Where windows without a chat go: <a href="windows.html">Chat windows</a>. The pick, drawn as the spec: <a href="./">Chat rows</a>.</p>
+    </div>
+    <label class="zz-hold"><span>Hold ⌘</span><button class="penna-switch" type="button" role="switch" aria-checked="false"></button></label>
+  </div>
+  <div class="zz-board" data-board></div>
+</main>
+<script>
+(() => {
+  const MARKS = {
+    "zz-claude": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z'/></svg>",
+    "zz-openai": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z'/></svg>",
+    "zz-macos": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12.131 7.193c-.79 0-2.013-.898-3.3-.867c-1.7.022-3.258.986-4.134 2.512c-1.764 3.062-.455 7.586 1.266 10.075c.844 1.212 1.84 2.575 3.16 2.533c1.267-.054 1.742-.823 3.279-.823c1.526 0 1.958.823 3.3.79c1.364-.022 2.23-1.233 3.063-2.457c.963-1.407 1.363-2.771 1.385-2.846c-.033-.011-2.652-1.018-2.683-4.048c-.022-2.533 2.067-3.745 2.164-3.799c-1.191-1.742-3.019-1.937-3.658-1.98c-1.667-.13-3.062.908-3.842.908zM14.946 4.638c.703-.843 1.167-2.022 1.038-3.192c-1.006.043-2.218.671-2.943 1.515c-.65.747-1.212 1.948-1.061 3.095c1.115.087 2.263-.573 2.966-1.418'/></svg>",
+    "zz-ubuntu": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M16.675 2.375a2.842 2.842 0 0 0-2.842 2.842a2.842 2.842 0 0 0 2.842 2.842a2.842 2.842 0 0 0 2.842-2.842a2.842 2.842 0 0 0-2.842-2.842zM12.767 2.662C9.436 2.643 6.281 4.447 4.623 7.372a3.75 3.75 0 0 1 .217-.006a4.1 4.1 0 0 1 2.154.614A6.93 6.93 0 0 1 12.573 4.996A4.12 4.12 0 0 1 13.436 2.691A9.173 9.173 0 0 0 12.767 2.662zm7.688 4.162a4.096 4.096 0 0 1-1.598 1.872a6.967 6.967 0 0 1-.228 6.919a4.075 4.075 0 0 1 1.36 2.117a9.297 9.297 0 0 0 .466-10.908zM4.842 8.606A2.842 2.842 0 0 0 2 11.447a2.842 2.842 0 0 0 2.842 2.841a2.842 2.842 0 0 0 2.842-2.842a2.842 2.842 0 0 0-2.842-2.842zm1.689 6.555a4.09 4.09 0 0 1-2.429.298a9.25 9.25 0 0 0 6.659 5.582a9.362 9.362 0 0 0 2.018.208a4.066 4.066 0 0 1-.833-2.375a7.07 7.07 0 0 1-.697-.113a6.92 6.92 0 0 1-4.719-3.6zm9.504.773a2.842 2.842 0 0 0-2.842 2.842a2.842 2.842 0 0 0 2.842 2.842a2.842 2.842 0 0 0 2.842-2.842a2.842 2.842 0 0 0-2.842-2.842z'/></svg>",
+  };
+  const marks = document.createElement("style");
+  marks.textContent = Object.entries(MARKS)
+    .map(([name, svg]) => `[data-icon="${name}"] { --penna-icon: url("data:image/svg+xml,${encodeURIComponent(svg)}"); }`)
+    .join("\n");
+  document.head.append(marks);
+
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const ic = (name, extra = "") => `<i data-icon="${name}"${extra}></i>`;
+  const PROGRAM = { "zz-claude": "Claude Code", "zz-openai": "Codex" };
+  const NEEDS = new Set(["warning", "danger"]);
+
+  const HOSTS = [
+    { name: "macbook", icon: "zz-macos" },
+    { name: "ubuntu", icon: "zz-ubuntu" },
+  ];
+  const WINDOWS = [
+    { host: 0, place: "zebrilus · hit-tests", chats: [{ title: "Fix stack hit tests", detail: [["Running the tests"]], tone: "accent", working: true, age: "now" }] },
+    { host: 0, place: "zebrilus · bento", chats: [{ title: "Port bento to penna", age: "12m" }], panes: [{ icon: "terminal", label: "cargo watch" }, { icon: "terminal", label: "zsh" }] },
+    { host: 0, place: "zebrilus · pill-menu", current: true, focus: 1, chats: [{ title: "Pill menu New chat", age: "4m" }, { title: "Review the pill diff", age: "now" }], panes: [{ icon: "terminal", label: "cargo" }] },
+    { host: 0, place: "zebrilus · main", focus: 1, chats: [{ title: "Plan the chat rows", age: "1h" }, { title: "What the kit draws", detail: [["Needs approval", "warning"], [" · rg guide"]], tone: "warning", age: "now" }] },
+    { host: 1, place: "packaging · main", chats: [{ agent: "zz-openai", title: "Bump arch package", detail: [["Done", "normal"], [" · PKGBUILD"]], tone: "success", age: "2h" }], panes: [{ icon: "globe", label: "aur.archlinux.org" }] },
+    { host: 1, place: "release · main", chats: [{ title: "Tidy release notes", age: "1d" }] },
+  ];
+  const behind = () => {
+    const windows = structuredClone(WINDOWS);
+    Object.assign(windows[2].chats[0], { detail: [["Running cargo test"]], tone: "accent", working: true, age: "now" });
+    windows[3].focus = 0;
+    return windows;
+  };
+
+  const chatsOf = (win) => win.chats.map((chat) => ({ agent: "zz-claude", ...chat }));
+  const front = (win) => chatsOf(win)[win.focus ?? 0];
+  const faces = (win) => {
+    const chats = chatsOf(win);
+    const focus = win.focus ?? 0;
+    const order = [chats[focus], ...chats.filter((_, index) => index !== focus)];
+    return [
+      ...order.map((chat) => ({ icon: chat.agent, tone: chat.tone, label: chat.title, chat: true, focused: chat === chats[focus] })),
+      ...(win.panes ?? []).map((pane) => ({ icon: pane.icon, label: pane.label })),
+    ];
+  };
+  const hiddenNeed = (win) => chatsOf(win).find((chat, index) => index !== (win.focus ?? 0) && NEEDS.has(chat.tone));
+
+  const dot = (tone) => (tone ? `<span class="zz-dot" data-tone="${tone}"></span>` : "");
+  const stack = (list, open) => {
+    const shown = open ? list : list.slice(0, 3);
+    const tiles = shown.map((face, slot) => {
+      const left = open ? slot * 32 : slot * 7;
+      const glyph = open || slot === 0 ? ic(face.icon) : "";
+      const state = open && slot === 0 ? ` data-state="current"` : "";
+      return `<span class="zz-tile" data-penna="tile.stack"${state} style="left: ${left}px; z-index: ${10 - slot}">${glyph}${dot(face.tone)}</span>`;
+    });
+    return `<span class="zz-stack"${open ? " data-open" : ""}>${tiles.join("")}</span>`;
+  };
+  const parts = (detail) => detail.map(([part, tone = "muted"]) => `<span data-tone="${tone}">${esc(part)}</span>`).join("");
+  const text = ({ title, detail, age, working, chevron }) =>
+    `<span class="zz-text"><span class="zz-title"><span class="zz-label" data-penna-text>${esc(title)}</span>${working ? `<span class="penna-spinner" data-size="small">${ic("loader")}</span>` : ""}${chevron ?? ""}</span><span class="zz-line"><span class="zz-parts">${parts(detail)}</span>${age ? `<span class="zz-age">${age}</span>` : ""}</span></span>`;
+  const kbd = (number) => `<kbd class="penna-kbd" data-penna="keycap" data-size="small" data-kbd="cmd-${number}"></kbd>`;
+  const headline = (win) => {
+    const lead = front(win);
+    const need = hiddenNeed(win);
+    const detail = need ? [need.detail[0], [` · ${need.title}`]] : (lead.detail ?? [[win.place]]);
+    return { title: lead.title, detail, age: lead.age, working: lead.working };
+  };
+  const states = (...list) => {
+    const value = list.filter(Boolean).join(" ");
+    return value ? ` data-state="${value}"` : "";
+  };
+
+  const windowRow = (win, number, { open = false, hover = false, chevron = false, tip = null, expanded = false } = {}) => {
+    const list = faces(win);
+    const several = win.chats.length > 1;
+    const chev = chevron && several ? ic("chevron-right", ` class="zz-chev"${expanded ? " data-open" : ""}`) : "";
+    const reach = list.length * 28 + (list.length - 1) * 4 + 4;
+    const body = expanded
+      ? text({ title: win.place.split(" · ")[0], detail: [[win.place.split(" · ")[1]]], age: front(win).age, chevron: chev })
+      : text({ ...headline(win), chevron: chev });
+    const current = win.current && !expanded;
+    const openAttr = open ? ` data-open style="--zz-hide: ${reach - 52}px"` : "";
+    const tipHtml = tip === null ? "" : `<span class="zz-tip" data-penna="tooltip" style="left: ${16 + tip * 32}px; top: 42px">${esc(list[tip].label)}</span>`;
+    return `<div class="zz-row" data-penna="row.nav" role="button"${states(current && "current", hover && "hover")}${openAttr}>${stack(list, open)}${body}${kbd(number)}${tipHtml}</div>`;
+  };
+  const childRows = (win) => chatsOf(win).map((chat, index) => {
+    const current = win.current && index === (win.focus ?? 0);
+    const detail = chat.detail ?? [[PROGRAM[chat.agent]]];
+    return `<div class="zz-row zz-child" data-penna="row.nav" role="button"${states(current && "current")}><span class="zz-stack"><span class="zz-tile" data-penna="tile.stack" style="left: 0">${ic(chat.agent)}${dot(chat.tone)}</span></span>${text({ title: chat.title, detail, age: chat.age, working: chat.working })}</div>`;
+  }).join("");
+  const chip = (face, focused) => `<span class="penna-chip" data-penna="chip" data-size="xsmall" data-interactive${focused ? ` data-state="current"` : ""}>${ic(face.icon)}<span class="penna-text penna-chip-label" data-penna-text>${esc(face.label)}</span>${face.tone ? `<i class="penna-dot" data-tone="${face.tone}"></i>` : ""}</span>`;
+  const fannedRow = (win, number) => `<div class="zz-row" data-penna="row.nav" role="button"${states(win.current && "current", "hover")}><span class="zz-chips">${faces(win).map((face) => chip(face, face.focused)).join("")}</span>${kbd(number)}</div>`;
+
+  const action = (icon, label) => `<div class="zz-action" data-penna="sidebar.row" role="button">${ic(icon)}<span data-penna-text>${label}</span></div>`;
+  const sidebar = (windows, row, keys = false) => {
+    let host = -1;
+    let html = "";
+    windows.forEach((win, index) => {
+      if (win.host !== host) {
+        host = win.host;
+        html += `<div class="zz-host" role="button">${ic(HOSTS[host].icon)}<span data-penna-text>${HOSTS[host].name}</span></div>`;
+      }
+      html += row(win, index + 1, index);
+    });
+    return `<div class="penna-window zz-side" data-penna="window"${keys ? " data-keys" : ""}><div class="penna-lights"><i></i><i></i><i></i></div><nav class="zz-nav" data-penna="sidebar"><div class="penna-strip"><button data-penna="chrome.button" aria-label="Show the session tree">${ic("chat-fill")}</button><button data-penna="chrome.button" aria-label="Hide the sidebar">${ic("panel-left")}</button></div><div class="zz-actions">${action("chat-plus", "New chat")}${action("server-plus", "Add host")}</div><div class="zz-list">${html}</div><div class="zz-foot">${action("settings", "Settings")}</div></nav></div>`;
+  };
+  const cell = (caption, html) => `<div class="zz-cell"><p class="zz-cap">${caption}</p>${html}</div>`;
+
+  const TAKES = [
+    {
+      name: "S1 · Stack carries it",
+      line: "One row per window. Each chat is a face with its own dot, chats ahead of terminals, the focused chat in front.",
+      cells: [
+        cell("Rest", sidebar(WINDOWS, (win, number) => windowRow(win, number))),
+        cell("Pointer on the stacks of rows 3 and 4", sidebar(WINDOWS, (win, number, index) => windowRow(win, number, { open: index === 2 || index === 3, hover: index === 2 || index === 3, tip: index === 3 ? 1 : null }))),
+        cell("Behind: row 3 runs, row 4 needs approval", sidebar(behind(), (win, number) => windowRow(win, number))),
+      ],
+      note: "The title and second line follow the front face. A dot behind the front face peeks out to its right. A chat behind that needs you or failed also takes the second line; one that only runs shows its dot. Pointing at the stack lays the faces out with their names as tooltips, as it does today, and clicking a face focuses that pane.",
+    },
+    {
+      name: "S2 · Stack expands into rows",
+      line: "Collapsed it is S1. The chevron after the title opens the window into one row per chat; terminals and browsers stay in the window's stack.",
+      cells: [
+        cell("Rest, pointer on row 3", sidebar(WINDOWS, (win, number, index) => windowRow(win, number, { chevron: true, hover: index === 2 }))),
+        cell("Rows 3 and 4 open, ⌘ held", sidebar(WINDOWS, (win, number, index) => {
+          const expanded = index === 2 || index === 3;
+          return windowRow(win, number, { chevron: true, expanded }) + (expanded ? childRows(win) : "");
+        }, true)),
+        cell("Behind: row 3 runs, row 4 needs approval", sidebar(behind(), (win, number) => windowRow(win, number, { chevron: true }))),
+      ],
+      note: "Open, the window row shows its folder and branch and the chats get rows under it, each with its own face, status and age; the current marker moves from the window row to the focused chat's row. ⌘ badges count window rows only, so opening a window never renumbers the list. A window with one chat never gets a chevron, and the current window does not open by itself.",
+    },
+    {
+      name: "S3 · Stack fans out in place",
+      line: "Collapsed it is S1. Pointing at the stack of a window with two or more chats swaps the stack and title for chips, one per pane.",
+      cells: [
+        cell("Rest", sidebar(WINDOWS, (win, number) => windowRow(win, number))),
+        cell("Rows 3 and 4 fanned", sidebar(WINDOWS, (win, number, index) => (index === 2 || index === 3 ? fannedRow(win, number) : windowRow(win, number)))),
+        cell("Behind: row 3 runs, row 4 needs approval", sidebar(behind(), (win, number) => windowRow(win, number))),
+      ],
+      note: "The row keeps its height: chips wrap to two lines, chats first with the focused one current, each with its own dot. Clicking a chip focuses that pane, leaving the row folds it back. A window with one chat keeps today's stack.",
+    },
+  ];
+
+  const header = (icon, title) => `<div data-penna="bar.pane"><div data-penna="button.title">${ic(icon)}<span>${esc(title)}</span></div><span class="zz-grow"></span><button data-penna="icon-button.bar" aria-label="Pane menu">${ic("ellipsis")}</button></div>`;
+  const composer = (focused) => `<div class="zz-dock"><div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer"${focused ? ` data-state="focused"` : ""}><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Mention a chat, host, session or file">${ic("plus")}</button><span class="penna-chat-input${focused ? " zz-caret" : ""}" role="textbox" data-placeholder="Message Claude Code…"></span><button class="penna-button" data-penna="button.send" data-shape="icon" disabled aria-label="Send">${ic("arrow-up")}</button></div></div></div>`;
+  const you = (said) => `<div class="penna-chat-message"><div class="penna-card penna-chat-bubble" data-penna="card.bubble" role="group"><span>${said}</span></div></div>`;
+  const step = (icon, label, detail = "") => `<div class="penna-chat-activity"><span class="penna-chat-glyph">${ic(icon)}</span><span class="penna-chat-label">${label}</span>${detail ? `<span class="penna-chat-detail">${detail}</span>` : ""}</div>`;
+  const [left, right] = WINDOWS[2].chats;
+  const workspace = `<div class="penna-window zz-work" data-penna="window"><div class="zz-panes">
+    <section data-penna="pane">${header("zz-claude", left.title)}<div class="zz-tx">${you("Put New chat in the pill menu, above Overview.")}${step("file", "Read pill_menu.rs")}${step("pencil", "Edited pill_menu.rs", "+14 −3")}<p>New chat is the first item now and opens the New chat screen. The menu test checks the exact labels.</p></div>${composer(false)}</section>
+    <section data-penna="pane">${header("zz-claude", right.title)}<div class="zz-tx">${you("Read the diff in the chat on the left. Can it land?")}${step("git-branch", "git diff main", "pill-menu")}<p>It can. The item order matches the desktop sidebar and nothing outside <code>pill_menu.rs</code> changed.</p></div>${composer(true)}</section>
+    <section data-penna="pane" class="zz-wide">${header("terminal", "cargo")}<pre class="zz-terminal"><span data-ink="muted">~/dev/zebrilus pill-menu</span>
+<b>❯ cargo test -p zz-ui pill</b>
+   Compiling zz-ui v0.42.0
+running 6 tests
+<span data-ink="success">test result: ok. 6 passed; 0 failed</span>
+<b>❯ </b></pre></section>
+  </div></div>`;
+  const menu = `<div class="zz-snip"><nav class="zz-nav" data-penna="sidebar">${windowRow(WINDOWS[2], 3, { hover: true })}${windowRow(WINDOWS[3], 4)}</nav><div class="penna-popup zz-menu" data-penna="popover"><div class="penna-popup-items" role="menu"><div class="penna-popup-row" data-penna="menu-item" data-kind="item" role="menuitem"><span class="penna-popup-main"><span class="penna-label" data-penna-text>Rename</span></span></div><div class="penna-popup-row" data-penna="menu-item" data-kind="item" role="menuitem"><span class="penna-popup-main"><span class="penna-label" data-penna-text>Close window</span></span></div></div></div></div>`;
+  const decided = `<ul class="zz-decided">
+    <li><b>One chat, no disclosure.</b> A window with one chat never shows a chevron or chips, however many terminals it holds.</li>
+    <li><b>The current window stays as it was.</b> It does not open by itself, so rows never move when focus moves; the front face and the title already name the focused chat.</li>
+    <li><b>A chat behind shows itself.</b> Its face keeps its own dot. Needs you or failed also takes the row's second line, naming the chat; running shows only the dot.</li>
+    <li><b>Front face.</b> The focused chat, or the last focused one while a terminal has focus.</li>
+  </ul>`;
+  const SIDE = ["", cell("Row menu", menu), cell("Decided", decided)];
+
+  const HEADS = [["Collapsed", "At rest"], ["Open", "What the stack turns into"], ["Collapsed, chats behind", "Attention that is not in front"], ["Row 3", "The whole window, focused on its front chat"]];
+  let html = `<div class="zz-heads">${HEADS.map(([title, line]) => `<div><b>${title}</b><span>${line}</span></div>`).join("")}</div>`;
+  TAKES.forEach((take, index) => {
+    html += `<div class="zz-take"><b>${take.name}</b><span>${take.line}</span></div>`;
+    html += take.cells.join("");
+    html += index === 0 ? cell("Selected row", workspace) : SIDE[index];
+    html += `<p class="zz-note">${take.note}</p>`;
+  });
+  const board = document.querySelector("[data-board]");
+  board.innerHTML = html;
+
+  const hold = document.querySelector(".zz-hold > .penna-switch");
+  const setKeys = (on) => {
+    hold.toggleAttribute("data-on", on);
+    hold.setAttribute("aria-checked", String(on));
+    board.toggleAttribute("data-keys", on);
+  };
+  setKeys(new URLSearchParams(location.search).has("keys"));
+  hold.addEventListener("click", () => setKeys(!hold.hasAttribute("data-on")));
+})();
+</script>
+</body>
+</html>

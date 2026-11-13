@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat rows</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/kbd/kbd.css">
+<link rel="stylesheet" href="/penna-src/components/menu/menu.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/penna-src/components/kbd/kbd.js" defer></script>
+<style>
+  .zz-page { display: grid; gap: 28px; max-width: 1760px; margin: 0 auto; padding: 40px 32px 96px; }
+  .zz-page h1 { margin: 0; font-size: var(--penna-text-title-size); line-height: var(--penna-text-title-line); font-weight: 600; }
+  .zz-page h2 { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+  .zz-intro p { margin: 4px 0 0; max-width: 100ch; color: var(--penna-fg-muted); }
+  .zz-intro a { color: var(--penna-fg); }
+
+  .zz-board { display: grid; grid-template-columns: repeat(3, 256px) minmax(620px, 1fr); gap: 36px 32px; align-items: start; }
+  .zz-cell { display: grid; grid-template-rows: auto 1fr; gap: 8px; align-self: stretch; min-width: 0; }
+  .zz-cap { margin: 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); white-space: nowrap; }
+  .zz-aside { display: grid; gap: 12px; align-content: start; min-width: 0; }
+  .zz-decided { display: grid; gap: 8px; margin: 0; padding-left: 18px; color: var(--penna-fg-muted); }
+  .zz-decided b { color: var(--penna-fg); font-weight: 600; }
+  .zz-spec { width: 100%; border-collapse: collapse; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-spec th, .zz-spec td { padding: 5px 12px 5px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--penna-divider); }
+  .zz-spec th { font-weight: 600; color: var(--penna-fg); }
+  .zz-spec td { color: var(--penna-fg-muted); }
+  .zz-spec td:first-child { color: var(--penna-fg); white-space: nowrap; }
+  .zz-spec td:last-child { font-family: var(--penna-mono); font-size: 11px; }
+
+  .zz-side.penna-window { grid-template-columns: 256px; grid-template-rows: 40px auto; width: 256px; }
+  .zz-nav[data-penna="sidebar"] { display: flex; flex-direction: column; gap: 0; height: 100%; min-height: 0; padding: 0; --zz-ground: var(--penna-fill); }
+  .zz-nav > .penna-strip { padding-right: 10px; }
+  .zz-nav [data-penna="chrome.button"] { display: grid; place-items: center; padding: 0; color: var(--penna-fg-muted); }
+  .zz-actions { display: flex; flex: none; flex-direction: column; padding: 0 8px 8px 0; }
+  .zz-foot { display: flex; flex: none; flex-direction: column; margin-top: auto; padding: 16px 8px 6px 0; }
+  .zz-action[data-penna] { height: 32px; margin: 0 var(--penna-row-inset); padding: 0 10px; gap: 8px; font-size: 13px; line-height: 16px; --penna-icon-size: 16px; cursor: var(--penna-click-cursor); }
+  .zz-list { position: relative; display: flex; flex-direction: column; padding-right: 8px; }
+
+  .zz-host { display: flex; flex: none; align-items: center; gap: 8px; height: 30px; padding: 0 16px; font-size: 13px; font-weight: 600; line-height: 16px; color: color-mix(in oklab, var(--penna-fg) 85%, transparent); }
+  .zz-list > :not(.zz-host) + .zz-host { margin-top: 18px; }
+  .zz-host > [data-icon] { color: var(--penna-fg-muted); --penna-icon-size: 16px; }
+
+  .zz-group { position: relative; display: flex; flex-direction: column; --zz-track: var(--penna-divider); }
+  .zz-group[data-lit] { --zz-track: var(--penna-fg-muted); }
+  .zz-group::before { content: ""; position: absolute; z-index: 1; top: 42px; bottom: 4px; left: 29.75px; width: 0.5px; background: var(--zz-track); pointer-events: none; }
+  .zz-group[data-ticks]::before { bottom: 16px; }
+  .zz-group[data-ticks] .zz-nest::before { content: ""; position: absolute; top: calc(50% - 0.25px); left: 23.75px; width: 5.25px; height: 0.5px; background: var(--zz-track); }
+
+  .zz-row[data-penna="row.nav"] { position: relative; flex: none; flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; height: 46px; margin: 1px var(--penna-row-inset); padding: 0 13px 0 10px; font-weight: 400; cursor: var(--penna-click-cursor); --zz-row-fill: var(--penna-fill); }
+  .zz-row.zz-nest[data-penna="row.nav"] { height: 30px; padding-left: 32px; gap: 10px; }
+  .zz-stack { position: relative; flex: none; width: 42px; height: 28px; }
+  .zz-lead { position: relative; flex: none; height: 20px; }
+  .zz-tile[data-penna] { position: absolute; top: 0; display: grid; place-items: center; width: 28px; height: 28px; background: linear-gradient(color-mix(in srgb, var(--penna-fg) 6%, var(--penna-fill)), var(--penna-fill)); box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--penna-fg) 16%, transparent), var(--penna-shadow-contact); --penna-icon-size: 16px; }
+  .zz-lead > .zz-tile[data-penna] { width: 20px; height: 20px; --penna-icon-size: 14px; }
+  .zz-dot { position: absolute; right: -2.5px; bottom: -2.5px; display: grid; place-items: center; width: 11px; height: 11px; border-radius: 50%; background: linear-gradient(var(--zz-row-fill), var(--zz-row-fill)), var(--zz-ground); }
+  .zz-dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--zz-tone); }
+  .zz-lead .zz-dot { width: 9px; height: 9px; }
+  .zz-lead .zz-dot::after { width: 6px; height: 6px; }
+  [data-tone="accent"] { --zz-tone: var(--penna-accent); }
+  [data-tone="warning"] { --zz-tone: var(--penna-warning); }
+  [data-tone="danger"] { --zz-tone: var(--penna-danger); }
+  [data-tone="success"] { --zz-tone: var(--penna-success); }
+  [data-tone="primary"] { --zz-tone: var(--penna-primary); }
+
+  .zz-text { display: flex; flex: 1; flex-direction: column; gap: 1px; min-width: 0; }
+  .zz-title { display: flex; align-items: center; gap: 6px; height: 17px; font-size: 13px; font-weight: 500; line-height: 17px; }
+  .zz-row[data-plain] .zz-title, .zz-nest[data-plain] .zz-label { font-weight: 400; }
+  .penna-spinner { color: var(--penna-muted); }
+  .zz-label, .zz-parts { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; -webkit-mask-image: linear-gradient(to left, transparent, #000 16px); mask-image: linear-gradient(to left, transparent, #000 16px); }
+  .zz-line { display: flex; align-items: center; gap: 8px; height: 15px; font-size: 12px; line-height: 15px; color: var(--penna-muted); }
+  .zz-parts > [data-tone="normal"] { color: var(--penna-ink); }
+  .zz-parts > [data-tone="warning"] { color: var(--penna-warning); }
+  .zz-parts > [data-tone="danger"] { color: var(--penna-danger); }
+  .zz-age { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--penna-muted); }
+  .zz-one { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 17px; font-size: 13px; font-weight: 500; line-height: 17px; }
+  .zz-word { flex: none; font-size: 11px; color: var(--zz-tone); }
+  .zz-word[data-tone="primary"] { color: var(--penna-ink); }
+  .zz-chev { flex: none; color: var(--penna-muted); visibility: hidden; --penna-icon-size: 10px; }
+  .zz-chev[data-open] { transform: rotate(90deg); }
+  .zz-chev[data-state~="hover"] { color: var(--penna-ink); }
+  .zz-row:is(:hover, [data-state~="hover"]) .zz-chev, .zz-chev[data-open] { visibility: visible; }
+  .zz-row > .penna-kbd { display: none; flex: none; }
+  .zz-side[data-keys] .zz-row > .penna-kbd { display: inline-flex; }
+  .zz-side[data-keys] .zz-row:has(> .penna-kbd) .zz-age { display: none; }
+  .zz-pointer { position: absolute; z-index: 9; width: 12px; height: 18px; pointer-events: none; background: var(--penna-fg); clip-path: polygon(0 0, 0 15px, 4px 11px, 7px 18px, 9px 17px, 6px 10px, 11px 10px); filter: drop-shadow(0 0 1px var(--penna-bg)); }
+
+  .zz-snip { position: relative; align-self: start; width: 256px; }
+  .zz-snip > .zz-nav[data-penna] { padding: 12px 0; border-radius: calc(12px * var(--penna-corner-grow, 1)); corner-shape: superellipse(var(--penna-window-k, 2)); }
+
+  .zz-work.penna-window { grid-template-columns: 1fr; grid-template-rows: 1fr; height: 560px; }
+  .zz-panes { display: grid; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 160px; gap: 1px; min-height: 0; background: var(--penna-divider); }
+  .zz-panes > [data-penna="pane"] { position: relative; background: var(--penna-bg); }
+  .zz-panes [data-penna="button.title"] { max-width: 240px; }
+  .zz-panes [data-penna="button.title"] > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .zz-panes [data-penna="bar.pane"] > .zz-grow { flex: 1; }
+  .zz-terminal [data-ink="muted"] { color: var(--penna-fg-muted); }
+  .zz-terminal [data-ink="accent"] { color: var(--penna-accent-ink); }
+  .zz-terminal [data-ink="success"] { color: var(--penna-success-ink); }
+  .zz-terminal [data-ink="cursor"] { background: var(--penna-fg); color: var(--penna-bg); }
+  .zz-vim { display: flex; flex-direction: column; }
+  .zz-vim > .zz-code { flex: 1; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Chat rows</h1>
+    <p>The pick, drawn as the spec for the build. Chat windows are rows; the windows without a chat fold into one last row per machine; any row with more than one pane opens into one-line rows on a track. The takes it came from: <a href="windows.html">Chat windows</a> and <a href="stack.html">Chat stacks</a>.</p>
+  </div>
+  <div class="zz-board" data-board></div>
+</main>
+<script>
+(() => {
+  const MARKS = {
+    "zz-claude": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z'/></svg>",
+    "zz-openai": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z'/></svg>",
+    "zz-macos": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12.131 7.193c-.79 0-2.013-.898-3.3-.867c-1.7.022-3.258.986-4.134 2.512c-1.764 3.062-.455 7.586 1.266 10.075c.844 1.212 1.84 2.575 3.16 2.533c1.267-.054 1.742-.823 3.279-.823c1.526 0 1.958.823 3.3.79c1.364-.022 2.23-1.233 3.063-2.457c.963-1.407 1.363-2.771 1.385-2.846c-.033-.011-2.652-1.018-2.683-4.048c-.022-2.533 2.067-3.745 2.164-3.799c-1.191-1.742-3.019-1.937-3.658-1.98c-1.667-.13-3.062.908-3.842.908zM14.946 4.638c.703-.843 1.167-2.022 1.038-3.192c-1.006.043-2.218.671-2.943 1.515c-.65.747-1.212 1.948-1.061 3.095c1.115.087 2.263-.573 2.966-1.418'/></svg>",
+    "zz-ubuntu": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M16.675 2.375a2.842 2.842 0 0 0-2.842 2.842a2.842 2.842 0 0 0 2.842 2.842a2.842 2.842 0 0 0 2.842-2.842a2.842 2.842 0 0 0-2.842-2.842zM12.767 2.662C9.436 2.643 6.281 4.447 4.623 7.372a3.75 3.75 0 0 1 .217-.006a4.1 4.1 0 0 1 2.154.614A6.93 6.93 0 0 1 12.573 4.996A4.12 4.12 0 0 1 13.436 2.691A9.173 9.173 0 0 0 12.767 2.662zm7.688 4.162a4.096 4.096 0 0 1-1.598 1.872a6.967 6.967 0 0 1-.228 6.919a4.075 4.075 0 0 1 1.36 2.117a9.297 9.297 0 0 0 .466-10.908zM4.842 8.606A2.842 2.842 0 0 0 2 11.447a2.842 2.842 0 0 0 2.842 2.841a2.842 2.842 0 0 0 2.842-2.842a2.842 2.842 0 0 0-2.842-2.842zm1.689 6.555a4.09 4.09 0 0 1-2.429.298a9.25 9.25 0 0 0 6.659 5.582a9.362 9.362 0 0 0 2.018.208a4.066 4.066 0 0 1-.833-2.375a7.07 7.07 0 0 1-.697-.113a6.92 6.92 0 0 1-4.719-3.6zm9.504.773a2.842 2.842 0 0 0-2.842 2.842a2.842 2.842 0 0 0 2.842 2.842a2.842 2.842 0 0 0 2.842-2.842a2.842 2.842 0 0 0-2.842-2.842z'/></svg>",
+    "zz-neovim": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 24 24\"><defs><linearGradient id=\"a\" x1=\"50%\" x2=\"50%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#fff\" stop-opacity=\".8\"/><stop offset=\"100%\" stop-color=\"#fff\"/></linearGradient><linearGradient id=\"b\" x1=\"50%\" x2=\"50%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#fff\"/><stop offset=\"100%\" stop-color=\"#fff\" stop-opacity=\".8\"/></linearGradient></defs><g fill=\"none\" fill-rule=\"evenodd\"><path fill=\"url(#a)\" d=\"M0 5.16 5.11 0v23.99L0 18.89z\" transform=\"translate(2)\"/><path fill=\"url(#b)\" d=\"M14.6 5.21 19.78 0l-.1 23.99-5.11-5.1z\" transform=\"matrix(-1 0 0 1 36.35 0)\"/><path fill=\"#fff\" fill-opacity=\".9\" d=\"M7.11 0 20.4 20.28 16.68 24 3.38 3.77z\"/></g></svg>",
+    "zz-rust": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 106 106\"><g fill=\"none\" fill-rule=\"evenodd\" stroke=\"#000\"><path fill=\"#000\" fill-rule=\"nonzero\" stroke-linejoin=\"round\" d=\"M44.5 38.5h13c8 0 8 8 0 8h-13zm-31 37h40v-11h-9v-8h10c11 0 5 19 14 19h25v-19h-6v2c0 8-9 7-10 2s-5-9-6-9c15-8 6-24-6-24h-47v11h10v26h-15z\"/><g transform=\"translate(2 2)\"><circle cx=\"51\" cy=\"51\" r=\"43\" stroke-width=\"9\"/><path fill=\"#000\" stroke-linejoin=\"round\" stroke-width=\"3\" d=\"m97 54 5-3-5-3zm-1.47 8.92 5.49-1.97-4.32-3.92zm-3.18 8.46 5.77-.86-3.47-4.69zm-4.77 7.67 5.82.28-2.49-5.27zm-6.18 6.6 5.66 1.41-1.41-5.65zm-7.34 5.26 5.27 2.5-.28-5.83zm-8.23 3.74 4.69 3.47.86-5.77zm-8.8 2.05 3.92 4.32 1.97-5.49zM48 97l3 5 3-5zm-8.92-1.47 1.97 5.49 3.92-4.32zm-8.46-3.18.86 5.77 4.69-3.47zm-7.67-4.77-.28 5.82 5.27-2.49zm-6.6-6.18-1.41 5.66 5.65-1.41zm-5.26-7.34-2.5 5.27 5.83-.28zm-3.74-8.23-3.47 4.69 5.77.86zm-2.05-8.8L.98 60.95l5.49 1.97zM5 48l-5 3 5 3zm1.47-8.92L.98 41.05l4.32 3.92zm3.18-8.46-5.77.86 3.47 4.69zm4.77-7.67-5.82-.28 2.49 5.27zm6.18-6.6-5.66-1.41 1.41 5.65zm7.34-5.26-5.27-2.5.28 5.83zm8.23-3.74-4.69-3.47-.86 5.77zm8.8-2.05L41.05.98l-1.97 5.49zM54 5l-3-5-3 5zm8.92 1.47L60.95.98 57.03 5.3zm8.46 3.18-.86-5.77-4.69 3.47zm7.67 4.77.28-5.82-5.27 2.49zm6.6 6.18 1.41-5.66-5.65 1.41zm5.26 7.34 2.5-5.27-5.83.28zm3.74 8.23 3.47-4.69-5.77-.86zm2.05 8.8 4.32-3.92-5.49-1.97z\"/><path fill=\"#000\" stroke-linejoin=\"round\" stroke-width=\"6\" d=\"m44 9 7 7 7-7zm44.78 22.36-4.5 8.82 8.83 4.5zm-7.43 49.5-9.78-1.54-1.55 9.77zM31.98 89.1l-1.55-9.78-9.78 1.54zM8.9 44.68l8.81-4.5-4.5-8.82z\"/></g></g></svg>",
+  };
+  const marks = document.createElement("style");
+  marks.textContent = Object.entries(MARKS)
+    .map(([name, svg]) => `[data-icon="${name}"] { --penna-icon: url("data:image/svg+xml,${encodeURIComponent(svg)}"); }`)
+    .join("\n");
+  document.head.append(marks);
+
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const ic = (name, extra = "") => `<i data-icon="${name}"${extra}></i>`;
+  const LOUD = new Set(["warning", "danger", "primary"]);
+  const RANK = ["primary", "success", "accent", "danger", "warning"];
+
+  const chat = (title, extra = {}) => ({ kind: "chat", agent: "zz-claude", title, ...extra });
+  const term = (title, icon = "terminal", extra = {}) => ({ kind: "term", icon, title, ...extra });
+  const web = (title, host, extra = {}) => ({ kind: "web", icon: "globe", title, host, ...extra });
+
+  const HOSTS = [
+    { name: "macbook", icon: "zz-macos" },
+    { name: "ubuntu", icon: "zz-ubuntu" },
+  ];
+  const WINDOWS = [
+    { host: 0, place: ["zebrilus", "hit-tests"], panes: [chat("Fix stack hit tests", { detail: [["Running the tests"]], tone: "accent", working: true, age: "now" })] },
+    { host: 0, place: ["zebrilus", "main"], current: true, panes: [term("nvim flat.rs", "zz-neovim", { age: "2m" }), term("cargo watch -x check", "zz-rust", { age: "2m" })] },
+    { host: 0, place: ["zebrilus", "bento"], panes: [chat("Port bento to penna", { age: "12m" }), term("vite", "terminal", { age: "12m" }), term("zsh", "terminal", { age: "1h" })] },
+    { host: 0, place: ["docs.rs"], panes: [web("ala - Rust", "docs.rs", { age: "40m" })] },
+    { host: 0, place: ["zebrilus", "pill-menu"], focus: 1, panes: [chat("Pill menu New chat", { age: "4m" }), chat("Review the pill diff", { age: "now" }), term("cargo test -p zz-ui", "zz-rust", { age: "6m" })] },
+    { host: 0, place: ["zebrilus", "main"], focus: 1, panes: [chat("Plan the chat rows", { age: "1h" }), chat("What the kit draws", { detail: [["Needs approval", "warning"], [" · rg guide"]], tone: "warning", word: "Needs you", age: "now" })] },
+    { host: 0, place: ["~/dev"], panes: [term("zsh", "terminal", { age: "3h" })] },
+    { host: 1, place: ["~"], panes: [term("bash", "terminal", { age: "5d" })] },
+    { host: 1, place: ["packaging", "main"], panes: [chat("Bump arch package", { agent: "zz-openai", detail: [["Done", "normal"], [" · PKGBUILD"]], tone: "success", age: "2h" }), web("AUR (en) - zz", "aur.archlinux.org", { age: "2h" })] },
+    { host: 1, place: ["release", "main"], panes: [chat("Tidy release notes", { age: "1d" })] },
+  ];
+  const SPLIT = 4;
+  const FORK = 5;
+  const NVIM = 1;
+  const attention = () => {
+    const windows = structuredClone(WINDOWS);
+    windows[FORK].focus = 0;
+    Object.assign(windows[6].panes[0], { tone: "primary", word: "Bell", detail: [["Bell", "normal"], [" · ~/dev"]], age: "now" });
+    return windows;
+  };
+
+  const isChat = (pane) => pane.kind === "chat";
+  const hasChat = (win) => win.panes.some(isChat);
+  const focusOf = (win) => win.focus ?? 0;
+  const frontOf = (win) => (hasChat(win) && !isChat(win.panes[focusOf(win)]) ? win.panes.findIndex(isChat) : focusOf(win));
+  const order = (win) => {
+    const front = frontOf(win);
+    const rest = win.panes.map((_, index) => index).filter((index) => index !== front);
+    return [front, ...rest.filter((index) => isChat(win.panes[index])), ...rest.filter((index) => !isChat(win.panes[index]))];
+  };
+  const loudest = (panes) => panes.map((pane) => pane.tone).filter(Boolean).sort((a, b) => RANK.indexOf(b) - RANK.indexOf(a))[0];
+  const iconOf = (pane) => (isChat(pane) ? pane.agent : pane.icon);
+  const placeOf = (win) => win.place.join(" · ");
+  const facesOf = (win) => order(win).map((index) => ({ icon: iconOf(win.panes[index]), tone: win.panes[index].tone }));
+  const headline = (win, open = false) => {
+    const front = frontOf(win);
+    const lead = win.panes[front];
+    const behind = open ? null : win.panes.find((pane, index) => index !== front && LOUD.has(pane.tone));
+    const detail = behind ? [behind.detail[0], [` · ${behind.title}`]] : (lead.detail ?? [[placeOf(win)]]);
+    return { title: lead.title, detail, age: lead.age, working: lead.working, plain: !hasChat(win) };
+  };
+
+  const dot = (tone) => (tone ? `<span class="zz-dot" data-tone="${tone}"></span>` : "");
+  const tiles = (faces, step) => faces.slice(0, 3).map((face, slot) => `<span class="zz-tile" data-penna="tile.stack" style="left: ${slot * step}px; z-index: ${10 - slot}">${slot === 0 ? ic(face.icon) : ""}${dot(face.tone)}</span>`).join("");
+  const stack = (faces) => `<span class="zz-stack">${tiles(faces, 7)}</span>`;
+  const lead = (faces, room) => `<span class="zz-lead" style="width: ${20 + (room - 1) * 5}px">${tiles(faces, 5)}</span>`;
+  const parts = (detail) => detail.map(([part, tone = "muted"]) => `<span data-tone="${tone}">${esc(part)}</span>`).join("");
+  const chevron = (open, hover) => ic("chevron-right", ` class="zz-chev"${open ? " data-open" : ""}${hover ? ` data-state="hover"` : ""}`);
+  const spinner = `<span class="penna-spinner" data-size="small">${ic("loader")}</span>`;
+  const kbd = (number) => (number ? `<kbd class="penna-kbd" data-penna="keycap" data-size="small" data-kbd="cmd-${number}"></kbd>` : "");
+  const states = (...list) => {
+    const value = list.filter(Boolean).join(" ");
+    return value ? ` data-state="${value}"` : "";
+  };
+  const pointer = (x, y) => `<span class="zz-pointer" style="left: ${x}px; top: ${y}px"></span>`;
+
+  const mainRow = ({ faces, body, current, hover, plain, number, chev = "", extra = "" }) =>
+    `<div class="zz-row" data-penna="row.nav" role="button"${states(current && "current", hover && "hover")}${plain ? " data-plain" : ""}>${stack(faces)}<span class="zz-text"><span class="zz-title"><span class="zz-label" data-penna-text>${esc(body.title)}</span>${body.working ? spinner : ""}${chev}</span><span class="zz-line"><span class="zz-parts">${parts(body.detail)}</span>${body.age ? `<span class="zz-age">${body.age}</span>` : ""}</span></span>${kbd(number)}${extra}</div>`;
+  const trailing = ({ word, tone, working, age }) => (word ? `<span class="zz-word" data-tone="${tone}">${word}</span>` : working ? spinner : age ? `<span class="zz-age">${age}</span>` : "");
+  const nestRow = ({ faces, room, title, plain, current, hover, tail, extra = "" }) =>
+    `<div class="zz-row zz-nest" data-penna="row.nav" role="button"${states(current && "current", hover && "hover")}${plain ? " data-plain" : ""}>${lead(faces, room)}<span class="zz-one"><span class="zz-label" data-penna-text>${esc(title)}</span>${tail}</span>${extra}</div>`;
+
+  const windowGroup = (win, { number, open = false, hover = null, chevHover = false, ticks = false }) => {
+    const several = win.panes.length > 1;
+    const head = mainRow({
+      faces: facesOf(win),
+      body: headline(win, open),
+      current: win.current && !open,
+      hover: chevHover,
+      plain: !hasChat(win),
+      number: hasChat(win) ? number : null,
+      chev: several ? chevron(open, chevHover) : "",
+      extra: chevHover ? pointer(221, 19) : "",
+    });
+    if (!open) return head;
+    const nested = win.panes.map((pane, index) => nestRow({
+      faces: [{ icon: iconOf(pane), tone: pane.tone }],
+      room: 1,
+      title: pane.title,
+      plain: !isChat(pane),
+      current: win.current && index === focusOf(win),
+      hover: hover === index,
+      tail: trailing(pane),
+      extra: hover === index ? pointer(140, 12) : "",
+    })).join("");
+    const lit = win.current;
+    return `<div class="zz-group"${lit ? " data-lit" : ""}${ticks ? " data-ticks" : ""}>${head}${nested}</div>`;
+  };
+  const pileGroup = (wins, { open = false } = {}) => {
+    const first = Math.max(0, wins.findIndex((win) => win.current));
+    const piled = [wins[first], ...wins.filter((_, index) => index !== first)];
+    const faces = piled.map((win) => ({ icon: iconOf(win.panes[frontOf(win)]), tone: loudest(win.panes) }));
+    const top = headline(piled[0]);
+    const behind = open ? null : piled.slice(1).find((win) => LOUD.has(loudest(win.panes)));
+    const detail = behind ? [headline(behind).detail[0], [` · ${headline(behind).title}`]] : top.detail;
+    const head = mainRow({ faces, body: { ...top, detail }, current: !open && wins.some((win) => win.current), plain: true, chev: chevron(open) });
+    if (!open) return head;
+    const room = Math.min(3, Math.max(...wins.map((win) => win.panes.length)));
+    const nested = wins.map((win) => {
+      const loud = win.panes.find((pane) => LOUD.has(pane.tone));
+      const front = win.panes[frontOf(win)];
+      return nestRow({ faces: facesOf(win), room, title: front.title, plain: true, current: win.current, tail: trailing(loud ?? front) });
+    }).join("");
+    return `<div class="zz-group"${wins.some((win) => win.current) ? " data-lit" : ""}>${head}${nested}</div>`;
+  };
+
+  const action = (icon, label) => `<div class="zz-action" data-penna="sidebar.row" role="button">${ic(icon)}<span data-penna-text>${label}</span></div>`;
+  const listHtml = (windows, { open = new Set(), pile = false, hover = null, chevHover = null, ticks = false } = {}) => {
+    let number = 0;
+    return HOSTS.map((host, hostIndex) => {
+      const mine = windows.map((win, at) => ({ win, at })).filter(({ win }) => win.host === hostIndex);
+      const chats = mine.filter(({ win }) => hasChat(win));
+      const plain = mine.filter(({ win }) => !hasChat(win)).map(({ win }) => win);
+      const rows = chats.map(({ win, at }) => windowGroup(win, {
+        number: ++number <= 9 ? number : null,
+        open: open.has(at),
+        hover: hover && hover[0] === at ? hover[1] : null,
+        chevHover: chevHover === at,
+        ticks,
+      })).join("");
+      const tail = plain.length > 1 ? pileGroup(plain, { open: pile && hostIndex === 0 }) : plain.map((win) => windowGroup(win, {})).join("");
+      return `<div class="zz-host" role="button">${ic(host.icon)}<span data-penna-text>${host.name}</span></div>${rows}${tail}`;
+    }).join("");
+  };
+  const sidebar = (windows, options = {}, keys = false) => `<div class="penna-window zz-side" data-penna="window"${keys ? " data-keys" : ""}><div class="penna-lights"><i></i><i></i><i></i></div><nav class="zz-nav" data-penna="sidebar"><div class="penna-strip"><button data-penna="chrome.button" aria-label="Show the session tree">${ic("chat-fill")}</button><button data-penna="chrome.button" aria-label="Hide the sidebar">${ic("panel-left")}</button></div><div class="zz-actions">${action("chat-plus", "New chat")}${action("server-plus", "Add host")}</div><div class="zz-list">${listHtml(windows, options)}</div><div class="zz-foot">${action("settings", "Settings")}</div></nav></div>`;
+  const cell = (caption, html) => `<div class="zz-cell"><p class="zz-cap">${caption}</p>${html}</div>`;
+
+  const ticks = () => {
+    const win = WINDOWS[SPLIT];
+    return `<div class="zz-snip"><nav class="zz-nav" data-penna="sidebar"><div class="zz-list">${windowGroup(win, { number: 3, open: true, ticks: true })}${windowGroup(WINDOWS[FORK], { number: 4 })}</div></nav></div>`;
+  };
+
+  const header = (icon, title) => `<div data-penna="bar.pane"><div data-penna="button.title">${ic(icon)}<span>${esc(title)}</span></div><span class="zz-grow"></span><button data-penna="icon-button.bar" aria-label="Pane menu">${ic("ellipsis")}</button></div>`;
+  const CODE = [
+    "#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]",
+    "pub struct FlatState {",
+    "    pub current: Option<(PaletteHostId, WindowId)>,",
+    "    pub selected: Option<(PaletteHostId, WindowId)>,",
+    "    pub hovered: Option<FlatTarget>,",
+    "}",
+    "",
+    "impl FlatState {",
+    "    pub fn hover(&mut self, target: FlatTarget, hovered: bool) -> bool {",
+    "        let next = if hovered {",
+    "            Some(target)",
+    "        } else if self.hovered == Some(target) {",
+    "            None",
+    "        } else {",
+    "            self.hovered",
+    "        };",
+    "        std::mem::replace(&mut self.hovered, next) != next",
+    "    }",
+    "}",
+  ];
+  const vim = CODE.map((line, index) => {
+    const number = String(160 + index).padStart(4);
+    const body = index === 3 ? `    pub <span data-ink="cursor">s</span>${esc(line.slice(9))}` : esc(line);
+    return `<span data-ink="muted">${number}</span>  ${body}`;
+  }).join("\n");
+  const workspace = `<div class="penna-window zz-work" data-penna="window"><div class="zz-panes">
+    <section data-penna="pane">${header("zz-neovim", WINDOWS[NVIM].panes[0].title)}<pre class="zz-terminal zz-vim"><span class="zz-code">${vim}</span><span><span data-ink="accent">NORMAL</span>  <span data-ink="muted">flat.rs                                          163:9</span></span></pre></section>
+    <section data-penna="pane">${header("zz-rust", WINDOWS[NVIM].panes[1].title)}<pre class="zz-terminal"><span data-ink="muted">[Running 'cargo check -p zz-ui']</span>
+    Checking zz-ui v0.42.0 (crates/zz-ui)
+<span data-ink="success">    Finished</span> \`dev\` profile in 3.84s
+<span data-ink="muted">[Finished running. Exit status: 0]</span></pre></section>
+  </div></div>`;
+
+  const decided = `<ul class="zz-decided">
+    <li><b>Clicks.</b> A window row shows its window with focus where it was. The chevron only opens and closes. A nested chat, terminal or browser row shows its window and focuses that pane. A nested window row in the pile shows that window. A face, in any stack, focuses its pane; pointing at a stack lays its faces out as today. The pile row shows its front window, the plain window used last.</li>
+    <li><b>Current marker.</b> Closed window: on the window row. Open window: on the focused pane's nested row, the window row at rest and the track lit. Closed pile: on the pile row. Open pile: on the window's nested row, the track lit.</li>
+    <li><b>Chevron.</b> Only on a window with two or more panes and on a pile of two or more windows; it shows on hover and stays while open. A machine with one plain window shows that window, with no pile.</li>
+    <li><b>Opening keeps the parent row.</b> Same face, title and age; only a "behind" second line goes back to the front pane's own, since nothing is hidden once open. The pile row keeps the front window's title; no count.</li>
+    <li><b>Nested rows.</b> One line: face with its dot, title, and one trailing thing: the short status word in its tone (Needs you, Failed, Bell), else a spinner while running, else the age. The full status stays on the window row's second line while closed. A nested window shows its own small stack and never opens a second level.</li>
+    <li><b>Row menu.</b> A window row: Rename, Close window. The pile row and nested rows have none.</li>
+    <li><b>⌘ badges.</b> Chat window rows only, top to bottom across machines; plain windows, the pile and nested rows take none.</li>
+  </ul>`;
+  const SPEC = [
+    ["Sidebar", "256 wide; list right gutter 8; x below is from the sidebar's left edge", "SIDEBAR_DEFAULT_WIDTH, SIDEBAR_SCROLLBAR_GUTTER"],
+    ["Row fill", "inset 6 left and right, 1 top and bottom; row.nav look", "theme.row_inset, WORKSPACE_TREE_FILL_VERTICAL_INSET"],
+    ["Window row", "48 high; content from x 16 (6 + 10); trailing pad 19", "ROW_HEIGHT, ROW_PADDING, row_trailing_inset"],
+    ["Window stack", "tile 28, glyph 16, step 7, room 3 = 42 wide, x 16 to 58", "StackSize::Row"],
+    ["Window text", "x 68 (stack + gap 10); title Body 13/17 medium; second line Small 12/15, gap 1", "TILE_GAP, TITLE_LINE, DETAIL_LINE, LINE_GAP"],
+    ["Age, badge", "Caption 11 tabular, gap 8; ⌘ cap (Kbd small) replaces the age", "AGE, DETAIL_AGE_GAP, window_shortcut_cap"],
+    ["Chevron", "Disclosure 10 after the title, gap 6; foreground.muted, foreground on hover; turns 90° open", "CHEVRON_SIZE, TITLE_TRAILING_GAP"],
+    ["Status dot", "round(tile × 0.3), min 5: 8 on 28, 6 on 20; ring 1.5 in the row's ground; offset −2.5 right and bottom", "DOT_SHARE, DOT_RING, DOT_OVERHANG"],
+    ["Nested row", "32 high, one line, same row.nav fill and insets", "new; = WORKSPACE_TREE_ROW_HEIGHT"],
+    ["Nested lead", "x 38 = 68 − 10 − 20; tile 20, glyph 14, step 5; a pile's rows reserve its widest stack, up to 30", "new; StackSize::Bar"],
+    ["Nested text", "x = 38 + stack width + 10: 68 after one face, lining up with the window title; 73 after two, 78 after three. Body 13/17, medium for chats, regular otherwise", "new"],
+    ["Nested trailing", "one of: status word Caption 11 in its tone, spinner 12, age Caption 11 tabular; gap 8; trailing pad 19", "new"],
+    ["Track", "x 30 = 6 + 10 + 28/2, the front tile's center; 1 device px wide", "new; IndentGuides hairline"],
+    ["Track length", "from the parent row's top + 42 (stack bottom + 4) to the last nested row's bottom − 4", "TREE_INDENT_GUIDE_PADDING"],
+    ["Track color", "rest: divider color, hidden when rule.tree draws no outline; lit: foreground.muted while the current row is nested in it", "IndentGuideColors::tree"],
+    ["Track tick, alt", "1 device px from x 30 to 35 at each nested row's middle; the track ends at the last tick", "new"],
+    ["Machine header", "30 high, glyph 16, gap 8; 18 between machines", "HOST_HEIGHT, HOST_GLYPH, HOST_SPACING, HOST_GAP"],
+  ];
+  const spec = `<table class="zz-spec"><thead><tr><th>Part</th><th>Value (px)</th><th>From</th></tr></thead><tbody>${SPEC.map(([part, value, from]) => `<tr><td>${part}</td><td>${value}</td><td>${from}</td></tr>`).join("")}</tbody></table>`;
+
+  const AT = attention();
+  const cells = [
+    cell("At rest", sidebar(WINDOWS)),
+    cell("The split chats opened", sidebar(WINDOWS, { open: new Set([SPLIT]) })),
+    cell("The pile opened, nvim current", sidebar(WINDOWS, { pile: true })),
+    `<div class="zz-aside"><p class="zz-cap">The plain window on screen</p>${workspace}</div>`,
+    cell("Both opened", sidebar(WINDOWS, { open: new Set([SPLIT]), pile: true })),
+    cell("Bell in the pile, fork behind needs approval", sidebar(AT)),
+    cell("The same, both parents opened", sidebar(AT, { open: new Set([FORK]), pile: true })),
+    `<div class="zz-aside"><h2>Decided</h2>${decided}</div>`,
+    cell("Pointer on a nested row, then a chevron", sidebar(WINDOWS, { open: new Set([SPLIT]), hover: [SPLIT, 0], chevHover: FORK })),
+    cell("⌘ held, both opened", sidebar(WINDOWS, { open: new Set([SPLIT]), pile: true }, true)),
+    cell("Alternative: a tick into each row", ticks()),
+    `<div class="zz-aside"><h2>Numbers</h2>${spec}</div>`,
+  ];
+  document.querySelector("[data-board]").innerHTML = cells.join("");
+})();
+</script>
+</body>
+</html>
