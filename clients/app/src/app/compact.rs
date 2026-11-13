@@ -1045,8 +1045,18 @@ impl AppShell {
         .into_any_element()
     }
 
+    fn phone_auth_open(&self) -> bool {
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        return self.phone_auth.is_some();
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        false
+    }
+
     fn compact_can_focus(&self, window: &Window, cx: &App) -> bool {
         let core = &self.connection.read(cx).core;
+        if self.phone_auth_open() {
+            return false;
+        }
         self.settings.is_none()
             && self.compact.sheet.is_none()
             && self.prompt.is_none()
@@ -1641,7 +1651,9 @@ impl AppShell {
                     .flex_none()
                     .w_full()
                     .when(
-                        self.compact.sheet.is_some() || self.browser_tabs_open(cx),
+                        self.compact.sheet.is_some()
+                            || self.browser_tabs_open(cx)
+                            || self.phone_auth_open(),
                         |bottom| bottom.opacity(0.0),
                     )
                     .child(bottom),

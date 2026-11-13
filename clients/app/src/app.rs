@@ -123,6 +123,8 @@ pub struct AppShell {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     auth_prompt_id: Option<(ala::EntityId, u64)>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
+    phone_auth: Option<authentication::PhoneAuth>,
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     hosts: hosts::Hosts,
     terminals: HashMap<PaneId, Entity<TerminalPane>>,
     waiting_panes: BTreeSet<PaneId>,
@@ -395,6 +397,8 @@ impl AppShell {
             idle_guard: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             auth_prompt_id: None,
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            phone_auth: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             hosts,
             terminals: HashMap::new(),
@@ -3219,6 +3223,10 @@ impl Render for AppShell {
             overlays.push(self.slideover(window, cx));
         }
         overlays.extend(self.overlay(window, cx));
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let auth_modal = self.phone_auth_modal(window, cx);
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        let auth_modal: Option<AnyElement> = None;
         overlays.extend(Root::render_dialog_layer(window, cx).map(IntoElement::into_any_element));
         overlays
             .extend(Root::render_notification_layer(window, cx).map(IntoElement::into_any_element));
@@ -3378,8 +3386,10 @@ impl Render for AppShell {
             .pb((window.viewport_size().height - bottom).max(px(0.0)))
             .pl(visible.left())
             .pr(window.viewport_size().width - visible.right())
+            .relative()
             .child(penna::foundation::dismissal::coast_guard())
             .child(shell)
+            .children(auth_modal.map(|modal| div().absolute().inset_0().child(modal)))
     }
 }
 
