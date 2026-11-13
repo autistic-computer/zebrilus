@@ -50,6 +50,32 @@ A select opens a sheet of its options in one group, the chosen one checked, a fo
 
 The phone's 44 icon button, a disc in the control fill with a 20 glyph, as big as it is tapped. Its outer edge sits on the content edge, 16 in; in a modal it sits 12 from the card's top and side. A page you drilled into adds back at the start; the close stays at the end.
 
+## A form
+
+A sheet that asks for something to type: a 56 field with its placeholder as the only hint, 12 below it a 56 main action, off until what is typed works, then anything else as a row in a group with its note under it.
+
+```figure uses=sheet,touch,button,input,label
+<div style="position: relative; width: 390px; height: 420px; overflow: hidden; border-radius: 28px; background: var(--penna-bg)">
+  <div class="penna-sheet" style="--penna-sheet-rest: 8px">
+    <div class="penna-sheet-scrim"></div>
+    <div class="penna-sheet-frame">
+      <div class="penna-sheet-panel" data-penna="drawer">
+        <div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div>
+        <div class="penna-sheet-header"><span class="penna-sheet-title" data-penna-text>Add host</span><button class="penna-sheet-disc" aria-label="Close"><span data-penna="button"><i data-icon="xmark"></i></span></button></div>
+        <div style="display: flex; flex-direction: column; gap: 12px; padding: 0 16px 16px">
+          <label class="penna-input" data-penna="field" data-size="touch-large" data-state="focused"><input placeholder="user@host" /></label>
+          <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled><span class="penna-label" data-penna-text>Connect</span></button>
+        </div>
+        <div class="penna-sheet-groups">
+          <div class="penna-touch-group" data-penna="settings.card" data-ruled data-ground><div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="copy"></i><span class="penna-touch-row-lines"><span>Copy SSH key</span></span></div></div>
+          <p class="penna-sheet-note">Add this phone's key to authorized_keys on the host to sign in without a password.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
 ## A question from ssh
 
 Titled for the machine, ssh's own prompt word for word over a 56 field, and an action that says what it does: "Sign in", not "Continue". It comes up over whatever is on screen; closing it cancels the connect. Not built: the thin client asks in a centered dialog.
