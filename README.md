@@ -9,7 +9,7 @@ name: zebrilus                    <br>
 description: terminal multiplexer <br>
 author: autistic.computer         <br>
 license: mit or apache-2.0        <br>
-version: 0.22.0                   <br>
+version: 0.23.0                   <br>
 ---                               
 </samp>
 </p>
