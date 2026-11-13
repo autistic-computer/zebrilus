@@ -119,8 +119,8 @@ mark, and the app follows its stream for as long as the pane is an agent pane
 (`Connection::watch_agent_panes`). That header, and a terminal running Claude Code or Codex, carry
 the [flip button](/concepts/agent-panes.md), which switches the pane between the CLI and the chat;
 the busy choice and an armed flip show in the pane's corner, the armed one from the pane's
-`flip_armed` summary. Fork from a message opens a new window with an agent pane on the fork, and
-side chat a floating one. Composer actions share the desktop presentation. Appearance preferences for the
+`flip_armed` summary. Fork from a message opens the fork as a PiP over the chat, in the same
+window. Composer actions share the desktop presentation. Appearance preferences for the
 browser live in local storage: system/light/dark mode, zoom, animations, contrast, reduce
 transparency, and the knobs Interface sets over the platform's look (the default theme file in the
 browser): the accent, the tint, the corner radius, the control shape, the glass, the UI font and the Mono font.

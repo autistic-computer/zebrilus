@@ -216,6 +216,11 @@ keep tmux 3.8's size (half the width, a quarter of the height, or the pane's las
 the header has Tile back and Zoom instead (`pane_floats`). `prefix @`, the pane menu and the CLI
 still work.
 
+Forking an agent chat from a message opens the fork as a PiP over the chat it came from, in the
+same window: `new-pane -t %N -c <dir> -x 46% -y 72%`, then `select-pane-kind --resume <session>
+--fork --at <message> ... agent <cli>` on the new float (`fork_chat_command` in
+`zz_client::agent_settings`). The desktop and the thin clients send the same line.
+
 - **Desktop** (`crates/zz/src/workspace/view.rs`): a `PipGrab` move starts the drag
   (`on_pip_grab_move`), `FloatDragState.pip` carries the `PipDrag`, and `throw_pip` sends the
   command, flings `pane_motion` and keeps the landing until the command settles. `pip_stage` follows

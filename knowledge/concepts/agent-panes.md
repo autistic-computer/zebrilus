@@ -58,16 +58,16 @@ settings) are accepted only for agent panes, and `AgentState` and the stream fol
 `--at <message>` copies it only through that message's turn (`crate::agent_fork`, which
 `zz tools --fork-chat` uses too): a Claude Code fork copies the transcript under a new session id,
 a Codex fork asks the app server for `thread/fork` with `lastTurnId`. The copy's id becomes the
-pane's session. Clients open a fork or side chat in a new pane with one command line, since a new
-window's or float's pane becomes the target of the next command:
+pane's session. Forking from a message opens the copy as a PiP over the chat it came from, in the
+same window, with one command line, since a new float's pane becomes the target of the next
+command (`zz_client::agent_settings::fork_chat_command`, sent by the desktop and the thin clients):
 
-- Fork from a message: `new-window -c <dir> ; select-pane-kind --resume <session> --fork --at
-  <message> [--account <id>] agent <claude|codex>`
-- Side chat in a PiP: `new-pane -c <dir> ; select-pane-kind --resume <session> --fork
-  [--account <id>] agent <claude|codex>`
+- `new-pane -t %N -c <dir> -x 46% -y 72% ; select-pane-kind --resume <session> --fork [--at
+  <message>] [--model <m>] [--effort <e>] [--account <id>] agent <claude|codex>`
 
-Both carry the source pane's account (`zz_client::agent_settings::pane_account`), so the copy runs
-on the same login.
+The float takes no title of its own: the fork's session title names it, as for any chat. It
+carries the source pane's account (`zz_client::agent_settings::pane_account`), so the copy runs on
+the same login.
 
 # Chat titles
 

@@ -239,6 +239,7 @@ impl AgentPane {
             provider,
             &session,
             &self.chat_cwd(cx),
+            self.pane,
             Some(message),
             self.transcript.lens.settings.as_ref(),
             agent_settings::pane_account(self.connection.read(cx).core.snapshot(), self.pane),

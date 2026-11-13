@@ -158,6 +158,7 @@ impl AgentView {
             self.pane_state.provider,
             session,
             &self.chat_cwd(),
+            self.pane,
             Some(message),
             self.pane_state.settings.as_ref(),
             agent_settings::pane_account(&snapshot, self.pane),
