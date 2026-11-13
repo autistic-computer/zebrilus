@@ -1,12 +1,12 @@
 use crate::connection::Connection;
 use ala::{
     AnyElement, App, Context, Corners, ElementId, Entity, FocusHandle, Focusable, KeyDownEvent,
-    MouseButton, Pixels, Render, Window, div, prelude::*,
+    MouseButton, Pixels, Render, Window, prelude::*,
 };
 use penna::{
-    ActiveTheme as _, IconName, Space,
-    blocks::sheet::{bottom_sheet, close_sheet, sheet_close},
-    blocks::touch::TouchRow,
+    IconName,
+    blocks::sheet::{bottom_sheet, close_sheet, sheet_close, sheet_groups},
+    blocks::touch::{TouchGroup, TouchRow},
 };
 use zz_client::{
     new_chat::{
@@ -225,10 +225,9 @@ impl PanePicker {
                         this.chosen = Some(index);
                         close_sheet(id.clone(), cx);
                     }))
-                    .in_sheet(cx)
             })
             .collect::<Vec<_>>();
-        let close = sheet_close("pane-picker-close").on_click({
+        let close = sheet_close("pane-picker-close", cx).on_click({
             let id = id.clone();
             move |_, _, cx| close_sheet(id.clone(), cx)
         });
@@ -238,13 +237,7 @@ impl PanePicker {
                 id,
                 if chat { "New chat" } else { "New pane" },
                 [close.into_any_element()],
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(Space::S2)
-                    .px(cx.theme().row_inset)
-                    .pb(Space::S8)
-                    .children(rows),
+                sheet_groups().child(TouchGroup::new().ruled().rows(rows)),
                 bottom_inset,
                 move |_, cx| {
                     let _ = view.update(cx, |this, cx| {

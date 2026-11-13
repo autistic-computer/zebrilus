@@ -802,18 +802,16 @@ impl Sheets {
 }
 
 impl Render for Sheets {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let hold = hold_sheet(
             "story-hold-sheet",
             "Fix pane stack hit testing",
-            Some("Testing 62% · zebrilus · pane-stack · now".into()),
             [
                 TouchRow::new("story-hold-rename", "Rename").icon(IconName::Pencil),
                 TouchRow::new("story-hold-close", "Close window")
                     .icon(IconName::Xmark)
                     .danger(),
             ],
-            px(34.0),
             Self::dismissed(0, cx),
             cx,
         );
@@ -824,10 +822,9 @@ impl Render for Sheets {
         }
         .sheet(
             &self.name,
-            false,
-            px(34.0),
             |_, _, _| {},
             Self::dismissed(1, cx),
+            window,
             cx,
         );
         let confirm = Confirm {
@@ -836,12 +833,12 @@ impl Render for Sheets {
             detail: Some("zsh stops. Its scrollback goes.".into()),
             verb: "Close".into(),
         }
-        .sheet(px(34.0), |_, _| {}, Self::dismissed(2, cx), cx);
+        .sheet(|_, _| {}, Self::dismissed(2, cx), window, cx);
         states()
             .columns(2)
             .state("hold a window tile", self.frame("sheet-hold", 0, hold, cx))
             .state(
-                "rename: Save stays off until the name changes",
+                "rename: Rename stays off until the name changes",
                 self.frame("sheet-rename", 1, rename, cx),
             )
             .state(

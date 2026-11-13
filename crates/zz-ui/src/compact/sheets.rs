@@ -1,15 +1,16 @@
-use ala::{
-    App, ElementId, Entity, IntoElement as _, ParentElement as _, Pixels, SharedString,
-    Styled as _, Window, div, px,
-};
+use ala::{App, ElementId, Entity, IntoElement as _, ParentElement as _, SharedString, Window, px};
 use penna::{
-    ActiveTheme as _, Disableable as _, Sizable as _, Size, Space,
-    blocks::sheet::{BottomSheet, bottom_sheet, close_sheet, sheet_close, sheet_ground},
-    blocks::touch::{ACTION_BAR_BOTTOM, ACTION_BAR_KEYBOARD, TouchRow, action_bar},
-    components::button::{Button, ButtonVariants as _},
+    Disableable as _, Sizable as _, Size,
+    blocks::sheet::{
+        BottomSheet, ModalAction, ModalTone, bottom_sheet, close_sheet, modal_body, modal_buttons,
+        modal_groups, sheet_close, sheet_ground,
+    },
+    blocks::touch::{TouchGroup, TouchRow},
     components::field::Field,
     components::input::{Input, InputState},
 };
+
+const MODAL_FIELD: f32 = 48.0;
 use zz_protocol::PaneKindSnapshot;
 use zz_terminal::SearchStatus;
 
@@ -27,44 +28,31 @@ impl Confirm {
     #[must_use]
     pub fn sheet(
         self,
-        bottom_inset: Pixels,
         on_confirm: impl Fn(&mut Window, &mut App) + 'static,
         on_dismiss: impl Fn(&mut Window, &mut App) + 'static,
+        window: &Window,
         cx: &App,
     ) -> BottomSheet {
-        let ground = sheet_ground(cx);
-        let cancel = self.id.clone();
-        let done = self.id.clone();
-        let bar = action_bar(px(ACTION_BAR_BOTTOM))
-            .child(
-                Button::new("confirm-sheet-cancel")
-                    .ghost()
-                    .label("Cancel")
-                    .with_size(Size::TouchLarge)
-                    .w_full()
-                    .on(ground)
-                    .on_click(move |_, _, cx| close_sheet(cancel.clone(), cx)),
-            )
-            .child(
-                Button::new("confirm-sheet-act")
-                    .danger()
-                    .label(self.verb)
-                    .with_size(Size::TouchLarge)
-                    .w_full()
-                    .on(ground)
-                    .on_click(move |_, window, cx| {
-                        on_confirm(window, cx);
-                        close_sheet(done.clone(), cx);
-                    }),
-            );
+        let buttons = modal_buttons(
+            self.id.clone(),
+            ModalAction::new(
+                "confirm-sheet-act",
+                self.verb,
+                ModalTone::Danger,
+                on_confirm,
+            ),
+            window,
+            cx,
+        );
         let sheet = bottom_sheet(
             self.id,
             self.question,
             Vec::new(),
-            bar,
-            bottom_inset,
+            modal_body().child(buttons),
+            px(0.0),
             on_dismiss,
-        );
+        )
+        .modal();
         match self.detail {
             Some(detail) => sheet.detail(detail),
             None => sheet,
@@ -90,65 +78,41 @@ impl Rename {
     pub fn sheet(
         self,
         input: &Entity<InputState>,
-        keyboard: bool,
-        bottom_inset: Pixels,
         on_save: impl Fn(SharedString, &mut Window, &mut App) + 'static,
         on_dismiss: impl Fn(&mut Window, &mut App) + 'static,
+        window: &Window,
         cx: &App,
     ) -> BottomSheet {
         let ground = sheet_ground(cx);
         let savable = self.savable(&input.read(cx).value());
-        let close = self.id.clone();
-        let saved = self.id.clone();
         let typed = input.clone();
-        let rise = if keyboard {
-            ACTION_BAR_KEYBOARD
-        } else {
-            ACTION_BAR_BOTTOM
-        };
-        let body = div()
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .px(Space::INSET_PANE)
-                    .pt(Space::S4)
-                    .pb(Space::S8)
-                    .child(
-                        Field::new().with_size(Size::TouchLarge).child(
-                            Input::new(input)
-                                .id("rename-sheet-field")
-                                .with_size(Size::TouchLarge)
-                                .on(ground),
-                        ),
-                    ),
+        let size = Size::Size(px(MODAL_FIELD));
+        let buttons = modal_buttons(
+            self.id.clone(),
+            ModalAction::new(
+                "rename-sheet-save",
+                "Rename",
+                ModalTone::Accent,
+                move |window, cx| {
+                    let name = typed.read(cx).value().trim().to_owned();
+                    on_save(name.into(), window, cx);
+                },
             )
+            .disabled(!savable),
+            window,
+            cx,
+        );
+        let body = modal_body()
             .child(
-                action_bar(px(rise)).child(
-                    Button::new("rename-sheet-save")
-                        .primary()
-                        .label("Save")
-                        .with_size(Size::TouchLarge)
-                        .w_full()
-                        .on(ground)
-                        .disabled(!savable)
-                        .on_click(move |_, window, cx| {
-                            let name = typed.read(cx).value().trim().to_owned();
-                            on_save(name.into(), window, cx);
-                            close_sheet(saved.clone(), cx);
-                        }),
+                Field::new().with_size(size).child(
+                    Input::new(input)
+                        .id("rename-sheet-field")
+                        .with_size(size)
+                        .on(ground),
                 ),
-            );
-        bottom_sheet(
-            self.id,
-            self.title,
-            [sheet_close("rename-sheet-close")
-                .on_click(move |_, _, cx| close_sheet(close.clone(), cx))
-                .into_any_element()],
-            body,
-            bottom_inset,
-            on_dismiss,
-        )
+            )
+            .child(buttons);
+        bottom_sheet(self.id, self.title, Vec::new(), body, px(0.0), on_dismiss).modal()
     }
 }
 
@@ -156,34 +120,28 @@ impl Rename {
 pub fn hold_sheet(
     id: impl Into<ElementId>,
     title: impl Into<SharedString>,
-    detail: Option<SharedString>,
     rows: impl IntoIterator<Item = TouchRow>,
-    bottom_inset: Pixels,
     on_dismiss: impl Fn(&mut Window, &mut App) + 'static,
     cx: &App,
 ) -> BottomSheet {
     let id = id.into();
     let close = id.clone();
-    let sheet = bottom_sheet(
+    let (danger, rest): (Vec<_>, Vec<_>) = rows.into_iter().partition(TouchRow::is_danger);
+    let groups = [rest, danger]
+        .into_iter()
+        .filter(|rows| !rows.is_empty())
+        .map(|rows| TouchGroup::new().ruled().rows(rows));
+    bottom_sheet(
         id,
         title,
-        [sheet_close("hold-sheet-close")
+        [sheet_close("hold-sheet-close", cx)
             .on_click(move |_, _, cx| close_sheet(close.clone(), cx))
             .into_any_element()],
-        div()
-            .flex()
-            .flex_col()
-            .gap(Space::S2)
-            .px(cx.theme().row_inset)
-            .pb(Space::S8)
-            .children(rows.into_iter().map(|row| row.in_sheet(cx))),
-        bottom_inset,
+        modal_groups().children(groups),
+        px(0.0),
         on_dismiss,
-    );
-    match detail {
-        Some(detail) => sheet.detail(detail),
-        None => sheet,
-    }
+    )
+    .modal()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -199,7 +157,6 @@ pub fn link_sheet(
     uri: impl Into<SharedString>,
     actions: &[LinkAction],
     on_pick: impl Fn(LinkAction, &mut Window, &mut App) + 'static,
-    bottom_inset: Pixels,
     on_dismiss: impl Fn(&mut Window, &mut App) + 'static,
     cx: &App,
 ) -> BottomSheet {
@@ -216,7 +173,7 @@ pub fn link_sheet(
             .icon(icon)
             .on_click(move |_, window, cx| on_pick(action, window, cx))
     });
-    hold_sheet(id, uri, None, rows, bottom_inset, on_dismiss, cx).cut_middle()
+    hold_sheet(id, uri, rows, on_dismiss, cx).cut_middle()
 }
 
 #[must_use]

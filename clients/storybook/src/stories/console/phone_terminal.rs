@@ -325,7 +325,6 @@ impl Render for TerminalStates {
                 URL,
                 &[LinkAction::Browser, LinkAction::Phone, LinkAction::Copy],
                 |_, _, _| {},
-                px(34.0),
                 move |_, cx| {
                     let _ = dismiss.update(cx, |this, cx| {
                         this.link = false;

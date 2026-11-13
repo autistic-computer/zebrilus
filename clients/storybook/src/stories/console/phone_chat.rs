@@ -639,7 +639,7 @@ impl Render for HoldState {
             at: None,
             fork: Some(ItemId::new("u1")),
         };
-        let sheet = held_sheet(&held, placement().bottom, |_, _, _| {}, |_, _| {}, cx);
+        let sheet = held_sheet(&held, |_, _, _| {}, |_, _| {}, cx);
         states().state(
             "hold a message: Copy and Fork from here",
             Screen::new("hold-message", self.thread.clone())

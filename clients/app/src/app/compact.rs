@@ -656,7 +656,6 @@ impl AppShell {
             target: sheets::Target::Pane(page.pane),
             closing: close_pane_detail(&page.kind, &name),
             name,
-            detail: None,
         };
         window.dismiss_virtual_keyboard();
         let sheet = if rename {
@@ -1628,7 +1627,7 @@ impl AppShell {
             let picker = self.picker_entity(page.pane, true, cx);
             sheets.extend(picker.update(cx, |picker, cx| picker.sheet(over_pill, cx)));
         }
-        sheets.extend(self.phone_sheet(over_pill, keyboard, window, cx));
+        sheets.extend(self.phone_sheet(window, cx));
         let scrim = (!open).then(|| StackMenu::scrim(&stack, window, cx));
         let screen = div()
             .relative()
@@ -1650,7 +1649,7 @@ impl AppShell {
         let content = if open {
             #[cfg(any(target_os = "ios", target_os = "android"))]
             if let Some(endpoint) = self.compact.held.clone() {
-                sheets.push(self.machine_sheet(&endpoint, placement.bottom, cx));
+                sheets.push(self.machine_sheet(&endpoint, cx));
             }
             let (pages, bars) = self.overview_layers(&model, top_inset, &placement, window, cx);
             div()

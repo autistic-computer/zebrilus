@@ -23,19 +23,13 @@ use penna::{
 };
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use penna::{
-    Disableable as _,
-    blocks::compact::ZoomCard,
-    blocks::sheet::{bottom_sheet, close_sheet, sheet_close},
-    blocks::touch::TouchRow,
-    components::field::Field,
-    components::input::Input,
+    Disableable as _, blocks::compact::ZoomCard, blocks::sheet::close_sheet,
+    blocks::touch::TouchRow, components::field::Field, components::input::Input,
 };
 use web_time::Instant;
 use zz_client::{
     AgentAttentionStatus, StatusBarModel, StatusBarWindow, agent_attention_status,
-    navigation::session_label,
-    pane_rects,
-    window_summary::{DaemonClock, hold_detail, summarize_window},
+    navigation::session_label, pane_rects, window_summary::summarize_window,
 };
 use zz_protocol::{PaneId, PaneKindSnapshot, SessionId, WindowId};
 use zz_terminal::{Glyph, LocalColors, TerminalAppearance, TerminalPalette, TerminalViewport};
@@ -927,13 +921,8 @@ impl AppShell {
     }
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
-    pub(super) fn machine_sheet(
-        &self,
-        endpoint: &str,
-        bottom_inset: Pixels,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        use super::super::hosts::{host_location, host_title};
+    pub(super) fn machine_sheet(&self, endpoint: &str, cx: &mut Context<Self>) -> AnyElement {
+        use super::super::hosts::host_title;
         let state = self
             .host_connection(endpoint, cx)
             .map_or(HostState::Offline, |connection| {
@@ -972,29 +961,18 @@ impl AppShell {
                 cx.notify();
             }));
         let dismiss = cx.weak_entity();
-        bottom_sheet(
+        zz_ui::compact::hold_sheet(
             MACHINE_SHEET,
             host_title(endpoint),
-            [sheet_close("machine-sheet-close")
-                .on_click(|_, _, cx| close_sheet(MACHINE_SHEET, cx))
-                .into_any_element()],
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(2.0))
-                .px(cx.theme().row_inset)
-                .pb(px(8.0))
-                .children(toggle_row.map(|row| row.in_sheet(cx)))
-                .child(remove.in_sheet(cx)),
-            bottom_inset,
+            toggle_row.into_iter().chain([remove]),
             move |_, cx| {
                 let _ = dismiss.update(cx, |this, cx| {
                     this.compact.held = None;
                     cx.notify();
                 });
             },
+            cx,
         )
-        .detail(host_location(endpoint))
         .into_any_element()
     }
 
@@ -1229,12 +1207,6 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let attached_session = attached_model.and(connection.read(cx).core.attached_session());
-        let now = if attached_model.is_some() {
-            self.flat.clock
-        } else {
-            DaemonClock::default()
-        }
-        .now(super::super::unix_seconds());
         let sessions: Vec<(SessionId, String, StatusBarModel, Vec<WindowShape>)> = {
             let core = &connection.read(cx).core;
             core.snapshot()
@@ -1259,7 +1231,6 @@ impl AppShell {
                             };
                             WindowShape {
                                 id: window.id,
-                                detail: hold_detail(window, now),
                                 closing,
                                 title: summary.title,
                                 mark,
@@ -1302,7 +1273,6 @@ impl AppShell {
                 connection: connection.clone(),
                 target: Target::Session(session),
                 name: name.clone(),
-                detail: None,
                 closing: Some(close_many_detail(model.windows.len(), "window")),
             };
             let view = cx.entity().downgrade();
@@ -1423,7 +1393,6 @@ impl AppShell {
             connection: connection.clone(),
             target: Target::Window(shape.id),
             name: shape.title.clone(),
-            detail: Some(shape.detail.clone()).filter(|detail| !detail.is_empty()),
             closing: shape.closing.clone(),
         });
         let view = cx.entity().downgrade();
@@ -1772,7 +1741,6 @@ enum CardTarget {
 struct WindowShape {
     id: WindowId,
     title: String,
-    detail: String,
     closing: Option<String>,
     mark: Option<StatusMark>,
     state: Option<String>,

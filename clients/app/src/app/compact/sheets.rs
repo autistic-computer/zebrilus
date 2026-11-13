@@ -1,9 +1,7 @@
-use ala::{
-    AnyElement, AppContext as _, Context, Entity, IntoElement as _, Pixels, SharedString, Window,
-};
+use ala::{AnyElement, AppContext as _, Context, Entity, IntoElement as _, SharedString, Window};
 use penna::{
     IconName,
-    blocks::sheet::{close_sheet, floating_sheet, sheet_inset},
+    blocks::sheet::{close_sheet, floating_sheet},
     blocks::touch::TouchRow,
     components::input::{InputEvent, InputState, SelectAll},
 };
@@ -65,7 +63,6 @@ pub(in super::super) struct Thing {
     pub connection: Entity<Connection>,
     pub target: Target,
     pub name: String,
-    pub detail: Option<String>,
     pub closing: Option<String>,
 }
 
@@ -179,8 +176,6 @@ impl AppShell {
 
     pub(in super::super) fn phone_sheet(
         &mut self,
-        bottom_inset: Pixels,
-        keyboard: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
@@ -190,7 +185,7 @@ impl AppShell {
             let _ = dismiss.update(cx, |this, cx| this.sheet_dismissed(window, cx));
         };
         if let PhoneSheet::Link(uri) = &sheet {
-            return Some(self.link_sheet(uri, bottom_inset, on_dismiss, cx));
+            return Some(self.link_sheet(uri, on_dismiss, cx));
         }
         let thing = sheet.thing()?.clone();
         Some(match sheet {
@@ -215,16 +210,7 @@ impl AppShell {
                             this.sheet_after(close.clone(), cx);
                         })),
                 ];
-                hold_sheet(
-                    HOLD_SHEET,
-                    thing.name,
-                    thing.detail.map(SharedString::from),
-                    rows,
-                    bottom_inset,
-                    on_dismiss,
-                    cx,
-                )
-                .into_any_element()
+                hold_sheet(HOLD_SHEET, thing.name, rows, on_dismiss, cx).into_any_element()
             }
             PhoneSheet::Close(_) => {
                 let connection = thing.connection.clone();
@@ -236,9 +222,9 @@ impl AppShell {
                     verb: "Close".into(),
                 }
                 .sheet(
-                    bottom_inset,
                     move |_, cx| run(&connection, target.close(), cx),
                     on_dismiss,
+                    window,
                     cx,
                 )
                 .into_any_element()
@@ -249,10 +235,9 @@ impl AppShell {
                 let target = thing.target;
                 let sheet = rename_form(&thing).sheet(
                     &input,
-                    keyboard,
-                    sheet_inset(window).max(bottom_inset),
                     move |name, _, cx| run(&connection, target.rename(&name), cx),
                     on_dismiss,
+                    window,
                     cx,
                 );
                 floating_sheet(sheet, window)
@@ -264,7 +249,6 @@ impl AppShell {
     fn link_sheet(
         &self,
         uri: &str,
-        bottom_inset: Pixels,
         on_dismiss: impl Fn(&mut Window, &mut ala::App) + 'static,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -294,7 +278,6 @@ impl AppShell {
                 }
                 close_sheet(LINK_SHEET, cx);
             },
-            bottom_inset,
             on_dismiss,
             cx,
         )

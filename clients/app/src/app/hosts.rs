@@ -9,9 +9,10 @@ use penna::{
 use penna::{
     Colorize as _, RuleLook, StyledExt as _,
     blocks::sheet::{
-        bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_ground, sheet_inset,
-        sheet_row,
+        bottom_sheet, close_sheet, floating_sheet, modal_groups, sheet_close, sheet_ground,
+        sheet_inset,
     },
+    blocks::touch::{TouchGroup, TouchRow},
     components::button::ButtonVariants as _,
     components::input::{Input, InputEvent, InputState},
 };
@@ -509,10 +510,9 @@ impl AppShell {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let inset = sheet_inset(window);
         let sheet = match self.hosts.sheet.as_ref()? {
             HostSheet::Add => self.add_host_sheet(
-                inset,
+                sheet_inset(window),
                 |_, cx| close_sheet(ADD_HOST_SHEET, cx),
                 |this, cx| {
                     this.hosts.sheet = None;
@@ -520,7 +520,7 @@ impl AppShell {
                 },
                 cx,
             ),
-            HostSheet::Host(endpoint) => self.host_sheet(endpoint, inset, cx),
+            HostSheet::Host(endpoint) => self.host_sheet(endpoint, cx),
         };
         Some(floating_sheet(sheet, window))
     }
@@ -535,7 +535,7 @@ impl AppShell {
     ) -> AnyElement {
         let sheet = sheet_ground(cx);
         let close =
-            sheet_close("add-host-close").on_click(|_, _, cx| close_sheet(ADD_HOST_SHEET, cx));
+            sheet_close("add-host-close", cx).on_click(|_, _, cx| close_sheet(ADD_HOST_SHEET, cx));
         let dismiss = cx.weak_entity();
         let note = |text: SharedString| Label::new(TextStyle::Body, text).muted().on(sheet);
         bottom_sheet(
@@ -585,12 +585,7 @@ impl AppShell {
     }
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
-    fn host_sheet(
-        &self,
-        endpoint: &str,
-        bottom_inset: Pixels,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn host_sheet(&self, endpoint: &str, cx: &mut Context<Self>) -> AnyElement {
         let (connected, busy, on_screen, status) = self
             .host_connection(endpoint, cx)
             .map(|connection| {
@@ -603,7 +598,6 @@ impl AppShell {
                 )
             })
             .unwrap_or_default();
-        let theme = cx.theme();
         let sheet = sheet_ground(cx);
         let (state, tone) = if connected {
             ("Connected".to_owned(), Tone::Neutral)
@@ -614,92 +608,77 @@ impl AppShell {
         } else {
             (status, Tone::Warning)
         };
-        let danger = theme.danger;
         let target = endpoint.to_owned();
         let mut rows = Vec::new();
         if connected && !on_screen {
             let target = target.clone();
             rows.push(
-                sheet_row(
-                    "host-sheet-open",
-                    Some(Icon::new(IconName::ArrowRight)),
-                    "Open",
-                    cx,
-                )
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.hosts.sheet = None;
-                    this.switch_host(&target, None, None, window, cx);
-                    this.settings = None;
-                    cx.notify();
-                })),
+                TouchRow::new("host-sheet-open", "Open")
+                    .icon(IconName::ArrowRight)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.hosts.sheet = None;
+                        this.switch_host(&target, None, None, window, cx);
+                        this.settings = None;
+                        cx.notify();
+                    })),
             );
         }
         let toggle = target.clone();
         rows.push(if connected || busy {
-            sheet_row(
+            TouchRow::new(
                 "host-sheet-disconnect",
-                Some(Icon::new(IconName::Stop)),
                 if connected { "Disconnect" } else { "Cancel" },
-                cx,
             )
+            .icon(IconName::Stop)
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.disconnect_host(&toggle, window, cx);
             }))
         } else {
-            sheet_row(
-                "host-sheet-connect",
-                Some(Icon::new(IconName::Server)),
-                "Connect",
-                cx,
-            )
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.connect_host(toggle.clone(), window, cx);
-            }))
+            TouchRow::new("host-sheet-connect", "Connect")
+                .icon(IconName::Server)
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.connect_host(toggle.clone(), window, cx);
+                }))
         });
-        rows.push(
-            sheet_row(
-                "host-sheet-remove",
-                Some(Icon::new(IconName::Xmark)),
-                "Remove host",
-                cx,
-            )
-            .text_color(danger)
+        let remove = TouchRow::new("host-sheet-remove", "Remove host")
+            .icon(IconName::Xmark)
+            .danger()
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.disconnect_host(&target, window, cx);
                 this.hosts.saved.remove(&target);
                 this.hosts.saved.save();
                 close_sheet(HOST_SHEET, cx);
                 cx.notify();
-            })),
-        );
+            }));
         let close =
-            sheet_close("host-sheet-close").on_click(|_, _, cx| close_sheet(HOST_SHEET, cx));
+            sheet_close("host-sheet-close", cx).on_click(|_, _, cx| close_sheet(HOST_SHEET, cx));
         let dismiss = cx.weak_entity();
+        let line = |label: Label| label.on(sheet).w_full().text_center();
         bottom_sheet(
             HOST_SHEET,
             host_title(endpoint),
             [close.into_any_element()],
-            div()
-                .flex()
-                .flex_col()
-                .list_inset(cx)
-                .pb(px(8.0))
+            modal_groups()
                 .child(
                     div()
                         .flex()
                         .flex_col()
                         .gap(px(4.0))
                         .px(px(12.0))
-                        .pb(px(10.0))
-                        .child(
-                            Label::new(TextStyle::Body, endpoint.to_owned())
-                                .muted()
-                                .on(sheet),
-                        )
-                        .child(toned(Label::new(TextStyle::Body, state), tone, sheet, cx)),
+                        .pb(px(8.0))
+                        .child(line(
+                            Label::new(TextStyle::TouchSmall, endpoint.to_owned()).muted(),
+                        ))
+                        .child(line(toned(
+                            Label::new(TextStyle::TouchSmall, state),
+                            tone,
+                            sheet,
+                            cx,
+                        ))),
                 )
-                .children(rows),
-            bottom_inset,
+                .child(TouchGroup::new().ruled().rows(rows))
+                .child(TouchGroup::new().ruled().row(remove)),
+            px(0.0),
             move |_, cx| {
                 let _ = dismiss.update(cx, |this, cx| {
                     this.hosts.sheet = None;
@@ -707,6 +686,7 @@ impl AppShell {
                 });
             },
         )
+        .modal()
         .into_any_element()
     }
 

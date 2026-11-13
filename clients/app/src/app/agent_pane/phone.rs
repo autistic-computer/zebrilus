@@ -269,7 +269,6 @@ impl AgentPane {
                 let fork = entity.downgrade();
                 held_sheet(
                     &held,
-                    dock.bottom,
                     move |item, _, cx| {
                         let _ = fork.update(cx, |this, cx| this.fork_from(item.as_str(), cx));
                     },

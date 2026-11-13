@@ -5,9 +5,13 @@ use ala::{
     Window, div, px,
 };
 use penna::{
-    ActiveTheme as _, Icon, Sizable as _, Size, Space,
-    blocks::sheet::{BottomSheet, bottom_sheet, close_sheet, sheet_close, sheet_ground},
-    blocks::touch::{ACTION_BAR_BOTTOM, PhoneEmpty, TOUCH_TARGET, TouchRow, action_bar},
+    Icon, Sizable as _, Size, Space,
+    blocks::sheet::{
+        BottomSheet, bottom_sheet, close_sheet, sheet_close, sheet_ground, sheet_groups,
+    },
+    blocks::touch::{
+        ACTION_BAR_BOTTOM, PhoneEmpty, TOUCH_TARGET, TouchGroup, TouchRow, action_bar,
+    },
     components::button::{Button, ButtonLook, ButtonVariants as _},
     v_flex,
 };
@@ -99,7 +103,6 @@ pub fn tabs_sheet(
                 on_select(tab_id, window, cx);
                 close_sheet(picked.clone(), cx);
             })
-            .in_sheet(cx)
         })
         .collect();
     let made = id.clone();
@@ -107,20 +110,13 @@ pub fn tabs_sheet(
     bottom_sheet(
         id,
         "Tabs",
-        [sheet_close("browser-tabs-close")
+        [sheet_close("browser-tabs-close", cx)
             .on_click(move |_, _, cx| close_sheet(closed.clone(), cx))
             .into_any_element()],
         div()
             .flex()
             .flex_col()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(Space::S2)
-                    .px(cx.theme().row_inset)
-                    .children(rows),
-            )
+            .child(sheet_groups().child(TouchGroup::new().ruled().rows(rows)))
             .child(
                 action_bar(px(ACTION_BAR_BOTTOM)).child(
                     Button::new("browser-new-tab")

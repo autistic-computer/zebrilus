@@ -2,16 +2,17 @@ use std::rc::Rc;
 
 use ala::{
     AnyElement, App, ClipboardItem, ElementId, IntoElement, Pixels, SharedString, Window, div,
-    prelude::*, px,
+    prelude::*,
 };
 use penna::{
     ActiveTheme as _, Disableable as _, Emphasis, Ground, IconName, Space, StyledExt as _,
     TextStyle, Tone, WindowExt as _,
     blocks::chat::AskCard,
     blocks::notification::Notification,
-    blocks::sheet::{BottomSheet, bottom_sheet, close_sheet, sheet_close, sheet_ground},
-    blocks::touch::{TOUCH_TARGET, TouchInk, TouchRow, TouchTrailing},
-    components::button::{Button, ButtonVariants as _},
+    blocks::sheet::{
+        BottomSheet, bottom_sheet, close_sheet, sheet_back, sheet_close, sheet_ground, sheet_groups,
+    },
+    blocks::touch::{TouchGroup, TouchInk, TouchRow, TouchTrailing},
     h_flex,
 };
 use zz_client::agent_settings::{self, LensSettings};
@@ -20,7 +21,7 @@ use zz_protocol::{AgentAccount, AgentProvider, AgentQuota, QuotaWindows, chat::I
 
 use super::{
     ask::{ApprovalAction, AskChoice, AskSubject},
-    chat::{HeldMessage, stamp_label},
+    chat::HeldMessage,
     controls::{AccountAction, mode_icon},
     question::{QuestionCardAction, QuestionCardState},
 };
@@ -30,8 +31,6 @@ use crate::target::TargetItem;
 pub const CHAT_SHEET: &str = "phone-chat-sheet";
 pub const HOLD_SHEET: &str = "phone-chat-hold";
 pub const SOMETHING_ELSE: &str = "Something else";
-const BACK_PULL: f32 = 10.0;
-const BACK_GLYPH: f32 = 20.0;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PlusPage {
@@ -146,6 +145,7 @@ impl PlusSheet<'_> {
         let mut rows = vec![
             TouchRow::new("chat-plus-mention", "Mention")
                 .icon(IconName::ListTree)
+                .more()
                 .disabled(!self.enabled)
                 .on_click(act(
                     on_action,
@@ -157,6 +157,7 @@ impl PlusSheet<'_> {
                 TouchRow::new(id, title)
                     .icon(icon)
                     .trailing(TouchTrailing::Value(value.into()))
+                    .more()
                     .disabled(!self.enabled)
                     .on_click(act(on_action, PlusAction::Open(PlusPage::Setting(option))))
             };
@@ -201,6 +202,7 @@ impl PlusSheet<'_> {
                 TouchRow::new("chat-plus-account", "Account")
                     .icon(IconName::User)
                     .trailing(TouchTrailing::Value(self.account_name().into()))
+                    .more()
                     .disabled(!self.enabled)
                     .on_click(act(on_action, PlusAction::Open(PlusPage::Account))),
             );
@@ -316,8 +318,9 @@ impl PlusSheet<'_> {
         Some(
             h_flex()
                 .debug_selector(|| "chat-plus-usage".to_owned())
-                .min_h(px(TOUCH_TARGET))
-                .px(Space::S12)
+                .mt(-Space::S8.rems())
+                .px(Space::S16)
+                .pb(Space::S4)
                 .flex_wrap()
                 .type_style(TextStyle::TouchSmall, cx)
                 .text_color(muted)
@@ -354,68 +357,35 @@ impl PlusSheet<'_> {
         let root = *page == PlusPage::Root;
         let usage = root.then(|| self.usage(cx)).flatten();
         let title = self.title(page);
-        let list = div()
-            .flex()
-            .flex_col()
-            .gap(Space::S2)
-            .px(cx.theme().row_inset)
-            .pb(Space::S8)
-            .children(rows.into_iter().enumerate().map(|(index, row)| {
-                let row = row.in_sheet(cx).into_any_element();
-                if root && index == 0 {
-                    div().pb(Space::GAP_RELATED).child(row).into_any_element()
-                } else {
-                    row
-                }
-            }))
+        let mut rows = rows.into_iter();
+        let groups = if root {
+            vec![
+                TouchGroup::new().ruled().rows(rows.next()),
+                TouchGroup::new().ruled().rows(rows),
+            ]
+        } else {
+            vec![TouchGroup::new().ruled().rows(rows)]
+        };
+        let list = sheet_groups()
+            .children(groups.into_iter().filter(|group| !group.is_empty()))
             .children(usage);
-        let close = sheet_close("phone-chat-sheet-close")
+        let close = sheet_close("phone-chat-sheet-close", cx)
             .on_click(|_, _, cx| close_sheet(CHAT_SHEET, cx))
             .into_any_element();
-        let sheet = bottom_sheet(
-            CHAT_SHEET,
-            title.clone(),
-            [close],
-            list,
-            bottom_inset,
-            on_dismiss,
-        );
+        let sheet = bottom_sheet(CHAT_SHEET, title, [close], list, bottom_inset, on_dismiss);
         if root {
             return sheet;
         }
         let back = Rc::clone(&on_action);
-        sheet.heading(
-            h_flex()
-                .flex_1()
-                .min_w_0()
-                .gap(Space::S4)
-                .child(
-                    Button::new("phone-chat-sheet-back")
-                        .ghost()
-                        .compact()
-                        .tab_stop(false)
-                        .size(px(TOUCH_TARGET))
-                        .ml(px(-BACK_PULL))
-                        .child(penna::Icon::new(IconName::ChevronLeft).size(px(BACK_GLYPH)))
-                        .on_click(move |_, window, cx| back(PlusAction::Back, window, cx)),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .type_style(TextStyle::Display, cx)
-                        .child(title),
-                ),
+        sheet.back(
+            sheet_back("phone-chat-sheet-back", cx)
+                .on_click(move |_, window, cx| back(PlusAction::Back, window, cx)),
         )
     }
 }
 
 pub fn held_sheet(
     held: &HeldMessage,
-    bottom_inset: Pixels,
     on_fork: impl Fn(&ItemId, &mut Window, &mut App) + 'static,
     on_dismiss: impl Fn(&mut Window, &mut App) + 'static,
     cx: &App,
@@ -444,12 +414,7 @@ pub fn held_sheet(
     hold_sheet(
         HOLD_SHEET,
         held.title.clone(),
-        held.at
-            .filter(|at| *at > 0)
-            .and_then(stamp_label)
-            .map(SharedString::from),
         [copy].into_iter().chain(fork),
-        bottom_inset,
         on_dismiss,
         cx,
     )
