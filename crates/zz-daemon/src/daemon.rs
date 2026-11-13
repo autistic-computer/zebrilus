@@ -30987,6 +30987,13 @@ impl Shared {
                 );
                 return;
             }
+            if inner.client(client).is_some_and(|c| c.remote) {
+                log::debug!(
+                    target: "zz_daemon::diagnostics::appearance",
+                    "ignored configuration overrides from remote client={client}",
+                );
+                return;
+            }
             let previous_mux_keys = inner
                 .mux_config_overrides
                 .iter()
@@ -31150,6 +31157,17 @@ impl Shared {
             if inner.client(client).is_none_or(|c| c.subscriber.is_none())
                 || inner.client(client).and_then(|c| c.kind) != Some(ClientKind::Interactive)
             {
+                return;
+            }
+            if inner.client(client).is_some_and(|c| c.remote)
+                && inner.clients.values().any(|c| {
+                    !c.remote && c.kind == Some(ClientKind::Interactive) && c.subscriber.is_some()
+                })
+            {
+                log::debug!(
+                    target: "zz_daemon::diagnostics::appearance",
+                    "ignored color scheme from remote client={client} while a local client is connected",
+                );
                 return;
             }
             if let Some(registered) = inner.client_mut(client) {
@@ -67380,6 +67398,67 @@ mod tests {
                         == zz_terminal::AppearanceSource::Override
             )
         }));
+    }
+
+    #[test]
+    fn a_remote_client_cannot_restyle_a_machine_with_a_local_client() {
+        let appearance_events = |mailbox: &OutboundMailbox| {
+            take_reliable_messages(mailbox)
+                .into_iter()
+                .filter_map(|message| match message {
+                    ProtocolMessage::Event(Event {
+                        payload: EventPayload::AppearanceChanged { appearance, .. },
+                        ..
+                    }) => Some((appearance.background, appearance.color_scheme)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let shared = Arc::new(Shared::new(46));
+        let local_mailbox = OutboundMailbox::new();
+        let (local, _) = shared.register_subscribed(
+            ClientKind::Interactive,
+            None,
+            Some(TerminalColorScheme::Dark),
+            Arc::clone(&local_mailbox),
+        );
+        let (remote, _) = shared.register_subscribed(
+            ClientKind::Interactive,
+            None,
+            Some(TerminalColorScheme::Dark),
+            OutboundMailbox::new(),
+        );
+        shared
+            .inner
+            .lock()
+            .client_mut(remote)
+            .expect("remote client")
+            .remote = true;
+        let before = Arc::clone(&shared.inner.lock().appearance);
+        assert_eq!(before.color_scheme, TerminalColorScheme::Dark);
+        take_reliable_messages(&local_mailbox);
+        let overrides = [("background".to_owned(), "#123456".to_owned())];
+
+        shared.set_config_overrides(remote, ClientKind::Interactive, &overrides);
+        shared.set_client_color_scheme(remote, TerminalColorScheme::Light);
+        assert_eq!(*shared.inner.lock().appearance, *before);
+        assert_eq!(appearance_events(&local_mailbox), []);
+
+        shared.set_config_overrides(local, ClientKind::Interactive, &overrides);
+        assert_eq!(
+            appearance_events(&local_mailbox),
+            [(
+                zz_terminal::Color::rgb(0x12, 0x34, 0x56),
+                TerminalColorScheme::Dark
+            )]
+        );
+
+        shared.unregister(local);
+        shared.set_client_color_scheme(remote, TerminalColorScheme::Light);
+        assert_eq!(
+            shared.inner.lock().appearance.color_scheme,
+            TerminalColorScheme::Light
+        );
     }
 
     #[test]

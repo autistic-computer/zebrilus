@@ -4,7 +4,7 @@ title: zz wire protocol (v123)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-11-11T00:00:00-03:00
+timestamp: 2026-11-13T00:00:00-03:00
 ---
 
 # Overview
@@ -197,8 +197,8 @@ fields in declaration order.
 | `Attach { session: String }` | target string | Interactive attach request. An empty target lazily creates the next numeric session when the daemon has none; explicit missing targets and Command-kind attaches do not create. A session holds a set of attached clients, so a second device never collides with the first |
 | `Attached { session: SessionId, snapshot: MuxSnapshot, read_only: bool, client_flags: String }` | resolved id + full state + effective reconnect options | Attach acknowledgement. The option fields describe the state actually applied by this attachment, so a TUI changing connections does not have to infer which child of an opaque alias attached |
 | `Detach` | . | Interactive detach; drops the sending client's attachment and leaves every other viewer attached. The connection stays open, and the client remains a subscriber that can send another `Attach` |
-| `SetColorScheme(TerminalColorScheme)` | light/dark | Client-driven appearance change |
-| `SetConfigOverrides { entries }` | ordered `Vec<(String, String)>` | Replace the daemon's complete appearance and mux override sets; an empty vector clears both |
+| `SetColorScheme(TerminalColorScheme)` | light/dark | Client-driven appearance change. The daemon ignores it from a client flagged `client-remote-v1` while a local interactive client is connected |
+| `SetConfigOverrides { entries }` | ordered `Vec<(String, String)>` | Replace the daemon's complete appearance and mux override sets; an empty vector clears both. The daemon ignores it from a client flagged `client-remote-v1`, so only the machine's own desktop sets them |
 | `Input(InputMessage)` | see below | Keyboard / resize / view / split input |
 | `Event(Event)` | `sequence: u64`, `payload: EventPayload` | Ordered daemon → client push |
 | `GuiResponse(GuiResponse)` | `Success { request_id, output }` / `Error { request_id, message }` | Interactive client → daemon answer to a `BrowserCommand::Screenshot` request; both strings bounded to `MAX_GUI_TEXT_BYTES` (64 KiB) |
@@ -748,7 +748,7 @@ attach.
 
 # Appearance and mux overrides with provenance
 
-An interactive client sends `SetConfigOverrides` after a hello advertising
+A desktop client sends `SetConfigOverrides` to its own machine's daemon after a hello advertising
 `config-overrides-v1`, then sends the complete replacement set after every `zz/config` poll
 change. Entries retain file order and repeated keys. The client does not parse appearance values;
 the daemon feeds them through its Ghostty-compatible loader. Sending zero entries removes every client

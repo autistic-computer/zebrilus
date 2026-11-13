@@ -143,7 +143,11 @@ agent, and `~/.ssh/config` aliases just work. The ssh child's lifetime is owned 
 - Config: a desktop client always renders with, and edits, its own machine's config. It pushes its
   `zz/config` daemon-key overrides ([layered configuration](/designs/layered-config-and-settings-view.md))
   only to the local daemon, on connect (the initial one or a background one) and on every config
-  change; attaching to another host never changes that host's settings. While attached to a remote
+  change; attaching to another host never changes that host's settings. The daemon enforces it:
+  it ignores `SetConfigOverrides` from a client flagged `client-remote-v1` (ssh and tailnet), and
+  ignores such a client's `SetColorScheme` while a local interactive client is connected, so an
+  older desktop or a light-mode laptop attaching over ssh cannot restyle the machine's own
+  terminals; on a headless box the remote client's scheme still applies. While attached to a remote
   host the client resolves the terminal appearance (fonts, padding, cursor, theme and colors,
   opacity, minimum contrast, the rest of `AppearanceConfigKey::ALL`) from the local overrides itself
   (`config::local_terminal_appearance`), follows local config and color-scheme changes live, and
@@ -173,8 +177,11 @@ adopted now: version bumps stay honest . any wire change bumps . so "same versio
   the last frame, retries with 1/2/4/8/16/30 s backoff, and re-attaches to the last
   attached session; session state survives daemon-side. This superseded both the
   originally planned manual `reconnect` command and the v1 automatic
-  fallback-to-local . the attached host retries indefinitely (unattached hosts stop after
-  3 attempts); automatic fallback happens only on voluntary host removal. The escape hatch
+  fallback-to-local . the attached host retries indefinitely, and so does every unattached
+  saved host on the same backoff while it stays in the config, so its sessions and chats come
+  back after a sleep or a network blip; only an unattached host that asked the user to sign in
+  (an askpass prompt other than zz's key-added notice) stops after 3 attempts, so a background
+  host never prompts in a loop; automatic fallback happens only on voluntary host removal. The escape hatch
   for a host that never returns is the sidebar: the local connection is redialed
   non-attached on host switch, so the local hostname row stays clickable throughout. Abrupt LOCAL
   daemon death (kill -9) still surfaces the disconnect banner (the `ServerStopping`
