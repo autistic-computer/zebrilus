@@ -973,7 +973,11 @@ mod tests {
         assert!(is_openable("file:///home/u/project"));
         assert!(is_openable("mailto:user@example.com"));
         assert!(is_openable("zed://file/main.rs"));
-        assert!(is_openable("./relative/path.md"));
+
+        assert!(!is_openable("./relative/path.md"));
+        assert!(!is_openable("/Users/u/evidence.png"));
+        assert!(!is_openable("C:\\src\\main.rs"));
+        assert!(!is_openable("#section"));
     }
 
     #[test]

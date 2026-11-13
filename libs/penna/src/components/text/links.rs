@@ -58,6 +58,14 @@ pub(crate) fn open_link(
 }
 
 pub(crate) fn is_openable(url: &str) -> bool {
-    let scheme = url.split_once(':').map_or("", |(scheme, _)| scheme);
-    !(scheme.eq_ignore_ascii_case("data") || scheme.eq_ignore_ascii_case("javascript"))
+    let Some((scheme, rest)) = url.split_once(':') else {
+        return false;
+    };
+    let mut characters = scheme.chars();
+    let named = characters.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && characters.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    let drive = scheme.len() == 1 && rest.starts_with(['/', '\\']);
+    named
+        && !drive
+        && !(scheme.eq_ignore_ascii_case("data") || scheme.eq_ignore_ascii_case("javascript"))
 }
