@@ -76,7 +76,7 @@ A phone has no Text size or Density knob. It follows the device's text size from
 </div>
 ```
 
-1. **Top row**: 44, the close or back control at its end.
+1. **Top row**: 44, the close control at its end, or the back control at its start.
 2. **Large title**: 52, `touch-title`, folding into the top row as the page scrolls.
 3. **Body**: `inset-pane` 16 at the sides, groups `gap-group` 16 apart.
 4. **Bottom**: the pill on the overview and on a pane, or the action bar on a zoom card or sheet. Same spot, so never both.

@@ -9,9 +9,9 @@ use penna::{
     ActiveTheme as _, Colorize as _, IconName, Sizable as _, Space,
     blocks::compact::{
         BENTO_INSET, BentoSpan, COMPACT_TITLE_BAR_HEIGHT, MiniPane, PhoneTile, PillLabel,
-        PillPlacement, bento_grid, compact_bar_button, compact_floating_bar,
-        compact_floating_group, compact_floating_pill, folding_title_bar, scrolled, window_span,
-        zoom_card_ground,
+        PillPlacement, TopRowEnd, bento_grid, compact_bar_button, compact_floating_bar,
+        compact_floating_group, compact_floating_pill, folding_title_bar, scrolled, top_row_button,
+        window_span, zoom_card_ground,
     },
     blocks::settings::large_title,
     blocks::touch::StatusMark,
@@ -1188,16 +1188,17 @@ impl AppShell {
     fn machine_close(&self, page: usize, frame: &PageFrame, cx: &mut Context<Self>) -> AnyElement {
         div()
             .absolute()
-            .top(frame.top)
-            .right(Space::INSET_PANE)
-            .h(px(COMPACT_TITLE_BAR_HEIGHT))
-            .flex()
-            .items_center()
-            .child(
+            .top_0()
+            .left_0()
+            .right_0()
+            .h(frame.line)
+            .child(top_row_button(
+                TopRowEnd::End,
+                px(BENTO_INSET),
                 compact_bar_button(("machine-close", page), IconName::Xmark)
                     .tooltip("Close")
                     .on_click(cx.listener(|this, _, _, cx| this.open_hosts(cx))),
-            )
+            ))
             .into_any_element()
     }
 

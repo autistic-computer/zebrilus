@@ -434,7 +434,7 @@ Text fields, number fields, selects, switches and buttons on setting rows are pl
 
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
-| `phone.bar` | bar | 44px nav bars (settings, sheet header) | `kit/compact/bar.rs:205` (`compact_nav_bar`), `kit/compact/header.rs:61` (`folding_title_bar`) | three hand-made 44px headers; fixed, one `compact_nav_bar` |
+| `phone.bar` | bar | 44px nav bars (settings, sheet header) | `libs/penna/src/blocks/compact/header.rs` (`folding_title_bar`) | three hand-made 44px headers; fixed, one `folding_title_bar` |
 | `phone.pill` | button | the pills floating at the bottom of the phone, concentric with the screen's corners (`PillPlacement`): the pane pill with its icon tile and page dots, the host pill, the Hosts page's Settings button, the pill the keys sit in | `kit/compact/bar.rs:91` | took floating glass while in the layout; fixed, a solid fill without an edge |
 | `phone.button` | icon-button | back, close, gear | `kit/compact/bar.rs:192`, `app/app/settings.rs:566`, `app/app/compact/overview.rs:668` | three sizes, two bare divs; fixed, one 44pt `compact_bar_button` with a 20pt glyph |
 | `phone.key` | button | key row keys, ctrl, alt and prefix keys, arrow pad; flat on the key pill until latched or held, concentric in it | `kit/touch/key_row.rs:104` | |

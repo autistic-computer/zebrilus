@@ -8,6 +8,7 @@ use crate::{
     ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable as _, Emphasis, Ground,
     IconName, Layer, PaintState, RULE_WIDTH, RuleLook, Sizable as _, Space, StyledExt as _,
     Surface,
+    blocks::compact::COMPACT_TITLE_BAR_HEIGHT,
     blocks::sidebar::{sidebar_gap, sidebar_row},
     components::badge::Badge,
     components::button::{Button, ButtonVariants as _},
@@ -164,6 +165,7 @@ impl SettingsFold {
 }
 
 pub const LARGE_TITLE_HEIGHT: f32 = 52.0;
+const LARGE_TITLE_BEARING: f32 = 1.0;
 
 pub fn large_title(title: impl Into<SharedString>, cx: &App) -> ala::Div {
     div()
@@ -206,26 +208,47 @@ pub struct SettingsTitleBar {
 }
 
 impl RenderOnce for SettingsTitleBar {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        crate::blocks::compact::compact_nav_bar(cx)
-            .relative()
-            .child(
-                crate::blocks::compact::folding_title_bar(
-                    self.title,
-                    self.fold.scrolled(),
-                    px(0.0),
-                    cx,
-                )
-                .h_full(),
-            )
-            .child(self.back)
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        crate::blocks::compact::folding_title_bar(
+            self.title,
+            self.fold.scrolled(),
+            window.fully_visible_bounds().top(),
+            cx,
+        )
+        .child(crate::blocks::compact::top_row_button(
+            crate::blocks::compact::TopRowEnd::Start,
+            title_edge(window, cx),
+            self.back,
+        ))
     }
 }
 
-fn settings_large_title(title: SharedString, cx: &App) -> ala::Div {
-    large_title(title, cx)
-        .px(Space::S4)
-        .mt(-Space::INSET_PANE.rems())
+fn title_edge(window: &Window, cx: &App) -> Pixels {
+    let rem = if crate::blocks::touch::CoarsePointer::get(cx) {
+        window.rem_size() * crate::blocks::touch::TOUCH_TYPE_SCALE
+    } else {
+        window.rem_size()
+    };
+    Space::INSET_PANE.rems().to_pixels(rem)
+        + Space::S4.rems().to_pixels(rem)
+        + px(LARGE_TITLE_BEARING)
+}
+
+fn settings_large_title(title: SharedString, window: &Window, cx: &App) -> ala::Div {
+    let title = large_title(title, cx).px(Space::S4);
+    if !crate::blocks::touch::CoarsePointer::get(cx) {
+        return title;
+    }
+    let rem = window.rem_size() / crate::blocks::touch::TOUCH_TYPE_SCALE;
+    let style = crate::TextStyle::TouchTitle;
+    title
+        .text_size(style.size().to_pixels(rem))
+        .line_height(style.line_height().to_pixels(rem))
+        .pb(Space::S4.rems().to_pixels(rem))
+}
+
+fn title_line(window: &Window) -> Pixels {
+    window.fully_visible_bounds().top() + px(COMPACT_TITLE_BAR_HEIGHT)
 }
 
 pub fn settings_page_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
@@ -292,8 +315,9 @@ impl RenderOnce for SettingsScrollColumn {
         let fade = cx.theme().content_ground().fill;
         let title = self.large_title.map(|(title, fold)| {
             fold.0.set((-f32::from(handle.offset().y)).max(0.0));
-            settings_large_title(title, cx)
+            settings_large_title(title, window, cx)
         });
+        let line = title.is_some().then(|| title_line(window));
         div()
             .flex_1()
             .min_w_0()
@@ -318,6 +342,7 @@ impl RenderOnce for SettingsScrollColumn {
                     .overflow_y_scroll()
                     .track_scroll(&handle)
                     .p(Space::INSET_PANE)
+                    .when_some(line, ala::Styled::pt)
                     .child(
                         settings_page_content()
                             .flex_none()
@@ -327,7 +352,9 @@ impl RenderOnce for SettingsScrollColumn {
                     )
                     .child(div().flex_none().h(SettingsBottomInset::get(cx))),
             )
-            .top_fade(&handle, fade, SETTINGS_FADE_HEIGHT)
+            .when(line.is_none(), |page| {
+                page.top_fade(&handle, fade, SETTINGS_FADE_HEIGHT)
+            })
             .bottom_fade(&handle, fade, SETTINGS_FADE_HEIGHT)
             .vertical_scrollbar(&handle)
     }
@@ -440,12 +467,15 @@ impl RenderOnce for SettingsVirtualColumn {
             });
             title
         });
+        let line = title.is_some().then(|| title_line(window));
         let fade = cx.theme().content_ground().fill;
         let mut render_item = self.render_item;
         let rows = list(list_state.clone(), move |index, window, cx| {
             let row = match (&title, index.checked_sub(lead)) {
                 (_, Some(index)) => render_item(index, window, cx),
-                (Some(title), None) => settings_large_title(title.clone(), cx).into_any_element(),
+                (Some(title), None) => {
+                    settings_large_title(title.clone(), window, cx).into_any_element()
+                }
                 (None, None) => div().into_any_element(),
             };
             div()
@@ -457,7 +487,10 @@ impl RenderOnce for SettingsVirtualColumn {
         })
         .with_sizing_behavior(ListSizingBehavior::Auto)
         .size_full()
-        .pt(Space::INSET_PANE)
+        .map(|rows| match line {
+            Some(line) => rows.pt(line),
+            None => rows.pt(Space::INSET_PANE),
+        })
         .pb(Space::INSET_PANE.rems().to_pixels(window.rem_size()) + SettingsBottomInset::get(cx));
 
         div()
@@ -467,7 +500,9 @@ impl RenderOnce for SettingsVirtualColumn {
             .h_full()
             .relative()
             .child(rows)
-            .top_fade(&list_state, fade, SETTINGS_FADE_HEIGHT)
+            .when(line.is_none(), |page| {
+                page.top_fade(&list_state, fade, SETTINGS_FADE_HEIGHT)
+            })
             .bottom_fade(&list_state, fade, SETTINGS_FADE_HEIGHT)
             .vertical_scrollbar(&list_state)
     }

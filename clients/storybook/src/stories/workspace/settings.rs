@@ -140,14 +140,13 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
             "on a phone: the large title folds into the bar as the page scrolls",
             div()
                 .id("settings-phone")
-                .flex()
-                .flex_col_reverse()
+                .relative()
                 .w(px(360.0))
                 .h(px(420.0))
                 .rounded(cx.theme().radius)
                 .framed(cx)
                 .overflow_hidden()
-                .child(div().flex().flex_1().min_h_0().child(phone_index))
+                .child(div().absolute().inset_0().flex().child(phone_index))
                 .child(settings_title_bar("Settings", &fold, back)),
         )
         .into_any_element()

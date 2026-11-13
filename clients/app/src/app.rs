@@ -3222,6 +3222,19 @@ impl Render for AppShell {
         overlays.extend(Root::render_dialog_layer(window, cx).map(IntoElement::into_any_element));
         overlays
             .extend(Root::render_notification_layer(window, cx).map(IntoElement::into_any_element));
+        let phone_settings = !compact && Self::narrow(window) && self.settings.is_some();
+        if phone_settings {
+            overlays = vec![
+                div()
+                    .absolute()
+                    .top(window.fully_visible_bounds().top())
+                    .left_0()
+                    .right_0()
+                    .bottom_0()
+                    .children(overlays)
+                    .into_any_element(),
+            ];
+        }
         let shell = if let Some(workspace) = workspace {
             app_shell_surface(
                 "web-client",
@@ -3357,7 +3370,11 @@ impl Render for AppShell {
         div()
             .size_full()
             .bg(cx.theme().background)
-            .pt(if compact { px(0.0) } else { visible.top() })
+            .pt(if compact || phone_settings {
+                px(0.0)
+            } else {
+                visible.top()
+            })
             .pb((window.viewport_size().height - bottom).max(px(0.0)))
             .pl(visible.left())
             .pr(window.viewport_size().width - visible.right())

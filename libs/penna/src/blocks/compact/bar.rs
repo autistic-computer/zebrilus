@@ -12,11 +12,10 @@ use crate::{
     rems_from_px,
 };
 
-pub const COMPACT_NAV_BAR_HEIGHT: f32 = 44.0;
 pub const COMPACT_PILL_HEIGHT: f32 = 56.0;
 
-const BUTTON: f32 = 44.0;
-const BUTTON_ICON: f32 = 20.0;
+pub(super) const BUTTON: f32 = 44.0;
+pub(super) const BUTTON_ICON: f32 = 20.0;
 const TILE_INSET: Space = Space::S8;
 const PILL_GAP: Space = Space::GAP_RELATED;
 const PILL_INSET: f32 = 8.0;
@@ -229,17 +228,6 @@ pub fn compact_bar_button(id: impl Into<ElementId>, icon: IconName) -> Button {
         .surface_role(roles::PHONE_BUTTON)
         .size(rems_from_px(BUTTON))
         .child(Icon::new(icon).size(rems_from_px(BUTTON_ICON)))
-}
-
-pub fn compact_nav_bar(cx: &App) -> Div {
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap(Space::S4)
-        .h(rems_from_px(COMPACT_NAV_BAR_HEIGHT))
-        .px(Space::S8)
-        .surface(Surface::new(roles::PHONE_BAR), cx)
 }
 
 pub struct PillLabel {

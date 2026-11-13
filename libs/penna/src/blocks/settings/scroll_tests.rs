@@ -165,11 +165,10 @@ impl Render for LargeTitleTest {
                 .into_any_element()
         };
         div()
-            .flex()
-            .flex_col_reverse()
+            .relative()
             .w(px(390.))
             .h(px(400.))
-            .child(div().flex().flex_1().min_h_0().child(page))
+            .child(div().absolute().inset_0().flex().child(page))
             .child(super::settings_title_bar("Terminal", &self.fold, div()))
     }
 }
@@ -186,7 +185,8 @@ fn large_title_folds(cx: &mut TestAppContext, virtual_rows: bool) {
 
     let bar = cx.debug_bounds("folding-title-bar").unwrap();
     let title = cx.debug_bounds("large-title").unwrap();
-    assert!(title.top() >= bar.bottom());
+    assert_eq!(bar.size.height, px(44.));
+    assert_eq!(title.top(), bar.bottom());
     assert!(fold.scrolled() < 1.0);
 
     scroll(cx, 200., 300., 0., -10_000.);

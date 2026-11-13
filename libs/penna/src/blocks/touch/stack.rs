@@ -975,50 +975,41 @@ pub fn middle_line(text: impl Into<SharedString>, style: TextStyle) -> impl Into
     .h(crate::rems_from_px(style.line_height_px()))
 }
 
-pub fn stack_scrim(
-    id: impl Into<ElementId>,
-    progress: f32,
-    layer: Bounds<Pixels>,
-    window: &Window,
-    on_close: impl Fn(&mut Window, &mut App) + 'static,
-    cx: &App,
-) -> Stateful<Div> {
+fn scrim_area(layer: Bounds<Pixels>, window: &Window) -> Div {
     let floor =
         (window.visual_viewport_bounds().bottom() - layer.top()).clamp(px(0.0), layer.size.height);
-    div()
-        .id(id)
-        .absolute()
-        .top_0()
-        .left_0()
-        .right_0()
-        .h(floor)
-        .occlude()
-        .bg(cx.theme().scrim)
-        .opacity(progress.clamp(0.0, 1.0))
-        .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
-        .on_click(move |_, window, cx| on_close(window, cx))
+    div().absolute().top_0().left_0().right_0().h(floor)
+}
+
+fn shaded<E: ala::Styled>(scrim: E, progress: f32, cx: &App) -> E {
+    scrim.bg(cx.theme().scrim).opacity(progress.clamp(0.0, 1.0))
 }
 
 impl StackMenu {
     pub fn scrim(menu: &Entity<Self>, window: &Window, cx: &App) -> impl IntoElement + use<> {
-        let shut = menu.downgrade();
         let menu = menu.read(cx);
         let progress = menu.progress;
         let shown = menu.is_shown();
         let measured = Rc::clone(&menu.measured);
         let bounds = layer_bounds(&measured.borrow(), window);
         div().absolute().inset_0().when(shown, |layer| {
-            layer.child(track_layer(measured)).child(stack_scrim(
-                "stack-scrim",
+            layer.child(track_layer(measured)).child(shaded(
+                scrim_area(bounds, window),
                 progress,
-                bounds,
-                window,
-                move |_, cx| {
-                    let _ = shut.update(cx, Self::close);
-                },
                 cx,
             ))
         })
+    }
+
+    fn scrim_catch(layer: Bounds<Pixels>, window: &Window, cx: &Context<Self>) -> Stateful<Div> {
+        let shut = cx.weak_entity();
+        scrim_area(layer, window)
+            .id("stack-scrim")
+            .occlude()
+            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+            .on_click(move |_, _, cx| {
+                let _ = shut.update(cx, Self::close);
+            })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1503,19 +1494,8 @@ impl Render for StackMenu {
         );
         let close = (self.close == StackClose::Disc && self.pinned)
             .then(|| self.close_disc(anchor, layer, cx));
-        let scrim = self.own_scrim.then(|| {
-            let shut = cx.weak_entity();
-            stack_scrim(
-                "stack-scrim",
-                frame.progress,
-                layer,
-                window,
-                move |_, cx| {
-                    let _ = shut.update(cx, Self::close);
-                },
-                cx,
-            )
-        });
+        let scrim = Self::scrim_catch(layer, window, cx)
+            .when(self.own_scrim, |scrim| shaded(scrim, frame.progress, cx));
         let keys = self.is_open().then(|| {
             let menu = cx.weak_entity();
             canvas(
@@ -1536,10 +1516,94 @@ impl Render for StackMenu {
             .absolute()
             .inset_0()
             .child(track_layer(Rc::clone(&self.measured)))
-            .children(scrim)
+            .child(scrim)
             .child(column)
             .children(close)
             .children(keys)
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{cell::Cell, rc::Rc};
+
+    use ala::{Modifiers, ScrollDelta, TestAppContext, VisualTestContext, point};
+
+    use super::*;
+
+    struct Host {
+        menu: Entity<StackMenu>,
+        scrolled: Rc<Cell<usize>>,
+    }
+
+    impl Render for Host {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let scrolled = Rc::clone(&self.scrolled);
+            div()
+                .relative()
+                .size_full()
+                .child(StackMenu::scrim(&self.menu, window, cx))
+                .child(
+                    div()
+                        .id("pill")
+                        .debug_selector(|| "pill".to_owned())
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .bottom_0()
+                        .h(px(60.0))
+                        .child(StackMenu::pill_anchor(&self.menu, cx))
+                        .on_scroll_wheel(move |_, _, _| scrolled.set(scrolled.get() + 1)),
+                )
+                .child(self.menu.clone())
+        }
+    }
+
+    fn redraw(cx: &mut VisualTestContext) {
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+    }
+
+    fn swipe_up(at: Point<Pixels>, cx: &mut VisualTestContext) {
+        cx.simulate_event(ScrollWheelEvent {
+            position: at,
+            delta: ScrollDelta::Pixels(point(px(0.0), px(-40.0))),
+            modifiers: Modifiers::none(),
+            touch_phase: TouchPhase::Moved,
+        });
+        redraw(cx);
+    }
+
+    #[ala::test]
+    fn an_open_menu_keeps_drags_off_what_lies_over_its_shade(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let scrolled = Rc::new(Cell::new(0));
+        let count = Rc::clone(&scrolled);
+        let (host, cx) = cx.add_window_view(move |_, cx| Host {
+            menu: cx.new(|cx| StackMenu::new(StackClose::Disc, cx).scrim_apart()),
+            scrolled: count,
+        });
+        redraw(cx);
+        let pill = cx.debug_bounds("pill").expect("pill");
+        let beside_close = point(pill.left() + px(10.0), pill.center().y);
+        swipe_up(beside_close, cx);
+        assert_eq!(scrolled.get(), 1);
+
+        let menu = host.read_with(cx, |host, _| host.menu.clone());
+        menu.update(cx, StackMenu::open);
+        redraw(cx);
+        swipe_up(beside_close, cx);
+        assert_eq!(scrolled.get(), 1);
+        assert!(menu.read_with(cx, |menu, _| menu.is_open()));
+
+        cx.simulate_click(beside_close, Modifiers::none());
+        redraw(cx);
+        assert!(!menu.read_with(cx, |menu, _| menu.is_open()));
     }
 }

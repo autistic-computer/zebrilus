@@ -45,7 +45,7 @@ pub use row::{
 pub use screen::{ACTION_BAR_BOTTOM, ACTION_BAR_KEYBOARD, EMPTY_GLYPH, PhoneEmpty, action_bar};
 pub use stack::{
     STACK_CHIP_HEIGHT, STACK_HOLD, StackChip, StackClose, StackGroup, StackLook, StackMenu,
-    StackMenuEvent, middle_line, stack_scrim,
+    StackMenuEvent, middle_line,
 };
 pub use stack_gesture::{StackGesture, StackSlide, StackTarget, StackTouch};
 pub use stack_key::{StackKey, StackKeyTap};

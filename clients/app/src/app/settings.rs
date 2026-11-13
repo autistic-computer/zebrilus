@@ -454,8 +454,6 @@ impl AppShell {
         })
         .when(!picked && attached, |swipe| {
             swipe.under_with(move |window, cx| {
-                let top = window.fully_visible_bounds().top();
-                let height = window.viewport_size().height;
                 let backdrop = shell
                     .update(cx, |this, cx| {
                         this.compact_shell(Vec::new(), Vec::new(), window, cx)
@@ -466,8 +464,8 @@ impl AppShell {
                     .absolute()
                     .left_0()
                     .right_0()
-                    .top(-top)
-                    .h(height)
+                    .top_0()
+                    .h(window.viewport_size().height)
                     .child(backdrop)
                     .into_any_element()
             })
@@ -548,19 +546,16 @@ impl AppShell {
                 cx.notify();
             }));
         div()
-            .flex()
-            .flex_col_reverse()
+            .relative()
             .size_full()
             .min_w_0()
             .min_h_0()
             .child(
-                div().flex_1().min_h_0().relative().child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .flex()
-                        .child(penna::blocks::touch::touch_scale(content, cx)),
-                ),
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .child(penna::blocks::touch::touch_scale(content, cx)),
             )
             .child(settings_title_bar(title, fold, back))
             .into_any_element()

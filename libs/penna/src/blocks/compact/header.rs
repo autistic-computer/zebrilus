@@ -1,10 +1,12 @@
 use ala::{
-    App, Div, GlassMaterial, ParentElement as _, Pixels, ScrollHandle, SharedString, Styled as _,
-    div, prelude::*, px, transparent_black,
+    App, Div, GlassMaterial, IntoElement, ParentElement as _, Pixels, ScrollHandle, SharedString,
+    Styled as _, div, prelude::*, px, transparent_black,
 };
 
+use super::bar::{BUTTON, BUTTON_ICON};
 use crate::{
     ActiveTheme as _, Edge, StyledExt as _, foundation::RoleRuleExt as _, foundation::roles,
+    rems_from_px,
 };
 
 pub const COMPACT_TITLE_BAR_HEIGHT: f32 = 44.0;
@@ -15,6 +17,28 @@ const TITLE_SPAN: f32 = 14.0;
 const FROST_BLUR: f32 = 20.0;
 const FROST_TINT: f32 = 0.72;
 const FROST_SATURATION: f32 = 1.8;
+const GLYPH_INK: f32 = 3.0;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TopRowEnd {
+    Start,
+    End,
+}
+
+pub fn top_row_button(end: TopRowEnd, edge: Pixels, button: impl IntoElement) -> Div {
+    let glyph = -rems_from_px((BUTTON - BUTTON_ICON) / 2.0 + GLYPH_INK);
+    let button = div().flex_none().child(button);
+    div()
+        .absolute()
+        .bottom_0()
+        .h(px(COMPACT_TITLE_BAR_HEIGHT))
+        .flex()
+        .items_center()
+        .map(|slot| match end {
+            TopRowEnd::Start => slot.left(edge).child(button.ml(glyph)),
+            TopRowEnd::End => slot.right(edge).child(button.mr(glyph)),
+        })
+}
 
 pub fn scrolled(scroll: &ScrollHandle) -> f32 {
     (-f32::from(scroll.offset().y)).max(0.0)
