@@ -118,6 +118,7 @@ impl AppShell {
             input.update(cx, |input, cx| input.set_value(name, window, cx));
             cx.on_next_frame(window, move |_, window, cx| {
                 input.update(cx, |input, cx| input.focus(window, cx));
+                window.request_virtual_keyboard();
                 cx.on_next_frame(window, |_, window, cx| {
                     window.dispatch_action(Box::new(SelectAll), cx);
                 });
