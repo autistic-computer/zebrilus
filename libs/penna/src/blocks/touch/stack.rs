@@ -157,6 +157,16 @@ impl StackGroup {
         self
     }
 
+    #[must_use]
+    pub fn title(&self) -> Option<&SharedString> {
+        self.label.as_ref()
+    }
+
+    #[must_use]
+    pub fn chips(&self) -> &[StackChip] {
+        &self.chips
+    }
+
     fn chords(&self) -> bool {
         !self.chips.is_empty() && self.chips.iter().all(|chip| chip.chord.is_some())
     }

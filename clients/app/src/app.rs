@@ -1505,6 +1505,7 @@ impl AppShell {
     fn picker_entity(
         &mut self,
         pane: PaneId,
+        chat_view: bool,
         cx: &mut Context<Self>,
     ) -> Entity<picker::PanePicker> {
         let picker = self
@@ -1524,7 +1525,6 @@ impl AppShell {
                 picker
             })
             .clone();
-        let chat_view = self.preferences.flat_sidebar;
         picker.update(cx, |picker, cx| picker.set_chat_view(chat_view, cx));
         picker
     }
@@ -1702,18 +1702,6 @@ impl AppShell {
         .on_click(cx.listener(move |this, _, window, cx| {
             this.focus_pane(pane_id, window, cx);
         }))
-    }
-
-    pub(super) fn pane_flip(&self, pane: PaneId, cx: &App) -> Option<zz_ui::pane::PaneFlip> {
-        let connection = self.connection.read(cx);
-        let target = connection.terminal_flip(pane)?;
-        let flip = connection.flips.state(pane);
-        Some(zz_ui::pane::PaneFlip {
-            provider: target.provider,
-            to: target.to,
-            armed: flip.armed(),
-            pending: flip.pending(),
-        })
     }
 
     fn on_pane_drag_start(&mut self, drag: PaneDrag, cx: &mut Context<Self>) {
@@ -2146,7 +2134,7 @@ impl AppShell {
             let agent_shown = matches!(pane.kind, PaneKindSnapshot::Agent(_));
             let content = match &pane.kind {
                 PaneKindSnapshot::Terminal if agent_picker => {
-                    let picker = self.picker_entity(pane_id, cx);
+                    let picker = self.picker_entity(pane_id, self.preferences.flat_sidebar, cx);
                     if can_focus
                         && pane_id == active_window.active_pane
                         && self.focused_pane != Some(pane_id)
@@ -2275,7 +2263,7 @@ impl AppShell {
                     cx,
                 ),
                 PaneKindSnapshot::Picker => {
-                    let picker = self.picker_entity(pane_id, cx);
+                    let picker = self.picker_entity(pane_id, self.preferences.flat_sidebar, cx);
                     if can_focus
                         && pane_id == active_window.active_pane
                         && self.focused_pane != Some(pane_id)

@@ -42,7 +42,7 @@ pub fn mini_radius(cx: &App) -> Pixels {
 }
 
 type ClickHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
-type HoldHandler = Rc<dyn Fn(&mut Window, &mut App)>;
+pub(crate) type HoldHandler = Rc<dyn Fn(&mut Window, &mut App)>;
 
 #[derive(IntoElement)]
 pub struct PhoneTile {
@@ -129,7 +129,7 @@ impl PhoneTile {
     }
 }
 
-fn hold_listener(on_hold: HoldHandler) -> impl IntoElement {
+pub(crate) fn hold_listener(on_hold: HoldHandler) -> impl IntoElement {
     canvas(
         |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
         move |_, hitbox, window, _| {

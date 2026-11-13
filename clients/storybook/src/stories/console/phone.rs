@@ -1,18 +1,19 @@
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
-    Render, Styled as _, Window, div, prelude::*, px,
+    Render, Styled as _, Subscription, Window, div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Disableable as _, IconName, Sizable as _, Size,
+    ActiveTheme as _, Disableable as _, IconName, Sizable as _, Size, Space,
     blocks::compact::{
-        BENTO_INSET, BentoSpan, MiniPane, PhoneTile, PillLabel, PillPlacement, ZoomCard,
-        bento_grid, compact_bar_button, compact_floating_bar, compact_floating_group,
-        compact_floating_pill, window_span, zoom_card_ground,
+        BENTO_INSET, BentoSpan, COMPACT_TITLE_BAR_HEIGHT, MiniPane, PhoneTile, PillLabel,
+        PillPlacement, ZoomCard, bento_grid, compact_bar_button, compact_floating_bar,
+        compact_floating_group, compact_floating_pill, window_span, zoom_card_ground,
     },
     blocks::settings::large_title,
+    blocks::sheet::BottomSheet,
     blocks::touch::{
-        KeyRow, PageDot, PhoneEmpty, StackChip, StackClose, StackGroup, StackLook, StackMenu,
-        StatusMark, page_dots,
+        KeyRow, PageDot, PhoneEmpty, StackClose, StackGroup, StackMenu, StatusMark, TouchHeader,
+        TouchRow, action_bar, page_dots,
     },
     components::button::{Button, ButtonVariants as _},
     components::field::Field,
@@ -22,8 +23,8 @@ use penna::{
 use zz_protocol::AgentProvider;
 use zz_ui::{
     compact::{
-        FoundMachine, HostState, ToolKeys, found_machines, host_mark, overview_host_empty,
-        overview_session_heading,
+        Confirm, FoundMachine, HostState, MachineMenu, PaneMenu, Rename, ToolKeys, found_machines,
+        hold_sheet, host_mark, machine_menu, pane_menu,
     },
     pane::agent_provider_icon,
 };
@@ -31,7 +32,6 @@ use zz_ui::{
 use crate::stories::agent::pane as agent_pane;
 use crate::story::Framed as _;
 use crate::story::{Section, Story, stateless, states};
-use zz_ui::pane::FlipTo;
 
 pub const STORY: Story = Story {
     id: "phone",
@@ -42,13 +42,13 @@ pub const STORY: Story = Story {
         Section {
             id: "pill-menu",
             name: "Pill menu",
-            summary: "What tapping the pill opens, as a stack menu. Switch to chat or Overview sits nearest the thumb; Kill pane and All bindings sit furthest. A pane running Claude Code or Codex adds Switch to chat, which reads Switch to the CLI on an agent pane.",
+            summary: "What tapping the pill opens, as a stack menu. Inside a machine: Settings apart at the top, All machines, New session, then New in and the session in view over New browser, New terminal and New chat, New chat nearest the thumb; a machine with no sessions says In a new session and leaves New session out. Inside a pane: All bindings in a terminal, Overview, then Rename and Close for the pane, Close in danger ink, then the same New group for the pane's session.",
             build: |_, cx| cx.new(Menus::new).into(),
         },
         Section {
             id: "prefix-menu",
             name: "Prefix menu",
-            summary: "The same stack from the prefix key over the keyboard: it rises from the key, its chips lined up along the start.",
+            summary: "The pane's stack from the prefix key over the keyboard: it rises from the key, its chips lined up along the start, and the groups that do not fit fold behind More.",
             build: |_, cx| cx.new(PrefixMenu::new).into(),
         },
         Section {
@@ -65,9 +65,15 @@ pub const STORY: Story = Story {
         },
         Section {
             id: "overview",
-            name: "Overview",
-            summary: "Inside a machine: each session's windows as a bento grid, every window drawn the way it splits its panes, over the host pill. Swiping the pill sideways pages machines, swiping it up zooms back out to Machines, and tapping it opens the machine's menu. Tapping a window zooms into the pane it was last on. A machine that is not connected shows why and one thing to do.",
+            name: "Machine",
+            summary: "Inside a machine: the close control in the top row, the machine's name as the large title, then each session's name over a bento grid of its windows, each drawn the way it splits its panes. The pill names the machine over the session in view, where its menu makes new things. The last of several sessions leaves room to rise under the top row. A machine with no sessions is the title and the New tile, which opens the pill's menu. A machine that is not connected is the empty state with Connect as the main action, or Connecting with Cancel.",
             build: |_, cx| stateless(overview, cx),
+        },
+        Section {
+            id: "sheets",
+            name: "Sheets",
+            summary: "Holding a window tile opens its sheet: the title over what the tile leaves out, then Rename and Close window in danger ink. Rename opens a sheet with the name in a 56 field and Save, off until the name changes. Close asks first: the question, what goes, Cancel and Close. The close button, the scrim, Cancel or a pick dismiss a sheet; a press on its empty frame brings it back.",
+            build: |window, cx| cx.new(|cx| Sheets::new(window, cx)).into(),
         },
         Section {
             id: "screen",
@@ -369,104 +375,207 @@ fn term(id: &'static str, lines: &str) -> MiniPane {
     )
 }
 
-pub(crate) fn host_page(cx: &App) -> impl IntoElement {
-    let daemon = PhoneTile::new("window-daemon", "cargo test")
-        .mark(StatusMark::Spinner)
-        .pane(
-            [0.0, 0.0, 0.6, 1.0],
-            term(
-                "mini-1",
-                "running 214 tests\ntest overview::pager ... ok\ntest overview::bento ... ok\ntest result: ok. 214 passed",
-            ),
-        )
-        .pane([0.6, 0.0, 0.4, 0.5], term("mini-2", "fn host_body(\n  &mut self,"))
-        .pane([0.6, 0.5, 0.4, 0.5], MiniPane::blank("mini-3"));
-    let site = PhoneTile::new("window-site", "site").pane(
-        [0.0, 0.0, 1.0, 1.0],
-        MiniPane::browser("mini-4", "localhost:4321"),
-    );
-    let agents = PhoneTile::new("window-agents", "Review the tailnet plan")
-        .mark(StatusMark::Warning)
-        .state("Needs approval")
-        .pane([0.0, 0.0, 0.5, 1.0], MiniPane::chat("mini-5"))
-        .pane([0.5, 0.0, 0.5, 1.0], MiniPane::chat("mini-6"));
-    let notes = PhoneTile::new("window-notes", "notes").pane(
-        [0.0, 0.0, 1.0, 1.0],
-        term("mini-7", "- [ ] fold title on iPad\n- [x] bento grid"),
-    );
-    v_flex()
-        .pb(px(8.0))
-        .child(large_title("macbook", cx))
-        .child(overview_session_heading("zz", cx))
-        .child(div().px(px(BENTO_INSET)).child(bento_grid(
-            px(GRID),
-            vec![
-                (window_span(3), daemon.into_any_element()),
-                (window_span(1), site.into_any_element()),
-                (window_span(2), agents.into_any_element()),
-            ],
-        )))
-        .child(overview_session_heading("scratch", cx))
-        .child(div().px(px(BENTO_INSET)).child(bento_grid(
-            px(GRID),
-            vec![(window_span(1), notes.into_any_element())],
-        )))
+fn top_row(id: &'static str) -> impl IntoElement {
+    div()
+        .flex()
+        .justify_end()
+        .items_center()
+        .h(px(COMPACT_TITLE_BAR_HEIGHT))
+        .px(Space::INSET_PANE)
+        .child(compact_bar_button(id, IconName::Xmark).tooltip("Close"))
 }
 
-fn empty_page(cx: &App, action: AnyElement, detail: &str) -> impl IntoElement {
-    div().h(px(320.0)).child(overview_host_empty(
-        "alienware",
-        detail.to_owned(),
-        Some(action),
+fn session(
+    name: &'static str,
+    first: bool,
+    tiles: Vec<(BentoSpan, AnyElement)>,
+) -> impl IntoElement {
+    div()
+        .px(px(BENTO_INSET))
+        .when(!first, |section| section.mt(Space::GAP_GROUP))
+        .child(TouchHeader::new(name).over_tiles().holdable())
+        .child(bento_grid(px(GRID), tiles))
+}
+
+fn zz_windows() -> Vec<(BentoSpan, AnyElement)> {
+    let pill = PhoneTile::new("window-pill", "Make the pill menu offer New chat")
+        .mark(StatusMark::Warning)
+        .state("Needs approval")
+        .pane([0.0, 0.0, 0.5, 1.0], MiniPane::chat("mini-1"))
+        .pane(
+            [0.5, 0.0, 0.5, 0.5],
+            term(
+                "mini-2",
+                "running 14 tests\ntest pill::menu_order ... ok\ntest pill::new_chat ... ok",
+            ),
+        )
+        .pane(
+            [0.5, 0.5, 0.5, 0.5],
+            MiniPane::browser("mini-3", "127.0.0.1:8090"),
+        );
+    let stack = PhoneTile::new("window-stack", "Fix pane stack hit testing")
+        .mark(StatusMark::Spinner)
+        .pane([0.0, 0.0, 1.0, 1.0], MiniPane::chat("mini-4"));
+    let watch = PhoneTile::new("window-watch", "cargo watch").pane(
+        [0.0, 0.0, 1.0, 1.0],
+        term(
+            "mini-5",
+            "~/dev/zebrilus main\n> cargo watch -x check\n    Checking zz-mux v0.42.0\n    Finished `dev` profile in 2.14s",
+        ),
+    );
+    vec![
+        (window_span(3), pill.into_any_element()),
+        (window_span(1), stack.into_any_element()),
+        (window_span(1), watch.into_any_element()),
+    ]
+}
+
+fn dotfiles_windows() -> Vec<(BentoSpan, AnyElement)> {
+    let zsh = PhoneTile::new("window-zsh", "zsh").pane(
+        [0.0, 0.0, 1.0, 1.0],
+        term(
+            "mini-6",
+            "~/.files main\n> git status -sb\n## main...origin/main\n M .bash/macos.bash",
+        ),
+    );
+    vec![(window_span(1), zsh.into_any_element())]
+}
+
+fn nidus_windows() -> Vec<(BentoSpan, AnyElement)> {
+    let warp = PhoneTile::new("window-warp", "Pointer warp on a second screen")
+        .mark(StatusMark::Spinner)
+        .pane([0.0, 0.0, 1.0, 0.5], MiniPane::chat("mini-7"))
+        .pane(
+            [0.0, 0.5, 1.0, 0.5],
+            term("mini-8", "warp: DP-1 -> HDMI-1\nwarp: pointer 2581,412"),
+        );
+    let build = PhoneTile::new("window-build", "cargo build")
+        .mark(StatusMark::Danger)
+        .state("Exit 101")
+        .pane(
+            [0.0, 0.0, 1.0, 1.0],
+            term(
+                "mini-9",
+                "~/dev/nidus warp\n> cargo build --release\nerror[E0425]: cannot find value `edge`\nerror: could not compile `nidus`",
+            ),
+        );
+    vec![
+        (window_span(2), warp.into_any_element()),
+        (window_span(1), build.into_any_element()),
+    ]
+}
+
+pub(crate) fn host_page(cx: &App) -> impl IntoElement {
+    v_flex()
+        .pb(px(8.0))
+        .child(top_row("machine-close"))
+        .child(large_title("macbook", cx))
+        .child(session("zz", true, zz_windows()))
+        .child(session("dotfiles", false, dotfiles_windows()))
+        .child(session("nidus", false, nidus_windows()))
+}
+
+fn machine_screen(
+    id: &'static str,
+    page: impl IntoElement,
+    pill: AnyElement,
+    cx: &App,
+) -> ala::Div {
+    phone(
+        v_flex()
+            .h(px(SCREEN_HEIGHT))
+            .child(
+                div()
+                    .id(id)
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .child(page),
+            )
+            .child(pill),
         cx,
-    ))
+    )
+}
+
+fn unreached(id: &'static str, empty: PhoneEmpty, action: Button, cx: &App) -> ala::Div {
+    phone(
+        v_flex()
+            .h(px(SCREEN_HEIGHT))
+            .child(top_row(id))
+            .child(large_title("alienware", cx))
+            .child(div().mt(px(96.0)).child(empty))
+            .child(div().flex_1())
+            .child(action_bar(px(34.0)).child(action.with_size(Size::TouchLarge).w_full())),
+        cx,
+    )
 }
 
 fn overview(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
+    let one = v_flex()
+        .child(top_row("machine-close-xps"))
+        .child(large_title("xps", cx))
+        .child(session("work", true, zz_windows()));
+    let empty = v_flex()
+        .child(top_row("machine-close-empty"))
+        .child(large_title("xps", cx))
+        .child(
+            div()
+                .px(px(BENTO_INSET))
+                .pt(Space::GAP_GROUP)
+                .child(bento_grid(
+                    px(GRID),
+                    vec![(
+                        BentoSpan::new(2, 2),
+                        PhoneTile::add("machine-new", "New").into_any_element(),
+                    )],
+                )),
+        );
     states()
         .columns(2)
         .state(
-            "a connected host",
-            phone(
-                v_flex()
-                    .child(host_page(cx))
-                    .child(host_bar("overview-bar-macbook", "macbook", "2 sessions", 0, cx)),
+            "several sessions: the pill names zz, the session in view",
+            machine_screen(
+                "machine-several",
+                host_page(cx),
+                host_bar("overview-bar-macbook", "macbook", "zz", 0, cx),
                 cx,
             ),
         )
         .state(
-            "a host that is not connected",
-            phone(
-                v_flex()
-                    .child(empty_page(
-                        cx,
-                        Button::new("overview-connect").label("Connect").into_any_element(),
-                        "fabri@alienware is not connected. Your other hosts stay connected while it signs in.",
-                    ))
-                    .child(host_bar(
-                        "overview-bar-alienware",
-                        "alienware",
-                        "Not connected",
-                        2,
-                        cx,
-                    )),
+            "one session",
+            machine_screen(
+                "machine-one",
+                one,
+                host_bar("overview-bar-xps", "xps", "work", 1, cx),
                 cx,
             ),
         )
         .state(
-            "signing in",
-            phone(
-                v_flex()
-                    .child(empty_page(
-                        cx,
-                        Button::new("overview-cancel")
-                            .label("Cancel")
-                            .ghost()
-                            .into_any_element(),
-                        "Connecting…",
-                    ))
-                    .child(host_bar("overview-bar-ubuntu", "ubuntu", "Connecting…", 1, cx)),
+            "no sessions: the title and the New tile",
+            machine_screen(
+                "machine-empty",
+                empty,
+                host_bar("overview-bar-empty", "xps", "No sessions", 1, cx),
+                cx,
+            ),
+        )
+        .state(
+            "not connected: Connect is the main action",
+            unreached(
+                "machine-close-offline",
+                PhoneEmpty::new(IconName::Server, "Not connected")
+                    .line("ssh: connect to host alienware port 22: Connection refused"),
+                Button::new("machine-connect").primary().label("Connect"),
+                cx,
+            ),
+        )
+        .state(
+            "connecting: Cancel is the one action",
+            unreached(
+                "machine-close-connecting",
+                PhoneEmpty::spinner("Connecting").line("Waiting for ssh on fabrico@alienware"),
+                Button::new("machine-cancel").label("Cancel"),
                 cx,
             ),
         )
@@ -475,22 +584,15 @@ fn overview(_: &mut Window, cx: &mut App) -> AnyElement {
 
 const MENU_HEIGHT: f32 = 700.0;
 
-fn menu_groups(flip: Option<FlipTo>) -> Vec<StackGroup> {
-    let flip = flip.map(|to| StackChip::new("flip", to.label(), zz_ui::pane::flip_icon(to)));
-    vec![
-        StackGroup::new(flip.into_iter().chain([
-            StackChip::new("overview", "Overview", IconName::LayoutDashboard),
-            StackChip::new("last-pane", "Last pane", IconName::History),
-            StackChip::new("new-pane", "New pane", IconName::Plus),
-            StackChip::new("new-window", "New window", IconName::AppWindow),
-            StackChip::new("rename-pane", "Rename pane", IconName::Pencil),
-        ])),
-        StackGroup::new([
-            StackChip::new("kill-pane", "Kill pane", IconName::Xmark).look(StackLook::Danger),
-            StackChip::new("all-bindings", "All bindings", IconName::Keyboard)
-                .look(StackLook::Quiet),
-        ]),
-    ]
+fn machine_groups() -> Vec<StackGroup> {
+    machine_menu(MachineMenu::Session("zz"))
+}
+
+fn terminal_groups() -> Vec<StackGroup> {
+    pane_menu(PaneMenu {
+        session: "zz",
+        terminal: true,
+    })
 }
 
 fn screen_lines(cx: &App) -> impl IntoElement {
@@ -509,58 +611,215 @@ fn screen_lines(cx: &App) -> impl IntoElement {
 }
 
 struct Menus {
-    menu: Entity<StackMenu>,
+    machine: Entity<StackMenu>,
+    empty: Entity<StackMenu>,
+    pane: Entity<StackMenu>,
+}
+
+fn open_menu(groups: Vec<StackGroup>, cx: &mut Context<Menus>) -> Entity<StackMenu> {
+    let menu = cx.new(|cx| {
+        let mut menu = StackMenu::new(StackClose::Disc, cx);
+        menu.set_groups(groups, cx);
+        menu.open(cx);
+        menu
+    });
+    cx.observe(&menu, |_, _, cx| cx.notify()).detach();
+    menu
 }
 
 impl Menus {
     fn new(cx: &mut Context<Self>) -> Self {
-        let menu = cx.new(|cx| {
-            let mut menu = StackMenu::new(StackClose::Disc, cx);
-            menu.set_groups(menu_groups(Some(FlipTo::Chat)), cx);
-            menu.open(cx);
-            menu
-        });
-        cx.observe(&menu, |_, _, cx| cx.notify()).detach();
-        Self { menu }
+        Self {
+            machine: open_menu(machine_groups(), cx),
+            empty: open_menu(machine_menu(MachineMenu::Empty), cx),
+            pane: open_menu(terminal_groups(), cx),
+        }
     }
+}
+
+fn menu_screen(
+    id: &'static str,
+    label: PillLabel,
+    menu: &Entity<StackMenu>,
+    page: AnyElement,
+    cx: &App,
+) -> ala::Div {
+    let placement = placement();
+    let pill = compact_floating_pill(id, label, page_dots(&groups(), cx), &placement, cx)
+        .opacity(1.0 - menu.read(cx).close_shown())
+        .child(menu.read(cx).track_anchor());
+    phone(
+        div()
+            .relative()
+            .h(px(MENU_HEIGHT))
+            .overflow_hidden()
+            .child(page)
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .bottom_0()
+                    .child(compact_floating_bar(pill, &placement, cx)),
+            )
+            .child(menu.clone()),
+        cx,
+    )
 }
 
 impl Render for Menus {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let placement = placement();
-        let pill = compact_floating_pill(
-            "menu-pill",
-            PillLabel {
-                icon: IconName::SquareTerminal,
-                title: "claude".into(),
-                meta: "zebrilus · main".into(),
-                warning: false,
-            },
-            page_dots(&groups(), cx),
-            &placement,
+        let machine = |meta: &str| PillLabel {
+            icon: IconName::Server,
+            title: "macbook".into(),
+            meta: meta.to_owned().into(),
+            warning: false,
+        };
+        states()
+            .columns(2)
+            .state(
+                "inside a machine: New in zz",
+                menu_screen(
+                    "menu-machine-pill",
+                    machine("zz"),
+                    &self.machine,
+                    host_page(cx).into_any_element(),
+                    cx,
+                ),
+            )
+            .state(
+                "a machine with no sessions: In a new session",
+                menu_screen(
+                    "menu-empty-pill",
+                    machine("No sessions"),
+                    &self.empty,
+                    v_flex()
+                        .child(top_row("menu-empty-close"))
+                        .child(large_title("macbook", cx))
+                        .into_any_element(),
+                    cx,
+                ),
+            )
+            .state(
+                "inside a terminal: All bindings, Overview, this pane, New in zz",
+                menu_screen(
+                    "menu-pane-pill",
+                    PillLabel {
+                        icon: IconName::SquareTerminal,
+                        title: "zsh".into(),
+                        meta: "zebrilus · main".into(),
+                        warning: false,
+                    },
+                    &self.pane,
+                    screen_lines(cx).into_any_element(),
+                    cx,
+                ),
+            )
+    }
+}
+
+struct Sheets {
+    open: [bool; 3],
+    name: Entity<InputState>,
+    _theme: Subscription,
+}
+
+impl Sheets {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self {
+            open: [true; 3],
+            name: cx.new(|cx| InputState::new(window, cx).default_value("cargo watch")),
+            _theme: cx.observe_global::<penna::Theme>(|this: &mut Self, cx| {
+                this.open = [true; 3];
+                cx.notify();
+            }),
+        }
+    }
+
+    fn dismissed(at: usize, cx: &mut Context<Self>) -> impl Fn(&mut Window, &mut App) + 'static {
+        let view = cx.entity().downgrade();
+        move |_, cx| {
+            let _ = view.update(cx, |this, cx| {
+                this.open[at] = false;
+                cx.notify();
+            });
+        }
+    }
+
+    fn frame(
+        &self,
+        id: &'static str,
+        at: usize,
+        sheet: BottomSheet,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let open = self.open[at];
+        phone(
+            div()
+                .id(id)
+                .relative()
+                .h(px(SCREEN_HEIGHT))
+                .overflow_hidden()
+                .child(host_page(cx))
+                .when(open, |frame| frame.child(sheet))
+                .when(!open, |frame| {
+                    frame.on_click(cx.listener(move |this, _, _, cx| {
+                        this.open[at] = true;
+                        cx.notify();
+                    }))
+                }),
             cx,
         )
-        .opacity(1.0 - self.menu.read(cx).close_shown())
-        .child(self.menu.read(cx).track_anchor());
-        states().columns(1).state(
-            "on a terminal running Claude Code: Switch to chat",
-            phone(
-                div()
-                    .relative()
-                    .h(px(MENU_HEIGHT))
-                    .child(screen_lines(cx))
-                    .child(
-                        div()
-                            .absolute()
-                            .left_0()
-                            .right_0()
-                            .bottom_0()
-                            .child(compact_floating_bar(pill, &placement, cx)),
-                    )
-                    .child(self.menu.clone()),
-                cx,
-            ),
-        )
+    }
+}
+
+impl Render for Sheets {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let hold = hold_sheet(
+            "story-hold-sheet",
+            "Fix pane stack hit testing",
+            Some("Testing 62% · zebrilus · pane-stack · now".into()),
+            [
+                TouchRow::new("story-hold-rename", "Rename").icon(IconName::Pencil),
+                TouchRow::new("story-hold-close", "Close window")
+                    .icon(IconName::Xmark)
+                    .danger(),
+            ],
+            px(34.0),
+            Self::dismissed(0, cx),
+            cx,
+        );
+        let rename = Rename {
+            id: "story-rename-sheet".into(),
+            title: "Rename window".into(),
+            current: "cargo watch".into(),
+        }
+        .sheet(
+            &self.name,
+            false,
+            px(34.0),
+            |_, _, _| {},
+            Self::dismissed(1, cx),
+            cx,
+        );
+        let confirm = Confirm {
+            id: "story-confirm-sheet".into(),
+            question: "Close this pane?".into(),
+            detail: Some("zsh stops. Its scrollback goes.".into()),
+            verb: "Close".into(),
+        }
+        .sheet(px(34.0), |_, _| {}, Self::dismissed(2, cx), cx);
+        states()
+            .columns(2)
+            .state("hold a window tile", self.frame("sheet-hold", 0, hold, cx))
+            .state(
+                "rename: Save stays off until the name changes",
+                self.frame("sheet-rename", 1, rename, cx),
+            )
+            .state(
+                "close asks first",
+                self.frame("sheet-confirm", 2, confirm, cx),
+            )
     }
 }
 
@@ -573,7 +832,7 @@ impl PrefixMenu {
         let keys = tool_keys(cx);
         let prefix = keys.prefix.read(cx).menu().clone();
         prefix.update(cx, |menu, cx| {
-            menu.set_groups(menu_groups(None), cx);
+            menu.set_groups(terminal_groups(), cx);
             menu.open(cx);
         });
         Self { keys }

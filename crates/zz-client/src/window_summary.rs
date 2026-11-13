@@ -379,6 +379,32 @@ pub fn age_label(changed_at: u64, daemon_now: u64) -> Option<String> {
     (changed_at != 0).then(|| short_age(daemon_now.saturating_sub(changed_at)))
 }
 
+#[must_use]
+pub fn hold_detail(window: &WindowSnapshot, daemon_now: u64) -> String {
+    let panes = ordered_panes(window);
+    let Some(pane) =
+        headline_pane(window, &panes).or_else(|| window.panes.get(&window.active_pane))
+    else {
+        return String::new();
+    };
+    let work = pane
+        .status
+        .as_ref()
+        .filter(|status| status.state == PaneStatusState::Working)
+        .and_then(|_| status_detail(pane))
+        .map(|parts| parts.into_iter().map(|part| part.text).collect::<String>());
+    [
+        work,
+        location(pane),
+        age_label(pane.summary.changed_at, daemon_now),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|text| !text.is_empty())
+    .collect::<Vec<_>>()
+    .join(" · ")
+}
+
 fn headline_pane<'a>(
     window: &WindowSnapshot,
     panes: &[&'a PaneSnapshot],
@@ -1017,6 +1043,25 @@ mod tests {
         assert_eq!(summary.title, "Deploy");
         assert_eq!(summary.attention, Attention::NeedsYou);
         assert_eq!(texts(&summary)[0], ("Needs approval", Tone::Warning));
+    }
+
+    #[test]
+    fn a_hold_sheet_says_the_work_then_where_and_when() {
+        let mut testing = status(PaneStatusState::Working, None, "Testing");
+        testing.progress = Some(62);
+        let mut pane = with_status(agent(1, "Fix pane stack"), testing);
+        pane.summary.cwd = "/Users/fabrico/dev/zebrilus".to_owned();
+        pane.summary.branch = "pane-stack".to_owned();
+        pane.summary.changed_at = 1_000;
+        assert_eq!(
+            hold_detail(&window(1, vec![pane.clone()]), 1_030),
+            "Testing 62% · zebrilus · pane-stack · now"
+        );
+        pane.status = None;
+        assert_eq!(
+            hold_detail(&window(1, vec![pane]), 1_000 + 7_200),
+            "zebrilus · pane-stack · 2h"
+        );
     }
 
     #[test]

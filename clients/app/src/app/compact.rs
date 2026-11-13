@@ -22,8 +22,7 @@ use penna::{
     blocks::sheet::{bottom_sheet, close_sheet},
     blocks::touch::{
         ArrowPadEvent, KEY_ROW_HEIGHT, KeyRow, Lift, LiftEvent, PageDot, Pager, PagerEvent,
-        StackChip, StackClose, StackGroup, StackLook, StackMenu, StackMenuEvent, WhichKeyList,
-        page_dots_in,
+        StackClose, StackMenu, StackMenuEvent, WhichKeyList, page_dots_in,
     },
     blocks::which_key::{WhichKeyCap, WhichKeyRow},
     components::kbd::Kbd,
@@ -32,12 +31,20 @@ use web_time::Instant;
 use zz_client::StatusBarModel;
 use zz_protocol::{InputMessage, PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::KeyAction;
-use zz_ui::{command::tmux_keystroke, compact::ToolKeys};
+use zz_ui::{
+    command::tmux_keystroke,
+    compact::{
+        ALL_BINDINGS, ALL_MACHINES, CLOSE_PANE, NEW_BROWSER, NEW_CHAT, NEW_SESSION, NEW_TERMINAL,
+        OVERVIEW, PaneMenu, RENAME_PANE, SETTINGS, ToolKeys, close_pane_detail, machine_menu,
+        pane_menu,
+    },
+};
 
 use super::AppShell;
 use crate::terminal::{TerminalDisplayPreferences, TerminalText};
 
 mod overview;
+mod sheets;
 
 const PAGE_GAP: f32 = 12.0;
 const TOP_FADE: f32 = 12.0;
@@ -53,19 +60,6 @@ const COLLAPSE_TRAVEL: f32 = 24.0;
 const LIFT_FALLBACK_TOP: f32 = 140.0;
 const LIFT_FALLBACK_HEIGHT: f32 = 272.0;
 
-const NEW_PANE: &str = "new-pane";
-const NEW_WINDOW: &str = "new-window";
-const RENAME_PANE: &str = "rename-pane";
-const LAST_PANE: &str = "last-pane";
-const KILL_PANE: &str = "kill-pane";
-const ALL_BINDINGS: &str = "all-bindings";
-const OVERVIEW: &str = "overview";
-const FLIP: &str = "flip";
-const NEW_TERMINAL: &str = "new-terminal";
-const NEW_BROWSER: &str = "new-browser";
-const NEW_SESSION: &str = "new-session";
-const ALL_HOSTS: &str = "all-hosts";
-const SETTINGS: &str = "settings";
 const BINDINGS_SHEET: &str = "compact-bindings-sheet";
 
 #[derive(Default)]
@@ -78,7 +72,6 @@ pub(super) struct CompactState {
     zoom_intent: Option<PaneId>,
     compact_keyboard: Option<bool>,
     last_current: Option<PaneId>,
-    previous: Option<PaneId>,
     pinch: Option<(f32, f32)>,
     scale_hud: Option<Instant>,
     notice: Option<(PaneId, &'static str, PillNotice, Instant)>,
@@ -95,6 +88,7 @@ pub(super) struct CompactState {
     host_scrolls: BTreeMap<usize, ScrollHandle>,
     hosts_scroll: ScrollHandle,
     host_tiles: Rc<RefCell<BTreeMap<usize, Bounds<Pixels>>>>,
+    top_row: Pixels,
     overview_reveal: bool,
     lift: Lift,
     hosts: Lift,
@@ -107,6 +101,9 @@ pub(super) struct CompactState {
     text: Option<TerminalText>,
     page_background: Option<ala::Hsla>,
     menu: Option<(Entity<StackMenu>, Subscription)>,
+    sheet: Option<sheets::PhoneSheet>,
+    next_sheet: Option<sheets::PhoneSheet>,
+    rename: Option<(Entity<penna::components::input::InputState>, Subscription)>,
 }
 
 impl CompactState {
@@ -122,7 +119,6 @@ impl CompactState {
         self.preview = None;
         self.zoom_intent = None;
         self.last_current = None;
-        self.previous = None;
         self.bindings = std::env::var("ALA_BENCH").is_ok_and(|bench| bench.starts_with("sheet"));
         self.menu = None;
         self.tool_keys = None;
@@ -131,45 +127,9 @@ impl CompactState {
 
     pub(super) fn close_sheets(&mut self) {
         self.held = None;
+        self.sheet = None;
+        self.next_sheet = None;
     }
-}
-
-fn pill_menu(flip: Option<zz_ui::pane::PaneFlip>) -> Vec<StackGroup> {
-    let flip = flip.map(|flip| {
-        let label = zz_client::agent_flip::flip_tooltip(flip.to, flip.armed);
-        StackChip::new(FLIP, label, zz_ui::pane::flip_icon(flip.to))
-    });
-    let panes = flip.into_iter().chain([
-        StackChip::new(OVERVIEW, "Overview", IconName::LayoutDashboard),
-        StackChip::new(LAST_PANE, "Last pane", IconName::History),
-        StackChip::new(NEW_PANE, "New pane", IconName::Plus),
-        StackChip::new(NEW_WINDOW, "New window", IconName::AppWindow),
-        StackChip::new(RENAME_PANE, "Rename pane", IconName::Pencil),
-    ]);
-    vec![
-        StackGroup::new(panes),
-        StackGroup::new([
-            StackChip::new(KILL_PANE, "Kill pane", IconName::Xmark).look(StackLook::Danger),
-            StackChip::new(ALL_BINDINGS, "All bindings", IconName::Keyboard).look(StackLook::Quiet),
-        ]),
-    ]
-}
-
-fn host_menu(connected: bool) -> Vec<StackGroup> {
-    let new = [
-        StackChip::new(NEW_TERMINAL, "New terminal", IconName::SquareTerminal),
-        StackChip::new(NEW_BROWSER, "New browser", IconName::Globe),
-        StackChip::new(NEW_SESSION, "New session", IconName::Layers),
-    ];
-    let host = [StackChip::new(ALL_HOSTS, "All hosts", IconName::Server)]
-        .into_iter()
-        .chain(connected.then_some(new).into_iter().flatten());
-    vec![
-        StackGroup::new(host),
-        StackGroup::new([
-            StackChip::new(SETTINGS, "Settings", IconName::Settings).look(StackLook::Quiet)
-        ]),
-    ]
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -534,75 +494,64 @@ impl AppShell {
 
     fn pill_menu_pick(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         let new = match id {
+            NEW_CHAT => Some(overview::NewThing::Chat),
             NEW_TERMINAL => Some(overview::NewThing::Terminal),
             NEW_BROWSER => Some(overview::NewThing::Browser),
             NEW_SESSION => Some(overview::NewThing::Session),
             _ => None,
         };
         if let Some(new) = new {
-            self.create(new, window, cx);
+            let session = if self.compact.overview {
+                self.machine_session(cx).map(|(session, _)| session)
+            } else {
+                self.connection.read(cx).core.attached_session()
+            };
+            self.create(new, session, window, cx);
             return;
         }
         match id {
-            ALL_HOSTS => self.open_hosts(cx),
+            ALL_MACHINES => self.open_hosts(cx),
             SETTINGS => self.open_settings(cx),
             OVERVIEW => {
                 window.dismiss_virtual_keyboard();
                 self.open_overview(cx);
             }
-            FLIP => {
-                if let Some(pane) = self.active_window(cx).map(|window| window.active_pane) {
-                    self.flip_pane(pane, cx);
-                }
+            ALL_BINDINGS => {
+                self.compact.bindings = true;
+                cx.notify();
             }
-            _ => self.prefix_action(id, cx),
+            RENAME_PANE | CLOSE_PANE => self.pane_sheet(id == RENAME_PANE, window, cx),
+            _ => {}
         }
     }
 
-    fn prefix_action(&mut self, id: &str, cx: &mut Context<Self>) {
+    fn pane_sheet(&mut self, rename: bool, window: &mut Window, cx: &mut Context<Self>) {
         let connection = self.connection.read(cx);
         if !connection.connected || connection.core.attached_read_only() {
             return;
         }
-        let Some(pane) = self.active_window(cx).map(|window| window.active_pane) else {
+        let model = self.status_model(cx);
+        let (pages, _) = pages(&model, &self.unseen_agents);
+        let Some(page) = pages.get(self.compact.pager.index()).cloned() else {
             return;
         };
-        let target = pane.to_string();
-        let here = || vec!["-c".to_owned(), "#{pane_current_path}".to_owned()];
-        match id {
-            NEW_PANE => {
-                let mut args = vec!["-h".to_owned(), "-t".to_owned(), target];
-                args.extend(here());
-                self.command("split-window", args, cx);
-            }
-            NEW_WINDOW => self.command("new-window", here(), cx),
-            RENAME_PANE => self.command(
-                "command-prompt",
-                vec![
-                    "-I".into(),
-                    "#{pane_title}".into(),
-                    "-p".into(),
-                    "rename pane:".into(),
-                    format!("select-pane -t {target} -T '%%'"),
-                ],
-                cx,
-            ),
-            LAST_PANE => {
-                let model = self.status_model(cx);
-                let (pages, _) = pages(&model, &self.unseen_agents);
-                if let Some(page) = self
-                    .compact
-                    .previous
-                    .and_then(|previous| pages.iter().find(|page| page.pane == previous))
-                {
-                    self.compact_select(page, cx);
-                }
-            }
-            KILL_PANE => self.command("kill-pane", vec!["-t".into(), target], cx),
-            ALL_BINDINGS => self.compact.bindings = true,
-            _ => {}
-        }
-        cx.notify();
+        let name = self
+            .browser_page(&page, cx)
+            .map_or_else(|| page.title.to_string(), |(title, _)| title.to_string());
+        let thing = sheets::Thing {
+            connection: self.connection.clone(),
+            target: sheets::Target::Pane(page.pane),
+            closing: close_pane_detail(&page.kind, &name),
+            name,
+            detail: None,
+        };
+        window.dismiss_virtual_keyboard();
+        let sheet = if rename {
+            sheets::PhoneSheet::Rename(thing)
+        } else {
+            sheets::PhoneSheet::Close(thing)
+        };
+        self.open_phone_sheet(sheet, window, cx);
     }
 
     fn send_binding(&self, key: &str, cx: &mut Context<Self>) {
@@ -853,7 +802,7 @@ impl AppShell {
                 self.view_element(pane_id, descriptor, can_focus, window, cx)
             }
             PaneKindSnapshot::Picker => {
-                let picker = self.picker_entity(pane_id, cx);
+                let picker = self.picker_entity(pane_id, true, cx);
                 picker.update(cx, |picker, cx| {
                     picker.set_corner_radii(Corners::all(radius), cx);
                 });
@@ -994,6 +943,7 @@ impl AppShell {
     fn compact_can_focus(&self, window: &Window, cx: &App) -> bool {
         let core = &self.connection.read(cx).core;
         self.settings.is_none()
+            && self.compact.sheet.is_none()
             && self.prompt.is_none()
             && !self.slideover
             && !self.compact_lifted()
@@ -1044,7 +994,7 @@ impl AppShell {
         if self.compact_lifted() || self.compact.bindings {
             return BTreeSet::new();
         }
-        if self.shown_stack(cx).is_some() {
+        if self.shown_stack(cx).is_some() || self.compact.sheet.is_some() {
             return self
                 .active_window(cx)
                 .map(|window| window.active_pane)
@@ -1085,7 +1035,6 @@ impl AppShell {
         let current_pane = pages.get(current).map(|page| page.pane);
         if self.compact.last_current.is_some() && current_pane != self.compact.last_current {
             self.compact.zoom_intent = current_pane;
-            self.compact.previous = self.compact.last_current;
             self.compact.collapse.aim(true, Instant::now());
         }
         self.compact.last_current = current_pane;
@@ -1282,9 +1231,14 @@ impl AppShell {
         }
         let stack = self.pill_stack(window, cx);
         let groups = if open {
-            host_menu(self.shown_host_connected(cx))
+            let menu = self.machine_menu_text(cx);
+            machine_menu(menu.as_menu())
         } else {
-            pill_menu(shown_page.and_then(|page| self.pane_flip(page.pane, cx)))
+            let session = self.attached_session_name(cx);
+            pane_menu(PaneMenu {
+                session: &session,
+                terminal: shown_page.is_some_and(|page| page.kind == PaneKindSnapshot::Terminal),
+            })
         };
         if let Some((keys, _)) = &self.compact.tool_keys {
             let prefix = keys.prefix.read(cx).menu().clone();
@@ -1302,9 +1256,10 @@ impl AppShell {
                 .tool_keys
                 .as_ref()
                 .is_some_and(|(keys, _)| keys.prefix.read(cx).menu().read(cx).is_shown());
-            let frozen = (!open && (stack.read(cx).is_shown() || prefix_open))
-                .then_some(current_pane)
-                .flatten();
+            let frozen = (!open
+                && (stack.read(cx).is_shown() || prefix_open || self.compact.sheet.is_some()))
+            .then_some(current_pane)
+            .flatten();
             for (pane, browser) in &self.browsers {
                 let still = frozen == Some(*pane);
                 browser.update(cx, |browser, cx| browser.set_frozen(still, window, cx));
@@ -1463,9 +1418,9 @@ impl AppShell {
                 .into_any_element()
         };
         let mut sheets = Vec::new();
-        let sheet_inset = if keyboard { px(0.0) } else { safe_bottom };
+        let over_pill = if keyboard { px(0.0) } else { placement.bottom };
         if self.compact.bindings {
-            sheets.push(self.compact_bindings_sheet(sheet_inset, cx));
+            sheets.push(self.compact_bindings_sheet(over_pill, cx));
         }
         if !self.compact.pager.is_moving()
             && self.compact_can_focus(window, cx)
@@ -1473,9 +1428,10 @@ impl AppShell {
                 .get(self.compact.pager.index())
                 .filter(|page| matches!(page.kind, PaneKindSnapshot::Picker))
         {
-            let picker = self.picker_entity(page.pane, cx);
-            sheets.extend(picker.update(cx, |picker, cx| picker.sheet(sheet_inset, cx)));
+            let picker = self.picker_entity(page.pane, true, cx);
+            sheets.extend(picker.update(cx, |picker, cx| picker.sheet(over_pill, cx)));
         }
+        sheets.extend(self.phone_sheet(over_pill, keyboard, window, cx));
         let scrim = (!open).then(|| StackMenu::scrim(&stack, window, cx));
         let screen = div()
             .relative()
@@ -1484,11 +1440,17 @@ impl AppShell {
             .flex_col()
             .child(pager_area)
             .children(scrim)
-            .child(bottom);
+            .child(
+                div()
+                    .flex_none()
+                    .w_full()
+                    .when(self.compact.sheet.is_some(), |bottom| bottom.opacity(0.0))
+                    .child(bottom),
+            );
         let content = if open {
             #[cfg(any(target_os = "ios", target_os = "android"))]
             if let Some(endpoint) = self.compact.held.clone() {
-                sheets.push(self.machine_sheet(&endpoint, safe_bottom, cx));
+                sheets.push(self.machine_sheet(&endpoint, placement.bottom, cx));
             }
             let (pages, bars) = self.overview_layers(&model, top_inset, &placement, window, cx);
             div()
@@ -1720,6 +1682,9 @@ impl AppShell {
         }
         if self.compact.held.is_some() {
             return Some(BackTarget::Sheet(overview::MACHINE_SHEET));
+        }
+        if let Some(sheet) = &self.compact.sheet {
+            return Some(BackTarget::Sheet(sheet.id()));
         }
         if self.compact.card.is_some() {
             return Some(BackTarget::Card);

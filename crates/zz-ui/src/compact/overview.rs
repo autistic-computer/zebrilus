@@ -1,29 +1,9 @@
-use ala::{AnyElement, App, Div, ParentElement as _, SharedString, Styled as _, div, px};
-use penna::{Label, TextStyle};
-
-use crate::{ActiveTheme as _, Colorize as _, Icon, IconName};
-
 pub fn overview_count(n: usize, noun: &str) -> String {
     if n == 1 {
         format!("1 {noun}")
     } else {
         format!("{n} {noun}s")
     }
-}
-
-pub fn overview_session_heading(title: &str, cx: &App) -> Div {
-    div()
-        .flex()
-        .items_center()
-        .h(px(44.0))
-        .px(px(16.0))
-        .mt(px(6.0))
-        .text_color(cx.theme().foreground.muted())
-        .child(
-            Label::new(TextStyle::Heading, title.to_owned())
-                .truncate()
-                .min_w_0(),
-        )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,28 +14,33 @@ pub enum HostState {
     Failed,
 }
 
-pub fn overview_host_empty(
-    title: impl Into<SharedString>,
-    detail: impl Into<SharedString>,
-    action: Option<AnyElement>,
-    cx: &App,
-) -> Div {
-    let muted = cx.theme().foreground.muted();
-    div()
-        .size_full()
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .gap(px(10.0))
-        .px(px(32.0))
-        .text_center()
-        .child(Icon::new(IconName::Server).size(px(32.0)).text_color(muted))
-        .child(Label::new(TextStyle::Title, title).mt(px(6.0)))
-        .child(
-            Label::new(TextStyle::Body, detail)
-                .line_height(px(19.0))
-                .text_color(muted),
-        )
-        .children(action.map(|action| div().mt(px(8.0)).child(action)))
+#[must_use]
+pub fn session_in_view(tops: &[f32], line: f32) -> usize {
+    tops.iter().rposition(|top| *top <= line).unwrap_or(0)
+}
+
+#[must_use]
+pub fn session_tail(page: f32, line: f32, bottom: f32, sessions: usize) -> f32 {
+    if sessions > 1 {
+        (page - line - bottom).max(0.0)
+    } else {
+        0.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_session_in_view_is_the_last_one_risen_under_the_top_row() {
+        let line = 98.0;
+        assert_eq!(session_in_view(&[], line), 0);
+        assert_eq!(session_in_view(&[150.0, 610.0, 900.0], line), 0);
+        assert_eq!(session_in_view(&[-310.0, 150.0, 440.0], line), 0);
+        assert_eq!(session_in_view(&[-362.0, 98.0, 388.0], line), 1);
+        assert_eq!(session_in_view(&[-900.0, -440.0, 97.5], line), 2);
+        assert_eq!(session_tail(874.0, line, 108.0, 3), 668.0);
+        assert_eq!(session_tail(874.0, line, 108.0, 1), 0.0);
+    }
 }

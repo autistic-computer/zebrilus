@@ -335,6 +335,7 @@ pub struct TouchHeader {
     count: Option<usize>,
     over_tiles: bool,
     holdable: bool,
+    on_hold: Option<crate::blocks::compact::HoldHandler>,
 }
 
 impl TouchHeader {
@@ -345,6 +346,7 @@ impl TouchHeader {
             count: None,
             over_tiles: false,
             holdable: false,
+            on_hold: None,
         }
     }
 
@@ -365,6 +367,13 @@ impl TouchHeader {
         self.holdable = true;
         self
     }
+
+    #[must_use]
+    pub fn on_hold(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.holdable = true;
+        self.on_hold = Some(Rc::new(handler));
+        self
+    }
 }
 
 impl RenderOnce for TouchHeader {
@@ -375,6 +384,7 @@ impl RenderOnce for TouchHeader {
             TOUCH_HEADER_HEIGHT
         };
         h_flex()
+            .relative()
             .flex_none()
             .w_full()
             .items_end()
@@ -407,5 +417,6 @@ impl RenderOnce for TouchHeader {
                         .child(SharedString::from(count.to_string())),
                 )
             })
+            .children(self.on_hold.map(crate::blocks::compact::hold_listener))
     }
 }

@@ -18,21 +18,23 @@ slides in, and a browser pane slides in with its page showing. The pill is the o
 the bottom. It shows the pane's icon, its name, and under it the window and page dots grouped by
 window; an agent waiting on a permission turns the icon and that line yellow. Over a web page the pill keeps its text color,
 as Safari's bar does, and deepens its glass instead when the page under it is light. Tapping the
-pill opens the pane menu the way Calendar's + opens its actions: the page dims (a web page holds
-as a still while the menu is up), the pill turns into a close button, and Overview,
-Last pane, New pane, New window and Rename pane stack above it, with Kill pane and All bindings
-furthest from the thumb. A pane running Claude Code or Codex adds Lens view, or Terminal view
-while its lens is open. The overview is three levels you zoom through, the way Calendar goes from
+pill opens the pane menu as a stack of chips: New chat, New terminal and New browser under
+"New in" and the pane's session, nearest the thumb, then Rename and Close for the pane (Close
+asks first in a sheet, Rename opens a sheet with the name), then Overview, and All bindings in a
+terminal. The overview is three levels you zoom through, the way Calendar goes from
 year to month to day. Overview in the menu, or dragging the pill up (past a third of the way or
 with a flick), zooms the pane out into its host's page: the
-pane shrinks into its own preview in its window's tile while the page grows around it. A host's
-page opens with the host's name as a large title, which folds into a frosted bar with the name
-small and centered as the page scrolls, then every session with its windows as a bento grid, each
-window drawn the way it splits its panes with a live preview of each, the pane it opens to ringed
-in the accent. Tap a window and it zooms into that pane. Its bar is the host pill alone: swipe it
-sideways to page hosts, and tap it for the host's menu, which stacks New terminal, New browser
-and New session (while the host is connected) and All hosts above it, with Settings
-furthest. All hosts, or dragging the pill up, zooms out to Machines: every saved machine as a tile saying its state in words and a mark,
+pane shrinks into its own preview in its window's tile while the page grows around it. A machine's
+page opens with a close control in the top row and the machine's name as a large title, which folds into a frosted bar
+as the page scrolls, then every session under its name with its windows as a bento grid, each
+window drawn the way it splits its panes. Tap a window and it zooms into that pane; hold it for
+Rename and Close window, and hold a session's name for Rename session and Close session. The pill
+names the machine over the session in view, following the scroll: swipe it sideways to page
+machines, and tap it for the machine's menu, which stacks New chat, New terminal and New browser
+under "New in" and that session, then New session, All machines and Settings furthest; what it
+makes lands in that session. A machine with no sessions shows the New tile, which opens the same
+menu under "In a new session". A machine that is not connected shows why, with Connect, or
+Cancel while it connects, as its main action. All machines, the close control, or dragging the pill up, zooms out to Machines: every saved machine as a tile saying its state in words and a mark,
 then the add tile, with Settings in its bar; tap a machine to zoom into it, a connecting one to zoom into its connecting card,
 the add tile to zoom into the add card, and hold a tile for its sheet. With nothing attached the app opens on Machines. Entering a host, or paging to it with the pill, puts it on screen, since the
 daemon streams previews only to the client attached to it. The phone has no session tree: the sidebar toggle and `focus-sidebar` open the

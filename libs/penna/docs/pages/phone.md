@@ -3,7 +3,7 @@
 A phone screen is built from phone components, sized for a thumb from the start. It is not the desktop made bigger: desktop components under a coarse pointer keep their layout and only grow their targets.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The phone components are drawn here with the HTML kit. Natively there are the 44 and 56 touch rungs, the touch text styles, the 56 button and field, touch rows, row groups and headers, the status marks, the phone tile with machine and window content and its hold, sheets with the 44 close and the hold sheet's muted line, the action bar, the empty state, the zoom card, the pill and the bento overview, the stack menu on the pill and the key row with the arrow pad's bubble; the rest of the components below are next.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The phone components are drawn here with the HTML kit. Natively there are the 44 and 56 touch rungs, the touch text styles, the 56 button and field, touch rows, row groups and headers, the status marks, the phone tile with machine and window content and its hold, the holdable section header, sheets with the 44 close and the hold sheet's muted line, the action bar, the empty state, the zoom card, the pill and the bento overview, the stack menu on the pill with zz's machine and pane menus, and the key row with the arrow pad's bubble; the rest of the components below are next.</span></div></div></div>
 ```
 
 ## Rules
@@ -23,7 +23,7 @@ A phone screen is built from phone components, sized for a thumb from the start.
 </div>
 ```
 
-**Press and hold** a tile, or the header over a group of tiles, for a sheet of what you can do to it: touch rows, the one that closes or removes last in danger ink. One rule for every tile, so nothing that acts on a tile sits inside it. Under the sheet's title, one muted line holds what the tile leaves out: a window's work, folder, branch and age. A header that can be held is 44 tall. Natively a machine tile takes the hold; window tiles and headers don't yet.
+**Press and hold** a tile, or the header over a group of tiles, for a sheet of what you can do to it: touch rows, the one that closes or removes last in danger ink. One rule for every tile, so nothing that acts on a tile sits inside it. Under the sheet's title, one muted line holds what the tile leaves out: a window's work, folder, branch and age. A header that can be held is 44 tall. Natively machine tiles, window tiles and session headers take the hold. Closing asks first, in a sheet with the question, what goes, Cancel and Close; renaming opens a sheet with the name in a 56 field and Save.
 
 ```figure uses=sheet,touch,label
 <div style="position: relative; width: 370px; height: 330px; overflow: hidden; border-radius: 28px; background: var(--penna-bg)">
@@ -92,7 +92,7 @@ The pill is the one place a machine's windows and sessions are made. Its second 
 </div>
 ```
 
-Its menu is a stack menu (below): chips in groups, the likeliest nearest the thumb, Settings apart at the top. A group whose chips make things in one place is headed by a label chip saying where ("New in zz"). What it makes lands in the session the pill names. With no sessions it reads "In a new session" and New session is left out. Not built natively yet: the pill's second line shows a session count, and the menu has no label and no New chat.
+Its menu is a stack menu (below): chips in groups, the likeliest nearest the thumb, Settings apart at the top. A group whose chips make things in one place is headed by a label chip saying where ("New in zz"). What it makes lands in the session the pill names. With no sessions it reads "In a new session" and New session is left out.
 
 ## Stack menu
 
@@ -106,7 +106,7 @@ The phone's one menu: chips that rise out of what you pressed, the pill or a key
 | Sideways swipe | pages | moved 10 before 280 ms, across |
 | Drag up | the lift, back one level | moved 10 before 280 ms, upward |
 
-Chips are 52, the floating surface, a 20 glyph and the label in strong `touch-body`, 8 apart in a group and 16 between groups. The chip under the finger inverts and grows 4%, with a tick. Letting go on the anchor keeps the stack open; anywhere else closes it. Close and other danger chips ask first in a sheet. More than six chips in a group go in two columns. Chips never shrink: what does not fit folds behind More. Not built natively yet: a danger chip's sheet.
+Chips are 52, the floating surface, a 20 glyph and the label in strong `touch-body`, 8 apart in a group and 16 between groups. The chip under the finger inverts and grows 4%, with a tick. Letting go on the anchor keeps the stack open; anywhere else closes it. Close and other danger chips ask first in a sheet. More than six chips in a group go in two columns. Chips never shrink: what does not fit folds behind More.
 
 ```figure uses=touch,compact,button,label
 <div class="docs-show" data-gap="wide" style="align-items: flex-end">
@@ -131,7 +131,7 @@ No header: the content runs to the edges and the pill is the one handle. Its sec
 </div>
 ```
 
-The **mini pill** and a **badge on a thumbnail** are the two things drawn smaller than their target. Scrolling a pane shrinks the pill to 32, a handle like a sheet's grabber, and its target stays 44. A badge, like a pasted image's remove control, is an accessory of the picture: a 24 floating disc in its corner, its 44 target centered on it. Not built natively yet: the keyboard rule in a chat and a browser, 44 keys with the pinned end, the 44 target, and the pane menu.
+The **mini pill** and a **badge on a thumbnail** are the two things drawn smaller than their target. Scrolling a pane shrinks the pill to 32, a handle like a sheet's grabber, and its target stays 44. A badge, like a pasted image's remove control, is an accessory of the picture: a 24 floating disc in its corner, its 44 target centered on it. Not built natively yet: the keyboard rule in a chat and a browser, 44 keys with the pinned end, the 44 target, and Find in the pane menu.
 
 ## Terminal
 
