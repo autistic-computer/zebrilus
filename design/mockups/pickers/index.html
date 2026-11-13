@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pickers</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/badge/badge.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/kbd/kbd.css">
+<link rel="stylesheet" href="/penna-src/components/list/list.css">
+<link rel="stylesheet" href="/penna-src/components/panel/panel.css">
+<link rel="stylesheet" href="/penna-src/components/segmented/segmented.css">
+<link rel="stylesheet" href="/penna-src/blocks/palette/palette.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/penna-src/components/kbd/kbd.js" defer></script>
+<script src="/penna-src/components/segmented/segmented.js" defer></script>
+<script src="/penna-src/blocks/palette/palette.js" defer></script>
+<script src="pickers.js" defer></script>
+<style>
+  .zz-page { display: grid; gap: 40px; max-width: 760px; margin: 0 auto; padding: 40px 32px 96px; }
+  .zz-page > section { display: grid; gap: 14px; min-width: 0; }
+  .zz-page h1 { margin: 0; font-size: var(--penna-text-title-size); line-height: var(--penna-text-title-line); font-weight: 600; }
+  .zz-page h2 { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+
+  .zz-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+  .zz-switch { display: flex; align-items: center; gap: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
+
+  .zz-stage { display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0; padding: 24px; border-radius: 14px; background: color-mix(in srgb, var(--penna-fg) 3%, transparent); }
+  .zz-stage .penna-palette-surface[data-penna] { max-width: 560px; }
+  .zz-stage { --zz-rows: calc(9 * 28px + 10px); }
+  .zz-stage .penna-palette-rows { height: var(--zz-rows); overflow-y: auto; }
+  .zz-chat .penna-palette-rows { height: auto; max-height: var(--zz-rows); }
+  .zz-stage .penna-palette-section { flex: none; }
+  .zz-stage .penna-palette-section > span { white-space: nowrap; }
+  .zz-stage .penna-palette-pills { flex: none; max-width: calc(100% - 96px); overflow: hidden; }
+  .zz-chat .penna-palette-pills { max-width: 100%; }
+  .zz-stage .penna-palette-pill[data-kind="crumb"] { flex-shrink: 0; }
+  .zz-readout { width: 100%; max-width: 560px; height: 16px; overflow: hidden; font-family: var(--penna-mono); font-size: var(--penna-text-micro-size); line-height: 16px; color: var(--penna-muted); white-space: pre; text-overflow: ellipsis; }
+
+  .zz-hint[data-state="disabled"], .zz-hint[data-state="disabled"] > .penna-palette-keys { color: var(--penna-fg-faint); }
+  .zz-words { display: inline-grid; }
+  .zz-words > span { grid-area: 1 / 1; visibility: hidden; }
+  .zz-words > [data-on] { visibility: visible; }
+
+  .penna-palette-row .penna-palette-muted > .penna-palette-match,
+  .penna-palette-row .penna-palette-detail > .penna-palette-match { font-weight: 600; color: var(--penna-ink); }
+  .zz-inside { display: flex; flex: none; justify-content: flex-end; width: 12px; color: var(--penna-muted); --penna-icon-size: 12px; }
+  .zz-git { width: 10px; text-align: center; font-family: var(--penna-mono); font-weight: 600; }
+  .zz-git[data-git="M"] { color: var(--penna-warning-ink); }
+  .zz-git[data-git="A"] { color: var(--penna-success-ink); }
+  .zz-git[data-git="D"] { color: var(--penna-danger-ink); }
+  .penna-palette-rows > .penna-separator { margin: 4px 10px; }
+
+  .zz-chat { position: relative; display: flex; flex-direction: column; justify-content: flex-end; width: 100%; max-width: 560px; min-height: 520px; }
+  .zz-chat .zz-menu.penna-palette-surface[data-penna] { position: absolute; right: 0; bottom: calc(100% + 6px); left: 0; }
+  .zz-chat .zz-menu[hidden] { display: none; }
+  .zz-at { font-family: var(--penna-mono); color: var(--penna-palette-accent); }
+  .zz-compose { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; white-space: pre; }
+  .zz-parts { display: contents; }
+  .zz-compose > input { flex: 1; min-width: 40px; padding: 0; border: 0; outline: none; background: transparent; font: inherit; color: inherit; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-head">
+    <h1>Pickers</h1>
+    <div class="zz-switch">
+      <span>Tab on a leaf</span>
+      <div class="penna-segmented" data-penna="field" data-size="small" data-value="0" data-tab-mode role="radiogroup">
+        <div class="penna-segments" data-penna="button.quiet" data-state="current">
+          <span class="penna-segment-pill"></span>
+          <span class="penna-segment" role="button"><span class="penna-label" data-penna-text>nothing</span></span>
+          <span class="penna-segment" role="button"><span class="penna-label" data-penna-text>take</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Command palette</h2>
+    <div class="zz-stage" data-picker="palette">
+      <div class="penna-panel penna-palette-surface" data-penna="popover" data-inset="8" role="group">
+        <label class="penna-palette-input"><span class="penna-palette-pills"></span><input spellcheck="false" autocomplete="off"></label>
+        <div class="penna-palette-rows" role="listbox"></div>
+        <div class="penna-palette-footer"><div class="penna-palette-rule" data-penna="rule.bar"></div></div>
+      </div>
+      <div class="zz-readout" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>@ menu</h2>
+    <div class="zz-stage" data-picker="mention">
+      <div class="zz-chat">
+        <div class="penna-chat-composer">
+          <div class="penna-panel penna-palette-surface zz-menu" data-penna="popover" data-inset="8" role="group">
+            <div class="penna-palette-input"><span class="penna-palette-pills"></span></div>
+            <div class="penna-palette-rows" role="listbox"></div>
+            <div class="penna-palette-footer"><div class="penna-palette-rule" data-penna="rule.bar"></div></div>
+          </div>
+          <div class="penna-chat-field input-chrome" data-penna="field.composer">
+            <button class="penna-button" data-penna="button.send" data-shape="icon" type="button"><i data-icon="plus"></i></button>
+            <div class="penna-chat-input zz-compose"><span class="zz-parts"></span><input spellcheck="false" autocomplete="off"></div>
+            <button class="penna-button" data-penna="button.send" data-shape="icon" data-emphasis="solid" data-solid="primary" type="button"><i data-icon="arrow-up"></i></button>
+          </div>
+        </div>
+      </div>
+      <div class="zz-readout" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>File picker</h2>
+    <div class="zz-stage" data-picker="files">
+      <div class="penna-panel penna-palette-surface" data-penna="popover" data-inset="8" role="group">
+        <label class="penna-palette-input"><span class="penna-palette-pills"></span><input spellcheck="false" autocomplete="off"></label>
+        <div class="penna-palette-rows" role="listbox"></div>
+        <div class="penna-palette-footer"><div class="penna-palette-rule" data-penna="rule.bar"></div></div>
+      </div>
+      <div class="zz-readout" aria-live="polite"></div>
+    </div>
+  </section>
+</main>
+</body>
+</html>
