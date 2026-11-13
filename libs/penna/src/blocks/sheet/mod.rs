@@ -225,6 +225,18 @@ pub fn modal_groups() -> Div {
 }
 
 #[must_use]
+pub fn modal_detail(cx: &App) -> Div {
+    let rem = cx.theme().font_size;
+    let slack = (px(MODAL_TITLE) - TextStyle::TouchBody.line_height().to_pixels(rem)) / 2.0;
+    div()
+        .mt(Space::S4.rems().to_pixels(rem) - slack - Space::S16.rems().to_pixels(rem))
+        .w_full()
+        .text_center()
+        .type_style(TextStyle::TouchSmall, cx)
+        .text_color(muted_on(sheet_ground(cx), cx))
+}
+
+#[must_use]
 pub fn modal_body() -> Div {
     div()
         .flex()
@@ -332,20 +344,31 @@ pub fn modal_buttons(
     window: &Window,
     cx: &App,
 ) -> Div {
+    modal_buttons_labelled(sheet, CANCEL, action, window, cx)
+}
+
+pub fn modal_buttons_labelled(
+    sheet: impl Into<ElementId>,
+    cancel_label: impl Into<SharedString>,
+    action: ModalAction,
+    window: &Window,
+    cx: &App,
+) -> Div {
     let sheet = sheet.into();
+    let cancel_label = cancel_label.into();
     let ground = sheet_ground(cx);
     let size = Size::Size(px(MODAL_CONTROL));
     let room = modal_width(window) - px(MODAL_PAD * 2.0);
     let stack = modal_buttons_stack(
         [
-            label_width(CANCEL, window, cx),
+            label_width(&cancel_label, window, cx),
             label_width(&action.label, window, cx),
         ],
         room,
     );
     let cancelled = sheet.clone();
     let cancel = Button::new("modal-cancel")
-        .label(CANCEL)
+        .label(cancel_label)
         .with_size(size)
         .w_full()
         .on(ground)
