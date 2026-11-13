@@ -457,6 +457,16 @@ fn terminal_working_directory(terminal: &TerminalSession) -> Option<PathBuf> {
     terminal_foreground_process(terminal).and_then(process_working_directory)
 }
 
+fn donor_working_directory(inner: &ServerState, donor: PaneId) -> Option<PathBuf> {
+    if let Some(terminal) = inner.terminals.get(&donor) {
+        return terminal_working_directory(terminal);
+    }
+    match &inner.engine.state.pane(donor)?.kind {
+        PaneKind::Agent(agent) => agent.cwd.clone().filter(|cwd| cwd.is_dir()),
+        _ => None,
+    }
+}
+
 fn terminal_foreground_facts(terminal: &TerminalSession) -> (Option<u32>, String, Option<String>) {
     let foreground = terminal_foreground_process(terminal);
     let (command, path) = foreground.map_or_else(
@@ -9862,8 +9872,7 @@ impl Shared {
                                 .filter(|path| path.is_dir())
                                 .or_else(|| Some(PathBuf::from("/"))),
                             None => inherit_cwd_from
-                                .and_then(|source| inner.terminals.get(&source))
-                                .and_then(|terminal| terminal_working_directory(terminal))
+                                .and_then(|source| donor_working_directory(&inner, source))
                                 .or_else(|| std::env::current_dir().ok()),
                         };
                         let start_path = working_directory
@@ -10239,8 +10248,7 @@ impl Shared {
                             .filter(|path| path.is_dir())
                             .or_else(|| {
                                 inherit_cwd_from
-                                    .and_then(|source| inner.terminals.get(&source))
-                                    .and_then(|terminal| terminal_working_directory(terminal))
+                                    .and_then(|source| donor_working_directory(&inner, source))
                             })
                             .or_else(|| std::env::current_dir().ok());
                         let folder = working_directory
@@ -10329,8 +10337,7 @@ impl Shared {
                         ..
                     } => {
                         let working_directory = inherit_cwd_from
-                            .and_then(|source| inner.terminals.get(&source))
-                            .and_then(|terminal| terminal_working_directory(terminal))
+                            .and_then(|source| donor_working_directory(&inner, source))
                             .or_else(|| std::env::current_dir().ok());
                         if let Some(working_directory) = working_directory {
                             inner.engine.state.update_editor_cwd(
@@ -33858,13 +33865,25 @@ impl Shared {
     }
 
     fn apply_agent_folder(self: &Arc<Self>, pane: PaneId, cwd: PathBuf) {
-        let moved = self
-            .inner
-            .lock()
-            .engine
-            .state
-            .update_agent(pane, |agent| agent.cwd = Some(cwd))
-            .unwrap_or(false);
+        let moved = {
+            let mut inner = self.inner.lock();
+            let folder = cwd.to_string_lossy().into_owned();
+            let moved = inner
+                .engine
+                .state
+                .update_agent(pane, |agent| agent.cwd = Some(cwd))
+                .unwrap_or(false);
+            if moved {
+                let mut facts = inner
+                    .engine
+                    .pane_runtime_facts(pane)
+                    .cloned()
+                    .unwrap_or_default();
+                facts.current_path = folder;
+                inner.engine.set_pane_runtime_facts(pane, facts);
+            }
+            moved
+        };
         if moved {
             self.publish_snapshot_state();
             self.request_pane_location(pane);

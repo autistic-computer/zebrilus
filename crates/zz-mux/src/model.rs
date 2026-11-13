@@ -3876,19 +3876,18 @@ impl MuxState {
     #[must_use]
     pub fn cwd_donor(&self, target: PaneId) -> Option<PaneId> {
         let window = &self.windows[&self.window_for_pane(target)?];
-        let is_terminal = |pane: &PaneId| {
-            matches!(
-                window.panes.get(pane).map(|pane| &pane.kind),
-                Some(PaneKind::Terminal)
-            )
+        let has_cwd = |pane: &PaneId| match window.panes.get(pane).map(|pane| &pane.kind) {
+            Some(PaneKind::Terminal) => true,
+            Some(PaneKind::Agent(agent)) => agent.cwd.is_some(),
+            _ => false,
         };
-        if is_terminal(&target) {
+        if has_cwd(&target) {
             return Some(target);
         }
         std::iter::once(&window.active_pane)
             .chain(&window.last_panes)
             .chain(&window.pane_order)
-            .find(|pane| **pane != target && is_terminal(pane))
+            .find(|pane| **pane != target && has_cwd(pane))
             .copied()
     }
 
@@ -5746,6 +5745,33 @@ mod tests {
             None,
             "a window with no terminal left has nothing to inherit"
         );
+
+        let unplaced = state
+            .split_pane(
+                browser,
+                Axis::Vertical,
+                PaneKind::Agent(AgentDescriptor::default()),
+            )
+            .unwrap();
+        assert_eq!(state.cwd_donor(unplaced), None);
+
+        let agent = state
+            .split_pane(
+                unplaced,
+                Axis::Vertical,
+                PaneKind::Agent(AgentDescriptor {
+                    cwd: Some(PathBuf::from("/work/project")),
+                    ..AgentDescriptor::default()
+                }),
+            )
+            .unwrap();
+        assert_eq!(state.cwd_donor(agent), Some(agent));
+        assert_eq!(
+            state.cwd_donor(browser),
+            Some(agent),
+            "an agent pane in a folder lends it like a terminal"
+        );
+        assert_eq!(state.cwd_donor(unplaced), Some(agent));
     }
 
     #[test]

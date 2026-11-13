@@ -229,6 +229,13 @@ fn a_chat_that_moves_folders_takes_its_pane_with_it() {
         panic!("agent pane");
     };
     assert_eq!(agent.cwd, Some(PathBuf::from("/src/other")));
+    assert_eq!(
+        inner
+            .engine
+            .pane_runtime_facts(pane)
+            .map(|facts| facts.current_path.as_str()),
+        Some("/src/other")
+    );
     drop(inner);
     runtime.shutdown();
 }
