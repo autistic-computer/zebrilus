@@ -2,17 +2,17 @@ use crate::Space;
 use ala::{
     Anchor, AnyElement, App, AppContext as _, Bounds, Context, DismissEvent, Entity, EventEmitter,
     FocusHandle, Focusable, InteractiveElement as _, IntoElement, Length, MouseButton,
-    ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
-    StyleRefinement, Styled as _, Subscription, Window, anchored, canvas, deferred, div,
-    prelude::FluentBuilder as _, px,
+    ParentElement as _, Pixels, Render, SharedString, StyleRefinement, Styled as _, Subscription,
+    Window, anchored, canvas, deferred, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName, IndexPath, Kind, PaintState,
     Sizable as _, Size, StyledExt as _, Surface, Tone,
     blocks::sheet::{
-        bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_option,
+        bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_groups, sheet_inset,
     },
+    blocks::touch::{TouchGroup, TouchRow, TouchTrailing},
     components::input::{
         Input, InputEvent, InputState, field_chrome_on, field_paint_on, field_text, trailing_size,
     },
@@ -448,17 +448,14 @@ impl<D: SelectDelegate> SelectState<D> {
                 if scope.is_some_and(|scope| !scope.keeps(&title)) {
                     return None;
                 }
-                Some(
-                    sheet_option(
-                        ("select-option", ix),
-                        title,
-                        selected.as_ref() == Some(item.value()),
-                        cx,
-                    )
-                    .debug_selector(move || format!("select-option-{ix}"))
-                    .when_some(item.font_family(), ala::Styled::font_family)
-                    .on_click(cx.listener(move |this, _, window, cx| this.commit(ix, window, cx))),
-                )
+                let row = TouchRow::new(("select-option", ix), title)
+                    .when_some(item.font_family(), TouchRow::face)
+                    .on_click(cx.listener(move |this, _, window, cx| this.commit(ix, window, cx)));
+                Some(if selected.as_ref() == Some(item.value()) {
+                    row.trailing(TouchTrailing::Check)
+                } else {
+                    row
+                })
             })
             .collect::<Vec<_>>();
         let title = self
@@ -467,6 +464,7 @@ impl<D: SelectDelegate> SelectState<D> {
             .clone()
             .or_else(|| self.options.placeholder.clone())
             .unwrap_or_else(|| SharedString::new_static("Select"));
+        let controls = self.search.is_some() || !self.options.scopes.is_empty();
         let dismiss = cx.entity().downgrade();
         let sheet = bottom_sheet(
             ("select-sheet", cx.entity_id()),
@@ -479,36 +477,44 @@ impl<D: SelectDelegate> SelectState<D> {
             div()
                 .flex()
                 .flex_col()
-                .pb(Space::S8)
-                .children(self.search.as_ref().map(|(search, _)| {
+                .child(
                     div()
-                        .px(Space::S16)
-                        .pb(Space::S8)
-                        .child(Input::new(search).cleanable(true))
-                }))
-                .when(!self.options.scopes.is_empty(), |this| {
-                    this.child(
-                        div().px(Space::S16).pb(Space::S8).child(
-                            SegmentedControl::new(
-                                "select-scopes",
-                                self.options.scopes.iter().map(MenuScope::label),
+                        .flex()
+                        .flex_col()
+                        .gap(Space::S8)
+                        .when(controls, |this| this.px(Space::S16).pb(Space::GAP_GROUP))
+                        .children(
+                            self.search
+                                .as_ref()
+                                .map(|(search, _)| Input::new(search).cleanable(true)),
+                        )
+                        .when(!self.options.scopes.is_empty(), |this| {
+                            this.child(
+                                div().child(
+                                    SegmentedControl::new(
+                                        "select-scopes",
+                                        self.options.scopes.iter().map(MenuScope::label),
+                                    )
+                                    .selected(self.scope)
+                                    .full_width()
+                                    .with_size(Size::Touch)
+                                    .on_select({
+                                        let state = cx.entity().downgrade();
+                                        move |scope, _, cx| {
+                                            _ = state.update(cx, |state, cx| {
+                                                state.scope = scope;
+                                                cx.notify();
+                                            });
+                                        }
+                                    }),
+                                ),
                             )
-                            .selected(self.scope)
-                            .full_width()
-                            .with_size(Size::Touch)
-                            .on_select({
-                                let state = cx.entity().downgrade();
-                                move |scope, _, cx| {
-                                    _ = state.update(cx, |state, cx| {
-                                        state.scope = scope;
-                                        cx.notify();
-                                    });
-                                }
-                            }),
-                        ),
-                    )
-                })
-                .child(div().flex().flex_col().list_inset(cx).children(rows)),
+                        }),
+                )
+                .child(sheet_groups().when(!rows.is_empty(), |groups| {
+                    groups.child(TouchGroup::new().ruled().rows(rows))
+                }))
+                .into_any_element(),
             sheet_inset(window),
             move |_, cx| {
                 _ = dismiss.update(cx, Self::close_menu);

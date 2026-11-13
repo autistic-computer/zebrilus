@@ -100,6 +100,7 @@ pub struct TouchRow {
     detail: Option<SharedString>,
     trailing: Option<TouchTrailing>,
     more: bool,
+    face: Option<SharedString>,
     end: Option<AnyElement>,
     danger: bool,
     ink: Option<TouchInk>,
@@ -122,6 +123,7 @@ impl TouchRow {
             detail: None,
             trailing: None,
             more: false,
+            face: None,
             end: None,
             danger: false,
             ink: None,
@@ -131,6 +133,12 @@ impl TouchRow {
             ground: None,
             on_click: None,
         }
+    }
+
+    #[must_use]
+    pub fn face(mut self, family: impl Into<SharedString>) -> Self {
+        self.face = Some(family.into());
+        self
     }
 
     #[must_use]
@@ -360,6 +368,7 @@ impl RenderOnce for TouchRow {
                     .whitespace_nowrap()
                     .text_ellipsis()
                     .text_color(title_ink)
+                    .when_some(self.face, Styled::font_family)
                     .when(self.ink == Some(TouchInk::Accent), |title| {
                         title.font_weight(TextStyle::TouchBody.strong_weight())
                     })
@@ -399,7 +408,9 @@ impl RenderOnce for TouchRow {
                     .left(edge)
                     .child(Separator::horizontal().look(RuleLook::List).h(RULE_WIDTH))
             });
+        let selector = author.clone();
         frame
+            .debug_selector(move || selector.to_string())
             .children(rule)
             .role(Role::Button)
             .accessibility_id(author)

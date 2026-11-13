@@ -142,11 +142,12 @@
   flex: none;
   flex-direction: column;
   gap: var(--penna-gap-group);
-  padding: 0 var(--penna-space-8) var(--penna-space-8);
+  padding: 0 var(--penna-space-8);
 }
 
 .penna-sheet-groups[data-menu] {
   gap: var(--penna-space-8);
+  padding-bottom: var(--penna-space-8);
 }
 
 .penna-touch-group[data-ruled][data-penna][data-penna][data-penna] {
@@ -307,101 +308,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  margin-bottom: var(--penna-space-8);
   overflow-y: auto;
   scrollbar-width: none;
-}
-
-.penna-sheet-list {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  gap: var(--penna-space-2);
-  padding: 0 var(--penna-row-inset) var(--penna-space-8);
-}
-
-.penna-sheet-row {
-  position: relative;
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--penna-space-12);
-  width: 100%;
-  height: 52px;
-  padding: 0 var(--penna-space-12);
-  white-space: nowrap;
-  cursor: var(--penna-click-cursor);
-  outline: none;
-  user-select: none;
-  font-size: var(--penna-text-touch-body-size);
-  line-height: var(--penna-text-touch-body-line);
-  font-weight: var(--penna-text-touch-body-weight);
-}
-
-.penna-sheet-list > :is(.penna-sheet-row, .penna-touch-row)[data-penna][data-penna] {
-  --penna-nest-inset: var(--penna-row-inset);
-  --penna-nest-outer: var(--penna-phone-radius);
-}
-
-.penna-sheet-row[data-lead="tile"] {
-  height: 56px;
-}
-
-.penna-sheet-row[data-lead="detail"] {
-  height: 64px;
-}
-
-.penna-sheet-check {
-  display: flex;
-  flex: none;
-  width: 20px;
-  --penna-icon-size: 18px;
-}
-
-.penna-sheet-check:not([data-checked]) > [data-icon] {
-  visibility: hidden;
-}
-
-.penna-sheet-tile {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  --penna-icon-size: 20px;
-}
-
-.penna-sheet-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.penna-sheet-lines {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: var(--penna-space-2);
-  min-width: 0;
-}
-
-.penna-sheet-lines > * {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.penna-sheet-lines > :first-child {
-  font-size: var(--penna-text-touch-body-size);
-  line-height: var(--penna-text-touch-body-line);
-  font-weight: var(--penna-text-touch-body-weight);
-}
-
-.penna-sheet-lines > :last-child {
-  color: var(--penna-muted);
-  font-size: var(--penna-text-touch-small-size);
-  line-height: var(--penna-text-touch-small-line);
-  font-weight: var(--penna-text-touch-small-weight);
 }

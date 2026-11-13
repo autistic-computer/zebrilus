@@ -34,7 +34,6 @@ const MODAL_CONTROL: f32 = 48.0;
 const MODAL_RISE: f32 = 6.0;
 const MODAL_SCRIM_LIGHT: f32 = 0.28;
 const OPTION_HEIGHT: f32 = crate::blocks::touch::TOUCH_ROW_HEIGHT;
-const DETAIL_HEIGHT: f32 = crate::blocks::touch::TOUCH_DETAIL_ROW_HEIGHT;
 const TILE: f32 = 40.0;
 const TILE_ROW_HEIGHT: f32 = 56.0;
 const MAX_HEIGHT: f32 = 0.85;
@@ -218,12 +217,11 @@ pub fn sheet_groups() -> Div {
         .w_full()
         .gap(Space::GAP_GROUP)
         .px(Space::S8)
-        .pb(Space::S8)
 }
 
 #[must_use]
 pub fn modal_groups() -> Div {
-    sheet_groups().gap(Space::S8)
+    sheet_groups().gap(Space::S8).pb(Space::S8)
 }
 
 #[must_use]
@@ -410,36 +408,6 @@ fn title_text(title: SharedString, cut_middle: bool, style: TextStyle) -> AnyEle
     }
 }
 
-pub fn sheet_option(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    checked: bool,
-    cx: &App,
-) -> Stateful<Div> {
-    option_row(
-        id,
-        Surface::new(SurfaceRole::MENU_ITEM),
-        Lead::Check(checked),
-        label.into(),
-        cx,
-    )
-}
-
-pub fn sheet_action(
-    id: impl Into<ElementId>,
-    icon: IconName,
-    label: impl Into<SharedString>,
-    cx: &App,
-) -> Stateful<Div> {
-    option_row(
-        id,
-        Surface::new(SurfaceRole::MENU_ITEM),
-        Lead::Tile(Box::new(Icon::new(icon))),
-        label.into(),
-        cx,
-    )
-}
-
 pub fn sheet_row(
     id: impl Into<ElementId>,
     slot: Option<Icon>,
@@ -455,48 +423,8 @@ pub fn sheet_row(
     )
 }
 
-pub fn sheet_detail_row(
-    id: impl Into<ElementId>,
-    slot: Option<Icon>,
-    label: impl Into<SharedString>,
-    detail: impl IntoElement,
-    cx: &App,
-) -> Stateful<Div> {
-    let surface = Surface::new(roles::PHONE_ROW);
-    let layer = cx.theme().layer(surface, PaintState::Rest);
-    let muted = muted_on(layer.ground, cx);
-    row_shell(id, surface, px(DETAIL_HEIGHT), cx)
-        .children(slot.map(|icon| icon_tile(icon, TILE, &layer, cx)))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(Space::S2)
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .type_style(crate::TextStyle::TouchBody, cx)
-                        .child(label.into()),
-                )
-                .child(
-                    div()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .type_style(crate::TextStyle::TouchSmall, cx)
-                        .text_color(muted)
-                        .child(detail),
-                ),
-        )
-}
-
 enum Lead {
     Empty,
-    Check(bool),
     Tile(Box<Icon>),
 }
 
@@ -515,14 +443,6 @@ fn option_row(
     };
     let lead = match lead {
         Lead::Empty => None,
-        Lead::Check(checked) => Some(
-            div()
-                .flex()
-                .flex_none()
-                .w(px(20.0))
-                .children(checked.then(|| Icon::new(IconName::Check).size(px(18.0))))
-                .into_any_element(),
-        ),
         Lead::Tile(icon) => Some(icon_tile(*icon, TILE, &layer, cx).into_any_element()),
     };
     row_shell(id, surface, px(height), cx).children(lead).child(
@@ -672,10 +592,13 @@ impl SheetState {
 
 impl RenderOnce for BottomSheet {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        if self.modal {
-            return self.render_modal(window, cx);
-        }
-        self.render_sheet(window, cx)
+        let rem = cx.theme().font_size;
+        let sheet = if self.modal {
+            self.render_modal(window, cx)
+        } else {
+            self.render_sheet(window, cx)
+        };
+        crate::blocks::touch::at_rem(sheet, rem)
     }
 }
 
@@ -837,7 +760,7 @@ impl BottomSheet {
                     }
                 });
             });
-        let modal = div()
+        div()
             .id(self.id)
             .absolute()
             .inset_0()
@@ -869,8 +792,7 @@ impl BottomSheet {
                     .justify_center()
                     .child(card),
             )
-            .into_any_element();
-        crate::blocks::touch::at_rem(modal, cx.theme().font_size)
+            .into_any_element()
     }
 
     fn render_sheet(self, window: &mut Window, cx: &mut App) -> AnyElement {
@@ -1073,6 +995,7 @@ impl BottomSheet {
                     .flex()
                     .flex_col()
                     .min_h_0()
+                    .mb(Space::S8)
                     .overflow_y_scroll()
                     .track_scroll(&scroll)
                     .child(
