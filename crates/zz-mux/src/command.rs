@@ -28560,6 +28560,7 @@ mod tests {
         ));
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_leading_tilde_names_the_home_directory() {
         let home = std::env::var("HOME").expect("HOME");
@@ -28654,6 +28655,7 @@ mod tests {
         assert!(engine.state.validate().is_ok());
     }
 
+    #[cfg(unix)]
     #[test]
     fn agent_selection_materializes_a_picker_with_provider_cwd_and_resume() {
         let mut engine = MuxEngine::default();
@@ -28775,6 +28777,7 @@ mod tests {
         assert!(engine.state.validate().is_ok());
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_terminal_turns_into_an_agent_chat_and_back_keeping_its_pane() {
         let mut engine = MuxEngine::default();
