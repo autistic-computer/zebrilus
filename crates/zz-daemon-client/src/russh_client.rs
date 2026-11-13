@@ -845,10 +845,11 @@ impl client::Handler for TofuHandler {
 impl TofuHandler {
     async fn confirm_host_key(&mut self, key: &PublicKey, changed_line: Option<usize>) -> bool {
         let fingerprint = key.fingerprint(HashAlg::default());
+        let address = format!("{}:{}", self.host, self.port);
         let warning = if changed_line.is_some() {
-            crate::askpass::HOST_KEY_CHANGED
+            format!("{}\n\n{address}", crate::askpass::HOST_KEY_CHANGED)
         } else {
-            "The authenticity of host has not been established."
+            format!("The authenticity of {address} has not been established.\n")
         };
         let previous = changed_line
             .and_then(|_| known_host_keys_path(&self.host, self.port, &self.known_hosts).ok())
@@ -871,9 +872,7 @@ impl TofuHandler {
         let prompt = AskpassPrompt::new(
             AskpassMode::Answer,
             format!(
-                "{warning}\n\n{}:{}\n{} key fingerprint: {fingerprint}{previous}",
-                self.host,
-                self.port,
+                "{warning}\n{} key fingerprint: {fingerprint}{previous}",
                 key.algorithm(),
             ),
         );
