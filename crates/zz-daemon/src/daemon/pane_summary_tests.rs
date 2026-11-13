@@ -1553,3 +1553,66 @@ fn a_program_that_goes_quiet_right_after_it_starts_still_gets_its_process() {
     }
     shared.request_shutdown();
 }
+
+#[test]
+fn a_branch_switch_in_a_terminal_reaches_agent_panes_in_that_repo() {
+    let shared = Arc::new(Shared::new(1));
+    let place = |inner: &mut ServerState, pane: PaneId, cwd: &str, repo: &str, branch: &str| {
+        inner.engine.state.update_pane_summary(pane, |summary| {
+            cwd.clone_into(&mut summary.cwd);
+            repo.clone_into(&mut summary.repo);
+            branch.clone_into(&mut summary.branch);
+        });
+    };
+    let (terminal, same_folder, nested, elsewhere, already) = {
+        let mut inner = shared.inner.lock();
+        let (_, _, terminal) = inner.engine.state.create_session("repo").expect("session");
+        let agent = |inner: &mut ServerState| {
+            inner
+                .engine
+                .state
+                .split_pane(
+                    terminal,
+                    zz_protocol::Axis::Horizontal,
+                    PaneKind::Agent(zz_protocol::AgentDescriptor::default()),
+                )
+                .expect("agent pane")
+        };
+        let panes = (
+            terminal,
+            agent(&mut inner),
+            agent(&mut inner),
+            agent(&mut inner),
+            agent(&mut inner),
+        );
+        place(&mut inner, panes.0, "~/src/zz", "~/src/zz", "main");
+        place(&mut inner, panes.1, "~/src/zz", "~/src/zz", "main");
+        place(&mut inner, panes.2, "~/src/zz/crates", "~/src/zz", "main");
+        place(&mut inner, panes.3, "~/src/other", "~/src/other", "main");
+        place(&mut inner, panes.4, "~/src/zz", "~/src/zz", "feature");
+        panes
+    };
+    let branch = |pane: PaneId| summary(&shared.inner.lock(), pane).branch;
+
+    assert_eq!(
+        agents_on_other_branch(&shared.inner.lock(), terminal, "~/src/zz", "feature"),
+        vec![same_folder, nested]
+    );
+    shared.finish_pane_location(
+        terminal,
+        (String::new(), PathBuf::from("/src/zz")),
+        (
+            "~/src/zz".to_owned(),
+            "~/src/zz".to_owned(),
+            "feature".to_owned(),
+        ),
+    );
+    assert_eq!(
+        [terminal, same_folder, nested, elsewhere, already].map(branch),
+        ["feature", "feature", "feature", "main", "feature"].map(str::to_owned)
+    );
+    assert_eq!(
+        agents_on_other_branch(&shared.inner.lock(), terminal, "~/src/zz", "feature"),
+        Vec::<PaneId>::new()
+    );
+}

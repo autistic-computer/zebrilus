@@ -318,19 +318,25 @@ impl Shared {
         source: LocationSource,
         (cwd, repo, branch): (String, String, String),
     ) {
-        let (changed, start) = {
+        let (changed, start, switched) = {
             let mut inner = self.inner.lock();
             if inner.locations.jobs.remove(&pane) == Some(true) {
-                (false, queue_location(&mut inner, pane))
+                (false, queue_location(&mut inner, pane), Vec::new())
             } else {
                 remember_location(&mut inner.locations.known, source, &cwd, &repo, &branch);
+                let switched = agents_on_other_branch(&inner, pane, &repo, &branch);
                 let mut changed = share_branch(&mut inner, &cwd, &repo, &branch);
+                for &agent in &switched {
+                    changed |= inner.engine.state.update_pane_summary(agent, |summary| {
+                        branch.clone_into(&mut summary.branch);
+                    });
+                }
                 changed |= inner.engine.state.update_pane_summary(pane, |summary| {
                     summary.cwd = cwd;
                     summary.repo = repo;
                     summary.branch = branch;
                 });
-                (changed, false)
+                (changed, false, switched)
             }
         };
         if changed {
@@ -339,6 +345,16 @@ impl Shared {
         if start {
             self.start_location_worker();
         }
+        #[cfg(feature = "agent")]
+        if !switched.is_empty()
+            && let Some(runtime) = self.open_agent_runtime()
+        {
+            for agent in switched {
+                runtime.command(agent, HostCommand::RefreshGit);
+            }
+        }
+        #[cfg(not(feature = "agent"))]
+        let _ = switched;
     }
 
     pub(super) fn watch_pane_program(
@@ -783,6 +799,31 @@ fn remember_location(
         read_at,
     });
     known.truncate(KNOWN_LOCATIONS);
+}
+
+fn agents_on_other_branch(
+    inner: &ServerState,
+    source: PaneId,
+    repo: &str,
+    branch: &str,
+) -> Vec<PaneId> {
+    if repo.is_empty() {
+        return Vec::new();
+    }
+    inner
+        .engine
+        .state
+        .windows
+        .values()
+        .flat_map(|window| &window.panes)
+        .filter(|(pane, state)| {
+            **pane != source
+                && matches!(state.kind, PaneKind::Agent(_))
+                && state.summary.repo == repo
+                && state.summary.branch != branch
+        })
+        .map(|(&pane, _)| pane)
+        .collect()
 }
 
 fn share_branch(inner: &mut ServerState, cwd: &str, repo: &str, branch: &str) -> bool {

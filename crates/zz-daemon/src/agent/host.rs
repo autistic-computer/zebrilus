@@ -85,6 +85,7 @@ pub(crate) enum HostCommand {
     StopTask {
         task_id: String,
     },
+    RefreshGit,
 }
 
 pub(crate) const MAX_AGENT_TURN_REPLY_BYTES: usize = 1024 * 1024;
@@ -965,6 +966,7 @@ impl PanePump {
             HostCommand::StopTask { task_id } => {
                 self.send(RuntimeCommand::StopTask { task_id });
             }
+            HostCommand::RefreshGit => self.start_git_refresh(),
             HostCommand::Authenticate { method_id } => {
                 if !self.send(RuntimeCommand::Authenticate { method_id }) {
                     self.observe(AgentStreamPayload::AuthenticationFailed {
@@ -4022,6 +4024,38 @@ mod tests {
             .expect("Git refresh was published as a state-only update");
         assert!(settled < refreshed);
         drop(states);
+        fixture.close();
+    }
+
+    #[test]
+    fn git_refresh_command_follows_a_branch_switched_outside_the_agent() {
+        let Some((_scratch, root)) = seeded_git_repo() else {
+            return;
+        };
+        let fixture = Fixture::build(
+            Behavior::AskPermission,
+            AgentAutoApprove::Off,
+            true,
+            None,
+            None,
+            Some(root.clone()),
+        );
+        fixture.wait_for_session();
+        let branch = || fixture.state().git.and_then(|git| git.branch);
+        let wait_for = |expected: &str| {
+            let deadline = Instant::now() + DEADLINE;
+            while branch().as_deref() != Some(expected) && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        };
+        wait_for("main");
+        assert_eq!(branch().as_deref(), Some("main"));
+
+        git(&root, &["switch", "--quiet", "-c", "feature"]);
+        fixture.command(HostCommand::RefreshGit);
+        wait_for("feature");
+
+        assert_eq!(branch().as_deref(), Some("feature"));
         fixture.close();
     }
 
