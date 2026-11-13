@@ -2484,6 +2484,7 @@ fn ask_row(view: &ChatView, request: &RequestView, touch: bool, cx: &App) -> Any
     };
     let mut mark = ActivityMark::plain(icon);
     mark.touch = touch;
+    mark.spread = true;
     mark.detail = Some("waiting for you".into());
     activity_row(
         SharedString::from(format!("chat-ask-{}", request.id.0)),
@@ -2527,6 +2528,7 @@ fn record_rows(request: &RequestView, touch: bool, cx: &App) -> AnyElement {
                     let label = headers.get(index).cloned().flatten().unwrap_or(question);
                     let mut mark = ActivityMark::plain(IconName::Chat);
                     mark.touch = touch;
+                    mark.spread = true;
                     mark.detail = Some(answer.into());
                     mark.detail_color = Some(cx.theme().foreground);
                     activity_row(
@@ -2552,8 +2554,11 @@ mod tests {
         Context, Entity, Image, IntoElement, Render, RenderImage, Subscription, TestAppContext,
         VisualTestContext, Window, div, prelude::*, px,
     };
-    use zz_protocol::agent_stream::AgentImage;
-    use zz_protocol::chat::{ChatEvent, ItemBody, ItemId, ItemKind, ItemStatus, TurnBy, TurnId};
+    use zz_protocol::agent_stream::{AgentImage, AgentQuestion};
+    use zz_protocol::chat::{
+        Answer, Ask, ChatEvent, ItemBody, ItemId, ItemKind, ItemStatus, QuestionAnswer,
+        RequestClose, RequestId, TurnBy, TurnId,
+    };
 
     use super::{ChatClick, ChatHooks, ChatOpen, ChatPane, ChatView, chat_thread};
 
@@ -2954,6 +2959,67 @@ mod tests {
             .expect("the opened thought should be painted");
         assert!(thought.size.height <= px(super::THOUGHT_MAX_HEIGHT));
         assert!(thought.size.height > px(40.0));
+    }
+
+    #[ala::test]
+    fn the_answer_to_a_long_question_stays_on_its_row(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let mut view = ChatView::default();
+        let events = [
+            ChatEvent::SessionReady {
+                session: "s1".to_owned(),
+            },
+            ChatEvent::TurnStarted {
+                turn: TurnId(1),
+                by: TurnBy::Agent,
+                at: 1,
+            },
+            ChatEvent::RequestOpened {
+                request: RequestId(4),
+                turn: Some(TurnId(1)),
+                item: None,
+                ask: Ask::Questions {
+                    questions: vec![AgentQuestion {
+                        id: "q0".to_owned(),
+                        question: "Can you have Feb submit a bug report from the affected tab and share the ticket ID? There's no report from that session yet.".to_owned(),
+                        ..AgentQuestion::default()
+                    }],
+                },
+                blocking: false,
+                at: 2,
+            },
+            ChatEvent::RequestClosed {
+                request: RequestId(4),
+                close: RequestClose::Answered {
+                    answer: Answer::Questions {
+                        answers: vec![QuestionAnswer {
+                            question: "q0".to_owned(),
+                            answers: vec!["Ticket 4821".to_owned()],
+                        }],
+                    },
+                },
+                at: 3,
+            },
+        ];
+        for event in &events {
+            view.apply(event).expect("event");
+        }
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| ThreadTest {
+                view,
+                open: ChatOpen::default(),
+            });
+            penna::Root::new(view, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let answer = cx
+            .debug_bounds("chat-activity-detail")
+            .expect("the answer should be painted");
+        assert!(answer.size.width > px(40.0), "{answer:?}");
     }
 
     #[test]
