@@ -7,13 +7,14 @@ use penna::{
 };
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use penna::{
-    Colorize as _, RuleLook, StyledExt as _,
+    Colorize as _, Disableable as _, Sizable as _, Size, Space,
     blocks::sheet::{
         bottom_sheet, close_sheet, floating_sheet, modal_groups, sheet_close, sheet_ground,
-        sheet_inset,
+        sheet_groups, sheet_inset, sheet_note,
     },
     blocks::touch::{TouchGroup, TouchRow},
     components::button::ButtonVariants as _,
+    components::field::Field,
     components::input::{Input, InputEvent, InputState},
 };
 use zz_ui::settings::{
@@ -113,6 +114,15 @@ impl SavedHosts {
             log::warn!("Could not save hosts: {error}");
         }
     }
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+fn parsed_endpoint(input: &str) -> Result<String, String> {
+    destination_endpoint(input).and_then(|endpoint| {
+        zz_daemon_client::Endpoint::parse(&endpoint)
+            .map(|endpoint| endpoint.to_string())
+            .map_err(|error| error.to_string())
+    })
 }
 
 #[cfg(any(target_os = "ios", target_os = "android", test))]
@@ -297,12 +307,7 @@ impl AppShell {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn add_host(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let value = self.hosts.destination.read(cx).value().to_string();
-        let endpoint = destination_endpoint(&value).and_then(|endpoint| {
-            zz_daemon_client::Endpoint::parse(&endpoint)
-                .map(|endpoint| endpoint.to_string())
-                .map_err(|error| error.to_string())
-        });
-        match endpoint {
+        match parsed_endpoint(&value) {
             Ok(endpoint) => {
                 self.hosts.error = None;
                 self.hosts
@@ -494,10 +499,15 @@ impl AppShell {
             SettingEntry::new("Add host")
                 .title_icon(Icon::new(IconName::Plus).text_color(cx.theme().accent))
                 .control(row_meta("", cx))
-                .on_click("hosts-add-row", move |_, _, cx| {
+                .on_click("hosts-add-row", move |_, window, cx| {
                     let _ = view.update(cx, |this, cx| {
                         this.hosts.error = None;
                         this.hosts.sheet = Some(HostSheet::Add);
+                        let input = this.hosts.destination.clone();
+                        cx.on_next_frame(window, move |_, window, cx| {
+                            input.update(cx, |input, cx| input.focus(window, cx));
+                            window.request_virtual_keyboard();
+                        });
                         cx.notify();
                     });
                 }),
@@ -533,11 +543,16 @@ impl AppShell {
         on_dismiss: impl Fn(&mut Self, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let sheet = sheet_ground(cx);
+        let ground = sheet_ground(cx);
         let close =
             sheet_close("add-host-close", cx).on_click(|_, _, cx| close_sheet(ADD_HOST_SHEET, cx));
         let dismiss = cx.weak_entity();
-        let note = |text: SharedString| Label::new(TextStyle::Body, text).muted().on(sheet);
+        let typed = self.hosts.destination.read(cx).value().to_string();
+        let ready = parsed_endpoint(&typed).is_ok();
+        let danger = cx
+            .theme()
+            .paint_on(ground, Tone::Danger, penna::Emphasis::Ghost)
+            .text;
         bottom_sheet(
             ADD_HOST_SHEET,
             "Add host",
@@ -545,36 +560,53 @@ impl AppShell {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(10.0))
-                .px(px(16.0))
-                .pb(px(16.0))
-                .child(Input::new(&self.hosts.destination))
-                .child(note("user@host, or user@host:port".into()))
-                .children(self.hosts.error.clone().map(|error| {
-                    Label::new(TextStyle::Body, error).text_color(cx.theme().warning)
-                }))
                 .child(
-                    Button::new("add-host-connect")
-                        .primary()
-                        .w_full()
-                        .label("Connect")
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            if this.add_host(window, cx) {
-                                on_added(this, cx);
-                            }
-                        })),
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(Space::S12)
+                        .px(Space::S16)
+                        .pb(Space::GAP_GROUP)
+                        .child(
+                            Field::new().with_size(Size::TouchLarge).child(
+                                Input::new(&self.hosts.destination)
+                                    .id("add-host-field")
+                                    .with_size(Size::TouchLarge)
+                                    .on(ground),
+                            ),
+                        )
+                        .children(self.hosts.error.clone().map(|error| {
+                            Label::new(TextStyle::TouchSmall, error).text_color(danger)
+                        }))
+                        .child(
+                            Button::new("add-host-connect")
+                                .primary()
+                                .label("Connect")
+                                .with_size(Size::TouchLarge)
+                                .w_full()
+                                .on(ground)
+                                .disabled(!ready)
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    if this.add_host(window, cx) {
+                                        on_added(this, cx);
+                                    }
+                                })),
+                        ),
                 )
-                .child(div().my(px(6.0)).rule(RuleLook::List, penna::Edge::Top, cx))
-                .child(note(
-                    "Add this phone's key to authorized_keys on the host to sign in without a password."
-                        .into(),
-                ))
                 .child(
-                    Button::new("add-host-copy-key")
-                        .w_full()
-                        .icon(IconName::Copy)
-                        .label("Copy SSH key")
-                        .on_click(|_, window, cx| copy_ssh_key(window, cx)),
+                    sheet_groups()
+                        .pb(Space::S8)
+                        .child(
+                            TouchGroup::new().ruled().row(
+                                TouchRow::new("add-host-copy-key", "Copy SSH key")
+                                    .icon(IconName::Copy)
+                                    .on_click(|_, window, cx| copy_ssh_key(window, cx)),
+                            ),
+                        )
+                        .child(sheet_note(
+                            "Add this phone's key to authorized_keys on the host to sign in without a password.",
+                            cx,
+                        )),
                 ),
             bottom_inset,
             move |_, cx| {
