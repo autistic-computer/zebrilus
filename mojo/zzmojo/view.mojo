@@ -66,7 +66,6 @@ from .terminal_search import (
     SEARCH_FOCUS,
     TERMINAL_FOCUS,
     SEARCH_ACCEPT_AND_CLOSE,
-    search_shortcut,
     search_key_action,
 )
 from .terminal_search_protocol import SearchQuery
@@ -84,7 +83,6 @@ from .terminal_search_chrome import (
 from .search_clipboard import SearchClipboard
 from .keyboard_controller import KeyboardController
 from .palette_runtime import PaletteRuntime, PalettePlan
-from .palette_keymap import palette_open_shortcut
 from .palette_controller import (
     PaletteEffect,
     PALETTE_EXECUTE,
@@ -104,7 +102,12 @@ from .editor_pointer import (
     editor_composition,
     pointer_payload,
 )
-from .actions import MAX_PENDING_INPUT_BYTES, MAX_PENDING_ACTIONS
+from .actions import (
+    MAX_PENDING_INPUT_BYTES,
+    MAX_PENDING_ACTIONS,
+    Action,
+    ActionQueue,
+)
 from .palette_controller import PALETTE_INPUT_BYTES
 from .chooser_live import LiveChooser
 from .window_chooser_runtime import WindowChooserRuntime
@@ -131,8 +134,10 @@ from .input_protocol import input_browser_text
 from .chooser_session import ChooserSource, ChooserPlan
 from .which_key_live import LiveWhichKey, WhichKeyIntent, WhichKeyContext
 from .prefix_bindings import PrefixTable
-from .desktop_router_delivery import DesktopUiEffect, DesktopEnvelope
-from .keyboard_controller import RoutedKey
+from .desktop_workspace import DesktopWorkspace
+from .desktop_terminal import TerminalFontState
+from .verified_input_router import RouterEvent, no_owner
+from .transport import bend_executable
 from .input_protocol import canonical_key
 from .desktop_key_config import DesktopKeyConfig
 from .desktop_key_config_io import (
@@ -163,6 +168,7 @@ from .desktop_nav import nav_command
 from .desktop_input import desktop_router_map
 from .desktop_chrome_dispatch import DesktopChromeDispatch
 from .chrome_keymap import ChromeKeymap
+from .chrome_actions import ChromeAction
 from .palette_host import palette_local_hostname
 from .tree_model import MuxSnapshot
 
@@ -246,6 +252,14 @@ struct WorkspaceView(Movable):
     var sidebar_shown: Bool
     var chrome: ChromeKeymap
     var chrome_held: Dict[UInt16, Bool]
+    var router: DesktopWorkspace
+    var router_queue: ActionQueue
+    var router_keys: Dict[UInt16, KeyInput]
+    var router_panes: Dict[UInt64, Bool]
+    var router_seen: UInt64
+    var router_attached: Bool
+    var router_refused: UInt64
+    var font: TerminalFontState
     var picker_selected: Dict[UInt64, Int]
     var browser: ActiveBrowser
     var browser_visible: List[UInt64]
@@ -324,6 +338,26 @@ struct WorkspaceView(Movable):
             self.chrome = desktop_router_map(
                 DesktopKeyConfig(macos).map(macos, 1), 2
             )
+        var worker: Optional[String] = None
+        try:
+            worker = bend_executable()
+        except:
+            worker = None
+        self.router = DesktopWorkspace(UInt8(2 if macos else 1), worker)
+        try:
+            self.router.install_configured(config.map(macos, 1))
+        except error:
+            self.config_notice = String(error)
+            self.router.install_configured(
+                DesktopKeyConfig(macos).map(macos, 1)
+            )
+        self.router_queue = ActionQueue()
+        self.router_keys = Dict[UInt16, KeyInput]()
+        self.router_panes = Dict[UInt64, Bool]()
+        self.router_seen = UInt64.MAX
+        self.router_attached = False
+        self.router_refused = 0
+        self.font = TerminalFontState(0, 0)
         self.sidebar = DesktopSidebar(palette_local_hostname())
         self.sidebar_seen = String()
         self.sidebar_first = 0
@@ -579,6 +613,7 @@ struct WorkspaceView(Movable):
         key: KeyEvent,
         bytes: Span[UInt8, _],
         cancel: Bool = False,
+        shortcut: Bool = True,
     ) raises -> Optional[PalettePlan]:
         if key.release and key.key in self.palette.held:
             _ = self.palette.held.pop(key.key)
@@ -635,6 +670,8 @@ struct WorkspaceView(Movable):
                     self.focus_epoch,
                 )
             return None
+        if not shortcut or key.release:
+            return None
         var input = mjui_key_input(
             key.key, key.ch, key.unshifted, key.mods, key.action()
         )
@@ -646,19 +683,31 @@ struct WorkspaceView(Movable):
             input.text = String(
                 from_utf8=bytes[Int(key.text_lo) : Int(key.text_hi)]
             )
-        var capture = False
-        for session in self.model.snapshot.sessions:
-            if self.model.session == Optional[UInt64](session.id):
-                for window in session.windows:
-                    if self.model.window == Optional[UInt64](window.id):
-                        capture = Bool(window.modal)
-        var overlay = ui.layers.modal != 0 and not (
+        if self.modal_capture() or self.palette_overlay(ui):
+            return None
+        var action: Optional[ChromeAction] = None
+        try:
+            action = self.chrome.resolve("ui", input)
+        except:
+            return None
+        if not action or action.value().kind != 9:
+            return None
+        return self.open_palette(ui, keyboard, key, bytes)
+
+    def palette_overlay(self, ui: Ui) -> Bool:
+        return ui.layers.modal != 0 and not (
             self.palette.pending_close
             and ui.layers.modal == self.palette.component.key + 3
         )
-        if not palette_open_shortcut(
-            input, CompilationTarget.is_macos(), overlay, capture
-        ):
+
+    def open_palette(
+        mut self,
+        mut ui: Ui,
+        mut keyboard: KeyboardController,
+        key: KeyEvent,
+        bytes: Span[UInt8, _],
+    ) raises -> Optional[PalettePlan]:
+        if self.palette.opened() or self.palette_overlay(ui):
             return None
         self.palette.restore_output = (
             self.model.source_server,
@@ -1261,9 +1310,16 @@ struct WorkspaceView(Movable):
             and self.model.routing.claims_prefix_input(input)
         )
         var kind: UInt8 = 255
+        var shortcut = False
+        if not prefix and not modal:
+            try:
+                var bound = self.chrome.resolve("terminal", input)
+                shortcut = Bool(bound) and bound.value().kind == 25
+            except:
+                shortcut = False
         if (
             ui.focus == TERMINAL_KEY or field_target or chrome_target
-        ) and search_shortcut(input, prefix, modal):
+        ) and shortcut:
             self.ensure_search(target.value())
             self.search.editors[name].pending_begin = True
             self.marked = None
@@ -1673,6 +1729,14 @@ struct WorkspaceView(Movable):
             self.blur_pointer(True)
             self.chrome_held.clear()
             self.browser_keys.clear()
+            self.router_keys.clear()
+            try:
+                var blurred: List[RouterEvent] = [
+                    RouterEvent(9, 0, 0, no_owner())
+                ]
+                self.router.observe(blurred, self.focus_epoch)
+            except:
+                self.router_refused += 1
             self.active = False
             return
         self.active = True
@@ -2201,8 +2265,9 @@ struct WorkspaceView(Movable):
             ui.width - (SIDEBAR_WIDTH if self.sidebar_shown else 0), Float32(0)
         )
         var height = max(ui.height - TOOLBAR_HEIGHT - STATUS_HEIGHT, Float32(0))
+        self.font.configured(self.appearance.active.font_size_points)
         var options = self.appearance.options(
-            ui, False, blink_epoch=self.cursor_epoch
+            ui, False, delta=self.font.offset, blink_epoch=self.cursor_epoch
         )
         var metrics = cell_metrics_options(
             ui.shaper.fonts[Int(options.font)], options, ui.scale
@@ -2577,38 +2642,87 @@ struct WorkspaceView(Movable):
             return True
         return False
 
-    def all_keys(mut self, routed: RoutedKey) raises -> Bool:
-        if (
-            routed.release
-            or not self.model.routing.armed
-            or self.which_key_delay == 0
-            or not self.model.key_tables.snapshot
-        ):
-            return False
-        ref tables = self.model.key_tables.snapshot.value()[]
-        if not tables.prefix.query(routed.input).all_keys:
-            return False
-        var prefix: Optional[String] = None
-        if UInt8(0) in self.model.routing.options:
-            prefix = canonical_key(self.model.routing.options[UInt8(0)].value)
-        self.which_key.apply(
-            WhichKeyIntent.all_keys(
-                DesktopUiEffect(
-                    3,
-                    None,
-                    DesktopEnvelope(
-                        0,
-                        self.model.source_server,
-                        self.model.source_client,
-                        routed.epoch,
-                        None,
-                    ),
-                    routed.pane,
-                    tables.prefix.snapshot(),
-                    prefix^,
-                )
+    def sync_router(mut self):
+        try:
+            var source = (self.model.source_server, self.model.source_client)
+            if self.router.source != Optional[Tuple[UInt64, UInt64]](source):
+                self.router.bind_source(source[0], source[1])
+                self.router_keys.clear()
+                self.router_panes.clear()
+                self.router_seen = UInt64.MAX
+                self.router_attached = False
+            var attached = Bool(self.model.attached_session)
+            if (
+                self.model.snapshot.generation == self.router_seen
+                and attached == self.router_attached
+            ):
+                return
+            var current = Dict[UInt64, Bool]()
+            for session in self.model.snapshot.sessions:
+                for window in session.windows:
+                    for pane in window.panes.keys():
+                        current[pane] = True
+            var events = List[RouterEvent]()
+            for pane in self.router_panes.keys():
+                if pane not in current:
+                    events.append(RouterEvent(7, pane, 0, no_owner()))
+                    if len(events) == 31:
+                        self.router.observe(events, self.focus_epoch)
+                        events.clear()
+            if self.router_attached and not attached:
+                events.append(RouterEvent(8, 0, 0, no_owner()))
+                self.router_keys.clear()
+            if len(events) != 0:
+                self.router.observe(events, self.focus_epoch)
+            self.router_panes = current^
+            self.router_seen = self.model.snapshot.generation
+            self.router_attached = attached
+        except:
+            self.router_refused += 1
+
+    def has_pane(self, pane: UInt64) -> Bool:
+        for session in self.model.snapshot.sessions:
+            for window in session.windows:
+                if pane in window.panes:
+                    return True
+        return False
+
+    def publish_routed(mut self, actions: List[Action], release: Bool) raises:
+        for action in actions:
+            if not action.source or action.source.value() != (
+                self.model.source_server,
+                self.model.source_client,
+            ):
+                continue
+            if action.pane:
+                var pane = action.pane.value()
+                if not self.has_pane(pane):
+                    continue
+                if not release:
+                    _ = self.cancel_local_scroll(pane)
+                if (
+                    self.input_pane() == Optional[UInt64](pane)
+                    and not self.output_input
+                    and action.selection_epoch == self.focus_epoch
+                ):
+                    self.cursor_epoch += 1
+            self.backend.queue.append(
+                action.kind,
+                action.text,
+                action.pane,
+                action.selection_epoch,
+                action.geometry,
+                action.frame,
+                action.source,
+                action.output_owner,
             )
-        )
+            self.next_poll = 0
+
+    def font_step(mut self, mut ui: Ui, increase: Bool) -> Bool:
+        self.font.configured(self.appearance.active.font_size_points)
+        if not self.font.adjust(increase):
+            return False
+        ui.request_wake(ui.time)
         return True
 
     def modal_capture(self) -> Bool:
@@ -3093,6 +3207,7 @@ struct WorkspaceView(Movable):
             self.compose_windows(ui, input)
         self.windows_prepared = False
         self.poll(ui.time)
+        self.sync_router()
         if self.config_notice:
             self.primary_notice(ui, self.config_notice.take())
         self.sync_sidebar(ui)

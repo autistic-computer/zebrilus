@@ -58,6 +58,7 @@ from .chooser_buffer_protocol import decode_choose_buffer
 from .chooser_plane_protocol import decode_chooser_plane
 from .palette_dialog_state import PaletteDialogs
 from .path_protocol import decode_path_message, PATH_PICKER_EVENT
+from .stream_events import StreamQueues, typed_event, drained_event
 from .path_service import PathSource
 from .path_mailbox import PathMailbox
 from .native_cells import MAX_BEND_CELLS
@@ -75,7 +76,6 @@ from .clipboard_protocol import (
 )
 
 comptime TERMINAL_CACHE_BYTES = 128 * 1024 * 1024
-comptime UNHANDLED_BYTES = 4 * 1024 * 1024
 comptime BROWSER_COMMAND_LIMIT = 4096
 
 
@@ -132,8 +132,7 @@ struct StreamModel(Copyable, Movable):
     var message: Optional[ClientMessage]
     var bend_cell_updates: UInt64
     var bend_tree_updates: UInt64
-    var unhandled: List[List[UInt8]]
-    var unhandled_bytes: Int
+    var queues: StreamQueues
     var browser_commands: List[BrowserCommandEvent]
     var revision: UInt64
     var routing: InputRoutingState
@@ -172,8 +171,7 @@ struct StreamModel(Copyable, Movable):
         self.message = None
         self.bend_cell_updates = 0
         self.bend_tree_updates = 0
-        self.unhandled = List[List[UInt8]]()
-        self.unhandled_bytes = 0
+        self.queues = StreamQueues()
         self.browser_commands = List[BrowserCommandEvent]()
         self.revision = 0
         self.routing = InputRoutingState()
@@ -184,12 +182,6 @@ struct StreamModel(Copyable, Movable):
         for key in range(30):
             self.appearance_provenance[UInt8(key)] = 0
         self.appearance_revision = 0
-
-    def take_events(mut self) -> List[List[UInt8]]:
-        var events = self.unhandled^
-        self.unhandled = List[List[UInt8]]()
-        self.unhandled_bytes = 0
-        return events^
 
 
 struct InteractiveConnection(Movable):
@@ -392,16 +384,9 @@ struct InteractiveConnection(Movable):
             and self.model.events.output.pane.value() not in live
         ):
             self.model.events.output.clear()
+        self.model.queues.agent.prune(live)
         self._publish_history()
         self.tree_dirty = False
-
-    def _retain(mut self, var frame: List[UInt8]) raises:
-        if len(frame) > UNHANDLED_BYTES - self.model.unhandled_bytes:
-            raise Error(
-                "unhandled interactive events exceed their memory limit"
-            )
-        self.model.unhandled_bytes += len(frame)
-        self.model.unhandled.append(frame^)
 
     def _check_terminal_budget(self) raises:
         var size = 0
@@ -441,6 +426,7 @@ struct InteractiveConnection(Movable):
         self.history_deadlines.clear()
         self.model.events.output.clear()
         self.full_pending.clear()
+        self.model.queues.reset_session()
 
     def consume(mut self, var frame: List[UInt8], nested: Bool = False) raises:
         if self.transport.gate.validate(Span(frame)) != 0:
@@ -564,7 +550,24 @@ struct InteractiveConnection(Movable):
                 or response.request != self.waiting.value()
                 or self.response
             ):
-                raise Error("unexpected interactive command response")
+                if response.request != 0:
+                    raise Error("unexpected interactive command response")
+                if not rejected:
+                    self.model.queues.settled_responses += 1
+                    return
+                var kind = reader.uint()
+                for _ in range(32):
+                    if kind != 13:
+                        break
+                    kind = reader.uint()
+                if kind == 6 or kind == 7:
+                    self.model.queues.ignored_responses += 1
+                    return
+                if (kind == 1 or kind == 9) and not self.model.view.session:
+                    raise Error("unexpected interactive command response")
+                self.model.queues.notice(response.error)
+                self.model.revision += 1
+                return
             self.response = response^
             return
         if tag >= 44 and tag <= 46:
@@ -730,6 +733,13 @@ struct InteractiveConnection(Movable):
             if not plane:
                 raise Error("chooser presentation event has no decoded payload")
             self.model.dialogs.apply_plane(plane.take())
+        elif event.event_kind and (
+            typed_event(event.event_kind.value())
+            or drained_event(event.event_kind.value())
+        ):
+            var raw = List[UInt8]()
+            swap(raw, event.raw)
+            self.model.queues.event(event.event_kind.value(), raw^)
         elif event.event_kind == Optional[UInt64](UInt64(PATH_PICKER_EVENT)):
             var raw = List[UInt8]()
             swap(raw, event.raw)
@@ -767,6 +777,10 @@ struct InteractiveConnection(Movable):
             else:
                 var client_event = decode_client_event(event.raw.copy())
                 if client_event:
+                    if client_event.value().kind == 17:
+                        self.model.queues.agent.forget(
+                            client_event.value().pane
+                        )
                     var notice = self.model.events.apply(client_event.value())
                     if notice:
                         if notice.value().message:
@@ -815,7 +829,11 @@ struct InteractiveConnection(Movable):
                                     browser.take()
                                 )
                             else:
-                                self._retain(retained^)
+                                self.model.queues.drain(
+                                    event.kind,
+                                    event.event_kind,
+                                    len(retained),
+                                )
         if not nested:
             self.materialize()
         self.model.revision += 1
@@ -825,6 +843,8 @@ struct InteractiveConnection(Movable):
             return
         self._history_due()
         for _ in range(limit):
+            if self.model.queues.agent.saturated():
+                break
             if not readable(self.transport.fd):
                 break
             self.consume(self.transport.read_frame())

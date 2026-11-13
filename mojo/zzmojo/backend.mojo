@@ -46,6 +46,15 @@ from .palette_protocol import (
 from .prompt_protocol import PromptAction, prompt_request
 from .chooser_protocol import ChooseAction, choose_request
 from .browser_wire import BrowserCommandEvent
+from .stream_events import (
+    StreamQueues,
+    AgentOutbound,
+    AGENT_OUTBOX_BYTES,
+    AGENT_OUTBOX_FRAMES,
+    AGENT_SEND_OK,
+    AGENT_SEND_OFFLINE,
+    AGENT_SEND_FULL,
+)
 
 comptime KEY = 1
 comptime TEXT = 2
@@ -75,6 +84,8 @@ struct Job(Movable):
     var clipboard_reply: Optional[ClipboardResponse]
     var path_epoch: UInt64
     var native_chooser: Bool
+    var agent_frames: List[AgentOutbound]
+    var agent_watched: List[UInt64]
 
     def __init__(
         out self,
@@ -93,6 +104,8 @@ struct Job(Movable):
         self.clipboard_reply = None
         self.path_epoch = 0
         self.native_chooser = native_chooser
+        self.agent_frames = List[AgentOutbound]()
+        self.agent_watched = List[UInt64]()
 
 
 def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
@@ -133,6 +146,16 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
             ):
                 job.connection.value().transport.write(Span(reply.frame))
         job.clipboard_reply = None
+        for outbound in job.agent_frames:
+            if (
+                job.connection.value().server_id == outbound.server
+                and job.connection.value().client_id == outbound.client
+            ):
+                job.connection.value().transport.write(Span(outbound.frame))
+        job.agent_frames.clear()
+        job.connection.value().model.queues.agent.watched = (
+            job.agent_watched.copy()
+        )
         job.model.refresh(job.connection.value())
         job.model.sync_focus(job.connection.value())
         var desired_session = job.model.session
@@ -292,6 +315,7 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
         job.connection = None
     job.actions.clear()
     job.clipboard_reply = None
+    job.agent_frames.clear()
     job.done.store(1)
     dispatch_signal(job.semaphore)
 
@@ -310,6 +334,10 @@ struct AsyncBackend(Movable):
     var platform: HostPlatform
     var capabilities: UInt64
     var browser_commands: List[BrowserCommandEvent]
+    var events: StreamQueues
+    var event_source: Optional[Tuple[UInt64, UInt64]]
+    var agent_outbox: List[AgentOutbound]
+    var agent_outbox_bytes: Int
 
     def __init__(
         out self,
@@ -330,6 +358,10 @@ struct AsyncBackend(Movable):
         self.platform = HostPlatform(0, 0)
         self.capabilities = 0
         self.browser_commands = List[BrowserCommandEvent]()
+        self.events = StreamQueues()
+        self.event_source = None
+        self.agent_outbox = List[AgentOutbound]()
+        self.agent_outbox_bytes = 0
 
     def __deinit__(deinit self):
         if self.busy:
@@ -353,7 +385,30 @@ struct AsyncBackend(Movable):
         return self.job[].connection.value().transport.fd
 
     def pending(self) -> Bool:
-        return len(self.queue) > 0 or Bool(self.clipboard_reply)
+        return (
+            len(self.queue) > 0
+            or Bool(self.clipboard_reply)
+            or len(self.agent_outbox) > 0
+        )
+
+    def agent_send(mut self, var frame: List[UInt8]) -> UInt8:
+        if not self.online or not self.event_source:
+            return AGENT_SEND_OFFLINE
+        if (
+            len(self.agent_outbox) >= AGENT_OUTBOX_FRAMES
+            or len(frame) > AGENT_OUTBOX_BYTES - self.agent_outbox_bytes
+        ):
+            return AGENT_SEND_FULL
+        var source = self.event_source.value()
+        self.agent_outbox_bytes += len(frame)
+        self.agent_outbox.append(AgentOutbound(source[0], source[1], frame^))
+        return AGENT_SEND_OK
+
+    def agent_watch(mut self, pane: UInt64) -> Bool:
+        return self.events.agent.watch(pane)
+
+    def agent_unwatch(mut self, pane: UInt64):
+        self.events.agent.unwatch(pane)
 
     def path(mut self, command: PathCommand) raises -> Bool:
         if not self.path_source or not self.path_source.value().matches(
@@ -508,6 +563,10 @@ struct AsyncBackend(Movable):
         self.job[].epoch = epoch
         self.job[].actions = self.queue.take()
         swap(self.job[].clipboard_reply, self.clipboard_reply)
+        swap(self.job[].agent_frames, self.agent_outbox)
+        self.agent_outbox.clear()
+        self.agent_outbox_bytes = 0
+        self.job[].agent_watched = self.events.agent.watched.copy()
         self.job[].done.store(0)
         self.busy = True
         dispatch_async(
@@ -578,6 +637,21 @@ struct AsyncBackend(Movable):
                     raise Error("browser commands exceed their queue limit")
                 for command in commands:
                     self.browser_commands.append(command.copy())
+                if self.online:
+                    var server = self.job[].connection.value().server_id
+                    var client = self.job[].connection.value().client_id
+                    if (
+                        not self.event_source
+                        or self.event_source.value()[0] != server
+                        or self.event_source.value()[1] != client
+                    ):
+                        if self.event_source:
+                            self.events.disconnect()
+                        self.events.agent.rebind(True)
+                        self.event_source = (server, client)
+                    self.events.merge(
+                        self.job[].connection.value().model.queues
+                    )
             except error:
                 model.error = String(error)
                 self.job[].connection = None
@@ -594,4 +668,7 @@ struct AsyncBackend(Movable):
             except error:
                 model.error = String(error)
             self.path_source = None
+        if not self.online and self.event_source:
+            self.events.disconnect()
+            self.event_source = None
         return True

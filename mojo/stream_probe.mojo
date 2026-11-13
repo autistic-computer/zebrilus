@@ -3,7 +3,6 @@ from std.sys import argv
 from std.testing import assert_equal, assert_true
 from zzmojo.stream_transport import connect_interactive
 from zzmojo.stream_protocol import input_text
-from zzmojo.protocol import Decoder
 from zzmojo.terminal_model import TerminalViewport
 
 
@@ -80,12 +79,14 @@ def main() raises:
             stream.model.view.read_only,
             stream.model.view.client_flags,
         )
-        for raw in stream.model.unhandled:
-            var reader = Decoder(raw.copy())
-            var kind = reader.uint()
-            if kind == 10:
-                _ = reader.uint()
-                print("unhandled event:", reader.uint(), "bytes:", len(raw))
+        for kind in range(len(stream.model.queues.drained_events)):
+            if stream.model.queues.drained_events[kind] != 0:
+                print(
+                    "drained event:",
+                    kind,
+                    "count:",
+                    stream.model.queues.drained_events[kind],
+                )
     assert_true(has_ascii(stream.model.terminals[0], "ACK:NATIVE_INPUT"))
     assert_true(stream.model.terminals[0].generation >= generation)
     assert_true(stream.model.bend_cell_updates > 0)

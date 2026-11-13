@@ -302,7 +302,7 @@ def main() raises:
             summary(output, dialogs)
             summary(output, connection.model.dialogs)
             summary(output, model.dialogs)
-            assert_equal(len(connection.model.unhandled), 0)
+            assert_equal(connection.model.queues.drained(), UInt64(0))
             if dialogs.chooser_plane:
                 assert_true(Bool(model.dialogs.chooser_plane))
                 assert_equal(

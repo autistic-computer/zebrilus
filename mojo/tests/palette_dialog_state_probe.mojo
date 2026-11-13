@@ -85,7 +85,7 @@ def main() raises:
         summary(output, dialogs)
         summary(output, connection.model.dialogs)
         summary(output, model.dialogs)
-        assert_equal(len(connection.model.unhandled), 0)
+        assert_equal(connection.model.queues.drained(), UInt64(0))
         if dialogs.chooser:
             assert_equal(Int(model.dialogs.chooser.value().items[].values.unsafe_ptr()), Int(connection.model.dialogs.chooser.value().items[].values.unsafe_ptr()))
     reader.finish()

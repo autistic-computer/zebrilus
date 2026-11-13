@@ -5,7 +5,7 @@ from std.testing import assert_equal, assert_true
 from zzmojo.stream_transport import connect_interactive, InteractiveConnection
 from zzmojo.state import AppModel
 from zzmojo.input_protocol import KeyInput
-from zzmojo.protocol import append_uint, append_text, envelope, Decoder
+from zzmojo.protocol import append_uint, append_text, envelope
 
 
 def wait_query(mut connection: InteractiveConnection, input: KeyInput, all_keys: Bool) raises:
@@ -88,11 +88,6 @@ def main() raises:
     assert_equal(response.exit_code, UInt8(0))
     wait_ready(connection)
     assert_true(connection.model.key_tables.eligible)
-    var unhandled = connection.model.take_events()
-    for frame in unhandled:
-        var reader = Decoder(frame.copy())
-        if reader.uint() == 10:
-            _ = reader.uint()
-            var kind = reader.uint()
-            assert_true(kind != 25 and kind != 56 and kind != 59 and kind != 54)
+    for kind in [25, 56, 59, 54]:
+        assert_equal(connection.model.queues.drained_events[kind], UInt64(0))
     print("private key table retention, dynamic binds, shared snapshots, bounded refusal and resync passed")

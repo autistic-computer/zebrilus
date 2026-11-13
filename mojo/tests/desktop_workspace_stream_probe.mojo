@@ -142,7 +142,6 @@ def main() raises:
     key(workspace, connection, queue, raw(98, 2), target)
     wait(connection, True)
     key(workspace, connection, queue, raw(98, 2, 2), target)
-    _ = connection.model.take_events()
     var plan = workspace.prepare(
         queue,
         connection.model.key_tables,
