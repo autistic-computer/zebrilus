@@ -13,6 +13,7 @@ mod lift;
 mod pager;
 mod popover_key;
 mod press;
+mod row;
 mod sticky;
 mod swipe_back;
 mod which_key_list;
@@ -28,6 +29,11 @@ pub use popover_key::{PopoverKey, PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap
 pub(crate) use press::over_hover;
 pub use press::{
     PressCorners, PressFeedback, instant_press_highlight, press_feedback, press_highlight,
+};
+pub(crate) use row::touch_row_frame;
+pub use row::{
+    TOUCH_DETAIL_ROW_HEIGHT, TOUCH_HEADER_HEIGHT, TOUCH_ROW_HEIGHT, TouchGroup, TouchHeader,
+    TouchRow, TouchTrailing,
 };
 pub use sticky::{StickyModifier, StickyModifiers};
 pub use swipe_back::{SwipeBack, claim_back_swipe, swipe_back, yield_back_swipe};
@@ -149,7 +155,7 @@ impl Element for TouchScale {
 pub fn control_slop(size: Size) -> f32 {
     match size {
         Size::Size(_) => 0.0,
-        size => (TOUCH_TARGET - size.control_px()) / 2.0,
+        size => ((TOUCH_TARGET - size.control_px()) / 2.0).max(0.0),
     }
 }
 

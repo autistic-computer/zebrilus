@@ -84,7 +84,7 @@ ListItem::new("work").selected(true).on_click(open).child(
 On a phone, lists use touch rows: found machines, chats, settings.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Built inside sheets only</span><span class="penna-text penna-notice-detail" data-penna-text>One-line and two-line rows exist in sheets. Rows elsewhere, the group, the trailing kinds, the danger row, the swipe and the section header are drawn with the HTML kit.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Partly built natively</span><span class="penna-text penna-notice-detail" data-penna-text>Rows, groups and headers are built. The swipe, the tone dot and spinner trailing kinds and the header's hold are drawn with the HTML kit.</span></div></div></div>
 ```
 
 ```figure uses=touch
@@ -148,3 +148,26 @@ On a phone, lists use touch rows: found machines, chats, settings.
 ```
 
 The header is 28 tall, strong `touch-small`, muted, with an optional count of what is under it, lined up with the rows' icons. A header you can hold (a session over its windows) is 44. A header holds no button: new things come from the pill's menu, never from the header. A row that closes, removes or forgets takes the danger ink and comes last. A group has the phone container corner, twice `radius`. Its rows sit 4 in from its edges and 2 apart, with no separators, so a pressed or hovered row's fill never meets an edge or a line; a row's corner is never rounder than the group's less 4.
+
+```rust
+TouchHeader::new("Found on your tailnet").count(3);
+TouchGroup::new()
+    .row(TouchRow::new("macbook", "macbook").icon(IconName::Laptop).detail("macOS · runs zz").trailing(TouchTrailing::Glyph(IconName::Plus)))
+    .row(TouchRow::new("close", "Close session").icon(IconName::Xmark).danger());
+```
+
+| Rust | HTML | Does |
+| --- | --- | --- |
+| `TouchRow::new(id, title)` | `.penna-touch-row[data-penna="phone.row"]` | Row, 52 tall |
+| `.icon(icon)` | `<i data-icon>` first | Leading glyph, 20 |
+| `.detail(text)` | second span in `.penna-touch-row-lines`, `data-lines="2"` | Second line, 64 tall |
+| `.trailing(TouchTrailing::Glyph(icon))` | `<i data-icon>` last | Chevron or plus |
+| `.trailing(TouchTrailing::Value(text))` | `.penna-touch-row-value` | A value |
+| `.trailing(TouchTrailing::Check)` | `.penna-touch-row-state > i[data-icon="check"]` | The picked row |
+| `.danger()` | `data-tone="danger"` | Danger ink |
+| `.disabled(true)` | `aria-disabled="true"` | Faint title, no fill |
+| `TouchGroup::new().row(row)` | `.penna-touch-group[data-penna="settings.card"]` | Group, phone corner |
+| `TouchHeader::new(title)` | `.penna-touch-header` | Section header |
+| `.count(n)` | `.penna-touch-count` | Count at its end |
+| `.holdable()` | `data-hold` | 44 tall |
+| `.over_tiles()` | header before a grid | Inset 12 |

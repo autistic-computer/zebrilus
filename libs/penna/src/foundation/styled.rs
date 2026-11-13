@@ -382,16 +382,18 @@ pub enum Size {
     Large,
     XLarge,
     Touch,
+    TouchLarge,
 }
 
 impl Size {
-    pub const LADDER: [Self; 6] = [
+    pub const LADDER: [Self; 7] = [
         Self::XSmall,
         Self::Small,
         Self::Medium,
         Self::Large,
         Self::XLarge,
         Self::Touch,
+        Self::TouchLarge,
     ];
 
     pub fn name(&self) -> &'static str {
@@ -401,6 +403,7 @@ impl Size {
             Size::Large => "lg",
             Size::XLarge => "xl",
             Size::Touch => "touch",
+            Size::TouchLarge => "touch-lg",
             _ => "md",
         }
     }
@@ -439,6 +442,7 @@ impl Size {
             Size::Large => 32.,
             Size::XLarge => 40.,
             Size::Touch => 44.,
+            Size::TouchLarge => 56.,
         }
     }
 
@@ -447,7 +451,7 @@ impl Size {
             Size::XSmall => TextStyle::Caption,
             Size::Small => TextStyle::Small,
             Size::XLarge => TextStyle::Lead,
-            Size::Touch => TextStyle::TouchBody,
+            Size::Touch | Size::TouchLarge => TextStyle::TouchBody,
             _ => TextStyle::Body,
         }
     }
@@ -455,7 +459,7 @@ impl Size {
     pub fn inset(&self) -> Space {
         match self.rung() {
             Size::XSmall | Size::Small => Space::S8,
-            Size::Large | Size::XLarge | Size::Touch => Space::S16,
+            Size::Large | Size::XLarge | Size::Touch | Size::TouchLarge => Space::S16,
             _ => Space::S12,
         }
     }
@@ -464,7 +468,7 @@ impl Size {
         match self.rung() {
             Size::XSmall | Size::Small => Space::S6,
             Size::Large => Space::S10,
-            Size::XLarge | Size::Touch => Space::S12,
+            Size::XLarge | Size::Touch | Size::TouchLarge => Space::S12,
             _ => Space::S8,
         }
     }
@@ -473,6 +477,7 @@ impl Size {
         match self.rung() {
             Size::XSmall | Size::Small => 12.,
             Size::Large | Size::XLarge | Size::Touch => 16.,
+            Size::TouchLarge => 20.,
             _ => 14.,
         }
     }
@@ -480,7 +485,7 @@ impl Size {
     pub fn icon_gap(&self) -> Space {
         match self.rung() {
             Size::XSmall | Size::Small => Space::S4,
-            Size::XLarge | Size::Touch => Space::S8,
+            Size::XLarge | Size::Touch | Size::TouchLarge => Space::S8,
             _ => Space::S6,
         }
     }
@@ -553,5 +558,10 @@ pub trait Sizable: Sized {
     #[inline(always)]
     fn touch(self) -> Self {
         self.with_size(Size::Touch)
+    }
+
+    #[inline(always)]
+    fn touch_large(self) -> Self {
+        self.with_size(Size::TouchLarge)
     }
 }

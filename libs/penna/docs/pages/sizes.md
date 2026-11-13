@@ -17,7 +17,7 @@ One ladder of control sizes. Each step sets height, text, padding and icon toget
 </div>
 ```
 
-Small and xsmall for dense places. Large and xlarge for one main action. Touch under a finger: the smallest target. Touch-large, not built natively yet, for a phone's main actions and fields (see [Phone](phone.html)).
+Small and xsmall for dense places. Large and xlarge for one main action. Touch under a finger: the smallest target. Touch-large for a phone's main actions and fields (see [Phone](phone.html)).
 
 ## One size per row
 

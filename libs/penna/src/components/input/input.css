@@ -83,6 +83,11 @@
 .penna-input[data-size="touch-large"] > .penna-input-suffix > .penna-button[data-size="touch"] {
   width: var(--penna-control-touch);
   height: var(--penna-control-touch);
+  padding: 0;
+  --penna-icon-size: 20px;
+}
+
+.penna-input[data-size="touch-large"] > .penna-input-suffix:has(> .penna-button:last-child) {
   margin-right: calc(var(--penna-space-4) - var(--penna-space-12));
 }
 

@@ -27,7 +27,6 @@ body {
 
 :root {
   --penna-click-cursor: pointer;
-  --penna-control-touch-lg: 56px;
   --penna-phone-radius: calc(var(--penna-radius, 12px) * 2);
 }
 

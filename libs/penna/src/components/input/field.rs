@@ -7,12 +7,12 @@ use ala::{
 use crate::{
     ActiveTheme as _, Disableable, Emphasis, Ground, Highlight, Kind, Layer, Paint, PaintState,
     Sizable, Size, StyledExt as _, Surface, SurfaceRole, Theme, Tone,
-    components::button::Button,
+    components::button::{Button, INSIDE_GAP},
     components::icon::{Icon, IconName},
     components::spinner::Spinner,
     foundation::roles,
     foundation::{author_name, author_part, restyle},
-    h_flex,
+    h_flex, rems_from_px,
 };
 
 use super::{actions, state::InputState};
@@ -180,6 +180,7 @@ pub(crate) fn trailing_size(size: Size) -> Size {
         Size::Large => Size::Medium,
         Size::XLarge => Size::Large,
         Size::Touch => Size::XLarge,
+        Size::TouchLarge => Size::TouchLarge,
         _ => Size::Small,
     }
 }
@@ -311,11 +312,17 @@ impl Input {
         cx: &App,
     ) -> Button {
         let state = state.clone();
-        Button::new(author_part(author, "clear", "penna-input-clear"))
-            .icon(Icon::new(IconName::CircleX))
-            .emphasis(Emphasis::Ghost)
-            .with_size(trailing_size(size))
-            .tab_stop(false)
+        let id = author_part(author, "clear", "penna-input-clear");
+        let button = if size == Size::TouchLarge {
+            crate::blocks::compact::compact_bar_button(id, IconName::CircleX)
+        } else {
+            Button::new(id)
+                .icon(Icon::new(IconName::CircleX))
+                .emphasis(Emphasis::Ghost)
+                .with_size(trailing_size(size))
+                .tab_stop(false)
+        };
+        button
             .text_color(cx.theme().foreground.muted())
             .on_click(move |_, window, cx| {
                 state.update(cx, |this, cx| {
@@ -397,6 +404,8 @@ impl RenderOnce for Input {
         let prefix = self.prefix;
         let suffix = self.suffix;
         let has_suffix = suffix.is_some() || loading || show_clear;
+        let accessories = size == Size::TouchLarge && (suffix.is_some() || show_clear);
+        let reach = size.field_inset().design_px() - INSIDE_GAP.as_f32();
 
         let mut element = div()
             .id(("penna-input", self.state.entity_id()))
@@ -494,6 +503,7 @@ impl RenderOnce for Input {
                         .flex_none()
                         .gap(gap)
                         .items_center()
+                        .when(accessories, |this| this.mr(rems_from_px(-reach)))
                         .when(disabled, |this| this.opacity(0.5))
                         .when(loading, |this| {
                             this.child(

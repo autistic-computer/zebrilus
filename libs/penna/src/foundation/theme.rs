@@ -158,6 +158,10 @@ impl Theme {
         }
     }
 
+    pub fn phone_radius(&self) -> Pixels {
+        self.radius.max(px(0.0)) * 2.0
+    }
+
     pub fn inset_rows(&self) -> bool {
         self.row_inset > px(0.0)
     }

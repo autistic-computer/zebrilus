@@ -1,0 +1,9 @@
+.phone-column {
+  display: flex;
+  flex-direction: column;
+  width: 343px;
+}
+
+.phone-column > .penna-button {
+  width: 100%;
+}

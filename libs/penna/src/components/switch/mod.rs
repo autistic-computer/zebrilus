@@ -32,7 +32,7 @@ impl Metrics {
             Size::Small => (28., 16.),
             _ if coarse => (44., 26.),
             Size::Large => (40., 22.),
-            Size::XLarge | Size::Touch => (44., 26.),
+            Size::XLarge | Size::Touch | Size::TouchLarge => (44., 26.),
             _ => (36., 20.),
         };
         let inset = px(2.);

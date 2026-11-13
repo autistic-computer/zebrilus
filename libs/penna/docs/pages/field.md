@@ -58,12 +58,9 @@ Fields in a form sit `gap-group` 16 apart. Two short fields can share a line, `g
 | `.child(control)` | the control | What it frames |
 | `.help(text)` | `.penna-field-help` | What the value is for |
 | `.error(text)` | `.penna-field-error` | Replaces the help |
+| `.with_size(Size::TouchLarge)` | `data-size="touch-large"` | The phone field: 56, its notes `touch-small` |
 
 ## Phone
-
-```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The 56 rung is drawn with the HTML kit; phone code draws fields at the default size today.</span></div></div></div>
-```
 
 ```figure uses=field,input
 <div class="docs-show" data-gap="wide" style="align-items: flex-start">

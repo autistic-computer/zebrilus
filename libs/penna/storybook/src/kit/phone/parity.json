@@ -1,0 +1,17 @@
+{
+  "story": "phone",
+  "page": "index.html",
+  "steps": [
+    { "name": "press-primary", "section": "main-action", "press": "main-primary" },
+    { "name": "hover-secondary", "section": "main-action", "hover": "main-secondary" },
+    { "name": "hover-icon-button", "section": "icon-button", "hover": "icon-settings", "wait": 700 },
+    { "name": "hover-field", "section": "fields", "hover": "phone-empty" },
+    { "name": "hover-clear", "section": "fields", "hover": "phone-filled-clear" },
+    { "name": "click-field", "section": "fields", "click": "phone-empty" },
+    { "name": "hover-row", "section": "rows", "hover": "row-glyph" },
+    { "name": "press-row", "section": "rows", "press": "row-detail" },
+    { "name": "hover-disabled-row", "section": "rows", "hover": "row-disabled", "still": true },
+    { "name": "hover-group-row", "section": "groups", "hover": "found-macbook" },
+    { "name": "press-group-row", "section": "groups", "press": "work-close" }
+  ]
+}

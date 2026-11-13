@@ -44,7 +44,7 @@ impl Metrics {
             Size::Small => (4., 14.),
             Size::Large => (6., 18.),
             Size::XLarge => (6., 22.),
-            Size::Touch => (6., 28.),
+            Size::Touch | Size::TouchLarge => (6., 28.),
             _ => (6., 16.),
         };
         Self { size, rail, knob }

@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phone</title>
+    <link rel="stylesheet" href="../../../../web/penna.css" />
+    <link rel="stylesheet" href="../../../../web/story.css" />
+    <link rel="stylesheet" href="../../../../src/components/button/button.css" />
+    <link rel="stylesheet" href="../../../../src/components/tooltip/tooltip.css" />
+    <link rel="stylesheet" href="../../../../src/components/input/input.css" />
+    <link rel="stylesheet" href="../../../../src/components/field/field.css" />
+    <link rel="stylesheet" href="../../../../src/blocks/compact/compact.css" />
+    <link rel="stylesheet" href="../../../../src/blocks/touch/touch.css" />
+    <link rel="stylesheet" href="page.css" />
+    <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
+    <script src="../../../../web/story.js" defer></script>
+    <script src="../../../../src/components/button/button.js" defer></script>
+    <script src="../../../../src/components/tooltip/tooltip.js" defer></script>
+    <script src="../../../../src/components/input/input.js" defer></script>
+  </head>
+  <body>
+    <section data-section="main-action">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">primary</div>
+          <div class="phone-column"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-id="main-primary"><span class="penna-label" data-penna-text>Connect</span></button></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">secondary</div>
+          <div class="phone-column"><button class="penna-button" data-penna="button" data-size="touch-large" data-id="main-secondary"><span class="penna-label" data-penna-text>Scan QR</span></button></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">ghost</div>
+          <div class="phone-column"><button class="penna-button" data-penna="button.quiet" data-size="touch-large" data-id="main-ghost"><span class="penna-label" data-penna-text>Type an address instead</span></button></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">danger</div>
+          <div class="phone-column"><button class="penna-button" data-penna="button" data-tone="danger" data-size="touch-large" data-id="main-danger"><span class="penna-label" data-penna-text>Forget xps</span></button></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">icon</div>
+          <div class="phone-column"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-id="main-icon"><i data-icon="plus"></i><span class="penna-label" data-penna-text>Add machine</span></button></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">disabled</div>
+          <div class="phone-column"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled aria-disabled="true" data-id="main-disabled"><span class="penna-label" data-penna-text>Connect</span></button></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">loading</div>
+          <div class="phone-column"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-loading data-id="main-loading"><i data-icon="loader"></i><span class="penna-label" data-penna-text>Connecting</span></button></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="icon-button">
+      <div class="story-row">
+        <button class="penna-touch-icon" data-penna="phone.button" data-id="icon-close" aria-label="Close" data-tooltip="Close"><i data-icon="xmark"></i></button>
+        <button class="penna-touch-icon" data-penna="phone.button" data-id="icon-settings" aria-label="Settings" data-tooltip="Settings"><i data-icon="settings"></i></button>
+        <button class="penna-touch-icon" data-penna="phone.button" data-id="icon-add" aria-label="Add" data-tooltip="Add"><i data-icon="plus"></i></button>
+      </div>
+    </section>
+
+    <section data-section="fields">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">label and help</div>
+          <div class="phone-column">
+            <div class="penna-field" data-size="touch-large">
+              <span class="penna-field-label" data-penna-text>Address</span>
+              <label class="penna-input" data-penna="field" data-size="touch-large" data-id="phone-empty"><span class="penna-input-prefix"><i data-icon="server"></i></span><input placeholder="user@host" /></label>
+              <span class="penna-field-help" data-penna-text>Your tailnet name works too.</span>
+            </div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">filled, with clear</div>
+          <div class="phone-column">
+            <div class="penna-field" data-size="touch-large">
+              <span class="penna-field-label" data-penna-text>Address</span>
+              <label class="penna-input" data-penna="field" data-size="touch-large" data-id="phone-filled"><span class="penna-input-prefix"><i data-icon="server"></i></span><input value="fabrico@xps" /><span class="penna-input-suffix"><button class="penna-button penna-input-clear" data-id="phone-filled-clear" data-penna="phone.button" data-shape="icon" data-size="touch" type="button" tabindex="-1" aria-label="Clear"><i data-icon="circle-x"></i></button></span></label>
+            </div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">error</div>
+          <div class="phone-column">
+            <div class="penna-field" data-size="touch-large">
+              <span class="penna-field-label" data-penna-text>Address</span>
+              <label class="penna-input" data-penna="field" data-size="touch-large" data-tone="danger" data-id="phone-error"><span class="penna-input-prefix"><i data-icon="server"></i></span><input value="fabrico@xps:99999" /></label>
+              <div class="penna-field-error"><i data-icon="circle-x"></i><span data-penna-text>Ports go up to 65535.</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">disabled</div>
+          <div class="phone-column">
+            <div class="penna-field" data-size="touch-large">
+              <span class="penna-field-label" data-penna-text>Address</span>
+              <label class="penna-input" data-penna="field" data-size="touch-large" data-id="phone-disabled" aria-disabled="true" data-disabled><span class="penna-input-prefix"><i data-icon="server"></i></span><input placeholder="user@host" disabled /></label>
+            </div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">accessories</div>
+          <div class="phone-column">
+            <div class="penna-field" data-size="touch-large">
+              <span class="penna-field-label" data-penna-text>Password</span>
+              <label class="penna-input" data-penna="field" data-size="touch-large" data-id="phone-password"><input type="password" value="hunter22" /><span class="penna-input-suffix"><button class="penna-button penna-input-clear" data-id="phone-password-clear" data-penna="phone.button" data-shape="icon" data-size="touch" type="button" tabindex="-1" aria-label="Clear"><i data-icon="circle-x"></i></button><button class="penna-button" data-id="phone-password-reveal" data-penna="phone.button" data-shape="icon" data-size="touch" type="button" tabindex="-1" aria-label="Show password" data-tooltip="Show password"><i data-icon="eye"></i></button></span></label>
+            </div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">loading</div>
+          <div class="phone-column">
+            <div class="penna-field" data-size="touch-large">
+              <span class="penna-field-label" data-penna-text>Address</span>
+              <label class="penna-input" data-penna="field" data-size="touch-large" data-id="phone-loading"><span class="penna-input-prefix"><i data-icon="server"></i></span><input value="fabrico@xps" /><span class="penna-input-suffix"><span class="penna-spinner"><i data-icon="loader"></i></span></span></label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="field-focused">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">focused</div>
+          <div class="phone-column">
+            <div class="penna-field" data-size="touch-large">
+              <span class="penna-field-label" data-penna-text>Name</span>
+              <label class="penna-input" data-penna="field" data-size="touch-large" data-id="phone-focused"><input value="fabrico@xps" autofocus /></label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="rows">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">glyph</div>
+          <div class="phone-column"><div class="penna-touch-row" data-penna="phone.row" role="button" data-id="row-glyph"><i data-icon="palette"></i><span class="penna-touch-row-lines"><span data-penna-text>Appearance</span></span><i data-icon="chevron-right"></i></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">value</div>
+          <div class="phone-column"><div class="penna-touch-row" data-penna="phone.row" role="button" data-id="row-value"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span data-penna-text>Machines</span></span><span class="penna-touch-row-value"><span data-penna-text>3</span></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">two lines</div>
+          <div class="phone-column"><div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-id="row-detail"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span data-penna-text>xps</span><span data-penna-text>On your tailnet · runs zz</span></span><i data-icon="plus"></i></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">check</div>
+          <div class="phone-column"><div class="penna-touch-row" data-penna="phone.row" role="button" data-id="row-check"><i data-icon="moon"></i><span class="penna-touch-row-lines"><span data-penna-text>Dark</span></span><span class="penna-touch-row-state"><i data-icon="check"></i></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">disabled</div>
+          <div class="phone-column"><div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true" role="button" data-id="row-disabled"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span data-penna-text>homelab</span><span data-penna-text>No zz on it yet</span></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">danger</div>
+          <div class="phone-column"><div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button" data-id="row-danger"><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span data-penna-text>Close session</span></span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="groups">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">header with a count</div>
+          <div class="phone-column">
+            <div class="penna-touch-header"><span data-penna-text>Found on your tailnet</span><span class="penna-touch-count" data-penna-text>3</span></div>
+            <div class="penna-touch-group" data-penna="settings.card">
+              <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-id="found-macbook"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span data-penna-text>macbook</span><span data-penna-text>On your tailnet · runs zz</span></span><i data-icon="plus"></i></div>
+              <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-id="found-alienware"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span data-penna-text>alienware</span><span data-penna-text>On your tailnet · runs zz</span></span><i data-icon="plus"></i></div>
+              <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true" role="button" data-id="found-homelab"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span data-penna-text>homelab</span><span data-penna-text>No zz on it yet</span></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">holdable header</div>
+          <div class="phone-column">
+            <div class="penna-touch-header" data-hold><span data-penna-text>work</span></div>
+            <div class="penna-touch-group" data-penna="settings.card">
+              <div class="penna-touch-row" data-penna="phone.row" role="button" data-id="work-rename"><i data-icon="pencil"></i><span class="penna-touch-row-lines"><span data-penna-text>Rename session</span></span></div>
+              <div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button" data-id="work-close"><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span data-penna-text>Close session</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

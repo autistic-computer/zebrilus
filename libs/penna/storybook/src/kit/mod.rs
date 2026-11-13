@@ -23,6 +23,7 @@ mod navigation;
 mod notifications;
 mod palette;
 mod panels;
+mod phone;
 mod rows;
 mod scrollbars;
 mod selection;
@@ -50,6 +51,7 @@ pub const STORIES: &[Story] = &[
     rows::STORY,
     notifications::STORY,
     sheet::STORY,
+    phone::STORY,
     scrollbars::STORY,
     markdown::STORY,
     #[cfg(feature = "editor")]

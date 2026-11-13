@@ -53,6 +53,7 @@ Icon only: square, with a tooltip naming the action.
   <span>large</span><span><code>32</code></span><span><code>body</code></span><span><button class="penna-button" data-penna="button" data-size="large"><span class="penna-label" data-penna-text>Save</span></button></span>
   <span>xlarge</span><span><code>40</code></span><span><code>lead</code></span><span><button class="penna-button" data-penna="button" data-size="xlarge"><span class="penna-label" data-penna-text>Save</span></button></span>
   <span>touch</span><span><code>44</code></span><span><code>touch-body</code></span><span><button class="penna-button" data-penna="button" data-size="touch"><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>touch-large</span><span><code>56</code></span><span><code>touch-body</code></span><span><button class="penna-button" data-penna="button" data-size="touch-large"><span class="penna-label" data-penna-text>Save</span></button></span>
 </div>
 ```
 
@@ -113,7 +114,7 @@ Actions at the end, main action last. Destructive confirms are danger, not prima
 | `.icon(name)` | `<i data-icon>` | Icon before the label |
 | `.primary()`, `.ghost()`, `.danger()`, `.link()` | `data-tone`, `data-prominent`, `data-penna="button.quiet"`, `data-variant` | Kind |
 | `.emphasis(Emphasis::Outline)` | `data-penna="button.outline"` | Outline kind |
-| `.xsmall()` … `.touch()` | `data-size` | Size; medium by default |
+| `.xsmall()` … `.touch_large()` | `data-size` | Size; medium by default |
 | `.selected(true)` | `data-state="current"` | Selected |
 | `.disabled(true)` | `disabled` | Off |
 | `.loading(true)` | `data-loading` | Busy |
@@ -122,10 +123,6 @@ Actions at the end, main action last. Destructive confirms are danger, not prima
 | `.on_click(handler)` | `click` | Runs on release |
 
 ## Phone
-
-```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The 56 rung is drawn with the HTML kit. Phone code asks for no touch rung today; icon buttons should ask for touch (44), main actions for touch-large (56).</span></div></div></div>
-```
 
 ```figure uses=button,touch,compact
 <div class="docs-show" data-gap="wide" style="align-items: flex-start">

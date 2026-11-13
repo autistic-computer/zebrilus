@@ -1275,7 +1275,7 @@ mod tests {
             assert!(cx.reduce_motion());
             assert_eq!(
                 crate::Size::LADDER.map(|size| size.control_px()),
-                [20.0, 24.0, 24.0, 32.0, 40.0, 44.0]
+                [20.0, 24.0, 24.0, 32.0, 40.0, 44.0, 56.0]
             );
             crate::Density::Regular.set();
             Theme::global_mut(cx).set_contrast(1.0);

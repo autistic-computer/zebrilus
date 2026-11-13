@@ -11,11 +11,8 @@ use web_time::{Duration, Instant};
 use crate::foundation::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 use crate::{
     ActiveTheme as _, Emphasis, Ground, Icon, IconName, Layer, PaintState, Space, StyledExt as _,
-    Surface, SurfaceRole, Tone,
-    components::button::Button,
+    Surface, SurfaceRole, Tone, components::button::Button, foundation::muted_on,
     foundation::roles,
-    foundation::{InteractiveSurfaceExt as _, muted_on, row_corners, row_radius},
-    h_flex,
 };
 
 const ENTER: Duration = Duration::from_millis(240);
@@ -23,8 +20,8 @@ const GRABBER_WIDTH: f32 = 36.0;
 const GRABBER_HEIGHT: f32 = 5.0;
 const HEADER_HEIGHT: f32 = 60.0;
 const CLOSE: f32 = 36.0;
-const OPTION_HEIGHT: f32 = 52.0;
-const DETAIL_HEIGHT: f32 = 64.0;
+const OPTION_HEIGHT: f32 = crate::blocks::touch::TOUCH_ROW_HEIGHT;
+const DETAIL_HEIGHT: f32 = crate::blocks::touch::TOUCH_DETAIL_ROW_HEIGHT;
 const TILE: f32 = 40.0;
 const TILE_ROW_HEIGHT: f32 = 56.0;
 const MAX_HEIGHT: f32 = 0.85;
@@ -284,32 +281,7 @@ fn row_shell(
     height: Pixels,
     cx: &App,
 ) -> Stateful<Div> {
-    let id = id.into();
-    let theme = cx.theme();
-    let layer = theme.layer(surface, PaintState::Rest);
-    let pressed = crate::blocks::touch::over_hover(
-        theme.layer(surface, PaintState::Hover).fill,
-        theme.layer(surface, PaintState::Active).fill,
-    );
-    row_corners(
-        h_flex()
-            .id(id.clone())
-            .flex_none()
-            .h(height)
-            .surface_hover(surface, PaintState::Rest, cx),
-        &layer,
-        height,
-    )
-    .relative()
-    .w_full()
-    .gap(Space::S12)
-    .px(Space::S12)
-    .click_cursor()
-    .child(crate::blocks::touch::instant_press_highlight(
-        id,
-        pressed,
-        crate::blocks::touch::PressCorners::Row(row_radius(&layer, height), layer.smoothing),
-    ))
+    crate::blocks::touch::touch_row_frame(id, surface, height, None, PaintState::Rest, cx)
 }
 
 fn icon_tile(icon: Icon, size: f32, layer: &Layer, cx: &App) -> Div {
