@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone sheets</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/input/input.css">
+<link rel="stylesheet" href="/penna-src/components/slider/slider.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-board { display: grid; grid-template-columns: repeat(4, 424px); gap: 0 16px; align-items: start; }
+  .zz-heads { position: sticky; z-index: 50; top: 0; display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; padding: 14px 0 12px; background: var(--penna-bg); box-shadow: 0 1px 0 var(--penna-divider); }
+  .zz-heads > div, .zz-notes > p { display: grid; gap: 2px; margin: 0 10px; }
+  .zz-heads b { font-size: 17px; line-height: 22px; font-weight: 600; }
+  .zz-heads span { color: var(--penna-fg-muted); }
+  .zz-kind { grid-column: 1 / -1; margin: 36px 10px 4px; }
+  .zz-notes { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; margin-top: 12px; }
+  .zz-notes > p { color: var(--penna-fg-muted); }
+
+  .zz-full[data-penna] { position: absolute; inset: 0; padding-top: 54px; }
+  .zz-machine[data-penna] { padding-top: 0; }
+  .zz-scroll { position: absolute; inset: 0; padding-top: 98px; overflow: hidden; }
+  .zz-sections { display: flex; flex-direction: column; gap: var(--penna-gap-group); padding: 0 var(--penna-inset-pane) 112px; }
+  .zz-phone .penna-bento { --penna-bento-width: 370px; }
+  .zz-fold { position: absolute; z-index: 20; top: 0; right: 0; left: 0; height: 98px; pointer-events: none; }
+  .zz-fold > .penna-folding-frost, .zz-fold > .penna-folding-title { display: none; }
+  .zz-fold > .penna-touch-icon[data-penna] { position: absolute; right: var(--penna-inset-pane); bottom: 0; }
+
+  .zz-pane { position: absolute; inset: 0; --zz-dock: 156px; }
+  .zz-tx { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 16px; padding: 70px 16px var(--zz-dock); overflow: hidden; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-tx > p { margin: 0; }
+  .zz-tx > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 85%; padding: 10px 14px; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-steps { display: flex; flex-direction: column; margin: -8px 0; }
+  .zz-fade { position: absolute; z-index: 5; top: 0; right: 0; left: 0; height: 70px; background: linear-gradient(var(--penna-bg) 54px, transparent); }
+  .zz-dock { position: absolute; z-index: 15; right: 16px; bottom: 84px; left: 16px; display: flex; flex-direction: column; }
+  .zz-phone[data-kb] .zz-dock { bottom: 300px; }
+
+  .zz-phone > .penna-sheet { z-index: 35; }
+  .zz-phone > .zz-kb { position: absolute; z-index: 36; right: 0; bottom: 0; left: 0; }
+  .zz-phone .penna-sheet-panel { padding-bottom: 20px; }
+  .zz-phone[data-kb] .penna-sheet-panel { padding-bottom: 0; }
+  .zz-field-sel { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .zz-field-sel > span { background: color-mix(in srgb, var(--penna-accent) 35%, transparent); }
+  .zz-phone[data-dir="today"] .penna-sheet-title { font-size: 28px; line-height: 34px; font-weight: 700; }
+  .zz-phone[data-dir="today"] .penna-sheet-close.zz-disc[data-penna][data-penna][data-penna] { --penna-r: 9999px; --penna-k: 1; --penna-share: 0; }
+  .zz-today-slider { display: flex; align-items: center; gap: 12px; padding: 4px 16px 8px; }
+  .zz-today-slider > span { flex: none; color: var(--penna-fg-muted); font-variant-numeric: tabular-nums; }
+
+  .zz-phone:is([data-dir="a"], [data-dir="b"], [data-dir="c"]) .penna-sheet-panel { padding-bottom: 0; }
+  .zz-phone:is([data-dir="a"], [data-dir="b"]) .penna-sheet-header { height: auto; min-height: 0; }
+
+  .zz-phone[data-dir="a"] .penna-sheet-header { min-height: 44px; padding: 4px 24px 10px; }
+  .zz-phone[data-dir="a"] .penna-sheet-title { font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); font-weight: 600; }
+
+  .zz-phone[data-dir="b"] .penna-sheet-header { justify-content: center; padding: 4px 24px 12px; text-align: center; }
+  .zz-cap { display: flex; flex-direction: column; min-width: 0; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
+  .zz-cap > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .zz-cap b { font-weight: 600; }
+  .zz-cap i { font-style: normal; color: var(--penna-fg-muted); }
+
+  .zz-groups { display: flex; flex-direction: column; gap: var(--penna-gap-group); padding: 0 8px 8px; }
+  .zz-group.penna-touch-group[data-penna][data-penna][data-penna] { gap: 0; padding: 0; overflow: hidden; --penna-r: calc(var(--penna-phone-radius) - 8px); }
+  .zz-group > .penna-touch-row[data-penna][data-penna][data-penna], .zz-flat > .penna-touch-row[data-penna][data-penna][data-penna] { padding: 0 16px; --penna-r: 0px; --penna-share: 0; }
+  :is(.zz-group, .zz-flat) > .penna-touch-row + .penna-touch-row::before { content: ""; position: absolute; top: 0; right: 0; left: 48px; height: 1px; background: var(--penna-divider); }
+  :is(.zz-group, .zz-flat) > .penna-touch-row + .penna-touch-row:not(:has(> [data-icon]:first-child))::before { left: 16px; }
+  .zz-row-off { cursor: default; }
+  .zz-foot { margin: -8px 0 0; padding: 0 16px 4px; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
+  .zz-control { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px 4px; }
+  .zz-line { display: flex; align-items: baseline; gap: 12px; }
+  .zz-line > span:first-child { flex: 1; min-width: 0; }
+  .zz-line > span:last-child { color: var(--penna-muted); font-size: var(--penna-text-touch-small-size); font-variant-numeric: tabular-nums; }
+  .zz-control > .penna-slider { padding: 0 14px; margin: 0 -14px; width: auto; }
+  .zz-phone[data-dir="b"] .zz-control { padding-top: 4px; }
+
+  .zz-phone[data-dir="c"] .penna-sheet .penna-touch-header { height: 36px; }
+  .zz-phone[data-dir="c"] .penna-sheet .penna-touch-header > .penna-touch-count { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .zz-flat { display: flex; flex-direction: column; padding-bottom: 12px; }
+  .zz-flat > .zz-split { flex: none; height: 1px; margin: 12px 0; background: var(--penna-divider); }
+  .zz-flat > .zz-foot { margin: 0; padding: 8px 16px 0; }
+  .zz-say { margin: 0; padding: 0 16px 4px; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-on-panel { padding: 0 16px 12px; }
+  .zz-on-panel > .penna-slider { width: auto; margin: 0 -14px; padding: 0 14px; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro"><h1>Sheets</h1></div>
+  <div class="zz-board" data-board></div>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const DIRS = ["today", "a", "b", "c"];
+  const HEADS = {
+    today: ["Today", "Display title, close disc, bare rows"],
+    a: ["A", "Quiet title over grouped rows"],
+    b: ["B", "Centered caption on the grabber"],
+    c: ["C", "The sheet is the group"],
+  };
+  const NOTES = {
+    today: "",
+    a: "Model has no back: a drilled page can only close.",
+    b: "A centered caption over rows that start at the edge.",
+    c: "A muted 15 title reads as a section, not a question.",
+  };
+
+  const T = {
+    bash: ["~/dev/zebrilus main", "❯ git log --oneline -3", "4f1c2e9 phone: sheet groups", "a07d311 penna: touch rows", "9be2c10 zz-ui: hold sheets", "❯ "],
+    pill: ["~/dev/zebrilus main", "❯ cargo test -p zz-client pill", "   Compiling zz-client v0.42.0", "running 14 tests", "test pill::menu_order ... ok", "✓test result: ok. 14 passed"],
+    watch: ["~/dev/zebrilus main", "❯ cargo watch -x 'check -p zz-mux'", "    Checking zz-mux v0.42.0", "✓    Finished `dev` profile in 2.14s"],
+  };
+  const term = (key) => ({ kind: "term", lines: T[key] });
+  const chat = (you, reply) => ({ kind: "chat", you, reply });
+  const web = (host, bars) => ({ kind: "web", host, bars });
+  const at = (pane, x, y, w, h) => ({ ...pane, rect: [x, y, w, h] });
+  const one = (pane) => [at(pane, 0, 0, 1, 1)];
+  const sideBySide = (a, b) => [at(a, 0, 0, 0.5, 1), at(b, 0.5, 0, 0.5, 1)];
+  const leftAndTwo = (a, b, c) => [at(a, 0, 0, 0.5, 1), at(b, 0.5, 0, 0.5, 0.5), at(c, 0.5, 0.5, 0.5, 0.5)];
+  const WINDOWS = [
+    { title: "Make the pill menu offer New chat", mark: "warning", say: "Needs approval", panes: leftAndTwo(chat([0.92, 0.5], [1, 0.9, 0.96, 0.62]), term("pill"), web("127.0.0.1:8090", [0.55, 1, 0.9, 0.72])) },
+    { title: "bash", panes: one(term("bash")) },
+    { title: "Fix pane stack hit testing", mark: "spin", panes: one(chat([0.8, 0.42], [1, 0.94, 0.7])) },
+    { title: "cargo watch", panes: one(term("watch")) },
+    { title: "Port the bento grid to penna", mark: "strong", panes: sideBySide(chat([0.7], [1, 0.88, 0.95, 0.5]), web("docs.rs", [0.4, 1, 0.84, 0.92])) },
+  ];
+  const span = (w) => (w.panes.length <= 2 ? [2, 2] : [4, 2]);
+  const pack = (spans) => {
+    const taken = [];
+    const free = (c, r, w, h) => { for (let y = r; y < r + h; y += 1) for (let x = c; x < c + w; x += 1) if (taken[y]?.[x]) return false; return true; };
+    return spans.map(([w, h]) => {
+      for (let r = 0; ; r += 1) for (let c = 0; c <= 4 - w; c += 1) if (free(c, r, w, h)) {
+        for (let y = r; y < r + h; y += 1) { taken[y] ??= [false, false, false, false]; for (let x = c; x < c + w; x += 1) taken[y][x] = true; }
+        return [c, r];
+      }
+    });
+  };
+  const termLine = (line) => {
+    if (line.startsWith("✓")) return `<span data-ink="success">${esc(line.slice(1))}</span>`;
+    if (line.startsWith("❯")) return `<b>${esc(line)}</b>`;
+    return esc(line);
+  };
+  const bars = (widths) => widths.map((w) => `<i style="--w: ${w}"></i>`).join("");
+  const preview = (p) => {
+    if (p.kind === "term") return `<pre class="penna-window-term">${p.lines.map(termLine).join("\n")}</pre>`;
+    if (p.kind === "web") return `<span class="penna-window-host">${p.host}</span><span class="penna-window-page"><i data-bar style="--w: ${p.bars[0]}"></i>${bars(p.bars.slice(1))}<i data-block></i></span>`;
+    return `<span class="penna-window-chat"><span class="penna-window-bubble">${bars(p.you)}</span><span class="penna-window-lines">${bars(p.reply)}</span></span>`;
+  };
+  const mark = (m) => (m === "spin" ? `<i class="penna-touch-spinner" data-icon="loader"></i>` : m ? `<span class="penna-tone-dot" data-tone="${m}"></span>` : "");
+  const windowTile = (w, [column, row]) => {
+    const [columns, rows] = span(w);
+    return `<div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" style="--column: ${column}; --row: ${row}; --columns: ${columns}; --span: ${rows}"><span class="penna-machine-name">${mark(w.mark)}<span>${w.title}</span></span>${w.say ? `<span class="penna-machine-state" data-tone="${w.mark}">${w.say}</span>` : ""}<span class="penna-window-preview">${w.panes.map((p) => `<span class="penna-window-pane" data-penna="tile.mini" style="--x: ${p.rect[0]}; --y: ${p.rect[1]}; --w: ${p.rect[2]}; --h: ${p.rect[3]}">${preview(p)}</span>`).join("")}</span><span class="penna-press"></span></div>`;
+  };
+  const bento = (windows) => {
+    const spans = windows.map(span);
+    const spots = pack(spans);
+    const rows = Math.max(...spans.map((s, i) => s[1] + spots[i][1]));
+    return `<div class="penna-bento" style="--rows: ${rows}">${windows.map((w, i) => windowTile(w, spots[i])).join("")}</div>`;
+  };
+  const dots = (on, count = 3) => `<span class="penna-dots">${Array.from({ length: count }, (_, i) => `<span class="penna-dot"${i === on ? " data-active" : ""}></span>`).join("")}</span>`;
+  const pill = (glyph, title, meta, on) => `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating"><span class="penna-pill-tile" data-penna="phone.pill.icon">${ic(glyph)}</span><span class="penna-pill-copy"><span class="penna-pill-title">${title}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">${meta}</span>${dots(on)}</span></span></button></div>`;
+  const machine = () => `<div class="penna-zoom-card zz-full zz-machine" data-penna="phone.card"><div class="zz-scroll"><div class="penna-zoom-title">macbook</div><div class="zz-sections"><div class="zz-sess"><div class="penna-touch-header" data-hold><span>zz</span></div>${bento(WINDOWS)}</div></div></div><div class="zz-fold"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Close">${ic("xmark")}</button></div>${pill("laptop", "macbook", "zz", 0)}</div>`;
+
+  const TITLE = "Make the pill menu offer New chat";
+  const you = (text) => `<div class="penna-card penna-chat-bubble" data-penna="card.bubble" role="group"><span>${text}</span></div>`;
+  const step = (glyph, label, detail) => `<div class="penna-chat-activity" data-size="touch" data-clickable><span class="penna-chat-glyph">${ic(glyph)}</span><span class="penna-chat-label">${label}</span>${detail ? `<span class="penna-chat-detail">${detail}</span>` : ""}</div>`;
+  const tx = [you("Make the pill menu offer New chat, nearest the thumb."), `<p>The order lives in pill_menu.rs. I'll put New chat last in the New group, where it sits nearest the thumb.</p>`, `<div class="zz-steps">${step("file", "Read pill_menu.rs")}${step("pencil", "Edited pill_menu.rs", "+14 −3")}${step("square-terminal", "cargo test -p penna pill", "14 passed")}</div>`, `<p>Done. New chat sits nearest the thumb, and the pill tests pass.</p>`].join("");
+  const composer = `<div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer" data-size="touch"><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Chat options">${ic("plus")}</button><span class="penna-chat-input" role="textbox" data-placeholder="Message Claude Code…"></span><button class="penna-button" data-penna="button.send" data-shape="icon" disabled aria-label="Send">${ic("arrow-up")}</button></div></div>`;
+  const chatPane = (withBar = true) => `<div class="zz-pane"><div class="zz-tx">${tx}</div><div class="zz-fade"></div><div class="zz-dock">${composer}</div>${withBar ? pill("chat", TITLE, "zebrilus · main", 0) : ""}</div>`;
+
+  const setRow = (label, glyph, value) => `<div class="penna-touch-row" data-penna="phone.row" role="button">${ic(glyph)}<span class="penna-touch-row-lines"><span>${label}</span></span><span class="penna-touch-row-value"><span>${value}</span></span>${ic("chevron-right")}</div>`;
+  const settings = () => `<div class="penna-zoom-card zz-full" data-penna="phone.card"><div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Back">${ic("chevron-left")}</button></div><div class="penna-zoom-title">Appearance</div><div class="penna-zoom-body"><div><div class="penna-touch-header"><span>Look</span></div><div class="penna-touch-group" data-penna="settings.card" data-ground>${setRow("Mode", "moon", "Auto")}${setRow("Theme", "palette", "macOS")}${setRow("Glass", "sparkle", "On")}</div></div><div><div class="penna-touch-header"><span>Accessibility</span></div><div class="penna-touch-group" data-penna="settings.card" data-ground>${setRow("Increase contrast", "eye", "0%")}${setRow("Motion", "bolt", "Full")}${setRow("Pointing hand", "hand", "Off")}</div></div></div></div>`;
+
+  const kb = () => {
+    const keys = (s) => [...s].map((k) => `<i>${k}</i>`).join("");
+    return `<div class="zz-kb"><div class="zz-kb-row">${keys("qwertyuiop")}</div><div class="zz-kb-row">${keys("asdfghjkl")}</div><div class="zz-kb-row"><i data-w>⇧</i>${keys("zxcvbnm")}<i data-w>⌫</i></div><div class="zz-kb-row"><i data-w>123</i><i data-space>space</i><i data-ret>return</i></div></div>`;
+  };
+
+  const row = ({ label, glyph, value, check, more, tone, detail, off }) => `<div class="penna-touch-row${off ? " zz-row-off" : ""}" data-penna="phone.row"${off ? "" : ` role="button"`}${detail ? ` data-lines="2"` : ""}${tone ? ` data-tone="${tone}"` : ""}>${glyph ? ic(glyph) : ""}<span class="penna-touch-row-lines"><span>${label}</span>${detail ? `<span>${detail}</span>` : ""}</span>${value ? `<span class="penna-touch-row-value"><span>${value}</span></span>` : ""}${check ? `<span class="penna-touch-row-state">${ic("check")}</span>` : ""}${more ? ic("chevron-right") : ""}</div>`;
+
+  const frame = (head, body, rest = "34px") => `<div class="penna-sheet" style="--penna-sheet-rest: ${rest}"><div class="penna-sheet-scrim"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div>${head}${body}</div></div></div>`;
+  const closeBtn = `<button class="penna-sheet-close penna-button zz-disc" data-penna="button" data-size="touch" aria-label="Close">${ic("xmark")}</button>`;
+  const backBtn = `<button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Back" style="margin-left: -10px">${ic("chevron-left")}</button>`;
+
+  const head = (dir, { title, detail, back, close = true, twoLines, trailing }) => {
+    if (dir === "today") return `<div class="penna-sheet-header">${back ? backBtn : ""}${detail ? `<span class="penna-sheet-copy"><span class="penna-sheet-title">${title}</span><span class="penna-sheet-detail">${detail}</span></span>` : `<span class="penna-sheet-title">${title}</span>`}${close ? closeBtn : ""}</div>`;
+    if (dir === "a") return `<div class="penna-sheet-header">${detail ? `<span class="penna-sheet-copy"><span class="penna-sheet-title">${title}</span><span class="penna-sheet-detail">${detail}</span></span>` : `<span class="penna-sheet-title">${title}</span>`}</div>`;
+    if (dir === "b") {
+      const lines = !detail ? `<span><b>${title}</b></span>` : twoLines ? `<span><b>${title}</b></span><span><i>${detail}</i></span>` : `<span><b>${title}</b><i> · ${detail}</i></span>`;
+      return `<div class="penna-sheet-header"><span class="zz-cap">${lines}</span></div>`;
+    }
+    return `<div class="penna-touch-header"><span>${title}</span>${trailing ? `<span class="penna-touch-count">${trailing}</span>` : ""}</div>`;
+  };
+
+  const groups = (dir, sets, foot) => {
+    if (dir === "today") return `<div class="penna-sheet-list">${sets.map((set) => set.map(row).join("")).join(`<div style="height: 8px"></div>`)}${foot ? `<div class="penna-touch-row" data-penna="phone.row" style="min-height: 44px; cursor: default; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size)"><span class="penna-touch-row-lines"><span>${foot}</span></span></div>` : ""}</div>`;
+    if (dir === "c") return `<div class="zz-flat">${sets.map((set) => set.map(row).join("")).join(`<div class="zz-split"></div>`)}${foot ? `<p class="zz-foot">${foot}</p>` : ""}</div>`;
+    return `<div class="zz-groups">${sets.map((set) => `<div class="penna-touch-group zz-group" data-penna="settings.card" data-ground>${set.map(row).join("")}</div>`).join("")}${foot ? `<p class="zz-foot">${foot}</p>` : ""}</div>`;
+  };
+
+  const slider = `<div class="penna-slider" data-size="touch" aria-label="Increase contrast" style="--penna-value: 0%"><div class="penna-rail"><div class="penna-fill"></div><div class="penna-knob"></div></div></div>`;
+  const field = `<label class="penna-input" data-penna="field" data-size="touch-large" data-state="focused" style="width: 100%"><span class="zz-field-sel"><span>${TITLE}</span></span></label>`;
+  const confirmBar = `<div class="penna-action-bar" style="padding-top: 8px"><button class="penna-button" data-penna="button.quiet" data-size="touch-large"><span class="penna-label">Cancel</span></button><button class="penna-button" data-penna="button" data-tone="danger" data-prominent data-size="touch-large" data-emphasis="solid" data-solid="danger" style="color: var(--penna-on-danger)"><span class="penna-label">Close</span></button></div>`;
+  const saveBar = `<div class="penna-action-bar" data-keys><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled><span class="penna-label">Save</span></button></div>`;
+
+  const KINDS = [
+    {
+      name: "Hold a window",
+      under: machine,
+      sheet: (dir) => {
+        const rows = [[{ label: "Rename", glyph: "pencil" }], [{ label: "Close window", glyph: "xmark", tone: "danger" }]];
+        const flat = dir === "today" ? [rows.flat()] : rows;
+        return frame(head(dir, { title: "bash", detail: "zebrilus · main", trailing: "zebrilus · main" }), groups(dir, flat));
+      },
+    },
+    {
+      name: "Options",
+      under: () => chatPane(),
+      sheet: (dir) => {
+        const mention = { label: "Mention", glyph: "list-tree", more: dir !== "today" };
+        const set = (label, glyph, value) => ({ label, glyph, value, more: dir !== "today" });
+        const rest = [set("Model", "sparkle", "Default (recommended)"), set("Effort", "cpu", "Default"), set("Permissions", "hand", "Ask"), set("Account", "user", "Default")];
+        return frame(head(dir, { title: "Claude Code" }), groups(dir, [[mention], rest], "Context 0%"));
+      },
+    },
+    {
+      name: "One control",
+      under: settings,
+      sheet: (dir) => {
+        if (dir === "today") return frame(head(dir, { title: "Increase contrast" }), `<div class="zz-today-slider">${slider}<span>0%</span></div>`);
+        if (dir === "a") return frame("", `<div class="zz-groups" style="padding-top: 8px"><div class="penna-touch-group zz-group" data-penna="settings.card" data-ground><div class="zz-control"><div class="zz-line"><span>Increase contrast</span><span>0%</span></div>${slider}</div></div></div>`);
+        if (dir === "b") return frame(head(dir, { title: "Increase contrast", detail: "0%" }), `<div class="zz-groups"><div class="penna-touch-group zz-group" data-penna="settings.card" data-ground><div class="zz-control">${slider}</div></div></div>`);
+        return frame(head(dir, { title: "Increase contrast", trailing: "0%" }), `<div class="zz-on-panel">${slider}</div>`);
+      },
+    },
+    {
+      name: "Pick one",
+      under: () => chatPane(),
+      sheet: (dir) => {
+        const rows = [{ label: "Default (recommended)", check: true }, { label: "Opus" }, { label: "Sonnet" }, { label: "Haiku" }];
+        return frame(head(dir, { title: "Model", back: true }), groups(dir, [rows]));
+      },
+    },
+    {
+      name: "Confirm",
+      under: () => chatPane(),
+      sheet: (dir) => {
+        const detail = "The chat stops. Its transcript stays.";
+        if (dir === "c") return frame(head(dir, { title: "Close this pane?" }), `<p class="zz-say">${detail}</p>${confirmBar}`);
+        return frame(head(dir, { title: "Close this pane?", detail, close: false, twoLines: true }), confirmBar);
+      },
+    },
+    {
+      name: "Rename",
+      kb: true,
+      under: () => chatPane(false),
+      sheet: (dir) => {
+        const pad = dir === "today" ? "4px 16px 8px" : "0 16px 8px";
+        return frame(head(dir, { title: "Rename pane" }), `<div style="padding: ${pad}">${field}</div>${saveBar}`, "300px");
+      },
+    },
+  ];
+
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  const phone = (kind, dir) => `<div class="zz-phone" data-dir="${dir}"${kind.kb ? " data-kb" : ""}>${status}${kind.under()}${kind.sheet(dir)}${kind.kb ? kb() : ""}<span class="zz-home"></span></div>`;
+
+  const heads = `<div class="zz-heads">${DIRS.map((d) => `<div><b>${HEADS[d][0]}</b><span>${HEADS[d][1]}</span></div>`).join("")}</div>`;
+  const rowsHtml = KINDS.map((kind) => `<h2 class="zz-kind">${kind.name}</h2>${DIRS.map((d) => phone(kind, d)).join("")}`).join("");
+  const notes = `<div class="zz-notes">${DIRS.map((d) => `<p>${NOTES[d]}</p>`).join("")}</div>`;
+  document.querySelector("[data-board]").innerHTML = heads + rowsHtml + notes;
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>
