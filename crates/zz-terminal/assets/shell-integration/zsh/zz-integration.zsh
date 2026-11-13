@@ -32,7 +32,7 @@ _zz_title_precmd() {
   _zz_write_working_directory
   print -rn -- $'\e[0 q'
   [[ $PS1 == *$'%{\e]133;B\a%}' ]] || PS1+=$'%{\e]133;B\a%}'
-  print -rn -- $'\e]133;A\a'
+  print -rn -- $'\e]133;A;redraw=1\a'
 }
 
 _zz_idle_title() {

@@ -70,7 +70,8 @@ back to `portable_pty`'s unchanged default login shell.
 The bundled Bash, zsh, and PowerShell hooks emit OSC 133: A before the prompt, B before command
 input, C before execution, and D with the exit status before the next prompt. `show-last-output`
 and `send-last-output` use these marks through `capture_last_command` to extract command and output
-text. Empty Enter submissions do not emit C/D. Bash preserves user prompt commands and DEBUG traps;
+text. zsh sends its A as `133;A;redraw=1`, so the engine clears the old prompt when a resize
+makes zsh redraw it. Empty Enter submissions do not emit C/D. Bash preserves user prompt commands and DEBUG traps;
 its first prompt hook saves the command status before user hooks run. PowerShell emits C through
 the existing `PSConsoleHostReadLine` wrapper when that function is available, so command detection
 there is best-effort. It reports success as 0 and failure using a nonzero `$LASTEXITCODE`, falling

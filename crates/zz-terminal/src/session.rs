@@ -1252,6 +1252,7 @@ fn write_engine_csi(
         && terminal
             .active_screen()
             .is_ok_and(|screen| screen == Screen::Primary)
+        && screen_holds_output(terminal)
         && let Some(rows) = used_screen_rows(terminal)
     {
         scrolled_prompt = cursor_row_semantic_prompt(terminal) == Some(RowSemanticPrompt::Prompt);
@@ -1319,22 +1320,44 @@ fn erases_whole_screen(sequence: &[u8], terminal: &Terminal<'_, '_>) -> bool {
     }
 }
 
+fn screen_text_cell(
+    terminal: &Terminal<'_, '_>,
+    column: u16,
+    row: u16,
+) -> Option<libghostty_vt::screen::Cell> {
+    let cell = terminal
+        .grid_ref(Point::Active(PointCoordinate {
+            x: column,
+            y: u32::from(row),
+        }))
+        .ok()?
+        .cell()
+        .ok()?;
+    let blank = !cell.has_text().ok()? || cell.codepoint().ok()? == u32::from(' ');
+    (!blank).then_some(cell)
+}
+
+fn screen_holds_output(terminal: &Terminal<'_, '_>) -> bool {
+    let (Ok(rows), Ok(columns)) = (terminal.rows(), terminal.cols()) else {
+        return true;
+    };
+    (0..rows).any(|row| {
+        (0..columns).any(|column| {
+            screen_text_cell(terminal, column, row).is_some_and(|cell| {
+                cell.semantic_content()
+                    .is_ok_and(|content| content == CellSemanticContent::Output)
+            })
+        })
+    })
+}
+
 fn used_screen_rows(terminal: &Terminal<'_, '_>) -> Option<u16> {
     let rows = terminal.rows().ok()?;
     let columns = terminal.cols().ok()?;
     (0..rows).rev().find_map(|row| {
-        let used = (0..columns).any(|column| {
-            terminal
-                .grid_ref(Point::Active(PointCoordinate {
-                    x: column,
-                    y: u32::from(row),
-                }))
-                .ok()
-                .and_then(|reference| reference.cell().ok())
-                .and_then(|cell| cell.has_text().ok())
-                .unwrap_or(false)
-        });
-        used.then_some(row + 1)
+        (0..columns)
+            .any(|column| screen_text_cell(terminal, column, row).is_some())
+            .then_some(row + 1)
     })
 }
 
@@ -22733,6 +22756,25 @@ mod tests {
     }
 
     #[test]
+    fn scroll_on_clear_keeps_a_lone_prompt_out_of_history() {
+        let mut terminal = new_terminal(20, 4, 16).expect("terminal");
+        let mut filter = EngineFilter::default();
+        let mut renames = Vec::new();
+        let mut bar = None;
+        for chunk in [b"\x1b]133;A\x07> \x1b]133;B\x07".as_slice(), b"\r\x1b[J> "] {
+            filter.write(
+                chunk,
+                EngineKnobs::default(),
+                &mut terminal,
+                &mut renames,
+                &mut bar,
+                &mut None,
+            );
+        }
+        assert_eq!(terminal.scrollback_rows().expect("scrollback rows"), 0);
+    }
+
+    #[test]
     fn last_command_capture_tolerates_duplicate_osc133_marks() {
         let mut terminal = new_terminal(80, 8, 64).expect("terminal");
         terminal.vt_write(
@@ -26254,7 +26296,7 @@ preexec_functions+=(__zz_fixture_preexec)
             assert_eq!(bytes.matches("\x1b]133;D;").count(), 1, "{bytes:?}");
             let start = bytes.find("\x1b]133;C\x07").expect("command start");
             let finish = bytes.find(&end).expect("command exit status");
-            let prompt = bytes.find("\x1b]133;A\x07").expect("prompt start");
+            let prompt = bytes.find("\x1b]133;A").expect("prompt start");
             let input = bytes.rfind("\x1b]133;B\x07").expect("prompt end");
             assert!(
                 start < finish && finish < prompt && prompt < input,
@@ -26413,6 +26455,67 @@ PS1='zz-path-fixture> '
     #[test]
     fn zsh_shell_integration_restores_tmux_directory_after_startup() {
         shell_integration_restores_tmux_directory_after_startup("/bin/zsh");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn zsh_shell_integration_redraws_one_prompt_across_resizes() {
+        let shell = "/bin/zsh";
+        if !std::path::Path::new(shell).is_file() {
+            eprintln!("skipping shell integration fixture: {shell} is not installed");
+            return;
+        }
+        let temporary = tempfile::tempdir().expect("shell integration fixture home");
+        let home = temporary.path();
+        std::fs::write(
+            home.join(".zlogin"),
+            "PS1='zz-resize> '\nRPROMPT='zz-right'\n",
+        )
+        .expect("isolated shell startup");
+        let session = TerminalSession::spawn(
+            DEFAULT_HISTORY_LIMIT,
+            Arc::new(TerminalAppearance::default()),
+            TerminalSpawn {
+                shell: Some(shell.to_owned()),
+                working_directory: Some(home.to_path_buf()),
+                initial_size: Some(TerminalSize::cells(80, 24)),
+                env: vec![
+                    ("HOME".into(), Some(home.as_os_str().to_owned())),
+                    (
+                        "HISTFILE".into(),
+                        Some(home.join("history").into_os_string()),
+                    ),
+                    ("ZZ_ZSH_ZDOTDIR".into(), Some(home.as_os_str().to_owned())),
+                    ("PS1".into(), None),
+                    ("RPROMPT".into(), None),
+                ],
+                ..TerminalSpawn::default()
+            },
+        );
+        attach_streaming(&session, TerminalViewId(146));
+        wait_for_test_capture(&session, |capture| capture.contains("zz-right"));
+        let generation = session.facts().output.output_generation;
+        session.resize(80, 31, 8, 18);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while session.facts().output.output_generation == generation {
+            assert!(Instant::now() < deadline, "zsh never redrew at 80x31");
+            thread::sleep(Duration::from_millis(10));
+        }
+        session.resize(170, 45, 8, 18);
+        wait_for_test_capture(&session, |capture| {
+            capture.lines().any(|line| {
+                line.starts_with("zz-resize>") && line.ends_with("zz-right") && line.len() > 160
+            })
+        });
+        let capture = session
+            .capture(CaptureOptions {
+                start: CaptureBoundary::HistoryStart,
+                ..CaptureOptions::default()
+            })
+            .expect("capture with history");
+        let (_, history, _, _, _) = session.history(0, u32::MAX).expect("history");
+        assert_eq!(capture.matches("zz-resize>").count(), 1, "{capture:?}");
+        assert_eq!(history.len(), 0, "{capture:?}");
     }
 
     #[cfg(unix)]
