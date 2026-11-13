@@ -60,26 +60,25 @@
 
   .zz-phone[data-dir="d"] .penna-sheet-header { position: relative; justify-content: center; height: 44px; min-height: 44px; padding: 0 60px; text-align: center; }
   .zz-phone[data-dir="d"] .penna-sheet .zz-groups { padding-top: 16px; }
-  .zz-x { position: absolute; top: 0; right: 9px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: var(--penna-muted); cursor: var(--penna-click-cursor); }
-  .zz-x.zz-back { right: auto; left: 9px; }
-  .zz-x > span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--penna-control); --penna-icon-size: 12px; }
+  .zz-x { position: absolute; top: 0; right: 16px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: var(--penna-muted); cursor: var(--penna-click-cursor); }
+  .zz-x.zz-back { right: auto; left: 16px; }
+  .zz-x > span { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--penna-control); --penna-icon-size: 20px; }
   .zz-modal { position: absolute; z-index: 35; inset: 0; }
   .zz-modal-scrim { position: absolute; inset: 0; background: var(--penna-scrim); }
   :root[data-penna-mode="light"] .zz-modal-scrim { background: rgb(from var(--penna-fg) r g b / 0.28); }
   .zz-modal-area { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
   .zz-phone[data-kb] .zz-modal-area { top: 54px; bottom: 292px; }
-  .zz-modal-card { position: relative; display: flex; flex-direction: column; gap: 16px; width: min(calc(100% - 64px), 340px); padding: 20px; }
+  .zz-modal-card { position: relative; display: flex; flex-direction: column; gap: 16px; width: min(calc(100% - 64px), 340px); padding: 12px 20px 20px; }
   .zz-modal-card[data-penna][data-penna][data-penna] { --penna-r: var(--penna-phone-radius); --penna-share: 0; }
-  .zz-modal-head { position: relative; display: flex; align-items: center; justify-content: center; min-height: 30px; text-align: center; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); font-weight: 600; }
-  .zz-modal-head:has(> .zz-x) { padding: 0 40px; }
-  .zz-modal-head > .zz-x { top: -7px; right: -7px; }
+  .zz-modal-head { position: relative; display: flex; align-items: center; justify-content: center; min-height: 44px; text-align: center; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); font-weight: 600; }
+  .zz-modal-head:has(> .zz-x) { padding: 0 44px; }
+  .zz-modal-head > .zz-x { top: 0; right: -8px; }
   .zz-modal-card > .zz-groups { gap: 8px; margin: 0 -12px -12px; padding: 0; }
   .zz-modal-bar { display: flex; gap: 8px; }
   .zz-modal-bar > .penna-button[data-penna] { flex: 1; height: 48px; }
   .zz-modal-bar > .zz-cancel[data-penna][data-penna][data-penna] { --penna-fill: var(--penna-control); }
   .zz-modal-copy { display: flex; flex-direction: column; gap: 4px; }
-  .zz-modal-copy > .zz-modal-head { min-height: 0; }
-  .zz-modal-copy > p { margin: 0; color: var(--penna-fg-muted); text-align: center; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
+  .zz-modal-copy > p { margin: calc((var(--penna-text-touch-body-line) - 44px) / 2) 0 0; color: var(--penna-fg-muted); text-align: center; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
   .zz-modal-card > .penna-input[data-penna] { width: 100%; height: 48px; }
   .zz-modal-slider { display: flex; align-items: center; gap: 12px; }
   .zz-modal-slider > span { flex: none; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size); font-variant-numeric: tabular-nums; }
@@ -228,7 +227,7 @@
       under: machine,
       sheet: (dir) => {
         const rows = [[{ label: "Rename", glyph: "pencil" }], [{ label: "Close window", glyph: "xmark", tone: "danger" }]];
-        if (dir === "d") return modal({ title: "bash", x: true, body: `<div class="zz-groups">${groupCards(rows)}</div>` });
+        if (dir === "d") return modal({ title: "bash", x: true, body: `<div class="zz-groups">${groupCards([rows.flat()])}</div>` });
         const flat = dir === "today" ? [rows.flat()] : rows;
         return frame(head(dir, { title: "bash", detail: "zebrilus · main" }), groups(dir, flat));
       },
