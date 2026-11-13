@@ -126,18 +126,13 @@ pub fn hold_sheet(
 ) -> BottomSheet {
     let id = id.into();
     let close = id.clone();
-    let (danger, rest): (Vec<_>, Vec<_>) = rows.into_iter().partition(TouchRow::is_danger);
-    let groups = [rest, danger]
-        .into_iter()
-        .filter(|rows| !rows.is_empty())
-        .map(|rows| TouchGroup::new().ruled().rows(rows));
     bottom_sheet(
         id,
         title,
         [sheet_close("hold-sheet-close", cx)
             .on_click(move |_, _, cx| close_sheet(close.clone(), cx))
             .into_any_element()],
-        modal_groups().children(groups),
+        modal_groups().child(TouchGroup::new().ruled().rows(rows)),
         px(0.0),
         on_dismiss,
     )

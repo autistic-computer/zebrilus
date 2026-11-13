@@ -676,8 +676,7 @@ impl AppShell {
                             cx,
                         ))),
                 )
-                .child(TouchGroup::new().ruled().rows(rows))
-                .child(TouchGroup::new().ruled().row(remove)),
+                .child(TouchGroup::new().ruled().rows(rows).row(remove)),
             px(0.0),
             move |_, cx| {
                 let _ = dismiss.update(cx, |this, cx| {
