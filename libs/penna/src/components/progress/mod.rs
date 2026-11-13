@@ -15,6 +15,7 @@ const SWEEP: Duration = Duration::from_millis(2600);
 const PASS: f32 = 2000.0 / 2600.0;
 const SEGMENT: f32 = 1.0 / 3.0;
 const STILL_HEAD: f32 = 2.0 / 3.0;
+const LINE: f32 = 2.0;
 
 #[derive(IntoElement)]
 pub struct Progress {
@@ -22,6 +23,7 @@ pub struct Progress {
     value: Option<f32>,
     label: SharedString,
     size: Size,
+    line: bool,
 }
 
 impl Progress {
@@ -36,6 +38,7 @@ impl Progress {
             }),
             label: "Progress".into(),
             size: Size::Medium,
+            line: false,
         }
     }
 
@@ -50,6 +53,12 @@ impl Progress {
     #[must_use]
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         self.label = label.into();
+        self
+    }
+
+    #[must_use]
+    pub fn line(mut self) -> Self {
+        self.line = true;
         self
     }
 }
@@ -105,7 +114,7 @@ fn span(head: f32) -> Option<(f32, f32)> {
     (end > start).then_some((start, end))
 }
 
-fn segment(head: f32, color: Hsla) -> Option<Div> {
+fn segment(head: f32, color: Hsla, line: bool) -> Option<Div> {
     span(head).map(|(start, end)| {
         div()
             .absolute()
@@ -113,7 +122,7 @@ fn segment(head: f32, color: Hsla) -> Option<Div> {
             .h_full()
             .left(relative(start))
             .w(relative(end - start))
-            .rounded_full()
+            .when(!line, ala::Styled::rounded_full)
             .bg(color)
     })
 }
@@ -132,6 +141,12 @@ impl RenderOnce for Progress {
             .fill_at(PaintState::Active);
         let accent = theme.paint(Tone::Accent, Emphasis::Solid).fill;
         let still = cx.reduce_motion();
+        let line = self.line;
+        let height = if line {
+            px(LINE)
+        } else {
+            px(slider::rail(self.size))
+        };
         div()
             .author_id(self.id)
             .role(Role::ProgressIndicator)
@@ -145,19 +160,22 @@ impl RenderOnce for Progress {
             .relative()
             .flex_none()
             .w_full()
-            .h(px(slider::rail(self.size)))
-            .rounded_full()
-            .bg(track)
+            .h(height)
+            .when(!line, |bar| bar.rounded_full().bg(track))
             .map(|bar| match shown {
-                Some(shown) => {
-                    bar.child(div().h_full().w(relative(shown)).rounded_full().bg(accent))
-                }
-                None if still => bar.children(segment(STILL_HEAD, accent)),
+                Some(shown) => bar.child(
+                    div()
+                        .h_full()
+                        .w(relative(shown))
+                        .when(!line, ala::Styled::rounded_full)
+                        .bg(accent),
+                ),
+                None if still => bar.children(segment(STILL_HEAD, accent, line)),
                 None => bar.child(div().absolute().inset_0().with_animation(
                     "progress-sweep",
                     Animation::new(SWEEP).repeat().with_max_fps(60.0),
                     move |sweep, delta| {
-                        sweep.children(segment(delta / PASS * (1.0 + SEGMENT), accent))
+                        sweep.children(segment(delta / PASS * (1.0 + SEGMENT), accent, line))
                     },
                 )),
             })

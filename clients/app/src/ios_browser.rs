@@ -32,7 +32,14 @@ use ala_platform::ios::{
     CGPoint, CGRect, CGSize, id, nil, ns_array, ns_string, nsstring_to_string,
 };
 
-const OBSERVED: &[&str] = &["URL", "title", "loading", "canGoBack", "canGoForward"];
+const OBSERVED: &[&str] = &[
+    "URL",
+    "title",
+    "loading",
+    "canGoBack",
+    "canGoForward",
+    "estimatedProgress",
+];
 const SCROLL_OFFSET: &str = "contentOffset";
 const PULL_TO_REFRESH: f64 = 80.0;
 const GESTURE_CHANGED: isize = 2;
@@ -77,6 +84,7 @@ pub enum BrowserEvent {
         can_go_back: bool,
         can_go_forward: bool,
         committed: bool,
+        progress: f32,
     },
     Error(String),
     Open(String),
@@ -892,6 +900,7 @@ unsafe fn changed(this: &Object, view: id, committed: bool) {
     }
     let back: BOOL = msg_send![view, canGoBack];
     let forward: BOOL = msg_send![view, canGoForward];
+    let progress: f64 = msg_send![view, estimatedProgress];
     let _ = state(this).events.unbounded_send(BrowserEvent::Changed {
         url: nsstring_to_string(address),
         title: nsstring_to_string(title).unwrap_or_default(),
@@ -899,6 +908,7 @@ unsafe fn changed(this: &Object, view: id, committed: bool) {
         can_go_back: back == YES,
         can_go_forward: forward == YES,
         committed,
+        progress: progress as f32,
     });
 }
 

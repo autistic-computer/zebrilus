@@ -49,6 +49,7 @@ pub enum BrowserEvent {
         can_go_back: bool,
         can_go_forward: bool,
         committed: bool,
+        progress: f32,
     },
     Error(String),
     Open(String),
@@ -572,7 +573,7 @@ fn register_natives() {
             ),
             (
                 "nativeChanged",
-                "(JLjava/lang/String;Ljava/lang/String;ZZZZ)V",
+                "(JLjava/lang/String;Ljava/lang/String;ZZZZF)V",
                 native_changed as *mut c_void,
             ),
             (
@@ -653,6 +654,7 @@ extern "system" fn native_changed<'local>(
     back: jboolean,
     forward: jboolean,
     committed: jboolean,
+    progress: jfloat,
 ) {
     let Some(shared) = shared(id) else {
         return;
@@ -668,6 +670,7 @@ extern "system" fn native_changed<'local>(
         can_go_back: back == JNI_TRUE,
         can_go_forward: forward == JNI_TRUE,
         committed: committed == JNI_TRUE,
+        progress,
     });
 }
 

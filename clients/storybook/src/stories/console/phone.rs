@@ -83,6 +83,12 @@ pub const STORY: Story = Story {
             build: super::phone_terminal::terminal_states,
         },
         Section {
+            id: "browser",
+            name: "Browser",
+            summary: "A browser pane on the phone: no header and no bar, the page to the edges and the pill its bar, the page's title over its host. The pill's stack leads with Back, Forward and Reload in one row, then the address cut in the middle, then Tabs with its count, Pick element and Open on this phone; the pane's own chips wait behind More. Loading draws a 2 line along the page's top edge and Reload reads Stop. Address puts the field in the pill's place over the keyboard, with a close and a clear. Tabs is a sheet of two-line rows, the current one checked, a 44 close on each and New tab as the main action. A page that failed is the empty state with Try again over the pill.",
+            build: super::phone_browser::browser_states,
+        },
+        Section {
             id: "chat",
             name: "Chat",
             summary: "A chat pane on the phone: no header, the transcript at touch sizes (your message a bubble, the reply plain text, both at 17; steps 44 tall), then one composer row 16 from the sides: a 44 plus, the field, a 44 action. The action is send, stop while it works, or queue once you type while it works. With the keyboard up the composer takes the pill's place 8 above it. A pasted image is an 88 thumbnail with a 24 remove badge on a 44 target. Something else brings the composer back with the question over the field.",

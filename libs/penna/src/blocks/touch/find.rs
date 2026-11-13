@@ -26,6 +26,7 @@ pub struct PhoneFind {
     on_close: Option<Handler>,
     on_previous: Option<Handler>,
     on_next: Option<Handler>,
+    on_clear: Option<Handler>,
 }
 
 impl PhoneFind {
@@ -39,6 +40,7 @@ impl PhoneFind {
             on_close: None,
             on_previous: None,
             on_next: None,
+            on_clear: None,
         }
     }
 
@@ -72,6 +74,12 @@ impl PhoneFind {
         self.on_next = Some(Rc::new(handler));
         self
     }
+
+    #[must_use]
+    pub fn on_clear(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_clear = Some(Rc::new(handler));
+        self
+    }
 }
 
 fn run(handler: Option<Handler>) -> impl Fn(&ala::ClickEvent, &mut Window, &mut App) + 'static {
@@ -93,6 +101,7 @@ impl RenderOnce for PhoneFind {
         let inside = cx
             .theme()
             .ground_at(Surface::from(FieldLook::Composer).on(self.ground), state);
+        let typed = !self.input.read(cx).value().is_empty();
         let radius = phone_composer_corner(cx);
         let inset = px(1.0);
         let backing = field_underlay(FieldLook::Composer, inset, cx).map(|underlay| {
@@ -151,16 +160,27 @@ impl RenderOnce for PhoneFind {
                 .text_color(muted_on(inside, cx))
                 .child(count)
         }))
-        .child(
-            button("phone-find-previous", IconName::ChevronUp)
-                .disabled(!self.found)
-                .on_click(run(self.on_previous)),
-        )
-        .child(
-            button("phone-find-next", IconName::ChevronDown)
-                .disabled(!self.found)
-                .on_click(run(self.on_next)),
-        );
+        .when_some(self.on_previous, |field, handler| {
+            field.child(
+                button("phone-find-previous", IconName::ChevronUp)
+                    .disabled(!self.found)
+                    .on_click(run(Some(handler))),
+            )
+        })
+        .when_some(self.on_next, |field, handler| {
+            field.child(
+                button("phone-find-next", IconName::ChevronDown)
+                    .disabled(!self.found)
+                    .on_click(run(Some(handler))),
+            )
+        })
+        .when_some(self.on_clear.filter(|_| typed), |field, handler| {
+            field.child(
+                button("phone-find-clear", IconName::CircleX)
+                    .debug_selector(|| "phone-find-clear".to_owned())
+                    .on_click(run(Some(handler))),
+            )
+        });
         div().relative().w_full().children(backing).child(field)
     }
 }

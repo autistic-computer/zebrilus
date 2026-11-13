@@ -3,7 +3,7 @@ use std::{rc::Rc, sync::Arc};
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Edge, Icon, IconName, PaintState,
     Selectable as _, Sizable as _, StyledExt as _,
-    button::{Button, ButtonLook, ButtonVariants as _},
+    button::{Button, ButtonLook},
     feedback::{alert_actions, inline_alert},
     input::{FieldLook, Input, InputContentType, InputState, field_chrome},
     menu::{PopupMenu, PopupMenuItem},
@@ -30,8 +30,6 @@ use penna::{
 
 pub const BROWSER_OMNIBOX_KEY_CONTEXT: &str = "BrowserOmnibox";
 const BROWSER_CONTROL_HEIGHT: f32 = 28.0;
-const COMPACT_BAR_HEIGHT: f32 = 52.0;
-const COMPACT_CONTROL_HEIGHT: f32 = 40.0;
 const BROWSER_TAB_ROW_HEIGHT: f32 = BROWSER_CONTROL_HEIGHT + 2.0 * crate::CHROME_GAP;
 const BROWSER_TAB_GAP: f32 = 4.0;
 const SITE_CONTROLS_INSET: Pixels = px(1.5);
@@ -122,55 +120,6 @@ impl RenderOnce for BrowserHeader {
                         .h(crate::RULE_WIDTH),
                 )
             })
-    }
-}
-
-#[derive(IntoElement)]
-pub struct CompactBrowserBar {
-    address: AnyElement,
-    tabs: AnyElement,
-    picker: AnyElement,
-}
-
-impl CompactBrowserBar {
-    pub const HEIGHT: Pixels = px(COMPACT_BAR_HEIGHT);
-    pub const CONTROL: Pixels = px(COMPACT_CONTROL_HEIGHT);
-
-    pub fn new(
-        address: impl IntoElement,
-        tabs: impl IntoElement,
-        picker: impl IntoElement,
-    ) -> Self {
-        Self {
-            address: address.into_any_element(),
-            tabs: tabs.into_any_element(),
-            picker: picker.into_any_element(),
-        }
-    }
-}
-
-impl RenderOnce for CompactBrowserBar {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        Bar::new("compact-browser-bar", BarLook::Pane)
-            .debug_selector(|| "compact-browser-bar".into())
-            .flex()
-            .flex_none()
-            .items_center()
-            .gap(px(8.0))
-            .w_full()
-            .h(Self::HEIGHT)
-            .px(px(12.0))
-            .text_color(cx.theme().foreground)
-            .child(self.address)
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .gap(px(4.0))
-                    .child(self.tabs)
-                    .child(self.picker),
-            )
     }
 }
 
@@ -605,35 +554,6 @@ pub fn browser_toolbar_button(
         .disabled(disabled)
         .selected(selected)
         .tooltip(tooltip)
-}
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the box is a glyph in the button's text color, not a surface edge"
-)]
-pub fn compact_tabs_button(id: impl Into<ala::ElementId>, count: usize, cx: &App) -> Button {
-    let color = cx.theme().foreground.faint();
-    Button::new(id)
-        .ghost()
-        .compact()
-        .look(ButtonLook::Icon)
-        .size(crate::PANE_HEADER_CONTROL_HEIGHT)
-        .text_color(color)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .justify_center()
-                .size(crate::rems_from_px(15.0))
-                .rounded(crate::rems_from_px(4.0))
-                .border(crate::rems_from_px(1.5))
-                .border_color(color)
-                .child(
-                    Label::new(TextStyle::Micro, count.min(99).to_string())
-                        .strong()
-                        .line_height(crate::rems_from_px(10.0)),
-                ),
-        )
 }
 
 pub fn browser_start_surface(content: impl IntoElement) -> ala::Div {

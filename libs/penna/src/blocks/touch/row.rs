@@ -1,8 +1,8 @@
 use std::{rc::Rc, sync::Arc};
 
 use ala::{
-    App, ClickEvent, Div, ElementId, FontFeatures, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, RenderOnce, Role, SharedString, Stateful,
+    AnyElement, App, ClickEvent, Div, ElementId, FontFeatures, Hsla, InteractiveElement as _,
+    IntoElement, ParentElement as _, Pixels, RenderOnce, Role, SharedString, Stateful,
     StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
     prelude::FluentBuilder as _, px, relative,
 };
@@ -85,8 +85,11 @@ pub struct TouchRow {
     id: ElementId,
     title: SharedString,
     icon: Option<IconName>,
+    slot: bool,
+    checked: bool,
     detail: Option<SharedString>,
     trailing: Option<TouchTrailing>,
+    end: Option<AnyElement>,
     danger: bool,
     ink: Option<TouchInk>,
     disabled: bool,
@@ -102,8 +105,11 @@ impl TouchRow {
             id: id.into(),
             title: title.into(),
             icon: None,
+            slot: false,
+            checked: false,
             detail: None,
             trailing: None,
+            end: None,
             danger: false,
             ink: None,
             disabled: false,
@@ -116,6 +122,25 @@ impl TouchRow {
     #[must_use]
     pub fn icon(mut self, icon: IconName) -> Self {
         self.icon = Some(icon);
+        self
+    }
+
+    #[must_use]
+    pub fn slot(mut self) -> Self {
+        self.slot = true;
+        self
+    }
+
+    #[must_use]
+    pub fn checked(mut self) -> Self {
+        self.checked = true;
+        self.slot = true;
+        self
+    }
+
+    #[must_use]
+    pub fn end(mut self, end: impl IntoElement) -> Self {
+        self.end = Some(end.into_any_element());
         self
     }
 
@@ -289,9 +314,15 @@ impl RenderOnce for TouchRow {
             .aria_disabled(disabled)
             .type_style(TextStyle::TouchBody, cx)
             .text_color(ink)
-            .when_some(self.icon, |row, icon| row.child(glyph(icon, muted)))
+            .map(|row| match self.icon {
+                Some(icon) => row.child(glyph(icon, muted)),
+                None if self.checked => row.child(glyph(IconName::Check, ink)),
+                None if self.slot => row.child(div().flex_none().w(px(GLYPH))),
+                None => row,
+            })
             .child(lines)
             .children(trailing)
+            .when_some(self.end, |row, end| row.pr(Space::S4).child(end))
             .when_some(self.on_click.filter(|_| !disabled), |row, on_click| {
                 row.on_click(move |event, window, cx| on_click(event, window, cx))
             })

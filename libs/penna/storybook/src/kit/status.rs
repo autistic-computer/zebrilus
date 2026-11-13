@@ -41,7 +41,7 @@ pub const STORY: Story = Story {
         Section {
             id: "progress",
             name: "Progress",
-            summary: "Progress::new(id, value) fills the track up to a value from 0 to 1, clamped, and eases to a new value over 220ms. Progress::indeterminate(id) sweeps a third of the track across it, once every 2600ms, and holds it still in the middle with motion off. It is as wide as its container, 4 tall at xs and sm and 6 from md up, and sits in a toast or a settings row with no wrapper. The progress-value and progress-indeterminate knobs drive the first bar, the toast and the settings row.",
+            summary: "Progress::new(id, value) fills the track up to a value from 0 to 1, clamped, and eases to a new value over 220ms. Progress::indeterminate(id) sweeps a third of the track across it, once every 2600ms, and holds it still in the middle with motion off. .line() is a page loading: 2 tall, no track, square ends. It is as wide as its container, 4 tall at xs and sm and 6 from md up, and sits in a toast or a settings row with no wrapper. The progress-value and progress-indeterminate knobs drive the first bar, the toast and the settings row.",
             build: |_, cx| cx.new(Progresses::new).into(),
         },
         Section {
@@ -380,6 +380,10 @@ impl Render for Progresses {
             .state(
                 "indeterminate",
                 bars().child(Progress::indeterminate("progress-indeterminate")),
+            )
+            .state(
+                "a page loading: the line at 62%",
+                bars().child(Progress::new("progress-line", 0.62).line().label("Loading")),
             )
             .state("in a toast", self.toast.clone())
             .state(

@@ -54,7 +54,14 @@ final class ZzBrowser {
     static native boolean nativeAllow(long id, String url);
 
     static native void nativeChanged(
-            long id, String url, String title, boolean loading, boolean back, boolean forward, boolean committed);
+            long id,
+            String url,
+            String title,
+            boolean loading,
+            boolean back,
+            boolean forward,
+            boolean committed,
+            float progress);
 
     static native void nativeError(long id, String message);
 
@@ -186,7 +193,15 @@ final class ZzBrowser {
         if (!loading && refreshing) {
             endRefresh();
         }
-        nativeChanged(id, web.getUrl(), web.getTitle(), loading, web.canGoBack(), web.canGoForward(), committed);
+        nativeChanged(
+                id,
+                web.getUrl(),
+                web.getTitle(),
+                loading,
+                web.canGoBack(),
+                web.canGoForward(),
+                committed,
+                web.getProgress() / 100f);
     }
 
     void load(String url) {
@@ -358,11 +373,8 @@ final class ZzBrowser {
 
         @Override
         public void onProgressChanged(WebView view, int progress) {
-            boolean busy = progress < 100;
-            if (busy != loading) {
-                loading = busy;
-                changed(false);
-            }
+            loading = progress < 100;
+            changed(false);
         }
 
         @Override

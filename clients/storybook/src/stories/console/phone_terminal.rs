@@ -270,6 +270,8 @@ impl TerminalStates {
         PhoneFind::new(id, &self.query, cx.theme().ground())
             .count(count)
             .found(found)
+            .on_previous(|_, _| {})
+            .on_next(|_, _| {})
     }
 }
 

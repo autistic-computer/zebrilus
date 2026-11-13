@@ -15,9 +15,9 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, IconName,
     blocks::compact::{
-        BENTO_INSET, PillLabel, PillPlacement, PillSpring, compact_floating_bar,
-        compact_floating_pill, compact_hud, compact_pill_collapse, compact_pill_label,
-        compact_pill_morph, mini_pill_width, over_pill, pill_bounds, pill_corner, pill_glass_over,
+        BENTO_INSET, PillLabel, PillPlacement, PillSpring, compact_floating_bar, compact_hud,
+        compact_pill_collapse, compact_pill_label, compact_pill_morph, mini_pill_width, over_pill,
+        pill_bounds, pill_corner, pill_glass_over,
     },
     blocks::sheet::{bottom_sheet, close_sheet},
     blocks::touch::{
@@ -44,6 +44,7 @@ use zz_ui::{
 use super::AppShell;
 use crate::terminal::{TerminalDisplayPreferences, TerminalPane, TerminalText};
 
+mod browser;
 mod overview;
 mod sheets;
 
@@ -601,6 +602,9 @@ impl AppShell {
     }
 
     fn pill_menu_pick(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.browser_menu_pick(id, window, cx) {
+            return;
+        }
         let new = match id {
             NEW_CHAT => Some(overview::NewThing::Chat),
             NEW_TERMINAL => Some(overview::NewThing::Terminal),
@@ -1349,23 +1353,34 @@ impl AppShell {
             keys.clone().close(cx);
         }
         let stack = self.pill_stack(window, cx);
-        let groups = if open {
+        let (groups, fold) = if open {
             let menu = self.machine_menu_text(cx);
-            machine_menu(menu.as_menu())
+            (machine_menu(menu.as_menu()), None)
         } else {
             let session = self.attached_session_name(cx);
-            pane_menu(PaneMenu {
-                session: &session,
-                terminal: shown_page.is_some_and(|page| page.kind == PaneKindSnapshot::Terminal),
-            })
+            match self.browser_groups(shown_page, &session, cx) {
+                Some((groups, fold)) => (groups, Some(fold)),
+                None => (
+                    pane_menu(PaneMenu {
+                        session: &session,
+                        terminal: shown_page
+                            .is_some_and(|page| page.kind == PaneKindSnapshot::Terminal),
+                    }),
+                    None,
+                ),
+            }
         };
         if let Some((keys, _)) = &self.compact.tool_keys {
             let prefix = keys.prefix.read(cx).menu().clone();
             let groups = groups.clone();
             prefix.update(cx, |menu, cx| menu.set_groups(groups, cx));
         }
-        stack.update(cx, |menu, cx| menu.set_groups(groups, cx));
-        if keyboard && !keyless && stack.read(cx).is_shown() {
+        stack.update(cx, |menu, cx| {
+            menu.set_groups(groups, cx);
+            menu.set_fold(fold, cx);
+        });
+        let chat = shown_page.is_some_and(|page| matches!(page.kind, PaneKindSnapshot::Agent(_)));
+        if keyboard && !chat && stack.read(cx).is_shown() {
             stack.update(cx, StackMenu::close);
         }
         #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -1393,7 +1408,11 @@ impl AppShell {
             .compact
             .page_background
             .unwrap_or(cx.theme().background);
-        let (mut title, word, meta, mut tone) = self.pill_text(&model, shown_page, cx);
+        let (mut title, word, mut meta, mut tone) = self.pill_text(&model, shown_page, cx);
+        let picking = self.browser_picking(cx);
+        if picking {
+            meta = "Picking an element".into();
+        }
         let mut icon = shown_page.map_or(IconName::SquareTerminal, |page| kind_icon(&page.kind));
         if let Some((pane, text, kind, until)) = self.compact.notice
             && until > now
@@ -1426,11 +1445,13 @@ impl AppShell {
             ..placement
         };
         let dots = page_dots_in(&dot_groups(&pages, shown), cx.theme().foreground, cx);
-        let chat = shown_page.is_some_and(|page| matches!(page.kind, PaneKindSnapshot::Agent(_)));
-        let find = shown_terminal.as_ref().and_then(|terminal| {
-            let state = terminal.read(cx).phone_find(cx)?;
-            Some(Self::phone_find_field(terminal, state, cx))
-        });
+        let find = shown_terminal
+            .as_ref()
+            .and_then(|terminal| {
+                let state = terminal.read(cx).phone_find(cx)?;
+                Some(Self::phone_find_field(terminal, state, cx))
+            })
+            .or_else(|| self.browser_address_field(cx));
         let bottom = if let Some(find) = find {
             if keyboard {
                 let lift = key_row_lift(zone, overlap);
@@ -1462,25 +1483,11 @@ impl AppShell {
                 .bg(page_background)
                 .into_any_element()
         } else if keyboard && keyless {
-            let pill = compact_floating_pill("compact-pill", label, dots, &placement, cx)
-                .opacity(1.0 - menu_progress)
-                .child(StackMenu::pill_anchor(&stack, cx))
-                .on_click(cx.listener(|this, _, _, cx| this.open_pill_menu(cx)));
             div()
-                .relative()
                 .flex_none()
                 .w_full()
                 .h((zone - overlap).max(px(0.0)))
-                .overflow_hidden()
                 .bg(page_background)
-                .child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .right_0()
-                        .child(compact_floating_bar(pill, &placement, cx)),
-                )
                 .into_any_element()
         } else if keyboard {
             let lift = key_row_lift(zone, overlap);
@@ -1544,9 +1551,13 @@ impl AppShell {
                 cx,
             )
             .opacity(fade * (1.0 - menu_progress))
-            .when(full, |pill| pill.child(StackMenu::pill_anchor(&stack, cx)))
-            .on_click(cx.listener(move |this, _, _, cx| {
-                if full {
+            .when(full && !picking, |pill| {
+                pill.child(StackMenu::pill_anchor(&stack, cx))
+            })
+            .on_click(cx.listener(move |this, _, window, cx| {
+                if picking {
+                    this.end_browser_pick(window, cx);
+                } else if full {
                     this.open_pill_menu(cx);
                 } else {
                     this.expand_pill(cx);
@@ -1630,7 +1641,10 @@ impl AppShell {
                 div()
                     .flex_none()
                     .w_full()
-                    .when(self.compact.sheet.is_some(), |bottom| bottom.opacity(0.0))
+                    .when(
+                        self.compact.sheet.is_some() || self.browser_tabs_open(cx),
+                        |bottom| bottom.opacity(0.0),
+                    )
                     .child(bottom),
             );
         let content = if open {

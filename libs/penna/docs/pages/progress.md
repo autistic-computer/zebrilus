@@ -8,10 +8,11 @@ How far a task has come, or that it is under way with no measure yet.
 <div class="docs-show" data-gap="wide">
   <div class="docs-cell" style="width: 240px"><div class="penna-progress" role="progressbar" aria-label="Downloading" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.42" aria-valuetext="42%" style="--penna-value: 42%"><div class="penna-progress-fill"></div></div><span class="docs-note">Determinate</span></div>
   <div class="docs-cell" style="width: 240px"><div class="penna-progress" role="progressbar" aria-label="Verifying" data-indeterminate><div class="penna-progress-fill"></div></div><span class="docs-note">Indeterminate</span></div>
+  <div class="docs-cell" style="width: 240px"><div class="penna-progress" data-look="line" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.62" aria-valuetext="62%" style="--penna-value: 62%"><div class="penna-progress-fill"></div></div><span class="docs-note">Line</span></div>
 </div>
 ```
 
-A determinate bar fills to a value from 0 to 1. An indeterminate one sweeps a third of the track across it, for a step with no measure. Both hold still under reduced motion.
+A determinate bar fills to a value from 0 to 1. An indeterminate one sweeps a third of the track across it, for a step with no measure. Both hold still under reduced motion. The line is a page loading: 2 tall along the page's top edge, no track, square ends.
 
 ```rust
 Progress::new("update", 0.42).label("Downloading")
@@ -49,5 +50,6 @@ The bar doesn't say what is under way. Put a line above it that does.
 | --- | --- | --- |
 | `Progress::new(id, value)` | `.penna-progress`, `--penna-value` | Determinate bar |
 | `Progress::indeterminate(id)` | `data-indeterminate` | Indeterminate bar |
+| `.line()` | `data-look="line"` | A page loading |
 | `.small()`, `.with_size(size)` | `data-size` | Size; medium by default |
 | `.label(text)` | `aria-label` | Names it for assistive tech |
