@@ -134,7 +134,7 @@ marketing version, and a UTC timestamp build number, and wraps it in an `.xcarch
 `target/ios-testflight`. The `testflight` Cargo profile keeps line tables, so the archive carries a
 dSYM for crash symbolication and the shipped binary is stripped afterwards. `xcodebuild -exportArchive` then signs it for App Store distribution and
 uploads it for internal TestFlight testing. Signing uses the Apple account signed into Xcode; set
-`APPLE_API_ISSUER_ID` to use the App Store Connect key in `../.zz-signing` instead.
+`APPLE_API_ISSUER_ID` to use the App Store Connect key in `../../.zz-signing` (beside the folder that holds the repos) instead.
 `ZZ_IOS_UPLOAD=0` exports the signed `.ipa` without uploading, and `ZZ_IOS_BUILD_NUMBER` overrides
 the build number.
 

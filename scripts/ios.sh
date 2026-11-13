@@ -60,8 +60,8 @@ if [[ "$mode" == testflight ]]; then
     [[ "$build_number" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || { echo "build number must be one to three dot-separated integers" >&2; exit 1; }
     identity="$(signing_identity)"
     auth_args=()
-    signing_dir="$repo_root/../.zz-signing"
-    api_key_path="${APPLE_API_KEY_PATH:-$(ls "$signing_dir"/AuthKey_*.p8 2>/dev/null | head -1)}"
+    signing_dir="$repo_root/../../.zz-signing"
+    api_key_path="${APPLE_API_KEY_PATH:-$(ls "$signing_dir"/AuthKey_*.p8 2>/dev/null | head -1 || true)}"
     api_key_id="${APPLE_API_KEY_ID:-$(basename "${api_key_path%.p8}" | sed 's/^AuthKey_//')}"
     if [[ -n "${APPLE_API_ISSUER_ID:-}" && -f "$api_key_path" ]]; then
         auth_args=(-authenticationKeyPath "$api_key_path" -authenticationKeyID "$api_key_id" -authenticationKeyIssuerID "$APPLE_API_ISSUER_ID")
