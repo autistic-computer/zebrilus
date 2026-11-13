@@ -682,3 +682,25 @@ fn an_empty_mention_lists_other_chats_first_and_skips_its_own() {
     assert_eq!(found[0].kind, TargetKind::Chat);
     assert_eq!(found[0].token, "macbook:%6");
 }
+
+#[test]
+fn a_chat_on_another_host_with_the_composers_pane_id_stays_listed() {
+    let mut hosts = chat_hosts();
+    hosts[1].sessions[0].windows[0].panes[0] = TargetPane {
+        chat: Some(TargetChat {
+            title: "Same id elsewhere".into(),
+            icon: IconName::SquareTerminal,
+        }),
+        ..pane(9, "claude", Some("Claude Code"))
+    };
+    let chats = Chats {
+        shown: true,
+        own: Some(PaneId(9)),
+    };
+    let tokens = target_items(&parse_target("", &hosts), &hosts, chats)
+        .into_iter()
+        .take_while(|item| item.kind == TargetKind::Chat)
+        .map(|item| item.token)
+        .collect::<Vec<_>>();
+    assert_eq!(tokens, ["macbook:%6", "ubuntu:%9", "ubuntu:%12"]);
+}

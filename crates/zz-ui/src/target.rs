@@ -774,8 +774,8 @@ fn chat_items(hosts: &[TargetHost], filter: &str, chats: Chats) -> Vec<TargetIte
         for session in &host.sessions {
             for window in &session.windows {
                 for pane in &window.panes {
-                    let Some(chat) = pane.chat.as_ref().filter(|_| Some(pane.id) != chats.own)
-                    else {
+                    let own = host.here && Some(pane.id) == chats.own;
+                    let Some(chat) = pane.chat.as_ref().filter(|_| !own) else {
                         continue;
                     };
                     let detail = pane
