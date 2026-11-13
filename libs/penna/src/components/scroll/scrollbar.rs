@@ -54,7 +54,8 @@ fn is_always_mode(show: ScrollbarShow) -> bool {
     matches!(show, ScrollbarShow::Always)
 }
 
-fn fade_frame(elapsed: f32, reduce_motion: bool) -> Option<(f32, Duration)> {
+#[must_use]
+pub fn fade_frame(elapsed: f32, reduce_motion: bool) -> Option<(f32, Duration)> {
     if elapsed >= FADE_OUT_DURATION {
         None
     } else if elapsed < FADE_OUT_DELAY {

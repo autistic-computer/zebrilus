@@ -37,7 +37,7 @@ use zz_ui::{
     },
     pane_look::pane_color,
     terminal::{
-        FindBarAction, GridSize, PaintState, RowRenderCache, TerminalRenderInput,
+        FindBarAction, GridSize, PaintState, RowRenderCache, ScrollbarFade, TerminalRenderInput,
         cursor_should_blink, selection_autoscroll_lines, terminal_font_for_style,
     },
 };
@@ -173,6 +173,8 @@ pub struct TerminalPane {
     cursor_blink_task: Option<Task<()>>,
     selection_dragging: bool,
     scrollbar_dragging: bool,
+    scrollbar_fade: ScrollbarFade,
+    scrollbar_fade_task: Option<Task<()>>,
     pressed_buttons: HashSet<MouseButton>,
     pointer: Option<Point<Pixels>>,
     hovered_image_uri: Option<Arc<str>>,
@@ -328,6 +330,8 @@ impl TerminalPane {
             cursor_blink_task: None,
             selection_dragging: false,
             scrollbar_dragging: false,
+            scrollbar_fade: ScrollbarFade::default(),
+            scrollbar_fade_task: None,
             pressed_buttons: HashSet::new(),
             pointer: None,
             hovered_image_uri: None,
@@ -1038,6 +1042,9 @@ impl TerminalPane {
             cx.stop_propagation();
             return;
         }
+        if event.pressed_button.is_none() && self.scrollbar_hit(event.position, cx) {
+            self.show_scrollbar(cx);
+        }
         if event
             .pressed_button
             .is_some_and(|button| !self.pressed_buttons.contains(&button))
@@ -1146,6 +1153,42 @@ impl TerminalPane {
             self.surface_bounds.size.height,
             phase,
         )
+    }
+
+    fn show_scrollbar(&mut self, cx: &mut Context<Self>) {
+        if self
+            .viewport(&self.connection.read(cx).core)
+            .is_some_and(|viewport| viewport.scrollbar.total > viewport.scrollbar.len)
+        {
+            self.scrollbar_fade.show(web_time::Instant::now());
+            cx.notify();
+        }
+    }
+
+    fn scrollbar_opacity(&mut self, cx: &mut Context<Self>) -> f32 {
+        let Some(mut scrollbar) = self
+            .viewport(&self.connection.read(cx).core)
+            .map(|viewport| viewport.scrollbar)
+        else {
+            return 0.0;
+        };
+        if let Some(offset) = self.scroll.target() {
+            scrollbar.offset = offset;
+        }
+        let now = web_time::Instant::now();
+        if self.scrollbar_dragging {
+            self.scrollbar_fade.show(now);
+        }
+        let frame = self
+            .scrollbar_fade
+            .frame(scrollbar, now, cx.reduce_motion());
+        self.scrollbar_fade_task = frame.map(|(_, wake)| {
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(wake).await;
+                let _ = this.update(cx, |_, cx| cx.notify());
+            })
+        });
+        frame.map_or(0.0, |(opacity, _)| opacity)
     }
 
     fn scrollbar_hit(&self, position: Point<Pixels>, cx: &App) -> bool {
@@ -1341,6 +1384,7 @@ impl TerminalPane {
     }
 
     fn on_scroll(&mut self, event: &ScrollWheelEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_scrollbar(cx);
         let delta = event.delta.pixel_delta(self.line_height);
         let pixels = matches!(event.delta, ScrollDelta::Pixels(_));
         let local = pixels && self.local_retained(cx).is_some();
@@ -1418,6 +1462,7 @@ impl TerminalPane {
         let rows_below = self
             .rows_below
             .then(|| window.content_mask().bounds.bottom());
+        let scrollbar_opacity = self.scrollbar_opacity(cx);
         let connection = self.connection.clone();
         let (paint, attached, layout_generation) = connection.update(cx, |connection, cx| {
             for image in connection.take_retired_terminal_images() {
@@ -1456,6 +1501,7 @@ impl TerminalPane {
                     local_scroll_target: self.scroll.target(),
                     scroll_pixel_offset: px(self.scroll.sub_row()),
                     overscroll: displacement,
+                    scrollbar_opacity,
                     extra_height: self.extra_height,
                     command_output: self.surface == TerminalSurface::CommandOutput,
                     appearance: &appearance,

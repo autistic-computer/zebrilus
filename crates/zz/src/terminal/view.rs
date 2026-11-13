@@ -41,7 +41,7 @@ use zz_ui::{
         terminal_link_popup, terminal_mode_indicator as terminal_mode_tag, terminal_status_popup,
     },
     pane_look::pane_color,
-    terminal::FindBarAction,
+    terminal::{FindBarAction, ScrollbarFade},
 };
 
 use crate::{
@@ -445,6 +445,8 @@ pub(crate) struct TerminalView {
     selection_autoscroll_lines: i32,
     selection_autoscroll_running: bool,
     scrollbar_dragging: bool,
+    scrollbar_fade: ScrollbarFade,
+    scrollbar_fade_task: Task<()>,
     primary_paste_pressed: bool,
     last_clipboard_image: Option<(u64, Arc<Image>)>,
     shader_epoch: Instant,
@@ -1023,6 +1025,8 @@ impl TerminalView {
             selection_autoscroll_lines: 0,
             selection_autoscroll_running: false,
             scrollbar_dragging: false,
+            scrollbar_fade: ScrollbarFade::default(),
+            scrollbar_fade_task: Task::ready(()),
             primary_paste_pressed: false,
             last_clipboard_image: None,
             shader_epoch: Instant::now(),
@@ -1090,7 +1094,10 @@ impl TerminalView {
         pane_color(
             cx.theme(),
             terminal_background(
-                self.retained.read().viewport.background,
+                self.render_appearance.source.local_colors.map_or_else(
+                    || self.retained.read().viewport.background,
+                    |local| local.background(),
+                ),
                 self.render_appearance.source.background_opacity,
             ),
         )
@@ -1102,6 +1109,37 @@ impl TerminalView {
 
     pub(crate) fn scroll_pixel_offset(&self) -> Pixels {
         px(self.scroll.sub_row())
+    }
+
+    pub(crate) fn scrollbar_opacity(
+        &mut self,
+        scrollbar: ScrollbarState,
+        cx: &mut Context<Self>,
+    ) -> f32 {
+        let now = Instant::now();
+        if self.scrollbar_dragging {
+            self.scrollbar_fade.show(now);
+        }
+        let Some((opacity, wake)) = self
+            .scrollbar_fade
+            .frame(scrollbar, now, cx.reduce_motion())
+        else {
+            self.scrollbar_fade_task = Task::ready(());
+            return 0.0;
+        };
+        self.scrollbar_fade_task = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(wake).await;
+            let _ = this.update(cx, |_, cx| cx.notify());
+        });
+        opacity
+    }
+
+    fn show_scrollbar(&mut self, cx: &mut Context<Self>) {
+        let scrollbar = self.retained.read().viewport.scrollbar;
+        if scrollbar.total > scrollbar.len {
+            self.scrollbar_fade.show(Instant::now());
+            cx.notify();
+        }
     }
 
     fn cancel_local_scroll(&mut self, cx: &mut Context<Self>) {
@@ -1460,6 +1498,9 @@ impl TerminalView {
             cx.stop_propagation();
             return;
         }
+        if event.pressed_button.is_none() && self.scrollbar_hit(event.position) {
+            self.show_scrollbar(cx);
+        }
         if self.selection_dragging {
             self.selection_pointer = self.pointer_cell_clamped(event.position, 1, event.modifiers);
             self.selection_autoscroll_lines = self.selection_autoscroll(event.position);
@@ -1635,6 +1676,7 @@ impl TerminalView {
     }
 
     fn on_scroll(&mut self, event: &ScrollWheelEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_scrollbar(cx);
         if let ScrollDelta::Pixels(delta) = event.delta
             && !self.command_output
             && self.should_use_local_scroll()

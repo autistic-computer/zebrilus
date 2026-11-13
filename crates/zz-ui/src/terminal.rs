@@ -5,9 +5,12 @@ use std::{
     ops::Range,
     rc::Rc,
     sync::Arc,
+    time::Duration,
 };
 
-use crate::scroll::{MIN_THUMB_SIZE, THUMB_INSET, THUMB_WIDTH, thumb_color, thumb_radius};
+use crate::scroll::{
+    MIN_THUMB_SIZE, THUMB_INSET, THUMB_WIDTH, fade_frame, thumb_color, thumb_radius,
+};
 use crate::{ActiveTheme as _, Colorize as _, oklch, to_oklch};
 use ala::{
     App, BorderStyle, Bounds, ContentMask, Corners, Font, FontFallbacks, FontFeatures,
@@ -110,6 +113,7 @@ pub struct TerminalRenderInput<'a> {
     pub local_scroll_target: Option<u32>,
     pub scroll_pixel_offset: Pixels,
     pub overscroll: Pixels,
+    pub scrollbar_opacity: f32,
     pub extra_height: Pixels,
     pub command_output: bool,
     pub appearance: &'a TerminalAppearance,
@@ -1119,7 +1123,14 @@ impl RowRenderCache {
                 offset: target_offset,
                 len: viewport.scrollbar.len,
             });
-        let scrollbar = scrollbar_quad(scrollbar, track, input.overscroll, window.rem_size(), cx);
+        let scrollbar = scrollbar_quad(
+            scrollbar,
+            track,
+            input.overscroll,
+            input.scrollbar_opacity,
+            window.rem_size(),
+            cx,
+        );
         let focused = input.focused;
         let cursor_visible =
             cursor_visible_for_paint(cursor, composing, focused, input.cursor_blink_visible);
@@ -1569,6 +1580,45 @@ pub fn scrollbar_strip_hit(
     )
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ScrollbarFade {
+    shown_at: Option<web_time::Instant>,
+    seen: Option<ScrollbarState>,
+}
+
+impl ScrollbarFade {
+    pub fn show(&mut self, now: web_time::Instant) {
+        self.shown_at = Some(now);
+    }
+
+    pub fn frame(
+        &mut self,
+        scrollbar: ScrollbarState,
+        now: web_time::Instant,
+        reduce_motion: bool,
+    ) -> Option<(f32, Duration)> {
+        let at_bottom = |bar: ScrollbarState| bar.offset >= bar.total.saturating_sub(bar.len);
+        if self.seen.replace(scrollbar).is_some_and(|seen| {
+            seen.offset != scrollbar.offset && !(at_bottom(seen) && at_bottom(scrollbar))
+        }) {
+            self.shown_at = Some(now);
+        }
+        let frame = self
+            .shown_at
+            .filter(|_| scrollbar.total > scrollbar.len)
+            .and_then(|shown_at| {
+                fade_frame(
+                    now.saturating_duration_since(shown_at).as_secs_f32(),
+                    reduce_motion,
+                )
+            });
+        if frame.is_none() {
+            self.shown_at = None;
+        }
+        frame
+    }
+}
+
 pub fn scroll_fraction(surface: Bounds<Pixels>, position: Point<Pixels>) -> u32 {
     zz_client::terminal_view::scroll_fraction(
         f32::from(surface.origin.y),
@@ -1751,10 +1801,11 @@ fn scrollbar_quad(
     scrollbar: ScrollbarState,
     bounds: Bounds<Pixels>,
     overscroll: Pixels,
+    opacity: f32,
     rem: Pixels,
     cx: &App,
 ) -> Option<PaintQuad> {
-    if scrollbar.total <= scrollbar.len || scrollbar.total == 0 {
+    if opacity <= 0.0 || scrollbar.total <= scrollbar.len || scrollbar.total == 0 {
         return None;
     }
     let inset = THUMB_INSET.to_pixels(rem);
@@ -1777,12 +1828,11 @@ fn scrollbar_quad(
         };
     let thumb_height = squeezed;
     let origin = point(bounds.right() - width - inset, top);
+    let mut color = thumb_color(cx);
+    color.a *= opacity;
     Some(
-        fill(
-            Bounds::new(origin, size(width, thumb_height)),
-            thumb_color(cx),
-        )
-        .corner_radii(thumb_radius(width, cx)),
+        fill(Bounds::new(origin, size(width, thumb_height)), color)
+            .corner_radii(thumb_radius(width, cx)),
     )
 }
 
@@ -3548,6 +3598,59 @@ mod tests {
     }
 
     #[test]
+    fn scrollbar_thumb_hides_at_rest_and_fades_after_scrolling() {
+        let start = web_time::Instant::now();
+        let at = |millis| start + Duration::from_millis(millis);
+        let mut fade = ScrollbarFade::default();
+        let bottom = ScrollbarState {
+            total: 100,
+            offset: 76,
+            len: 24,
+        };
+        assert_eq!(fade.frame(bottom, at(0), false), None);
+        let followed = ScrollbarState {
+            total: 101,
+            offset: 77,
+            len: 24,
+        };
+        assert_eq!(fade.frame(followed, at(10), false), None);
+        let scrolled = ScrollbarState {
+            offset: 40,
+            ..followed
+        };
+        assert_eq!(
+            fade.frame(scrolled, at(20), false),
+            Some((1.0, Duration::from_secs(2)))
+        );
+        assert_eq!(
+            fade.frame(scrolled, at(1020), false),
+            Some((1.0, Duration::from_secs(1)))
+        );
+        assert_eq!(
+            fade.frame(scrolled, at(2520), false),
+            Some((1.0 - 1.0 / 1024.0, Duration::from_millis(33)))
+        );
+        assert_eq!(fade.frame(scrolled, at(3020), false), None);
+        let pinned = ScrollbarState {
+            total: 150,
+            ..scrolled
+        };
+        assert_eq!(fade.frame(pinned, at(4000), false), None);
+        fade.show(at(5000));
+        assert_eq!(
+            fade.frame(pinned, at(7500), true),
+            Some((1.0, Duration::from_millis(500)))
+        );
+        fade.show(at(8000));
+        let empty = ScrollbarState {
+            total: 24,
+            offset: 0,
+            len: 24,
+        };
+        assert_eq!(fade.frame(empty, at(8000), false), None);
+    }
+
+    #[test]
     fn terminal_drag_geometry_clamps_scrollbar_and_accelerates_selection_outside_grid() {
         let surface = Bounds::new(point(px(10.0), px(20.0)), size(px(200.0), px(160.0)));
         let scrollbar = ScrollbarState {
@@ -5048,6 +5151,7 @@ mod tests {
                             local_scroll_target: None,
                             scroll_pixel_offset: px(0.0),
                             overscroll: px(0.0),
+                            scrollbar_opacity: 1.0,
                             extra_height,
                             command_output: false,
                             appearance: &appearance,
@@ -5107,6 +5211,7 @@ mod tests {
                         local_scroll_target: None,
                         scroll_pixel_offset: offset,
                         overscroll: px(0.0),
+                        scrollbar_opacity: 1.0,
                         extra_height: px(0.0),
                         command_output: false,
                         appearance: &appearance,
@@ -5200,6 +5305,7 @@ mod tests {
                         local_scroll_target: None,
                         scroll_pixel_offset: offset,
                         overscroll: px(0.0),
+                        scrollbar_opacity: 1.0,
                         extra_height: px(0.0),
                         command_output: false,
                         appearance: &appearance,
@@ -5308,6 +5414,7 @@ mod tests {
                         local_scroll_target: target,
                         scroll_pixel_offset: px(0.0),
                         overscroll: px(0.0),
+                        scrollbar_opacity: 1.0,
                         extra_height: px(0.0),
                         command_output: false,
                         appearance: &appearance,
@@ -5418,6 +5525,7 @@ mod tests {
                         local_scroll_target: None,
                         scroll_pixel_offset: px(0.0),
                         overscroll: px(0.0),
+                        scrollbar_opacity: 1.0,
                         extra_height: px(0.0),
                         command_output: false,
                         appearance: &appearance,

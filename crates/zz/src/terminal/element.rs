@@ -5,7 +5,7 @@ use ala::{
     InspectorElementId, IntoElement, LayoutId, Pixels, RenderImage, Window,
 };
 use parking_lot::RwLock;
-use zz_terminal::TerminalAppearance;
+use zz_terminal::{ScrollbarState, TerminalAppearance};
 use zz_ui::terminal::{PaintState, TerminalImageSource, TerminalRenderInput};
 
 pub(crate) use zz_ui::terminal::RowRenderCache;
@@ -112,9 +112,25 @@ impl Element for TerminalElement {
         let command_output = view.is_command_output();
         let local_scroll_target = view.local_scroll_target();
         let scroll_pixel_offset = view.scroll_pixel_offset();
+        let scrollbar =
+            local_scroll_target.map_or(retained.viewport.scrollbar, |offset| ScrollbarState {
+                offset,
+                ..retained.viewport.scrollbar
+            });
+        let scrollbar_opacity = self
+            .view
+            .update(cx, |view, cx| view.scrollbar_opacity(scrollbar, cx));
+        let themed = self.appearance.local_colors.map(|local| {
+            let mut viewport = local.viewport(&retained.viewport);
+            viewport.cursor = retained
+                .viewport
+                .cursor
+                .map(|cursor| cursor.with_color(self.appearance.cursor_color));
+            viewport
+        });
         let paint = self.row_cache.borrow_mut().prepaint(
             TerminalRenderInput {
-                viewport: &retained.viewport,
+                viewport: themed.as_ref().unwrap_or(&retained.viewport),
                 row_revisions: &retained.row_revisions,
                 revision_epoch: retained.row_revision_epoch,
                 history: Some(&retained.history),
@@ -122,6 +138,7 @@ impl Element for TerminalElement {
                 local_scroll_target,
                 scroll_pixel_offset,
                 overscroll: Pixels::ZERO,
+                scrollbar_opacity,
                 extra_height: Pixels::ZERO,
                 command_output,
                 appearance: &self.appearance,
