@@ -35,6 +35,10 @@ Holds a list or a page you drill into and returns you where you were: a picker, 
 4. **Groups**: 16 below the header, 8 from the sides and bottom, 16 apart, their corner the panel's less 8. Rows are flush, with a hairline from the label to the end.
 5. **Note**: a muted line under the last group, for the whole sheet.
 
+## A select on a phone
+
+A select opens a sheet of its options in one group, the chosen one checked, a font in its own typeface. A search field and scopes sit above the group. A long list scrolls under the fixed header.
+
 ## Close and back
 
 ```figure uses=sheet
