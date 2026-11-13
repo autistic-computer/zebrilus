@@ -1,7 +1,7 @@
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
 use ala::{
-    Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent,
+    App, Context, Entity, FocusHandle, Image, InteractiveElement as _, IntoElement, KeyDownEvent,
     ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window,
     div,
 };
@@ -11,7 +11,10 @@ use zz_protocol::{CommandInvocation, PaneId, ViewDescriptor};
 use zz_ui::{
     agent::{
         chat::{ChatClicks, ChatPane},
-        view::{VIEW_SOURCE, ViewChat, view_body, view_buttons, view_chat_body},
+        view::{
+            VIEW_SOURCE, ViewChat, composer_image_id, view_body, view_buttons, view_chat_body,
+            view_image, view_missing,
+        },
     },
     pane::PaneKindButton,
 };
@@ -27,6 +30,7 @@ pub(crate) struct ViewPaneView {
     chat: ChatPane,
     focus: FocusHandle,
     source: bool,
+    held: Option<u64>,
     _agents: Subscription,
 }
 
@@ -44,7 +48,13 @@ impl ViewPaneView {
                 cx.notify();
             }
         });
-        Self {
+        cx.on_release(|view, cx| {
+            if let Some(id) = view.held.take() {
+                view.agents.update(cx, |agents, _| agents.release_image(id));
+            }
+        })
+        .detach();
+        let mut view = Self {
             pane,
             descriptor: descriptor.clone(),
             vendor,
@@ -53,8 +63,30 @@ impl ViewPaneView {
             chat: ChatPane::default(),
             focus: cx.focus_handle(),
             source: false,
+            held: None,
             _agents: observed,
+        };
+        view.hold(cx);
+        view
+    }
+
+    fn hold(&mut self, cx: &mut Context<Self>) {
+        let id = composer_image_id(&self.descriptor.content);
+        if id == self.held {
+            return;
         }
+        let held = self.held.take();
+        self.held = self.agents.update(cx, |agents, _| {
+            if let Some(held) = held {
+                agents.release_image(held);
+            }
+            id.filter(|id| agents.hold_image(*id))
+        });
+    }
+
+    fn composer_image(&self, cx: &App) -> Option<Arc<Image>> {
+        composer_image_id(&self.descriptor.content)
+            .and_then(|id| self.agents.read(cx).shown_image(id))
     }
 
     pub(crate) fn synchronize_descriptor(
@@ -69,6 +101,7 @@ impl ViewPaneView {
         }
         self.descriptor = descriptor.clone();
         self.source = false;
+        self.hold(cx);
         cx.notify();
         true
     }
@@ -99,7 +132,12 @@ impl ViewPaneView {
 impl Render for ViewPaneView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
-        let body = if self.descriptor.content.text().is_some() {
+        let body = if composer_image_id(&self.descriptor.content).is_some() {
+            self.composer_image(cx).map_or_else(
+                || view_missing("This image is no longer in the chat", cx),
+                view_image,
+            )
+        } else if self.descriptor.content.text().is_some() {
             view_body(
                 &self.descriptor.content,
                 self.pane.0,
@@ -168,5 +206,52 @@ impl Render for ViewPaneView {
                     .overflow_y_scroll()
                     .child(body),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use ala::{AppContext as _, Image, ImageFormat, TestAppContext};
+    use zz_daemon_client::DaemonError;
+    use zz_protocol::{PaneId, ViewDescriptor};
+    use zz_ui::agent::view::composer_image_view;
+
+    use super::ViewPaneView;
+    use crate::{agent::AgentController, mux::client::MuxClient};
+
+    #[ala::test]
+    fn a_composer_image_shows_in_its_view_pane_until_the_last_one_closes(cx: &mut TestAppContext) {
+        let image = Arc::new(Image::from_bytes(ImageFormat::Png, vec![7, 7, 7]));
+        let id = image.id;
+        let agents = cx.new(|_| AgentController::new());
+        let mux = cx.new(|cx| {
+            MuxClient::new(
+                Err(DaemonError::Thread("test client".to_owned())),
+                zz_daemon_client::default_socket_path(),
+                cx,
+            )
+        });
+        agents.update(cx, |agents, _| agents.show_image(Arc::clone(&image)));
+        let descriptor = ViewDescriptor {
+            origin: Some(PaneId(1)),
+            title: "Image".to_owned(),
+            content: composer_image_view(&image),
+        };
+        let view = |cx: &mut TestAppContext| {
+            let (mux, agents) = (mux.clone(), agents.clone());
+            cx.new(|cx| ViewPaneView::new(PaneId(2), &descriptor, None, mux, agents, cx))
+        };
+        let first = view(cx);
+        let second = view(cx);
+        let shown = cx.read(|cx| first.read(cx).composer_image(cx));
+        assert!(shown.is_some_and(|shown| Arc::ptr_eq(&shown, &image)));
+        drop(first);
+        cx.update(|_| {});
+        assert!(cx.read(|cx| second.read(cx).composer_image(cx)).is_some());
+        drop(second);
+        cx.update(|_| {});
+        assert!(cx.read(|cx| agents.read(cx).shown_image(id)).is_none());
     }
 }

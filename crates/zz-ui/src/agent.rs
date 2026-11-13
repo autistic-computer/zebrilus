@@ -90,11 +90,29 @@ pub fn composer_attachment(
     id: impl Into<ElementId>,
     remove: impl Into<ElementId>,
     image: Arc<Image>,
+    on_open: impl Fn(Arc<Image>, &mut Window, &mut App) + 'static,
     on_remove: impl Fn(&mut Window, &mut App) + 'static,
     ground: Ground,
+    cx: &App,
 ) -> Div {
+    let id: ElementId = id.into();
+    let source = crate::pane::PipSource::new(
+        ElementId::NamedChild(Arc::new(id.clone()), "source".into()),
+        cx.theme().radius_of(CardLook::Image),
+    )
+    .picture();
+    let launch = source.clone();
     penna::blocks::chat::composer_attachment(
-        agent_attachment_thumbnail(id, image, COMPOSER_ATTACHMENT, ground),
+        source.draw(penna::blocks::chat::attachment_tile(
+            id,
+            image,
+            COMPOSER_ATTACHMENT,
+            ground,
+            move |image, window, cx| {
+                launch.launch(window, cx);
+                on_open(image, window, cx);
+            },
+        )),
         remove,
         on_remove,
     )

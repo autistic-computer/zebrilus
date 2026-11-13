@@ -326,8 +326,14 @@ pub struct AgentController {
     pending_composer: BTreeMap<PaneId, String>,
     pending_images: BTreeMap<PaneId, Vec<Arc<Image>>>,
     retained_panes: BTreeSet<PaneId>,
+    shown_images: BTreeMap<u64, ShownImage>,
     shutting_down: bool,
     moves: u64,
+}
+
+struct ShownImage {
+    image: Arc<Image>,
+    views: usize,
 }
 
 impl Default for AgentController {
@@ -345,6 +351,7 @@ impl AgentController {
             pending_composer: BTreeMap::new(),
             pending_images: BTreeMap::new(),
             retained_panes: BTreeSet::new(),
+            shown_images: BTreeMap::new(),
             shutting_down: false,
             moves: 0,
         }
@@ -352,6 +359,35 @@ impl AgentController {
 
     pub(crate) fn attach_mux(&mut self, mux: Entity<MuxClient>) {
         self.mux = Some(mux);
+    }
+
+    pub(crate) fn show_image(&mut self, image: Arc<Image>) {
+        self.shown_images
+            .entry(image.id)
+            .or_insert(ShownImage { image, views: 0 });
+    }
+
+    pub(crate) fn shown_image(&self, id: u64) -> Option<Arc<Image>> {
+        self.shown_images
+            .get(&id)
+            .map(|shown| Arc::clone(&shown.image))
+    }
+
+    pub(crate) fn hold_image(&mut self, id: u64) -> bool {
+        let Some(shown) = self.shown_images.get_mut(&id) else {
+            return false;
+        };
+        shown.views += 1;
+        true
+    }
+
+    pub(crate) fn release_image(&mut self, id: u64) {
+        if let Some(shown) = self.shown_images.get_mut(&id) {
+            shown.views = shown.views.saturating_sub(1);
+            if shown.views == 0 {
+                self.shown_images.remove(&id);
+            }
+        }
     }
 
     pub(crate) fn pane_chat(&self, pane: PaneId) -> Option<&ChatView> {

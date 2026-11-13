@@ -53,7 +53,7 @@ use penna::{
     h_flex, v_flex,
 };
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId, ViewContent};
-use zz_ui::agent::{composer_attachment, plan_progress};
+use zz_ui::agent::{composer_attachment, plan_progress, view::composer_image_view};
 
 use crate::{
     agent::attachment as agent_attachment,
@@ -1257,26 +1257,50 @@ impl AgentView {
         )
     }
 
-    fn render_attachments(&self, view: &Entity<Self>, ground: Ground) -> Option<impl IntoElement> {
+    fn render_attachments(
+        &self,
+        view: &Entity<Self>,
+        ground: Ground,
+        cx: &ala::App,
+    ) -> Option<impl IntoElement> {
         if self.attachments.is_empty() {
             return None;
         }
         Some(h_flex().w_full().flex_wrap().gap_2().py_1().children(
             self.attachments.iter().enumerate().map(|(index, image)| {
+                let open_view = view.clone();
                 let remove_view = view.clone();
                 composer_attachment(
                     ("agent-composer-attachment", index),
                     format!("agent-attachment-remove-{}-{index}", self.pane.0),
                     Arc::clone(image),
+                    move |image, window, cx| {
+                        open_view.update(cx, |view, cx| view.open_image(image, window, cx));
+                    },
                     move |_, cx| {
                         remove_view.update(cx, |view, cx| {
                             view.remove_attachment(index, cx);
                         });
                     },
                     ground,
+                    cx,
                 )
             }),
         ))
+    }
+
+    fn open_image(&self, image: Arc<Image>, window: &Window, cx: &mut Context<Self>) {
+        let content = composer_image_view(&image);
+        self.controller
+            .update(cx, |controller, _| controller.show_image(image));
+        self.open_view(
+            &ViewRequest {
+                title: "Image".to_owned(),
+                content,
+            },
+            window,
+            cx,
+        );
     }
 
     fn render_empty_state(
@@ -1768,7 +1792,7 @@ impl AgentView {
         let over = mention_layer(&self.mention, cx).filter(|_| prompting);
         let controls = self.render_harness_controls(state, view, cx);
         let attachments = self
-            .render_attachments(view, inside)
+            .render_attachments(view, inside, cx)
             .filter(|_| prompting)
             .map(IntoElement::into_any_element);
         let (composer, footer) = match ask {

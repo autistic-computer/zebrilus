@@ -1492,6 +1492,7 @@ impl Render for AgentPane {
                                     ("web-agent-image", index),
                                     ("web-agent-remove-image", index),
                                     preview,
+                                    zz_ui::attachment::open_attachment_preview,
                                     move |_, cx| {
                                         view.update(cx, |this, cx| {
                                             if index < this.attachments.len() {
@@ -1502,6 +1503,7 @@ impl Render for AgentPane {
                                         });
                                     },
                                     inside,
+                                    cx,
                                 ))
                             },
                         ))

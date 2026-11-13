@@ -22,6 +22,23 @@ use crate::{
 };
 
 pub const VIEW_SOURCE: &str = "view-source";
+const COMPOSER_IMAGE: &str = "composer-";
+
+#[must_use]
+pub fn composer_image_view(image: &ala::Image) -> ViewContent {
+    ViewContent::Image {
+        item: format!("{COMPOSER_IMAGE}{}", image.id),
+        index: 0,
+    }
+}
+
+#[must_use]
+pub fn composer_image_id(content: &ViewContent) -> Option<u64> {
+    match content {
+        ViewContent::Image { item, .. } => item.strip_prefix(COMPOSER_IMAGE)?.parse().ok(),
+        _ => None,
+    }
+}
 
 #[must_use]
 pub fn view_buttons(content: &ViewContent, source: bool) -> Vec<PaneKindButton> {
