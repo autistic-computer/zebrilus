@@ -3,7 +3,7 @@
 A phone screen is built from phone components, sized for a thumb from the start. It is not the desktop made bigger: desktop components under a coarse pointer keep their layout and only grow their targets.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The phone components are drawn here with the HTML kit. Natively there are the 44 and 56 touch rungs, the touch text styles, the 56 button and field, touch rows, row groups and headers, the status marks, the phone tile with machine and window content and its hold, the holdable section header, sheets with the 44 close and the hold sheet's muted line, the action bar, the empty state, the zoom card, the pill and the bento overview, the stack menu on the pill with zz's machine and pane menus, the pill's tile words, the chat on a phone (composer row, ask card, thumbnail badge, touch transcript rows) with the keyboard rule in a chat, the key row (one 56 floating pill of 44 keys, the prefix and the ends pinned) with the arrow pad's bubble, the terminal's find field, link sheet and jump to bottom, and the browser's pill stack, address field, progress line, tabs sheet and failed page with the keyboard rule in a browser; the rest of the components below are next.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The phone components are drawn here with the HTML kit. Natively there are the 44 and 56 touch rungs, the touch text styles, the 56 button and field, touch rows, row groups and headers, the status marks, the phone tile with machine and window content and its hold, the holdable section header, sheets with the caption header, the close disc and ruled groups, the centered modal for hold menus, confirm, rename and a slider, the action bar, the empty state, the zoom card, the pill and the bento overview, the stack menu on the pill with zz's machine and pane menus, the pill's tile words, the chat on a phone (composer row, ask card, thumbnail badge, touch transcript rows) with the keyboard rule in a chat, the key row (one 56 floating pill of 44 keys, the prefix and the ends pinned) with the arrow pad's bubble, the terminal's find field, link sheet and jump to bottom, and the browser's pill stack, address field, progress line, tabs sheet and failed page with the keyboard rule in a browser; the rest of the components below are next.</span></div></div></div>
 ```
 
 ## Rules
@@ -11,7 +11,7 @@ A phone screen is built from phone components, sized for a thumb from the start.
 1. **The whole thing is the target.** A tile, row or card is tapped as one piece; no button sits inside one. More actions live one zoom in, or behind press-and-hold.
 2. **Nothing tappable is under 44**, and what is drawn is as big as what is tappable: no small drawing with an invisible hit area.
 3. **One main action per screen**, full width, at the bottom where the thumb is. It rides the keyboard. The top of the screen is for reading.
-4. **Going into a thing is a zoom**; a short question that returns you where you were is a sheet.
+4. **Going into a thing is a zoom**; a short question that returns you where you were is a modal, and a list you pick from is a sheet.
 5. **State is said in words and a tone dot**, never by look alone.
 6. **Text is touch-body 17** by default, touch-small 15 for details, never under 13.
 7. **Text says a state, a value or a name.** No eyebrows, subheads or helper lines that explain what the screen already shows.
@@ -23,19 +23,18 @@ A phone screen is built from phone components, sized for a thumb from the start.
 </div>
 ```
 
-**Press and hold** a tile, or the header over a group of tiles, for a sheet of what you can do to it: touch rows, the one that closes or removes last in danger ink. One rule for every tile, so nothing that acts on a tile sits inside it. Under the sheet's title, one muted line holds what the tile leaves out: a window's work, folder, branch and age. A header that can be held is 44 tall. Natively machine tiles, window tiles and session headers take the hold. Closing asks first, in a sheet with the question, what goes, Cancel and Close; renaming opens a sheet with the name in a 56 field and Save.
+**Press and hold** a tile, or the header over a group of tiles, for a menu of what you can do to it, in a card in the middle of the screen: its name, then touch rows in a group, the one that closes or removes in its own group in danger ink. One rule for every tile, so nothing that acts on a tile sits inside it. A header that can be held is 44 tall. Natively machine tiles, window tiles and session headers take the hold. Closing asks first, in a card with the question, what goes, Cancel and Close; renaming opens a card with the name in a 48 field, Cancel and Rename.
 
 ```figure uses=sheet,touch,label
 <div style="position: relative; width: 370px; height: 330px; overflow: hidden; border-radius: 28px; background: var(--penna-bg)">
-  <div class="penna-sheet" style="--penna-sheet-rest: 8px">
-    <div class="penna-sheet-scrim"></div>
-    <div class="penna-sheet-frame">
-      <div class="penna-sheet-panel" data-penna="drawer">
-        <div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div>
-        <div class="penna-sheet-header"><span class="penna-sheet-copy"><span class="penna-sheet-title" data-penna-text>Fix pane stack hit testing</span><span class="penna-sheet-detail" data-penna-text>Testing, 62% · zebrilus · pane-stack · now</span></span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close"><i data-icon="xmark"></i></button></div>
-        <div class="penna-sheet-list">
-          <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="pencil"></i><span class="penna-touch-row-lines"><span>Rename</span></span></div>
-          <div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button"><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span>Close window</span></span></div>
+  <div class="penna-modal">
+    <div class="penna-modal-scrim"></div>
+    <div class="penna-modal-area">
+      <div class="penna-modal-card" data-penna="drawer">
+        <div class="penna-modal-head"><span data-penna-text>Fix pane stack hit testing</span><button class="penna-sheet-disc" aria-label="Close"><span><i data-icon="xmark"></i></span></button></div>
+        <div class="penna-sheet-groups" data-menu>
+          <div class="penna-touch-group" data-penna="settings.card" data-ruled data-ground><div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="pencil"></i><span class="penna-touch-row-lines"><span>Rename</span></span></div></div>
+          <div class="penna-touch-group" data-penna="settings.card" data-ruled data-ground><div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button"><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span>Close window</span></span></div></div>
         </div>
       </div>
     </div>
@@ -133,7 +132,7 @@ No header: the content runs to the edges and the pill is the one handle. Its sec
 </div>
 ```
 
-The **mini pill** and a **badge on a thumbnail** are the two things drawn smaller than their target. Scrolling a pane shrinks the pill to 32, a handle like a sheet's grabber, and its target stays 44. A badge, like a pasted image's remove control, is an accessory of the picture: a 24 floating disc in its corner, its 44 target centered on it. Not built natively yet: the mini pill's 44 target.
+The **mini pill**, a **badge on a thumbnail** and the **close disc** of a sheet or modal are the three things drawn smaller than their target. Scrolling a pane shrinks the pill to 32, a handle like a sheet's grabber, and its target stays 44. A badge, like a pasted image's remove control, is an accessory of the picture: a 24 floating disc in its corner, its 44 target centered on it. Not built natively yet: the mini pill's 44 target.
 
 ## Terminal
 
