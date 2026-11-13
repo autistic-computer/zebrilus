@@ -121,10 +121,10 @@ jobs:
           rustup toolchain install nightly --profile minimal --target wasm32-unknown-unknown
           rustup run nightly cargo check --manifest-path clients/web/Cargo.toml --target wasm32-unknown-unknown --all-targets --locked
 
-      - name: Find CEF next to the Windows test binaries
+      - name: Put CEF on PATH for the Windows tests
         if: runner.os == 'Windows'
         shell: pwsh
-        run: '"$env:GITHUB_WORKSPACE\target\debug" >> $env:GITHUB_PATH'
+        run: '"$env:CEF_PATH\156.0.15\cef_windows_x86_64" >> $env:GITHUB_PATH'
 
       - name: Test workspace
         continue-on-error: ${{ runner.os == 'Windows' }}

@@ -5698,6 +5698,7 @@ mod tests {
 
     #[ala::test]
     fn found_machines_join_the_hosts_unless_one_is_already_configured(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
         cx.update(zz_ui::init);
         let host = |name: &str, peer: &str| zz_daemon_client::HostEntry {
             name: name.to_owned(),
