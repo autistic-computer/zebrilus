@@ -483,11 +483,9 @@ impl<D: SelectDelegate> SelectState<D> {
                         .flex_col()
                         .gap(Space::S8)
                         .when(controls, |this| this.px(Space::S16).pb(Space::GAP_GROUP))
-                        .children(
-                            self.search
-                                .as_ref()
-                                .map(|(search, _)| Input::new(search).cleanable(true)),
-                        )
+                        .children(self.search.as_ref().map(|(search, _)| {
+                            Input::new(search).cleanable(true).with_size(Size::Touch)
+                        }))
                         .when(!self.options.scopes.is_empty(), |this| {
                             this.child(
                                 div().child(
