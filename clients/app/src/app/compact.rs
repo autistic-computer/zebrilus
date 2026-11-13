@@ -17,12 +17,13 @@ use penna::{
     blocks::compact::{
         BENTO_INSET, PillLabel, PillPlacement, PillSpring, compact_floating_bar,
         compact_floating_pill, compact_hud, compact_pill_collapse, compact_pill_label,
-        compact_pill_morph, mini_pill_width, pill_bounds, pill_corner, pill_glass_over,
+        compact_pill_morph, mini_pill_width, over_pill, pill_bounds, pill_corner, pill_glass_over,
     },
     blocks::sheet::{bottom_sheet, close_sheet},
     blocks::touch::{
-        ArrowPadEvent, KEY_ROW_HEIGHT, KeyRow, Lift, LiftEvent, PageDot, Pager, PagerEvent,
-        StackClose, StackMenu, StackMenuEvent, WhichKeyList, page_dots_in,
+        ArrowPadEvent, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, Lift, LiftEvent,
+        PageDot, Pager, PagerEvent, PhoneFind, StackClose, StackMenu, StackMenuEvent, WhichKeyList,
+        page_dots_in,
     },
     blocks::which_key::{WhichKeyCap, WhichKeyRow},
     components::kbd::Kbd,
@@ -34,14 +35,14 @@ use zz_terminal::KeyAction;
 use zz_ui::{
     command::tmux_keystroke,
     compact::{
-        ALL_BINDINGS, ALL_MACHINES, CLOSE_PANE, NEW_BROWSER, NEW_CHAT, NEW_SESSION, NEW_TERMINAL,
-        OVERVIEW, PaneMenu, RENAME_PANE, SETTINGS, ToolKeys, close_pane_detail, machine_menu,
-        pane_menu,
+        ALL_BINDINGS, ALL_MACHINES, CLOSE_PANE, FIND, NEW_BROWSER, NEW_CHAT, NEW_SESSION,
+        NEW_TERMINAL, OVERVIEW, PaneMenu, RENAME_PANE, SETTINGS, ToolKeys, close_pane_detail,
+        machine_menu, pane_menu,
     },
 };
 
 use super::AppShell;
-use crate::terminal::{TerminalDisplayPreferences, TerminalText};
+use crate::terminal::{TerminalDisplayPreferences, TerminalPane, TerminalText};
 
 mod overview;
 mod sheets;
@@ -55,6 +56,7 @@ const SCALE_HUD_LINGER: Duration = Duration::from_secs(1);
 const NOTICE_LINGER: Duration = Duration::from_secs(2);
 const LANDING_WAIT: Duration = Duration::from_secs(1);
 const BAR_DROP: f32 = 15.0;
+const TOUCH_TARGET: f32 = penna::blocks::touch::TOUCH_TARGET;
 const BAR_FADE: f32 = 2.2;
 const COLLAPSE_TRAVEL: f32 = 24.0;
 const LIFT_FALLBACK_TOP: f32 = 140.0;
@@ -514,6 +516,79 @@ impl AppShell {
         }
     }
 
+    pub(super) fn close_key_stacks(&mut self, cx: &mut Context<Self>) {
+        if let Some((keys, _)) = &self.compact.tool_keys {
+            keys.clone().close(cx);
+        }
+    }
+
+    fn shown_terminal(&self, cx: &App) -> Option<Entity<TerminalPane>> {
+        let model = self.status_model(cx);
+        let (pages, _) = pages(&model, &self.unseen_agents);
+        pages
+            .get(self.compact.pager.index())
+            .filter(|page| page.kind == PaneKindSnapshot::Terminal)
+            .and_then(|page| self.terminals.get(&page.pane).cloned())
+    }
+
+    fn open_phone_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(terminal) = self.shown_terminal(cx) {
+            terminal.update(cx, |terminal, cx| terminal.open_phone_find(window, cx));
+            self.focused_pane = None;
+            cx.notify();
+        }
+    }
+
+    fn phone_find_field(
+        terminal: &Entity<TerminalPane>,
+        state: crate::terminal::PhoneFindState,
+        cx: &App,
+    ) -> PhoneFind {
+        let close = terminal.downgrade();
+        let previous = terminal.downgrade();
+        let next = terminal.downgrade();
+        PhoneFind::new("compact-find", &state.input, cx.theme().ground())
+            .count(state.count)
+            .found(state.found)
+            .on_close(move |window, cx| {
+                let _ = close.update(cx, |terminal, cx| terminal.close_find(window, cx));
+            })
+            .on_previous(move |_, cx| {
+                let _ = previous.update(cx, |terminal, cx| terminal.find_step(true, cx));
+            })
+            .on_next(move |_, cx| {
+                let _ = next.update(cx, |terminal, cx| terminal.find_step(false, cx));
+            })
+    }
+
+    pub(super) fn open_link_sheet(
+        &mut self,
+        uri: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.compact_active(window, cx) {
+            if zz_client::terminal_view::openable_uri(&uri) {
+                cx.open_url(&uri);
+            }
+            return;
+        }
+        window.dismiss_virtual_keyboard();
+        self.open_phone_sheet(sheets::PhoneSheet::Link(uri), window, cx);
+    }
+
+    pub(super) fn open_link_in_browser(&mut self, uri: &str, cx: &mut Context<Self>) {
+        let mut args = self
+            .connection
+            .read(cx)
+            .core
+            .attached_session()
+            .map(|session| vec!["-t".to_owned(), format!("{session}:")])
+            .unwrap_or_default();
+        args.extend(["--kind".to_owned(), "browser".to_owned(), uri.to_owned()]);
+        self.command("new-window", args, cx);
+    }
+
     fn stack_pick(
         &mut self,
         _: &Entity<StackMenu>,
@@ -554,6 +629,7 @@ impl AppShell {
                 cx.notify();
             }
             RENAME_PANE | CLOSE_PANE => self.pane_sheet(id == RENAME_PANE, window, cx),
+            FIND => self.open_phone_find(window, cx),
             _ => {}
         }
     }
@@ -762,6 +838,7 @@ impl AppShell {
                     self.focused_pane = Some(pane_id);
                 }
                 terminal.update(cx, |terminal, cx| {
+                    terminal.set_compact(true, cx);
                     terminal.set_extra_height(self.compact.extra_height, cx);
                     terminal.set_text_dimmed(false, 1.0, cx);
                     terminal.set_pane_status(dead.clone(), pane.synchronized_input, cx);
@@ -1115,9 +1192,16 @@ impl AppShell {
             matches!(page.kind, PaneKindSnapshot::Browser(_))
                 || matches!(page.kind, PaneKindSnapshot::Agent(_))
         });
+        let shown_terminal = pages
+            .get(self.compact.pager.index())
+            .filter(|page| page.kind == PaneKindSnapshot::Terminal)
+            .and_then(|page| self.terminals.get(&page.pane).cloned());
+        let finding = shown_terminal
+            .as_ref()
+            .is_some_and(|terminal| terminal.read(cx).phone_find(cx).is_some());
         self.compact
             .morph
-            .aim(!keyboard_heading_up(window) || keyless, now);
+            .aim(!keyboard_heading_up(window) || keyless || finding, now);
         if cx.reduce_motion() {
             self.compact.morph.finish();
         }
@@ -1343,7 +1427,34 @@ impl AppShell {
         };
         let dots = page_dots_in(&dot_groups(&pages, shown), cx.theme().foreground, cx);
         let chat = shown_page.is_some_and(|page| matches!(page.kind, PaneKindSnapshot::Agent(_)));
-        let bottom = if keyboard && chat {
+        let find = shown_terminal.as_ref().and_then(|terminal| {
+            let state = terminal.read(cx).phone_find(cx)?;
+            Some(Self::phone_find_field(terminal, state, cx))
+        });
+        let bottom = if let Some(find) = find {
+            if keyboard {
+                let lift = key_row_lift(zone, overlap);
+                div()
+                    .flex_none()
+                    .w_full()
+                    .h(px(KEY_ROW_HEIGHT) + lift)
+                    .px(px(KEY_ROW_MARGIN_X))
+                    .pt(px(KEY_ROW_MARGIN_Y))
+                    .pb(px(KEY_ROW_MARGIN_Y) + lift)
+                    .bg(page_background)
+                    .child(find)
+                    .into_any_element()
+            } else {
+                div()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .bottom_0()
+                    .h(zone)
+                    .child(compact_floating_bar(find, &placement, cx))
+                    .into_any_element()
+            }
+        } else if keyboard && chat {
             div()
                 .flex_none()
                 .w_full()
@@ -1446,12 +1557,39 @@ impl AppShell {
                     this.compact_scroll(event, window, cx);
                 },
             ));
+            let jump = (!lifting
+                && shown_terminal
+                    .as_ref()
+                    .is_some_and(|terminal| terminal.read(cx).scrolled_back(cx)))
+            .then(|| {
+                let at = over_pill(lowered, px(TOUCH_TARGET));
+                let terminal = shown_terminal.clone();
+                div()
+                    .absolute()
+                    .left(at.x)
+                    .top(at.y)
+                    .opacity(fade * (1.0 - menu_progress))
+                    .child(
+                        penna::blocks::chat::phone_jump_button(
+                            "compact-jump",
+                            "Jump to bottom",
+                            cx.theme().ground(),
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if let Some(terminal) = &terminal {
+                                terminal.update(cx, TerminalPane::jump_to_bottom);
+                            }
+                            this.expand_pill(cx);
+                        })),
+                    )
+            });
             div()
                 .absolute()
                 .left_0()
                 .right_0()
                 .bottom_0()
                 .h(zone)
+                .children(jump)
                 .child(
                     div()
                         .id("compact-bar-zone")
@@ -1699,6 +1837,7 @@ impl AppShell {
         });
         KeyRow::new(keys.row())
             .lead(keys.lead())
+            .trail(keys.trail())
             .track_scroll(&keys.scroll)
             .on_key(|keystroke, window, cx| dispatch_key(keystroke.clone(), window, cx))
             .on_hide(|window, _| window.dismiss_virtual_keyboard())
@@ -1862,7 +2001,7 @@ mod tests {
         let zone = px(92.0);
         let top = |overlap: f32| key_row_top(zone, px(overlap));
         assert_eq!(top(0.0), zone);
-        assert_eq!(top(30.0), zone);
+        assert_eq!(top(20.0), zone);
         assert_eq!(top(300.0), px(KEY_ROW_HEIGHT + 300.0));
     }
 

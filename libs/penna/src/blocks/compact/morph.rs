@@ -1,14 +1,16 @@
 use ala::{
     App, Bounds, Div, ElementId, FULL_CORNER_RADIUS, InteractiveElement as _, MouseButton,
-    ParentElement as _, Pixels, SharedString, SpringConfig, SpringState, Stateful, Styled as _,
-    TextRun, Window, div, point, px, size,
+    ParentElement as _, Pixels, Point, SharedString, SpringConfig, SpringState, Stateful,
+    Styled as _, TextRun, Window, div, point, px, size,
 };
 use web_time::Instant;
 
 use super::bar::{COMPACT_PILL_HEIGHT, PillPlacement, floating_layer};
 use crate::{
     ActiveTheme as _, Layer, PaintState, Space, StyledExt as _, Surface,
-    blocks::touch::{KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow},
+    blocks::touch::{
+        KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, key_pill_layer,
+    },
     foundation::roles,
 };
 
@@ -107,12 +109,9 @@ pub fn compact_pill_morph(
     let height = between(px(KEY_PILL_HEIGHT), px(COMPACT_PILL_HEIGHT));
     let top = between(px(KEY_ROW_MARGIN_Y), pill_top).min(floor - px(KEY_ROW_MARGIN_Y) - height);
     let middle = top + height / 2.0;
-    let start = between(px(KEY_ROW_MARGIN_X + keys.lead_room()), placement.inset);
     let side = between(px(KEY_ROW_MARGIN_X), placement.inset);
     let pill = floating_layer(placement, cx);
-    let keys_layer = cx
-        .theme()
-        .layer(Surface::new(roles::PHONE_PILL), PaintState::Rest);
+    let keys_layer = key_pill_layer(cx.theme());
     let half = |layer: &Layer, height: f32| layer.radius.min(px(height / 2.0));
     let radius = between(
         half(&keys_layer, KEY_PILL_HEIGHT),
@@ -135,7 +134,7 @@ pub fn compact_pill_morph(
             div()
                 .absolute()
                 .top(top)
-                .left(start)
+                .left(side)
                 .right(side)
                 .h(height)
                 .layer(&Layer { radius, ..pill }),
@@ -180,6 +179,15 @@ pub fn pill_bounds(
             placement.zone() - bottom - height,
         ),
         size(pill_width, height),
+    )
+}
+
+#[must_use]
+pub fn over_pill(pill: Bounds<Pixels>, size: Pixels) -> Point<Pixels> {
+    let reach = ((px(crate::blocks::touch::TOUCH_TARGET) - pill.size.height) / 2.0).max(px(0.0));
+    point(
+        pill.center().x - size / 2.0,
+        pill.top() - reach - px(Space::GAP_RELATED.design_px()) - size,
     )
 }
 

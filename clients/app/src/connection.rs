@@ -87,6 +87,7 @@ pub struct Connection {
     retry_default: bool,
     focused: bool,
     color_scheme: Option<zz_terminal::TerminalColorScheme>,
+    link_tap: Option<(PaneId, web_time::Instant)>,
     #[cfg(target_family = "wasm")]
     socket: Option<browser::Socket>,
     #[cfg(target_family = "wasm")]
@@ -109,7 +110,17 @@ pub struct FoundHosts(pub Vec<FoundHost>);
 
 impl EventEmitter<FoundHosts> for Connection {}
 
+pub struct LinkTapped(pub String);
+
+impl EventEmitter<LinkTapped> for Connection {}
+
+const LINK_TAP_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
 impl Connection {
+    pub fn expect_link_tap(&mut self, pane: PaneId) {
+        self.link_tap = Some((pane, web_time::Instant::now()));
+    }
+
     #[must_use]
     pub fn new(_: &mut Context<Self>) -> Self {
         Self {
@@ -155,6 +166,7 @@ impl Connection {
             retry_default: false,
             focused: true,
             color_scheme: None,
+            link_tap: None,
             #[cfg(target_family = "wasm")]
             socket: None,
             #[cfg(target_family = "wasm")]
@@ -1078,6 +1090,13 @@ impl Connection {
                 CoreEvent::ClientMessage { text, .. } => self.status.clone_from(text),
                 CoreEvent::Clipboard { text, .. } => {
                     cx.write_to_clipboard(ala::ClipboardItem::new_string(text.clone()));
+                }
+                CoreEvent::OpenUri { pane, uri }
+                    if self.link_tap.take().is_some_and(|(tapped, at)| {
+                        tapped == *pane && at.elapsed() < LINK_TAP_WAIT
+                    }) =>
+                {
+                    cx.emit(LinkTapped(uri.clone()));
                 }
                 CoreEvent::OpenUri { uri, .. } if zz_client::terminal_view::openable_uri(uri) => {
                     cx.open_url(uri);

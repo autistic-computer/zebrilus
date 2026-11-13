@@ -193,7 +193,18 @@ pub struct TerminalPane {
     search_focus_pending: bool,
     search_accept_on_enter: bool,
     swallowed_search_key: Option<KeyCode>,
+    compact: bool,
     _subscription: Subscription,
+}
+
+pub struct TerminalTyped;
+
+impl ala::EventEmitter<TerminalTyped> for TerminalPane {}
+
+pub struct PhoneFindState {
+    pub input: Entity<InputState>,
+    pub count: String,
+    pub found: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -341,6 +352,7 @@ impl TerminalPane {
             search_focus_pending: false,
             search_accept_on_enter: false,
             swallowed_search_key: None,
+            compact: false,
             _subscription: subscription,
         }
     }
@@ -361,6 +373,63 @@ impl TerminalPane {
             self.floating = floating;
             cx.notify();
         }
+    }
+
+    pub fn set_compact(&mut self, compact: bool, cx: &mut Context<Self>) {
+        if self.compact != compact {
+            self.compact = compact;
+            cx.notify();
+        }
+    }
+
+    pub fn phone_find(&self, cx: &App) -> Option<PhoneFindState> {
+        let query = self.search.as_ref()?;
+        let input = self.search_input.clone()?;
+        let status = self
+            .viewport(&self.connection.read(cx).core)
+            .and_then(|viewport| viewport.search);
+        let (count, found) = zz_ui::compact::find_count(&query.text, status);
+        Some(PhoneFindState {
+            input,
+            count,
+            found,
+        })
+    }
+
+    pub fn open_phone_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.search.is_none() {
+            self.open_search(window, cx);
+        } else if let Some(input) = &self.search_input {
+            input.read(cx).focus_handle(cx).focus(window, cx);
+        }
+        window.request_virtual_keyboard();
+    }
+
+    pub fn close_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.search.is_some() {
+            self.close_search(window, cx);
+        }
+    }
+
+    pub fn find_step(&mut self, backward: bool, cx: &mut Context<Self>) {
+        self.step_search(backward, cx);
+    }
+
+    pub fn scrolled_back(&self, cx: &App) -> bool {
+        let core = &self.connection.read(cx).core;
+        let Some(viewport) = self.viewport(core) else {
+            return false;
+        };
+        let bar = viewport.scrollbar;
+        let offset = self.scroll.target().unwrap_or(bar.offset);
+        offset.saturating_add(bar.len) < bar.total
+    }
+
+    pub fn jump_to_bottom(&mut self, cx: &mut Context<Self>) {
+        self.cancel_local_scroll(cx);
+        self.scroll_rows = 0.;
+        self.view(TerminalViewAction::ScrollBottom, cx);
+        cx.notify();
     }
 
     pub fn new_command_output(
@@ -680,7 +749,11 @@ impl TerminalPane {
         if self.search_input.is_none() {
             let input = cx.new(|cx| {
                 InputState::new(window, cx)
-                    .placeholder("Find in this pane…")
+                    .placeholder(if self.compact {
+                        "Find"
+                    } else {
+                        "Find in this pane…"
+                    })
                     .context_menu(true)
             });
             cx.subscribe_in(
@@ -900,9 +973,26 @@ impl TerminalPane {
                 !tracking || event.modifiers.shift || self.force_local_selection;
         }
         self.pressed_buttons.insert(event.button);
+        let link_tap = self.compact
+            && self.surface == TerminalSurface::Pane
+            && event.button == MouseButton::Left
+            && event.click_count == 1
+            && event.modifiers == ala::Modifiers::default()
+            && !self
+                .viewport(&self.connection.read(cx).core)
+                .is_some_and(|viewport| viewport.mouse_tracking);
+        if link_tap {
+            let pane = self.pane;
+            self.connection
+                .update(cx, |connection, _| connection.expect_link_tap(pane));
+        }
         let input = self.mouse(
             event.position,
-            event.modifiers,
+            if link_tap {
+                ala::Modifiers::control()
+            } else {
+                event.modifiers
+            },
             TerminalMousePhase::Press,
             mouse_button(event.button),
             event.click_count,
@@ -1773,11 +1863,13 @@ impl Render for TerminalPane {
             hovered_uri.clone_from(&viewport.presentation.hovered_uri);
             search_status = viewport.search;
             if let Some(uri) = &hovered_uri
+                && !self.compact
                 && pasted_image_number(uri).is_none()
             {
                 bottom_right.push(terminal_link_popup(presented_uri(uri), cx).into_any_element());
             }
-            mode = terminal_mode_text(viewport.mode, viewport.unseen_output);
+            mode = terminal_mode_text(viewport.mode, viewport.unseen_output)
+                .filter(|(label, _)| !self.compact || label.is_some());
             if let Some(status) = terminal_status_text(&viewport.status) {
                 bottom_right.push(terminal_status_popup(status, cx).into_any_element());
             }
@@ -1790,7 +1882,7 @@ impl Render for TerminalPane {
             },
             cx,
         );
-        if self.search.is_some() {
+        if self.search.is_some() && !self.compact {
             top_right.push(self.search_bar(search_status, cx));
         }
         let mut root = terminal_text(div().id(("terminal", self.pane.0)), font, font_size)
@@ -1850,7 +1942,7 @@ impl Render for TerminalPane {
                 terminal_mode_indicator("terminal-mode", label, detail, cx).into_any_element(),
             );
         }
-        if let Some(dead) = &self.pane_status.0 {
+        if let Some(dead) = self.pane_status.0.as_ref().filter(|_| !self.compact) {
             top_right
                 .push(pane_status_badge(IconName::CircleX, dead.clone(), cx).into_any_element());
         }
@@ -1952,6 +2044,7 @@ impl EntityInputHandler for TerminalPane {
         self.reset_cursor_blink(cx);
         let composed = self.marked_text.take().is_some();
         if !text.is_empty() {
+            cx.emit(TerminalTyped);
             self.cancel_local_scroll(cx);
             if let Some(query) = self.search.as_mut() {
                 query.text.push_str(text);

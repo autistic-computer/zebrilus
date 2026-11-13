@@ -116,14 +116,14 @@ pub const STORY: Story = Story {
 
 const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="240" height="144" viewBox="0 0 240 144"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7aa2f7"/><stop offset="1" stop-color="#bb9af7"/></linearGradient></defs><rect width="240" height="144" rx="10" fill="url(#g)"/><circle cx="62" cy="72" r="34" fill="#1a1b26" opacity="0.85"/><rect x="118" y="38" width="90" height="16" rx="8" fill="#1a1b26" opacity="0.7"/><rect x="118" y="64" width="64" height="16" rx="8" fill="#1a1b26" opacity="0.5"/><rect x="118" y="90" width="78" height="16" rx="8" fill="#1a1b26" opacity="0.35"/><path d="M48 60h28l-28 24h28" stroke="#c0caf5" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>"##;
 
-fn appearance() -> TerminalAppearance {
+pub(super) fn appearance() -> TerminalAppearance {
     TerminalAppearance {
         font_families: vec!["Lilex".into()],
         ..TerminalAppearance::default()
     }
 }
 
-struct Screen {
+pub(super) struct Screen {
     columns: u16,
     rows: u16,
     cells: Vec<PackedCell>,
@@ -134,12 +134,12 @@ struct Screen {
 }
 
 #[derive(Clone, Copy, Default)]
-struct Ink {
-    fg: Option<Color>,
-    bg: Option<Color>,
-    attrs: u16,
-    underline: UnderlineStyle,
-    underline_color: Option<Color>,
+pub(super) struct Ink {
+    pub(super) fg: Option<Color>,
+    pub(super) bg: Option<Color>,
+    pub(super) attrs: u16,
+    pub(super) underline: UnderlineStyle,
+    pub(super) underline_color: Option<Color>,
 }
 
 const fn is_wide(character: char) -> bool {
@@ -159,7 +159,7 @@ const fn is_wide(character: char) -> bool {
 }
 
 impl Screen {
-    fn new(columns: u16, rows: u16) -> Self {
+    pub(super) fn new(columns: u16, rows: u16) -> Self {
         let appearance = appearance();
         let base = PackedStyle::new(
             appearance.foreground,
@@ -179,11 +179,11 @@ impl Screen {
         }
     }
 
-    fn palette(&self, index: usize) -> Color {
+    pub(super) fn palette(&self, index: usize) -> Color {
         self.appearance.palette[index]
     }
 
-    fn ink(&mut self, ink: Ink) -> u16 {
+    pub(super) fn ink(&mut self, ink: Ink) -> u16 {
         let style = PackedStyle::new(
             ink.fg.unwrap_or(self.appearance.foreground),
             ink.bg.unwrap_or(self.appearance.background),
@@ -198,7 +198,7 @@ impl Screen {
         (self.styles.len() - 1) as u16
     }
 
-    fn fg(&mut self, index: usize) -> u16 {
+    pub(super) fn fg(&mut self, index: usize) -> u16 {
         let fg = self.palette(index);
         self.ink(Ink {
             fg: Some(fg),
@@ -206,7 +206,7 @@ impl Screen {
         })
     }
 
-    fn bold(&mut self, index: usize) -> u16 {
+    pub(super) fn bold(&mut self, index: usize) -> u16 {
         let fg = self.palette(index);
         self.ink(Ink {
             fg: Some(fg),
@@ -221,7 +221,7 @@ impl Screen {
         }
     }
 
-    fn write(&mut self, row: u16, column: u16, text: &str, style: u16) -> u16 {
+    pub(super) fn write(&mut self, row: u16, column: u16, text: &str, style: u16) -> u16 {
         let mut column = column;
         for character in text.chars() {
             if is_wide(character) {
@@ -291,7 +291,7 @@ impl Screen {
         self.write(row, column, command, 0)
     }
 
-    fn viewport(self) -> TerminalViewport {
+    pub(super) fn viewport(self) -> TerminalViewport {
         let mut viewport = TerminalViewport::blank_with_appearance(
             self.columns,
             self.rows,
@@ -308,7 +308,7 @@ impl Screen {
     }
 }
 
-fn cursor(column: u16, row: u16, style: CursorStyle) -> Cursor {
+pub(super) fn cursor(column: u16, row: u16, style: CursorStyle) -> Cursor {
     Cursor::new(
         column,
         row,
@@ -328,17 +328,18 @@ impl TerminalImageSource for StoryImage {
     }
 }
 
-struct Sample {
+pub(super) struct Sample {
     viewport: Arc<TerminalViewport>,
     appearance: Arc<TerminalAppearance>,
     focused: bool,
     blink_visible: bool,
     marked: Option<&'static str>,
     images: Option<Rc<StoryImage>>,
+    flush: bool,
 }
 
 impl Sample {
-    fn new(viewport: TerminalViewport) -> Self {
+    pub(super) fn new(viewport: TerminalViewport) -> Self {
         Self {
             viewport: Arc::new(viewport),
             appearance: Arc::new(appearance()),
@@ -346,7 +347,27 @@ impl Sample {
             blink_visible: true,
             marked: None,
             images: None,
+            flush: false,
         }
+    }
+
+    pub(super) fn flush(mut self) -> Self {
+        self.flush = true;
+        self
+    }
+
+    pub(super) fn themed(mut self, cx: &App) -> Self {
+        let local = zz_terminal::LocalColors::new(
+            self.viewport.foreground,
+            self.viewport.background,
+            &self.appearance.palette,
+            zz_ui::terminal::theme_terminal_colors(cx),
+        );
+        self.viewport = Arc::new(local.viewport(&self.viewport));
+        let mut appearance = (*self.appearance).clone();
+        appearance.local_colors = Some(local);
+        self.appearance = Arc::new(appearance);
+        self
     }
 
     fn unfocused(mut self) -> Self {
@@ -360,14 +381,14 @@ impl Sample {
     }
 }
 
-struct SampleView {
+pub(super) struct SampleView {
     sample: Sample,
     revisions: Arc<[u64]>,
     cache: Rc<RefCell<RowRenderCache>>,
 }
 
 impl SampleView {
-    fn new(sample: Sample) -> Self {
+    pub(super) fn new(sample: Sample) -> Self {
         let revisions = (1..=u64::from(sample.viewport.rows)).collect();
         Self {
             sample,
@@ -440,15 +461,21 @@ impl Render for SampleView {
             + px(appearance.padding_left + appearance.padding_right + 1.0);
         let height = cell_height * f32::from(viewport.rows)
             + px(appearance.padding_top + appearance.padding_bottom + 1.0);
-        let background = pane_color(
-            cx.theme(),
-            terminal_background(appearance.background, appearance.background_opacity),
-        );
+        let background = if self.sample.flush {
+            pane_color(cx.theme(), cx.theme().background)
+        } else {
+            pane_color(
+                cx.theme(),
+                terminal_background(appearance.background, appearance.background_opacity),
+            )
+        };
         div()
             .w(width)
             .h(height)
             .flex_none()
-            .rounded(cx.theme().radius)
+            .when(!self.sample.flush, |sample| {
+                sample.rounded(cx.theme().radius)
+            })
             .overflow_hidden()
             .bg(background)
             .child(

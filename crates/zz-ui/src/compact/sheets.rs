@@ -11,6 +11,9 @@ use penna::{
     components::input::{Input, InputState},
 };
 use zz_protocol::PaneKindSnapshot;
+use zz_terminal::SearchStatus;
+
+use crate::IconName;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Confirm {
@@ -183,6 +186,55 @@ pub fn hold_sheet(
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinkAction {
+    Browser,
+    Phone,
+    Copy,
+}
+
+#[must_use]
+pub fn link_sheet(
+    id: impl Into<ElementId>,
+    uri: impl Into<SharedString>,
+    actions: &[LinkAction],
+    on_pick: impl Fn(LinkAction, &mut Window, &mut App) + 'static,
+    bottom_inset: Pixels,
+    on_dismiss: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> BottomSheet {
+    let on_pick = std::rc::Rc::new(on_pick);
+    let rows = actions.iter().map(|action| {
+        let (id, label, icon) = match action {
+            LinkAction::Browser => ("link-browser", "Open in a browser pane", IconName::Globe),
+            LinkAction::Phone => ("link-phone", "Open on this phone", IconName::ExternalLink),
+            LinkAction::Copy => ("link-copy", "Copy", IconName::Copy),
+        };
+        let on_pick = std::rc::Rc::clone(&on_pick);
+        let action = *action;
+        TouchRow::new(id, label)
+            .icon(icon)
+            .on_click(move |_, window, cx| on_pick(action, window, cx))
+    });
+    hold_sheet(id, uri, None, rows, bottom_inset, on_dismiss, cx).cut_middle()
+}
+
+#[must_use]
+pub fn find_count(query: &str, status: Option<SearchStatus>) -> (String, bool) {
+    if query.is_empty() {
+        return (String::new(), false);
+    }
+    match status {
+        Some(status) if status.invalid_pattern() => ("Invalid pattern".to_owned(), false),
+        Some(status) if status.total > 0 => (
+            format!("{} of {}", status.current().max(1), status.total),
+            true,
+        ),
+        Some(status) if status.pending() => (String::new(), false),
+        _ => ("No matches".to_owned(), false),
+    }
+}
+
 #[must_use]
 pub fn close_pane_detail(kind: &PaneKindSnapshot, title: &str) -> Option<String> {
     match kind {
@@ -196,4 +248,36 @@ pub fn close_pane_detail(kind: &PaneKindSnapshot, title: &str) -> Option<String>
 #[must_use]
 pub fn close_many_detail(count: usize, noun: &str) -> String {
     format!("Its {} close.", super::overview_count(count, noun))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_find_count_says_where_the_current_match_sits() {
+        assert_eq!(
+            find_count("", Some(SearchStatus::new(1, 3))),
+            (String::new(), false)
+        );
+        assert_eq!(
+            find_count("pill", Some(SearchStatus::new(3, 12))),
+            ("3 of 12".to_owned(), true)
+        );
+        assert_eq!(
+            find_count("pill", Some(SearchStatus::new(0, 0))),
+            ("No matches".to_owned(), false)
+        );
+        assert_eq!(
+            find_count("pill", Some(SearchStatus::new(0, 0).with_pending(true))),
+            (String::new(), false)
+        );
+        assert_eq!(
+            find_count(
+                "(",
+                Some(SearchStatus::new(0, 0).with_invalid_pattern(true))
+            ),
+            ("Invalid pattern".to_owned(), false)
+        );
+    }
 }

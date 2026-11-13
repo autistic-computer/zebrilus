@@ -61,7 +61,7 @@ pub const STORY: Story = Story {
         Section {
             id: "key-row",
             name: "Key row",
-            summary: "KeyRow over the soft keyboard: plain keys and the arrow pad in a pill that scrolls sideways when it does not fit.",
+            summary: "KeyRow over the soft keyboard: one 56 pill of 44 keys, 16 from the sides and 8 above the keyboard. The keys scroll sideways when they do not fit and fade out at an edge where more wait; the arrow pad and hide stay pinned at the end.",
             build: |_, cx| cx.new(KeyRows::new).into(),
         },
         Section {
@@ -448,9 +448,8 @@ impl KeyRows {
             KeyRowKey::text("/"),
             KeyRowKey::text("-"),
             KeyRowKey::text("~"),
-            KeyRowKey::Arrows(arrows.clone()),
-            KeyRowKey::Hide,
         ])
+        .trail(vec![KeyRowKey::Arrows(arrows.clone()), KeyRowKey::Hide])
         .track_scroll(scroll)
         .on_key(|_, _, _| {})
         .on_hide(|_, _| {})

@@ -7,6 +7,7 @@ pub(super) mod palette;
 mod path_picker;
 pub(super) mod phone;
 mod phone_chat;
+mod phone_terminal;
 mod terminal;
 mod tmux_styles;
 

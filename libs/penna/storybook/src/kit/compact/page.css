@@ -15,6 +15,10 @@
   width: 220px;
 }
 
+.story-keys {
+  padding: 8px 16px;
+}
+
 .penna-phone[data-page="white"] {
   background: oklab(from var(--penna-bg) 1 0 0);
 }

@@ -38,6 +38,7 @@ pub struct StackKey {
     keystroke: Option<Keystroke>,
     tap: StackKeyTap,
     armed: bool,
+    shown_latched: bool,
     menu: Entity<StackMenu>,
     touch: Option<Touch>,
     hold: Option<Task<()>>,
@@ -55,6 +56,7 @@ impl StackKey {
             keystroke: None,
             tap,
             armed: false,
+            shown_latched: false,
             menu,
             touch: None,
             hold: None,
@@ -103,6 +105,13 @@ impl StackKey {
     pub fn set_armed(&mut self, armed: bool, cx: &mut Context<Self>) {
         if self.armed != armed {
             self.armed = armed;
+            cx.notify();
+        }
+    }
+
+    pub fn show_latched(&mut self, latched: bool, cx: &mut Context<Self>) {
+        if self.shown_latched != latched {
+            self.shown_latched = latched;
             cx.notify();
         }
     }
@@ -248,10 +257,11 @@ impl Press for StackKey {
 
 impl Render for StackKey {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let latched = match self.tap {
-            StackKeyTap::Latch(modifier) => StickyModifiers::get(cx).is_latched(modifier),
-            StackKeyTap::Open => false,
-        };
+        let latched = self.shown_latched
+            || match self.tap {
+                StackKeyTap::Latch(modifier) => StickyModifiers::get(cx).is_latched(modifier),
+                StackKeyTap::Open => false,
+            };
         let shown = self.menu.read(cx).is_shown();
         let pressed = self.touch.is_some_and(|touch| touch.pan.is_none());
         let look = if pressed || self.is_open(cx) || self.armed {

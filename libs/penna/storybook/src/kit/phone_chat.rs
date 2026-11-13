@@ -244,7 +244,11 @@ fn steps(_: &mut Window, cx: &mut App) -> AnyElement {
                 v_flex()
                     .items_center()
                     .gap(px(8.0))
-                    .child(phone_jump_button("step-jump", cx.theme().ground()))
+                    .child(phone_jump_button(
+                        "step-jump",
+                        "Jump to latest",
+                        cx.theme().ground(),
+                    ))
                     .child(phone_queued_row(
                         "step-queued",
                         "2 queued",

@@ -8,7 +8,7 @@ use penna::{
     components::input::{InputEvent, InputState, SelectAll},
 };
 use zz_protocol::{PaneId, SessionId, WindowId};
-use zz_ui::compact::{Confirm, Rename, hold_sheet};
+use zz_ui::compact::{Confirm, LinkAction, Rename, hold_sheet, link_sheet};
 
 use super::super::AppShell;
 use crate::connection::Connection;
@@ -16,6 +16,7 @@ use crate::connection::Connection;
 pub(in super::super) const HOLD_SHEET: &str = "phone-hold-sheet";
 pub(in super::super) const RENAME_SHEET: &str = "phone-rename-sheet";
 pub(in super::super) const CONFIRM_SHEET: &str = "phone-confirm-sheet";
+pub(in super::super) const LINK_SHEET: &str = "phone-link-sheet";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in super::super) enum Target {
@@ -73,6 +74,7 @@ pub(in super::super) enum PhoneSheet {
     Hold(Thing),
     Rename(Thing),
     Close(Thing),
+    Link(String),
 }
 
 impl PhoneSheet {
@@ -82,12 +84,14 @@ impl PhoneSheet {
             Self::Hold(_) => HOLD_SHEET,
             Self::Rename(_) => RENAME_SHEET,
             Self::Close(_) => CONFIRM_SHEET,
+            Self::Link(_) => LINK_SHEET,
         }
     }
 
-    fn thing(&self) -> &Thing {
+    fn thing(&self) -> Option<&Thing> {
         match self {
-            Self::Hold(thing) | Self::Rename(thing) | Self::Close(thing) => thing,
+            Self::Hold(thing) | Self::Rename(thing) | Self::Close(thing) => Some(thing),
+            Self::Link(_) => None,
         }
     }
 }
@@ -185,7 +189,10 @@ impl AppShell {
         let on_dismiss = move |window: &mut Window, cx: &mut ala::App| {
             let _ = dismiss.update(cx, |this, cx| this.sheet_dismissed(window, cx));
         };
-        let thing = sheet.thing().clone();
+        if let PhoneSheet::Link(uri) = &sheet {
+            return Some(self.link_sheet(uri, bottom_inset, on_dismiss, cx));
+        }
+        let thing = sheet.thing()?.clone();
         Some(match sheet {
             PhoneSheet::Hold(_) => {
                 let rename = PhoneSheet::Rename(thing.clone());
@@ -250,6 +257,47 @@ impl AppShell {
                 );
                 floating_sheet(sheet, window)
             }
+            PhoneSheet::Link(_) => return None,
         })
+    }
+
+    fn link_sheet(
+        &self,
+        uri: &str,
+        bottom_inset: Pixels,
+        on_dismiss: impl Fn(&mut Window, &mut ala::App) + 'static,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let mut actions = Vec::new();
+        if zz_client::terminal_view::openable_uri(uri) {
+            actions.push(LinkAction::Browser);
+            if super::super::settings::phone() {
+                actions.push(LinkAction::Phone);
+            }
+        }
+        actions.push(LinkAction::Copy);
+        let picked = uri.to_owned();
+        let view = cx.weak_entity();
+        link_sheet(
+            LINK_SHEET,
+            uri.to_owned(),
+            &actions,
+            move |action, _, cx| {
+                match action {
+                    LinkAction::Browser => {
+                        let _ = view.update(cx, |this, cx| this.open_link_in_browser(&picked, cx));
+                    }
+                    LinkAction::Phone => cx.open_url(&picked),
+                    LinkAction::Copy => {
+                        cx.write_to_clipboard(ala::ClipboardItem::new_string(picked.clone()));
+                    }
+                }
+                close_sheet(LINK_SHEET, cx);
+            },
+            bottom_inset,
+            on_dismiss,
+            cx,
+        )
+        .into_any_element()
     }
 }

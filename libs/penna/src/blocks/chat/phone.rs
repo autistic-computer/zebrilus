@@ -47,7 +47,7 @@ pub fn phone_composer_corner(cx: &App) -> Pixels {
     (cx.theme().control_corner(px(PHONE_COMPOSER_BUTTON)) + px(PHONE_COMPOSER_INSET)).min(half)
 }
 
-fn phone_button(id: impl Into<ElementId>, icon: IconName) -> Button {
+pub(crate) fn phone_button(id: impl Into<ElementId>, icon: IconName) -> Button {
     Button::new(id)
         .compact()
         .tab_stop(false)
@@ -416,7 +416,11 @@ pub fn phone_queued_row(
         .into_any_element()
 }
 
-pub fn phone_jump_button(id: impl Into<ElementId>, on: Ground) -> Button {
+pub fn phone_jump_button(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    on: Ground,
+) -> Button {
     Button::new(id)
         .compact()
         .secondary()
@@ -425,5 +429,5 @@ pub fn phone_jump_button(id: impl Into<ElementId>, on: Ground) -> Button {
         .size(rems_from_px(TOUCH_TARGET))
         .child(Icon::new(IconName::ArrowDown).size(rems_from_px(GLYPH)))
         .on(on)
-        .tooltip("Jump to latest")
+        .tooltip(label)
 }

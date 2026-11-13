@@ -112,7 +112,7 @@ pub fn session_from_url(url: &str) -> Option<String> {
 
 pub struct AppShell {
     connection: Entity<Connection>,
-    _connection_subscriptions: [Subscription; 3],
+    _connection_subscriptions: [Subscription; 4],
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fleet: Vec<(Entity<Connection>, Subscription)>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -185,7 +185,7 @@ fn watch_connection(
     connection: &Entity<Connection>,
     window: &mut Window,
     cx: &mut Context<AppShell>,
-) -> [Subscription; 3] {
+) -> [Subscription; 4] {
     let observer = cx.observe(connection, |this, connection, cx| {
         let connection = connection.read(cx);
         if this.connected != connection.connected || this.connection_status != connection.status {
@@ -332,7 +332,14 @@ fn watch_connection(
             let _ = (this, event, cx);
         },
     );
-    [observer, events, found]
+    let links = cx.subscribe_in(
+        connection,
+        window,
+        |this, _, event: &crate::connection::LinkTapped, window, cx| {
+            this.open_link_sheet(event.0.clone(), window, cx);
+        },
+    );
+    [observer, events, found, links]
 }
 
 impl AppShell {
@@ -1296,9 +1303,17 @@ impl AppShell {
             .or_insert_with(|| {
                 let connection = self.connection.clone();
                 let suppressed = Rc::clone(&self.terminal_resize_suppressed);
-                cx.new(|cx| {
+                let terminal = cx.new(|cx| {
                     TerminalPane::new(pane, connection, cx).with_resize_suppression(suppressed)
-                })
+                });
+                cx.subscribe(
+                    &terminal,
+                    |this, _, _: &crate::terminal::TerminalTyped, cx| {
+                        this.close_key_stacks(cx);
+                    },
+                )
+                .detach();
+                terminal
             })
             .clone()
     }
@@ -2211,6 +2226,7 @@ impl AppShell {
                         );
                         terminal.set_rows_above(false, cx);
                         terminal.set_rows_below(false, cx);
+                        terminal.set_compact(false, cx);
                         terminal.set_floating(is_float, cx);
                     });
                     terminal.clone().into_any_element()

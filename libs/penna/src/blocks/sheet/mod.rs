@@ -73,6 +73,7 @@ pub struct BottomSheet {
     heading: Option<AnyElement>,
     detail: Option<SharedString>,
     full: Option<Pixels>,
+    cut_middle: bool,
 }
 
 pub fn bottom_sheet(
@@ -94,6 +95,7 @@ pub fn bottom_sheet(
         heading: None,
         detail: None,
         full: None,
+        cut_middle: false,
     }
 }
 
@@ -113,6 +115,12 @@ impl BottomSheet {
     #[must_use]
     pub fn detail(mut self, detail: impl Into<SharedString>) -> Self {
         self.detail = Some(detail.into());
+        self
+    }
+
+    #[must_use]
+    pub fn cut_middle(mut self) -> Self {
+        self.cut_middle = true;
         self
     }
 
@@ -529,117 +537,125 @@ impl RenderOnce for BottomSheet {
         )
         .absolute()
         .inset_0();
-        let panel = div()
-            .id("bottom-sheet-panel")
-            .debug_selector(|| "bottom-sheet-panel".to_owned())
-            .absolute()
-            .left_0()
-            .right_0()
-            .bottom_0()
-            .map(|panel| match full {
-                Some(_) => panel.top_0(),
-                None => panel.max_h(relative(MAX_HEIGHT)),
-            })
-            .flex()
-            .flex_col()
-            .occlude()
-            .surface(sheet, cx)
-            .rounded(theme.phone_radius())
-            .font_family(theme.font_family.clone())
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(|_, _, cx| cx.stop_propagation())
-            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
-            .child(listener)
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .justify_center()
-                    .pt(Space::S6)
-                    .child(
-                        div()
-                            .w(px(GRABBER_WIDTH))
-                            .h(px(GRABBER_HEIGHT))
-                            .layer(&grabber),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .gap(Space::GAP_RELATED)
-                    .map(|header| match self.detail {
-                        Some(_) => header.min_h(px(HEADER_HEIGHT)).py(Space::S8),
-                        None => header.h(px(HEADER_HEIGHT)),
-                    })
-                    .px(Space::INSET_PANE)
-                    .surface(header, cx)
-                    .child(self.heading.unwrap_or_else(|| {
-                        let line = || {
+        let panel =
+            div()
+                .id("bottom-sheet-panel")
+                .debug_selector(|| "bottom-sheet-panel".to_owned())
+                .absolute()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .map(|panel| match full {
+                    Some(_) => panel.top_0(),
+                    None => panel.max_h(relative(MAX_HEIGHT)),
+                })
+                .flex()
+                .flex_col()
+                .occlude()
+                .surface(sheet, cx)
+                .rounded(theme.phone_radius())
+                .font_family(theme.font_family.clone())
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(|_, _, cx| cx.stop_propagation())
+                .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+                .child(listener)
+                .child(
+                    div()
+                        .flex()
+                        .flex_none()
+                        .justify_center()
+                        .pt(Space::S6)
+                        .child(
                             div()
+                                .w(px(GRABBER_WIDTH))
+                                .h(px(GRABBER_HEIGHT))
+                                .layer(&grabber),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_none()
+                        .items_center()
+                        .gap(Space::GAP_RELATED)
+                        .map(|header| match self.detail {
+                            Some(_) => header.min_h(px(HEADER_HEIGHT)).py(Space::S8),
+                            None => header.h(px(HEADER_HEIGHT)),
+                        })
+                        .px(Space::INSET_PANE)
+                        .surface(header, cx)
+                        .child(self.heading.unwrap_or_else(|| {
+                            let line = || {
+                                div()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .whitespace_nowrap()
+                                    .text_ellipsis()
+                            };
+                            div()
+                                .flex()
+                                .flex_col()
+                                .flex_1()
                                 .min_w_0()
-                                .overflow_hidden()
-                                .whitespace_nowrap()
-                                .text_ellipsis()
-                        };
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_w_0()
-                            .child(
-                                line()
-                                    .type_style(crate::TextStyle::Display, cx)
-                                    .child(self.title),
-                            )
-                            .children(self.detail.map(|detail| {
-                                line()
-                                    .type_style(crate::TextStyle::TouchSmall, cx)
-                                    .text_color(muted_on(ground, cx))
-                                    .child(detail)
-                            }))
-                            .into_any_element()
-                    }))
-                    .children(self.actions),
-            )
-            .child(match full {
-                Some(_) => div()
-                    .id("bottom-sheet-content")
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .child(self.content),
-                None => div()
-                    .id("bottom-sheet-content")
-                    .flex()
-                    .flex_col()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .track_scroll(&scroll)
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_none()
-                            .w_full()
-                            .child(self.content),
-                    ),
-            })
-            .with_animation(
-                "bottom-sheet-panel-enter",
-                Animation::new(enter).with_easing(ease_out_quint()),
-                move |panel, delta| {
-                    let rise = RISE * (1.0 - delta);
-                    let panel = panel.bottom(relative(-rise));
-                    if full.is_some() {
-                        panel.top(relative(rise))
-                    } else {
-                        panel
-                    }
-                },
-            );
+                                .child(line().type_style(crate::TextStyle::Display, cx).map(
+                                    |line| {
+                                        if self.cut_middle {
+                                            line.child(crate::blocks::touch::middle_line(
+                                                self.title,
+                                                crate::TextStyle::Display,
+                                            ))
+                                        } else {
+                                            line.child(self.title)
+                                        }
+                                    },
+                                ))
+                                .children(self.detail.map(|detail| {
+                                    line()
+                                        .type_style(crate::TextStyle::TouchSmall, cx)
+                                        .text_color(muted_on(ground, cx))
+                                        .child(detail)
+                                }))
+                                .into_any_element()
+                        }))
+                        .children(self.actions),
+                )
+                .child(match full {
+                    Some(_) => div()
+                        .id("bottom-sheet-content")
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_h_0()
+                        .child(self.content),
+                    None => div()
+                        .id("bottom-sheet-content")
+                        .flex()
+                        .flex_col()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .track_scroll(&scroll)
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .flex_none()
+                                .w_full()
+                                .child(self.content),
+                        ),
+                })
+                .with_animation(
+                    "bottom-sheet-panel-enter",
+                    Animation::new(enter).with_easing(ease_out_quint()),
+                    move |panel, delta| {
+                        let rise = RISE * (1.0 - delta);
+                        let panel = panel.bottom(relative(-rise));
+                        if full.is_some() {
+                            panel.top(relative(rise))
+                        } else {
+                            panel
+                        }
+                    },
+                );
         div()
             .id(self.id)
             .absolute()

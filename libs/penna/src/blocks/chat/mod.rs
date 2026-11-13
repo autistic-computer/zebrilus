@@ -51,6 +51,7 @@ pub use message::{
     ASSISTANT_MESSAGE_GROUP, CHAT_CONTENT_MAX_WIDTH, PlanState, USER_MESSAGE_GROUP, UserMessage,
     message_action, notice_row, plan_list, reply_bubble, shown_on_hover,
 };
+pub(crate) use phone::phone_button;
 pub use phone::{
     AskCard, PHONE_COMPOSER_BUTTON, PHONE_COMPOSER_HEIGHT, PHONE_COMPOSER_INSET,
     PHONE_COMPOSER_ROWS, PHONE_QUEUED_HEIGHT, PHONE_THUMBNAIL, PhoneComposer, phone_action_button,

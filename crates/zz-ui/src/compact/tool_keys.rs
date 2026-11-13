@@ -46,15 +46,17 @@ impl ToolKeys {
 
     pub fn row(&self) -> Vec<KeyRowKey> {
         vec![
+            KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
+            KeyRowKey::tab(),
             KeyRowKey::Stack(self.control.clone()),
             KeyRowKey::Stack(self.alt.clone()),
-            KeyRowKey::tab(),
-            KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
             KeyRowKey::text("/"),
             KeyRowKey::text("@"),
-            KeyRowKey::Arrows(self.arrows.clone()),
-            KeyRowKey::Hide,
         ]
+    }
+
+    pub fn trail(&self) -> Vec<KeyRowKey> {
+        vec![KeyRowKey::Arrows(self.arrows.clone()), KeyRowKey::Hide]
     }
 
     pub fn menus(&self, cx: &App) -> [Entity<StackMenu>; 3] {

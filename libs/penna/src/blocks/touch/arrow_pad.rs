@@ -6,7 +6,7 @@ use web_time::Duration;
 
 use super::{
     key_press::{Grip, Press, press_listeners},
-    key_row::{KEY_SIZE, KeyLook, key_surface},
+    key_row::{KEY_ICON, KEY_SIZE, KeyLook, key_surface},
 };
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Kind, Layer, PaintState, Space,
@@ -273,7 +273,7 @@ impl Render for ArrowPad {
             .items_center()
             .justify_center()
             .size(rems_from_px(KEY_SIZE))
-            .child(Icon::new(IconName::ArrowsMove).size(rems_from_px(18.0)))
+            .child(Icon::new(IconName::ArrowsMove).size(rems_from_px(KEY_ICON)))
             .child(press_listeners(cx.entity().downgrade()))
             .when(held, |pad| {
                 pad.child(popover_above(self.bubble(cx), window))

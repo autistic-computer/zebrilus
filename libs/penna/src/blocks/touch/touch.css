@@ -74,6 +74,12 @@
   pointer-events: none;
 }
 
+.penna-key[data-penna][data-size="touch"] {
+  width: var(--penna-control-touch);
+  height: var(--penna-control-touch);
+  --penna-icon-size: 20px;
+}
+
 .penna-key[data-penna][data-latched] {
   --penna-fill: color-mix(in srgb, var(--penna-ink) 12%, transparent);
 }

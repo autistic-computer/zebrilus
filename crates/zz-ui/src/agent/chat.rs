@@ -837,6 +837,7 @@ pub fn chat_surface<T: ChatHost>(
             let button = if touch {
                 penna::blocks::chat::phone_jump_button(
                     ("agent-chat-jump", look.pane),
+                    "Jump to latest",
                     look.ground.unwrap_or_else(|| cx.theme().ground()),
                 )
             } else {

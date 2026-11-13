@@ -12,6 +12,7 @@ pub const OVERVIEW: &str = "overview";
 pub const RENAME_PANE: &str = "rename-pane";
 pub const CLOSE_PANE: &str = "close-pane";
 pub const ALL_BINDINGS: &str = "all-bindings";
+pub const FIND: &str = "find";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MachineMenu<'a> {
@@ -71,12 +72,16 @@ pub fn machine_menu(state: MachineMenu) -> Vec<StackGroup> {
 
 #[must_use]
 pub fn pane_menu(menu: PaneMenu) -> Vec<StackGroup> {
+    let mut this_pane = vec![
+        StackChip::new(CLOSE_PANE, "Close", IconName::Xmark).look(StackLook::Danger),
+        StackChip::new(RENAME_PANE, "Rename", IconName::Pencil),
+    ];
+    if menu.terminal {
+        this_pane.push(StackChip::new(FIND, "Find", IconName::Search));
+    }
     let mut groups = vec![
         new_group(Some(menu.session)),
-        StackGroup::new([
-            StackChip::new(CLOSE_PANE, "Close", IconName::Xmark).look(StackLook::Danger),
-            StackChip::new(RENAME_PANE, "Rename", IconName::Pencil),
-        ]),
+        StackGroup::new(this_pane),
         alone(StackChip::new(
             OVERVIEW,
             "Overview",
@@ -150,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pane_menu_keeps_bindings_for_terminals_only() {
+    fn a_pane_menu_keeps_find_and_bindings_for_terminals_only() {
         let terminal = pane_menu(PaneMenu {
             session: "zz",
             terminal: true,
@@ -159,7 +164,7 @@ mod tests {
             ids(&terminal),
             [
                 vec![NEW_CHAT, NEW_TERMINAL, NEW_BROWSER],
-                vec![CLOSE_PANE, RENAME_PANE],
+                vec![CLOSE_PANE, RENAME_PANE, FIND],
                 vec![OVERVIEW],
                 vec![ALL_BINDINGS],
             ]

@@ -3,7 +3,7 @@
 A phone screen is built from phone components, sized for a thumb from the start. It is not the desktop made bigger: desktop components under a coarse pointer keep their layout and only grow their targets.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The phone components are drawn here with the HTML kit. Natively there are the 44 and 56 touch rungs, the touch text styles, the 56 button and field, touch rows, row groups and headers, the status marks, the phone tile with machine and window content and its hold, the holdable section header, sheets with the 44 close and the hold sheet's muted line, the action bar, the empty state, the zoom card, the pill and the bento overview, the stack menu on the pill with zz's machine and pane menus, the pill's tile words, the chat on a phone (composer row, ask card, thumbnail badge, touch transcript rows) with the keyboard rule in a chat, and the key row with the arrow pad's bubble; the rest of the components below are next.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The phone components are drawn here with the HTML kit. Natively there are the 44 and 56 touch rungs, the touch text styles, the 56 button and field, touch rows, row groups and headers, the status marks, the phone tile with machine and window content and its hold, the holdable section header, sheets with the 44 close and the hold sheet's muted line, the action bar, the empty state, the zoom card, the pill and the bento overview, the stack menu on the pill with zz's machine and pane menus, the pill's tile words, the chat on a phone (composer row, ask card, thumbnail badge, touch transcript rows) with the keyboard rule in a chat, the key row (one 56 floating pill of 44 keys, the prefix and the ends pinned) with the arrow pad's bubble, and the terminal's find field, link sheet and jump to bottom; the rest of the components below are next.</span></div></div></div>
 ```
 
 ## Rules
@@ -120,7 +120,7 @@ Chips are 52, the floating surface, a 20 glyph and the label in strong `touch-bo
 
 ## Inside a pane
 
-No header: the content runs to the edges and the pill is the one handle. Its second line takes a window tile's words ("Needs approval" in warning ink, "Failed" in danger ink, the agent's working message), and otherwise where the pane works. Its menu makes a browser, terminal or chat in the session, renames or closes the pane (Close asks first), and goes back to the overview.
+No header: the content runs to the edges and the pill is the one handle. Its second line takes a window tile's words ("Needs approval" in warning ink, "Failed" in danger ink, the agent's working message), and otherwise where the pane works. Its menu makes a browser, terminal or chat in the session, renames or closes the pane (Close asks first), finds in a terminal, and goes back to the overview.
 
 **When the keyboard is up, the pill gives its place to what you type with**: the composer in a chat, the key row in a terminal, the address field in a browser, 8 above the keyboard. Keyboard down, the pill is back.
 
@@ -131,7 +131,7 @@ No header: the content runs to the edges and the pill is the one handle. Its sec
 </div>
 ```
 
-The **mini pill** and a **badge on a thumbnail** are the two things drawn smaller than their target. Scrolling a pane shrinks the pill to 32, a handle like a sheet's grabber, and its target stays 44. A badge, like a pasted image's remove control, is an accessory of the picture: a 24 floating disc in its corner, its 44 target centered on it. Not built natively yet: the keyboard rule in a browser, 44 keys with the pinned end, the mini pill's 44 target, and Find in the pane menu.
+The **mini pill** and a **badge on a thumbnail** are the two things drawn smaller than their target. Scrolling a pane shrinks the pill to 32, a handle like a sheet's grabber, and its target stays 44. A badge, like a pasted image's remove control, is an accessory of the picture: a 24 floating disc in its corner, its 44 target centered on it. Not built natively yet: the keyboard rule in a browser and the mini pill's 44 target.
 
 ## Terminal
 
@@ -155,7 +155,7 @@ The key row takes the pill's place while the keyboard is up: 44 keys in one 56 p
 </div>
 ```
 
-Find takes the pill's place by the same rule: a 56 field with a 44 close, the query, the count as its value, and previous and next as 44 buttons. A tap on a link opens a sheet titled with the link, with Open in a browser pane, Open on this phone and Copy. Scrolled back, the pill shrinks to the mini pill and a 44 jump to bottom floats over it. Not built natively yet: 44 keys in one pill with the pinned end, the inverted latch, the chord stacks, the arrow pad's new bubble, find, the link sheet and jump to bottom.
+Find takes the pill's place by the same rule: a 56 field with a 44 close, the query, the count as its value, and previous and next as 44 buttons. A tap on a link opens a sheet titled with the link, with Open in a browser pane, Open on this phone and Copy. Scrolled back, the pill shrinks to the mini pill and a 44 jump to bottom floats over it. Not built natively yet: the faint underline under links, the selection handles and the scroll indicator.
 
 ## Browser
 
@@ -185,7 +185,7 @@ Flat by default; glass only for what sits over something. Tiles, rows, fields an
 - **Solid**: the main action, never glass.
 - **Floating**: the pill, the stack menu's chips, the arrow pad's bubble, the gear disc, sheets, the key row's pill, the chat composer, the find and address fields and the address suggestions, and the action bar when content scrolls under it.
 
-Not built natively yet: the key row's pill draws a flat tint today, glass on or off.
+Not built natively yet: on glass the keys rest with no wash and no rim.
 
 ## Corners
 

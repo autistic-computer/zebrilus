@@ -17,7 +17,7 @@ pub use header::{COMPACT_TITLE_BAR_HEIGHT, folding_title_bar, scrolled};
 pub use hud::compact_hud;
 pub use morph::{
     COMPACT_MINI_PILL_HEIGHT, PillSpring, compact_pill_collapse, compact_pill_morph,
-    mini_pill_width, pill_bounds, pill_corner,
+    mini_pill_width, over_pill, pill_bounds, pill_corner,
 };
 pub(crate) use tile::HoldHandler;
 pub use tile::hold_listener;

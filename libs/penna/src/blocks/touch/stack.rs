@@ -904,11 +904,21 @@ fn cut_middle(text: &SharedString, max: Pixels, window: &Window, cx: &App) -> Sh
     let size = style.size().to_pixels(window.rem_size());
     let mut font = ala::font(cx.theme().font_family.clone());
     font.weight = style.strong_weight();
+    cut_middle_in(text, &font, size, max, window)
+}
+
+pub(crate) fn cut_middle_in(
+    text: &SharedString,
+    font: &ala::Font,
+    size: Pixels,
+    max: Pixels,
+    window: &Window,
+) -> SharedString {
     let width = |text: &str| {
         let run = TextRun {
             len: text.len(),
             font: font.clone(),
-            color: cx.theme().foreground,
+            color: ala::black(),
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -937,6 +947,32 @@ fn cut_middle(text: &SharedString, max: Pixels, window: &Window, cx: &App) -> Sh
         }
     }
     cut(low).into()
+}
+
+pub fn middle_line(text: impl Into<SharedString>, style: TextStyle) -> impl IntoElement {
+    let text = text.into();
+    canvas(
+        move |bounds, window, _| {
+            let inherited = window.text_style();
+            let font = inherited.font();
+            let size = inherited.font_size.to_pixels(window.rem_size());
+            let cut = cut_middle_in(&text, &font, size, bounds.size.width, window);
+            let run = inherited.to_run(cut.len());
+            window.text_system().shape_line(cut, size, &[run], None)
+        },
+        |bounds, line, window, cx| {
+            let _ = line.paint(
+                bounds.origin,
+                bounds.size.height,
+                ala::TextAlign::Left,
+                None,
+                window,
+                cx,
+            );
+        },
+    )
+    .w_full()
+    .h(crate::rems_from_px(style.line_height_px()))
 }
 
 pub fn stack_scrim(

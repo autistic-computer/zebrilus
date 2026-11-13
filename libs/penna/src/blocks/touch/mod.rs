@@ -7,6 +7,7 @@ use crate::{Size, rems_from_px};
 
 mod arrow_pad;
 mod dots;
+mod find;
 mod key_press;
 mod key_row;
 mod lift;
@@ -24,8 +25,10 @@ mod which_key_list;
 
 pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, arrow_pad_bubble, resolve_direction};
 pub use dots::{PageDot, page_dots, page_dots_in};
+pub use find::PhoneFind;
 pub use key_row::{
     KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, KeyRowKey,
+    key_pill_layer,
 };
 pub use lift::{Lift, LiftEvent, LiftResponse};
 pub use mark::{MARK_DOT, MARK_SPINNER, StatusMark};
@@ -42,7 +45,7 @@ pub use row::{
 pub use screen::{ACTION_BAR_BOTTOM, ACTION_BAR_KEYBOARD, EMPTY_GLYPH, PhoneEmpty, action_bar};
 pub use stack::{
     STACK_CHIP_HEIGHT, STACK_HOLD, StackChip, StackClose, StackGroup, StackLook, StackMenu,
-    StackMenuEvent, stack_scrim,
+    StackMenuEvent, middle_line, stack_scrim,
 };
 pub use stack_gesture::{StackGesture, StackSlide, StackTarget, StackTouch};
 pub use stack_key::{StackKey, StackKeyTap};

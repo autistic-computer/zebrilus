@@ -301,11 +301,13 @@ impl Chords {
             StickyModifier::Alt => (&self.other, &self.key),
         };
         KeyRow::new(vec![
+            KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
+            KeyRowKey::tab(),
             KeyRowKey::Stack(control.clone()),
             KeyRowKey::Stack(alt.clone()),
-            KeyRowKey::tab(),
-            KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
             KeyRowKey::text("/"),
+        ])
+        .trail(vec![
             KeyRowKey::Arrows(self.arrows.clone()),
             KeyRowKey::Hide,
         ])
@@ -331,7 +333,7 @@ impl Render for Chords {
                     .absolute()
                     .left_0()
                     .right_0()
-                    .bottom(px(8.0))
+                    .bottom_0()
                     .child(self.row()),
             )
     }

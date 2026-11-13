@@ -37,7 +37,7 @@ pub const STORY: Story = Story {
         Section {
             id: "pill-menu",
             name: "Pill menu",
-            summary: "What tapping the pill opens, as a stack menu. Inside a machine: Settings apart at the top, All machines, New session, then New in and the session in view over New browser, New terminal and New chat, New chat nearest the thumb; a machine with no sessions says In a new session and leaves New session out. Inside a pane: All bindings in a terminal, Overview, then Rename and Close for the pane, Close in danger ink, then the same New group for the pane's session.",
+            summary: "What tapping the pill opens, as a stack menu. Inside a machine: Settings apart at the top, All machines, New session, then New in and the session in view over New browser, New terminal and New chat, New chat nearest the thumb; a machine with no sessions says In a new session and leaves New session out. Inside a pane: All bindings in a terminal, Overview, then Find in a terminal, Rename and Close for the pane, Close in danger ink, then the same New group for the pane's session.",
             build: |_, cx| cx.new(Menus::new).into(),
         },
         Section {
@@ -49,7 +49,7 @@ pub const STORY: Story = Story {
         Section {
             id: "key-row",
             name: "Key row",
-            summary: "The row above the soft keyboard: the prefix key on its own, then ctrl and alt popover keys, plain keys, the arrow pad and hide in a row that scrolls sideways when it does not fit. A fade and a chevron mark the side with more keys; tapping them scrolls there.",
+            summary: "The row above the soft keyboard: one 56 pill of 44 keys, 16 from the sides and 8 above the keyboard. The prefix is pinned at the start, the arrow pad and hide at the end; esc, tab, ctrl, alt, / and @ scroll between them and fade out at an edge where more wait.",
             build: |_, cx| cx.new(KeyRows::new).into(),
         },
         Section {
@@ -75,6 +75,12 @@ pub const STORY: Story = Story {
             name: "Phone screen",
             summary: "The pieces together: a terminal page under the status bar, the key row and the pill.",
             build: |_, cx| cx.new(Screen::new).into(),
+        },
+        Section {
+            id: "terminal",
+            name: "Terminal",
+            summary: "A terminal pane on the phone: the terminal to the edges and the pill over its last lines. Keyboard up, the key row takes the pill's place; a latched modifier is a wash. Find from the pill's menu puts the find field there instead, with the count and previous and next. A tapped link opens a sheet titled with the link, cut in the middle. Scrolled back, the pill shrinks and jump to bottom sits over it. A failed command says Exit 1 in danger ink.",
+            build: super::phone_terminal::terminal_states,
         },
         Section {
             id: "chat",
@@ -103,7 +109,7 @@ pub const STORY: Story = Story {
     ],
 };
 
-const PHONE_WIDTH: f32 = 390.0;
+pub(super) const PHONE_WIDTH: f32 = 390.0;
 
 pub(super) fn phone(content: impl IntoElement, cx: &App) -> ala::Div {
     div()
@@ -716,7 +722,7 @@ impl Render for Menus {
                 ),
             )
             .state(
-                "inside a terminal: All bindings, Overview, this pane, New in zz",
+                "inside a terminal: All bindings, Overview, Find, Rename, Close, New in zz",
                 menu_screen(
                     "menu-pane-pill",
                     PillLabel {
@@ -877,12 +883,17 @@ impl Render for PrefixMenu {
 }
 
 pub(crate) fn tool_keys(cx: &mut App) -> ToolKeys {
-    ToolKeys::new(cx)
+    let keys = ToolKeys::new(cx);
+    keys.prefix.update(cx, |key, cx| {
+        key.set_keystroke(ala::Keystroke::parse("ctrl-b").ok(), cx);
+    });
+    keys
 }
 
 pub(crate) fn key_row(keys: &ToolKeys) -> KeyRow {
     KeyRow::new(keys.row())
         .lead(keys.lead())
+        .trail(keys.trail())
         .track_scroll(&keys.scroll)
         .on_key(|_, _, _| {})
         .on_hide(|_, _| {})
