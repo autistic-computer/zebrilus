@@ -3165,6 +3165,7 @@ impl Render for AppShell {
             cx.set_global(zz_ui::settings::SettingsBottomInset(page_inset));
         }
         penna::blocks::touch::CoarsePointer::set(Self::narrow(window), cx);
+        penna::blocks::touch::PhoneScreen::set(settings::phone(), cx);
         #[cfg(any(target_os = "ios", target_os = "android"))]
         self.sync_authentication(window, cx);
         #[cfg(any(target_os = "ios", target_os = "android"))]

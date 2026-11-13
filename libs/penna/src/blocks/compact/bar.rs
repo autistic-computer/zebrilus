@@ -183,12 +183,26 @@ pub fn compact_floating_group(
     cx: &App,
 ) -> Div {
     let theme = cx.theme();
-    let radius = theme.control_corner(px(COMPACT_PILL_HEIGHT));
+    let floating = floating_layer(placement, cx);
+    let (radius, share, smoothing) = if theme.pill_controls() {
+        (
+            FULL_CORNER_RADIUS,
+            None,
+            crate::Smoothing::CIRCLE.exponent(),
+        )
+    } else {
+        (
+            theme.control_corner(px(COMPACT_PILL_HEIGHT)),
+            Some(theme.control_roundness()),
+            floating.smoothing,
+        )
+    };
     let inset = px((COMPACT_PILL_HEIGHT - BUTTON) / 2.0);
     let layer = Layer {
         radius,
-        share: None,
-        ..floating_layer(placement, cx)
+        share,
+        smoothing,
+        ..floating
     };
     let ground = layer.ground;
     let inner = crate::blocks::touch::concentric(radius, inset);

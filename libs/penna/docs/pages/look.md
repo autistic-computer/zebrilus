@@ -104,13 +104,13 @@ The same in every app, in Appearance, in three groups: Look, Size and Accessibil
 | Mode | System, light or dark, unless a theme locks it |
 | Accent | The tint: a named accent or a color |
 | Tint, Tint strength | The neutral's hue and amount |
-| Corner radius | The radius, 0 to 100% on a square curve: 69% is the default 12, 100% is 25 and never a pill |
+| Corner radius | The radius, 0 to 100% on a square curve: 69% is the default 12, 100% is 25 and never a pill. None on a phone |
 | Controls | Rounded follows the radius; Pill makes controls pills |
 | Glass | A switch: on draws liquid glass, off draws none |
 | UI font | The face |
 | Mono font | The code face; its list opens on Monospaced |
-| Text size | The root size; everything scales with it |
-| Density | Compact, regular or comfortable rows and controls |
+| Text size | The root size; everything scales with it. None on a phone, which follows the device from 100% to 135% |
+| Density | Compact, regular or comfortable rows and controls. None on a phone, which is comfortable |
 | Increase contrast | 0 to 100%: surfaces and fills further apart, muted text closer to the ink; no edges |
 | Reduce transparency | Glass draws as the popover fill |
 | Motion | Off, default, or fast (every animation at half its time) |

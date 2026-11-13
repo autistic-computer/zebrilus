@@ -63,6 +63,8 @@ A phone screen is built from phone components, sized for a thumb from the start.
 
 `touch-large` is as tall as the pill, so a main action lines up with the pill it takes the place of, and a 44 accessory fits inside a 56 field with the 4 inside gap. Under a coarse pointer on a tablet or a touch screen, desktop components take `touch` and the touch scale instead; that is desktop layout made reachable, not a phone screen.
 
+A phone has no Text size or Density knob. It follows the device's text size from 100% to 135% and never goes smaller, since the touch layout already sits on its minimum targets, and it is always comfortable.
+
 ## Screen
 
 ```figure uses=compact,touch,button,label
@@ -189,7 +191,7 @@ Not built natively yet: on glass the keys rest with no wash and no rim.
 
 ## Corners
 
-The desktop's four corner rules, unchanged. Controls round from their height, the floating disc included. Phone containers share one corner, twice `radius`, since the phone's 56 rung is twice the desktop's 28. Rows inside a group are concentric with it.
+The desktop's four corner rules, unchanged. Controls round from their height, the floating disc included. Phone containers share one corner, twice `radius`, since the phone's 56 rung is twice the desktop's 28. A settings card is one too. A phone has no Corner radius knob, so `radius` is the look's default and phone containers are 24. Rows inside a group are concentric with it.
 
 ```figure uses=compact,touch,button,label
 <div class="docs-show" data-gap="wide" style="align-items: flex-start">
@@ -212,7 +214,7 @@ The desktop's four corner rules, unchanged. Controls round from their height, th
 | Progress line | square ends | 0 | 0 | 0 |
 | Touch row, 52 and 64 | control, never a capsule | 16.2, 20 | 16.2, 20 | 13.2, 16.3 |
 | Touch row in a group | at most the group's less 4 | 16.2, 20 | 16.2, 20 | 12, 12 |
-| Tile, row group, sheet, zoom card, address suggestions | phone container, twice `radius` | 24 | 24 | 16 |
+| Tile, row group, settings card, sheet, zoom card, address suggestions | phone container, twice `radius` | 24 | 24 | 16 |
 
 Not built natively yet: the pill follows the screen's corner.
 

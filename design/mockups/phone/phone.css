@@ -50,6 +50,7 @@
 .zz-note { flex: none; padding: 6px 32px 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
 
 .zz-card[data-penna] { flex: none; margin: 0 16px; overflow: hidden; }
+.zz-card[data-penna][data-penna][data-penna] { --penna-r: var(--penna-phone-radius); }
 .zz-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 14px 8px 16px; }
 .zz-row + .zz-row { box-shadow: inset 48px 0 0 0 var(--penna-fill), inset 0 1px 0 0 var(--penna-divider); }
 .zz-row > [data-icon] { color: var(--penna-muted); --penna-icon-size: 20px; }

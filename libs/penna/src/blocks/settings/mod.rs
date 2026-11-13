@@ -538,10 +538,12 @@ impl RenderOnce for SettingsDisclosure {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let muted = cx.theme().foreground.muted();
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
-        let radius = cx
-            .theme()
-            .layer(Surface::new(roles::SETTINGS_CARD), PaintState::Rest)
-            .radius;
+        let radius = phone_container_or(
+            cx.theme()
+                .layer(Surface::new(roles::SETTINGS_CARD), PaintState::Rest)
+                .radius,
+            cx,
+        );
         let bleed = Space::S6.rems();
         let hit = div()
             .author_id(self.id)
@@ -869,8 +871,7 @@ impl RenderOnce for SettingEntry {
                         .child(
                             div()
                                 .flex()
-                                .flex_1()
-                                .min_w_0()
+                                .flex_none()
                                 .items_center()
                                 .gap(Space::S8)
                                 .when_some(self.title_icon, |this, icon| {
@@ -879,11 +880,22 @@ impl RenderOnce for SettingEntry {
                                 .child(
                                     div()
                                         .type_style(crate::TextStyle::Body, cx)
+                                        .whitespace_nowrap()
                                         .child(self.title),
                                 )
                                 .when_some(self.title_actions, ala::ParentElement::child),
                         )
-                        .when_some(self.control, ala::ParentElement::child),
+                        .when_some(self.control, |this, control| {
+                            this.child(
+                                div()
+                                    .flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .items_center()
+                                    .justify_end()
+                                    .child(control),
+                            )
+                        }),
                 )
                 .children(description)
         } else {
@@ -908,7 +920,7 @@ impl RenderOnce for SettingEntry {
         );
         let (inset, cast): (Vec<_>, Vec<_>) =
             card.shadow.iter().cloned().partition(|shadow| shadow.inset);
-        let radius = card.radius;
+        let radius = phone_container_or(card.radius, cx);
         let ends = move |this: ala::Div| {
             this.when(position.rounds_top(), |this| this.rounded_t(radius))
                 .when(position.rounds_bottom(), |this| this.rounded_b(radius))
@@ -1109,8 +1121,17 @@ pub fn settings_preview(fill: Hsla, cx: &App) -> ala::Div {
     div().overflow_hidden().layer(&Layer {
         fill,
         glass: None,
+        radius: phone_container_or(layer.radius, cx),
         ..layer
     })
+}
+
+fn phone_container_or(radius: Pixels, cx: &App) -> Pixels {
+    if crate::blocks::touch::PhoneScreen::get(cx) {
+        cx.theme().phone_radius()
+    } else {
+        radius
+    }
 }
 
 pub fn settings_provenance_badge(label: impl Into<SharedString>) -> Badge {

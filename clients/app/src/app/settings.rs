@@ -93,7 +93,7 @@ pub(super) fn sections() -> Vec<SettingsSection> {
 fn interface_zoom(preferences: &Preferences, system_scale: f32, phone: bool) -> f32 {
     let zoom = preferences.appearance.zoom;
     if phone {
-        zoom * system_scale.min(PHONE_MAX_ZOOM)
+        system_scale.clamp(1.0, PHONE_MAX_ZOOM)
     } else if preferences.system_text_size {
         zoom * system_scale
     } else {
@@ -159,7 +159,12 @@ impl Preferences {
         }
         shown.set_theme_mode(mode);
         shown.contrast = contrast;
-        shown.zoom = interface_zoom(self, text_scale, phone());
+        let phone = phone();
+        shown.zoom = interface_zoom(self, text_scale, phone);
+        if phone {
+            shown.overrides.radius = None;
+            shown.density = penna::Density::Comfortable;
+        }
         if cx.global::<PlatformReduceMotion>().0 {
             shown.motion = penna::foundation::motion::Motion::Off;
         }
@@ -585,7 +590,16 @@ impl AppShell {
                     .filter(|item| {
                         !matches!(item, AppearancePageItem::App(row) if *row != ZzRow::ProgramColors)
                     })
-                    .filter(|item| !phone || !matches!(item, AppearancePageItem::Pointer))
+                    .filter(|item| {
+                        !phone
+                            || !matches!(
+                                item,
+                                AppearancePageItem::Pointer
+                                    | AppearancePageItem::CornerRadius
+                                    | AppearancePageItem::TextSize
+                                    | AppearancePageItem::Density
+                            )
+                    })
                     .filter(|item| !narrow || !matches!(item, AppearancePageItem::Title))
                     .collect::<Vec<_>>();
                 let empty = |at: usize, items: &[AppearancePageItem]| {
@@ -1266,16 +1280,16 @@ mod tests {
     }
 
     #[test]
-    fn phone_scale_is_ui_zoom_over_the_capped_system_text_size() {
+    fn phone_scale_is_the_system_text_size_from_100_to_135_percent() {
         let mut zoomed = Preferences {
             system_text_size: false,
             ..Preferences::default()
         };
         zoomed.appearance.zoom = 1.5;
         assert_eq!(interface_zoom(&zoomed, 1.12, false), 1.5);
-        assert!((interface_zoom(&zoomed, 1.12, true) - 1.68).abs() < 1e-6);
-        assert!((interface_zoom(&zoomed, 0.82, true) - 1.23).abs() < 1e-6);
-        assert!((interface_zoom(&zoomed, 1.9, true) - 2.025).abs() < 1e-6);
+        assert_eq!(interface_zoom(&zoomed, 1.12, true), 1.12);
+        assert_eq!(interface_zoom(&zoomed, 0.82, true), 1.0);
+        assert_eq!(interface_zoom(&zoomed, 1.9, true), 1.35);
         let mut following = Preferences::default();
         following.appearance.zoom = 1.5;
         assert!((interface_zoom(&following, 1.2, false) - 1.8).abs() < 1e-6);

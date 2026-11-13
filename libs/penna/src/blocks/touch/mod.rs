@@ -84,6 +84,24 @@ impl CoarsePointer {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PhoneScreen(pub bool);
+
+impl Global for PhoneScreen {}
+
+impl PhoneScreen {
+    #[must_use]
+    pub fn get(cx: &App) -> bool {
+        cx.try_global::<Self>().is_some_and(|phone| phone.0)
+    }
+
+    pub fn set(phone: bool, cx: &mut App) {
+        if Self::get(cx) != phone {
+            cx.set_global(Self(phone));
+        }
+    }
+}
+
 pub fn touch_scale(child: impl IntoElement, cx: &App) -> AnyElement {
     if CoarsePointer::get(cx) {
         TouchScale {

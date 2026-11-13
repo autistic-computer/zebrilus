@@ -30,7 +30,7 @@ Small and xsmall for dense places. Large and xlarge for one main action. Touch u
 
 ## Density
 
-A setting moves the default size and every row with it. Text and gaps stay.
+A setting moves the default size and every row with it. Text and gaps stay. A phone has no setting and is always comfortable.
 
 ```figure uses=input
 <div class="docs-tokens">
