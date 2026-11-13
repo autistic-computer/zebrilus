@@ -766,6 +766,7 @@ mod workspace_tests {
         assert_eq!(environment[0], ("ZZ_PANE".to_owned(), "%1".to_owned()));
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_tools_folder_leads_the_agent_path() {
         let agent = AcpAgent::from_str("npx -y example").expect("valid command");

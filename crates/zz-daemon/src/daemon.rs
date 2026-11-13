@@ -73438,6 +73438,7 @@ set-option -g @alias-mixed-next yes
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn control_if_shell_replay_preserves_indirect_source_guard_order() {
         let directory = tempfile::tempdir().expect("temporary directory");
@@ -74917,6 +74918,7 @@ set-option -g @alias-mixed-next yes
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn nested_source_errors_group_control_frames_by_source_command() {
         let directory = tempfile::tempdir().expect("temporary directory");
@@ -106032,6 +106034,7 @@ bind - split-window -v -c "#{pane_current_path}"
         assert_eq!(facts().1, after.1);
     }
 
+    #[cfg(unix)]
     #[test]
     fn client_context_formats_share_retained_facts_across_surfaces() {
         let shared = Arc::new(Shared::new(1));

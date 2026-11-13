@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    fmt::Write as _,
     io,
     net::{IpAddr, Shutdown, SocketAddr, TcpListener, TcpStream},
     path::{Path, PathBuf},
@@ -66,10 +65,6 @@ fn offers_output() -> Result<String, String> {
             "this machine is not on the tailnet; run `zz tailnet status` on it to see why"
                 .to_owned()
         })
-}
-
-fn wake() {
-    WAKE.store(true, Ordering::Release);
 }
 
 struct Listening {
@@ -288,70 +283,77 @@ fn unmapped(address: IpAddr) -> IpAddr {
     }
 }
 
-fn own_directory() -> Option<PathBuf> {
-    zz_daemon_client::user_data::platform_data_dir().map(|data| {
-        data.join(zz_protocol::app_identity::DIRECTORY)
-            .join("tailnet")
-    })
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct Allowed {
-    id: String,
-    name: String,
-}
-
-fn read_allowed(path: &Path) -> Vec<Allowed> {
-    std::fs::read_to_string(path)
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| {
-            let (id, name) = line.trim().split_once(' ')?;
-            Some(Allowed {
-                id: id.to_owned(),
-                name: name.trim().to_owned(),
-            })
-        })
-        .collect()
-}
-
-fn write_allowed(path: &Path, allowed: &[Allowed]) -> io::Result<()> {
-    if let Some(directory) = path.parent() {
-        std::fs::create_dir_all(directory)?;
-        zz_daemon_client::user_data::restrict_directory_to_current_user(directory)?;
-    }
-    let mut text = String::new();
-    for entry in allowed {
-        let _ = writeln!(text, "{} {}", entry.id, entry.name);
-    }
-    let staged = path.with_extension("new");
-    std::fs::write(&staged, text)?;
-    zz_daemon_client::user_data::restrict_to_current_user(&staged)?;
-    std::fs::rename(staged, path)
-}
-
-fn matches_entry(entry: &Allowed, name: &str) -> bool {
-    entry.id == name || entry.name == name || entry.name.split('.').next() == Some(name)
-}
-
 #[cfg(all(
     feature = "tailnet-own",
     any(target_os = "linux", all(target_os = "macos", target_arch = "aarch64"))
 ))]
 mod own {
-    use std::{path::Path, sync::Arc};
+    use std::{
+        fmt::Write as _,
+        io,
+        path::{Path, PathBuf},
+        sync::{Arc, atomic::Ordering},
+    };
 
     use parking_lot::{Mutex, RwLock};
     use zz_daemon_client::tailnet::{self, Allow, Mode, OwnState, PORT, Settings};
     use zz_tailnet::{Node, Options, Peer};
 
-    use super::{
-        Allowed, matches_entry, own_directory, read_allowed, read_settings, wake, write_allowed,
-    };
+    use super::{WAKE, read_settings};
 
     static NODE: RwLock<Option<Arc<Node>>> = RwLock::new(None);
     static LOGIN_KEY: Mutex<Option<String>> = Mutex::new(None);
     static LOGOUT: Mutex<bool> = Mutex::new(false);
+
+    fn wake() {
+        WAKE.store(true, Ordering::Release);
+    }
+
+    fn own_directory() -> Option<PathBuf> {
+        zz_daemon_client::user_data::platform_data_dir().map(|data| {
+            data.join(zz_protocol::app_identity::DIRECTORY)
+                .join("tailnet")
+        })
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct Allowed {
+        id: String,
+        name: String,
+    }
+
+    fn read_allowed(path: &Path) -> Vec<Allowed> {
+        std::fs::read_to_string(path)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|line| {
+                let (id, name) = line.trim().split_once(' ')?;
+                Some(Allowed {
+                    id: id.to_owned(),
+                    name: name.trim().to_owned(),
+                })
+            })
+            .collect()
+    }
+
+    fn write_allowed(path: &Path, allowed: &[Allowed]) -> io::Result<()> {
+        if let Some(directory) = path.parent() {
+            std::fs::create_dir_all(directory)?;
+            zz_daemon_client::user_data::restrict_directory_to_current_user(directory)?;
+        }
+        let mut text = String::new();
+        for entry in allowed {
+            let _ = writeln!(text, "{} {}", entry.id, entry.name);
+        }
+        let staged = path.with_extension("new");
+        std::fs::write(&staged, text)?;
+        zz_daemon_client::user_data::restrict_to_current_user(&staged)?;
+        std::fs::rename(staged, path)
+    }
+
+    fn matches_entry(entry: &Allowed, name: &str) -> bool {
+        entry.id == name || entry.name == name || entry.name.split('.').next() == Some(name)
+    }
 
     pub(super) fn step(settings: &Settings, socket: &Path) -> Option<String> {
         if std::mem::take(&mut *LOGOUT.lock()) {

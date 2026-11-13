@@ -701,8 +701,8 @@ mod tests {
         std::fs::write(
             dir.join(format!("{first}.jsonl")),
             format!(
-                "{{\"type\":\"user\",\"uuid\":\"a\",\"parentUuid\":null,\"cwd\":\"{}\",\"message\":{{\"role\":\"user\",\"content\":\"fix the build\"}}}}\n",
-                canonical.display()
+                "{{\"type\":\"user\",\"uuid\":\"a\",\"parentUuid\":null,\"cwd\":{},\"message\":{{\"role\":\"user\",\"content\":\"fix the build\"}}}}\n",
+                serde_json::to_string(&canonical).expect("cwd json")
             ),
         )
         .expect("session");
@@ -737,6 +737,7 @@ mod tests {
             b"{\"type\":\"custom-title\",\"customTitle\":\"Release notes\"}\n",
         )
         .expect("rename");
+        drop(transcript);
         let renamed = list(config.path(), Some(&cwd));
         assert_eq!(renamed[0].title.as_deref(), Some("Release notes"));
     }

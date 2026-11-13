@@ -47,6 +47,7 @@ fn setup() -> (Runtime, Receiver<AgentStreamPayload>) {
     (runtime, receiver)
 }
 
+#[cfg(unix)]
 fn attach_sink(runtime: &mut Runtime) {
     runtime.process = Some(
         Process::launch(
@@ -172,6 +173,7 @@ fn the_steer_recording_runs_one_turn_then_a_background_wake() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn a_steer_keeps_the_turn_when_the_original_command_is_cancelled() {
     let (mut runtime, receiver) = setup();
@@ -218,6 +220,7 @@ fn a_hard_failure_is_reported_as_failed_not_cancelled() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn a_late_result_from_a_cancelled_turn_cannot_fail_the_next_prompt() {
     let (mut runtime, receiver) = setup();
