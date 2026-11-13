@@ -269,7 +269,7 @@ fn chat_mode_lists_every_chat_with_the_current_one_last() {
         palette.rows[chats + 1].action,
         Some(PaletteAction::Place(Place {
             window: Some(WindowId(12)),
-            pane: None,
+            pane: Some(PaneId(22)),
             ..
         }))
     ));

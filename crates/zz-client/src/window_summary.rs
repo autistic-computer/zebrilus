@@ -1,4 +1,4 @@
-use std::{cmp::Reverse, path::Path};
+use std::{cmp::Reverse, collections::BTreeMap, path::Path};
 
 use url::Url;
 use zz_protocol::{
@@ -288,12 +288,8 @@ pub fn summarize_chat(window: &WindowSnapshot) -> Option<WindowSummary> {
         .filter(runs_agent)
         .find(|pane| pane.id == window.active_pane)
         .or_else(|| panes.iter().copied().find(runs_agent))?;
-    let title = window_title(window, Some(agent), Some(agent));
-    let quiet = agent.status.is_none() && !agent.summary.unseen && !agent.dead;
-    let detail = match (quiet, location(agent), pane_program(agent)) {
-        (true, None, Some(program)) => vec![part(program.name, Tone::Muted)],
-        _ => pane_detail(window, agent, &title),
-    };
+    let title = chat_title(window, agent);
+    let detail = chat_detail(window, agent, &title);
     Some(WindowSummary {
         window: window.id,
         index: window.index,
@@ -323,6 +319,404 @@ pub fn summarize_chats<'a>(
         rollup.add(chat);
     }
     (chats, rollup)
+}
+
+const CHAT_SHORTCUTS: u8 = 9;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PaneEntry {
+    pub face: PaneTile,
+    pub title: String,
+    pub detail: Vec<DetailPart>,
+    pub changed_at: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WindowRow {
+    pub session: SessionId,
+    pub summary: WindowSummary,
+    pub chat: bool,
+    pub panes: Vec<PaneEntry>,
+    pub shortcut: Option<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pile {
+    pub summary: WindowSummary,
+    pub windows: Vec<WindowRow>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ChatRow {
+    Window(WindowRow),
+    Pile(Pile),
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ChatMachine {
+    pub rows: Vec<ChatRow>,
+    pub rollup: AttentionRollup,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChatCurrent {
+    pub row: usize,
+    pub entry: Option<usize>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ChatHints {
+    pub last_chat: BTreeMap<WindowId, PaneId>,
+    pub last_plain: Option<WindowId>,
+}
+
+impl ChatHints {
+    pub fn observe(&mut self, window: &WindowSnapshot) {
+        if window.panes.get(&window.active_pane).is_some_and(is_chat) {
+            self.last_chat.insert(window.id, window.active_pane);
+        } else if !window.panes.values().any(is_chat) {
+            self.last_plain = Some(window.id);
+        }
+    }
+}
+
+impl ChatMachine {
+    #[must_use]
+    pub fn current(&self, window: WindowId, pane: PaneId) -> Option<ChatCurrent> {
+        self.rows
+            .iter()
+            .enumerate()
+            .find_map(|(row, candidate)| match candidate {
+                ChatRow::Window(found) => (found.summary.window == window).then(|| ChatCurrent {
+                    row,
+                    entry: found.panes.iter().position(|entry| entry.face.pane == pane),
+                }),
+                ChatRow::Pile(pile) => pile
+                    .windows
+                    .iter()
+                    .position(|found| found.summary.window == window)
+                    .map(|entry| ChatCurrent {
+                        row,
+                        entry: Some(entry),
+                    }),
+            })
+    }
+}
+
+#[must_use]
+pub fn summarize_chat_machine<'a>(
+    sessions: impl IntoIterator<Item = &'a SessionSnapshot>,
+    hints: &ChatHints,
+) -> ChatMachine {
+    let mut chats = Vec::new();
+    let mut plain = Vec::new();
+    for session in sessions {
+        for window in &session.windows {
+            let panes = ordered_panes(window);
+            let hint = hints.last_chat.get(&window.id).copied();
+            if let Some(row) = chat_row(session.id, window, &panes, hint) {
+                chats.push(row);
+            } else if let Some(row) = plain_row(session.id, window, &panes) {
+                plain.push(row);
+            }
+        }
+    }
+    let mut rollup = AttentionRollup::default();
+    for row in chats.iter().chain(plain.iter().map(|(row, _)| row)) {
+        rollup.add(&row.summary);
+    }
+    let mut rows = chats.into_iter().map(ChatRow::Window).collect::<Vec<_>>();
+    match plain.len() {
+        0 => {}
+        1 => rows.extend(plain.into_iter().map(|(row, _)| ChatRow::Window(row))),
+        _ => rows.push(ChatRow::Pile(pile(plain, hints.last_plain))),
+    }
+    ChatMachine { rows, rollup }
+}
+
+pub fn number_chat_rows<'a>(machines: impl IntoIterator<Item = &'a mut ChatMachine>) {
+    let rows = machines
+        .into_iter()
+        .flat_map(|machine| &mut machine.rows)
+        .filter_map(|row| match row {
+            ChatRow::Window(row) if row.chat => Some(row),
+            _ => None,
+        });
+    for (row, shortcut) in rows.zip(0..CHAT_SHORTCUTS) {
+        row.shortcut = Some(shortcut);
+    }
+}
+
+#[must_use]
+pub fn pane_entry(window: &WindowSnapshot, pane: &PaneSnapshot) -> PaneEntry {
+    let (title, detail) = if is_chat(pane) {
+        let title = chat_title(window, pane);
+        let detail = chat_detail(window, pane, &title);
+        (title, detail)
+    } else {
+        (plain_title(pane), own_line(pane))
+    };
+    PaneEntry {
+        face: pane_tile(pane),
+        title,
+        detail,
+        changed_at: pane.summary.changed_at,
+    }
+}
+
+type Alert = (Attention, DetailPart);
+
+fn is_chat(pane: &PaneSnapshot) -> bool {
+    pane_agent(pane).is_some()
+}
+
+const fn needs_user(attention: Attention) -> bool {
+    matches!(attention, Attention::NeedsYou | Attention::Failed)
+}
+
+fn chat_row(
+    session: SessionId,
+    window: &WindowSnapshot,
+    panes: &[&PaneSnapshot],
+    hint: Option<PaneId>,
+) -> Option<WindowRow> {
+    let chats = panes
+        .iter()
+        .copied()
+        .filter(|pane| is_chat(pane))
+        .collect::<Vec<_>>();
+    let pick = |id: PaneId| chats.iter().copied().find(|pane| pane.id == id);
+    let front = pick(window.active_pane)
+        .or_else(|| hint.and_then(pick))
+        .or_else(|| chats.first().copied())?;
+    let title = chat_title(window, front);
+    let behind = loudest(
+        chats.iter().copied().filter(|pane| pane.id != front.id),
+        needs_user,
+    );
+    let detail = match behind {
+        Some((_, word, pane)) if !needs_user(pane_attention(front)) => vec![
+            word,
+            part(format!(" · {}", chat_title(window, pane)), Tone::Muted),
+        ],
+        _ => chat_detail(window, front, &title),
+    };
+    let faces = std::iter::once(front)
+        .chain(chats.iter().copied().filter(|pane| pane.id != front.id))
+        .chain(panes.iter().copied().filter(|pane| !is_chat(pane)))
+        .map(pane_tile)
+        .collect();
+    Some(WindowRow {
+        session,
+        summary: row_summary(window, panes, front, title, detail, faces),
+        chat: true,
+        panes: pane_entries(window, panes),
+        shortcut: None,
+    })
+}
+
+fn plain_row(
+    session: SessionId,
+    window: &WindowSnapshot,
+    panes: &[&PaneSnapshot],
+) -> Option<(WindowRow, Option<Alert>)> {
+    let front = window
+        .panes
+        .get(&window.active_pane)
+        .or_else(|| panes.first().copied())?;
+    let behind = loudest(
+        panes.iter().copied().filter(|pane| pane.id != front.id),
+        |_| true,
+    );
+    let detail = match behind {
+        Some((_, word, pane)) if alert(front).is_none() => {
+            vec![word, part(format!(" · {}", plain_title(pane)), Tone::Muted)]
+        }
+        _ => own_line(front),
+    };
+    let faces = std::iter::once(front)
+        .chain(panes.iter().copied().filter(|pane| pane.id != front.id))
+        .map(pane_tile)
+        .collect();
+    let row = WindowRow {
+        session,
+        summary: row_summary(window, panes, front, plain_title(front), detail, faces),
+        chat: false,
+        panes: pane_entries(window, panes),
+        shortcut: None,
+    };
+    let window_alert =
+        loudest(panes.iter().copied(), |_| true).map(|(attention, word, _)| (attention, word));
+    Some((row, window_alert))
+}
+
+fn pile(windows: Vec<(WindowRow, Option<Alert>)>, last: Option<WindowId>) -> Pile {
+    let front = last
+        .and_then(|last| {
+            windows
+                .iter()
+                .position(|(row, _)| row.summary.window == last)
+        })
+        .unwrap_or_default();
+    let (lead, lead_alert) = &windows[front];
+    let tiles = std::iter::once(front)
+        .chain((0..windows.len()).filter(|index| *index != front))
+        .filter_map(|index| {
+            let row = &windows[index].0.summary;
+            let tile = row.tiles.first()?;
+            Some(PaneTile {
+                attention: row.attention,
+                ..tile.clone()
+            })
+        })
+        .collect();
+    let behind = windows
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != front)
+        .filter_map(|(index, (row, alert))| {
+            let (attention, word) = alert.as_ref()?;
+            Some(((*attention, Reverse(index)), word, row))
+        })
+        .max_by_key(|(rank, ..)| *rank);
+    let detail = match behind {
+        Some((_, word, row)) if lead_alert.is_none() => vec![
+            word.clone(),
+            part(format!(" · {}", row.summary.title), Tone::Muted),
+        ],
+        _ => lead.summary.detail.clone(),
+    };
+    let summary = WindowSummary {
+        window: lead.summary.window,
+        index: lead.summary.index,
+        headline: lead.summary.headline,
+        title: lead.summary.title.clone(),
+        detail,
+        changed_at: lead.summary.changed_at,
+        tiles,
+        attention: windows
+            .iter()
+            .map(|(row, _)| row.summary.attention)
+            .max()
+            .unwrap_or_default(),
+    };
+    Pile {
+        summary,
+        windows: windows.into_iter().map(|(row, _)| row).collect(),
+    }
+}
+
+fn row_summary(
+    window: &WindowSnapshot,
+    panes: &[&PaneSnapshot],
+    front: &PaneSnapshot,
+    title: String,
+    detail: Vec<DetailPart>,
+    tiles: Vec<PaneTile>,
+) -> WindowSummary {
+    WindowSummary {
+        window: window.id,
+        index: window.index,
+        headline: front.id,
+        title,
+        detail,
+        changed_at: front.summary.changed_at,
+        tiles,
+        attention: panes
+            .iter()
+            .map(|pane| pane_attention(pane))
+            .max()
+            .unwrap_or_default(),
+    }
+}
+
+fn pane_entries(window: &WindowSnapshot, panes: &[&PaneSnapshot]) -> Vec<PaneEntry> {
+    if panes.len() < 2 {
+        return Vec::new();
+    }
+    panes.iter().map(|pane| pane_entry(window, pane)).collect()
+}
+
+fn loudest<'a>(
+    panes: impl IntoIterator<Item = &'a PaneSnapshot>,
+    keep: impl Fn(Attention) -> bool,
+) -> Option<(Attention, DetailPart, &'a PaneSnapshot)> {
+    panes
+        .into_iter()
+        .enumerate()
+        .filter_map(|(position, pane)| {
+            let (attention, word) = alert(pane).filter(|(attention, _)| keep(*attention))?;
+            Some((attention, Reverse(position), word, pane))
+        })
+        .max_by_key(|(attention, position, ..)| (*attention, *position))
+        .map(|(attention, _, word, pane)| (attention, word, pane))
+}
+
+fn alert(pane: &PaneSnapshot) -> Option<Alert> {
+    let attention = pane_attention(pane);
+    if needs_user(attention) {
+        return status_detail(pane)?
+            .into_iter()
+            .next()
+            .map(|word| (attention, word));
+    }
+    let failed = match (pane.dead, pane.dead_status, pane.summary.command) {
+        (true, Some(status), _) if status != 0 => Some(format!("Exited {status}")),
+        (false, _, Some(ShellCommand::Finished(code)))
+            if code != 0 && matches!(pane.kind, PaneKindSnapshot::Terminal) =>
+        {
+            Some(format!("Exit {code}"))
+        }
+        _ => None,
+    };
+    if let Some(text) = failed {
+        return Some((Attention::Failed, part(text, Tone::Danger)));
+    }
+    (attention == Attention::Bell).then(|| (Attention::Bell, part("Bell", Tone::Normal)))
+}
+
+fn own_line(pane: &PaneSnapshot) -> Vec<DetailPart> {
+    let location = location(pane);
+    match alert(pane) {
+        Some((_, word)) => std::iter::once(word)
+            .chain(location.map(|location| part(format!(" · {location}"), Tone::Muted)))
+            .collect(),
+        None => location
+            .map(|location| part(location, Tone::Muted))
+            .into_iter()
+            .collect(),
+    }
+}
+
+fn plain_title(pane: &PaneSnapshot) -> String {
+    match &pane.kind {
+        PaneKindSnapshot::Terminal => [
+            Some(pane.title.trim()),
+            pane.summary
+                .process
+                .first()
+                .map(|entry| last_component(entry)),
+            Some(pane.summary.shell.trim()),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|text| !text.is_empty())
+        .map_or_else(|| pane_label(pane), str::to_owned),
+        PaneKindSnapshot::Browser(browser) => browser_host(browser.url()),
+        _ => pane_label(pane),
+    }
+}
+
+fn chat_title(window: &WindowSnapshot, pane: &PaneSnapshot) -> String {
+    window_title(window, Some(pane), Some(pane))
+}
+
+fn chat_detail(window: &WindowSnapshot, pane: &PaneSnapshot, title: &str) -> Vec<DetailPart> {
+    let quiet = pane.status.is_none() && !pane.summary.unseen && !pane.dead;
+    match (quiet, location(pane), pane_program(pane)) {
+        (true, None, Some(program)) => vec![part(program.name, Tone::Muted)],
+        _ => pane_detail(window, pane, title),
+    }
 }
 
 #[must_use]
@@ -1423,5 +1817,422 @@ mod tests {
             ["Release", "Docs"]
         );
         assert_eq!((rollup.needs_you, rollup.failed), (1, 0));
+    }
+
+    type Line<'a> = Vec<(&'a str, Tone)>;
+
+    fn line(detail: &[DetailPart]) -> Line<'_> {
+        detail
+            .iter()
+            .map(|part| (part.text.as_str(), part.tone))
+            .collect()
+    }
+
+    fn faces(summary: &WindowSummary) -> Vec<(u64, Attention)> {
+        summary
+            .tiles
+            .iter()
+            .map(|tile| (tile.pane.0, tile.attention))
+            .collect()
+    }
+
+    fn shown(
+        row: &WindowRow,
+    ) -> (
+        bool,
+        Option<u8>,
+        &str,
+        Line<'_>,
+        Vec<(u64, Attention)>,
+        Vec<(u64, Attention, &str, Line<'_>)>,
+    ) {
+        (
+            row.chat,
+            row.shortcut,
+            row.summary.title.as_str(),
+            line(&row.summary.detail),
+            faces(&row.summary),
+            row.panes
+                .iter()
+                .map(|entry| {
+                    (
+                        entry.face.pane.0,
+                        entry.face.attention,
+                        entry.title.as_str(),
+                        line(&entry.detail),
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    fn window_row(machine: &ChatMachine, index: usize) -> &WindowRow {
+        match &machine.rows[index] {
+            ChatRow::Window(row) => row,
+            ChatRow::Pile(_) => panic!("row {index} is the pile"),
+        }
+    }
+
+    fn in_session(id: u64, windows: Vec<WindowSnapshot>) -> SessionSnapshot {
+        SessionSnapshot {
+            id: SessionId(id),
+            name: id.to_string(),
+            active_window: windows.first().map_or_default(|window| window.id),
+            windows,
+            viewers: Vec::new(),
+        }
+    }
+
+    fn placed(mut pane: PaneSnapshot, cwd: &str, branch: &str) -> PaneSnapshot {
+        pane.summary.cwd = cwd.to_owned();
+        pane.summary.branch = branch.to_owned();
+        pane
+    }
+
+    fn running(mut pane: PaneSnapshot, process: &[&str]) -> PaneSnapshot {
+        pane.summary.process = process.iter().map(|entry| (*entry).to_owned()).collect();
+        pane
+    }
+
+    #[test]
+    fn chat_view_lists_chat_windows_then_piles_the_plain_ones() {
+        use Attention::{Bell, NeedsYou, Working};
+        let quiet = Attention::None;
+        let hit_tests = window(
+            1,
+            vec![with_status(
+                agent(11, "Fix stack hit tests"),
+                status(PaneStatusState::Working, None, "Running the tests"),
+            )],
+        );
+        let mut bento = window(
+            2,
+            vec![
+                agent(21, "Port bento to penna"),
+                placed(terminal(22, "vite"), "~/dev/zebrilus", "bento"),
+                terminal(23, "zsh"),
+            ],
+        );
+        bento.active_pane = PaneId(23);
+        let mut split = window(
+            3,
+            vec![
+                agent(31, "Pill menu New chat"),
+                with_status(
+                    agent(32, "Review the pill diff"),
+                    status(PaneStatusState::Working, None, ""),
+                ),
+                running(terminal(33, "cargo test -p zz-ui"), &["cargo"]),
+            ],
+        );
+        split.active_pane = PaneId(32);
+        let mut plan = window(4, vec![agent(41, "Plan the chat rows")]);
+        plan.panes.get_mut(&PaneId(41)).unwrap().summary.changed_at = 100;
+        let mut fork = with_status(
+            agent(42, "What the kit draws"),
+            status(
+                PaneStatusState::Blocked,
+                Some(PaneStatusKind::Permission),
+                "rg guide",
+            ),
+        );
+        fork.summary.changed_at = 300;
+        plan.panes.insert(PaneId(42), fork);
+        plan.floating.push(zz_protocol::FloatingPaneSnapshot {
+            pane: PaneId(42),
+            xoff: 4,
+            yoff: 2,
+            sx: 60,
+            sy: 16,
+            visible: true,
+            border_lines: zz_protocol::PaneBorderLines::Single,
+            border_status: zz_protocol::PaneBorderStatus::Off,
+        });
+        let editing = window(
+            5,
+            vec![
+                placed(
+                    running(
+                        terminal(51, "nvim flat.rs"),
+                        &["/opt/homebrew/bin/nvim", "nvim"],
+                    ),
+                    "~/dev/zebrilus",
+                    "main",
+                ),
+                placed(
+                    running(terminal(52, "cargo watch -x check"), &["cargo"]),
+                    "~/dev/zebrilus",
+                    "main",
+                ),
+            ],
+        );
+        let docs = window(
+            6,
+            vec![pane(
+                61,
+                PaneKindSnapshot::Browser(BrowserDescriptor::single(
+                    "https://docs.rs/ala/latest/ala/".to_owned(),
+                    "default".to_owned(),
+                )),
+            )],
+        );
+        let mut shell = placed(terminal(71, ""), "~/dev", "");
+        shell.summary.shell = "zsh".to_owned();
+        shell.bell = true;
+        let rang = window(7, vec![shell]);
+        let mut hints = ChatHints::default();
+        hints.observe(&split);
+        hints.observe(&docs);
+        let mut sessions = [
+            in_session(1, vec![hit_tests, editing, bento]),
+            in_session(2, vec![split, docs, plan, rang]),
+        ];
+        let mut machine = summarize_chat_machine(&sessions, &hints);
+        number_chat_rows([&mut machine]);
+
+        assert_eq!(machine.rows.len(), 5);
+        assert_eq!(
+            shown(window_row(&machine, 0)),
+            (
+                true,
+                Some(0),
+                "Fix stack hit tests",
+                vec![("Running the tests", Tone::Muted)],
+                vec![(11, Working)],
+                vec![],
+            )
+        );
+        assert_eq!(
+            shown(window_row(&machine, 1)),
+            (
+                true,
+                Some(1),
+                "Port bento to penna",
+                vec![("Claude Code", Tone::Muted)],
+                vec![(21, quiet), (22, quiet), (23, quiet)],
+                vec![
+                    (
+                        21,
+                        quiet,
+                        "Port bento to penna",
+                        vec![("Claude Code", Tone::Muted)]
+                    ),
+                    (22, quiet, "vite", vec![("zebrilus · bento", Tone::Muted)]),
+                    (23, quiet, "zsh", vec![]),
+                ],
+            )
+        );
+        assert_eq!(
+            shown(window_row(&machine, 2)),
+            (
+                true,
+                Some(2),
+                "Review the pill diff",
+                vec![("Working", Tone::Muted)],
+                vec![(32, Working), (31, quiet), (33, quiet)],
+                vec![
+                    (
+                        31,
+                        quiet,
+                        "Pill menu New chat",
+                        vec![("Claude Code", Tone::Muted)]
+                    ),
+                    (
+                        32,
+                        Working,
+                        "Review the pill diff",
+                        vec![("Working", Tone::Muted)]
+                    ),
+                    (33, quiet, "cargo test -p zz-ui", vec![]),
+                ],
+            )
+        );
+        assert_eq!(
+            shown(window_row(&machine, 3)),
+            (
+                true,
+                Some(3),
+                "Plan the chat rows",
+                vec![
+                    ("Needs approval", Tone::Warning),
+                    (" · What the kit draws", Tone::Muted)
+                ],
+                vec![(41, quiet), (42, NeedsYou)],
+                vec![
+                    (
+                        41,
+                        quiet,
+                        "Plan the chat rows",
+                        vec![("Claude Code", Tone::Muted)]
+                    ),
+                    (
+                        42,
+                        NeedsYou,
+                        "What the kit draws",
+                        vec![
+                            ("Needs approval", Tone::Warning),
+                            (" · rg guide", Tone::Muted)
+                        ]
+                    ),
+                ],
+            )
+        );
+
+        let ChatRow::Pile(pile) = &machine.rows[4] else {
+            panic!("the plain windows pile up last");
+        };
+        assert_eq!(
+            (
+                pile.summary.title.as_str(),
+                line(&pile.summary.detail),
+                faces(&pile.summary),
+                pile.summary.attention,
+            ),
+            (
+                "docs.rs",
+                vec![("Bell", Tone::Normal), (" · zsh", Tone::Muted)],
+                vec![(61, quiet), (51, quiet), (71, Bell)],
+                Bell,
+            )
+        );
+        assert_eq!(
+            pile.windows.iter().map(shown).collect::<Vec<_>>(),
+            [
+                (
+                    false,
+                    None,
+                    "nvim flat.rs",
+                    vec![("zebrilus · main", Tone::Muted)],
+                    vec![(51, quiet), (52, quiet)],
+                    vec![
+                        (
+                            51,
+                            quiet,
+                            "nvim flat.rs",
+                            vec![("zebrilus · main", Tone::Muted)]
+                        ),
+                        (
+                            52,
+                            quiet,
+                            "cargo watch -x check",
+                            vec![("zebrilus · main", Tone::Muted)]
+                        ),
+                    ],
+                ),
+                (false, None, "docs.rs", vec![], vec![(61, quiet)], vec![]),
+                (
+                    false,
+                    None,
+                    "zsh",
+                    vec![("Bell", Tone::Normal), (" · dev", Tone::Muted)],
+                    vec![(71, Bell)],
+                    vec![],
+                ),
+            ]
+        );
+        assert_eq!(
+            machine.rollup,
+            AttentionRollup {
+                needs_you: 1,
+                failed: 0,
+                done: 0,
+                bell: 1,
+                working: 2,
+                changed_at: 100,
+            }
+        );
+        assert_eq!(
+            machine.current(WindowId(6), PaneId(61)),
+            Some(ChatCurrent {
+                row: 4,
+                entry: Some(1)
+            })
+        );
+        assert_eq!(
+            machine.current(WindowId(3), PaneId(33)),
+            Some(ChatCurrent {
+                row: 2,
+                entry: Some(2)
+            })
+        );
+        assert_eq!(
+            machine.current(WindowId(1), PaneId(11)),
+            Some(ChatCurrent {
+                row: 0,
+                entry: None
+            })
+        );
+
+        sessions[1].windows[0].active_pane = PaneId(33);
+        let front = |hints: &ChatHints| {
+            faces(&window_row(&summarize_chat_machine(&sessions, hints), 2).summary)
+        };
+        assert_eq!(front(&hints), [(32, Working), (31, quiet), (33, quiet)]);
+        assert_eq!(
+            front(&ChatHints::default()),
+            [(31, quiet), (32, Working), (33, quiet)]
+        );
+    }
+
+    #[test]
+    fn a_lone_plain_window_is_an_unnumbered_row_after_the_chats() {
+        let first = [in_session(
+            1,
+            vec![
+                window(1, vec![agent(11, "Docs")]),
+                window(2, vec![agent(21, "Release")]),
+            ],
+        )];
+        let mut make = terminal(82, "make");
+        make.summary.command = Some(ShellCommand::Finished(2));
+        let second = [in_session(
+            2,
+            vec![
+                window(
+                    8,
+                    vec![placed(terminal(81, "zsh"), "~/dev/zz", "main"), make],
+                ),
+                window(9, vec![agent(91, "Tidy notes")]),
+            ],
+        )];
+        let mut machines = [
+            summarize_chat_machine(&first, &ChatHints::default()),
+            summarize_chat_machine(&second, &ChatHints::default()),
+        ];
+        number_chat_rows(&mut machines);
+        let [first, second] = &machines;
+        assert_eq!(
+            [window_row(first, 0).shortcut, window_row(first, 1).shortcut],
+            [Some(0), Some(1)]
+        );
+        assert_eq!(second.rows.len(), 2);
+        assert_eq!(
+            (
+                window_row(second, 0).summary.title.as_str(),
+                window_row(second, 0).shortcut
+            ),
+            ("Tidy notes", Some(2))
+        );
+        assert_eq!(
+            shown(window_row(second, 1)),
+            (
+                false,
+                None,
+                "zsh",
+                vec![("Exit 2", Tone::Danger), (" · make", Tone::Muted)],
+                vec![(81, Attention::None), (82, Attention::None)],
+                vec![
+                    (81, Attention::None, "zsh", vec![("zz · main", Tone::Muted)]),
+                    (82, Attention::None, "make", vec![("Exit 2", Tone::Danger)]),
+                ],
+            )
+        );
+        assert_eq!(
+            second.current(WindowId(8), PaneId(82)),
+            Some(ChatCurrent {
+                row: 1,
+                entry: Some(1)
+            })
+        );
     }
 }

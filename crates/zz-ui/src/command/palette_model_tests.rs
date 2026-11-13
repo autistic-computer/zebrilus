@@ -371,3 +371,115 @@ fn target_step_supports_join_without_forcing_optional_new_window_targets() {
         zz_protocol::catalog_command_spec("if-shell").unwrap()
     ));
 }
+
+fn running_pane(id: u64, title: &str, process: &[&str]) -> zz_protocol::PaneSnapshot {
+    zz_protocol::PaneSnapshot {
+        id: PaneId(id),
+        title: title.to_owned(),
+        kind: zz_protocol::PaneKindSnapshot::Terminal,
+        synchronized_input: false,
+        bell: false,
+        dead: false,
+        dead_status: None,
+        border_colour: None,
+        active_border_colour: None,
+        border_status_text: String::new(),
+        mode: None,
+        status: None,
+        summary: zz_protocol::PaneSummary {
+            process: process.iter().map(|entry| (*entry).to_owned()).collect(),
+            ..zz_protocol::PaneSummary::default()
+        },
+    }
+}
+
+fn snapshot_window(id: u64, panes: Vec<zz_protocol::PaneSnapshot>) -> zz_protocol::WindowSnapshot {
+    zz_protocol::WindowSnapshot {
+        id: WindowId(id),
+        index: 0,
+        name: "zsh".to_owned(),
+        automatic_rename: true,
+        active_pane: panes.first().map_or_default(|pane| pane.id),
+        zoomed_pane: None,
+        layout: zz_protocol::LayoutNode::Empty,
+        panes: panes.into_iter().map(|pane| (pane.id, pane)).collect(),
+        layout_dump: String::new(),
+        visible_layout_dump: String::new(),
+        status_label: String::new(),
+        activity: false,
+        silence: false,
+        pane_border_status: zz_protocol::PaneBorderStatus::Off,
+        pane_border_lines: zz_protocol::PaneBorderLines::Single,
+        pane_border_indicators: zz_protocol::PaneBorderIndicators::Colour,
+        pane_order: Vec::new(),
+        pane_z_order: Vec::new(),
+        floating: Vec::new(),
+        modal: None,
+        sx: 80,
+        sy: 24,
+        pane_base_index: 0,
+    }
+}
+
+#[test]
+fn every_chat_pane_is_its_own_palette_chat() {
+    let mut testing = running_pane(2, "Fix flat rows", &["claude"]);
+    testing.status = Some(zz_protocol::PaneStatus {
+        state: zz_protocol::PaneStatusState::Working,
+        kind: None,
+        progress: None,
+        app: String::new(),
+        title: String::new(),
+        message: "Testing".to_owned(),
+    });
+    let session = |id, windows| SessionSnapshot {
+        id: SessionId(id),
+        name: id.to_string(),
+        active_window: WindowId(10),
+        windows,
+        viewers: Vec::new(),
+    };
+    let sessions = [
+        session(
+            1,
+            vec![
+                snapshot_window(
+                    10,
+                    vec![
+                        running_pane(1, "Review sidebar", &["claude"]),
+                        testing,
+                        running_pane(3, "zsh", &[]),
+                    ],
+                ),
+                snapshot_window(11, vec![running_pane(4, "zsh", &[])]),
+            ],
+        ),
+        session(
+            2,
+            vec![snapshot_window(
+                12,
+                vec![running_pane(5, "Atlas tests", &["codex"])],
+            )],
+        ),
+    ];
+    let chats = palette_chats(PaletteHostId(3), &sessions);
+    assert_eq!(
+        chats
+            .iter()
+            .map(|chat| (
+                chat.host.0,
+                chat.session.0,
+                chat.window.0,
+                chat.pane.0,
+                chat.title.as_str(),
+                chat.detail.as_str(),
+                chat.running,
+            ))
+            .collect::<Vec<_>>(),
+        [
+            (3, 1, 10, 1, "Review sidebar", "Claude Code", false),
+            (3, 1, 10, 2, "Fix flat rows", "Testing", true),
+            (3, 2, 12, 5, "Atlas tests", "Codex", false),
+        ]
+    );
+}

@@ -64,11 +64,12 @@ keys in `palette_view_places.rs`.
 # Chats
 
 With the sidebar in chat mode (`PaletteTree::chat_mode`) the empty palette lists a Chats section
-after Needs you: every window running Claude Code or Codex on the connected hosts, this host first
-and the chat you are in last, so Enter goes to another chat. Typing matches chat titles too, and
-the Chats section leads when it holds the best match. The rows come from the same summary the
-sidebar draws (`palette_chats`, built on `window_summary::summarize_chat`), and Enter on one goes to
-its window. The lens composer's `@` picker lists the other chats first in either mode and inserts
+after Needs you: every pane running Claude Code or Codex on the connected hosts, so two chats split
+in one window are two rows, this host first and the chats of the window you are in last, so Enter
+goes to another chat. Typing matches chat titles too, and the Chats section leads when it holds the
+best match. Each row's title and second line are that chat's own (`palette_chats`, built on
+`window_summary::pane_entry`), and Enter on one goes to its pane. The lens composer's `@` picker
+lists the other chats first in either mode and inserts
 the chat's title, which goes out as the agent's pane, `@macbook:%12`
 ([agent panes](/concepts/agent-panes.md#in-the-composer)).
 

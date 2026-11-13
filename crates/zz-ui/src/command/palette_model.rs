@@ -5,6 +5,7 @@ pub(crate) use zz_client::fuzzy::fuzzy_match;
 pub(crate) use zz_client::palette::{count, needs_arguments, target_kind};
 use zz_client::{
     completion::{CompletionSuggestion, PaneKindAvailability},
+    navigation::ordered_panes,
     place::{Fleet, Place},
     recents::RecentKey,
     verbs::Verb,
@@ -117,23 +118,20 @@ pub fn palette_chats(host: PaletteHostId, sessions: &[SessionSnapshot]) -> Vec<P
                 .iter()
                 .map(move |window| (session.id, window))
         })
-        .filter_map(|(session, window)| {
-            let summary = window_summary::summarize_chat(window)?;
-            let pane = window.panes.get(&summary.headline)?;
-            let provider = window_summary::pane_agent(pane)?;
-            Some(PaletteChat {
-                host,
-                session,
-                window: window.id,
-                pane: pane.id,
-                detail: summary
-                    .detail
-                    .iter()
-                    .map(|part| part.text.as_str())
-                    .collect(),
-                title: summary.title,
-                icon: crate::pane::agent_provider_icon(provider),
-                running: summary.attention == window_summary::Attention::Working,
+        .flat_map(|(session, window)| {
+            ordered_panes(window).into_iter().filter_map(move |pane| {
+                let provider = window_summary::pane_agent(pane)?;
+                let entry = window_summary::pane_entry(window, pane);
+                Some(PaletteChat {
+                    host,
+                    session,
+                    window: window.id,
+                    pane: pane.id,
+                    detail: entry.detail.iter().map(|part| part.text.as_str()).collect(),
+                    title: entry.title,
+                    icon: crate::pane::agent_provider_icon(provider),
+                    running: entry.face.attention == window_summary::Attention::Working,
+                })
             })
         })
         .collect()

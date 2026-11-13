@@ -305,7 +305,7 @@ fn chat_place(chat: &PaletteChat) -> Place {
         host: Some(chat.host.0),
         session: Some(chat.session),
         window: Some(chat.window),
-        pane: None,
+        pane: Some(chat.pane),
     }
 }
 
