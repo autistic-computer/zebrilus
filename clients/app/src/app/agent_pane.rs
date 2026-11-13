@@ -40,7 +40,7 @@ use zz_ui::{
         ask::{
             Approval, ApprovalAction, AskChoice, AskParts, AskSubject, PromptRow, approval_subject,
         },
-        chat::{ChatHost, ChatLook, ChatPane, chat_surface, shows_chat},
+        chat::{ChatHost, ChatLook, ChatPane, HeldMessage, chat_surface, shows_chat},
         composer_attachment,
         controls::{
             AccountAction, ComposerAction, ContextUsage, UsagePill, agent_model_picker,
@@ -59,6 +59,10 @@ use zz_ui::{
 };
 
 use crate::{command_palette::palette_backend, connection::Connection};
+
+mod phone;
+
+pub(super) use phone::PhoneDock;
 
 impl AgentPane {
     fn lens_settings(&self, state: &AgentPaneWire) -> Option<LensSettings> {
@@ -275,6 +279,11 @@ pub(super) struct AgentPane {
     ground: Ground,
     chat: ChatPane,
     float_rows: Option<Rc<dyn Fn(&App) -> Option<u16>>>,
+    phone: Option<PhoneDock>,
+    sheet: Option<phone::ChatSheet>,
+    ask_open: Option<u64>,
+    other: Option<(u64, usize)>,
+    carded: Option<u64>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -407,6 +416,11 @@ impl AgentPane {
             ground: cx.theme().ground(),
             chat: ChatPane::default(),
             float_rows: None,
+            phone: None,
+            sheet: None,
+            ask_open: None,
+            other: None,
+            carded: None,
             _subscriptions: vec![
                 observation,
                 events,
@@ -495,7 +509,7 @@ impl AgentPane {
     }
 
     fn enter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.input.read(cx).value().trim().is_empty() {
+        if self.phone.is_none() && self.input.read(cx).value().trim().is_empty() {
             let head = self.current_permission(cx);
             self.synchronize_question_card(head.as_ref(), window, cx);
             if let Some(card) = self.question.as_mut() {
@@ -592,7 +606,10 @@ impl AgentPane {
     }
 
     fn ask_arrow(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if self.completions.is_empty() && self.ask_key(key, false, window, cx) {
+        if self.phone.is_none()
+            && self.completions.is_empty()
+            && self.ask_key(key, false, window, cx)
+        {
             cx.stop_propagation();
         }
     }
@@ -894,6 +911,9 @@ impl AgentPane {
     }
 
     fn row_input(&self, cx: &App) -> Entity<InputState> {
+        if self.phone.is_some() {
+            return self.phone_row_input(cx);
+        }
         self.asking_input(cx).unwrap_or_else(|| self.input.clone())
     }
 
@@ -1242,7 +1262,8 @@ impl AgentPane {
     fn key_down(&mut self, event: &ala::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let modifiers = event.keystroke.modifiers;
         if self.completions.is_empty() {
-            if !(modifiers.platform || modifiers.alt || modifiers.control || modifiers.function)
+            if self.phone.is_none()
+                && !(modifiers.platform || modifiers.alt || modifiers.control || modifiers.function)
                 && self.ask_key(event.keystroke.key.as_str(), modifiers.shift, window, cx)
             {
                 cx.stop_propagation();
@@ -1360,6 +1381,9 @@ impl Render for AgentPane {
         }
         self.synchronize_question_card(permissions.first(), window, cx);
         self.synchronize_row_focus(window, cx);
+        if self.phone.is_some() {
+            return self.render_phone(&state, &permissions, writable, ready, running, window, cx);
+        }
         let use_chat = shows_chat(&self.transcript.lens.chat);
         let ask = permissions
             .first()
@@ -1578,6 +1602,7 @@ impl Render for AgentPane {
             .capture_action(cx.listener(Self::move_completion_down))
             .map(|root| mention_keys(root, &self.mention))
             .capture_key_down(cx.listener(Self::key_down))
+            .into_any_element()
     }
 }
 
@@ -1597,6 +1622,10 @@ impl ChatHost for AgentPane {
     fn chat_fork(&mut self, item: &ItemId, cx: &mut Context<Self>) {
         self.fork_from(item.as_str(), cx);
     }
+
+    fn chat_hold(&mut self, held: &HeldMessage, cx: &mut Context<Self>) {
+        self.phone_hold(held, cx);
+    }
 }
 
 impl AgentPane {
@@ -1610,6 +1639,7 @@ impl AgentPane {
                 .provider(cx)
                 .and_then(zz_client::window_summary::provider_program),
             ground: Some(self.ground),
+            touch: self.phone.is_some(),
         };
         chat_surface(self, look, window, cx)
     }

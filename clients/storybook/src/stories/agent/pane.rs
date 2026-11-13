@@ -207,7 +207,6 @@ impl Scene {
 enum Look {
     Page(f32),
     Floating,
-    Phone,
 }
 
 fn pane_frame(cx: &App) -> Div {
@@ -315,29 +314,6 @@ pub(crate) fn floating_claude(window: &mut Window, cx: &mut App) -> AnyView {
 
 pub(crate) fn floating_codex(window: &mut Window, cx: &mut App) -> AnyView {
     build(Scene::Codex, Look::Floating, Side::Cli, window, cx)
-}
-
-pub(crate) fn phone_claude(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::Claude, Look::Phone, Side::Chat, window, cx)
-}
-
-pub(crate) fn phone_claude_asks(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::ClaudeAsks, Look::Phone, Side::Chat, window, cx)
-}
-
-pub(crate) fn phone_codex(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::Codex, Look::Phone, Side::Cli, window, cx)
-}
-
-pub(crate) fn phone_claude_busy(window: &mut Window, cx: &mut App) -> AnyView {
-    build_with(
-        Scene::Claude,
-        Look::Phone,
-        Side::Chat,
-        Start::Busy,
-        window,
-        cx,
-    )
 }
 
 impl AgentPaneStory {
@@ -541,13 +517,6 @@ impl Render for AgentPaneStory {
             .into_any_element();
         let id = ("agent-pane", self.scene.pane());
         match self.look {
-            Look::Phone => div()
-                .id(id)
-                .size_full()
-                .flex()
-                .flex_col()
-                .child(body)
-                .into_any_element(),
             Look::Page(height) => pane_frame(cx)
                 .id(id)
                 .h(px(height))

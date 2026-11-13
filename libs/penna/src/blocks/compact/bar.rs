@@ -1,6 +1,7 @@
 use ala::{
-    App, Div, ElementId, FULL_CORNER_RADIUS, GlassMaterial, Hsla, IntoElement, MouseButton,
-    ParentElement as _, Pixels, Rgba, SharedString, Stateful, Styled as _, div, prelude::*, px,
+    App, Div, ElementId, FULL_CORNER_RADIUS, GlassMaterial, HighlightStyle, Hsla, IntoElement,
+    MouseButton, ParentElement as _, Pixels, Rgba, SharedString, Stateful, Styled as _, StyledText,
+    div, prelude::*, px,
 };
 
 use crate::{
@@ -230,8 +231,9 @@ pub fn compact_nav_bar(cx: &App) -> Div {
 pub struct PillLabel {
     pub icon: IconName,
     pub title: SharedString,
+    pub word: SharedString,
     pub meta: SharedString,
-    pub warning: bool,
+    pub tone: Tone,
 }
 
 pub fn compact_floating_pill(
@@ -282,15 +284,12 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
     let PillLabel {
         icon,
         title,
+        word,
         meta,
-        warning,
+        tone,
     } = label;
     let theme = cx.theme();
-    let tone = if warning {
-        Tone::Warning
-    } else {
-        Tone::Neutral
-    };
+    let toned = tone != Tone::Neutral;
     let badge = theme.paint_on(pill.ground, tone, Emphasis::Soft);
     let backing = theme.layer(
         Surface::new(roles::PHONE_PILL_ICON)
@@ -298,13 +297,26 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
             .on(pill.ground),
         PaintState::Rest,
     );
-    let meta_color = if warning {
+    let muted = theme
+        .paint_on(pill.ground, Tone::Neutral, Emphasis::Ghost)
+        .muted_at(PaintState::Rest);
+    let meta_color = if toned && word.is_empty() {
         badge.text
     } else {
-        theme
-            .paint_on(pill.ground, Tone::Neutral, Emphasis::Ghost)
-            .muted_at(PaintState::Rest)
+        muted
     };
+    let lead = word.len();
+    let meta = StyledText::new(SharedString::from(format!("{word}{meta}"))).with_highlights(
+        (toned && lead > 0).then(|| {
+            (
+                0..lead,
+                HighlightStyle {
+                    color: Some(badge.text),
+                    ..HighlightStyle::default()
+                },
+            )
+        }),
+    );
     let tile = COMPACT_PILL_HEIGHT - 2.0 * TILE_INSET.design_px();
     let tile_radius = if theme.style(roles::PHONE_PILL_ICON).shape == Shape::Round {
         crate::blocks::touch::concentric(pill.radius, px(TILE_INSET.design_px()))
@@ -330,7 +342,7 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
                     radius: tile_radius,
                     ..backing
                 })
-                .text_color(if warning {
+                .text_color(if toned {
                     badge.text
                 } else {
                     badge.muted_at(PaintState::Rest)

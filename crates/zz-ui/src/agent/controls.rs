@@ -572,7 +572,7 @@ const fn mode_tone(risk: ModeRisk) -> Option<Tone> {
     }
 }
 
-fn mode_icon(provider: AgentProvider, mode: &str) -> IconName {
+pub fn mode_icon(provider: AgentProvider, mode: &str) -> IconName {
     match (provider, mode) {
         (AgentProvider::ClaudeCode, "default") => IconName::Hand,
         (AgentProvider::ClaudeCode, "acceptEdits") | (AgentProvider::Codex, "auto") => {

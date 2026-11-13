@@ -24,6 +24,7 @@ mod notifications;
 mod palette;
 mod panels;
 mod phone;
+mod phone_chat;
 mod phone_tiles;
 mod rows;
 mod scrollbars;
@@ -55,6 +56,7 @@ pub const STORIES: &[Story] = &[
     sheet::STORY,
     phone::STORY,
     phone_tiles::STORY,
+    phone_chat::STORY,
     stack_menu::STORY,
     scrollbars::STORY,
     markdown::STORY,

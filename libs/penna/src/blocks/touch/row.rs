@@ -72,6 +72,12 @@ pub enum TouchTrailing {
     State(StatusMark, SharedString),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TouchInk {
+    Quiet,
+    Accent,
+}
+
 type ClickHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
 #[derive(IntoElement)]
@@ -82,6 +88,7 @@ pub struct TouchRow {
     detail: Option<SharedString>,
     trailing: Option<TouchTrailing>,
     danger: bool,
+    ink: Option<TouchInk>,
     disabled: bool,
     nest: Option<Nest>,
     ground: Option<Ground>,
@@ -98,6 +105,7 @@ impl TouchRow {
             detail: None,
             trailing: None,
             danger: false,
+            ink: None,
             disabled: false,
             nest: None,
             ground: None,
@@ -126,6 +134,12 @@ impl TouchRow {
     #[must_use]
     pub fn danger(mut self) -> Self {
         self.danger = true;
+        self
+    }
+
+    #[must_use]
+    pub fn ink(mut self, ink: TouchInk) -> Self {
+        self.ink = Some(ink);
         self
     }
 
@@ -163,7 +177,7 @@ impl TouchRow {
         self.nested(nest, crate::blocks::sheet::sheet_ground(cx))
     }
 
-    fn nested(mut self, nest: Nest, ground: Ground) -> Self {
+    pub(crate) fn nested(mut self, nest: Nest, ground: Ground) -> Self {
         self.nest = Some(nest);
         self.ground = Some(ground);
         self
@@ -196,13 +210,19 @@ impl RenderOnce for TouchRow {
         let theme = cx.theme();
         let layer = theme.layer(surface, PaintState::Rest);
         let painted = theme.layer(surface, state);
-        let danger = self.danger.then(|| {
-            theme
-                .paint_on(layer.ground, Tone::Danger, Emphasis::Ghost)
-                .text
+        let toned = match (self.danger, self.ink) {
+            (true, _) => Some(Tone::Danger),
+            (false, Some(TouchInk::Accent)) => Some(Tone::Accent),
+            _ => None,
+        };
+        let toned = toned.map(|tone| theme.paint_on(layer.ground, tone, Emphasis::Ghost).text);
+        let quiet = self.ink == Some(TouchInk::Quiet);
+        let ink = toned.unwrap_or(if quiet {
+            painted.muted_text()
+        } else {
+            painted.text
         });
-        let ink = danger.unwrap_or(painted.text);
-        let muted = danger.unwrap_or_else(|| painted.muted_text());
+        let muted = toned.unwrap_or_else(|| painted.muted_text());
         let title_ink = if self.disabled {
             theme.foreground.faint()
         } else {
@@ -244,6 +264,9 @@ impl RenderOnce for TouchRow {
                     .whitespace_nowrap()
                     .text_ellipsis()
                     .text_color(title_ink)
+                    .when(self.ink == Some(TouchInk::Accent), |title| {
+                        title.font_weight(TextStyle::TouchBody.strong_weight())
+                    })
                     .child(self.title.clone()),
             )
             .when_some(self.detail, |lines, detail| {

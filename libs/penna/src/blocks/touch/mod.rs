@@ -37,7 +37,7 @@ pub use press::{
 pub(crate) use row::{Nest, touch_row_frame};
 pub use row::{
     TOUCH_DETAIL_ROW_HEIGHT, TOUCH_HEADER_HEIGHT, TOUCH_ROW_HEIGHT, TouchGroup, TouchHeader,
-    TouchRow, TouchTrailing,
+    TouchInk, TouchRow, TouchTrailing,
 };
 pub use screen::{ACTION_BAR_BOTTOM, ACTION_BAR_KEYBOARD, EMPTY_GLYPH, PhoneEmpty, action_bar};
 pub use stack::{

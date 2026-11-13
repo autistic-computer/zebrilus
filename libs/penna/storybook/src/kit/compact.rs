@@ -157,8 +157,13 @@ fn pill(
                 IconName::SquareTerminal
             },
             title: title.to_owned().into(),
+            word: ala::SharedString::default(),
             meta: meta.to_owned().into(),
-            warning,
+            tone: if warning {
+                penna::Tone::Warning
+            } else {
+                penna::Tone::Neutral
+            },
         },
         page_dots(&groups(), cx),
         &placement,
@@ -300,8 +305,9 @@ impl Menus {
             PillLabel {
                 icon: IconName::SquareTerminal,
                 title: "make test".into(),
+                word: ala::SharedString::default(),
                 meta: "work · build".into(),
-                warning: false,
+                tone: penna::Tone::Neutral,
             },
             page_dots(&groups(), cx),
             &placement,

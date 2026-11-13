@@ -862,6 +862,18 @@
   --penna-icon-size: 20px;
 }
 
+.penna-chat-above {
+  flex: 1 0 100%;
+  min-width: 0;
+  padding: var(--penna-space-4) var(--penna-space-6) 0;
+  overflow: hidden;
+  color: var(--penna-fg-muted);
+  font-size: var(--penna-text-touch-small-size);
+  line-height: var(--penna-text-touch-small-line);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .penna-chat-attach {
   display: flex;
   flex: 1 0 100%;
@@ -992,6 +1004,11 @@
   line-height: var(--penna-text-touch-small-line);
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.penna-chat-ask-what-detail[data-open] {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .penna-touch-row.penna-chat-queued[data-penna] {

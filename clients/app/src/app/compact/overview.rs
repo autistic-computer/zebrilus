@@ -1049,8 +1049,9 @@ impl AppShell {
                 title: host
                     .map_or_else(String::new, |host| host.title.clone())
                     .into(),
+                word: ala::SharedString::default(),
                 meta: meta.into(),
-                warning: false,
+                tone: penna::Tone::Neutral,
             },
             div().children(dots),
             placement,

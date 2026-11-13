@@ -104,6 +104,7 @@ pub(super) struct CompactState {
     sheet: Option<sheets::PhoneSheet>,
     next_sheet: Option<sheets::PhoneSheet>,
     rename: Option<(Entity<penna::components::input::InputState>, Subscription)>,
+    chat_dock: Option<super::agent_pane::PhoneDock>,
 }
 
 impl CompactState {
@@ -170,6 +171,33 @@ pub(super) fn pages(model: &StatusBarModel, unseen: &BTreeSet<PaneId>) -> (Vec<P
     (pages, current)
 }
 
+fn pill_words(parts: &[zz_client::window_summary::DetailPart]) -> (String, String, penna::Tone) {
+    use zz_client::window_summary::Tone;
+    let rest = |from: usize| {
+        parts[from..]
+            .iter()
+            .map(|part| part.text.as_str())
+            .collect::<String>()
+    };
+    match parts.first() {
+        Some(first) if first.tone == Tone::Warning => {
+            let word = if first.text == "Question" {
+                "Has a question".to_owned()
+            } else {
+                first.text.clone()
+            };
+            (word, String::new(), penna::Tone::Warning)
+        }
+        Some(first) if first.tone == Tone::Danger && first.text == "Failed" => {
+            (first.text.clone(), String::new(), penna::Tone::Danger)
+        }
+        Some(first) if first.tone == Tone::Danger => {
+            (first.text.clone(), rest(1), penna::Tone::Danger)
+        }
+        _ => (String::new(), rest(0), penna::Tone::Neutral),
+    }
+}
+
 pub(super) fn pinch_font_scale(start: f32, pinch: f32) -> f32 {
     let scale = (start * pinch * PINCH_STEPS).round() / PINCH_STEPS;
     if scale.is_finite() {
@@ -203,7 +231,7 @@ pub(super) const fn kind_icon(kind: &PaneKindSnapshot) -> IconName {
         PaneKindSnapshot::Browser(_) => IconName::Globe,
         PaneKindSnapshot::Editor(_) => IconName::File,
         PaneKindSnapshot::Picker => IconName::Plus,
-        PaneKindSnapshot::Agent(agent) => zz_ui::pane::agent_provider_icon(agent.provider),
+        PaneKindSnapshot::Agent(_) => IconName::Chat,
         PaneKindSnapshot::View(_) => IconName::Eye,
         PaneKindSnapshot::Other { .. } => IconName::Info,
     }
@@ -301,6 +329,7 @@ impl AppShell {
             && self.settings.is_none()
             && !self.compact.overview
             && !self.connection.read(cx).connected
+            && !self.connection.read(cx).busy_or_connecting()
             && self.active_window(cx).is_none()
         {
             self.compact.overview = true;
@@ -334,6 +363,10 @@ impl AppShell {
             ala_platform::mobile::set_compact_keyboard(compact);
         }
         if !compact {
+            self.compact.chat_dock = None;
+            for agent in self.agents.values() {
+                agent.update(cx, |agent, cx| agent.set_phone(None, cx));
+            }
             #[cfg(any(target_os = "ios", target_os = "android"))]
             ala_platform::mobile::set_status_bar_on_dark(None);
             penna::blocks::touch::StickyModifiers::take(cx);
@@ -703,7 +736,9 @@ impl AppShell {
         let content = match &pane.kind {
             PaneKindSnapshot::Agent(_) => {
                 let agent = self.agent_entity(pane_id, window, cx);
+                let dock = self.compact.chat_dock;
                 agent.update(cx, |agent, cx| {
+                    agent.set_phone(dock, cx);
                     agent.set_corner_radii(
                         Corners {
                             top_left: px(0.0),
@@ -821,7 +856,6 @@ impl AppShell {
             ala_platform::mobile::set_status_bar_on_dark(Some(background.l < 0.5));
         }
         let browser = matches!(pane.kind, PaneKindSnapshot::Browser(_));
-        let flip = self.flip_overlay(pane_id, cx);
         let fade = top_inset + px(TOP_FADE);
         let scrim = cx.theme().background.opaque().blend(background);
         div()
@@ -834,15 +868,6 @@ impl AppShell {
             .bg(background)
             .rounded(radius)
             .child(div().flex_1().min_h_0().min_w_0().child(content))
-            .when_some(flip, |page, flip| {
-                page.child(
-                    zz_ui::pane::pane_overlay_stack(
-                        zz_ui::pane::PaneOverlayCorner::TopRight,
-                        [flip],
-                    )
-                    .top(top_inset + px(8.0)),
-                )
-            })
             .when(rows_above && top_inset > px(0.0), |page| {
                 page.child(
                     div()
@@ -1161,6 +1186,16 @@ impl AppShell {
             )
         });
         let reserve = if floating { zone } else { px(0.0) };
+        let veil = self
+            .compact
+            .menu
+            .as_ref()
+            .map_or(0.0, |(menu, _)| menu.read(cx).close_shown());
+        self.compact.chat_dock = Some(super::agent_pane::PhoneDock {
+            bottom: placement.bottom,
+            keyboard,
+            veil: if open { 0.0 } else { veil },
+        });
         let mut strip = Vec::new();
         if !lifting {
             for (index, x) in layout.pages {
@@ -1274,14 +1309,18 @@ impl AppShell {
             .compact
             .page_background
             .unwrap_or(cx.theme().background);
-        let (mut title, meta, mut warning) = self.pill_text(&model, shown_page, cx);
+        let (mut title, word, meta, mut tone) = self.pill_text(&model, shown_page, cx);
         let mut icon = shown_page.map_or(IconName::SquareTerminal, |page| kind_icon(&page.kind));
         if let Some((pane, text, kind, until)) = self.compact.notice
             && until > now
             && shown_page.is_some_and(|page| page.pane == pane)
         {
             title = text.into();
-            warning = kind == PillNotice::Failed;
+            tone = if kind == PillNotice::Failed {
+                penna::Tone::Warning
+            } else {
+                penna::Tone::Neutral
+            };
             if kind == PillNotice::Done {
                 icon = IconName::Check;
             }
@@ -1289,8 +1328,9 @@ impl AppShell {
         let label = PillLabel {
             icon,
             title,
+            word,
             meta,
-            warning,
+            tone,
         };
         let floating = !keyboard && morph >= 1.0;
         let backdrop = shown_page
@@ -1302,7 +1342,15 @@ impl AppShell {
             ..placement
         };
         let dots = page_dots_in(&dot_groups(&pages, shown), cx.theme().foreground, cx);
-        let bottom = if keyboard && keyless {
+        let chat = shown_page.is_some_and(|page| matches!(page.kind, PaneKindSnapshot::Agent(_)));
+        let bottom = if keyboard && chat {
+            div()
+                .flex_none()
+                .w_full()
+                .h((zone - placement.pill_top() - overlap).max(px(0.0)))
+                .bg(page_background)
+                .into_any_element()
+        } else if keyboard && keyless {
             let pill = compact_floating_pill("compact-pill", label, dots, &placement, cx)
                 .opacity(1.0 - menu_progress)
                 .child(StackMenu::pill_anchor(&stack, cx))
@@ -1544,53 +1592,76 @@ impl AppShell {
         model: &StatusBarModel,
         page: Option<&Page>,
         cx: &App,
-    ) -> (SharedString, SharedString, bool) {
+    ) -> (SharedString, SharedString, SharedString, penna::Tone) {
         let Some(page) = page else {
-            return (SharedString::default(), SharedString::default(), false);
+            return (
+                SharedString::default(),
+                SharedString::default(),
+                SharedString::default(),
+                penna::Tone::Neutral,
+            );
         };
-        let waiting = self
-            .connection
-            .read(cx)
-            .core
-            .agent_state(page.pane)
-            .is_some_and(|state| {
-                zz_client::agent_attention_status(state)
-                    == zz_client::AgentAttentionStatus::NeedsInput
-            });
-        if waiting {
-            return (page.title.clone(), "Needs your permission".into(), true);
+        let core = &self.connection.read(cx).core;
+        let waiting = core.agent_state(page.pane).filter(|state| {
+            zz_client::agent_attention_status(state) == zz_client::AgentAttentionStatus::NeedsInput
+        });
+        if let Some(state) = waiting {
+            let asks =
+                zz_client::agent_lens::pending_permissions(&[], state.pending_permission.as_ref())
+                    .first()
+                    .is_some_and(|request| !request.questions.is_empty());
+            let word = if asks {
+                "Has a question"
+            } else {
+                "Needs approval"
+            };
+            return (
+                page.title.clone(),
+                word.into(),
+                SharedString::default(),
+                penna::Tone::Warning,
+            );
         }
         let browser = self.browser_page(page, cx);
         if let Some((title, host)) = &browser
             && !host.is_empty()
         {
-            return (title.clone(), host.clone().into(), false);
+            return (
+                title.clone(),
+                SharedString::default(),
+                host.clone().into(),
+                penna::Tone::Neutral,
+            );
         }
         let title = browser.map_or_else(|| page.title.clone(), |(title, _)| title);
-        let core = &self.connection.read(cx).core;
-        let meta = core
+        let parts = core
             .snapshot()
             .sessions
             .iter()
             .flat_map(|session| &session.windows)
             .find(|window| window.id == page.window)
             .and_then(|window| {
-                window.panes.get(&page.pane).map(|pane| {
-                    zz_client::window_summary::pane_detail(window, pane, &title)
-                        .into_iter()
-                        .map(|part| part.text)
-                        .collect::<String>()
-                })
-            })
-            .or_else(|| {
-                model
-                    .windows
-                    .iter()
-                    .find(|window| window.id == page.window)
-                    .map(|window| window.label.clone())
-            })
-            .unwrap_or_default();
-        (title, meta.into(), false)
+                window
+                    .panes
+                    .get(&page.pane)
+                    .map(|pane| zz_client::window_summary::pane_detail(window, pane, &title))
+            });
+        let Some(parts) = parts else {
+            let meta = model
+                .windows
+                .iter()
+                .find(|window| window.id == page.window)
+                .map(|window| window.label.clone())
+                .unwrap_or_default();
+            return (
+                title,
+                SharedString::default(),
+                meta.into(),
+                penna::Tone::Neutral,
+            );
+        };
+        let (word, meta, tone) = pill_words(&parts);
+        (title, word.into(), meta.into(), tone)
     }
 
     fn browser_backdrop(&self, page: &Page, cx: &App) -> Option<ala::Hsla> {

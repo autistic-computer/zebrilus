@@ -5,6 +5,7 @@ mod card;
 mod composer;
 mod figure;
 mod message;
+mod phone;
 mod suggestions;
 mod tasks;
 
@@ -23,8 +24,9 @@ use crate::{
 
 pub use activity::{
     ACTIVITY_DISCLOSURE_SIZE, ACTIVITY_ROW_FONT_SIZE, ACTIVITY_ROW_HEIGHT,
-    ACTIVITY_ROW_LINE_HEIGHT, ActivityCount, ActivityEnd, ActivityMark, activity_color,
-    activity_glyph, activity_row, disclosure_icon, single_line, transcript_ground, transcript_text,
+    ACTIVITY_ROW_LINE_HEIGHT, ActivityCount, ActivityEnd, ActivityMark, TOUCH_ACTIVITY_GLYPH,
+    activity_color, activity_glyph, activity_row, disclosure_icon, single_line,
+    touch_transcript_text, transcript_ground, transcript_text,
 };
 pub use ask::{
     ASK_GAP, ASK_GUTTER, ASK_RADIUS, AskDetail, AskHint, AskOption, ask_body, ask_count,
@@ -48,6 +50,12 @@ pub use figure::{DiagramPaint, diagram_paint};
 pub use message::{
     ASSISTANT_MESSAGE_GROUP, CHAT_CONTENT_MAX_WIDTH, PlanState, USER_MESSAGE_GROUP, UserMessage,
     message_action, notice_row, plan_list, reply_bubble, shown_on_hover,
+};
+pub use phone::{
+    AskCard, PHONE_COMPOSER_BUTTON, PHONE_COMPOSER_HEIGHT, PHONE_COMPOSER_INSET,
+    PHONE_COMPOSER_ROWS, PHONE_QUEUED_HEIGHT, PHONE_THUMBNAIL, PhoneComposer, phone_action_button,
+    phone_close_button, phone_composer_corner, phone_jump_button, phone_plus_button,
+    phone_queued_row, phone_thumbnail,
 };
 pub use suggestions::{suggestion_list, suggestion_list_height, suggestion_row};
 pub use tasks::{TrayPlan, plan_tray};

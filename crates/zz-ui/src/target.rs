@@ -1463,12 +1463,22 @@ impl TargetPicker {
     }
 
     pub fn accept(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let item = self.selected_item().cloned();
+        self.accept_item(item, window, cx)
+    }
+
+    pub fn accept_item(
+        &mut self,
+        item: Option<TargetItem>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
         self.sync(cx);
         let Some(token) = self.token.clone() else {
             return false;
         };
         self.planted = None;
-        let text = match self.selected_item().cloned() {
+        let text = match item {
             Some(item) => {
                 let hosts = self.backend.hosts(cx);
                 match resolve_target(&item.token, &hosts) {
@@ -1487,6 +1497,47 @@ impl TargetPicker {
         };
         self.replace(token.range, text, window, cx);
         true
+    }
+
+    pub fn drill(&mut self, item: &TargetItem, window: &mut Window, cx: &mut Context<Self>) {
+        self.sync(cx);
+        if let Some(token) = self.token.clone() {
+            self.replace(token.range, format!("@{}", item.completion()), window, cx);
+        }
+    }
+
+    pub fn climb(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.sync(cx);
+        if let Some(token) = self.token.clone()
+            && let Some(up) = pop_level(&token.body)
+        {
+            self.replace(token.range, format!("@{up}"), window, cx);
+        }
+    }
+
+    pub fn open_here(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(input) = self.composer.clone() else {
+            return;
+        };
+        if self.is_open() {
+            return;
+        }
+        let (value, cursor) = {
+            let input = input.read(cx);
+            (input.value().to_string(), input.cursor())
+        };
+        let text = if value[..cursor]
+            .chars()
+            .next_back()
+            .is_none_or(char::is_whitespace)
+        {
+            "@"
+        } else {
+            " @"
+        };
+        self.dismissed = None;
+        self.planted = Some(cursor..cursor + text.len());
+        input.update(cx, |input, cx| input.insert(text, window, cx));
     }
 
     pub fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {

@@ -1,6 +1,6 @@
 use ala::{
-    AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
-    Render, Styled as _, Subscription, Window, div, prelude::*, px,
+    AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
+    Styled as _, Subscription, Window, div, prelude::*, px,
 };
 use penna::{
     ActiveTheme as _, Disableable as _, IconName, Sizable as _, Size, Space,
@@ -20,16 +20,11 @@ use penna::{
     components::input::{Input, InputState},
     v_flex,
 };
-use zz_protocol::AgentProvider;
-use zz_ui::{
-    compact::{
-        Confirm, FoundMachine, HostState, MachineMenu, PaneMenu, Rename, ToolKeys, found_machines,
-        hold_sheet, host_mark, machine_menu, pane_menu,
-    },
-    pane::agent_provider_icon,
+use zz_ui::compact::{
+    Confirm, FoundMachine, HostState, MachineMenu, PaneMenu, Rename, ToolKeys, found_machines,
+    hold_sheet, host_mark, machine_menu, pane_menu,
 };
 
-use crate::stories::agent::pane as agent_pane;
 use crate::story::Framed as _;
 use crate::story::{Section, Story, stateless, states};
 
@@ -82,17 +77,35 @@ pub const STORY: Story = Story {
             build: |_, cx| cx.new(Screen::new).into(),
         },
         Section {
-            id: "agent",
-            name: "Agent pane",
-            summary: "An agent pane on the phone is a chat, which beats typing into a TUI with a phone keyboard. Switch to the CLI and Switch to chat in the pill's menu flip the pane on the same session; a busy pane asks first in its corner. A chat page drops the key row the way a browser page does.",
-            build: phone_agents,
+            id: "chat",
+            name: "Chat",
+            summary: "A chat pane on the phone: no header, the transcript at touch sizes (your message a bubble, the reply plain text, both at 17; steps 44 tall), then one composer row 16 from the sides: a 44 plus, the field, a 44 action. The action is send, stop while it works, or queue once you type while it works. With the keyboard up the composer takes the pill's place 8 above it. A pasted image is an 88 thumbnail with a 24 remove badge on a 44 target. Something else brings the composer back with the question over the field.",
+            build: super::phone_chat::chat_states,
+        },
+        Section {
+            id: "ask",
+            name: "Ask card",
+            summary: "When the agent asks, a card takes the composer's place: what it would do over the command, cut short until a tap, then the answers as touch rows that answer on tap. A question shows its count when more wait, its answers' details, and Something else last in muted ink; a question that takes several answers checks rows and sends them from a last row in accent ink. The pill says Needs approval or Has a question in warning ink.",
+            build: super::phone_chat::ask_states,
+        },
+        Section {
+            id: "plus",
+            name: "Plus sheet",
+            summary: "The plus opens a sheet titled with the agent: Mention, then Model, Effort, Permissions and Account with their values, and one muted line for the context and the account's limits. Each row opens its choices in the same sheet under a back control, the current one checked; Mention lists what the @ menu lists and goes inside sessions, hosts and folders.",
+            build: super::phone_chat::plus_states,
+        },
+        Section {
+            id: "hold",
+            name: "Hold a message",
+            summary: "No buttons under messages: holding one opens a sheet titled with its first words, with Copy and Fork from here.",
+            build: super::phone_chat::hold_state,
         },
     ],
 };
 
 const PHONE_WIDTH: f32 = 390.0;
 
-fn phone(content: impl IntoElement, cx: &App) -> ala::Div {
+pub(super) fn phone(content: impl IntoElement, cx: &App) -> ala::Div {
     div()
         .w(px(PHONE_WIDTH))
         .bg(cx.theme().background)
@@ -131,8 +144,9 @@ pub(crate) fn host_bar(
         PillLabel {
             icon: IconName::Server,
             title: title.to_owned().into(),
+            word: ala::SharedString::default(),
             meta: meta.to_owned().into(),
-            warning: false,
+            tone: penna::Tone::Neutral,
         },
         page_dots(
             &[(0..3).map(|index| dot(index == page, false)).collect()],
@@ -672,8 +686,9 @@ impl Render for Menus {
         let machine = |meta: &str| PillLabel {
             icon: IconName::Server,
             title: "macbook".into(),
+            word: ala::SharedString::default(),
             meta: meta.to_owned().into(),
-            warning: false,
+            tone: penna::Tone::Neutral,
         };
         states()
             .columns(2)
@@ -707,8 +722,9 @@ impl Render for Menus {
                     PillLabel {
                         icon: IconName::SquareTerminal,
                         title: "zsh".into(),
+                        word: ala::SharedString::default(),
                         meta: "zebrilus · main".into(),
-                        warning: false,
+                        tone: penna::Tone::Neutral,
                     },
                     &self.pane,
                     screen_lines(cx).into_any_element(),
@@ -860,78 +876,6 @@ impl Render for PrefixMenu {
     }
 }
 
-struct PhoneAgents(Vec<(&'static str, &'static str, AgentProvider, AnyView)>);
-
-fn phone_agents(window: &mut Window, cx: &mut App) -> AnyView {
-    let views = vec![
-        (
-            "a Claude Code chat: a turn running, the plan and a background task above the composer",
-            "Pinned tabs keep their icon width",
-            AgentProvider::ClaudeCode,
-            agent_pane::phone_claude(window, cx),
-        ),
-        (
-            "Claude Code at its permission prompt",
-            "Open the pinned tabs pull request",
-            AgentProvider::ClaudeCode,
-            agent_pane::phone_claude_asks(window, cx),
-        ),
-        (
-            "Switch to the CLI during a turn: the choice sits in the page's corner",
-            "Pinned tabs keep their icon width",
-            AgentProvider::ClaudeCode,
-            agent_pane::phone_claude_busy(window, cx),
-        ),
-        (
-            "Codex in a terminal: Switch to chat in the pill's menu turns it into a chat",
-            "codex",
-            AgentProvider::Codex,
-            agent_pane::phone_codex(window, cx),
-        ),
-    ];
-    cx.new(|_| PhoneAgents(views)).into()
-}
-
-impl Render for PhoneAgents {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let placement = placement();
-        self.0.iter().enumerate().fold(
-            states(),
-            |states, (index, (label, title, provider, view))| {
-                let pill = compact_floating_pill(
-                    ("agent-pill", index),
-                    PillLabel {
-                        icon: agent_provider_icon(*provider),
-                        title: (*title).into(),
-                        meta: "zz · agents".into(),
-                        warning: false,
-                    },
-                    page_dots(&groups(), cx),
-                    &placement,
-                    cx,
-                );
-                states.state(
-                    *label,
-                    phone(
-                        v_flex()
-                            .h(px(700.0))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_h_0()
-                                    .flex()
-                                    .flex_col()
-                                    .child(view.clone()),
-                            )
-                            .child(compact_floating_bar(pill, &placement, cx)),
-                        cx,
-                    ),
-                )
-            },
-        )
-    }
-}
-
 pub(crate) fn tool_keys(cx: &mut App) -> ToolKeys {
     ToolKeys::new(cx)
 }
@@ -1025,8 +969,9 @@ impl Render for Screen {
             PillLabel {
                 icon: IconName::SquareTerminal,
                 title: "cargo test".into(),
+                word: ala::SharedString::default(),
                 meta: "zz · editor".into(),
-                warning: false,
+                tone: penna::Tone::Neutral,
             },
             page_dots(&groups(), cx),
             &placement,

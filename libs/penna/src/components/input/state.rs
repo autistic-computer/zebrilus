@@ -264,6 +264,16 @@ impl InputState {
 }
 
 impl InputState {
+    pub fn set_max_rows(&mut self, rows: usize, cx: &mut Context<Self>) {
+        if let InputMode::AutoGrow { min_rows, max_rows } = &mut self.mode {
+            let rows = rows.max(*min_rows);
+            if *max_rows != rows {
+                *max_rows = rows;
+                cx.notify();
+            }
+        }
+    }
+
     pub fn set_placeholder(
         &mut self,
         placeholder: impl Into<SharedString>,

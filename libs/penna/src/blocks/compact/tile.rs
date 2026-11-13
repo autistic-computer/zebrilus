@@ -129,7 +129,7 @@ impl PhoneTile {
     }
 }
 
-pub(crate) fn hold_listener(on_hold: HoldHandler) -> impl IntoElement {
+pub fn hold_listener(on_hold: Rc<dyn Fn(&mut Window, &mut App)>) -> impl IntoElement {
     canvas(
         |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
         move |_, hitbox, window, _| {

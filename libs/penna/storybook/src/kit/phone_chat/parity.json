@@ -1,0 +1,8 @@
+{
+  "story": "phone-chat",
+  "page": "index.html",
+  "steps": [
+    { "name": "press-ask-row", "section": "ask-card", "press": "card-approval-0" },
+    { "name": "press-queued", "section": "steps", "press": "step-queued" }
+  ]
+}

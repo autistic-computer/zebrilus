@@ -38,6 +38,7 @@ impl AgentView {
             refs: Some(self.chat_refs(&view, cx)),
             vendor: zz_client::window_summary::provider_program(self.pane_state.provider),
             ground: Some(self.pane_ground(cx)),
+            touch: false,
         };
         chat_surface(self, look, window, cx)
     }

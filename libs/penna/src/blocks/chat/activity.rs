@@ -4,7 +4,7 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Sizable as _,
+    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Sizable as _, Space,
     StyledExt as _, TextStyle, Tone, components::badge::Badge, components::icon::cap_center_drop,
     components::tooltip::Tooltip, h_flex,
 };
@@ -13,6 +13,8 @@ pub const ACTIVITY_ROW_HEIGHT: f32 = 28.0;
 pub const ACTIVITY_ROW_FONT_SIZE: f32 = 13.0;
 pub const ACTIVITY_ROW_LINE_HEIGHT: f32 = 16.0;
 pub const ACTIVITY_DISCLOSURE_SIZE: f32 = 12.0;
+pub const TOUCH_ACTIVITY_GLYPH: f32 = 20.0;
+const TOUCH_ACTIVITY_LINE: f32 = 20.0;
 const COUNT_BADGE: f32 = 15.0;
 const COUNT_RING: f32 = 1.5;
 const COUNT_BADGE_LEFT: f32 = 7.5;
@@ -40,6 +42,7 @@ pub struct ActivityMark {
     pub counts: Vec<ActivityCount>,
     pub tag: Option<(SharedString, Tone)>,
     pub spread: bool,
+    pub touch: bool,
 }
 
 impl ActivityMark {
@@ -56,6 +59,7 @@ impl ActivityMark {
             counts: Vec::new(),
             tag: None,
             spread: false,
+            touch: false,
         }
     }
 
@@ -115,6 +119,10 @@ pub fn transcript_text<E: Styled>(element: E, cx: &App) -> E {
     element.type_style(TextStyle::ReadBody, cx)
 }
 
+pub fn touch_transcript_text<E: Styled>(element: E, cx: &App) -> E {
+    element.type_style(TextStyle::TouchBody, cx)
+}
+
 #[must_use]
 pub fn transcript_ground(cx: &App) -> Ground {
     let theme = cx.theme();
@@ -140,7 +148,21 @@ pub fn activity_row(
     end: ActivityEnd,
     cx: &App,
 ) -> Stateful<Div> {
-    let drop = cap_center_drop(px(ACTIVITY_ROW_FONT_SIZE), px(ACTIVITY_ROW_FONT_SIZE), cx);
+    let touch = mark.touch;
+    let (font, glyph_size, end_size) = if touch {
+        (
+            TextStyle::TouchSmall.design_px(),
+            TOUCH_ACTIVITY_GLYPH,
+            TOUCH_ACTIVITY_GLYPH,
+        )
+    } else {
+        (
+            ACTIVITY_ROW_FONT_SIZE,
+            ACTIVITY_ROW_FONT_SIZE,
+            ACTIVITY_DISCLOSURE_SIZE,
+        )
+    };
+    let drop = cap_center_drop(px(font), px(glyph_size), cx);
     let breath = mark
         .shimmer
         .filter(|_| mark.spin.is_none())
@@ -156,7 +178,7 @@ pub fn activity_row(
         (None, None) => None,
     }
     .map(|glyph| {
-        let glyph = glyph.size(px(ACTIVITY_ROW_FONT_SIZE));
+        let glyph = glyph.size(px(glyph_size));
         match mark.tint {
             Some(tint) => glyph.text_color(tint),
             None => glyph,
@@ -168,6 +190,11 @@ pub fn activity_row(
         .unwrap_or_else(|| cx.theme().foreground.muted());
     let detail_line =
         px(ACTIVITY_ROW_HEIGHT) + baseline_drop(TextStyle::Body, TextStyle::Small, cx) * 2.0;
+    let detail_style = if touch {
+        TextStyle::Body
+    } else {
+        TextStyle::Small
+    };
     let live = mark.shimmer.is_some();
     let end_icon = match end {
         ActivityEnd::None => None,
@@ -177,13 +204,22 @@ pub fn activity_row(
     let clickable = end != ActivityEnd::None;
     h_flex()
         .id(id)
-        .h(px(ACTIVITY_ROW_HEIGHT))
+        .map(|row| {
+            if touch {
+                row.min_h(px(crate::blocks::touch::TOUCH_TARGET))
+                    .gap(Space::S12)
+                    .type_style(TextStyle::TouchSmall, cx)
+                    .line_height(px(TOUCH_ACTIVITY_LINE))
+            } else {
+                row.h(px(ACTIVITY_ROW_HEIGHT))
+                    .gap_2()
+                    .type_style(TextStyle::Body, cx)
+                    .line_height(px(ACTIVITY_ROW_LINE_HEIGHT))
+            }
+        })
         .flex_none()
-        .gap_2()
         .overflow_hidden()
         .font_family(cx.theme().font_family.clone())
-        .type_style(TextStyle::Body, cx)
-        .line_height(px(ACTIVITY_ROW_LINE_HEIGHT))
         .text_color(activity_color(cx))
         .when(clickable, |row| {
             let foreground = cx.theme().foreground;
@@ -226,9 +262,10 @@ pub fn activity_row(
                     .overflow_hidden()
                     .text_ellipsis()
                     .whitespace_nowrap()
-                    .type_style(TextStyle::Small, cx)
-                    .self_start()
-                    .line_height(detail_line)
+                    .type_style(detail_style, cx)
+                    .when(!touch, |detail| {
+                        detail.self_start().line_height(detail_line)
+                    })
                     .text_color(detail_color)
                     .child(detail),
             )
@@ -246,7 +283,7 @@ pub fn activity_row(
                         mark.counts
                             .into_iter()
                             .enumerate()
-                            .map(|(slot, count)| count_glyph(slot, count, drop, cx)),
+                            .map(|(slot, count)| count_glyph(slot, count, drop, glyph_size, cx)),
                     ),
             )
         })
@@ -260,7 +297,11 @@ pub fn activity_row(
         })
         .when_some(end_icon, |this, icon| {
             this.child(
-                activity_glyph(icon, ACTIVITY_DISCLOSURE_SIZE, cx)
+                div()
+                    .flex_none()
+                    .relative()
+                    .top(cap_center_drop(px(font), px(end_size), cx))
+                    .child(Icon::new(icon).size(px(end_size)))
                     .debug_selector(|| "chat-activity-chevron".to_owned()),
             )
         })
@@ -270,7 +311,13 @@ pub fn activity_row(
     clippy::disallowed_methods,
     reason = "the ring is a cutout in the color the badge sits on that parts it from the icon it overlaps, not an edge"
 )]
-fn count_glyph(slot: usize, count: ActivityCount, drop: Pixels, cx: &App) -> Stateful<Div> {
+fn count_glyph(
+    slot: usize,
+    count: ActivityCount,
+    drop: Pixels,
+    size: f32,
+    cx: &App,
+) -> Stateful<Div> {
     let ground = transcript_ground(cx);
     let (tone, emphasis) = if count.failed {
         (Tone::Danger, Emphasis::Solid)
@@ -285,7 +332,7 @@ fn count_glyph(slot: usize, count: ActivityCount, drop: Pixels, cx: &App) -> Sta
         .relative()
         .top(drop)
         .when(count.failed, |this| this.text_color(cx.theme().danger))
-        .child(Icon::new(count.icon).size(px(ACTIVITY_ROW_FONT_SIZE)))
+        .child(Icon::new(count.icon).size(px(size)))
         .child(
             div()
                 .debug_selector(|| "chat-activity-count-badge".to_owned())

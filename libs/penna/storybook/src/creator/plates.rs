@@ -891,8 +891,9 @@ impl Phone {
             PillLabel {
                 icon: IconName::SquareTerminal,
                 title: "make test".into(),
+                word: ala::SharedString::default(),
                 meta: "work · build".into(),
-                warning: false,
+                tone: penna::Tone::Neutral,
             },
             page_dots(&groups(), cx),
             &placement,

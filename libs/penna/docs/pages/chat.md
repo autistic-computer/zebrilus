@@ -117,7 +117,7 @@ A permission request or a question takes the composer's place as a card, with no
 </div>
 ```
 
-Not built natively yet: the phone draws the desktop's composer, chips and inline ask.
+Not built natively yet: the Queued sheet, Folder and Resume under an empty chat, and an image in the transcript zooming to the screen.
 
 ## API
 
@@ -132,3 +132,8 @@ Not built natively yet: the phone draws the desktop's composer, chips and inline
 | `suggestion_list`, `suggestion_row` | `.penna-chat-list`, `.penna-chat-suggestion` | Slash and mention suggestions |
 | `ask_question`, `ask_header`, `ask_body`, `ask_inset`, `ask_sheet`, `ask_options`, `AskOption`, `ask_key`, `ask_picked_key`, `ask_send`, `ask_skip`, `ask_hints`, `AskHint` | `.penna-chat-ask`, `.penna-chat-ask-option` | Questions and approvals inside the composer |
 | `plan_tray` | `.penna-chat-tray` | The plan over the composer |
+| `PhoneComposer`, `phone_plus_button`, `phone_close_button`, `phone_action_button` | `.penna-chat-field[data-size="touch"]`, `.penna-chat-above` | The composer row on a phone |
+| `phone_thumbnail` | `.penna-chat-thumb` | A pasted image with its remove badge |
+| `AskCard` | `.penna-chat-ask-card` | An ask in the composer's place on a phone |
+| `phone_queued_row`, `phone_jump_button` | `.penna-chat-queued`, `.penna-touch-icon[data-penna="floating"]` | The queued row and jump to latest on a phone |
+| `ActivityMark::touch`, `touch_transcript_text` | `.penna-chat-activity[data-size="touch"]` | Transcript rows and text at touch sizes |

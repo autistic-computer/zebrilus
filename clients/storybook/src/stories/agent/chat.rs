@@ -85,6 +85,7 @@ pub struct Thread {
     frame: Frame,
     width: Option<f32>,
     leave: bool,
+    touch: bool,
 }
 
 impl Thread {
@@ -103,7 +104,13 @@ impl Thread {
             frame: Frame::Grow(0.0),
             width: None,
             leave: false,
+            touch: false,
         }
+    }
+
+    pub fn touch(mut self) -> Self {
+        self.touch = true;
+        self
     }
 
     fn opened(mut self, open: ChatOpen) -> Self {
@@ -430,7 +437,11 @@ impl Render for Thread {
                     });
                 })
         });
-        let composer = self.composer(&me, cx);
+        let composer = if self.touch {
+            None
+        } else {
+            self.composer(&me, cx)
+        };
         let fill = pane_fill(cx).when_some(self.width, |fill, width| fill.w(px(width)));
         let frame = match self.frame {
             Frame::Scroll(height) => {
@@ -444,6 +455,7 @@ impl Render for Thread {
                     refs: self.refs.clone(),
                     vendor: self.vendor,
                     ground: None,
+                    touch: self.touch,
                 };
                 fill.map(|fill| match height {
                     Some(height) => fill.h(px(height)),
@@ -486,6 +498,7 @@ impl Render for Thread {
                     vendor: self.vendor,
                     owner: None,
                     ground: None,
+                    touch: self.touch,
                 };
                 let view = &self.script.view;
                 let now = self.script.at;

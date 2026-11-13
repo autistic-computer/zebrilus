@@ -53,7 +53,7 @@ use crate::{
 use penna::blocks::chat::{
     ACTIVITY_DISCLOSURE_SIZE, ActivityEnd, ActivityMark, CHAT_CONTENT_MAX_WIDTH,
     COMPOSER_OUTER_PADDING, TRANSCRIPT_ATTACHMENT, activity_glyph, activity_row, spinner_phase,
-    transcript_text,
+    touch_transcript_text, transcript_text,
 };
 use penna::blocks::chat::{card_chip, card_glyph, card_header, card_title};
 
@@ -78,10 +78,36 @@ pub enum ChatClick {
     Agent(ItemId),
     CloseAgent,
     Fork(ItemId),
+    Hold(HeldMessage),
     Unfold(ItemId),
     Tall(ItemId, bool),
     Expand(ItemId),
     Collapse(ItemId, ala::Pixels),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HeldMessage {
+    pub title: SharedString,
+    pub text: SharedString,
+    pub at: Option<u64>,
+    pub fork: Option<ItemId>,
+}
+
+impl HeldMessage {
+    fn new(text: &SharedString, at: Option<u64>, fork: Option<ItemId>) -> Self {
+        let title = text
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .unwrap_or_default()
+            .to_owned();
+        Self {
+            title: title.into(),
+            text: text.clone(),
+            at,
+            fork,
+        }
+    }
 }
 
 pub type ChatClicks = Rc<dyn Fn(&ChatClick, &mut Window, &mut App)>;
@@ -94,6 +120,7 @@ pub struct ChatHooks<'a> {
     pub vendor: Option<&'static Program>,
     pub owner: Option<u64>,
     pub ground: Option<penna::Ground>,
+    pub touch: bool,
 }
 
 pub struct ChatMarkdown {
@@ -140,6 +167,16 @@ impl ChatHooks<'_> {
         }
     }
 
+    fn hold(&self, held: HeldMessage) -> Option<AnyElement> {
+        let click = self.click.clone().filter(|_| self.touch)?;
+        Some(
+            penna::blocks::compact::hold_listener(Rc::new(move |window, cx| {
+                click(&ChatClick::Hold(held.clone()), window, cx);
+            }))
+            .into_any_element(),
+        )
+    }
+
     fn fork_from(&self, id: &ItemId) -> Option<(ChatClicks, ItemId)> {
         self.click
             .clone()
@@ -165,6 +202,8 @@ const PREVIEW_HEIGHT: f32 = 420.0;
 const PREVIEW_FADE_HEIGHT: f32 = 96.0;
 const PIP_MIN_WIDTH: f32 = 280.0;
 const PIP_MAX_WIDTH: f32 = 520.0;
+const TOUCH_GUTTER: f32 = 16.0;
+const JUMP_GAP: f32 = 8.0;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Row {
@@ -244,6 +283,7 @@ pub struct ChatFrame {
     pub vendor: Option<&'static Program>,
     pub owner: Option<u64>,
     pub ground: Option<penna::Ground>,
+    pub touch: bool,
 }
 
 impl ChatFrame {
@@ -255,6 +295,7 @@ impl ChatFrame {
             vendor: self.vendor,
             owner: self.owner,
             ground: self.ground,
+            touch: self.touch,
         }
     }
 }
@@ -328,7 +369,7 @@ impl ChatPane {
                 self.open.agent = None;
                 return;
             }
-            ChatClick::Fork(_) => return,
+            ChatClick::Fork(_) | ChatClick::Hold(_) => return,
             ChatClick::Unfold(item) => {
                 if !self.open.unfolded.remove(item) {
                     self.open.unfolded.insert(item.clone());
@@ -620,10 +661,15 @@ impl ChatPane {
             Some(Row::Background(unit)) => Some(draw.unit(unit, self.background_live)),
             None => None,
         };
+        let gutter = if hooks.touch {
+            px(TOUCH_GUTTER)
+        } else {
+            px(12.0)
+        };
         div()
             .w_full()
-            .px_3()
-            .pb_3()
+            .px(gutter)
+            .pb(gutter)
             .child(
                 div()
                     .w_full()
@@ -640,6 +686,7 @@ pub trait ChatHost: Sized + 'static {
     fn chat_parts<'a>(&'a mut self, cx: &'a App) -> (&'a mut ChatPane, Option<&'a ChatView>);
     fn chat_read<'a>(&'a self, cx: &'a App) -> (&'a ChatPane, Option<&'a ChatView>);
     fn chat_fork(&mut self, item: &ItemId, cx: &mut Context<Self>);
+    fn chat_hold(&mut self, _: &HeldMessage, _: &mut Context<Self>) {}
 }
 
 pub struct ChatLook {
@@ -648,6 +695,7 @@ pub struct ChatLook {
     pub refs: Option<ChatRefs>,
     pub vendor: Option<&'static Program>,
     pub ground: Option<penna::Ground>,
+    pub touch: bool,
 }
 
 pub fn chat_surface<T: ChatHost>(
@@ -695,8 +743,10 @@ pub fn chat_surface<T: ChatHost>(
                 return;
             }
             entity.update(cx, |host, cx| {
-                if let ChatClick::Fork(item) = click {
-                    host.chat_fork(item, cx);
+                match click {
+                    ChatClick::Fork(item) => host.chat_fork(item, cx),
+                    ChatClick::Hold(held) => host.chat_hold(held, cx),
+                    _ => {}
                 }
                 host.chat_pane().click(click);
                 cx.notify();
@@ -714,6 +764,7 @@ pub fn chat_surface<T: ChatHost>(
         vendor: look.vendor,
         owner: Some(look.pane),
         ground: look.ground,
+        touch: look.touch,
     };
     pane.jump = pane.shows_jump();
     pane.release(window, cx);
@@ -734,6 +785,7 @@ pub fn chat_surface<T: ChatHost>(
         });
     });
     let docked = !crate::touch::CoarsePointer::get(cx);
+    let touch = look.touch;
     let pip = {
         let (pane, view) = host.chat_read(cx);
         view.and_then(|view| {
@@ -754,7 +806,7 @@ pub fn chat_surface<T: ChatHost>(
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .size_full()
     .pt_3()
-    .pb(px(COMPOSER_OUTER_PADDING));
+    .pb(px(if touch { 0.0 } else { COMPOSER_OUTER_PADDING }));
     let jump = {
         let entity = entity.clone();
         move |_: &ala::ClickEvent, _: &mut Window, cx: &mut App| {
@@ -782,18 +834,27 @@ pub fn chat_surface<T: ChatHost>(
                 .child(Scrollbar::vertical(&list_state)),
         )
         .when(show_jump, |column| {
+            let button = if touch {
+                penna::blocks::chat::phone_jump_button(
+                    ("agent-chat-jump", look.pane),
+                    look.ground.unwrap_or_else(|| cx.theme().ground()),
+                )
+            } else {
+                agent_jump_to_bottom_button(("agent-chat-jump", look.pane), cx)
+            };
             column.child(
                 div()
                     .absolute()
                     .left_0()
                     .right_0()
-                    .bottom(px(2.0 * COMPOSER_OUTER_PADDING))
+                    .bottom(px(if touch {
+                        JUMP_GAP
+                    } else {
+                        2.0 * COMPOSER_OUTER_PADDING
+                    }))
                     .flex()
                     .justify_center()
-                    .child(
-                        agent_jump_to_bottom_button(("agent-chat-jump", look.pane), cx)
-                            .on_click(jump),
-                    ),
+                    .child(button.on_click(jump)),
             )
         });
     let pip = pip.map(|pip| chat_pip_frame(pip, docked));
@@ -929,7 +990,7 @@ impl Draw<'_, '_> {
             .gap_3()
             .when_some(fold, |column, fold| {
                 column.child(self.hooks.clickable(
-                    fold_row(turn.id, fold, expanded, self.cx),
+                    fold_row(turn.id, fold, expanded, self.hooks.touch, self.cx),
                     ChatClick::Turn(turn.id),
                 ))
             })
@@ -973,16 +1034,19 @@ impl Draw<'_, '_> {
                     })
                     .map(|item| item.started_at)
                     .or(turn.ended_at);
-                column.when(!reply.is_empty() || fork.is_some(), |column| {
-                    column.child(message_actions(
-                        &format!("turn-{}", turn.id.0),
-                        stamp,
-                        reply,
-                        fork,
-                        REPLY_GROUP,
-                        self.cx,
-                    ))
-                })
+                column.when(
+                    !self.hooks.touch && (!reply.is_empty() || fork.is_some()),
+                    |column| {
+                        column.child(message_actions(
+                            &format!("turn-{}", turn.id.0),
+                            stamp,
+                            reply,
+                            fork,
+                            REPLY_GROUP,
+                            self.cx,
+                        ))
+                    },
+                )
             });
         v_flex()
             .id(("chat-turn", turn.id.0))
@@ -996,29 +1060,43 @@ impl Draw<'_, '_> {
     fn unit(&self, unit: &Unit, live: bool) -> AnyElement {
         let cx = self.cx;
         match unit {
-            Unit::User(id) => user_bubble(
-                id,
-                &self.text(id),
-                self.images(id).as_deref().unwrap_or_default(),
-                self.view.item(id).map(|item| item.started_at),
-                self.hooks.fork_from(id),
-                self.fold(id),
-                self.hooks.refs(),
-                cx,
-            ),
-            Unit::Text(id) => self.reply(id),
+            Unit::User(id) => {
+                let text = self.text(id);
+                let at = self.view.item(id).map(|item| item.started_at);
+                let fork = self.hooks.fork_from(id);
+                let hold = self.hooks.hold(HeldMessage::new(
+                    &text,
+                    at,
+                    fork.as_ref().map(|(_, id)| id.clone()),
+                ));
+                user_bubble(
+                    id,
+                    &text,
+                    self.images(id).as_deref().unwrap_or_default(),
+                    at,
+                    fork,
+                    self.fold(id),
+                    self.hooks.refs(),
+                    Bubble {
+                        touch: self.hooks.touch,
+                        hold,
+                    },
+                    cx,
+                )
+            }
+            Unit::Text(id) => self.held_reply(id),
             Unit::Run(run) => self.run(run, live),
             Unit::Subagent(id) => self.agents(std::slice::from_ref(id)),
             Unit::Agents(ids) => self.agents(ids),
             Unit::Plan(id) => plan_card(self.view, id, cx),
-            Unit::Notice(id) => notice_row(self.view, id, cx),
+            Unit::Notice(id) => notice_row(self.view, id, self.hooks.touch, cx),
             Unit::Ask(request) => self.view.request(*request).map_or_else(
                 || div().into_any_element(),
-                |request| ask_row(self.view, request, cx),
+                |request| ask_row(self.view, request, self.hooks.touch, cx),
             ),
             Unit::Record(request) => self.view.request(*request).map_or_else(
                 || div().into_any_element(),
-                |request| record_rows(request, cx),
+                |request| record_rows(request, self.hooks.touch, cx),
             ),
         }
     }
@@ -1033,6 +1111,7 @@ impl Draw<'_, '_> {
             .find(|item| item.kind.is_tool())
             .map_or(IconName::Sparkle, |item| kind_icon(item.kind));
         let mut mark = ActivityMark::plain(icon);
+        mark.touch = self.hooks.touch;
         let label: SharedString = match &run.label {
             RunLabel::Live { .. } | RunLabel::Thinking { .. } => {
                 mark.spin = live.then_some(self.phase);
@@ -1079,6 +1158,31 @@ impl Draw<'_, '_> {
             .get(id)
             .cloned()
             .unwrap_or_else(|| text_of(self.view, id))
+    }
+
+    fn held_reply(&self, id: &ItemId) -> AnyElement {
+        let reply = self.reply(id);
+        if !self.hooks.touch {
+            return reply;
+        }
+        let item = self.view.item(id);
+        let fork = item
+            .and_then(|item| item.turn)
+            .and_then(|turn| {
+                self.view
+                    .items
+                    .values()
+                    .find(|other| other.turn == Some(turn) && other.kind == ItemKind::User)
+            })
+            .and_then(|user| self.hooks.fork_from(&user.id))
+            .map(|(_, id)| id);
+        let held = HeldMessage::new(&self.text(id), item.map(|item| item.started_at), fork);
+        div()
+            .relative()
+            .w_full()
+            .child(reply)
+            .children(self.hooks.hold(held))
+            .into_any_element()
     }
 
     fn reply(&self, id: &ItemId) -> AnyElement {
@@ -1148,6 +1252,7 @@ impl Draw<'_, '_> {
     ) -> AnyElement {
         let seconds = self.now.saturating_sub(turn.started_at) / 1000;
         let mut mark = ActivityMark::plain(IconName::Sparkle);
+        mark.touch = self.hooks.touch;
         mark.shimmer = Some(self.now);
         mark.detail =
             (seconds > 0 && seconds < 86_400).then(|| chat_rows::duration(seconds * 1000).into());
@@ -1187,9 +1292,15 @@ impl Draw<'_, '_> {
                 .filter_map(|id| self.view.item(id))
                 .filter_map(|item| {
                     if item.kind.is_tool() {
-                        Some(step_row(self.view, item, self.phase, self.cx))
+                        Some(step_row(
+                            self.view,
+                            item,
+                            self.phase,
+                            self.hooks.touch,
+                            self.cx,
+                        ))
                     } else {
-                        thought_row(item, self.hooks.owner, self.cx)
+                        thought_row(item, self.hooks.owner, self.hooks.touch, self.cx)
                     }
                 }),
         )
@@ -1258,11 +1369,22 @@ impl Draw<'_, '_> {
         })
         .h_flex()
         .w_full()
-        .h(px(36.0))
+        .h(px(if self.hooks.touch {
+            penna::blocks::touch::TOUCH_TARGET
+        } else {
+            36.0
+        }))
         .p_0()
         .px(px(8.0))
         .gap_2()
-        .type_style(TextStyle::Body, cx)
+        .type_style(
+            if self.hooks.touch {
+                TextStyle::TouchSmall
+            } else {
+                TextStyle::Body
+            },
+            cx,
+        )
         .text_color(if open { foreground } else { foreground.muted() })
         .hover(move |row| row.text_color(foreground))
         .child(pip_part(
@@ -1299,7 +1421,7 @@ impl Draw<'_, '_> {
             .child(source.draw(self.hooks.clickable(row, ChatClick::Agent(id.clone()))))
             .children(
                 asks.into_iter()
-                    .map(|request| ask_row(self.view, request, cx)),
+                    .map(|request| ask_row(self.view, request, self.hooks.touch, cx)),
             )
             .into_any_element()
     }
@@ -1342,6 +1464,10 @@ impl Draw<'_, '_> {
                     None,
                     self.fold(&prompt_id),
                     self.hooks.refs(),
+                    Bubble {
+                        touch: self.hooks.touch,
+                        hold: None,
+                    },
                     cx,
                 ))
             })
@@ -1546,8 +1672,9 @@ fn run_label(label: &RunLabel) -> String {
     }
 }
 
-fn fold_row(turn: TurnId, fold: Fold, expanded: bool, cx: &App) -> Stateful<Div> {
+fn fold_row(turn: TurnId, fold: Fold, expanded: bool, touch: bool, cx: &App) -> Stateful<Div> {
     let mut mark = ActivityMark::bare();
+    mark.touch = touch;
     if matches!(fold, Fold::Failed { .. }) {
         mark.icon = Some(IconName::TriangleAlert);
         mark.tint = Some(cx.theme().danger);
@@ -1571,7 +1698,7 @@ fn text_of(view: &ChatView, id: &ItemId) -> SharedString {
 const USER_GROUP: &str = "chat-user";
 const REPLY_GROUP: &str = "chat-reply";
 
-fn stamp_label(at: u64) -> Option<String> {
+pub(crate) fn stamp_label(at: u64) -> Option<String> {
     let at = chrono::DateTime::from_timestamp_millis(i64::try_from(at).ok()?)?
         .with_timezone(&chrono::Local);
     let today = chrono::Local::now();
@@ -1662,6 +1789,11 @@ struct UserFold {
     unfolded: bool,
 }
 
+struct Bubble {
+    touch: bool,
+    hold: Option<AnyElement>,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn user_bubble(
     id: &ItemId,
@@ -1671,6 +1803,7 @@ fn user_bubble(
     fork: Option<(ChatClicks, ItemId)>,
     fold: Option<UserFold>,
     refs: Option<&ChatRefs>,
+    bubble: Bubble,
     cx: &App,
 ) -> AnyElement {
     let key = id.as_str().to_owned();
@@ -1685,18 +1818,20 @@ fn user_bubble(
             )
         })
         .unwrap_or_else(|| text.clone().into_any_element());
-    let actions = message_actions(
-        &format!("user-{key}"),
-        stamp,
-        if text.is_empty() {
-            Vec::new()
-        } else {
-            vec![text.clone()]
-        },
-        fork,
-        USER_GROUP,
-        cx,
-    );
+    let actions = (!bubble.touch).then(|| {
+        message_actions(
+            &format!("user-{key}"),
+            stamp,
+            if text.is_empty() {
+                Vec::new()
+            } else {
+                vec![text.clone()]
+            },
+            fork,
+            USER_GROUP,
+            cx,
+        )
+    });
     v_flex()
         .id(SharedString::from(format!("chat-user-{key}")))
         .group(USER_GROUP)
@@ -1705,15 +1840,15 @@ fn user_bubble(
         .child(
             div()
                 .relative()
-                .max_w(relative(0.8))
-                .child(
+                .max_w(relative(if bubble.touch { 0.85 } else { 0.8 }))
+                .children(actions.map(|actions| {
                     div()
                         .absolute()
                         .right(relative(1.0))
                         .bottom_0()
                         .pr_1()
-                        .child(actions),
-                )
+                        .child(actions)
+                }))
                 .child(user_card(
                     id,
                     text,
@@ -1722,8 +1857,10 @@ fn user_bubble(
                     fold,
                     refs.and_then(|refs| refs.view.as_ref()),
                     ground,
+                    bubble.touch,
                     cx,
-                )),
+                ))
+                .children(bubble.hold),
         )
         .into_any_element()
 }
@@ -1737,18 +1874,19 @@ fn user_card(
     fold: Option<UserFold>,
     view: Option<&ViewOpener>,
     ground: penna::Ground,
+    touch: bool,
     cx: &App,
 ) -> AnyElement {
     let key = id.as_str();
-    transcript_text(
-        Card::new("chat-user-bubble", CardLook::Bubble)
-            .v_flex()
-            .gap_2()
-            .px_3()
-            .py_2(),
-        cx,
-    )
-    .when(!images.is_empty(), |bubble| {
+    let card = Card::new("chat-user-bubble", CardLook::Bubble)
+        .v_flex()
+        .gap_2();
+    let card = if touch {
+        touch_transcript_text(card.px(px(14.0)).py(px(10.0)), cx)
+    } else {
+        transcript_text(card.px_3().py_2(), cx)
+    };
+    card.when(!images.is_empty(), |bubble| {
         bubble.child(
             h_flex()
                 .flex_wrap()
@@ -2051,6 +2189,7 @@ fn long_reply(
         } else {
             IconName::ChevronDown
         }),
+        hooks.touch,
         cx,
     )
     .when_some(hooks.click.clone(), |row, click| {
@@ -2075,6 +2214,7 @@ fn long_reply(
         Some(IconName::Copy),
         "Copy",
         None,
+        hooks.touch,
         cx,
     )
     .on_click(move |_, window, cx| {
@@ -2100,11 +2240,13 @@ fn reply_action(
     icon: Option<IconName>,
     label: &'static str,
     chevron: Option<IconName>,
+    touch: bool,
     cx: &App,
 ) -> Stateful<Div> {
     let foreground = cx.theme().foreground;
     let mut mark = ActivityMark::bare();
     mark.icon = icon;
+    mark.touch = touch;
     activity_row(id, mark, label.into(), ActivityEnd::None, cx)
         .click_cursor()
         .hover(move |row| row.text_color(foreground))
@@ -2130,7 +2272,12 @@ fn markdown(
         ),
         None => (view, assistant_markdown_extensions()),
     };
-    transcript_text(div().w_full(), cx)
+    let column = if hooks.touch {
+        touch_transcript_text(div().w_full(), cx)
+    } else {
+        transcript_text(div().w_full(), cx)
+    };
+    column
         .child(
             agent_text_view(view, scope, hooks.owner, cx)
                 .selectable(true)
@@ -2159,9 +2306,11 @@ fn step_row(
     view: &ChatView,
     item: &zz_protocol::chat::ItemView,
     phase: f32,
+    touch: bool,
     cx: &App,
 ) -> AnyElement {
     let mut mark = ActivityMark::plain(kind_icon(item.kind));
+    mark.touch = touch;
     match &item.status {
         ItemStatus::Running => mark.spin = Some(phase),
         ItemStatus::Failed { .. } => mark.tint = Some(cx.theme().danger),
@@ -2186,13 +2335,19 @@ fn step_row(
 fn thought_row(
     item: &zz_protocol::chat::ItemView,
     owner: Option<u64>,
+    touch: bool,
     cx: &App,
 ) -> Option<AnyElement> {
     let body = chat_rows::reasoning_body(&item.body.text)?;
     let id = SharedString::from(format!("chat-thought-{}", item.id.as_str()));
     let scope = block_scope(owner, &id);
+    let text = if touch {
+        touch_transcript_text
+    } else {
+        transcript_text
+    };
     Some(
-        transcript_text(
+        text(
             div()
                 .id(SharedString::from(format!(
                     "chat-thought-scroll-{}",
@@ -2278,7 +2433,7 @@ fn plan_card(view: &ChatView, id: &ItemId, cx: &App) -> AnyElement {
     .into_any_element()
 }
 
-fn notice_row(view: &ChatView, id: &ItemId, cx: &App) -> AnyElement {
+fn notice_row(view: &ChatView, id: &ItemId, touch: bool, cx: &App) -> AnyElement {
     let Some(item) = view.item(id) else {
         return div().into_any_element();
     };
@@ -2287,6 +2442,7 @@ fn notice_row(view: &ChatView, id: &ItemId, cx: &App) -> AnyElement {
     } else {
         IconName::Info
     });
+    mark.touch = touch;
     if item.kind == ItemKind::Error {
         mark.tint = Some(cx.theme().danger);
     }
@@ -2300,7 +2456,7 @@ fn notice_row(view: &ChatView, id: &ItemId, cx: &App) -> AnyElement {
     .into_any_element()
 }
 
-fn ask_row(view: &ChatView, request: &RequestView, cx: &App) -> AnyElement {
+fn ask_row(view: &ChatView, request: &RequestView, touch: bool, cx: &App) -> AnyElement {
     let (icon, label) = match &request.ask {
         Ask::Questions { questions } => (
             IconName::Chat,
@@ -2326,6 +2482,7 @@ fn ask_row(view: &ChatView, request: &RequestView, cx: &App) -> AnyElement {
         ),
     };
     let mut mark = ActivityMark::plain(icon);
+    mark.touch = touch;
     mark.detail = Some("waiting for you".into());
     activity_row(
         SharedString::from(format!("chat-ask-{}", request.id.0)),
@@ -2337,7 +2494,7 @@ fn ask_row(view: &ChatView, request: &RequestView, cx: &App) -> AnyElement {
     .into_any_element()
 }
 
-fn record_rows(request: &RequestView, cx: &App) -> AnyElement {
+fn record_rows(request: &RequestView, touch: bool, cx: &App) -> AnyElement {
     let headers = match &request.ask {
         Ask::Questions { questions } => questions
             .iter()
@@ -2348,6 +2505,7 @@ fn record_rows(request: &RequestView, cx: &App) -> AnyElement {
     let pairs = chat_rows::answered(request);
     if pairs.is_empty() {
         let mut mark = ActivityMark::plain(IconName::Chat);
+        mark.touch = touch;
         mark.detail = Some("skipped".into());
         return activity_row(
             SharedString::from(format!("chat-record-{}", request.id.0)),
@@ -2367,6 +2525,7 @@ fn record_rows(request: &RequestView, cx: &App) -> AnyElement {
                 .map(|(index, (question, answer))| {
                     let label = headers.get(index).cloned().flatten().unwrap_or(question);
                     let mut mark = ActivityMark::plain(IconName::Chat);
+                    mark.touch = touch;
                     mark.detail = Some(answer.into());
                     mark.detail_color = Some(cx.theme().foreground);
                     activity_row(

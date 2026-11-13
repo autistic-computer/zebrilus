@@ -1,10 +1,10 @@
 use crate::story::{Section, Story};
 
 pub(super) mod cards;
-mod chat;
+pub(super) mod chat;
 mod chrome;
-mod composer;
-mod fixtures;
+pub(super) mod composer;
+pub(super) mod fixtures;
 mod flight;
 pub(super) mod pane;
 

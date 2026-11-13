@@ -19,7 +19,8 @@ pub use morph::{
     COMPACT_MINI_PILL_HEIGHT, PillSpring, compact_pill_collapse, compact_pill_morph,
     mini_pill_width, pill_bounds, pill_corner,
 };
-pub(crate) use tile::{HoldHandler, hold_listener};
+pub(crate) use tile::HoldHandler;
+pub use tile::hold_listener;
 pub use tile::{
     MINI_GAP, MINI_LINE, MINI_TEXT, MiniPane, MiniPreview, PhoneTile, TILE_INSET, mini_radius,
     window_span,

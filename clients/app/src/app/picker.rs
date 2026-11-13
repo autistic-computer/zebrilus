@@ -1,11 +1,12 @@
 use crate::connection::Connection;
 use ala::{
     AnyElement, App, Context, Corners, ElementId, Entity, FocusHandle, Focusable, KeyDownEvent,
-    MouseButton, Pixels, Render, Window, div, prelude::*, px,
+    MouseButton, Pixels, Render, Window, div, prelude::*,
 };
 use penna::{
-    Icon, IconName, StyledExt as _,
-    blocks::sheet::{bottom_sheet, close_sheet, sheet_close, sheet_row},
+    ActiveTheme as _, IconName, Space,
+    blocks::sheet::{bottom_sheet, close_sheet, sheet_close},
+    blocks::touch::TouchRow,
 };
 use zz_client::{
     new_chat::{
@@ -218,17 +219,13 @@ impl PanePicker {
             .enumerate()
             .map(|(index, (icon, title))| {
                 let id = id.clone();
-                sheet_row(
-                    ("pane-picker-option", index),
-                    Some(Icon::new(icon)),
-                    title,
-                    cx,
-                )
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.chosen = Some(index);
-                    close_sheet(id.clone(), cx);
-                }))
-                .into_any_element()
+                TouchRow::new(("pane-picker-option", index), title)
+                    .icon(icon)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.chosen = Some(index);
+                        close_sheet(id.clone(), cx);
+                    }))
+                    .in_sheet(cx)
             })
             .collect::<Vec<_>>();
         let close = sheet_close("pane-picker-close").on_click({
@@ -239,13 +236,14 @@ impl PanePicker {
         Some(
             bottom_sheet(
                 id,
-                if chat { "New agent" } else { "New pane" },
+                if chat { "New chat" } else { "New pane" },
                 [close.into_any_element()],
                 div()
                     .flex()
                     .flex_col()
-                    .list_inset(cx)
-                    .pb(px(8.0))
+                    .gap(Space::S2)
+                    .px(cx.theme().row_inset)
+                    .pb(Space::S8)
                     .children(rows),
                 bottom_inset,
                 move |_, cx| {
