@@ -8,7 +8,7 @@ How far a task has come, or that it is under way with no measure yet.
 <div class="docs-show" data-gap="wide">
   <div class="docs-cell" style="width: 240px"><div class="penna-progress" role="progressbar" aria-label="Downloading" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.42" aria-valuetext="42%" style="--penna-value: 42%"><div class="penna-progress-fill"></div></div><span class="docs-note">Determinate</span></div>
   <div class="docs-cell" style="width: 240px"><div class="penna-progress" role="progressbar" aria-label="Verifying" data-indeterminate><div class="penna-progress-fill"></div></div><span class="docs-note">Indeterminate</span></div>
-  <div class="docs-cell" style="width: 240px"><div class="penna-progress" data-look="line" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.62" aria-valuetext="62%" style="--penna-value: 62%"><div class="penna-progress-fill"></div></div><span class="docs-note">Line</span></div>
+  <div class="docs-cell" style="width: 240px"><div class="penna-progress" data-kind="line" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.62" aria-valuetext="62%" style="--penna-value: 62%"><div class="penna-progress-fill"></div></div><span class="docs-note">Line</span></div>
 </div>
 ```
 
@@ -50,6 +50,6 @@ The bar doesn't say what is under way. Put a line above it that does.
 | --- | --- | --- |
 | `Progress::new(id, value)` | `.penna-progress`, `--penna-value` | Determinate bar |
 | `Progress::indeterminate(id)` | `data-indeterminate` | Indeterminate bar |
-| `.line()` | `data-look="line"` | A page loading |
+| `.line()` | `data-kind="line"` | A page loading |
 | `.small()`, `.with_size(size)` | `data-size` | Size; medium by default |
 | `.label(text)` | `aria-label` | Names it for assistive tech |

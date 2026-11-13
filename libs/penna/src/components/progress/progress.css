@@ -29,7 +29,7 @@
   height: 4px;
 }
 
-.penna-progress[data-look="line"] {
+.penna-progress[data-kind="line"] {
   height: 2px;
   border-radius: 0;
   background: transparent;

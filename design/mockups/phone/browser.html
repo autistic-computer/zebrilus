@@ -323,7 +323,7 @@
     </div>`;
   const PAGES = { pr: prPage, list: listPage, doc: docPage, blank: () => "", failed: () => "" };
   const page = (at, { top = 54, anchor = "", y = 0, ...opts } = {}) => `<div class="zz-web" style="top: ${top}px"${anchor ? ` data-anchor="${anchor}" data-y="${y}"` : ""}><div class="zz-web-in">${at.kind === "doc" ? docPage(at) : PAGES[at.kind](opts)}</div></div>`;
-  const loadLine = (value, hidden = false) => `<div class="penna-progress zz-load" data-look="line" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="1" style="--penna-value: ${value}%"${hidden ? " hidden" : ""}><div class="penna-progress-fill"></div></div>`;
+  const loadLine = (value, hidden = false) => `<div class="penna-progress zz-load" data-kind="line" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="1" style="--penna-value: ${value}%"${hidden ? " hidden" : ""}><div class="penna-progress-fill"></div></div>`;
 
   const kb = (url = false) => {
     const keys = (s) => [...s].map((k) => `<i>${k}</i>`).join("");
