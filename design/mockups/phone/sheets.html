@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="phone.css">
 <script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
 <style>
-  .zz-board { display: grid; grid-template-columns: repeat(4, 424px); gap: 0 16px; align-items: start; }
+  .zz-board { display: grid; grid-template-columns: repeat(3, 424px); gap: 0 16px; align-items: start; }
   .zz-heads { position: sticky; z-index: 50; top: 0; display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; padding: 14px 0 12px; background: var(--penna-bg); box-shadow: 0 1px 0 var(--penna-divider); }
   .zz-heads > div, .zz-notes > p { display: grid; gap: 2px; margin: 0 10px; }
   .zz-heads b { font-size: 17px; line-height: 22px; font-weight: 600; }
@@ -55,13 +55,34 @@
   .zz-today-slider { display: flex; align-items: center; gap: 12px; padding: 4px 16px 8px; }
   .zz-today-slider > span { flex: none; color: var(--penna-fg-muted); font-variant-numeric: tabular-nums; }
 
-  .zz-phone:is([data-dir="a"], [data-dir="b"], [data-dir="c"]) .penna-sheet-panel { padding-bottom: 0; }
-  .zz-phone:is([data-dir="a"], [data-dir="b"]) .penna-sheet-header { height: auto; min-height: 0; }
+  .zz-phone:is([data-dir="b"], [data-dir="d"]) .penna-sheet-panel { padding-bottom: 0; }
+  .zz-phone[data-dir="b"] .penna-sheet-header { height: auto; min-height: 0; justify-content: center; padding: 4px 24px 12px; text-align: center; }
 
-  .zz-phone[data-dir="a"] .penna-sheet-header { min-height: 44px; padding: 4px 24px 10px; }
-  .zz-phone[data-dir="a"] .penna-sheet-title { font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); font-weight: 600; }
-
-  .zz-phone[data-dir="b"] .penna-sheet-header { justify-content: center; padding: 4px 24px 12px; text-align: center; }
+  .zz-phone[data-dir="d"] .penna-sheet-header { position: relative; justify-content: center; height: 44px; min-height: 44px; padding: 0 60px; text-align: center; }
+  .zz-phone[data-dir="d"] .penna-sheet .zz-groups { padding-top: 16px; }
+  .zz-x { position: absolute; top: 0; right: 9px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: var(--penna-muted); cursor: var(--penna-click-cursor); }
+  .zz-x.zz-back { right: auto; left: 9px; }
+  .zz-x > span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--penna-control); --penna-icon-size: 12px; }
+  .zz-modal { position: absolute; z-index: 35; inset: 0; }
+  .zz-modal-scrim { position: absolute; inset: 0; background: var(--penna-scrim); }
+  :root[data-penna-mode="light"] .zz-modal-scrim { background: rgb(from var(--penna-fg) r g b / 0.28); }
+  .zz-modal-area { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .zz-phone[data-kb] .zz-modal-area { top: 54px; bottom: 292px; }
+  .zz-modal-card { position: relative; display: flex; flex-direction: column; gap: 16px; width: min(calc(100% - 64px), 340px); padding: 20px; }
+  .zz-modal-card[data-penna][data-penna][data-penna] { --penna-r: var(--penna-phone-radius); --penna-share: 0; }
+  .zz-modal-head { position: relative; display: flex; align-items: center; justify-content: center; min-height: 30px; text-align: center; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); font-weight: 600; }
+  .zz-modal-head:has(> .zz-x) { padding: 0 40px; }
+  .zz-modal-head > .zz-x { top: -7px; right: -7px; }
+  .zz-modal-card > .zz-groups { gap: 8px; margin: 0 -12px -12px; padding: 0; }
+  .zz-modal-bar { display: flex; gap: 8px; }
+  .zz-modal-bar > .penna-button[data-penna] { flex: 1; height: 48px; }
+  .zz-modal-bar > .zz-cancel[data-penna][data-penna][data-penna] { --penna-fill: var(--penna-control); }
+  .zz-modal-copy { display: flex; flex-direction: column; gap: 4px; }
+  .zz-modal-copy > .zz-modal-head { min-height: 0; }
+  .zz-modal-copy > p { margin: 0; color: var(--penna-fg-muted); text-align: center; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
+  .zz-modal-card > .penna-input[data-penna] { width: 100%; height: 48px; }
+  .zz-modal-slider { display: flex; align-items: center; gap: 12px; }
+  .zz-modal-slider > span { flex: none; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size); font-variant-numeric: tabular-nums; }
   .zz-cap { display: flex; flex-direction: column; min-width: 0; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
   .zz-cap > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .zz-cap b { font-weight: 600; }
@@ -69,26 +90,13 @@
 
   .zz-groups { display: flex; flex-direction: column; gap: var(--penna-gap-group); padding: 0 8px 8px; }
   .zz-group.penna-touch-group[data-penna][data-penna][data-penna] { gap: 0; padding: 0; overflow: hidden; --penna-r: calc(var(--penna-phone-radius) - 8px); }
-  .zz-group > .penna-touch-row[data-penna][data-penna][data-penna], .zz-flat > .penna-touch-row[data-penna][data-penna][data-penna] { padding: 0 16px; --penna-r: 0px; --penna-share: 0; }
-  :is(.zz-group, .zz-flat) > .penna-touch-row + .penna-touch-row::before { content: ""; position: absolute; top: 0; right: 0; left: 48px; height: 1px; background: var(--penna-divider); }
-  :is(.zz-group, .zz-flat) > .penna-touch-row + .penna-touch-row:not(:has(> [data-icon]:first-child))::before { left: 16px; }
+  .zz-group > .penna-touch-row[data-penna][data-penna][data-penna] { padding: 0 16px; --penna-r: 0px; --penna-share: 0; }
+  .zz-group > .penna-touch-row + .penna-touch-row::before { content: ""; position: absolute; top: 0; right: 0; left: 48px; height: 1px; background: var(--penna-divider); }
+  .zz-group > .penna-touch-row + .penna-touch-row:not(:has(> [data-icon]:first-child))::before { left: 16px; }
   .zz-row-off { cursor: default; }
   .zz-foot { margin: -8px 0 0; padding: 0 16px 4px; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
-  .zz-control { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px 4px; }
-  .zz-line { display: flex; align-items: baseline; gap: 12px; }
-  .zz-line > span:first-child { flex: 1; min-width: 0; }
-  .zz-line > span:last-child { color: var(--penna-muted); font-size: var(--penna-text-touch-small-size); font-variant-numeric: tabular-nums; }
+  .zz-control { display: flex; flex-direction: column; padding: 4px 16px; }
   .zz-control > .penna-slider { padding: 0 14px; margin: 0 -14px; width: auto; }
-  .zz-phone[data-dir="b"] .zz-control { padding-top: 4px; }
-
-  .zz-phone[data-dir="c"] .penna-sheet .penna-touch-header { height: 36px; }
-  .zz-phone[data-dir="c"] .penna-sheet .penna-touch-header > .penna-touch-count { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .zz-flat { display: flex; flex-direction: column; padding-bottom: 12px; }
-  .zz-flat > .zz-split { flex: none; height: 1px; margin: 12px 0; background: var(--penna-divider); }
-  .zz-flat > .zz-foot { margin: 0; padding: 8px 16px 0; }
-  .zz-say { margin: 0; padding: 0 16px 4px; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
-  .zz-on-panel { padding: 0 16px 12px; }
-  .zz-on-panel > .penna-slider { width: auto; margin: 0 -14px; padding: 0 14px; }
 </style>
 </head>
 <body>
@@ -100,18 +108,16 @@
 (() => {
   const ic = (name) => `<i data-icon="${name}"></i>`;
   const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-  const DIRS = ["today", "a", "b", "c"];
+  const DIRS = ["today", "b", "d"];
   const HEADS = {
     today: ["Today", "Display title, close disc, bare rows"],
-    a: ["A", "Quiet title over grouped rows"],
     b: ["B", "Centered caption on the grabber"],
-    c: ["C", "The sheet is the group"],
+    d: ["D", "Caption with close, short asks as modals"],
   };
   const NOTES = {
     today: "",
-    a: "Model has no back: a drilled page can only close.",
     b: "A centered caption over rows that start at the edge.",
-    c: "A muted 15 title reads as a section, not a question.",
+    d: "",
   };
 
   const T = {
@@ -191,21 +197,25 @@
   const closeBtn = `<button class="penna-sheet-close penna-button zz-disc" data-penna="button" data-size="touch" aria-label="Close">${ic("xmark")}</button>`;
   const backBtn = `<button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Back" style="margin-left: -10px">${ic("chevron-left")}</button>`;
 
-  const head = (dir, { title, detail, back, close = true, twoLines, trailing }) => {
+  const xBtn = `<button class="zz-x" aria-label="Close"><span>${ic("xmark")}</span></button>`;
+  const head = (dir, { title, detail, back, close = true, twoLines }) => {
     if (dir === "today") return `<div class="penna-sheet-header">${back ? backBtn : ""}${detail ? `<span class="penna-sheet-copy"><span class="penna-sheet-title">${title}</span><span class="penna-sheet-detail">${detail}</span></span>` : `<span class="penna-sheet-title">${title}</span>`}${close ? closeBtn : ""}</div>`;
-    if (dir === "a") return `<div class="penna-sheet-header">${detail ? `<span class="penna-sheet-copy"><span class="penna-sheet-title">${title}</span><span class="penna-sheet-detail">${detail}</span></span>` : `<span class="penna-sheet-title">${title}</span>`}</div>`;
-    if (dir === "b") {
-      const lines = !detail ? `<span><b>${title}</b></span>` : twoLines ? `<span><b>${title}</b></span><span><i>${detail}</i></span>` : `<span><b>${title}</b><i> · ${detail}</i></span>`;
-      return `<div class="penna-sheet-header"><span class="zz-cap">${lines}</span></div>`;
-    }
-    return `<div class="penna-touch-header"><span>${title}</span>${trailing ? `<span class="penna-touch-count">${trailing}</span>` : ""}</div>`;
+    if (dir === "d") return `<div class="penna-sheet-header">${back ? `<button class="zz-x zz-back" aria-label="Back"><span>${ic("chevron-left")}</span></button>` : ""}<span class="zz-cap"><span><b>${title}</b></span></span>${xBtn}</div>`;
+    const lines = !detail ? `<span><b>${title}</b></span>` : twoLines ? `<span><b>${title}</b></span><span><i>${detail}</i></span>` : `<span><b>${title}</b><i> · ${detail}</i></span>`;
+    return `<div class="penna-sheet-header"><span class="zz-cap">${lines}</span></div>`;
   };
 
+  const groupCards = (sets) => sets.map((set) => `<div class="penna-touch-group zz-group" data-penna="settings.card" data-ground>${set.map(row).join("")}</div>`).join("");
   const groups = (dir, sets, foot) => {
     if (dir === "today") return `<div class="penna-sheet-list">${sets.map((set) => set.map(row).join("")).join(`<div style="height: 8px"></div>`)}${foot ? `<div class="penna-touch-row" data-penna="phone.row" style="min-height: 44px; cursor: default; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size)"><span class="penna-touch-row-lines"><span>${foot}</span></span></div>` : ""}</div>`;
-    if (dir === "c") return `<div class="zz-flat">${sets.map((set) => set.map(row).join("")).join(`<div class="zz-split"></div>`)}${foot ? `<p class="zz-foot">${foot}</p>` : ""}</div>`;
-    return `<div class="zz-groups">${sets.map((set) => `<div class="penna-touch-group zz-group" data-penna="settings.card" data-ground>${set.map(row).join("")}</div>`).join("")}${foot ? `<p class="zz-foot">${foot}</p>` : ""}</div>`;
+    return `<div class="zz-groups">${groupCards(sets)}${foot ? `<p class="zz-foot">${foot}</p>` : ""}</div>`;
   };
+
+  const modal = ({ title, detail, x, body }) => {
+    const headRow = `<div class="zz-modal-head"><span>${title}</span>${x ? xBtn : ""}</div>`;
+    return `<div class="zz-modal"><div class="zz-modal-scrim"></div><div class="zz-modal-area"><div class="zz-modal-card" data-penna="drawer">${detail ? `<div class="zz-modal-copy">${headRow}<p>${detail}</p></div>` : headRow}${body}</div></div></div>`;
+  };
+  const modalBar = (verb, tone, solid = tone) => `<div class="zz-modal-bar"><button class="penna-button zz-cancel" data-penna="button.quiet" data-size="touch"><span class="penna-label">Cancel</span></button><button class="penna-button" data-penna="button" data-tone="${tone}" data-prominent data-size="touch" data-emphasis="solid" data-solid="${solid}" style="color: var(--penna-on-${solid})"><span class="penna-label">${verb}</span></button></div>`;
 
   const slider = `<div class="penna-slider" data-size="touch" aria-label="Increase contrast" style="--penna-value: 0%"><div class="penna-rail"><div class="penna-fill"></div><div class="penna-knob"></div></div></div>`;
   const field = `<label class="penna-input" data-penna="field" data-size="touch-large" data-state="focused" style="width: 100%"><span class="zz-field-sel"><span>${TITLE}</span></span></label>`;
@@ -218,8 +228,9 @@
       under: machine,
       sheet: (dir) => {
         const rows = [[{ label: "Rename", glyph: "pencil" }], [{ label: "Close window", glyph: "xmark", tone: "danger" }]];
+        if (dir === "d") return modal({ title: "bash", x: true, body: `<div class="zz-groups">${groupCards(rows)}</div>` });
         const flat = dir === "today" ? [rows.flat()] : rows;
-        return frame(head(dir, { title: "bash", detail: "zebrilus · main", trailing: "zebrilus · main" }), groups(dir, flat));
+        return frame(head(dir, { title: "bash", detail: "zebrilus · main" }), groups(dir, flat));
       },
     },
     {
@@ -237,9 +248,8 @@
       under: settings,
       sheet: (dir) => {
         if (dir === "today") return frame(head(dir, { title: "Increase contrast" }), `<div class="zz-today-slider">${slider}<span>0%</span></div>`);
-        if (dir === "a") return frame("", `<div class="zz-groups" style="padding-top: 8px"><div class="penna-touch-group zz-group" data-penna="settings.card" data-ground><div class="zz-control"><div class="zz-line"><span>Increase contrast</span><span>0%</span></div>${slider}</div></div></div>`);
         if (dir === "b") return frame(head(dir, { title: "Increase contrast", detail: "0%" }), `<div class="zz-groups"><div class="penna-touch-group zz-group" data-penna="settings.card" data-ground><div class="zz-control">${slider}</div></div></div>`);
-        return frame(head(dir, { title: "Increase contrast", trailing: "0%" }), `<div class="zz-on-panel">${slider}</div>`);
+        return modal({ title: "Increase contrast", x: true, body: `<div class="zz-modal-slider">${slider}<span>0%</span></div>` });
       },
     },
     {
@@ -255,7 +265,7 @@
       under: () => chatPane(),
       sheet: (dir) => {
         const detail = "The chat stops. Its transcript stays.";
-        if (dir === "c") return frame(head(dir, { title: "Close this pane?" }), `<p class="zz-say">${detail}</p>${confirmBar}`);
+        if (dir === "d") return modal({ title: "Close this pane?", detail, body: modalBar("Close", "danger") });
         return frame(head(dir, { title: "Close this pane?", detail, close: false, twoLines: true }), confirmBar);
       },
     },
@@ -264,6 +274,7 @@
       kb: true,
       under: () => chatPane(false),
       sheet: (dir) => {
+        if (dir === "d") return modal({ title: "Rename pane", body: `<label class="penna-input" data-penna="field" data-size="touch-large" data-state="focused"><span class="zz-field-sel"><span>${TITLE}</span></span></label>${modalBar("Rename", "primary", "accent")}` });
         const pad = dir === "today" ? "4px 16px 8px" : "0 16px 8px";
         return frame(head(dir, { title: "Rename pane" }), `<div style="padding: ${pad}">${field}</div>${saveBar}`, "300px");
       },
