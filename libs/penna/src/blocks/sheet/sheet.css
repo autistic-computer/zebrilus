@@ -131,7 +131,9 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: var(--penna-control);
+  border: 0;
+  box-shadow: none;
+  color: var(--penna-muted);
   --penna-icon-size: 12px;
 }
 
@@ -209,10 +211,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
 }
 
 .penna-modal-card {
   position: relative;
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   gap: var(--penna-space-16);
@@ -224,6 +228,13 @@
 .penna-modal-card[data-penna][data-penna][data-penna] {
   --penna-r: var(--penna-phone-radius);
   --penna-share: 0;
+}
+
+.penna-modal-card[data-penna][data-penna][data-penna][data-penna] {
+  background:
+    linear-gradient(var(--penna-fill), var(--penna-fill)),
+    linear-gradient(var(--penna-scrim), var(--penna-scrim)),
+    var(--penna-bg);
 }
 
 .penna-modal-head {
@@ -272,10 +283,6 @@
 .penna-modal-bar > .penna-button[data-penna] {
   flex: 1;
   height: 48px;
-}
-
-.penna-modal-bar > .penna-button[data-penna="button"]:not([data-tone])[data-penna][data-penna] {
-  --penna-fill: var(--penna-control);
 }
 
 .penna-modal-card > .penna-input[data-penna] {

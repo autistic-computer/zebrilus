@@ -189,9 +189,9 @@ fn disc_button(id: impl Into<ElementId>, icon: IconName, label: &'static str, cx
     let paint = cx.theme().paint_on(ground, Tone::Neutral, Emphasis::Soft);
     Button::new(id)
         .text()
-        .compact()
         .tab_stop(false)
-        .size(px(CLOSE))
+        .w(px(CLOSE))
+        .h(px(CLOSE))
         .tooltip(label)
         .child(
             div()
@@ -741,11 +741,6 @@ impl BottomSheet {
                 });
         let drawer = Surface::new(SurfaceRole::DRAWER);
         let ground = theme.ground_of(drawer);
-        let layer = Layer {
-            radius: theme.phone_radius(),
-            share: None,
-            ..theme.layer(drawer, PaintState::Rest)
-        };
         let rise = if reduce_motion {
             px(0.0)
         } else {
@@ -789,26 +784,38 @@ impl BottomSheet {
                     .text_color(muted_on(ground, cx))
                     .child(detail)
             }));
+        let corner = theme.phone_radius();
         let card = div()
             .id("modal-card")
             .debug_selector(|| "modal-card".to_owned())
             .relative()
-            .top(rise)
             .flex()
             .flex_col()
             .w(measured
                 .get()
                 .map_or_else(|| modal_width(window), |own| card_width(own.size.width)))
             .pt(px(MODAL_PAD))
-            .layer(&layer)
+            .surface(drawer, cx)
+            .rounded(corner)
             .occlude()
-            .opacity(shown)
             .font_family(theme.font_family.clone())
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(|_, _, cx| cx.stop_propagation())
             .child(heading)
             .child(div().flex_none().h(Space::S16))
             .child(self.content);
+        let backdrop = div()
+            .absolute()
+            .inset_0()
+            .rounded(corner)
+            .bg(theme.background)
+            .child(div().absolute().inset_0().rounded(corner).bg(theme.scrim));
+        let card = div()
+            .relative()
+            .top(rise)
+            .opacity(shown)
+            .child(backdrop)
+            .child(card);
         let leave = state.clone();
         let scrim = div()
             .id("modal-scrim")
@@ -828,7 +835,7 @@ impl BottomSheet {
                     }
                 });
             });
-        div()
+        let modal = div()
             .id(self.id)
             .absolute()
             .inset_0()
@@ -860,7 +867,8 @@ impl BottomSheet {
                     .justify_center()
                     .child(card),
             )
-            .into_any_element()
+            .into_any_element();
+        crate::blocks::touch::at_rem(modal, cx.theme().font_size)
     }
 
     fn render_sheet(self, window: &mut Window, cx: &mut App) -> AnyElement {

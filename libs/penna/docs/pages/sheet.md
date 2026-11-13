@@ -11,7 +11,7 @@ Holds a list or a page you drill into and returns you where you were: a picker, 
     <div class="penna-sheet-frame">
       <div class="penna-sheet-panel" data-penna="drawer">
         <div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div>
-        <div class="penna-sheet-header"><span class="penna-sheet-title" data-penna-text>Claude Code</span><button class="penna-sheet-disc" aria-label="Close"><span><i data-icon="xmark"></i></span></button></div>
+        <div class="penna-sheet-header"><span class="penna-sheet-title" data-penna-text>Claude Code</span><button class="penna-sheet-disc" aria-label="Close"><span data-penna="button"><i data-icon="xmark"></i></span></button></div>
         <div class="penna-sheet-groups">
           <div class="penna-touch-group" data-penna="settings.card" data-ruled data-ground>
             <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="list-tree"></i><span class="penna-touch-row-lines"><span>Mention</span></span><i data-icon="chevron-right"></i></div>
@@ -39,8 +39,8 @@ Holds a list or a page you drill into and returns you where you were: a picker, 
 
 ```figure uses=sheet
 <div class="docs-show" data-gap="wide">
-  <div class="docs-cell"><button class="penna-sheet-disc" style="position: static" aria-label="Close"><span><i data-icon="xmark"></i></span></button><span class="docs-note">close, 44 target</span></div>
-  <div class="docs-cell"><button class="penna-sheet-disc" style="position: static" aria-label="Back"><span><i data-icon="chevron-left"></i></span></button><span class="docs-note">back on a page drilled into</span></div>
+  <div class="docs-cell"><button class="penna-sheet-disc" style="position: static" aria-label="Close"><span data-penna="button"><i data-icon="xmark"></i></span></button><span class="docs-note">close, 44 target</span></div>
+  <div class="docs-cell"><button class="penna-sheet-disc" style="position: static" aria-label="Back"><span data-penna="button"><i data-icon="chevron-left"></i></span></button><span class="docs-note">back on a page drilled into</span></div>
 </div>
 ```
 
@@ -59,7 +59,7 @@ Titled for the machine, ssh's own prompt word for word over a 56 field, and an a
       <div class="penna-modal-scrim"></div>
       <div class="penna-modal-area">
         <div class="penna-modal-card" data-penna="drawer">
-          <div class="penna-modal-head"><span data-penna-text>bash</span><button class="penna-sheet-disc" aria-label="Close"><span><i data-icon="xmark"></i></span></button></div>
+          <div class="penna-modal-head"><span data-penna-text>bash</span><button class="penna-sheet-disc" aria-label="Close"><span data-penna="button"><i data-icon="xmark"></i></span></button></div>
           <div class="penna-sheet-groups" data-menu>
             <div class="penna-touch-group" data-penna="settings.card" data-ruled data-ground><div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="pencil"></i><span class="penna-touch-row-lines"><span>Rename</span></span></div></div>
             <div class="penna-touch-group" data-penna="settings.card" data-ruled data-ground><div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button"><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span>Close window</span></span></div></div>
@@ -85,4 +85,4 @@ Titled for the machine, ssh's own prompt word for word over a 56 field, and an a
 
 **Action menu**: the thing's name, the close disc, its actions in a group, the one that removes in its own group 8 below. **Confirm**: the question, one muted line on what goes, then Cancel and the verb side by side, 48 tall, the verb in `danger`. **Rename**: a 48 field, then Cancel and Rename in `accent`, off until the name changes. **Control**: the label, the close, a slider with its value after it.
 
-The card is the screen's width less 64, at most 340, padded 20, centered above the keyboard. A tap on the scrim cancels; there is no drag. In light the scrim is the ink at 28%, stronger than a sheet's, so the card stands off a busy screen. When the two buttons' labels can't share a line at large text, they stack, the verb on top.
+The card is the sheet's own surface and its groups the sheet's, so the two read as one material. It is the screen's width less 64, at most 340, padded 20, centered above the keyboard. A tap on the scrim cancels; there is no drag. In light the scrim is the ink at 28%, stronger than a sheet's, so the card stands off a busy screen. When the two buttons' labels can't share a line at large text, they stack, the verb on top.

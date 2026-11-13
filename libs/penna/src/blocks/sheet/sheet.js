@@ -85,8 +85,24 @@ function sheetSetup(sheet) {
   sheet.querySelectorAll("[data-sheet-close]").forEach((button) => button.addEventListener("click", () => sheetClose(sheet)));
 }
 
+function modalClose(modal) {
+  modal.setAttribute("data-closed", "");
+  modal.querySelectorAll("[data-id]").forEach((node) => {
+    node.dataset.sheetId = node.dataset.id;
+    delete node.dataset.id;
+  });
+}
+
+function modalOpen(modal) {
+  modal.removeAttribute("data-closed");
+  modal.querySelectorAll("[data-sheet-id]").forEach((node) => {
+    node.dataset.id = node.dataset.sheetId;
+    delete node.dataset.sheetId;
+  });
+}
+
 function modalSetup(modal) {
-  const close = () => modal.setAttribute("data-closed", "");
+  const close = () => modalClose(modal);
   modal.querySelector(".penna-modal-scrim").addEventListener("click", close);
   modal.querySelectorAll("[data-sheet-close]").forEach((button) => button.addEventListener("click", close));
 }
@@ -96,5 +112,5 @@ document.querySelectorAll(".penna-modal").forEach(modalSetup);
 
 new MutationObserver(() => {
   document.querySelectorAll(".penna-sheet[data-closed]").forEach(sheetOpen);
-  document.querySelectorAll(".penna-modal[data-closed]").forEach((modal) => modal.removeAttribute("data-closed"));
+  document.querySelectorAll(".penna-modal[data-closed]").forEach(modalOpen);
 }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-penna-theme", "data-penna-mode"] });

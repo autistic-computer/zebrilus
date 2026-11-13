@@ -114,6 +114,14 @@ pub fn touch_scale(child: impl IntoElement, cx: &App) -> AnyElement {
     }
 }
 
+pub(crate) fn at_rem(child: impl IntoElement, rem_size: Pixels) -> AnyElement {
+    TouchScale {
+        child: child.into_any_element(),
+        rem_size: Some(rem_size),
+    }
+    .into_any_element()
+}
+
 struct TouchScale {
     child: AnyElement,
     rem_size: Option<Pixels>,

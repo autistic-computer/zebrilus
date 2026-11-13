@@ -31,7 +31,7 @@ A phone screen is built from phone components, sized for a thumb from the start.
     <div class="penna-modal-scrim"></div>
     <div class="penna-modal-area">
       <div class="penna-modal-card" data-penna="drawer">
-        <div class="penna-modal-head"><span data-penna-text>Fix pane stack hit testing</span><button class="penna-sheet-disc" aria-label="Close"><span><i data-icon="xmark"></i></span></button></div>
+        <div class="penna-modal-head"><span data-penna-text>Fix pane stack hit testing</span><button class="penna-sheet-disc" aria-label="Close"><span data-penna="button"><i data-icon="xmark"></i></span></button></div>
         <div class="penna-sheet-groups" data-menu>
           <div class="penna-touch-group" data-penna="settings.card" data-ruled data-ground><div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="pencil"></i><span class="penna-touch-row-lines"><span>Rename</span></span></div></div>
           <div class="penna-touch-group" data-penna="settings.card" data-ruled data-ground><div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button"><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span>Close window</span></span></div></div>
