@@ -150,6 +150,7 @@ impl PaneActor {
         if let Some(working_directory) = &spawn.working_directory {
             command.cwd(working_directory);
         }
+        let shell_starting = command.get_env("ZZ_SHELL_INTEGRATION_ACTIVE").is_some();
 
         #[cfg(not(unix))]
         let child = pair
@@ -340,6 +341,7 @@ impl PaneActor {
         let pane_search: Option<CopyModeSearch> = None;
         let engine_filter = EngineFilter {
             replies: Some(Rc::clone(&effects)),
+            shell_starting,
             ..EngineFilter::default()
         };
         let engine_renames = Vec::new();

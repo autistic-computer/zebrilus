@@ -425,6 +425,7 @@ struct EngineFilter {
     cursor_blink_set: bool,
     mouse_mode: Option<usize>,
     output_marks: Vec<(Screen, TrackedGridRef)>,
+    shell_starting: bool,
 }
 
 pub const PRIVATE_MODE_NUMBERS: [u16; 14] = [
@@ -640,6 +641,13 @@ impl EngineFilter {
         }
     }
 
+    fn csi_knobs(&self, knobs: EngineKnobs) -> EngineKnobs {
+        EngineKnobs {
+            scroll_on_clear: knobs.scroll_on_clear && !self.shell_starting,
+            ..knobs
+        }
+    }
+
     fn output_rows(&self, terminal: &Terminal<'_, '_>) -> Vec<u64> {
         let Ok(active) = terminal.active_screen() else {
             return Vec::new();
@@ -744,6 +752,7 @@ impl EngineFilter {
                     }
                     bytes = &bytes[1..];
                     if byte >= 0x40 {
+                        let knobs = self.csi_knobs(knobs);
                         self.metadata_hint |= csi_touches_metadata(&self.sequence, byte);
                         let sequence = std::mem::take(&mut self.sequence);
                         self.track_private_modes(&sequence, byte);
@@ -865,6 +874,7 @@ impl EngineFilter {
                         continue;
                     }
                     let parameters = &bytes[escape + 2..end];
+                    let knobs = self.csi_knobs(knobs);
                     self.metadata_hint |= csi_touches_metadata(parameters, final_byte);
                     self.track_private_modes(parameters, final_byte);
                     self.drop_alternate_marks(parameters, final_byte, terminal);
@@ -998,6 +1008,7 @@ impl EngineFilter {
             }
         }
         if is_prompt_start(&osc) {
+            self.shell_starting = false;
             self.program_status_changed |= self.program_status.program_left();
             return;
         }
@@ -22772,6 +22783,38 @@ mod tests {
             );
         }
         assert_eq!(terminal.scrollback_rows().expect("scrollback rows"), 0);
+    }
+
+    #[test]
+    fn scroll_on_clear_keeps_shell_startup_drawing_out_of_history() {
+        let startup = b"\x1b7\r\n~ >      16:08\x1b[?25l\x1b8\x1b[J".as_slice();
+        let prompt = b"\x1b]133;A;redraw=1\x07\r\n~ >      16:08\r\x1b[4C\x1b]133;B\x07";
+        for (shell_starting, history) in [(true, 0), (false, 2)] {
+            let mut terminal = new_terminal(20, 4, 16).expect("terminal");
+            let mut filter = EngineFilter {
+                shell_starting,
+                ..EngineFilter::default()
+            };
+            for chunk in [startup, prompt] {
+                filter.write(
+                    chunk,
+                    EngineKnobs::default(),
+                    &mut terminal,
+                    &mut Vec::new(),
+                    &mut None,
+                    &mut None,
+                );
+            }
+            assert_eq!(
+                terminal.scrollback_rows().expect("scrollback rows"),
+                history,
+                "shell_starting {shell_starting}"
+            );
+            assert_eq!(
+                capture_terminal(&terminal, None, CaptureOptions::default()).expect("screen"),
+                "\n~ >      16:08\n\n"
+            );
+        }
     }
 
     #[test]
