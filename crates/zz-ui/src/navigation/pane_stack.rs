@@ -62,7 +62,7 @@ impl StackSize {
         self.width(RESTING)
     }
 
-    fn width(self, tiles: usize) -> f32 {
+    pub fn width(self, tiles: usize) -> f32 {
         self.tile() + (tiles.clamp(1, RESTING) - 1) as f32 * self.step()
     }
 }
@@ -155,6 +155,12 @@ impl Pointer {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Dots {
+    Loudest,
+    EachFace,
+}
+
 #[derive(IntoElement)]
 pub struct PaneStack {
     id: ElementId,
@@ -165,6 +171,7 @@ pub struct PaneStack {
     dimmed: f32,
     beside: Option<(AnyElement, Pixels)>,
     room: usize,
+    dots: Dots,
 }
 
 impl PaneStack {
@@ -184,7 +191,14 @@ impl PaneStack {
             dimmed: 0.0,
             beside: None,
             room: RESTING,
+            dots: Dots::Loudest,
         }
+    }
+
+    #[must_use]
+    pub const fn dot_each_face(mut self) -> Self {
+        self.dots = Dots::EachFace;
+        self
     }
 
     #[must_use]
@@ -302,15 +316,19 @@ impl PaneStack {
     fn resting(&self, slot: usize, layer: &Layer, dark: bool, colors: bool, cx: &App) -> Div {
         let size = self.size;
         let front = self.tiles.first().filter(|_| slot == 0);
-        let dot = front.and_then(|_| {
-            let attention = self
-                .tiles
-                .iter()
-                .map(|tile| tile.attention)
-                .max()
-                .unwrap_or_default();
-            status_dot(attention, px(size.tile()), self.ground.fill, cx)
-        });
+        let last = slot + 1 == self.tiles.len().clamp(1, RESTING);
+        let shown = match self.dots {
+            Dots::Loudest if slot == 0 => self.tiles.as_slice(),
+            Dots::Loudest => &[],
+            Dots::EachFace if last => self.tiles.get(slot..).unwrap_or_default(),
+            Dots::EachFace => self.tiles.get(slot..=slot).unwrap_or_default(),
+        };
+        let attention = shown
+            .iter()
+            .map(|tile| tile.attention)
+            .max()
+            .unwrap_or_default();
+        let dot = status_dot(attention, px(size.tile()), self.ground.fill, cx);
         let tile = if let Some(program) = front.and_then(|front| front.program).filter(|_| colors) {
             self.face(program, layer.smoothing, dark, self.dimmed)
                 .tile(cx)

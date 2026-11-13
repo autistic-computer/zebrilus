@@ -1,8 +1,8 @@
 ---
 type: Design Plan
-title: "Chat mode: the sidebar lists agents, not windows"
-description: "The flat sidebar became chat mode: each machine lists one row per window running Claude Code or Codex, the agent's tile leads the pane stack with the panes it split behind it, sessions, agentless windows and machines without a chat stay in the session tree, and New chat opens the agent picker with no window behind it, which starts the agent in a chosen folder inside that folder's session. The sidebar view decides what a new pane offers: agents in chat view, pane kinds in the session tree. Desktop, web, iPad and the HTML client share the zz-client model."
-status: Built (2026-10-28; picker by sidebar view 2026-11-01; New chat row and machine choice 2026-11-06; machines inline 2026-11-09; another machine keeps the New chat screen 2026-11-08; browser in a split 2026-11-07; only chats listed and a New chat screen 2026-11-08; the HTML client has no file picker yet)
+title: "Chat mode: chat windows first, the rest piled"
+description: "The flat sidebar became chat mode: each machine lists its chat windows (a window running Claude Code or Codex) as rows with a face per pane, then folds the windows without a chat into one last row, the pile; a window with two or more panes and the pile open into one-line rows on a track. New chat opens the agent picker with no window behind it, which starts the agent in a chosen folder inside that folder's session. The sidebar view decides what a new pane offers: agents in chat view, pane kinds in the session tree. Desktop, web and iPad share the zz-client model; the HTML client still lists only chat windows."
+status: Built (2026-10-28; picker by sidebar view 2026-11-01; New chat row and machine choice 2026-11-06; machines inline 2026-11-09; another machine keeps the New chat screen 2026-11-08; browser in a split 2026-11-07; a New chat screen 2026-11-08; windows as rows and the pile 2026-11-13; the HTML client has no file picker and no pile yet)
 resource: crates/zz-client/src/new_chat.rs
 tags:
 - sidebar
@@ -18,28 +18,56 @@ timestamp: 2026-10-28T00:00:00-03:00
 The sidebar has two views, switched by the chat button beside the sidebar toggle at the top: the
 session tree (raw mode) and chat mode,
 which replaced the flat window list. Chat mode keeps the [flat sidebar](flat-sidebar-data.md)'s
-two-line rows, pane stack, attention and ages, and changes what a row is:
+two-line rows, pane stack, attention and ages. The list is windows, and a stack is a pile you can
+open (`window_summary::summarize_chat_machine`, drawn by `zz_ui::navigation::flat`; the board with
+every number is `design/mockups/chat-rows/index.html`):
 
-- A row is a window that runs an agent: a terminal whose process resolves to Claude Code or Codex
-  (`window_summary::pane_agent`). Windows without one are left out, and so are session headers;
-  rows sit straight under their machine. `summarize_chats` flattens the sessions in order.
-- The agent's own tile leads the stack whatever pane has focus, and the panes it split (a browser,
-  a dev server) are the tiles behind it, so pointing at the stack still opens any of them. The
-  title and second line come from the agent pane (`summarize_chat`).
-- Nothing else is listed: not a window of pickers, not a shell, and not a machine with no chat, so
-  with no chat anywhere the sidebar holds only New chat and Add host. The session tree lists all of
-  it.
+- Per machine, with no session headers, each window holding a chat is a row, in session then
+  window order. A chat is a pane whose process resolves to Claude Code or Codex
+  (`window_summary::pane_agent`).
+- The windows without a chat fold into one last row, the pile: a face per window, with the front
+  window's title and second line. The front is the plain window used last, which the client
+  remembers (`ChatHints::last_plain`). A machine with one plain window shows that window as a row
+  instead. A window whose panes are all pane pickers is left out (`chat_view_lists`).
+- A stack shows one face per pane, each with its own status dot. A chat window's faces are its
+  chats, then its other panes in window order; the front is the active pane when it is a chat, else
+  the chat that last had focus there (`ChatHints::last_chat`), else the first chat. A plain
+  window's front is its active pane.
+- A chat window's title, second line and age follow the front chat; a chat behind it that needs
+  approval or failed takes the second line, its status word then its title. The spinner follows the
+  front chat only; a chat running behind shows only its dot.
+- A plain window's title is the name it was given (`rename-window`, as the session tree shows it),
+  else its front pane's title: the terminal's title, its program, its shell, or a browser's host.
+  Its second line is folder and branch, and says more only when a pane rang its bell or a command
+  failed. In the pile a bell or failure behind the front window takes the second line the same way.
+- A window with two or more panes, and the pile, has a chevron after its title, shown on hover and
+  while open, that opens and closes it. Opened, it lists one-line rows, 32 high, on a track from
+  the stack's foot: a pane each (face, title, then the short status word, a spinner or the age), or
+  in the pile a window each, led by its own small stack, that does not open further. Opening keeps
+  the parent row, except that a second line taken by a pane behind goes back to the front pane's
+  own.
+- A window row shows its window, a nested pane row focuses that pane, a nested window row in the
+  pile shows that window, a face focuses its pane, and the pile row shows its front window. Rename
+  and Close window are on window rows only.
+- The current marker is on the window row, or on the focused pane's nested row while the window is
+  open, with the track lit; on the pile row, or on the window's nested row while the pile is open
+  (`ChatMachine::current`).
+- ⌘ numbers go to chat window rows only, top to bottom across the connected machines
+  (`number_chat_rows`); in chat view the desktop's window shortcut keys open those same rows.
 
-An agent splitting its own window with `zz split-window` needs nothing new: the pane lands in the
-agent's window and so belongs to the chat. Raw mode shows the same window as a tree.
+Desktop, web and iPad draw this. The HTML client still draws one row per chat window
+(`summarize_chats`). An agent splitting its own window with `zz split-window` needs nothing new:
+the pane lands in the agent's window and becomes one of its faces. Raw mode shows the same window as
+a tree.
 
 # Switching views
 
 Chat view is a place, not a filter over the window on screen: the window in the workspace is always
-one the sidebar lists. Turning chat view on while the focused window is neither a chat nor a picker
-window switches to a chat: the one that was on screen when chat view was last turned off, else the
-most recently active chat (`entering_chat_view`), and with no chat it shows the New chat screen. The
-desktop looks on the attached machine first, then on any connected machine. A client that starts in
+one the sidebar lists. Every window but a picker-only one has a row, so turning chat view on stays
+on the focused window. With no focused window (web, iPad and the HTML client), or on the desktop a
+picker-only one, it switches to the window that was on screen when chat view was last turned off,
+else the most recently active chat (`entering_chat_view`), and with no chat it shows the New chat
+screen. The desktop looks on the attached machine first, then on any connected machine. A client that starts in
 chat view does the same once its first snapshot arrives. Turning chat view off from a chat keeps that
 chat: the session tree lists every window. Web, iPad and the HTML client keep this state in
 `ChatViewPlace`: the New chat screen and the window it covers, the chat left last, and whether the
@@ -51,13 +79,13 @@ New chat at the top of the chat view shows the New chat screen: the agent picker
 behind it (the empty workspace's picker), so nothing is made until an agent is picked. Picking one
 opens a window for it in the folder's session (`new-window -c <folder>`, then `select-pane-kind
 agent` on its shell) or, with no session for that folder, a session named after it
-(`first_chat_commands`); both are `landing_chat_commands`. The screen goes away once another chat is
-on screen or a row is pressed, Escape on web, iPad and the HTML client closes it, and turning chat
+(`first_chat_commands`); both are `landing_chat_commands`. The screen goes away once another listed
+window, a chat or a plain window, is on screen or a row is pressed, Escape on web, iPad and the HTML client closes it, and turning chat
 view off from it shows the window that was there.
 Picking another machine on it keeps the New chat screen and attaches the desktop to that machine
 (`attach_to_host_default`), so its folders, the folder browser and the chat are that machine's, and
-the screen stays up over whatever window the machine had focused: it goes away for a chat that was
-not there when the screen opened, or for another chat on the same machine
+the screen stays up over whatever window the machine had focused: it goes away for a window that was
+not there when the screen opened, or for another listed window on the same machine
 (`sidebar::flat::landing_follows`). Picking another machine on a picker pane closes that pane and
 shows the New chat screen on that machine the same way, so a new chat on any machine starts from one
 screen. Pressing another row in
@@ -80,8 +108,9 @@ iPad and iPhone, and the HTML client's preference passed in with `set_chat_view`
   picker that is a split (its window holds another pane, `picker_in_split`) on the desktop also
   offers Terminal (`t`, `ChatKey::Terminal`) and Browser (`b`, `ChatKey::Browser`) under Pane,
   which turn the pane into one as the session tree's picker does, so a chat keeps its terminals and
-  browsers beside it. A picker alone in its window offers only the agents: a terminal or browser
-  there would make a window chat view does not list. A terminal is always a terminal: no client
+  browsers beside it. A picker alone in its window offers only the agents, since New chat is for
+  starting a chat; a terminal or browser there would only add a plain window to the pile. A terminal
+  is always a terminal: no client
   draws the picker over a shell. Escape closes only picker panes (`close_picker_command`), and the
   folder line starts on the folder of the pane the picker split from (`picker_folders`).
 - **Session tree.** Every picker offers pane kinds, even alone in its window, and a terminal is a

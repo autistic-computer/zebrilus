@@ -249,6 +249,7 @@ fn chat_tree(chat_mode: bool) -> PaletteTree {
             chat(0, 3, 10, 20, "Review sidebar"),
             chat(0, 5, 12, 22, "Fix flat rows"),
             chat(1, 7, 41, 52, "Atlas tests"),
+            chat(0, 3, 10, 23, "Second look"),
         ],
         chat_mode,
         ..tree()
@@ -262,8 +263,13 @@ fn chat_mode_lists_every_chat_with_the_current_one_last() {
     let listed = rows_in(&mut palette, "", &[], &recents, chat_tree(true));
     let chats = listed.iter().position(|row| row == "Chats").expect("chats");
     assert_eq!(
-        listed[chats + 1..chats + 4],
-        ["  Fix flat rows", "  Atlas tests", "  Review sidebar"]
+        listed[chats + 1..chats + 5],
+        [
+            "  Fix flat rows",
+            "  Atlas tests",
+            "  Second look",
+            "  Review sidebar"
+        ]
     );
     assert!(matches!(
         palette.rows[chats + 1].action,
@@ -274,7 +280,8 @@ fn chat_mode_lists_every_chat_with_the_current_one_last() {
         }))
     ));
     assert_eq!(palette.rows[chats + 2].row.right.as_ref(), "xps");
-    assert_eq!(palette.rows[chats + 3].row.right.as_ref(), "current");
+    assert_eq!(palette.rows[chats + 3].row.right.as_ref(), "");
+    assert_eq!(palette.rows[chats + 4].row.right.as_ref(), "current");
     let raw = rows_in(&mut palette, "", &[], &recents, chat_tree(false));
     assert!(!raw.iter().any(|row| row == "Chats"));
 }

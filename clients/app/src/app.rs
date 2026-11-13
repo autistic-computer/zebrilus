@@ -244,7 +244,7 @@ fn watch_connection(
                     this.pane_drag = None;
                     this.pane_layout_override = None;
                     if matches!(event, zz_client::CoreEvent::HelloReceived) {
-                        this.flat.place = zz_client::new_chat::ChatViewPlace::default();
+                        this.flat.forget_daemon();
                     }
                     sidebar::follow_chat_view(this, cx);
                 }

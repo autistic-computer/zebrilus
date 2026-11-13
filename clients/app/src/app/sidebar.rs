@@ -22,9 +22,11 @@ use zz_client::{
         sidebar_active, sidebar_add_command, sidebar_close_command, sidebar_rename_command,
         sidebar_rows,
     },
-    window_summary::{DaemonClock, PaneTag, age_label, summarize_chats},
+    window_summary::{
+        ChatHints, ChatParent, DaemonClock, PaneTag, number_chat_rows, summarize_chat_machine,
+    },
 };
-use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId};
+use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, WindowId};
 use zz_ui::{
     command::PaletteHostId,
     navigation::{
@@ -331,6 +333,18 @@ pub(super) struct Flat {
     folded_host: bool,
     scroll: ScrollHandle,
     pub place: ChatViewPlace,
+    hints: ChatHints,
+    open: BTreeSet<WindowId>,
+    pile: bool,
+}
+
+impl Flat {
+    pub(super) fn forget_daemon(&mut self) {
+        self.place = ChatViewPlace::default();
+        self.hints = ChatHints::default();
+        self.open.clear();
+        self.pile = false;
+    }
 }
 
 fn host_connection(connection: &Connection) -> HostConnection {
@@ -356,21 +370,36 @@ pub(super) fn flat_tree(
     let core = &connection.core;
     let snapshot = core.snapshot();
     let now = view.flat.clock.now(super::unix_seconds());
+    let flat = &view.flat;
+    let mut machine =
+        summarize_chat_machine(&snapshot.sessions, &flat.hints, |parent| match parent {
+            ChatParent::Window(window) => flat.open.contains(&window),
+            ChatParent::Pile => flat.pile,
+        });
+    number_chat_rows([&mut machine]);
+    let current = snapshot
+        .sessions
+        .iter()
+        .find(|session| connection.connected && Some(session.id) == core.attached_session())
+        .map(|session| snapshot.focused_window_for(session))
+        .and_then(|focused| {
+            let window = snapshot
+                .sessions
+                .iter()
+                .flat_map(|session| &session.windows)
+                .find(|window| window.id == focused)?;
+            Some((HOST, machine.current(focused, window.active_pane)?))
+        });
     let mut host = FlatHost::new(
         HOST,
         "zz daemon",
         false,
         host_connection(connection),
-        summarize_chats(&snapshot.sessions),
-        |changed_at| age_label(changed_at, now),
+        machine,
+        now,
     );
     host.folded = view.flat.folded_host;
     host.platform = core.host_platform();
-    let current = snapshot
-        .sessions
-        .iter()
-        .find(|session| connection.connected && Some(session.id) == core.attached_session())
-        .map(|session| (HOST, snapshot.focused_window_for(session)));
     let state = FlatState {
         current,
         ..view.flat.state
@@ -436,6 +465,27 @@ pub(super) fn new_chat(view: &mut AppShell, cx: &mut Context<AppShell>) {
 }
 
 pub(super) fn follow_chat_view(view: &mut AppShell, cx: &mut Context<AppShell>) {
+    {
+        let core = &view.connection.read(cx).core;
+        let snapshot = core.snapshot();
+        let focused = snapshot
+            .sessions
+            .iter()
+            .find(|session| Some(session.id) == core.attached_session())
+            .map(|session| snapshot.focused_window_for(session));
+        let windows = || {
+            snapshot
+                .sessions
+                .iter()
+                .flat_map(|session| &session.windows)
+        };
+        let live = windows().map(|window| window.id).collect::<BTreeSet<_>>();
+        view.flat.hints.retain(|window| live.contains(&window));
+        view.flat.open.retain(|window| live.contains(window));
+        if let Some(window) = windows().find(|window| Some(window.id) == focused) {
+            view.flat.hints.observe(window);
+        }
+    }
     if !view.preferences.flat_sidebar {
         return;
     }
@@ -471,6 +521,18 @@ fn flat_event(
         FlatEvent::OpenPane(_, _, pane) => Target::Pane(pane),
         FlatEvent::FoldHost(_) => {
             view.flat.folded_host = !view.flat.folded_host;
+            cx.notify();
+            return;
+        }
+        FlatEvent::ToggleWindow(_, window) => {
+            if !view.flat.open.remove(&window) {
+                view.flat.open.insert(window);
+            }
+            cx.notify();
+            return;
+        }
+        FlatEvent::TogglePile(_) => {
+            view.flat.pile = !view.flat.pile;
             cx.notify();
             return;
         }

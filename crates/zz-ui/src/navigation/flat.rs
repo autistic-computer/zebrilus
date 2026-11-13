@@ -4,13 +4,15 @@ use std::{
 };
 
 use ala::{
-    AnyElement, App, ClickEvent, Context, Div, ElementId, FULL_CORNER_RADIUS, FontFeatures,
-    HighlightStyle, Hsla, IntoElement, Keystroke, ParentElement as _, Pixels, Role, SharedString,
-    Stateful, StyledText, Window, div, font, prelude::*, px,
+    AnyElement, App, Bounds, ClickEvent, Context, Div, ElementId, FULL_CORNER_RADIUS, FontFeatures,
+    HighlightStyle, Hsla, IntoElement, Keystroke, MouseButton, ParentElement as _, Pixels, Role,
+    SharedString, Stateful, StyledText, Window, canvas, div, fill, font, point, prelude::*, px,
+    size,
 };
-use penna::{ContentLook, Label, RowLook, TextStyle};
+use penna::{ContentLook, Label, RowLook, TextStyle, components::tree::IndentGuideColors};
 use zz_client::window_summary::{
-    Attention, AttentionRollup, PaneTag, PaneTile, Tone as DetailTone, WindowSummary,
+    Attention, AttentionRollup, ChatCurrent, ChatMachine, ChatRow, DetailPart, PaneTag, PaneTile,
+    Pile, Tone as DetailTone, WindowRow, WindowSummary, age_label,
 };
 use zz_protocol::{PaneId, WindowId};
 
@@ -35,6 +37,10 @@ use crate::{
 };
 
 const ROW_HEIGHT: f32 = 48.0;
+const NEST_HEIGHT: f32 = 32.0;
+const ROW_ROOM: usize = 3;
+const TRACK_GAP: f32 = 4.0;
+const CHEVRON_SLOP: f32 = 4.0;
 const ROW_PADDING: f32 = 10.0;
 const TILE_GAP: f32 = 10.0;
 const TITLE_LINE: f32 = 17.0;
@@ -79,19 +85,36 @@ pub enum HostConnection {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FlatWindow {
-    pub summary: WindowSummary,
-    pub age: Option<SharedString>,
+    pub row: WindowRow,
     pub shortcut: Option<Keystroke>,
+    pub open: bool,
 }
 
 impl FlatWindow {
-    pub fn new(summary: WindowSummary, age: impl Fn(u64) -> Option<String>) -> Self {
+    #[must_use]
+    pub fn new(row: WindowRow) -> Self {
         Self {
-            age: age(summary.changed_at).map(Into::into),
-            summary,
+            open: !row.panes.is_empty(),
+            row,
             shortcut: None,
         }
     }
+
+    const fn opens(&self) -> bool {
+        self.row.opens
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FlatPile {
+    pub pile: Pile,
+    pub open: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FlatRow {
+    Window(FlatWindow),
+    Pile(FlatPile),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -103,7 +126,8 @@ pub struct FlatHost {
     pub connection: HostConnection,
     pub folded: bool,
     pub rollup: AttentionRollup,
-    pub chats: Vec<FlatWindow>,
+    pub rows: Vec<FlatRow>,
+    pub now: u64,
 }
 
 impl FlatHost {
@@ -112,8 +136,8 @@ impl FlatHost {
         name: impl Into<SharedString>,
         remote: bool,
         connection: HostConnection,
-        (chats, rollup): (Vec<WindowSummary>, AttentionRollup),
-        age: impl Fn(u64) -> Option<String>,
+        machine: ChatMachine,
+        now: u64,
     ) -> Self {
         Self {
             id,
@@ -122,12 +146,30 @@ impl FlatHost {
             platform: zz_protocol::HostPlatform::Unknown,
             connection,
             folded: false,
-            rollup,
-            chats: chats
+            rollup: machine.rollup,
+            rows: machine
+                .rows
                 .into_iter()
-                .map(|chat| FlatWindow::new(chat, &age))
+                .map(|row| match row {
+                    ChatRow::Window(row) => FlatRow::Window(FlatWindow::new(row)),
+                    ChatRow::Pile(pile) => FlatRow::Pile(FlatPile {
+                        open: !pile.windows.is_empty(),
+                        pile,
+                    }),
+                })
                 .collect(),
+            now,
         }
+    }
+
+    #[must_use]
+    pub fn shortcuts(mut self, key: impl Fn(u8) -> Option<Keystroke>) -> Self {
+        for row in &mut self.rows {
+            if let FlatRow::Window(window) = row {
+                window.shortcut = window.row.shortcut.and_then(&key);
+            }
+        }
+        self
     }
 
     fn live(&self) -> bool {
@@ -139,12 +181,16 @@ impl FlatHost {
 pub enum FlatTarget {
     Host(PaletteHostId),
     Window(PaletteHostId, WindowId),
+    Pile(PaletteHostId),
+    Pane(PaletteHostId, WindowId, PaneId),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FlatEvent {
     Open(PaletteHostId, WindowId),
     OpenPane(PaletteHostId, WindowId, PaneId),
+    ToggleWindow(PaletteHostId, WindowId),
+    TogglePile(PaletteHostId),
     FoldHost(PaletteHostId),
     Connect(PaletteHostId),
     Upgrade(PaletteHostId),
@@ -159,7 +205,7 @@ pub type FlatMenu = Rc<
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FlatState {
-    pub current: Option<(PaletteHostId, WindowId)>,
+    pub current: Option<(PaletteHostId, ChatCurrent)>,
     pub selected: Option<(PaletteHostId, WindowId)>,
     pub hovered: Option<FlatTarget>,
 }
@@ -296,10 +342,6 @@ pub(crate) fn action_glyph_center(cx: &App) -> Pixels {
     header_inset(cx) + px(HOST_GLYPH / 2.0)
 }
 
-fn row_height() -> Pixels {
-    px(ROW_HEIGHT)
-}
-
 fn row_trailing_inset(cx: &App) -> Pixels {
     cx.theme().row_inset + crate::sidebar::SIDEBAR_ROW_ACTION_CENTER - px(SPINNER_SIZE / 2.0)
 }
@@ -312,18 +354,22 @@ fn tile_radius(size: StackSize, cx: &App) -> Pixels {
     }
 }
 
-fn tile_stack(
+fn named(prefix: &str, host: PaletteHostId, id: u64) -> ElementId {
+    ElementId::NamedInteger(format!("{prefix}-{}", host.0).into(), id)
+}
+
+fn tile_stack<'a>(
+    id: ElementId,
     host: PaletteHostId,
-    window: WindowId,
-    tiles: &[PaneTile],
+    tiles: impl IntoIterator<Item = (WindowId, &'a PaneTile)>,
+    size: StackSize,
     ink: RowInk,
     handler: Option<&FlatHandler>,
     cx: &App,
 ) -> PaneStack {
-    let size = StackSize::Row;
     let tiles = tiles
-        .iter()
-        .map(|tile| StackTile {
+        .into_iter()
+        .map(|(window, tile)| StackTile {
             icon: pane_glyph(tile.tag),
             favicon: None,
             program: tile.program,
@@ -339,14 +385,10 @@ fn tile_stack(
             }),
         })
         .collect();
-    PaneStack::new(
-        ElementId::NamedInteger(format!("flat-stack-{}", host.0).into(), window.0),
-        tiles,
-        size,
-        ink.ground,
-        tile_radius(size, cx),
-    )
-    .dimmed(if ink.dimmed { DIMMED } else { 0.0 })
+    let dimmed = if ink.dimmed { DIMMED } else { 0.0 };
+    PaneStack::new(id, tiles, size, ink.ground, tile_radius(size, cx))
+        .dimmed(dimmed)
+        .dot_each_face()
 }
 
 pub fn flat_tile_stack(
@@ -360,9 +402,10 @@ pub fn flat_tile_stack(
         .flex_none()
         .w(px(StackSize::Row.widest()))
         .child(tile_stack(
+            named("flat-stack", host, window.0),
             host,
-            window,
-            tiles,
+            tiles.iter().map(|tile| (window, tile)),
+            StackSize::Row,
             RowInk::new(state, cx),
             None,
             cx,
@@ -392,10 +435,10 @@ fn baseline_drop(line_font: f32, own_font: f32, cx: &App) -> Pixels {
     middle(line_font) - middle(own_font)
 }
 
-fn detail_text(window: &WindowSummary, ink: RowInk, cx: &App) -> StyledText {
+fn detail_text(detail: &[DetailPart], ink: RowInk, cx: &App) -> StyledText {
     let mut text = String::new();
-    let mut highlights = Vec::with_capacity(window.detail.len());
-    for part in &window.detail {
+    let mut highlights = Vec::with_capacity(detail.len());
+    for part in detail {
         let start = text.len();
         text.push_str(&part.text);
         highlights.push((
@@ -409,54 +452,119 @@ fn detail_text(window: &WindowSummary, ink: RowInk, cx: &App) -> StyledText {
     StyledText::new(text).with_highlights(highlights)
 }
 
-fn row_description(window: &FlatWindow) -> String {
-    let detail = window
-        .summary
-        .detail
+fn row_description(detail: &[DetailPart], attention: Attention, age: Option<&str>) -> String {
+    let detail = detail
         .iter()
         .map(|part| part.text.as_str())
         .collect::<String>();
-    [
-        Some(detail.as_str()),
-        attention_word(window.summary.attention),
-        window.age.as_deref(),
-    ]
-    .into_iter()
-    .flatten()
-    .filter(|part| !part.is_empty())
-    .collect::<Vec<_>>()
-    .join(", ")
+    [Some(detail.as_str()), attention_word(attention), age]
+        .into_iter()
+        .flatten()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
-pub fn flat_window_row(
+fn front_working(summary: &WindowSummary) -> bool {
+    summary
+        .tiles
+        .first()
+        .is_some_and(|tile| tile.attention == Attention::Working)
+}
+
+fn age(changed_at: u64, now: u64) -> Option<SharedString> {
+    age_label(changed_at, now).map(Into::into)
+}
+
+fn row_chevron(
+    id: &ElementId,
+    (event, open): (FlatEvent, bool),
+    shown: bool,
+    ink: RowInk,
+    handler: &FlatHandler,
+    cx: &App,
+) -> Stateful<Div> {
+    let handler = handler.clone();
+    let foreground = ink.dim(ink.text);
+    div()
+        .id(ElementId::from((id.clone(), "chevron")))
+        .flex_none()
+        .relative()
+        .top(cap_center_drop(px(TITLE.design_px()), px(CHEVRON_SIZE), cx))
+        .p(px(CHEVRON_SLOP))
+        .m(px(-CHEVRON_SLOP))
+        .text_color(ink.dim(ink.muted))
+        .hover(move |style| style.text_color(foreground))
+        .click_cursor()
+        .when(!shown, Styled::invisible)
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_click(move |_, window, cx| {
+            cx.stop_propagation();
+            handler(event, window, cx);
+        })
+        .child(Disclosure::new(
+            ElementId::from((id.clone(), "disclosure")),
+            open,
+            px(CHEVRON_SIZE),
+        ))
+}
+
+struct MainRow<'a> {
+    id: ElementId,
     host: PaletteHostId,
-    window: &FlatWindow,
+    target: FlatTarget,
+    click: FlatEvent,
+    toggle: Option<(FlatEvent, bool)>,
+    stack: ElementId,
+    tiles: Vec<(WindowId, &'a PaneTile)>,
+    title: SharedString,
+    strong: bool,
+    working: bool,
+    detail: &'a [DetailPart],
+    attention: Attention,
+    age: Option<SharedString>,
+    shortcut: Option<Keystroke>,
+}
+
+fn main_row(
+    row: MainRow<'_>,
     state: FlatRowState,
     handler: &FlatHandler,
-    menu: &FlatMenu,
     cx: &App,
-) -> AnyElement {
+) -> Stateful<Div> {
     let theme = cx.theme();
+    let coarse = CoarsePointer::get(cx);
     let state = state.for_pointer(cx);
     let ink = RowInk::new(state, cx);
-    let summary = &window.summary;
-    let id = summary.window;
-    let title = SharedString::from(summary.title.clone());
-    let target = FlatTarget::Window(host, id);
-    let working = summary.attention == Attention::Working && !state.dimmed;
-    let busy = working.then(|| spinner(SPINNER_SIZE, TITLE.design_px(), ink.muted, cx));
-    let context = menu.clone();
-    let row_id = ElementId::NamedInteger(format!("flat-window-{}", host.0).into(), id.0);
+    let busy = (row.working && !state.dimmed)
+        .then(|| spinner(SPINNER_SIZE, TITLE.design_px(), ink.muted, cx));
+    let chevron = row.toggle.map(|toggle| {
+        let shown = toggle.1 || state.hovered || coarse;
+        row_chevron(&row.id, toggle, shown, ink, handler, cx)
+    });
     let (look, paint_state) = state.look();
     let ground = state.ground.unwrap_or_else(|| theme.ground());
-    let fill = workspace_row_fill(&row_id, look, paint_state, None, ground, cx);
+    let fill = workspace_row_fill(&row.id, look, paint_state, None, ground, cx);
+    let description = row_description(row.detail, row.attention, row.age.as_deref());
+    let (target, click) = (row.target, row.click);
     let hover = handler.clone();
-    let click = handler.clone();
+    let press = handler.clone();
+    let mut label = Label::new(TITLE, row.title.clone())
+        .line_height(px(TITLE_LINE))
+        .flex_1()
+        .min_w_0()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .text_fade(crate::LABEL_FADE);
+    if row.strong {
+        label = label.strong();
+    }
     div()
-        .id(row_id)
+        .id(row.id)
         .role(Role::Button)
-        .aria_label(title.clone())
-        .aria_description(row_description(window))
+        .aria_label(row.title)
+        .aria_description(description)
+        .when_some(row.toggle, |this, (_, open)| this.aria_expanded(open))
         .aria_selected(state.current)
         .when(
             state.selected,
@@ -467,19 +575,20 @@ pub fn flat_window_row(
         .flex_none()
         .items_center()
         .gap(px(TILE_GAP))
-        .h(row_height())
+        .h(px(ROW_HEIGHT))
         .pl(theme.row_inset + px(ROW_PADDING))
         .pr(row_trailing_inset(cx))
         .text_color(ink.dim(ink.text))
         .click_cursor()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
-        .on_click(move |_, window, cx| click(FlatEvent::Open(host, id), window, cx))
+        .on_click(move |_, window, cx| press(click, window, cx))
         .child(fill)
         .child(
             tile_stack(
-                host,
-                id,
-                &summary.tiles,
+                row.stack,
+                row.host,
+                row.tiles,
+                StackSize::Row,
                 ink,
                 (!state.dimmed).then_some(handler),
                 cx,
@@ -495,17 +604,9 @@ pub fn flat_window_row(
                             .min_w_0()
                             .h(px(TITLE_LINE))
                             .gap(px(TITLE_TRAILING_GAP))
-                            .child(
-                                Label::new(TITLE, title)
-                                    .strong()
-                                    .line_height(px(TITLE_LINE))
-                                    .flex_1()
-                                    .min_w_0()
-                                    .overflow_hidden()
-                                    .whitespace_nowrap()
-                                    .text_fade(crate::LABEL_FADE),
-                            )
-                            .children(busy),
+                            .child(label)
+                            .children(busy)
+                            .children(chevron),
                     )
                     .child(
                         h_flex()
@@ -522,38 +623,282 @@ pub fn flat_window_row(
                                     .type_style(DETAIL, cx)
                                     .line_height(px(DETAIL_LINE))
                                     .text_color(ink.dim(ink.muted))
-                                    .child(detail_text(summary, ink, cx)),
+                                    .child(detail_text(row.detail, ink, cx)),
                             )
-                            .children(
-                                window
-                                    .age
-                                    .clone()
-                                    .filter(|_| window.shortcut.is_none())
-                                    .map(|age| {
-                                        Label::new(AGE, age)
-                                            .line_height(px(DETAIL_LINE))
-                                            .font_features(TABULAR.clone())
-                                            .text_color(ink.dim(ink.muted))
-                                            .flex_none()
-                                            .relative()
-                                            .top(baseline_drop(
-                                                DETAIL.design_px(),
-                                                AGE.design_px(),
-                                                cx,
-                                            ))
-                                    }),
-                            ),
+                            .children(row.age.filter(|_| row.shortcut.is_none()).map(|age| {
+                                Label::new(AGE, age)
+                                    .line_height(px(DETAIL_LINE))
+                                    .font_features(TABULAR.clone())
+                                    .text_color(ink.dim(ink.muted))
+                                    .flex_none()
+                                    .relative()
+                                    .top(baseline_drop(DETAIL.design_px(), AGE.design_px(), cx))
+                            })),
                     ),
                 px(TILE_GAP),
             ),
         )
         .children(
-            window
-                .shortcut
-                .clone()
+            row.shortcut
                 .map(|stroke| super::window_shortcut_cap(stroke, ink.ground).flex_none()),
         )
-        .context_menu(move |popup, window_handle, cx| context(host, id, popup, window_handle, cx))
+}
+
+pub fn flat_window_row(
+    host: PaletteHostId,
+    window: &FlatWindow,
+    state: FlatRowState,
+    handler: &FlatHandler,
+    menu: &FlatMenu,
+    now: u64,
+    cx: &App,
+) -> AnyElement {
+    let summary = &window.row.summary;
+    let id = summary.window;
+    let context = menu.clone();
+    main_row(
+        MainRow {
+            id: named("flat-window", host, id.0),
+            host,
+            target: FlatTarget::Window(host, id),
+            click: FlatEvent::Open(host, id),
+            toggle: window
+                .opens()
+                .then_some((FlatEvent::ToggleWindow(host, id), window.open)),
+            stack: named("flat-stack", host, id.0),
+            tiles: summary.tiles.iter().map(|tile| (id, tile)).collect(),
+            title: summary.title.clone().into(),
+            strong: window.row.chat,
+            working: front_working(summary),
+            detail: if window.open {
+                &window.row.open_detail
+            } else {
+                &summary.detail
+            },
+            attention: summary.attention,
+            age: age(summary.changed_at, now),
+            shortcut: window.shortcut.clone(),
+        },
+        state,
+        handler,
+        cx,
+    )
+    .context_menu(move |popup, window_handle, cx| context(host, id, popup, window_handle, cx))
+    .into_any_element()
+}
+
+pub fn flat_pile_row(
+    host: PaletteHostId,
+    pile: &FlatPile,
+    state: FlatRowState,
+    handler: &FlatHandler,
+    now: u64,
+    cx: &App,
+) -> AnyElement {
+    let summary = &pile.pile.summary;
+    main_row(
+        MainRow {
+            id: ElementId::NamedInteger("flat-pile".into(), u64::from(host.0)),
+            host,
+            target: FlatTarget::Pile(host),
+            click: FlatEvent::Open(host, summary.window),
+            toggle: Some((FlatEvent::TogglePile(host), pile.open)),
+            stack: ElementId::NamedInteger("flat-pile-stack".into(), u64::from(host.0)),
+            tiles: pile
+                .pile
+                .faces
+                .iter()
+                .copied()
+                .zip(&summary.tiles)
+                .collect(),
+            title: summary.title.clone().into(),
+            strong: false,
+            working: pile.pile.working,
+            detail: if pile.open {
+                &pile.pile.open_detail
+            } else {
+                &summary.detail
+            },
+            attention: summary.attention,
+            age: age(summary.changed_at, now),
+            shortcut: None,
+        },
+        state,
+        handler,
+        cx,
+    )
+    .into_any_element()
+}
+
+enum Trailing {
+    Word(&'static str, DetailTone),
+    Spinner,
+    Age(SharedString),
+    Nothing,
+}
+
+impl Trailing {
+    fn of(attention: Attention, working: bool, age: Option<SharedString>) -> Self {
+        match short_word(attention) {
+            Some((word, tone)) => Self::Word(word, tone),
+            None if working => Self::Spinner,
+            None => age.map_or(Self::Nothing, Self::Age),
+        }
+    }
+}
+
+fn short_word(attention: Attention) -> Option<(&'static str, DetailTone)> {
+    match attention {
+        Attention::NeedsYou => Some(("Needs you", DetailTone::Warning)),
+        Attention::Failed => Some(("Failed", DetailTone::Danger)),
+        Attention::Bell => Some(("Bell", DetailTone::Normal)),
+        _ => None,
+    }
+}
+
+struct NestRow<'a> {
+    id: ElementId,
+    host: PaletteHostId,
+    target: FlatTarget,
+    click: FlatEvent,
+    stack: ElementId,
+    tiles: Vec<(WindowId, &'a PaneTile)>,
+    room: usize,
+    title: SharedString,
+    strong: bool,
+    attention: Attention,
+    working: bool,
+    age: Option<SharedString>,
+}
+
+fn nest_row(row: NestRow<'_>, state: FlatRowState, handler: &FlatHandler, cx: &App) -> AnyElement {
+    let theme = cx.theme();
+    let state = state.for_pointer(cx);
+    let ink = RowInk::new(state, cx);
+    let (look, paint_state) = state.look();
+    let ground = state.ground.unwrap_or_else(|| theme.ground());
+    let fill = workspace_row_fill(&row.id, look, paint_state, None, ground, cx);
+    let description = [attention_word(row.attention), row.age.as_deref()]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(", ");
+    let trailing = match Trailing::of(row.attention, row.working && !state.dimmed, row.age) {
+        Trailing::Word(word, tone) => Some(
+            Label::new(AGE, word)
+                .line_height(px(TITLE_LINE))
+                .text_color(ink.tone(tone, cx))
+                .flex_none()
+                .relative()
+                .top(baseline_drop(TITLE.design_px(), AGE.design_px(), cx))
+                .into_any_element(),
+        ),
+        Trailing::Spinner => {
+            Some(spinner(SPINNER_SIZE, TITLE.design_px(), ink.muted, cx).into_any_element())
+        }
+        Trailing::Age(age) => Some(
+            Label::new(AGE, age)
+                .line_height(px(TITLE_LINE))
+                .font_features(TABULAR.clone())
+                .text_color(ink.dim(ink.muted))
+                .flex_none()
+                .relative()
+                .top(baseline_drop(TITLE.design_px(), AGE.design_px(), cx))
+                .into_any_element(),
+        ),
+        Trailing::Nothing => None,
+    };
+    let mut label = Label::new(TITLE, row.title.clone())
+        .line_height(px(TITLE_LINE))
+        .flex_1()
+        .min_w_0()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .text_fade(crate::LABEL_FADE);
+    if row.strong {
+        label = label.strong();
+    }
+    let (target, click) = (row.target, row.click);
+    let hover = handler.clone();
+    let press = handler.clone();
+    div()
+        .id(row.id)
+        .role(Role::Button)
+        .aria_label(row.title)
+        .aria_description(description)
+        .aria_selected(state.current)
+        .relative()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(TILE_GAP))
+        .h(px(NEST_HEIGHT))
+        .pl(theme.row_inset + px(nest_inset()))
+        .pr(row_trailing_inset(cx))
+        .text_color(ink.dim(ink.text))
+        .click_cursor()
+        .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
+        .on_click(move |_, window, cx| press(click, window, cx))
+        .child(fill)
+        .child(
+            div()
+                .flex_none()
+                .w(px(StackSize::Bar.width(row.room)))
+                .child(tile_stack(
+                    row.stack,
+                    row.host,
+                    row.tiles,
+                    StackSize::Bar,
+                    ink,
+                    (!state.dimmed).then_some(handler),
+                    cx,
+                )),
+        )
+        .child(
+            h_flex()
+                .flex_1()
+                .min_w_0()
+                .h(px(TITLE_LINE))
+                .gap(px(DETAIL_AGE_GAP))
+                .child(label)
+                .children(trailing),
+        )
+        .into_any_element()
+}
+
+fn nest_inset() -> f32 {
+    ROW_PADDING + StackSize::Row.widest() - StackSize::Bar.tile()
+}
+
+fn track(color: Hsla, cx: &App) -> impl IntoElement {
+    let x = cx.theme().row_inset + px(ROW_PADDING + StackSize::Row.tile() / 2.0);
+    let top = px(f32::midpoint(ROW_HEIGHT, StackSize::Row.tile()) + TRACK_GAP);
+    canvas(
+        |_, _, _| (),
+        move |bounds, (), window, _| {
+            let hairline = px(1.0) / window.scale_factor();
+            let line = Bounds::new(
+                point(bounds.left() + x - hairline / 2.0, bounds.top() + top),
+                size(hairline, bounds.size.height - top - px(TRACK_GAP)),
+            );
+            window.paint_quad(fill(window.pixel_snap_bounds(line), color));
+        },
+    )
+    .absolute()
+    .inset_0()
+}
+
+fn group(parent: impl IntoElement, nested: Vec<AnyElement>, lit: bool, cx: &App) -> AnyElement {
+    if nested.is_empty() {
+        return parent.into_any_element();
+    }
+    let colors = IndentGuideColors::tree(cx);
+    v_flex()
+        .relative()
+        .flex_none()
+        .child(parent)
+        .children(nested)
+        .child(track(if lit { colors.active } else { colors.default }, cx))
         .into_any_element()
 }
 
@@ -830,6 +1175,156 @@ pub fn flat_action_row(
         )
 }
 
+fn window_group(
+    host: &FlatHost,
+    window: &FlatWindow,
+    here: Option<ChatCurrent>,
+    base: FlatRowState,
+    state: FlatState,
+    handler: &FlatHandler,
+    menu: &FlatMenu,
+    cx: &App,
+) -> AnyElement {
+    let id = window.row.summary.window;
+    let nested_at = here.and_then(|at| at.entry).filter(|_| window.open);
+    let parent = flat_window_row(
+        host.id,
+        window,
+        FlatRowState {
+            current: here.is_some() && nested_at.is_none(),
+            selected: state.selected == Some((host.id, id)),
+            hovered: state.hovered == Some(FlatTarget::Window(host.id, id)),
+            ..base
+        },
+        handler,
+        menu,
+        host.now,
+        cx,
+    );
+    let parent = motion::enter(named("flat-window-enter", host.id, id.0), parent);
+    if !window.open {
+        return parent.into_any_element();
+    }
+    let nested = window
+        .row
+        .panes
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            let pane = entry.face.pane;
+            let target = FlatTarget::Pane(host.id, id, pane);
+            let key = format!("flat-pane-{}-{}", host.id.0, id.0);
+            let row = nest_row(
+                NestRow {
+                    id: ElementId::NamedInteger(key.clone().into(), pane.0),
+                    host: host.id,
+                    target,
+                    click: FlatEvent::OpenPane(host.id, id, pane),
+                    stack: ElementId::NamedInteger(format!("{key}-face").into(), pane.0),
+                    tiles: vec![(id, &entry.face)],
+                    room: 1,
+                    title: entry.title.clone().into(),
+                    strong: entry.chat,
+                    attention: entry.face.attention,
+                    working: entry.face.attention == Attention::Working,
+                    age: age(entry.changed_at, host.now),
+                },
+                FlatRowState {
+                    current: nested_at == Some(index),
+                    hovered: state.hovered == Some(target),
+                    ..base
+                },
+                handler,
+                cx,
+            );
+            motion::enter(
+                ElementId::NamedInteger(format!("{key}-enter").into(), pane.0),
+                row,
+            )
+            .into_any_element()
+        })
+        .collect();
+    group(parent, nested, nested_at.is_some(), cx)
+}
+
+fn pile_group(
+    host: &FlatHost,
+    pile: &FlatPile,
+    here: Option<ChatCurrent>,
+    base: FlatRowState,
+    state: FlatState,
+    handler: &FlatHandler,
+    cx: &App,
+) -> AnyElement {
+    let nested_at = here.and_then(|at| at.entry).filter(|_| pile.open);
+    let parent = flat_pile_row(
+        host.id,
+        pile,
+        FlatRowState {
+            current: here.is_some() && nested_at.is_none(),
+            hovered: state.hovered == Some(FlatTarget::Pile(host.id)),
+            ..base
+        },
+        handler,
+        host.now,
+        cx,
+    );
+    let parent = motion::enter(
+        ElementId::NamedInteger("flat-pile-enter".into(), u64::from(host.id.0)),
+        parent,
+    );
+    if !pile.open {
+        return parent.into_any_element();
+    }
+    let windows = &pile.pile.windows;
+    let room = windows
+        .iter()
+        .map(|window| window.summary.tiles.len())
+        .max()
+        .unwrap_or(1);
+    let nested = windows
+        .iter()
+        .enumerate()
+        .map(|(index, window)| {
+            let summary = &window.summary;
+            let id = summary.window;
+            let target = FlatTarget::Window(host.id, id);
+            let row = nest_row(
+                NestRow {
+                    id: named("flat-pile-window", host.id, id.0),
+                    host: host.id,
+                    target,
+                    click: FlatEvent::Open(host.id, id),
+                    stack: named("flat-pile-window-stack", host.id, id.0),
+                    tiles: summary.tiles.iter().map(|tile| (id, tile)).collect(),
+                    room,
+                    title: summary.title.clone().into(),
+                    strong: false,
+                    attention: summary
+                        .tiles
+                        .iter()
+                        .map(|tile| tile.attention)
+                        .filter(|attention| short_word(*attention).is_some())
+                        .max()
+                        .unwrap_or_default(),
+                    working: front_working(summary),
+                    age: age(summary.changed_at, host.now),
+                },
+                FlatRowState {
+                    current: nested_at == Some(index),
+                    selected: state.selected == Some((host.id, id)),
+                    hovered: state.hovered == Some(target),
+                    ..base
+                },
+                handler,
+                cx,
+            );
+            motion::enter(named("flat-pile-window-enter", host.id, id.0), row).into_any_element()
+        })
+        .collect();
+    group(parent, nested, nested_at.is_some(), cx)
+}
+
 pub fn flat_sidebar(
     hosts: &[FlatHost],
     state: FlatState,
@@ -838,20 +1333,13 @@ pub fn flat_sidebar(
     ground: Ground,
     cx: &App,
 ) -> Div {
-    let stack_tiles = hosts
-        .iter()
-        .filter(|host| !host.folded)
-        .flat_map(|host| &host.chats)
-        .map(|chat| chat.summary.tiles.len())
-        .max()
-        .unwrap_or_default();
     let mut list = v_flex()
         .w_full()
         .flex_none()
         .pr(crate::sidebar::SIDEBAR_SCROLLBAR_GUTTER);
     for (index, host) in hosts
         .iter()
-        .filter(|host| !host.chats.is_empty())
+        .filter(|host| !host.rows.is_empty())
         .enumerate()
     {
         list = list.child(motion::enter(
@@ -867,32 +1355,24 @@ pub fn flat_sidebar(
         if host.folded {
             continue;
         }
-        let dimmed = !host.live();
-        list = list.children(host.chats.iter().map(|chat| {
-            let key = Some((host.id, chat.summary.window));
-            let row = flat_window_row(
-                host.id,
-                chat,
-                FlatRowState {
-                    current: state.current == key,
-                    selected: state.selected == key,
-                    hovered: state.hovered
-                        == Some(FlatTarget::Window(host.id, chat.summary.window)),
-                    dimmed,
-                    ground: Some(ground),
-                    stack_tiles,
-                },
-                handler,
-                menu,
-                cx,
-            );
-            motion::enter(
-                ElementId::NamedInteger(
-                    format!("flat-window-enter-{}", host.id.0).into(),
-                    chat.summary.window.0,
-                ),
-                row,
-            )
+        let base = FlatRowState {
+            dimmed: !host.live(),
+            ground: Some(ground),
+            stack_tiles: ROW_ROOM,
+            ..FlatRowState::default()
+        };
+        let current = state
+            .current
+            .filter(|(id, _)| *id == host.id)
+            .map(|(_, at)| at);
+        list = list.children(host.rows.iter().enumerate().map(|(index, row)| {
+            let here = current.filter(|at| at.row == index);
+            match row {
+                FlatRow::Window(window) => {
+                    window_group(host, window, here, base, state, handler, menu, cx)
+                }
+                FlatRow::Pile(pile) => pile_group(host, pile, here, base, state, handler, cx),
+            }
         }));
     }
     list
@@ -923,7 +1403,8 @@ mod tests {
                 connection: HostConnection::Connected,
                 folded: false,
                 rollup: AttentionRollup::default(),
-                chats: Vec::new(),
+                rows: Vec::new(),
+                now: 0,
             }];
             let state = FlatState {
                 hovered: Some(FlatTarget::Host(host)),
@@ -982,14 +1463,18 @@ mod tests {
     #[test]
     fn hover_survives_entering_the_next_row_before_leaving_the_last() {
         let host = PaletteHostId(0);
-        let first = FlatTarget::Window(host, WindowId(1));
-        let second = FlatTarget::Window(host, WindowId(2));
+        let window = FlatTarget::Window(host, WindowId(1));
+        let nested = FlatTarget::Pane(host, WindowId(1), PaneId(2));
+        let pile = FlatTarget::Pile(host);
         let mut state = FlatState::default();
-        assert!(state.hover(first, true));
-        assert!(state.hover(second, true));
-        assert!(!state.hover(first, false));
-        assert_eq!(state.hovered, Some(second));
-        assert!(state.hover(second, false));
+        assert!(state.hover(window, true));
+        assert!(state.hover(nested, true));
+        assert!(!state.hover(window, false));
+        assert_eq!(state.hovered, Some(nested));
+        assert!(state.hover(pile, true));
+        assert!(!state.hover(nested, false));
+        assert_eq!(state.hovered, Some(pile));
+        assert!(state.hover(pile, false));
         assert_eq!(state.hovered, None);
     }
 }

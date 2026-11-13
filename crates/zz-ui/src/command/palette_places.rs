@@ -316,7 +316,7 @@ fn chat_entry(
     current: &Place,
 ) -> PaletteEntry {
     let place = chat_place(chat);
-    let right = if is_current(current, &place, Level::Window) {
+    let right = if is_current(current, &place, Level::Pane) {
         "current".to_owned()
     } else if chat.host.0 == fleet.here {
         String::new()
@@ -678,7 +678,7 @@ impl UnifiedPalette {
         let current = fleet.current();
         if self.tree.chat_mode {
             let mut chats = self.tree.chats.iter().take(PLACE_ROWS).collect::<Vec<_>>();
-            chats.sort_by_key(|chat| is_current(&current, &chat_place(chat), Level::Window));
+            chats.sort_by_key(|chat| is_current(&current, &chat_place(chat), Level::Pane));
             let chats = chats
                 .into_iter()
                 .map(|chat| chat_entry(fleet, chat, Vec::new(), &current))

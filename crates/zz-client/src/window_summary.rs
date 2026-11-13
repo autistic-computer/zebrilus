@@ -80,8 +80,12 @@ pub struct AttentionRollup {
 
 impl AttentionRollup {
     pub fn add(&mut self, window: &WindowSummary) {
-        self.changed_at = self.changed_at.max(window.changed_at);
-        let count = match window.attention {
+        self.count(window.attention, window.changed_at);
+    }
+
+    fn count(&mut self, attention: Attention, changed_at: u64) {
+        self.changed_at = self.changed_at.max(changed_at);
+        let count = match attention {
             Attention::NeedsYou => &mut self.needs_you,
             Attention::Failed => &mut self.failed,
             Attention::Done => &mut self.done,
@@ -329,13 +333,16 @@ pub struct PaneEntry {
     pub title: String,
     pub detail: Vec<DetailPart>,
     pub changed_at: u64,
+    pub chat: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WindowRow {
     pub session: SessionId,
     pub summary: WindowSummary,
+    pub open_detail: Vec<DetailPart>,
     pub chat: bool,
+    pub opens: bool,
     pub panes: Vec<PaneEntry>,
     pub shortcut: Option<u8>,
 }
@@ -343,7 +350,16 @@ pub struct WindowRow {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pile {
     pub summary: WindowSummary,
+    pub open_detail: Vec<DetailPart>,
+    pub working: bool,
+    pub faces: Vec<WindowId>,
     pub windows: Vec<WindowRow>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChatParent {
+    Window(WindowId),
+    Pile,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -374,9 +390,14 @@ impl ChatHints {
     pub fn observe(&mut self, window: &WindowSnapshot) {
         if window.panes.get(&window.active_pane).is_some_and(is_chat) {
             self.last_chat.insert(window.id, window.active_pane);
-        } else if !window.panes.values().any(is_chat) {
+        } else if chat_view_lists(window) && !window.panes.values().any(is_chat) {
             self.last_plain = Some(window.id);
         }
+    }
+
+    pub fn retain(&mut self, live: impl Fn(WindowId) -> bool) {
+        self.last_chat.retain(|window, _| live(*window));
+        self.last_plain = self.last_plain.filter(|window| live(*window));
     }
 }
 
@@ -391,14 +412,13 @@ impl ChatMachine {
                     row,
                     entry: found.panes.iter().position(|entry| entry.face.pane == pane),
                 }),
-                ChatRow::Pile(pile) => pile
-                    .windows
-                    .iter()
-                    .position(|found| found.summary.window == window)
-                    .map(|entry| ChatCurrent {
-                        row,
-                        entry: Some(entry),
-                    }),
+                ChatRow::Pile(pile) => pile.faces.contains(&window).then(|| ChatCurrent {
+                    row,
+                    entry: pile
+                        .windows
+                        .iter()
+                        .position(|found| found.summary.window == window),
+                }),
             })
     }
 }
@@ -407,29 +427,45 @@ impl ChatMachine {
 pub fn summarize_chat_machine<'a>(
     sessions: impl IntoIterator<Item = &'a SessionSnapshot>,
     hints: &ChatHints,
+    open: impl Fn(ChatParent) -> bool,
 ) -> ChatMachine {
     let mut chats = Vec::new();
     let mut plain = Vec::new();
     for session in sessions {
-        for window in &session.windows {
+        for window in session
+            .windows
+            .iter()
+            .filter(|window| chat_view_lists(window))
+        {
             let panes = ordered_panes(window);
             let hint = hints.last_chat.get(&window.id).copied();
-            if let Some(row) = chat_row(session.id, window, &panes, hint) {
+            let opened = open(ChatParent::Window(window.id));
+            if let Some(row) = chat_row(session.id, window, &panes, hint, opened) {
                 chats.push(row);
-            } else if let Some(row) = plain_row(session.id, window, &panes) {
-                plain.push(row);
+            } else if let Some(found) = Plain::new(session.id, window, panes) {
+                plain.push(found);
             }
         }
     }
     let mut rollup = AttentionRollup::default();
-    for row in chats.iter().chain(plain.iter().map(|(row, _)| row)) {
+    for row in &chats {
         rollup.add(&row.summary);
     }
     let mut rows = chats.into_iter().map(ChatRow::Window).collect::<Vec<_>>();
-    match plain.len() {
-        0 => {}
-        1 => rows.extend(plain.into_iter().map(|(row, _)| ChatRow::Window(row))),
-        _ => rows.push(ChatRow::Pile(pile(plain, hints.last_plain))),
+    match plain.as_slice() {
+        [] => {}
+        [lone] => {
+            let row = lone.row(open(ChatParent::Window(lone.window.id)));
+            rollup.add(&row.summary);
+            rows.push(ChatRow::Window(row));
+        }
+        _ => {
+            let pile = pile(&plain, hints.last_plain, open(ChatParent::Pile));
+            for found in &plain {
+                rollup.count(found.attention(), found.front.summary.changed_at);
+            }
+            rows.push(ChatRow::Pile(pile));
+        }
     }
     ChatMachine { rows, rollup }
 }
@@ -448,8 +484,17 @@ pub fn number_chat_rows<'a>(machines: impl IntoIterator<Item = &'a mut ChatMachi
 }
 
 #[must_use]
+pub fn chat_view_lists(window: &WindowSnapshot) -> bool {
+    window
+        .panes
+        .values()
+        .any(|pane| !matches!(pane.kind, PaneKindSnapshot::Picker))
+}
+
+#[must_use]
 pub fn pane_entry(window: &WindowSnapshot, pane: &PaneSnapshot) -> PaneEntry {
-    let (title, detail) = if is_chat(pane) {
+    let chat = is_chat(pane);
+    let (title, detail) = if chat {
         let title = chat_title(window, pane);
         let detail = chat_detail(window, pane, &title);
         (title, detail)
@@ -461,6 +506,7 @@ pub fn pane_entry(window: &WindowSnapshot, pane: &PaneSnapshot) -> PaneEntry {
         title,
         detail,
         changed_at: pane.summary.changed_at,
+        chat,
     }
 }
 
@@ -479,6 +525,7 @@ fn chat_row(
     window: &WindowSnapshot,
     panes: &[&PaneSnapshot],
     hint: Option<PaneId>,
+    open: bool,
 ) -> Option<WindowRow> {
     let chats = panes
         .iter()
@@ -494,12 +541,13 @@ fn chat_row(
         chats.iter().copied().filter(|pane| pane.id != front.id),
         needs_user,
     );
+    let open_detail = chat_detail(window, front, &title);
     let detail = match behind {
         Some((_, word, pane)) if !needs_user(pane_attention(front)) => vec![
             word,
             part(format!(" · {}", chat_title(window, pane)), Tone::Muted),
         ],
-        _ => chat_detail(window, front, &title),
+        _ => open_detail.clone(),
     };
     let faces = std::iter::once(front)
         .chain(chats.iter().copied().filter(|pane| pane.id != front.id))
@@ -509,100 +557,165 @@ fn chat_row(
     Some(WindowRow {
         session,
         summary: row_summary(window, panes, front, title, detail, faces),
+        open_detail,
         chat: true,
-        panes: pane_entries(window, panes),
+        opens: panes.len() > 1,
+        panes: if open {
+            pane_entries(window, panes)
+        } else {
+            Vec::new()
+        },
         shortcut: None,
     })
 }
 
-fn plain_row(
+struct Plain<'a> {
     session: SessionId,
-    window: &WindowSnapshot,
-    panes: &[&PaneSnapshot],
-) -> Option<(WindowRow, Option<Alert>)> {
-    let front = window
-        .panes
-        .get(&window.active_pane)
-        .or_else(|| panes.first().copied())?;
-    let behind = loudest(
-        panes.iter().copied().filter(|pane| pane.id != front.id),
-        |_| true,
-    );
-    let detail = match behind {
-        Some((_, word, pane)) if alert(front).is_none() => {
-            vec![word, part(format!(" · {}", plain_title(pane)), Tone::Muted)]
-        }
-        _ => own_line(front),
-    };
-    let faces = std::iter::once(front)
-        .chain(panes.iter().copied().filter(|pane| pane.id != front.id))
-        .map(pane_tile)
-        .collect();
-    let row = WindowRow {
-        session,
-        summary: row_summary(window, panes, front, plain_title(front), detail, faces),
-        chat: false,
-        panes: pane_entries(window, panes),
-        shortcut: None,
-    };
-    let window_alert =
-        loudest(panes.iter().copied(), |_| true).map(|(attention, word, _)| (attention, word));
-    Some((row, window_alert))
+    window: &'a WindowSnapshot,
+    panes: Vec<&'a PaneSnapshot>,
+    front: &'a PaneSnapshot,
 }
 
-fn pile(windows: Vec<(WindowRow, Option<Alert>)>, last: Option<WindowId>) -> Pile {
-    let front = last
-        .and_then(|last| {
-            windows
-                .iter()
-                .position(|(row, _)| row.summary.window == last)
+impl<'a> Plain<'a> {
+    fn new(
+        session: SessionId,
+        window: &'a WindowSnapshot,
+        panes: Vec<&'a PaneSnapshot>,
+    ) -> Option<Self> {
+        let front = window
+            .panes
+            .get(&window.active_pane)
+            .or_else(|| panes.first().copied())?;
+        Some(Self {
+            session,
+            window,
+            panes,
+            front,
         })
+    }
+
+    fn title(&self) -> String {
+        let name = self.window.name.trim();
+        if self.window.automatic_rename || name.is_empty() {
+            plain_title(self.front)
+        } else {
+            name.to_owned()
+        }
+    }
+
+    fn detail(&self) -> Vec<DetailPart> {
+        let behind = loudest(
+            self.panes
+                .iter()
+                .copied()
+                .filter(|pane| pane.id != self.front.id),
+            |_| true,
+        );
+        match behind {
+            Some((_, word, pane)) if alert(self.front).is_none() => {
+                vec![word, part(format!(" · {}", plain_title(pane)), Tone::Muted)]
+            }
+            _ => own_line(self.front),
+        }
+    }
+
+    fn alert(&self) -> Option<Alert> {
+        loudest(self.panes.iter().copied(), |_| true).map(|(attention, word, _)| (attention, word))
+    }
+
+    fn attention(&self) -> Attention {
+        self.panes
+            .iter()
+            .map(|pane| pane_attention(pane))
+            .max()
+            .unwrap_or_default()
+    }
+
+    fn row(&self, open: bool) -> WindowRow {
+        let faces = std::iter::once(self.front)
+            .chain(
+                self.panes
+                    .iter()
+                    .copied()
+                    .filter(|pane| pane.id != self.front.id),
+            )
+            .map(pane_tile)
+            .collect();
+        WindowRow {
+            session: self.session,
+            summary: row_summary(
+                self.window,
+                &self.panes,
+                self.front,
+                self.title(),
+                self.detail(),
+                faces,
+            ),
+            open_detail: own_line(self.front),
+            chat: false,
+            opens: self.panes.len() > 1,
+            panes: if open {
+                pane_entries(self.window, &self.panes)
+            } else {
+                Vec::new()
+            },
+            shortcut: None,
+        }
+    }
+}
+
+fn pile(windows: &[Plain<'_>], last: Option<WindowId>, open: bool) -> Pile {
+    let front = last
+        .and_then(|last| windows.iter().position(|plain| plain.window.id == last))
         .unwrap_or_default();
-    let (lead, lead_alert) = &windows[front];
-    let tiles = std::iter::once(front)
-        .chain((0..windows.len()).filter(|index| *index != front))
-        .filter_map(|index| {
-            let row = &windows[index].0.summary;
-            let tile = row.tiles.first()?;
-            Some(PaneTile {
-                attention: row.attention,
-                ..tile.clone()
-            })
+    let lead = &windows[front];
+    let order = std::iter::once(front).chain((0..windows.len()).filter(|index| *index != front));
+    let tiles = order
+        .clone()
+        .map(|index| PaneTile {
+            attention: windows[index].attention(),
+            ..pane_tile(windows[index].front)
         })
         .collect();
     let behind = windows
         .iter()
         .enumerate()
         .filter(|(index, _)| *index != front)
-        .filter_map(|(index, (row, alert))| {
-            let (attention, word) = alert.as_ref()?;
-            Some(((*attention, Reverse(index)), word, row))
+        .filter_map(|(index, plain)| {
+            let (attention, word) = plain.alert()?;
+            Some(((attention, Reverse(index)), word, plain))
         })
         .max_by_key(|(rank, ..)| *rank);
     let detail = match behind {
-        Some((_, word, row)) if lead_alert.is_none() => vec![
-            word.clone(),
-            part(format!(" · {}", row.summary.title), Tone::Muted),
-        ],
-        _ => lead.summary.detail.clone(),
+        Some((_, word, plain)) if lead.alert().is_none() => {
+            vec![word, part(format!(" · {}", plain.title()), Tone::Muted)]
+        }
+        _ => lead.detail(),
     };
     let summary = WindowSummary {
-        window: lead.summary.window,
-        index: lead.summary.index,
-        headline: lead.summary.headline,
-        title: lead.summary.title.clone(),
+        window: lead.window.id,
+        index: lead.window.index,
+        headline: lead.front.id,
+        title: lead.title(),
         detail,
-        changed_at: lead.summary.changed_at,
+        changed_at: lead.front.summary.changed_at,
         tiles,
         attention: windows
             .iter()
-            .map(|(row, _)| row.summary.attention)
+            .map(Plain::attention)
             .max()
             .unwrap_or_default(),
     };
     Pile {
         summary,
-        windows: windows.into_iter().map(|(row, _)| row).collect(),
+        open_detail: own_line(lead.front),
+        working: pane_attention(lead.front) == Attention::Working,
+        faces: order.map(|index| windows[index].window.id).collect(),
+        windows: if open {
+            windows.iter().map(|plain| plain.row(false)).collect()
+        } else {
+            Vec::new()
+        },
     }
 }
 
@@ -1948,7 +2061,7 @@ mod tests {
             border_lines: zz_protocol::PaneBorderLines::Single,
             border_status: zz_protocol::PaneBorderStatus::Off,
         });
-        let editing = window(
+        let mut editing = window(
             5,
             vec![
                 placed(
@@ -1966,6 +2079,8 @@ mod tests {
                 ),
             ],
         );
+        editing.panes.get_mut(&PaneId(52)).unwrap().summary.command =
+            Some(ShellCommand::Finished(1));
         let docs = window(
             6,
             vec![pane(
@@ -1980,14 +2095,16 @@ mod tests {
         shell.summary.shell = "zsh".to_owned();
         shell.bell = true;
         let rang = window(7, vec![shell]);
+        let picker = window(8, vec![pane(81, PaneKindSnapshot::Picker)]);
         let mut hints = ChatHints::default();
         hints.observe(&split);
-        hints.observe(&docs);
+        hints.observe(&editing);
+        hints.observe(&picker);
         let mut sessions = [
-            in_session(1, vec![hit_tests, editing, bento]),
-            in_session(2, vec![split, docs, plan, rang]),
+            in_session(1, vec![hit_tests, bento]),
+            in_session(2, vec![split, docs, editing, plan, rang, picker]),
         ];
-        let mut machine = summarize_chat_machine(&sessions, &hints);
+        let mut machine = summarize_chat_machine(&sessions, &hints, |_| true);
         number_chat_rows([&mut machine]);
 
         assert_eq!(machine.rows.len(), 5);
@@ -2078,6 +2195,10 @@ mod tests {
             )
         );
 
+        assert_eq!(
+            line(&window_row(&machine, 3).open_detail),
+            [("Claude Code", Tone::Muted)]
+        );
         let ChatRow::Pile(pile) = &machine.rows[4] else {
             panic!("the plain windows pile up last");
         };
@@ -2085,41 +2206,36 @@ mod tests {
             (
                 pile.summary.title.as_str(),
                 line(&pile.summary.detail),
+                line(&pile.open_detail),
                 faces(&pile.summary),
                 pile.summary.attention,
             ),
             (
-                "docs.rs",
-                vec![("Bell", Tone::Normal), (" · zsh", Tone::Muted)],
-                vec![(61, quiet), (51, quiet), (71, Bell)],
+                "nvim flat.rs",
+                vec![
+                    ("Exit 1", Tone::Danger),
+                    (" · cargo watch -x check", Tone::Muted)
+                ],
+                vec![("zebrilus · main", Tone::Muted)],
+                vec![(51, quiet), (61, quiet), (71, Bell)],
                 Bell,
             )
         );
         assert_eq!(
             pile.windows.iter().map(shown).collect::<Vec<_>>(),
             [
+                (false, None, "docs.rs", vec![], vec![(61, quiet)], vec![]),
                 (
                     false,
                     None,
                     "nvim flat.rs",
-                    vec![("zebrilus · main", Tone::Muted)],
-                    vec![(51, quiet), (52, quiet)],
                     vec![
-                        (
-                            51,
-                            quiet,
-                            "nvim flat.rs",
-                            vec![("zebrilus · main", Tone::Muted)]
-                        ),
-                        (
-                            52,
-                            quiet,
-                            "cargo watch -x check",
-                            vec![("zebrilus · main", Tone::Muted)]
-                        ),
+                        ("Exit 1", Tone::Danger),
+                        (" · cargo watch -x check", Tone::Muted)
                     ],
+                    vec![(51, quiet), (52, quiet)],
+                    vec![],
                 ),
-                (false, None, "docs.rs", vec![], vec![(61, quiet)], vec![]),
                 (
                     false,
                     None,
@@ -2145,7 +2261,7 @@ mod tests {
             machine.current(WindowId(6), PaneId(61)),
             Some(ChatCurrent {
                 row: 4,
-                entry: Some(1)
+                entry: Some(0)
             })
         );
         assert_eq!(
@@ -2163,9 +2279,43 @@ mod tests {
             })
         );
 
+        let closed = summarize_chat_machine(&sessions, &hints, |_| false);
+        let ChatRow::Pile(shut) = &closed.rows[4] else {
+            panic!("the plain windows pile up last");
+        };
+        assert_eq!(
+            (
+                window_row(&closed, 1).opens,
+                window_row(&closed, 1).panes.len(),
+                shut.windows.len(),
+                closed.current(WindowId(6), PaneId(61)),
+            ),
+            (
+                true,
+                0,
+                0,
+                Some(ChatCurrent {
+                    row: 4,
+                    entry: None
+                })
+            )
+        );
+        let mut docs_last = hints.clone();
+        docs_last.last_plain = Some(WindowId(6));
+        let ChatRow::Pile(docs_front) = summarize_chat_machine(&sessions, &docs_last, |_| false)
+            .rows
+            .remove(4)
+        else {
+            panic!("the plain windows pile up last");
+        };
+        assert_eq!(
+            line(&docs_front.summary.detail),
+            [("Exit 1", Tone::Danger), (" · nvim flat.rs", Tone::Muted)]
+        );
+
         sessions[1].windows[0].active_pane = PaneId(33);
         let front = |hints: &ChatHints| {
-            faces(&window_row(&summarize_chat_machine(&sessions, hints), 2).summary)
+            faces(&window_row(&summarize_chat_machine(&sessions, hints, |_| true), 2).summary)
         };
         assert_eq!(front(&hints), [(32, Working), (31, quiet), (33, quiet)]);
         assert_eq!(
@@ -2185,19 +2335,19 @@ mod tests {
         )];
         let mut make = terminal(82, "make");
         make.summary.command = Some(ShellCommand::Finished(2));
+        let mut build = window(
+            8,
+            vec![placed(terminal(81, "zsh"), "~/dev/zz", "main"), make],
+        );
+        build.name = "build".to_owned();
+        build.automatic_rename = false;
         let second = [in_session(
             2,
-            vec![
-                window(
-                    8,
-                    vec![placed(terminal(81, "zsh"), "~/dev/zz", "main"), make],
-                ),
-                window(9, vec![agent(91, "Tidy notes")]),
-            ],
+            vec![build, window(9, vec![agent(91, "Tidy notes")])],
         )];
         let mut machines = [
-            summarize_chat_machine(&first, &ChatHints::default()),
-            summarize_chat_machine(&second, &ChatHints::default()),
+            summarize_chat_machine(&first, &ChatHints::default(), |_| true),
+            summarize_chat_machine(&second, &ChatHints::default(), |_| true),
         ];
         number_chat_rows(&mut machines);
         let [first, second] = &machines;
@@ -2218,7 +2368,7 @@ mod tests {
             (
                 false,
                 None,
-                "zsh",
+                "build",
                 vec![("Exit 2", Tone::Danger), (" · make", Tone::Muted)],
                 vec![(81, Attention::None), (82, Attention::None)],
                 vec![

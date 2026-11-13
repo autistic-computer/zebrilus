@@ -1272,6 +1272,14 @@ impl MuxClient {
         names
     }
 
+    pub(crate) fn host_server_id(&self, host: HostId) -> Option<u64> {
+        self.connections
+            .get(&host)?
+            .client
+            .as_ref()
+            .map(|client| client.server_hello().server_id)
+    }
+
     pub(crate) fn local_server_id(&self) -> Option<u64> {
         self.connections
             .get(&HostId::LOCAL)?

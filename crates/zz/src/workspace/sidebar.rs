@@ -240,9 +240,28 @@ impl WorkspaceSidebar {
         }
     }
 
+    fn shortcut_targets(&self, cx: &App) -> Vec<(HostId, WindowId)> {
+        if self.flat {
+            self.chat_shortcut_targets(cx)
+        } else {
+            shortcut_windows(&self.tree_model).collect()
+        }
+    }
+
+    fn shortcut_key(&self, position: u8, cx: &App) -> Option<Keystroke> {
+        if !self.window_shortcuts || position >= WINDOW_SHORTCUTS {
+            return None;
+        }
+        let chord = crate::keymap::chord_for(cx, UI_TABLE, ChromeAction::SelectWindow(position))?;
+        Keystroke::parse(&chord).ok()
+    }
+
     pub(crate) fn open_window_shortcut(&mut self, position: u8, cx: &mut Context<Self>) -> bool {
         self.synchronize_tree(cx);
-        let Some((host, window)) = shortcut_windows(&self.tree_model).nth(usize::from(position))
+        let Some((host, window)) = self
+            .shortcut_targets(cx)
+            .get(usize::from(position))
+            .copied()
         else {
             return false;
         };
@@ -273,15 +292,11 @@ impl WorkspaceSidebar {
     }
 
     fn window_shortcut_keys(&self, cx: &App) -> Vec<(HostId, WindowId, Keystroke)> {
-        if !self.window_shortcuts {
-            return Vec::new();
-        }
-        shortcut_windows(&self.tree_model)
+        self.shortcut_targets(cx)
+            .into_iter()
             .zip(0..WINDOW_SHORTCUTS)
             .filter_map(|((host, window), position)| {
-                let chord =
-                    crate::keymap::chord_for(cx, UI_TABLE, ChromeAction::SelectWindow(position))?;
-                Some((host, window, Keystroke::parse(&chord).ok()?))
+                Some((host, window, self.shortcut_key(position, cx)?))
             })
             .collect()
     }

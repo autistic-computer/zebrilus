@@ -11,7 +11,7 @@ use crate::{
     navigation::{last_component, pane_place, session_place},
     program::Program,
     sidebar::SidebarTarget,
-    window_summary::{pane_agent, summarize_chat},
+    window_summary::{chat_view_lists, pane_agent, summarize_chat},
 };
 
 const HOME: &str = "~";
@@ -355,13 +355,10 @@ pub fn entering_chat_view(
     last: Option<WindowId>,
 ) -> ChatViewEntry {
     let find = |id: WindowId| all_windows(snapshot).find(|window| window.id == id);
-    let is_chat = |id: WindowId| find(id).and_then(summarize_chat).is_some();
-    if snapshot.sessions.is_empty()
-        || focused.is_some_and(|id| is_chat(id) || find(id).is_some_and(starting_chat))
-    {
+    if snapshot.sessions.is_empty() || focused.is_some_and(|id| find(id).is_some()) {
         return ChatViewEntry::Stay;
     }
-    last.filter(|id| is_chat(*id))
+    last.filter(|id| find(*id).is_some_and(chat_view_lists))
         .or_else(|| {
             all_windows(snapshot)
                 .filter_map(summarize_chat)
@@ -440,8 +437,7 @@ impl ChatViewPlace {
             && Some(focused) != self.landing_from
             && all_windows(snapshot)
                 .find(|window| window.id == focused)
-                .and_then(summarize_chat)
-                .is_some()
+                .is_some_and(chat_view_lists)
         {
             self.landing = false;
         }
@@ -1034,20 +1030,21 @@ mod tests {
     #[test]
     fn entering_chat_view_lands_on_a_chat_or_new_chat() {
         let fleet = fleet();
-        let enter = |focused, last| entering_chat_view(&fleet, Some(WindowId(focused)), last);
-        assert_eq!(enter(1, None), ChatViewEntry::Stay);
-        assert_eq!(enter(3, None), ChatViewEntry::Stay);
-        assert_eq!(
-            enter(4, Some(WindowId(2))),
-            ChatViewEntry::Open(WindowId(2))
-        );
-        assert_eq!(
-            enter(4, Some(WindowId(4))),
-            ChatViewEntry::Open(WindowId(1))
-        );
+        let enter = |focused: Option<u64>, last: Option<u64>| {
+            entering_chat_view(&fleet, focused.map(WindowId), last.map(WindowId))
+        };
+        assert_eq!(enter(Some(1), None), ChatViewEntry::Stay);
+        assert_eq!(enter(Some(3), None), ChatViewEntry::Stay);
+        assert_eq!(enter(Some(4), Some(2)), ChatViewEntry::Stay);
+        assert_eq!(enter(None, Some(4)), ChatViewEntry::Open(WindowId(4)));
+        assert_eq!(enter(Some(9), Some(3)), ChatViewEntry::Open(WindowId(1)));
         let shells = snapshot(vec![session(1, vec![window(1, vec![shell(1, "~", 9)])])]);
         assert_eq!(
             entering_chat_view(&shells, Some(WindowId(1)), None),
+            ChatViewEntry::Stay
+        );
+        assert_eq!(
+            entering_chat_view(&shells, None, None),
             ChatViewEntry::NewChat
         );
         assert_eq!(
@@ -1078,18 +1075,27 @@ mod tests {
         assert_eq!(place.follow(&snapshot(Vec::new()), None), None);
         let mut shells = snapshot(vec![session(1, vec![window(1, vec![shell(1, "~", 9)])])]);
         assert_eq!(place.follow(&shells, attached), None);
+        assert!(!place.landing());
+        place.new_chat(&shells, attached);
         assert!(place.landing());
-        shells.sessions[0]
-            .windows
-            .push(window(2, vec![agent(2, "~", 10)]));
+        shells.sessions[0].windows.extend([
+            window(2, vec![agent(2, "~", 10)]),
+            window(3, vec![picker(3)]),
+        ]);
+        assert_eq!(place.follow(&shells, attached), None);
+        assert!(place.landing());
+        shells.sessions[0].active_window = WindowId(3);
         assert_eq!(place.follow(&shells, attached), None);
         assert!(place.landing());
         shells.sessions[0].active_window = WindowId(2);
         assert_eq!(place.follow(&shells, attached), None);
         assert!(!place.landing());
-        place.leave(&shells, attached);
+        place.new_chat(&shells, attached);
         shells.sessions[0].active_window = WindowId(1);
-        assert_eq!(place.enter(&shells, attached), Some(WindowId(2)));
+        assert_eq!(place.follow(&shells, attached), None);
+        assert!(!place.landing());
+        place.leave(&shells, attached);
+        assert_eq!(place.enter(&shells, attached), None);
         place.new_chat(&shells, attached);
         assert!(place.landing());
         place.close_landing();

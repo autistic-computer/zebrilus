@@ -16,8 +16,9 @@ timestamp: 2026-10-26T00:00:00-03:00
 
 # Overview
 
-Since 2026-10-28 the flat list is [chat mode](chat-mode.md): its rows are the windows running an
-agent, under their machine with no session headers. The data layer below is unchanged.
+Since 2026-10-28 the flat list is [chat mode](chat-mode.md): since 2026-11-13 its rows are the
+windows holding a chat, then one pile of the windows without one, under their machine with no
+session headers. The data layer below is unchanged.
 
 The flat sidebar shows one row per window on every host: a title, a second line saying what the
 window is doing, an age on the right, and a pane stack (`navigation::pane_stack`, shared with the

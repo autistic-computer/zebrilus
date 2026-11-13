@@ -1,5 +1,5 @@
 use penna::blocks::sidebar::SIDEBAR_DEFAULT_WIDTH;
-use std::rc::Rc;
+use std::{collections::BTreeSet, rc::Rc};
 use zz_protocol::{HostPlatform, LinuxDistro};
 
 use ala::{
@@ -11,18 +11,18 @@ use penna::{
     components::scroll::ScrollableElement as _,
 };
 use zz_client::{
-    program::{Program, resolve},
+    program::Program,
     window_summary::{
-        Attention, AttentionRollup,
+        Attention, ChatHints, ChatMachine, ChatParent, ChatRow,
         PaneTag::{self, Browser, Editor, Picker, Terminal},
-        PaneTile, WindowSummary, age_label, summarize_chats, summarize_host,
+        PaneTile, number_chat_rows, summarize_chat_machine,
     },
 };
 use zz_protocol::{
-    AgentDescriptor, AgentProvider, Axis, LayoutNode, MuxSnapshot, PaneBorderIndicators,
-    PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatus,
-    PaneStatusKind, PaneStatusState, PaneSummary, SessionId, SessionSnapshot, ShellCommand,
-    SplitId, WindowId, WindowSnapshot,
+    AgentDescriptor, AgentProvider, Axis, LayoutNode, PaneBorderIndicators, PaneBorderLines,
+    PaneBorderStatus, PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatus, PaneStatusKind,
+    PaneStatusState, PaneSummary, SessionId, SessionSnapshot, ShellCommand, SplitId, WindowId,
+    WindowSnapshot,
 };
 use zz_ui::{
     command::PaletteHostId,
@@ -48,33 +48,54 @@ pub const STORY: Story = Story {
     id: "flat-sidebar",
     name: "Chat sidebar",
     group: "Workspace",
-    summary: "Chat mode's sidebar: each machine over one two-line row per agent, drawn from the window the agent runs in. The agent's tile leads the pane stack and the panes it split stay behind it; sessions and windows without an agent stay in the session tree.",
+    summary: "Chat mode's sidebar: each machine lists its chat windows as rows, then folds the windows without a chat into one last row, the pile, or shows a lone one as a row of its own. Every stack shows a face per pane with its own status dot. A window with two or more panes, and the pile, open into one-line rows on a track.",
     sections: &[
         Section {
             id: "sidebar",
-            name: "Sidebar",
-            summary: "Two hosts built from mux snapshots and run through summarize_chats: only windows running Claude Code or Codex make rows, and a machine with none is left out. Click a row to make it current, click a host header to fold it; hover is real state; a right click opens the row's menu. New chat and Add host head the list, the chat button beside the sidebar toggle switches between the chats and the session tree, and Settings spans the foot.",
-            build: |_, cx| cx.new(|_| Live::new(Some(SIDEBAR_HEIGHT))).into(),
+            name: "At rest",
+            summary: "The board's two machines run through summarize_chat_machine: the chat windows in session and window order, then the pile of macbook's three plain windows, its front the plain window used last (nvim, the current one), and ubuntu's lone bash. Click a row to make it current, a chevron to open its window or the pile, a host header to fold it; hover is real state.",
+            build: |_, cx| cx.new(|_| Live::new(Opened::None, 0)).into(),
+        },
+        Section {
+            id: "split-open",
+            name: "The split chats opened",
+            summary: "The window with two chats and cargo test opened: one 32px row per pane in window order on a track from the stack's foot, each with its face, title and age. The parent row keeps its face, title and age; only the chevron turns.",
+            build: |_, cx| cx.new(|_| Live::new(Opened::Split, 1)).into(),
+        },
+        Section {
+            id: "pile-open",
+            name: "The pile opened",
+            summary: "The pile opened with nvim current: one row per plain window, each leading with its own small stack, the current marker on nvim's row and the track lit.",
+            build: |_, cx| cx.new(|_| Live::new(Opened::Pile, 2)).into(),
+        },
+        Section {
+            id: "both-open",
+            name: "Both opened",
+            summary: "The split chats and the pile opened at once.",
+            build: |_, cx| cx.new(|_| Live::new(Opened::Both, 3)).into(),
+        },
+        Section {
+            id: "attention",
+            name: "Attention",
+            summary: "The fork behind needs approval and takes the window row's second line while closed; zsh rang its bell, so the pile shows Bell and that window's title behind its front. Opened, each nested row says its short status word.",
+            build: |_, cx| cx.new(|_| Live::attention(4)).into(),
         },
         Section {
             id: "shortcuts",
             name: "Window shortcuts",
-            summary: "Holding the window shortcuts' modifier (⌘ on macOS, Ctrl elsewhere) for a moment puts a key on each chat it reaches, in place of the age: the first nine chats of the connected hosts, top to bottom, so a chat keeps its number while you move around.",
-            build: |_, cx| {
-                cx.new(|_| Live::new(Some(SIDEBAR_HEIGHT)).shortcuts())
-                    .into()
-            },
+            summary: "Holding the window shortcuts' modifier (⌘ on macOS, Ctrl elsewhere) for a moment puts a key on each chat window row in place of its age, top to bottom across the connected machines. The pile, the windows in it and nested rows take none.",
+            build: |_, cx| cx.new(|_| Live::new(Opened::Both, 5).shortcuts()).into(),
         },
         Section {
             id: "rows",
             name: "Window rows",
-            summary: "flat_window_row in every state the summary can produce. Line 1 names the window, line 2 says what it is doing or where it is, its lead in the tone of what needs you; the spinner is a turn in progress. The stack is the active pane's tile with up to two blank tiles fanned out behind it; point at it to open every pane.",
+            summary: "flat_window_row in every state the summary can produce. Line 1 names the window, line 2 says what it is doing or where it is, its lead in the tone of what needs you; the spinner is the front chat's turn in progress. The stack shows a face per pane, each with its own dot; point at it to open every pane.",
             build: |_, cx| stateless(rows, cx),
         },
         Section {
             id: "stacks",
             name: "Tile stacks",
-            summary: "flat_tile_stack for one to five panes on the rest, hover, current and selected grounds. The active pane's tile leads with its glyph; up to two blank tiles fan out behind it, 7px apart, each with its own outline, so the one in front reads against the one behind. Point at a stack to open every pane in a row.",
+            summary: "flat_tile_stack for one to five panes on the rest, hover, current and selected grounds. The front pane's tile leads with its glyph; up to two blank tiles fan out behind it, 7px apart, each with its own outline and its own dot, so the one in front reads against the one behind. Point at a stack to open every pane in a row.",
             build: |_, cx| stateless(stacks, cx),
         },
         Section {
@@ -110,6 +131,7 @@ trait PaneFixture: Sized {
     fn at(self, cwd: &str, branch: &str) -> Self;
     fn exit(self, code: u8) -> Self;
     fn bell(self) -> Self;
+    fn running(self, process: &[&str]) -> Self;
 }
 
 impl PaneFixture for PaneSnapshot {
@@ -154,6 +176,11 @@ impl PaneFixture for PaneSnapshot {
 
     fn bell(mut self) -> Self {
         self.bell = true;
+        self
+    }
+
+    fn running(mut self, process: &[&str]) -> Self {
+        self.summary.process = process.iter().map(|entry| (*entry).to_owned()).collect();
         self
     }
 }
@@ -262,73 +289,272 @@ fn session(id: u64, name: &str, windows: Vec<WindowSnapshot>) -> SessionSnapshot
 
 type Running<'a> = &'a [(u64, &'a [&'a str])];
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Rows {
-    Chats,
-    Windows,
-}
-
-fn summaries(snapshot: &MuxSnapshot, rows: Rows) -> (Vec<WindowSummary>, AttentionRollup) {
-    match rows {
-        Rows::Chats => summarize_chats(&snapshot.sessions),
-        Rows::Windows => {
-            let (sessions, rollup) = summarize_host(snapshot);
-            (
-                sessions
-                    .into_iter()
-                    .flat_map(|session| session.windows)
-                    .collect(),
-                rollup,
-            )
-        }
-    }
-}
-
-fn host(
-    rows: Rows,
+#[derive(Clone)]
+struct Machine {
     id: PaletteHostId,
-    name: &str,
+    name: &'static str,
     remote: bool,
     connection: HostConnection,
     sessions: Vec<SessionSnapshot>,
-    running: Running,
-) -> FlatHost {
-    let snapshot = MuxSnapshot {
-        generation: 1,
-        sessions,
-        focused_window: None,
-    };
-    let (mut windows, rollup) = summaries(&snapshot, rows);
-    for tile in windows.iter_mut().flat_map(|window| &mut window.tiles) {
-        if let Some((_, process)) = running.iter().find(|(pane, _)| PaneId(*pane) == tile.pane) {
-            tile.program = resolve(process.iter().copied());
-        }
-    }
-    let mut host = FlatHost::new(
-        id,
-        name,
-        remote,
-        connection,
-        (windows, rollup),
-        |changed_at| age_label(changed_at, NOW),
-    );
-    host.platform = match name {
-        "macbook" | "studio" => HostPlatform::Macos,
-        "ubuntu" => HostPlatform::Linux(LinuxDistro::Ubuntu),
-        "devbox" => HostPlatform::Linux(LinuxDistro::Arch),
-        "extras" => HostPlatform::Linux(LinuxDistro::Debian),
-        "nas" => HostPlatform::Linux(LinuxDistro::Other),
-        "alienware" => HostPlatform::Windows,
-        _ => HostPlatform::Unknown,
-    };
-    host
+    hints: ChatHints,
 }
 
-fn macbook(rows: Rows) -> FlatHost {
+impl Machine {
+    fn new(
+        id: PaletteHostId,
+        name: &'static str,
+        remote: bool,
+        connection: HostConnection,
+        mut sessions: Vec<SessionSnapshot>,
+        running: Running,
+    ) -> Self {
+        for pane in sessions
+            .iter_mut()
+            .flat_map(|session| &mut session.windows)
+            .flat_map(|window| window.panes.values_mut())
+        {
+            if let Some((_, process)) = running.iter().find(|(id, _)| PaneId(*id) == pane.id) {
+                *pane = pane.clone().running(process);
+            }
+        }
+        Self {
+            id,
+            name,
+            remote,
+            connection,
+            sessions,
+            hints: ChatHints::default(),
+        }
+    }
+
+    fn window(&self, id: WindowId) -> Option<&WindowSnapshot> {
+        self.sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .find(|window| window.id == id)
+    }
+
+    fn focus(&mut self, id: WindowId, pane: Option<PaneId>) {
+        let Some(window) = self
+            .sessions
+            .iter_mut()
+            .flat_map(|session| &mut session.windows)
+            .find(|window| window.id == id)
+        else {
+            return;
+        };
+        if let Some(pane) = pane {
+            window.active_pane = pane;
+        }
+        self.hints.observe(window);
+    }
+
+    fn machine(&self, open: impl Fn(ChatParent) -> bool) -> ChatMachine {
+        summarize_chat_machine(&self.sessions, &self.hints, open)
+    }
+
+    fn live(&self) -> bool {
+        self.connection == HostConnection::Connected
+    }
+
+    fn host(&self, machine: ChatMachine) -> FlatHost {
+        let mut host = FlatHost::new(
+            self.id,
+            self.name,
+            self.remote,
+            self.connection.clone(),
+            machine,
+            NOW,
+        );
+        host.platform = match self.name {
+            "macbook" | "studio" => HostPlatform::Macos,
+            "ubuntu" => HostPlatform::Linux(LinuxDistro::Ubuntu),
+            "devbox" => HostPlatform::Linux(LinuxDistro::Arch),
+            "extras" => HostPlatform::Linux(LinuxDistro::Debian),
+            "nas" => HostPlatform::Linux(LinuxDistro::Other),
+            "alienware" => HostPlatform::Windows,
+            _ => HostPlatform::Unknown,
+        };
+        host
+    }
+
+    fn flat(&self) -> FlatHost {
+        self.host(self.machine(|_| false))
+    }
+}
+
+const BOARD_MAC: &str = "/Users/fabrico/dev/zebrilus";
+const SPLIT: WindowId = WindowId(5);
+const NVIM: WindowId = WindowId(2);
+
+fn board_macbook() -> Machine {
+    use PaneStatusKind::Permission;
+    use PaneStatusState::{Blocked, Working};
+    let mut split = window(
+        5,
+        None,
+        vec![
+            claude(51, "Pill menu New chat")
+                .at(BOARD_MAC, "pill-menu")
+                .ago(4 * MINUTE),
+            claude(52, "Review the pill diff")
+                .at(BOARD_MAC, "pill-menu")
+                .ago(20),
+            terminal(53, "cargo test -p zz-ui")
+                .at(BOARD_MAC, "pill-menu")
+                .running(&["/Users/fabrico/.cargo/bin/cargo", "cargo"])
+                .ago(6 * MINUTE),
+        ],
+    );
+    split.active_pane = PaneId(52);
+    let mut fork = window(
+        6,
+        None,
+        vec![
+            claude(61, "Plan the chat rows")
+                .at(BOARD_MAC, "main")
+                .ago(HOUR),
+        ],
+    );
+    fork.panes.insert(
+        PaneId(62),
+        claude(62, "What the kit draws")
+            .at(BOARD_MAC, "main")
+            .status(Blocked, Some(Permission), "rg guide")
+            .ago(10),
+    );
+    fork.active_pane = PaneId(62);
+    let mut machine = Machine::new(
+        MACBOOK,
+        "macbook",
+        false,
+        HostConnection::Connected,
+        vec![session(
+            1,
+            "zebrilus",
+            vec![
+                window(
+                    1,
+                    None,
+                    vec![
+                        claude(11, "Fix stack hit tests")
+                            .at(BOARD_MAC, "hit-tests")
+                            .status(Working, None, "Running the tests")
+                            .ago(5),
+                    ],
+                ),
+                window(
+                    2,
+                    None,
+                    vec![
+                        terminal(21, "nvim flat.rs")
+                            .at(BOARD_MAC, "main")
+                            .running(&["/opt/homebrew/bin/nvim", "nvim"])
+                            .ago(2 * MINUTE),
+                        terminal(22, "cargo watch -x check")
+                            .at(BOARD_MAC, "main")
+                            .running(&["/Users/fabrico/.cargo/bin/cargo-watch", "cargo"])
+                            .ago(2 * MINUTE),
+                    ],
+                ),
+                window(
+                    3,
+                    None,
+                    vec![
+                        claude(31, "Port bento to penna")
+                            .at(BOARD_MAC, "bento")
+                            .ago(12 * MINUTE),
+                        terminal(32, "vite").at(BOARD_MAC, "bento").ago(12 * MINUTE),
+                        terminal(33, "zsh").at(BOARD_MAC, "bento").ago(HOUR),
+                    ],
+                ),
+                window(
+                    4,
+                    None,
+                    vec![
+                        browser(41, "ala - Rust", "https://docs.rs/ala/latest/ala/")
+                            .ago(40 * MINUTE),
+                    ],
+                ),
+                split,
+                fork,
+                window(
+                    7,
+                    None,
+                    vec![terminal(71, "zsh").at("~/dev", "").ago(3 * HOUR)],
+                ),
+            ],
+        )],
+        &[],
+    );
+    machine.focus(NVIM, None);
+    machine
+}
+
+fn board_ubuntu() -> Machine {
+    Machine::new(
+        UBUNTU,
+        "ubuntu",
+        true,
+        HostConnection::Connected,
+        vec![session(
+            1,
+            "work",
+            vec![
+                window(
+                    1,
+                    None,
+                    vec![terminal(11, "bash").at("~", "").ago(5 * 24 * HOUR)],
+                ),
+                window(
+                    2,
+                    None,
+                    vec![
+                        codex(21, "Bump arch package")
+                            .at("/home/fabrico/packaging", "main")
+                            .status(PaneStatusState::Done, None, "PKGBUILD")
+                            .unseen()
+                            .ago(2 * HOUR),
+                        browser(22, "AUR (en) - zz", "https://aur.archlinux.org/packages/zz")
+                            .ago(2 * HOUR),
+                    ],
+                ),
+                window(
+                    3,
+                    None,
+                    vec![
+                        claude(31, "Tidy release notes")
+                            .at("/home/fabrico/release", "main")
+                            .ago(24 * HOUR),
+                    ],
+                ),
+            ],
+        )],
+        &[],
+    )
+}
+
+fn board_attention() -> Machine {
+    let mut machine = board_macbook();
+    for window in machine
+        .sessions
+        .iter_mut()
+        .flat_map(|session| &mut session.windows)
+    {
+        if window.id == WindowId(6) {
+            window.active_pane = PaneId(61);
+        }
+        if let Some(zsh) = window.panes.get_mut(&PaneId(71)) {
+            *zsh = zsh.clone().bell().ago(30);
+        }
+    }
+    machine
+}
+
+fn rows_macbook() -> Machine {
     use PaneStatusKind::{Permission, Question};
     use PaneStatusState::{Blocked, Done, Error, Working};
-    host(
-        rows,
+    Machine::new(
         MACBOOK,
         "macbook",
         false,
@@ -450,10 +676,9 @@ fn macbook(rows: Rows) -> FlatHost {
     )
 }
 
-fn ubuntu(rows: Rows) -> FlatHost {
+fn rows_ubuntu() -> Machine {
     use PaneStatusState::{Done, Working};
-    host(
-        rows,
+    Machine::new(
         UBUNTU,
         "ubuntu",
         true,
@@ -533,9 +758,8 @@ fn ubuntu(rows: Rows) -> FlatHost {
     )
 }
 
-fn extras(rows: Rows) -> FlatHost {
-    host(
-        rows,
+fn extras() -> Machine {
+    Machine::new(
         EXTRAS,
         "extras",
         false,
@@ -614,9 +838,8 @@ fn extras(rows: Rows) -> FlatHost {
     )
 }
 
-fn devbox(rows: Rows) -> FlatHost {
-    host(
-        rows,
+fn devbox() -> Machine {
+    Machine::new(
         DEVBOX,
         "devbox",
         true,
@@ -678,9 +901,8 @@ fn devbox(rows: Rows) -> FlatHost {
     )
 }
 
-fn offline(id: u32, name: &str, connection: HostConnection) -> FlatHost {
-    host(
-        Rows::Chats,
+fn offline(id: u32, name: &'static str, connection: HostConnection) -> Machine {
+    Machine::new(
         PaletteHostId(id),
         name,
         true,
@@ -698,10 +920,6 @@ fn offline(id: u32, name: &str, connection: HostConnection) -> FlatHost {
     )
 }
 
-pub(crate) fn sidebar_hosts() -> Vec<FlatHost> {
-    vec![macbook(Rows::Chats), ubuntu(Rows::Chats)]
-}
-
 fn window_menu() -> FlatMenu {
     Rc::new(|_, _, menu, _, _| {
         menu.item(PopupMenuItem::new("Rename window"))
@@ -713,58 +931,165 @@ fn noop() -> FlatHandler {
     Rc::new(|_, _, _| {})
 }
 
-fn find(host: &FlatHost, id: u64) -> &FlatWindow {
-    host.chats
-        .iter()
-        .find(|window| window.summary.window == WindowId(id))
+fn find(machine: &Machine, id: u64) -> FlatWindow {
+    machine
+        .machine(|parent| parent == ChatParent::Pile)
+        .rows
+        .into_iter()
+        .flat_map(|row| match row {
+            ChatRow::Window(row) => vec![row],
+            ChatRow::Pile(pile) => pile.windows,
+        })
+        .find(|row| row.summary.window == WindowId(id))
+        .map(FlatWindow::new)
         .expect("fixture window")
 }
 
+fn flip<T: Ord>(set: &mut BTreeSet<T>, key: T) {
+    if !set.remove(&key) {
+        set.insert(key);
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Opened {
+    None,
+    Split,
+    Pile,
+    Both,
+}
+
 pub(crate) struct Live {
-    hosts: Vec<FlatHost>,
-    state: FlatState,
+    machines: Vec<Machine>,
+    focus: (PaletteHostId, WindowId),
+    open: BTreeSet<(PaletteHostId, WindowId)>,
+    piles: BTreeSet<PaletteHostId>,
+    folded: BTreeSet<PaletteHostId>,
+    hovered: Option<FlatTarget>,
     scroll: ScrollHandle,
-    height: Option<f32>,
     shortcuts: bool,
 }
 
 impl Live {
-    pub(crate) fn new(height: Option<f32>) -> Self {
+    fn new(opened: Opened, section: u32) -> Self {
+        Self::with(vec![board_macbook(), board_ubuntu()], opened, section)
+    }
+
+    fn attention(section: u32) -> Self {
+        Self::with(
+            vec![board_attention(), board_ubuntu()],
+            Opened::None,
+            section,
+        )
+    }
+
+    fn with(mut machines: Vec<Machine>, opened: Opened, section: u32) -> Self {
+        let base = section * 10;
+        for machine in &mut machines {
+            machine.id = PaletteHostId(base + machine.id.0);
+        }
+        let mac = PaletteHostId(base + MACBOOK.0);
         Self {
-            hosts: sidebar_hosts(),
-            state: FlatState {
-                current: Some((MACBOOK, WindowId(1))),
-                ..FlatState::default()
+            machines,
+            focus: (mac, NVIM),
+            open: if matches!(opened, Opened::Split | Opened::Both) {
+                BTreeSet::from([(mac, SPLIT)])
+            } else {
+                BTreeSet::new()
             },
+            piles: if matches!(opened, Opened::Pile | Opened::Both) {
+                BTreeSet::from([mac])
+            } else {
+                BTreeSet::new()
+            },
+            folded: BTreeSet::new(),
+            hovered: None,
             scroll: ScrollHandle::new(),
-            height,
             shortcuts: false,
         }
     }
 
-    pub(crate) const fn shortcuts(mut self) -> Self {
+    const fn shortcuts(mut self) -> Self {
         self.shortcuts = true;
         self
     }
 
     fn handle(&mut self, event: FlatEvent, cx: &mut Context<Self>) {
-        let changed = match event {
-            FlatEvent::Open(host, window) | FlatEvent::OpenPane(host, window, _) => {
-                self.state.current = Some((host, window));
-                true
-            }
-            FlatEvent::FoldHost(host) => {
-                if let Some(host) = self.hosts.iter_mut().find(|item| item.id == host) {
-                    host.folded = !host.folded;
-                }
-                true
-            }
-            FlatEvent::Hover(target, hovered) => self.state.hover(target, hovered),
-            FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => false,
+        let mut state = FlatState {
+            hovered: self.hovered,
+            ..FlatState::default()
         };
-        if changed {
-            cx.notify();
+        match event {
+            FlatEvent::Open(host, window) => self.focus_on(host, window, None),
+            FlatEvent::OpenPane(host, window, pane) => self.focus_on(host, window, Some(pane)),
+            FlatEvent::ToggleWindow(host, window) => flip(&mut self.open, (host, window)),
+            FlatEvent::TogglePile(host) => flip(&mut self.piles, host),
+            FlatEvent::FoldHost(host) => flip(&mut self.folded, host),
+            FlatEvent::Hover(target, hovered) => {
+                if !state.hover(target, hovered) {
+                    return;
+                }
+                self.hovered = state.hovered;
+            }
+            FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => return,
         }
+        cx.notify();
+    }
+
+    fn focus_on(&mut self, host: PaletteHostId, window: WindowId, pane: Option<PaneId>) {
+        if let Some(machine) = self.machines.iter_mut().find(|machine| machine.id == host) {
+            machine.focus(window, pane);
+            self.focus = (host, window);
+        }
+    }
+
+    fn hosts(&self) -> (Vec<FlatHost>, FlatState) {
+        let mut machines = self
+            .machines
+            .iter()
+            .map(|machine| {
+                let id = machine.id;
+                let rows = machine.machine(|parent| match parent {
+                    ChatParent::Window(window) => self.open.contains(&(id, window)),
+                    ChatParent::Pile => self.piles.contains(&id),
+                });
+                (machine, rows)
+            })
+            .collect::<Vec<_>>();
+        number_chat_rows(
+            machines
+                .iter_mut()
+                .filter(|(machine, _)| machine.live())
+                .map(|(_, rows)| rows),
+        );
+        let (host, window) = self.focus;
+        let current = machines
+            .iter()
+            .find(|(machine, _)| machine.id == host)
+            .and_then(|(machine, rows)| {
+                let pane = machine.window(window)?.active_pane;
+                Some((host, rows.current(window, pane)?))
+            });
+        let hosts = machines
+            .into_iter()
+            .map(|(machine, rows)| {
+                let id = machine.id;
+                let mut host = machine.host(rows);
+                if self.shortcuts {
+                    host = host.shortcuts(|position| {
+                        Keystroke::parse(&format!("secondary-{}", position + 1)).ok()
+                    });
+                }
+                host.folded = self.folded.contains(&id);
+                host
+            })
+            .collect();
+        let state = FlatState {
+            current,
+            hovered: self.hovered,
+            ..FlatState::default()
+        };
+        (hosts, state)
     }
 }
 
@@ -774,14 +1099,10 @@ impl Render for Live {
         let handler: FlatHandler = Rc::new(move |event, _, cx| {
             let _ = view.update(cx, |this, cx| this.handle(event, cx));
         });
-        let hosts = if self.shortcuts {
-            numbered(&self.hosts)
-        } else {
-            self.hosts.clone()
-        };
+        let (hosts, state) = self.hosts();
         let list = flat_sidebar(
             &hosts,
-            self.state,
+            state,
             &handler,
             &window_menu(),
             cx.theme().ground(),
@@ -809,10 +1130,7 @@ impl Render for Live {
         div()
             .id("flat-live")
             .flex()
-            .map(|this| match self.height {
-                Some(height) => this.h(px(height)),
-                None => this.h_full(),
-            })
+            .h(px(SIDEBAR_HEIGHT))
             .child(flat_view_sidebar(
                 div()
                     .flex()
@@ -826,20 +1144,6 @@ impl Render for Live {
     }
 }
 
-fn numbered(hosts: &[FlatHost]) -> Vec<FlatHost> {
-    let mut hosts = hosts.to_vec();
-    let mut keys = (1..=9).filter_map(|key| Keystroke::parse(&format!("secondary-{key}")).ok());
-    for host in hosts
-        .iter_mut()
-        .filter(|host| host.connection == HostConnection::Connected)
-    {
-        for window in &mut host.chats {
-            window.shortcut = keys.next();
-        }
-    }
-    hosts
-}
-
 fn row_frame(index: usize, content: impl IntoElement) -> AnyElement {
     div()
         .id(("flat-row-case", index))
@@ -851,12 +1155,7 @@ fn row_frame(index: usize, content: impl IntoElement) -> AnyElement {
 fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
     let handler = noop();
-    let (mac, ubuntu, extras, devbox) = (
-        macbook(Rows::Windows),
-        ubuntu(Rows::Windows),
-        extras(Rows::Windows),
-        devbox(Rows::Windows),
-    );
+    let (mac, ubuntu, extras, devbox) = (rows_macbook(), rows_ubuntu(), extras(), devbox());
     let rest = FlatRowState::default();
     let current = FlatRowState {
         current: true,
@@ -874,7 +1173,7 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
         dimmed: true,
         ..rest
     };
-    let cases: [(&str, PaletteHostId, &FlatWindow, FlatRowState); 27] = [
+    let cases: [(&str, PaletteHostId, FlatWindow, FlatRowState); 27] = [
         ("working", MACBOOK, find(&mac, 1), rest),
         ("needs approval", MACBOOK, find(&mac, 2), rest),
         ("asked a question", MACBOOK, find(&mac, 3), rest),
@@ -948,7 +1247,7 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
                     label,
                     row_frame(
                         index,
-                        flat_window_row(host, window, state, &handler, &window_menu(), cx),
+                        flat_window_row(host, &window, state, &handler, &window_menu(), NOW, cx),
                     ),
                 )
             },
@@ -1151,26 +1450,30 @@ fn host_frame(id: &'static str, content: impl IntoElement, cx: &App) -> AnyEleme
 fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
     let handler = noop();
-    let mac = macbook(Rows::Chats);
-    let mut ubuntu = ubuntu(Rows::Chats);
+    let board = board_macbook();
+    let current = board
+        .machine(|_| false)
+        .current(NVIM, PaneId(21))
+        .map(|at| (MACBOOK, at));
+    let mut ubuntu = board_ubuntu().flat();
     ubuntu.folded = true;
-    let folding = [mac, ubuntu];
+    let folding = [board.flat(), ubuntu];
     let folding_state = FlatState {
-        current: Some((MACBOOK, WindowId(1))),
+        current,
         hovered: Some(FlatTarget::Host(UBUNTU)),
         ..FlatState::default()
     };
     let refused = "ssh: connect to host studio port 22: Connection refused";
     let connections = [
-        devbox(Rows::Chats),
-        offline(4, "studio", HostConnection::Unreachable(refused.into())),
-        offline(5, "pi", HostConnection::Incompatible("zz 0.15".into())),
-        offline(6, "alienware", HostConnection::Connecting),
-        offline(7, "mini", HostConnection::Disconnected),
+        devbox().flat(),
+        offline(4, "studio", HostConnection::Unreachable(refused.into())).flat(),
+        offline(5, "pi", HostConnection::Incompatible("zz 0.15".into())).flat(),
+        offline(6, "alienware", HostConnection::Connecting).flat(),
+        offline(7, "mini", HostConnection::Disconnected).flat(),
     ];
-    let mut stale = devbox(Rows::Chats);
+    let mut stale = devbox().flat();
     stale.folded = true;
-    let mut lost = devbox(Rows::Chats);
+    let mut lost = devbox().flat();
     lost.id = PaletteHostId(8);
     lost.name = "buildbox".into();
     lost.platform = HostPlatform::Linux(LinuxDistro::Fedora);
