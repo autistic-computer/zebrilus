@@ -41,8 +41,8 @@ pub fn draws_window_controls(window: &Window) -> bool {
             && matches!(window.window_decorations(), Decorations::Client { .. }))
 }
 
-const WINDOW_CONTROL_SIZE_PX: f32 = 22.0;
-const WINDOW_CONTROL_GAP_PX: f32 = 4.0;
+const WINDOW_CONTROL_SIZE_PX: f32 = 24.0;
+const WINDOW_CONTROL_GAP_PX: f32 = 8.0;
 pub const WINDOW_CONTROL_SIZE: Pixels = px(WINDOW_CONTROL_SIZE_PX);
 pub const WINDOW_CONTROL_GAP: Pixels = px(WINDOW_CONTROL_GAP_PX);
 pub const WINDOW_CONTROLS_SPAN: Pixels =
@@ -262,7 +262,7 @@ impl RenderOnce for WindowControl {
                         }
                     })
             })
-            .child(Icon::new(control.icon()).small())
+            .child(Icon::new(control.icon()).large())
     }
 }
 
@@ -381,7 +381,7 @@ impl ControlsLook {
                 icon(ControlIcon::restore()),
                 icon(ControlIcon::close(None)),
             ],
-            icon_size: crate::rems_from_px(crate::Size::Small.icon_px())
+            icon_size: crate::rems_from_px(crate::Size::Large.icon_px())
                 .to_pixels(window.rem_size()),
             scale_factor: window.scale_factor(),
         })
@@ -666,7 +666,7 @@ mod tests {
             flat,
             closed: closed.clone(),
         });
-        let close = point(px(63.0), px(20.0));
+        let close = point(WINDOW_CONTROLS_SPAN - WINDOW_CONTROL_SIZE / 2.0, px(20.0));
         let mut states = vec![drawn(cx)];
         cx.simulate_mouse_move(close, None, Modifiers::none());
         states.push(drawn(cx));
