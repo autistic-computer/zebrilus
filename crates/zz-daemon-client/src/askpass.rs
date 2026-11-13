@@ -36,6 +36,7 @@ const SSH_ASKPASS_PROMPT_ENV: &str = "SSH_ASKPASS_PROMPT";
 const HOST_KEY_QUESTION: &str = "(yes/no/[fingerprint])";
 const HOST_KEY_RETRY: &str = "Please type 'yes', 'no' or the fingerprint";
 const HOST_KEY_HEADER: &str = "The authenticity of host";
+pub(crate) const HOST_KEY_CHANGED: &str = "WARNING: the saved SSH host key has changed.";
 
 const MAX_REPLY_BYTES: usize = 1023;
 
@@ -157,6 +158,7 @@ fn is_host_key_prompt(text: &str) -> bool {
     text.contains(HOST_KEY_QUESTION)
         || text.contains(HOST_KEY_RETRY)
         || text.contains(HOST_KEY_HEADER)
+        || text.contains(HOST_KEY_CHANGED)
 }
 
 pub enum AskpassReply {
@@ -656,6 +658,13 @@ mod tests {
         );
         assert_eq!(
             kind("Please type 'yes', 'no' or the fingerprint: "),
+            AskpassPromptKind::HostKey
+        );
+        assert_eq!(
+            kind(
+                "WARNING: the saved SSH host key has changed.\n\ngpu:22\nssh-ed25519 key \
+                 fingerprint: SHA256:abc\nSaved fingerprint: SHA256:def"
+            ),
             AskpassPromptKind::HostKey
         );
     }

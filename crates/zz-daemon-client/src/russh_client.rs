@@ -846,7 +846,7 @@ impl TofuHandler {
     async fn confirm_host_key(&mut self, key: &PublicKey, changed_line: Option<usize>) -> bool {
         let fingerprint = key.fingerprint(HashAlg::default());
         let warning = if changed_line.is_some() {
-            "WARNING: the saved SSH host key has changed."
+            crate::askpass::HOST_KEY_CHANGED
         } else {
             "The authenticity of host has not been established."
         };
@@ -871,7 +871,7 @@ impl TofuHandler {
         let prompt = AskpassPrompt::new(
             AskpassMode::Answer,
             format!(
-                "{warning}\n\n{}:{}\n{} key fingerprint: {fingerprint}{previous}\n\nTrust this host? (yes/no/[fingerprint])",
+                "{warning}\n\n{}:{}\n{} key fingerprint: {fingerprint}{previous}",
                 self.host,
                 self.port,
                 key.algorithm(),
