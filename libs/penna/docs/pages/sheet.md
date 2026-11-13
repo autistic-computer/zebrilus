@@ -78,7 +78,7 @@ A sheet that asks for something to type: a 56 field with its placeholder as the 
 
 ## A question from ssh
 
-Titled for the machine, ssh's own prompt word for word over a 56 field, and an action that says what it does: "Sign in", not "Continue". It comes up over whatever is on screen; closing it cancels the connect. Not built: the thin client asks in a centered dialog.
+On a phone it is a modal: the desktop's title, ssh's own words under it, a fingerprint in mono, a 48 masked field for a password or passphrase, then Cancel and the dialog's verb. A tap outside cancels, as Cancel does.
 
 ## Modal
 
