@@ -15,7 +15,7 @@ What a tile becomes when it grows to fill the screen: the machine you went into,
   <div class="penna-zoom-body">
     <div>
       <div class="penna-touch-header"><span>Found on your tailnet</span><span class="penna-touch-count">3</span></div>
-      <div class="penna-touch-group" data-penna="settings.card">
+      <div class="penna-touch-group" data-penna="settings.card" data-ground>
         <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>macbook</span><span>macOS · runs zz</span></span><i data-icon="plus"></i></div>
         <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>alienware</span><span>Linux · runs zz</span></span><i data-icon="plus"></i></div>
         <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>homelab</span><span>No zz on it yet</span></span></div>

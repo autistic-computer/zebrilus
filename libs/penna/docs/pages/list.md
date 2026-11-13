@@ -84,7 +84,7 @@ ListItem::new("work").selected(true).on_click(open).child(
 On a phone, lists use touch rows: found machines, chats, settings.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Partly built natively</span><span class="penna-text penna-notice-detail" data-penna-text>Rows, groups and headers are built. The swipe, the tone dot and spinner trailing kinds and the header's hold are drawn with the HTML kit.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Partly built natively</span><span class="penna-text penna-notice-detail" data-penna-text>Rows, groups, headers and the mark at a row's end are built. The swipe and the header's hold are drawn with the HTML kit.</span></div></div></div>
 ```
 
 ```figure uses=touch
@@ -114,7 +114,7 @@ On a phone, lists use touch rows: found machines, chats, settings.
 <div class="docs-show" data-gap="wide" style="align-items: flex-start">
   <div class="docs-cell" style="width: 370px">
     <div class="penna-touch-header" style="width: 100%"><span>Found on your tailnet</span><span class="penna-touch-count">3</span></div>
-    <div class="penna-touch-group" data-penna="settings.card" style="width: 100%">
+    <div class="penna-touch-group" data-penna="settings.card" data-ground style="width: 100%">
       <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-state="hover"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>macbook</span><span>macOS · runs zz</span></span><i data-icon="plus"></i></div>
       <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>alienware</span><span>Linux · runs zz</span></span><i data-icon="plus"></i></div>
       <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>homelab</span><span>No zz on it yet</span></span></div>
@@ -122,7 +122,7 @@ On a phone, lists use touch rows: found machines, chats, settings.
     <span class="docs-note">Section header and a group, one row hovered</span>
   </div>
   <div class="docs-cell" style="width: 370px">
-    <div class="penna-touch-group" data-penna="settings.card" style="width: 100%">
+    <div class="penna-touch-group" data-penna="settings.card" data-ground style="width: 100%">
       <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>macbook</span><span>Connected · 3 chats</span></span><i data-icon="chevron-right"></i></div>
       <div class="penna-touch-swipe" data-penna-clip data-open><div class="penna-touch-row" data-penna="phone.row" data-lines="2"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>xps</span><span>Not connected · 2 days ago</span></span><i data-icon="chevron-right"></i></div><button class="penna-touch-swipe-action" data-penna="button" data-emphasis="solid" data-solid="danger" style="color: var(--penna-on-danger)">Forget</button></div>
     </div>
@@ -138,7 +138,7 @@ On a phone, lists use touch rows: found machines, chats, settings.
     <span class="docs-note">A session header you can hold, 44, its name alone</span>
   </div>
   <div class="docs-cell" style="width: 370px">
-    <div class="penna-touch-group" data-penna="settings.card" style="width: 100%">
+    <div class="penna-touch-group" data-penna="settings.card" data-ground style="width: 100%">
       <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="pencil"></i><span class="penna-touch-row-lines"><span>Rename session</span></span></div>
       <div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button"><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span>Close session</span></span></div>
     </div>

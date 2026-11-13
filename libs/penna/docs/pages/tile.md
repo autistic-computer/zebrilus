@@ -73,7 +73,7 @@ Size, inset, picking and dragging are yours, natively and in HTML.
 The cell of every screen of things on a phone: machines on the overview, windows inside a machine. The whole tile is the target, and holding it opens a sheet of what you can do to it.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Partly built natively</span><span class="penna-text penna-notice-detail" data-penna-text>The bento grid, a window's size from its pane count, and mini panes with terminal text and a browser's URL are native. Machine states, the window header and marks, the chat preview, press and hold and the phone corner are drawn with the HTML kit.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Partly built natively</span><span class="penna-text penna-notice-detail" data-penna-text>The phone tile is native with both contents, its marks, previews and corner. Press and hold is drawn with the HTML kit.</span></div></div></div>
 ```
 
 ### Machine content

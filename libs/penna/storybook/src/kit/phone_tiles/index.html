@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phone tiles</title>
+    <link rel="stylesheet" href="../../../../web/penna.css" />
+    <link rel="stylesheet" href="../../../../web/story.css" />
+    <link rel="stylesheet" href="../../../../src/blocks/compact/compact.css" />
+    <link rel="stylesheet" href="../../../../src/blocks/touch/touch.css" />
+    <link rel="stylesheet" href="page.css" />
+    <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
+    <script src="../../../../web/story.js" defer></script>
+  </head>
+  <body>
+    <section data-section="marks">
+      <div class="story-row"><span class="penna-tone-dot"></span><span class="penna-tone-dot" data-tone="warning"></span><span class="penna-tone-dot" data-tone="danger"></span><span class="penna-tone-dot" data-tone="strong"></span><span class="penna-tone-dot" data-tone="off"></span><i class="penna-touch-spinner" data-icon="loader"></i></div>
+    </section>
+
+    <section data-section="mark-rows">
+      <div class="tiles-rows"><div class="penna-touch-group" data-penna="settings.card" data-ground><div class="penna-touch-row" data-penna="phone.row" role="button" data-id="mark-row-connected"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span data-penna-text>macbook</span></span><span class="penna-touch-row-state"><span class="penna-tone-dot"></span><span data-penna-text>Connected</span></span></div><div class="penna-touch-row" data-penna="phone.row" role="button" data-id="mark-row-waiting"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span data-penna-text>xps</span></span><span class="penna-touch-row-state" data-tone="warning"><span class="penna-tone-dot" data-tone="warning"></span><span data-penna-text>1 waiting</span></span></div><div class="penna-touch-row" data-penna="phone.row" role="button" data-id="mark-row-failed"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span data-penna-text>alienware</span></span><span class="penna-touch-row-state" data-tone="danger"><span class="penna-tone-dot" data-tone="danger"></span><span data-penna-text>Failed</span></span></div><div class="penna-touch-row" data-penna="phone.row" role="button" data-id="mark-row-connecting"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span data-penna-text>thinkpad</span></span><span class="penna-touch-row-state"><i class="penna-touch-spinner" data-icon="loader"></i><span data-penna-text>Connecting</span></span></div><div class="penna-touch-row" data-penna="phone.row" role="button" data-id="mark-row-off"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span data-penna-text>homelab</span></span><span class="penna-touch-row-state"><span class="penna-tone-dot" data-tone="off"></span><span data-penna-text>Not connected</span></span></div></div></div>
+    </section>
+
+    <section data-section="machines">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">connected</div>
+          <div class="tiles-square"><div class="penna-machine-tile" data-penna="phone.card" role="button" data-id="machine-xps" aria-label="xps, Connected"><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>xps</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>2 sessions</span></span><span class="penna-press"></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">waiting</div>
+          <div class="tiles-square"><div class="penna-machine-tile" data-penna="phone.card" role="button" data-id="machine-macbook" aria-label="macbook, 1 waiting for you"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="warning"></span><span>macbook</span></span><span class="penna-machine-state" data-tone="warning">1 waiting for you</span><span class="penna-machine-foot"><span>3 sessions</span><span>2 working</span></span><span class="penna-press"></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">connecting</div>
+          <div class="tiles-square"><div class="penna-machine-tile" data-penna="phone.card" role="button" data-id="machine-alienware" aria-label="alienware, Connecting"><span class="penna-machine-name"><i class="penna-touch-spinner" data-icon="loader"></i><span>alienware</span></span><span class="penna-machine-state">Connecting</span><span class="penna-machine-foot"><span>fabrico@alienware</span></span><span class="penna-press"></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">offline</div>
+          <div class="tiles-square"><div class="penna-machine-tile" data-penna="phone.card" role="button" data-id="machine-thinkpad" aria-label="thinkpad, Not connected"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="off"></span><span>thinkpad</span></span><span class="penna-machine-state">Not connected</span><span class="penna-machine-foot"><span>Last seen 2 days ago</span></span><span class="penna-press"></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">add</div>
+          <div class="tiles-square"><div class="penna-machine-tile" data-penna="phone.add" data-add role="button" data-id="machine-add" aria-label="Add machine"><i data-icon="plus"></i><span>Add machine</span><span class="penna-press"></span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="windows">
+      <div class="story-states" data-columns style="--columns: 3">
+        <div class="story-state">
+          <div class="story-label">needs approval</div>
+          <div class="penna-bento" style="--rows: 2; --penna-bento-width: 370px; width: 181px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" data-id="window-approval" aria-label="Make the pill menu offer New chat, Needs approval" style="--column: 0; --row: 0; --columns: 2; --span: 2"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="warning"></span><span>Make the pill menu offer New chat</span></span><span class="penna-machine-state" data-tone="warning">Needs approval</span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="window-approval-0" style="--x: 0; --y: 0; --w: 0.5; --h: 1"><span class="penna-window-chat"><span class="penna-window-bubble"><i style="--w: 1"></i><i style="--w: 0.55"></i></span><span class="penna-window-lines"><i style="--w: 1"></i><i style="--w: 0.85"></i><i style="--w: 0.95"></i><i style="--w: 0.6"></i></span></span></span><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="window-approval-1" style="--x: 0.5; --y: 0; --w: 0.5; --h: 1"><pre class="penna-window-term"><b>$ cargo test -p penna</b>
+   Compiling penna v0.4.0
+    Finished test in 12.4s
+     Running unittests
+<span data-ink="success">test result: ok. 214 passed</span>
+<b>$ git status --short</b>
+ M src/blocks/compact/tile.rs</pre></span></span><span class="penna-press"></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">has a question</div>
+          <div class="penna-bento" style="--rows: 2; --penna-bento-width: 370px; width: 181px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" data-id="window-question" aria-label="Pick a tailnet library, Has a question" style="--column: 0; --row: 0; --columns: 2; --span: 2"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="warning"></span><span>Pick a tailnet library</span></span><span class="penna-machine-state" data-tone="warning">Has a question</span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="window-question-0" style="--x: 0; --y: 0; --w: 1; --h: 1"><span class="penna-window-chat"><span class="penna-window-bubble"><i style="--w: 1"></i><i style="--w: 0.55"></i></span><span class="penna-window-lines"><i style="--w: 1"></i><i style="--w: 0.85"></i><i style="--w: 0.95"></i><i style="--w: 0.6"></i></span></span></span></span><span class="penna-press"></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">working</div>
+          <div class="penna-bento" style="--rows: 2; --penna-bento-width: 370px; width: 181px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" data-id="window-working" aria-label="Fix pane stack hit testing on iPad" style="--column: 0; --row: 0; --columns: 2; --span: 2"><span class="penna-machine-name"><i class="penna-touch-spinner" data-icon="loader"></i><span>Fix pane stack hit testing on iPad</span></span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="window-working-0" style="--x: 0; --y: 0; --w: 1; --h: 1"><span class="penna-window-chat"><span class="penna-window-bubble"><i style="--w: 1"></i><i style="--w: 0.55"></i></span><span class="penna-window-lines"><i style="--w: 1"></i><i style="--w: 0.85"></i><i style="--w: 0.95"></i><i style="--w: 0.6"></i></span></span></span></span><span class="penna-press"></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">done, not seen</div>
+          <div class="penna-bento" style="--rows: 2; --penna-bento-width: 370px; width: 181px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" data-id="window-done" aria-label="Review the tailnet node plan" style="--column: 0; --row: 0; --columns: 2; --span: 2"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="strong"></span><span>Review the tailnet node plan</span></span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="window-done-0" style="--x: 0; --y: 0; --w: 1; --h: 0.5"><span class="penna-window-chat"><span class="penna-window-bubble"><i style="--w: 1"></i><i style="--w: 0.55"></i></span><span class="penna-window-lines"><i style="--w: 1"></i><i style="--w: 0.85"></i><i style="--w: 0.95"></i><i style="--w: 0.6"></i></span></span></span><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="window-done-1" style="--x: 0; --y: 0.5; --w: 1; --h: 0.5"><pre class="penna-window-term"><b>$ cargo test -p penna</b>
+   Compiling penna v0.4.0
+    Finished test in 12.4s
+     Running unittests
+<span data-ink="success">test result: ok. 214 passed</span>
+<b>$ git status --short</b>
+ M src/blocks/compact/tile.rs</pre></span></span><span class="penna-press"></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">failed</div>
+          <div class="penna-bento" style="--rows: 2; --penna-bento-width: 370px; width: 181px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" data-id="window-failed" aria-label="cargo build, Exit 101" style="--column: 0; --row: 0; --columns: 2; --span: 2"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="danger"></span><span>cargo build</span></span><span class="penna-machine-state" data-tone="danger">Exit 101</span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="window-failed-0" style="--x: 0; --y: 0; --w: 1; --h: 1"><pre class="penna-window-term"><b>$ cargo build</b>
+   Compiling nidus v0.9.1
+<span data-ink="danger">error[E0308]: mismatched types</span>
+  --&gt; src/warp.rs:88:17
+<span data-ink="danger">error: could not compile nidus</span></pre></span></span><span class="penna-press"></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">idle</div>
+          <div class="penna-bento" style="--rows: 2; --penna-bento-width: 370px; width: 181px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" data-id="window-idle" aria-label="zsh" style="--column: 0; --row: 0; --columns: 2; --span: 2"><span class="penna-machine-name"><span>zsh</span></span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="window-idle-0" style="--x: 0; --y: 0; --w: 1; --h: 1"><pre class="penna-window-term"><b>$ cargo test -p penna</b>
+   Compiling penna v0.4.0
+    Finished test in 12.4s
+     Running unittests
+<span data-ink="success">test result: ok. 214 passed</span>
+<b>$ git status --short</b>
+ M src/blocks/compact/tile.rs</pre></span></span><span class="penna-press"></span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="window-sizes">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">one pane, 2 by 2</div>
+          <div class="penna-bento" style="--rows: 2; --penna-bento-width: 370px; width: 181px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" data-id="size-one" aria-label="Sync the dotfiles" style="--column: 0; --row: 0; --columns: 2; --span: 2"><span class="penna-machine-name"><span>Sync the dotfiles</span></span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="size-one-0" style="--x: 0; --y: 0; --w: 1; --h: 1"><span class="penna-window-chat"><span class="penna-window-bubble"><i style="--w: 1"></i><i style="--w: 0.55"></i></span><span class="penna-window-lines"><i style="--w: 1"></i><i style="--w: 0.85"></i><i style="--w: 0.95"></i><i style="--w: 0.6"></i></span></span></span></span><span class="penna-press"></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">three panes, 4 by 2</div>
+          <div class="penna-bento" style="--rows: 2; --penna-bento-width: 370px; width: 370px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" data-id="size-three" aria-label="Make the pill menu offer New chat, Needs approval" style="--column: 0; --row: 0; --columns: 4; --span: 2"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="warning"></span><span>Make the pill menu offer New chat</span></span><span class="penna-machine-state" data-tone="warning">Needs approval</span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="size-three-0" style="--x: 0; --y: 0; --w: 0.5; --h: 1"><span class="penna-window-chat"><span class="penna-window-bubble"><i style="--w: 1"></i><i style="--w: 0.55"></i></span><span class="penna-window-lines"><i style="--w: 1"></i><i style="--w: 0.85"></i><i style="--w: 0.95"></i><i style="--w: 0.6"></i></span></span></span><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="size-three-1" style="--x: 0.5; --y: 0; --w: 0.5; --h: 0.5"><pre class="penna-window-term"><b>$ cargo test -p penna</b>
+   Compiling penna v0.4.0
+    Finished test in 12.4s
+     Running unittests
+<span data-ink="success">test result: ok. 214 passed</span>
+<b>$ git status --short</b>
+ M src/blocks/compact/tile.rs</pre></span><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="size-three-2" style="--x: 0.5; --y: 0.5; --w: 0.5; --h: 0.5"><span class="penna-window-host">127.0.0.1:8090</span><span class="penna-window-page"><i data-bar style="--w: 0.45"></i><i style="--w: 0.9"></i><i style="--w: 0.7"></i><i data-block></i></span></span></span><span class="penna-press"></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">four panes, 4 by 3</div>
+          <div class="penna-bento" style="--rows: 3; --penna-bento-width: 370px; width: 370px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" data-id="size-four" aria-label="Release 0.42" style="--column: 0; --row: 0; --columns: 4; --span: 3"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="strong"></span><span>Release 0.42</span></span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="size-four-0" style="--x: 0; --y: 0; --w: 0.5; --h: 0.5"><span class="penna-window-chat"><span class="penna-window-bubble"><i style="--w: 1"></i><i style="--w: 0.55"></i></span><span class="penna-window-lines"><i style="--w: 1"></i><i style="--w: 0.85"></i><i style="--w: 0.95"></i><i style="--w: 0.6"></i></span></span></span><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="size-four-1" style="--x: 0.5; --y: 0; --w: 0.5; --h: 0.5"><pre class="penna-window-term"><b>$ cargo test -p penna</b>
+   Compiling penna v0.4.0
+    Finished test in 12.4s
+     Running unittests
+<span data-ink="success">test result: ok. 214 passed</span>
+<b>$ git status --short</b>
+ M src/blocks/compact/tile.rs</pre></span><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="size-four-2" style="--x: 0; --y: 0.5; --w: 0.5; --h: 0.5"><span class="penna-window-host">github.com</span><span class="penna-window-page"><i data-bar style="--w: 0.45"></i><i style="--w: 0.9"></i><i style="--w: 0.7"></i><i data-block></i></span></span><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="size-four-3" style="--x: 0.5; --y: 0.5; --w: 0.5; --h: 0.5"><pre class="penna-window-term"><b>$ cargo build</b>
+   Compiling nidus v0.9.1
+<span data-ink="danger">error[E0308]: mismatched types</span>
+  --&gt; src/warp.rs:88:17
+<span data-ink="danger">error: could not compile nidus</span></pre></span></span><span class="penna-press"></span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="previews">
+      <div class="story-states" data-columns style="--columns: 3">
+        <div class="story-state">
+          <div class="story-label">terminal</div>
+          <div class="penna-bento" style="--rows: 2; --penna-bento-width: 370px; width: 181px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" data-id="preview-terminal" aria-label="cargo watch" style="--column: 0; --row: 0; --columns: 2; --span: 2"><span class="penna-machine-name"><span>cargo watch</span></span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="preview-terminal-0" style="--x: 0; --y: 0; --w: 1; --h: 1"><pre class="penna-window-term"><b>$ cargo test -p penna</b>
+   Compiling penna v0.4.0
+    Finished test in 12.4s
+     Running unittests
+<span data-ink="success">test result: ok. 214 passed</span>
+<b>$ git status --short</b>
+ M src/blocks/compact/tile.rs</pre></span></span><span class="penna-press"></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">browser</div>
+          <div class="penna-bento" style="--rows: 2; --penna-bento-width: 370px; width: 181px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" data-id="preview-browser" aria-label="Phone machines" style="--column: 0; --row: 0; --columns: 2; --span: 2"><span class="penna-machine-name"><span>Phone machines</span></span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="preview-browser-0" style="--x: 0; --y: 0; --w: 1; --h: 1"><span class="penna-window-host">127.0.0.1:8090</span><span class="penna-window-page"><i data-bar style="--w: 0.45"></i><i style="--w: 0.9"></i><i style="--w: 0.7"></i><i data-block></i></span></span></span><span class="penna-press"></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">chat</div>
+          <div class="penna-bento" style="--rows: 2; --penna-bento-width: 370px; width: 181px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" data-id="preview-chat" aria-label="Write the release notes" style="--column: 0; --row: 0; --columns: 2; --span: 2"><span class="penna-machine-name"><span>Write the release notes</span></span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" role="group" data-id="preview-chat-0" style="--x: 0; --y: 0; --w: 1; --h: 1"><span class="penna-window-chat"><span class="penna-window-bubble"><i style="--w: 1"></i><i style="--w: 0.55"></i></span><span class="penna-window-lines"><i style="--w: 1"></i><i style="--w: 0.85"></i><i style="--w: 0.95"></i><i style="--w: 0.6"></i></span></span></span></span><span class="penna-press"></span></div></div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

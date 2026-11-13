@@ -399,7 +399,19 @@
   --penna-icon-size: 16px;
 }
 
-.penna-touch-row[data-penna][data-tone="danger"] {
+.penna-touch-row-state[data-tone="warning"] {
+  color: var(--penna-warning-ink);
+}
+
+.penna-touch-row-state[data-tone="danger"] {
+  color: var(--penna-danger-ink);
+}
+
+.penna-touch-row-state[data-tone="strong"] {
+  color: var(--penna-ink, var(--penna-fg));
+}
+
+.penna-touch-row[data-penna][data-penna][data-penna][data-tone="danger"] {
   --penna-ink: var(--penna-danger-ink);
   --penna-muted: var(--penna-danger-ink);
 }

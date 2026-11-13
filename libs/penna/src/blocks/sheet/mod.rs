@@ -19,7 +19,8 @@ const ENTER: Duration = Duration::from_millis(240);
 const GRABBER_WIDTH: f32 = 36.0;
 const GRABBER_HEIGHT: f32 = 5.0;
 const HEADER_HEIGHT: f32 = 60.0;
-const CLOSE: f32 = 36.0;
+const CLOSE: f32 = crate::blocks::touch::TOUCH_TARGET;
+const CLOSE_GLYPH: f32 = 20.0;
 const OPTION_HEIGHT: f32 = crate::blocks::touch::TOUCH_ROW_HEIGHT;
 const DETAIL_HEIGHT: f32 = crate::blocks::touch::TOUCH_DETAIL_ROW_HEIGHT;
 const TILE: f32 = 40.0;
@@ -144,8 +145,7 @@ pub fn sheet_close(id: impl Into<ElementId>) -> Button {
         .compact()
         .tab_stop(false)
         .size(px(CLOSE))
-        .rounded_full()
-        .child(Icon::new(IconName::Xmark).size(px(16.0)))
+        .child(Icon::new(IconName::Xmark).size(px(CLOSE_GLYPH)))
 }
 
 pub fn sheet_option(
@@ -281,7 +281,12 @@ fn row_shell(
     height: Pixels,
     cx: &App,
 ) -> Stateful<Div> {
-    crate::blocks::touch::touch_row_frame(id, surface, height, None, PaintState::Rest, cx)
+    let theme = cx.theme();
+    let nest = crate::blocks::touch::Nest {
+        outer: theme.phone_radius(),
+        inset: theme.row_inset,
+    };
+    crate::blocks::touch::touch_row_frame(id, surface, height, Some(nest), PaintState::Rest, cx)
 }
 
 fn icon_tile(icon: Icon, size: f32, layer: &Layer, cx: &App) -> Div {
@@ -531,6 +536,7 @@ impl RenderOnce for BottomSheet {
             .flex_col()
             .occlude()
             .surface(sheet, cx)
+            .rounded(theme.phone_radius())
             .font_family(theme.font_family.clone())
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(|_, _, cx| cx.stop_propagation())

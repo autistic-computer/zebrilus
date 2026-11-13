@@ -7,8 +7,8 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, IconName, StyledExt as _, TextStyle,
     blocks::compact::{
-        BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, PillLabel, PillMenuAlign, PillMenuItem,
-        PillMenuLook, PillPlacement, bento_add_tile, bento_grid, bento_tile, compact_bar_button,
+        BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, PhoneTile, PillLabel, PillMenuAlign,
+        PillMenuItem, PillMenuLook, PillPlacement, bento_grid, compact_bar_button,
         compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
         compact_pill_menu, folding_title_bar, pill_glass_over,
     },
@@ -460,33 +460,21 @@ const TILES: [(&str, &str, u8, u8); 4] = [
 
 fn bento(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
-    let muted = cx.theme().foreground.muted();
     let mut tiles = TILES
         .iter()
         .enumerate()
         .map(|(index, (title, detail, columns, rows))| {
             (
                 BentoSpan::new(usize::from(*columns), usize::from(*rows)),
-                bento_tile(("bento-tile", index), ("bento-tile-press", index), cx)
-                    .child(
-                        v_flex()
-                            .p(px(12.0))
-                            .gap(px(2.0))
-                            .child(div().type_style(TextStyle::TouchSmall, cx).child(*title))
-                            .child(
-                                div()
-                                    .type_style(TextStyle::Body, cx)
-                                    .text_color(muted)
-                                    .child(*detail),
-                            ),
-                    )
+                PhoneTile::new(("bento-tile", index), *title)
+                    .foot(*detail)
                     .into_any_element(),
             )
         })
         .collect::<Vec<_>>();
     tiles.push((
         BentoSpan::new(4, 1),
-        bento_add_tile("bento-add", "Add folder", cx).into_any_element(),
+        PhoneTile::add("bento-add", "Add folder").into_any_element(),
     ));
     let placement = placement();
     let bar = compact_floating_bar(div().flex_1(), &placement, cx).child(compact_floating_group(

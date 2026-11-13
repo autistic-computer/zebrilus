@@ -16,7 +16,7 @@ use penna::{
     RuleLook, Space, StyledExt as _, Surface, TextStyle, Tone,
     blocks::color_picker::{ColorPicker, ColorPickerState},
     blocks::compact::{
-        BENTO_INSET, BentoSpan, PillLabel, PillPlacement, bento_add_tile, bento_grid, bento_tile,
+        BENTO_INSET, BentoSpan, PhoneTile, PillLabel, PillPlacement, bento_grid,
         compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
         compact_hud,
     },
@@ -1021,33 +1021,21 @@ impl Phone {
         };
         let column = (viewport - 2.0 * crate::host::PADDING - GAP * (columns - 1.0)) / columns;
         let grid = (column.min(PHONE_WIDTH) - 2.0 - BENTO_INSET * 2.0).max(0.0);
-        let muted = cx.theme().foreground.muted();
         let mut cells = LIBRARY
             .iter()
             .enumerate()
             .map(|(index, (title, detail, span))| {
                 (
                     *span,
-                    bento_tile(("creator-tile", index), ("creator-tile-press", index), cx)
-                        .child(
-                            v_flex()
-                                .p(px(12.0))
-                                .gap(px(2.0))
-                                .child(div().type_style(TextStyle::TouchSmall, cx).child(*title))
-                                .child(
-                                    div()
-                                        .type_style(TextStyle::Body, cx)
-                                        .text_color(muted)
-                                        .child(*detail),
-                                ),
-                        )
+                    PhoneTile::new(("creator-tile", index), *title)
+                        .foot(*detail)
                         .into_any_element(),
                 )
             })
             .collect::<Vec<_>>();
         cells.push((
             BentoSpan::new(4, 1),
-            bento_add_tile("creator-add", "Add folder", cx).into_any_element(),
+            PhoneTile::add("creator-add", "Add folder").into_any_element(),
         ));
         let placement = placement();
         let bar =

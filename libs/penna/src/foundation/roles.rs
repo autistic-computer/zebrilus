@@ -330,7 +330,7 @@ pub const TILE_MINI: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TILE,
     "tile.mini",
     "Panes in a window tile",
-    "The panes drawn where they split inside a window's tile in the phone overview, ringed on the one the window opens to",
+    "The panes drawn where they split inside a window's tile in the phone overview",
 )
 .with(P.fill(Fill::None).selected(Highlight::Ring));
 pub const BAR_PANE: SurfaceRole = SurfaceRole::new(

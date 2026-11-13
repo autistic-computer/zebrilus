@@ -1511,6 +1511,7 @@ impl AppShell {
                         stage,
                         progress,
                         ground: page_background,
+                        corner: penna::blocks::compact::mini_radius(cx),
                     },
                 ))
                 .child(

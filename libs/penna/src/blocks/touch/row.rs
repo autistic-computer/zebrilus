@@ -10,6 +10,7 @@ use ala::{
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable, Emphasis, Ground, Icon, IconName, PaintState,
     Space, StyledExt as _, Surface, TextStyle, Tone,
+    blocks::touch::StatusMark,
     foundation::{
         InteractiveSurfaceExt as _, author_name, nested_radius, roles, row_radius, shared_corners,
     },
@@ -68,6 +69,7 @@ pub enum TouchTrailing {
     Glyph(IconName),
     Value(SharedString),
     Check,
+    State(StatusMark, SharedString),
 }
 
 type ClickHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
@@ -212,6 +214,14 @@ impl RenderOnce for TouchRow {
                     .type_style(TextStyle::TouchSmall, cx)
                     .text_color(muted)
                     .child(value)
+                    .into_any_element(),
+                TouchTrailing::State(mark, word) => h_flex()
+                    .flex_none()
+                    .gap(Space::S6)
+                    .type_style(TextStyle::TouchSmall, cx)
+                    .text_color(mark.word_ink(muted, cx))
+                    .child(mark)
+                    .child(word)
                     .into_any_element(),
             });
         let lines = v_flex()

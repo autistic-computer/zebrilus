@@ -1391,8 +1391,7 @@ impl Theme {
             radius
         };
         let descends = |id: &str| surface.role.lineage().any(|node| node.id == id);
-        let icon_tile =
-            descends(super::roles::TILE_STACK.id) || descends(super::roles::TILE_MINI.id);
+        let icon_tile = descends(super::roles::TILE_STACK.id);
         let thumbnail = descends(SurfaceRole::TILE.id);
         let controlled = !tall
             && (icon_tile

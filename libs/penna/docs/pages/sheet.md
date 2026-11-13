@@ -33,12 +33,11 @@ Asks a short question and returns you where you were: a password, a confirmation
 
 ```figure uses=sheet,button,notice
 <div class="docs-show" data-gap="wide">
-  <div class="docs-cell"><button class="penna-sheet-close penna-button" data-penna="button.quiet" aria-label="Close"><i data-icon="xmark"></i></button><span class="docs-note">Built: 36</span></div>
-  <div class="docs-cell"><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close"><i data-icon="xmark"></i></button><span class="docs-note">Phone: 44, not built</span></div>
+  <div class="docs-cell"><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close"><i data-icon="xmark"></i></button><span class="docs-note">44</span></div>
 </div>
 ```
 
-Nothing tappable is under 44 on a phone, so the close grows to the touch rung, and rounds like any icon button of that height. Not built: natively the panel keeps `radius` and the close is round.
+Nothing tappable is under 44 on a phone, so the close is on the touch rung and rounds like any icon button of that height. The panel takes the phone corner, and its rows round no further than it less their inset.
 
 ## A question from ssh
 

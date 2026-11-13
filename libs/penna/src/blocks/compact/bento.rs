@@ -1,12 +1,6 @@
-use ala::{
-    AnyElement, App, Div, ElementId, ParentElement as _, Pixels, SharedString, Stateful,
-    Styled as _, div, prelude::*, px,
-};
+use ala::{AnyElement, Div, ParentElement as _, Pixels, Styled as _, div, prelude::*, px};
 
-use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Layer, PaintState, Space, StyledExt as _,
-    Surface, blocks::touch::press_highlight, foundation::roles,
-};
+use crate::Space;
 
 pub const BENTO_COLUMNS: usize = 4;
 pub const BENTO_GAP: f32 = Space::GAP_RELATED.design_px();
@@ -87,56 +81,6 @@ pub fn bento_grid(width: Pixels, tiles: Vec<(BentoSpan, AnyElement)>) -> Div {
                         .child(tile)
                 }),
         )
-}
-
-pub fn bento_tile(
-    id: impl Into<ElementId>,
-    press: impl Into<ElementId>,
-    cx: &App,
-) -> Stateful<Div> {
-    let frame = cx
-        .theme()
-        .layer(Surface::new(roles::PHONE_CARD), PaintState::Rest);
-    let radius = frame.radius;
-    div()
-        .id(id)
-        .relative()
-        .size_full()
-        .overflow_hidden()
-        .click_cursor()
-        .layer(&Layer {
-            glass: None,
-            ..frame
-        })
-        .child(press_highlight(press, None, radius))
-}
-
-pub fn bento_add_tile(
-    id: impl Into<ElementId>,
-    title: impl Into<SharedString>,
-    cx: &App,
-) -> Stateful<Div> {
-    let theme = cx.theme();
-    let frame = theme.layer(Surface::new(roles::PHONE_ADD), PaintState::Rest);
-    let radius = frame.radius;
-    div()
-        .id(id)
-        .relative()
-        .size_full()
-        .flex()
-        .items_center()
-        .justify_center()
-        .gap(Space::S6)
-        .click_cursor()
-        .layer(&Layer {
-            glass: None,
-            ..frame
-        })
-        .type_style(crate::TextStyle::TouchSmall, cx)
-        .text_color(theme.foreground.muted())
-        .child(press_highlight("bento-add-press", None, radius))
-        .child(Icon::new(IconName::Plus).size(px(18.0)))
-        .child(title.into())
 }
 
 #[cfg(test)]

@@ -8,11 +8,12 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, IconName, Label, TextStyle,
     blocks::compact::{
-        BENTO_INSET, BentoSpan, PillLabel, PillPlacement, bento_grid, compact_bar_button,
-        compact_floating_bar, compact_floating_group, compact_floating_pill, folding_title_bar,
-        scrolled,
+        BENTO_INSET, BentoSpan, MiniPane, PhoneTile, PillLabel, PillPlacement, bento_grid,
+        compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
+        folding_title_bar, scrolled, window_span,
     },
     blocks::settings::large_title,
+    blocks::touch::StatusMark,
     blocks::touch::{PageDot, PagerEvent, page_dots},
     components::button::{Button, ButtonVariants as _},
 };
@@ -25,38 +26,29 @@ use zz_protocol::{PaneId, PaneKindSnapshot, SessionId, WindowId};
 use zz_terminal::{Glyph, LocalColors, TerminalAppearance, TerminalPalette, TerminalViewport};
 use zz_ui::{
     compact::{
-        HostState, host_tile, host_tile_line, mini_pane, overview_count, overview_host_empty,
-        overview_session_heading, window_layout, window_span, window_tile,
+        HostState, host_mark, overview_count, overview_host_empty, overview_session_heading,
+        window_mark,
     },
     terminal::terminal_background,
 };
 
-use super::{AppShell, MenuFrom, Page, kind_icon, pages};
+use super::{AppShell, MenuFrom, Page, pages};
 use crate::{connection::Connection, terminal::phone_colors};
-#[cfg(any(target_os = "ios", target_os = "android"))]
-use penna::blocks::compact::bento_add_tile;
 
-const PREVIEW_TEXT: f32 = 4.0;
-const PREVIEW_LINE: f32 = 4.8;
 const PREVIEW_ROWS: u16 = 40;
 const PREVIEW_COLUMNS: usize = 56;
 const HOST_GAP: f32 = 12.0;
 const ZOOM_FADE_START: f32 = 0.3;
 const ZOOM_FADE_SPAN: f32 = 0.4;
-const ZOOM_RADIUS: f32 = 10.0;
-const HOST_TILE_NAMES: usize = 2;
 const TILE_FALLBACK_TOP: f32 = 160.0;
 const TILE_FALLBACK_HEIGHT: f32 = 178.0;
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the miniature draws the pane's terminal cells, scaled down in the code font"
-)]
-fn preview_text(cx: &App) -> ala::Div {
-    div()
-        .font_family(cx.theme().mono_font_family.clone())
-        .text_size(px(PREVIEW_TEXT))
-        .line_height(px(PREVIEW_LINE))
+fn page_host(url: &str) -> &str {
+    if url == "about:blank" {
+        return "";
+    }
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    rest.split(['/', '?', '#']).next().unwrap_or(rest)
 }
 
 fn host_palette(core: &zz_client::ClientCore) -> TerminalPalette {
@@ -133,6 +125,7 @@ pub(super) struct Zoom {
     pub stage: Size<Pixels>,
     pub progress: f32,
     pub ground: Hsla,
+    pub corner: Pixels,
 }
 
 fn zoom_fade(at: f32) -> f32 {
@@ -170,7 +163,7 @@ pub(super) fn zoom_layers(parent: AnyElement, child: AnyElement, zoom: &Zoom) ->
         .w(width)
         .h(band.max(px(0.0)))
         .overflow_hidden()
-        .rounded(px(ZOOM_RADIUS) / child_scale * progress)
+        .rounded(zoom.corner / child_scale * progress)
         .bg(zoom.ground)
         .opacity(zoom_fade(1.0 - progress))
         .child(
@@ -193,22 +186,9 @@ pub(super) fn zoom_layers(parent: AnyElement, child: AnyElement, zoom: &Zoom) ->
         .child(child_layer)
 }
 
-fn home_relative(path: &str) -> String {
-    ["/Users/", "/home/"]
-        .iter()
-        .find_map(|root| {
-            let rest = path.strip_prefix(root)?;
-            let tail = rest.find('/').map_or("", |slash| &rest[slash..]);
-            Some(format!("~{tail}"))
-        })
-        .unwrap_or_else(|| path.to_owned())
-}
-
 #[derive(Default)]
 struct HostCounts {
-    names: Vec<String>,
     sessions: usize,
-    panes: usize,
     waiting: usize,
     working: usize,
 }
@@ -218,10 +198,8 @@ fn host_counts(connection: &Entity<Connection>, cx: &App) -> HostCounts {
     let mut counts = HostCounts::default();
     for session in &core.snapshot().sessions {
         counts.sessions += 1;
-        counts.names.push(session_label(session).text);
         for window in &session.windows {
             for pane in window.panes.keys() {
-                counts.panes += 1;
                 match core.agent_state(*pane).map(agent_attention_status) {
                     Some(AgentAttentionStatus::NeedsInput) => counts.waiting += 1,
                     Some(AgentAttentionStatus::Working) => counts.working += 1,
@@ -353,6 +331,7 @@ impl AppShell {
                         stage,
                         progress,
                         ground: cx.theme().background,
+                        corner: cx.theme().phone_radius(),
                     },
                 )
                 .into_any_element()
@@ -502,8 +481,8 @@ impl AppShell {
         let connected = hosts.iter().filter(|host| host.connected(cx)).count();
         #[cfg(any(target_os = "ios", target_os = "android"))]
         let add = Some((
-            BentoSpan::new(4, 1),
-            bento_add_tile("hosts-add", "Add host", cx)
+            BentoSpan::new(2, 2),
+            PhoneTile::add("hosts-add", "Add host")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.compact.add_host = true;
                     cx.notify();
@@ -557,75 +536,19 @@ impl AppShell {
 
     fn host_bento_tile(&self, index: usize, host: &HostPage, cx: &mut Context<Self>) -> AnyElement {
         let state = host.state(cx);
-        let (warning, success) = (cx.theme().warning, cx.theme().success);
-        let (detail, footer): (String, Vec<AnyElement>) = match (state, &host.connection) {
-            (HostState::Connected, Some(connection)) => {
-                let counts = host_counts(connection, cx);
-                let mut footer = Vec::new();
-                if counts.waiting > 0 {
-                    footer.push(
-                        host_tile_line(warning, format!("{} waiting", counts.waiting), true, cx)
-                            .into_any_element(),
-                    );
-                }
-                if counts.working > 0 {
-                    footer.push(
-                        host_tile_line(success, format!("{} working", counts.working), false, cx)
-                            .into_any_element(),
-                    );
-                }
-                if footer.is_empty() {
-                    let faint = cx.theme().foreground.faint();
-                    footer.extend(counts.names.iter().take(HOST_TILE_NAMES).map(|name| {
-                        host_tile_line(faint, name.clone(), false, cx).into_any_element()
-                    }));
-                }
-                (
-                    format!(
-                        "{} · {}",
-                        overview_count(counts.sessions, "session"),
-                        overview_count(counts.panes, "pane")
-                    ),
-                    footer,
-                )
+        let counts = match (state, &host.connection) {
+            (HostState::Connected, Some(connection)) => Some(host_counts(connection, cx)),
+            _ => None,
+        };
+        let (mark, word) = host_mark(state, counts.as_ref().map_or(0, |counts| counts.waiting));
+        let foot: Vec<String> = match (state, counts) {
+            (HostState::Connected, Some(counts)) => {
+                std::iter::once(overview_count(counts.sessions, "session"))
+                    .chain((counts.working > 0).then(|| format!("{} working", counts.working)))
+                    .collect()
             }
-            (HostState::Connecting, _) => (
-                "Connecting…".into(),
-                host.endpoint
-                    .clone()
-                    .map(|endpoint| {
-                        Button::new(("hosts-cancel", index))
-                            .label("Cancel")
-                            .ghost()
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                cx.stop_propagation();
-                                #[cfg(any(target_os = "ios", target_os = "android"))]
-                                this.disconnect_host(&endpoint, window, cx);
-                                let _ = (this, &endpoint, window);
-                            }))
-                            .into_any_element()
-                    })
-                    .into_iter()
-                    .collect(),
-            ),
-            _ => (
-                "Not connected".into(),
-                host.endpoint
-                    .clone()
-                    .map(|endpoint| {
-                        Button::new(("hosts-connect", index))
-                            .label("Connect")
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                cx.stop_propagation();
-                                #[cfg(any(target_os = "ios", target_os = "android"))]
-                                this.connect_host(endpoint.clone(), window, cx);
-                                let _ = (this, &endpoint, window);
-                            }))
-                            .into_any_element()
-                    })
-                    .into_iter()
-                    .collect(),
-            ),
+            (HostState::Connecting, _) => host.endpoint.clone().into_iter().collect(),
+            _ => Vec::new(),
         };
         let tiles = Rc::clone(&self.compact.host_tiles);
         let attached = host
@@ -633,31 +556,41 @@ impl AppShell {
             .as_ref()
             .is_some_and(|connection| *connection == self.connection);
         let enterable = attached || state == HostState::Connected;
-        host_tile(
-            ("hosts-tile", index),
-            ("hosts-tile-press", index),
-            state,
-            host.title.clone(),
-            detail,
-            footer,
-            cx,
-        )
-        .child(
-            canvas(
-                move |bounds, _, _| {
-                    tiles.borrow_mut().insert(index, bounds);
-                },
-                |_, (), _, _| {},
+        let endpoint = host.endpoint.clone();
+        foot.into_iter()
+            .fold(
+                PhoneTile::new(("hosts-tile", index), host.title.clone())
+                    .mark(mark)
+                    .state(word),
+                PhoneTile::foot,
             )
-            .absolute()
-            .inset_0(),
-        )
-        .on_click(cx.listener(move |this, _, window, cx| {
-            if enterable {
-                this.enter_host(index, window, cx);
-            }
-        }))
-        .into_any_element()
+            .child(
+                canvas(
+                    move |bounds, _, _| {
+                        tiles.borrow_mut().insert(index, bounds);
+                    },
+                    |_, (), _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            )
+            .on_click(
+                cx.listener(move |this, _, window, cx| match (state, &endpoint) {
+                    (HostState::Connecting, Some(endpoint)) => {
+                        #[cfg(any(target_os = "ios", target_os = "android"))]
+                        this.disconnect_host(endpoint, window, cx);
+                        let _ = endpoint;
+                    }
+                    _ if enterable => this.enter_host(index, window, cx),
+                    (HostState::Offline, Some(endpoint)) => {
+                        #[cfg(any(target_os = "ios", target_os = "android"))]
+                        this.connect_host(endpoint.clone(), window, cx);
+                        let _ = endpoint;
+                    }
+                    _ => {}
+                }),
+            )
+            .into_any_element()
     }
 
     pub(super) fn open_settings(&mut self, cx: &mut Context<Self>) {
@@ -875,20 +808,21 @@ impl AppShell {
                     let shapes = session
                         .windows
                         .iter()
-                        .map(|window| WindowShape {
-                            id: window.id,
-                            title: summarize_window(window).title,
-                            folder: window
-                                .panes
-                                .get(&window.active_pane)
-                                .map(|pane| home_relative(&pane.summary.cwd))
-                                .filter(|cwd| !cwd.is_empty()),
-                            rects: pane_rects(&window.layout)
-                                .into_iter()
-                                .map(|(pane, rect)| {
-                                    (pane, [rect.x, rect.y, rect.width, rect.height])
-                                })
-                                .collect(),
+                        .map(|window| {
+                            let summary = summarize_window(window);
+                            let (mark, state) = window_mark(&summary);
+                            WindowShape {
+                                id: window.id,
+                                title: summary.title,
+                                mark,
+                                state,
+                                rects: pane_rects(&window.layout)
+                                    .into_iter()
+                                    .map(|(pane, rect)| {
+                                        (pane, [rect.x, rect.y, rect.width, rect.height])
+                                    })
+                                    .collect(),
+                            }
                         })
                         .collect();
                     (session.id, session_label(session).text, model, shapes)
@@ -974,27 +908,12 @@ impl AppShell {
                     .map(|(index, pane)| (pane.id, [0.0, fraction * index as f32, 1.0, fraction]))
                     .collect()
             });
-        let ground = cx.theme().background;
-        let minis: Vec<([f32; 4], AnyElement)> = rects
+        let minis: Vec<([f32; 4], MiniPane)> = rects
             .iter()
             .filter_map(|(pane, rect)| {
                 let page = pages.iter().find(|page| page.pane == *pane)?;
                 drawn_panes.push(page.pane);
-                let title = (count > 1).then(|| {
-                    here.then(|| self.browser_page(page, cx))
-                        .flatten()
-                        .map_or_else(|| page.title.clone(), |(title, _)| title)
-                });
-                let mini = mini_pane(
-                    ("mini-pane", page.pane.0),
-                    kind_icon(&page.kind),
-                    title,
-                    self.mini_preview(page, connection, here, cx),
-                    ground,
-                    count > 1 && Some(page.pane) == open,
-                    page.attention,
-                    cx,
-                );
+                let mini = self.mini_preview(page, connection, here, cx);
                 let pane_id = page.pane;
                 let cards = Rc::clone(&self.compact.cards);
                 let mini = if here {
@@ -1011,26 +930,24 @@ impl AppShell {
                 } else {
                     mini
                 };
-                Some((*rect, mini.into_any_element()))
+                Some((*rect, mini))
             })
             .collect();
-        let attention = pages
+        let unseen = pages
             .iter()
             .any(|page| page.window == window.id && page.attention);
-        let title = shape.map_or_else(|| window.label.clone(), |shape| shape.title.clone());
-        let folder = shape.and_then(|shape| shape.folder.clone()).map(Into::into);
+        let (mark, state) = shape.map_or((None, None), |shape| (shape.mark, shape.state.clone()));
+        let mark = mark.or_else(|| unseen.then_some(StatusMark::Ink));
+        let name = shape.map_or_else(|| window.label.clone(), |shape| shape.title.clone());
         let opened = open.and_then(|open| pages.iter().find(|page| page.pane == open).cloned());
-        window_tile(
-            ("overview-window", window.id.0),
-            ("overview-window-press", window.id.0),
-            window.index,
-            title,
-            folder,
-            attention,
-            window_layout(minis),
-            cx,
-        )
-        .on_click(cx.listener(move |this, _, window, cx| {
+        let cell = PhoneTile::new(("overview-window", window.id.0), name)
+            .mark(mark)
+            .panes(minis);
+        let cell = match state {
+            Some(state) => cell.state(state),
+            None => cell,
+        };
+        cell.on_click(cx.listener(move |this, _, window, cx| {
             let Some(page) = &opened else {
                 return;
             };
@@ -1060,34 +977,41 @@ impl AppShell {
         connection: &Entity<Connection>,
         here: bool,
         cx: &App,
-    ) -> Option<AnyElement> {
-        let theme = cx.theme();
+    ) -> MiniPane {
+        let id = ("mini-pane", page.pane.0);
         let core = &connection.read(cx).core;
         match &page.kind {
-            PaneKindSnapshot::Terminal => core.viewport(page.pane).map(|viewport| {
-                preview_text(cx)
-                    .whitespace_nowrap()
-                    .child(terminal_preview(
-                        viewport,
-                        phone_colors(viewport, &host_palette(core), cx),
-                        &font(theme.mono_font_family.clone()),
-                        0..viewport.rows.min(PREVIEW_ROWS),
-                        PREVIEW_COLUMNS,
-                    ))
-                    .into_any_element()
-            }),
-            PaneKindSnapshot::Browser(descriptor) => here
-                .then(|| self.browser_page(page, cx))
-                .flatten()
-                .map(|(_, host)| host)
-                .or_else(|| descriptor.tabs.get(descriptor.active_tab).cloned())
-                .map(|url| {
-                    Label::new(TextStyle::Micro, url)
-                        .muted()
-                        .truncate()
-                        .into_any_element()
-                }),
-            _ => None,
+            PaneKindSnapshot::Terminal => core.viewport(page.pane).map_or_else(
+                || MiniPane::blank(id),
+                |viewport| {
+                    MiniPane::terminal(
+                        id,
+                        terminal_preview(
+                            viewport,
+                            phone_colors(viewport, &host_palette(core), cx),
+                            &font(cx.theme().mono_font_family.clone()),
+                            0..viewport.rows.min(PREVIEW_ROWS),
+                            PREVIEW_COLUMNS,
+                        ),
+                    )
+                },
+            ),
+            PaneKindSnapshot::Browser(descriptor) => {
+                let host = here
+                    .then(|| self.browser_page(page, cx))
+                    .flatten()
+                    .map(|(_, host)| host)
+                    .or_else(|| {
+                        descriptor
+                            .tabs
+                            .get(descriptor.active_tab)
+                            .map(|url| page_host(url).to_owned())
+                    })
+                    .unwrap_or_default();
+                MiniPane::browser(id, host)
+            }
+            PaneKindSnapshot::Agent(_) => MiniPane::chat(id),
+            _ => MiniPane::blank(id),
         }
     }
 
@@ -1277,7 +1201,8 @@ enum CardTarget {
 struct WindowShape {
     id: WindowId,
     title: String,
-    folder: Option<String>,
+    mark: Option<StatusMark>,
+    state: Option<String>,
     rects: Vec<(PaneId, [f32; 4])>,
 }
 
@@ -1319,18 +1244,5 @@ impl HostPage {
             Some(connection) if connection.read(cx).busy_or_connecting() => "Connecting…".into(),
             _ => "Not connected".into(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::home_relative;
-
-    #[test]
-    fn folders_under_a_home_start_at_the_tilde() {
-        assert_eq!(home_relative("/Users/fabrico/dev/zz"), "~/dev/zz");
-        assert_eq!(home_relative("/home/fabrico"), "~");
-        assert_eq!(home_relative("/tmp"), "/tmp");
-        assert_eq!(home_relative(""), "");
     }
 }

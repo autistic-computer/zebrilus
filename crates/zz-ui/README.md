@@ -53,8 +53,8 @@ engine features disabled. Each client owns its input, focus, image delivery, and
 lifecycle; native daemon and operating-system dependencies stay outside `zz-ui`.
 
 `src/blocks/compact/` holds the parts of the phone shell that know about hosts, sessions, windows and
-panes: `host_tile`, `host_tile_line`, `window_tile`, `window_layout`, `window_span`, `mini_pane`,
-the overview headings and `HostState`, built on the kit's bento grid. The phone chrome they sit
+panes: `host_mark` and `window_mark` (which mark and words a host or a window summary shows),
+the overview headings and `HostState`; the tiles are the kit's `PhoneTile` and `MiniPane`. The phone chrome they sit
 in lives in `penna::blocks::compact` (`libs/penna/src/blocks/compact/`): the floating pill bar and its morph into
 the key row, the pill menu, the folding title bar, the HUD and the bento grid. Large titles are
 `penna::blocks::settings::large_title`. The touch widgets under them live in `penna::blocks::touch`

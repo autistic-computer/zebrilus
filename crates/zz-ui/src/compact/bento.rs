@@ -1,222 +1,99 @@
-use ala::{
-    AnyElement, App, Div, ElementId, Hsla, ParentElement as _, SharedString, Stateful, Styled as _,
-    div, prelude::*, px, relative,
-};
-use penna::{
-    Label, TextStyle, Tile, TileVariant,
-    blocks::compact::{BentoSpan, bento_tile},
-};
+use penna::blocks::touch::StatusMark;
+use zz_client::window_summary::{Attention, Tone, WindowSummary};
 
-use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, PaintState};
+use super::overview::HostState;
 
-use super::overview::{HostState, host_state_dot};
-
-const TILE_PADDING: f32 = 14.0;
-const WINDOW_PADDING: f32 = 10.0;
-const WINDOW_HEADER: f32 = 18.0;
-const MINI_GAP: f32 = 4.0;
-const MINI_RADIUS: f32 = 10.0;
-
-pub fn window_span(panes: usize) -> BentoSpan {
-    match panes {
-        0..=2 => BentoSpan::new(2, 2),
-        3 => BentoSpan::new(4, 2),
-        _ => BentoSpan::new(4, 3),
+pub fn host_mark(state: HostState, waiting: usize) -> (StatusMark, String) {
+    match state {
+        HostState::Connected if waiting > 0 => {
+            (StatusMark::Warning, format!("{waiting} waiting for you"))
+        }
+        HostState::Connected => (StatusMark::Success, "Connected".to_owned()),
+        HostState::Connecting => (StatusMark::Spinner, "Connecting".to_owned()),
+        HostState::Offline => (StatusMark::Off, "Not connected".to_owned()),
     }
 }
 
-pub fn host_tile(
-    id: impl Into<ElementId>,
-    press: impl Into<ElementId>,
-    state: HostState,
-    title: impl Into<SharedString>,
-    detail: impl Into<SharedString>,
-    footer: Vec<AnyElement>,
-    cx: &App,
-) -> Stateful<Div> {
-    let theme = cx.theme();
-    bento_tile(id, press, cx).child(
-        div()
-            .absolute()
-            .inset_0()
-            .flex()
-            .flex_col()
-            .gap(px(4.0))
-            .p(px(TILE_PADDING))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(7.0))
-                    .child(host_state_dot(state, cx))
-                    .child(Label::new(TextStyle::Heading, title).truncate().min_w_0()),
-            )
-            .child(
-                Label::new(TextStyle::Body, detail)
-                    .truncate()
-                    .text_color(theme.foreground.muted()),
-            )
-            .child(div().flex_1())
-            .children(footer),
-    )
-}
-
-pub fn host_tile_line(color: Hsla, text: impl Into<SharedString>, warning: bool, cx: &App) -> Div {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(6.0))
-        .text_color(if warning {
-            color
-        } else {
-            cx.theme().foreground.muted()
-        })
-        .child(div().flex_none().size(px(6.0)).rounded_full().bg(color))
-        .child(Label::new(TextStyle::Body, text).truncate().min_w_0())
-}
-
-pub fn window_tile(
-    id: impl Into<ElementId>,
-    press: impl Into<ElementId>,
-    index: u32,
-    title: impl Into<SharedString>,
-    folder: Option<SharedString>,
-    attention: bool,
-    body: impl IntoElement,
-    cx: &App,
-) -> Stateful<Div> {
-    let theme = cx.theme();
-    let muted = theme.foreground.muted();
-    bento_tile(id, press, cx).child(
-        div()
-            .absolute()
-            .inset_0()
-            .flex()
-            .flex_col()
-            .gap(px(8.0))
-            .p(px(WINDOW_PADDING))
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .gap(px(8.0))
-                    .h(px(WINDOW_HEADER))
-                    .px(px(4.0))
-                    .child(
-                        Label::new(TextStyle::Heading, index.to_string())
-                            .flex_none()
-                            .text_color(muted),
-                    )
-                    .child(
-                        Label::new(TextStyle::Heading, title)
-                            .truncate()
-                            .flex_none()
-                            .max_w(relative(0.6)),
-                    )
-                    .child(
-                        Label::new(TextStyle::Body, folder.unwrap_or_default())
-                            .truncate()
-                            .flex_1()
-                            .min_w_0()
-                            .text_color(muted),
-                    )
-                    .when(attention, |row| {
-                        row.child(
-                            div()
-                                .flex_none()
-                                .size(px(8.0))
-                                .rounded_full()
-                                .bg(theme.warning),
-                        )
-                    }),
-            )
-            .child(div().relative().flex_1().min_h_0().child(body)),
-    )
-}
-
-pub fn window_layout(panes: Vec<([f32; 4], AnyElement)>) -> Div {
-    let half = px(MINI_GAP / 2.0);
-    div()
-        .absolute()
-        .inset(-half)
-        .children(panes.into_iter().map(|([x, y, width, height], pane)| {
-            div()
-                .absolute()
-                .left(relative(x))
-                .top(relative(y))
-                .w(relative(width))
-                .h(relative(height))
-                .p(half)
-                .child(pane)
-        }))
-}
-
-pub fn mini_pane(
-    id: impl Into<ElementId>,
-    icon: IconName,
-    title: Option<SharedString>,
-    preview: Option<AnyElement>,
-    background: Hsla,
-    current: bool,
-    attention: bool,
-    cx: &App,
-) -> Tile {
-    let theme = cx.theme();
-    Tile::new(id)
-        .variant(TileVariant::Mini)
-        .state(if current {
-            PaintState::Selected
-        } else {
-            PaintState::Rest
-        })
-        .relative()
-        .size_full()
-        .flex()
-        .flex_col()
-        .gap(px(4.0))
-        .p(px(6.0))
-        .overflow_hidden()
-        .bg(background)
-        .rounded(px(MINI_RADIUS))
-        .when_some(title, |pane, title| {
-            pane.child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .gap(px(4.0))
-                    .text_color(theme.foreground.muted())
-                    .child(Icon::new(icon).size(px(12.0)))
-                    .child(
-                        Label::new(TextStyle::Caption, title)
-                            .truncate()
-                            .flex_1()
-                            .min_w_0(),
-                    )
-                    .when(attention, |row| {
-                        row.child(
-                            div()
-                                .flex_none()
-                                .size(px(6.0))
-                                .rounded_full()
-                                .bg(theme.warning),
-                        )
-                    }),
-            )
-        })
-        .child(div().flex_1().min_h_0().overflow_hidden().children(preview))
+pub fn window_mark(summary: &WindowSummary) -> (Option<StatusMark>, Option<String>) {
+    let lead = summary.detail.first();
+    let says = |tone| {
+        lead.filter(|part| part.tone == tone)
+            .map(|part| part.text.clone())
+    };
+    if let Some(word) = says(Tone::Danger) {
+        return (Some(StatusMark::Danger), Some(word));
+    }
+    if let Some(word) = says(Tone::Warning) {
+        return (Some(StatusMark::Warning), Some(word));
+    }
+    let mark = match summary.attention {
+        Attention::NeedsYou => Some(StatusMark::Warning),
+        Attention::Failed => Some(StatusMark::Danger),
+        Attention::Working => Some(StatusMark::Spinner),
+        Attention::Done | Attention::Bell => Some(StatusMark::Ink),
+        Attention::None => None,
+    };
+    (mark, None)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zz_client::window_summary::DetailPart;
+    use zz_protocol::{PaneId, WindowId};
+
+    fn summary(attention: Attention, detail: &[(&str, Tone)]) -> WindowSummary {
+        WindowSummary {
+            window: WindowId(1),
+            index: 1,
+            headline: PaneId(1),
+            title: "zsh".to_owned(),
+            detail: detail
+                .iter()
+                .map(|(text, tone)| DetailPart {
+                    text: (*text).to_owned(),
+                    tone: *tone,
+                })
+                .collect(),
+            changed_at: 0,
+            tiles: Vec::new(),
+            attention,
+        }
+    }
 
     #[test]
-    fn a_window_grows_with_its_panes() {
-        assert_eq!(window_span(1), BentoSpan::new(2, 2));
-        assert_eq!(window_span(2), BentoSpan::new(2, 2));
-        assert_eq!(window_span(3), BentoSpan::new(4, 2));
-        assert_eq!(window_span(6), BentoSpan::new(4, 3));
+    fn a_window_says_words_only_when_it_asks_or_broke() {
+        assert_eq!(
+            window_mark(&summary(
+                Attention::NeedsYou,
+                &[
+                    ("Needs approval", Tone::Warning),
+                    (" · rm -rf", Tone::Muted)
+                ]
+            )),
+            (Some(StatusMark::Warning), Some("Needs approval".to_owned()))
+        );
+        assert_eq!(
+            window_mark(&summary(Attention::None, &[("Exited 1", Tone::Danger)])),
+            (Some(StatusMark::Danger), Some("Exited 1".to_owned()))
+        );
+        assert_eq!(
+            window_mark(&summary(
+                Attention::Working,
+                &[("Running cargo test", Tone::Muted)]
+            )),
+            (Some(StatusMark::Spinner), None)
+        );
+        assert_eq!(
+            window_mark(&summary(Attention::Done, &[("Done", Tone::Normal)])),
+            (Some(StatusMark::Ink), None)
+        );
+        assert_eq!(
+            window_mark(&summary(
+                Attention::None,
+                &[("zebrilus · main", Tone::Muted)]
+            )),
+            (None, None)
+        );
     }
 }

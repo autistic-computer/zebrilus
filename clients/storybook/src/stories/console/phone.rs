@@ -3,23 +3,21 @@ use ala::{
     Styled as _, Window, div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, IconName, Label, TextStyle,
+    ActiveTheme as _, IconName, Label, TextStyle,
     blocks::compact::{
-        BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, PillLabel, PillMenuAlign, PillMenuItem,
-        PillMenuLook, PillPlacement, bento_add_tile, bento_grid, compact_bar_button,
+        BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, MiniPane, PhoneTile, PillLabel, PillMenuAlign,
+        PillMenuItem, PillMenuLook, PillPlacement, bento_grid, compact_bar_button,
         compact_floating_bar, compact_floating_group, compact_floating_pill, compact_pill_menu,
+        window_span,
     },
     blocks::settings::large_title,
-    blocks::touch::{KEY_ROW_HEIGHT, KeyRow, PageDot, page_dots},
+    blocks::touch::{KEY_ROW_HEIGHT, KeyRow, PageDot, StatusMark, page_dots},
     components::button::{Button, ButtonVariants as _},
     v_flex,
 };
 use zz_protocol::AgentProvider;
 use zz_ui::{
-    compact::{
-        HostState, ToolKeys, host_tile, host_tile_line, mini_pane, overview_host_empty,
-        overview_session_heading, window_layout, window_span, window_tile,
-    },
+    compact::{HostState, ToolKeys, host_mark, overview_host_empty, overview_session_heading},
     pane::agent_provider_icon,
 };
 
@@ -139,75 +137,38 @@ fn subtitle(text: &str) -> impl IntoElement {
 }
 
 pub(crate) fn hosts_page(cx: &App) -> impl IntoElement {
-    let theme = cx.theme();
+    let host = |id: &'static str, name: &'static str, state, waiting, foot: &[&'static str]| {
+        let (mark, word) = host_mark(state, waiting);
+        let tile = PhoneTile::new(id, name).mark(mark).state(word);
+        let tile = foot.iter().fold(tile, |tile, line| tile.foot(*line));
+        (BentoSpan::new(2, 2), tile.into_any_element())
+    };
     let tiles = vec![
-        (
-            BentoSpan::new(2, 2),
-            host_tile(
-                "hosts-macbook",
-                "hosts-macbook-press",
-                HostState::Connected,
-                "macbook",
-                "2 sessions · 8 panes",
-                vec![
-                    host_tile_line(theme.warning, "1 waiting", true, cx).into_any_element(),
-                    host_tile_line(theme.success, "2 working", false, cx).into_any_element(),
-                ],
-                cx,
-            )
-            .into_any_element(),
+        host(
+            "hosts-macbook",
+            "macbook",
+            HostState::Connected,
+            1,
+            &["2 sessions", "2 working"],
+        ),
+        host(
+            "hosts-xps",
+            "xps",
+            HostState::Connected,
+            0,
+            &["1 session", "1 working"],
+        ),
+        host("hosts-alienware", "alienware", HostState::Offline, 0, &[]),
+        host(
+            "hosts-ubuntu",
+            "ubuntu",
+            HostState::Connecting,
+            0,
+            &["fabrico@ubuntu"],
         ),
         (
             BentoSpan::new(2, 2),
-            host_tile(
-                "hosts-xps",
-                "hosts-xps-press",
-                HostState::Connected,
-                "xps",
-                "1 session · 3 panes",
-                vec![host_tile_line(theme.success, "1 working", false, cx).into_any_element()],
-                cx,
-            )
-            .into_any_element(),
-        ),
-        (
-            BentoSpan::new(2, 2),
-            host_tile(
-                "hosts-alienware",
-                "hosts-alienware-press",
-                HostState::Offline,
-                "alienware",
-                "Not connected",
-                vec![
-                    Button::new("hosts-alienware-connect")
-                        .label("Connect")
-                        .into_any_element(),
-                ],
-                cx,
-            )
-            .into_any_element(),
-        ),
-        (
-            BentoSpan::new(2, 2),
-            host_tile(
-                "hosts-ubuntu",
-                "hosts-ubuntu-press",
-                HostState::Connecting,
-                "ubuntu",
-                "Connecting…",
-                vec![
-                    Button::new("hosts-ubuntu-cancel")
-                        .label("Cancel")
-                        .ghost()
-                        .into_any_element(),
-                ],
-                cx,
-            )
-            .into_any_element(),
-        ),
-        (
-            BentoSpan::new(4, 1),
-            bento_add_tile("hosts-add", "Add host", cx).into_any_element(),
+            PhoneTile::add("hosts-add", "Add host").into_any_element(),
         ),
     ];
     v_flex()
@@ -219,7 +180,7 @@ pub(crate) fn hosts_page(cx: &App) -> impl IntoElement {
 
 #[allow(
     clippy::disallowed_methods,
-    reason = "the sample lines and the miniature stand in for terminal cells, which keep the terminal's own size"
+    reason = "the sample lines stand in for terminal cells, which keep the terminal's own size"
 )]
 fn terminal_text(element: ala::Div, size: f32, cx: &App) -> ala::Div {
     element
@@ -227,161 +188,37 @@ fn terminal_text(element: ala::Div, size: f32, cx: &App) -> ala::Div {
         .text_size(px(size))
 }
 
-fn preview(lines: &str, cx: &App) -> AnyElement {
-    terminal_text(div(), 5.0, cx)
-        .line_height(px(6.5))
-        .whitespace_nowrap()
-        .text_color(cx.theme().foreground.muted())
-        .children(lines.lines().map(|line| div().child(line.to_owned())))
-        .into_any_element()
-}
-
-fn mini(
-    id: &'static str,
-    icon: IconName,
-    title: &str,
-    lines: &str,
-    current: bool,
-    attention: bool,
-    cx: &App,
-) -> AnyElement {
-    mini_pane(
+fn term(id: &'static str, lines: &str) -> MiniPane {
+    MiniPane::terminal(
         id,
-        icon,
-        (!title.is_empty()).then(|| title.to_owned().into()),
-        (!lines.is_empty()).then(|| preview(lines, cx)),
-        cx.theme().background,
-        current,
-        attention,
-        cx,
+        v_flex().children(lines.lines().map(|line| div().child(line.to_owned()))),
     )
-    .into_any_element()
 }
 
 pub(crate) fn host_page(cx: &App) -> impl IntoElement {
-    let daemon = window_tile(
-        "window-daemon",
-        "window-daemon-press",
-        1,
-        "daemon",
-        Some("~/dev/zz".into()),
-        false,
-        window_layout(vec![
-            (
-                [0.0, 0.0, 0.6, 1.0],
-                mini(
-                    "mini-1",
-                    IconName::SquareTerminal,
-                    "cargo test",
-                    "running 214 tests\ntest overview::pager ... ok\ntest overview::bento ... ok\ntest result: ok. 214 passed",
-                    true,
-                    false,
-                    cx,
-                ),
+    let daemon = PhoneTile::new("window-daemon", "cargo test")
+        .mark(StatusMark::Spinner)
+        .pane(
+            [0.0, 0.0, 0.6, 1.0],
+            term(
+                "mini-1",
+                "running 214 tests\ntest overview::pager ... ok\ntest overview::bento ... ok\ntest result: ok. 214 passed",
             ),
-            (
-                [0.6, 0.0, 0.4, 0.5],
-                mini(
-                    "mini-2",
-                    IconName::File,
-                    "overview.rs",
-                    "fn host_body(\n  &mut self,",
-                    false,
-                    false,
-                    cx,
-                ),
-            ),
-            (
-                [0.6, 0.5, 0.4, 0.5],
-                mini(
-                    "mini-3",
-                    IconName::SquareTerminal,
-                    "perf audit",
-                    "",
-                    false,
-                    false,
-                    cx,
-                ),
-            ),
-        ]),
-        cx,
+        )
+        .pane([0.6, 0.0, 0.4, 0.5], term("mini-2", "fn host_body(\n  &mut self,"))
+        .pane([0.6, 0.5, 0.4, 0.5], MiniPane::blank("mini-3"));
+    let site = PhoneTile::new("window-site", "site").pane(
+        [0.0, 0.0, 1.0, 1.0],
+        MiniPane::browser("mini-4", "localhost:4321"),
     );
-    let site = window_tile(
-        "window-site",
-        "window-site-press",
-        2,
-        "site",
-        Some("~/dev/zz/site".into()),
-        false,
-        window_layout(vec![(
-            [0.0, 0.0, 1.0, 1.0],
-            mini(
-                "mini-4",
-                IconName::Globe,
-                "",
-                "localhost:4321",
-                false,
-                false,
-                cx,
-            ),
-        )]),
-        cx,
-    );
-    let agents = window_tile(
-        "window-agents",
-        "window-agents-press",
-        3,
-        "agents",
-        None,
-        true,
-        window_layout(vec![
-            (
-                [0.0, 0.0, 0.5, 1.0],
-                mini(
-                    "mini-5",
-                    IconName::SquareTerminal,
-                    "review",
-                    "",
-                    true,
-                    true,
-                    cx,
-                ),
-            ),
-            (
-                [0.5, 0.0, 0.5, 1.0],
-                mini(
-                    "mini-6",
-                    IconName::SquareTerminal,
-                    "fix ci",
-                    "",
-                    false,
-                    false,
-                    cx,
-                ),
-            ),
-        ]),
-        cx,
-    );
-    let notes = window_tile(
-        "window-notes",
-        "window-notes-press",
-        1,
-        "notes",
-        None,
-        false,
-        window_layout(vec![(
-            [0.0, 0.0, 1.0, 1.0],
-            mini(
-                "mini-7",
-                IconName::SquareTerminal,
-                "",
-                "- [ ] fold title on iPad\n- [x] bento grid",
-                false,
-                false,
-                cx,
-            ),
-        )]),
-        cx,
+    let agents = PhoneTile::new("window-agents", "Review the tailnet plan")
+        .mark(StatusMark::Warning)
+        .state("Needs approval")
+        .pane([0.0, 0.0, 0.5, 1.0], MiniPane::chat("mini-5"))
+        .pane([0.5, 0.0, 0.5, 1.0], MiniPane::chat("mini-6"));
+    let notes = PhoneTile::new("window-notes", "notes").pane(
+        [0.0, 0.0, 1.0, 1.0],
+        term("mini-7", "- [ ] fold title on iPad\n- [x] bento grid"),
     );
     v_flex()
         .pb(px(8.0))

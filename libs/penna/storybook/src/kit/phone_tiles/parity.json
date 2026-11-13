@@ -1,0 +1,10 @@
+{
+  "story": "phone-tiles",
+  "page": "index.html",
+  "steps": [
+    { "name": "press-machine", "section": "machines", "press": "machine-macbook" },
+    { "name": "press-add", "section": "machines", "press": "machine-add" },
+    { "name": "press-window", "section": "windows", "press": "window-idle" },
+    { "name": "press-mark-row", "section": "mark-rows", "press": "mark-row-waiting" }
+  ]
+}

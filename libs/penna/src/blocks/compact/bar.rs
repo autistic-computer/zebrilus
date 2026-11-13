@@ -6,7 +6,7 @@ use ala::{
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Kind, Layer, PaintState,
     Shape, Space, StyledExt as _, Surface, Tone,
-    components::button::{Button, ButtonVariants as _},
+    components::button::{Button, ButtonRounded, ButtonVariants as _},
     foundation::roles,
     rems_from_px,
 };
@@ -181,17 +181,29 @@ pub fn compact_floating_group(
     placement: &PillPlacement,
     cx: &App,
 ) -> Div {
-    let layer = floating_layer(placement, cx);
+    let theme = cx.theme();
+    let radius = theme.control_corner(px(COMPACT_PILL_HEIGHT));
+    let inset = px((COMPACT_PILL_HEIGHT - BUTTON) / 2.0);
+    let layer = Layer {
+        radius,
+        share: None,
+        ..floating_layer(placement, cx)
+    };
     let ground = layer.ground;
+    let inner = crate::blocks::touch::concentric(radius, inset);
     div()
         .debug_selector(|| "compact-bar-group".to_owned())
         .flex()
         .flex_none()
         .items_center()
         .h(px(COMPACT_PILL_HEIGHT))
-        .px(px((COMPACT_PILL_HEIGHT - BUTTON) / 2.0))
+        .px(inset)
         .layer(&layer)
-        .children(buttons.into_iter().map(|button| button.on(ground)))
+        .children(
+            buttons
+                .into_iter()
+                .map(|button| button.on(ground).rounded(ButtonRounded::Size(inner))),
+        )
 }
 
 pub fn compact_bar_button(id: impl Into<ElementId>, icon: IconName) -> Button {

@@ -171,8 +171,10 @@ fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, Strin
         for role in SurfaceRole::KIT
             .into_iter()
             .filter(|role| is_content(role.kind))
+            .chain([roles::PHONE_ROW])
             .chain(roles::all().filter(|role| role.kind == Kind::Card))
         {
+            let kit = role.id != roles::PHONE_ROW.id;
             let surface = Surface::new(role).on(ground);
             let differs = STATES.iter().any(|state| {
                 let plain = Surface::new(role);
@@ -181,7 +183,7 @@ fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, Strin
             });
             if differs {
                 write_role(&mut css, theme, &selector(role), surface, "  ", full);
-                if has_tones(role.kind) {
+                if kit && has_tones(role.kind) {
                     for (key, variant) in variants(role) {
                         write_over(&mut css, theme, &key, variant.on(ground), surface);
                     }

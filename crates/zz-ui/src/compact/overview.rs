@@ -33,19 +33,6 @@ pub enum HostState {
     Offline,
 }
 
-pub fn host_state_dot(state: HostState, cx: &App) -> Div {
-    let theme = cx.theme();
-    div()
-        .flex_none()
-        .size(px(8.0))
-        .rounded_full()
-        .bg(match state {
-            HostState::Connected => theme.success,
-            HostState::Connecting => theme.warning,
-            HostState::Offline => theme.foreground.faint(),
-        })
-}
-
 pub fn overview_host_empty(
     title: impl Into<SharedString>,
     detail: impl Into<SharedString>,

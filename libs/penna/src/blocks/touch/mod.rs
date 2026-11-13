@@ -10,6 +10,7 @@ mod dots;
 mod key_press;
 mod key_row;
 mod lift;
+mod mark;
 mod pager;
 mod popover_key;
 mod press;
@@ -24,13 +25,14 @@ pub use key_row::{
     KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, KeyRowKey,
 };
 pub use lift::{Lift, LiftEvent, LiftResponse};
+pub use mark::{MARK_DOT, MARK_SPINNER, StatusMark};
 pub use pager::{Pager, PagerEvent, PagerLayout, PagerResponse};
 pub use popover_key::{PopoverKey, PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap};
 pub(crate) use press::over_hover;
 pub use press::{
     PressCorners, PressFeedback, instant_press_highlight, press_feedback, press_highlight,
 };
-pub(crate) use row::touch_row_frame;
+pub(crate) use row::{Nest, touch_row_frame};
 pub use row::{
     TOUCH_DETAIL_ROW_HEIGHT, TOUCH_HEADER_HEIGHT, TOUCH_ROW_HEIGHT, TouchGroup, TouchHeader,
     TouchRow, TouchTrailing,
