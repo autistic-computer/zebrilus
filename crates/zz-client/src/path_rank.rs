@@ -35,8 +35,11 @@ pub fn ranked(query: &str, labels: &[&str], prior: impl Fn(usize) -> Prior) -> V
             }
         })
         .collect::<Vec<_>>();
-    pick::rank(query, &candidates)
-        .into_iter()
+    let hits = pick::rank(query, &candidates);
+    if hits.is_empty() && !query.trim().is_empty() {
+        return typos(query.trim(), labels);
+    }
+    hits.into_iter()
         .map(|hit| {
             let cut = candidates[hit.index].path.len();
             let mut matches = hit.path;
@@ -54,6 +57,58 @@ pub fn ranked(query: &str, labels: &[&str], prior: impl Fn(usize) -> Prior) -> V
             }
         })
         .collect()
+}
+
+const TYPO_ROWS: usize = 64;
+
+fn typos(query: &str, labels: &[&str]) -> Vec<Ranked> {
+    let config = neo_frizbee::Config {
+        max_typos: Some(u16::try_from(query.chars().count() / 4).unwrap_or(6).min(6)),
+        casing: neo_frizbee::CaseMatching::Smart,
+        sort: neo_frizbee::SortStrategy::Unsorted,
+        ..neo_frizbee::Config::default()
+    };
+    let mut found = neo_frizbee::Matcher::new(query, &config).match_list_indices(labels);
+    found.sort_by(|left, right| {
+        right
+            .score
+            .cmp(&left.score)
+            .then_with(|| labels[left.index as usize].cmp(labels[right.index as usize]))
+    });
+    found.truncate(TYPO_ROWS);
+    let rows = found.len();
+    found
+        .into_iter()
+        .enumerate()
+        .map(|(at, matched)| {
+            let index = matched.index as usize;
+            Ranked {
+                index,
+                score: i64::try_from(rows - at).unwrap_or(1),
+                matches: byte_ranges(labels[index], matched.indices),
+            }
+        })
+        .collect()
+}
+
+fn byte_ranges(label: &str, mut indices: Vec<u32>) -> Vec<Range<usize>> {
+    indices.sort_unstable();
+    let mut ranges: Vec<Range<usize>> = Vec::new();
+    for index in indices.into_iter().map(|index| index as usize) {
+        if index >= label.len() {
+            continue;
+        }
+        let start = (0..=index)
+            .rev()
+            .find(|start| label.is_char_boundary(*start))
+            .unwrap_or(0);
+        let end = start + label[start..].chars().next().map_or(1, char::len_utf8);
+        match ranges.last_mut() {
+            Some(last) if last.end >= start => last.end = last.end.max(end),
+            _ => ranges.push(start..end),
+        }
+    }
+    ranges
 }
 
 pub fn rank(
