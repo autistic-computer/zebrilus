@@ -136,7 +136,13 @@ impl PlusSheet<'_> {
         self.accounts()
             .iter()
             .find(|account| account.id.as_deref() == self.account)
-            .and_then(|account| account.email.clone().or_else(|| account.id.clone()))
+            .and_then(|account| {
+                if account.signed_in {
+                    account.email.clone().or_else(|| account.id.clone())
+                } else {
+                    Some(agent_settings::SIGNED_OUT.to_owned())
+                }
+            })
             .or_else(|| self.account.map(str::to_owned))
             .unwrap_or_default()
     }
