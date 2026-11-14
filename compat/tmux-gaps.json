@@ -308,6 +308,7 @@
       ],
       "owner": "protocol",
       "items": [
+        "extension-flag:new-pane:--existing",
         "extension-flag:new-pane:--kind",
         "extension-flag:new-pane:--profile",
         "extension-flag:new-window:--kind",

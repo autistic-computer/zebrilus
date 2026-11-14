@@ -8441,6 +8441,19 @@ impl Shared {
             spec.validate_positional_minimum(positionals)?;
             spec.validate_positional_maximum(positionals)?;
         }
+        if canonical == "new-pane"
+            && let Some(name) = gone_path_name(command)
+        {
+            self.publish_to_client(
+                client,
+                EventPayload::ClientMessage {
+                    pane: context.pane,
+                    kind: ClientMessageKind::Warning,
+                    text: format!("{name} no longer exists"),
+                },
+            );
+            return Ok(Execution::default());
+        }
         let mouse_resolved = context
             .invoking_mouse()
             .and_then(|mouse| zz_mux::resolve_invoking_mouse_targets(command, mouse));
@@ -49180,6 +49193,32 @@ fn fallback_job_working_directory() -> PathBuf {
     home_directory()
         .filter(|path| path.is_dir())
         .unwrap_or_else(|| PathBuf::from("/"))
+}
+
+fn gone_path_name(command: &CommandInvocation) -> Option<String> {
+    let spec = zz_protocol::catalog_command_spec("new-pane")?;
+    let parsed = zz_protocol::parse_tmux_command_options(spec, command).ok()?;
+    let path = parsed.options.iter().find_map(|option| match option {
+        zz_protocol::TmuxOption::Value("--existing", path) => Some(*path),
+        _ => None,
+    })?;
+    let local = match path.strip_prefix('~') {
+        Some(rest) if rest.is_empty() || rest.starts_with(['/', '\\']) => {
+            home_directory()?.join(rest.trim_start_matches(['/', '\\']))
+        }
+        _ => PathBuf::from(path),
+    };
+    if local.try_exists().unwrap_or(true) {
+        return None;
+    }
+    let name = path.trim_end_matches(['/', '\\']);
+    Some(
+        name.rsplit(['/', '\\'])
+            .next()
+            .filter(|name| !name.is_empty())
+            .unwrap_or(name)
+            .to_owned(),
+    )
 }
 
 fn existing_job_working_directory(path: &Path) -> Cow<'_, Path> {

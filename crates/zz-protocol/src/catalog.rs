@@ -1870,10 +1870,12 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "new-pane",
         aliases: &["newp"],
         description: "Create a floating pane",
-        usage: "[-AbCDdEfhIkKLMOPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-x width] [-y height] [-X x-position] [-Y y-position] [-t target-pane] [--kind terminal|browser|picker] [--profile NAME] [shell-command [argument ...]]",
+        usage: "[-AbCDdEfhIkKLMOPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-x width] [-y height] [-X x-position] [-Y y-position] [-t target-pane] [--kind terminal|browser|picker] [--profile NAME] [--existing path] [shell-command [argument ...]]",
         options: &[
             CommandOptionSpec::value("--kind", PaneKind, "pane kind").native(),
             CommandOptionSpec::value("--profile", FreeForm, "browser profile").native(),
+            CommandOptionSpec::value("--existing", FreeForm, "open only while this path exists")
+                .native(),
             CommandOptionSpec::value("-t", Pane, "target pane"),
             CommandOptionSpec::flag("-A", "keep the float visible over a zoomed pane"),
             CommandOptionSpec::flag("-C", "kill the modal pane on a click outside it"),

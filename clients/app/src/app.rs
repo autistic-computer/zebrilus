@@ -287,7 +287,7 @@ fn watch_connection(
                     } else if text.starts_with(zz_protocol::CONFIG_RELOADED_MESSAGE) {
                         notification.key(zz_protocol::CONFIG_RELOADED_MESSAGE)
                     } else {
-                        notification
+                        notification.key(text.clone())
                     };
                     window.push_notification(notification, cx);
                 }

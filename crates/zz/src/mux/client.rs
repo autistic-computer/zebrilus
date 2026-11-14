@@ -4852,9 +4852,11 @@ impl MuxClient {
                 message_id,
                 ..
             } => cx.emit(ClientNotification {
-                key: text
-                    .starts_with(CONFIG_RELOADED_MESSAGE)
-                    .then(|| CONFIG_RELOADED_MESSAGE.to_owned()),
+                key: Some(if text.starts_with(CONFIG_RELOADED_MESSAGE) {
+                    CONFIG_RELOADED_MESSAGE.to_owned()
+                } else {
+                    text.clone()
+                }),
                 kind,
                 text,
                 duration_ms,
