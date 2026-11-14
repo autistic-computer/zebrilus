@@ -58,3 +58,7 @@ headless platform *args:
 site:
     rm -rf site/dist && mkdir -p site/dist && cp install.sh site/dist/
     npx --yes wrangler@4.131.1 deploy --config site/wrangler.jsonc
+
+[doc("Run CI's checks on HEAD on a Linux, macOS and Windows box at once (or the platforms named), before pushing or tagging.")]
+preflight *platforms:
+    @scripts/preflight.sh {{ platforms }}

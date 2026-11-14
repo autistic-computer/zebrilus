@@ -33,12 +33,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check tmux compatibility summary freshness
-        if: runner.os == 'Linux'
-        run: |
-          git ls-files --error-unmatch compat/results/summary.md
-          compat/run.sh --check-summary
-
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -77,120 +71,66 @@ jobs:
 
       - name: Check tmux compatibility tracker
         if: runner.os == 'Linux'
-        run: compat/check.sh
+        run: scripts/ci.sh compat
 
       - name: Check formatting
         if: runner.os == 'Linux'
-        run: |
-          cargo fmt --all -- --check
-          cargo fmt --manifest-path libs/penna/storybook/Cargo.toml -- --check
+        run: scripts/ci.sh fmt
 
       - name: Lint
         if: runner.os == 'Linux'
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-
-      - name: Lint daemon without agent support
-        if: runner.os == 'Linux'
-        run: cargo clippy -p zz-daemon -p zz-daemon-client --no-default-features --all-targets -- -D warnings
+        run: scripts/ci.sh lint
 
       - name: Lint libs
         if: runner.os == 'Linux'
-        env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/target
-        run: |
-          cargo clippy --manifest-path libs/ala/Cargo.toml --workspace --all-targets --all-features -- -D warnings
-          cargo metadata --locked --format-version 1 --manifest-path libs/penna/Cargo.toml >/dev/null
-          cargo metadata --locked --format-version 1 --manifest-path libs/penna/storybook/Cargo.toml >/dev/null
-          cargo metadata --locked --format-version 1 --manifest-path libs/ala-cef/Cargo.toml >/dev/null
-          cargo metadata --locked --format-version 1 --manifest-path libs/pele/Cargo.toml >/dev/null
-          cargo clippy --manifest-path libs/penna/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" -- -D warnings
-          cargo clippy --manifest-path libs/penna/Cargo.toml --lib --no-default-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" -- -D warnings
-          cargo clippy --manifest-path libs/penna/storybook/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" --config "patch.\"https://github.com/autistic-computer/ala\".ala-platform.path=\"$PWD/libs/ala/crates/ala-platform\"" -- -D warnings
-          rustup target add wasm32-unknown-unknown
-          cargo clippy --manifest-path libs/penna/storybook/Cargo.toml --target wasm32-unknown-unknown --lib --features page --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" --config "patch.\"https://github.com/autistic-computer/ala\".ala-platform.path=\"$PWD/libs/ala/crates/ala-platform\"" -- -D warnings
-          cargo clippy --manifest-path libs/ala-cef/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" -- -D warnings
-          cargo clippy --manifest-path libs/pele/Cargo.toml --locked --all-targets --all-features -- -D warnings
-          cargo clippy --manifest-path libs/pele/Cargo.toml --locked --lib --target wasm32-unknown-unknown -- -D warnings
+        run: scripts/ci.sh lint-libs
 
       - name: Check browser client
         if: runner.os == 'Linux'
-        env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/target
-        run: |
-          cargo fmt --manifest-path clients/web/Cargo.toml -- --check
-          rustup toolchain install nightly --profile minimal --target wasm32-unknown-unknown
-          rustup run nightly cargo check --manifest-path clients/web/Cargo.toml --target wasm32-unknown-unknown --all-targets --locked
-
-      - name: Put CEF on PATH for the Windows tests
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: '"$env:CEF_PATH\156.0.15\cef_windows_x86_64" >> $env:GITHUB_PATH'
+        run: scripts/ci.sh web
 
       - name: Test workspace
         continue-on-error: ${{ runner.os == 'Windows' }}
         timeout-minutes: ${{ runner.os == 'Windows' && 90 || 360 }}
-        run: cargo ci-test ${{ runner.os == 'Windows' && '--no-fail-fast' || '' }}
+        shell: bash
+        run: scripts/ci.sh test
 
       - name: Test libs
         continue-on-error: ${{ runner.os == 'Windows' }}
         shell: bash
-        env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/target
-        run: |
-          root=$(pwd -W 2>/dev/null || pwd)
-          cargo test --manifest-path libs/ala/Cargo.toml --workspace --all-features --exclude ala-platform
-          cargo test --manifest-path libs/penna/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$root/libs/ala/crates/ala\""
-          cargo test --manifest-path libs/penna/Cargo.toml --test highlighter_api --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$root/libs/ala/crates/ala\""
-          cargo test --manifest-path libs/penna/storybook/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$root/libs/ala/crates/ala\"" --config "patch.\"https://github.com/autistic-computer/ala\".ala-platform.path=\"$root/libs/ala/crates/ala-platform\""
-          cargo test --manifest-path libs/ala-cef/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$root/libs/ala/crates/ala\""
-          cargo test --manifest-path libs/pele/Cargo.toml --locked --all-features
+        run: scripts/ci.sh test-libs
 
       - name: Test the iOS input logic
         if: runner.os != 'Linux'
-        env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/target
-        run: cargo test --manifest-path libs/ala/Cargo.toml -p ala-platform --all-features --test ios
+        shell: bash
+        run: scripts/ci.sh ios
 
       - name: Test ala-platform on lavapipe (software Vulkan)
         if: runner.os == 'Linux'
         timeout-minutes: 20
-        env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/target
-        run: |
-          export VK_ICD_FILENAMES=$(echo /usr/share/vulkan/icd.d/lvp_icd*.json)
-          cargo test --manifest-path libs/ala/Cargo.toml -p ala-platform --all-features
+        run: scripts/ci.sh lavapipe
 
       - name: Test zz-mux release profile
         if: runner.os == 'Linux'
         timeout-minutes: 15
-        run: cargo test --release -p zz-mux
+        run: scripts/ci.sh mux-release
 
       - name: Run the attached-client fixture
         if: runner.os == 'Linux'
         timeout-minutes: 15
-        run: |
-          cargo build -p zz-cli
-          compat/attached-client.sh target/debug/zz_cli "$(compat/fetch-tmux.sh)"
+        run: scripts/ci.sh attached-client
 
       - name: Build and validate CEF bundle
-        run: cargo xtask bundle-cef --release --output target/cef-bundle
+        shell: bash
+        run: scripts/ci.sh bundle
 
       - name: Headless binary stays GUI-free
         shell: bash
-        run: |
-          tree=$(cargo tree -p zz-cli -e normal --prefix none)
-          if grep -Eq '^(ala|ala-platform|ala-cef|wgpu|cef|penna|zz-ui) ' <<<"$tree"; then
-            echo "zz-cli links GUI crates"
-            exit 1
-          fi
-          if grep -Eq '^ureq ' <<<"$tree"; then
-            echo "zz-cli links the update checker's TLS stack"
-            exit 1
-          fi
+        run: scripts/ci.sh headless
 
       - name: Smoke packaged macOS CLI
         if: runner.os == 'macOS'
-        run: compat/packaged-cli.sh target/cef-bundle/zz.app
+        run: scripts/ci.sh packaged-cli
 
       - name: Download verified AppImage tools
         if: runner.os == 'Linux'
