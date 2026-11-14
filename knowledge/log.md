@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-11-14
+* **Update**: The sidebar toggle and the chat button draw the glyph of the mode on screen, outline only ([UI conventions](/configuration/ui-conventions.md)): `panel-left` with the sidebar, `panel-top` with navigation in the title bar, `chat` with chats, `layers` with the session tree. penna drops `ChatFill` and `PanelLeftFill` and adds `PanelTop`, the panel frame with a bar along its top. Desktop, web and iPad, and the HTML client follow.
+
 ## 2026-11-12
 * **Update**: The sidebar toggle and the chat button show on with a filled glyph instead of a two-tone one ([UI conventions](/configuration/ui-conventions.md)). `panel-left-fill` is the sidebar glyph filled solid with its divider cut out, and `chat-fill` the bubble filled solid with its two lines cut out, both in the button's own ink and with the outline glyph's outer edge, so nothing moves when they flip. penna replaces `ChatDuotone` and `PanelLeftDuotone` with `ChatFill` and `PanelLeftFill`, and its icon set loses the `fade` part for a `cut` part that masks strokes out of the rest of a glyph. Desktop, web and iPad, and the HTML client follow.
 * **Update**: Settings › Terminal on macOS drops the Smoothing strength row ([app config](/configuration/app-config.md)). Font smoothing stays; `font-thicken-strength` still works when set in `zz/config`.

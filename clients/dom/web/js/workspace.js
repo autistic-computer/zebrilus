@@ -752,7 +752,7 @@ function renderTitlebar() {
     });
     tabs.append(more);
   }
-  const toggle = el("button", { "data-penna": "chrome.button", class: "titlebar-toggle", title: "Toggle sidebar" }, `<i data-icon="panel-left"></i>`);
+  const toggle = el("button", { "data-penna": "chrome.button", class: "titlebar-toggle", title: "Toggle sidebar" }, `<i data-icon="panel-top"></i>`);
   toggle.addEventListener("click", () => emit("toggleSidebar"));
   const controls = el("div", { class: "titlebar-controls" });
   controls.append(toggle);

@@ -241,7 +241,7 @@
       }
       html += row(win, index + 1, index);
     });
-    return `<div class="penna-window zz-side" data-penna="window"${keys ? " data-keys" : ""}><div class="penna-lights"><i></i><i></i><i></i></div><nav class="zz-nav" data-penna="sidebar"><div class="penna-strip"><button data-penna="chrome.button" aria-label="Show the session tree">${ic("chat-fill")}</button><button data-penna="chrome.button" aria-label="Hide the sidebar">${ic("panel-left")}</button></div><div class="zz-actions">${action("chat-plus", "New chat")}${action("server-plus", "Add host")}</div><div class="zz-list">${html}</div><div class="zz-foot">${action("settings", "Settings")}</div></nav></div>`;
+    return `<div class="penna-window zz-side" data-penna="window"${keys ? " data-keys" : ""}><div class="penna-lights"><i></i><i></i><i></i></div><nav class="zz-nav" data-penna="sidebar"><div class="penna-strip"><button data-penna="chrome.button" aria-label="Show the session tree">${ic("chat")}</button><button data-penna="chrome.button" aria-label="Hide the sidebar">${ic("panel-left")}</button></div><div class="zz-actions">${action("chat-plus", "New chat")}${action("server-plus", "Add host")}</div><div class="zz-list">${html}</div><div class="zz-foot">${action("settings", "Settings")}</div></nav></div>`;
   };
   const cell = (caption, html) => `<div class="zz-cell"><p class="zz-cap">${caption}</p>${html}</div>`;
 

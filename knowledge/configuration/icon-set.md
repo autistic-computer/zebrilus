@@ -4,12 +4,12 @@ title: zz icon set
 description: zz's icons, adapted from Solar and drawn from skeletons so their corners follow the theme radius and superellipse smoothing, how the app and the site get them, and how to draw, preview and review a new one.
 resource: libs/penna/src/components/icon/solar.json
 tags: [ui, icons, penna, storybook, site, theme]
-timestamp: 2026-10-24T00:00:00Z
+timestamp: 2026-11-14T00:00:00Z
 ---
 
 # Overview
 
-zz's icon set has 95 glyphs: every `IconName` in penna's `IconName::ALL`. zz's brand marks are not
+zz's icon set has 102 glyphs: every `IconName` in penna's `IconName::ALL`. zz's brand marks are not
 in the kit: the zz logo, the agent marks (`claude`, `openai`) and the Chrome mark (`brand-chrome`)
 keep their own artwork as files in `crates/zz-ui/assets/icons`, which `zz_ui::Assets` serves before
 falling back to penna's assets. The logo is the path `zz_ui::ZZ_LOGO` (`icons/zz.svg`); the other
@@ -100,9 +100,8 @@ a missing scale means a sharp vertex.
 - Organic outlines Solar draws with curves (bell, moon, braces, the palette, the steam over the
   cup) stay fixed `d` paths; they have no corners for the radius to change. The chat bubble is
   zz's own: a `shape` with `panel-left`'s corners, so the two title bar toggles round together.
-- A toggle's on glyph is `<name>-fill`: the outline glyph's frame as a `solid` part plus the same frame
-  stroked, so the two share an outer edge, with the inner strokes as `cut` parts (`panel-left-fill`,
-  `chat-fill`). A cut stops a stroke's width short of the frame, so the frame stays whole.
+- A toggle has no on glyph: it draws the outline glyph of the mode on screen (`panel-left` or
+  `panel-top`, `chat` or `layers`).
 - Dots are filled `dot` parts, never smaller than the stroke: 1.75 for the small accents (window lights, the `i` and `!` dots, the
   keyboard's keys, the drive's lights), 3 for grips, ellipses and palette wells. Round things stay circles.
 - Arrow shafts stop about 1.25 units short of the tip, so at radius 0 the shaft's square cap does
@@ -114,7 +113,7 @@ a missing scale means a sharp vertex.
   `key-tab-iso` ↹), with `key-escape` ⎋ shared. The phone key row picks the set at build time, the way
   `Kbd` picks ⌃⌥ or Ctrl Alt. The prefix key has no glyph of its own: it shows the prefix it sends,
   the control mark and the letter (⌃B, ⎈B), so it follows a rebinding.
-- Meanings follow use, not names: `panel-left` is Toggle sidebar; `list` and `list-tree` are the
+- Meanings follow use, not names: `panel-left` is the sidebar toggle with the sidebar showing and `panel-top` the same toggle with navigation in the title bar; `list` and `list-tree` are the
   sidebar's flat window list (tiles with a title and a shorter detail line) and session tree (the same
   tiles in three rows, the last two hanging off the first by elbow guides), and the footer's view
   button shows the one on screen; `panel-right` and `panel-bottom` are the split right and split down

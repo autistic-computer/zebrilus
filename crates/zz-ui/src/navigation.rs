@@ -69,9 +69,9 @@ impl WorkspaceStatusWindowState {
 #[must_use]
 pub fn workspace_layout_button(id: impl Into<ElementId>, open: bool) -> Button {
     let icon = if open {
-        IconName::PanelLeftFill
-    } else {
         IconName::PanelLeft
+    } else {
+        IconName::PanelTop
     };
     chrome_button(id, icon, "Toggle sidebar")
 }
@@ -89,9 +89,9 @@ pub fn workspace_settings_button(id: impl Into<ElementId>) -> Button {
 #[must_use]
 pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Button {
     let (icon, tooltip) = if flat {
-        (IconName::ChatFill, "Show the session tree")
+        (IconName::Chat, "Show the session tree")
     } else {
-        (IconName::Chat, "Show chats")
+        (IconName::Layers, "Show chats")
     };
     chrome_button(id, icon, tooltip)
 }

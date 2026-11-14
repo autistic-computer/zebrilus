@@ -4,7 +4,7 @@ title: UI design conventions
 description: The component, palette, and styling rules that keep zz application chrome consistent and theme-aware.
 resource: crates/zz-ui/src/command/palette_view.rs
 tags: [ui, ala, zz-ui, theme, chrome, clippy]
-timestamp: 2026-11-12T00:00:00Z
+timestamp: 2026-11-14T00:00:00Z
 ---
 
 # Overview
@@ -183,7 +183,7 @@ sample keeps its page opaque. Desktop pane edits and resets refresh the saved co
 immediately, including valid numeric input while typing; the file watcher still handles external edits.
 
 The titlebar holds only the sidebar toggle and the window pills, with no divider; settings is a full-width row at the foot of the sidebar. With the sidebar open the toggle
-sits at the top-right corner of the sidebar with the chat button (chats or session tree) beside it. Neither gets a selected fill when on: each draws its fill glyph instead (`panel-left-fill` while the sidebar is pinned open, `chat-fill` while chats show), and the outline glyph when off. New chat and Add host rows head the chat view (Add host alone heads the session tree), and the navigation fades into the footer through the kit's
+sits at the top-right corner of the sidebar with the chat button (chats or session tree) beside it. Neither gets a selected fill: each draws the outline glyph of the mode on screen (`panel-left` while the sidebar shows, `panel-top` while navigation sits in the title bar; `chat` while chats show, `layers` while the session tree does). New chat and Add host rows head the chat view (Add host alone heads the session tree), and the navigation fades into the footer through the kit's
 `bottom_fade` (40px toward the sidebar's ground, solid for its last 12px) while rows remain below. The agent button shares the active window pill’s background,
 theme border, shadow, and 32px height (a step up from the sidebar's 28px buttons), with widths sized to their contents. The titlebar lies across the top of the panes and is a pane header tall (34px) plus one pane margin, 40px at the default margin as with flush panes, so a pill sits 4px from the window's top and 4px from the panes. Window pills always align left, and nothing sits at the
 right edge: no window badges, host, update, agent or clock items, and no alignment controls. Window pills share the

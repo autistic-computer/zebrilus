@@ -594,7 +594,7 @@ States:
 | disabled | faint label, no hover or press | leaves the focus order; its tooltip still shows |
 | loading | a spinner in the icon's place, or before the label when there is no icon | clicks are ignored; the label stays |
 
-A chrome toggle, a title bar button that turns a view on and off (the sidebar, the chat view), shows on with its fill glyph instead of the selected fill, so the title bar has no fill at rest. Its paint, hover and press stay those of the chrome button.
+A chrome toggle, a title bar button that switches between two views (the sidebar or the title bar, chats or the session tree), shows the glyph of the view on screen and never the selected fill, so the title bar has no fill at rest. Its paint, hover and press stay those of the chrome button.
 
 In a window that is not active, a glass button flattens and its label fades, like the rest of the window's chrome.
 
@@ -854,10 +854,10 @@ Kinds:
 
 | Kind | Call | Draws |
 |---|---|---|
-| Glyph | `Icon::new(IconName::Bell)`, or an `IconName` wherever a component takes an icon | one of the set's 103 glyphs, drawn for the theme |
+| Glyph | `Icon::new(IconName::Bell)`, or an `IconName` wherever a component takes an icon | one of the set's 102 glyphs, drawn for the theme |
 | Asset | `IconName::Asset("icons/logo.svg")`, `Icon::empty().path(path)` | the app's own SVG, as it is |
 
-The set: 103 glyphs in eight groups (chrome and layout, actions, things, navigation, keys, status, people and agents, theme), each on a 24 grid with a 1.5 stroke, no fill, in the current color. The two fill glyphs (`ChatFill`, `PanelLeftFill`) are their outline glyph's shape filled solid in the same color, its inner strokes cut out of the fill at the stroke's width, for a chrome toggle that is on (Button). A fill glyph keeps its outline glyph's outer edge, so nothing moves when the toggle flips. Corners take half the theme radius in grid units with the kit's corner smoothing, capped at 0.45 of the shorter side like every corner the kit draws; at radius 0 corners are sharp, caps square and joins mitered. So the set changes with the theme, natively and in each theme's `-icons.css`.
+The set: 102 glyphs in eight groups (chrome and layout, actions, things, navigation, keys, status, people and agents, theme), each on a 24 grid with a 1.5 stroke, no fill, in the current color. Corners take half the theme radius in grid units with the kit's corner smoothing, capped at 0.45 of the shorter side like every corner the kit draws; at radius 0 corners are sharp, caps square and joins mitered. So the set changes with the theme, natively and in each theme's `-icons.css`.
 
 Anatomy: a square box the icon's size, the glyph scaled to fill it, in the color of the text around it unless `.text_color()` sets one.
 

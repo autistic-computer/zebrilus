@@ -18,14 +18,14 @@ Icon::new(IconName::GitBranch).small()
 
 ## Toggles
 
-A chrome toggle draws its outline glyph off and its fill glyph on, in the same color.
+A chrome toggle draws the glyph of the view on screen, outline only.
 
 ```figure uses=icon
 <div class="docs-show" data-gap="wide">
-  <div class="docs-cell"><i data-icon="panel-left" data-size="6"></i><span class="docs-note">Off</span></div>
-  <div class="docs-cell"><i data-icon="panel-left-fill" data-size="6"></i><span class="docs-note">On</span></div>
-  <div class="docs-cell"><i data-icon="chat" data-size="6"></i><span class="docs-note">Off</span></div>
-  <div class="docs-cell"><i data-icon="chat-fill" data-size="6"></i><span class="docs-note">On</span></div>
+  <div class="docs-cell"><i data-icon="panel-left" data-size="6"></i><span class="docs-note">Sidebar</span></div>
+  <div class="docs-cell"><i data-icon="panel-top" data-size="6"></i><span class="docs-note">Title bar</span></div>
+  <div class="docs-cell"><i data-icon="chat" data-size="6"></i><span class="docs-note">Chats</span></div>
+  <div class="docs-cell"><i data-icon="layers" data-size="6"></i><span class="docs-note">Sessions</span></div>
 </div>
 ```
 
