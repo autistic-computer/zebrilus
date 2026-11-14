@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,6 +15,7 @@ concurrency:
 jobs:
   draft:
     name: Draft release
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -62,8 +64,9 @@ jobs:
 
   macos:
     name: macOS arm64
-    runs-on: macos-26
+    runs-on: [self-hosted, zz-macos]
     needs: draft
+    if: ${{ !cancelled() && needs.draft.result != 'failure' }}
     permissions:
       contents: write
     env:
@@ -74,11 +77,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          clean: false
+
+      - name: Clear the last release's outputs
+        shell: bash
+        run: rm -rf dist
 
       - name: Resolve the release artifact names
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF_TYPE" != tag ]]; then
+            version="$(sed -nE 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -1)"
+          fi
           echo "ZZ_VERSION=$version" >> "$GITHUB_ENV"
           echo "ZZ_DMG=dist/zz-$version-macos-arm64.dmg" >> "$GITHUB_ENV"
           echo "ZZ_HEADLESS=dist/zz-$version-headless-macos-arm64.tar.gz" >> "$GITHUB_ENV"
@@ -100,48 +112,6 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: brew install just
 
-      - name: Load the signing and notary credentials
-        env:
-          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-        shell: bash
-        run: |
-          keychain="$RUNNER_TEMP/zz-release.keychain-db"
-          password="$(uuidgen)"
-          certificate="$RUNNER_TEMP/developer-id.p12"
-          notary_key="$RUNNER_TEMP/notary.p8"
-          trap 'rm -f "$certificate" "$notary_key"' EXIT
-
-          base64 -d <<<"$MACOS_CERTIFICATE_P12_BASE64" > "$certificate"
-          base64 -d <<<"$APPLE_API_KEY_P8_BASE64" > "$notary_key"
-
-          security create-keychain -p "$password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$password" "$keychain"
-          security default-keychain -s "$keychain"
-          # shellcheck disable=SC2046
-          security list-keychains -d user -s "$keychain" \
-            $(security list-keychains -d user | tr -d '"')
-          security import "$certificate" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" \
-            "$keychain" >/dev/null
-
-          issuer=()
-          if [[ -n "$APPLE_API_ISSUER_ID" ]]; then
-            issuer=(--issuer "$APPLE_API_ISSUER_ID")
-          fi
-          xcrun notarytool store-credentials "$MACOS_NOTARY_PROFILE" \
-            --key "$notary_key" \
-            --key-id "$APPLE_API_KEY_ID" \
-            "${issuer[@]}" \
-            --keychain "$keychain"
-
-          echo "ZZ_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
-
       - name: Build, sign, package, and notarize
         run: scripts/release-macos.sh release "$ZZ_VERSION"
 
@@ -159,6 +129,7 @@ jobs:
           cat "$ZZ_DMG.sha256" "$ZZ_HEADLESS.sha256"
 
       - name: Attach the artifacts to the GitHub release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -167,34 +138,38 @@ jobs:
             "$ZZ_DMG" "$ZZ_DMG.sha256" \
             "$ZZ_HEADLESS" "$ZZ_HEADLESS.sha256" --clobber
 
-      - name: Remove the signing keychain
-        if: ${{ always() && env.ZZ_KEYCHAIN != '' }}
-        run: security delete-keychain "$ZZ_KEYCHAIN"
-
   linux:
     name: Linux ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: [self-hosted, "zz-linux-${{ matrix.arch }}"]
     needs: draft
+    if: ${{ !cancelled() && needs.draft.result != 'failure' }}
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-24.04
-            arch: x86_64
-          - runner: ubuntu-24.04-arm
-            arch: aarch64
+          - arch: x86_64
+          - arch: aarch64
     env:
       CEF_PATH: ${{ github.workspace }}/.cef-cache
 
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          clean: false
+
+      - name: Clear the last release's outputs
+        shell: bash
+        run: rm -rf dist
 
       - name: Resolve the release artifact names
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF_TYPE" != tag ]]; then
+            version="$(sed -nE 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -1)"
+          fi
           {
             echo "ZZ_VERSION=$version"
             echo "ZZ_TARBALL=dist/zz-$version-linux-${{ matrix.arch }}.tar.gz"
@@ -256,6 +231,7 @@ jobs:
           cat "$ZZ_TARBALL.sha256" "$ZZ_APPIMAGE.sha256" "$ZZ_DEB.sha256" "$ZZ_HEADLESS.sha256"
 
       - name: Attach the artifacts to the GitHub release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -268,8 +244,9 @@ jobs:
 
   windows:
     name: Windows x64
-    runs-on: windows-2025
+    runs-on: [self-hosted, zz-windows]
     needs: draft
+    if: ${{ !cancelled() && needs.draft.result != 'failure' }}
     permissions:
       contents: write
     env:
@@ -279,11 +256,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          clean: false
+
+      - name: Clear the last release's outputs
+        shell: bash
+        run: rm -rf dist
 
       - name: Resolve the release artifact names
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF_TYPE" != tag ]]; then
+            version="$(sed -nE 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -1)"
+          fi
           {
             echo "ZZ_VERSION=$version"
             echo "ZZ_VERSION_INFO=${version%%-*}"
@@ -345,6 +331,7 @@ jobs:
           cat "$ZZ_ZIP.sha256" "$ZZ_SETUP.sha256"
 
       - name: Attach the artifacts to the GitHub release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -356,7 +343,7 @@ jobs:
     name: Publish
     runs-on: ubuntu-24.04
     needs: [macos, linux, windows]
-    if: ${{ !cancelled() && needs.macos.result == 'success' && needs.linux.result == 'success' }}
+    if: ${{ !cancelled() && github.event_name == 'push' && needs.macos.result == 'success' && needs.linux.result == 'success' }}
     permissions:
       contents: write
 

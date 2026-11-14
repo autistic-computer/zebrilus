@@ -82,6 +82,8 @@ Recipes live in `Justfile` and `scripts/just/*.just` and run from the repo root.
 | `just profile build mac` | Release-optimized bundle with dSYMs for profiling |
 | `just package mac` / `package windows` / `package arch` / `install arch` / `package deb` / `install deb` | Platform packages |
 | `just release bump <level-or-version> [--execute]` | Preview or publish a version bump (setup: `just release setup`) |
+| `just release ship <level-or-version>` | Preflight, then bump, tag and build the release on our own boxes: single-use runners on this Mac (macOS, plus Linux aarch64 in Docker), alienware (Linux x86_64 in Docker) and win-desktop, registered only for the run. `just release runners` installs them, `just release dry-run` builds every leg with no tag or publish, `just release stop` cleans up |
+| `just preflight [linux] [macos] [windows]` | CI's checks (`scripts/ci.sh`) on HEAD on alienware, this Mac and win-desktop at once, before a push or tag |
 | `just release mac build <version>` | Full signed+notarized DMG (setup: `release mac setup`; pieces: `release mac sign`, `release mac notarize`, `release mac verify`, `release mac check`) |
 | `bench/run.sh` | Terminal throughput benchmarks |
 </important>
