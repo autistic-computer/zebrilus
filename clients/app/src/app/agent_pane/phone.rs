@@ -8,7 +8,7 @@ use penna::{
         ComposerAction as Action, PhoneComposer, composer_ground, phone_action_button,
         phone_close_button, phone_plus_button, phone_queued_row, phone_thumbnail,
     },
-    blocks::sheet::{close_sheet, floating_sheet},
+    blocks::sheet::{PageTurn, close_sheet, floating_sheet},
     blocks::touch::PhoneEmpty,
     components::input::InputState,
 };
@@ -22,6 +22,7 @@ use zz_ui::agent::{
     phone::{CHAT_SHEET, PhoneAsk, PhoneCard, PlusAction, PlusPage, PlusSheet, held_sheet},
     question::QuestionCardAction,
 };
+use zz_ui::target::TargetItem;
 
 use super::{AgentPane, preview_image};
 use crate::connection::Connection;
@@ -41,6 +42,12 @@ pub(in super::super) struct PhoneDock {
 pub(super) enum ChatSheet {
     Plus(PlusPage),
     Hold(HeldMessage),
+}
+
+pub(super) struct PlusTurn {
+    left: PlusPage,
+    items: Vec<TargetItem>,
+    turn: PageTurn,
 }
 
 struct Other {
@@ -141,6 +148,7 @@ impl AgentPane {
     fn open_sheet(&mut self, sheet: ChatSheet, window: &mut Window, cx: &mut Context<Self>) {
         window.dismiss_virtual_keyboard();
         self.sheet = Some(sheet);
+        self.turn = None;
         cx.notify();
     }
 
@@ -155,6 +163,8 @@ impl AgentPane {
         let Some(ChatSheet::Plus(shown)) = self.sheet.clone() else {
             return;
         };
+        let items = self.mention.read(cx).items().to_vec();
+        let left = shown.clone();
         let next = match action {
             PlusAction::Open(PlusPage::Mention(drilled)) => {
                 self.mention
@@ -238,12 +248,20 @@ impl AgentPane {
             }
         };
         if let Some(next) = next {
+            if next != left {
+                self.turn = Some(PlusTurn {
+                    turn: PageTurn::new(left.depth(), next.depth(), cx),
+                    left,
+                    items,
+                });
+            }
             self.sheet = Some(ChatSheet::Plus(next));
         }
         cx.notify();
     }
 
     fn sheet_closed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.turn = None;
         if matches!(self.sheet, Some(ChatSheet::Plus(PlusPage::Mention(_)))) {
             self.mention
                 .update(cx, |picker, cx| picker.dismiss(window, cx));
@@ -295,7 +313,8 @@ impl AgentPane {
                 } else {
                     context.in_empty_chat()
                 };
-                let plus = PlusSheet {
+                let turn = self.turn.take().filter(|turn| turn.turn.running(cx));
+                let mut plus = PlusSheet {
                     agent: provider
                         .map_or("Chat", zz_protocol::AgentProvider::label)
                         .into(),
@@ -309,7 +328,7 @@ impl AgentPane {
                     enabled: writable,
                 };
                 let act = entity.downgrade();
-                plus.sheet(
+                let sheet = plus.sheet(
                     &page,
                     dock.bottom,
                     move |action, window, cx| {
@@ -317,7 +336,17 @@ impl AgentPane {
                     },
                     on_dismiss,
                     cx,
-                )
+                );
+                let sheet = match &turn {
+                    Some(turn) => {
+                        plus.mention = &turn.items;
+                        let left = plus.sheet(&turn.left, dock.bottom, |_, _, _| {}, |_, _| {}, cx);
+                        sheet.turned_from(left, turn.turn)
+                    }
+                    None => sheet,
+                };
+                self.turn = turn;
+                sheet
             }
         };
         Some(floating_sheet(sheet, window))

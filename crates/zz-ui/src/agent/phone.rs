@@ -40,6 +40,17 @@ pub enum PlusPage {
     Mention(Vec<TargetItem>),
 }
 
+impl PlusPage {
+    #[must_use]
+    pub fn depth(&self) -> usize {
+        match self {
+            Self::Root => 0,
+            Self::Setting(_) | Self::Account => 1,
+            Self::Mention(drilled) => 1 + drilled.len(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PlusAction {
     Open(PlusPage),
