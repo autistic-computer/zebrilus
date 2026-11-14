@@ -50,7 +50,7 @@ A select opens a sheet of its options in one group, the chosen one checked, a fo
 
 The phone's 44 icon button, a disc in the control fill with a 20 glyph, as big as it is tapped. Its outer edge sits on the content edge, 16 in; in a modal it sits 12 from the card's top and side. A page you drilled into adds back at the start; the close stays at the end.
 
-Going into a page slides its body in from the trailing side, 30% of the width over 240ms, as the old one slides out and fades; back is the mirror, and the height eases between the two pages.
+Going into a page slides its body in from the trailing side, 30% of the width over 240ms, as the old one slides out. The old page fades out in the first 35% and the new one fades in after it, so the two never show at once; back is the mirror, and the height eases between the two pages.
 
 ## A form
 
