@@ -1,15 +1,17 @@
-use std::{collections::BTreeSet, ops::Range, rc::Rc};
+use std::{cmp::Reverse, collections::BTreeSet, ops::Range, rc::Rc};
 
 use ala::SharedString;
 use zz_client::{
     completion::PaneKindAvailability,
-    fuzzy::fuzzy_match,
+    path_rank,
+    pick::{self, Kind, Prior},
     place::{
         self, Candidate, Fleet, FleetHost, FleetPane, FleetSession, FleetWindow, Level, Part, Place,
     },
-    recents::{RecentKey, RecentKind, Recents},
+    recents::{MAX_BOOST, RecentKey, RecentKind, Recents},
     verbs::{self, Filled, Slot, Verb, VerbKind, VerbMatch},
 };
+use zz_protocol::PathKind;
 
 use penna::blocks::palette::{PalettePill, PaletteRow, PaletteStatus};
 
@@ -17,14 +19,17 @@ use super::palette_model::{
     PaletteAction, PaletteChat, PaletteEntry, PaletteTree, PaletteTreePane, UnifiedPalette,
     command_entries, count,
 };
-use crate::IconName;
+use crate::{
+    IconName,
+    files::{FileRow, mark_letter, plain_path},
+};
 
 pub const PLACE_ROWS: usize = 50;
 const VERB_ROWS: usize = 30;
 const RECENT_PLACES: usize = 5;
 const RECENT_OTHERS: usize = 3;
 const CHAT_ROWS: usize = 30;
-const CHAT_DETAIL_PENALTY: i64 = 1000;
+const FILE_ROWS: usize = 5;
 pub const PLACE_PLACEHOLDER: &str = "Type a place or an action";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,6 +38,14 @@ pub(crate) struct Chip {
     pub place: Place,
     pub label: String,
     pub auto: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct FileHits {
+    pub query: String,
+    pub host: String,
+    pub root: String,
+    pub hits: Rc<[(FileRow, i64)]>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -345,27 +358,66 @@ fn chat_matches(
     tree: &PaletteTree,
     fleet: &Fleet,
     query: &str,
+    boost: &dyn Fn(&Place) -> i64,
 ) -> (Vec<PaletteEntry>, Option<i64>) {
     let current = fleet.current();
-    let mut found = tree
+    let candidates = tree
         .chats
         .iter()
-        .filter_map(|chat| {
-            if let Some((score, matches)) = fuzzy_match(query, &chat.title) {
-                return Some((score as i64, matches, chat));
+        .map(|chat| {
+            let place = chat_place(chat);
+            pick::Candidate {
+                kind: Kind::Chat,
+                label: &chat.title,
+                path: &chat.detail,
+                prior: Prior {
+                    closeness: place::closeness(&current, &place),
+                    recent: (boost(&place) as f64 / MAX_BOOST) as f32,
+                    depth: 3,
+                    changed: false,
+                },
             }
-            fuzzy_match(query, &chat.detail)
-                .map(|(score, _)| (score as i64 + CHAT_DETAIL_PENALTY, Vec::new(), chat))
         })
         .collect::<Vec<_>>();
-    found.sort_by_key(|(score, ..)| *score);
-    let best = found.first().map(|(score, ..)| *score);
+    let found = pick::rank(query, &candidates);
+    let best = found.first().map(|hit| hit.score);
     let rows = found
         .into_iter()
         .take(CHAT_ROWS)
-        .map(|(_, matches, chat)| chat_entry(fleet, chat, matches, &current))
+        .map(|hit| chat_entry(fleet, &tree.chats[hit.index], hit.label, &current))
         .collect();
     (rows, best)
+}
+
+fn file_entry(files: &FileHits, row: &FileRow) -> PaletteEntry {
+    let (parent, label) = path_rank::split(&row.name);
+    let cut = parent.len();
+    let dir = row.entry.kind == PathKind::Dir;
+    PaletteEntry::row(
+        PaletteRow {
+            label: label.to_owned().into(),
+            matches: row
+                .matches
+                .iter()
+                .filter(|range| range.end > cut)
+                .map(|range| range.start.max(cut) - cut..range.end - cut)
+                .collect(),
+            detail: parent.trim_end_matches('/').to_owned().into(),
+            right: row.mark.map(mark_letter).unwrap_or_default().into(),
+            icon: Some(if dir {
+                IconName::Folder
+            } else {
+                IconName::File
+            }),
+            inside: Some(false),
+            ..Default::default()
+        },
+        PaletteAction::Recent(RecentKey::File {
+            host: files.host.clone(),
+            path: plain_path(&files.root, &row.entry.rel, None),
+            dir,
+        }),
+    )
 }
 
 fn candidate_at(fleet: &Fleet, place: Place) -> Option<Candidate> {
@@ -554,36 +606,46 @@ impl UnifiedPalette {
         } else {
             "Actions".to_owned()
         };
-        let verbs_first = drilled
-            || match (verbs.first(), places.first()) {
-                (Some(verb), Some(place)) => verb.score < place.score,
-                (Some(_), None) => true,
-                _ => false,
-            };
         let (chat_rows, chat_best) = if self.tree.chat_mode && !drilled {
-            chat_matches(&self.tree, &fleet, &search)
+            chat_matches(&self.tree, &fleet, &search, &boost)
         } else {
             (Vec::new(), None)
         };
-        let chats_first = chat_best.is_some_and(|chat| {
-            verbs.first().is_none_or(|verb| chat <= verb.score)
-                && places.first().is_none_or(|place| chat <= place.score)
-        });
-        let (mut lead, mut trail) = (Vec::new(), Vec::new());
-        section(
-            if chats_first { &mut lead } else { &mut trail },
-            "Chats",
-            chat_rows,
-        );
-        let mut rows = lead;
-        if verbs_first {
-            section(&mut rows, actions, verb_rows);
-            section(&mut rows, "Places", place_rows);
+        let root = self.chips.iter().all(|chip| chip.auto);
+        let cap = if search.contains(['/', '.']) {
+            usize::MAX
         } else {
-            section(&mut rows, "Places", place_rows);
-            section(&mut rows, actions, verb_rows);
+            FILE_ROWS
+        };
+        let files = if root && self.files.query == search {
+            self.files.hits.iter().take(cap).collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let file_best = files.first().map(|(_, score)| *score);
+        let file_rows = files
+            .into_iter()
+            .map(|(row, _)| file_entry(&self.files, row))
+            .collect();
+        let mut sections = vec![
+            (chat_best, "Chats".to_owned(), chat_rows),
+            (
+                places.first().map(|place| place.score),
+                "Places".to_owned(),
+                place_rows,
+            ),
+            (verbs.first().map(|verb| verb.score), actions, verb_rows),
+            (file_best, "Files".to_owned(), file_rows),
+        ];
+        if drilled {
+            sections.swap(1, 2);
+        } else {
+            sections.sort_by_key(|(best, ..)| Reverse(best.unwrap_or(i64::MIN)));
         }
-        rows.append(&mut trail);
+        let mut rows = Vec::new();
+        for (_, label, entries) in sections {
+            section(&mut rows, label, entries);
+        }
         if !self.chips.iter().any(|chip| chip.level == Level::Host) {
             let part = Part {
                 level: Level::Host,

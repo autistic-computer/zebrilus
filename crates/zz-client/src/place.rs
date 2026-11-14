@@ -2,10 +2,10 @@ use std::{ops::Range, str::FromStr};
 
 use zz_protocol::{CommandSpec, CommandValueKind, PaneId, SessionId, WindowId};
 
-use crate::{fuzzy::fuzzy_match, recents::RecentKey};
-
-const DISTANCE_STEP: i64 = 4;
-const METADATA_PENALTY: i64 = 1000;
+use crate::{
+    pick::{self, Closeness, Kind, Match, Prior, Query},
+    recents::{MAX_BOOST, RecentKey},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Level {
@@ -329,32 +329,69 @@ pub struct Candidate {
     pub score: i64,
 }
 
-fn distance(current: &Place, place: &Place) -> i64 {
-    if place.host != current.host {
-        3
-    } else if place.session.is_some() && place.session != current.session {
-        2
-    } else {
-        i64::from(place.window.is_some() && place.window != current.window)
+struct Entry {
+    place: Place,
+    level: Level,
+    label: String,
+    name_at: usize,
+    path: String,
+    metadata: String,
+    indexes: Vec<u32>,
+    exact: bool,
+}
+
+impl Entry {
+    fn new(place: Place, level: Level, label: String, path: String) -> Self {
+        Self {
+            place,
+            level,
+            label,
+            name_at: 0,
+            path,
+            metadata: String::new(),
+            indexes: Vec::new(),
+            exact: false,
+        }
+    }
+
+    fn indexed(mut self, indexes: Vec<u32>, metadata: String) -> Self {
+        self.name_at = indexes
+            .last()
+            .map_or(0, |index| index.to_string().len() + 1);
+        self.indexes = indexes;
+        self.metadata = metadata;
+        self
     }
 }
 
-fn rate(query: &str, label: &str, metadata: &str, path: &str) -> Option<(i64, Vec<Range<usize>>)> {
-    if let Some((score, matches)) = fuzzy_match(query, label) {
-        return Some((score as i64, matches));
+#[must_use]
+pub fn closeness(current: &Place, place: &Place) -> Closeness {
+    if place.host != current.host {
+        Closeness::Elsewhere
+    } else if place.window.is_some() && place.window == current.window {
+        Closeness::Window
+    } else if place.session.is_some() && place.session == current.session {
+        Closeness::Session
+    } else {
+        Closeness::Host
     }
-    if query.is_empty() {
-        return None;
-    }
-    if query.contains(char::is_whitespace)
-        && let Some((score, _)) = fuzzy_match(query, path)
-    {
-        return Some((score as i64, Vec::new()));
-    }
-    if metadata.is_empty() {
-        return None;
-    }
-    fuzzy_match(query, metadata).map(|(score, _)| (score as i64 + METADATA_PENALTY, Vec::new()))
+}
+
+fn depth(level: Level, scope: &Place) -> u32 {
+    let from = scope.level().map_or(0, |level| level as u32 + 1);
+    (level as u32).saturating_sub(from)
+}
+
+fn index_points(digits: &str) -> i64 {
+    let candidate = pick::Candidate {
+        kind: Kind::Place,
+        label: digits,
+        path: "",
+        prior: Prior::default(),
+    };
+    Query::new(digits)
+        .matched(&candidate)
+        .map_or(0, |found| found.score)
 }
 
 fn host_scope<'a>(fleet: &'a Fleet, scope: &Place) -> impl Iterator<Item = &'a FleetHost> {
@@ -373,35 +410,19 @@ fn parent_session(fleet: &Fleet, scope: &Place) -> Option<(u32, SessionId)> {
     Some((host.id, host.current?))
 }
 
-#[must_use]
-pub fn candidates(
-    fleet: &Fleet,
-    scope: &Place,
-    part: &Part,
-    boost: &dyn Fn(&Place) -> i64,
-) -> Vec<Candidate> {
-    let scope = scope.above(part.level);
-    let current = fleet.current();
-    let query = part.query.as_str();
+fn entries(fleet: &Fleet, scope: &Place, level: Level, query: &str) -> Vec<Entry> {
+    let scope = scope.above(level);
     let index = digits(query);
     let mut found = Vec::new();
-    let mut push = |place: Place, label: String, scored: Option<(i64, Vec<Range<usize>>)>| {
-        if let Some((score, matches)) = scored {
-            found.push(Candidate {
-                place,
-                level: part.level,
-                label,
-                matches,
-                score: score + DISTANCE_STEP * distance(&current, &place) - boost(&place),
-            });
-        }
-    };
-    match part.level {
+    match level {
         Level::Host => {
             for host in &fleet.hosts {
-                let scored =
-                    fuzzy_match(query, &host.name).map(|(score, matches)| (score as i64, matches));
-                push(Place::host(host.id), host.name.clone(), scored);
+                found.push(Entry::new(
+                    Place::host(host.id),
+                    level,
+                    host.name.clone(),
+                    String::new(),
+                ));
             }
         }
         Level::Session => {
@@ -411,18 +432,20 @@ pub fn candidates(
                     .any(|session| session.name == query);
             for host in host_scope(fleet, &scope) {
                 for session in &host.sessions {
+                    if exact && session.name != query {
+                        continue;
+                    }
                     let place = Place {
                         host: Some(host.id),
                         session: Some(session.id),
                         window: None,
                         pane: None,
                     };
-                    let scored = if exact {
-                        (session.name == query).then(|| (0, Vec::new()))
-                    } else {
-                        rate(query, &session.label, &session.name, "")
-                    };
-                    push(place, session.label.clone(), scored);
+                    let mut entry =
+                        Entry::new(place, level, session.label.clone(), host.name.clone());
+                    entry.metadata.clone_from(&session.name);
+                    entry.exact = exact;
+                    found.push(entry);
                 }
             }
         }
@@ -439,30 +462,31 @@ pub fn candidates(
                         .host
                         .map_or(spot.host.online, |host| spot.host.id == host),
                 };
-                if !in_scope {
+                let window = spot.window;
+                if !in_scope || index.is_some_and(|index| window.index != index) {
                     continue;
                 }
-                let window = spot.window;
-                let label = format!("{} {}", window.index, window.name);
-                let scored = if let Some(index) = index {
-                    (window.index == index).then(|| (0, Vec::new()))
-                } else {
-                    let programs = window
-                        .panes
-                        .iter()
-                        .filter_map(|pane| pane.program.as_deref())
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let path = format!("{} {label}", spot.session.label);
-                    rate(query, &label, &programs, &path)
-                };
                 let place = Place {
                     host: Some(spot.host.id),
                     session: Some(spot.session.id),
                     window: Some(window.id),
                     pane: None,
                 };
-                push(place, label, scored);
+                let programs = window
+                    .panes
+                    .iter()
+                    .filter_map(|pane| pane.program.as_deref())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let mut entry = Entry::new(
+                    place,
+                    level,
+                    format!("{} {}", window.index, window.name),
+                    format!("{} › {}", spot.host.name, spot.session.label),
+                )
+                .indexed(vec![window.index], programs);
+                entry.exact = index.is_some();
+                found.push(entry);
             }
         }
         Level::Pane => {
@@ -496,34 +520,138 @@ pub fn candidates(
                     continue;
                 }
                 for pane in &spot.window.panes {
-                    let label = format!("{} {}", pane.index, pane.name());
-                    let scored = if let Some(index) = index {
-                        (pane.index == index).then(|| (0, Vec::new()))
-                    } else {
-                        let path = format!(
-                            "{} {} {} {label}",
-                            spot.session.label, spot.window.index, spot.window.name
-                        );
-                        rate(
-                            query,
-                            &label,
-                            pane.program.as_deref().unwrap_or_default(),
-                            &path,
-                        )
-                    };
+                    if index.is_some_and(|index| pane.index != index) {
+                        continue;
+                    }
                     let place = Place {
                         host: Some(spot.host.id),
                         session: Some(spot.session.id),
                         window: Some(spot.window.id),
                         pane: Some(pane.id),
                     };
-                    push(place, label, scored);
+                    let mut entry = Entry::new(
+                        place,
+                        level,
+                        format!("{} {}", pane.index, pane.name()),
+                        format!(
+                            "{} › {} › {}",
+                            spot.host.name, spot.session.label, spot.window.name
+                        ),
+                    )
+                    .indexed(
+                        vec![spot.window.index, pane.index],
+                        pane.program.clone().unwrap_or_default(),
+                    );
+                    entry.exact = index.is_some();
+                    found.push(entry);
                 }
             }
         }
     }
-    found.sort_by_key(|candidate| candidate.score);
     found
+}
+
+fn ranked(
+    fleet: &Fleet,
+    scope: &Place,
+    query: &str,
+    entries: &[Entry],
+    boost: &dyn Fn(&Place) -> i64,
+) -> Vec<Candidate> {
+    let current = fleet.current();
+    let words = query
+        .split(|character: char| character.is_whitespace() || character == '/')
+        .filter(|word| !word.is_empty());
+    let typed = words.clone().filter_map(digits).collect::<Vec<_>>();
+    let rest = words
+        .filter(|word| digits(word).is_none())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let (whole, rest) = (Query::new(query), Query::new(&rest));
+    let typed_points = typed
+        .iter()
+        .map(|index| index_points(&index.to_string()))
+        .sum::<i64>();
+    let picks = entries
+        .iter()
+        .map(|entry| pick::Candidate {
+            kind: Kind::Place,
+            label: &entry.label[entry.name_at..],
+            path: &entry.path,
+            prior: Prior {
+                closeness: closeness(&current, &entry.place),
+                recent: (boost(&entry.place) as f64 / MAX_BOOST) as f32,
+                depth: depth(entry.level, scope),
+                changed: false,
+            },
+        })
+        .collect::<Vec<_>>();
+    let hits = pick::rank_by(&picks, |at, candidate| {
+        let entry = &entries[at];
+        let owned = entry.name_at.saturating_sub(1);
+        if entry.exact {
+            let label = (entry.name_at > 0)
+                .then_some(0..owned)
+                .into_iter()
+                .collect();
+            return Some(Match {
+                score: index_points(query),
+                label,
+                path: Vec::new(),
+            });
+        }
+        let metadata = pick::Candidate {
+            label: "",
+            path: &entry.metadata,
+            ..*candidate
+        };
+        let fallback = |query: &Query| {
+            query.matched(candidate).or_else(|| {
+                query.matched(&metadata).map(|found| Match {
+                    label: Vec::new(),
+                    ..found
+                })
+            })
+        };
+        if entry.indexes.is_empty() {
+            return fallback(&whole);
+        }
+        if !entry.indexes.starts_with(&typed) {
+            return None;
+        }
+        let mut found = fallback(&rest)?;
+        for range in &mut found.label {
+            *range = range.start + entry.name_at..range.end + entry.name_at;
+        }
+        if !typed.is_empty() && typed.len() == entry.indexes.len() {
+            found.label.insert(0, 0..owned);
+        }
+        found.score += typed_points;
+        Some(found)
+    });
+    hits.into_iter()
+        .map(|hit| {
+            let entry = &entries[hit.index];
+            Candidate {
+                place: entry.place,
+                level: entry.level,
+                label: entry.label.clone(),
+                matches: hit.label,
+                score: hit.score,
+            }
+        })
+        .collect()
+}
+
+#[must_use]
+pub fn candidates(
+    fleet: &Fleet,
+    scope: &Place,
+    part: &Part,
+    boost: &dyn Fn(&Place) -> i64,
+) -> Vec<Candidate> {
+    let found = entries(fleet, scope, part.level, &part.query);
+    ranked(fleet, scope, &part.query, &found, boost)
 }
 
 #[must_use]
@@ -547,19 +675,12 @@ pub fn search(
     boost: &dyn Fn(&Place) -> i64,
 ) -> Vec<Candidate> {
     let below = scope.level().unwrap_or(Level::Host);
-    let mut found = [Level::Session, Level::Window, Level::Pane]
+    let found = [Level::Session, Level::Window, Level::Pane]
         .into_iter()
         .filter(|level| *level > below)
-        .flat_map(|level| {
-            let part = Part {
-                level,
-                query: text.to_owned(),
-            };
-            candidates(fleet, scope, &part, boost)
-        })
+        .flat_map(|level| entries(fleet, scope, level, text))
         .collect::<Vec<_>>();
-    found.sort_by_key(|candidate| candidate.score);
-    found
+    ranked(fleet, scope, text, &found, boost)
 }
 
 #[must_use]

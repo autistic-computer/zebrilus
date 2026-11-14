@@ -1,10 +1,15 @@
-use std::{ops::Range, rc::Rc, sync::Arc};
+use std::{cmp::Reverse, ops::Range, rc::Rc, sync::Arc};
 
 use ala::{
     Action, AnyElement, App, ClickEvent, ClipboardItem, Context, ElementId, Entity,
     InteractiveElement, IntoElement, MouseButton, Pixels, Point, Render, ScrollStrategy,
     SharedString, Subscription, Task, UniformListScrollHandle, Window, canvas, div, prelude::*, px,
     uniform_list,
+};
+use zz_client::{
+    path_rank,
+    pick::{self, Candidate as PickCandidate, Closeness, Kind as PickKind, Prior, Query},
+    recents::{MAX_BOOST, RecentKey, Recents, now_secs},
 };
 use zz_protocol::{GitMark, PaneId, PathEntry, PathKind, PathListRoot, SessionId, WindowId};
 
@@ -16,13 +21,16 @@ use penna::{
 
 use penna::blocks::palette::{
     PaletteKeys, PaletteRow, PaletteStatus, Twin, palette_chord, palette_footer, palette_row,
-    palette_row_height,
+    palette_row_height, palette_section,
 };
 
 use crate::{
     ActiveTheme as _, Colorize as _, IconName, StyledExt as _,
-    command::{CommandPaletteView, PaletteHostId, PaletteTarget, fuzzy_match},
-    files::{FileRow, GitMarks, Listing, file_rows, mark_letter},
+    command::{CommandPaletteView, PaletteHostId, PaletteTarget, palette_recents, record_recent},
+    files::{
+        FileRow, GitMarks, Listing, ListingUpdate, Recency, file_rows, mark_letter, plain_path,
+        recency, scored_rows,
+    },
     h_flex,
     input::{Backspace, Enter, Escape, IndentInline, InputState, MoveDown, MoveUp, OutdentInline},
     mention::{Mentions, ref_highlight},
@@ -35,6 +43,7 @@ const BOTTOM_PADDING: f32 = 6.0;
 const CHROME_HEIGHT: f32 =
     HEADER_HEIGHT + 2.0 * BOTTOM_PADDING + 2.0 + penna::blocks::palette::PALETTE_FOOTER_HEIGHT;
 const ROOM_MARGIN: f32 = 8.0;
+const CHANGED_ROWS: usize = 5;
 
 pub trait TargetBackend {
     fn hosts(&self, cx: &App) -> Vec<TargetHost>;
@@ -46,6 +55,9 @@ pub trait TargetBackend {
         cx: &mut App,
     ) -> Result<u64, SharedString>;
     fn cancel(&self, host: &str, request_id: u64, cx: &mut App);
+    fn folder(&self, _pane: PaneId, _cx: &App) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -300,7 +312,8 @@ pub struct TargetItem {
     pub token: String,
     pub shown: Option<SharedString>,
     pub meta: SharedString,
-    score: usize,
+    score: i64,
+    recent: Option<RecentKey>,
 }
 
 impl TargetItem {
@@ -330,6 +343,7 @@ impl TargetItem {
             shown: None,
             meta: SharedString::default(),
             score: 0,
+            recent: None,
         }
     }
 
@@ -338,16 +352,38 @@ impl TargetItem {
         self
     }
 
-    fn matching(mut self, filter: &str, metadata: &str) -> Option<Self> {
-        if let Some((score, matches)) = fuzzy_match(filter, &self.label) {
-            self.score = score;
-            self.matches = matches;
-        } else if !filter.is_empty() && !metadata.is_empty() {
-            self.score = fuzzy_match(filter, metadata)?.0.saturating_add(1000);
-        } else {
-            return None;
+    fn near(mut self, prior: Prior, recent: Option<RecentKey>) -> Self {
+        self.score = prior.score();
+        self.recent = recent;
+        self
+    }
+
+    const fn pick_kind(&self) -> PickKind {
+        match self.kind {
+            TargetKind::File => PickKind::File,
+            TargetKind::Dir => PickKind::Dir,
+            TargetKind::Chat => PickKind::Chat,
+            TargetKind::Host | TargetKind::Session | TargetKind::Window | TargetKind::Pane => {
+                PickKind::Place
+            }
         }
+    }
+
+    fn scored(mut self, query: &Query, path: &str) -> Option<Self> {
+        let found = query.matched(&PickCandidate {
+            kind: self.pick_kind(),
+            label: &self.label,
+            path,
+            prior: Prior::default(),
+        })?;
+        self.score += found.score;
+        self.matches = found.label;
         Some(self)
+    }
+
+    #[must_use]
+    pub const fn recent_key(&self) -> Option<&RecentKey> {
+        self.recent.as_ref()
     }
 
     #[must_use]
@@ -414,6 +450,48 @@ struct FileQuery {
     host: TargetHost,
     written: bool,
     dir: String,
+    root: Option<String>,
+    recent: Arc<Recency>,
+    top: bool,
+}
+
+fn file_item(query: &FileQuery, place: &Place, row: FileRow, score: i64) -> TargetItem {
+    let FileRow {
+        entry,
+        name,
+        matches,
+        mark,
+    } = row;
+    let (kind, icon) = match entry.kind {
+        PathKind::Dir => (TargetKind::Dir, IconName::Folder),
+        PathKind::File => (TargetKind::File, IconName::File),
+    };
+    let slash = if kind == TargetKind::Dir { "/" } else { "" };
+    let rest = format!("{}{}{slash}", query.dir, escape(&name));
+    let mut item = TargetItem::new(kind, name.clone(), "", place, &rest, icon);
+    item.matches = matches;
+    if query.top {
+        let (parent, label) = path_rank::split(&name);
+        let cut = parent.len();
+        item.label = label.to_owned().into();
+        item.detail = parent.trim_end_matches('/').to_owned().into();
+        item.matches = item
+            .matches
+            .iter()
+            .filter(|range| range.end > cut)
+            .map(|range| range.start.max(cut) - cut..range.end - cut)
+            .collect();
+    }
+    item.score = score;
+    item.mark = mark;
+    item.meta = mark.map(mark_letter).unwrap_or_default().into();
+    item.recent = query.root.as_ref().map(|root| RecentKey::File {
+        host: query.host.name.clone(),
+        path: plain_path(root, &entry.rel, None),
+        dir: kind == TargetKind::Dir,
+    });
+    item.entry = Some(entry);
+    item
 }
 
 fn file_items(query: &FileQuery) -> Vec<TargetItem> {
@@ -421,27 +499,58 @@ fn file_items(query: &FileQuery) -> Vec<TargetItem> {
         host: &query.host,
         written: query.written,
     };
-    file_rows(&query.chunks, &query.marks, &query.base, &query.filter)
+    if query.top {
+        return scored_rows(
+            &query.chunks,
+            &query.marks,
+            &query.base,
+            &query.filter,
+            &query.recent,
+        )
         .into_iter()
-        .map(|row| {
-            let FileRow {
-                entry,
-                name,
-                matches,
-                mark,
-            } = row;
-            let (kind, icon) = match entry.kind {
-                PathKind::Dir => (TargetKind::Dir, IconName::Folder),
-                PathKind::File => (TargetKind::File, IconName::File),
+        .map(|(row, score)| file_item(query, &place, row, score))
+        .collect();
+    }
+    file_rows(
+        &query.chunks,
+        &query.marks,
+        &query.base,
+        &query.filter,
+        &query.recent,
+    )
+    .into_iter()
+    .map(|row| file_item(query, &place, row, 0))
+    .collect()
+}
+
+fn changed_items(query: &FileQuery) -> Vec<TargetItem> {
+    let place = Place {
+        host: &query.host,
+        written: query.written,
+    };
+    let mut changed = query
+        .chunks
+        .iter()
+        .flat_map(|chunk| chunk.iter())
+        .filter(|entry| {
+            entry.kind == PathKind::File
+                && entry.rel.len() > query.base.len()
+                && entry.rel.starts_with(&query.base)
+        })
+        .filter_map(|entry| Some((entry, query.marks.get(&entry.rel)?)))
+        .collect::<Vec<_>>();
+    changed.sort_by(|(left, _), (right, _)| left.rel.cmp(&right.rel));
+    changed
+        .into_iter()
+        .take(CHANGED_ROWS)
+        .map(|(entry, mark)| {
+            let row = FileRow {
+                entry: entry.clone(),
+                name: entry.rel[query.base.len()..].to_owned(),
+                matches: Vec::new(),
+                mark: Some(mark),
             };
-            let slash = if kind == TargetKind::Dir { "/" } else { "" };
-            let rest = format!("{}{}{slash}", query.dir, escape(&name));
-            let mut item = TargetItem::new(kind, name, "", &place, &rest, icon);
-            item.matches = matches;
-            item.mark = mark;
-            item.meta = mark.map(mark_letter).unwrap_or_default().into();
-            item.entry = Some(entry);
-            item
+            file_item(query, &place, row, 0)
         })
         .collect()
 }
@@ -499,16 +608,6 @@ fn pane_note(pane: &TargetPane, place: Option<String>) -> String {
         .into_iter()
         .chain(place)
         .chain(named.then(|| pane.id.to_string()))
-        .collect::<Vec<_>>()
-        .join(" · ")
-}
-
-pub(crate) fn pane_detail(pane: &TargetPane, place: Option<String>) -> String {
-    let title = pane.title.trim();
-    place
-        .into_iter()
-        .chain(pane.program.as_ref().map(ToString::to_string))
-        .chain((!title.is_empty()).then(|| title.to_owned()))
         .collect::<Vec<_>>()
         .join(" · ")
 }
@@ -696,7 +795,88 @@ fn host_icon(host: &TargetHost) -> IconName {
     }
 }
 
-fn host_item(host: &TargetHost, place: &Place) -> TargetItem {
+#[derive(Clone, Default)]
+pub(crate) struct Around {
+    pub(crate) own: Option<PaneId>,
+    pub(crate) folder: Option<String>,
+    pub(crate) recents: Recents,
+    pub(crate) now: u64,
+}
+
+struct Near<'a> {
+    around: &'a Around,
+    session: Option<SessionId>,
+    window: Option<WindowId>,
+}
+
+impl Around {
+    fn near(&self, hosts: &[TargetHost]) -> Near<'_> {
+        let spot = self.own.and_then(|own| {
+            hosts
+                .iter()
+                .filter(|host| host.here)
+                .flat_map(|host| &host.sessions)
+                .find_map(|session| {
+                    session
+                        .windows
+                        .iter()
+                        .find(|window| window.panes.iter().any(|pane| pane.id == own))
+                        .map(|window| (session.id, window.id))
+                })
+        });
+        Near {
+            around: self,
+            session: spot.map(|(session, _)| session),
+            window: spot.map(|(_, window)| window),
+        }
+    }
+}
+
+impl Near<'_> {
+    fn prior(
+        &self,
+        host: &TargetHost,
+        session: Option<SessionId>,
+        window: Option<WindowId>,
+        depth: u32,
+        key: Option<&RecentKey>,
+    ) -> Prior {
+        let closeness = if !host.here {
+            Closeness::Elsewhere
+        } else if window.is_some() && window == self.window {
+            Closeness::Window
+        } else if session.is_some() && session == self.session {
+            Closeness::Session
+        } else {
+            Closeness::Host
+        };
+        let recent = key.map_or(0.0, |key| {
+            self.around.recents.boost(key, self.around.now) as f32 / MAX_BOOST as f32
+        });
+        Prior {
+            closeness,
+            recent,
+            depth,
+            changed: false,
+        }
+    }
+}
+
+fn place_key(
+    host: &TargetHost,
+    session: SessionId,
+    window: Option<WindowId>,
+    pane: Option<PaneId>,
+) -> RecentKey {
+    RecentKey::Place {
+        host: host.name.clone(),
+        session,
+        window,
+        pane,
+    }
+}
+
+fn host_item(host: &TargetHost, place: &Place, near: &Near) -> TargetItem {
     let detail = match host.status {
         PaletteStatus::Online | PaletteStatus::Running => count(host.sessions.len(), "session"),
         PaletteStatus::Waiting => "connecting".to_owned(),
@@ -709,13 +889,22 @@ fn host_item(host: &TargetHost, place: &Place) -> TargetItem {
         place,
         "",
         host_icon(host),
-    );
+    )
+    .near(near.prior(host, None, None, 0, None), None);
     item.status = Some(host.status);
     item.meta = detail.into();
     item
 }
 
-fn session_item(session: &TargetSession, place: &Place, label: String) -> TargetItem {
+fn session_item(
+    host: &TargetHost,
+    session: &TargetSession,
+    place: &Place,
+    label: String,
+    near: &Near,
+) -> TargetItem {
+    let key = place_key(host, session.id, None, None);
+    let prior = near.prior(host, Some(session.id), None, 1, Some(&key));
     let mut item = TargetItem::new(
         TargetKind::Session,
         label,
@@ -724,17 +913,22 @@ fn session_item(session: &TargetSession, place: &Place, label: String) -> Target
         &session_ref(session),
         IconName::Layers,
     )
-    .at(PaletteTarget::Session(session.id));
+    .at(PaletteTarget::Session(session.id))
+    .near(prior, Some(key));
     item.meta = count(session.windows.len(), "window").into();
     item
 }
 
 fn window_item(
+    host: &TargetHost,
     session: &TargetSession,
     window: &TargetWindow,
     place: &Place,
     label: String,
+    near: &Near,
 ) -> TargetItem {
+    let key = place_key(host, session.id, Some(window.id), None);
+    let prior = near.prior(host, Some(session.id), Some(window.id), 2, Some(&key));
     let mut item = TargetItem::new(
         TargetKind::Window,
         label,
@@ -743,36 +937,66 @@ fn window_item(
         &format!("{}:{}", session_ref(session), window.index),
         IconName::AppWindow,
     )
-    .at(PaletteTarget::Window(window.id));
+    .at(PaletteTarget::Window(window.id))
+    .near(prior, Some(key));
     item.meta = count(window.panes.len(), "pane").into();
     item
 }
 
-fn pane_item(pane: &TargetPane, place: &Place, rest: &str, where_: Option<String>) -> TargetItem {
-    let mut item = TargetItem::new(
+#[derive(Clone, Copy)]
+struct Spot<'a> {
+    host: &'a TargetHost,
+    session: &'a TargetSession,
+    window: &'a TargetWindow,
+}
+
+impl Spot<'_> {
+    fn crumbs(&self, pane: &TargetPane) -> String {
+        let title = pane.title.trim();
+        [self.session.name.as_str(), self.window.name.as_str()]
+            .into_iter()
+            .chain((pane.program.is_some() && !title.is_empty()).then_some(title))
+            .collect::<Vec<_>>()
+            .join(" › ")
+    }
+}
+
+fn pane_item(
+    spot: &Spot,
+    pane: &TargetPane,
+    place: &Place,
+    rest: &str,
+    where_: Option<String>,
+    near: &Near,
+) -> TargetItem {
+    let key = place_key(
+        spot.host,
+        spot.session.id,
+        Some(spot.window.id),
+        Some(pane.id),
+    );
+    let prior = near.prior(
+        spot.host,
+        Some(spot.session.id),
+        Some(spot.window.id),
+        3,
+        Some(&key),
+    );
+    TargetItem::new(
         TargetKind::Pane,
-        pane.id.to_string(),
+        pane_name(pane),
         pane_note(pane, where_),
         place,
         rest,
         pane.icon.clone(),
     )
-    .at(PaletteTarget::Pane(pane.id));
-    item.shown = Some(pane_name(pane).into());
-    item
+    .at(PaletteTarget::Pane(pane.id))
+    .near(prior, Some(key))
 }
 
-#[derive(Clone, Copy)]
-struct Chats {
-    shown: bool,
-    own: Option<PaneId>,
-}
-
-fn chat_items(hosts: &[TargetHost], filter: &str, chats: Chats) -> Vec<TargetItem> {
+fn chat_items(hosts: &[TargetHost], query: &Query, near: &Near) -> Vec<TargetItem> {
     let mut items = Vec::new();
-    if !chats.shown {
-        return items;
-    }
+    let own = near.around.own;
     for host in hosts
         .iter()
         .filter(|host| host.here)
@@ -786,8 +1010,8 @@ fn chat_items(hosts: &[TargetHost], filter: &str, chats: Chats) -> Vec<TargetIte
         for session in &host.sessions {
             for window in &session.windows {
                 for pane in &window.panes {
-                    let own = host.here && Some(pane.id) == chats.own;
-                    let Some(chat) = pane.chat.as_ref().filter(|_| !own) else {
+                    let mine = host.here && Some(pane.id) == own;
+                    let Some(chat) = pane.chat.as_ref().filter(|_| !mine) else {
                         continue;
                     };
                     let detail = pane
@@ -801,6 +1025,8 @@ fn chat_items(hosts: &[TargetHost], filter: &str, chats: Chats) -> Vec<TargetIte
                         .chain((!host.here).then(|| host.name.clone()))
                         .collect::<Vec<_>>()
                         .join(" · ");
+                    let key = place_key(host, session.id, Some(window.id), Some(pane.id));
+                    let prior = near.prior(host, Some(session.id), Some(window.id), 3, Some(&key));
                     let item = TargetItem::new(
                         TargetKind::Chat,
                         chat.title.clone(),
@@ -809,8 +1035,9 @@ fn chat_items(hosts: &[TargetHost], filter: &str, chats: Chats) -> Vec<TargetIte
                         &pane.id.to_string(),
                         chat.icon.clone(),
                     )
-                    .at(PaletteTarget::Pane(pane.id));
-                    items.extend(item.matching(filter, &detail));
+                    .at(PaletteTarget::Pane(pane.id))
+                    .near(prior, Some(key));
+                    items.extend(item.scored(query, &detail));
                 }
             }
         }
@@ -818,7 +1045,7 @@ fn chat_items(hosts: &[TargetHost], filter: &str, chats: Chats) -> Vec<TargetIte
     items
 }
 
-fn home_item(place: &Place) -> TargetItem {
+fn home_item(place: &Place, near: &Near) -> TargetItem {
     TargetItem::new(
         TargetKind::Dir,
         "~/",
@@ -827,106 +1054,194 @@ fn home_item(place: &Place) -> TargetItem {
         "~/",
         IconName::Folder,
     )
+    .near(near.prior(place.host, None, None, 0, None), None)
 }
 
-fn panes_by_id(host: &TargetHost, place: &Place, filter: &str) -> Vec<TargetItem> {
-    host.sessions
-        .iter()
-        .flat_map(|session| {
-            session.windows.iter().flat_map(move |window| {
-                window.panes.iter().map(move |pane| (session, window, pane))
-            })
+fn folder_item(place: &Place, folder: &str, near: &Near) -> TargetItem {
+    let name = folder
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(folder)
+        .to_owned();
+    TargetItem::new(
+        TargetKind::Dir,
+        "./",
+        name,
+        place,
+        &escape(folder),
+        IconName::Folder,
+    )
+    .near(near.prior(place.host, None, None, 0, None), None)
+}
+
+fn spots(host: &TargetHost) -> impl Iterator<Item = Spot<'_>> {
+    host.sessions.iter().flat_map(move |session| {
+        session.windows.iter().map(move |window| Spot {
+            host,
+            session,
+            window,
         })
-        .filter_map(|(session, window, pane)| {
-            pane_item(
+    })
+}
+
+fn panes_by_id(host: &TargetHost, place: &Place, query: &Query, near: &Near) -> Vec<TargetItem> {
+    spots(host)
+        .flat_map(|spot| spot.window.panes.iter().map(move |pane| (spot, pane)))
+        .filter_map(|(spot, pane)| {
+            let mut item = pane_item(
+                &spot,
                 pane,
                 place,
                 &pane.id.to_string(),
-                Some(format!("{}:{}", session.name, window.index)),
-            )
-            .matching(filter, "")
+                Some(format!("{}:{}", spot.session.name, spot.window.index)),
+                near,
+            );
+            item.shown = Some(item.label.clone());
+            item.label = pane.id.to_string().into();
+            item.scored(query, "")
         })
         .collect()
 }
 
-fn fleet_items(hosts: &[TargetHost], filter: &str) -> Vec<TargetItem> {
+fn fleet_items(hosts: &[TargetHost], query: &Query, near: &Near) -> Vec<TargetItem> {
     let mut items = Vec::new();
     for host in hosts {
         let place = Place {
             host,
             written: false,
         };
-        items.extend(host_item(host, &place).matching(filter, ""));
+        items.extend(host_item(host, &place, near).scored(query, ""));
         if !matches!(host.status, PaletteStatus::Online | PaletteStatus::Running) {
             continue;
         }
         for session in &host.sessions {
             let (typed, _) = place.target(&session_ref(session));
-            items.extend(session_item(session, &place, typed.clone()).matching(filter, ""));
+            items.extend(
+                session_item(host, session, &place, typed.clone(), near).scored(query, &host.name),
+            );
             for window in &session.windows {
                 let label = format!("{typed}:{}", window.index);
-                let mut item = window_item(session, window, &place, label.clone());
+                let mut item = window_item(host, session, window, &place, label.clone(), near);
                 item.detail = window.name.clone().into();
-                items.extend(item.matching(filter, &format!("{} {}", session.name, window.name)));
+                let crumbs = format!("{} › {}", session.name, window.name);
+                items.extend(item.scored(query, &crumbs));
+                let spot = Spot {
+                    host,
+                    session,
+                    window,
+                };
                 for pane in &window.panes {
                     let rest = format!("{}:{}.{}", session_ref(session), window.index, pane.id);
-                    let mut item = pane_item(pane, &place, &rest, Some(label.clone()));
-                    item.label = format!("{label}.{}", pane.id).into();
-                    let metadata = pane_detail(pane, None);
-                    items.extend(item.matching(filter, &metadata));
+                    let item = pane_item(&spot, pane, &place, &rest, Some(label.clone()), near);
+                    items.extend(item.scored(query, &spot.crumbs(pane)));
                 }
             }
         }
     }
-    items.sort_by_key(|item| {
-        (
-            item.score,
-            !hosts.iter().any(|host| host.here && host.name == item.host),
-        )
-    });
     items
 }
 
-fn target_items(query: &TargetQuery, hosts: &[TargetHost], chats: Chats) -> Vec<TargetItem> {
+fn ranked(mut items: Vec<TargetItem>, typed: bool) -> Vec<TargetItem> {
+    if typed {
+        items.sort_by_key(|item| Reverse(item.score));
+        let best = items.first().map_or(0, |item| item.score);
+        items.retain(|item| pick::keeps(item.score, best));
+    }
+    items.truncate(TARGET_MAX_ROWS);
+    items
+}
+
+pub(crate) type Sections = Vec<(&'static str, Vec<TargetItem>)>;
+
+fn root_sections(hosts: &[TargetHost], around: &Around, changed: Vec<TargetItem>) -> Sections {
+    let near = around.near(hosts);
+    let Some(here) = hosts.iter().find(|host| host.here) else {
+        return vec![("", fleet_items(hosts, &Query::new(""), &near))];
+    };
+    let place = Place {
+        host: here,
+        written: false,
+    };
+    let everything = Query::new("");
+    let window = spots(here).find(|spot| Some(spot.window.id) == near.window);
+    let panes = window.as_ref().map_or_else(Vec::new, |spot| {
+        spot.window
+            .panes
+            .iter()
+            .filter(|pane| Some(pane.id) != around.own)
+            .map(|pane| {
+                let rest = format!(
+                    "{}:{}.{}",
+                    session_ref(spot.session),
+                    spot.window.index,
+                    pane.id
+                );
+                pane_item(spot, pane, &place, &rest, None, &near)
+            })
+            .collect()
+    });
+    let sessions = here
+        .sessions
+        .iter()
+        .filter(|session| near.session.is_none_or(|id| id == session.id))
+        .map(|session| session_item(here, session, &place, session.name.clone(), &near));
+    let others = hosts.iter().filter(|host| !host.here).map(|host| {
+        host_item(
+            host,
+            &Place {
+                host,
+                written: true,
+            },
+            &near,
+        )
+    });
+    let files = around
+        .folder
+        .as_deref()
+        .map(|folder| folder_item(&place, folder, &near))
+        .into_iter()
+        .chain(std::iter::once(home_item(&place, &near)))
+        .collect();
+    vec![
+        ("Here", panes),
+        ("Changed", changed),
+        ("Chats", chat_items(hosts, &everything, &near)),
+        ("Places", sessions.chain(others).collect()),
+        ("Files", files),
+    ]
+}
+
+fn target_items(query: &TargetQuery, hosts: &[TargetHost], around: &Around) -> Vec<TargetItem> {
     let filter = query.filter.as_str();
+    let typed = !filter.is_empty();
+    let near = around.near(hosts);
+    let matcher = Query::new(filter);
     let host_named = |name: &str| hosts.iter().find(|host| host.name == name);
-    let mut items: Vec<TargetItem> = match &query.level {
+    let items: Vec<TargetItem> = match &query.level {
         TargetLevel::Top => {
             let Some(here) = hosts.iter().find(|host| host.here) else {
-                return fleet_items(hosts, filter);
+                return ranked(fleet_items(hosts, &matcher, &near), typed);
             };
             let place = Place {
                 host: here,
                 written: false,
             };
             if filter.starts_with('%') {
-                panes_by_id(here, &place, filter)
-            } else if filter.is_empty() {
-                chat_items(hosts, filter, chats)
+                panes_by_id(here, &place, &matcher, &near)
+            } else if !typed {
+                return root_sections(hosts, around, Vec::new())
                     .into_iter()
-                    .chain(
-                        here.sessions
-                            .iter()
-                            .map(|session| session_item(session, &place, session.name.clone())),
-                    )
-                    .chain(hosts.iter().filter(|host| !host.here).map(|host| {
-                        host_item(
-                            host,
-                            &Place {
-                                host,
-                                written: true,
-                            },
-                        )
-                    }))
-                    .chain(std::iter::once(home_item(&place)))
-                    .collect()
+                    .flat_map(|(_, items)| items)
+                    .collect();
             } else {
-                let mut items = fleet_items(hosts, filter);
-                items.extend(chat_items(hosts, filter, chats));
-                items.extend(home_item(&place).matching(filter, ""));
-                items.sort_by_key(|item| item.score);
-                items.truncate(TARGET_MAX_ROWS);
-                return items;
+                let mut items = fleet_items(hosts, &matcher, &near);
+                items.extend(chat_items(hosts, &matcher, &near));
+                items.extend(home_item(&place, &near).scored(&matcher, ""));
+                if let Some(folder) = &around.folder {
+                    items.extend(folder_item(&place, folder, &near).scored(&matcher, ""));
+                }
+                items
             }
         }
         TargetLevel::Sessions { host } => {
@@ -938,14 +1253,16 @@ fn target_items(query: &TargetQuery, hosts: &[TargetHost], chats: Chats) -> Vec<
                 written: query.written,
             };
             if filter.starts_with('%') {
-                panes_by_id(found, &place, filter)
+                panes_by_id(found, &place, &matcher, &near)
             } else {
                 found
                     .sessions
                     .iter()
-                    .map(|session| session_item(session, &place, session.name.clone()))
-                    .chain(std::iter::once(home_item(&place)))
-                    .filter_map(|item| item.matching(filter, ""))
+                    .filter_map(|session| {
+                        session_item(found, session, &place, session.name.clone(), &near)
+                            .scored(&matcher, "")
+                    })
+                    .chain(home_item(&place, &near).scored(&matcher, ""))
                     .collect()
             }
         }
@@ -964,12 +1281,14 @@ fn target_items(query: &TargetQuery, hosts: &[TargetHost], chats: Chats) -> Vec<
                 .iter()
                 .filter_map(|window| {
                     window_item(
+                        found,
                         session,
                         window,
                         &place,
                         format!("{}:{}", window.index, window.name),
+                        &near,
                     )
-                    .matching(filter, "")
+                    .scored(&matcher, "")
                 })
                 .collect()
         }
@@ -988,23 +1307,31 @@ fn target_items(query: &TargetQuery, hosts: &[TargetHost], chats: Chats) -> Vec<
                 host: found,
                 written: query.written,
             };
+            let spot = Spot {
+                host: found,
+                session,
+                window,
+            };
             let target = format!("{}:{}", session_ref(session), window.index);
             window
                 .panes
                 .iter()
                 .filter_map(|pane| {
-                    pane_item(pane, &place, &format!("{target}.{}", pane.id), None)
-                        .matching(filter, "")
+                    pane_item(
+                        &spot,
+                        pane,
+                        &place,
+                        &format!("{target}.{}", pane.id),
+                        None,
+                        &near,
+                    )
+                    .scored(&matcher, &spot.crumbs(pane))
                 })
                 .collect()
         }
         TargetLevel::Files { .. } => return Vec::new(),
     };
-    if !filter.is_empty() {
-        items.sort_by_key(|item| item.score);
-    }
-    items.truncate(TARGET_MAX_ROWS);
-    items
+    ranked(items, typed)
 }
 
 fn breadcrumb(query: &TargetQuery, root: Option<&PathListRoot>) -> String {
@@ -1057,6 +1384,9 @@ pub struct TargetPicker {
     query: Option<TargetQuery>,
     listing: Option<Listing>,
     items: Rc<[TargetItem]>,
+    headers: Rc<[(usize, SharedString)]>,
+    found: Vec<TargetItem>,
+    top_files: Option<(String, Vec<TargetItem>)>,
     selected: usize,
     scroll: UniformListScrollHandle,
     rows: usize,
@@ -1099,6 +1429,9 @@ impl TargetPicker {
             query: None,
             listing: None,
             items: Rc::from([]),
+            headers: Rc::from([]),
+            found: Vec::new(),
+            top_files: None,
             selected: 0,
             scroll: UniformListScrollHandle::new(),
             rows: TARGET_VISIBLE_ROWS,
@@ -1240,37 +1573,57 @@ impl TargetPicker {
             }
             self.query = None;
             self.items = Rc::from([]);
+            self.headers = Rc::from([]);
+            self.top_files = None;
             cx.notify();
             return;
         };
         let hosts = self.backend.hosts(cx);
         let query = parse_target(body, &hosts);
-        if let TargetLevel::Files { host, dir } = &query.level {
-            let dir = unescape(dir);
-            if !self
+        let wanted = match &query.level {
+            TargetLevel::Files { host, dir } => Some((host.clone(), unescape(dir))),
+            TargetLevel::Top => self.folder(cx).and_then(|folder| {
+                let here = hosts.iter().find(|host| host.here)?;
+                Some((here.name.clone(), folder))
+            }),
+            _ => None,
+        };
+        if let Some((host, dir)) = wanted
+            && !self
                 .listing
                 .as_ref()
-                .is_some_and(|listing| listing.covers(host, &dir))
-            {
-                if let Some(listing) = self.listing.take() {
-                    self.cancel(&listing, cx);
-                }
-                let mut listing = Listing::new(host, dir);
-                match self.backend.list(host, &listing.dir, None, cx) {
-                    Ok(request) => listing.request = Some(request),
-                    Err(error) => {
-                        listing.error = Some(error);
-                        listing.done = true;
-                    }
-                }
-                self.generation += 1;
-                self.listing = Some(listing);
+                .is_some_and(|listing| listing.covers(&host, &dir))
+        {
+            if let Some(listing) = self.listing.take() {
+                self.cancel(&listing, cx);
             }
-        } else if let Some(listing) = self.listing.take() {
-            self.cancel(&listing, cx);
+            let mut listing = Listing::new(&host, dir);
+            match self.backend.list(&host, &listing.dir, None, cx) {
+                Ok(request) => listing.request = Some(request),
+                Err(error) => {
+                    listing.error = Some(error);
+                    listing.done = true;
+                }
+            }
+            self.generation += 1;
+            self.top_files = None;
+            self.listing = Some(listing);
         }
         self.query = Some(query);
         self.refresh(false, &hosts, cx);
+    }
+
+    fn folder(&self, cx: &App) -> Option<String> {
+        self.backend.folder(self.own?, cx)
+    }
+
+    fn around(&self, cx: &App) -> Around {
+        Around {
+            own: self.own,
+            folder: self.folder(cx),
+            recents: palette_recents(cx),
+            now: now_secs(),
+        }
     }
 
     fn cancel(&self, listing: &Listing, cx: &mut App) {
@@ -1282,47 +1635,117 @@ impl TargetPicker {
     }
 
     fn refresh(&mut self, keep: bool, hosts: &[TargetHost], cx: &mut Context<Self>) {
-        let Some(query) = &self.query else {
+        let Some(query) = self.query.clone() else {
             return;
         };
-        if let TargetLevel::Files { host, dir } = &query.level {
-            let Some(found) = hosts.iter().find(|candidate| candidate.name == *host) else {
-                self.land(keep, Vec::new(), cx);
-                return;
-            };
-            let Some(listing) = &self.listing else {
-                return;
-            };
-            let resolved = unescape(dir);
-            let file_query = FileQuery {
-                chunks: listing.chunks.clone(),
-                marks: Arc::clone(&listing.marks),
-                base: resolved
-                    .strip_prefix(listing.dir.as_str())
-                    .unwrap_or_default()
-                    .to_owned(),
-                filter: query.filter.clone(),
-                host: found.clone(),
-                written: query.written,
-                dir: dir.clone(),
-            };
-            self.dirty = true;
-            if self.ranking.is_none() {
-                self.rank(file_query, keep, cx);
+        let around = self.around(cx);
+        match &query.level {
+            TargetLevel::Files { host, dir } => {
+                let Some(found) = hosts.iter().find(|candidate| candidate.name == *host) else {
+                    self.land(keep, Vec::new(), cx);
+                    return;
+                };
+                let Some(file_query) = self.file_query(found, &unescape(dir), dir, &query, cx)
+                else {
+                    return;
+                };
+                self.dirty = true;
+                if self.ranking.is_none() {
+                    self.rank(file_query, keep, cx);
+                }
             }
-            return;
+            TargetLevel::Top if query.filter.is_empty() => {
+                let changed = self
+                    .top_query(hosts, &around, &query, cx)
+                    .map_or_else(Vec::new, |file_query| changed_items(&file_query));
+                let mut items = Vec::new();
+                let mut headers = Vec::new();
+                for (label, section) in root_sections(hosts, &around, changed) {
+                    if section.is_empty() {
+                        continue;
+                    }
+                    if !label.is_empty() {
+                        headers.push((items.len(), SharedString::from(label)));
+                    }
+                    items.extend(section);
+                }
+                self.headers = headers.into();
+                self.place(keep, items, cx);
+            }
+            TargetLevel::Top => {
+                self.found = target_items(&query, hosts, &around);
+                self.merge(keep, cx);
+                if let Some(file_query) = self.top_query(hosts, &around, &query, cx) {
+                    self.dirty = true;
+                    if self.ranking.is_none() {
+                        self.rank(file_query, keep, cx);
+                    }
+                }
+            }
+            _ => {
+                let items = target_items(&query, hosts, &around);
+                self.land(keep, items, cx);
+            }
         }
-        let chats = Chats {
-            shown: true,
-            own: self.own,
-        };
-        let items = target_items(query, hosts, chats);
-        self.land(keep, items, cx);
+    }
+
+    fn file_query(
+        &self,
+        host: &TargetHost,
+        resolved: &str,
+        dir: &str,
+        query: &TargetQuery,
+        cx: &App,
+    ) -> Option<FileQuery> {
+        let listing = self
+            .listing
+            .as_ref()
+            .filter(|listing| listing.host == host.name)?;
+        let base = resolved.strip_prefix(listing.dir.as_str())?.to_owned();
+        let root = listing.root.as_ref();
+        Some(FileQuery {
+            chunks: listing.chunks.clone(),
+            marks: Arc::clone(&listing.marks),
+            base,
+            filter: query.filter.clone(),
+            host: host.clone(),
+            written: query.written,
+            dir: dir.to_owned(),
+            root: root.map(|root| root.root.clone()),
+            recent: recency(&host.name, root, cx),
+            top: matches!(query.level, TargetLevel::Top),
+        })
+    }
+
+    fn top_query(
+        &self,
+        hosts: &[TargetHost],
+        around: &Around,
+        query: &TargetQuery,
+        cx: &App,
+    ) -> Option<FileQuery> {
+        let folder = around.folder.as_ref()?;
+        let here = hosts.iter().find(|host| host.here)?;
+        self.file_query(here, folder, &escape(folder), query, cx)
+            .filter(|file_query| !file_query.chunks.is_empty())
+    }
+
+    fn merge(&mut self, keep: bool, cx: &mut Context<Self>) {
+        let filter = self.query.as_ref().map(|query| query.filter.clone());
+        let mut items = self.found.clone();
+        if let Some((ranked_for, files)) = &self.top_files
+            && Some(ranked_for) == filter.as_ref()
+        {
+            items.extend(files.iter().cloned());
+        }
+        self.land(keep, ranked(items, true), cx);
     }
 
     fn rank(&mut self, query: FileQuery, keep: bool, cx: &mut Context<Self>) {
         self.dirty = false;
         let generation = self.generation;
+        let top = query.top;
+        let filter = query.filter.clone();
         let ranked = cx
             .background_executor()
             .spawn(async move { file_items(&query) });
@@ -1331,13 +1754,16 @@ impl TargetPicker {
             picker
                 .update(cx, |picker, cx| {
                     picker.ranking = None;
-                    if picker.generation == generation
-                        && matches!(
-                            picker.query.as_ref().map(|query| &query.level),
-                            Some(TargetLevel::Files { .. })
-                        )
-                    {
-                        picker.land(keep, items, cx);
+                    let level = picker.query.as_ref().map(|query| &query.level);
+                    if picker.generation == generation {
+                        match level {
+                            Some(TargetLevel::Files { .. }) if !top => picker.land(keep, items, cx),
+                            Some(TargetLevel::Top) if top => {
+                                picker.top_files = Some((filter, items));
+                                picker.merge(true, cx);
+                            }
+                            _ => {}
+                        }
                     }
                     if picker.dirty {
                         let hosts = picker.backend.hosts(cx);
@@ -1349,6 +1775,11 @@ impl TargetPicker {
     }
 
     fn land(&mut self, keep: bool, items: Vec<TargetItem>, cx: &mut Context<Self>) {
+        self.headers = Rc::from([]);
+        self.place(keep, items, cx);
+    }
+
+    fn place(&mut self, keep: bool, items: Vec<TargetItem>, cx: &mut Context<Self>) {
         let kept = keep
             .then(|| self.items.get(self.selected).map(|item| item.token.clone()))
             .flatten();
@@ -1375,8 +1806,35 @@ impl TargetPicker {
             })
             .unwrap_or(0);
         self.scroll
-            .scroll_to_item(self.selected, ScrollStrategy::Nearest);
+            .scroll_to_item(self.shown_at(self.selected), ScrollStrategy::Nearest);
         cx.notify();
+    }
+
+    fn shown_at(&self, item: usize) -> usize {
+        item + self.headers.iter().filter(|(at, _)| *at <= item).count()
+    }
+
+    #[must_use]
+    pub fn headers(&self) -> &[(usize, SharedString)] {
+        &self.headers
+    }
+
+    pub fn apply(
+        &mut self,
+        host: &str,
+        request_id: u64,
+        update: ListingUpdate,
+        cx: &mut Context<Self>,
+    ) {
+        match update {
+            ListingUpdate::Begin(result) => self.apply_begin(host, request_id, result, cx),
+            ListingUpdate::Chunk {
+                entries,
+                done,
+                truncated,
+            } => self.apply_chunk(host, request_id, &entries, done, truncated, cx),
+            ListingUpdate::Git(marks) => self.apply_git(host, request_id, marks, cx),
+        }
     }
 
     fn listing_for(&mut self, host: &str, request_id: u64) -> Option<&mut Listing> {
@@ -1447,7 +1905,7 @@ impl TargetPicker {
                 (self.selected + 1) % count
             };
             self.scroll
-                .scroll_to_item(self.selected, ScrollStrategy::Nearest);
+                .scroll_to_item(self.shown_at(self.selected), ScrollStrategy::Nearest);
             cx.notify();
         }
         true
@@ -1484,6 +1942,15 @@ impl TargetPicker {
             return false;
         };
         self.planted = None;
+        if let Some(key) = item.as_ref().and_then(TargetItem::recent_key) {
+            let label = item
+                .as_ref()
+                .map_or_else(String::new, |item| match item.kind {
+                    TargetKind::File | TargetKind::Dir => item.typed.clone(),
+                    _ => item.name().to_string(),
+                });
+            record_recent(key.clone(), label, cx);
+        }
         let text = match item {
             Some(item) => {
                 let hosts = self.backend.hosts(cx);
@@ -1772,17 +2239,35 @@ impl TargetPicker {
         }
         let selected = self.selected;
         let picker = cx.entity();
-        let visible = items.len().min(self.rows);
+        let headers = Rc::clone(&self.headers);
+        let mut shown = Vec::with_capacity(items.len() + headers.len());
+        let mut next = headers.iter().peekable();
+        for index in 0..items.len() {
+            while let Some((_, label)) = next.next_if(|(at, _)| *at == index) {
+                shown.push(Err(label.clone()));
+            }
+            shown.push(Ok(index));
+        }
+        let shown: Rc<[Result<usize, SharedString>]> = shown.into();
+        let visible = shown.len().min(self.rows);
         let visible = f32::from(u16::try_from(visible).unwrap_or(u16::MAX));
+        let rows = Rc::clone(&shown);
         uniform_list(
             "target-rows",
-            items.len(),
+            shown.len(),
             cx.processor(move |_, range: Range<usize>, _, cx| {
                 range
-                    .filter_map(|index| {
-                        items.get(index).map(|item| {
-                            Self::row(item, index, selected == index, picker.clone(), cx)
-                        })
+                    .filter_map(|at| match rows.get(at)? {
+                        Ok(index) => items.get(*index).map(|item| {
+                            Self::row(item, *index, selected == *index, picker.clone(), cx)
+                        }),
+                        Err(label) => {
+                            Some(div().h(px(palette_row_height())).child(palette_section(
+                                label.clone(),
+                                "",
+                                cx,
+                            )))
+                        }
                     })
                     .collect::<Vec<_>>()
             }),

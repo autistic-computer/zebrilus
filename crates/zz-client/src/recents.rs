@@ -3,7 +3,7 @@ use zz_protocol::{PaneId, SessionId, WindowId};
 
 pub const RECENT_LIMIT: usize = 200;
 pub const HALF_LIFE_SECS: f64 = 3.0 * 24.0 * 60.0 * 60.0;
-const MAX_BOOST: f64 = 12.0;
+pub const MAX_BOOST: f64 = 12.0;
 const BOOST_SCALE: f64 = 6.0;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -189,11 +189,11 @@ fn typing_matches_names_before_keywords() {
     assert_eq!(verbs[found[0].index].name, "read pane");
     let found = match_verbs(&verbs, "capture", |_| true);
     assert_eq!(verbs[found[0].index].name, "capture pane");
-    assert!(
-        found
-            .iter()
-            .any(|found| verbs[found.index].name == "read pane" && found.score >= KEYWORD_PENALTY)
-    );
+    let by_keyword = found
+        .iter()
+        .find(|found| verbs[found.index].name == "read pane")
+        .expect("read pane matches its capture keyword");
+    assert!(by_keyword.score < found[0].score && by_keyword.matches.is_empty());
     let on_a_pane = match_verbs(&verbs, "kil", |verb| verb.target().is_some());
     assert!(
         on_a_pane

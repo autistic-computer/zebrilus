@@ -20,8 +20,6 @@ pub use palette_view::{
     target_hosts,
 };
 
-pub(crate) use palette_model::fuzzy_match;
-
 use ala::{Keystroke, SharedString};
 use penna::blocks::palette::PaletteShortcut;
 

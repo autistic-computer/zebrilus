@@ -1,6 +1,6 @@
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
-use ala::{App, Context, Window};
+use ala::{AnyWindowHandle, App, AppContext as _, Context, Subscription, Task, Window};
 use zz_client::{
     completion::apply_completion,
     place::{self, ActionKind, Level, LevelSet, Place, Written, parse, read_written},
@@ -12,12 +12,27 @@ use zz_protocol::{CommandInvocation, MAX_COMMAND_PROMPT_BYTES, catalog_command_s
 use super::{CommandPaletteView, has_command_arguments};
 use penna::blocks::palette::PaletteKeys;
 
-use crate::command::{
-    ActionContext, ActionKey, PaletteHostId, PaletteTarget, palette_keys,
-    palette_model::{PaletteAction, UnifiedPalette, needs_arguments},
-    palette_places::{Chip, Draft, chip_for, palette_fleet, place_label, verb_goes_in},
-    record_recent,
+use crate::{
+    command::{
+        ActionContext, ActionKey, PaletteHostId, PaletteTarget, palette_keys,
+        palette_model::{PaletteAction, UnifiedPalette, needs_arguments},
+        palette_places::{
+            Chip, Draft, FileHits, chip_for, palette_fleet, place_label, verb_goes_in,
+        },
+        record_recent,
+    },
+    files::{Listing, ListingUpdate, pane_folder, recency, scored_rows, start_dir},
 };
+
+pub(crate) struct RootFiles {
+    host: PaletteHostId,
+    host_name: String,
+    listing: Listing,
+    window: AnyWindowHandle,
+    ranking: Option<Task<()>>,
+    stale: bool,
+    _feed: Option<Subscription>,
+}
 
 fn chips_to(fleet: &place::Fleet, place: Place) -> Vec<Chip> {
     Level::ALL
@@ -49,6 +64,182 @@ fn insert_path_verb() -> Verb {
 }
 
 impl CommandPaletteView {
+    fn root_search(&self) -> Option<String> {
+        let unified = self.unified.as_ref()?;
+        if !self.places() || unified.draft.is_some() || !unified.chips.iter().all(|chip| chip.auto)
+        {
+            return None;
+        }
+        let line = parse(&self.last_input);
+        if line.command.is_some() {
+            return None;
+        }
+        line.search
+    }
+
+    pub(super) fn want_root_files(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let Some(search) = self.root_search() else {
+            return;
+        };
+        if self.root_files.is_none() {
+            self.root_files = self.open_root_files(window, cx);
+        }
+        let ranked = self
+            .unified
+            .as_ref()
+            .is_some_and(|unified| unified.files.query == search);
+        if self
+            .root_files
+            .as_ref()
+            .is_some_and(|files| !ranked || files.stale)
+        {
+            self.rank_root_files(cx);
+        }
+    }
+
+    fn open_root_files(&self, window: &Window, cx: &mut Context<Self>) -> Option<RootFiles> {
+        let tree = self.backend.tree(cx);
+        let host = tree.attached;
+        let host_name = tree
+            .hosts
+            .iter()
+            .find(|candidate| candidate.id == host)?
+            .name
+            .clone();
+        let pane = self.insert_pane.or_else(|| self.backend.active_pane(cx))?;
+        let cwd = pane_folder(self.backend.host_snapshot(host, cx)?, pane)?.to_owned();
+        let home = self.backend.home_dir(host, cx);
+        let mut listing = Listing::new(&host_name, start_dir(Some(&cwd), home.as_deref()));
+        match self.backend.list_path(host, &listing.dir, Some(pane), cx) {
+            Ok(request) => listing.request = Some(request),
+            Err(error) => {
+                listing.error = Some(error);
+                listing.done = true;
+            }
+        }
+        let palette = cx.entity().downgrade();
+        let feed = self.backend.feed_listings(
+            Box::new(move |host, request, update, cx| {
+                palette
+                    .update(cx, |palette, cx| {
+                        palette.apply_root_listing(host, request, update, cx);
+                    })
+                    .ok();
+            }),
+            cx,
+        );
+        cx.on_release(|palette, cx| {
+            if let Some(files) = palette.root_files.take()
+                && let Some(request) = files.listing.request
+                && !files.listing.done
+            {
+                palette.backend.cancel_path(files.host, request, cx);
+            }
+        })
+        .detach();
+        Some(RootFiles {
+            host,
+            host_name,
+            listing,
+            window: window.window_handle(),
+            ranking: None,
+            stale: true,
+            _feed: feed,
+        })
+    }
+
+    fn apply_root_listing(
+        &mut self,
+        host: PaletteHostId,
+        request: u64,
+        update: ListingUpdate,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(files) = self
+            .root_files
+            .as_mut()
+            .filter(|files| files.host == host && files.listing.request == Some(request))
+        else {
+            return;
+        };
+        let listing = &mut files.listing;
+        let changed = match update {
+            ListingUpdate::Begin(result) => {
+                listing.begin(result);
+                true
+            }
+            ListingUpdate::Chunk {
+                entries,
+                done,
+                truncated,
+            } => listing.chunk(&entries, done, truncated),
+            ListingUpdate::Git(marks) => {
+                listing.git(marks);
+                true
+            }
+        };
+        if changed {
+            files.stale = true;
+            self.rank_root_files(cx);
+        }
+    }
+
+    fn rank_root_files(&mut self, cx: &mut Context<Self>) {
+        let Some(query) = self.root_search() else {
+            return;
+        };
+        let Some(files) = &mut self.root_files else {
+            return;
+        };
+        if files.ranking.is_some() {
+            files.stale = true;
+            return;
+        }
+        if files.listing.chunks.is_empty() {
+            return;
+        }
+        files.stale = false;
+        let chunks = files.listing.chunks.clone();
+        let marks = Arc::clone(&files.listing.marks);
+        let recent = recency(&files.host_name, files.listing.root.as_ref(), cx);
+        let root = files
+            .listing
+            .root
+            .as_ref()
+            .map(|root| root.root.clone())
+            .unwrap_or_default();
+        let host = files.host_name.clone();
+        let handle = files.window;
+        let ranked = {
+            let query = query.clone();
+            cx.background_executor()
+                .spawn(async move { scored_rows(&chunks, &marks, "", &query, &recent) })
+        };
+        files.ranking = Some(cx.spawn(async move |palette, cx| {
+            let hits = ranked.await;
+            cx.update_window(handle, |_, window, cx| {
+                palette
+                    .update(cx, |palette, cx| {
+                        if let Some(files) = &mut palette.root_files {
+                            files.ranking = None;
+                        }
+                        if let Some(unified) = &mut palette.unified {
+                            unified.files = FileHits {
+                                query,
+                                host,
+                                root,
+                                hits: hits.into(),
+                            };
+                        }
+                        palette.refresh(window, cx);
+                        cx.notify();
+                    })
+                    .ok();
+            })
+            .ok();
+        }));
+    }
+
     pub(super) fn start_places(
         &mut self,
         field: &str,

@@ -7,8 +7,9 @@ use ala::{
 };
 use zz_client::{
     path_rank,
+    pick::Prior,
     place::{Level, Place},
-    recents::RecentKey,
+    recents::{MAX_BOOST, RECENT_LIMIT, RecentKey, RecentKind, now_secs},
 };
 use zz_protocol::{
     GitMark, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot, PathEntry, PathKind,
@@ -26,7 +27,7 @@ use crate::{
     button::{Button, ButtonVariants as _},
     command::{
         ActionContext, ActionKey, CommandPaletteView, LevelEffect, PaletteActionLevel,
-        PaletteBackend, PaletteHostId, palette_keys, record_recent,
+        PaletteBackend, PaletteHostId, palette_keys, palette_recents, record_recent,
     },
     h_flex,
     touch::CoarsePointer,
@@ -143,27 +144,86 @@ pub struct FileRow {
     pub mark: Option<GitMark>,
 }
 
-pub(crate) fn file_rows(
+pub(crate) type Recency = HashMap<String, f32>;
+
+pub(crate) fn recency(host: &str, root: Option<&PathListRoot>, cx: &App) -> Arc<Recency> {
+    let Some(root) = root else {
+        return Arc::default();
+    };
+    let prefix = format!("{}/", root.root.trim_end_matches('/'));
+    let recents = palette_recents(cx);
+    let now = now_secs();
+    let found = recents
+        .top(RecentKind::File, RECENT_LIMIT, now)
+        .into_iter()
+        .filter_map(|recent| match &recent.key {
+            RecentKey::File {
+                host: owner, path, ..
+            } if owner == host => {
+                let rel = path.strip_prefix(&prefix)?;
+                let share = recents.boost(&recent.key, now) as f32 / MAX_BOOST as f32;
+                Some((rel.trim_end_matches('/').to_owned(), share))
+            }
+            _ => None,
+        })
+        .collect();
+    Arc::new(found)
+}
+
+pub(crate) fn scored_rows(
     chunks: &[Arc<[PathEntry]>],
     marks: &GitMarks,
     base: &str,
     filter: &str,
-) -> Vec<FileRow> {
+    recent: &Recency,
+) -> Vec<(FileRow, i64)> {
     let entries = chunks
         .iter()
         .flat_map(|chunk| chunk.iter())
         .filter(|entry| entry.rel.len() > base.len() && entry.rel.starts_with(base))
         .collect::<Vec<_>>();
-    let label = |entry: &PathEntry| entry.rel[base.len()..].trim_end_matches('/').to_owned();
-    let row = |entry: &PathEntry, matches| FileRow {
-        entry: entry.clone(),
-        name: label(entry),
-        matches,
-        mark: marks.get(&entry.rel),
-    };
+    let labels = entries
+        .iter()
+        .map(|entry| entry.rel[base.len()..].trim_end_matches('/'))
+        .collect::<Vec<_>>();
+    path_rank::ranked(filter, &labels, |index| {
+        let rel = entries[index].rel.as_str();
+        Prior {
+            changed: marks.get(rel).is_some(),
+            recent: recent
+                .get(rel.trim_end_matches('/'))
+                .copied()
+                .unwrap_or_default(),
+            ..Prior::default()
+        }
+    })
+    .into_iter()
+    .map(|hit| {
+        let entry = entries[hit.index];
+        let row = FileRow {
+            entry: entry.clone(),
+            name: labels[hit.index].to_owned(),
+            matches: hit.matches,
+            mark: marks.get(&entry.rel),
+        };
+        (row, hit.score)
+    })
+    .collect()
+}
+
+pub(crate) fn file_rows(
+    chunks: &[Arc<[PathEntry]>],
+    marks: &GitMarks,
+    base: &str,
+    filter: &str,
+    recent: &Recency,
+) -> Vec<FileRow> {
     if filter.is_empty() {
-        let mut shown = entries
-            .into_iter()
+        let label = |entry: &PathEntry| entry.rel[base.len()..].trim_end_matches('/').to_owned();
+        let mut shown = chunks
+            .iter()
+            .flat_map(|chunk| chunk.iter())
+            .filter(|entry| entry.rel.len() > base.len() && entry.rel.starts_with(base))
             .filter(|entry| !label(entry).contains('/'))
             .collect::<Vec<_>>();
         shown.sort_by(|left, right| {
@@ -175,28 +235,17 @@ pub(crate) fn file_rows(
         shown.truncate(MAX_ROWS);
         return shown
             .into_iter()
-            .map(|entry| row(entry, Vec::new()))
+            .map(|entry| FileRow {
+                entry: entry.clone(),
+                name: label(entry),
+                matches: Vec::new(),
+                mark: marks.get(&entry.rel),
+            })
             .collect();
     }
-    let labels = entries.iter().map(|entry| label(entry)).collect::<Vec<_>>();
-    let labels = labels.iter().map(String::as_str).collect::<Vec<_>>();
-    let kept = path_rank::rank(
-        filter,
-        &labels,
-        |index| {
-            path_rank::path_prior(
-                filter,
-                labels[index],
-                marks.get(&entries[index].rel).is_some(),
-            )
-        },
-        MAX_ROWS,
-    );
-    let kept_labels = kept.iter().map(|index| labels[*index]).collect::<Vec<_>>();
-    kept.into_iter()
-        .zip(path_rank::highlights(filter, &kept_labels))
-        .map(|(index, matches)| row(entries[index], matches))
-        .collect()
+    let mut rows = scored_rows(chunks, marks, base, filter, recent);
+    rows.truncate(MAX_ROWS);
+    rows.into_iter().map(|(row, _)| row).collect()
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -342,7 +391,7 @@ fn place_pane(snapshot: &MuxSnapshot, place: &FilesPlace) -> Option<PaneId> {
     windows.map(|window| window.active_pane).next()
 }
 
-fn pane_folder(snapshot: &MuxSnapshot, pane: PaneId) -> Option<&str> {
+pub(crate) fn pane_folder(snapshot: &MuxSnapshot, pane: PaneId) -> Option<&str> {
     snapshot
         .sessions
         .iter()
@@ -630,9 +679,10 @@ impl FilesLevel {
             .unwrap_or_default()
             .to_owned();
         let filter = self.path.filter.clone();
+        let recent = recency(&self.host_name, listing.root.as_ref(), cx);
         let ranked = cx
             .background_executor()
-            .spawn(async move { file_rows(&chunks, &marks, &base, &filter) });
+            .spawn(async move { file_rows(&chunks, &marks, &base, &filter, &recent) });
         self.ranking = Some(cx.spawn(async move |level, cx| {
             let rows = ranked.await;
             level

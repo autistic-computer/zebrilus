@@ -32,7 +32,7 @@ use super::{
 };
 use crate::{
     WindowExt as _,
-    files::ListingSink,
+    files::{ListingSink, start_dir},
     input::{
         Backspace, Escape, IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight,
         MoveUp, OutdentInline,
@@ -191,6 +191,23 @@ impl TargetBackend for PaletteTargets {
             self.0.cancel_path(id, request_id, cx);
         }
     }
+
+    fn folder(&self, pane: PaneId, cx: &App) -> Option<String> {
+        let tree = self.0.tree(cx);
+        let cwd = tree
+            .hosts
+            .iter()
+            .find(|host| host.id == tree.attached)?
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .flat_map(|window| &window.panes)
+            .find(|candidate| candidate.id == pane)
+            .map(|pane| pane.cwd.clone())
+            .filter(|cwd| cwd.starts_with(['/', '~']))?;
+        let home = self.0.home_dir(tree.attached, cx);
+        Some(start_dir(Some(&cwd), home.as_deref()))
+    }
 }
 
 pub fn mention_picker(
@@ -201,7 +218,27 @@ pub fn mention_picker(
 ) -> Entity<TargetPicker> {
     let targets: Rc<dyn TargetBackend> = Rc::new(PaletteTargets(Rc::clone(backend)));
     let picker = cx.new(|cx| TargetPicker::for_composer(targets, input, window, cx));
-    if let Some(feed) = backend.feed_targets(&picker, cx) {
+    let feed = backend.feed_targets(&picker, cx).or_else(|| {
+        let names = Rc::clone(backend);
+        let fed = picker.downgrade();
+        backend.feed_listings(
+            Box::new(move |host, request, update, cx| {
+                let Some(name) = names
+                    .tree(cx)
+                    .hosts
+                    .into_iter()
+                    .find(|candidate| candidate.id == host)
+                    .map(|host| host.name)
+                else {
+                    return;
+                };
+                fed.update(cx, |picker, cx| picker.apply(&name, request, update, cx))
+                    .ok();
+            }),
+            cx,
+        )
+    });
+    if let Some(feed) = feed {
         picker.update(cx, |picker, _| picker.keep(feed));
     }
     picker
@@ -260,6 +297,7 @@ pub struct CommandPaletteView {
     local: bool,
     changing_input: bool,
     insert_pane: Option<PaneId>,
+    root_files: Option<places::RootFiles>,
     pick_folder: Option<FolderPick>,
     level: Option<(ActionKind, Box<dyn PaletteActionLevel>)>,
     vim: Option<PaletteVim>,
@@ -378,6 +416,7 @@ impl CommandPaletteView {
             chooser_activation: None,
             changing_input: false,
             insert_pane: None,
+            root_files: None,
             pick_folder: None,
             level: None,
             vim: None,
@@ -622,20 +661,10 @@ impl CommandPaletteView {
         let Some(unified) = &mut self.unified else {
             return;
         };
-        let selected_node = self
+        let selected_action = self
             .selected
             .and_then(|index| unified.rows.get(index))
-            .and_then(|entry| match entry.action {
-                Some(PaletteAction::Target { host, target, .. }) => Some((host, target)),
-                _ => None,
-            });
-        let selected_place = self
-            .selected
-            .and_then(|index| unified.rows.get(index))
-            .and_then(|entry| match entry.action {
-                Some(PaletteAction::Place(place) | PaletteAction::Fill(place)) => Some(place),
-                _ => None,
-            });
+            .and_then(|entry| entry.action.clone());
         let settings = self.backend.settings(cx);
         unified.apply_settings(settings);
         self.availability = self.backend.availability(cx);
@@ -728,15 +757,13 @@ impl CommandPaletteView {
         } else {
             unified.placeholder()
         };
-        if let Some(node) = selected_node {
+        if let Some(action) = selected_action {
             self.selected = unified.rows.iter().position(|entry| {
-                matches!(entry.action, Some(PaletteAction::Target { host, target, .. }) if node == (host, target))
+                entry
+                    .action
+                    .as_ref()
+                    .is_some_and(|candidate| candidate.same(&action))
             });
-        }
-        if let Some(place) = selected_place {
-            self.selected = unified.rows.iter().position(
-                |entry| matches!(entry.action, Some(PaletteAction::Place(row) | PaletteAction::Fill(row)) if row == place),
-            );
         }
         self.selected = self
             .selected
@@ -758,6 +785,7 @@ impl CommandPaletteView {
         }
         self.input
             .update(cx, |input, cx| input.set_placeholder(placeholder, cx));
+        self.want_root_files(window, cx);
         self.sync_level(window, cx);
         if settings.vim != self.vim.is_some() {
             self.vim = settings.vim.then(PaletteVim::default);

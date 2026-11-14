@@ -214,7 +214,7 @@ fn a_session_matches_its_label_fuzzily_or_its_number_exactly() {
     let fleet = fleet();
     let scope = Place::host(0);
     let found = candidates(&fleet, &scope, &text(Level::Session, "worki"), &no_boost);
-    assert_eq!(labels(&found), vec!["Working on foo", "web overlay kit"]);
+    assert_eq!(labels(&found), vec!["Working on foo"]);
     let found = candidates(&fleet, &scope, &text(Level::Session, "1"), &no_boost);
     assert_eq!(labels(&found), vec!["zz 1"]);
     let found = candidates(&fleet, &scope, &text(Level::Session, ""), &no_boost);
@@ -356,13 +356,19 @@ fn a_program_finds_its_window_behind_name_matches() {
         &no_boost,
     );
     assert_eq!(labels(&found), vec!["1 nvim"]);
+    let named = found[0].score;
     let found = candidates(
         &fleet,
         &Place::host(1),
         &text(Level::Window, "nvim"),
         &no_boost,
     );
-    assert!(found.iter().all(|c| c.score >= METADATA_PENALTY));
+    assert_eq!(labels(&found), vec!["4 editor", "1 editor"]);
+    assert!(
+        found
+            .iter()
+            .all(|c| c.score < named && c.matches.is_empty())
+    );
 }
 
 #[test]

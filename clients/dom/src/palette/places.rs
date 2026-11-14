@@ -552,7 +552,7 @@ impl Palette {
             );
         let verbs_first = drilled
             || match (found.first(), places.first()) {
-                (Some(verb), Some(place)) => verb.score < place.score,
+                (Some(verb), Some(place)) => verb.score > place.score,
                 (Some(_), None) => true,
                 _ => false,
             };

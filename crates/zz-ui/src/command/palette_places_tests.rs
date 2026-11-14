@@ -399,3 +399,70 @@ fn command_aliases_are_offered_only_on_the_host_they_came_from() {
     palette.chips = vec![chip_for(&fleet, Place::host(1)).expect("xps chip")];
     assert!(!rows(&mut palette, "clean", &[], &recents).contains(&"  clean".to_owned()));
 }
+
+fn file_hit(rel: &str, score: i64) -> (FileRow, i64) {
+    let row = FileRow {
+        entry: zz_protocol::PathEntry {
+            rel: rel.to_owned(),
+            kind: PathKind::File,
+            symlink: false,
+        },
+        name: rel.to_owned(),
+        matches: Vec::new(),
+        mark: None,
+    };
+    (row, score)
+}
+
+#[test]
+fn the_typed_root_lists_files_from_the_panes_folder_after_better_places_five_at_most() {
+    let mut palette = palette(vec![auto_host()]);
+    palette.files = FileHits {
+        query: "cargo".to_owned(),
+        host: "macbook".to_owned(),
+        root: "/home/fabrico/zz".to_owned(),
+        hits: [
+            "Cargo.toml",
+            "Cargo.lock",
+            "crates/zz/Cargo.toml",
+            "crates/zz-ui/Cargo.toml",
+            "crates/zz-client/Cargo.toml",
+            "crates/zz-mux/Cargo.toml",
+        ]
+        .into_iter()
+        .map(|rel| file_hit(rel, 100))
+        .collect(),
+    };
+    assert_eq!(
+        rows(&mut palette, "cargo", &[], &Recents::default()),
+        [
+            "Places",
+            "  Working on foo › 2 cargo watch",
+            "  Working on foo › 2 cargo watch › 0 cargo",
+            "Files",
+            "  Cargo.toml",
+            "  Cargo.lock",
+            "  Cargo.toml",
+            "  Cargo.toml",
+            "  Cargo.toml",
+        ]
+    );
+    let opens = palette
+        .rows
+        .iter()
+        .filter_map(|entry| match &entry.action {
+            Some(PaletteAction::Recent(RecentKey::File { path, .. })) => Some(path.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        opens,
+        [
+            "/home/fabrico/zz/Cargo.toml",
+            "/home/fabrico/zz/Cargo.lock",
+            "/home/fabrico/zz/crates/zz/Cargo.toml",
+            "/home/fabrico/zz/crates/zz-ui/Cargo.toml",
+            "/home/fabrico/zz/crates/zz-client/Cargo.toml",
+        ]
+    );
+}

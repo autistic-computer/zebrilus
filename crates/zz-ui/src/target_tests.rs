@@ -3,6 +3,8 @@ use std::cell::{Cell, RefCell};
 use ala::{Focusable as _, TestAppContext, VisualTestContext};
 use zz_protocol::{InsertStyle, ShellKind};
 
+use crate::files::ListingUpdate;
+
 use super::*;
 use crate::input::Input;
 use penna::Root;
@@ -214,14 +216,7 @@ fn backspace_on_a_levels_edge_goes_up_one_level() {
 }
 
 fn items(body: &str) -> Vec<TargetItem> {
-    target_items(
-        &parse_target(body, &hosts()),
-        &hosts(),
-        Chats {
-            shown: true,
-            own: None,
-        },
-    )
+    target_items(&parse_target(body, &hosts()), &hosts(), &Around::default())
 }
 
 fn tokens(body: &str) -> Vec<String> {
@@ -327,6 +322,9 @@ fn file_query(body: &str) -> FileQuery {
             .unwrap(),
         written: query.written,
         dir: dir.clone(),
+        root: Some("/home/fabrico".to_owned()),
+        recent: Arc::default(),
+        top: false,
     }
 }
 
@@ -442,11 +440,17 @@ enum Call {
 struct FakeBackend {
     calls: Rc<RefCell<Vec<Call>>>,
     next: Cell<u64>,
+    hosts: Vec<TargetHost>,
+    folder: Option<String>,
 }
 
 impl TargetBackend for FakeBackend {
     fn hosts(&self, _: &App) -> Vec<TargetHost> {
-        hosts()
+        self.hosts.clone()
+    }
+
+    fn folder(&self, _: PaneId, _: &App) -> Option<String> {
+        self.folder.clone()
     }
 
     fn list(
@@ -502,6 +506,8 @@ fn the_picker_follows_the_composer_and_owns_its_keys(cx: &mut TestAppContext) {
     let backend: Rc<dyn TargetBackend> = Rc::new(FakeBackend {
         calls: Rc::clone(&calls),
         next: Cell::new(0),
+        hosts: hosts(),
+        folder: None,
     });
     let keys = Rc::new(RefCell::new(Vec::new()));
     let seen = Rc::clone(&keys);
@@ -611,6 +617,8 @@ fn the_plus_button_toggles_one_mention_and_takes_back_its_own_at(cx: &mut TestAp
     let backend: Rc<dyn TargetBackend> = Rc::new(FakeBackend {
         calls: Rc::default(),
         next: Cell::new(0),
+        hosts: hosts(),
+        folder: None,
     });
     let slot = Rc::new(RefCell::new(None));
     let captured = Rc::clone(&slot);
@@ -682,15 +690,16 @@ fn chat_hosts() -> Vec<TargetHost> {
 }
 
 #[test]
-fn an_empty_mention_lists_other_chats_first_and_skips_its_own() {
+fn an_empty_mention_lists_its_window_then_other_chats_and_skips_its_own() {
     let hosts = chat_hosts();
-    let chats = Chats {
-        shown: true,
+    let chats = Around {
         own: Some(PaneId(9)),
+        ..Around::default()
     };
-    let listed = target_items(&parse_target("", &hosts), &hosts, chats);
+    let listed = target_items(&parse_target("", &hosts), &hosts, &chats);
     let listed_chats = listed
         .iter()
+        .skip_while(|item| item.kind != TargetKind::Chat)
         .take_while(|item| item.kind == TargetKind::Chat)
         .map(|item| (item.label.to_string(), item.insertion()))
         .collect::<Vec<_>>();
@@ -701,8 +710,23 @@ fn an_empty_mention_lists_other_chats_first_and_skips_its_own() {
             ("Fix tests".to_owned(), "@ubuntu:%12 ".to_owned()),
         ]
     );
-    assert_eq!(listed[2].token, "macbook:main");
-    let found = target_items(&parse_target("outline", &hosts), &hosts, chats);
+    assert_eq!(
+        listed
+            .iter()
+            .map(|item| item.token.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "macbook:main:1.%5",
+            "macbook:main:1.%6",
+            "macbook:%6",
+            "ubuntu:%12",
+            "macbook:main",
+            "ubuntu",
+            "xps",
+            "macbook:~/",
+        ]
+    );
+    let found = target_items(&parse_target("outline", &hosts), &hosts, &chats);
     assert_eq!(found[0].kind, TargetKind::Chat);
     assert_eq!(found[0].token, "macbook:%6");
 }
@@ -717,12 +741,13 @@ fn a_chat_on_another_host_with_the_composers_pane_id_stays_listed() {
         }),
         ..pane(9, "claude", Some("Claude Code"))
     };
-    let chats = Chats {
-        shown: true,
+    let chats = Around {
         own: Some(PaneId(9)),
+        ..Around::default()
     };
-    let tokens = target_items(&parse_target("", &hosts), &hosts, chats)
+    let tokens = target_items(&parse_target("", &hosts), &hosts, &chats)
         .into_iter()
+        .skip_while(|item| item.kind != TargetKind::Chat)
         .take_while(|item| item.kind == TargetKind::Chat)
         .map(|item| item.token)
         .collect::<Vec<_>>();
@@ -737,10 +762,20 @@ type Mounted<'a> = (
 );
 
 fn composer(cx: &mut TestAppContext) -> Mounted<'_> {
+    composer_with(cx, hosts(), None)
+}
+
+fn composer_with<'a>(
+    cx: &'a mut TestAppContext,
+    hosts: Vec<TargetHost>,
+    folder: Option<&str>,
+) -> Mounted<'a> {
     cx.update(crate::init);
     let backend: Rc<dyn TargetBackend> = Rc::new(FakeBackend {
         calls: Rc::default(),
         next: Cell::new(0),
+        hosts,
+        folder: folder.map(str::to_owned),
     });
     let modes = Rc::new(Cell::new(0));
     let switched = Rc::clone(&modes);
@@ -878,4 +913,143 @@ fn a_directory_mention_keeps_its_slash(cx: &mut TestAppContext) {
         picker.update(cx, |picker, _| picker.raw_text(&value)),
         "ask @ubuntu:~/dev/ "
     );
+}
+
+fn chat_room() -> Vec<TargetHost> {
+    let mut hosts = hosts();
+    hosts.truncate(2);
+    let window = &mut hosts[0].sessions[0].windows[0];
+    window.panes.push(pane(6, "README.md", Some("nvim")));
+    window.panes.push(TargetPane {
+        chat: Some(TargetChat {
+            title: "This chat".into(),
+            icon: IconName::SquareTerminal,
+        }),
+        ..pane(9, "claude", Some("Claude Code"))
+    });
+    hosts[1].sessions[0].windows[1].panes[0].chat = Some(TargetChat {
+        title: "Fix tests".into(),
+        icon: IconName::SquareTerminal,
+    });
+    hosts
+}
+
+fn project() -> Arc<[PathEntry]> {
+    Arc::from([
+        entry("README.md", PathKind::File),
+        entry("src/", PathKind::Dir),
+        entry("src/a.rs", PathKind::File),
+        entry("src/b.rs", PathKind::File),
+        entry("src/main.rs", PathKind::File),
+    ])
+}
+
+fn root(path: &str) -> ListingUpdate {
+    ListingUpdate::Begin(Ok(PathListRoot {
+        root: path.to_owned(),
+        display_root: path.to_owned(),
+        cwd: None,
+        insert: InsertStyle::Shell(ShellKind::Posix),
+    }))
+}
+
+fn listed(picker: &Entity<TargetPicker>, cx: &mut VisualTestContext) -> Vec<String> {
+    picker.read_with(cx, |picker, _| {
+        picker
+            .items()
+            .iter()
+            .map(|item| item.token.clone())
+            .collect()
+    })
+}
+
+#[ala::test]
+fn the_empty_mention_lists_here_changed_chats_places_then_folders(cx: &mut TestAppContext) {
+    let (_, picker, _, cx) = composer_with(cx, chat_room(), Some("~/dev/zz/"));
+    picker.update(cx, |picker, _| picker.set_own_chat(Some(PaneId(9))));
+    cx.simulate_input("ask @");
+    picker.update(cx, |picker, cx| {
+        picker.apply("macbook", 1, root("/home/fabrico/dev/zz"), cx);
+        let chunk = ListingUpdate::Chunk {
+            entries: project(),
+            done: true,
+            truncated: false,
+        };
+        picker.apply("macbook", 1, chunk, cx);
+        let marks = vec![
+            ("src/b.rs".to_owned(), GitMark::Added),
+            ("src/a.rs".to_owned(), GitMark::Modified),
+        ];
+        picker.apply("macbook", 1, ListingUpdate::Git(marks), cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        listed(&picker, cx),
+        [
+            "macbook:main:1.%5",
+            "macbook:main:1.%6",
+            "macbook:~/dev/zz/src/a.rs",
+            "macbook:~/dev/zz/src/b.rs",
+            "ubuntu:%12",
+            "macbook:main",
+            "ubuntu",
+            "macbook:~/dev/zz/",
+            "macbook:~/",
+        ]
+    );
+    let headers = picker.read_with(cx, |picker, _| {
+        picker
+            .headers()
+            .iter()
+            .map(|(at, label)| (*at, label.to_string()))
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(
+        headers,
+        [
+            (0, "Here".to_owned()),
+            (2, "Changed".to_owned()),
+            (4, "Chats".to_owned()),
+            (5, "Places".to_owned()),
+            (7, "Files".to_owned()),
+        ]
+    );
+    let changed = picker.read_with(cx, |picker, _| {
+        let item = &picker.items()[2];
+        (
+            item.label.to_string(),
+            item.detail.to_string(),
+            item.meta.to_string(),
+        )
+    });
+    assert_eq!(
+        changed,
+        ("a.rs".to_owned(), "src".to_owned(), "M".to_owned())
+    );
+}
+
+#[ala::test]
+fn files_joining_a_typed_mention_keep_the_highlighted_row(cx: &mut TestAppContext) {
+    let (_, picker, _, cx) = composer_with(cx, chat_room(), Some("~/dev/zz/"));
+    picker.update(cx, |picker, _| picker.set_own_chat(Some(PaneId(9))));
+    cx.simulate_input("ask @readme");
+    assert_eq!(listed(&picker, cx), ["macbook:main:1.%6"]);
+    picker.update(cx, |picker, cx| {
+        picker.apply("macbook", 1, root("/home/fabrico/dev/zz"), cx);
+        let chunk = ListingUpdate::Chunk {
+            entries: project(),
+            done: true,
+            truncated: false,
+        };
+        picker.apply("macbook", 1, chunk, cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        listed(&picker, cx),
+        ["macbook:~/dev/zz/README.md", "macbook:main:1.%6"]
+    );
+    let selected = picker.read_with(cx, |picker, _| {
+        picker.selected_item().map(|item| item.token.clone())
+    });
+    assert_eq!(selected.as_deref(), Some("macbook:main:1.%6"));
 }

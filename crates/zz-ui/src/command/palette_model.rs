@@ -16,7 +16,7 @@ use zz_protocol::{
     SessionSnapshot, WindowId, command_specs,
 };
 
-use super::palette_places::{Chip, Draft};
+use super::palette_places::{Chip, Draft, FileHits};
 use crate::IconName;
 use penna::blocks::palette::{PalettePill, PaletteRow, PaletteStatus};
 
@@ -211,6 +211,34 @@ pub(crate) enum PaletteAction {
     Submit,
 }
 
+impl PaletteAction {
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Place(left) | Self::Fill(left), Self::Place(right) | Self::Fill(right)) => {
+                left == right
+            }
+            (Self::Recent(left), Self::Recent(right)) => left == right,
+            (
+                Self::Target {
+                    host: left_host,
+                    target: left,
+                    ..
+                },
+                Self::Target {
+                    host: right_host,
+                    target: right,
+                    ..
+                },
+            ) => left_host == right_host && left == right,
+            (Self::Command(left), Self::Command(right)) => left.name == right.name,
+            (Self::History(left), Self::History(right)) => left == right,
+            (Self::ChooseWindow(left), Self::ChooseWindow(right)) => left == right,
+            (Self::Verb(left), Self::Verb(right)) => left == right,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct PaletteEntry {
     pub row: PaletteRow,
@@ -267,6 +295,7 @@ pub(crate) struct UnifiedPalette {
     chooser_current_window: Option<u32>,
     pub grouped: bool,
     pub show_keys: bool,
+    pub files: FileHits,
 }
 
 impl UnifiedPalette {
@@ -285,6 +314,7 @@ impl UnifiedPalette {
             chooser_current_window: None,
             grouped: settings.grouped,
             show_keys: settings.show_keys,
+            files: FileHits::default(),
         }
     }
 

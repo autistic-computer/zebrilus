@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{cmp::Reverse, ops::Range};
 
 use zz_protocol::{
     CommandInvocation, CommandSpec, CommandValueKind, RawText, catalog_command_spec, command_specs,
@@ -7,13 +7,11 @@ use zz_protocol::{
 
 use crate::{
     completion::{PaneKindAvailability, command_words},
-    fuzzy::fuzzy_match,
     gui_actions::gui_action,
     palette::needs_arguments,
+    pick::{self, Closeness, Kind, Prior},
     place::{self, Fleet, Level, Place},
 };
-
-const KEYWORD_PENALTY: i64 = 1000;
 
 const TMUX_DEFAULT_ALIASES: [&str; 6] = [
     "split-pane=split-window",
@@ -337,26 +335,32 @@ pub struct VerbMatch {
 
 #[must_use]
 pub fn match_verbs(verbs: &[Verb], query: &str, keep: impl Fn(&Verb) -> bool) -> Vec<VerbMatch> {
-    let mut found = verbs
+    let (kept, candidates): (Vec<_>, Vec<_>) = verbs
         .iter()
         .enumerate()
         .filter(|(_, verb)| keep(verb))
-        .filter_map(|(index, verb)| {
-            if let Some((score, matches)) = fuzzy_match(query, &verb.name) {
-                return Some(VerbMatch {
-                    index,
-                    score: score as i64,
-                    matches,
-                });
-            }
-            fuzzy_match(query, &verb.keywords).map(|(score, _)| VerbMatch {
-                index,
-                score: score as i64 + KEYWORD_PENALTY,
-                matches: Vec::new(),
-            })
+        .map(|(index, verb)| {
+            let candidate = pick::Candidate {
+                kind: Kind::Action,
+                label: &verb.name,
+                path: &verb.keywords,
+                prior: Prior {
+                    closeness: Closeness::Window,
+                    ..Prior::default()
+                },
+            };
+            (index, candidate)
+        })
+        .unzip();
+    let mut found = pick::rank(query, &candidates)
+        .into_iter()
+        .map(|hit| VerbMatch {
+            index: kept[hit.index],
+            score: hit.score,
+            matches: hit.label,
         })
         .collect::<Vec<_>>();
-    found.sort_by_key(|found| (found.score, found.index));
+    found.sort_by_key(|found| (Reverse(found.score), found.index));
     found
 }
 

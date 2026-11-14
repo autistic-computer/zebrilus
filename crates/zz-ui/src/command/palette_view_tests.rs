@@ -1090,9 +1090,10 @@ fn files_open_folders_and_go_back_up_to_the_folder_left(cx: &mut TestAppContext)
         *calls.borrow(),
         [
             Call::List(LOCAL, "~/one/".to_owned(), Some(PaneId(10))),
+            Call::List(LOCAL, "~/one/".to_owned(), Some(PaneId(10))),
             Call::List(LOCAL, "~/".to_owned(), Some(PaneId(10))),
         ],
-        "folders under a finished walk are not listed again"
+        "the typed root lists the pane's folder once, and folders under a finished walk are not listed again"
     );
 }
 
