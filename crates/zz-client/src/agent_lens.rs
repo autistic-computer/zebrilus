@@ -262,10 +262,13 @@ impl<I> LensTranscript<I> {
                 }
             }
             "update" => {
-                if let Some(update) = item.get("update")
-                    && let Ok(update) = serde_json::from_value(update.clone())
-                {
-                    self.model.apply_update(update);
+                if let Some(update) = item.get("update") {
+                    if update["sessionUpdate"] == "config_option_update" {
+                        self.note_settings(update);
+                    }
+                    if let Ok(update) = serde_json::from_value(update.clone()) {
+                        self.model.apply_update(update);
+                    }
                 }
             }
             "permissionRequested" => {
@@ -578,6 +581,39 @@ mod tests {
 
     fn reset(seq: u64, restoring: bool) -> Vec<u8> {
         format!(r#"{{"seq":{seq},"item":"sessionReset","restoring":{restoring}}}"#).into_bytes()
+    }
+
+    #[test]
+    fn a_config_option_update_refreshes_the_lens_settings() {
+        let options = |applied: Option<(&str, &str)>| {
+            let meta = |value: Option<&str>| {
+                value.map_or(
+                    serde_json::Value::Null,
+                    |value| serde_json::json!({"zz":{"applied":value}}),
+                )
+            };
+            serde_json::json!([
+                {"id":"model","currentValue":"","options":[{"value":"opus","name":"Opus 5.5"},{"value":"sonnet","name":"Sonnet 5.5"}],"_meta":meta(applied.map(|(model, _)| model))},
+                {"id":"effort","currentValue":"","options":[{"value":"low","name":"Low"},{"value":"medium","name":"Medium"}],"_meta":meta(applied.map(|(_, effort)| effort))},
+            ])
+        };
+        let mut lens = LensTranscript::<()>::new(|_, _| None);
+        lens.apply(&serde_json::json!({"item":"sessionReady","config_options":options(None)}));
+        assert_eq!(
+            lens.settings
+                .as_ref()
+                .map(crate::agent_settings::LensSettings::summary)
+                .as_deref(),
+            Some("")
+        );
+        lens.apply(&serde_json::json!({"item":"update","update":{"sessionUpdate":"config_option_update","configOptions":options(Some(("opus", "medium")))}}));
+        assert_eq!(
+            lens.settings
+                .as_ref()
+                .map(crate::agent_settings::LensSettings::summary)
+                .as_deref(),
+            Some("Opus 5.5 · Medium")
+        );
     }
 
     #[test]

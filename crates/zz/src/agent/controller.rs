@@ -733,6 +733,11 @@ impl AgentController {
                 config_options,
                 ..
             } => (config_options, option_id.as_str()),
+            AgentStreamPayload::Update { update }
+                if update["sessionUpdate"] == "config_option_update" =>
+            {
+                (&update["configOptions"], "")
+            }
             _ => return false,
         };
         let Some(thread) = self.panes.get_mut(&pane) else {
