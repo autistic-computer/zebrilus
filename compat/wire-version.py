@@ -8,6 +8,7 @@ from pathlib import Path
 WIRE_DIR = "crates/zz-protocol/src"
 NOT_WIRE = {"catalog.rs", "lib.rs"}
 VERSION = re.compile(r"pub const PROTOCOL_VERSION: u16 = (\d+);")
+REVISIONS = re.compile(r"pub const (?:MIN_DAEMON_|MIN_CLIENT_)?REVISION: u32 = \d+;")
 
 
 def git(root, *args):
@@ -35,7 +36,7 @@ def meaningful(diff):
         if line[:1] not in ("+", "-") or line[:3] in ("+++", "---"):
             continue
         body = line[1:].strip()
-        if not body or body.startswith("//"):
+        if not body or body.startswith("//") or REVISIONS.fullmatch(body):
             continue
         lines.append(line)
     return lines
