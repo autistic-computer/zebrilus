@@ -50,6 +50,8 @@ A select opens a sheet of its options in one group, the chosen one checked, a fo
 
 The phone's 44 icon button, a disc in the control fill with a 20 glyph, as big as it is tapped. Its outer edge sits on the content edge, 16 in; in a modal it sits 12 from the card's top and side. A page you drilled into adds back at the start; the close stays at the end.
 
+Going into a page slides its body in from the trailing side, 30% of the width over 240ms, as the old one slides out and fades; back is the mirror, and the height eases between the two pages.
+
 ## A form
 
 A sheet that asks for something to type: a 56 field with its placeholder as the only hint, 12 below it a 56 main action, off until what is typed works, then anything else as a row in a group with its note under it.
