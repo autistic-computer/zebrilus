@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 
-use ala::{Focusable as _, TestAppContext, VisualTestContext};
+use ala::{TestAppContext, VisualTestContext};
 use zz_protocol::{InsertStyle, ShellKind};
 
 use crate::files::ListingUpdate;
@@ -1052,4 +1052,40 @@ fn files_joining_a_typed_mention_keep_the_highlighted_row(cx: &mut TestAppContex
         picker.selected_item().map(|item| item.token.clone())
     });
     assert_eq!(selected.as_deref(), Some("macbook:main:1.%6"));
+}
+
+#[test]
+fn a_typed_mention_never_offers_its_own_chat() {
+    let hosts = chat_room();
+    let around = Around {
+        own: Some(PaneId(9)),
+        ..Around::default()
+    };
+    let tokens = |body: &str| {
+        target_items(&parse_target(body, &hosts), &hosts, &around)
+            .into_iter()
+            .map(|item| item.token)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(tokens("clau"), ["ubuntu:work:2.%12", "ubuntu:%12"]);
+    assert_eq!(
+        tokens("main:1."),
+        ["macbook:main:1.%5", "macbook:main:1.%6"]
+    );
+    assert!(tokens("%9").is_empty());
+}
+
+#[ala::test]
+fn the_mention_closes_when_the_composer_loses_focus(cx: &mut TestAppContext) {
+    let (_, picker, _, cx) = composer(cx);
+    cx.update(|window, _| window.activate_window());
+    cx.run_until_parked();
+    cx.simulate_input("ask @");
+    assert!(picker.read_with(cx, |picker, _| picker.is_open()));
+    cx.update(|window, cx| {
+        window.blur(cx);
+        window.refresh();
+    });
+    cx.run_until_parked();
+    assert!(!picker.read_with(cx, |picker, _| picker.is_open()));
 }

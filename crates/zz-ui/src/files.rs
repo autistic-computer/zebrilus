@@ -397,8 +397,11 @@ pub(crate) fn pane_folder(snapshot: &MuxSnapshot, pane: PaneId) -> Option<&str> 
         .iter()
         .flat_map(|session| &session.windows)
         .find_map(|window| window.panes.get(&pane))
-        .filter(|pane| matches!(pane.kind, PaneKindSnapshot::Terminal))
-        .map(|pane| pane.summary.cwd.as_str())
+        .and_then(|pane| match &pane.kind {
+            PaneKindSnapshot::Terminal => Some(pane.summary.cwd.as_str()),
+            PaneKindSnapshot::Agent(agent) => agent.cwd.as_deref().and_then(|cwd| cwd.to_str()),
+            _ => None,
+        })
         .filter(|cwd| !cwd.is_empty())
 }
 

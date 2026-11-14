@@ -1,7 +1,7 @@
 use std::{cmp::Reverse, ops::Range, rc::Rc, sync::Arc};
 
 use ala::{
-    Action, AnyElement, App, ClickEvent, ClipboardItem, Context, ElementId, Entity,
+    Action, AnyElement, App, ClickEvent, ClipboardItem, Context, ElementId, Entity, Focusable as _,
     InteractiveElement, IntoElement, MouseButton, Pixels, Point, Render, ScrollStrategy,
     SharedString, Subscription, Task, UniformListScrollHandle, Window, canvas, div, prelude::*, px,
     uniform_list,
@@ -1331,7 +1331,18 @@ fn target_items(query: &TargetQuery, hosts: &[TargetHost], around: &Around) -> V
         }
         TargetLevel::Files { .. } => return Vec::new(),
     };
-    ranked(items, typed)
+    let own = around.own.map(PaletteTarget::Pane);
+    let mine = |item: &TargetItem| {
+        own.is_some()
+            && item.target == own
+            && hosts
+                .iter()
+                .any(|host| host.here && host.id == item.host_id)
+    };
+    ranked(
+        items.into_iter().filter(|item| !mine(item)).collect(),
+        typed,
+    )
 }
 
 fn breadcrumb(query: &TargetQuery, root: Option<&PathListRoot>) -> String {
@@ -1419,6 +1430,10 @@ impl TargetPicker {
             }
         })
         .detach();
+        let focus = input.read(cx).focus_handle(cx);
+        let blurred = cx.on_blur(&focus, window, |picker, window, cx| {
+            picker.dismiss(window, cx);
+        });
         Self {
             backend,
             composer: input,
@@ -1444,7 +1459,7 @@ impl TargetPicker {
             raw_before: None,
             room: None,
             pending: None,
-            subscriptions: Vec::new(),
+            subscriptions: vec![blurred],
         }
     }
 

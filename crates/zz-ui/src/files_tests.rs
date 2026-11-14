@@ -216,3 +216,22 @@ fn the_place_picks_the_folder_files_start_in() {
         "a pane that is not a terminal has no folder"
     );
 }
+
+#[test]
+fn a_chat_pane_starts_files_in_the_chats_folder() {
+    let mut snapshot = snapshot();
+    let agent = zz_protocol::AgentDescriptor {
+        cwd: Some("/home/me/dev/zz".into()),
+        ..zz_protocol::AgentDescriptor::default()
+    };
+    let (id, chat) = pane(40, PaneKindSnapshot::Agent(agent), "");
+    snapshot.sessions[0].windows[0].panes.insert(id, chat);
+    let start = start_folder(
+        &FilesPlace::host(PaletteHostId(0)),
+        true,
+        Some(&snapshot),
+        Some(id),
+        Some("/home/me"),
+    );
+    assert_eq!(start, "~/dev/zz/");
+}
