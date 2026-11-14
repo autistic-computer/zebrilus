@@ -257,7 +257,6 @@ pub fn pane_account(snapshot: &MuxSnapshot, pane: PaneId) -> Option<&str> {
         })
 }
 
-pub const DEFAULT_ACCOUNT_NAME: &str = "Default";
 pub const SIGNED_OUT: &str = "Signed out";
 pub const SIGNED_IN: &str = "Signed in";
 

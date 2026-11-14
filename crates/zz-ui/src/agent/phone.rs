@@ -103,6 +103,14 @@ pub struct PlusSheet<'a> {
 
 type OnPlus = Rc<dyn Fn(PlusAction, &mut Window, &mut App)>;
 
+fn valued(row: TouchRow, value: String) -> TouchRow {
+    if value.is_empty() {
+        row
+    } else {
+        row.trailing(TouchTrailing::Value(value.into()))
+    }
+}
+
 fn act(
     on_action: &OnPlus,
     action: PlusAction,
@@ -128,15 +136,9 @@ impl PlusSheet<'_> {
         self.accounts()
             .iter()
             .find(|account| account.id.as_deref() == self.account)
-            .map_or_else(
-                || {
-                    self.account.map_or_else(
-                        || agent_settings::DEFAULT_ACCOUNT_NAME.to_owned(),
-                        str::to_owned,
-                    )
-                },
-                agent_settings::account_name,
-            )
+            .and_then(|account| account.email.clone().or_else(|| account.id.clone()))
+            .or_else(|| self.account.map(str::to_owned))
+            .unwrap_or_default()
     }
 
     fn title(&self, page: &PlusPage) -> SharedString {
@@ -165,24 +167,17 @@ impl PlusSheet<'_> {
         ];
         if let Some(settings) = self.settings {
             let setting = |id: &'static str, title: &'static str, icon, value: String, option| {
-                TouchRow::new(id, title)
-                    .icon(icon)
-                    .trailing(TouchTrailing::Value(value.into()))
+                valued(TouchRow::new(id, title).icon(icon), value)
                     .more()
                     .disabled(!self.enabled)
                     .on_click(act(on_action, PlusAction::Open(PlusPage::Setting(option))))
             };
             if !settings.models.is_empty() {
-                let model = if settings.model_label.is_empty() {
-                    settings.model.clone()
-                } else {
-                    settings.model_label.clone()
-                };
                 rows.push(setting(
                     "chat-plus-model",
                     "Model",
                     IconName::Sparkle,
-                    model,
+                    settings.model_label.clone(),
                     agent_settings::MODEL,
                 ));
             }
@@ -210,12 +205,13 @@ impl PlusSheet<'_> {
         }
         if self.provider.is_some() {
             rows.push(
-                TouchRow::new("chat-plus-account", "Account")
-                    .icon(IconName::User)
-                    .trailing(TouchTrailing::Value(self.account_name().into()))
-                    .more()
-                    .disabled(!self.enabled)
-                    .on_click(act(on_action, PlusAction::Open(PlusPage::Account))),
+                valued(
+                    TouchRow::new("chat-plus-account", "Account").icon(IconName::User),
+                    self.account_name(),
+                )
+                .more()
+                .disabled(!self.enabled)
+                .on_click(act(on_action, PlusAction::Open(PlusPage::Account))),
             );
         }
         rows
