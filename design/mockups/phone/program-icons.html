@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone program icons</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-board { display: grid; grid-template-columns: repeat(4, 424px); gap: 0 16px; align-items: start; }
+  .zz-heads { position: sticky; z-index: 50; top: 0; display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; padding: 14px 0 12px; background: var(--penna-bg); box-shadow: 0 1px 0 var(--penna-divider); }
+  .zz-heads > div { display: grid; gap: 2px; margin: 0 10px; }
+  .zz-heads b { font-size: 17px; line-height: 22px; font-weight: 600; }
+  .zz-heads span { color: var(--penna-fg-muted); }
+  .zz-kind { grid-column: 1 / -1; margin: 36px 10px 4px; }
+
+  .zz-numbers { display: grid; gap: 10px; max-width: 1744px; }
+  .zz-numbers table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-numbers th, .zz-numbers td { padding: 7px 12px 7px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--penna-divider); }
+  .zz-numbers th { color: var(--penna-fg-muted); font-weight: 600; }
+  .zz-numbers tr > :first-child { width: 120px; } .zz-numbers td:first-child { color: var(--penna-fg-muted); }
+  .zz-numbers code { font: 12px/16px var(--penna-mono); }
+
+  .zz-full[data-penna] { position: absolute; inset: 0; padding-top: 54px; }
+  .zz-machine[data-penna] { padding-top: 0; }
+  .zz-scroll { position: absolute; inset: 0; padding-top: 98px; overflow: hidden; }
+  .zz-sections { display: flex; flex-direction: column; gap: var(--penna-gap-group); padding: 0 var(--penna-inset-pane) 112px; }
+  .zz-phone .penna-bento { --penna-bento-width: 370px; }
+  .zz-fold { position: absolute; z-index: 20; top: 0; right: 0; left: 0; height: 98px; pointer-events: none; }
+  .zz-fold > .penna-touch-icon[data-penna] { position: absolute; right: var(--penna-inset-pane); bottom: 0; }
+
+  .penna-window-tile[data-penna] { --zz-ground: var(--penna-fill); }
+  .zz-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .penna-machine-name > .zz-title:not(:last-child) { flex: 1; }
+
+  .zz-face[data-penna] { position: relative; display: grid; flex: none; place-items: center; width: var(--s); height: var(--s); padding: 0; border: 0; color: var(--penna-fg); background: linear-gradient(color-mix(in srgb, var(--penna-fg) 6%, var(--penna-fill)), var(--penna-fill)); box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--penna-fg) 16%, transparent), var(--penna-shadow-contact); --penna-icon-size: calc(var(--s) * 0.625); }
+  .zz-face[data-penna][data-brand] { color: var(--f); background: linear-gradient(color-mix(in oklab, var(--b) 84%, white), color-mix(in oklab, var(--b) 90%, black)); box-shadow: 0 calc(var(--s) / 56) calc(var(--s) * 3 / 56) rgb(0 0 0 / 0.2), 0 0 0 calc(var(--s) / 56) rgb(0 0 0 / 0.09), inset 0 calc(var(--s) / 28) 0 rgb(255 255 255 / 0.3); }
+  :root[data-penna-mode="dark"] .zz-face[data-penna][data-brand] { box-shadow: 0 calc(var(--s) / 56) calc(var(--s) * 3 / 56) rgb(0 0 0 / 0.4), 0 0 0 calc(var(--s) * 0.75 / 28) rgb(0 0 0 / 0.25), inset 0 calc(var(--s) / 28) 0 rgb(255 255 255 / 0.3), inset 0 0 0 calc(var(--s) * 0.75 / 28) rgb(255 255 255 / 0.12); }
+  .zz-dot { position: absolute; right: -2.5px; bottom: -2.5px; display: grid; place-items: center; width: 11px; height: 11px; border-radius: 50%; background: var(--zz-ground); }
+  .zz-dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--zz-tone); }
+  .zz-dot[data-tone="warning"] { --zz-tone: var(--penna-warning); }
+  .zz-dot[data-tone="danger"] { --zz-tone: var(--penna-danger); }
+  .zz-badge { position: absolute; z-index: 2; top: 4px; right: 4px; }
+  .zz-faces { display: flex; flex: none; align-items: center; gap: 4px; }
+  .zz-faces > b { font-size: var(--penna-text-touch-small-size); font-weight: 500; color: var(--penna-muted); }
+
+  .zz-screen { position: absolute; inset: 54px 0 0; overflow: hidden; }
+  .zz-vim { margin: 0; padding: 8px 12px; font: 12px/17px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; }
+  .zz-vim .n { color: var(--penna-fg-faint); }
+  .zz-vim .k { color: var(--penna-accent-ink); }
+  .zz-vim .s { color: var(--penna-success-ink); }
+  .zz-vim .f { color: var(--penna-fg); }
+  .zz-vim .bar { display: inline-block; width: 100%; background: color-mix(in srgb, var(--penna-fg) 8%, transparent); color: var(--penna-fg); }
+  .zz-pill-face[data-penna] { --penna-r: 9999px; --penna-k: 1; }
+  .penna-pill-tile.zz-face[data-penna] { --s: 40px; --penna-icon-size: 20px; }
+
+  .zz-phone > .penna-sheet { z-index: 35; }
+  .zz-phone .penna-sheet-panel { padding-bottom: 0; }
+  .zz-phone .penna-sheet-header { position: relative; justify-content: center; height: 44px; min-height: 44px; padding: 0 60px; text-align: center; }
+  .zz-cap { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); font-weight: 600; }
+  .zz-x { position: absolute; top: 0; right: 9px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: var(--penna-muted); }
+  .zz-x.zz-back { right: auto; left: 9px; }
+  .zz-x > span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--penna-control); --penna-icon-size: 12px; }
+  .zz-groups { display: flex; flex-direction: column; gap: var(--penna-gap-group); padding: 0 8px 8px; }
+  .zz-group.penna-touch-group[data-penna][data-penna][data-penna] { gap: 0; padding: 0; overflow: hidden; --penna-r: calc(var(--penna-phone-radius) - 8px); --zz-ground: var(--penna-fill); }
+  .zz-group > .penna-touch-row[data-penna][data-penna][data-penna] { padding: 0 16px; --penna-r: 0px; --penna-share: 0; }
+  .zz-group > .penna-touch-row + .penna-touch-row::before { content: ""; position: absolute; top: 0; right: 0; left: 48px; height: 1px; background: var(--penna-divider); }
+  .zz-group > .penna-touch-row:has(> .zz-face) + .penna-touch-row::before { left: 52px; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro"><h1>Program icons</h1></div>
+  <div class="zz-board" data-board></div>
+  <section class="zz-numbers" data-numbers></section>
+</main>
+<script>
+(() => {
+  const MARKS = {"zz-neovim": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><defs><linearGradient id=\"a\" x1=\"50%\" x2=\"50%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#fff\" stop-opacity=\".8\"/><stop offset=\"100%\" stop-color=\"#fff\"/></linearGradient><linearGradient id=\"b\" x1=\"50%\" x2=\"50%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#fff\"/><stop offset=\"100%\" stop-color=\"#fff\" stop-opacity=\".8\"/></linearGradient></defs><g fill=\"none\" fill-rule=\"evenodd\"><path fill=\"url(#a)\" d=\"M0 5.16 5.11 0v23.99L0 18.89z\" transform=\"translate(2)\"/><path fill=\"url(#b)\" d=\"M14.6 5.21 19.78 0l-.1 23.99-5.11-5.1z\" transform=\"matrix(-1 0 0 1 36.35 0)\"/><path fill=\"#fff\" fill-opacity=\".9\" d=\"M7.11 0 20.4 20.28 16.68 24 3.38 3.77z\"/></g></svg>", "zz-rust": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 106 106\"><g fill=\"none\" fill-rule=\"evenodd\" stroke=\"#000\"><path fill=\"#000\" fill-rule=\"nonzero\" stroke-linejoin=\"round\" d=\"M44.5 38.5h13c8 0 8 8 0 8h-13zm-31 37h40v-11h-9v-8h10c11 0 5 19 14 19h25v-19h-6v2c0 8-9 7-10 2s-5-9-6-9c15-8 6-24-6-24h-47v11h10v26h-15z\"/><g transform=\"translate(2 2)\"><circle cx=\"51\" cy=\"51\" r=\"43\" stroke-width=\"9\"/><path fill=\"#000\" stroke-linejoin=\"round\" stroke-width=\"3\" d=\"m97 54 5-3-5-3zm-1.47 8.92 5.49-1.97-4.32-3.92zm-3.18 8.46 5.77-.86-3.47-4.69zm-4.77 7.67 5.82.28-2.49-5.27zm-6.18 6.6 5.66 1.41-1.41-5.65zm-7.34 5.26 5.27 2.5-.28-5.83zm-8.23 3.74 4.69 3.47.86-5.77zm-8.8 2.05 3.92 4.32 1.97-5.49zM48 97l3 5 3-5zm-8.92-1.47 1.97 5.49 3.92-4.32zm-8.46-3.18.86 5.77 4.69-3.47zm-7.67-4.77-.28 5.82 5.27-2.49zm-6.6-6.18-1.41 5.66 5.65-1.41zm-5.26-7.34-2.5 5.27 5.83-.28zm-3.74-8.23-3.47 4.69 5.77.86zm-2.05-8.8L.98 60.95l5.49 1.97zM5 48l-5 3 5 3zm1.47-8.92L.98 41.05l4.32 3.92zm3.18-8.46-5.77.86 3.47 4.69zm4.77-7.67-5.82-.28 2.49 5.27zm6.18-6.6-5.66-1.41 1.41 5.65zm7.34-5.26-5.27-2.5.28 5.83zm8.23-3.74-4.69-3.47-.86 5.77zm8.8-2.05L41.05.98l-1.97 5.49zM54 5l-3-5-3 5zm8.92 1.47L60.95.98 57.03 5.3zm8.46 3.18-.86-5.77-4.69 3.47zm7.67 4.77.28-5.82-5.27 2.49zm6.6 6.18 1.41-5.66-5.65 1.41zm5.26 7.34 2.5-5.27-5.83.28zm3.74 8.23 3.47-4.69-5.77-.86zm2.05 8.8 4.32-3.92-5.49-1.97z\"/><path fill=\"#000\" stroke-linejoin=\"round\" stroke-width=\"6\" d=\"m44 9 7 7 7-7zm44.78 22.36-4.5 8.82 8.83 4.5zm-7.43 49.5-9.78-1.54-1.55 9.77zM31.98 89.1l-1.55-9.78-9.78 1.54zM8.9 44.68l8.81-4.5-4.5-8.82z\"/></g></g></svg>", "zz-claude": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><path fill=\"currentColor\" d=\"m19.6 66.5 19.7-11 .3-1-.3-.5h-1l-3.3-.2-11.2-.3L14 53l-9.5-.5-2.4-.5L0 49l.2-1.5 2-1.3 2.9.2 6.3.5 9.5.6 6.9.4L38 49.1h1.6l.2-.7-.5-.4-.4-.4L29 41l-10.6-7-5.6-4.1-3-2-1.5-2-.6-4.2 2.7-3 3.7.3.9.2 3.7 2.9 8 6.1L37 36l1.5 1.2.6-.4.1-.3-.7-1.1L33 25l-6-10.4-2.7-4.3-.7-2.6c-.3-1-.4-2-.4-3l3-4.2L28 0l4.2.6L33.8 2l2.6 6 4.1 9.3L47 29.9l2 3.8 1 3.4.3 1h.7v-.5l.5-7.2 1-8.7 1-11.2.3-3.2 1.6-3.8 3-2L61 2.6l2 2.9-.3 1.8-1.1 7.7L59 27.1l-1.5 8.2h.9l1-1.1 4.1-5.4 6.9-8.6 3-3.5L77 13l2.3-1.8h4.3l3.1 4.7-1.4 4.9-4.4 5.6-3.7 4.7-5.3 7.1-3.2 5.7.3.4h.7l12-2.6 6.4-1.1 7.6-1.3 3.5 1.6.4 1.6-1.4 3.4-8.2 2-9.6 2-14.3 3.3-.2.1.2.3 6.4.6 2.8.2h6.8l12.6 1 3.3 2 1.9 2.7-.3 2-5.1 2.6-6.8-1.6-16-3.8-5.4-1.3h-.8v.4l4.6 4.5 8.3 7.5L89 80.1l.5 2.4-1.3 2-1.4-.2-9.2-7-3.6-3-8-6.8h-.5v.7l1.8 2.7 9.8 14.7.5 4.5-.7 1.4-2.6 1-2.7-.6-5.8-8-6-9-4.7-8.2-.5.4-2.9 30.2-1.3 1.5-3 1.2-2.5-2-1.4-3 1.4-6.2 1.6-8 1.3-6.4 1.2-7.9.7-2.6v-.2H49L43 72l-9 12.3-7.2 7.6-1.7.7-3-1.5.3-2.8L24 86l10-12.8 6-7.9 4-4.6-.1-.5h-.3L17.2 77.4l-4.7.6-2-2 .2-3 1-1 8-5.5Z\"/></svg>"};
+  const marks = document.createElement("style");
+  marks.textContent = Object.entries(MARKS).map(([name, svg]) => `[data-icon="${name}"] { --penna-icon: url("data:image/svg+xml,${encodeURIComponent(svg)}"); }`).join("\n");
+  document.head.append(marks);
+
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const DIRS = ["today", "a", "b", "c"];
+  const HEADS = {
+    today: ["Today", "Mark and title, bare previews"],
+    a: ["A", "One icon leads the title"],
+    b: ["B", "A badge on each pane"],
+    c: ["C", "Lead icon, or pane icons trailing"],
+  };
+
+  const PROGRAMS = {
+    neovim: { mark: "zz-neovim", b: "#00A3D7", f: "#FFFFFF" },
+    rust: { mark: "zz-rust", b: "#EBEBEB", f: "#000000" },
+    claude: { mark: "zz-claude", b: "#E6683D", f: "#FFFFFF" },
+  };
+  const KIND = { term: "terminal", web: "globe", chat: "chat" };
+  const PILL_KIND = { term: "square-terminal", web: "globe", chat: "chat" };
+
+  const T = {
+    zsh: ["~/dev/zebrilus main", "❯ git status -sb", "## main...origin/main", " M crates/zz-ui/src/pane.rs", " M design/mockups/phone/index.html", "❯ "],
+    nvim: ["  1 use penna::blocks::touch;", "  2 ", "  3 pub fn tile(cx: &App) {", "  4     let face = program", "  5         .face(24.0);", "  6     tile.child(face)", "  7 }", "~", "~", " NORMAL  tile.rs"],
+    watch: ["[Running 'cargo test']", "   Compiling zz-ui v0.42.0", "running 18 tests", "test tile::face ... ok", "✓test result: ok. 18 passed", "[Finished. Exit 0]"],
+    ncdu: ["ncdu 2.4 ~ ? for help", "--- ~/dev -----------------", "  12.4 GiB [######] zebrilus", "   3.1 GiB [#     ] nidus", "   1.2 GiB [      ] ala", " 840.0 MiB [      ] penna", "Total 17.9 GiB"],
+  };
+  const term = (key, program, title) => ({ kind: "term", lines: T[key], program, title });
+  const chat = (you, reply, title) => ({ kind: "chat", you, reply, program: "claude", title });
+  const web = (host, bars, title) => ({ kind: "web", host, bars, title });
+  const at = (pane, x, y, w, h) => ({ ...pane, rect: [x, y, w, h] });
+  const one = (pane) => [at(pane, 0, 0, 1, 1)];
+  const WINDOWS = [
+    { title: "zsh", panes: one(term("zsh", null, "zsh")) },
+    { title: "Neovim", focus: 0, panes: [at(term("nvim", "neovim", "Neovim"), 0, 0, 0.5, 1), at(term("watch", "rust", "cargo watch"), 0.5, 0, 0.5, 1)] },
+    { title: "Make the pill menu offer New chat", mark: "warning", say: "Needs approval", panes: one(chat([0.92, 0.5], [1, 0.9, 0.96, 0.62], "Make the pill menu offer New chat")) },
+    { title: "ala - Rust", panes: one(web("docs.rs", [0.55, 1, 0.9, 0.72], "ala - Rust")) },
+    { title: "ncdu", panes: one(term("ncdu", null, "ncdu")) },
+  ];
+
+  const termLine = (line) => (line.startsWith("✓") ? `<span data-ink="success">${esc(line.slice(1))}</span>` : line.startsWith("❯") ? `<b>${esc(line)}</b>` : esc(line));
+  const bars = (widths) => widths.map((w) => `<i style="--w: ${w}"></i>`).join("");
+  const preview = (p) => {
+    if (p.kind === "term") return `<pre class="penna-window-term">${p.lines.map(termLine).join("\n")}</pre>`;
+    if (p.kind === "web") return `<span class="penna-window-host">${p.host}</span><span class="penna-window-page"><i data-bar style="--w: ${p.bars[0]}"></i>${bars(p.bars.slice(1))}<i data-block></i></span>`;
+    return `<span class="penna-window-chat"><span class="penna-window-bubble">${bars(p.you)}</span><span class="penna-window-lines">${bars(p.reply)}</span></span>`;
+  };
+
+  const face = (pane, size, colors, { dot, cls = "", role = "tile.stack" } = {}) => {
+    const program = pane.program && PROGRAMS[pane.program];
+    const brand = program && colors;
+    const glyph = program ? program.mark : KIND[pane.kind];
+    const look = brand ? ` data-brand style="--s: ${size}px; --b: ${program.b}; --f: ${program.f}"` : ` style="--s: ${size}px"`;
+    return `<span class="zz-face${cls}" data-penna="${role}"${look}>${ic(glyph)}${dot ? `<span class="zz-dot" data-tone="${dot}"></span>` : ""}</span>`;
+  };
+  const tone = (m) => (m ? `<span class="penna-tone-dot" data-tone="${m}"></span>` : "");
+  const lead = (w) => w.panes[w.focus ?? 0];
+
+  const header = (w, dir, colors) => {
+    const title = `<span class="zz-title">${w.title}</span>`;
+    if (dir === "a" || (dir === "c" && w.panes.length === 1)) return `${face(lead(w), 24, colors, { dot: w.mark })}${title}`;
+    if (dir === "c") {
+      const shown = w.panes.slice(0, 3).map((p) => face(p, 16, colors)).join("");
+      const more = w.panes.length > 3 ? `<b>+${w.panes.length - 3}</b>` : "";
+      return `${tone(w.mark)}${title}<span class="zz-faces">${shown}${more}</span>`;
+    }
+    return `${tone(w.mark)}${title}`;
+  };
+  const badge = (p, dir, colors) => (dir === "b" && p.program ? `<span class="zz-badge">${face(p, 20, colors)}</span>` : "");
+
+  const span = (w) => (w.panes.length <= 2 ? [2, 2] : [4, 2]);
+  const pack = (spans) => {
+    const taken = [];
+    const free = (c, r, w, h) => { for (let y = r; y < r + h; y += 1) for (let x = c; x < c + w; x += 1) if (taken[y]?.[x]) return false; return true; };
+    return spans.map(([w, h]) => {
+      for (let r = 0; ; r += 1) for (let c = 0; c <= 4 - w; c += 1) if (free(c, r, w, h)) {
+        for (let y = r; y < r + h; y += 1) { taken[y] ??= [false, false, false, false]; for (let x = c; x < c + w; x += 1) taken[y][x] = true; }
+        return [c, r];
+      }
+    });
+  };
+  const windowTile = (w, [column, row], dir, colors) => {
+    const [columns, rows] = span(w);
+    return `<div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" style="--column: ${column}; --row: ${row}; --columns: ${columns}; --span: ${rows}"><span class="penna-machine-name">${header(w, dir, colors)}</span>${w.say ? `<span class="penna-machine-state" data-tone="${w.mark}">${w.say}</span>` : ""}<span class="penna-window-preview">${w.panes.map((p) => `<span class="penna-window-pane" data-penna="tile.mini" style="--x: ${p.rect[0]}; --y: ${p.rect[1]}; --w: ${p.rect[2]}; --h: ${p.rect[3]}">${preview(p)}${badge(p, dir, colors)}</span>`).join("")}</span><span class="penna-press"></span></div>`;
+  };
+  const bento = (dir, colors) => {
+    const spans = WINDOWS.map(span);
+    const spots = pack(spans);
+    const rows = Math.max(...spans.map((s, i) => s[1] + spots[i][1]));
+    return `<div class="penna-bento" style="--rows: ${rows}">${WINDOWS.map((w, i) => windowTile(w, spots[i], dir, colors)).join("")}</div>`;
+  };
+
+  const GROUPS = [1, 2, 1, 1, 1];
+  const dots = (on) => {
+    let n = 0;
+    return `<span class="penna-dots">${GROUPS.map((count) => `<span class="penna-dots-group">${Array.from({ length: count }, () => { const i = n++; return `<span class="penna-dot"${i === on ? " data-active" : ""}${i === 3 ? " data-attention" : ""}></span>`; }).join("")}</span>`).join("")}</span>`;
+  };
+  const pillTile = (inner, extra = "") => `<span class="penna-pill-tile" data-penna="phone.pill.icon"${extra}>${inner}</span>`;
+  const pill = (tile, title, meta, on) => `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating">${tile}<span class="penna-pill-copy"><span class="penna-pill-title">${title}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">${meta}</span>${dots(on)}</span></span></button></div>`;
+  const machinePill = pill(pillTile(ic("laptop")), "macbook", "zz", -1);
+
+  const machine = (dir, colors) => `<div class="penna-zoom-card zz-full zz-machine" data-penna="phone.card"><div class="zz-scroll"><div class="penna-zoom-title">macbook</div><div class="zz-sections"><div class="zz-sess"><div class="penna-touch-header" data-hold><span>zz</span></div>${bento(dir, colors)}</div></div></div><div class="zz-fold"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Close">${ic("xmark")}</button></div>${machinePill}</div>`;
+
+  const VIM = [
+    `<span class="n">  1</span> <span class="k">use</span> penna::blocks::touch;`,
+    `<span class="n">  2</span>`,
+    `<span class="n">  3</span> <span class="k">pub fn</span> <span class="f">window_tile</span>(cx: &amp;App) {`,
+    `<span class="n">  4</span>     <span class="k">let</span> face = program`,
+    `<span class="n">  5</span>         .face(px(24.0))`,
+    `<span class="n">  6</span>         .dot(window.mark);`,
+    `<span class="n">  7</span>     tile.child(face)`,
+    `<span class="n">  8</span>         .child(title)`,
+    `<span class="n">  9</span> }`,
+    `<span class="n"> 10</span>`,
+    `<span class="n"> 11</span> <span class="k">const</span> FACE: f32 = <span class="s">24.0</span>;`,
+    `<span class="n"> 12</span> <span class="k">const</span> BADGE: f32 = <span class="s">20.0</span>;`,
+    ...Array.from({ length: 22 }, () => `<span class="n">~</span>`),
+    `<span class="bar"> NORMAL  tile.rs                    rust  12:1 </span>`,
+  ];
+  const paneView = (dir, colors) => {
+    const p = WINDOWS[1].panes[0];
+    const tile = dir === "today" ? pillTile(ic(PILL_KIND[p.kind])) : face(p, 40, colors, { cls: " penna-pill-tile zz-pill-face", role: "phone.pill.icon" });
+    return `<div class="zz-screen"><pre class="zz-vim">${VIM.join("\n")}</pre></div>${pill(tile, "Neovim", "zebrilus · main", 1)}`;
+  };
+
+  const MENTION = [
+    { title: "zsh", detail: "zz:1", pane: WINDOWS[0].panes[0] },
+    { title: "Neovim", detail: "zz:2.1", pane: WINDOWS[1].panes[0] },
+    { title: "cargo watch", detail: "zz:2.2", pane: WINDOWS[1].panes[1] },
+    { title: "Make the pill menu offer New chat", detail: "Claude Code · zz:3", pane: WINDOWS[2].panes[0], mark: "warning" },
+    { title: "ala - Rust", detail: "docs.rs · zz:4", pane: WINDOWS[3].panes[0] },
+    { title: "ncdu", detail: "zz:5", pane: WINDOWS[4].panes[0] },
+  ];
+  const mentionRow = (m, dir, colors) => {
+    const leadIcon = dir === "today" ? ic(KIND[m.pane.kind]) : face(m.pane, 24, colors, { dot: m.mark });
+    const trail = dir === "today" && m.mark ? `<span class="penna-touch-row-state" data-tone="warning"><span class="penna-tone-dot" data-tone="warning"></span></span>` : "";
+    return `<div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button">${leadIcon}<span class="penna-touch-row-lines"><span>${m.title}</span><span>${m.detail}</span></span>${trail}</div>`;
+  };
+    const mention = (dir, colors) => `<div class="zz-screen"><pre class="zz-vim">${VIM.join("\n")}</pre></div><div class="penna-sheet" style="--penna-sheet-rest: 34px"><div class="penna-sheet-scrim"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header"><button class="zz-x zz-back" aria-label="Back"><span>${ic("chevron-left")}</span></button><span class="zz-cap">zz</span><button class="zz-x" aria-label="Close"><span>${ic("xmark")}</span></button></div><div class="zz-groups"><div class="penna-touch-group zz-group" data-penna="settings.card" data-ground>${MENTION.map((m) => mentionRow(m, dir, colors)).join("")}</div></div></div></div></div>`;
+
+  const ROWS = [
+    { name: "Machine page", draw: (dir) => machine(dir, true) },
+    { name: "Machine page, Program colors off", draw: (dir) => machine(dir, false) },
+    { name: "Inside a pane: the pill", draw: (dir) => paneView(dir, true) },
+    { name: "Mention: the session's panes", draw: (dir) => mention(dir, true) },
+  ];
+
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  const phone = (row, dir) => `<div class="zz-phone" data-dir="${dir}">${status}${row.draw(dir)}<span class="zz-home"></span></div>`;
+  const heads = `<div class="zz-heads">${DIRS.map((d) => `<div><b>${HEADS[d][0]}</b><span>${HEADS[d][1]}</span></div>`).join("")}</div>`;
+  document.querySelector("[data-board]").innerHTML = heads + ROWS.map((row) => `<h2 class="zz-kind">${row.name}</h2>${DIRS.map((d) => phone(row, d)).join("")}`).join("");
+
+  const NUMBERS = [
+    ["", "A", "B", "C"],
+    ["Icon", "24 face leading the title, the focused pane's program; a window of many panes shows only that one", "20 face on each pane's preview whose program is known", "24 face leading the title for one pane; for two or more, 16 faces trailing the title, at most 3, then +n"],
+    ["Glyph", "15 (the face's 0.625, <code>PROGRAM_GLYPH_SCALE</code>)", "12.5", "15 lead, 10 trailing"],
+    ["Gaps, position", "8 to the title (<code>space-8</code>); header line 24 tall", "inset 4 from the pane's top and right edge; the header is unchanged", "lead as A; trailing faces 4 apart, 8 after the title, at the header's end"],
+    ["Status dot", "on the face's bottom right: 8 dot in an 11 ring of the tile's fill, 2.5 past the edge, as on the desktop's pane stack; a spinner keeps its place before the face", "stays before the title, as today", "one pane: on the face, as A; many panes: before the title, as today"],
+    ["Colour", "Program colors on (the default): the program's face, its brand fill and glyph, as on the desktop; off: the neutral <code>tile.stack</code> with the glyph in ink", "the same rule", "the same rule"],
+    ["Fallback", "the pane kind's glyph on a neutral face: <code>terminal</code> for a shell or an unknown program, <code>globe</code> for a browser, as the desktop does (<code>pane_glyph</code>)", "no badge: a kind glyph on a preview that already shows the kind says nothing", "the kind glyph, as A"],
+    ["Pill", "the 40 icon tile takes the focused pane's face with a 20 glyph, or its kind glyph when unknown", "the same", "the same"],
+    ["Lists", "a touch row's 20 glyph becomes a 24 face, its dot on the face", "the same", "the same"],
+    ["Targets", "none: the whole tile or row stays the target", "none", "none"],
+  ];
+  document.querySelector("[data-numbers]").innerHTML = `<h2>Numbers</h2><table>${NUMBERS.map((row, i) => `<tr>${row.map((cell) => (i === 0 ? `<th>${cell}</th>` : `<td>${cell}</td>`)).join("")}</tr>`).join("")}</table>`;
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>
