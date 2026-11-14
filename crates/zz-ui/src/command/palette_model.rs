@@ -399,14 +399,7 @@ impl UnifiedPalette {
         }
         match self.mode {
             Some(PaletteMode::Command) => "Type a command".to_owned(),
-            Some(PaletteMode::Target) => "A session, window, pane or ~/file".to_owned(),
-            None => {
-                let scope = self
-                    .host
-                    .and_then(|id| self.tree.host(id))
-                    .map_or(String::new(), |host| format!(" {}", host.name));
-                format!("Search{scope}, or type : or @")
-            }
+            Some(PaletteMode::Target) | None => self.place_placeholder(),
         }
     }
 

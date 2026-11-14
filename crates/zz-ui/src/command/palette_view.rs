@@ -19,11 +19,11 @@ use zz_client::{
 use zz_protocol::{
     ChooseTreeAction, ChooseTreeState, ChooseTreeTarget, CommandInvocation, CommandPromptAction,
     CommandPromptKind, CommandPromptMode, CommandPromptState, CommandPromptType, InputMessage,
-    MAX_COMMAND_PROMPT_BYTES, MuxSnapshot, PaneId, PathEntry, PathKind, PathListRoot,
+    MAX_COMMAND_PROMPT_BYTES, MuxSnapshot, PaneId, PathEntry, PathListRoot,
 };
 
 use super::{
-    ActionKey, CopyAddress, LevelEffect, PaletteActionLevel,
+    ActionKey, CopyAddress, LevelEffect, PaletteActionLevel, palette_keys,
     palette_model::{
         PaletteAction, PaletteEntry, PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget,
         PaletteTree, UnifiedPalette, needs_arguments, target_kind,
@@ -39,14 +39,15 @@ use crate::{
     },
     notification::Notification,
     target::{
-        TargetBackend, TargetChat, TargetHost, TargetKind, TargetPane, TargetPicker,
-        TargetPickerEvent, TargetSession, TargetWindow, pop_level,
+        TargetBackend, TargetChat, TargetHost, TargetPane, TargetPicker, TargetSession,
+        TargetWindow,
     },
 };
 use penna::blocks::palette::{
     PaletteHint, PaletteRow, PaletteSurface, PaletteVim, PaletteVimMode, Twin, VimCommand,
-    palette_badged_row, palette_empty, palette_input, palette_kind_badge, palette_prompt_input,
-    palette_row, palette_row_height, palette_section, palette_tree_row, palette_vim_badge,
+    palette_badged_row, palette_chord, palette_empty, palette_input, palette_kind_badge,
+    palette_prompt_input, palette_row, palette_row_height, palette_section, palette_tree_row,
+    palette_vim_badge,
 };
 
 pub trait PaletteBackend {
@@ -192,15 +193,6 @@ impl TargetBackend for PaletteTargets {
     }
 }
 
-pub fn target_picker(backend: &Rc<dyn PaletteBackend>, cx: &mut App) -> Entity<TargetPicker> {
-    let targets: Rc<dyn TargetBackend> = Rc::new(PaletteTargets(Rc::clone(backend)));
-    let picker = cx.new(|cx| TargetPicker::new(targets, cx));
-    if let Some(feed) = backend.feed_targets(&picker, cx) {
-        picker.update(cx, |picker, _| picker.keep(feed));
-    }
-    picker
-}
-
 pub fn mention_picker(
     backend: &Rc<dyn PaletteBackend>,
     input: Entity<InputState>,
@@ -240,34 +232,6 @@ pub enum GuiEvent {
     },
 }
 
-fn target_hints(item: Option<&crate::target::TargetItem>, typed: &str) -> Vec<PaletteHint> {
-    let enter = match item.map(|item| item.kind) {
-        Some(TargetKind::Host) => "open",
-        Some(TargetKind::Session | TargetKind::Window) => "switch",
-        Some(TargetKind::Pane | TargetKind::Chat) => "focus",
-        Some(TargetKind::Dir | TargetKind::File) => "insert",
-        None => "choose",
-    };
-    vec![
-        PaletteHint {
-            key: "tab",
-            label: "open",
-        },
-        PaletteHint {
-            key: "enter",
-            label: enter,
-        },
-        PaletteHint {
-            key: "backspace",
-            label: if typed.is_empty() { "leave mode" } else { "up" },
-        },
-        PaletteHint {
-            key: "escape",
-            label: "close",
-        },
-    ]
-}
-
 impl EventEmitter<CommandPaletteEvent> for CommandPaletteView {}
 
 pub type FolderPick = Rc<dyn Fn(PaletteHostId, String, &mut Window, &mut App)>;
@@ -295,7 +259,6 @@ pub struct CommandPaletteView {
     chooser_activation: Option<ChooseTreeTarget>,
     local: bool,
     changing_input: bool,
-    target: Option<(Entity<TargetPicker>, Subscription)>,
     insert_pane: Option<PaneId>,
     pick_folder: Option<FolderPick>,
     level: Option<(ActionKind, Box<dyn PaletteActionLevel>)>,
@@ -414,7 +377,6 @@ impl CommandPaletteView {
             chooser_search: ChooserSearch::default(),
             chooser_activation: None,
             changing_input: false,
-            target: None,
             insert_pane: None,
             pick_folder: None,
             level: None,
@@ -801,7 +763,6 @@ impl CommandPaletteView {
             self.vim = settings.vim.then(PaletteVim::default);
             self.sync_vim_mode(cx);
         }
-        self.sync_target(window, cx);
     }
 
     #[must_use]
@@ -896,10 +857,6 @@ impl CommandPaletteView {
         if self.level_key(edge, window, cx) {
             return;
         }
-        if let Some((picker, _)) = &self.target {
-            picker.update(cx, |picker, cx| picker.select_edge(first, cx));
-            return;
-        }
         let Some(unified) = &self.unified else {
             return;
         };
@@ -917,31 +874,6 @@ impl CommandPaletteView {
         self.scroll_handle
             .scroll_to_item(next, ScrollStrategy::Nearest);
         cx.notify();
-    }
-
-    fn sync_target(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let targeting = self.places() && self.level.is_none() && self.files_body().is_some();
-        if !targeting {
-            self.target = None;
-            return;
-        }
-        let picker = if let Some((picker, _)) = &self.target {
-            picker.clone()
-        } else {
-            let picker = target_picker(&self.backend, cx);
-            let events = cx.subscribe_in(&picker, window, |palette, _, event, window, cx| {
-                let TargetPickerEvent::Picked { open } = event;
-                palette.activate_target(*open, window, cx);
-            });
-            self.target = Some((picker.clone(), events));
-            picker
-        };
-        let body = self.files_body().unwrap_or_default();
-        let anchor = self.insert_pane.or_else(|| self.backend.active_pane(cx));
-        picker.update(cx, |picker, cx| {
-            picker.set_anchor(anchor);
-            picker.set_body(&body, cx);
-        });
     }
 
     pub fn focus(&self, cx: &App) -> FocusHandle {
@@ -1087,68 +1019,7 @@ impl CommandPaletteView {
         cx.notify();
     }
 
-    fn activate_target(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((picker, _)) = &self.target else {
-            return;
-        };
-        let (item, root) = {
-            let picker = picker.read(cx);
-            (
-                picker.selected_item().cloned(),
-                picker.listing_root().cloned(),
-            )
-        };
-        let Some(item) = item else {
-            return;
-        };
-        if item.kind == TargetKind::Host
-            && item.status != Some(penna::blocks::palette::PaletteStatus::Online)
-        {
-            self.backend.connect_host(item.host_id, cx);
-        }
-        if open || item.kind == TargetKind::Host {
-            self.set_files_body(&item.completion(), window, cx);
-            return;
-        }
-        if let Some(target) = item.target {
-            if self.backend.activate(item.host_id, target, cx) {
-                self.close(cx);
-                Self::notify_action(format!("Switched to {}", item.typed), window, cx);
-            }
-            return;
-        }
-        let (Some(root), Some(entry)) = (root, item.entry.as_ref()) else {
-            return;
-        };
-        if let Some(pick) = self.pick_folder.clone() {
-            let rel = entry.rel.trim_end_matches('/');
-            let rel = match entry.kind {
-                PathKind::Dir => rel,
-                PathKind::File => rel.rsplit_once('/').map_or("", |(parent, _)| parent),
-            };
-            let base = root.display_root.trim_end_matches('/');
-            let folder = if rel.is_empty() {
-                root.display_root.clone()
-            } else {
-                format!("{base}/{rel}")
-            };
-            self.close(cx);
-            pick(item.host_id, folder, window, cx);
-            return;
-        }
-        let Some(pane) = self.insert_pane.or_else(|| self.backend.active_pane(cx)) else {
-            return;
-        };
-        self.backend
-            .insert_path(pane, item.host_id, &root, entry, cx);
-        self.close(cx);
-    }
-
     fn activate_unified(&mut self, complete: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if self.target.is_some() {
-            self.activate_target(complete, window, cx);
-            return;
-        }
         if self.places() {
             self.activate_places(complete, window, cx);
             return;
@@ -1220,6 +1091,7 @@ impl CommandPaletteView {
                     self.set_query(completed, window, cx);
                 }
             }
+            PaletteAction::Target { .. } if complete => {}
             PaletteAction::Target {
                 host,
                 target,
@@ -1328,19 +1200,11 @@ impl CommandPaletteView {
     }
 
     fn render_unified(&mut self, window: &mut Window, cx: &mut Context<Self>) -> ala::AnyElement {
-        let target_item = self.target.as_ref().and_then(|(picker, _)| {
-            picker.update(cx, |picker, _| {
-                picker.fit(px(penna::blocks::palette::palette_list_height(
-                    window.viewport_size().height,
-                    false,
-                )));
-                picker.selected_item().cloned()
-            })
-        });
         let level_view = self
             .level
             .as_mut()
-            .map(|(_, level)| (level.rows(window, cx), level.hints(cx)));
+            .map(|(_, level)| (level.rows(window, cx), level.keys(cx)));
+        let address = self.copy_target(cx).is_some();
         let places = self.places();
         let command_rest = places.then(|| self.raw_command()).flatten();
         let places_usage = (places && command_rest.is_none())
@@ -1471,114 +1335,35 @@ impl CommandPaletteView {
         )
         .h(px(list_height))
         .track_scroll(&self.scroll_handle);
-        let mut hints = if let Some((_, hints)) = &level_view {
-            hints.clone()
-        } else if self.target.is_some() && places {
-            target_hints(target_item.as_ref(), &self.files_body().unwrap_or_default())
+        let selected_action = selected
+            .and_then(|index| unified.rows.get(index))
+            .and_then(|entry| entry.action.as_ref());
+        let keys = if self.vim_normal() || self.window_chooser.is_some() {
+            None
+        } else if let Some((_, keys)) = &level_view {
+            Some(*keys)
         } else if places {
-            self.place_hints(enter_hint, cx)
+            Some(self.place_keys(address))
         } else if unified.command.is_some() {
-            vec![
-                PaletteHint {
-                    key: "up down",
-                    label: "navigate",
-                },
-                PaletteHint {
-                    key: "enter",
-                    label: "run",
-                },
-                PaletteHint {
-                    key: "backspace",
-                    label: "back",
-                },
-            ]
+            Some(
+                palette_keys("run")
+                    .take(selected_action.is_some())
+                    .copy(address)
+                    .back(true),
+            )
         } else {
-            match unified.mode {
-                Some(PaletteMode::Command) => vec![
-                    PaletteHint {
-                        key: "tab",
-                        label: "complete",
-                    },
-                    PaletteHint {
-                        key: "enter",
-                        label: "run",
-                    },
-                    PaletteHint {
-                        key: "backspace",
-                        label: "leave mode",
-                    },
-                    PaletteHint {
-                        key: "escape",
-                        label: "close",
-                    },
-                ],
-                Some(PaletteMode::Target) if self.target.is_some() => {
-                    target_hints(target_item.as_ref(), &self.last_input)
-                }
-                Some(PaletteMode::Target) => vec![
-                    PaletteHint {
-                        key: "up down",
-                        label: "navigate",
-                    },
-                    PaletteHint {
-                        key: "left right",
-                        label: "expand",
-                    },
-                    PaletteHint {
-                        key: "enter",
-                        label: enter_hint,
-                    },
-                    PaletteHint {
-                        key: "backspace",
-                        label: "leave mode",
-                    },
-                    PaletteHint {
-                        key: "escape",
-                        label: "close",
-                    },
-                ],
-                None => {
-                    let mut hints = vec![
-                        PaletteHint {
-                            key: "left right",
-                            label: "expand",
-                        },
-                        PaletteHint {
-                            key: "up down",
-                            label: "navigate",
-                        },
-                        PaletteHint {
-                            key: "enter",
-                            label: enter_hint,
-                        },
-                    ];
-                    if unified.host.is_some() {
-                        hints.push(PaletteHint {
-                            key: "backspace",
-                            label: "clear host",
-                        });
-                    }
-                    hints.push(PaletteHint {
-                        key: "escape",
-                        label: "close",
-                    });
-                    hints
-                }
-            }
+            Some(
+                palette_keys("run")
+                    .take(selected_action.is_some() || !self.last_input.trim().is_empty())
+                    .complete(matches!(
+                        selected_action,
+                        Some(PaletteAction::Command(_) | PaletteAction::Completion(_))
+                    ))
+                    .back(true),
+            )
         };
-        if !self.last_input.is_empty()
-            || !selected.is_some_and(|index| {
-                unified
-                    .rows
-                    .get(index)
-                    .is_some_and(|entry| entry.row.expanded.is_some())
-                    || unified.parent_index(index).is_some()
-            })
-        {
-            hints.retain(|hint| hint.key != "left right");
-        }
-        if self.vim_normal() {
-            hints = vec![
+        let hints = if self.vim_normal() {
+            vec![
                 PaletteHint {
                     key: "j k",
                     label: "move",
@@ -1603,14 +1388,46 @@ impl CommandPaletteView {
                     key: "q",
                     label: "close",
                 },
-            ];
-        } else if self.vim.is_some() {
-            for hint in &mut hints {
-                if hint.key == "escape" {
-                    hint.label = "normal";
-                }
+            ]
+        } else {
+            let expands = self.last_input.is_empty()
+                && selected.is_some_and(|index| {
+                    unified
+                        .rows
+                        .get(index)
+                        .is_some_and(|entry| entry.row.expanded.is_some())
+                        || unified.parent_index(index).is_some()
+                });
+            let mut hints = vec![PaletteHint {
+                key: "up down",
+                label: "navigate",
+            }];
+            if expands {
+                hints.push(PaletteHint {
+                    key: "left right",
+                    label: "expand",
+                });
             }
-        }
+            hints.extend([
+                PaletteHint {
+                    key: "enter",
+                    label: enter_hint,
+                },
+                PaletteHint {
+                    key: "backspace",
+                    label: "leave mode",
+                },
+                PaletteHint {
+                    key: "escape",
+                    label: if self.vim.is_some() {
+                        "normal"
+                    } else {
+                        "close"
+                    },
+                },
+            ]);
+            hints
+        };
         let mut input = palette_input(&self.input, unified.pills(), cx);
         if let Some(vim) = &self.vim {
             input = input.suffix(palette_vim_badge(vim.mode(), vim.pending(), cx));
@@ -1630,6 +1447,9 @@ impl CommandPaletteView {
             })
             .child(input);
         let mut surface = PaletteSurface::new(input, cx.entity_id().as_u64()).hints(hints);
+        if let Some(keys) = keys {
+            surface = surface.keys(keys);
+        }
         if let Some(usage) = usage {
             surface = surface.usage(usage);
         }
@@ -1638,8 +1458,6 @@ impl CommandPaletteView {
         }
         surface = if let Some((rows, _)) = level_view {
             surface.rows(rows)
-        } else if let Some((picker, _)) = &self.target {
-            surface.rows(picker.clone())
         } else if unified.rows.is_empty() {
             surface.rows(palette_empty("No matches", cx))
         } else {
@@ -1686,10 +1504,6 @@ impl CommandPaletteView {
     }
 
     fn navigate(&mut self, direction: isize, cx: &mut Context<Self>) {
-        if let Some((picker, _)) = &self.target {
-            picker.update(cx, |picker, cx| picker.navigate(direction, cx));
-            return;
-        }
         if let Some(unified) = &self.unified {
             let Some(next) = unified.navigate(self.selected, direction) else {
                 return;
@@ -1833,36 +1647,24 @@ impl CommandPaletteView {
     }
 
     fn outdent(&mut self, _: &OutdentInline, window: &mut Window, cx: &mut Context<Self>) {
-        if self.places() && self.shift_tab_places(window, cx) {
-            cx.stop_propagation();
+        if self.places() {
+            self.shift_tab_places(window, cx);
+        } else if self.window_chooser.is_none() && self.unified.is_some() {
+            self.pop_layer(window, cx);
+        } else {
+            return;
         }
+        cx.stop_propagation();
     }
 
     fn leave_layer(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
-        let (value, cursor, selecting) = {
-            let input = self.input.read(cx);
-            (
-                input.value().to_string(),
-                input.cursor(),
-                !input.selected_range().is_empty(),
-            )
-        };
-        if self.target.is_some()
-            && !selecting
-            && cursor == value.len()
-            && let Some(up) = self.files_body().as_deref().and_then(pop_level)
-        {
-            self.set_files_body(&up, window, cx);
-            cx.stop_propagation();
-            return;
-        }
         if self.places() {
             if self.backspace_places(window, cx) {
                 cx.stop_propagation();
             }
             return;
         }
-        if !value.is_empty() {
+        if !self.input.read(cx).value().is_empty() {
             return;
         }
         if self.window_chooser.is_some() {
@@ -1870,25 +1672,32 @@ impl CommandPaletteView {
             cx.stop_propagation();
             return;
         }
-        if let Some(unified) = &mut self.unified {
-            unified.pop_layer();
-            self.selected = None;
-            self.navigation_engaged = false;
-            self.refresh(window, cx);
-            cx.notify();
+        if self.pop_layer(window, cx) {
             cx.stop_propagation();
         }
     }
 
-    fn address(&self, cx: &App) -> Option<String> {
-        if let Some((picker, _)) = &self.target {
-            let item = picker.read(cx).selected_item()?;
-            return match (item.kind, item.target) {
-                (TargetKind::Host, _) => Some(format!("@{}", item.host)),
-                (_, Some(target)) => Some(format!("@{}:{target}", item.host)),
-                _ => None,
-            };
-        }
+    fn pop_layer(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(unified) = &mut self.unified else {
+            return false;
+        };
+        unified.pop_layer();
+        self.selected = None;
+        self.navigation_engaged = false;
+        self.refresh(window, cx);
+        cx.notify();
+        true
+    }
+
+    fn copy_target(&self, cx: &App) -> Option<String> {
+        self.level
+            .as_ref()
+            .and_then(|(_, level)| level.copy_text(cx))
+            .or_else(|| self.place_address())
+            .or_else(|| self.address())
+    }
+
+    fn address(&self) -> Option<String> {
         let unified = self.unified.as_ref()?;
         match unified.rows.get(self.selected?)?.action.as_ref()? {
             PaletteAction::Target { host, target, .. } => {
@@ -1903,12 +1712,7 @@ impl CommandPaletteView {
             cx.stop_propagation();
             return;
         }
-        let text = self
-            .level
-            .as_ref()
-            .and_then(|(_, level)| level.copy_text(cx))
-            .or_else(|| self.place_address());
-        if let Some(address) = text.or_else(|| self.address(cx)) {
+        if let Some(address) = self.copy_target(cx) {
             cx.write_to_clipboard(ClipboardItem::new_string(address.clone()));
             Self::notify_action(format!("Copied {address}"), window, cx);
         }
@@ -1968,20 +1772,12 @@ impl CommandPaletteView {
             cx.stop_propagation();
             return;
         }
-        if self.caret_at_end(cx) && self.level_key(ActionKey::Left, window, cx) {
-            cx.stop_propagation();
-            return;
-        }
         self.move_in_tree(false, cx);
     }
 
     fn open_host(&mut self, _: &MoveRight, window: &mut Window, cx: &mut Context<Self>) {
         if self.vim_normal() {
             Self::dispatch_twin(Twin::Into, window, cx);
-            cx.stop_propagation();
-            return;
-        }
-        if self.caret_at_end(cx) && self.level_key(ActionKey::Right, window, cx) {
             cx.stop_propagation();
             return;
         }
@@ -2071,6 +1867,11 @@ impl CommandPaletteView {
             return;
         }
         if self.unified.is_some() {
+            if let Some(twin) = palette_chord(&event.keystroke) {
+                Self::dispatch_twin(twin, window, cx);
+                cx.stop_propagation();
+                return;
+            }
             self.vim_key(event, window, cx);
             return;
         }

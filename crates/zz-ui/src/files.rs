@@ -18,7 +18,7 @@ use zz_protocol::{
 use penna::TextStyle;
 
 use penna::blocks::palette::{
-    PaletteHint, PaletteRow, palette_list_height, palette_row, palette_row_height,
+    PaletteKeys, PaletteRow, palette_list_height, palette_row, palette_row_height,
 };
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
     button::{Button, ButtonVariants as _},
     command::{
         ActionContext, ActionKey, CommandPaletteView, LevelEffect, PaletteActionLevel,
-        PaletteBackend, PaletteHostId, record_recent,
+        PaletteBackend, PaletteHostId, palette_keys, record_recent,
     },
     h_flex,
     touch::CoarsePointer,
@@ -836,29 +836,29 @@ impl FilesLevel {
     }
 
     #[must_use]
-    pub fn hints(&self, cx: &App) -> Vec<PaletteHint> {
-        let inserts = self.inserts(cx);
-        let mut hints = vec![
-            PaletteHint {
-                key: "tab right",
-                label: "open",
-            },
-            PaletteHint {
-                key: "shift-tab left",
-                label: "parent",
-            },
-            PaletteHint {
-                key: "enter",
-                label: if inserts { "insert" } else { "copy" },
-            },
-        ];
-        if inserts {
-            hints.push(PaletteHint {
-                key: "alt-enter",
-                label: "copy",
-            });
-        }
-        hints
+    pub fn has_parent(&self) -> bool {
+        parent_dir(&self.path.dir, self.absolute_dir().as_deref()).is_some()
+    }
+
+    #[must_use]
+    pub fn keys(&self, pick: bool, cx: &App) -> PaletteKeys {
+        let row = self.selected_row();
+        let verb = if pick {
+            "choose"
+        } else if self.inserts(cx) {
+            "insert"
+        } else {
+            "copy"
+        };
+        let listed = self
+            .listing
+            .as_ref()
+            .is_some_and(|listing| listing.root.is_some());
+        palette_keys(verb)
+            .take(row.is_some() || (pick && listed))
+            .copy(self.copy_text().is_some())
+            .inside(row.is_some_and(|row| row.entry.kind == PathKind::Dir))
+            .back(self.has_parent())
     }
 
     fn empty_message(&self) -> SharedString {
@@ -900,17 +900,13 @@ impl FilesLevel {
                     cx.stop_propagation();
                 })
         });
-        let kind = if folder { "dir ›" } else { "file" };
-        let right = match row.mark {
-            Some(mark) => format!("{} {kind}", mark_letter(mark)),
-            None => kind.to_owned(),
-        };
         palette_row(
             ("files-row", index),
             &PaletteRow {
                 label: row.name.clone().into(),
                 matches: row.matches.clone(),
-                right: right.into(),
+                right: row.mark.map(mark_letter).unwrap_or_default().into(),
+                inside: Some(folder),
                 icon: Some(if folder {
                     IconName::Folder
                 } else {
@@ -992,6 +988,7 @@ impl Render for FilesLevel {
 pub struct FilesAction {
     backend: Rc<dyn PaletteBackend>,
     level: Option<(Entity<FilesLevel>, FilesPlace)>,
+    pick: bool,
     palette: Option<WeakEntity<CommandPaletteView>>,
     clicks: Option<Subscription>,
 }
@@ -1021,6 +1018,7 @@ impl FilesAction {
         Self {
             backend,
             level: None,
+            pick: false,
             palette: None,
             clicks: None,
         }
@@ -1082,6 +1080,7 @@ impl PaletteActionLevel for FilesAction {
         cx: &mut App,
     ) -> LevelEffect {
         let place = files_place(context);
+        self.pick = context.pick;
         if self.level.as_ref().is_none_or(|(_, last)| *last != place) {
             let backend = Rc::clone(&self.backend);
             let insert = context.insert_pane;
@@ -1115,19 +1114,14 @@ impl PaletteActionLevel for FilesAction {
                 Some(LevelEffect::Stay)
             }
             ActionKey::Tab => pick(&level, true, window, cx).or(Some(LevelEffect::Stay)),
-            ActionKey::Right => rest(level.read(cx).open()),
             ActionKey::ShiftTab => {
                 rest(level.update(cx, |level, _| level.up())).or(Some(LevelEffect::Stay))
             }
-            ActionKey::Left | ActionKey::Backspace => {
+            ActionKey::Backspace => {
                 let path = level.read(cx).path();
-                let edge =
-                    path.filter.is_empty() && (key == ActionKey::Left || !path.typed.is_empty());
-                if edge {
-                    rest(level.update(cx, |level, _| level.up()))
-                } else {
-                    None
-                }
+                (path.filter.is_empty() && !path.typed.is_empty()).then(|| {
+                    rest(level.update(cx, |level, _| level.up())).unwrap_or(LevelEffect::Stay)
+                })
             }
             ActionKey::Enter => pick(&level, false, window, cx),
             ActionKey::Copy => level
@@ -1145,10 +1139,11 @@ impl PaletteActionLevel for FilesAction {
         level.into_any_element()
     }
 
-    fn hints(&self, cx: &App) -> Vec<PaletteHint> {
-        self.level()
-            .map(|level| level.read(cx).hints(cx))
-            .unwrap_or_default()
+    fn keys(&self, cx: &App) -> PaletteKeys {
+        self.level().map_or_else(
+            || palette_keys(if self.pick { "choose" } else { "insert" }),
+            |level| level.read(cx).keys(self.pick, cx),
+        )
     }
 
     fn copy_text(&self, cx: &App) -> Option<String> {

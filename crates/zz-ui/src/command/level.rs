@@ -8,9 +8,19 @@ use zz_client::{
 use zz_protocol::PaneId;
 
 use super::{CommandPaletteEvent, CommandPaletteView, PaletteHostId};
-use penna::blocks::palette::PaletteHint;
+use penna::blocks::palette::PaletteKeys;
 
 actions!(zz_palette, [CopyAddress]);
+
+pub const PALETTE_VERBS: &[&str] = &[
+    "go", "run", "open", "choose", "complete", "insert", "copy", "switch",
+];
+pub const PALETTE_TABS: &[&str] = &["into", "complete"];
+
+#[must_use]
+pub const fn palette_keys(verb: &'static str) -> PaletteKeys {
+    PaletteKeys::new(PALETTE_VERBS, verb, PALETTE_TABS)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActionContext {
@@ -23,6 +33,7 @@ pub struct ActionContext {
     pub rest_range: Range<usize>,
     pub insert_pane: Option<PaneId>,
     pub focus: Option<&'static str>,
+    pub pick: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,8 +41,6 @@ pub enum ActionKey {
     Enter,
     Tab,
     ShiftTab,
-    Left,
-    Right,
     Up,
     Down,
     First,
@@ -56,7 +65,7 @@ pub trait PaletteActionLevel {
     -> LevelEffect;
     fn key(&mut self, key: ActionKey, window: &mut Window, cx: &mut App) -> Option<LevelEffect>;
     fn rows(&mut self, window: &mut Window, cx: &mut App) -> AnyElement;
-    fn hints(&self, cx: &App) -> Vec<PaletteHint>;
+    fn keys(&self, cx: &App) -> PaletteKeys;
     fn copy_text(&self, _cx: &App) -> Option<String> {
         None
     }

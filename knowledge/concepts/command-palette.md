@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Unified palette and tmux command completions
-description: The palette's words-and-verbs model (no sigils, words match places and actions, a verb asks for its slots in turn, the footer shows the tmux command, `:` for raw tmux), chips and keys, insert path and prefix F, the empty palette and recents, agent chats in chat mode, written @host:target places, GUI settings as verbs with a live theme preview, tmux command-alias entries as verbs, shared zz-ui presentation with key glyphs per platform, and preserved tmux prompt behavior.
+description: The palette's words-and-verbs model (no sigils, words match places and actions, a verb asks for its slots in turn, the footer shows the tmux command, `:` for raw tmux), chips and the one key model the palette, the composer's @ menu and the files level share with their four-slot key strip, insert path and prefix F, the empty palette and recents, agent chats in chat mode, written @host:target places, GUI settings as verbs with a live theme preview, tmux command-alias entries as verbs, shared zz-ui presentation with key glyphs per platform, and preserved tmux prompt behavior.
 resource: crates/zz-ui/src/command.rs
 tags: [ala, command-prompt, tmux, completions, ui]
-timestamp: 2026-10-31T00:00:00-03:00
+timestamp: 2026-11-14T00:00:00-03:00
 ---
 
 # Overview
@@ -57,7 +57,7 @@ The footer's usage line says what Enter runs, with names: `runs  capture-pane -p
 highlighted pane in read pane's picker, `runs  select-window -t zz:2` on a window row, `gui · no
 tmux command` for a setting. The line keeps its room while the palette lists places or raw tmux,
 even on a row that runs nothing (a host, a recent file), so the palette does not change height as
-the selection moves (`CommandPaletteSurface::reserve_usage`). The parser is
+the selection moves (`PaletteSurface::reserve_usage`). The parser is
 `zz_client::place::parse`; rows are built in `crates/zz-ui/src/command/palette_places.rs` and the
 keys in `palette_view_places.rs`.
 
@@ -84,15 +84,20 @@ in a pane they are its actions. The footer shows the highlighted verb with that 
 Going into a place found by search adds every chip on its path. The chips take at most three
 quarters of the field, and when they don't fit the longest place names shorten first.
 
+The palette, the composer's `@` menu and the files level answer to the same keys:
+
 | Key | Does |
 | --- | --- |
-| Enter | Goes to a place, starts or runs a verb, picks a slot's row, opens a recent. With no row, goes to the place the chips name |
-| Tab, or Right with the caret at the end | Goes into the highlighted session, window or pane. Commands after `:` complete their name |
-| Shift-Tab | Drops the last chip and highlights it in its parent's list, or steps a verb back |
-| Backspace on an empty field | Takes a verb's last value back, then the verb, then the last chip. Dropping the host chip makes search cover every host |
-| Up, Down | Move, wrapping, skipping headers |
-| Alt-Enter | `CopyAddress`: copies the highlighted place as tmux writes it, `@host:%52` |
+| Up, Down, Ctrl-N, Ctrl-P | Move, wrapping, skipping headers (`penna::blocks::palette::palette_chord` maps the chords) |
+| Enter | Takes the row: goes to a place, runs a verb (or starts it when it has slots), picks a slot's row, opens a recent. With no row, goes to the place the chips name |
+| Alt-Enter | Copies the row's written address and stays open: a place as tmux writes it, `@host:%52` (`CopyAddress`), a file's plain path, the `@` menu's raw reference |
+| Tab | Goes into a row that has an inside: a session, window or pane (it becomes a chip), a verb with slots left to fill, a folder. Does nothing on any other row. Commands after `:` complete their name |
+| Shift-Tab | Backs out one level and highlights the row it left: drops the last chip, steps a verb back, goes to the parent folder |
+| Backspace on an empty field | Same as Shift-Tab. Dropping the host chip makes search cover every host |
+| Left, Right | Move the caret, nothing else (the daemon `prefix s` and `prefix w` chooser keeps Left and Right for its tree) |
 | Esc | Closes |
+
+The footer is one strip in fixed slots (`penna::blocks::palette::PaletteKeys`, `zz_ui::command::palette_keys`): `↵` and the row's verb (go, run, open, choose, insert, copy), `⌥↵ copy`, `⇥ into` (`⇥ complete` after `:`), `⇧⇥ back`. A slot the highlighted row does not answer is faint, never removed, and each slot is as wide as its widest word, so nothing moves as the highlight does. Levels give their strip through `PaletteActionLevel::keys`. Vim's normal mode and the daemon chooser keep their own hints. Rows a Tab goes into end in a chevron, in a 12px slot every place row keeps so the right text lines up.
 
 A `:` command on a place runs on the place's host with `-t` added from the catalog's target kind
 unless the line has one: a pane id, a window id, or the session id (single-quoted in command text,
@@ -141,11 +146,12 @@ without asking the host again. Backends hand it listings through `PaletteBackend
 
 | Key | Does |
 | --- | --- |
-| Tab, or Right with the caret at the end | Opens the highlighted folder |
-| Shift-Tab, or Left with the caret at the end and no filter | Goes to the parent, highlighting the folder it left; past `~/` once the host said where the home is |
-| Backspace right after a `/` | Goes to the parent |
-| Enter | Puts the path at the cursor of `prefix F`'s pane, else the focused pane (`insert_path`), and closes; copies it instead when that pane is a browser or editor |
+| Tab | Opens the highlighted folder; nothing on a file |
+| Shift-Tab, or Backspace right after a `/` | Goes to the parent, highlighting the folder it left; past `~/` once the host said where the home is |
+| Enter | Puts the path at the cursor of `prefix F`'s pane, else the focused pane (`insert_path`), and closes; copies it instead when that pane is not a terminal (an agent chat, a browser, an editor); hands the folder back in a folder pick |
 | Alt-Enter | Copies the plain path (absolute, `host:/abs/path` from another host, never quoted) and keeps the palette open |
+
+The strip's verb says which: `insert`, `copy`, or `choose` in a folder pick. Rows show the git letter on the right and a chevron on folders.
 
 An insert or a copy is kept as a recent file (`RecentKey::File` with the absolute path). Enter on
 one in the empty palette starts insert path on it, so its folder lists with the name as the
@@ -189,8 +195,15 @@ and its grammar, tmux's `-t` with an optional host in front, or a file on a host
 | `xps:~/src/` | a folder on xps |
 
 Without a host a target means the attached host, and a host's name wins over a session with the
-same name (`parse_target`). Tab completes the highlighted row and opens what is under it; `:`, `.`
-and `/` typed by hand do the same. Files are listed by the host that has them, through the pane a
+same name (`parse_target`). Tab on a host, session, window or folder writes it with its `:`, `.` or
+`/` and opens what is under it, and does nothing on a pane, chat or file; `:`, `.` and `/` typed by
+hand open the level too. Shift-Tab, or Backspace right after a `:`, `.` or `/`, backs out one level
+and highlights the row left (`TargetPicker::climb`); at the root it does nothing. Enter mentions the
+row, Alt-Enter copies the raw reference it would send, Escape closes. The menu's strip sits in a
+footer under the rows, the level's crumb above them. A folder's reference keeps its `/`
+(`@xps:~/src/`), so it reads and resolves as a folder. Pane rows are named by their program and
+title, with the pane id in the detail. The desktop agent view's Shift-Tab mode switch steps aside
+while the menu is open (`next_mode`). Files are listed by the host that has them, through the pane a
 path goes into when it is on that host and any terminal there otherwise
 (`PaletteBackend::list_path`, `MuxClient::request_host_path_list`), so the insert style is that
 pane's: quoted for its shell, `@path` for Claude Code. A path from another host goes in as
@@ -287,7 +300,7 @@ of the field names the mode, NORMAL in the accent, and normal mode draws a block
 
 In insert, Esc and `ctrl-[` go to normal. Keys that have a plain twin dispatch the twin's action
 (`CommandPaletteView::dispatch_twin`), so the two cannot drift apart. The reducer is pure
-(`crates/zz-ui/src/command/palette_vim.rs`) and matches the typed character, falling back to the
+(`libs/penna/src/blocks/palette/vim.rs`) and matches the typed character, falling back to the
 key on layouts without Latin letters, so `:` typed with Option still counts. The one sigil is
 `zz_client::place::is_sigil`.
 
@@ -357,9 +370,9 @@ rejected by the daemon's existing target validation rather than trusted client-s
 
 # How it is rendered in ala
 
-`zz-ui::command::CommandPaletteSurface` owns the shared panel, usage line, and shortcut footer.
-`command/palette.rs` builds its Input, Badge pills, ListItem rows, section headers, status dots,
-and matched-label spans. `PaletteRow::icon` and `PaletteRow::expanded` carry the tree icon and
+`penna::blocks::palette::PaletteSurface` owns the shared panel, usage line, and footer, and the
+same block builds its Input, Badge pills, ListItem rows, section headers, status dots, and
+matched-label spans. `PaletteRow::icon` and `PaletteRow::expanded` carry the tree icon and
 disclosure state. `command_palette_tree_entry` gives the disclosure its own toggle handler while
 the row keeps its activation handler. One `CommandPaletteView` in
 `crates/zz-ui/src/command/palette_view.rs` serves desktop, web, and iOS; the mode, tree, and
@@ -413,8 +426,9 @@ the live version is the `PROTOCOL_VERSION` constant in `crates/zz-protocol/src/m
 | `crates/zz-ui/src/command/palette_model.rs` | Host-agnostic navigation tree, search modes, result grouping, target selection, and fuzzy matching |
 | `crates/zz/src/command/palette.rs` | Desktop `PaletteBackend`: multi-host tree, config-driven settings, and mux activation |
 | `clients/app/src/command_palette.rs` | Web and iOS `PaletteBackend`: single-host tree, client preferences, and connection commands |
-| `crates/zz-ui/src/command.rs` | Shared input, completion rows, badges, shortcut hints, and floating palette surface |
-| `crates/zz-ui/src/command/palette.rs` | Shared tree disclosure, icon, row, pill, section, highlight, and status presentation |
+| `crates/zz-ui/src/command.rs` | Module root and `tmux_shortcut`, which turns a tmux key spelling into a row's keys |
+| `crates/zz-ui/src/command/level.rs` | `PaletteActionLevel`, `ActionKey`, the strip's word lists and `palette_keys` |
+| `libs/penna/src/blocks/palette/mod.rs` | The palette block: surface, field and pills, rows with the chevron slot, sections, footer, the key strip (`PaletteKeys`), `palette_chord`; vim's reducer in `vim.rs` |
 | `crates/zz-client/src/completion.rs` | Tokenizes and ranks catalog, option, enum, and live-target completions against the current `MuxSnapshot` |
 | `crates/zz-protocol/src/catalog.rs` | The renderer-free command catalog shared by execution parsing and UI completion; tests enforce unique canonical names, aliases, and options |
 | `crates/zz-protocol/src/message.rs` | Prompt kind/history and the native edit/submit/close actions |

@@ -284,6 +284,7 @@ fn place_row(
         status,
         running: candidate.level != Level::Host && running(tree, &place),
         icon: Some(icon),
+        inside: Some(true),
         ..Default::default()
     }
 }
@@ -333,6 +334,7 @@ fn chat_entry(
             right: right.into(),
             running: chat.running,
             icon: Some(chat.icon.clone()),
+            inside: Some(true),
             ..Default::default()
         },
         PaletteAction::Place(place),
@@ -387,6 +389,7 @@ const fn verb_icon(verb: &Verb) -> IconName {
 fn verb_entry(
     verbs: &[Verb],
     found: &VerbMatch,
+    scope: &Place,
     shortcut: &dyn Fn(&str) -> Option<SharedString>,
 ) -> PaletteEntry {
     let verb = &verbs[found.index];
@@ -398,6 +401,7 @@ fn verb_entry(
             detail: verb.description.clone().into(),
             right: verb.spelled().into(),
             icon: Some(verb_icon(verb)),
+            inside: Some(verb_goes_in(verb, scope)),
             shortcut: verb
                 .command()
                 .filter(|_| plain)
@@ -407,6 +411,12 @@ fn verb_entry(
         },
         PaletteAction::Verb(found.index),
     )
+}
+
+pub(crate) fn verb_goes_in(verb: &Verb, scope: &Place) -> bool {
+    let filled = matches!(verb.slots.first(), Some(Slot::Target(_)))
+        && scope.level().is_some_and(|level| level > Level::Host);
+    verb.raw || verb.slots.len() > usize::from(filled)
 }
 
 pub(crate) const fn slot_noun(slot: &Slot) -> &'static str {
@@ -529,7 +539,7 @@ impl UnifiedPalette {
         let verb_rows = verbs
             .iter()
             .take(VERB_ROWS)
-            .map(|found| verb_entry(&self.verbs, found, shortcut))
+            .map(|found| verb_entry(&self.verbs, found, &scope, shortcut))
             .collect::<Vec<_>>();
         let place_rows = places
             .iter()
@@ -612,7 +622,10 @@ impl UnifiedPalette {
                     .take(PLACE_ROWS)
                     .map(|candidate| {
                         PaletteEntry::row(
-                            place_row(fleet, &self.tree, candidate, &host),
+                            PaletteRow {
+                                inside: Some(false),
+                                ..place_row(fleet, &self.tree, candidate, &host)
+                            },
                             PaletteAction::Fill(candidate.place),
                         )
                     })
@@ -627,6 +640,7 @@ impl UnifiedPalette {
                     detail: label.clone().into(),
                     right: draft.verb.name.clone().into(),
                     icon: Some(IconName::Pencil),
+                    inside: Some(false),
                     ..Default::default()
                 },
                 PaletteAction::Submit,
@@ -727,6 +741,7 @@ impl UnifiedPalette {
                         label: if label.is_empty() { name } else { label }.into(),
                         icon: Some(IconName::Terminal),
                         right: command.clone().into(),
+                        inside: Some(false),
                         ..Default::default()
                     },
                     PaletteAction::History(command),
@@ -746,6 +761,7 @@ impl UnifiedPalette {
                         PaletteRow {
                             label: recent.label.clone().into(),
                             icon: Some(icon.clone()),
+                            inside: Some(false),
                             ..Default::default()
                         },
                         PaletteAction::Recent(recent.key.clone()),

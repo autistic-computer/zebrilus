@@ -12,11 +12,11 @@ use zz_client::{
 
 use super::{
     ActionContext, ActionKey, CommandPaletteEvent, CommandPaletteView, GuiEvent, LevelEffect,
-    PaletteActionLevel, record_recent,
+    PaletteActionLevel, palette_keys, record_recent,
 };
 use crate::IconName;
 use penna::blocks::palette::{
-    PaletteHint, PaletteRow, palette_empty, palette_list_height, palette_row, palette_row_height,
+    PaletteKeys, PaletteRow, palette_empty, palette_list_height, palette_row, palette_row_height,
     palette_section,
 };
 
@@ -340,9 +340,9 @@ impl PaletteActionLevel for GuiLevel {
             .into_any_element()
     }
 
-    fn hints(&self, _: &App) -> Vec<PaletteHint> {
-        let enter = match self.selected().map(|row| &row.pick) {
-            Some(Pick::Value(..)) => "apply",
+    fn keys(&self, _: &App) -> PaletteKeys {
+        let pick = self.selected().map(|row| &row.pick);
+        let verb = match pick {
             Some(Pick::Action(action))
                 if self
                     .offer(action)
@@ -350,34 +350,12 @@ impl PaletteActionLevel for GuiLevel {
             {
                 "switch"
             }
-            Some(Pick::Action(_)) | None => "choose",
+            _ => "choose",
         };
-        let mut hints = Vec::new();
-        if self.action.is_none() {
-            hints.push(PaletteHint {
-                key: "tab",
-                label: "values",
-            });
-        }
-        hints.extend([
-            PaletteHint {
-                key: "enter",
-                label: enter,
-            },
-            PaletteHint {
-                key: "backspace",
-                label: if self.action.is_some() {
-                    "back"
-                } else {
-                    "leave"
-                },
-            },
-            PaletteHint {
-                key: "escape",
-                label: "close",
-            },
-        ]);
-        hints
+        palette_keys(verb)
+            .take(pick.is_some())
+            .inside(matches!(pick, Some(Pick::Action(_))))
+            .back(true)
     }
 
     fn open_recent(&mut self, key: &RecentKey, _: &mut Window, cx: &mut App) -> LevelEffect {

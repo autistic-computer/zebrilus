@@ -7,8 +7,8 @@ mod palette_view;
 
 pub use gui_level::GuiLevel;
 pub use level::{
-    ActionContext, ActionKey, CopyAddress, LevelEffect, PaletteActionLevel, install_recents,
-    palette_recents, record_recent,
+    ActionContext, ActionKey, CopyAddress, LevelEffect, PALETTE_TABS, PALETTE_VERBS,
+    PaletteActionLevel, install_recents, palette_keys, palette_recents, record_recent,
 };
 pub use palette_model::{
     PaletteChat, PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget, PaletteTree,
@@ -17,7 +17,7 @@ pub use palette_model::{
 pub use palette_places::palette_fleet;
 pub use palette_view::{
     CommandPaletteEvent, CommandPaletteView, FolderPick, GuiEvent, PaletteBackend, mention_picker,
-    target_hosts, target_picker,
+    target_hosts,
 };
 
 pub(crate) use palette_model::fuzzy_match;

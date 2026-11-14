@@ -784,6 +784,9 @@ impl AgentView {
     }
 
     fn next_mode(&mut self, _: &OutdentInline, _: &mut Window, cx: &mut Context<Self>) {
+        if self.mention.read(cx).is_open() {
+            return;
+        }
         let Some(mode) = self
             .pane_state
             .settings

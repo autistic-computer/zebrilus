@@ -64,8 +64,8 @@ impl PaletteActionLevel for FakeLevel {
         div().into_any_element()
     }
 
-    fn hints(&self, _: &App) -> Vec<PaletteHint> {
-        Vec::new()
+    fn keys(&self, _: &App) -> penna::blocks::palette::PaletteKeys {
+        palette_keys("go")
     }
 
     fn open_recent(&mut self, key: &RecentKey, _: &mut Window, _: &mut App) -> LevelEffect {
@@ -1009,59 +1009,6 @@ fn a_pasted_written_place_becomes_chips(cx: &mut TestAppContext) {
 }
 
 #[ala::test]
-fn prefix_f_lists_the_panes_folder_and_inserts_into_that_pane(cx: &mut TestAppContext) {
-    cx.update(crate::init);
-    let (backend, calls) = backend(online_tree());
-    let (palette, cx) = mount(cx, move |window, cx| {
-        CommandPaletteView::new_target(backend, "~/dev/zz/", Some(PaneId(10)), window, cx)
-    });
-    cx.run_until_parked();
-    assert_eq!(
-        *calls.borrow(),
-        [Call::List(LOCAL, "~/dev/zz/".to_owned(), Some(PaneId(10)))]
-    );
-    let picker = palette.read_with(cx, |palette, _| palette.target.as_ref().unwrap().0.clone());
-    picker.update(cx, |picker, cx| {
-        picker.apply_begin(
-            "local",
-            1,
-            Ok(PathListRoot {
-                root: "/home/fab/dev/zz".to_owned(),
-                display_root: "~/dev/zz".to_owned(),
-                cwd: Some("/home/fab/dev/zz".to_owned()),
-                insert: zz_protocol::InsertStyle::Shell(zz_protocol::ShellKind::Posix),
-            }),
-            cx,
-        );
-        let entries: Arc<[PathEntry]> = Arc::from([
-            PathEntry {
-                rel: "crates/".to_owned(),
-                kind: zz_protocol::PathKind::Dir,
-                symlink: false,
-            },
-            PathEntry {
-                rel: "crates/zz/src/main.rs".to_owned(),
-                kind: zz_protocol::PathKind::File,
-                symlink: false,
-            },
-        ]);
-        picker.apply_chunk("local", 1, &entries, true, false, cx);
-    });
-    cx.simulate_input("mainrs");
-    cx.run_until_parked();
-    cx.simulate_keystrokes("enter");
-    cx.run_until_parked();
-    assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
-    assert_eq!(
-        calls.borrow().last(),
-        Some(&Call::Insert(
-            PaneId(10),
-            "crates/zz/src/main.rs".to_owned()
-        ))
-    );
-}
-
-#[ala::test]
 fn prefix_f_opens_files_on_the_panes_folder_and_inserts_into_that_pane(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls, sink) = files_backend();
@@ -1117,13 +1064,14 @@ fn files_open_folders_and_go_back_up_to_the_folder_left(cx: &mut TestAppContext)
         "~/one/crates/",
         "going up highlights the folder left"
     );
-    cx.simulate_keystrokes("left");
+    cx.simulate_keystrokes("right left");
     cx.run_until_parked();
-    assert_eq!(target_value(&palette, cx), "~/one/");
-    cx.simulate_keystrokes("right");
-    cx.run_until_parked();
-    assert_eq!(target_value(&palette, cx), "~/one/crates/");
-    cx.simulate_keystrokes("backspace");
+    assert_eq!(
+        target_value(&palette, cx),
+        "~/one/crates/",
+        "Left and Right only move the caret"
+    );
+    cx.simulate_keystrokes("right backspace");
     cx.run_until_parked();
     assert_eq!(target_value(&palette, cx), "~/one/");
 
@@ -1146,6 +1094,34 @@ fn files_open_folders_and_go_back_up_to_the_folder_left(cx: &mut TestAppContext)
         ],
         "folders under a finished walk are not listed again"
     );
+}
+
+#[ala::test]
+fn tab_on_a_file_changes_nothing(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let (backend, calls, sink) = files_backend();
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_unified(backend, None, window, cx)
+    });
+    insert_path(cx);
+    list_one(cx, &sink);
+    cx.simulate_keystrokes("down down");
+    cx.run_until_parked();
+    let state = |palette: &Entity<CommandPaletteView>, cx: &mut VisualTestContext| {
+        let row = palette.read_with(cx, |palette, cx| {
+            palette.level.as_ref().and_then(|(_, level)| {
+                level
+                    .copy_text(cx)
+                    .map(|path| (path, palette.is_finished()))
+            })
+        });
+        (target_value(palette, cx), row, calls.borrow().len())
+    };
+    let before = state(&palette, cx);
+    assert_eq!(before.1, Some(("/home/me/one/README.md".to_owned(), false)));
+    cx.simulate_keystrokes("tab");
+    cx.run_until_parked();
+    assert_eq!(state(&palette, cx), before);
 }
 
 #[ala::test]
@@ -1290,6 +1266,7 @@ fn files_context(
         rest_range: 1..1 + rest.len(),
         insert_pane: Some(PaneId(10)),
         focus: None,
+        pick: false,
     }
 }
 

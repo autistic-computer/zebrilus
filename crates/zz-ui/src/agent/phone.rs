@@ -289,12 +289,17 @@ impl PlusSheet<'_> {
 
     fn mention_rows(&self, drilled: &[TargetItem], on_action: &OnPlus) -> Vec<TouchRow> {
         let row = |index: usize, item: &TargetItem, inside: bool| {
-            let row = TouchRow::new(("chat-plus-mention-row", index), item.label.clone())
+            let row = TouchRow::new(("chat-plus-mention-row", index), item.name())
                 .icon(item.icon.clone());
-            let row = if item.detail.is_empty() {
+            let detail = [item.detail.as_ref(), item.meta.as_ref()]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ");
+            let row = if detail.is_empty() {
                 row
             } else {
-                row.detail(item.detail.clone())
+                row.detail(detail)
             };
             if inside {
                 row.trailing(TouchTrailing::Glyph(IconName::ChevronRight))

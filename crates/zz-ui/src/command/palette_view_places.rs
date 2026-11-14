@@ -10,12 +10,12 @@ use zz_client::{
 use zz_protocol::{CommandInvocation, MAX_COMMAND_PROMPT_BYTES, catalog_command_spec};
 
 use super::{CommandPaletteView, has_command_arguments};
-use penna::blocks::palette::PaletteHint;
+use penna::blocks::palette::PaletteKeys;
 
 use crate::command::{
-    ActionContext, ActionKey, PaletteHostId, PaletteTarget,
+    ActionContext, ActionKey, PaletteHostId, PaletteTarget, palette_keys,
     palette_model::{PaletteAction, UnifiedPalette, needs_arguments},
-    palette_places::{Chip, Draft, chip_for, palette_fleet, place_label},
+    palette_places::{Chip, Draft, chip_for, palette_fleet, place_label, verb_goes_in},
     record_recent,
 };
 
@@ -121,10 +121,6 @@ impl CommandPaletteView {
         self.set_query(body.to_owned(), window, cx);
     }
 
-    pub(super) fn files_body(&self) -> Option<String> {
-        (self.places() && self.next_slot() == Some(Slot::Path)).then(|| self.last_input.clone())
-    }
-
     pub(super) fn commit_typed(
         &mut self,
         value: &str,
@@ -179,6 +175,7 @@ impl CommandPaletteView {
             rest_range: 0..self.last_input.len(),
             insert_pane: self.insert_pane.or_else(|| self.backend.active_pane(cx)),
             focus,
+            pick: self.pick_folder.is_some(),
         })
     }
 
@@ -534,6 +531,7 @@ impl CommandPaletteView {
                     };
                     self.level_key(key, window, cx);
                 }
+                Slot::Target(_) | Slot::Text(_) if complete => {}
                 Slot::Target(_) => {
                     if let Some(PaletteAction::Fill(place)) = self.selected_action() {
                         let label = self
@@ -566,7 +564,9 @@ impl CommandPaletteView {
                     .unified
                     .as_ref()
                     .and_then(|unified| unified.verbs.get(index).cloned());
-                if let Some(verb) = verb {
+                if let Some(verb) = verb
+                    && (!complete || self.goes_in(&verb))
+                {
                     self.start_verb(verb, window, cx);
                 }
             }
@@ -682,17 +682,13 @@ impl CommandPaletteView {
         if !self.input.read(cx).value().is_empty() {
             return false;
         }
-        if self.draft().is_some() {
-            return self.step_back(window, cx);
-        }
-        let Some(unified) = &mut self.unified else {
-            return false;
-        };
-        if unified.chips.pop().is_none() {
-            return false;
-        }
-        self.set_query(String::new(), window, cx);
-        true
+        self.step_back(window, cx)
+    }
+
+    fn goes_in(&self, verb: &Verb) -> bool {
+        self.unified
+            .as_ref()
+            .is_some_and(|unified| verb_goes_in(verb, &unified.scope()))
     }
 
     pub(super) fn place_address(&self) -> Option<String> {
@@ -705,33 +701,61 @@ impl CommandPaletteView {
         }
     }
 
-    pub(super) fn place_hints(&self, enter: &'static str, cx: &App) -> Vec<PaletteHint> {
-        let mut hints = Vec::new();
-        if matches!(self.selected_action(), Some(PaletteAction::Place(_))) {
-            hints.push(PaletteHint {
-                key: "tab",
-                label: "into",
-            });
+    pub(super) fn place_keys(&self, address: bool) -> PaletteKeys {
+        let Some(unified) = self.unified.as_ref() else {
+            return palette_keys("go");
+        };
+        let action = self.selected_action();
+        let back = !unified.chips.is_empty() || unified.draft.is_some();
+        if let Some(command) = self.raw_command() {
+            return palette_keys("run")
+                .take(action.is_some() || !command.trim().is_empty())
+                .copy(address)
+                .complete(matches!(
+                    action,
+                    Some(PaletteAction::Command(_) | PaletteAction::Completion(_))
+                ))
+                .back(back);
         }
-        hints.push(PaletteHint {
-            key: "enter",
-            label: enter,
-        });
-        if self.input.read(cx).value().is_empty()
-            && self
-                .unified
-                .as_ref()
-                .is_some_and(|unified| !unified.chips.is_empty() || unified.draft.is_some())
-        {
-            hints.push(PaletteHint {
-                key: "backspace",
-                label: "back",
+        let slot_verb = || {
+            let left = unified.draft.as_ref().map_or(0, |draft| {
+                draft.verb.slots.len().saturating_sub(draft.filled.len())
             });
-        }
-        hints.push(PaletteHint {
-            key: "escape",
-            label: "close",
-        });
-        hints
+            if left > 1 { "choose" } else { "run" }
+        };
+        let (verb, take, inside) = match &action {
+            Some(PaletteAction::Place(_)) => ("go", true, true),
+            Some(PaletteAction::Verb(index)) => (
+                "run",
+                true,
+                unified
+                    .verbs
+                    .get(*index)
+                    .is_some_and(|verb| self.goes_in(verb)),
+            ),
+            Some(PaletteAction::Recent(key)) => (
+                match key {
+                    RecentKey::Place { .. } => "go",
+                    RecentKey::File { .. } => "open",
+                    RecentKey::Command(_) | RecentKey::Gui(_) => "run",
+                },
+                true,
+                false,
+            ),
+            Some(PaletteAction::Fill(_) | PaletteAction::Submit) => (slot_verb(), true, false),
+            Some(_) => ("run", true, false),
+            None => (
+                "go",
+                unified.draft.is_none()
+                    && unified.scope() != Place::default()
+                    && !unified.chips.iter().all(|chip| chip.auto),
+                false,
+            ),
+        };
+        palette_keys(verb)
+            .take(take)
+            .copy(address)
+            .inside(inside)
+            .back(back)
     }
 }

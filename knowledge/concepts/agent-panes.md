@@ -563,7 +563,9 @@ calls:
   (`target::mention_layer` puts the open picker in it). Opening and closing it changes nothing in
   the chat's layout or scroll. The list keeps at most eight rows and fewer when the window has no
   room above the composer (the picker measures where it sits and `fit`s to it). Typing goes on in
-  the input, and `mention_keys` keeps Up, Down, Tab, Enter and Escape.
+  the input, and `mention_keys` keeps Up, Down, Ctrl-N, Ctrl-P, Tab, Shift-Tab, Backspace at a
+  level's edge, Enter, Alt-Enter and Escape, the palette's key model
+  ([command palette](/concepts/command-palette.md#chips-and-keys)).
 - **Picked targets show by name.** Picking a row writes `@` and the name `resolve_target` gives it,
   the name the chat shows for that reference, and the input draws it in the reference highlight
   (penna's `InputState::set_highlights`): a chat as `@fix the atlas tests`, a terminal pane as

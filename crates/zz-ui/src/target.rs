@@ -1,7 +1,7 @@
 use std::{ops::Range, rc::Rc, sync::Arc};
 
 use ala::{
-    Action, AnyElement, App, ClickEvent, Context, ElementId, Entity, EventEmitter,
+    Action, AnyElement, App, ClickEvent, ClipboardItem, Context, ElementId, Entity,
     InteractiveElement, IntoElement, MouseButton, Pixels, Point, Render, ScrollStrategy,
     SharedString, Subscription, Task, UniformListScrollHandle, Window, canvas, div, prelude::*, px,
     uniform_list,
@@ -15,15 +15,16 @@ use penna::{
 };
 
 use penna::blocks::palette::{
-    PaletteHint, PaletteRow, PaletteStatus, palette_hint, palette_row, palette_row_height,
+    PaletteKeys, PaletteRow, PaletteStatus, Twin, palette_chord, palette_footer, palette_row,
+    palette_row_height,
 };
 
 use crate::{
     ActiveTheme as _, Colorize as _, IconName, StyledExt as _,
-    command::{PaletteHostId, PaletteTarget, fuzzy_match},
+    command::{CommandPaletteView, PaletteHostId, PaletteTarget, fuzzy_match},
     files::{FileRow, GitMarks, Listing, file_rows, mark_letter},
     h_flex,
-    input::{Enter, Escape, IndentInline, InputState, MoveDown, MoveUp},
+    input::{Backspace, Enter, Escape, IndentInline, InputState, MoveDown, MoveUp, OutdentInline},
     mention::{Mentions, ref_highlight},
 };
 
@@ -31,7 +32,8 @@ pub const TARGET_MAX_ROWS: usize = 200;
 pub const TARGET_VISIBLE_ROWS: usize = 8;
 const HEADER_HEIGHT: f32 = 28.0;
 const BOTTOM_PADDING: f32 = 6.0;
-const CHROME_HEIGHT: f32 = HEADER_HEIGHT + 2.0 * BOTTOM_PADDING + 2.0;
+const CHROME_HEIGHT: f32 =
+    HEADER_HEIGHT + 2.0 * BOTTOM_PADDING + 2.0 + penna::blocks::palette::PALETTE_FOOTER_HEIGHT;
 const ROOM_MARGIN: f32 = 8.0;
 
 pub trait TargetBackend {
@@ -94,21 +96,6 @@ pub enum TargetKind {
     Chat,
     Dir,
     File,
-}
-
-impl TargetKind {
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Host => "host",
-            Self::Session => "session",
-            Self::Window => "window",
-            Self::Pane => "pane",
-            Self::Chat => "chat",
-            Self::Dir => "dir",
-            Self::File => "file",
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -311,6 +298,8 @@ pub struct TargetItem {
     pub entry: Option<PathEntry>,
     pub typed: String,
     pub token: String,
+    pub shown: Option<SharedString>,
+    pub meta: SharedString,
     score: usize,
 }
 
@@ -338,6 +327,8 @@ impl TargetItem {
             entry: None,
             typed,
             token,
+            shown: None,
+            meta: SharedString::default(),
             score: 0,
         }
     }
@@ -372,27 +363,25 @@ impl TargetItem {
         let next = match self.kind {
             TargetKind::Host | TargetKind::Session => ":",
             TargetKind::Window => ".",
-            TargetKind::Dir => "/",
-            TargetKind::Pane | TargetKind::Chat | TargetKind::File => "",
+            TargetKind::Dir if !self.typed.ends_with('/') => "/",
+            TargetKind::Dir | TargetKind::Pane | TargetKind::Chat | TargetKind::File => "",
         };
         format!("{}{next}", self.typed)
     }
 
     #[must_use]
-    pub fn insertion(&self) -> String {
-        format!("@{} ", self.token)
+    pub fn name(&self) -> SharedString {
+        self.shown.clone().unwrap_or_else(|| self.label.clone())
     }
 
-    fn right(&self) -> SharedString {
-        let kind = match self.mark {
-            Some(mark) => format!("{} {}", mark_letter(mark), self.kind.label()),
-            None => self.kind.label().to_owned(),
-        };
-        if self.drills() {
-            format!("{kind} ›").into()
-        } else {
-            kind.into()
-        }
+    #[must_use]
+    pub fn reference(&self) -> String {
+        format!("@{}", self.token)
+    }
+
+    #[must_use]
+    pub fn insertion(&self) -> String {
+        format!("@{} ", self.token)
     }
 }
 
@@ -445,10 +434,12 @@ fn file_items(query: &FileQuery) -> Vec<TargetItem> {
                 PathKind::Dir => (TargetKind::Dir, IconName::Folder),
                 PathKind::File => (TargetKind::File, IconName::File),
             };
-            let rest = format!("{}{}", query.dir, escape(&name));
+            let slash = if kind == TargetKind::Dir { "/" } else { "" };
+            let rest = format!("{}{}{slash}", query.dir, escape(&name));
             let mut item = TargetItem::new(kind, name, "", &place, &rest, icon);
             item.matches = matches;
             item.mark = mark;
+            item.meta = mark.map(mark_letter).unwrap_or_default().into();
             item.entry = Some(entry);
             item
         })
@@ -489,6 +480,27 @@ pub(crate) fn find_window<'a>(session: &'a TargetSession, text: &str) -> Option<
         .iter()
         .find(|window| window.index.to_string() == text || window.id.to_string() == text)
         .or_else(|| session.windows.iter().find(|window| window.name == text))
+}
+
+fn pane_name(pane: &TargetPane) -> String {
+    let title = pane.title.trim();
+    pane.program
+        .as_ref()
+        .map(ToString::to_string)
+        .or_else(|| (!title.is_empty()).then(|| title.to_owned()))
+        .unwrap_or_else(|| pane.id.to_string())
+}
+
+fn pane_note(pane: &TargetPane, place: Option<String>) -> String {
+    let title = pane.title.trim();
+    let named = pane.program.is_some() || !title.is_empty();
+    (pane.program.is_some() && !title.is_empty())
+        .then(|| title.to_owned())
+        .into_iter()
+        .chain(place)
+        .chain(named.then(|| pane.id.to_string()))
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 pub(crate) fn pane_detail(pane: &TargetPane, place: Option<String>) -> String {
@@ -644,16 +656,9 @@ fn pane_ref(
             RefTarget::Pane(pane.id),
         );
     }
-    let title = pane.title.trim();
-    let name = pane
-        .program
-        .as_ref()
-        .map(ToString::to_string)
-        .or_else(|| (!title.is_empty()).then(|| title.to_owned()))
-        .unwrap_or_else(|| pane.id.to_string());
     resolved(
         TargetKind::Pane,
-        format!("{name} · {}:{}", session.name, window.index),
+        format!("{} · {}:{}", pane_name(pane), session.name, window.index),
         pane.icon.clone(),
         RefTarget::Pane(pane.id),
     )
@@ -700,25 +705,28 @@ fn host_item(host: &TargetHost, place: &Place) -> TargetItem {
     let mut item = TargetItem::new(
         TargetKind::Host,
         host.name.clone(),
-        detail,
+        "",
         place,
         "",
         host_icon(host),
     );
     item.status = Some(host.status);
+    item.meta = detail.into();
     item
 }
 
 fn session_item(session: &TargetSession, place: &Place, label: String) -> TargetItem {
-    TargetItem::new(
+    let mut item = TargetItem::new(
         TargetKind::Session,
         label,
-        count(session.windows.len(), "window"),
+        "",
         place,
         &session_ref(session),
         IconName::Layers,
     )
-    .at(PaletteTarget::Session(session.id))
+    .at(PaletteTarget::Session(session.id));
+    item.meta = count(session.windows.len(), "window").into();
+    item
 }
 
 fn window_item(
@@ -727,27 +735,31 @@ fn window_item(
     place: &Place,
     label: String,
 ) -> TargetItem {
-    TargetItem::new(
+    let mut item = TargetItem::new(
         TargetKind::Window,
         label,
-        count(window.panes.len(), "pane"),
+        "",
         place,
         &format!("{}:{}", session_ref(session), window.index),
         IconName::AppWindow,
     )
-    .at(PaletteTarget::Window(window.id))
+    .at(PaletteTarget::Window(window.id));
+    item.meta = count(window.panes.len(), "pane").into();
+    item
 }
 
 fn pane_item(pane: &TargetPane, place: &Place, rest: &str, where_: Option<String>) -> TargetItem {
-    TargetItem::new(
+    let mut item = TargetItem::new(
         TargetKind::Pane,
         pane.id.to_string(),
-        pane_detail(pane, where_),
+        pane_note(pane, where_),
         place,
         rest,
         pane.icon.clone(),
     )
-    .at(PaletteTarget::Pane(pane.id))
+    .at(PaletteTarget::Pane(pane.id));
+    item.shown = Some(pane_name(pane).into());
+    item
 }
 
 #[derive(Clone, Copy)]
@@ -807,7 +819,14 @@ fn chat_items(hosts: &[TargetHost], filter: &str, chats: Chats) -> Vec<TargetIte
 }
 
 fn home_item(place: &Place) -> TargetItem {
-    TargetItem::new(TargetKind::Dir, "~/", "files", place, "~", IconName::Folder)
+    TargetItem::new(
+        TargetKind::Dir,
+        "~/",
+        "files",
+        place,
+        "~/",
+        IconName::Folder,
+    )
 }
 
 fn panes_by_id(host: &TargetHost, place: &Place, filter: &str) -> Vec<TargetItem> {
@@ -847,13 +866,13 @@ fn fleet_items(hosts: &[TargetHost], filter: &str) -> Vec<TargetItem> {
             for window in &session.windows {
                 let label = format!("{typed}:{}", window.index);
                 let mut item = window_item(session, window, &place, label.clone());
-                item.detail = format!("{} · {}", window.name, item.detail).into();
+                item.detail = window.name.clone().into();
                 items.extend(item.matching(filter, &format!("{} {}", session.name, window.name)));
                 for pane in &window.panes {
                     let rest = format!("{}:{}.{}", session_ref(session), window.index, pane.id);
-                    let mut item = pane_item(pane, &place, &rest, None);
+                    let mut item = pane_item(pane, &place, &rest, Some(label.clone()));
                     item.label = format!("{label}.{}", pane.id).into();
-                    let metadata = item.detail.to_string();
+                    let metadata = pane_detail(pane, None);
                     items.extend(item.matching(filter, &metadata));
                 }
             }
@@ -1010,31 +1029,27 @@ fn breadcrumb(query: &TargetQuery, root: Option<&PathListRoot>) -> String {
         .replacen(" › ", " ", 1)
 }
 
-const HINTS: [PaletteHint; 3] = [
-    PaletteHint {
-        key: "tab",
-        label: "open",
-    },
-    PaletteHint {
-        key: "enter",
-        label: "insert",
-    },
-    PaletteHint {
-        key: "escape",
-        label: "close",
-    },
-];
+const MENTION_VERBS: &[&str] = &["mention"];
+const MENTION_TABS: &[&str] = &["into"];
 
-pub enum TargetPickerEvent {
-    Picked { open: bool },
+fn level_of(body: &str) -> &str {
+    let mut end = 0;
+    let mut escaped = false;
+    for (index, character) in body.char_indices() {
+        if escaped {
+            escaped = false;
+        } else if character == '\\' {
+            escaped = true;
+        } else if matches!(character, ':' | '.' | '/') {
+            end = index + 1;
+        }
+    }
+    &body[..end]
 }
-
-impl EventEmitter<TargetPickerEvent> for TargetPicker {}
 
 pub struct TargetPicker {
     backend: Rc<dyn TargetBackend>,
-    composer: Option<Entity<InputState>>,
-    anchor: Option<PaneId>,
+    composer: Entity<InputState>,
     own: Option<PaneId>,
     body: Option<String>,
     token: Option<TargetToken>,
@@ -1053,11 +1068,21 @@ pub struct TargetPicker {
     closed_at: Option<Point<Pixels>>,
     raw_before: Option<String>,
     room: Option<Pixels>,
+    pending: Option<String>,
     subscriptions: Vec<Subscription>,
 }
 
 impl TargetPicker {
-    pub fn new(backend: Rc<dyn TargetBackend>, cx: &mut Context<Self>) -> Self {
+    pub fn for_composer(
+        backend: Rc<dyn TargetBackend>,
+        input: Entity<InputState>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        cx.observe_in(&input, window, |picker, _, window, cx| {
+            picker.follow(window, cx);
+        })
+        .detach();
         cx.on_release(|picker, cx| {
             if let Some(listing) = picker.listing.take() {
                 picker.cancel(&listing, cx);
@@ -1066,8 +1091,7 @@ impl TargetPicker {
         .detach();
         Self {
             backend,
-            composer: None,
-            anchor: None,
+            composer: input,
             own: None,
             body: None,
             token: None,
@@ -1086,32 +1110,13 @@ impl TargetPicker {
             closed_at: None,
             raw_before: None,
             room: None,
+            pending: None,
             subscriptions: Vec::new(),
-        }
-    }
-
-    pub fn for_composer(
-        backend: Rc<dyn TargetBackend>,
-        input: Entity<InputState>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        cx.observe_in(&input, window, |picker, _, window, cx| {
-            picker.follow(window, cx);
-        })
-        .detach();
-        Self {
-            composer: Some(input),
-            ..Self::new(backend, cx)
         }
     }
 
     pub fn keep(&mut self, subscription: Subscription) {
         self.subscriptions.push(subscription);
-    }
-
-    pub fn set_anchor(&mut self, anchor: Option<PaneId>) {
-        self.anchor = anchor;
     }
 
     pub fn set_own_chat(&mut self, pane: Option<PaneId>) {
@@ -1143,31 +1148,13 @@ impl TargetPicker {
         self.query.as_ref()
     }
 
-    #[must_use]
-    pub fn listing_root(&self) -> Option<&PathListRoot> {
+    fn listing_root(&self) -> Option<&PathListRoot> {
         self.listing.as_ref()?.root.as_ref()
     }
 
     pub fn fit(&mut self, room: Pixels) {
-        let chrome = if self.composer.is_some() {
-            CHROME_HEIGHT
-        } else {
-            0.0
-        };
-        let rows = ((f32::from(room) - chrome) / palette_row_height()).floor();
-        self.rows = (rows.max(1.0) as usize).min(if self.composer.is_some() {
-            TARGET_VISIBLE_ROWS
-        } else {
-            usize::MAX
-        });
-    }
-
-    pub fn set_body(&mut self, body: &str, cx: &mut Context<Self>) {
-        if self.body.as_deref() == Some(body) {
-            return;
-        }
-        self.body = Some(body.to_owned());
-        self.rebuild(cx);
+        let rows = ((f32::from(room) - CHROME_HEIGHT) / palette_row_height()).floor();
+        self.rows = (rows.max(1.0) as usize).min(TARGET_VISIBLE_ROWS);
     }
 
     pub fn raw_text(&mut self, text: &str) -> String {
@@ -1176,7 +1163,8 @@ impl TargetPicker {
     }
 
     fn follow(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(input) = self.composer.clone() {
+        {
+            let input = self.composer.clone();
             let (value, cursor) = {
                 let input = input.read(cx);
                 (input.value(), input.cursor())
@@ -1210,9 +1198,7 @@ impl TargetPicker {
     }
 
     pub fn sync(&mut self, cx: &mut Context<Self>) {
-        let Some(input) = self.composer.clone() else {
-            return;
-        };
+        let input = self.composer.clone();
         let (value, cursor) = {
             let input = input.read(cx);
             (input.value(), input.cursor())
@@ -1270,7 +1256,7 @@ impl TargetPicker {
                     self.cancel(&listing, cx);
                 }
                 let mut listing = Listing::new(host, dir);
-                match self.backend.list(host, &listing.dir, self.anchor, cx) {
+                match self.backend.list(host, &listing.dir, None, cx) {
                     Ok(request) => listing.request = Some(request),
                     Err(error) => {
                         listing.error = Some(error);
@@ -1327,7 +1313,7 @@ impl TargetPicker {
             return;
         }
         let chats = Chats {
-            shown: self.composer.is_some(),
+            shown: true,
             own: self.own,
         };
         let items = target_items(query, hosts, chats);
@@ -1367,8 +1353,26 @@ impl TargetPicker {
             .then(|| self.items.get(self.selected).map(|item| item.token.clone()))
             .flatten();
         self.items = items.into();
-        self.selected = kept
-            .and_then(|token| self.items.iter().position(|item| item.token == token))
+        let pending = self.pending.as_ref().and_then(|wanted| {
+            self.items
+                .iter()
+                .position(|item| item.completion() == *wanted)
+        });
+        let listing = self.listing.as_ref().filter(|_| {
+            matches!(
+                self.query.as_ref().map(|query| &query.level),
+                Some(TargetLevel::Files { .. })
+            )
+        });
+        if pending.is_some()
+            || listing.is_none_or(|listing| listing.done || listing.error.is_some())
+        {
+            self.pending = None;
+        }
+        self.selected = pending
+            .or_else(|| {
+                kept.and_then(|token| self.items.iter().position(|item| item.token == token))
+            })
             .unwrap_or(0);
         self.scroll
             .scroll_to_item(self.selected, ScrollStrategy::Nearest);
@@ -1449,22 +1453,16 @@ impl TargetPicker {
         true
     }
 
-    pub fn select_edge(&mut self, first: bool, cx: &mut Context<Self>) {
-        if self.items.is_empty() {
-            return;
-        }
-        self.selected = if first { 0 } else { self.items.len() - 1 };
-        self.scroll
-            .scroll_to_item(self.selected, ScrollStrategy::Nearest);
-        cx.notify();
-    }
-
     pub fn complete(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         self.sync(cx);
         let Some(token) = self.token.clone() else {
             return false;
         };
-        if let Some(text) = self.selected_item().map(TargetItem::completion) {
+        if let Some(text) = self
+            .selected_item()
+            .filter(|item| item.drills())
+            .map(TargetItem::completion)
+        {
             self.replace(token.range, format!("@{text}"), window, cx);
         }
         true
@@ -1492,18 +1490,27 @@ impl TargetPicker {
                 match resolve_target(&item.token, &hosts) {
                     Some(target) => self.mentions.place(
                         token.range.clone(),
-                        &format!("@{}", item.token),
+                        &item.reference(),
                         &target.label,
                         " ",
                     ),
                     None => item.insertion(),
                 }
             }
-            None => self.composer.as_ref().map_or_else(String::new, |input| {
-                format!("{} ", &input.read(cx).value()[token.range.clone()])
-            }),
+            None => format!("{} ", &self.composer.read(cx).value()[token.range.clone()]),
         };
         self.replace(token.range, text, window, cx);
+        true
+    }
+
+    pub fn copy(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if !self.is_open() {
+            return false;
+        }
+        if let Some(text) = self.selected_item().map(TargetItem::reference) {
+            cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
+            CommandPaletteView::notify_action(format!("Copied {text}"), window, cx);
+        }
         true
     }
 
@@ -1514,19 +1521,51 @@ impl TargetPicker {
         }
     }
 
-    pub fn climb(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn climb(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         self.sync(cx);
-        if let Some(token) = self.token.clone()
-            && let Some(up) = pop_level(&token.body)
-        {
+        let Some(token) = self.token.clone() else {
+            return false;
+        };
+        let level = level_of(&token.body);
+        if let Some(up) = pop_level(level) {
+            self.pending = Some(level.to_owned());
             self.replace(token.range, format!("@{up}"), window, cx);
         }
+        true
+    }
+
+    pub fn back_from_empty(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        self.sync(cx);
+        let Some(token) = self.token.as_ref() else {
+            return false;
+        };
+        let (cursor, selecting) = {
+            let input = self.composer.read(cx);
+            (input.cursor(), !input.selected_range().is_empty())
+        };
+        let empty = !token.body.is_empty() && level_of(&token.body) == token.body;
+        if !empty || selecting || cursor != token.range.end {
+            return false;
+        }
+        self.climb(window, cx)
+    }
+
+    #[must_use]
+    pub fn keys(&self) -> PaletteKeys {
+        let item = self.selected_item();
+        let level = self
+            .token
+            .as_ref()
+            .is_some_and(|token| !level_of(&token.body).is_empty());
+        PaletteKeys::new(MENTION_VERBS, "mention", MENTION_TABS)
+            .take(item.is_some())
+            .copy(item.is_some())
+            .inside(item.is_some_and(TargetItem::drills))
+            .back(level)
     }
 
     pub fn open_here(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(input) = self.composer.clone() else {
-            return;
-        };
+        let input = self.composer.clone();
         if self.is_open() {
             return;
         }
@@ -1565,9 +1604,7 @@ impl TargetPicker {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(input) = self.composer.clone() else {
-            return;
-        };
+        let input = self.composer.clone();
         let closed_at = self.closed_at.take();
         input.update(cx, |input, cx| input.focus(window, cx));
         if press.is_some() && closed_at == press {
@@ -1609,9 +1646,10 @@ impl TargetPicker {
     }
 
     fn unplant(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let (Some(planted), Some(input)) = (self.planted.take(), self.composer.clone()) else {
+        let Some(planted) = self.planted.take() else {
             return;
         };
+        let input = self.composer.clone();
         let (value, cursor) = {
             let input = input.read(cx);
             (input.value().to_string(), input.cursor())
@@ -1645,12 +1683,10 @@ impl TargetPicker {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(input) = &self.composer {
-            input.update(cx, |input, cx| {
-                input.set_selected_range(range, cx);
-                input.replace(text, window, cx);
-            });
-        }
+        self.composer.update(cx, |input, cx| {
+            input.set_selected_range(range, cx);
+            input.replace(text, window, cx);
+        });
     }
 
     fn empty_message(&self) -> SharedString {
@@ -1684,12 +1720,17 @@ impl TargetPicker {
         palette_row(
             ("target-row", index),
             &PaletteRow {
-                label: item.label.clone(),
-                matches: item.matches.clone(),
+                label: item.name(),
+                matches: if item.shown.is_some() {
+                    Vec::new()
+                } else {
+                    item.matches.clone()
+                },
                 detail: item.detail.clone(),
-                right: item.right(),
+                right: item.meta.clone(),
                 status: item.status,
                 icon: Some(item.icon.clone()),
+                inside: Some(drills),
                 ..Default::default()
             },
             selected,
@@ -1706,9 +1747,7 @@ impl TargetPicker {
         .on_click(move |_, window, cx| {
             picker.update(cx, |picker, cx| {
                 picker.selected = index;
-                if picker.composer.is_none() {
-                    cx.emit(TargetPickerEvent::Picked { open: drills });
-                } else if drills {
+                if drills {
                     picker.complete(window, cx);
                 } else {
                     picker.accept(window, cx);
@@ -1724,7 +1763,7 @@ impl TargetPicker {
         if items.is_empty() {
             return div()
                 .debug_selector(|| "target-picker-empty".to_owned())
-                .py(px(if self.composer.is_some() { 10.0 } else { 16.0 }))
+                .py(px(10.0))
                 .text_center()
                 .type_style(TextStyle::Small, cx)
                 .text_color(cx.theme().foreground.muted())
@@ -1756,25 +1795,16 @@ impl TargetPicker {
 
 impl Render for TargetPicker {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if let Some(room) = self.room.filter(|_| self.composer.is_some()) {
+        if let Some(room) = self.room {
             self.fit(room);
         }
         let Some(query) = &self.query else {
             return div().into_any_element();
         };
-        if self.composer.is_none() {
-            return div()
-                .id("target-picker")
-                .debug_selector(|| "target-picker".to_owned())
-                .w_full()
-                .child(self.list(cx))
-                .into_any_element();
-        }
         let crumb = breadcrumb(query, self.listing_root());
         let header = h_flex()
             .h(px(HEADER_HEIGHT))
             .px(px(14.0))
-            .gap(px(14.0))
             .type_style(TextStyle::Micro, cx)
             .line_height(px(16.0))
             .text_color(cx.theme().foreground.muted())
@@ -1788,8 +1818,8 @@ impl Render for TargetPicker {
                     .text_ellipsis()
                     .type_style_mono(TextStyle::Caption, cx)
                     .child(crumb),
-            )
-            .children(HINTS.map(|hint| palette_hint(hint, cx)));
+            );
+        let footer = palette_footer(cx).child(self.keys());
         let body = self.list(cx);
         let measure = cx.entity();
         let outside = cx.entity();
@@ -1827,7 +1857,8 @@ impl Render for TargetPicker {
                         });
                     })
                     .child(header)
-                    .child(div().list_inset(cx).pb(px(BOTTOM_PADDING)).child(body)),
+                    .child(div().list_inset(cx).pb(px(BOTTOM_PADDING)).child(body))
+                    .child(footer),
             )
             .into_any_element()
     }
@@ -1863,7 +1894,27 @@ pub fn mention_layer(picker: &Entity<TargetPicker>, cx: &App) -> Option<AnyEleme
 
 pub fn mention_keys<E: InteractiveElement>(element: E, picker: &Entity<TargetPicker>) -> E {
     let enter = picker.clone();
+    let keys = picker.clone();
     element
+        .capture_key_down(move |event, window, cx| {
+            let stroke = &event.keystroke;
+            let held = stroke.modifiers;
+            let copy =
+                stroke.key == "enter" && held.alt && !held.control && !held.platform && !held.shift;
+            let handled = keys.update(cx, |picker, cx| {
+                if copy {
+                    return picker.copy(window, cx);
+                }
+                match palette_chord(stroke) {
+                    Some(Twin::Down) => picker.navigate(1, cx),
+                    Some(Twin::Up) => picker.navigate(-1, cx),
+                    _ => false,
+                }
+            });
+            if handled {
+                cx.stop_propagation();
+            }
+        })
         .capture_action(on::<MoveUp>(picker, |picker, _, cx| {
             picker.navigate(-1, cx)
         }))
@@ -1871,6 +1922,8 @@ pub fn mention_keys<E: InteractiveElement>(element: E, picker: &Entity<TargetPic
             picker.navigate(1, cx)
         }))
         .capture_action(on::<IndentInline>(picker, TargetPicker::complete))
+        .capture_action(on::<OutdentInline>(picker, TargetPicker::climb))
+        .capture_action(on::<Backspace>(picker, TargetPicker::back_from_empty))
         .capture_action(on::<Escape>(picker, TargetPicker::dismiss))
         .capture_action(move |action: &Enter, window, cx| {
             if !action.shift && enter.update(cx, |picker, cx| picker.accept(window, cx)) {

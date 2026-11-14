@@ -236,11 +236,11 @@ fn typed(body: &str) -> Vec<String> {
 fn each_level_lists_its_targets_with_their_host() {
     assert_eq!(
         tokens(""),
-        ["macbook:main", "ubuntu", "xps", "macbook:~"],
+        ["macbook:main", "ubuntu", "xps", "macbook:~/"],
         "the sessions here, the other hosts, then the files here"
     );
-    assert_eq!(typed(""), ["main", "ubuntu", "xps", "~"]);
-    assert_eq!(tokens("ubuntu:"), ["ubuntu:work", "ubuntu:$4", "ubuntu:~"]);
+    assert_eq!(typed(""), ["main", "ubuntu", "xps", "~/"]);
+    assert_eq!(tokens("ubuntu:"), ["ubuntu:work", "ubuntu:$4", "ubuntu:~/"]);
     assert_eq!(tokens("ubuntu:not"), ["ubuntu:$4"]);
     assert_eq!(tokens("ubuntu:work:"), ["ubuntu:work:1", "ubuntu:work:2"]);
     assert_eq!(tokens("ubuntu:$3:age"), ["ubuntu:work:2"]);
@@ -259,12 +259,14 @@ fn each_level_lists_its_targets_with_their_host() {
 
     let top = items("");
     assert_eq!(top[2].status, Some(PaletteStatus::Offline));
-    assert_eq!(top[2].detail.as_ref(), "offline");
-    assert_eq!(top[1].detail.as_ref(), "2 sessions");
+    assert_eq!(top[2].meta.as_ref(), "offline");
+    assert_eq!(top[1].meta.as_ref(), "2 sessions");
     assert_eq!(top[0].target, Some(PaletteTarget::Session(SessionId(1))));
     let panes = items("ubuntu:work:2.");
-    assert_eq!(panes[0].label.as_ref(), "%12");
-    assert_eq!(panes[0].detail.as_ref(), "Claude Code · fix tests");
+    assert_eq!(panes[0].name().as_ref(), "Claude Code");
+    assert_eq!(panes[0].detail.as_ref(), "fix tests · %12");
+    assert_eq!(panes[1].name().as_ref(), "Codex");
+    assert_eq!(panes[1].detail.as_ref(), "%13");
     assert_eq!(panes[0].kind, TargetKind::Pane);
     assert_eq!(panes[0].target, Some(PaletteTarget::Pane(PaneId(12))));
     assert_eq!(panes[0].host_id, PaletteHostId(1));
@@ -339,7 +341,7 @@ fn file_tokens(body: &str) -> Vec<String> {
 fn a_folder_lists_its_entries_and_typing_searches_under_it() {
     assert_eq!(
         file_tokens("ubuntu:~/"),
-        [r"ubuntu:~/My\ Files", "ubuntu:~/dev", "ubuntu:~/notes.md"]
+        [r"ubuntu:~/My\ Files/", "ubuntu:~/dev/", "ubuntu:~/notes.md"]
     );
     assert_eq!(file_tokens("ubuntu:~/no"), ["ubuntu:~/notes.md"]);
     assert_eq!(
@@ -347,12 +349,13 @@ fn a_folder_lists_its_entries_and_typing_searches_under_it() {
         ["ubuntu:~/dev/zz/README.md"],
         "a match deep under the folder"
     );
-    assert_eq!(file_tokens("ubuntu:~/dev/"), ["ubuntu:~/dev/zz"]);
+    assert_eq!(file_tokens("ubuntu:~/dev/"), ["ubuntu:~/dev/zz/"]);
     let here = file_items(&file_query("~/"));
-    assert_eq!(here[1].typed, "~/dev");
-    assert_eq!(here[1].token, "macbook:~/dev");
-    assert_eq!(here[2].right().as_ref(), "M file");
-    assert_eq!(here[1].right().as_ref(), "dir ›");
+    assert_eq!(here[1].typed, "~/dev/");
+    assert_eq!(here[1].token, "macbook:~/dev/");
+    assert_eq!(here[1].completion(), "~/dev/");
+    assert_eq!(here[2].meta.as_ref(), "M");
+    assert_eq!(here[1].meta.as_ref(), "");
     assert_eq!(here[2].entry, Some(entry("notes.md", PathKind::File)));
 }
 
@@ -389,17 +392,29 @@ fn tab_opens_the_level_under_a_row_and_enter_finishes_it() {
 }
 
 #[test]
-fn rows_with_a_level_under_them_say_so() {
-    let right = |body: &str| -> Vec<String> {
+fn rows_keep_their_meta_and_say_when_tab_goes_in() {
+    let rows = |body: &str| -> Vec<(String, bool)> {
         items(body)
             .iter()
-            .map(|item| item.right().to_string())
+            .map(|item| (item.meta.to_string(), item.drills()))
             .collect()
     };
-    assert_eq!(right("ubuntu:"), ["session ›", "session ›", "dir ›"]);
-    assert_eq!(right("ubuntu:work:"), ["window ›", "window ›"]);
-    assert_eq!(right("ubuntu:work:2."), ["pane", "pane"]);
-    assert_eq!(HINTS.map(|hint| hint.label), ["open", "insert", "close"]);
+    assert_eq!(
+        rows("ubuntu:"),
+        [
+            ("2 windows".to_owned(), true),
+            ("0 windows".to_owned(), true),
+            (String::new(), true),
+        ]
+    );
+    assert_eq!(
+        rows("ubuntu:work:"),
+        [("1 pane".to_owned(), true), ("2 panes".to_owned(), true)]
+    );
+    assert_eq!(
+        rows("ubuntu:work:2."),
+        [(String::new(), false), (String::new(), false)]
+    );
 }
 
 #[test]
@@ -460,12 +475,18 @@ struct Composer {
     input: Entity<InputState>,
     picker: Entity<TargetPicker>,
     keys: Rc<RefCell<Vec<String>>>,
+    modes: Rc<Cell<usize>>,
 }
 
 impl Render for Composer {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let keys = Rc::clone(&self.keys);
+        let modes = Rc::clone(&self.modes);
         mention_keys(div().id("composer"), &self.picker)
+            .capture_action(move |_: &OutdentInline, _, cx| {
+                modes.set(modes.get() + 1);
+                cx.stop_propagation();
+            })
             .capture_key_down(move |event, _, _| {
                 keys.borrow_mut().push(event.keystroke.key.clone());
             })
@@ -495,6 +516,7 @@ fn the_picker_follows_the_composer_and_owns_its_keys(cx: &mut TestAppContext) {
             input,
             picker,
             keys: seen,
+            modes: Rc::default(),
         });
         Root::new(composer, window, cx)
     });
@@ -520,10 +542,11 @@ fn the_picker_follows_the_composer_and_owns_its_keys(cx: &mut TestAppContext) {
     cx.simulate_keystrokes("down tab");
     assert_eq!(value(cx), "ask @ubuntu:work:2.");
     assert_eq!(first(cx).as_deref(), Some("ubuntu:work:2.%12"));
-    cx.simulate_keystrokes("backspace backspace");
+    cx.simulate_keystrokes("backspace");
+    assert_eq!(value(cx), "ask @ubuntu:work:");
     cx.simulate_input("1.");
     assert_eq!(first(cx).as_deref(), Some("ubuntu:work:1.%11"));
-    cx.simulate_keystrokes("backspace backspace");
+    cx.simulate_keystrokes("backspace");
     cx.simulate_input("2");
     cx.simulate_keystrokes("enter");
     assert_eq!(value(cx), "ask @work › agents · ubuntu ");
@@ -541,7 +564,7 @@ fn the_picker_follows_the_composer_and_owns_its_keys(cx: &mut TestAppContext) {
 
     cx.simulate_input("and @ubuntu:");
     cx.simulate_keystrokes("up");
-    assert_eq!(first(cx).as_deref(), Some("ubuntu:~"));
+    assert_eq!(first(cx).as_deref(), Some("ubuntu:~/"));
     cx.simulate_keystrokes("tab");
     let said = format!("{said}and @ubuntu:");
     assert_eq!(value(cx), format!("{said}~/"));
@@ -558,7 +581,7 @@ fn the_picker_follows_the_composer_and_owns_its_keys(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert_eq!(
         first(cx).as_deref(),
-        Some("ubuntu:~/dev/zz"),
+        Some("ubuntu:~/dev/zz/"),
         "a finished walk lists a folder under it without asking again"
     );
     assert_eq!(calls.borrow().len(), 1);
@@ -600,6 +623,7 @@ fn the_plus_button_toggles_one_mention_and_takes_back_its_own_at(cx: &mut TestAp
             input,
             picker,
             keys: Rc::default(),
+            modes: Rc::default(),
         });
         Root::new(composer, window, cx)
     });
@@ -703,4 +727,155 @@ fn a_chat_on_another_host_with_the_composers_pane_id_stays_listed() {
         .map(|item| item.token)
         .collect::<Vec<_>>();
     assert_eq!(tokens, ["macbook:%6", "ubuntu:%9", "ubuntu:%12"]);
+}
+
+type Mounted<'a> = (
+    Entity<InputState>,
+    Entity<TargetPicker>,
+    Rc<Cell<usize>>,
+    &'a mut VisualTestContext,
+);
+
+fn composer(cx: &mut TestAppContext) -> Mounted<'_> {
+    cx.update(crate::init);
+    let backend: Rc<dyn TargetBackend> = Rc::new(FakeBackend {
+        calls: Rc::default(),
+        next: Cell::new(0),
+    });
+    let modes = Rc::new(Cell::new(0));
+    let switched = Rc::clone(&modes);
+    let slot = Rc::new(RefCell::new(None));
+    let captured = Rc::clone(&slot);
+    let (_, cx) = cx.add_window_view(move |window, cx| {
+        let input = cx.new(|cx| InputState::new(window, cx));
+        let picker = cx.new(|cx| TargetPicker::for_composer(backend, input.clone(), window, cx));
+        input.read(cx).focus_handle(cx).focus(window, cx);
+        captured.replace(Some((input.clone(), picker.clone())));
+        let composer = cx.new(|_| Composer {
+            input,
+            picker,
+            keys: Rc::default(),
+            modes: switched,
+        });
+        Root::new(composer, window, cx)
+    });
+    let (input, picker) = slot.borrow_mut().take().expect("composer captured");
+    (input, picker, modes, cx)
+}
+
+fn shown(
+    input: &Entity<InputState>,
+    picker: &Entity<TargetPicker>,
+    cx: &mut VisualTestContext,
+) -> (String, bool, Option<String>) {
+    (
+        input.read_with(cx, |input, _| input.value().to_string()),
+        picker.read_with(cx, |picker, _| picker.is_open()),
+        picker.read_with(cx, |picker, _| {
+            picker.selected_item().map(|item| item.token.clone())
+        }),
+    )
+}
+
+#[ala::test]
+fn shift_tab_backs_out_a_level_and_never_reaches_the_mode_switch(cx: &mut TestAppContext) {
+    let (input, picker, modes, cx) = composer(cx);
+    let at = |value: &str, token: &str| (value.to_owned(), true, Some(token.to_owned()));
+    cx.simulate_input("ask @ubuntu:work:");
+    cx.simulate_keystrokes("down tab");
+    cx.simulate_input("co");
+    cx.simulate_keystrokes("shift-tab");
+    assert_eq!(
+        shown(&input, &picker, cx),
+        at("ask @ubuntu:work:", "ubuntu:work:2")
+    );
+    cx.simulate_keystrokes("backspace");
+    assert_eq!(
+        shown(&input, &picker, cx),
+        at("ask @ubuntu:", "ubuntu:work")
+    );
+    cx.simulate_keystrokes("shift-tab");
+    assert_eq!(shown(&input, &picker, cx), at("ask @", "ubuntu"));
+    cx.simulate_keystrokes("shift-tab");
+    assert_eq!(shown(&input, &picker, cx), at("ask @", "ubuntu"));
+    assert_eq!(modes.get(), 0);
+    cx.simulate_keystrokes("escape shift-tab");
+    assert_eq!(modes.get(), 1);
+}
+
+#[ala::test]
+fn tab_on_a_leaf_changes_nothing(cx: &mut TestAppContext) {
+    let (input, picker, _, cx) = composer(cx);
+    cx.simulate_input("ask @ubuntu:work:2.");
+    let before = shown(&input, &picker, cx);
+    assert_eq!(before.2.as_deref(), Some("ubuntu:work:2.%12"));
+    cx.simulate_keystrokes("tab");
+    assert_eq!(shown(&input, &picker, cx), before);
+}
+
+#[ala::test]
+fn the_strip_dims_the_keys_a_row_does_not_answer(cx: &mut TestAppContext) {
+    let (_, picker, _, cx) = composer(cx);
+    let keys = |cx: &mut VisualTestContext| picker.read_with(cx, |picker, _| picker.keys().shown());
+    cx.simulate_input("ask @");
+    assert_eq!(
+        keys(cx),
+        [
+            ("mention", true),
+            ("copy", true),
+            ("into", true),
+            ("back", false)
+        ],
+        "a session at the root"
+    );
+    cx.simulate_input("ubuntu:");
+    assert_eq!(
+        keys(cx),
+        [
+            ("mention", true),
+            ("copy", true),
+            ("into", true),
+            ("back", true)
+        ],
+        "a session inside a host"
+    );
+    cx.simulate_input("work:2.");
+    assert_eq!(
+        keys(cx),
+        [
+            ("mention", true),
+            ("copy", true),
+            ("into", false),
+            ("back", true)
+        ],
+        "a pane"
+    );
+    cx.simulate_input("zzz");
+    assert_eq!(
+        keys(cx),
+        [
+            ("mention", false),
+            ("copy", false),
+            ("into", false),
+            ("back", true)
+        ],
+        "no row"
+    );
+}
+
+#[ala::test]
+fn a_directory_mention_keeps_its_slash(cx: &mut TestAppContext) {
+    let (input, picker, _, cx) = composer(cx);
+    cx.simulate_input("ask @ubuntu:~/");
+    picker.update(cx, |picker, cx| {
+        picker.apply_chunk("ubuntu", 1, &home(), true, false, cx);
+    });
+    cx.run_until_parked();
+    cx.simulate_keystrokes("down enter");
+    let value = input.read_with(cx, |input, _| input.value().to_string());
+    assert_eq!(value, "ask @dev/ · ubuntu ");
+    assert_eq!(
+        picker.update(cx, |picker, _| picker.raw_text(&value)),
+        "ask @ubuntu:~/dev/ "
+    );
 }
