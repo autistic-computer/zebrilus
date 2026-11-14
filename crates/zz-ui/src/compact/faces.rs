@@ -73,15 +73,24 @@ pub fn pill_face(
 }
 
 #[must_use]
-pub const fn trailing_split(panes: usize) -> (usize, usize) {
-    let shown = if panes < TRAILING { panes } else { TRAILING };
-    (shown, panes - shown)
+pub fn trailing_split(tiles: &[PaneTile]) -> (usize, usize) {
+    let alike = tiles.split_first().is_some_and(|(first, rest)| {
+        first.program.is_none()
+            && rest
+                .iter()
+                .all(|tile| tile.program.is_none() && tile.tag == first.tag)
+    });
+    if alike {
+        return (1, 0);
+    }
+    let shown = tiles.len().min(TRAILING);
+    (shown, tiles.len() - shown)
 }
 
 #[must_use]
 pub fn trailing_faces(tiles: &[PaneTile], ground: Ground, cx: &App) -> Div {
     let muted = penna::muted_on(ground, cx);
-    let (shown, more) = trailing_split(tiles.len());
+    let (shown, more) = trailing_split(tiles);
     let size = TRAIL_FACE;
     let radius = stack_radius(px(size), cx);
     div()
@@ -107,12 +116,50 @@ pub fn trailing_faces(tiles: &[PaneTile], ground: Ground, cx: &App) -> Div {
 
 #[cfg(test)]
 mod tests {
+    use zz_client::{
+        program::Program,
+        window_summary::{Attention, PaneTag, PaneTile},
+    };
+    use zz_protocol::PaneId;
+
     use super::trailing_split;
+
+    fn tile(pane: u64, tag: PaneTag, program: Option<&str>) -> PaneTile {
+        PaneTile {
+            pane: PaneId(pane),
+            tag,
+            label: String::new(),
+            program: program.and_then(Program::by_id),
+            attention: Attention::None,
+        }
+    }
 
     #[test]
     fn a_window_shows_three_faces_then_counts_the_rest() {
-        assert_eq!(trailing_split(2), (2, 0));
-        assert_eq!(trailing_split(3), (3, 0));
-        assert_eq!(trailing_split(5), (3, 2));
+        let nvim = |pane| tile(pane, PaneTag::Terminal, Some("neovim"));
+        assert_eq!(trailing_split(&[nvim(1), nvim(2)]), (2, 0));
+        assert_eq!(trailing_split(&[nvim(1), nvim(2), nvim(3)]), (3, 0));
+        assert_eq!(
+            trailing_split(&(1..=5).map(nvim).collect::<Vec<_>>()),
+            (3, 2)
+        );
+    }
+
+    #[test]
+    fn panes_that_all_fall_back_to_one_glyph_show_one_face() {
+        let shell = |pane| tile(pane, PaneTag::Terminal, None);
+        assert_eq!(trailing_split(&[shell(1), shell(2)]), (1, 0));
+        assert_eq!(
+            trailing_split(&(1..=5).map(shell).collect::<Vec<_>>()),
+            (1, 0)
+        );
+        assert_eq!(
+            trailing_split(&[shell(1), tile(2, PaneTag::Browser, None)]),
+            (2, 0)
+        );
+        assert_eq!(
+            trailing_split(&[shell(1), tile(2, PaneTag::Terminal, Some("htop"))]),
+            (2, 0)
+        );
     }
 }
