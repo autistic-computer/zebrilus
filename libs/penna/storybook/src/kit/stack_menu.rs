@@ -134,6 +134,7 @@ fn phone(id: &'static str, menu: &Entity<StackMenu>, cx: &App) -> impl IntoEleme
         id,
         PillLabel {
             icon: IconName::SquareTerminal,
+            face: None,
             title: "zsh".into(),
             word: ala::SharedString::default(),
             meta: "zebrilus · stack-menu".into(),

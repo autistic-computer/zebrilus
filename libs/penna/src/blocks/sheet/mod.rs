@@ -199,6 +199,12 @@ pub fn sheet_ground(cx: &App) -> Ground {
 }
 
 #[must_use]
+pub fn sheet_group_ground(cx: &App) -> Ground {
+    cx.theme()
+        .ground_of(Surface::new(roles::SETTINGS_CARD).on(sheet_ground(cx)))
+}
+
+#[must_use]
 pub fn sheet_inset(window: &Window) -> Pixels {
     (window.visual_viewport_bounds().bottom() - window.fully_visible_bounds().bottom()).max(px(0.0))
 }

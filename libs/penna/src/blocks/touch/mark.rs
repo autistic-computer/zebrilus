@@ -30,7 +30,8 @@ impl StatusMark {
         }
     }
 
-    fn dot(self, cx: &App) -> Option<Hsla> {
+    #[must_use]
+    pub fn dot(self, cx: &App) -> Option<Hsla> {
         let theme = cx.theme();
         match self {
             Self::Success => Some(theme.success),

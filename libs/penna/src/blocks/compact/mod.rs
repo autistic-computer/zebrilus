@@ -7,9 +7,9 @@ mod morph;
 mod tile;
 
 pub use bar::{
-    COMPACT_PILL_HEIGHT, PillGlass, PillLabel, PillPlacement, compact_bar_button,
+    COMPACT_PILL_HEIGHT, PILL_TILE, PillGlass, PillLabel, PillPlacement, compact_bar_button,
     compact_floating_bar, compact_floating_group, compact_floating_pill, compact_pill_label,
-    pill_backdrop_reach, pill_glass_over,
+    pill_backdrop_reach, pill_glass_over, pill_tile_radius,
 };
 pub use bento::{BENTO_COLUMNS, BENTO_GAP, BENTO_INSET, BentoSpan, bento_grid, bento_pack};
 pub use card::{ZoomCard, zoom_card_ground};

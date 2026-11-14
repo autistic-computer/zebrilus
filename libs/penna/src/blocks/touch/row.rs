@@ -95,6 +95,7 @@ pub struct TouchRow {
     id: ElementId,
     title: SharedString,
     icon: Option<IconName>,
+    lead: Option<(AnyElement, f32)>,
     slot: bool,
     checked: bool,
     detail: Option<SharedString>,
@@ -118,6 +119,7 @@ impl TouchRow {
             id: id.into(),
             title: title.into(),
             icon: None,
+            lead: None,
             slot: false,
             checked: false,
             detail: None,
@@ -150,6 +152,12 @@ impl TouchRow {
     #[must_use]
     pub fn icon(mut self, icon: IconName) -> Self {
         self.icon = Some(icon);
+        self
+    }
+
+    #[must_use]
+    pub fn lead(mut self, lead: impl IntoElement, width: f32) -> Self {
+        self.lead = Some((lead.into_any_element(), width));
         self
     }
 
@@ -387,6 +395,7 @@ impl RenderOnce for TouchRow {
             });
         let disabled = self.disabled;
         let author = author_name(&self.id);
+        let lead_width = self.lead.as_ref().map(|(_, width)| *width);
         let led = self.icon.is_some() || self.checked || self.slot;
         let listed = self.listed;
         let frame = match listed {
@@ -396,7 +405,9 @@ impl RenderOnce for TouchRow {
         let rule = listed
             .filter(|listed| listed.position.rules_above())
             .map(|_| {
-                let edge = if led {
+                let edge = if let Some(width) = lead_width {
+                    RULED_INSET.rems() + crate::rems_from_px(width) + RULED_GAP.rems()
+                } else if led {
                     RULED_INSET.rems() + crate::rems_from_px(GLYPH) + RULED_GAP.rems()
                 } else {
                     RULED_INSET.rems()
@@ -418,11 +429,12 @@ impl RenderOnce for TouchRow {
             .aria_disabled(disabled)
             .type_style(TextStyle::TouchBody, cx)
             .text_color(ink)
-            .map(|row| match self.icon {
-                Some(icon) => row.child(glyph(icon, muted)),
-                None if self.checked => row.child(glyph(IconName::Check, ink)),
-                None if self.slot => row.child(div().flex_none().w(px(GLYPH))),
-                None => row,
+            .map(|row| match (self.lead, self.icon) {
+                (Some((leading, _)), _) => row.child(leading),
+                (None, Some(icon)) => row.child(glyph(icon, muted)),
+                (None, None) if self.checked => row.child(glyph(IconName::Check, ink)),
+                (None, None) if self.slot => row.child(div().flex_none().w(px(GLYPH))),
+                (None, None) => row,
             })
             .child(lines)
             .children(trailing)

@@ -323,10 +323,24 @@
   font-weight: 500;
 }
 
-.penna-machine-name > span:last-child {
+.penna-machine-name > span:last-child,
+.penna-machine-name > .penna-machine-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.penna-machine-name > :is(.penna-machine-lead, .penna-machine-trail) {
+  display: flex;
+  flex: none;
+  align-items: center;
+  overflow: visible;
+}
+
+.penna-machine-name > .penna-machine-trail {
+  gap: var(--penna-space-4);
 }
 
 .penna-machine-state,

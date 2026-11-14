@@ -890,6 +890,7 @@ impl Phone {
             "creator-phone-pill",
             PillLabel {
                 icon: IconName::SquareTerminal,
+                face: None,
                 title: "make test".into(),
                 word: ala::SharedString::default(),
                 meta: "work · build".into(),

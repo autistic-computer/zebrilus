@@ -50,6 +50,8 @@ pub struct PhoneTile {
     title: SharedString,
     add: bool,
     mark: Option<StatusMark>,
+    lead: Option<AnyElement>,
+    trail: Option<AnyElement>,
     state: Option<SharedString>,
     foot: Vec<SharedString>,
     panes: Vec<([f32; 4], MiniPane)>,
@@ -66,6 +68,8 @@ impl PhoneTile {
             title: title.into(),
             add: false,
             mark: None,
+            lead: None,
+            trail: None,
             state: None,
             foot: Vec::new(),
             panes: Vec::new(),
@@ -86,6 +90,18 @@ impl PhoneTile {
     #[must_use]
     pub fn mark(mut self, mark: impl Into<Option<StatusMark>>) -> Self {
         self.mark = mark.into();
+        self
+    }
+
+    #[must_use]
+    pub fn lead(mut self, lead: impl IntoElement) -> Self {
+        self.lead = Some(lead.into_any_element());
+        self
+    }
+
+    #[must_use]
+    pub fn trail(mut self, trail: impl IntoElement) -> Self {
+        self.trail = Some(trail.into_any_element());
         self
     }
 
@@ -214,7 +230,9 @@ impl RenderOnce for PhoneTile {
                         .gap(Space::S8)
                         .type_style_strong(TextStyle::TouchBody, cx)
                         .children(self.mark)
-                        .child(line(self.title).flex_1()),
+                        .children(self.lead)
+                        .child(line(self.title).flex_1())
+                        .children(self.trail),
                 )
                 .when_some(self.state, |tile, state| {
                     tile.child(

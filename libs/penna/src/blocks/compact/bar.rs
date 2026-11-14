@@ -1,7 +1,7 @@
 use ala::{
-    App, Div, ElementId, FULL_CORNER_RADIUS, GlassMaterial, HighlightStyle, Hsla, IntoElement,
-    MouseButton, ParentElement as _, Pixels, Rgba, SharedString, Stateful, Styled as _, StyledText,
-    div, prelude::*, px,
+    AnyElement, App, Div, ElementId, FULL_CORNER_RADIUS, GlassMaterial, HighlightStyle, Hsla,
+    IntoElement, MouseButton, ParentElement as _, Pixels, Rgba, SharedString, Stateful,
+    Styled as _, StyledText, div, prelude::*, px,
 };
 
 use crate::{
@@ -230,8 +230,29 @@ pub fn compact_bar_button(id: impl Into<ElementId>, icon: IconName) -> Button {
         .child(Icon::new(icon).size(rems_from_px(BUTTON_ICON)))
 }
 
+pub const PILL_TILE: f32 = COMPACT_PILL_HEIGHT - 2.0 * TILE_INSET.design_px();
+
+fn pill_tile_corner(pill: Pixels, backing: Pixels, cx: &App) -> Pixels {
+    if cx.theme().style(roles::PHONE_PILL_ICON).shape == Shape::Round {
+        crate::blocks::touch::concentric(pill, px(TILE_INSET.design_px()))
+    } else {
+        backing
+    }
+}
+
+#[must_use]
+pub fn pill_tile_radius(placement: &PillPlacement, cx: &App) -> Pixels {
+    let pill = floating_layer(placement, cx);
+    let backing = cx.theme().layer(
+        Surface::new(roles::PHONE_PILL_ICON).on(pill.ground),
+        PaintState::Rest,
+    );
+    pill_tile_corner(pill.radius, backing.radius, cx)
+}
+
 pub struct PillLabel {
     pub icon: IconName,
+    pub face: Option<AnyElement>,
     pub title: SharedString,
     pub word: SharedString,
     pub meta: SharedString,
@@ -285,6 +306,7 @@ pub fn compact_pill_label(
 fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) -> Div {
     let PillLabel {
         icon,
+        face,
         title,
         word,
         meta,
@@ -319,12 +341,8 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
             )
         }),
     );
-    let tile = COMPACT_PILL_HEIGHT - 2.0 * TILE_INSET.design_px();
-    let tile_radius = if theme.style(roles::PHONE_PILL_ICON).shape == Shape::Round {
-        crate::blocks::touch::concentric(pill.radius, px(TILE_INSET.design_px()))
-    } else {
-        backing.radius
-    };
+    let tile = PILL_TILE;
+    let tile_radius = pill_tile_corner(pill.radius, backing.radius, cx);
     div()
         .flex()
         .flex_1()
@@ -333,7 +351,7 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
         .pl(TILE_INSET)
         .pr(Space::S12)
         .gap(Space::S10)
-        .child(
+        .child(face.unwrap_or_else(|| {
             div()
                 .flex()
                 .flex_none()
@@ -349,8 +367,9 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
                 } else {
                     badge.muted_at(PaintState::Rest)
                 })
-                .child(Icon::new(icon).size(rems_from_px((tile / 2.0).max(16.0)))),
-        )
+                .child(Icon::new(icon).size(rems_from_px((tile / 2.0).max(16.0))))
+                .into_any_element()
+        }))
         .child(
             div()
                 .flex()
