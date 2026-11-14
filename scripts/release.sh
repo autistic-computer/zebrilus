@@ -54,6 +54,9 @@ command=(
 if [[ "$mode" == "--execute" ]]; then
     note "Execute mode will commit, create an annotated tag, and push both to origin"
     command+=(--execute)
+    if [[ "${ZZ_RELEASE_NO_CONFIRM:-0}" == 1 ]]; then
+        command+=(--no-confirm)
+    fi
 else
     note "Dry run only; no files, commits, tags, or remotes will change"
 fi

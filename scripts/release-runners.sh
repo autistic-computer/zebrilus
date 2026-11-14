@@ -166,7 +166,7 @@ case "$command" in
         trap stop EXIT
         start
         since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        scripts/release.sh "$1" --execute
+        ZZ_RELEASE_NO_CONFIRM=1 scripts/release.sh "$1" --execute
         watch_run push "$since"
         note "released"
         ;;
