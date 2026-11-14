@@ -14,6 +14,7 @@ use penna::{
 };
 use zz_client::agent_lens::{AgentEmpty, PendingPermission, agent_empty};
 use zz_client::agent_settings;
+use zz_client::window_summary::{PaneTile, summarize_window};
 use zz_protocol::{AgentPaneWire, ProtocolMessage};
 use zz_ui::agent::{
     ask::{AskChoice, approval_subject},
@@ -306,6 +307,14 @@ impl AgentPane {
                 let provider = self.provider(cx);
                 let items = self.mention.read(cx).items().to_vec();
                 let connection = self.connection.read(cx);
+                let panes: Vec<PaneTile> = connection
+                    .core
+                    .snapshot()
+                    .sessions
+                    .iter()
+                    .flat_map(|session| &session.windows)
+                    .flat_map(|window| summarize_window(window).tiles)
+                    .collect();
                 let writable = connection.connected && !connection.core.attached_read_only();
                 let context = ContextUsage::reported(self.usage);
                 let context = if shows_chat(&self.transcript.lens.chat) {
@@ -325,6 +334,7 @@ impl AgentPane {
                     quotas: connection.core.agent_quotas(),
                     context,
                     mention: &items,
+                    panes: &panes,
                     enabled: writable,
                 };
                 let act = entity.downgrade();

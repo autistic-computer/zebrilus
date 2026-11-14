@@ -29,7 +29,9 @@ use penna::{
 use web_time::Instant;
 use zz_client::{
     AgentAttentionStatus, StatusBarModel, StatusBarWindow, agent_attention_status,
-    navigation::session_label, pane_rects, window_summary::summarize_window,
+    navigation::session_label,
+    pane_rects,
+    window_summary::{PaneTile, summarize_window},
 };
 use zz_protocol::{PaneId, PaneKindSnapshot, SessionId, WindowId};
 use zz_terminal::{Glyph, LocalColors, TerminalAppearance, TerminalPalette, TerminalViewport};
@@ -38,7 +40,8 @@ use zz_ui::compact::found_machines;
 use zz_ui::{
     compact::{
         HostState, MachineMenu, close_many_detail, close_pane_detail, host_mark, host_state,
-        overview_count, session_in_view, session_tail, window_mark,
+        lead_face, mark_dot, overview_count, session_in_view, session_tail, trailing_faces,
+        window_mark,
     },
     terminal::terminal_background,
 };
@@ -1024,6 +1027,7 @@ impl AppShell {
             "overview-host",
             PillLabel {
                 icon: IconName::Server,
+                face: None,
                 title: host
                     .map_or_else(String::new, |host| host.title.clone())
                     .into(),
@@ -1232,6 +1236,7 @@ impl AppShell {
                             WindowShape {
                                 id: window.id,
                                 closing,
+                                tiles: summary.tiles,
                                 title: summary.title,
                                 mark,
                                 state,
@@ -1382,9 +1387,19 @@ impl AppShell {
         let mark = mark.or_else(|| unseen.then_some(StatusMark::Ink));
         let name = shape.map_or_else(|| window.label.clone(), |shape| shape.title.clone());
         let opened = open.and_then(|open| pages.iter().find(|page| page.pane == open).cloned());
-        let cell = PhoneTile::new(("overview-window", window.id.0), name)
-            .mark(mark)
-            .panes(minis);
+        let ground = zoom_card_ground(cx);
+        let tiles = shape.map_or(&[][..], |shape| shape.tiles.as_slice());
+        let cell = PhoneTile::new(("overview-window", window.id.0), name).panes(minis);
+        let cell = match tiles {
+            [only] => {
+                let spinning = mark == Some(StatusMark::Spinner);
+                let dot = mark_dot(mark.filter(|_| !spinning), cx);
+                cell.mark(mark.filter(|_| spinning))
+                    .lead(lead_face(only, dot, ground, cx))
+            }
+            [] => cell.mark(mark),
+            many => cell.mark(mark).trail(trailing_faces(many, ground, cx)),
+        };
         let cell = match state {
             Some(state) => cell.state(state),
             None => cell,
@@ -1745,6 +1760,7 @@ struct WindowShape {
     mark: Option<StatusMark>,
     state: Option<String>,
     rects: Vec<(PaneId, [f32; 4])>,
+    tiles: Vec<PaneTile>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

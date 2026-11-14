@@ -188,9 +188,8 @@ impl Face {
         }
     }
 
-    fn glyph(&self) -> AnyElement {
+    fn glyph(&self, size: Pixels) -> AnyElement {
         let program = self.program;
-        let size = self.size * PROGRAM_GLYPH_SCALE;
         let path = program_glyph_path(program);
         match program.look {
             Look::Mark { foreground, .. } => Icon::empty()
@@ -213,12 +212,22 @@ impl Face {
     }
 
     pub fn paint<E: Styled + ParentElement>(self, tile: E, cx: &App) -> E {
+        let glyph = self.size * PROGRAM_GLYPH_SCALE;
+        self.paint_glyph(tile, glyph, cx)
+    }
+
+    fn paint_glyph<E: Styled + ParentElement>(self, tile: E, glyph: Pixels, cx: &App) -> E {
         tile.bg(self.background())
             .shadow(self.lit().shadows(cx))
-            .child(self.glyph())
+            .child(self.glyph(glyph))
     }
 
     pub fn tile(self, cx: &App) -> ala::Div {
+        let glyph = self.size * PROGRAM_GLYPH_SCALE;
+        self.tile_with_glyph(glyph, cx)
+    }
+
+    pub fn tile_with_glyph(self, glyph: Pixels, cx: &App) -> ala::Div {
         let tile = div()
             .flex()
             .flex_none()
@@ -227,7 +236,7 @@ impl Face {
             .size(self.size)
             .rounded(self.radius)
             .corner_smoothing(self.smoothing);
-        self.paint(tile, cx)
+        self.paint_glyph(tile, glyph, cx)
     }
 }
 

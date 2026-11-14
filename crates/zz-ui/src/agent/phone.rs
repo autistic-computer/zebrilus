@@ -10,13 +10,15 @@ use penna::{
     blocks::chat::AskCard,
     blocks::notification::Notification,
     blocks::sheet::{
-        BottomSheet, bottom_sheet, close_sheet, sheet_back, sheet_close, sheet_ground, sheet_groups,
+        BottomSheet, bottom_sheet, close_sheet, sheet_back, sheet_close, sheet_ground,
+        sheet_group_ground, sheet_groups,
     },
     blocks::touch::{TouchGroup, TouchInk, TouchRow, TouchTrailing},
     h_flex,
 };
 use zz_client::agent_settings::{self, LensSettings};
 use zz_client::agent_timeline::{ContextUsage, QUOTA_WARNING, percent_label, unix_now};
+use zz_client::window_summary::PaneTile;
 use zz_protocol::{AgentAccount, AgentProvider, AgentQuota, QuotaWindows, chat::ItemId};
 
 use super::{
@@ -25,7 +27,8 @@ use super::{
     controls::{AccountAction, mode_icon},
     question::{QuestionCardAction, QuestionCardState},
 };
-use crate::compact::hold_sheet;
+use crate::command::PaletteTarget;
+use crate::compact::{LEAD_FACE, attention_dot, hold_sheet, lead_face};
 use crate::target::TargetItem;
 
 pub const CHAT_SHEET: &str = "phone-chat-sheet";
@@ -98,6 +101,7 @@ pub struct PlusSheet<'a> {
     pub quotas: &'a [AgentQuota],
     pub context: ContextUsage,
     pub mention: &'a [TargetItem],
+    pub panes: &'a [PaneTile],
     pub enabled: bool,
 }
 
@@ -287,10 +291,22 @@ impl PlusSheet<'_> {
             .collect()
     }
 
-    fn mention_rows(&self, drilled: &[TargetItem], on_action: &OnPlus) -> Vec<TouchRow> {
+    fn pane_face(&self, item: &TargetItem, cx: &App) -> Option<AnyElement> {
+        let Some(PaletteTarget::Pane(pane)) = item.target else {
+            return None;
+        };
+        let tile = self.panes.iter().find(|tile| tile.pane == pane)?;
+        let ground = sheet_group_ground(cx);
+        Some(lead_face(tile, attention_dot(tile, cx), ground, cx).into_any_element())
+    }
+
+    fn mention_rows(&self, drilled: &[TargetItem], on_action: &OnPlus, cx: &App) -> Vec<TouchRow> {
         let row = |index: usize, item: &TargetItem, inside: bool| {
-            let row = TouchRow::new(("chat-plus-mention-row", index), item.name())
-                .icon(item.icon.clone());
+            let row = TouchRow::new(("chat-plus-mention-row", index), item.name());
+            let row = match self.pane_face(item, cx) {
+                Some(face) => row.lead(face, LEAD_FACE),
+                None => row.icon(item.icon.clone()),
+            };
             let detail = [item.detail.as_ref(), item.meta.as_ref()]
                 .into_iter()
                 .filter(|part| !part.is_empty())
@@ -370,7 +386,7 @@ impl PlusSheet<'_> {
             PlusPage::Root => self.root_rows(&on_action),
             PlusPage::Setting(option) => self.setting_rows(option, &on_action),
             PlusPage::Account => self.account_rows(&on_action),
-            PlusPage::Mention(drilled) => self.mention_rows(drilled, &on_action),
+            PlusPage::Mention(drilled) => self.mention_rows(drilled, &on_action, cx),
         };
         let root = *page == PlusPage::Root;
         let usage = root.then(|| self.usage(cx)).flatten();

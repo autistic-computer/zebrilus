@@ -155,6 +155,7 @@ pub(crate) fn host_bar(
         id,
         PillLabel {
             icon: IconName::Server,
+            face: None,
             title: title.to_owned().into(),
             word: ala::SharedString::default(),
             meta: meta.to_owned().into(),
@@ -697,6 +698,7 @@ impl Render for Menus {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let machine = |meta: &str| PillLabel {
             icon: IconName::Server,
+            face: None,
             title: "macbook".into(),
             word: ala::SharedString::default(),
             meta: meta.to_owned().into(),
@@ -733,6 +735,7 @@ impl Render for Menus {
                     "menu-pane-pill",
                     PillLabel {
                         icon: IconName::SquareTerminal,
+                        face: None,
                         title: "zsh".into(),
                         word: ala::SharedString::default(),
                         meta: "zebrilus · main".into(),
@@ -820,13 +823,7 @@ impl Render for Sheets {
             title: "Rename window".into(),
             current: "cargo watch".into(),
         }
-        .sheet(
-            &self.name,
-            |_, _, _| {},
-            Self::dismissed(1, cx),
-            window,
-            cx,
-        );
+        .sheet(&self.name, |_, _, _| {}, Self::dismissed(1, cx), window, cx);
         let confirm = Confirm {
             id: "story-confirm-sheet".into(),
             question: "Close this pane?".into(),
@@ -982,6 +979,7 @@ impl Render for Screen {
             "screen-pill",
             PillLabel {
                 icon: IconName::SquareTerminal,
+                face: None,
                 title: "cargo test".into(),
                 word: ala::SharedString::default(),
                 meta: "zz · editor".into(),

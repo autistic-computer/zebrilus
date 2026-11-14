@@ -98,20 +98,77 @@ pub fn attention_tone(attention: Attention) -> Option<Tone> {
 pub fn status_dot(attention: Attention, tile: Pixels, ring: Hsla, cx: &App) -> Option<Div> {
     let tone = attention_tone(attention)?;
     let dot = (f32::from(tile) * DOT_SHARE).round().max(5.0);
+    Some(ringed_dot(cx.theme().tone(tone), px(dot), ring))
+}
+
+#[must_use]
+pub fn ringed_dot(color: Hsla, dot: Pixels, ring: Hsla) -> Div {
     let edge = -(DOT_RING + DOT_OVERHANG);
-    Some(
+    div()
+        .absolute()
+        .right(px(edge))
+        .bottom(px(edge))
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(dot + px(2.0 * DOT_RING))
+        .rounded_full()
+        .bg(ring.opaque())
+        .child(div().size(dot).rounded_full().bg(color))
+}
+
+#[must_use]
+pub fn pane_face(
+    program: Option<&'static Program>,
+    icon: IconName,
+    size: Pixels,
+    glyph: Pixels,
+    radius: Pixels,
+    ground: Ground,
+    cx: &App,
+) -> Div {
+    let dark = cx.theme().is_dark();
+    let layer = stack_look(Some(ground), PaintState::Rest, cx);
+    if let Some(program) = program.filter(|_| program_colors(cx)) {
+        return Face {
+            program,
+            size,
+            radius,
+            smoothing: layer.smoothing,
+            dark,
+            ground: ground.fill,
+            dimmed: 0.0,
+        }
+        .tile_with_glyph(glyph, cx);
+    }
+    let mark = program
+        .and_then(|program| program_mark(program, glyph, layer.text, None))
+        .unwrap_or_else(|| {
+            Icon::new(icon)
+                .size(glyph)
+                .text_color(layer.text)
+                .into_any_element()
+        });
+    let lit = Lit {
+        size,
+        dark,
+        strength: 1.0,
+    };
+    paint_tile(
         div()
-            .absolute()
-            .right(px(edge))
-            .bottom(px(edge))
             .flex()
+            .flex_none()
             .items_center()
             .justify_center()
-            .size(px(dot + 2.0 * DOT_RING))
-            .rounded_full()
-            .bg(ring.opaque())
-            .child(div().size(px(dot)).rounded_full().bg(cx.theme().tone(tone))),
+            .size(size),
+        &layer,
     )
+    .rounded(radius)
+    .when(layer.glass.is_none(), |tile| {
+        tile.bg(Lit::background(layer.fill))
+    })
+    .shadow(lit.shadows(cx))
+    .child(mark)
 }
 
 pub fn stack_radius(tile: Pixels, cx: &App) -> Pixels {

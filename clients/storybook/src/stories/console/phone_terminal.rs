@@ -176,6 +176,7 @@ fn terminal(lines: &[Line], current: Option<u32>, cx: &App) -> Sample {
 fn label(word: &str, meta: &str, tone: Tone) -> PillLabel {
     PillLabel {
         icon: IconName::SquareTerminal,
+        face: None,
         title: TITLE.into(),
         word: SharedString::from(word.to_owned()),
         meta: SharedString::from(meta.to_owned()),

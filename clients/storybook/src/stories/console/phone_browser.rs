@@ -91,6 +91,7 @@ fn site_page(partial: bool, cx: &App) -> impl IntoElement {
 fn label(meta: &str) -> PillLabel {
     PillLabel {
         icon: IconName::Globe,
+        face: None,
         title: TITLE.into(),
         word: SharedString::default(),
         meta: SharedString::from(meta.to_owned()),
@@ -407,6 +408,7 @@ impl Render for BrowserStates {
                         "browser-picked-pill",
                         PillLabel {
                             icon: IconName::Check,
+                            face: None,
                             title: "Element context + screenshot copied".into(),
                             ..label(HOST)
                         },

@@ -101,6 +101,7 @@ fn pill(
         id,
         PillLabel {
             icon: IconName::Chat,
+            face: None,
             title: TITLE.into(),
             word: word.into(),
             meta: meta.into(),
@@ -534,6 +535,7 @@ impl Render for PlusStates {
                 quotas: &quotas,
                 context: usage.context,
                 mention,
+                panes: &[],
                 enabled: true,
             }
             .sheet(&page, bottom, |_, _, _| {}, |_, _| {}, cx)

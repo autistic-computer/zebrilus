@@ -15,9 +15,9 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, IconName,
     blocks::compact::{
-        BENTO_INSET, PillLabel, PillPlacement, PillSpring, compact_floating_bar, compact_hud,
-        compact_pill_collapse, compact_pill_label, compact_pill_morph, mini_pill_width, over_pill,
-        pill_bounds, pill_corner, pill_glass_over,
+        BENTO_INSET, PILL_TILE, PillLabel, PillPlacement, PillSpring, compact_floating_bar,
+        compact_hud, compact_pill_collapse, compact_pill_label, compact_pill_morph,
+        mini_pill_width, over_pill, pill_bounds, pill_corner, pill_glass_over, pill_tile_radius,
     },
     blocks::sheet::{bottom_sheet, close_sheet},
     blocks::touch::{
@@ -29,7 +29,7 @@ use penna::{
     components::kbd::Kbd,
 };
 use web_time::Instant;
-use zz_client::StatusBarModel;
+use zz_client::{StatusBarModel, program::Program, window_summary::pane_program};
 use zz_protocol::{InputMessage, PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::KeyAction;
 use zz_ui::{
@@ -37,7 +37,7 @@ use zz_ui::{
     compact::{
         ALL_BINDINGS, ALL_MACHINES, CLOSE_PANE, FIND, NEW_BROWSER, NEW_CHAT, NEW_SESSION,
         NEW_TERMINAL, OVERVIEW, PaneMenu, RENAME_PANE, SETTINGS, ToolKeys, close_pane_detail,
-        machine_menu, pane_menu,
+        machine_menu, pane_menu, pill_face,
     },
 };
 
@@ -1422,7 +1422,8 @@ impl AppShell {
         if picking {
             meta = "Picking an element".into();
         }
-        let mut icon = shown_page.map_or(IconName::SquareTerminal, |page| kind_icon(&page.kind));
+        let kind = shown_page.map_or(IconName::SquareTerminal, |page| kind_icon(&page.kind));
+        let mut icon = kind.clone();
         if let Some((pane, text, kind, until)) = self.compact.notice
             && until > now
             && shown_page.is_some_and(|page| page.pane == pane)
@@ -1437,13 +1438,6 @@ impl AppShell {
                 icon = IconName::Check;
             }
         }
-        let label = PillLabel {
-            icon,
-            title,
-            word,
-            meta,
-            tone,
-        };
         let floating = !keyboard && morph >= 1.0;
         let backdrop = shown_page
             .filter(|_| floating)
@@ -1452,6 +1446,27 @@ impl AppShell {
         let pill_placement = PillPlacement {
             glass: backdrop.and_then(|backdrop| pill_glass_over(backdrop, cx)),
             ..placement
+        };
+        let program_face = shown_page
+            .filter(|_| icon == kind)
+            .and_then(|page| self.page_program(page, cx))
+            .map(|program| {
+                pill_face(
+                    program,
+                    PILL_TILE,
+                    pill_tile_radius(&pill_placement, cx),
+                    cx.theme().ground(),
+                    cx,
+                )
+                .into_any_element()
+            });
+        let label = PillLabel {
+            icon,
+            face: program_face,
+            title,
+            word,
+            meta,
+            tone,
         };
         let dots = page_dots_in(&dot_groups(&pages, shown), cx.theme().foreground, cx);
         let find = shown_terminal
@@ -1748,6 +1763,18 @@ impl AppShell {
                     .children(overlays),
                 cx,
             ))
+    }
+
+    fn page_program(&self, page: &Page, cx: &App) -> Option<&'static Program> {
+        self.connection
+            .read(cx)
+            .core
+            .snapshot()
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .find_map(|window| window.panes.get(&page.pane))
+            .and_then(pane_program)
     }
 
     fn pill_text(
