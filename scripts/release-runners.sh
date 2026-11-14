@@ -70,7 +70,7 @@ stop() {
     docker rm -f zz-linux-aarch64 >/dev/null 2>&1 || true
     ssh -o BatchMode=yes "$linux_host" "docker rm -f zz-linux-x86_64 >/dev/null 2>&1 || true" || true
     ssh -o BatchMode=yes "$windows_host" \
-        "Get-Process Runner.Listener,Runner.Worker -ErrorAction SilentlyContinue | Where-Object { \$_.Path -like '$windows_dir*' } | Stop-Process -Force" \
+        "Get-Process Runner.Listener,Runner.Worker -ErrorAction SilentlyContinue | Where-Object { \$_.Path -like '$windows_dir*' } | Stop-Process -Force; Remove-Item '$windows_dir\.runner','$windows_dir\.credentials','$windows_dir\.credentials_rsaparams' -Force -ErrorAction SilentlyContinue" \
         2>/dev/null || true
     local id name status
     while read -r id name status; do
@@ -114,7 +114,7 @@ start() {
         \$env:HOME = \$env:USERPROFILE
         New-Item -ItemType Directory -Force \$env:USERPROFILE | Out-Null
         Set-Location '$windows_dir'
-        Remove-Item .runner,.credentials,.credentials_rsaparams -ErrorAction SilentlyContinue
+        Remove-Item .runner,.credentials,.credentials_rsaparams -Force -ErrorAction SilentlyContinue
         .\config.cmd --unattended --ephemeral --replace --disableupdate --url $url --token \$token --name zz-windows --labels zz-windows --work _work
         .\run.cmd" > "$logs/zz-windows.log" 2>&1 &
 
