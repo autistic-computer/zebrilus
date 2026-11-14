@@ -2032,3 +2032,85 @@ fn a_colon_in_a_text_slot_is_text_not_a_tmux_command(cx: &mut TestAppContext) {
         )]
     );
 }
+
+struct ChatView {
+    input: Entity<InputState>,
+    mention: Entity<TargetPicker>,
+}
+
+impl Render for ChatView {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use penna::blocks::chat::{ChatComposer, Composer};
+        let focus = self.input.read(cx).focus_handle(cx);
+        crate::target::mention_keys(div().id("chat").track_focus(&focus), &self.mention).child(
+            ChatComposer {
+                composer: Composer {
+                    input: self.input.clone(),
+                    leading: None,
+                    usage: None,
+                    action: div().into_any_element(),
+                    attachments: None,
+                    command_hint: None,
+                    ask: None,
+                    secret: false,
+                    ground: cx.theme().ground(),
+                },
+                prefix: Vec::new(),
+                over: crate::target::mention_layer(&self.mention, cx),
+                footer: Vec::new(),
+                controls: Vec::new(),
+            },
+        )
+    }
+}
+
+#[ala::test]
+fn the_mention_hides_while_focus_is_elsewhere_and_outlives_a_frame_without_focus(
+    cx: &mut TestAppContext,
+) {
+    cx.update(crate::init);
+    let (backend, _, _) = files_backend();
+    let slot = Rc::new(RefCell::new(None));
+    let captured = Rc::clone(&slot);
+    let (_, cx) = cx.add_window_view(move |window, cx| {
+        let input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(1, 8)
+                .submit_on_enter(true)
+                .context_menu(true)
+        });
+        let mention = mention_picker(&backend, input.clone(), window, cx);
+        input.read(cx).focus_handle(cx).focus(window, cx);
+        captured.replace(Some(input.clone()));
+        let chat = cx.new(|_| ChatView { input, mention });
+        Root::new(chat, window, cx)
+    });
+    let input = slot.borrow_mut().take().expect("input captured");
+    let shown = |cx: &mut VisualTestContext| cx.debug_bounds("target-picker").is_some();
+    let refocus = |cx: &mut VisualTestContext| {
+        cx.update(|window, cx| input.read(cx).focus_handle(cx).focus(window, cx));
+        cx.run_until_parked();
+    };
+    cx.update(|window, _| window.activate_window());
+    cx.run_until_parked();
+    cx.simulate_input("ask @");
+    assert!(shown(cx), "typing @ opens the menu");
+
+    cx.update(|window, cx| {
+        window.blur(cx);
+        window.refresh();
+    });
+    cx.run_until_parked();
+    refocus(cx);
+    assert!(
+        shown(cx),
+        "a frame without focus, repaired the way the workspace repairs it, keeps the menu"
+    );
+
+    let elsewhere = cx.update(|_, cx| cx.focus_handle());
+    cx.update(|window, cx| elsewhere.focus(window, cx));
+    cx.run_until_parked();
+    assert!(!shown(cx), "focus in another field hides the menu");
+    refocus(cx);
+    assert!(shown(cx), "focus back in the composer shows it again");
+}

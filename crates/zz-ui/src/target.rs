@@ -1430,10 +1430,6 @@ impl TargetPicker {
             }
         })
         .detach();
-        let focus = input.read(cx).focus_handle(cx);
-        let blurred = cx.on_blur(&focus, window, |picker, window, cx| {
-            picker.dismiss(window, cx);
-        });
         Self {
             backend,
             composer: input,
@@ -1459,7 +1455,7 @@ impl TargetPicker {
             raw_before: None,
             room: None,
             pending: None,
-            subscriptions: vec![blurred],
+            subscriptions: Vec::new(),
         }
     }
 
@@ -2294,7 +2290,14 @@ impl TargetPicker {
 }
 
 impl Render for TargetPicker {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let composer = self.composer.read(cx).focus_handle(cx);
+        if window
+            .focused(cx)
+            .is_some_and(|focused| focused != composer)
+        {
+            return div().into_any_element();
+        }
         if let Some(room) = self.room {
             self.fit(room);
         }

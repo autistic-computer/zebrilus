@@ -1074,18 +1074,3 @@ fn a_typed_mention_never_offers_its_own_chat() {
     );
     assert!(tokens("%9").is_empty());
 }
-
-#[ala::test]
-fn the_mention_closes_when_the_composer_loses_focus(cx: &mut TestAppContext) {
-    let (_, picker, _, cx) = composer(cx);
-    cx.update(|window, _| window.activate_window());
-    cx.run_until_parked();
-    cx.simulate_input("ask @");
-    assert!(picker.read_with(cx, |picker, _| picker.is_open()));
-    cx.update(|window, cx| {
-        window.blur(cx);
-        window.refresh();
-    });
-    cx.run_until_parked();
-    assert!(!picker.read_with(cx, |picker, _| picker.is_open()));
-}
