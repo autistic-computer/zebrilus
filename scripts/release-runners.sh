@@ -108,6 +108,11 @@ start() {
     printf '%s\n' "$token" | ssh -o BatchMode=yes "$windows_host" "
         \$token = [Console]::In.ReadLine()
         \$env:Path = 'C:\Program Files\Git\bin;' + \$env:LOCALAPPDATA + '\Programs\Inno Setup 6;' + \$env:Path
+        \$env:CARGO_HOME = \"\$env:USERPROFILE\.cargo\"
+        \$env:RUSTUP_HOME = \"\$env:USERPROFILE\.rustup\"
+        \$env:USERPROFILE = '$windows_dir\home'
+        \$env:HOME = \$env:USERPROFILE
+        New-Item -ItemType Directory -Force \$env:USERPROFILE | Out-Null
         Set-Location '$windows_dir'
         Remove-Item .runner,.credentials,.credentials_rsaparams -ErrorAction SilentlyContinue
         .\config.cmd --unattended --ephemeral --replace --disableupdate --url $url --token \$token --name zz-windows --labels zz-windows --work _work
