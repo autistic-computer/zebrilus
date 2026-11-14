@@ -77,6 +77,24 @@ impl CommandPaletteView {
         line.search
     }
 
+    pub(super) fn root_files_pending(&self) -> bool {
+        let Some(search) = self.root_search() else {
+            return false;
+        };
+        let Some(files) = &self.root_files else {
+            return false;
+        };
+        let listing = &files.listing;
+        if listing.error.is_some() {
+            return false;
+        }
+        let ranked = self
+            .unified
+            .as_ref()
+            .is_some_and(|unified| unified.files.query == search);
+        !listing.done || files.ranking.is_some() || (!listing.is_empty() && !ranked)
+    }
+
     pub(super) fn want_root_files(&mut self, window: &Window, cx: &mut Context<Self>) {
         let Some(search) = self.root_search() else {
             return;

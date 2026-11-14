@@ -32,7 +32,7 @@ use super::{
 };
 use crate::{
     WindowExt as _,
-    files::{ListingSink, start_dir},
+    files::{ListingSink, pane_folder, start_dir},
     input::{
         Backspace, Escape, IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight,
         MoveUp, OutdentInline,
@@ -194,16 +194,23 @@ impl TargetBackend for PaletteTargets {
 
     fn folder(&self, pane: PaneId, cx: &App) -> Option<String> {
         let tree = self.0.tree(cx);
-        let cwd = tree
-            .hosts
-            .iter()
-            .find(|host| host.id == tree.attached)?
-            .sessions
-            .iter()
-            .flat_map(|session| &session.windows)
-            .flat_map(|window| &window.panes)
-            .find(|candidate| candidate.id == pane)
-            .map(|pane| pane.cwd.clone())
+        let described = self
+            .0
+            .host_snapshot(tree.attached, cx)
+            .and_then(|snapshot| pane_folder(snapshot, pane))
+            .map(str::to_owned);
+        let cwd = described
+            .or_else(|| {
+                tree.hosts
+                    .iter()
+                    .find(|host| host.id == tree.attached)?
+                    .sessions
+                    .iter()
+                    .flat_map(|session| &session.windows)
+                    .flat_map(|window| &window.panes)
+                    .find(|candidate| candidate.id == pane)
+                    .map(|pane| pane.cwd.clone())
+            })
             .filter(|cwd| cwd.starts_with(['/', '~']))?;
         let home = self.0.home_dir(tree.attached, cx);
         Some(start_dir(Some(&cwd), home.as_deref()))
@@ -657,6 +664,8 @@ impl CommandPaletteView {
     }
 
     pub fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.want_root_files(window, cx);
+        let files_pending = self.root_files_pending();
         let places = self.places();
         let Some(unified) = &mut self.unified else {
             return;
@@ -667,6 +676,7 @@ impl CommandPaletteView {
             .and_then(|entry| entry.action.clone());
         let settings = self.backend.settings(cx);
         unified.apply_settings(settings);
+        unified.files_pending = files_pending;
         self.availability = self.backend.availability(cx);
         self.snapshot = self.backend.snapshot(cx);
         let mut history = cx
@@ -785,7 +795,6 @@ impl CommandPaletteView {
         }
         self.input
             .update(cx, |input, cx| input.set_placeholder(placeholder, cx));
-        self.want_root_files(window, cx);
         self.sync_level(window, cx);
         if settings.vim != self.vim.is_some() {
             self.vim = settings.vim.then(PaletteVim::default);
@@ -1487,7 +1496,14 @@ impl CommandPaletteView {
         surface = if let Some((rows, _)) = level_view {
             surface.rows(rows)
         } else if unified.rows.is_empty() {
-            surface.rows(palette_empty("No matches", cx))
+            surface.rows(palette_empty(
+                if unified.files_pending {
+                    "Listing…"
+                } else {
+                    "No matches"
+                },
+                cx,
+            ))
         } else {
             surface.rows(rows)
         };

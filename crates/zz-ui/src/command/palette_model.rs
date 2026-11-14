@@ -296,6 +296,7 @@ pub(crate) struct UnifiedPalette {
     pub grouped: bool,
     pub show_keys: bool,
     pub files: FileHits,
+    pub files_pending: bool,
 }
 
 impl UnifiedPalette {
@@ -315,6 +316,7 @@ impl UnifiedPalette {
             grouped: settings.grouped,
             show_keys: settings.show_keys,
             files: FileHits::default(),
+            files_pending: false,
         }
     }
 

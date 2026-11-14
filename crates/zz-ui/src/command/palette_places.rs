@@ -389,6 +389,28 @@ fn chat_matches(
     (rows, best)
 }
 
+fn rematched(query: &pick::Query, row: &FileRow) -> Option<FileRow> {
+    let (parent, label) = path_rank::split(&row.name);
+    let found = query.matched(&pick::Candidate {
+        kind: Kind::File,
+        label,
+        path: parent,
+        prior: Prior::default(),
+    })?;
+    let cut = parent.len();
+    let mut ranges = found.path;
+    ranges.extend(
+        found
+            .label
+            .into_iter()
+            .map(|range| range.start + cut..range.end + cut),
+    );
+    Some(FileRow {
+        matches: ranges,
+        ..row.clone()
+    })
+}
+
 fn file_entry(files: &FileHits, row: &FileRow) -> PaletteEntry {
     let (parent, label) = path_rank::split(&row.name);
     let cut = parent.len();
@@ -617,14 +639,29 @@ impl UnifiedPalette {
         } else {
             FILE_ROWS
         };
-        let files = if root && self.files.query == search {
-            self.files.hits.iter().take(cap).collect::<Vec<_>>()
+        let files = if !root {
+            Vec::new()
+        } else if self.files.query == search {
+            self.files
+                .hits
+                .iter()
+                .take(cap)
+                .cloned()
+                .collect::<Vec<_>>()
+        } else if self.files_pending {
+            let matcher = pick::Query::new(&search);
+            self.files
+                .hits
+                .iter()
+                .filter_map(|(row, score)| Some((rematched(&matcher, row)?, *score)))
+                .take(cap)
+                .collect()
         } else {
             Vec::new()
         };
         let file_best = files.first().map(|(_, score)| *score);
         let file_rows = files
-            .into_iter()
+            .iter()
             .map(|(row, _)| file_entry(&self.files, row))
             .collect();
         let mut sections = vec![

@@ -369,6 +369,24 @@ impl TargetItem {
         }
     }
 
+    fn rematched(&self, query: &Query) -> Option<Self> {
+        let kind = self.pick_kind();
+        let path = if matches!(kind, PickKind::File | PickKind::Dir) && !self.detail.is_empty() {
+            format!("{}/", self.detail)
+        } else {
+            self.detail.to_string()
+        };
+        let found = query.matched(&PickCandidate {
+            kind,
+            label: &self.label,
+            path: &path,
+            prior: Prior::default(),
+        })?;
+        let mut item = self.clone();
+        item.matches = found.label;
+        Some(item)
+    }
+
     fn scored(mut self, query: &Query, path: &str) -> Option<Self> {
         let found = query.matched(&PickCandidate {
             kind: self.pick_kind(),
@@ -1742,14 +1760,47 @@ impl TargetPicker {
     }
 
     fn merge(&mut self, keep: bool, cx: &mut Context<Self>) {
-        let filter = self.query.as_ref().map(|query| query.filter.clone());
+        let filter = self
+            .query
+            .as_ref()
+            .map_or_else(String::new, |query| query.filter.clone());
+        let pending = self.files_pending();
         let mut items = self.found.clone();
-        if let Some((ranked_for, files)) = &self.top_files
-            && Some(ranked_for) == filter.as_ref()
-        {
-            items.extend(files.iter().cloned());
+        match &self.top_files {
+            Some((ranked_for, files)) if *ranked_for == filter => {
+                items.extend(files.iter().cloned());
+            }
+            Some((_, files)) if pending => {
+                let matcher = Query::new(&filter);
+                items.extend(files.iter().filter_map(|item| item.rematched(&matcher)));
+            }
+            _ => {}
         }
         self.land(keep, ranked(items, true), cx);
+    }
+
+    fn files_pending(&self) -> bool {
+        let Some(query) = self.query.as_ref() else {
+            return false;
+        };
+        let Some(listing) = self.listing.as_ref() else {
+            return false;
+        };
+        if listing.error.is_some() {
+            return false;
+        }
+        let ranked = || {
+            self.top_files
+                .as_ref()
+                .is_some_and(|(ranked_for, _)| *ranked_for == query.filter)
+        };
+        match query.level {
+            TargetLevel::Top if !query.filter.is_empty() => {
+                !listing.done || self.ranking.is_some() || (!listing.is_empty() && !ranked())
+            }
+            TargetLevel::Files { .. } => !listing.done || self.ranking.is_some(),
+            _ => false,
+        }
     }
 
     fn rank(&mut self, query: FileQuery, keep: bool, cx: &mut Context<Self>) {
@@ -2168,6 +2219,9 @@ impl TargetPicker {
     }
 
     fn empty_message(&self) -> SharedString {
+        if self.files_pending() {
+            return "Listing…".into();
+        }
         let files = matches!(
             self.query.as_ref().map(|query| &query.level),
             Some(TargetLevel::Files { .. })
@@ -2175,9 +2229,6 @@ impl TargetPicker {
         if let Some(listing) = self.listing.as_ref().filter(|_| files) {
             if let Some(error) = &listing.error {
                 return error.clone();
-            }
-            if !listing.done || self.ranking.is_some() {
-                return "Listing…".into();
             }
             if listing.is_empty() {
                 return "This folder is empty".into();

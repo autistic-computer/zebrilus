@@ -1074,3 +1074,48 @@ fn a_typed_mention_never_offers_its_own_chat() {
     );
     assert!(tokens("%9").is_empty());
 }
+
+#[ala::test]
+fn rows_still_coming_show_the_pending_line_then_land_and_keystrokes_keep_them(
+    cx: &mut TestAppContext,
+) {
+    let (_, picker, _, cx) = composer_with(cx, chat_room(), Some("~/dev/zz/"));
+    picker.update(cx, |picker, _| picker.set_own_chat(Some(PaneId(9))));
+    cx.simulate_input("ask @qq");
+    let empty = |cx: &mut VisualTestContext| {
+        picker.read_with(cx, |picker, _| picker.empty_message().to_string())
+    };
+    assert_eq!(listed(&picker, cx), Vec::<String>::new());
+    assert_eq!(empty(cx), "Listing…");
+
+    picker.update(cx, |picker, cx| {
+        picker.apply("macbook", 1, root("/home/fabrico/dev/zz"), cx);
+        let chunk = ListingUpdate::Chunk {
+            entries: Arc::from([
+                entry("qq.txt", PathKind::File),
+                entry("qqa.txt", PathKind::File),
+                entry("src/qqb.rs", PathKind::File),
+            ]),
+            done: true,
+            truncated: false,
+        };
+        picker.apply("macbook", 1, chunk, cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        listed(&picker, cx),
+        [
+            "macbook:~/dev/zz/qq.txt",
+            "macbook:~/dev/zz/qqa.txt",
+            "macbook:~/dev/zz/src/qqb.rs",
+        ]
+    );
+
+    cx.update(|window, cx| {
+        window.dispatch_keystroke(ala::Keystroke::parse("a").expect("key"), cx);
+    });
+    assert!(picker.read_with(cx, |picker, _| picker.ranking.is_some()));
+    assert_eq!(listed(&picker, cx), ["macbook:~/dev/zz/qqa.txt"]);
+    cx.run_until_parked();
+    assert_eq!(listed(&picker, cx), ["macbook:~/dev/zz/qqa.txt"]);
+}
