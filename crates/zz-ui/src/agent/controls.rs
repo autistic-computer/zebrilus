@@ -91,7 +91,7 @@ pub fn agent_model_picker(
             button.child(mode_glyph(provider, mode, cx))
         })
         .child(label)
-        .when(!settings.effort.is_empty(), |button| {
+        .when(!settings.effort_name().is_empty(), |button| {
             button.child(
                 div()
                     .text_color(cx.theme().foreground.muted())
@@ -124,7 +124,7 @@ fn model_panel(
     let current = settings
         .models
         .iter()
-        .position(|choice| choice.value == settings.model);
+        .position(|choice| choice.value == settings.shown_model());
     let scroll = window
         .use_keyed_state("agent-model-scroll", cx, |window, _| {
             let scroll = ScrollHandle::new();
@@ -144,7 +144,7 @@ fn model_panel(
     let list = choice_rows(
         "agent-model",
         &settings.models,
-        &settings.model,
+        settings.shown_model(),
         agent_settings::MODEL,
         on_pick,
         cx,
@@ -255,7 +255,7 @@ fn effort_rail(settings: &LensSettings, on_pick: &Pick) -> StepRail {
         .iter()
         .map(|choice| choice.value.clone())
         .collect::<Vec<_>>();
-    let rail = StepRail::new(
+    StepRail::new(
         "agent-effort",
         "Effort",
         settings
@@ -263,18 +263,15 @@ fn effort_rail(settings: &LensSettings, on_pick: &Pick) -> StepRail {
             .iter()
             .map(|choice| SharedString::from(choice.name.clone()))
             .collect(),
-        values.iter().position(|value| *value == settings.effort),
+        values
+            .iter()
+            .position(|value| value == settings.shown_effort()),
         move |index, window, cx| {
             if let Some(value) = values.get(index) {
                 pick(agent_settings::EFFORT, value.clone(), window, cx);
             }
         },
-    );
-    if settings.effort_starts_unset() {
-        rail.open_start()
-    } else {
-        rail
-    }
+    )
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

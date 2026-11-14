@@ -173,10 +173,10 @@ pub fn claude_settings() -> LensSettings {
             .collect::<Vec<_>>()
     };
     LensSettings {
-        model: "opus".to_owned(),
+        model: String::new(),
         model_label: "Opus 5.5".to_owned(),
+        applied_model: "opus".to_owned(),
         models: choices(&[
-            ("default", "Default"),
             ("opus", "Opus 5.5"),
             ("fable", "Fable 5.2"),
             ("sonnet", "Sonnet 5.5"),
@@ -191,9 +191,9 @@ pub fn claude_settings() -> LensSettings {
             ("opus-4-6", "Opus 4.6"),
             ("sonnet-4-6", "Sonnet 4.6"),
         ]),
-        effort: "high".to_owned(),
+        effort: String::new(),
+        applied_effort: "high".to_owned(),
         efforts: choices(&[
-            ("default", "Default"),
             ("low", "Low"),
             ("medium", "Medium"),
             ("high", "High"),
@@ -223,6 +223,8 @@ pub fn codex_settings() -> LensSettings {
     LensSettings {
         model: "gpt-6.1-sol".to_owned(),
         model_label: "GPT-6.1-Sol".to_owned(),
+        applied_model: String::new(),
+        applied_effort: String::new(),
         models: choices(&[
             ("gpt-6.1-sol", "GPT-6.1-Sol"),
             ("gpt-6-astra", "GPT-6-Astra"),
@@ -1055,6 +1057,21 @@ impl Render for Controls {
                     PaneId(10),
                     "a turn and 1 background task",
                     |_, _, _| {},
+                    cx,
+                )),
+            )
+            .state(
+                "nothing known yet: no model or effort",
+                row().children(footer_controls(
+                    "claude-unknown",
+                    &LensSettings {
+                        model_label: String::new(),
+                        applied_model: String::new(),
+                        applied_effort: String::new(),
+                        ..claude_settings()
+                    },
+                    &Usage::normal(),
+                    true,
                     cx,
                 )),
             )

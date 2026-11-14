@@ -87,6 +87,18 @@ impl AgentLaunches {
         true
     }
 
+    fn clear(&mut self, provider: AgentProvider, option: &str) -> bool {
+        let launch = self.get_mut(provider);
+        let slot = match option {
+            MODEL => &mut launch.model,
+            EFFORT => &mut launch.effort,
+            _ => return false,
+        };
+        let had = !slot.is_empty();
+        slot.clear();
+        had
+    }
+
     pub fn follow(
         &mut self,
         provider: AgentProvider,
@@ -97,12 +109,26 @@ impl AgentLaunches {
             return false;
         };
         let mut changed = false;
-        for (option, then, now) in [
-            (MODEL, &before.model, &after.model),
-            (EFFORT, &before.effort, &after.effort),
+        for (option, then, now, picked) in [
+            (
+                MODEL,
+                before.shown_model(),
+                after.shown_model(),
+                &after.model,
+            ),
+            (
+                EFFORT,
+                before.shown_effort(),
+                after.shown_effort(),
+                &after.effort,
+            ),
         ] {
             if !then.is_empty() && then != now {
-                changed |= self.pick(provider, option, now);
+                changed |= if picked.is_empty() {
+                    self.clear(provider, option)
+                } else {
+                    self.pick(provider, option, picked)
+                };
             }
         }
         changed

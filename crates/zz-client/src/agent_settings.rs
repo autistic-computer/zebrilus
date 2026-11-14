@@ -6,7 +6,6 @@ use zz_protocol::{
 
 pub const MODEL: &str = "model";
 pub const EFFORT: &str = "effort";
-const UNSET_EFFORT: &str = "default";
 pub const MODE: &str = "mode";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -24,6 +23,8 @@ pub struct LensSettings {
     pub efforts: Vec<Choice>,
     pub mode: String,
     pub modes: Vec<Choice>,
+    pub applied_model: String,
+    pub applied_effort: String,
 }
 
 impl LensSettings {
@@ -35,6 +36,11 @@ impl LensSettings {
         let effort = find(EFFORT);
         let mode = find(MODE);
         let text = |value: &Value| value.as_str().unwrap_or_default().to_owned();
+        let applied = |option: Option<&Value>| {
+            option.map_or_else(String::new, |option| {
+                text(&option["_meta"]["zz"]["applied"])
+            })
+        };
         let choices = |option: Option<&Value>| {
             option
                 .and_then(|option| option["options"].as_array())
@@ -48,25 +54,46 @@ impl LensSettings {
                 })
                 .collect::<Vec<_>>()
         };
-        let current = text(&model["currentValue"]);
-        let models = choices(Some(model));
-        let label = models
-            .iter()
-            .find(|choice| choice.value == current && !choice.name.is_empty())
-            .map_or_else(|| current.clone(), |choice| choice.name.clone());
-        Some(Self {
-            model: current,
-            model_label: label,
-            models,
+        let mut settings = Self {
+            model: text(&model["currentValue"]),
+            models: choices(Some(model)),
+            applied_model: applied(Some(model)),
             effort: effort
                 .map(|effort| text(&effort["currentValue"]))
                 .unwrap_or_default(),
             efforts: choices(effort),
+            applied_effort: applied(effort),
             mode: mode
                 .map(|mode| text(&mode["currentValue"]))
                 .unwrap_or_default(),
             modes: choices(mode),
-        })
+            model_label: String::new(),
+        };
+        let shown = settings.shown_model();
+        settings.model_label = settings
+            .models
+            .iter()
+            .find(|choice| choice.value == shown && !choice.name.is_empty())
+            .map_or_else(|| shown.to_owned(), |choice| choice.name.clone());
+        Some(settings)
+    }
+
+    #[must_use]
+    pub fn shown_model(&self) -> &str {
+        if self.model.is_empty() {
+            &self.applied_model
+        } else {
+            &self.model
+        }
+    }
+
+    #[must_use]
+    pub fn shown_effort(&self) -> &str {
+        if self.effort.is_empty() {
+            &self.applied_effort
+        } else {
+            &self.effort
+        }
     }
 
     #[must_use]
@@ -79,22 +106,16 @@ impl LensSettings {
 
     #[must_use]
     pub fn effort_name(&self) -> &str {
+        let shown = self.shown_effort();
         self.efforts
             .iter()
-            .find(|choice| choice.value == self.effort)
-            .map_or(self.effort.as_str(), |choice| choice.name.as_str())
-    }
-
-    #[must_use]
-    pub fn effort_starts_unset(&self) -> bool {
-        self.efforts
-            .first()
-            .is_some_and(|choice| choice.value == UNSET_EFFORT)
+            .find(|choice| choice.value == shown)
+            .map_or(shown, |choice| choice.name.as_str())
     }
 
     #[must_use]
     pub fn summary(&self) -> String {
-        match (self.model_label.is_empty(), self.effort.is_empty()) {
+        match (self.model_label.is_empty(), self.shown_effort().is_empty()) {
             (false, false) => format!("{} · {}", self.model_label, self.effort_name()),
             (false, true) => self.model_label.clone(),
             (true, false) => self.effort_name().to_owned(),
@@ -105,8 +126,8 @@ impl LensSettings {
     #[must_use]
     pub fn choices(&self, option: &str) -> Option<(&[Choice], &str)> {
         match option {
-            MODEL => Some((&self.models, &self.model)),
-            EFFORT => Some((&self.efforts, &self.effort)),
+            MODEL => Some((&self.models, self.shown_model())),
+            EFFORT => Some((&self.efforts, self.shown_effort())),
             MODE => Some((&self.modes, &self.mode)),
             _ => None,
         }
@@ -196,7 +217,12 @@ pub fn composer_setter<'a>(
         None => choices
             .filter(|(choices, _)| !choices.is_empty())
             .map(|_| ComposerSetter::List(option)),
-        Some(value) if choices.is_some_and(|(_, current)| current == value) => {
+        Some(value)
+            if settings.is_some_and(|settings| match option {
+                MODEL => settings.model == value,
+                _ => settings.effort == value,
+            }) =>
+        {
             Some(ComposerSetter::Keep)
         }
         Some(value) => Some(ComposerSetter::Set(option, value)),
@@ -233,6 +259,7 @@ pub fn pane_account(snapshot: &MuxSnapshot, pane: PaneId) -> Option<&str> {
 
 pub const DEFAULT_ACCOUNT_NAME: &str = "Default";
 pub const SIGNED_OUT: &str = "Signed out";
+pub const SIGNED_IN: &str = "Signed in";
 
 #[must_use]
 pub fn account_name(account: &AgentAccount) -> String {
@@ -240,7 +267,14 @@ pub fn account_name(account: &AgentAccount) -> String {
         .email
         .clone()
         .or_else(|| account.id.clone())
-        .unwrap_or_else(|| DEFAULT_ACCOUNT_NAME.to_owned())
+        .unwrap_or_else(|| {
+            if account.signed_in {
+                SIGNED_IN
+            } else {
+                SIGNED_OUT
+            }
+            .to_owned()
+        })
 }
 
 #[must_use]
@@ -266,7 +300,7 @@ pub fn account_quota(
 #[must_use]
 pub fn account_detail(account: &AgentAccount) -> Option<String> {
     if !account.signed_in {
-        return Some(SIGNED_OUT.to_owned());
+        return (account.email.is_some() || account.id.is_some()).then(|| SIGNED_OUT.to_owned());
     }
     let parts = account
         .plan
@@ -355,7 +389,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn an_account_reads_as_its_email_else_its_id_else_default() {
+    fn an_account_reads_as_its_email_else_its_id_else_its_sign_in_state() {
         let account = |id: Option<&str>, email: Option<&str>, plan: Option<&str>| AgentAccount {
             provider: AgentProvider::ClaudeCode,
             id: id.map(str::to_owned),
@@ -374,8 +408,12 @@ mod tests {
         assert_eq!(account_detail(&accounts[0]).as_deref(), Some("Max 20x"));
         assert_eq!(account_detail(&accounts[1]).as_deref(), Some("Team · Acme"));
         let signed_out = account(None, None, None);
-        assert_eq!(account_name(&signed_out), "Default");
-        assert_eq!(account_detail(&signed_out).as_deref(), Some("Signed out"));
+        assert_eq!(account_name(&signed_out), "Signed out");
+        assert_eq!(account_detail(&signed_out), None);
+        assert_eq!(
+            account_detail(&account(Some("a2"), None, None)).as_deref(),
+            Some("Signed out")
+        );
     }
 
     #[test]
@@ -445,6 +483,78 @@ mod tests {
         assert_eq!(codex.summary(), "GPT-6-Luna · High");
         assert_eq!(codex.models.len(), 1);
         assert_eq!(LensSettings::from_json(""), None);
+    }
+
+    #[test]
+    fn an_unpicked_chat_shows_the_applied_model_and_effort_and_pins_nothing() {
+        let choices = |names: &[(&str, &str)]| {
+            names
+                .iter()
+                .map(|(value, name)| json!({ "value": value, "name": name }))
+                .collect::<Vec<_>>()
+        };
+        let models = choices(&[
+            ("opus", "Opus 5.5"),
+            ("claude-fable-5-2[1m]", "Fable 5.2"),
+            ("sonnet", "Sonnet 5.5"),
+            ("haiku", "Haiku 5.5"),
+        ]);
+        let efforts = choices(&[
+            ("low", "Low"),
+            ("medium", "Medium"),
+            ("high", "High"),
+            ("xhigh", "Xhigh"),
+            ("max", "Max"),
+        ]);
+        let unknown = LensSettings::parse(&json!([
+            {"id":"model","currentValue":"","options":models},
+            {"id":"effort","currentValue":"","options":efforts},
+        ]))
+        .expect("unknown");
+        assert_eq!(
+            (unknown.model_label.as_str(), unknown.effort_name()),
+            ("", "")
+        );
+        assert_eq!(unknown.summary(), "");
+        let applied = LensSettings::parse(&json!([
+            {"id":"model","currentValue":"","options":models,"_meta":{"zz":{"applied":"sonnet"}}},
+            {"id":"effort","currentValue":"","options":efforts,"_meta":{"zz":{"applied":"low"}}},
+        ]))
+        .expect("applied");
+        assert_eq!(applied.summary(), "Sonnet 5.5 · Low");
+        assert_eq!(
+            applied.choices(MODEL).map(|(_, current)| current),
+            Some("sonnet")
+        );
+        assert_eq!(
+            composer_setter("/model sonnet", Some(&applied)),
+            Some(ComposerSetter::Set(MODEL, "sonnet"))
+        );
+        let fork = fork_chat_command(
+            AgentProvider::ClaudeCode,
+            "s",
+            "/a",
+            PaneId(7),
+            None,
+            Some(&applied),
+            None,
+        );
+        assert_eq!(
+            fork.args[2],
+            "new-pane -t %7 -c /a -x 46% -y 72% ; select-pane-kind --resume s --fork agent claude"
+        );
+        let mut launches = crate::agent_launch::AgentLaunches::default();
+        assert!(!launches.follow(AgentProvider::ClaudeCode, Some(&unknown), &applied));
+        assert!(launches.agent_flags(AgentProvider::ClaudeCode).is_empty());
+        let picked = LensSettings {
+            model: "opus".to_owned(),
+            ..applied.clone()
+        };
+        assert!(launches.follow(AgentProvider::ClaudeCode, Some(&applied), &picked));
+        assert_eq!(
+            launches.agent_flags(AgentProvider::ClaudeCode),
+            ["--model", "opus"]
+        );
     }
 
     #[test]
