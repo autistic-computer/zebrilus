@@ -1960,7 +1960,12 @@ impl Render for AgentView {
                     }),
             )
             .child(self.render_composer(&state, &view, cx));
-        round_div_radii(root, pane_content_radii(cx, self.window_corners))
+        let radii = if floats {
+            ala::Corners::default()
+        } else {
+            pane_content_radii(cx, self.window_corners)
+        };
+        round_div_radii(root, radii)
             .when(!floats, |root| root.rounded_tl(px(0.0)).rounded_tr(px(0.0)))
     }
 }

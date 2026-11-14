@@ -2455,7 +2455,11 @@ impl Render for TerminalView {
                     search_query.is_none().then_some(marked_text).flatten(),
                     copy_flash,
                 )),
-            pane_content_radii(cx, self.window_corners),
+            if self.floating {
+                ala::Corners::default()
+            } else {
+                pane_content_radii(cx, self.window_corners)
+            },
         )
         .when(!self.floating, |root| {
             root.rounded_tl(px(0.0)).rounded_tr(px(0.0))
