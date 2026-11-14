@@ -326,6 +326,12 @@ fn chat_work_reads_as_one_busy_line() {
     ])
     .to_string();
     assert_eq!(chat_settings(&state), (Some("haiku".to_owned()), None));
+    state.config_options = json!([
+        { "id": "model", "currentValue": "", "_meta": { "zz": { "applied": "sonnet" } } },
+        { "id": "effort", "currentValue": "", "_meta": { "zz": { "applied": "low" } } },
+    ])
+    .to_string();
+    assert_eq!(chat_settings(&state), (None, None));
 }
 
 #[test]

@@ -314,6 +314,7 @@ enum Outgoing {
     Side { message_id: String, reply: String },
     StopTask,
     Title { session: String },
+    Applied,
 }
 
 enum Permission {
@@ -351,6 +352,42 @@ struct Settings {
     model: String,
     mode: String,
     effort: String,
+    applied_model: Option<String>,
+    applied_effort: Option<String>,
+    asks: bool,
+    ask_again: bool,
+}
+
+fn picked(value: &str) -> String {
+    if value == "default" {
+        String::new()
+    } else {
+        value.to_owned()
+    }
+}
+
+fn model_name(model: &Value) -> Option<&str> {
+    model["description"]
+        .as_str()
+        .and_then(|description| description.split_once(" · "))
+        .map(|(name, _)| name.trim())
+        .filter(|name| !name.is_empty())
+        .or_else(|| {
+            if model["value"] == "default" {
+                model["resolvedModel"].as_str()
+            } else {
+                model["displayName"].as_str()
+            }
+        })
+        .or_else(|| model["value"].as_str())
+}
+
+fn level_name(level: &str) -> String {
+    let mut name = level.to_owned();
+    if let Some(first) = name.get_mut(0..1) {
+        first.make_ascii_uppercase();
+    }
+    name
 }
 
 impl Settings {
@@ -360,17 +397,82 @@ impl Settings {
             hidden_commands: HashSet::new(),
             listed_commands: None,
             models: Vec::new(),
-            model: command.model_flag().unwrap_or_else(|| "default".to_owned()),
+            model: command
+                .model_flag()
+                .map(|model| picked(&model))
+                .unwrap_or_default(),
             mode: command.mode_flag().unwrap_or_else(|| "default".to_owned()),
-            effort: "default".to_owned(),
+            effort: String::new(),
+            applied_model: None,
+            applied_effort: None,
+            asks: true,
+            ask_again: false,
+        }
+    }
+
+    fn listed(&self) -> impl Iterator<Item = &Value> {
+        let named = |resolved: &str| {
+            self.models.iter().any(|model| {
+                model["value"] != "default" && model["resolvedModel"].as_str() == Some(resolved)
+            })
+        };
+        self.models.iter().filter(move |model| {
+            model["value"] != "default"
+                || model["resolvedModel"]
+                    .as_str()
+                    .is_some_and(|resolved| !named(resolved))
+        })
+    }
+
+    fn applied_value(&self) -> Option<&str> {
+        let applied = self.applied_model.as_deref()?;
+        let resolved = applied.split('[').next().unwrap_or(applied);
+        self.listed()
+            .find(|model| {
+                model["value"].as_str() == Some(applied)
+                    || model["resolvedModel"].as_str() == Some(resolved)
+            })
+            .and_then(|model| model["value"].as_str())
+            .or(Some(applied))
+    }
+
+    fn shown_model(&self) -> Option<&str> {
+        if self.model.is_empty() {
+            self.applied_value()
+        } else {
+            Some(self.model.as_str())
         }
     }
 
     fn current_model(&self) -> Option<&Value> {
+        let shown = self.shown_model();
         self.models
             .iter()
-            .find(|model| model["value"].as_str() == Some(self.model.as_str()))
+            .find(|model| shown.is_some() && model["value"].as_str() == shown)
             .or_else(|| self.models.first())
+    }
+
+    fn note_model(&mut self, model: &str) -> bool {
+        if self.applied_model.as_deref() == Some(model) {
+            return false;
+        }
+        self.applied_model = Some(model.to_owned());
+        true
+    }
+
+    fn note_applied(&mut self, response: &Value) -> Option<bool> {
+        let applied = response
+            .get("applied")
+            .filter(|applied| applied.is_object())?;
+        let mut changed = applied["model"]
+            .as_str()
+            .is_some_and(|model| self.note_model(model));
+        let effort = applied["effort"].as_str().map(str::to_owned);
+        if effort != self.applied_effort {
+            self.applied_effort = effort;
+            changed = true;
+        }
+        Some(changed)
     }
 
     fn modes(&self) -> Vec<(&'static str, &'static str, &'static str)> {
@@ -396,21 +498,35 @@ impl Settings {
     fn config_options(&self) -> Value {
         let mut options = Vec::new();
         if !self.models.is_empty() {
-            options.push(json!({
+            let mut choices = self
+                .listed()
+                .filter_map(|model| {
+                    let value = model["value"].as_str()?;
+                    Some(json!({
+                        "value": value,
+                        "name": model_name(model).unwrap_or(value),
+                        "description": model["description"].as_str(),
+                    }))
+                })
+                .collect::<Vec<_>>();
+            let applied = self.applied_value();
+            if let Some(applied) = applied
+                && !choices.iter().any(|choice| choice["value"] == applied)
+            {
+                choices.push(json!({ "value": applied, "name": applied }));
+            }
+            let mut option = json!({
                 "id": "model",
                 "name": "Model",
                 "category": "model",
                 "type": "select",
                 "currentValue": self.model,
-                "options": self.models.iter().filter_map(|model| {
-                    let value = model["value"].as_str()?;
-                    Some(json!({
-                        "value": value,
-                        "name": model["displayName"].as_str().unwrap_or(value),
-                        "description": model["description"].as_str(),
-                    }))
-                }).collect::<Vec<_>>(),
-            }));
+                "options": choices,
+            });
+            if let Some(applied) = applied {
+                option["_meta"] = json!({ "zz": { "applied": applied } });
+            }
+            options.push(option);
         }
         options.push(json!({
             "id": "mode",
@@ -428,22 +544,25 @@ impl Settings {
             .and_then(|model| model["supportedEffortLevels"].as_array())
             .filter(|levels| !levels.is_empty());
         if let Some(levels) = levels {
-            let mut choices = vec![json!({ "value": "default", "name": "Default" })];
-            choices.extend(levels.iter().filter_map(Value::as_str).map(|level| {
-                let mut name = level.to_owned();
-                if let Some(first) = name.get_mut(0..1) {
-                    first.make_ascii_uppercase();
-                }
-                json!({ "value": level, "name": name })
-            }));
-            options.push(json!({
+            let mut levels = levels.iter().filter_map(Value::as_str).collect::<Vec<_>>();
+            let applied = self.applied_effort.as_deref();
+            if let Some(applied) = applied
+                && !levels.contains(&applied)
+            {
+                levels.push(applied);
+            }
+            let mut option = json!({
                 "id": "effort",
                 "name": "Effort",
                 "category": "thought_level",
                 "type": "select",
                 "currentValue": self.effort,
-                "options": choices,
-            }));
+                "options": levels.iter().map(|level| json!({ "value": level, "name": level_name(level) })).collect::<Vec<_>>(),
+            });
+            if let Some(applied) = applied {
+                option["_meta"] = json!({ "zz": { "applied": applied } });
+            }
+            options.push(option);
         }
         Value::Array(options)
     }
@@ -556,6 +675,43 @@ impl Runtime {
         self.send(&json!({ "type": "control_request", "request_id": request_id, "request": body }));
         self.requests
             .insert(request_id, (outgoing, Instant::now() + timeout));
+    }
+
+    fn ask_applied(&mut self) {
+        if !self.settings.asks || self.process.is_none() {
+            return;
+        }
+        if self
+            .requests
+            .values()
+            .any(|(outgoing, _)| matches!(outgoing, Outgoing::Applied))
+        {
+            self.settings.ask_again = true;
+            return;
+        }
+        self.settings.ask_again = false;
+        self.request(
+            &json!({ "subtype": "get_settings" }),
+            Outgoing::Applied,
+            CONTROL_TIMEOUT,
+        );
+    }
+
+    async fn applied(&mut self, result: Result<Value, String>) -> Result<(), String> {
+        let changed = result
+            .ok()
+            .and_then(|response| self.settings.note_applied(&response));
+        let Some(changed) = changed else {
+            self.settings.asks = false;
+            return Ok(());
+        };
+        if self.settings.ask_again {
+            self.ask_applied();
+        }
+        if changed {
+            self.publish_settings().await?;
+        }
+        Ok(())
     }
 
     fn next_deadline(&self) -> Option<Instant> {
@@ -917,6 +1073,7 @@ impl Runtime {
             other => other,
         };
         self.resumed_quiet = matches!(launch, Launch::Resume(_));
+        self.settings.asks = true;
         self.starting = Some(Starting { start, launch, cwd });
         self.request(
             &json!({
@@ -1100,6 +1257,7 @@ impl Runtime {
             }
         }
         self.publish_commands().await?;
+        self.ask_applied();
         if self.title.start(title.clone()) {
             self.emit(AgentStreamPayload::TitleChanged { title })
                 .await?;
@@ -1458,6 +1616,7 @@ impl Runtime {
                 Ok(())
             }
             (Outgoing::Title { session }, result) => self.titled(&session, result).await,
+            (Outgoing::Applied, result) => self.applied(result).await,
             (Outgoing::StopTask, Err(error)) => {
                 self.notice(&format!("Could not stop the task: {error}"))
                     .await
@@ -1477,8 +1636,8 @@ impl Runtime {
             (Outgoing::Setting { option_id, value }, Ok(_)) => {
                 match option_id.as_str() {
                     "model" => {
-                        self.settings.model.clone_from(&value);
-                        if self.settings.effort != "default"
+                        self.settings.model = picked(&value);
+                        if !self.settings.effort.is_empty()
                             && !self
                                 .settings
                                 .current_model()
@@ -1489,11 +1648,11 @@ impl Runtime {
                                         .any(|level| level == self.settings.effort.as_str())
                                 })
                         {
-                            "default".clone_into(&mut self.settings.effort);
+                            self.settings.effort.clear();
                         }
                     }
                     "mode" => self.settings.mode.clone_from(&value),
-                    "effort" => self.settings.effort.clone_from(&value),
+                    "effort" => self.settings.effort = picked(&value),
                     _ => {}
                 }
                 self.emit(AgentStreamPayload::ConfigOptionsChanged {
@@ -1502,7 +1661,9 @@ impl Runtime {
                     config_options: self.settings.config_options(),
                 })
                 .await?;
-                self.publish_settings().await
+                self.publish_settings().await?;
+                self.ask_applied();
+                Ok(())
             }
             (Outgoing::Setting { option_id, .. }, Err(error)) => {
                 self.emit(AgentStreamPayload::SettingFailed {
@@ -1633,6 +1794,16 @@ impl Runtime {
                     }
                 }
                 self.follow_session(&frame).await?;
+                self.ask_applied();
+            }
+            Some("assistant") if frame["parent_tool_use_id"].is_null() => {
+                if let Some(model) = frame["message"]["model"]
+                    .as_str()
+                    .filter(|model| model.starts_with("claude-"))
+                    && self.settings.note_model(model)
+                {
+                    self.publish_settings().await?;
+                }
             }
             _ => {}
         }
@@ -1697,25 +1868,13 @@ impl Runtime {
                     mode.clone_into(&mut self.settings.mode);
                     changed = true;
                 }
-                if let Some(model) = frame["model"].as_str()
-                    && let Some(value) = self.settings.models.iter().find_map(|entry| {
-                        (entry["resolvedModel"].as_str() == Some(model))
-                            .then(|| entry["value"].as_str())
-                            .flatten()
-                    })
-                    && self.settings.model == "default"
-                    && self
-                        .settings
-                        .current_model()
-                        .and_then(|entry| entry["resolvedModel"].as_str())
-                        != Some(model)
-                {
-                    value.clone_into(&mut self.settings.model);
-                    changed = true;
+                if let Some(model) = frame["model"].as_str() {
+                    changed |= self.settings.note_model(model);
                 }
                 if changed {
                     self.publish_settings().await?;
                 }
+                self.ask_applied();
             }
             Some("status") => {
                 if let Some(mode) = frame["permissionMode"].as_str()
@@ -2371,10 +2530,52 @@ mod tests {
     #[test]
     fn settings_offer_models_modes_and_the_current_models_effort() {
         let mut settings = Settings::new(&ClaudeCommand::parse("claude").expect("native"));
+        let levels = json!(["low", "medium", "high", "xhigh", "max"]);
+        let model = |value: &str, resolved: &str, display: &str, description: &str| json!({"value":value,"resolvedModel":resolved,"displayName":display,"description":description,"supportsEffort":true,"supportedEffortLevels":levels,"supportsAutoMode":true});
         settings.models = vec![
-            json!({"value":"default","displayName":"Default","description":"Opus","supportsEffort":true,"supportedEffortLevels":["low","high"],"supportsAutoMode":true}),
-            json!({"value":"haiku","displayName":"Haiku","description":"Fast"}),
+            model(
+                "default",
+                "claude-opus-5-5",
+                "Default (recommended)",
+                "Opus 5.5 · Best for everyday, complex tasks",
+            ),
+            model(
+                "opus",
+                "claude-opus-5-5",
+                "Opus",
+                "Opus 5.5 · Best for everyday, complex tasks",
+            ),
+            model(
+                "claude-fable-5-2[1m]",
+                "claude-fable-5-2",
+                "Fable",
+                "Fable 5.2 · Most capable for your hardest and longest-running tasks",
+            ),
+            model(
+                "sonnet",
+                "claude-sonnet-5-5",
+                "Sonnet",
+                "Sonnet 5.5 · Efficient for routine tasks",
+            ),
+            json!({"value":"haiku","resolvedModel":"claude-haiku-5-5","displayName":"Haiku","description":"Haiku 5.5 · Fastest for quick answers"}),
         ];
+        let names = |options: &Value, index: usize, key: &str| {
+            options[index]["options"]
+                .as_array()
+                .expect("choices")
+                .iter()
+                .map(|choice| choice[key].as_str().unwrap_or_default().to_owned())
+                .collect::<Vec<_>>()
+        };
+        let unknown = settings.config_options();
+        assert_eq!(unknown[0]["currentValue"], "");
+        assert!(unknown[0].get("_meta").is_none());
+        assert_eq!(unknown[2]["currentValue"], "");
+        assert_eq!(
+            settings.note_applied(&json!({"applied":{"model":"claude-sonnet-5-5","effort":"low"}})),
+            Some(true)
+        );
+        assert_eq!(settings.note_applied(&json!({"error":"unknown"})), None);
         let options = settings.config_options();
         let ids = options
             .as_array()
@@ -2383,21 +2584,26 @@ mod tests {
             .map(|option| option["id"].as_str().unwrap_or_default())
             .collect::<Vec<_>>();
         assert_eq!(ids, ["model", "mode", "effort"]);
+        assert_eq!(
+            names(&options, 0, "name"),
+            ["Opus 5.5", "Fable 5.2", "Sonnet 5.5", "Haiku 5.5"]
+        );
+        assert_eq!(options[0]["currentValue"], "");
+        assert_eq!(options[0]["_meta"]["zz"]["applied"], "sonnet");
+        assert_eq!(
+            names(&options, 2, "name"),
+            ["Low", "Medium", "High", "Xhigh", "Max"]
+        );
+        assert_eq!(options[2]["currentValue"], "");
+        assert_eq!(options[2]["_meta"]["zz"]["applied"], "low");
+        assert!(!options.to_string().contains("Default"));
         let parsed = serde_json::from_value::<
             Vec<agent_client_protocol::v1::schema::SessionConfigOption>,
         >(options.clone())
         .expect("ACP config options");
         assert_eq!(parsed.len(), 3);
-        let modes = |options: &Value| {
-            options[1]["options"]
-                .as_array()
-                .expect("modes")
-                .iter()
-                .map(|mode| mode["value"].as_str().unwrap_or_default().to_owned())
-                .collect::<Vec<_>>()
-        };
         assert_eq!(
-            modes(&options),
+            names(&options, 1, "value"),
             [
                 "default",
                 "acceptEdits",
@@ -2410,7 +2616,7 @@ mod tests {
         let options = settings.config_options();
         assert_eq!(options.as_array().map(Vec::len), Some(2));
         assert_eq!(
-            modes(&options),
+            names(&options, 1, "value"),
             ["default", "acceptEdits", "plan", "bypassPermissions"]
         );
         serde_json::from_value::<agent_client_protocol::v1::schema::SessionModeState>(
@@ -2443,11 +2649,13 @@ mod tests {
     const FAKE_CLAUDE: &str = r#"#!/bin/sh
 read -r init
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[{"name":"compact","description":"Compact","argumentHint":""}],"models":[{"value":"default","displayName":"Default","description":"Opus"}],"current_permission_mode":"default"}}}'
+read -r probe
+printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request_id":"zz-2","error":"Unsupported control request subtype: get_settings"}}'
 read -r prompt
 case "$prompt" in *'"text":"hello"'*) ;; *) echo "bad prompt: $prompt" >&2; exit 3 ;; esac
 read -r title
-case "$title" in *'"request_id":"zz-2"'*'"generate_session_title"'*'"description":"hello"'*'"persist":true'*) ;; *) echo "bad title: $title" >&2; exit 5 ;; esac
-printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-2","response":{"title":"Say hello"}}}'
+case "$title" in *'"request_id":"zz-3"'*'"generate_session_title"'*'"description":"hello"'*'"persist":true'*) ;; *) echo "bad title: $title" >&2; exit 5 ;; esac
+printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-3","response":{"title":"Say hello"}}}'
 printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"running"}'
 printf '%s\n' '{"type":"assistant","parent_tool_use_id":null,"message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"rm -rf build"}}]}}'
 printf '%s\n' '{"type":"control_request","request_id":"perm-1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -rf build"},"tool_use_id":"t1","permission_suggestions":[]}}'
@@ -2762,9 +2970,11 @@ while read -r line; do :; done
     const FAKE_SIDE_CLAUDE: &str = r#"#!/bin/sh
 read -r init
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[],"models":[],"current_permission_mode":"default"}}}'
+read -r probe
+printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request_id":"zz-2","error":"Unsupported control request subtype: get_settings"}}'
 read -r side
-case "$side" in *'"request_id":"zz-2"'*'"subtype":"side_question"'*'"question":"what is 2+2"'*) ;; *) echo "bad side: $side" >&2; exit 3 ;; esac
-printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-2","response":{"response":"4","synthetic":false}}}'
+case "$side" in *'"request_id":"zz-3"'*'"subtype":"side_question"'*'"question":"what is 2+2"'*) ;; *) echo "bad side: $side" >&2; exit 3 ;; esac
+printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-3","response":{"response":"4","synthetic":false}}}'
 while read -r line; do :; done
 "#;
 
@@ -2865,6 +3075,8 @@ while read -r line; do :; done
     const FAKE_QUESTION_CLAUDE: &str = r#"#!/bin/sh
 read -r init
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[],"models":[],"current_permission_mode":"default"}}}'
+read -r probe
+printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request_id":"zz-2","error":"Unsupported control request subtype: get_settings"}}'
 read -r prompt
 read -r title
 printf '%s\n' '{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"b1","task_type":"local_bash","description":"sleep 30"},{"task_id":"w1","task_type":"monitor","description":"watcher","ambient":true}]}'
@@ -3003,6 +3215,8 @@ while read -r line; do :; done
     const FAKE_PICK_CLAUDE: &str = r#"#!/bin/sh
 read -r init
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[],"models":[],"current_permission_mode":"default"}}}'
+read -r probe
+printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request_id":"zz-2","error":"Unsupported control request subtype: get_settings"}}'
 read -r prompt
 read -r title
 printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"running"}'
