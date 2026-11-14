@@ -816,8 +816,10 @@ impl AppShell {
             PaneKindSnapshot::Agent(_) => {
                 let agent = self.agent_entity(pane_id, window, cx);
                 let dock = self.compact.chat_dock;
+                let ground = cx.theme().ground();
                 agent.update(cx, |agent, cx| {
                     agent.set_phone(dock, cx);
+                    agent.set_ground(ground, cx);
                     agent.set_corner_radii(
                         Corners {
                             top_left: px(0.0),
