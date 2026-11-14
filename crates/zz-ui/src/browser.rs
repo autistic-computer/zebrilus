@@ -32,6 +32,9 @@ pub const BROWSER_OMNIBOX_KEY_CONTEXT: &str = "BrowserOmnibox";
 const BROWSER_CONTROL_HEIGHT: f32 = 28.0;
 const BROWSER_TAB_ROW_HEIGHT: f32 = BROWSER_CONTROL_HEIGHT + 2.0 * crate::CHROME_GAP;
 const BROWSER_TAB_GAP: f32 = 4.0;
+const BROWSER_TEXT: TextStyle = TextStyle::Body;
+const BROWSER_LINE_HEIGHT: Pixels = px(16.0);
+const BROWSER_FAVICON_SIZE: Pixels = px(14.0);
 const SITE_CONTROLS_INSET: Pixels = px(1.5);
 const ADDRESS_EDGE_WIDTH: Pixels = px(1.0);
 
@@ -95,8 +98,8 @@ impl RenderOnce for BrowserHeader {
                     .pl(px(crate::CHROME_GAP))
                     .pr(px(crate::CHROME_GAP) + self.trailing_inset)
                     .font_family(cx.theme().font_family.clone())
-                    .type_style(TextStyle::Body, cx)
-                    .line_height(px(16.0))
+                    .type_style(BROWSER_TEXT, cx)
+                    .line_height(BROWSER_LINE_HEIGHT)
                     .text_color(cx.theme().foreground.muted())
                     .child(self.tabs)
                     .child(
@@ -224,8 +227,8 @@ pub fn browser_address(
         .min_w_0()
         .px_2()
         .py_0()
-        .type_style(TextStyle::Body, cx)
-        .line_height(px(16.0))
+        .type_style(BROWSER_TEXT, cx)
+        .line_height(BROWSER_LINE_HEIGHT)
         .appearance(false)
         .content_type(InputContentType::Url);
 
@@ -475,6 +478,7 @@ impl RenderOnce for BrowserTabStrip {
                             .min_w_0()
                             .child(
                                 workspace_tab_strip("browser-tab-strip", TabLook::Page, on)
+                                    .with_size(px(BROWSER_CONTROL_HEIGHT))
                                     .children(pills)
                                     .children(overflow),
                             ),
@@ -508,9 +512,16 @@ fn browser_tab_pill(
     let favicon = div()
         .flex_none()
         .relative()
-        .top(px(0.5))
+        .top(crate::icon::cap_center_drop(
+            px(BROWSER_TEXT.design_px()),
+            BROWSER_FAVICON_SIZE,
+            cx,
+        ))
         .child(browser_favicon(favicon, crate::muted_on(ground, cx)));
     let pill = workspace_tab(("browser-tab", id), TabLook::Page, on, state, cx)
+        .h(px(BROWSER_CONTROL_HEIGHT))
+        .type_style(BROWSER_TEXT, cx)
+        .line_height(BROWSER_LINE_HEIGHT)
         .debug_selector(move || format!("browser-tab-{id}"))
         .child(favicon)
         .child(workspace_tab_name(label))
@@ -612,7 +623,7 @@ impl RenderOnce for BrowserEmptyHint {
 pub fn browser_favicon(png: Option<Arc<[u8]>>, color: Hsla) -> AnyElement {
     let fallback = move || {
         Icon::new(IconName::Globe)
-            .size(px(14.0))
+            .size(BROWSER_FAVICON_SIZE)
             .text_color(color)
             .into_any_element()
     };
@@ -621,7 +632,7 @@ pub fn browser_favicon(png: Option<Arc<[u8]>>, color: Hsla) -> AnyElement {
             ala::ImageFormat::Png,
             png.to_vec(),
         )))
-        .size(px(14.0))
+        .size(BROWSER_FAVICON_SIZE)
         .flex_none()
         .with_fallback(fallback)
         .with_loading(fallback)
