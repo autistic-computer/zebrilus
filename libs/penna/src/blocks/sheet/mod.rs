@@ -42,8 +42,42 @@ const RISE: f32 = 0.3;
 const FLING_HEIGHTS: f32 = 2.0;
 const COMMIT_FRACTION: f32 = 0.48;
 const SHADOW_ROOM: f32 = 32.0;
+const PAGE_TURN: Duration = ENTER;
+const PAGE_SHIFT: f32 = 0.3;
 
 type Dismiss = Rc<dyn Fn(&mut Window, &mut App)>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PageTurn {
+    since: Instant,
+    from: usize,
+    to: usize,
+}
+
+impl PageTurn {
+    #[must_use]
+    pub fn new(from: usize, to: usize, cx: &App) -> Self {
+        Self {
+            since: cx.background_executor().now(),
+            from,
+            to,
+        }
+    }
+
+    fn progress(&self, now: Instant) -> f32 {
+        let elapsed = ala::animation_time(now.saturating_duration_since(self.since));
+        (elapsed.as_secs_f32() / PAGE_TURN.as_secs_f32()).clamp(0.0, 1.0)
+    }
+
+    #[must_use]
+    pub fn running(&self, cx: &App) -> bool {
+        self.progress(cx.background_executor().now()) < 1.0
+    }
+
+    const fn inward(&self) -> bool {
+        self.to > self.from
+    }
+}
 
 #[derive(Default)]
 struct ClosingSheets(Vec<ElementId>);
@@ -86,6 +120,7 @@ pub struct BottomSheet {
     full: Option<Pixels>,
     cut_middle: bool,
     modal: bool,
+    turn: Option<(Box<BottomSheet>, PageTurn)>,
 }
 
 pub fn bottom_sheet(
@@ -109,6 +144,7 @@ pub fn bottom_sheet(
         full: None,
         cut_middle: false,
         modal: false,
+        turn: None,
     }
 }
 
@@ -146,6 +182,12 @@ impl BottomSheet {
     #[must_use]
     pub fn full(mut self, top: Pixels) -> Self {
         self.full = Some(top);
+        self
+    }
+
+    #[must_use]
+    pub fn turned_from(mut self, left: BottomSheet, turn: PageTurn) -> Self {
+        self.turn = Some((Box::new(left), turn));
         self
     }
 }
@@ -516,6 +558,18 @@ enum Gesture {
     Sheet(Point<Pixels>),
 }
 
+#[derive(Clone, Copy)]
+enum Measure {
+    Body,
+    Page,
+}
+
+struct Turning {
+    since: Instant,
+    from_height: Pixels,
+    left_offset: Pixels,
+}
+
 struct SheetState {
     dismissal: Dismissal,
     scroll: ScrollHandle,
@@ -523,9 +577,62 @@ struct SheetState {
     height: f32,
     extent: f32,
     gesture: Gesture,
+    body: Pixels,
+    natural: Option<Pixels>,
+    turning: Option<Turning>,
+    offsets: Vec<Point<Pixels>>,
 }
 
 impl SheetState {
+    fn turn(&mut self, turn: Option<PageTurn>) {
+        let Some(turn) = turn else {
+            self.turning = None;
+            return;
+        };
+        if self
+            .turning
+            .as_ref()
+            .is_some_and(|turning| turning.since == turn.since)
+        {
+            return;
+        }
+        let offset = self.scroll.offset();
+        if self.offsets.len() <= turn.from {
+            self.offsets.resize(turn.from + 1, Point::default());
+        }
+        self.offsets[turn.from] = offset;
+        let restore = if turn.inward() {
+            Point::default()
+        } else {
+            self.offsets.get(turn.to).copied().unwrap_or_default()
+        };
+        self.scroll.set_offset(restore);
+        self.natural = None;
+        self.turning = Some(Turning {
+            since: turn.since,
+            from_height: self.body,
+            left_offset: offset.y,
+        });
+    }
+
+    fn body_limits(&self, eased: f32) -> (Option<Pixels>, Option<Pixels>) {
+        let Some(turning) = &self.turning else {
+            return (None, None);
+        };
+        let from = turning.from_height;
+        match self.natural {
+            None => (Some(from), Some(from)),
+            Some(to) => {
+                let height = from + (to - from) * eased;
+                if to >= from {
+                    (None, Some(height))
+                } else {
+                    (Some(height), None)
+                }
+            }
+        }
+    }
+
     fn content(&self) -> &ScrollHandle {
         self.content_scroll.as_ref().unwrap_or(&self.scroll)
     }
@@ -829,13 +936,26 @@ impl BottomSheet {
                 height: 0.0,
                 extent: 0.0,
                 gesture: Gesture::Idle,
+                body: px(0.0),
+                natural: None,
+                turning: None,
+                offsets: Vec::new(),
             }
         });
         let now = cx.background_executor().now();
         let content_scroll = self.content_scroll;
         let reduce_motion = cx.reduce_motion();
         let closing = take_close(&self.id, cx);
+        let full = self.full;
+        let (left, turn) = match self.turn {
+            Some((left, turn)) if full.is_none() && turn.progress(now) < 1.0 => {
+                (Some(*left), Some(turn))
+            }
+            _ => (None, None),
+        };
+        let eased = turn.map_or(1.0, |turn| ease_out_quint()(turn.progress(now)));
         let tick = state.update(cx, |state, _| {
+            state.turn(turn);
             state.content_scroll = content_scroll;
             if closing {
                 state.dismissal.leave(state.extent, now);
@@ -853,19 +973,52 @@ impl BottomSheet {
             }
             Tick::Still => {}
         }
-        let (offset, fade, scroll) = {
+        let (offset, fade, scroll, (low, high), left_offset) = {
             let state = state.read(cx);
             (
                 px(state.dismissal.offset()),
                 1.0 - state.dismissal.progress(),
                 state.scroll.clone(),
+                if reduce_motion {
+                    (None, None)
+                } else {
+                    state.body_limits(eased)
+                },
+                state
+                    .turning
+                    .as_ref()
+                    .map_or(px(0.0), |turning| turning.left_offset),
             )
+        };
+        let turning = turn.is_some();
+        if turning {
+            window.request_animation_frame();
+        }
+        let shift = if reduce_motion { 0.0 } else { PAGE_SHIFT };
+        let sign = if turn.is_some_and(|turn| turn.inward()) {
+            1.0
+        } else {
+            -1.0
+        };
+        let measured = state.clone();
+        let measure = move |what: Measure| {
+            let state = measured.clone();
+            canvas(
+                move |bounds, _, cx| {
+                    state.update(cx, |state, _| match what {
+                        Measure::Body => state.body = bounds.size.height,
+                        Measure::Page => state.natural = Some(bounds.size.height),
+                    });
+                },
+                |_, (), _, _| {},
+            )
+            .absolute()
+            .inset_0()
         };
         let theme = cx.theme();
         let enter = ENTER;
         let margin = px(FLOAT_MARGIN);
         let rest = self.bottom_inset.max(margin);
-        let full = self.full;
         let sheet = Surface::new(SurfaceRole::DRAWER);
         let ground = theme.ground_of(sheet);
         let grabber = Layer {
@@ -880,35 +1033,55 @@ impl BottomSheet {
         };
         let slot = px(CONTENT_EDGE);
         let title_style = TextStyle::TouchSmall;
+        let title_slot = |title: SharedString, cut_middle: bool, shown: f32| {
+            div()
+                .absolute()
+                .inset_0()
+                .px(px(HEADER_SIDE))
+                .flex()
+                .items_center()
+                .justify_center()
+                .type_style(title_style, cx)
+                .font_semibold()
+                .text_color(theme.foreground)
+                .when(shown < 1.0, |slot| slot.opacity(shown))
+                .child(title_text(title, cut_middle, title_style))
+        };
+        let back_slot = |back: AnyElement, shown: f32| {
+            div()
+                .absolute()
+                .top_0()
+                .left(slot)
+                .h(px(HEADER_HEIGHT))
+                .flex()
+                .items_center()
+                .when(shown < 1.0, |slot| slot.opacity(shown))
+                .child(back)
+        };
+        let (left_title, left_back, left_content) = match left {
+            Some(left) => (
+                Some((left.title, left.cut_middle)),
+                left.back,
+                Some(left.content),
+            ),
+            None => (None, None, None),
+        };
+        let back_shown = if left_back.is_some() { 1.0 } else { eased };
+        let left_back = left_back
+            .filter(|_| self.back.is_none())
+            .map(|back| back_slot(back, 1.0 - eased).child(div().absolute().inset_0().occlude()));
         let header = div()
             .debug_selector(|| "bottom-sheet-header".to_owned())
             .relative()
             .flex_none()
             .h(px(HEADER_HEIGHT))
             .mb(Space::S16)
-            .child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .px(px(HEADER_SIDE))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .type_style(title_style, cx)
-                    .font_semibold()
-                    .text_color(theme.foreground)
-                    .child(title_text(self.title, self.cut_middle, title_style)),
+            .children(
+                left_title.map(|(title, cut_middle)| title_slot(title, cut_middle, 1.0 - eased)),
             )
-            .children(self.back.map(|back| {
-                div()
-                    .absolute()
-                    .top_0()
-                    .left(slot)
-                    .h(px(HEADER_HEIGHT))
-                    .flex()
-                    .items_center()
-                    .child(back)
-            }))
+            .child(title_slot(self.title, self.cut_middle, eased))
+            .children(left_back)
+            .children(self.back.map(|back| back_slot(back, back_shown)))
             .child(
                 div()
                     .absolute()
@@ -1014,20 +1187,51 @@ impl BottomSheet {
                     .min_h_0()
                     .child(self.content),
                 None => div()
-                    .id("bottom-sheet-content")
+                    .id("bottom-sheet-body")
+                    .relative()
                     .flex()
                     .flex_col()
                     .min_h_0()
                     .mb(Space::S8)
-                    .overflow_y_scroll()
-                    .track_scroll(&scroll)
-                    .child(
+                    .overflow_hidden()
+                    .when_some(low, Styled::min_h)
+                    .when_some(high, Styled::max_h)
+                    .child(measure(Measure::Body))
+                    .children(left_content.map(|content| {
                         div()
+                            .debug_selector(|| "bottom-sheet-leaving".to_owned())
+                            .absolute()
+                            .top(left_offset)
+                            .left(relative(-sign * shift * eased))
+                            .w_full()
+                            .opacity(1.0 - eased)
                             .flex()
                             .flex_col()
-                            .flex_none()
-                            .w_full()
-                            .child(self.content),
+                            .child(content)
+                            .child(div().absolute().inset_0().occlude())
+                    }))
+                    .child(
+                        div()
+                            .id("bottom-sheet-content")
+                            .flex()
+                            .flex_col()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .track_scroll(&scroll)
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .flex_none()
+                                    .w_full()
+                                    .when(turning, |page| {
+                                        page.relative()
+                                            .left(relative(sign * shift * (1.0 - eased)))
+                                            .opacity(eased)
+                                    })
+                                    .child(measure(Measure::Page))
+                                    .child(self.content),
+                            ),
                     ),
             })
             .with_animation(
@@ -1354,5 +1558,79 @@ mod tests {
         );
         settle(cx);
         assert_eq!(dismissed.get(), 1);
+    }
+
+    struct Pages {
+        page: f32,
+        left: Option<(f32, PageTurn)>,
+    }
+
+    fn page(body: f32) -> impl IntoElement {
+        div().h(px(body)).w_full()
+    }
+
+    impl Render for Pages {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let sheet = bottom_sheet(
+                "sheet",
+                "Page",
+                Vec::new(),
+                page(self.page),
+                px(20.0),
+                |_, _| {},
+            );
+            div().size_full().child(match self.left {
+                Some((left, turn)) => sheet.turned_from(
+                    bottom_sheet("sheet", "Left", Vec::new(), page(left), px(20.0), |_, _| {}),
+                    turn,
+                ),
+                None => sheet,
+            })
+        }
+    }
+
+    #[ala::test]
+    fn back_during_a_turn_in_lands_on_the_first_page_alone(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (pages, cx) = cx.add_window_view(|_, _| Pages {
+            page: 120.0,
+            left: None,
+        });
+        settle(cx);
+        let first = panel(cx).size.height;
+
+        let turn =
+            |from, to, cx: &mut VisualTestContext| cx.update(|_, cx| PageTurn::new(from, to, cx));
+        let inward = turn(0, 1, cx);
+        cx.update(|_, cx| {
+            pages.update(cx, |pages, cx| {
+                *pages = Pages {
+                    page: 300.0,
+                    left: Some((120.0, inward)),
+                };
+                cx.notify();
+            });
+        });
+        redraw(cx);
+        cx.executor().advance_clock(Duration::from_millis(40));
+        redraw(cx);
+        redraw(cx);
+        let mid = panel(cx).size.height;
+        assert!(mid > first && mid < first + px(180.0));
+        assert!(cx.debug_bounds("bottom-sheet-leaving").is_some());
+
+        let back = turn(1, 0, cx);
+        cx.update(|_, cx| {
+            pages.update(cx, |pages, cx| {
+                *pages = Pages {
+                    page: 120.0,
+                    left: Some((300.0, back)),
+                };
+                cx.notify();
+            });
+        });
+        settle(cx);
+        assert_eq!(panel(cx).size.height, first);
+        assert!(cx.debug_bounds("bottom-sheet-leaving").is_none());
     }
 }
