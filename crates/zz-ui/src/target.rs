@@ -2050,6 +2050,30 @@ impl TargetPicker {
         }
     }
 
+    pub fn level_and_filter(&mut self, cx: &mut Context<Self>) -> Option<(String, String)> {
+        self.sync(cx);
+        let body = &self.token.as_ref()?.body;
+        let level = level_of(body);
+        Some((level.to_owned(), unescape(&body[level.len()..])))
+    }
+
+    pub fn search(
+        &mut self,
+        level: &str,
+        filter: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.sync(cx);
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let text = format!("@{level}{}", escape(filter));
+        if self.composer.read(cx).value().get(token.range.clone()) != Some(text.as_str()) {
+            self.replace(token.range, text, window, cx);
+        }
+    }
+
     pub fn climb(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         self.sync(cx);
         let Some(token) = self.token.clone() else {

@@ -12,25 +12,34 @@ use penna::{
     blocks::touch::PhoneEmpty,
     components::input::InputState,
 };
+use std::path::{Path, PathBuf};
+
 use zz_client::agent_lens::{AgentEmpty, PendingPermission, agent_empty};
+use zz_client::agent_resume::{Menu, Resume, folder_name};
 use zz_client::agent_settings;
+use zz_client::agent_timeline::unix_now;
 use zz_client::window_summary::{PaneTile, summarize_window};
-use zz_protocol::{AgentPaneWire, ProtocolMessage};
+use zz_protocol::{AgentPaneWire, AgentSessionOpKind, ProtocolMessage};
 use zz_ui::agent::{
     ask::{AskChoice, approval_subject},
     chat::{HeldMessage, shows_chat},
     controls::{AccountAction, ContextUsage, composer_action},
-    phone::{CHAT_SHEET, PhoneAsk, PhoneCard, PlusAction, PlusPage, PlusSheet, held_sheet},
+    phone::{
+        CHAT_SHEET, PhoneAsk, PhoneCard, PlusAction, PlusPage, PlusSheet, held_sheet, resume_sheet,
+        start_rows,
+    },
     question::QuestionCardAction,
 };
-use zz_ui::target::TargetItem;
+use zz_ui::target::{TargetItem, TargetPicker};
 
 use super::{AgentPane, preview_image};
 use crate::connection::Connection;
 
+pub(super) const SEARCH: &str = "Search";
 const DOCK_INSET: f32 = 16.0;
 const DOCK_GAP: f32 = 8.0;
 const EMPTY_TOP: f32 = 96.0;
+const START_GAP: f32 = 24.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(in super::super) struct PhoneDock {
@@ -43,11 +52,13 @@ pub(in super::super) struct PhoneDock {
 pub(super) enum ChatSheet {
     Plus(PlusPage),
     Hold(HeldMessage),
+    Resume(Menu),
 }
 
 pub(super) struct PlusTurn {
     left: PlusPage,
     items: Vec<TargetItem>,
+    headers: Vec<(usize, SharedString)>,
     turn: PageTurn,
 }
 
@@ -150,7 +161,126 @@ impl AgentPane {
         window.dismiss_virtual_keyboard();
         self.sheet = Some(sheet);
         self.turn = None;
+        self.typed = false;
         cx.notify();
+    }
+
+    fn reset_search(
+        &mut self,
+        text: &str,
+        placeholder: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.search.update(cx, |input, cx| {
+            input.set_placeholder(placeholder, cx);
+            input.set_value(text.to_owned(), window, cx);
+        });
+    }
+
+    fn mention_turned(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.mention_level = self
+            .mention
+            .update(cx, TargetPicker::level_and_filter)
+            .map(|(level, _)| level)
+            .unwrap_or_default();
+        self.reset_search("", SEARCH, window, cx);
+    }
+
+    pub(super) fn follow_mention(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.phone.is_none() || self.sheet.is_some() || !self.mention.read(cx).is_open() {
+            return;
+        }
+        let Some((level, filter)) = self.mention.update(cx, TargetPicker::level_and_filter) else {
+            return;
+        };
+        self.mention_level = level;
+        self.sheet = Some(ChatSheet::Plus(PlusPage::Mention(Vec::new())));
+        self.turn = None;
+        self.typed = true;
+        self.reset_search(&filter, SEARCH, window, cx);
+        self.search.update(cx, |input, cx| input.focus(window, cx));
+        cx.notify();
+    }
+
+    pub(super) fn search_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self.search.read(cx).value().to_string();
+        match self.sheet {
+            Some(ChatSheet::Plus(PlusPage::Mention(_))) => {
+                let level = self.mention_level.clone();
+                self.mention
+                    .update(cx, |picker, cx| picker.search(&level, &text, window, cx));
+            }
+            Some(ChatSheet::Resume(_)) if self.resume.set_search(&text) => {
+                self.send_wanted(cx);
+                cx.notify();
+            }
+            _ => {}
+        }
+    }
+
+    fn cwd(&self, cx: &App) -> PathBuf {
+        PathBuf::from(self.chat_cwd(cx))
+    }
+
+    fn send_session_op(&self, op: AgentSessionOpKind, cx: &mut Context<Self>) {
+        let pane = self.pane;
+        self.connection.update(cx, |connection, cx| {
+            connection.send(ProtocolMessage::AgentSessionOp { pane, op }, cx);
+        });
+    }
+
+    fn send_wanted(&mut self, cx: &mut Context<Self>) {
+        let cwd = self.cwd(cx);
+        if let Some(op) = self.resume.wanted(&cwd) {
+            self.send_session_op(op, cx);
+        }
+    }
+
+    fn request_resume(&mut self, cx: &mut Context<Self>) {
+        let key = (self.session(cx), self.chat_cwd(cx));
+        if self.resume_for.as_ref() == Some(&key) {
+            return;
+        }
+        self.resume = Resume::default();
+        for op in Resume::start(Path::new(&key.1)) {
+            self.send_session_op(op, cx);
+        }
+        self.resume_for = Some(key);
+    }
+
+    pub(super) fn apply_sessions(&mut self, reply: &str, cx: &mut Context<Self>) {
+        let cwd = self.cwd(cx);
+        if !self.resume.apply(&cwd, reply) {
+            return;
+        }
+        self.send_wanted(cx);
+        cx.notify();
+    }
+
+    fn open_resume(&mut self, menu: Menu, window: &mut Window, cx: &mut Context<Self>) {
+        self.request_resume(cx);
+        self.resume.open(menu);
+        self.reset_search("", menu.placeholder(), window, cx);
+        self.open_sheet(ChatSheet::Resume(menu), window, cx);
+        self.send_wanted(cx);
+    }
+
+    fn pick_resume(&mut self, index: usize, cx: &mut Context<Self>) {
+        let cwd = self.cwd(cx);
+        let rows = self
+            .resume
+            .rows(&cwd, self.session(cx).as_deref(), unix_now());
+        let Some(row) = rows.get(index) else {
+            return;
+        };
+        if !row.picks() {
+            return;
+        }
+        if let Some(op) = self.resume.pick(row, &cwd) {
+            self.send_session_op(op, cx);
+        }
+        close_sheet(CHAT_SHEET, cx);
     }
 
     pub(super) fn phone_hold(&mut self, held: &HeldMessage, cx: &mut Context<Self>) {
@@ -165,11 +295,13 @@ impl AgentPane {
             return;
         };
         let items = self.mention.read(cx).items().to_vec();
+        let headers = self.mention.read(cx).headers().to_vec();
         let left = shown.clone();
         let next = match action {
             PlusAction::Open(PlusPage::Mention(drilled)) => {
                 self.mention
                     .update(cx, |picker, cx| picker.open_here(window, cx));
+                self.mention_turned(window, cx);
                 Some(PlusPage::Mention(drilled))
             }
             PlusAction::Open(PlusPage::Account) => {
@@ -183,7 +315,12 @@ impl AgentPane {
                     drilled.pop();
                     self.mention
                         .update(cx, |picker, cx| picker.climb(window, cx));
+                    self.mention_turned(window, cx);
                     Some(PlusPage::Mention(drilled))
+                }
+                PlusPage::Mention(_) if self.typed => {
+                    close_sheet(CHAT_SHEET, cx);
+                    None
                 }
                 PlusPage::Mention(_) => {
                     self.mention
@@ -239,6 +376,7 @@ impl AgentPane {
             PlusAction::Drill(item) => {
                 self.mention
                     .update(cx, |picker, cx| picker.drill(&item, window, cx));
+                self.mention_turned(window, cx);
                 match shown {
                     PlusPage::Mention(mut drilled) => {
                         drilled.push(item);
@@ -254,6 +392,7 @@ impl AgentPane {
                     turn: PageTurn::new(left.depth(), next.depth(), cx),
                     left,
                     items,
+                    headers,
                 });
             }
             self.sheet = Some(ChatSheet::Plus(next));
@@ -263,11 +402,20 @@ impl AgentPane {
 
     fn sheet_closed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.turn = None;
-        if matches!(self.sheet, Some(ChatSheet::Plus(PlusPage::Mention(_)))) {
-            self.mention
-                .update(cx, |picker, cx| picker.dismiss(window, cx));
+        match self.sheet {
+            Some(ChatSheet::Plus(PlusPage::Mention(_))) => {
+                self.mention
+                    .update(cx, |picker, cx| picker.dismiss(window, cx));
+            }
+            Some(ChatSheet::Resume(_)) => {
+                self.resume.close();
+            }
+            _ => {}
         }
         self.sheet = None;
+        if std::mem::take(&mut self.typed) {
+            self.input.update(cx, |input, cx| input.focus(window, cx));
+        }
         cx.notify();
     }
 
@@ -284,6 +432,24 @@ impl AgentPane {
             let _ = dismiss.update(cx, |this, cx| this.sheet_closed(window, cx));
         };
         let sheet = match sheet {
+            ChatSheet::Resume(menu) => {
+                let cwd = self.cwd(cx);
+                let rows = self
+                    .resume
+                    .rows(&cwd, self.session(cx).as_deref(), unix_now());
+                let pick = entity.downgrade();
+                resume_sheet(
+                    menu,
+                    &rows,
+                    &self.search,
+                    dock.bottom,
+                    move |index, _, cx| {
+                        let _ = pick.update(cx, |this, cx| this.pick_resume(index, cx));
+                    },
+                    on_dismiss,
+                    cx,
+                )
+            }
             ChatSheet::Hold(held) => {
                 let fork = entity.downgrade();
                 held_sheet(
@@ -306,6 +472,7 @@ impl AgentPane {
                 let settings = self.lens_settings(&state);
                 let provider = self.provider(cx);
                 let items = self.mention.read(cx).items().to_vec();
+                let headers = self.mention.read(cx).headers().to_vec();
                 let connection = self.connection.read(cx);
                 let panes: Vec<PaneTile> = connection
                     .core
@@ -334,6 +501,9 @@ impl AgentPane {
                     quotas: connection.core.agent_quotas(),
                     context,
                     mention: &items,
+                    headers: &headers,
+                    search: &self.search,
+                    typed: self.typed,
                     panes: &panes,
                     enabled: writable,
                 };
@@ -350,6 +520,7 @@ impl AgentPane {
                 let sheet = match &turn {
                     Some(turn) => {
                         plus.mention = &turn.items;
+                        plus.headers = &turn.headers;
                         let left = plus.sheet(&turn.left, dock.bottom, |_, _, _| {}, |_, _| {}, cx);
                         sheet.turned_from(left, turn.turn)
                     }
@@ -481,8 +652,6 @@ impl AgentPane {
         } else {
             Some(self.phone_composer(other, state, ready, running, writable, inside, window, cx))
         };
-        let over = zz_ui::target::mention_layer(&self.mention, cx)
-            .filter(|_| prompting && self.sheet.is_none());
         let dock_element = div()
             .relative()
             .flex()
@@ -492,27 +661,21 @@ impl AgentPane {
             .gap(px(DOCK_GAP))
             .px(px(DOCK_INSET))
             .pb(px(if dock.keyboard { DOCK_GAP } else { 0.0 }))
-            .opacity(1.0 - dock.veil.clamp(0.0, 1.0))
+            .opacity(if self.sheet.is_some() && dock.keyboard {
+                0.0
+            } else {
+                1.0 - dock.veil.clamp(0.0, 1.0)
+            })
             .children(prefix)
-            .children(bottom)
-            .children(over.map(|over| {
-                ala::deferred(
-                    div()
-                        .absolute()
-                        .left(px(DOCK_INSET))
-                        .right(px(DOCK_INSET))
-                        .bottom(ala::relative(1.0))
-                        .pb(px(DOCK_GAP))
-                        .child(over),
-                )
-                .with_priority(1)
-            }));
+            .children(bottom);
         let use_chat = shows_chat(&self.transcript.lens.chat);
         let chat = use_chat.then(|| self.render_chat(window, cx));
         let provider = self.provider(cx);
         let connected = self.connection.read(cx).connected;
         let empty = (!use_chat).then(|| {
-            let empty = match agent_empty(connected, &state.phase, provider) {
+            let kind = agent_empty(connected, &state.phase, provider);
+            let start = matches!(kind, AgentEmpty::Welcome(_)) && writable && !watch_only;
+            let empty = match kind {
                 AgentEmpty::Welcome(provider) => PhoneEmpty::new(
                     zz_ui::pane::agent_provider_icon(provider),
                     zz_client::agent_lens::agent_welcome_title(provider),
@@ -522,7 +685,26 @@ impl AgentPane {
                     PhoneEmpty::new(penna::IconName::Chat, text)
                 }
             };
-            div().w_full().pt(px(EMPTY_TOP)).child(empty)
+            (empty, start)
+        });
+        let start = empty.as_ref().is_some_and(|(_, start)| *start);
+        if start {
+            self.request_resume(cx);
+        }
+        let folder = folder_name(&self.cwd(cx));
+        let open = cx.entity().downgrade();
+        let empty = empty.map(|(empty, _)| {
+            div()
+                .w_full()
+                .pt(px(EMPTY_TOP))
+                .child(empty)
+                .when(start, |column| {
+                    column.child(div().w_full().px(px(DOCK_INSET)).pt(px(START_GAP)).child(
+                        start_rows(&folder, writable, move |menu, window, cx| {
+                            let _ = open.update(cx, |this, cx| this.open_resume(menu, window, cx));
+                        }),
+                    ))
+                })
         });
         let sheet = self.phone_sheet(dock, window, cx);
         div()

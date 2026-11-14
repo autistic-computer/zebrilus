@@ -283,6 +283,11 @@ pub(super) struct AgentPane {
     phone: Option<PhoneDock>,
     sheet: Option<phone::ChatSheet>,
     turn: Option<phone::PlusTurn>,
+    search: Entity<InputState>,
+    typed: bool,
+    mention_level: String,
+    resume: zz_client::agent_resume::Resume,
+    resume_for: Option<(Option<String>, String)>,
     ask_open: Option<u64>,
     other: Option<(u64, usize)>,
     carded: Option<u64>,
@@ -329,7 +334,16 @@ impl AgentPane {
                     this.transcript = Transcript::default();
                     this.usage = None;
                     this.last_sequence = 0;
+                    this.resume_for = None;
                     cx.notify();
+                } else if let zz_client::CoreEvent::AgentSessions {
+                    pane: changed,
+                    result,
+                    ..
+                } = event
+                    && *changed == pane
+                {
+                    this.apply_sessions(result, cx);
                 } else if matches!(event,
                 zz_client::CoreEvent::AgentUpdates { pane: changed, .. }
                 | zz_client::CoreEvent::AgentStateChanged { pane: changed, .. } if *changed == pane)
@@ -382,6 +396,15 @@ impl AgentPane {
             cx,
         );
         mention.update(cx, |picker, _| picker.set_own_chat(Some(pane)));
+        let mention_observer = cx.observe_in(&mention, window, |this, _, window, cx| {
+            this.follow_mention(window, cx);
+        });
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder(phone::SEARCH));
+        let search_subscription = cx.subscribe_in(&search, window, |this, _, event, window, cx| {
+            if matches!(event, InputEvent::Change) {
+                this.search_changed(window, cx);
+            }
+        });
         connection.update(cx, |connection, cx| {
             if connection.core.agent_accounts().is_none() {
                 connection.request_agent_accounts(cx);
@@ -421,6 +444,11 @@ impl AgentPane {
             phone: None,
             sheet: None,
             turn: None,
+            search,
+            typed: false,
+            mention_level: String::new(),
+            resume: zz_client::agent_resume::Resume::default(),
+            resume_for: None,
             ask_open: None,
             other: None,
             carded: None,
@@ -431,6 +459,8 @@ impl AgentPane {
                 reply_subscription,
                 input_observer,
                 chat_release,
+                mention_observer,
+                search_subscription,
             ],
         }
     }

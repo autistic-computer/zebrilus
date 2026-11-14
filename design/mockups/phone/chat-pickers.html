@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone chat pickers</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/input/input.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-board { display: grid; grid-template-columns: repeat(3, 424px); gap: 0 16px; align-items: start; }
+  .zz-heads { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; padding: 14px 0 12px; box-shadow: 0 1px 0 var(--penna-divider); }
+  .zz-heads > div, .zz-notes > p { display: grid; gap: 2px; margin: 0 10px; }
+  .zz-heads b { font-size: 17px; line-height: 22px; font-weight: 600; }
+  .zz-heads span { color: var(--penna-fg-muted); }
+  .zz-kind { grid-column: 1 / -1; margin: 28px 10px 0; color: var(--penna-fg-muted); font-weight: 500; }
+  .zz-notes { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; margin-top: 12px; }
+  .zz-notes > p { color: var(--penna-fg-muted); }
+  .zz-q { display: grid; gap: 4px; }
+  .zz-q + .zz-q { margin-top: 48px; }
+
+  .zz-pane { position: absolute; inset: 0; --zz-dock: 156px; }
+  .zz-tx { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 16px; padding: 70px 16px var(--zz-dock); overflow: hidden; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-phone[data-kb] .zz-tx { padding-bottom: 384px; }
+  .zz-phone[data-strip] .zz-tx { padding-bottom: 440px; }
+  .zz-tx > p { margin: 0; }
+  .zz-tx > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 85%; padding: 10px 14px; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-fade { position: absolute; z-index: 5; top: 0; right: 0; left: 0; height: 70px; background: linear-gradient(var(--penna-bg) 54px, transparent); }
+  .zz-dock { position: absolute; z-index: 15; right: 16px; bottom: 84px; left: 16px; display: flex; flex-direction: column; }
+  .zz-phone[data-kb] .zz-dock { bottom: 300px; }
+  .zz-phone[data-strip] .zz-dock { bottom: 356px; }
+  .zz-phone > .zz-kb { position: absolute; z-index: 36; right: 0; bottom: 0; left: 0; }
+  .zz-phone > .penna-sheet { z-index: 35; }
+  .zz-phone .penna-sheet-panel { padding-bottom: 20px; }
+  .zz-phone[data-kb] .penna-sheet-panel { padding-bottom: 8px; }
+  .zz-typed > b { font-weight: inherit; color: var(--penna-accent-ink); }
+  .zz-caret { display: inline-block; width: 2px; height: 22px; margin-left: 1px; vertical-align: -5px; border-radius: 1px; background: var(--penna-accent); }
+
+  .zz-face { display: grid; flex: none; place-items: center; width: var(--s, 28px); height: var(--s, 28px); border-radius: 50%; color: #fff; background: linear-gradient(color-mix(in oklab, var(--b) 84%, white), color-mix(in oklab, var(--b) 90%, black)); box-shadow: 0 1px 3px rgb(0 0 0 / 0.3), inset 0 1px 0 rgb(255 255 255 / 0.3); --b: #d97757; --penna-icon-size: calc(var(--s, 28px) * 0.62); }
+  .zz-face[data-plain] { color: var(--penna-fg); background: var(--penna-control); box-shadow: none; }
+
+  .zz-mcard[data-penna] { position: absolute; z-index: 16; right: 16px; bottom: 372px; left: 16px; display: flex; flex-direction: column; padding: 4px; --penna-r: var(--penna-phone-radius); --penna-share: 0; }
+  .zz-mcard > .penna-touch-row[data-penna][data-penna][data-penna] { padding-right: 0; --penna-r: calc(var(--penna-phone-radius) - 4px); --penna-share: 0; }
+  .zz-mcard > .penna-touch-row[data-penna][data-penna][data-penna][data-on] { --penna-fill: var(--penna-control); background: var(--penna-control); }
+  .zz-drill { position: relative; display: grid; flex: none; place-items: center; align-self: stretch; width: 52px; color: var(--penna-muted); --penna-icon-size: 16px; }
+  .zz-drill::before { content: ""; position: absolute; top: 14px; bottom: 14px; left: 0; width: 1px; background: var(--penna-divider); }
+  .zz-nodrill { flex: none; width: 12px; }
+  .zz-mpath { display: flex; flex: none; align-items: center; height: 44px; padding-right: 12px; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
+  .zz-mpath > button { display: grid; flex: none; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: var(--penna-muted); --penna-icon-size: 18px; }
+  .zz-mpath > span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+  .zz-strip { position: absolute; z-index: 36; right: 0; bottom: 292px; left: 0; display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 12px; overflow: hidden; background: color-mix(in srgb, var(--penna-fg) 9%, var(--penna-bg)); box-shadow: inset 0 -1px 0 var(--penna-divider); }
+  .zz-strip::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--penna-fg) 9%, var(--penna-bg))); }
+  .zz-chipx[data-penna] { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 44px; padding: 0 14px 0 8px; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); font-weight: 500; white-space: nowrap; --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 18px; }
+  .zz-chipx > [data-icon] { color: var(--penna-muted); }
+  .zz-chipx > [data-icon="chevron-right"] { margin-left: -2px; --penna-icon-size: 12px; }
+  .zz-chipx > i.zz-dim { font-style: normal; font-weight: 400; color: var(--penna-fg-muted); }
+  .zz-chipx[data-only][data-penna] { justify-content: center; width: 44px; padding: 0; }
+
+  .zz-sgroups { display: flex; flex-direction: column; gap: 4px; padding: 0 8px; overflow: hidden; }
+  .zz-sgroups > .penna-touch-header { padding-top: 8px; }
+  .zz-search { padding: 0 8px 8px; }
+  .zz-search > .penna-input[data-penna] { --penna-r: calc(var(--penna-phone-radius) - 8px); }
+  .zz-search > .penna-input > [data-icon] { color: var(--penna-muted); }
+  .zz-search > .penna-input > .zz-ph { color: var(--penna-fg-muted); }
+  .penna-touch-row-state > [data-icon="check"] { color: var(--penna-accent-ink); --penna-icon-size: 18px; }
+  .penna-touch-row[data-accent] > [data-icon], .penna-touch-row[data-accent] .penna-touch-row-lines > :first-child { color: var(--penna-accent-ink); }
+  .zz-row-chev { flex: none; color: var(--penna-muted); opacity: 0.6; --penna-icon-size: 14px; }
+  .penna-touch-group[data-ruled] > .penna-touch-row:has(> .zz-face) + .penna-touch-row::before { left: calc(var(--penna-space-16) + 28px + var(--penna-space-12)); }
+  .penna-touch-row-value > span { max-width: 160px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+  .zz-empty { position: absolute; top: 150px; right: 0; left: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .zz-empty > b { font-size: 20px; line-height: 26px; font-weight: 600; }
+  .zz-lead { display: grid; flex: none; place-items: center; width: 28px; color: var(--penna-muted); --penna-icon-size: 20px; }
+  .zz-empty-face { --s: 44px; }
+  .zz-under { position: absolute; top: 290px; right: 16px; left: 16px; display: flex; flex-direction: column; gap: 4px; }
+  .zz-under > .penna-touch-header { padding-left: 16px; }
+  .zz-folder-btn[data-penna] { display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 16px; font-size: var(--penna-text-touch-body-size); --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 20px; }
+  .zz-folder-btn > [data-icon] { flex: none; color: var(--penna-muted); }
+  .zz-folder-btn > [data-icon="chevron-down"] { --penna-icon-size: 14px; }
+  .zz-folder-btn > span { flex: 1; min-width: 0; overflow: hidden; text-align: left; white-space: nowrap; text-overflow: ellipsis; }
+  .zz-folder-btn > span > i { font-style: normal; color: var(--penna-fg-muted); }
+  .zz-sfoot { margin: 0; padding: 4px 24px 0; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro"><h1>Chat pickers on the phone</h1></div>
+  <div data-board></div>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const face = (glyph = "asterisk", s = 28) => `<span class="zz-face" style="--s: ${s}px">${ic(glyph)}</span>`;
+
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  const kb = () => {
+    const keys = (s) => [...s].map((k) => `<i>${k}</i>`).join("");
+    return `<div class="zz-kb"><div class="zz-kb-row">${keys("qwertyuiop")}</div><div class="zz-kb-row">${keys("asdfghjkl")}</div><div class="zz-kb-row"><i data-w>⇧</i>${keys("zxcvbnm")}<i data-w>⌫</i></div><div class="zz-kb-row"><i data-w>123</i><i data-space>space</i><i data-ret>return</i></div></div>`;
+  };
+  const dots = (on, count = 4) => `<span class="penna-dots">${Array.from({ length: count }, (_, i) => `<span class="penna-dot"${i === on ? " data-active" : ""}></span>`).join("")}</span>`;
+  const pill = (title, meta) => `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating"><span class="penna-pill-tile" data-penna="phone.pill.icon">${ic("asterisk")}</span><span class="penna-pill-copy"><span class="penna-pill-title">${title}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">${meta}</span>${dots(3)}</span></span></button></div>`;
+
+  const composer = (typed) => {
+    const body = typed == null ? "" : `<span class="zz-typed">${typed}</span><i class="zz-caret"></i>`;
+    const on = typed != null;
+    return `<div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer" data-size="touch"${on ? ` data-state="focused"` : ""}><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Chat options">${ic("plus")}</button><span class="penna-chat-input" role="textbox"${on ? "" : ` data-placeholder="Message Claude Code…"`}>${body}</span><button class="penna-button" data-penna="button.send" data-shape="icon"${on ? ` data-solid="primary"` : " disabled"} aria-label="Send">${ic("arrow-up")}</button></div></div>`;
+  };
+  const you = (text) => `<div class="penna-card penna-chat-bubble" data-penna="card.bubble" role="group"><span>${text}</span></div>`;
+  const tx = [you("The pill menu should offer New chat, nearest the thumb."), `<p>Done. New chat sits last in the New group, nearest the thumb, and the pill tests pass.</p>`].join("");
+  const chatPane = (typed, withBar) => `<div class="zz-pane"><div class="zz-tx">${tx}</div><div class="zz-fade"></div><div class="zz-dock">${composer(typed)}</div>${withBar ? pill("Claude Code", "zebrilus") : ""}</div>`;
+  const emptyPane = (under = "") => `<div class="zz-pane"><div class="zz-empty">${face("asterisk", 44)}<b>Claude Code is ready</b></div>${under}<div class="zz-dock">${composer(null)}</div>${pill("Claude Code", "zebrilus")}</div>`;
+
+  const row = ({ label, detail, glyph, lead, value, check, chev, accent }) => `<div class="penna-touch-row" data-penna="phone.row" role="button"${detail ? ` data-lines="2"` : ""}${accent ? " data-accent" : ""}>${lead ?? (glyph ? ic(glyph) : "")}<span class="penna-touch-row-lines"><span>${label}</span>${detail ? `<span>${detail}</span>` : ""}</span>${value ? `<span class="penna-touch-row-value"><span>${value}</span></span>` : ""}${check ? `<span class="penna-touch-row-state">${ic("check")}</span>` : ""}${chev ? `<i class="zz-row-chev" data-icon="chevron-right"></i>` : ""}</div>`;
+  const group = (rows) => `<div class="penna-touch-group" data-penna="settings.card" data-ground data-ruled>${rows.map(row).join("")}</div>`;
+  const header = (text) => `<div class="penna-touch-header"><span>${text}</span></div>`;
+  const search = (text, placeholder = "Search") => `<div class="zz-search"><label class="penna-input" data-penna="field" data-size="touch-large"${text != null ? ` data-state="focused"` : ""}>${ic("search")}${text != null ? `<span>${text}</span><i class="zz-caret"></i>` : `<span class="zz-ph">${placeholder}</span>`}</label></div>`;
+
+  const disc = (glyph, side) => `<button class="penna-sheet-disc"${side ? ` data-side="${side}"` : ""} aria-label="${glyph}"><span class="penna-button" data-penna="button" data-size="touch">${ic(glyph)}</span></button>`;
+  const sheet = ({ title, back, body, rest = "34px" }) => `<div class="penna-sheet" style="--penna-sheet-rest: ${rest}"><div class="penna-sheet-scrim"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header">${back ? disc("chevron-left", "start") : ""}<span class="penna-sheet-title">${title}</span>${disc("xmark")}</div>${body}</div></div></div>`;
+
+  const phone = (inner, attrs = "") => `<div class="zz-phone"${attrs}>${status}${inner}<span class="zz-home"></span></div>`;
+
+  const mrow = ({ label, detail, lead, drill, on }) => `<div class="penna-touch-row" data-penna="phone.row" role="button" data-lines="2"${on ? " data-on" : ""}><span class="zz-lead">${lead}</span><span class="penna-touch-row-lines"><span>${label}</span><span>${detail}</span></span>${drill ? `<span class="zz-drill">${ic("chevron-right")}</span>` : `<span class="zz-nodrill"></span>`}</div>`;
+  const ROOT = [
+    { label: "Claude Code", detail: "Fix pane stack hit testing", lead: face(), on: true },
+    { label: "zebrilus", detail: "Session · 4 windows", lead: ic("layers"), drill: true },
+    { label: "zebrilus/", detail: "This folder", lead: ic("folder"), drill: true },
+    { label: "~/", detail: "Home", lead: ic("folder"), drill: true },
+  ];
+  const PILL = [
+    { label: "pill_menu.rs", detail: "crates/zz-ui/src/compact", lead: ic("file"), on: true },
+    { label: "pill.rs", detail: "libs/penna/src/blocks/compact", lead: ic("file") },
+    { label: "pill/", detail: "libs/penna/web", lead: ic("folder"), drill: true },
+    { label: "Make the pill menu offer New chat", detail: "Chat · 2h", lead: face() },
+  ];
+  const chip = (lead, name, { drill, dim } = {}) => `<span class="zz-chipx" data-penna="floating" role="button">${lead}<span>${name}</span>${dim ? `<i class="zz-dim">${dim}</i>` : ""}${drill ? ic("chevron-right") : ""}</span>`;
+  const listChip = `<span class="zz-chipx" data-penna="floating" data-only role="button" aria-label="All">${ic("list")}</span>`;
+
+  const CHATS_HERE = [
+    { label: "Make the pill menu offer New chat", value: "2h" },
+    { label: "Fix pane stack hit testing", value: "5h" },
+    { label: "Port the bento grid to penna", value: "Yesterday" },
+  ];
+  const CHATS_ELSE = [
+    { label: "Pair over QUIC on wake", detail: "nidus", value: "3d" },
+    { label: "Glass tint on clear windows", detail: "ala", value: "1w" },
+  ];
+  const FOLDERS = [
+    { label: "zebrilus", detail: "~/dev/autistic-computer/zebrilus", glyph: "folder", check: true },
+    { label: "nidus", detail: "~/dev/autistic-computer/nidus", glyph: "folder", chev: true },
+    { label: "penna", detail: "~/dev/autistic-computer/penna", glyph: "folder", chev: true },
+    { label: "landing-page", detail: "~/dev/autistic-computer/landing-page", glyph: "folder", chev: true },
+  ];
+  const resumeBody = `${search(null, "Search chats")}<div class="zz-sgroups">${header("zebrilus")}${group(CHATS_HERE)}${header("Other folders")}${group(CHATS_ELSE)}</div>`;
+  const folderBody = `${search(null, "Search folders")}<div class="zz-sgroups">${header("Recent")}${group(FOLDERS)}${group([{ label: "Home", detail: "~", glyph: "folder", chev: true }])}</div>`;
+
+  const Q = [
+    {
+      id: "at",
+      name: "Typing @ in the composer",
+      heads: [
+        ["A · Card over the composer", "Up to four rows, ranked across kinds"],
+        ["B · Strip over the keys", "One row of chips, chat stays in view"],
+        ["C · The Mention sheet", "Typing @ opens the plus sheet's page"],
+      ],
+      states: ["Typed @", "Typed @pill (A, B) · drilled into a folder (C)"],
+      phones: [
+        [
+          phone(`${chatPane("Check how the pill reads <b>@</b>", false)}<div class="zz-mcard" data-penna="drawer">${ROOT.map(mrow).join("")}</div>${kb()}`, " data-kb"),
+          phone(`${chatPane("Check how the pill reads <b>@pill</b>", false)}<div class="zz-mcard" data-penna="drawer">${PILL.map(mrow).join("")}</div>${kb()}`, " data-kb"),
+        ],
+        [
+          phone(`${chatPane("Check how the pill reads <b>@</b>", false)}<div class="zz-strip">${listChip}${chip(face("asterisk", 24), "Claude Code")}${chip(ic("layers"), "zebrilus", { drill: true })}${chip(ic("folder"), "zebrilus/", { drill: true })}${chip(ic("folder"), "~/", { drill: true })}</div>${kb()}`, " data-kb data-strip"),
+          phone(`${chatPane("Check how the pill reads <b>@pill</b>", false)}<div class="zz-strip">${listChip}${chip(ic("file"), "pill_menu.rs", { dim: "compact" })}${chip(ic("file"), "pill.rs", { dim: "compact" })}${chip(ic("folder"), "pill/", { drill: true })}</div>${kb()}`, " data-kb data-strip"),
+        ],
+        [
+          phone(`${chatPane("Check how the pill reads <b>@</b>", false)}${sheet({ title: "Mention", rest: "292px", body: `${search("")}<div class="zz-sgroups">${header("Chats")}${group([{ label: "Claude Code", detail: "Fix pane stack hit testing", lead: face() }])}${header("Places")}${group([{ label: "zebrilus", detail: "4 windows", glyph: "layers", chev: true }])}${header("Files")}${group([{ label: "zebrilus/", detail: "This folder", glyph: "folder", chev: true }])}</div>` })}${kb()}`, " data-kb"),
+          phone(`${chatPane("Check how the pill reads <b>@</b>", false)}${sheet({ title: "zebrilus/", back: true, rest: "292px", body: `${search("")}<div class="zz-sgroups">${group([{ label: "Mention zebrilus/", glyph: "list-tree", accent: true }])}${group([{ label: "crates/", glyph: "folder", chev: true }, { label: "libs/", glyph: "folder", chev: true }, { label: "Cargo.toml", glyph: "file" }])}</div>` })}${kb()}`, " data-kb"),
+        ],
+      ],
+      notes: [
+        "Tapping a row mentions it. The chevron opens a folder or session in place and writes its path after the @, so backspace goes back up. No key hints. The same card serves / commands.",
+        "Chips mention on tap, and the chevron opens a folder in the strip. The list button opens the full Mention sheet. Cheapest on space, but long names get cut.",
+        "One component for @ and the plus sheet's Mention row. The search field takes over the typing. Opening a container needs a Mention row on its page to pick the container itself.",
+      ],
+    },
+    {
+      id: "folder",
+      name: "Folder and Resume on an empty chat",
+      heads: [
+        ["A · Two rows under the title", "Folder and Resume, each opens a sheet"],
+        ["B · In the plus sheet", "Empty chat stays bare, rows sit above Mention"],
+        ["C · Recent chats on the screen", "Folder as a big button, last chats as rows"],
+      ],
+      states: ["Empty chat", "A: Resume · B: Folder in the plus sheet · C: Folder"],
+      phones: [
+        [
+          phone(emptyPane(`<div class="zz-under">${group([{ label: "Folder", glyph: "folder", value: "zebrilus", chev: true }, { label: "Resume", glyph: "history", chev: true }])}</div>`)),
+          phone(`${emptyPane()}${sheet({ title: "Resume", body: resumeBody })}`),
+        ],
+        [
+          phone(`${emptyPane()}${sheet({ title: "Claude Code", body: `<div class="zz-sgroups">${group([{ label: "Folder", glyph: "folder", value: "zebrilus", chev: true }, { label: "Resume", glyph: "history", chev: true }])}<div style="height: 8px"></div>${group([{ label: "Mention", glyph: "list-tree", chev: true }])}<div style="height: 8px"></div>${group([{ label: "Model", glyph: "sparkle", value: "Opus", chev: true }, { label: "Effort", glyph: "cpu", value: "High", chev: true }, { label: "Permissions", glyph: "shield-off", value: "Ask", chev: true }, { label: "Account", glyph: "user", value: "Default", chev: true }])}</div><p class="zz-sfoot">Context 0% · Week 11%</p>` })}`),
+          phone(`${emptyPane()}${sheet({ title: "Folder", back: true, body: folderBody })}`),
+        ],
+        [
+          phone(emptyPane(`<div class="zz-under"><button class="zz-folder-btn" data-penna="button">${ic("folder")}<span>zebrilus <i>~/dev/autistic-computer</i></span>${ic("chevron-down")}</button><div style="height: 12px"></div>${header("Recent here")}${group([...CHATS_HERE.map((c) => ({ ...c, glyph: "chat" })), { label: "All chats", glyph: "history", chev: true }])}</div>`)),
+          phone(`${emptyPane()}${sheet({ title: "Folder", body: folderBody })}`),
+        ],
+      ],
+      notes: [
+        "Mirrors the desktop's two buttons as touch rows. Both go away once the chat has its first message.",
+        "Nothing new on the screen. Folder and Resume show in the plus sheet only while the chat is empty. Harder to find.",
+        "Resuming the last chat is one tap. The folder button opens the same folder sheet. Rows tap to pick, and the chevron opens a folder to go deeper.",
+      ],
+    },
+  ];
+
+  const only = new URLSearchParams(location.search).get("q");
+  const html = Q.filter((q) => !only || q.id === only).map((q) => {
+    const heads = `<div class="zz-heads">${q.heads.map(([b, s]) => `<div><b>${b}</b><span>${s}</span></div>`).join("")}</div>`;
+    const rows = q.states.map((state, i) => `<div class="zz-kind">${state}</div>${q.phones.map((take) => take[i]).join("")}`).join("");
+    const notes = `<div class="zz-notes">${q.notes.map((n) => `<p>${n}</p>`).join("")}</div>`;
+    return `<section class="zz-q"><h2>${q.name}</h2><div class="zz-board">${heads}${rows}${notes}</div></section>`;
+  }).join("");
+  document.querySelector("[data-board]").innerHTML = html;
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>

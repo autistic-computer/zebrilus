@@ -1,21 +1,24 @@
 use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, ClipboardItem, ElementId, IntoElement, Pixels, SharedString, Window, div,
-    prelude::*,
+    AnyElement, App, ClipboardItem, ElementId, Entity, IntoElement, Pixels, SharedString, Window,
+    div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Disableable as _, Emphasis, Ground, IconName, Space, StyledExt as _,
-    TextStyle, Tone, WindowExt as _,
+    ActiveTheme as _, Disableable as _, Emphasis, Ground, Icon, IconName, Sizable as _, Size,
+    Space, StyledExt as _, TextStyle, Tone, WindowExt as _,
     blocks::chat::AskCard,
     blocks::notification::Notification,
     blocks::sheet::{
         BottomSheet, bottom_sheet, close_sheet, sheet_back, sheet_close, sheet_ground,
         sheet_group_ground, sheet_groups,
     },
-    blocks::touch::{TouchGroup, TouchInk, TouchRow, TouchTrailing},
-    h_flex,
+    blocks::touch::{TouchGroup, TouchHeader, TouchInk, TouchRow, TouchTrailing},
+    components::input::{Input, InputState},
+    components::spinner::Spinner,
+    h_flex, v_flex,
 };
+use zz_client::agent_resume::{LOADING, Menu, ResumeRow};
 use zz_client::agent_settings::{self, LensSettings};
 use zz_client::agent_timeline::{ContextUsage, QUOTA_WARNING, percent_label, unix_now};
 use zz_client::window_summary::PaneTile;
@@ -101,11 +104,50 @@ pub struct PlusSheet<'a> {
     pub quotas: &'a [AgentQuota],
     pub context: ContextUsage,
     pub mention: &'a [TargetItem],
+    pub headers: &'a [(usize, SharedString)],
+    pub search: &'a Entity<InputState>,
+    pub typed: bool,
     pub panes: &'a [PaneTile],
     pub enabled: bool,
 }
 
 type OnPlus = Rc<dyn Fn(PlusAction, &mut Window, &mut App)>;
+
+const GLYPH: f32 = 20.0;
+const SPINNER: f32 = 16.0;
+pub const FOLDER: &str = "Folder";
+
+fn search_field(search: &Entity<InputState>, cx: &App) -> AnyElement {
+    let muted = penna::muted_on(sheet_ground(cx), cx);
+    div()
+        .w_full()
+        .px(Space::S8)
+        .pb(Space::S8)
+        .child(
+            Input::new(search)
+                .with_size(Size::TouchLarge)
+                .cleanable(true)
+                .prefix(
+                    Icon::new(IconName::Search)
+                        .size(px(GLYPH))
+                        .text_color(muted),
+                ),
+        )
+        .into_any_element()
+}
+
+fn section(header: Option<SharedString>, rows: Vec<TouchRow>) -> Option<AnyElement> {
+    if rows.is_empty() {
+        return None;
+    }
+    Some(
+        v_flex()
+            .w_full()
+            .children(header.map(TouchHeader::new))
+            .child(TouchGroup::new().ruled().rows(rows))
+            .into_any_element(),
+    )
+}
 
 fn valued(row: TouchRow, value: String) -> TouchRow {
     if value.is_empty() {
@@ -300,7 +342,37 @@ impl PlusSheet<'_> {
         Some(lead_face(tile, attention_dot(tile, cx), ground, cx).into_any_element())
     }
 
-    fn mention_rows(&self, drilled: &[TargetItem], on_action: &OnPlus, cx: &App) -> Vec<TouchRow> {
+    fn mention_sections(
+        &self,
+        drilled: &[TargetItem],
+        on_action: &OnPlus,
+        cx: &App,
+    ) -> Vec<AnyElement> {
+        let this = drilled.last().map(|item| {
+            TouchRow::new("chat-plus-mention-this", format!("Mention {}", item.name()))
+                .icon(IconName::ListTree)
+                .ink(TouchInk::Accent)
+                .on_click(act(on_action, PlusAction::Mention(item.clone())))
+        });
+        let rows = self.mention_rows(on_action, cx);
+        let mut starts = self.headers.to_vec();
+        if starts.first().is_none_or(|(start, _)| *start > 0) {
+            starts.insert(0, (0, SharedString::default()));
+        }
+        let mut rows = rows.into_iter();
+        let mut sections = vec![section(None, this.into_iter().collect())];
+        for (index, (start, label)) in starts.iter().enumerate() {
+            let end = starts
+                .get(index + 1)
+                .map_or(self.mention.len(), |(next, _)| *next);
+            let taken = rows.by_ref().take(end.saturating_sub(*start)).collect();
+            let label = (!label.is_empty()).then(|| label.clone());
+            sections.push(section(label, taken));
+        }
+        sections.into_iter().flatten().collect()
+    }
+
+    fn mention_rows(&self, on_action: &OnPlus, cx: &App) -> Vec<TouchRow> {
         let row = |index: usize, item: &TargetItem, inside: bool| {
             let row = TouchRow::new(("chat-plus-mention-row", index), item.name());
             let row = match self.pane_face(item, cx) {
@@ -324,16 +396,10 @@ impl PlusSheet<'_> {
                 row.on_click(act(on_action, PlusAction::Mention(item.clone())))
             }
         };
-        drilled
-            .last()
-            .map(|item| row(0, item, false))
-            .into_iter()
-            .chain(
-                self.mention
-                    .iter()
-                    .enumerate()
-                    .map(|(index, item)| row(index + 1, item, item.drills())),
-            )
+        self.mention
+            .iter()
+            .enumerate()
+            .map(|(index, item)| row(index, item, item.drills()))
             .collect()
     }
 
@@ -382,32 +448,47 @@ impl PlusSheet<'_> {
         cx: &App,
     ) -> BottomSheet {
         let on_action: OnPlus = Rc::new(on_action);
-        let rows = match page {
-            PlusPage::Root => self.root_rows(&on_action),
-            PlusPage::Setting(option) => self.setting_rows(option, &on_action),
-            PlusPage::Account => self.account_rows(&on_action),
-            PlusPage::Mention(drilled) => self.mention_rows(drilled, &on_action, cx),
+        let group = |rows: Vec<TouchRow>| {
+            let group = TouchGroup::new().ruled().rows(rows);
+            (!group.is_empty()).then(|| group.into_any_element())
         };
         let root = *page == PlusPage::Root;
+        let (search, groups): (Option<AnyElement>, Vec<AnyElement>) = match page {
+            PlusPage::Root => {
+                let mut rows = self.root_rows(&on_action).into_iter();
+                let first = group(rows.next().into_iter().collect());
+                (
+                    None,
+                    first.into_iter().chain(group(rows.collect())).collect(),
+                )
+            }
+            PlusPage::Setting(option) => (
+                None,
+                group(self.setting_rows(option, &on_action))
+                    .into_iter()
+                    .collect(),
+            ),
+            PlusPage::Account => (
+                None,
+                group(self.account_rows(&on_action)).into_iter().collect(),
+            ),
+            PlusPage::Mention(drilled) => (
+                Some(search_field(self.search, cx)),
+                self.mention_sections(drilled, &on_action, cx),
+            ),
+        };
         let usage = root.then(|| self.usage(cx)).flatten();
         let title = self.title(page);
-        let mut rows = rows.into_iter();
-        let groups = if root {
-            vec![
-                TouchGroup::new().ruled().rows(rows.next()),
-                TouchGroup::new().ruled().rows(rows),
-            ]
-        } else {
-            vec![TouchGroup::new().ruled().rows(rows)]
-        };
-        let list = sheet_groups()
-            .children(groups.into_iter().filter(|group| !group.is_empty()))
-            .children(usage);
+        let list = v_flex()
+            .w_full()
+            .children(search)
+            .child(sheet_groups().children(groups).children(usage));
         let close = sheet_close("phone-chat-sheet-close", cx)
             .on_click(|_, _, cx| close_sheet(CHAT_SHEET, cx))
             .into_any_element();
         let sheet = bottom_sheet(CHAT_SHEET, title, [close], list, bottom_inset, on_dismiss);
-        if root {
+        let first = root || (self.typed && *page == PlusPage::Mention(Vec::new()));
+        if first {
             return sheet;
         }
         let back = Rc::clone(&on_action);
@@ -416,6 +497,125 @@ impl PlusSheet<'_> {
                 .on_click(move |_, window, cx| back(PlusAction::Back, window, cx)),
         )
     }
+}
+
+pub fn start_rows(
+    folder: &str,
+    enabled: bool,
+    on_open: impl Fn(Menu, &mut Window, &mut App) + 'static,
+) -> TouchGroup {
+    let on_open = Rc::new(on_open);
+    let open = |menu: Menu| {
+        let on_open = Rc::clone(&on_open);
+        move |_: &ala::ClickEvent, window: &mut Window, cx: &mut App| on_open(menu, window, cx)
+    };
+    TouchGroup::new()
+        .ruled()
+        .row(
+            valued(
+                TouchRow::new("chat-start-folder", FOLDER).icon(IconName::Folder),
+                folder.to_owned(),
+            )
+            .more()
+            .disabled(!enabled)
+            .on_click(open(Menu::Folders)),
+        )
+        .row(
+            TouchRow::new("chat-start-resume", super::resume::RESUME)
+                .icon(IconName::History)
+                .more()
+                .disabled(!enabled)
+                .on_click(open(Menu::Chats)),
+        )
+}
+
+pub fn resume_sheet(
+    menu: Menu,
+    rows: &[ResumeRow],
+    search: &Entity<InputState>,
+    bottom_inset: Pixels,
+    on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
+    on_dismiss: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> BottomSheet {
+    let on_pick = Rc::new(on_pick);
+    let pick = |index: usize| {
+        let on_pick = Rc::clone(&on_pick);
+        move |_: &ala::ClickEvent, window: &mut Window, cx: &mut App| on_pick(index, window, cx)
+    };
+    let muted = penna::muted_on(sheet_group_ground(cx), cx);
+    let age = |row: TouchRow, age: &Option<String>| match age {
+        Some(age) => row.trailing(TouchTrailing::Value(age.clone().into())),
+        None => row,
+    };
+    let mut sections = Vec::new();
+    let mut header = None;
+    let mut group = Vec::new();
+    for (index, row) in rows.iter().enumerate() {
+        let id = ("chat-resume-row", index);
+        let touch = match row {
+            ResumeRow::Label(text) => {
+                sections.extend(section(header.take(), std::mem::take(&mut group)));
+                header = Some(SharedString::from(text.clone()));
+                continue;
+            }
+            ResumeRow::Loading => TouchRow::new(id, LOADING).ink(TouchInk::Quiet).lead(
+                Spinner::new()
+                    .id(("chat-resume-loading", index))
+                    .with_size(px(SPINNER))
+                    .color(muted),
+                GLYPH,
+            ),
+            ResumeRow::Note(text) => TouchRow::new(id, *text).ink(TouchInk::Quiet),
+            ResumeRow::Chat {
+                title,
+                place,
+                age: when,
+                ..
+            } => {
+                let row = TouchRow::new(id, title.clone());
+                let row = match place {
+                    Some(place) => row.detail(place.clone()),
+                    None => row,
+                };
+                age(row, when).on_click(pick(index))
+            }
+            ResumeRow::Folder {
+                name,
+                path,
+                age: when,
+                current,
+                ..
+            } => {
+                let row = TouchRow::new(id, name.clone()).icon(IconName::Folder);
+                let row = if path.is_empty() {
+                    row
+                } else {
+                    row.detail(path.clone())
+                };
+                let row = if *current {
+                    row.trailing(TouchTrailing::Check)
+                } else {
+                    age(row, when)
+                };
+                row.on_click(pick(index))
+            }
+        };
+        group.push(touch);
+    }
+    sections.extend(section(header, group));
+    let title = match menu {
+        Menu::Folders => FOLDER,
+        Menu::Chats => super::resume::RESUME,
+    };
+    let list = v_flex()
+        .w_full()
+        .child(search_field(search, cx))
+        .child(sheet_groups().children(sections));
+    let close = sheet_close("phone-chat-sheet-close", cx)
+        .on_click(|_, _, cx| close_sheet(CHAT_SHEET, cx))
+        .into_any_element();
+    bottom_sheet(CHAT_SHEET, title, [close], list, bottom_inset, on_dismiss)
 }
 
 pub fn held_sheet(
