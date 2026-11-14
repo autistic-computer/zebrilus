@@ -178,6 +178,18 @@ fn a_terminal_running_the_cli_flips_into_a_chat_once_the_cli_exits() {
 #[test]
 fn agent_send_refuses_a_terminal_running_the_cli() {
     let (shared, client, pane) = fixture("send-to-cli");
+    let terminal = Arc::clone(&shared.inner.lock().terminals[&pane]);
+    wait_for("the pane's own program", || {
+        shared.check_pane_runtime(pane, &terminal, false, Instant::now());
+        shared.settle_pane_locations();
+        shared
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(pane)
+            .is_some_and(|pane| !pane.summary.process.is_empty())
+    });
     shared
         .inner
         .lock()
