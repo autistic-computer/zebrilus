@@ -415,14 +415,18 @@ so over a translucent window bright content under a dark face showed through sha
 blends, and draws in the scene's own pass, and a material with no light either (`is_opaque_fill`)
 is painted as a plain quad.
 
-The face keeps the alpha it reads (2026-11-11). It mixes the copy's own color toward the tint and
-writes it at the copy's alpha, and only the glint and the fresnel glow raise that alpha, so a lit
-rim still shows. Over an opaque window nothing changes. Over a see-through one the desktop shows
+The face keeps the alpha it reads (2026-11-11). It mixes the blurred copy's color toward the tint and
+writes it at the blurred copy's alpha, and only the glint and the fresnel glow raise that alpha, so a
+lit rim still shows. Over an opaque window nothing changes. Over a see-through one the desktop shows
 through glass exactly as much as through the window around it, and the tint only recolors the
 window's own share: before, the face took `alpha + (1 - alpha) * tint`, which turned zz's 0.30 window
 into a 0.79 gray slab under a popover's 0.705 tint. Glass over pixels with nothing in them draws only
-its light. `check_glass_over_a_translucent_frame` (Metal only, since the wgpu headless target is
-opaque) pins it: a 0.5 gray tint over a 0.3 window keeps alpha 77 of 255 where it used to write 166.
+its light. `check_glass_over_a_translucent_frame` pins it: a 0.5 gray tint over a 0.3 window keeps
+alpha 77 of 255 where it used to write 166. Until 2026-11-14 the face took the sharp copy's alpha
+instead, so text drawn on a see-through window kept its exact outline in alpha under the glass and
+read as sharp text dimmed by the tint (a PiP over an agent chat). `check_glass_blurs_the_alpha_of_a_clear_frame`
+pins the blurred alpha: a 2px opaque line on a clear frame under a 6px blur reads alpha 29 on the
+line and beside it and 3 twelve pixels off, where it used to read 255 on the line and 0 beside it.
 
 `Window::paint_fade(bounds, ground, clear, solid)` uses the same reading pass for a scroll fade
 (`Glass::fade`, `fade` in the uniform): each pixel becomes the copy mixed toward the ground, both
