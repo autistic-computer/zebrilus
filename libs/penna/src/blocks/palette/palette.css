@@ -143,6 +143,33 @@
   color: var(--penna-fg);
 }
 
+.penna-palette-hint[data-state="disabled"],
+.penna-palette-hint[data-state="disabled"] > .penna-palette-keys {
+  color: var(--penna-fg-faint);
+}
+
+.penna-palette-words {
+  display: inline-grid;
+}
+
+.penna-palette-words > span {
+  grid-area: 1 / 1;
+  visibility: hidden;
+}
+
+.penna-palette-words > [data-on] {
+  visibility: visible;
+}
+
+.penna-palette-inside {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  width: 12px;
+  color: var(--penna-muted);
+  --penna-icon-size: 12px;
+}
+
 .penna-palette-key-hint {
   display: flex;
   align-items: center;

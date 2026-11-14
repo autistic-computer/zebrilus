@@ -2209,7 +2209,8 @@ Parts (`penna::blocks::palette`):
 | Row | `palette_row`, `palette_tree_row` (with a disclosure), `palette_badged_row` | one result from a `PaletteRow` |
 | Section | `palette_section(label, hint, cx)` | names a group of rows, with its sigil at the end |
 | Empty | `palette_empty(label, cx)` | nothing matched |
-| Hints | `PaletteHint` in the footer, `palette_key_hint(keys, label)` elsewhere | the keys that work now |
+| Keys | `PaletteKeys::new(verbs, verb, tabs)` with `.take`, `.copy`, `.inside`, `.complete`, `.back`, through `.keys` on the surface or inside `palette_footer(cx)` | the four keys a picker answers to |
+| Hints | `PaletteHint` in the footer, `palette_key_hint(keys, label)` elsewhere | free-form hints, such as vim's |
 | Vim | `PaletteVim`, `palette_vim_badge` | normal and insert modes over the list |
 
 Anatomy:
@@ -2218,9 +2219,10 @@ Anatomy:
 - Input: 40 tall, `small`, inset 14 at the sides and 8 above and below; pills `space-6` apart, each a badge with `space-6` inside and 8 at the sides.
 - Usage line: 24 tall, `micro` mono, muted, inset 18, one line ending in an ellipsis. `.reserve_usage()` keeps its room when the highlighted row runs nothing, so the palette doesn't change height as the highlight moves.
 - Rows: the row inset at the sides, 2 above and 8 below. A row is 28 tall (26 when rows are inset), inset 12 at the sides and 12 more per indent step; `space-8` between its parts.
-- Row parts, in order: a 12 disclosure (tree rows), a 12 icon, a 6 status dot, the label (`small` medium; matched letters semibold in the row's ink; a muted path prefix), the detail (`micro`, muted, takes the room left), the right text (`micro`, muted), the shortcut (small keycaps, lowercase, or a mono keycap), a kind badge, and a muted dot when the row is running.
+- Row parts, in order: a 12 disclosure (tree rows), a 12 icon, a 6 status dot, the label (`small` medium; matched letters semibold in the row's ink; a muted path prefix), the detail (`micro`, muted, takes the room left), the right text (`micro`, muted), the shortcut (small keycaps, lowercase, or a mono keycap), a kind badge, a muted dot when the row is running, and a 12 slot (`inside`) that holds a muted right chevron when Tab goes into the row, kept empty on the other rows of the same list so the right text lines up.
 - Section: 28 tall, `caption`, muted, inset 10, with a `micro` mono hint at the end.
 - Footer: at least 32 tall, a hairline rule above, `micro` muted, inset 18; hints `space-14` apart at the end, each its keys as glyphs in the foreground and a label.
+- Keys: four slots in this order and never moved: Enter and the row's verb, Alt-Enter `copy`, Tab `into` (or `complete`), Shift-Tab `back`. A slot that does nothing for the highlighted row is drawn faint, keys and word, never removed. Each slot is as wide as the widest word it can show, so the strip does not move when the word changes. No Escape or arrow hints.
 
 States:
 
@@ -2236,7 +2238,7 @@ States:
 
 Behavior:
 
-- The field keeps focus while the palette is open. Up and Down move the selection; Enter runs it; Escape closes the palette.
+- The field keeps focus while the palette is open. Up and Down, or Ctrl-N and Ctrl-P, move the selection and wrap; Enter takes the row; Alt-Enter copies its address and stays open; Tab goes into a row that has an inside and does nothing on one that has none; Shift-Tab, or Backspace on an empty query, backs out one level and highlights the row it left; Left and Right only move the caret; Escape closes the palette.
 - With vim on, the palette opens in insert mode. Escape goes to normal mode, where `j` and `k` move, `l` and `h` go in and out, `gg` and `G` jump to the ends, `yy` copies, `x` drops, `i`, `a` and `/` go back to insert, and `q` or a second Escape closes. A sigil typed in normal mode starts insert with it.
 - Pressing a disclosure toggles its row and nothing else.
 - Opening fades it in; none under reduced motion.
@@ -2245,9 +2247,9 @@ Content: rows name the place or the command as the app knows it; the detail says
 
 Placement: centered near the top of the window, above everything else. `.input_last()` puts the field at the bottom, for a palette that opens from below.
 
-HTML: `.penna-palette-surface` with `data-penna="popover"` and `data-inset="8"` holds a `.penna-palette-input` (a `label` with `.penna-palette-pills` and an `input`; `data-prompt` and `data-mono` for a prompt), a `.penna-palette-usage`, a `.penna-palette-rows` and a `.penna-palette-footer` with a `.penna-palette-rule` (`data-penna="rule.bar"`) and `.penna-palette-hint`s. A row is `.penna-list-item.penna-palette-row` with `data-penna="menu-item"`, its parts in `.penna-palette-content`: `.penna-palette-disclosure` (`data-toggle` to make it toggle), `.penna-palette-icon`, `.penna-palette-dot` (`data-status`: `online`, `running`, `waiting`, `offline`, `busy`; it reads `--penna-dot` first, so a solid scope recolors it), `.penna-palette-label` (with `.penna-palette-match` and `.penna-palette-muted` runs), `.penna-palette-detail`, `.penna-palette-right` and `.penna-palette-shortcut`; `data-detail` when it has a detail, `--indent` for its indent. `palette.js` gives the surface its inset radius, moves the selection on Up and Down inside a surface, and toggles disclosures (firing `penna-toggle`).
+HTML: `.penna-palette-surface` with `data-penna="popover"` and `data-inset="8"` holds a `.penna-palette-input` (a `label` with `.penna-palette-pills` and an `input`; `data-prompt` and `data-mono` for a prompt), a `.penna-palette-usage`, a `.penna-palette-rows` and a `.penna-palette-footer` with a `.penna-palette-rule` (`data-penna="rule.bar"`) and `.penna-palette-hint`s. A row is `.penna-list-item.penna-palette-row` with `data-penna="menu-item"`, its parts in `.penna-palette-content`: `.penna-palette-disclosure` (`data-toggle` to make it toggle), `.penna-palette-icon`, `.penna-palette-dot` (`data-status`: `online`, `running`, `waiting`, `offline`, `busy`; it reads `--penna-dot` first, so a solid scope recolors it), `.penna-palette-label` (with `.penna-palette-match` and `.penna-palette-muted` runs), `.penna-palette-detail`, `.penna-palette-right` `.penna-palette-shortcut` and `.penna-palette-inside` (the chevron slot); `data-detail` when it has a detail, `--indent` for its indent. A key slot is a `.penna-palette-hint` with `data-state="disabled"` when faint, its words stacked in a `.penna-palette-words` with `data-on` on the one shown. `palette.js` gives the surface its inset radius, moves the selection on Up and Down inside a surface, and toggles disclosures (firing `penna-toggle`).
 
-Status: matches.
+Status: matches, except the keys strip and the chevron slot, which the storybook does not show yet.
 
 ### Chat composer
 

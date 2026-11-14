@@ -91,12 +91,177 @@ pub struct PaletteRow {
     pub shortcut: Option<PaletteShortcut>,
     pub icon: Option<IconName>,
     pub expanded: Option<bool>,
+    pub inside: Option<bool>,
 }
 
 #[derive(Clone, Copy)]
 pub struct PaletteHint {
     pub key: &'static str,
     pub label: &'static str,
+}
+
+pub const PALETTE_KEYS: [&str; 4] = ["enter", "alt-enter", "tab", "shift-tab"];
+
+#[must_use]
+pub fn palette_chord(keystroke: &Keystroke) -> Option<Twin> {
+    let held = keystroke.modifiers;
+    if !held.control || held.alt || held.shift || held.platform || held.function {
+        return None;
+    }
+    match keystroke.key.as_str() {
+        "n" => Some(Twin::Down),
+        "p" => Some(Twin::Up),
+        _ => None,
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PaletteSlot {
+    pub words: &'static [&'static str],
+    pub word: &'static str,
+    pub on: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, IntoElement)]
+pub struct PaletteKeys {
+    pub take: PaletteSlot,
+    pub copy: PaletteSlot,
+    pub into: PaletteSlot,
+    pub back: PaletteSlot,
+}
+
+impl PaletteKeys {
+    #[must_use]
+    pub const fn new(
+        verbs: &'static [&'static str],
+        verb: &'static str,
+        tabs: &'static [&'static str],
+    ) -> Self {
+        Self {
+            take: PaletteSlot {
+                words: verbs,
+                word: verb,
+                on: false,
+            },
+            copy: PaletteSlot {
+                words: &["copy"],
+                word: "copy",
+                on: false,
+            },
+            into: PaletteSlot {
+                words: tabs,
+                word: "into",
+                on: false,
+            },
+            back: PaletteSlot {
+                words: &["back"],
+                word: "back",
+                on: false,
+            },
+        }
+    }
+
+    #[must_use]
+    pub const fn take(mut self, on: bool) -> Self {
+        self.take.on = on;
+        self
+    }
+
+    #[must_use]
+    pub const fn copy(mut self, on: bool) -> Self {
+        self.copy.on = on;
+        self
+    }
+
+    #[must_use]
+    pub const fn inside(mut self, on: bool) -> Self {
+        self.into.word = "into";
+        self.into.on = on;
+        self
+    }
+
+    #[must_use]
+    pub const fn complete(mut self, on: bool) -> Self {
+        self.into.word = "complete";
+        self.into.on = on;
+        self
+    }
+
+    #[must_use]
+    pub const fn back(mut self, on: bool) -> Self {
+        self.back.on = on;
+        self
+    }
+
+    #[must_use]
+    pub const fn slots(&self) -> [PaletteSlot; 4] {
+        [self.take, self.copy, self.into, self.back]
+    }
+
+    #[must_use]
+    pub fn shown(&self) -> [(&'static str, bool); 4] {
+        self.slots().map(|slot| (slot.word, slot.on))
+    }
+}
+
+impl RenderOnce for PaletteKeys {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let font = TextStyle::Micro.size().to_pixels(window.rem_size());
+        let icon = (font * crate::components::kbd::ICON_SCALE).round();
+        let drop = crate::components::icon::cap_center_drop(font, icon, cx);
+        let foreground = cx.theme().foreground;
+        let faint = foreground.faint();
+        h_flex().flex_none().gap(px(14.0)).children(
+            PALETTE_KEYS
+                .into_iter()
+                .zip(self.slots())
+                .filter_map(|(key, slot)| {
+                    let stroke = Keystroke::parse(key).ok()?;
+                    Some(
+                        h_flex()
+                            .flex_none()
+                            .gap(px(5.0))
+                            .whitespace_nowrap()
+                            .line_height(px(16.0))
+                            .when(!slot.on, |hint| hint.text_color(faint))
+                            .child(
+                                div()
+                                    .flex_none()
+                                    .relative()
+                                    .top(drop)
+                                    .when(slot.on, |keys| keys.text_color(foreground))
+                                    .child(KeyGlyphs::new(stroke)),
+                            )
+                            .child(div().flex().flex_col().children(slot.words.iter().map(
+                                |word| {
+                                    div()
+                                        .when(*word != slot.word, |hidden| {
+                                            hidden.h(px(0.0)).overflow_hidden()
+                                        })
+                                        .child(*word)
+                                },
+                            ))),
+                    )
+                }),
+        )
+    }
+}
+
+pub fn palette_footer(cx: &App) -> Div {
+    div()
+        .min_h(px(PALETTE_FOOTER_HEIGHT))
+        .flex_none()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .justify_end()
+        .gap(px(14.0))
+        .px(px(18.0))
+        .py(px(8.0))
+        .rule(RuleLook::Bar, Edge::Top, cx)
+        .type_style(TextStyle::Micro, cx)
+        .line_height(px(16.0))
+        .text_color(cx.theme().foreground.muted())
 }
 
 fn palette_status_dot(status: PaletteStatus, cx: &App) -> Div {
@@ -420,8 +585,35 @@ fn palette_entry(
                     element.child(palette_shortcut(shortcut, ground, cx))
                 })
                 .children(badge.map(|badge| badge.on(ground)))
-                .when(row.running, |element| element.child(status_dot(secondary))),
+                .when(row.running, |element| element.child(status_dot(secondary)))
+                .when_some(row.inside, |element, inside| {
+                    element.child(palette_inside(inside, secondary, cx))
+                }),
         )
+}
+
+const INSIDE_SIZE: f32 = 12.0;
+
+fn palette_inside(inside: bool, ink: Hsla, cx: &App) -> Div {
+    let font = TextStyle::Small.size().to_pixels(cx.theme().font_size);
+    div()
+        .flex_none()
+        .w(px(INSIDE_SIZE))
+        .flex()
+        .justify_end()
+        .when(inside, |slot| {
+            slot.child(
+                div()
+                    .relative()
+                    .top(crate::components::icon::cap_center_drop(
+                        font,
+                        px(INSIDE_SIZE),
+                        cx,
+                    ))
+                    .text_color(ink)
+                    .child(Icon::new(IconName::ChevronRight).size(px(INSIDE_SIZE))),
+            )
+        })
 }
 
 pub fn palette_section(
@@ -497,6 +689,7 @@ pub struct PaletteSurface {
     reserve_usage: bool,
     rows: Option<AnyElement>,
     hints: Vec<PaletteHint>,
+    keys: Option<PaletteKeys>,
     revision: u64,
     input_last: bool,
     over_input: Option<AnyElement>,
@@ -512,6 +705,7 @@ impl PaletteSurface {
             reserve_usage: false,
             rows: None,
             hints: Vec::new(),
+            keys: None,
             revision,
             input_last: false,
             over_input: None,
@@ -553,6 +747,12 @@ impl PaletteSurface {
     #[must_use]
     pub fn hints(mut self, hints: impl IntoIterator<Item = PaletteHint>) -> Self {
         self.hints = hints.into_iter().collect();
+        self
+    }
+
+    #[must_use]
+    pub const fn keys(mut self, keys: PaletteKeys) -> Self {
+        self.keys = Some(keys);
         self
     }
 
@@ -625,20 +825,7 @@ impl RenderOnce for PaletteSurface {
                 ))
             })
             .child(
-                div()
-                    .min_h(px(PALETTE_FOOTER_HEIGHT))
-                    .flex_none()
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .justify_end()
-                    .gap(px(14.0))
-                    .px(px(18.0))
-                    .py(px(8.0))
-                    .rule(RuleLook::Bar, Edge::Top, cx)
-                    .type_style(TextStyle::Micro, cx)
-                    .line_height(px(16.0))
-                    .text_color(cx.theme().foreground.muted())
+                palette_footer(cx)
                     .children(self.footer_leading.map(|leading| {
                         div()
                             .flex_1()
@@ -647,7 +834,10 @@ impl RenderOnce for PaletteSurface {
                             .items_center()
                             .child(leading)
                     }))
-                    .children(self.hints.into_iter().map(|hint| palette_hint(hint, cx))),
+                    .children(self.keys)
+                    .when(self.keys.is_none(), |footer| {
+                        footer.children(self.hints.into_iter().map(|hint| palette_hint(hint, cx)))
+                    }),
             );
         crate::foundation::surface_enter(
             surface,

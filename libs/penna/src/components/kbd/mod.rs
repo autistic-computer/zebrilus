@@ -11,7 +11,7 @@ use crate::{
     h_flex,
 };
 
-const ICON_SCALE: f32 = 1.2;
+pub(crate) const ICON_SCALE: f32 = 1.2;
 
 #[cfg(not(target_family = "wasm"))]
 fn apple() -> bool {
