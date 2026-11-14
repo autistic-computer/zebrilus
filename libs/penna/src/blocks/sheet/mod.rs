@@ -44,6 +44,7 @@ const COMMIT_FRACTION: f32 = 0.48;
 const SHADOW_ROOM: f32 = 32.0;
 const PAGE_TURN: Duration = ENTER;
 const PAGE_SHIFT: f32 = 0.3;
+const PAGE_OUT: f32 = 0.35;
 
 type Dismiss = Rc<dyn Fn(&mut Window, &mut App)>;
 
@@ -953,7 +954,10 @@ impl BottomSheet {
             }
             _ => (None, None),
         };
-        let eased = turn.map_or(1.0, |turn| ease_out_quint()(turn.progress(now)));
+        let progress = turn.map_or(1.0, |turn| turn.progress(now));
+        let eased = ease_out_quint()(progress);
+        let leaving = 1.0 - (progress / PAGE_OUT).min(1.0);
+        let arriving = ((progress - PAGE_OUT) / (1.0 - PAGE_OUT)).clamp(0.0, 1.0);
         let tick = state.update(cx, |state, _| {
             state.turn(turn);
             state.content_scroll = content_scroll;
@@ -1066,20 +1070,18 @@ impl BottomSheet {
             ),
             None => (None, None, None),
         };
-        let back_shown = if left_back.is_some() { 1.0 } else { eased };
+        let back_shown = if left_back.is_some() { 1.0 } else { arriving };
         let left_back = left_back
             .filter(|_| self.back.is_none())
-            .map(|back| back_slot(back, 1.0 - eased).child(div().absolute().inset_0().occlude()));
+            .map(|back| back_slot(back, leaving).child(div().absolute().inset_0().occlude()));
         let header = div()
             .debug_selector(|| "bottom-sheet-header".to_owned())
             .relative()
             .flex_none()
             .h(px(HEADER_HEIGHT))
             .mb(Space::S16)
-            .children(
-                left_title.map(|(title, cut_middle)| title_slot(title, cut_middle, 1.0 - eased)),
-            )
-            .child(title_slot(self.title, self.cut_middle, eased))
+            .children(left_title.map(|(title, cut_middle)| title_slot(title, cut_middle, leaving)))
+            .child(title_slot(self.title, self.cut_middle, arriving))
             .children(left_back)
             .children(self.back.map(|back| back_slot(back, back_shown)))
             .child(
@@ -1204,7 +1206,7 @@ impl BottomSheet {
                             .top(left_offset)
                             .left(relative(-sign * shift * eased))
                             .w_full()
-                            .opacity(1.0 - eased)
+                            .opacity(leaving)
                             .flex()
                             .flex_col()
                             .child(content)
@@ -1227,7 +1229,7 @@ impl BottomSheet {
                                     .when(turning, |page| {
                                         page.relative()
                                             .left(relative(sign * shift * (1.0 - eased)))
-                                            .opacity(eased)
+                                            .opacity(arriving)
                                     })
                                     .child(measure(Measure::Page))
                                     .child(self.content),
