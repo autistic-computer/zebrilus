@@ -427,6 +427,9 @@ instead, so text drawn on a see-through window kept its exact outline in alpha u
 read as sharp text dimmed by the tint (a PiP over an agent chat). `check_glass_blurs_the_alpha_of_a_clear_frame`
 pins the blurred alpha: a 2px opaque line on a clear frame under a 6px blur reads alpha 29 on the
 line and beside it and 3 twelve pixels off, where it used to read 255 on the line and 0 beside it.
+The copy stops at the glass's content mask (`Glass::backdrop_region`), so the blur never pulls in
+pixels the glass may not cover: glass 2px from a window's clear margin under a 30px blur read alpha
+220 on an opaque window before, and reads 255 now (`check_glass_beside_a_clear_margin`).
 
 `Window::paint_fade(bounds, ground, clear, solid)` uses the same reading pass for a scroll fade
 (`Glass::fade`, `fade` in the uniform): each pixel becomes the copy mixed toward the ground, both
