@@ -46,7 +46,7 @@ use crate::terminal::{TerminalDisplayPreferences, TerminalPane, TerminalText};
 
 mod browser;
 mod overview;
-pub(super) use overview::HostPage;
+pub(crate) use overview::{HostIds, HostPage};
 mod sheets;
 
 const PAGE_GAP: f32 = 12.0;

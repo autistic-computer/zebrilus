@@ -344,13 +344,19 @@ fn host_label(_: &Connection) -> String {
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
-pub(super) fn host_key(connection: &Connection) -> Option<String> {
-    connection.endpoint().map(ToOwned::to_owned)
+fn host_key(connection: &Connection) -> Option<&str> {
+    connection.endpoint()
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
-pub(super) fn host_key(_: &Connection) -> Option<String> {
+fn host_key(_: &Connection) -> Option<&str> {
     None
+}
+
+impl AppShell {
+    pub(super) fn host_id_of(&self, connection: &Connection) -> PaletteHostId {
+        self.host_ids.id(host_key(connection))
+    }
 }
 
 #[derive(Default)]
@@ -366,11 +372,11 @@ pub(super) struct Flat {
     state: FlatState,
     scroll: ScrollHandle,
     pub place: ChatViewPlace,
-    hosts: HashMap<Option<String>, HostRows>,
+    hosts: HashMap<PaletteHostId, HostRows>,
 }
 
 impl Flat {
-    pub(super) fn forget_daemon(&mut self, host: Option<String>) {
+    pub(super) fn forget_daemon(&mut self, host: PaletteHostId) {
         self.place = ChatViewPlace::default();
         let rows = self.hosts.entry(host).or_default();
         rows.hints = ChatHints::default();
@@ -410,7 +416,7 @@ pub(super) fn flat_tree(
     let mut machines = pages
         .iter()
         .map(|page| {
-            let rows = flat.hosts.get(&page.endpoint).unwrap_or(&none);
+            let rows = flat.hosts.get(&page.id).unwrap_or(&none);
             page.connection
                 .as_ref()
                 .map_or_else(ChatMachine::default, |connection| {
@@ -428,9 +434,9 @@ pub(super) fn flat_tree(
     number_chat_rows(&mut machines);
     let mut current = None;
     let mut hosts = Vec::with_capacity(pages.len());
-    for (index, (page, machine)) in pages.iter().zip(machines).enumerate() {
-        let id = host_id(index);
-        let rows = flat.hosts.get(&page.endpoint).unwrap_or(&none);
+    for (page, machine) in pages.iter().zip(machines) {
+        let id = page.id;
+        let rows = flat.hosts.get(&id).unwrap_or(&none);
         let Some(connection) = &page.connection else {
             let mut host = FlatHost::new(
                 id,
@@ -472,7 +478,7 @@ pub(super) fn flat_tree(
     let menu: FlatMenu = Rc::new(move |host, id, menu, _, cx| {
         let Some((connection, attached)) = shell.upgrade().and_then(|shell| {
             let shell = shell.read(cx);
-            let page = shell.host_pages(cx).into_iter().nth(host.0 as usize)?;
+            let page = shell.host_page(host, cx)?;
             let connection = page.connection?;
             let attached = connection == shell.connection;
             Some((connection, attached))
@@ -523,10 +529,6 @@ pub(super) fn flat_tree(
         .into_any_element()
 }
 
-fn host_id(index: usize) -> PaletteHostId {
-    PaletteHostId(u32::try_from(index).unwrap_or(u32::MAX))
-}
-
 fn current_chat(connection: &Connection, machine: &ChatMachine) -> Option<ChatCurrent> {
     let core = &connection.core;
     let snapshot = core.snapshot();
@@ -570,11 +572,8 @@ pub(super) fn follow_chat_view(view: &mut AppShell, cx: &mut Context<AppShell>) 
                 .flat_map(|session| &session.windows)
         };
         let live = windows().map(|window| window.id).collect::<BTreeSet<_>>();
-        let rows = view
-            .flat
-            .hosts
-            .entry(host_key(view.connection.read(cx)))
-            .or_default();
+        let host = view.host_id_of(view.connection.read(cx));
+        let rows = view.flat.hosts.entry(host).or_default();
         rows.hints.retain(|window| live.contains(&window));
         rows.open.retain(|window| live.contains(window));
         if let Some(window) = windows().find(|window| Some(window.id) == focused) {
@@ -625,10 +624,10 @@ fn flat_event(
         | FlatEvent::Connect(host)
         | FlatEvent::Upgrade(host) => host,
     };
-    let Some(machine) = view.host_pages(cx).into_iter().nth(host.0 as usize) else {
+    let Some(machine) = view.host_page(host, cx) else {
         return;
     };
-    let rows = view.flat.hosts.entry(machine.endpoint.clone()).or_default();
+    let rows = view.flat.hosts.entry(host).or_default();
     let target = match event {
         FlatEvent::Open(_, id) => Target::Window(id),
         FlatEvent::OpenPane(_, _, pane) => Target::Pane(pane),

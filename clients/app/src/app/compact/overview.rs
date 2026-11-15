@@ -1,4 +1,4 @@
-use std::{ops::Range, rc::Rc};
+use std::{cell::RefCell, ops::Range, rc::Rc};
 
 use ala::{
     AnyElement, App, Bounds, Context, Entity, Font, Hsla, PaintScaleExt as _, ParentElement as _,
@@ -35,6 +35,7 @@ use zz_terminal::{Glyph, LocalColors, TerminalAppearance, TerminalPalette, Termi
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use zz_ui::compact::found_machines;
 use zz_ui::{
+    command::PaletteHostId,
     compact::{
         HostState, MachineMenu, close_many_detail, close_pane_detail, host_mark, host_state,
         lead_face, machine_face, mark_dot, overview_count, session_in_view, session_tail,
@@ -1605,6 +1606,7 @@ impl AppShell {
                 .filter_map(|connection| {
                     let endpoint = connection.read(cx).endpoint()?;
                     (!saved.iter().any(|saved| saved == endpoint)).then(|| HostPage {
+                        id: self.host_ids.id(Some(endpoint)),
                         endpoint: Some(endpoint.to_owned()),
                         title: host_title(endpoint),
                         connection: Some(connection.clone()),
@@ -1613,6 +1615,7 @@ impl AppShell {
                 .collect();
             pages.extend(saved.iter().map(|endpoint| {
                 HostPage {
+                    id: self.host_ids.id(Some(endpoint)),
                     endpoint: Some(endpoint.clone()),
                     title: host_title(endpoint),
                     connection: connections
@@ -1629,11 +1632,16 @@ impl AppShell {
         {
             let _ = cx;
             vec![HostPage {
+                id: self.host_ids.id(None),
                 endpoint: None,
                 title: "This computer".into(),
                 connection: Some(self.connection.clone()),
             }]
         }
+    }
+
+    pub(in super::super) fn host_page(&self, id: PaletteHostId, cx: &App) -> Option<HostPage> {
+        self.host_pages(cx).into_iter().find(|page| page.id == id)
     }
 
     pub(in super::super) fn create(
@@ -1809,8 +1817,26 @@ pub(in super::super) enum NewThing {
     Session,
 }
 
-#[derive(Clone)]
-pub(in super::super) struct HostPage {
+#[derive(Default)]
+pub(crate) struct HostIds(RefCell<Vec<Option<String>>>);
+
+impl HostIds {
+    pub(crate) fn id(&self, endpoint: Option<&str>) -> PaletteHostId {
+        let mut known = self.0.borrow_mut();
+        let index = known
+            .iter()
+            .position(|known| known.as_deref() == endpoint)
+            .unwrap_or_else(|| {
+                known.push(endpoint.map(ToOwned::to_owned));
+                known.len() - 1
+            });
+        PaletteHostId(u32::try_from(index).expect("fewer than u32::MAX hosts"))
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub(crate) struct HostPage {
+    pub id: PaletteHostId,
     pub endpoint: Option<String>,
     pub title: String,
     pub connection: Option<Entity<Connection>>,

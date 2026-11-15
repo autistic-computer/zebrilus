@@ -117,6 +117,7 @@ pub struct AppShell {
     fleet: Vec<(Entity<Connection>, Subscription)>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fleet_found: Vec<Subscription>,
+    host_ids: compact::HostIds,
     connection_status: String,
     connected: bool,
     idle_guard: Option<ala::Task<()>>,
@@ -238,8 +239,8 @@ fn watch_connection(
                     this.pane_drag = None;
                     this.pane_layout_override = None;
                     if matches!(event, zz_client::CoreEvent::HelloReceived) {
-                        this.flat
-                            .forget_daemon(sidebar::host_key(connection.read(cx)));
+                        let host = this.host_id_of(connection.read(cx));
+                        this.flat.forget_daemon(host);
                     }
                     sidebar::follow_chat_view(this, cx);
                 }
@@ -387,6 +388,7 @@ impl AppShell {
             fleet: Vec::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             fleet_found: Vec::new(),
+            host_ids: compact::HostIds::default(),
             connection_status: String::new(),
             connected: false,
             idle_guard: None,
