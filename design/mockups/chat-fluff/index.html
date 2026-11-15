@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat fluff</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="fluff.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Chat fluff</h1>
+    <p>Three small touches for the agent pane, three takes each.</p>
+  </div>
+
+  <section id="a" data-part="a">
+    <h2>A. Dithered art behind the empty chat</h2>
+    <div class="fx-row fx-panes">
+      <figure>
+        <div class="penna-gaps zz-frame" data-sky="sky"></div>
+        <figcaption><b>Sky</b>The landing page sky as is, with stars and the moon at night.</figcaption>
+      </figure>
+      <figure>
+        <div class="penna-gaps zz-frame" data-sky="quiet"></div>
+        <figcaption><b>Quiet</b>Patches in the top part only, half the contrast, two birds.</figcaption>
+      </figure>
+      <figure>
+        <div class="penna-gaps zz-frame" data-sky="theme"></div>
+        <figcaption><b>Theme</b>The same field, tinted toward the theme accent.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="b" data-part="b">
+    <h2>B. Menus opening and closing</h2>
+    <div class="fx-row fx-motions">
+      <figure data-motion="rise">
+        <div class="fx-strip"></div>
+        <div class="fx-live"></div>
+        <figcaption><b>Rise</b>Fades in and lifts 6 px over 160 ms, out in 100 ms.</figcaption>
+      </figure>
+      <figure data-motion="grow">
+        <div class="fx-strip"></div>
+        <div class="fx-live"></div>
+        <figcaption><b>Grow</b>Scales up from 96% at the anchor corner over 140 ms, out in 90 ms.</figcaption>
+      </figure>
+      <figure data-motion="dissolve">
+        <div class="fx-strip"></div>
+        <div class="fx-live"></div>
+        <figcaption><b>Dissolve</b>Shows up in 4 px cells in Bayer order over 180 ms, out in 120 ms.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="c" data-part="c">
+    <h2>C. The thinking line</h2>
+    <div class="fx-row fx-today">
+      <figure>
+        <div class="fx-chat" data-think="today"></div>
+        <figcaption><b>Today</b>A sparkle and a color sweep along the label.</figcaption>
+      </figure>
+    </div>
+    <div class="fx-row fx-thinks">
+      <figure>
+        <div class="fx-chat" data-think="swap"></div>
+        <div class="fx-film" data-film="swap"></div>
+        <figcaption><b>Swap</b>A steady muted label; a new one blurs in over 220 ms.</figcaption>
+      </figure>
+      <figure>
+        <div class="fx-chat" data-think="wave"></div>
+        <div class="fx-film" data-film="wave"></div>
+        <figcaption><b>Wave</b>Swap, plus a soft crest drifting along the label at rest.</figcaption>
+      </figure>
+      <figure>
+        <div class="fx-chat" data-think="resolve"></div>
+        <div class="fx-film" data-film="resolve"></div>
+        <figcaption><b>Resolve</b>A new label sharpens letter by letter; the dots take turns going soft.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="d" data-part="d">
+    <h2>D. Build</h2>
+    <table class="fx-build">
+      <thead>
+        <tr><th>Take</th><th>What</th><th>As built</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Theme sky</td><td>Cells</td><td>4 px</td></tr>
+        <tr><td></td><td>Dither</td><td>Bayer 8 by 8</td></tr>
+        <tr><td></td><td>Accent steps</td><td>12%, 24% and 40%</td></tr>
+        <tr><td></td><td>Clear space</td><td>72 px, with a 10 px pad</td></tr>
+        <tr><td></td><td>Birds</td><td>3, or 5 from 700 px wide</td></tr>
+        <tr><td></td><td>Frame rate</td><td>30 fps</td></tr>
+        <tr><td></td><td>Reveal</td><td>0.8 s</td></tr>
+        <tr><td>Rise</td><td>In</td><td>160 ms, easing out</td></tr>
+        <tr><td></td><td>Out</td><td>100 ms, speeding up</td></tr>
+        <tr><td></td><td>Move</td><td>6 px</td></tr>
+        <tr><td>Resolve</td><td>Blur</td><td>5 px</td></tr>
+        <tr><td></td><td>Each character</td><td>160 ms</td></tr>
+        <tr><td></td><td>Stagger</td><td>18 ms</td></tr>
+        <tr><td></td><td>Whole label sharp within</td><td>560 ms</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+<script src="fluff.js"></script>
+<script src="sky.js"></script>
+<script src="motion.js"></script>
+<script src="think.js"></script>
+</body>
+</html>
