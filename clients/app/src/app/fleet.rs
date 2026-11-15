@@ -1,7 +1,7 @@
 use ala::{AppContext as _, Context, Entity, Window};
 use zz_protocol::{PaneId, SessionId};
 
-use super::{AppShell, compact, floating, sidebar, watch_connection};
+use super::{AppShell, compact, floating, watch_connection};
 use crate::connection::{Connection, FoundHost};
 
 impl AppShell {
@@ -196,7 +196,7 @@ impl AppShell {
         self.collapsed_tree.clear();
         self.sidebar_selection = None;
         self.sidebar_active = None;
-        self.flat = sidebar::Flat::default();
+        self.flat.leave_host();
         self.menu_selection = None;
         self.focused_pane = None;
         self.output_terminal = None;

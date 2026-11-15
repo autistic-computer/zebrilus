@@ -69,6 +69,7 @@ pub struct Connection {
     input_sink: Option<std::rc::Rc<std::cell::RefCell<Vec<ProtocolMessage>>>>,
     pub status: String,
     pub connected: bool,
+    pub clock: zz_client::window_summary::DaemonClock,
     providers_requested: bool,
     pub agent_events: HashMap<PaneId, Vec<(u64, Vec<u8>)>>,
     agent_cursors: HashMap<PaneId, AgentCursor>,
@@ -148,6 +149,7 @@ impl Connection {
             input_sink: None,
             status: "Connecting…".into(),
             connected: false,
+            clock: zz_client::window_summary::DaemonClock::default(),
             providers_requested: false,
             agent_events: HashMap::new(),
             agent_cursors: HashMap::new(),
@@ -975,6 +977,10 @@ impl Connection {
                 CoreEvent::HelloReceived => {
                     self.history.clear();
                     self.connected = true;
+                    self.clock = zz_client::window_summary::DaemonClock::from_hello(
+                        self.core.server_clock(),
+                        crate::app::unix_seconds(),
+                    );
                     self.providers_requested = false;
                     self.commands.clear();
                     #[cfg(any(target_os = "ios", target_os = "android"))]

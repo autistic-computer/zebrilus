@@ -13,7 +13,10 @@ use penna::{
     foundation::motion::Instant,
     rems_from_px,
 };
-use std::{collections::BTreeSet, rc::Rc};
+use std::{
+    collections::{BTreeSet, HashMap},
+    rc::Rc,
+};
 use zz_client::{
     ChromeAction,
     new_chat::{ChatViewPlace, leave_picker_command},
@@ -23,7 +26,8 @@ use zz_client::{
         sidebar_rows,
     },
     window_summary::{
-        ChatHints, ChatParent, DaemonClock, PaneTag, number_chat_rows, summarize_chat_machine,
+        ChatCurrent, ChatHints, ChatMachine, ChatParent, PaneTag, number_chat_rows,
+        summarize_chat_machine,
     },
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, WindowId};
@@ -327,8 +331,6 @@ pub(super) fn session_tree(
         .into_any_element()
 }
 
-const HOST: PaletteHostId = PaletteHostId(0);
-
 #[cfg(any(target_os = "ios", target_os = "android"))]
 fn host_label(connection: &Connection) -> String {
     connection
@@ -338,27 +340,48 @@ fn host_label(connection: &Connection) -> String {
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 fn host_label(_: &Connection) -> String {
-    "zz daemon".to_owned()
+    "This computer".to_owned()
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+pub(super) fn host_key(connection: &Connection) -> Option<String> {
+    connection.endpoint().map(ToOwned::to_owned)
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+pub(super) fn host_key(_: &Connection) -> Option<String> {
+    None
 }
 
 #[derive(Default)]
-pub(super) struct Flat {
-    pub clock: DaemonClock,
-    state: FlatState,
-    folded_host: bool,
-    scroll: ScrollHandle,
-    pub place: ChatViewPlace,
+struct HostRows {
+    folded: bool,
     hints: ChatHints,
     open: BTreeSet<WindowId>,
     pile: bool,
 }
 
+#[derive(Default)]
+pub(super) struct Flat {
+    state: FlatState,
+    scroll: ScrollHandle,
+    pub place: ChatViewPlace,
+    hosts: HashMap<Option<String>, HostRows>,
+}
+
 impl Flat {
-    pub(super) fn forget_daemon(&mut self) {
+    pub(super) fn forget_daemon(&mut self, host: Option<String>) {
         self.place = ChatViewPlace::default();
-        self.hints = ChatHints::default();
-        self.open.clear();
-        self.pile = false;
+        let rows = self.hosts.entry(host).or_default();
+        rows.hints = ChatHints::default();
+        rows.open.clear();
+        rows.pile = false;
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    pub(super) fn leave_host(&mut self) {
+        self.state = FlatState::default();
+        self.place = ChatViewPlace::default();
     }
 }
 
@@ -381,40 +404,62 @@ pub(super) fn flat_tree(
     ground: Ground,
     cx: &mut Context<AppShell>,
 ) -> AnyElement {
-    let connection = view.connection.read(cx);
-    let core = &connection.core;
-    let snapshot = core.snapshot();
-    let now = view.flat.clock.now(super::unix_seconds());
+    let pages = view.host_pages(cx);
     let flat = &view.flat;
-    let mut machine =
-        summarize_chat_machine(&snapshot.sessions, &flat.hints, |parent| match parent {
-            ChatParent::Window(window) => flat.open.contains(&window),
-            ChatParent::Pile => flat.pile,
-        });
-    number_chat_rows([&mut machine]);
-    let current = snapshot
-        .sessions
+    let none = HostRows::default();
+    let mut machines = pages
         .iter()
-        .find(|session| connection.connected && Some(session.id) == core.attached_session())
-        .map(|session| snapshot.focused_window_for(session))
-        .and_then(|focused| {
-            let window = snapshot
-                .sessions
-                .iter()
-                .flat_map(|session| &session.windows)
-                .find(|window| window.id == focused)?;
-            Some((HOST, machine.current(focused, window.active_pane)?))
-        });
-    let mut host = FlatHost::new(
-        HOST,
-        host_label(connection),
-        false,
-        host_connection(connection),
-        machine,
-        now,
-    );
-    host.folded = view.flat.folded_host;
-    host.platform = core.host_platform();
+        .map(|page| {
+            let rows = flat.hosts.get(&page.endpoint).unwrap_or(&none);
+            page.connection
+                .as_ref()
+                .map_or_else(ChatMachine::default, |connection| {
+                    summarize_chat_machine(
+                        &connection.read(cx).core.snapshot().sessions,
+                        &rows.hints,
+                        |parent| match parent {
+                            ChatParent::Window(window) => rows.open.contains(&window),
+                            ChatParent::Pile => rows.pile,
+                        },
+                    )
+                })
+        })
+        .collect::<Vec<_>>();
+    number_chat_rows(&mut machines);
+    let mut current = None;
+    let mut hosts = Vec::with_capacity(pages.len());
+    for (index, (page, machine)) in pages.iter().zip(machines).enumerate() {
+        let id = host_id(index);
+        let rows = flat.hosts.get(&page.endpoint).unwrap_or(&none);
+        let Some(connection) = &page.connection else {
+            let mut host = FlatHost::new(
+                id,
+                page.title.clone(),
+                true,
+                HostConnection::Disconnected,
+                machine,
+                super::unix_seconds(),
+            );
+            host.folded = rows.folded;
+            hosts.push(host);
+            continue;
+        };
+        if *connection == view.connection {
+            current = current_chat(connection.read(cx), &machine).map(|at| (id, at));
+        }
+        let connection = connection.read(cx);
+        let mut host = FlatHost::new(
+            id,
+            page.title.clone(),
+            page.endpoint.is_some(),
+            host_connection(connection),
+            machine,
+            connection.clock.now(super::unix_seconds()),
+        );
+        host.folded = rows.folded;
+        host.platform = connection.core.host_platform();
+        hosts.push(host);
+    }
     let state = FlatState {
         current,
         ..view.flat.state
@@ -423,12 +468,22 @@ pub(super) fn flat_tree(
     let handler: FlatHandler = Rc::new(move |event, window, cx| {
         let _ = shell.update(cx, |view, cx| flat_event(view, event, window, cx));
     });
-    let connection = view.connection.clone();
-    let menu: FlatMenu = Rc::new(move |_, id, menu, _, cx| {
+    let shell = cx.entity().downgrade();
+    let menu: FlatMenu = Rc::new(move |host, id, menu, _, cx| {
+        let Some((connection, attached)) = shell.upgrade().and_then(|shell| {
+            let shell = shell.read(cx);
+            let page = shell.host_pages(cx).into_iter().nth(host.0 as usize)?;
+            let connection = page.connection?;
+            let attached = connection == shell.connection;
+            Some((connection, attached))
+        }) else {
+            return menu;
+        };
         let disabled = !writable(connection.read(cx));
         let rename = rename_command(connection.read(cx).core.snapshot(), Target::Window(id))
+            .filter(|_| attached)
             .map(|(_, command)| command);
-        let (rename_connection, close_connection) = (connection.clone(), connection.clone());
+        let (rename_connection, close_connection) = (connection.clone(), connection);
         menu.item(
             PopupMenuItem::new("Rename window")
                 .disabled(disabled || rename.is_none())
@@ -448,7 +503,7 @@ pub(super) fn flat_tree(
                 }),
         )
     });
-    let list = flat_sidebar(&[host], state, &handler, &menu, ground, cx);
+    let list = flat_sidebar(&hosts, state, &handler, &menu, ground, cx);
     let scroll = &view.flat.scroll;
     div()
         .id("web-flat-sidebar")
@@ -466,6 +521,26 @@ pub(super) fn flat_tree(
         .bottom_fade(scroll, fade, WORKSPACE_SIDEBAR_FADE_HEIGHT)
         .vertical_scrollbar(scroll)
         .into_any_element()
+}
+
+fn host_id(index: usize) -> PaletteHostId {
+    PaletteHostId(u32::try_from(index).unwrap_or(u32::MAX))
+}
+
+fn current_chat(connection: &Connection, machine: &ChatMachine) -> Option<ChatCurrent> {
+    let core = &connection.core;
+    let snapshot = core.snapshot();
+    let session = snapshot
+        .sessions
+        .iter()
+        .find(|session| connection.connected && Some(session.id) == core.attached_session())?;
+    let focused = snapshot.focused_window_for(session);
+    let window = snapshot
+        .sessions
+        .iter()
+        .flat_map(|session| &session.windows)
+        .find(|window| window.id == focused)?;
+    machine.current(focused, window.active_pane)
 }
 
 pub(super) fn new_chat(view: &mut AppShell, cx: &mut Context<AppShell>) {
@@ -495,10 +570,15 @@ pub(super) fn follow_chat_view(view: &mut AppShell, cx: &mut Context<AppShell>) 
                 .flat_map(|session| &session.windows)
         };
         let live = windows().map(|window| window.id).collect::<BTreeSet<_>>();
-        view.flat.hints.retain(|window| live.contains(&window));
-        view.flat.open.retain(|window| live.contains(window));
+        let rows = view
+            .flat
+            .hosts
+            .entry(host_key(view.connection.read(cx)))
+            .or_default();
+        rows.hints.retain(|window| live.contains(&window));
+        rows.open.retain(|window| live.contains(window));
         if let Some(window) = windows().find(|window| Some(window.id) == focused) {
-            view.flat.hints.observe(window);
+            rows.hints.observe(window);
         }
     }
     if !view.preferences.flat_sidebar {
@@ -530,44 +610,128 @@ fn flat_event(
     window: &mut Window,
     cx: &mut Context<AppShell>,
 ) {
-    let connection = view.connection.clone();
-    let target = match event {
-        FlatEvent::Open(_, id) => Target::Window(id),
-        FlatEvent::OpenPane(_, _, pane) => Target::Pane(pane),
-        FlatEvent::FoldHost(_) => {
-            view.flat.folded_host = !view.flat.folded_host;
-            cx.notify();
-            return;
-        }
-        FlatEvent::ToggleWindow(_, window) => {
-            if !view.flat.open.remove(&window) {
-                view.flat.open.insert(window);
-            }
-            cx.notify();
-            return;
-        }
-        FlatEvent::TogglePile(_) => {
-            view.flat.pile = !view.flat.pile;
-            cx.notify();
-            return;
-        }
-        FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => {
-            connection.update(cx, Connection::reconnect);
-            return;
-        }
+    let host = match event {
         FlatEvent::Hover(target, hovered) => {
             if view.flat.state.hover(target, hovered) {
                 cx.notify();
             }
             return;
         }
+        FlatEvent::Open(host, _)
+        | FlatEvent::OpenPane(host, ..)
+        | FlatEvent::ToggleWindow(host, _)
+        | FlatEvent::TogglePile(host)
+        | FlatEvent::FoldHost(host)
+        | FlatEvent::Connect(host)
+        | FlatEvent::Upgrade(host) => host,
+    };
+    let Some(machine) = view.host_pages(cx).into_iter().nth(host.0 as usize) else {
+        return;
+    };
+    let rows = view.flat.hosts.entry(machine.endpoint.clone()).or_default();
+    let target = match event {
+        FlatEvent::Open(_, id) => Target::Window(id),
+        FlatEvent::OpenPane(_, _, pane) => Target::Pane(pane),
+        FlatEvent::FoldHost(_) => {
+            rows.folded = !rows.folded;
+            cx.notify();
+            return;
+        }
+        FlatEvent::ToggleWindow(_, window) => {
+            if !rows.open.remove(&window) {
+                rows.open.insert(window);
+            }
+            cx.notify();
+            return;
+        }
+        FlatEvent::TogglePile(_) => {
+            rows.pile = !rows.pile;
+            cx.notify();
+            return;
+        }
+        FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => {
+            connect(view, machine, window, cx);
+            return;
+        }
+        FlatEvent::Hover(..) => return,
+    };
+    let Some(connection) = machine.connection.clone() else {
+        return;
     };
     if view.slideover && connection.read(cx).connected {
         view.release_sidebar_focus(window, cx);
     }
+    if connection != view.connection {
+        open_on_other_host(view, &machine, target, window, cx);
+        return;
+    }
     view.flat.place.close_landing();
     leave_abandoned_picker(&connection, target, cx);
     activate(&connection, target, cx);
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+fn connect(
+    view: &mut AppShell,
+    page: super::compact::HostPage,
+    window: &mut Window,
+    cx: &mut Context<AppShell>,
+) {
+    if let Some(endpoint) = page.endpoint {
+        view.connect_host(endpoint, window, cx);
+    }
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+fn connect(
+    _: &mut AppShell,
+    page: super::compact::HostPage,
+    _: &mut Window,
+    cx: &mut Context<AppShell>,
+) {
+    if let Some(connection) = page.connection {
+        connection.update(cx, Connection::reconnect);
+    }
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+fn open_on_other_host(
+    view: &mut AppShell,
+    host: &super::compact::HostPage,
+    target: Target,
+    window: &mut Window,
+    cx: &mut Context<AppShell>,
+) {
+    let (Some(endpoint), Some(connection)) = (&host.endpoint, &host.connection) else {
+        return;
+    };
+    let place = {
+        let snapshot = connection.read(cx).core.snapshot();
+        snapshot.sessions.iter().find_map(|session| {
+            session.windows.iter().find_map(|mux_window| match target {
+                Target::Window(id) if mux_window.id == id => {
+                    Some((session.id, mux_window.active_pane))
+                }
+                Target::Pane(pane) if mux_window.panes.contains_key(&pane) => {
+                    Some((session.id, pane))
+                }
+                _ => None,
+            })
+        })
+    };
+    if let Some((session, pane)) = place {
+        view.switch_host(endpoint, Some(session), Some(pane), window, cx);
+    }
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+fn open_on_other_host(
+    _: &mut AppShell,
+    _: &super::compact::HostPage,
+    _: Target,
+    _: &mut Window,
+    _: &mut Context<AppShell>,
+) {
 }
 
 fn leave_abandoned_picker(connection: &Entity<Connection>, target: Target, cx: &mut App) {

@@ -223,12 +223,6 @@ fn watch_connection(
                     if matches!(event, zz_client::CoreEvent::HelloReceived) {
                         this.remember_host(cx);
                     }
-                    if matches!(event, zz_client::CoreEvent::HelloReceived) {
-                        this.flat.clock = zz_client::window_summary::DaemonClock::from_hello(
-                            connection.read(cx).core.server_clock(),
-                            unix_seconds(),
-                        );
-                    }
                     if matches!(event, zz_client::CoreEvent::Attached { .. }) {
                         connection.update(cx, Connection::set_color_scheme);
                     }
@@ -244,7 +238,8 @@ fn watch_connection(
                     this.pane_drag = None;
                     this.pane_layout_override = None;
                     if matches!(event, zz_client::CoreEvent::HelloReceived) {
-                        this.flat.forget_daemon();
+                        this.flat
+                            .forget_daemon(sidebar::host_key(connection.read(cx)));
                     }
                     sidebar::follow_chat_view(this, cx);
                 }
@@ -3602,7 +3597,7 @@ fn unsupported_pane(
         .into_any_element()
 }
 
-fn unix_seconds() -> u64 {
+pub(crate) fn unix_seconds() -> u64 {
     #[cfg(target_arch = "wasm32")]
     {
         (js_sys::Date::now() / 1_000.0) as u64
