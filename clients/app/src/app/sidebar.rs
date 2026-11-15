@@ -272,7 +272,10 @@ pub(super) fn session_tree(
 ) -> AnyElement {
     let connection = &runtime.connection;
     let connected = connection.read(cx).connected;
-    let rows = sidebar_rows(&connection.read(cx).core, collapsed, &runtime.unseen_agents);
+    let mut rows = sidebar_rows(&connection.read(cx).core, collapsed, &runtime.unseen_agents);
+    if let Some(host) = rows.iter_mut().find(|row| row.target == Target::Host) {
+        host.label = host_label(connection.read(cx));
+    }
     let active_row = connected
         .then(|| rows.iter().rposition(|row| row.on_active_path))
         .flatten();
@@ -325,6 +328,18 @@ pub(super) fn session_tree(
 }
 
 const HOST: PaletteHostId = PaletteHostId(0);
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+fn host_label(connection: &Connection) -> String {
+    connection
+        .endpoint()
+        .map_or_else(|| "zz daemon".to_owned(), super::host_title)
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+fn host_label(_: &Connection) -> String {
+    "zz daemon".to_owned()
+}
 
 #[derive(Default)]
 pub(super) struct Flat {
@@ -392,7 +407,7 @@ pub(super) fn flat_tree(
         });
     let mut host = FlatHost::new(
         HOST,
-        "zz daemon",
+        host_label(connection),
         false,
         host_connection(connection),
         machine,
