@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-11-15
+* **Fix**: HTML in the agent chat, checked live end to end ([artifacts](/designs/userpanes.md)). A live block's `zz.reply` drafts into its chat's composer again instead of sending a turn (it ran `agent-send`, which submits to a chat since 2026-11-01). Open on an `html` block no longer covers the chat with the `html` verb's output in view mode: the daemon skips that output for interactive clients. Codex's visualize references become `html preview` blocks again: the rewrite runs at the top of the Codex driver's `emit`, ahead of the chat machine whose events clients draw, so the chat events sent between deltas no longer release a held reference as raw text.
+
 ## 2026-11-14
 * **Update**: The sidebar toggle and the chat button draw the glyph of the mode on screen, outline only ([UI conventions](/configuration/ui-conventions.md)): `panel-left` with the sidebar, `panel-top` with navigation in the title bar, `chat` with chats, `layers` with the session tree. penna drops `ChatFill` and `PanelLeftFill` and adds `PanelTop`, the panel frame with a bar along its top. Desktop, web and iPad, and the HTML client follow.
 

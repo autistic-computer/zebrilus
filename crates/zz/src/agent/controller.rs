@@ -555,6 +555,12 @@ impl AgentController {
         true
     }
 
+    pub(crate) fn draft(&mut self, pane: PaneId, text: &str, cx: &mut Context<Self>) {
+        if self.queue_composer_text(pane, text) {
+            cx.notify();
+        }
+    }
+
     pub(crate) fn take_pending_composer(&mut self, pane: PaneId) -> Option<String> {
         self.pending_composer
             .remove(&pane)

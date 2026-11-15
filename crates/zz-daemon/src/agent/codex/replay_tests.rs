@@ -34,6 +34,7 @@ fn setup(thread: &str) -> (Runtime, Receiver<AgentStreamPayload>) {
         permissions: HashMap::new(),
         turns: TurnState::default(),
         chat: Mutex::new(Shadow::recording().codex()),
+        visuals: Mutex::new(crate::agent::visualize::Visuals::default()),
         last_turn: 0,
         deferred_cancels: HashSet::new(),
         settings: Settings::default(),
@@ -896,4 +897,39 @@ fn a_resumed_thread_keeps_its_turns_and_the_time_of_every_row() {
             ),
         ]
     );
+}
+
+#[test]
+fn a_visualize_reference_streamed_in_pieces_reaches_the_chat_as_a_preview_block() {
+    let thread = "thread-1";
+    let (mut runtime, _receiver) = setup(thread);
+    smol::block_on(runtime.apply(&Fact::Prompt {
+        turn: 1,
+        command: None,
+    }))
+    .expect("prompt");
+    let directory = tempfile::tempdir().expect("tempdir");
+    let path = directory.path().join("bars.html");
+    std::fs::write(&path, "<p>bars</p>\n").expect("write");
+    let reply = format!(
+        "Here:\n\u{e200}visualize\u{e202}{{\"path\":\"{}\"}}\u{e201}",
+        path.display()
+    );
+    let characters: Vec<char> = reply.chars().collect();
+    for delta in characters.chunks(5) {
+        let delta: String = delta.iter().collect();
+        smol::block_on(runtime.message(json!({
+            "method": "item/agentMessage/delta",
+            "params": { "threadId": thread, "itemId": "m1", "delta": delta },
+        })))
+        .expect("delta");
+    }
+    let (view, _) = chat_of(&runtime);
+    let texts: Vec<&str> = view
+        .items
+        .values()
+        .filter(|item| item.kind == ItemKind::Agent)
+        .map(|item| item.body.text.as_str())
+        .collect();
+    assert_eq!(texts, ["Here:\n\n```html preview\n<p>bars</p>\n```\n"]);
 }

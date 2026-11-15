@@ -30,7 +30,6 @@ use crate::agent::{
         AgentAuthMethod, AgentPrompt, AgentPromptOutcome, AgentQuestion, AgentSessionCapabilities,
         AgentSessionSummary, AgentStreamItem, AgentStreamPayload,
     },
-    visualize::Visuals,
 };
 use crate::daemon::AgentBlockPolicy;
 
@@ -695,7 +694,6 @@ async fn run_pane(
         turn_reply: AgentTurnReply::default(),
         turn_started: Instant::now(),
         closing: false,
-        visuals: Visuals::default(),
     };
 
     futures_lite::future::zip(
@@ -728,7 +726,6 @@ struct PanePump {
     turn_reply: AgentTurnReply,
     turn_started: Instant,
     closing: bool,
-    visuals: Visuals,
 }
 
 #[derive(Default)]
@@ -820,11 +817,7 @@ impl PanePump {
                 break;
             };
             match input {
-                PaneInput::Event(payload) => {
-                    for payload in self.visuals.pass(payload) {
-                        self.observe(payload);
-                    }
-                }
+                PaneInput::Event(payload) => self.observe(payload),
                 PaneInput::Command(command) => self.command(command),
                 PaneInput::GitSummary {
                     generation,
@@ -3398,7 +3391,6 @@ mod tests {
             turn_reply: AgentTurnReply::default(),
             turn_started: Instant::now(),
             closing: false,
-            visuals: Visuals::default(),
         };
         let (reply, result) = crossbeam_channel::bounded(1);
         prompts

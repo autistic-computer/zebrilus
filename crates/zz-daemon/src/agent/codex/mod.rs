@@ -45,6 +45,7 @@ use crate::agent::{
         AgentSessionCapabilities, AgentSessionSummary, AgentStreamPayload,
     },
     turn::{self, Effect, End, Fact, Reject, Turn, TurnMachine, TurnState},
+    visualize::Visuals,
     zz_command,
 };
 use zz_machine::Machine;
@@ -142,6 +143,7 @@ pub(crate) async fn run_codex_runtime(
         permissions: HashMap::new(),
         turns: TurnState::default(),
         chat: Mutex::new(Shadow::default().codex()),
+        visuals: Mutex::new(Visuals::default()),
         last_turn: 0,
         deferred_cancels: HashSet::new(),
         settings: Settings::default(),
@@ -434,6 +436,7 @@ struct Runtime {
     permissions: HashMap<u64, Pending>,
     turns: TurnState,
     chat: Mutex<Shadow>,
+    visuals: Mutex<Visuals>,
     last_turn: u64,
     deferred_cancels: HashSet<u64>,
     settings: Settings,
@@ -470,6 +473,14 @@ struct Side {
 
 impl Runtime {
     async fn emit(&self, payload: AgentStreamPayload) -> Result<(), String> {
+        let payloads = self.visuals.lock().pass(payload);
+        for payload in payloads {
+            self.emit_one(payload).await?;
+        }
+        Ok(())
+    }
+
+    async fn emit_one(&self, payload: AgentStreamPayload) -> Result<(), String> {
         let chat = {
             let mut shadow = self.chat.lock();
             shadow.payload(&payload);

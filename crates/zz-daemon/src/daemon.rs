@@ -7415,7 +7415,10 @@ impl Shared {
         if kind == ClientKind::Interactive
             && !self.read_client(client, |client| client.is_some_and(|c| c.ctrl_initializing))
             && !output.is_empty()
-            && !matches!(canonical_command(&command.name), "new-session" | "tailnet")
+            && !matches!(
+                canonical_command(&command.name),
+                "new-session" | "tailnet" | "html"
+            )
             && let Err(error) =
                 self.open_command_output(client, context.pane, command.name.clone(), output)
         {

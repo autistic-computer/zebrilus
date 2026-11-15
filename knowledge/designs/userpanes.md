@@ -2,7 +2,7 @@
 type: Design Plan
 title: Artifacts . agent-written HTML in browser panes and inline
 description: "Proposed plan for showing HTML an agent writes. zz html <path> registers the page with the daemon that ran the caller, browser panes load it from a zz://<token>/ scheme whose bytes the daemon sends over the client's existing connection (so it works on ssh hosts), the daemon reloads the pane when a file the page loaded changes, pages get no bridge by default, and --reply grants one call that sends text to the pane that opened the page. In the Agent pane, svg blocks render inline through the mermaid path, and html blocks show code with a Preview toggle that one hidden browser renders as cached images; a click makes that block a live page in place, and Open opens it as a pane. A block opened with html preview shows the picture first and wraps a fragment in a page with the theme colors, which is also what Codex's visualize references become. Replaces the 2026-07-28 userpanes plan."
-status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; iOS and web not started; the Agent pane that hosted inline previews was removed 2026-10-23)
+status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; iOS and web not started; previews live in the agent chat since 2026-11-01 and were checked live end to end on 2026-11-15)
 resource: libs/ala-cef/src/cef_runtime.rs
 tags:
 - browser
@@ -13,7 +13,7 @@ tags:
 - agent-pane
 - artifacts
 - design-plan
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-11-15T00:00:00-03:00
 ---
 
 # Overview
@@ -32,8 +32,7 @@ zz html /tmp/report.html
 ```
 
 The model learns nothing new: HTML, a file path, one verb. Smaller drawings stay in the
-conversation: `svg` and `html` blocks in the Agent pane preview inline (see Inline previews; the
-Agent pane is gone since 2026-10-23 and the agent lens timeline keeps this).
+conversation: `svg` and `html` blocks in the agent chat preview inline (see Inline previews).
 
 # What changed since the July plan
 
@@ -234,12 +233,11 @@ That gives the agent a form to ask with:
 
 # Inline previews in the Agent pane
 
-The Agent pane was removed on 2026-10-23 ([agent lens](/designs/agent-lens.md)). The preview code
-lives in the timeline (`crates/zz-ui/src/agent.rs`, `crates/zz/src/browser/inline.rs`), which the
-lens over a Claude Code or Codex terminal keeps, so "the Agent pane" below now means that timeline.
-Terminal agents get the startup context without the html paragraph (`zz tools --context` calls
-`workspace_context(.., false)`), so the CLIs are not taught the form, and a `zz.reply` would land in
-the lens composer, which pastes into the TUI.
+The previews live in the agent chat (`crates/zz-ui/src/agent.rs`, `crates/zz/src/browser/inline.rs`),
+which an agent pane draws since 2026-11-01 ([agent panes](/concepts/agent-panes.md)), so "the Agent
+pane" below means that chat. Claude Code or Codex running in a terminal gets the startup context
+without the html paragraph (`zz tools --context` calls `workspace_context(.., false)`), so the CLIs
+there are not taught the form.
 
 Small drawings belong in the answer, not in a pane. The rule is that a preview costs an image
 while you scroll: Chromium never sits in the timeline unless you click a block.
@@ -332,17 +330,20 @@ paragraph the native Claude and Codex drivers add to the startup context
 
 **Codex's visualize references.** Codex's bundled visualize skill writes the fragment to a file and
 puts `\u{e200}visualize\u{e202}{"path": ...}\u{e201}` in its reply, which only Codex's own app
-draws. The pane host rewrites it before anything else sees the update
-(`crates/zz-daemon/src/agent/visualize.rs`, run on each runtime event in `PanePump`): the
-reference becomes an `html preview` block holding the file, read by the daemon that ran the agent,
-so it works on ssh hosts and the transcript keeps the page after the file is gone. A reference
-split across chunks is held until it closes, and released as it was if another event comes first.
+draws. The Codex driver rewrites it before anything else sees the update
+(`crates/zz-daemon/src/agent/visualize.rs`, run at the top of the runtime's `emit`, ahead of the
+chat machine whose events clients draw): the reference becomes an `html preview` block holding the
+file, read by the daemon that ran the agent, so it works on ssh hosts and the transcript keeps the
+page after the file is gone. Codex streams the reference a few characters per delta; a reference
+split across chunks is held until it closes, and released as it was if another payload reaches
+`emit` first.
 Only absolute `.html` paths up to 1 MiB are read; anything else becomes a one-line quote saying
 why. `widgetState` is not kept.
 
 **Replies from a live block.** `window.openai.sendFollowUpMessage({prompt})` calls `zz.reply`, and
-any live block may use it: the text lands in the composer of the Agent pane that drew the block,
-as `agent-send -t %N` drafts it, and is not sent. Codex's own app asks before sending a follow-up;
+any live block may use it: the text lands in the composer of the Agent pane that drew the block
+(`AgentController::draft`, the same pending-composer path reclaimed prompts take), and is not sent.
+Codex's own app asks before sending a follow-up;
 here the composer is that question, so a page can never start a turn by itself, and plain `html`
 blocks follow the same rule as `html preview` ones (nothing to choose between when the user sends
 it either way). The pane comes from the chat: each client passes its pane to `chat_surface`
@@ -455,6 +456,21 @@ and the height and frame-size helpers in `controller::preview`. The hidden brows
 a temporary probe in the app that sent six pages through `render_html_preview`, wrote the pictures
 and logged the times above; it was removed afterwards. Not covered by a test: the cache's byte
 budget, and a real click on Preview in a running app.
+
+Checked live on macOS (2026-11-15) in a zz Dev built from main, on its own socket, against a
+Claude Code chat (Haiku) told to echo fixed blocks and a Codex chat asked to use its visualize
+skill: an `svg` block drew as a figure; an `html preview` block showed its picture, went live on a
+click, took typing and clicks (a counter moved); a plain `html` block's Preview showed the page and
+went live; a long `html` block became a card; Open opened the page in a browser pane beside the
+chat; a live block's Reply drafted into the composer without sending; Codex's visualize reference
+became a themed chart block. Three bugs turned up and were fixed then: Reply ran `agent-send`,
+which submits to a chat since 2026-11-01, so a page could start a turn; Open showed the `html`
+verb's output in view mode over the chat (the daemon now skips that output for interactive
+clients, as for `new-session`); and Codex references reached the screen raw, because the rewrite
+ran in `PanePump` on updates only while clients draw the driver's chat events, and the chat events
+sent after each delta released every held reference. Still open: the picture of a page that draws
+after load (Codex charts load their code from Codex's CDN) is measured before it finishes, so the
+chart's axis is cut off at the bottom; the live page in a browser pane shows it whole.
 
 # Deferred
 

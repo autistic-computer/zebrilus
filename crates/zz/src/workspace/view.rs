@@ -1125,6 +1125,7 @@ impl AppView {
         )));
         let replies = mux.clone();
         let inline = inline_browser.clone();
+        let drafts = agent_controller.clone();
         cx.spawn(async move |_, cx| {
             let sent = ala_cef::artifact_replies();
             while let Ok(reply) = sent.recv().await {
@@ -1137,17 +1138,7 @@ impl AppView {
                 }) else {
                     continue;
                 };
-                replies.update(cx, |mux, _| {
-                    mux.execute(CommandInvocation::new(
-                        "agent-send",
-                        [
-                            "-t".to_owned(),
-                            pane.to_string(),
-                            "--".to_owned(),
-                            reply.text,
-                        ],
-                    ));
-                });
+                drafts.update(cx, |agents, cx| agents.draft(pane, &reply.text, cx));
             }
         })
         .detach();
