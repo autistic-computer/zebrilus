@@ -110,7 +110,6 @@ pub struct InputState {
 
     pub(super) last_layout: Option<LastLayout>,
     pub(super) scroll: Point<Pixels>,
-    pub(super) measured_rows: usize,
     pub(super) follow_cursor: bool,
     pub(super) reset_scroll: bool,
     pub(super) revealed_viewport: Option<ala::Size<Pixels>>,
@@ -179,7 +178,6 @@ impl InputState {
             preferred_x: None,
             last_layout: None,
             scroll: Point::default(),
-            measured_rows: 1,
             follow_cursor: false,
             reset_scroll: false,
             revealed_viewport: None,
@@ -199,7 +197,6 @@ impl InputState {
             min_rows,
             max_rows: max_rows.max(min_rows),
         };
-        self.measured_rows = min_rows;
         self
     }
 
