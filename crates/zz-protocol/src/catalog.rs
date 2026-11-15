@@ -1190,7 +1190,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "list-hosts",
         aliases: &[],
-        description: "List the machines in zz/config with their state and zz version",
+        description: "List the machines in zz/config and on the tailnet with their state and zz version",
         usage: "[-F format] [--json]",
         options: &[
             CommandOptionSpec::value(

@@ -605,6 +605,18 @@ pub fn discover(status: &Status) -> Vec<Discovered> {
     found
 }
 
+#[must_use]
+pub fn hosts(status: &Status, settings: &Settings) -> Vec<crate::HostEntry> {
+    discover(status)
+        .into_iter()
+        .filter(|machine| !settings.hide.contains(&machine.label))
+        .map(|machine| crate::HostEntry {
+            name: machine.label,
+            endpoint: crate::Endpoint::Tailnet(machine.endpoint),
+        })
+        .collect()
+}
+
 pub fn resolve(endpoint: &TailnetEndpoint) -> Result<SocketAddr, TailnetError> {
     let port = endpoint.port.unwrap_or(PORT);
     if let Ok(address) = endpoint.peer.parse::<IpAddr>() {
