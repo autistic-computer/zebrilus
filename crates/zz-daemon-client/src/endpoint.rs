@@ -3570,6 +3570,7 @@ mod tests {
         };
         for stderr in [
             "you@host: Permission denied (publickey).",
+            "you@host: Permission denied (publickey,password).",
             "Host key verification failed.",
             "sign_and_send_pubkey: signing failed for ED25519-SK \"/k\": device not found",
         ] {
