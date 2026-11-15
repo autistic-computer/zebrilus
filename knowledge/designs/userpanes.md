@@ -2,7 +2,7 @@
 type: Design Plan
 title: Artifacts . agent-written HTML in browser panes and inline
 description: "Proposed plan for showing HTML an agent writes. zz html <path> registers the page with the daemon that ran the caller, browser panes load it from a zz://<token>/ scheme whose bytes the daemon sends over the client's existing connection (so it works on ssh hosts), the daemon reloads the pane when a file the page loaded changes, pages get no bridge by default, and --reply grants one call that sends text to the pane that opened the page. In the Agent pane, svg blocks render inline through the mermaid path, and html blocks show code with a Preview toggle that one hidden browser renders as cached images; a click makes that block a live page in place, and Open opens it as a pane. A block opened with html preview shows the picture first and wraps a fragment in a page with the theme colors, which is also what Codex's visualize references become. Replaces the 2026-07-28 userpanes plan."
-status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; iOS and web not started; previews live in the agent chat since 2026-11-01 and were checked live end to end on 2026-11-15; since then html preview blocks draw bare with penna's HTML kit and whole documents draw as page frames)
+status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; previews live in the agent chat since 2026-11-01 and were checked live end to end on 2026-11-15; since then html preview blocks draw bare with penna's HTML kit and whole documents draw as page frames; iOS draws both as pictures; web and Android not started)
 resource: libs/ala-cef/src/cef_runtime.rs
 tags:
 - browser
@@ -418,18 +418,33 @@ up in the numbers.
 
 # Other clients
 
-* **iOS** shows browser panes in `WKWebView` (`clients/app/src/ios_browser.rs`). A
-  `WKURLSchemeHandler` for `zz` would do what the CEF handler does over the iOS transport, and the
-  navigation allowlist (`ios_browser.rs:195`) adds `zz`. Previews use an offscreen web view and
-  `takeSnapshotWithConfiguration`, which the phone pill's glass already calls
-  (`ios_browser.rs:754`). Next after desktop.
+* **iOS** (iPhone and iPad) draws the pictures since 2026-11-15: visuals and page frames show in
+  its chats the way they do on the desktop. `clients/app/src/ios_preview.rs` sets
+  `AgentHtmlPreviewer` to one hidden `WKWebView`, kept under the app's own view at the window's
+  origin with a store that is never written to disk, and closed after 60 s with nothing queued.
+  It loads the page with `loadHTMLString`, waits for `document.readyState` (3 s, then "Preview
+  timed out"), reads the height with the desktop's script, resizes, and reads it again every
+  150 ms until it stops changing or 5 s have passed; a page frame's 1280 × 720 skips the
+  measuring. `takeSnapshotWithConfiguration` gives the picture, whose color is straightened like
+  the desktop's. Three things it needed: the visual page carries a `width=device-width` viewport
+  tag, or the web view lays it out 980 px wide and shrinks it; the scroll view's edge effects are
+  hidden, or the blur iOS draws under the status bar bleeds into the top of every picture; and
+  buttons inherit their color, or WebKit paints their text in its own blue. On the phone shell a
+  visual is laid out narrower and drawn larger by 17 / 14, the ratio of the chat's touch text to
+  the desktop's, so its type matches the reply around it. The corner controls are left out on
+  touch. Still missing: a `WKURLSchemeHandler` for `zz` (so Open as a page and `zz html` panes
+  work; the navigation allowlist at `ios_browser.rs:195` adds `zz`), and a visual going live on a
+  tap, with its reply drafting into the composer. Until then a page frame's picture does nothing
+  when tapped; Show code opens the view pane.
+* **Android** has the same shape as iOS, but its snapshot copies pixels from the window, so the web
+  view has to be on screen; a hidden picture-maker needs another capture path. Not started.
 * **Web** shows a placeholder for every browser pane (`clients/app/src/app.rs:1834`). The web
   client already runs in a browser, so artifacts and previews can be live sandboxed
   `<iframe srcdoc>` frames without same-origin, placed over the canvas the way the accessibility
   mirror places its nodes (`libs/ala/crates/ala-platform/src/web/a11y.rs`); no pictures needed. Single
   files only, since relative assets have no origin to resolve against. Later.
 
-Until then those clients show an artifact like any browser pane they can't show, and html blocks
+Until then the web client shows an artifact like any browser pane it can't show, and html blocks
 as code.
 
 # Error handling

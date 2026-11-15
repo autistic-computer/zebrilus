@@ -841,6 +841,12 @@ unsafe fn request_backdrop(state: &Rc<DelegateState>) {
 }
 
 unsafe fn bgra_image(image: id, width: usize, height: usize) -> Option<Arc<RenderImage>> {
+    let bytes = bgra_pixels(image, width, height)?;
+    let buffer = image::RgbaImage::from_raw(width as u32, height as u32, bytes)?;
+    Some(Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])))
+}
+
+pub(crate) unsafe fn bgra_pixels(image: id, width: usize, height: usize) -> Option<Vec<u8>> {
     if image.is_null() || width == 0 || height == 0 {
         return None;
     }
@@ -872,8 +878,7 @@ unsafe fn bgra_image(image: id, width: usize, height: usize) -> Option<Arc<Rende
     };
     CGContextDrawImage(context, target, source);
     CGContextRelease(context);
-    let buffer = image::RgbaImage::from_raw(width as u32, height as u32, bytes)?;
-    Some(Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])))
+    Some(bytes)
 }
 
 unsafe fn changed(this: &Object, view: id, committed: bool) {

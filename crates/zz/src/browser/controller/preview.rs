@@ -16,14 +16,7 @@ const PREVIEW_QUIET: Duration = Duration::from_millis(150);
 const PREVIEW_SETTLE_CAP: Duration = Duration::from_millis(1500);
 const PREVIEW_FIT_CAP: Duration = Duration::from_secs(5);
 const PREVIEW_BACKGROUND: u32 = 0;
-const PREVIEW_HEIGHT_SCRIPT: &str = "(() => { const body = document.body; \
-     if (!body) return document.documentElement.scrollHeight; \
-     const style = getComputedStyle(body); \
-     let bottom = body.getBoundingClientRect().bottom; \
-     if (document.compatMode === 'BackCompat') { const range = document.createRange(); \
-     range.selectNodeContents(body); \
-     bottom = range.getBoundingClientRect().bottom + (parseFloat(style.paddingBottom) || 0); } \
-     return Math.ceil(bottom + (parseFloat(style.marginBottom) || 0) + window.scrollY); })()";
+use zz_ui::agent::visual::{PREVIEW_HEIGHT_SCRIPT, straighten_alpha};
 
 pub(crate) type PreviewResult = Result<Arc<RenderImage>, SharedString>;
 
@@ -162,18 +155,6 @@ fn preview_height(measured: f64) -> u32 {
     measured
         .clamp(PREVIEW_MIN_HEIGHT, PREVIEW_MAX_HEIGHT)
         .ceil() as u32
-}
-
-pub(crate) fn straighten_alpha(bgra: &mut [u8]) {
-    for pixel in bgra.as_chunks_mut::<4>().0 {
-        let alpha = u32::from(pixel[3]);
-        if alpha == 0 || alpha == 255 {
-            continue;
-        }
-        for channel in &mut pixel[..3] {
-            *channel = (u32::from(*channel) * 255 / alpha).min(255) as u8;
-        }
-    }
 }
 
 fn frame_fits(frame_width: u32, frame_height: u32, width: u32, height: u32) -> bool {
@@ -695,13 +676,6 @@ impl BrowserController {
 mod tests {
     use super::*;
     use ala::{AppContext as _, TestAppContext};
-
-    #[test]
-    fn part_covered_pixels_lose_their_premultiplied_color() {
-        let mut bgra = [10, 20, 40, 128, 0, 0, 0, 0, 9, 9, 9, 255];
-        straighten_alpha(&mut bgra);
-        assert_eq!(bgra, [19, 39, 79, 128, 0, 0, 0, 0, 9, 9, 9, 255]);
-    }
 
     #[ala::test]
     fn canceling_a_queued_preview_before_polling_releases_its_page(cx: &mut TestAppContext) {

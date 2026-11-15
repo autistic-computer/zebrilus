@@ -12,12 +12,13 @@ use ala::{
 use ala_cef::{BrowserEvent, EditCommand, PointerEvent, PointerPhase, Viewport, WheelEvent};
 use zz_protocol::PaneId;
 use zz_terminal::KeyAction as TerminalKeyAction;
+use zz_ui::agent::visual::straighten_alpha;
 
 use crate::{
     browser::{
         controller::{
             BrowserController, BrowserPaneFrameContent, BrowserSessionRequest, ControllerEvent,
-            TabId, straighten_alpha,
+            TabId,
         },
         element::{BrowserElement, BrowserSurfaceHost},
         view::{

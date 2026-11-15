@@ -658,14 +658,23 @@ pub(crate) fn assistant_markdown_extensions() -> MarkdownExtensions {
         .clone()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct HtmlBlocks {
+    pub(crate) owner: u64,
+    pub(crate) touch: bool,
+}
+
 pub(crate) fn chat_markdown_extensions(
     open: Option<preview::ViewOpener>,
-    html: Option<u64>,
+    html: Option<HtmlBlocks>,
 ) -> MarkdownExtensions {
     let mut extensions = MarkdownExtensions::default();
-    if let Some(owner) = html {
+    if let Some(html) = html {
         extensions = extensions
-            .plugin(visual::VisualPlugin { owner: Some(owner) })
+            .plugin(visual::VisualPlugin {
+                owner: Some(html.owner),
+                touch: html.touch,
+            })
             .plugin(visual::PagePlugin { view: open.clone() });
     }
     match open {

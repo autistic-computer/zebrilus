@@ -125,7 +125,7 @@ pub struct ChatHooks<'a> {
 
 pub struct ChatMarkdown {
     refs: Arc<ChatRefs>,
-    html: Option<u64>,
+    html: Option<crate::agent::HtmlBlocks>,
     extensions: crate::text::MarkdownExtensions,
 }
 
@@ -135,7 +135,7 @@ impl ChatMarkdown {
         Self::showing(refs, None)
     }
 
-    fn showing(refs: ChatRefs, html: Option<u64>) -> Self {
+    fn showing(refs: ChatRefs, html: Option<crate::agent::HtmlBlocks>) -> Self {
         let refs = Arc::new(refs);
         let links = Arc::clone(&refs);
         let extensions = crate::agent::chat_markdown_extensions(refs.view.clone(), html);
@@ -147,7 +147,7 @@ impl ChatMarkdown {
         }
     }
 
-    fn reads(&self, refs: &ChatRefs, html: Option<u64>) -> bool {
+    fn reads(&self, refs: &ChatRefs, html: Option<crate::agent::HtmlBlocks>) -> bool {
         self.refs.hosts == refs.hosts && self.refs.cwd == refs.cwd && self.html == html
     }
 }
@@ -353,7 +353,11 @@ impl ChatPane {
         self.markdown_showing(refs, None)
     }
 
-    fn markdown_showing(&mut self, refs: ChatRefs, html: Option<u64>) -> Rc<ChatMarkdown> {
+    fn markdown_showing(
+        &mut self,
+        refs: ChatRefs,
+        html: Option<crate::agent::HtmlBlocks>,
+    ) -> Rc<ChatMarkdown> {
         match &self.markdown {
             Some(markdown) if markdown.reads(&refs, html) => Rc::clone(markdown),
             _ => {
@@ -764,7 +768,10 @@ pub fn chat_surface<T: ChatHost>(
     };
     let html = cx
         .has_global::<crate::agent::AgentHtmlPreviewer>()
-        .then_some(look.pane);
+        .then_some(crate::agent::HtmlBlocks {
+            owner: look.pane,
+            touch: look.touch,
+        });
     let pane = host.chat_pane();
     let markdown = look.refs.map(|refs| pane.markdown_showing(refs, html));
     pane.frame = ChatFrame {

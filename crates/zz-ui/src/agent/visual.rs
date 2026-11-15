@@ -44,6 +44,27 @@ const DRAWING_HEIGHT: f32 = 148.0;
 const FAILED_HEIGHT: f32 = 96.0;
 const VISUAL_GROUP: &str = "agent-visual";
 
+pub const PREVIEW_HEIGHT_SCRIPT: &str = "(() => { const body = document.body; \
+     if (!body) return document.documentElement.scrollHeight; \
+     const style = getComputedStyle(body); \
+     let bottom = body.getBoundingClientRect().bottom; \
+     if (document.compatMode === 'BackCompat') { const range = document.createRange(); \
+     range.selectNodeContents(body); \
+     bottom = range.getBoundingClientRect().bottom + (parseFloat(style.paddingBottom) || 0); } \
+     return Math.ceil(bottom + (parseFloat(style.marginBottom) || 0) + window.scrollY); })()";
+
+pub fn straighten_alpha(bgra: &mut [u8]) {
+    for pixel in bgra.as_chunks_mut::<4>().0 {
+        let alpha = u32::from(pixel[3]);
+        if alpha == 0 || alpha == 255 {
+            continue;
+        }
+        for channel in &mut pixel[..3] {
+            *channel = (u32::from(*channel) * 255 / alpha).min(255) as u8;
+        }
+    }
+}
+
 const KIT_CSS: [&str; 6] = [
     include_str!("../../../../libs/penna/web/penna.css"),
     include_str!("../../../../libs/penna/src/components/button/button.css"),
@@ -54,6 +75,7 @@ const KIT_CSS: [&str; 6] = [
 ];
 
 const VISUAL_CSS: &str = r"html{background:transparent}
+button,input,select{color:inherit}
 body{margin:0;padding:0;display:flow-root}
 h1,h2,h3{font-weight:600;line-height:1.25;margin:0 0 .5em}
 h1{font-size:20px}h2{font-size:16px}h3{font-size:14px}
@@ -228,7 +250,7 @@ fn build_head(cx: &App) -> String {
     let tokens = theme_css::roles_stylesheet(cx.theme(), &visual_roles());
     let kit = KIT_CSS.concat();
     format!(
-        "<!doctype html><html data-penna-mode=\"{mode}\"><head><meta charset=\"utf-8\"><style>{tokens}{kit}:root{{color-scheme:{mode};--font-size-base:13px;{root}}}html{{font-family:{font}}}{VISUAL_CSS}</style><script>{VISUAL_PAGE_SCRIPT}{DRESS_SCRIPT}</script></head><body>"
+        "<!doctype html><html data-penna-mode=\"{mode}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>{tokens}{kit}:root{{color-scheme:{mode};--font-size-base:13px;{root}}}html{{font-family:{font}}}{VISUAL_CSS}</style><script>{VISUAL_PAGE_SCRIPT}{DRESS_SCRIPT}</script></head><body>"
     )
 }
 
@@ -275,6 +297,7 @@ fn html_fence(
 
 pub(crate) struct VisualPlugin {
     pub(crate) owner: Option<u64>,
+    pub(crate) touch: bool,
 }
 
 impl MarkdownPlugin for VisualPlugin {
@@ -301,7 +324,7 @@ impl MarkdownPlugin for VisualPlugin {
 
     fn render(&self, node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let source = node.data::<HtmlSource>().expect("visual node data");
-        render_visual(source, self.owner, window, cx)
+        render_visual(source, self.owner, self.touch, window, cx)
     }
 }
 
@@ -407,6 +430,7 @@ fn fenced(code: &str) -> String {
 fn render_visual(
     source: &HtmlSource,
     owner: Option<u64>,
+    touch: bool,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -421,11 +445,18 @@ fn render_visual(
         .try_global::<HtmlPreviewToggles>()
         .is_some_and(|toggles| toggles.0.contains(&block));
     let page = visual_page(&source.html, cx);
+    let zoom = if cx.has_global::<AgentHtmlLive>() {
+        1.0
+    } else if touch {
+        TextStyle::TouchBody.design_px() / TextStyle::ReadBody.design_px()
+    } else {
+        (f32::from(window.rem_size()) / penna::BASE_UI_FONT_SIZE).max(0.5)
+    };
     if !shows_code && let Some(width) = state.read(cx).width {
         let size = HtmlPreviewSize {
-            width: html_preview_width(width),
+            width: html_preview_width(width) / zoom,
             height: None,
-            scale: window.scale_factor(),
+            scale: window.scale_factor() * zoom,
             dark: cx.theme().is_dark(),
         };
         state.update(cx, |state, cx| state.synchronize(&page, None, size, cx));
@@ -459,9 +490,9 @@ fn render_visual(
                 let height = state.read(cx).height.unwrap_or(px(DRAWING_HEIGHT));
                 drawing(("agent-visual-drawing", offset), height, cx)
             }
-            HtmlPreviewResult::Ready(image, scale) => {
+            HtmlPreviewResult::Ready(image, _) => {
                 let size = image.size(0);
-                let scale = scale.max(1.0);
+                let scale = window.scale_factor().max(1.0);
                 let picture = ala::size(
                     px(size.width.0 as f32 / scale),
                     px(size.height.0 as f32 / scale),
@@ -543,11 +574,8 @@ fn render_visual(
         .p_0p5()
         .h_flex()
         .gap_0p5()
-        .when(hover_only, |tools| {
-            tools
-                .invisible()
-                .group_hover(VISUAL_GROUP, ala::Styled::visible)
-        })
+        .invisible()
+        .group_hover(VISUAL_GROUP, ala::Styled::visible)
         .child(
             message_action(
                 Button::compact_icon(("agent-visual-code", offset), toggle_icon)
@@ -597,7 +625,7 @@ fn render_visual(
         .debug_selector(|| "agent-visual".to_owned())
         .child(measure(&state))
         .child(content)
-        .child(tools)
+        .when(hover_only, |visual| visual.child(tools))
         .into_any_element()
 }
 
@@ -786,7 +814,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        agent::{AgentHtmlPreviewer, FIGURE_RENDER_DEBOUNCE, chat_markdown_extensions},
+        agent::{AgentHtmlPreviewer, FIGURE_RENDER_DEBOUNCE, HtmlBlocks, chat_markdown_extensions},
         text::MarkdownExtensions,
     };
 
@@ -813,7 +841,13 @@ mod tests {
         let (_, cx) = cx.add_window_view(|window, cx| {
             let view = cx.new(|_| ChatAnswer {
                 text,
-                extensions: chat_markdown_extensions(None, Some(7)),
+                extensions: chat_markdown_extensions(
+                    None,
+                    Some(HtmlBlocks {
+                        owner: 7,
+                        touch: false,
+                    }),
+                ),
             });
             penna::Root::new(view, window, cx)
         });
@@ -869,6 +903,13 @@ mod tests {
         assert_eq!((size.width, size.height), (px(1280.0), Some(px(720.0))));
         assert_eq!(page_title(page), "Fig & Kettle");
         assert!(cx.debug_bounds("agent-page-picture").is_some());
+    }
+
+    #[test]
+    fn part_covered_pixels_lose_their_premultiplied_color() {
+        let mut bgra = [10, 20, 40, 128, 0, 0, 0, 0, 9, 9, 9, 255];
+        straighten_alpha(&mut bgra);
+        assert_eq!(bgra, [19, 39, 79, 128, 0, 0, 0, 0, 9, 9, 9, 255]);
     }
 
     #[test]

@@ -41,6 +41,7 @@ fn main() {
             ])
             .expect("load interface fonts");
         zz_ui::init(cx);
+        zz_app::ios_preview::show_html_in_chats(cx);
         cx.bind_keys(input::raw_key_bindings());
         let theme = Theme::global_mut(cx);
         theme.font_family = "Inter Variable".into();
