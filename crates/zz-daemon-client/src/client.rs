@@ -67,7 +67,7 @@ fn client_instance_id() -> ClientInstanceId {
 use zz_terminal::TerminalColorScheme;
 
 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
-use crate::endpoint::{SshForward, connect_kept};
+use crate::endpoint::{SshForward, SshLogin, connect_kept};
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use crate::russh_client::{RusshForward, RusshStream};
 use crate::{
@@ -600,7 +600,7 @@ impl CommandClient {
                 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
                 {
                     let (mut client, ssh_forward) =
-                        connect_kept(endpoint, None, true, |socket, stream| {
+                        connect_kept(endpoint, SshLogin::Prompts(None), true, |socket, stream| {
                             Ok(Self::with_link(
                                 CommandRoute {
                                     socket: socket.to_path_buf(),
@@ -1391,8 +1391,11 @@ impl InteractiveClient {
                 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
                 {
                     let resendable = attach_resendable(attach.as_ref());
-                    let (connected, forward) =
-                        connect_kept(endpoint, prompts, resendable, |_, stream| {
+                    let (connected, forward) = connect_kept(
+                        endpoint,
+                        SshLogin::Prompts(prompts),
+                        resendable,
+                        |_, stream| {
                             connect_stream_hello(
                                 ClientStream::Local(stream),
                                 endpoint,
@@ -1410,7 +1413,8 @@ impl InteractiveClient {
                                 },
                                 attach.clone(),
                             )
-                        })?;
+                        },
+                    )?;
                     Ok(Self::from_connected_with_ssh(connected, forward))
                 }
                 #[cfg(not(any(unix, windows)))]
@@ -1600,20 +1604,21 @@ impl InteractiveClient {
             Endpoint::Ssh(endpoint) => {
                 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
                 {
-                    let (connected, forward) = connect_kept(endpoint, None, true, |_, stream| {
-                        connect_stream_with_startup_owner(
-                            ClientStream::Local(stream),
-                            endpoint,
-                            ClientKind::Control,
-                            None,
-                            None,
-                            false,
-                            false,
-                            false,
-                            &[],
-                            EndpointFactsScope::None,
-                        )
-                    })?;
+                    let (connected, forward) =
+                        connect_kept(endpoint, SshLogin::Prompts(None), true, |_, stream| {
+                            connect_stream_with_startup_owner(
+                                ClientStream::Local(stream),
+                                endpoint,
+                                ClientKind::Control,
+                                None,
+                                None,
+                                false,
+                                false,
+                                false,
+                                &[],
+                                EndpointFactsScope::None,
+                            )
+                        })?;
                     Ok(Self::from_connected_with_ssh(connected, forward))
                 }
                 #[cfg(not(all(
@@ -1971,11 +1976,13 @@ impl InteractiveClient {
                         )
                     };
                     let (connected, ssh_forward) = if socks {
-                        let ssh_forward = SshForward::start(endpoint, prompts)?;
+                        let ssh_forward = SshForward::start(endpoint, SshLogin::Prompts(prompts))?;
                         let stream = LocalTransport::connect(ssh_forward.local_socket())?;
                         (connect(stream)?, Some(ssh_forward))
                     } else {
-                        connect_kept(endpoint, prompts, true, |_, stream| connect(stream))?
+                        connect_kept(endpoint, SshLogin::Prompts(prompts), true, |_, stream| {
+                            connect(stream)
+                        })?
                     };
                     Ok(Self::from_connected_with_ssh(connected, ssh_forward))
                 }
@@ -3654,7 +3661,7 @@ fn write_client_file(path: &Path, data: &[u8], append: bool) -> Result<(), Strin
 }
 
 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
-fn tailnet_failure(
+pub(crate) fn tailnet_failure(
     endpoint: &crate::endpoint::TailnetEndpoint,
     error: &crate::tailnet::TailnetError,
 ) -> DaemonError {
