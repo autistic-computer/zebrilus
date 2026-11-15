@@ -129,7 +129,12 @@ if [[ "$mode" == testflight ]]; then
 fi
 
 if [[ "$mode" == device || "$mode" == bench ]]; then
-    bundle_id=dev.zz.ios-dev
+    dev_build="${ZZ_DEV_BUILD-1}"
+    if [[ "$dev_build" == 1 ]]; then
+        bundle_id=dev.zz.ios-dev app_name="ZZ Dev" display_name="zz dev" icon=zz-dev
+    else
+        bundle_id=dev.zz.ios app_name=ZZ display_name=zz icon=zz
+    fi
     devices_json="$(mktemp)"
     trap 'rm -f "$devices_json"' EXIT
     xcrun devicectl list devices --json-output "$devices_json" >/dev/null
@@ -172,16 +177,18 @@ PY
     [[ -n "$profile" ]] || { echo "no provisioning profile covers $bundle_id on $udid; build any app to it once from Xcode, or set ZZ_ALA_PROFILE" >&2; exit 1; }
     team="$(security cms -D -i "$profile" | plutil -extract TeamIdentifier.0 raw -)"
     endpoint="${ZZ_ALA_ENDPOINT:-ssh://${USER}@$(scutil --get LocalHostName).local}"
-    dev_build="${ZZ_DEV_BUILD-1}"
     cargo_profile="${ZZ_ALA_CARGO_PROFILE:-release}"
     ZZ_DEV_BUILD="$dev_build" IPHONEOS_DEPLOYMENT_TARGET=26.0 cargo build --locked --profile "$cargo_profile" -p zz-ios "${build_target[@]}" --target aarch64-apple-ios
-    app="$repo_root/target/ios-device/ZZ Dev.app"
+    app="$repo_root/target/ios-device/$app_name.app"
     rm -rf "$app"
     mkdir -p "$app"
     cp "$repo_root/target/aarch64-apple-ios/$cargo_profile/$binary" "$app/ZZ"
     cp "$repo_root/clients/ios/Info.plist" "$app/Info.plist"
     plutil -replace CFBundleSupportedPlatforms -json '["iPhoneOS"]' "$app/Info.plist"
-    compile_icon "$app" iphoneos zz-dev
+    plutil -replace CFBundleIdentifier -string "$bundle_id" "$app/Info.plist"
+    plutil -replace CFBundleName -string "$app_name" "$app/Info.plist"
+    plutil -replace CFBundleDisplayName -string "$display_name" "$app/Info.plist"
+    compile_icon "$app" iphoneos "$icon"
     cp "$profile" "$app/embedded.mobileprovision"
     entitlements="$repo_root/target/ios-device/entitlements.plist"
     write_entitlements "$entitlements" "$team" "$bundle_id" 1

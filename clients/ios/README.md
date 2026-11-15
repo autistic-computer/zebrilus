@@ -121,6 +121,8 @@ later connections skip the password. The key is also in the Add host sheet to co
 choices with `ZZ_ALA_DEVICE`, `ZZ_ALA_SIGN_IDENTITY`, `ZZ_ALA_PROFILE`, or `ZZ_ALA_ENDPOINT`.
 
 Simulator and device builds use the zz Dev icon (`assets/zz-dev.icon`, compiled with `actool`).
+`ZZ_DEV_BUILD=0 just ios device iPad` installs the release identity instead: `dev.zz.ios`, named
+zz, with the zz icon. Its profile has to cover `dev.zz.ios`.
 
 ## TestFlight
 
