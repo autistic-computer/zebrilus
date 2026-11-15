@@ -39,6 +39,7 @@ const LOCKED_MESSAGE: &str = "Open the link zz-web printed when it started.\n";
 const LOCAL_HOST: &str = "local";
 const LOCAL_TITLE: &str = "This computer";
 const DAEMON_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const CLOSE_REPLY_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CLOSE_REASON_BYTES: usize = 123;
 const SIGN_IN_CLOSE_CODE: u16 = 4401;
 const UNREACHABLE_CLOSE_CODE: u16 = 4502;
@@ -323,9 +324,17 @@ async fn upgrade(
                 let _ = tokio::task::spawn_blocking(move || drop(route)).await;
             }
             Err(error) => {
-                let _ = websocket
-                    .send(Message::Close(Some(close_frame(&host.name, &error))))
+                let frame = close_frame(&host.name, &error);
+                if websocket.send(Message::Close(Some(frame))).await.is_ok() {
+                    let _ = tokio::time::timeout(CLOSE_REPLY_TIMEOUT, async {
+                        while let Some(Ok(message)) = websocket.recv().await {
+                            if matches!(message, Message::Close(_)) {
+                                break;
+                            }
+                        }
+                    })
                     .await;
+                }
             }
         }
     })

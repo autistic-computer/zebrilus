@@ -82,7 +82,9 @@ with a code and a reason of at most 123 bytes when the host cannot be reached:
 | 4502 | anything else: refused, unresolved, timed out, zz missing or on another protocol there |
 
 The reason starts with the host name, then ssh's advice, for example
-`box: known_hosts has no matching key for the host: verify the host before connecting`.
+`box: known_hosts has no matching key for the host: verify the host before connecting`. The
+gateway then reads until the page answers the close, so frames the page sent first cannot turn
+the close into a reset that hides the code and reason.
 
 The page fetches `/hosts` once at start and uses every host the way iPad uses its saved hosts
 (`clients/app/src/app/hosts.rs`, `clients/app/src/app/fleet.rs`): the session tree, the chat
