@@ -92,9 +92,11 @@ sidebar, the palette, the `@` menu and New chat's machine rows list them all, an
 something on another host switches the page to it. Each host gets its own WebSocket; the one on
 screen is attached and the rest hold only their tree. The page opens on this computer, and the
 hosts it was connected to before reconnect in the background (the list lives in local storage
-under `zz-web-hosts`, `zz-dev-web-hosts` for dev builds). Settings > Hosts lists the gateway's
-hosts with Connect, Disconnect and Open, and the sidebar has no Add host row: adding or removing
-a host is an edit to the gateway machine's `zz/config` and a gateway restart.
+under `zz-web-hosts`, `zz-dev-web-hosts` for dev builds); when the page was last on another host,
+it switches back to that host once it connects, and stays on this computer if it does not.
+Settings > Hosts lists the gateway's hosts with Connect, Disconnect and Open, and the sidebar has
+no Add host row: adding or removing a host is an edit to the gateway machine's `zz/config` and a
+gateway restart.
 
 This computer keeps retrying every 2 s, as before. Another host is never redialed after a
 failed first connect, nor after a 4401: it shows the close reason as its state and waits for
