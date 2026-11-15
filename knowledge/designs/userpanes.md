@@ -2,7 +2,7 @@
 type: Design Plan
 title: Artifacts . agent-written HTML in browser panes and inline
 description: "Proposed plan for showing HTML an agent writes. zz html <path> registers the page with the daemon that ran the caller, browser panes load it from a zz://<token>/ scheme whose bytes the daemon sends over the client's existing connection (so it works on ssh hosts), the daemon reloads the pane when a file the page loaded changes, pages get no bridge by default, and --reply grants one call that sends text to the pane that opened the page. In the Agent pane, svg blocks render inline through the mermaid path, and html blocks show code with a Preview toggle that one hidden browser renders as cached images; a click makes that block a live page in place, and Open opens it as a pane. A block opened with html preview shows the picture first and wraps a fragment in a page with the theme colors, which is also what Codex's visualize references become. Replaces the 2026-07-28 userpanes plan."
-status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; previews live in the agent chat since 2026-11-01 and were checked live end to end on 2026-11-15; since then html preview blocks draw bare with penna's HTML kit and whole documents draw as page frames; iOS draws both as pictures; web and Android not started)
+status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; previews live in the agent chat since 2026-11-01 and were checked live end to end on 2026-11-15; since then html preview blocks draw bare with penna's HTML kit and whole documents draw as page frames; iOS draws both as pictures and loads zz:// pages; web and Android not started)
 resource: libs/ala-cef/src/cef_runtime.rs
 tags:
 - browser
@@ -432,10 +432,24 @@ up in the numbers.
   buttons inherit their color, or WebKit paints their text in its own blue. On the phone shell a
   visual is laid out narrower and drawn larger by 17 / 14, the ratio of the chat's touch text to
   the desktop's, so its type matches the reply around it. The corner controls are left out on
-  touch. Still missing: a `WKURLSchemeHandler` for `zz` (so Open as a page and `zz html` panes
-  work; the navigation allowlist at `ios_browser.rs:195` adds `zz`), and a visual going live on a
-  tap, with its reply drafting into the composer. Until then a page frame's picture does nothing
-  when tapped; Show code opens the view pane.
+  touch.
+
+  iOS browser panes also load `zz://` pages since 2026-11-15, so `zz html` works there. The web
+  view's delegate is its `WKURLSchemeHandler` for `zz` (`start_page` and `stop_page` in
+  `ios_browser.rs`): a request sends `FetchArtifact` on the pane's host connection, the
+  connection hands `ArtifactBegin`, `ArtifactChunk` and `ArtifactUnavailable` to
+  `ios_browser::artifact_message`, and the task is answered when the bytes are all in, or failed
+  with the daemon's reason. Relative files, reload on change and the navigation allowlist all go
+  through it. A user script gives `zz://` pages `zz.reply`, which posts to the delegate and goes
+  out as `ArtifactReply`; the daemon decides whether the page may reply, and the page's promise
+  resolves either way, where the desktop's rejects with the reason.
+
+  Open as a page works from an iOS chat too. A page frame without the desktop's opener asks the
+  chat's own view opener with a `ViewRequest` whose `page` is set, and `ViewRequest::command`
+  turns that into `html -t <chat> - -- <text>`, so the page opens beside the chat on the chat's
+  connection; the phone sends it to the daemon in place of its view sheet. The phone stays on the
+  chat and the page is the next pane. Still missing: a visual going live on a tap, with its reply
+  drafting into the composer.
 * **Android** has the same shape as iOS, but its snapshot copies pixels from the window, so the web
   view has to be on screen; a hidden picture-maker needs another capture path. Not started.
 * **Web** shows a placeholder for every browser pane (`clients/app/src/app.rs:1834`). The web

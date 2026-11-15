@@ -681,7 +681,27 @@ fn render_page(
     let title = page_title(&source.html);
     let opener = cx
         .try_global::<AgentHtmlOpener>()
-        .map(|opener| Rc::clone(&opener.0));
+        .map(|opener| Rc::clone(&opener.0))
+        .or_else(|| {
+            let view = view.cloned()?;
+            let title = title.to_string();
+            let opener: Rc<dyn Fn(String, &mut Window, &mut App)> =
+                Rc::new(move |html, window, cx| {
+                    view(
+                        ViewRequest {
+                            page: true,
+                            title: title.clone(),
+                            content: ViewContent::Code {
+                                language: Some("html".to_owned()),
+                                text: html,
+                            },
+                        },
+                        window,
+                        cx,
+                    );
+                });
+            Some(opener)
+        });
     let ground = cx.theme().ground_of(CardLook::Code);
     let shows = view
         .filter(|_| source.html.len() <= zz_protocol::MAX_VIEW_TEXT_BYTES)
@@ -721,6 +741,7 @@ fn render_page(
                     .on_click(move |_, window, cx| {
                         shows(
                             ViewRequest {
+                                page: false,
                                 title: title.clone(),
                                 content: ViewContent::Code {
                                     language: Some("html".to_owned()),

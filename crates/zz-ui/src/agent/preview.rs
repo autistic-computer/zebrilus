@@ -24,6 +24,7 @@ const PREVIEW_GROUP: &str = "agent-preview";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ViewRequest {
+    pub page: bool,
     pub title: String,
     pub content: ViewContent,
 }
@@ -33,6 +34,18 @@ pub type ViewOpener = Arc<dyn Fn(ViewRequest, &mut Window, &mut App) + Send + Sy
 impl ViewRequest {
     #[must_use]
     pub fn command(&self, origin: PaneId, rows: Option<u16>) -> CommandInvocation {
+        if let (true, ViewContent::Code { text, .. }) = (self.page, &self.content) {
+            return CommandInvocation::new(
+                "html",
+                [
+                    "-t".to_owned(),
+                    origin.to_string(),
+                    "-".to_owned(),
+                    "--".to_owned(),
+                    text.clone(),
+                ],
+            );
+        }
         let mut args = vec![
             "-t".to_owned(),
             origin.to_string(),
@@ -116,6 +129,7 @@ impl Preview {
                 kind,
                 ..
             } => ViewRequest {
+                page: false,
                 title: (*kind).to_owned(),
                 content: ViewContent::Diagram {
                     language: language.clone(),
@@ -128,6 +142,7 @@ impl Preview {
                 text,
                 ..
             } => ViewRequest {
+                page: false,
                 title: title
                     .clone()
                     .or_else(|| language_name(language.as_deref()).map(str::to_owned))
@@ -138,6 +153,7 @@ impl Preview {
                 },
             },
             Self::Markdown { title, text, .. } => ViewRequest {
+                page: false,
                 title: title.clone().unwrap_or_else(|| "Markdown".to_owned()),
                 content: ViewContent::Markdown { text: text.clone() },
             },
@@ -550,4 +566,28 @@ fn diagram_card(
                         ),
                 ),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_page_request_opens_the_page_beside_its_chat() {
+        let request = ViewRequest {
+            page: true,
+            title: "Fig & Kettle".to_owned(),
+            content: ViewContent::Code {
+                language: Some("html".to_owned()),
+                text: "<p>hi</p>".to_owned(),
+            },
+        };
+        assert_eq!(
+            request.command(PaneId(4), Some(20)),
+            CommandInvocation::new(
+                "html",
+                ["-t", "%4", "-", "--", "<p>hi</p>"].map(str::to_owned)
+            )
+        );
+    }
 }

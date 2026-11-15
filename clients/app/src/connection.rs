@@ -1136,6 +1136,12 @@ impl Connection {
                     ProtocolMessage::PastedImageUnavailable { pane, number } => {
                         self.pasted_images.unavailable(*pane, *number);
                     }
+                    #[cfg(target_os = "ios")]
+                    ProtocolMessage::ArtifactBegin { .. }
+                    | ProtocolMessage::ArtifactChunk { .. }
+                    | ProtocolMessage::ArtifactUnavailable { .. } => {
+                        crate::ios_browser::artifact_message(message);
+                    }
                     _ => {}
                 },
                 CoreEvent::SnapshotChanged => {

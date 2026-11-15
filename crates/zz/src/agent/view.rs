@@ -1307,6 +1307,7 @@ impl AgentView {
             .update(cx, |controller, _| controller.show_image(image));
         self.open_view(
             &ViewRequest {
+                page: false,
                 title: "Image".to_owned(),
                 content,
             },
@@ -1484,6 +1485,7 @@ impl AgentView {
         };
         self.open_view(
             &ViewRequest {
+                page: false,
                 title: "Plan".to_owned(),
                 content: ViewContent::Markdown { text: markdown },
             },

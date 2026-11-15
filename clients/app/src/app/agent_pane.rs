@@ -105,7 +105,7 @@ impl AgentPane {
     }
 
     fn open_view(&mut self, request: &ViewRequest, window: &mut Window, cx: &mut Context<Self>) {
-        if self.phone.is_some() {
+        if self.phone.is_some() && !request.page {
             self.open_view_sheet(request.clone(), window, cx);
             return;
         }
@@ -133,7 +133,7 @@ impl AgentPane {
             view: Some(Arc::new(move |request, window, cx| {
                 if let Some(phone) = view_rows
                     .upgrade()
-                    .filter(|pane| pane.read(cx).phone.is_some())
+                    .filter(|pane| !request.page && pane.read(cx).phone.is_some())
                 {
                     phone.update(cx, |this, cx| this.open_view_sheet(request, window, cx));
                     return;
@@ -1093,6 +1093,7 @@ impl AgentPane {
                 {
                     self.open_view(
                         &ViewRequest {
+                            page: false,
                             title: "Plan".to_owned(),
                             content: zz_protocol::ViewContent::Markdown { text: markdown },
                         },

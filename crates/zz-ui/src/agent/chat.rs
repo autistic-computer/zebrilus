@@ -745,6 +745,7 @@ pub fn chat_surface<T: ChatHost>(
                     .map_or_else(|| "Subagent".to_owned(), agent_title);
                 open(
                     ViewRequest {
+                        page: false,
                         title,
                         content: ViewContent::Subagent {
                             item: item.as_str().to_owned(),
@@ -1928,6 +1929,7 @@ fn user_card(
                         Some(open) => {
                             let open = Arc::clone(open);
                             let request = ViewRequest {
+                                page: false,
                                 title: image_title(index, images.len()),
                                 content: ViewContent::Image {
                                     item: key.to_owned(),

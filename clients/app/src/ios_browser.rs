@@ -7,6 +7,7 @@
 
 use std::{
     cell::{Cell, RefCell},
+    collections::HashMap,
     ffi::CString,
     rc::Rc,
     sync::Arc,
@@ -23,6 +24,7 @@ use objc::{
 };
 use raw_window_handle::RawWindowHandle;
 use zz_daemon_client::InteractiveClient;
+use zz_protocol::ProtocolMessage;
 
 pub use ala_cef::element_picker::ElementPickerAppearance;
 use ala_cef::element_picker::{
@@ -74,6 +76,186 @@ use ala_cef::element_picker::{
     ELEMENT_PICKER_SCRIPT as PICKER_SCRIPT,
 };
 const PICKER_HANDLER: &str = "zzElementPicker";
+const PAGE_SCHEME: &str = "zz";
+const REPLY_HANDLER: &str = "zzReply";
+const REPLY_SCRIPT: &str = "if (location.protocol === 'zz:') { window.zz = { reply: (text) => { window.webkit.messageHandlers.zzReply.postMessage(String(text)); return Promise.resolve(); } }; }";
+const FILE_MISSING: isize = -1100;
+const MAX_REPLY_BYTES: usize = 64 * 1024;
+
+struct PageFetch {
+    task: id,
+    begun: Option<(String, usize)>,
+    bytes: Vec<u8>,
+}
+
+thread_local! {
+    static PAGE_FETCHES: RefCell<HashMap<u64, PageFetch>> = RefCell::new(HashMap::new());
+}
+
+pub fn artifact_message(message: &ProtocolMessage) {
+    let request = match message {
+        ProtocolMessage::ArtifactBegin {
+            request_id,
+            mime,
+            total_bytes,
+            ..
+        } => {
+            PAGE_FETCHES.with_borrow_mut(|fetches| {
+                if let Some(fetch) = fetches.get_mut(request_id) {
+                    let total = usize::try_from(*total_bytes).unwrap_or(usize::MAX);
+                    fetch.begun = Some((mime.clone(), total));
+                }
+            });
+            *request_id
+        }
+        ProtocolMessage::ArtifactChunk { request_id, bytes } => {
+            PAGE_FETCHES.with_borrow_mut(|fetches| {
+                if let Some(fetch) = fetches.get_mut(request_id) {
+                    fetch.bytes.extend_from_slice(bytes);
+                }
+            });
+            *request_id
+        }
+        ProtocolMessage::ArtifactUnavailable { request_id, reason } => {
+            if let Some(fetch) = PAGE_FETCHES.with_borrow_mut(|fetches| fetches.remove(request_id))
+            {
+                unsafe {
+                    fail_page(fetch.task, reason);
+                    let _: () = msg_send![fetch.task, release];
+                }
+            }
+            return;
+        }
+        _ => return,
+    };
+    let complete = PAGE_FETCHES.with_borrow_mut(|fetches| {
+        let done = fetches.get(&request).is_some_and(|fetch| {
+            fetch
+                .begun
+                .as_ref()
+                .is_some_and(|(_, total)| fetch.bytes.len() >= *total)
+        });
+        done.then(|| fetches.remove(&request)).flatten()
+    });
+    if let Some(fetch) = complete {
+        let (mime, _) = fetch.begun.unwrap_or_default();
+        unsafe {
+            let request: id = msg_send![fetch.task, request];
+            let url: id = msg_send![request, URL];
+            let mime = mime.split(';').next().unwrap_or_default().trim();
+            let response: id = msg_send![class!(NSURLResponse), alloc];
+            let response: id = msg_send![response, initWithURL: url MIMEType: ns_string(mime) expectedContentLength: fetch.bytes.len() as isize textEncodingName: ns_string("utf-8")];
+            let data: id = msg_send![class!(NSData), dataWithBytes: fetch.bytes.as_ptr() length: fetch.bytes.len()];
+            let _: () = msg_send![fetch.task, didReceiveResponse: response];
+            let _: () = msg_send![fetch.task, didReceiveData: data];
+            let _: () = msg_send![fetch.task, didFinish];
+            let _: () = msg_send![response, release];
+            let _: () = msg_send![fetch.task, release];
+        }
+    }
+}
+
+unsafe fn fail_page(task: id, reason: &str) {
+    let details: id = msg_send![class!(NSDictionary), dictionaryWithObject: ns_string(reason) forKey: ns_string("NSLocalizedDescription")];
+    let error: id = msg_send![class!(NSError), errorWithDomain: ns_string("NSURLErrorDomain") code: FILE_MISSING userInfo: details];
+    let _: () = msg_send![task, didFailWithError: error];
+}
+
+fn page_address(url: &str) -> Option<(String, String)> {
+    let rest = url.strip_prefix(PAGE_SCHEME)?.strip_prefix("://")?;
+    let rest = rest.split(['?', '#']).next().unwrap_or_default();
+    let (token, path) = rest.split_once('/').unwrap_or((rest, ""));
+    if token.len() != 32 || !token.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let bytes = path.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while let Some(&byte) = bytes.get(index) {
+        if byte == b'%' {
+            decoded.push(u8::from_str_radix(path.get(index + 1..index + 3)?, 16).ok()?);
+            index += 3;
+        } else {
+            decoded.push(byte);
+            index += 1;
+        }
+    }
+    Some((token.to_ascii_lowercase(), String::from_utf8(decoded).ok()?))
+}
+
+unsafe fn address_of(url: id) -> Option<(String, String)> {
+    if url.is_null() {
+        return None;
+    }
+    let text: id = msg_send![url, absoluteString];
+    page_address(&nsstring_to_string(text)?)
+}
+
+extern "C" fn start_page(this: &Object, _: Sel, _: id, task: id) {
+    unsafe {
+        let request: id = msg_send![task, request];
+        let url: id = msg_send![request, URL];
+        let Some((token, path)) = address_of(url) else {
+            fail_page(task, "This page address is not valid.");
+            return;
+        };
+        let state = state(this);
+        let sent = state
+            .profile
+            .client
+            .borrow()
+            .as_ref()
+            .map(|client| client.fetch_artifact(&token, &path));
+        match sent {
+            Some(Ok(request_id)) => {
+                let _: id = msg_send![task, retain];
+                PAGE_FETCHES.with_borrow_mut(|fetches| {
+                    fetches.insert(
+                        request_id,
+                        PageFetch {
+                            task,
+                            begun: None,
+                            bytes: Vec::new(),
+                        },
+                    );
+                });
+            }
+            Some(Err(error)) => fail_page(task, &error.to_string()),
+            None => fail_page(task, "The host connection is unavailable."),
+        }
+    }
+}
+
+extern "C" fn stop_page(_: &Object, _: Sel, _: id, task: id) {
+    let stopped = PAGE_FETCHES.with_borrow_mut(|fetches| {
+        let request = fetches
+            .iter()
+            .find(|(_, fetch)| fetch.task == task)
+            .map(|(request, _)| *request)?;
+        fetches.remove(&request)
+    });
+    if let Some(fetch) = stopped {
+        unsafe {
+            let _: () = msg_send![fetch.task, release];
+        }
+    }
+}
+
+unsafe fn page_reply(state: &DelegateState, message: id, text: &str) {
+    let view: id = msg_send![message, webView];
+    if view.is_null() || text.len() > MAX_REPLY_BYTES {
+        return;
+    }
+    let url: id = msg_send![view, URL];
+    let Some((token, _)) = address_of(url) else {
+        return;
+    };
+    if let Some(client) = state.profile.client.borrow().as_ref()
+        && let Err(error) = client.send_artifact_reply(&token, text)
+    {
+        log::warn!("failed to send a page reply: {error}");
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum BrowserEvent {
@@ -196,7 +378,7 @@ impl BrowserProfile {
             .to_ascii_lowercase();
         if !matches!(
             scheme.as_str(),
-            "http" | "https" | "about" | "blob" | "data"
+            "http" | "https" | "about" | "blob" | "data" | PAGE_SCHEME
         ) {
             return Err("This address cannot open in the browser pane.".into());
         }
@@ -285,6 +467,9 @@ impl BrowserView {
             let configuration: id = msg_send![class!(WKWebViewConfiguration), new];
             let _: () = msg_send![configuration, setWebsiteDataStore: state.profile.store];
             let _: () = msg_send![configuration, setAllowsInlineMediaPlayback: YES];
+            let delegate: id = msg_send![delegate_class(), new];
+            (*delegate).set_ivar("state", (&raw const *state) as usize);
+            let _: () = msg_send![configuration, setURLSchemeHandler: delegate forURLScheme: ns_string(PAGE_SCHEME)];
             let view: id = msg_send![class!(WKWebView), alloc];
             let view: id =
                 msg_send![view, initWithFrame: CGRect::default() configuration: configuration];
@@ -299,13 +484,16 @@ impl BrowserView {
             let _: () = msg_send![mask, setFillRule: ns_string("even-odd")];
             let scroll: id = msg_send![view, scrollView];
             let _: () = msg_send![scroll, setContentInsetAdjustmentBehavior: 2isize];
-            let delegate: id = msg_send![delegate_class(), new];
-            (*delegate).set_ivar("state", (&raw const *state) as usize);
             let _: () = msg_send![view, setNavigationDelegate: delegate];
             let _: () = msg_send![view, setUIDelegate: delegate];
             let configuration: id = msg_send![view, configuration];
             let controller: id = msg_send![configuration, userContentController];
             let _: () = msg_send![controller, addScriptMessageHandler: delegate name: ns_string(PICKER_HANDLER)];
+            let _: () = msg_send![controller, addScriptMessageHandler: delegate name: ns_string(REPLY_HANDLER)];
+            let script: id = msg_send![class!(WKUserScript), alloc];
+            let script: id = msg_send![script, initWithSource: ns_string(REPLY_SCRIPT) injectionTime: 0isize forMainFrameOnly: YES];
+            let _: () = msg_send![controller, addUserScript: script];
+            let _: () = msg_send![script, release];
             for key in OBSERVED {
                 let _: () = msg_send![view, addObserver: delegate forKeyPath: ns_string(key) options: 0usize context: std::ptr::null_mut::<std::ffi::c_void>()];
             }
@@ -642,6 +830,8 @@ impl Drop for BrowserView {
             let controller: id = msg_send![configuration, userContentController];
             let _: () =
                 msg_send![controller, removeScriptMessageHandlerForName: ns_string(PICKER_HANDLER)];
+            let _: () =
+                msg_send![controller, removeScriptMessageHandlerForName: ns_string(REPLY_HANDLER)];
             for key in OBSERVED {
                 let _: () =
                     msg_send![self.view, removeObserver: self.delegate forKeyPath: ns_string(key)];
@@ -696,6 +886,11 @@ extern "C" fn picker_message(this: &Object, _: Sel, _: id, message: id) {
             return;
         };
         let state = state(this);
+        let name: id = msg_send![message, name];
+        if nsstring_to_string(name).as_deref() == Some(REPLY_HANDLER) {
+            page_reply(&state, message, &request);
+            return;
+        }
         let Ok(outcome) = state.picker.consume(&request) else {
             return;
         };
@@ -922,6 +1117,7 @@ fn delegate_class() -> &'static Class {
             "WKUIDelegate",
             "UIGestureRecognizerDelegate",
             "WKScriptMessageHandler",
+            "WKURLSchemeHandler",
         ] {
             if let Some(protocol) = Protocol::get(name) {
                 decl.add_protocol(protocol);
@@ -930,6 +1126,14 @@ fn delegate_class() -> &'static Class {
         decl.add_method(
             sel!(userContentController:didReceiveScriptMessage:),
             picker_message as extern "C" fn(&Object, Sel, id, id),
+        );
+        decl.add_method(
+            sel!(webView:startURLSchemeTask:),
+            start_page as extern "C" fn(&Object, Sel, id, id),
+        );
+        decl.add_method(
+            sel!(webView:stopURLSchemeTask:),
+            stop_page as extern "C" fn(&Object, Sel, id, id),
         );
         decl.add_method(
             sel!(observeValueForKeyPath:ofObject:change:context:),
