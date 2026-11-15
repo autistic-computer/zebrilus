@@ -4,6 +4,7 @@ mod authentication;
 #[cfg(any(target_os = "ios", target_os = "android"))]
 mod browser_pane;
 mod compact;
+pub(crate) use compact::HostPage;
 #[cfg(any(target_os = "ios", target_os = "android"))]
 mod fleet;
 mod floating;
@@ -74,6 +75,7 @@ use crate::{
         CommandPaletteEvent, CommandPaletteView, palette_backend, palette_backend_with,
     },
     connection::Connection,
+    roster::{HostRequest, Roster},
     terminal::TerminalPane,
 };
 use agent_pane::AgentPane;
@@ -118,6 +120,7 @@ pub struct AppShell {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fleet_found: Vec<Subscription>,
     host_ids: compact::HostIds,
+    roster: Entity<Roster>,
     connection_status: String,
     connected: bool,
     idle_guard: Option<ala::Task<()>>,
@@ -378,6 +381,12 @@ impl AppShell {
             }
         });
         let settings_controls = settings::Controls::new(&preferences, window, cx);
+        let roster = cx.new(|_| Roster::default());
+        let host_requests = cx.subscribe_in(
+            &roster,
+            window,
+            |this, _, request: &HostRequest, window, cx| this.host_request(*request, window, cx),
+        );
         #[cfg(any(target_os = "ios", target_os = "android"))]
         let hosts = hosts::Hosts::new(window, cx);
         #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(unused_mut))]
@@ -389,6 +398,7 @@ impl AppShell {
             #[cfg(any(target_os = "ios", target_os = "android"))]
             fleet_found: Vec::new(),
             host_ids: compact::HostIds::default(),
+            roster,
             connection_status: String::new(),
             connected: false,
             idle_guard: None,
@@ -456,12 +466,18 @@ impl AppShell {
             pane_arrivals: PaneArrivals::default(),
             rendered_drop_preview: Rc::default(),
             compact: compact::CompactState::default(),
-            _subscriptions: vec![key_events, appearance_observer, activation_observer],
+            _subscriptions: vec![
+                key_events,
+                appearance_observer,
+                activation_observer,
+                host_requests,
+            ],
         };
         this.connection.update(cx, Connection::start);
         #[cfg(any(target_os = "ios", target_os = "android"))]
         this.reconnect_saved_hosts(window, cx);
         this.preferences.apply(&this.connection, window, cx);
+        this.sync_roster(cx);
         #[cfg(target_os = "ios")]
         cx.set_menus(this.menus());
         #[cfg(target_os = "android")]
@@ -963,6 +979,7 @@ impl AppShell {
         }
         let backend = palette_backend_with(
             self.connection.clone(),
+            self.roster.clone(),
             self.preferences.palette_settings(),
             self.gui_offers(window),
             self.preferences.flat_sidebar,
@@ -979,7 +996,11 @@ impl AppShell {
     }
 
     fn palette_backend(&self) -> Rc<dyn zz_ui::command::PaletteBackend> {
-        palette_backend(self.connection.clone(), self.preferences.palette_settings())
+        palette_backend(
+            self.connection.clone(),
+            self.roster.clone(),
+            self.preferences.palette_settings(),
+        )
     }
 
     fn observe_palette(
@@ -1359,9 +1380,10 @@ impl AppShell {
             .entry(pane)
             .or_insert_with(|| {
                 let connection = self.connection.clone();
+                let roster = self.roster.clone();
                 let rows_view = cx.weak_entity();
                 cx.new(|cx| {
-                    let mut agent = AgentPane::new(pane, connection, window, cx);
+                    let mut agent = AgentPane::new(pane, connection, roster, window, cx);
                     agent.set_float_rows_handler(move |cx| {
                         rows_view
                             .upgrade()
@@ -3139,6 +3161,7 @@ impl AppShell {
 
 impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_roster(cx);
         if let Some((picker, start)) = self.folder_pick.take() {
             self.open_folder_palette(picker, &start, window, cx);
         }

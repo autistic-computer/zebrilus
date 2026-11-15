@@ -14,6 +14,7 @@ use android_browser as native_browser;
 #[cfg(target_os = "ios")]
 use ios_browser as native_browser;
 pub mod preferences;
+mod roster;
 pub mod terminal;
 pub mod terminal_images;
 #[cfg(any(target_os = "ios", target_os = "android"))]

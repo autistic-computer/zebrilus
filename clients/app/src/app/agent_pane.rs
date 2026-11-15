@@ -58,7 +58,7 @@ use zz_ui::{
     },
 };
 
-use crate::{command_palette::palette_backend, connection::Connection};
+use crate::{command_palette::palette_backend, connection::Connection, roster::Roster};
 
 mod phone;
 
@@ -124,7 +124,12 @@ impl AgentPane {
         let pane = self.pane;
         ChatRefs {
             hosts: target_hosts(
-                &palette_backend(self.connection.clone(), PaletteSettings::default()).tree(cx),
+                &palette_backend(
+                    self.connection.clone(),
+                    self.roster.clone(),
+                    PaletteSettings::default(),
+                )
+                .tree(cx),
             ),
             cwd: (!cwd.is_empty()).then_some(cwd),
             open: Arc::new(move |target, _, cx| {
@@ -152,7 +157,11 @@ impl AgentPane {
     }
 
     fn open_ref(&self, target: &ResolvedTarget, cx: &mut App) {
-        let backend = palette_backend(self.connection.clone(), PaletteSettings::default());
+        let backend = palette_backend(
+            self.connection.clone(),
+            self.roster.clone(),
+            PaletteSettings::default(),
+        );
         let place = match &target.target {
             RefTarget::Host => {
                 backend.activate_host(target.host, cx);
@@ -264,6 +273,7 @@ impl AgentPane {
 pub(super) struct AgentPane {
     pane: PaneId,
     connection: Entity<Connection>,
+    roster: Entity<Roster>,
     connected: bool,
     input: Entity<InputState>,
     reply: Entity<InputState>,
@@ -318,6 +328,7 @@ impl AgentPane {
     pub(super) fn new(
         pane: PaneId,
         connection: Entity<Connection>,
+        roster: Entity<Roster>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -403,7 +414,11 @@ impl AgentPane {
                 _ => {}
             });
         let mention = mention_picker(
-            &palette_backend(connection.clone(), PaletteSettings::default()),
+            &palette_backend(
+                connection.clone(),
+                roster.clone(),
+                PaletteSettings::default(),
+            ),
             input.clone(),
             window,
             cx,
@@ -427,6 +442,7 @@ impl AgentPane {
         Self {
             pane,
             connection,
+            roster,
             connected: false,
             input,
             reply,

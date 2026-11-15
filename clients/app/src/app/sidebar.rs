@@ -1,5 +1,5 @@
 use super::AppShell;
-use crate::connection::Connection;
+use crate::{connection::Connection, roster::HostRequest};
 use ala::{
     AnyElement, App, Context, Entity, FocusHandle, Hsla, ListSizingBehavior, MouseButton,
     ScrollHandle, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*, px,
@@ -693,6 +693,50 @@ fn connect(
     }
 }
 
+impl AppShell {
+    pub(super) fn sync_roster(&mut self, cx: &mut Context<Self>) {
+        let hosts = self.host_pages(cx);
+        self.roster.update(cx, |roster, cx| roster.sync(hosts, cx));
+    }
+
+    pub(super) fn host_request(
+        &mut self,
+        request: HostRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match request {
+            HostRequest::Open(host, target) => self.open_on_host(host, target, window, cx),
+            HostRequest::Connect(host) => {
+                if let Some(page) = self.host_page(host, cx) {
+                    connect(self, page, window, cx);
+                }
+            }
+        }
+    }
+
+    pub(super) fn open_on_host(
+        &mut self,
+        host: PaletteHostId,
+        target: Target,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(page) = self.host_page(host, cx) else {
+            return;
+        };
+        let Some(connection) = page.connection.clone() else {
+            connect(self, page, window, cx);
+            return;
+        };
+        if connection == self.connection {
+            activate(&connection, target, cx);
+        } else {
+            open_on_other_host(self, &page, target, window, cx);
+        }
+    }
+}
+
 #[cfg(any(target_os = "ios", target_os = "android"))]
 fn open_on_other_host(
     view: &mut AppShell,
@@ -704,22 +748,35 @@ fn open_on_other_host(
     let (Some(endpoint), Some(connection)) = (&host.endpoint, &host.connection) else {
         return;
     };
-    let place = {
-        let snapshot = connection.read(cx).core.snapshot();
-        snapshot.sessions.iter().find_map(|session| {
+    let connection = connection.read(cx);
+    if !connection.connected {
+        if target == Target::Host {
+            view.connect_host(endpoint.clone(), window, cx);
+        }
+        return;
+    }
+    let snapshot = connection.core.snapshot();
+    let place = match target {
+        Target::Host => Some((None, None)),
+        Target::Session(id) => snapshot
+            .sessions
+            .iter()
+            .any(|session| session.id == id)
+            .then_some((Some(id), None)),
+        Target::Window(_) | Target::Pane(_) => snapshot.sessions.iter().find_map(|session| {
             session.windows.iter().find_map(|mux_window| match target {
                 Target::Window(id) if mux_window.id == id => {
-                    Some((session.id, mux_window.active_pane))
+                    Some((Some(session.id), Some(mux_window.active_pane)))
                 }
                 Target::Pane(pane) if mux_window.panes.contains_key(&pane) => {
-                    Some((session.id, pane))
+                    Some((Some(session.id), Some(pane)))
                 }
                 _ => None,
             })
-        })
+        }),
     };
     if let Some((session, pane)) = place {
-        view.switch_host(endpoint, Some(session), Some(pane), window, cx);
+        view.switch_host(endpoint, session, pane, window, cx);
     }
 }
 

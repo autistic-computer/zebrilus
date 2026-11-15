@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     rc::Rc,
     sync::{
         Arc,
@@ -13,11 +14,11 @@ use zz_client::completion::PaneKindAvailability;
 use zz_client::navigation::{ordered_panes, pane_index, pane_label, session_label};
 use zz_client::{
     AgentAttentionStatus, ClientCore, CoreEvent, agent_attention_status, gui_actions::GuiOffer,
-    place::ActionKind,
+    place::ActionKind, sidebar::SidebarTarget,
 };
 use zz_protocol::{
     CommandInvocation, InputMessage, MuxOptionKey, MuxSnapshot, PaneId, PaneKindSnapshot,
-    PathEntry, PathListRoot, ProtocolMessage,
+    PathEntry, PathListRoot, ProtocolMessage, SessionId, WindowId,
 };
 use zz_terminal::TerminalViewAction;
 use zz_ui::{
@@ -31,41 +32,44 @@ use zz_ui::{
 
 pub(crate) use zz_ui::command::{CommandPaletteEvent, CommandPaletteView, PaletteMode};
 
-use crate::connection::Connection;
-
-const HOST: PaletteHostId = PaletteHostId(0);
+use crate::{
+    app::HostPage,
+    connection::Connection,
+    roster::{HostRequest, Roster},
+};
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
-fn host_name(connection: &Connection) -> String {
-    connection
-        .endpoint()
-        .map_or_else(|| "host".to_owned(), crate::app::host_title)
+fn host_name(page: &HostPage) -> String {
+    page.title.clone()
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn host_name(_: &Connection) -> String {
+fn host_name(_: &HostPage) -> String {
     "local".to_owned()
 }
 
 static PATH_LISTS: AtomicU64 = AtomicU64::new(0);
 
 #[must_use]
-pub fn palette_backend(
+pub(crate) fn palette_backend(
     connection: Entity<Connection>,
+    roster: Entity<Roster>,
     settings: PaletteSettings,
 ) -> Rc<dyn PaletteBackend> {
-    palette_backend_with(connection, settings, Vec::new(), false)
+    palette_backend_with(connection, roster, settings, Vec::new(), false)
 }
 
 #[must_use]
-pub fn palette_backend_with(
+pub(crate) fn palette_backend_with(
     connection: Entity<Connection>,
+    roster: Entity<Roster>,
     settings: PaletteSettings,
     gui: Vec<GuiOffer>,
     chat_mode: bool,
 ) -> Rc<dyn PaletteBackend> {
     Rc::new(ConnectionPalette {
         connection,
+        roster,
         settings,
         gui,
         chat_mode,
@@ -74,6 +78,7 @@ pub fn palette_backend_with(
 
 struct ConnectionPalette {
     connection: Entity<Connection>,
+    roster: Entity<Roster>,
     settings: PaletteSettings,
     gui: Vec<GuiOffer>,
     chat_mode: bool,
@@ -102,6 +107,7 @@ impl PaletteBackend for ConnectionPalette {
             ActionKind::Gui => Some(Box::new(GuiLevel::new(self.gui.clone()))),
             ActionKind::Files => Some(Box::new(FilesAction::new(palette_backend(
                 self.connection.clone(),
+                self.roster.clone(),
                 self.settings,
             )))),
             ActionKind::Command => None,
@@ -112,75 +118,40 @@ impl PaletteBackend for ConnectionPalette {
         Arc::clone(self.connection.read(cx).core.snapshot())
     }
 
-    fn host_snapshot<'a>(&self, _: PaletteHostId, cx: &'a App) -> Option<&'a MuxSnapshot> {
-        Some(self.connection.read(cx).core.snapshot())
+    fn host_snapshot<'a>(&self, host: PaletteHostId, cx: &'a App) -> Option<&'a MuxSnapshot> {
+        if host == self.here(cx) {
+            return Some(self.connection.read(cx).core.snapshot());
+        }
+        Some(
+            self.roster
+                .read(cx)
+                .connection(host)?
+                .read(cx)
+                .core
+                .snapshot(),
+        )
     }
 
     fn tree(&self, cx: &App) -> PaletteTree {
-        let connection = self.connection.read(cx);
-        let core = &connection.core;
-        let snapshot = core.snapshot();
-        let sessions: Vec<_> = if connection.connected {
-            snapshot
-                .sessions
-                .iter()
-                .map(|session| {
-                    let active = core.attached_session() == Some(session.id);
-                    let focused = snapshot.focused_window_for(session);
-                    PaletteTreeSession {
-                        id: session.id,
-                        name: session_label(session).to_string(),
-                        tmux_name: session.name.clone(),
-                        active,
-                        windows: session
-                            .windows
-                            .iter()
-                            .map(|window| PaletteTreeWindow {
-                                id: window.id,
-                                index: window.index,
-                                name: window.name.clone(),
-                                active: active && window.id == focused,
-                                active_pane: window.active_pane,
-                                panes: ordered_panes(window)
-                                    .into_iter()
-                                    .map(|pane| tree_pane(window, pane, core))
-                                    .collect(),
-                            })
-                            .collect(),
-                    }
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let here = self.here(cx);
+        let hosts = self.hosts(cx);
+        let mut chats = hosts
+            .iter()
+            .filter_map(|page| Some((page.id, page.connection.as_ref()?.read(cx))))
+            .filter(|(_, connection)| connection.connected)
+            .flat_map(|(host, connection)| {
+                palette_chats(host, &connection.core.snapshot().sessions)
+            })
+            .collect::<Vec<_>>();
+        chats.sort_by_key(|chat| chat.host != here);
         PaletteTree {
-            chats: if connection.connected {
-                palette_chats(HOST, &snapshot.sessions)
-            } else {
-                Vec::new()
-            },
+            chats,
             chat_mode: self.chat_mode,
-            attached: HOST,
-            hosts: vec![PaletteTreeHost {
-                id: HOST,
-                name: host_name(connection),
-                detail: "Daemon host".to_owned(),
-                right: if connection.connected {
-                    format!(
-                        "{} session{}",
-                        sessions.len(),
-                        if sessions.len() == 1 { "" } else { "s" }
-                    )
-                } else {
-                    "offline · ↵ to connect".to_owned()
-                },
-                status: if connection.connected {
-                    PaletteStatus::Online
-                } else {
-                    PaletteStatus::Offline
-                },
-                sessions,
-            }],
+            attached: here,
+            hosts: hosts
+                .iter()
+                .map(|page| tree_host(page, page.id == here, cx))
+                .collect(),
         }
     }
 
@@ -249,49 +220,38 @@ impl PaletteBackend for ConnectionPalette {
             .map(|window| window.active_pane)
     }
 
-    fn execute(&self, _: PaletteHostId, command: CommandInvocation, cx: &mut App) {
-        self.connection.update(cx, |connection, cx| {
-            connection.command(
-                &command.name,
-                command
-                    .args
-                    .iter()
-                    .map(|arg| arg.as_str().to_owned())
-                    .collect(),
-                cx,
-            );
-        });
+    fn execute(&self, host: PaletteHostId, command: CommandInvocation, cx: &mut App) {
+        let Some(connection) = self.host_connection(host, cx) else {
+            return;
+        };
+        connection.update(cx, |connection, cx| connection.invoke(command, cx));
     }
 
-    fn connect_host(&self, _: PaletteHostId, cx: &mut App) {
-        self.connection.update(cx, Connection::reconnect);
+    fn connect_host(&self, host: PaletteHostId, cx: &mut App) {
+        Roster::request(&self.roster, HostRequest::Connect(host), cx);
     }
 
-    fn activate(&self, _: PaletteHostId, target: PaletteTarget, cx: &mut App) -> bool {
+    fn activate(&self, host: PaletteHostId, target: PaletteTarget, cx: &mut App) -> bool {
+        if host != self.here(cx) {
+            let found = self
+                .host_connection(host, cx)
+                .map(|connection| connection.read(cx))
+                .filter(|connection| connection.connected)
+                .is_some_and(|connection| place(connection.core.snapshot(), target).is_some());
+            if found {
+                Roster::request(
+                    &self.roster,
+                    HostRequest::Open(host, sidebar_target(target)),
+                    cx,
+                );
+            }
+            return found;
+        }
         let connection = self.connection.read(cx);
         if !connection.connected {
             return false;
         }
-        let Some((session, window, pane)) =
-            connection
-                .core
-                .snapshot()
-                .sessions
-                .iter()
-                .find_map(|session| match target {
-                    PaletteTarget::Session(id) => (id == session.id).then_some((id, None, None)),
-                    PaletteTarget::Window(id) => session
-                        .windows
-                        .iter()
-                        .find(|window| window.id == id)
-                        .map(|window| (session.id, Some(window.id), None)),
-                    PaletteTarget::Pane(id) => session
-                        .windows
-                        .iter()
-                        .find(|window| window.panes.contains_key(&id))
-                        .map(|window| (session.id, Some(window.id), Some(id))),
-                })
-        else {
+        let Some((session, window, pane)) = place(connection.core.snapshot(), target) else {
             return false;
         };
         self.connection.update(cx, |connection, cx| {
@@ -312,44 +272,89 @@ impl PaletteBackend for ConnectionPalette {
         true
     }
 
+    fn activate_host(&self, host: PaletteHostId, cx: &mut App) -> bool {
+        let live = host != self.here(cx)
+            && self
+                .host_connection(host, cx)
+                .is_some_and(|connection| connection.read(cx).connected);
+        if live {
+            Roster::request(
+                &self.roster,
+                HostRequest::Open(host, SidebarTarget::Host),
+                cx,
+            );
+        }
+        live
+    }
+
     fn list_path(
         &self,
-        _: PaletteHostId,
+        host: PaletteHostId,
         dir: &str,
         anchor: Option<PaneId>,
         cx: &mut App,
     ) -> Result<u64, SharedString> {
-        let connection = self.connection.read(cx);
-        if !connection.connected {
-            return Err("Not connected".into());
-        }
-        let pane = listing_pane(connection.core.snapshot(), anchor);
+        let connection = self
+            .host_connection(host, cx)
+            .filter(|connection| connection.read(cx).connected)
+            .ok_or_else(|| SharedString::from("Not connected"))?;
+        let pane = listing_pane(connection.read(cx).core.snapshot(), anchor);
         let request_id = PATH_LISTS.fetch_add(1, Ordering::Relaxed) + 1;
-        self.send(
-            ProtocolMessage::PathListRequest {
-                request_id,
-                pane,
-                dir: Some(dir.to_owned()),
-            },
-            cx,
-        );
+        connection.update(cx, |connection, cx| {
+            connection.send(
+                ProtocolMessage::PathListRequest {
+                    request_id,
+                    pane,
+                    dir: Some(dir.to_owned()),
+                },
+                cx,
+            );
+        });
         Ok(request_id)
     }
 
-    fn cancel_path(&self, _: PaletteHostId, request_id: u64, cx: &mut App) {
-        self.send(ProtocolMessage::PathListCancel { request_id }, cx);
+    fn cancel_path(&self, host: PaletteHostId, request_id: u64, cx: &mut App) {
+        if let Some(connection) = self.host_connection(host, cx) {
+            connection.update(cx, |connection, cx| {
+                connection.send(ProtocolMessage::PathListCancel { request_id }, cx);
+            });
+        }
     }
 
     fn feed_listings(&self, sink: ListingSink, cx: &mut App) -> Option<Subscription> {
-        Some(
-            cx.subscribe(&self.connection, move |_, event: &CoreEvent, cx| {
-                if let CoreEvent::Message(message) = event
-                    && let Some((request_id, update)) = listing_update(message)
-                {
-                    sink(HOST, request_id, update, cx);
+        let sink = Rc::new(sink);
+        let feeds = Rc::new(RefCell::new(
+            Vec::<(Entity<Connection>, Subscription)>::new(),
+        ));
+        let follow = move |roster: Entity<Roster>, cx: &mut App| {
+            let connections = roster
+                .read(cx)
+                .hosts()
+                .iter()
+                .filter_map(|page| page.connection.clone())
+                .collect::<Vec<_>>();
+            let mut feeds = feeds.borrow_mut();
+            feeds.retain(|(connection, _)| connections.contains(connection));
+            for connection in connections {
+                if feeds.iter().any(|(fed, _)| *fed == connection) {
+                    continue;
                 }
-            }),
-        )
+                let (sink, roster) = (Rc::clone(&sink), roster.downgrade());
+                let feed = cx.subscribe(&connection, move |connection, event: &CoreEvent, cx| {
+                    if let CoreEvent::Message(message) = event
+                        && let Some((request_id, update)) = listing_update(message)
+                        && let Some(host) = roster
+                            .upgrade()
+                            .and_then(|roster| roster.read(cx).id_of(&connection))
+                    {
+                        sink(host, request_id, update, cx);
+                    }
+                });
+                feeds.push((connection, feed));
+            }
+        };
+        follow(self.roster.clone(), cx);
+        Some(cx.observe(&self.roster, follow))
     }
 
     fn insert_path(
@@ -380,9 +385,128 @@ impl PaletteBackend for ConnectionPalette {
 }
 
 impl ConnectionPalette {
-    fn send(&self, message: ProtocolMessage, cx: &mut App) {
-        self.connection
-            .update(cx, |connection, cx| connection.send(message, cx));
+    fn here(&self, cx: &App) -> PaletteHostId {
+        self.roster
+            .read(cx)
+            .id_of(&self.connection)
+            .unwrap_or_default()
+    }
+
+    fn hosts(&self, cx: &App) -> Vec<HostPage> {
+        let roster = self.roster.read(cx);
+        if roster.id_of(&self.connection).is_some() {
+            return roster.hosts().to_vec();
+        }
+        vec![HostPage {
+            id: PaletteHostId::default(),
+            endpoint: None,
+            title: String::new(),
+            connection: Some(self.connection.clone()),
+        }]
+    }
+
+    fn host_connection(&self, host: PaletteHostId, cx: &App) -> Option<Entity<Connection>> {
+        if host == self.here(cx) {
+            return Some(self.connection.clone());
+        }
+        self.roster.read(cx).connection(host).cloned()
+    }
+}
+
+const fn sidebar_target(target: PaletteTarget) -> SidebarTarget {
+    match target {
+        PaletteTarget::Session(id) => SidebarTarget::Session(id),
+        PaletteTarget::Window(id) => SidebarTarget::Window(id),
+        PaletteTarget::Pane(id) => SidebarTarget::Pane(id),
+    }
+}
+
+fn place(
+    snapshot: &MuxSnapshot,
+    target: PaletteTarget,
+) -> Option<(SessionId, Option<WindowId>, Option<PaneId>)> {
+    snapshot.sessions.iter().find_map(|session| match target {
+        PaletteTarget::Session(id) => (id == session.id).then_some((id, None, None)),
+        PaletteTarget::Window(id) => session
+            .windows
+            .iter()
+            .find(|window| window.id == id)
+            .map(|window| (session.id, Some(window.id), None)),
+        PaletteTarget::Pane(id) => session
+            .windows
+            .iter()
+            .find(|window| window.panes.contains_key(&id))
+            .map(|window| (session.id, Some(window.id), Some(id))),
+    })
+}
+
+fn tree_host(page: &HostPage, here: bool, cx: &App) -> PaletteTreeHost {
+    let connection = page
+        .connection
+        .as_ref()
+        .map(|connection| connection.read(cx))
+        .filter(|connection| connection.connected);
+    let sessions: Vec<_> = connection.map_or_else(Vec::new, |connection| {
+        let core = &connection.core;
+        let snapshot = core.snapshot();
+        snapshot
+            .sessions
+            .iter()
+            .map(|session| {
+                let active = here && core.attached_session() == Some(session.id);
+                let focused = snapshot.focused_window_for(session);
+                PaletteTreeSession {
+                    id: session.id,
+                    name: session_label(session).to_string(),
+                    tmux_name: session.name.clone(),
+                    active,
+                    windows: session
+                        .windows
+                        .iter()
+                        .map(|window| PaletteTreeWindow {
+                            id: window.id,
+                            index: window.index,
+                            name: window.name.clone(),
+                            active: active && window.id == focused,
+                            active_pane: window.active_pane,
+                            panes: ordered_panes(window)
+                                .into_iter()
+                                .map(|pane| tree_pane(window, pane, core))
+                                .collect(),
+                        })
+                        .collect(),
+                }
+            })
+            .collect()
+    });
+    let connecting = connection.is_none()
+        && page
+            .connection
+            .as_ref()
+            .is_some_and(|connection| connection.read(cx).status == "Connecting…");
+    PaletteTreeHost {
+        id: page.id,
+        name: host_name(page),
+        detail: "Daemon host".to_owned(),
+        right: if connection.is_some() {
+            format!(
+                "{} session{}",
+                sessions.len(),
+                if sessions.len() == 1 { "" } else { "s" }
+            )
+        } else if connecting {
+            "connecting…".to_owned()
+        } else {
+            "offline · ↵ to connect".to_owned()
+        },
+        status: if connection.is_some() {
+            PaletteStatus::Online
+        } else if connecting {
+            PaletteStatus::Waiting
+        } else {
+            PaletteStatus::Offline
+        },
+        sessions,
     }
 }
 
@@ -473,6 +597,8 @@ mod tests {
 
     use super::*;
 
+    const HOST: PaletteHostId = PaletteHostId(0);
+
     fn snapshot(pane: PaneId) -> MuxSnapshot {
         MuxSnapshot {
             generation: 1,
@@ -532,9 +658,9 @@ mod tests {
         }
     }
 
-    #[ala::test]
-    fn files_are_listed_through_a_terminal_and_pasted_into_the_pane(cx: &mut TestAppContext) {
-        let pane = PaneId(1);
+    type Sent = Rc<RefCell<Vec<ProtocolMessage>>>;
+
+    fn live(pane: PaneId, cx: &mut TestAppContext) -> (Entity<Connection>, Sent) {
         let connection = cx.new(Connection::new);
         let sent = connection.update(cx, |connection, cx| {
             let sent = connection.record_input_for_test();
@@ -548,7 +674,69 @@ mod tests {
             );
             sent
         });
-        let backend = palette_backend(connection.clone(), PaletteSettings::default());
+        (connection, sent)
+    }
+
+    fn page(id: u32, connection: &Entity<Connection>) -> HostPage {
+        HostPage {
+            id: PaletteHostId(id),
+            endpoint: Some(format!("host-{id}")),
+            title: format!("host-{id}"),
+            connection: Some(connection.clone()),
+        }
+    }
+
+    #[ala::test]
+    fn listings_and_commands_go_to_the_host_they_name(cx: &mut TestAppContext) {
+        let (here, here_sent) = live(PaneId(1), cx);
+        let (other, other_sent) = live(PaneId(1), cx);
+        let roster = cx.new(|_| Roster::default());
+        let pages = vec![page(7, &here), page(3, &other)];
+        roster.update(cx, |roster, cx| roster.sync(pages, cx));
+        let backend = palette_backend(here, roster, PaletteSettings::default());
+        let fed = Rc::new(RefCell::new(Vec::new()));
+        let seen = Rc::clone(&fed);
+        let _feed = cx.update(|cx| {
+            backend.feed_listings(
+                Box::new(move |host, request, _, _| seen.borrow_mut().push((host, request))),
+                cx,
+            )
+        });
+        let before = here_sent.borrow().len();
+        let request = cx
+            .update(|cx| backend.list_path(PaletteHostId(3), "~/", None, cx))
+            .expect("listed");
+        let kill = CommandInvocation::new("kill-window", ["-t", "@1"]);
+        cx.update(|cx| backend.execute(PaletteHostId(3), kill.clone(), cx));
+        assert_eq!(here_sent.borrow().len(), before);
+        assert!(matches!(
+            other_sent.borrow().as_slice(),
+            [
+                ProtocolMessage::PathListRequest { request_id, pane: Some(PaneId(1)), .. },
+                ProtocolMessage::CommandRequest(sent),
+            ] if *request_id == request && sent.command == kill
+        ));
+        other.update(cx, |connection, cx| {
+            connection.handle_message_for_test(
+                ProtocolMessage::PathListGit {
+                    request_id: request,
+                    marks: Vec::new(),
+                },
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        assert_eq!(fed.borrow().as_slice(), [(PaletteHostId(3), request)]);
+    }
+
+    #[ala::test]
+    fn files_are_listed_through_a_terminal_and_pasted_into_the_pane(cx: &mut TestAppContext) {
+        let pane = PaneId(1);
+        let (connection, sent) = live(pane, cx);
+        let roster = cx.new(|_| Roster::default());
+        let pages = vec![page(0, &connection)];
+        roster.update(cx, |roster, cx| roster.sync(pages, cx));
+        let backend = palette_backend(connection.clone(), roster, PaletteSettings::default());
         let fed = Rc::new(RefCell::new(Vec::new()));
         let seen = Rc::clone(&fed);
         let _feed = cx.update(|cx| {
