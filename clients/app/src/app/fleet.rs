@@ -191,6 +191,7 @@ impl AppShell {
         self.agents.clear();
         self.browsers.clear();
         self.pickers.clear();
+        self.landing_picker = None;
         self.waiting_panes.clear();
         self.unseen_agents.clear();
         self.collapsed_tree.clear();

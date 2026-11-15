@@ -1541,7 +1541,8 @@ impl AppShell {
             .entry(pane)
             .or_insert_with(|| {
                 let connection = self.connection.clone();
-                let picker = cx.new(|cx| picker::PanePicker::new(pane, connection, cx));
+                let roster = self.roster.clone();
+                let picker = cx.new(|cx| picker::PanePicker::new(pane, connection, roster, cx));
                 cx.subscribe(
                     &picker,
                     |shell, picker, choose: &picker::ChooseFolder, cx| {
@@ -1589,7 +1590,8 @@ impl AppShell {
             picker.clone()
         } else {
             let connection = self.connection.clone();
-            let picker = cx.new(|cx| picker::PanePicker::landing(connection, cx));
+            let roster = self.roster.clone();
+            let picker = cx.new(|cx| picker::PanePicker::landing(connection, roster, cx));
             cx.subscribe(
                 &picker,
                 |shell, picker, choose: &picker::ChooseFolder, cx| {
@@ -1602,6 +1604,14 @@ impl AppShell {
                 shell.flat.place.close_landing();
                 cx.notify();
             })
+            .detach();
+            cx.subscribe_in(
+                &picker,
+                window,
+                |shell, _, choose: &picker::ChooseMachine, window, cx| {
+                    shell.new_chat_on(choose.host, window, cx);
+                },
+            )
             .detach();
             self.landing_picker = Some(picker.clone());
             picker

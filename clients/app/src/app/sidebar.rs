@@ -550,9 +550,33 @@ pub(super) fn new_chat(view: &mut AppShell, cx: &mut Context<AppShell>) {
     if writable(connection) {
         view.flat.place.new_chat(
             connection.core.snapshot(),
-            connection.core.attached_session(),
+            connection
+                .core
+                .attached_session()
+                .or_else(|| connection.remembered_session()),
         );
         cx.notify();
+    }
+}
+
+impl AppShell {
+    pub(super) fn new_chat_on(
+        &mut self,
+        host: PaletteHostId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        if let Some(page) = self.host_page(host, cx)
+            && let (Some(endpoint), Some(connection)) = (page.endpoint, page.connection)
+            && connection != self.connection
+        {
+            let session = connection.read(cx).remembered_session();
+            self.switch_host(&endpoint, session, None, window, cx);
+        }
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        let _ = (host, window);
+        new_chat(self, cx);
     }
 }
 

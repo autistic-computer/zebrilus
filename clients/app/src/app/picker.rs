@@ -1,4 +1,4 @@
-use crate::connection::Connection;
+use crate::{connection::Connection, roster::Roster};
 use ala::{
     AnyElement, App, Context, Corners, ElementId, Entity, FocusHandle, Focusable, KeyDownEvent,
     MouseButton, Pixels, Render, Window, prelude::*,
@@ -10,13 +10,14 @@ use penna::{
 };
 use zz_client::{
     new_chat::{
-        AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, FolderChoice, agent_picker_place,
-        close_picker_command, folder_start, landing_chat_commands, picker_folders, recent_folders,
-        start_agent_commands,
+        AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, FolderChoice, MachineChoice,
+        agent_picker_place, close_picker_command, folder_start, landing_chat_commands,
+        picker_folders, recent_folders, start_agent_commands,
     },
     pane_picker::{PaneChoice, PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
 };
-use zz_protocol::PaneId;
+use zz_protocol::{HostPlatform, PaneId};
+use zz_ui::command::PaletteHostId;
 use zz_ui::pane::{
     ChatPickerRow, ChatPickerTarget, agent_provider_icon, chat_picker_rows, pane_picker_row,
     pane_picker_surface,
@@ -40,9 +41,14 @@ pub(super) struct ChooseFolder {
 
 pub(super) struct LeaveLanding;
 
+pub(super) struct ChooseMachine {
+    pub(super) host: PaletteHostId,
+}
+
 pub(super) struct PanePicker {
     pane: Option<PaneId>,
     connection: Entity<Connection>,
+    roster: Entity<Roster>,
     focus: FocusHandle,
     selected: usize,
     corner_radii: Corners<Pixels>,
@@ -56,21 +62,32 @@ impl PanePicker {
     pub(super) fn new(
         pane: PaneId,
         connection: Entity<Connection>,
+        roster: Entity<Roster>,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::build(Some(pane), connection, cx)
+        Self::build(Some(pane), connection, roster, cx)
     }
 
-    pub(super) fn landing(connection: Entity<Connection>, cx: &mut Context<Self>) -> Self {
-        let mut picker = Self::build(None, connection, cx);
+    pub(super) fn landing(
+        connection: Entity<Connection>,
+        roster: Entity<Roster>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut picker = Self::build(None, connection, roster, cx);
         picker.chat_view = true;
         picker
     }
 
-    fn build(pane: Option<PaneId>, connection: Entity<Connection>, cx: &mut Context<Self>) -> Self {
+    fn build(
+        pane: Option<PaneId>,
+        connection: Entity<Connection>,
+        roster: Entity<Roster>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         Self {
             pane,
             connection,
+            roster,
             focus: cx.focus_handle(),
             selected: 0,
             corner_radii: Corners::default(),
@@ -99,6 +116,45 @@ impl PanePicker {
             return Some(recent_folders(snapshot));
         };
         agent_picker_place(snapshot, pane, self.chat_view).map(|_| picker_folders(snapshot, pane))
+    }
+
+    fn machines(&self, cx: &App) -> Vec<MachineChoice> {
+        let hosts = self.roster.read(cx).hosts();
+        if self.pane.is_some() || hosts.len() < 2 {
+            return Vec::new();
+        }
+        hosts
+            .iter()
+            .map(|page| {
+                let connection = page
+                    .connection
+                    .as_ref()
+                    .map(|connection| connection.read(cx));
+                MachineChoice {
+                    host: u64::from(page.id.0),
+                    name: page.title.clone(),
+                    remote: true,
+                    platform: connection.map_or(HostPlatform::Unknown, |connection| {
+                        connection.core.host_platform()
+                    }),
+                    live: connection.is_some_and(|connection| connection.connected),
+                    current: page.connection.as_ref() == Some(&self.connection),
+                }
+            })
+            .collect()
+    }
+
+    fn choose_machine(&self, machines: &[MachineChoice], index: usize, cx: &mut Context<Self>) {
+        if let Some(machine) = machines.get(index)
+            && machine.live
+            && !machine.current
+            && let Ok(host) = u32::try_from(machine.host)
+        {
+            cx.emit(ChooseMachine {
+                host: PaletteHostId(host),
+            });
+        }
+        cx.notify();
     }
 
     fn close(&self, cx: &mut Context<Self>) {
@@ -155,7 +211,8 @@ impl PanePicker {
         writable: bool,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        chat_picker_rows(self.id(), &self.chat, folders, &[], writable, cx)
+        let machines = self.machines(cx);
+        chat_picker_rows(self.id(), &self.chat, folders, &machines, writable, cx)
             .into_iter()
             .map(|row| match row {
                 ChatPickerRow::Label(label) => label.into_any_element(),
@@ -180,9 +237,11 @@ impl PanePicker {
                                 ChatPickerTarget::Agent(_, agent) => {
                                     this.start(agent, &folders, cx);
                                 }
-                                ChatPickerTarget::Machine(_)
-                                | ChatPickerTarget::Terminal
-                                | ChatPickerTarget::Browser => {}
+                                ChatPickerTarget::Machine(index) => {
+                                    let machines = this.machines(cx);
+                                    this.choose_machine(&machines, index, cx);
+                                }
+                                ChatPickerTarget::Terminal | ChatPickerTarget::Browser => {}
                             }
                             cx.notify();
                             cx.stop_propagation();
@@ -317,19 +376,23 @@ impl PanePicker {
         let key = &event.keystroke;
         if let Some(folders) = self.folders(cx) {
             let modified = key.modifiers.control || key.modifiers.alt || key.modifiers.platform;
+            let machines = self.machines(cx);
+            self.chat.machines = machines.len();
             match self
                 .chat
                 .key(&key.key, key.key_char.as_deref(), modified, &[])
             {
                 ChatKey::Start(agent) => self.start(agent, &folders, cx),
                 ChatKey::ChooseFolder => self.choose_folder(&folders, cx),
+                ChatKey::ChooseMachine(index) => self.choose_machine(&machines, index, cx),
+                ChatKey::NextMachine => {
+                    if let Some(index) = MachineChoice::next(&machines) {
+                        self.choose_machine(&machines, index, cx);
+                    }
+                }
                 ChatKey::Close => self.close(cx),
                 ChatKey::Changed => cx.notify(),
-                ChatKey::ChooseMachine(_)
-                | ChatKey::NextMachine
-                | ChatKey::Terminal
-                | ChatKey::Browser
-                | ChatKey::Ignored => return,
+                ChatKey::Terminal | ChatKey::Browser | ChatKey::Ignored => return,
             }
             cx.stop_propagation();
             return;
@@ -355,6 +418,8 @@ impl PanePicker {
 impl ala::EventEmitter<ChooseFolder> for PanePicker {}
 
 impl ala::EventEmitter<LeaveLanding> for PanePicker {}
+
+impl ala::EventEmitter<ChooseMachine> for PanePicker {}
 
 impl Focusable for PanePicker {
     fn focus_handle(&self, _: &App) -> FocusHandle {
