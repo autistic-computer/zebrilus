@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Chat mode: chat windows first, the rest piled"
 description: "The flat sidebar became chat mode: each machine lists its chat windows (a window running Claude Code or Codex) as rows with a face per pane, then folds the windows without a chat into one last row, the pile; a window with two or more panes and the pile open into one-line rows on a track. New chat opens the agent picker with no window behind it, which starts the agent in a chosen folder inside that folder's session. The sidebar view decides what a new pane offers: agents in chat view, pane kinds in the session tree. Desktop, web and iPad share the zz-client model; the HTML client still lists only chat windows."
-status: Built (2026-10-28; picker by sidebar view 2026-11-01; New chat row and machine choice 2026-11-06; machines inline 2026-11-09; another machine keeps the New chat screen 2026-11-08; browser in a split 2026-11-07; a New chat screen 2026-11-08; windows as rows and the pile 2026-11-13; the HTML client has no file picker and no pile yet)
+status: Built (2026-10-28; picker by sidebar view 2026-11-01; New chat row and machine choice 2026-11-06; machine choice on the iPad 2026-11-15; machines inline 2026-11-09; another machine keeps the New chat screen 2026-11-08; browser in a split 2026-11-07; a New chat screen 2026-11-08; windows as rows and the pile 2026-11-13; the HTML client has no file picker and no pile yet)
 resource: crates/zz-client/src/new_chat.rs
 tags:
 - sidebar
@@ -99,7 +99,8 @@ with its own view: the desktop's `flat-sidebar` setting, zz-app's `flat_sidebar`
 iPad and iPhone, and the HTML client's preference passed in with `set_chat_view`):
 
 - **Chat view.** Every picker pane offers the agents (`ChatPicker`, drawn by
-  `zz_ui::pane::chat_picker_rows`): every machine (desktop only), the folder line, and Claude
+  `zz_ui::pane::chat_picker_rows`): every machine (the desktop, and the thin clients' New chat
+  screen once more than one host is saved), the folder line, and Claude
   Code (`c`) or Codex (`x`). Each machine is a row with its system's mark (`platform_icon`, a
   laptop or server when the host has not said), the attached one checked and an offline one dimmed
   (`MachineChoice`). A click on another, or `m` for the next live one (`ChatKey::NextMachine`,

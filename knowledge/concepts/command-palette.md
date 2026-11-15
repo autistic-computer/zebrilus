@@ -172,7 +172,7 @@ and files (three each), then this host's sessions and the other hosts. `zz_clien
 one decayed score per pick (three-day half-life, at most 200), recorded through `record_recent`.
 The desktop keeps it per client in `palette-recents.json` in the app's data folder
 (`app_identity::palette_recents_path`, `command::palette::init_recents`); the iPad and web keep it
-in memory. Their only host is named after the endpoint on iOS and `local` on the web.
+in memory. Their hosts are named after the endpoint on iOS and Android and `local` on the web.
 
 # Written places
 
@@ -377,8 +377,8 @@ disclosure state. `command_palette_tree_entry` gives the disclosure its own togg
 the row keeps its activation handler. One `CommandPaletteView` in
 `crates/zz-ui/src/command/palette_view.rs` serves desktop, web, and iOS; the mode, tree, and
 selection model lives beside it in `palette_model.rs`. Each client supplies a `PaletteBackend`:
-desktop builds a multi-host `PaletteTree` from its mux fleet, the thin clients a single-host tree
-from their daemon connection, and both route input, command execution, and target activation
+desktop builds a multi-host `PaletteTree` from its mux fleet, the thin clients one from every
+saved host in their `Roster`, and both route input, command execution, and target activation
 through the same trait.
 `InputState` continues to handle selection, IME, clipboard, and undo. Mode changes update its
 placeholder without replacing the field.
@@ -425,7 +425,7 @@ the live version is the `PROTOCOL_VERSION` constant in `crates/zz-protocol/src/m
 | `crates/zz-ui/src/command/palette_view.rs` | `CommandPaletteView` and `PaletteBackend`: input, suggestion selection, pointer dismissal, prompt and chooser synchronization for every client |
 | `crates/zz-ui/src/command/palette_model.rs` | Host-agnostic navigation tree, search modes, result grouping, target selection, and fuzzy matching |
 | `crates/zz/src/command/palette.rs` | Desktop `PaletteBackend`: multi-host tree, config-driven settings, and mux activation |
-| `clients/app/src/command_palette.rs` | Web and iOS `PaletteBackend`: single-host tree, client preferences, and connection commands |
+| `clients/app/src/command_palette.rs` | Web and iOS `PaletteBackend`: a tree of every saved host, client preferences, and commands routed to each host's connection |
 | `crates/zz-ui/src/command.rs` | Module root and `tmux_shortcut`, which turns a tmux key spelling into a row's keys |
 | `crates/zz-ui/src/command/level.rs` | `PaletteActionLevel`, `ActionKey`, the strip's word lists and `palette_keys` |
 | `libs/penna/src/blocks/palette/mod.rs` | The palette block: surface, field and pills, rows with the chevron slot, sections, footer, the key strip (`PaletteKeys`), `palette_chord`; vim's reducer in `vim.rs` |

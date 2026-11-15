@@ -196,7 +196,7 @@ reject foreign origins, invalid frames, and asset paths outside the served direc
 - `clients/app/src/app/agent_pane.rs`: an agent pane's chat and composer.
 - `clients/app/src/app/settings.rs`: supported settings pages and shared previews.
 - `clients/app/src/preferences.rs`: local preference persistence and migration.
-- `clients/app/src/app/sidebar.rs`: session tree, keyboard focus, disclosure controls, and row actions.
+- `clients/app/src/app/sidebar.rs`: session tree of every saved host, keyboard focus, disclosure controls, and row actions.
 - `clients/app/src/app/status_bar.rs`: live status model and command callbacks for the shared strip.
 - `crates/zz-ui/src/navigation/status.rs`: shared window tabs, overflow, session chip, and status items.
 - `crates/zz-ui/src/navigation/sidebar.rs`: shared tree markers, menus, action strips, and keyboard navigation.

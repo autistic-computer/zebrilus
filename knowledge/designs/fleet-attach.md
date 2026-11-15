@@ -236,8 +236,18 @@ Recorded so later phases inherit intent, ordered roughly by expected sequence.
   session-keyed view, since each daemon numbers its own. Only the host on screen mirrors its
   localhost ports onto the phone (`InteractiveClient::set_loopback_discovery`), so two hosts never
   race for the same port. The overview shows one host per page, paged by swiping the pill; hosts
-  the user was on reconnect at launch from `hosts.json`'s `connected` list. The web client stays
-  on its one gateway.
+  the user was on reconnect at launch from `hosts.json`'s `connected` list. The iPad shell uses
+  every saved host the way the desktop does, without a trip to Settings › Hosts: each host has a
+  stable `PaletteHostId` for the life of the app (`HostIds` beside `HostPage` in
+  `clients/app/src/app/compact/overview.rs`), so a reorder, connect or disconnect never moves a row
+  to another host. The session tree lists every saved host (`sidebar::tree_rows`), a connected one
+  with its sessions and windows and one that is not as a row that connects on click. The palette
+  and the agent pane's `@` menu read the same hosts from `Roster` (`clients/app/src/roster.rs`),
+  run commands and file listings on the host they name, and ask the shell through `HostRequest` to
+  switch host before selecting. New session, New window and Close on another host run on its
+  connection without switching (a new session there is `new-session -d`); opening a row or renaming
+  attaches that host first (`switch_host`). The web client stays on its one gateway and gets the
+  same UI once it has a second connection.
 - **Remote browser egress (M5)**: today a remote session's browser pane renders in the client's
   CEF, so its connections originate from the client machine and host-internal URLs
   (`localhost:3000`, VPN'd dashboards) fail. M5 adds an optional SOCKS/CONNECT tunnel over a
