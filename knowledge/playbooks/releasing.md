@@ -62,4 +62,6 @@ Homebrew tap and AUR deploy keys.
   gets its own home under `E:\zz-release-runner\home`.
 - `daemon_autostart` tests in `zz-cli`'s `cli_binary` can hang under full-suite load on the Mac
   during preflight.
+- OrbStack must be running on the Mac, or the Linux aarch64 runner never comes online and `ship`
+  gives up after 5 min with "only 3 of 4 runners came online", before anything is tagged.
 - If `ship` dies before its trap runs, `just release stop` clears the runners.
