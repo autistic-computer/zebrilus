@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent sign-in</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/input/input.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/penna-src/blocks/dialog/dialog.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="../phone/phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-page { max-width: none; width: max-content; margin: 0; }
+  .zz-intro { display: grid; gap: 6px; }
+
+  .zz-board { display: grid; grid-template-columns: 150px repeat(var(--zz-cols), max-content); gap: 28px 28px; align-items: start; }
+  .zz-col-head { display: grid; gap: 2px; padding-bottom: 2px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-col-head > b { font-size: 15px; line-height: 20px; font-weight: 600; color: var(--penna-fg); }
+  .zz-col-head[data-pick] > b::after { content: "my pick"; margin-left: 8px; font-size: var(--penna-text-small-size); color: var(--penna-accent); }
+  .zz-state { display: grid; gap: 4px; padding-top: 8px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-state > b { font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); font-weight: 600; color: var(--penna-fg); }
+  .zz-cell { display: grid; gap: 8px; }
+  .zz-cell > p { width: 480px; margin: 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-cell[data-col="phone"] > p { width: 402px; }
+  .zz-span { grid-column: 2 / span 3; }
+
+  .zz-win[data-penna="pane"] { position: relative; display: flex; flex-direction: column; width: 480px; height: 540px; overflow: hidden; padding: 0; color: var(--penna-fg); }
+  .zz-win .zz-dim { color: var(--penna-muted); }
+  .zz-tx { display: flex; flex: 1; flex-direction: column; justify-content: flex-end; gap: 10px; min-height: 0; padding: 8px 16px 0; overflow: hidden; }
+  .zz-tx > p { margin: 0; }
+  .zz-tx > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 85%; }
+  .zz-steps { display: flex; flex-direction: column; }
+  .zz-win .penna-chat-frame-foot > div:first-child { flex: 1; }
+  .zz-win .penna-chat-chrome .zz-dim { color: var(--penna-muted); }
+  .zz-win .penna-chat-chrome [data-icon="chevron-down"] { color: var(--penna-muted); --penna-icon-size: 10px; }
+  .zz-win .penna-chat-chrome .penna-chat-meter { width: 16px; height: 16px; }
+  .zz-stop[data-penna] { color: var(--penna-on-primary); }
+
+  .zz-panel[data-penna="popover"] { position: absolute; z-index: 5; right: 148px; bottom: 50px; display: flex; flex-direction: column; width: 264px; max-width: none; padding: 6px; overflow: visible; }
+  .zz-panel > .penna-separator { margin: 6px -6px; }
+  .zz-panel [data-penna="menu-item"] { flex: none; height: 32px; gap: 8px; padding: 0 10px; font-weight: 400; --penna-icon-size: 12px; }
+  .zz-group { display: flex; flex-direction: column; gap: var(--penna-space-2); }
+  .zz-add > [data-icon], .zz-add > span { color: var(--penna-muted); }
+  .zz-account[data-penna="menu-item"] { height: 40px; }
+  .zz-who { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+  .zz-who > b { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-who > span { overflow: hidden; font-size: var(--penna-text-caption-size); line-height: 14px; color: var(--penna-muted); text-overflow: ellipsis; white-space: nowrap; }
+  .zz-account:not([data-current]) > [data-icon="check"] { visibility: hidden; }
+  .zz-account > .zz-act { flex: none; font-size: var(--penna-text-small-size); color: var(--penna-muted); }
+  .zz-bars { display: flex; flex-direction: column; gap: 12px; padding: 8px 10px 6px; }
+  .zz-bar-line { display: flex; flex-direction: column; gap: 6px; }
+  .zz-bar-head { display: flex; align-items: baseline; gap: 4px; height: 16px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-bar-head > .zz-cap { flex: 1; min-width: 0; overflow: hidden; font-size: var(--penna-text-caption-size); color: var(--penna-muted); text-overflow: ellipsis; white-space: nowrap; }
+  .zz-pct { flex: none; font-variant-numeric: tabular-nums; }
+  .zz-meter { height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--penna-fg) 12%, transparent); }
+  .zz-meter > i { display: block; height: 100%; border-radius: inherit; background: var(--penna-accent); }
+
+  .zz-login { display: flex; flex-direction: column; gap: 10px; font-size: var(--penna-text-body-size); line-height: 16px; }
+  .zz-login-head { display: flex; align-items: flex-start; gap: 7px; }
+  .zz-login-glyph { display: flex; flex: none; margin-top: 1.5px; color: var(--penna-muted); --penna-icon-size: 13px; }
+  .zz-login-glyph[data-tone="danger"] { color: var(--penna-danger); }
+  .zz-login-glyph[data-tone="success"] { color: var(--penna-success); }
+  .zz-login-glyph > .penna-spinner { --penna-icon-size: 13px; }
+  .zz-login-text { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+  .zz-login-text > b { font-weight: 600; }
+  .zz-login-text > span { color: var(--penna-muted); }
+  .zz-login-head > [data-penna="icon-button.row"] { margin: -4px -4px 0 0; color: var(--penna-muted); }
+  .zz-link[data-penna="well"] { display: flex; align-items: center; gap: 4px; height: 32px; padding: 0 4px 0 10px; --penna-icon-size: 12px; }
+  .zz-link > [data-icon="globe"] { color: var(--penna-muted); }
+  .zz-link > span { flex: 1; min-width: 0; overflow: hidden; padding-left: 4px; font: 12px/16px var(--penna-mono); color: var(--penna-muted); text-overflow: ellipsis; white-space: nowrap; }
+  .zz-link > [data-penna="icon-button.row"] { color: var(--penna-muted); }
+  .zz-code[data-penna="well"] { position: relative; display: grid; place-items: center; height: 64px; font: 600 26px/32px var(--penna-mono); letter-spacing: 0.08em; }
+  .zz-code > [data-penna="icon-button.row"] { position: absolute; top: 50%; right: 8px; margin-top: -12px; color: var(--penna-muted); }
+  .zz-field[data-penna="field"] { width: 100%; }
+  .zz-field > span { flex: 1; min-width: 0; overflow: hidden; font-family: var(--penna-mono); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+  .zz-actions > .zz-lead { margin-right: auto; }
+  .zz-actions [data-solid="primary"] { color: var(--penna-on-primary); }
+
+  .zz-scrim { position: absolute; z-index: 10; inset: 0; display: grid; place-items: center; container-type: size; }
+  .zz-scrim > .penna-dialog { width: min(400px, 100cqw - 32px); }
+  .zz-scrim .zz-login { gap: 12px; }
+  .zz-scrim .zz-login-head > [data-penna="icon-button.row"] { margin: -2px -2px 0 0; }
+
+  .zz-card-b[data-penna="chip.floating"] { --penna-r: 14px; width: 100%; padding: 10px; }
+
+  .zz-panel .zz-login { padding: 6px 4px 4px; }
+
+  .zz-crop { position: relative; width: 402px; height: 540px; overflow: hidden; border-radius: 0 0 62px 62px; -webkit-mask: linear-gradient(transparent, #000 40px); mask: linear-gradient(transparent, #000 40px); }
+  .zz-crop > .zz-phone { position: absolute; bottom: 0; left: 0; margin: 0; }
+  .zz-phone .zz-pane { position: absolute; inset: 0; }
+  .zz-phone .zz-ptx { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 16px; padding: 70px 16px 156px; overflow: hidden; }
+  .zz-phone .zz-ptx > p { margin: 0; }
+  .zz-phone .zz-ptx > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 85%; padding: 10px 14px; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-phone .zz-dock { position: absolute; z-index: 15; right: 16px; bottom: 84px; left: 16px; }
+  .zz-phone > .penna-sheet, .zz-phone .penna-sheet { z-index: 35; }
+  .zz-phone .penna-sheet-panel { padding-bottom: 16px; }
+  .zz-sgroups { display: flex; flex-direction: column; gap: 16px; padding: 0 8px; }
+  .zz-sgroups > * { flex: none; }
+  .zz-sheet-spin { display: inline-flex; margin-left: 8px; vertical-align: -2px; color: var(--penna-muted); }
+  .zz-sheet-spin > .penna-spinner { --penna-icon-size: 16px; }
+  .zz-pcode { display: flex; align-items: center; gap: 12px; min-height: 88px; padding: 0 16px 0 20px; cursor: var(--penna-click-cursor); }
+  .zz-pcode > b { flex: 1; font: 600 32px/40px var(--penna-mono); letter-spacing: 0.08em; }
+  .zz-pcode > [data-icon] { color: var(--penna-muted); --penna-icon-size: 22px; }
+  .zz-pfield { padding: 0 8px; }
+  .zz-pfield > label { width: 100%; }
+  .zz-pfield > label > span { flex: 1; min-width: 0; overflow: hidden; font-family: var(--penna-mono); text-overflow: ellipsis; white-space: nowrap; }
+  .zz-pline { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; }
+  .zz-pline > [data-icon] { flex: none; margin-top: 2px; color: var(--penna-danger); --penna-icon-size: 20px; }
+  .zz-phone .penna-action-bar { padding-bottom: 4px; }
+  .zz-phone .penna-action-bar [data-solid="primary"] { color: var(--penna-on-primary); }
+  .zz-row-chev { flex: none; color: var(--penna-muted); opacity: 0.6; --penna-icon-size: 14px; }
+  .zz-phone .penna-touch-row[data-accent] > .penna-touch-row-lines > :first-child { color: var(--penna-accent); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Signing in to an agent account</h1>
+    <p>Add account no longer opens a terminal: the daemon runs the vendor CLI's login and reports each step, and the client draws it. One Claude Code chat adds a second Claude account; a Codex chat beside it adds a ChatGPT one. Rows are states, columns are takes.</p>
+  </div>
+  <div class="zz-board" data-board></div>
+</main>
+<script>
+(() => {
+  const only = new URLSearchParams(location.search).get("only");
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const spin = `<span class="penna-spinner">${ic("loader")}</span>`;
+
+  const CLAUDE = { title: "Claude Code", glyph: "asterisk", folder: "~/dev/zebrilus", model: "Opus 5.5", effort: "High", hint: "Message Claude Code…", used: 42 };
+  const CODEX = { title: "Codex", glyph: "bot", folder: "~/dev/zebrilus", model: "GPT-6.1", effort: "High", hint: "Message Codex…", used: 18 };
+
+  const you = (text) => `<div class="penna-card penna-chat-bubble" data-penna="card.bubble" role="group"><span>${text}</span></div>`;
+  const step = (glyph, label, detail) => `<div class="penna-chat-activity"><span class="penna-chat-glyph">${glyph === "spin" ? spin : ic(glyph)}</span><span class="penna-chat-label"${glyph === "spin" ? " data-strong" : ""}>${label}</span>${detail ? `<span class="penna-chat-detail">${detail}</span>` : ""}</div>`;
+  const TX = {
+    claude: [
+      you("Move the tailnet client to the new auth flow and run its tests."),
+      `<p>The flow lives in tailnet.rs. I'll swap the key exchange and keep the old path behind the fallback.</p>`,
+      `<div class="zz-steps">${step("file", "Read tailnet.rs")}${step("pencil", "Edited tailnet.rs", "+22 −9")}${step("square-terminal", "cargo test -p zz-daemon-client tailnet", "31 passed")}</div>`,
+      `<p>Done. The client uses the new flow and the 31 tailnet tests pass.</p>`,
+    ].join(""),
+    codex: [
+      you("Find out why the release DMG grew by 40 MB."),
+      `<p>Comparing the last two bundles.</p>`,
+      `<div class="zz-steps">${step("square-terminal", "du -sh dist/zz/*", "")}${step("file", "Read bundle-cef.rs")}</div>`,
+      `<p>The CEF locales came back in. The strip list lost them in the last bundler change.</p>`,
+    ].join(""),
+    codexBusy: [
+      you("Find out why the release DMG grew by 40 MB."),
+      `<p>Comparing the last two bundles.</p>`,
+      `<div class="zz-steps">${step("square-terminal", "du -sh dist/zz/*", "")}${step("file", "Read bundle-cef.rs")}${step("spin", "cargo xtask bundle-cef --dry-run")}</div>`,
+    ].join(""),
+  };
+
+  const ring = (used) => `<span class="penna-chat-meter" style="--penna-chat-used: ${used / 100}"><span></span></span>`;
+  const foot = (agent, open) => `<div class="penna-chat-frame-foot"><div></div><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small"${open ? ` data-state="current"` : ""} style="color: var(--penna-muted)">${ring(agent.used)}<span class="penna-label">${agent.used}%</span></button><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small"><i class="zz-dim" data-icon="hand"></i><span class="penna-label">${agent.model}</span><span class="zz-dim">${agent.effort}</span>${ic("chevron-down")}</button></div>`;
+  const composer = (agent, busy) => `<div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer"><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Mention">${ic("plus")}</button><span class="penna-chat-input" role="textbox" data-placeholder="${agent.hint}"></span>${busy ? `<button class="penna-button zz-stop" data-penna="button.send" data-shape="icon" data-emphasis="solid" data-solid="primary" aria-label="Stop">${ic("stop")}</button>` : `<button class="penna-button" data-penna="button.send" data-shape="icon" disabled aria-label="Send">${ic("arrow-up")}</button>`}</div></div>`;
+  const header = (agent) => `<div data-penna="bar.pane"><span data-penna="button.title">${ic(agent.glyph)}<span>${agent.title}</span><span class="zz-dim">${agent.folder}</span></span></div>`;
+  const win = ({ agent, tx, above = "", open = false, busy = false, overlay = "" }) => `<div class="zz-win" data-penna="pane">${header(agent)}<div class="zz-tx">${tx}</div><div class="penna-chat-frame"><div class="penna-chat-frame-top">${above}${composer(agent, busy)}</div>${foot(agent, open)}</div>${overlay}</div>`;
+
+  const ACCOUNTS = {
+    claude: [["me@example.com", "Max 20x"]],
+    claudeAdded: [["me@example.com", "Max 20x"], ["work@acme.example", "Team · Acme"]],
+    claudeStart: [["me@example.com", "Max 20x"], ["old@example.com", "Signed out", "Sign in"]],
+    codex: [["dev@example.com", "Pro"]],
+    codexAdded: [["dev@example.com", "Pro"], ["me@example.com", "Plus"]],
+  };
+  const bars = (agent) => `<div class="zz-bars">${[["Context", agent.used, `${agent.used * 2}k of 200k`], ["5-hour", 38, "resets in 2h 14m"], ["Week", 61, "resets Thu"]].map(([label, used, note]) => `<div class="zz-bar-line"><div class="zz-bar-head"><span>${label}</span><span class="zz-cap">· ${note}</span><span class="zz-pct">${used}%</span></div><div class="zz-meter"><i style="width: ${used}%"></i></div></div>`).join("")}</div><div class="penna-separator"></div>`;
+  const accountRows = (list, current, hover) => `<div class="zz-group">${list.map(([email, plan, act], index) => `<div class="zz-account" data-penna="menu-item"${index === current ? ` data-current data-state="selected"` : index === hover ? ` data-state="hover"` : ""}><div class="zz-who"><b>${email}</b><span>${plan}</span></div>${act ? `<span class="zz-act">${act}</span>` : ic("check")}</div>`).join("")}</div>`;
+  const addRow = `<div class="penna-separator"></div><div class="zz-add" data-penna="menu-item">${ic("plus")}<span>Add account</span></div>`;
+  const menu = (agent, list, current, extra = "", hover = -1) => `<div class="zz-panel" data-penna="popover">${bars(agent)}${accountRows(list, current, hover)}${extra}${addRow}</div>`;
+
+  const btn = (label, kind = "plain", lead = false, icon = "") => {
+    const cls = `penna-button${lead ? " zz-lead" : ""}`;
+    const inner = `${icon ? ic(icon) : ""}<span class="penna-label">${label}</span>`;
+    if (kind === "primary") return `<button class="${cls}" data-penna="button" data-size="small" data-emphasis="solid" data-solid="primary">${inner}</button>`;
+    if (kind === "quiet") return `<button class="${cls}" data-penna="button.quiet" data-size="small">${inner}</button>`;
+    return `<button class="${cls}" data-penna="button" data-size="small">${inner}</button>`;
+  };
+  const iconBtn = (glyph, label) => `<button class="penna-button" data-penna="icon-button.row" data-shape="icon" aria-label="${label}" title="${label}">${ic(glyph)}</button>`;
+  const link = (url) => `<div class="zz-link" data-penna="well">${ic("globe")}<span>${url}</span>${iconBtn("copy", "Copy link")}${iconBtn("external-link", "Open again")}</div>`;
+  const code = (text) => `<div class="zz-code" data-penna="well">${text}${iconBtn("copy", "Copy code")}</div>`;
+  const field = (value) => `<label class="penna-input zz-field" data-penna="field" data-state="focused"><span>${value}</span></label>`;
+
+  const CLAUDE_URL = "claude.ai/oauth/authorize?code=true&amp;client_id=9d1c25";
+  const OPENAI_URL = "auth.openai.com/codex/device";
+  const STEPS = {
+    local: { glyph: spin, title: "Sign in to Claude in your browser", body: link(CLAUDE_URL), actions: [btn("Use a code instead", "quiet", true), btn("Cancel")] },
+    claude: { glyph: spin, title: "Sign in to Claude", body: link(CLAUDE_URL) + field("aZ3kQ9vL2xR8mT4p#c1f7e2b9"), actions: [btn("Cancel", "quiet"), btn("Continue", "primary")] },
+    chatgpt: { glyph: spin, title: "Sign in to ChatGPT", body: link(OPENAI_URL) + code("7KQM-4XWD"), actions: [btn("Cancel")] },
+    failed: { glyph: ic("triangle-alert"), tone: "danger", title: "Couldn't sign in to ChatGPT", detail: "Device code sign-in is off for this account.", close: true, actions: [btn("Sign in in a terminal", "quiet", true, "square-terminal"), btn("Retry", "primary")] },
+    busy: { glyph: ic("clock"), title: "Added me@example.com", detail: "Switching now stops the running command.", close: true, actions: [btn("Switch when idle", "quiet"), btn("Switch now", "primary")] },
+  };
+  const login = (s, closeAll = false) => `<div class="zz-login"><div class="zz-login-head"><span class="zz-login-glyph"${s.tone ? ` data-tone="${s.tone}"` : ""}>${s.glyph}</span><div class="zz-login-text"><b>${s.title}</b>${s.detail ? `<span>${s.detail}</span>` : ""}</div>${s.close || closeAll ? iconBtn("xmark", s.close ? "Close" : "Cancel") : ""}</div>${s.body ?? ""}<div class="zz-actions">${s.actions.join("")}</div></div>`;
+
+  const TAKES = {
+    a: (s, agent, tx, busy) => win({ agent, tx, busy, overlay: `<div class="zz-scrim penna-dialog-layer" data-top><div class="penna-dialog" data-penna="dialog"><div class="penna-dialog-gutter">${login(s)}</div></div></div>` }),
+    b: (s, agent, tx, busy) => win({ agent, tx, busy, above: `<div class="zz-card-b" data-penna="chip.floating">${login({ ...s, actions: s.actions.filter((a) => !/>Cancel</.test(a)) }, true)}</div>` }),
+    c: (s, agent, tx, busy) => win({ agent, tx, busy, open: true, overlay: `<div class="zz-panel" data-penna="popover">${login(s)}</div>` }),
+  };
+
+  const SCENES = [
+    { id: "local", name: "1. Browser on this machine", where: "Desktop, local daemon. The sign-in page opened in the browser.", agent: CLAUDE, tx: TX.claude },
+    { id: "claude", name: "2. Claude, browser elsewhere", where: "Remote host, iPad, web. Open the page, paste the code it shows at the end.", agent: CLAUDE, tx: TX.claude },
+    { id: "chatgpt", name: "3. ChatGPT, browser elsewhere", where: "Codex chat. Open the page and type the code there.", agent: CODEX, tx: TX.codex },
+    { id: "failed", name: "4. Failed", where: "Device code sign-in is off for this ChatGPT account.", agent: CODEX, tx: TX.codex },
+    { id: "done", name: "5. Done", where: "The new account is picked in the pill.", agent: CLAUDE, tx: TX.claude },
+    { id: "busy", name: "5. Done, chat busy", where: "Added, not applied: a turn is running.", agent: CODEX, tx: TX.codexBusy, busy: true },
+  ];
+
+  const NOTES = {
+    a: { done: "The sheet closes and the pill's menu opens on the new account.", busy: "The sheet's last step asks before stopping the turn." },
+    b: { local: "The X cancels, as on the busy card.", done: "The card goes and the pill's menu opens on the new account.", busy: "The busy card as it is today, worded for the new account." },
+    c: { local: "Anchored to the pill. Clicking away closes the menu; the login keeps running and the menu opens on it again.", done: "The menu turns back into the account list with the new one picked.", busy: "The new row joins the list; the busy question sits under it." },
+  };
+
+  const cellFor = (take, scene) => {
+    if (scene.id === "done") return win({ agent: CLAUDE, tx: TX.claude, open: true, overlay: menu(CLAUDE, ACCOUNTS.claudeAdded, 1) });
+    if (scene.id === "busy" && take === "c") return win({ agent: CODEX, tx: TX.codexBusy, busy: true, open: true, overlay: menu(CODEX, ACCOUNTS.codexAdded, 0, `<div class="penna-separator"></div>${login(STEPS.busy)}`, 1).replace('<div class="zz-login">', '<div class="zz-login" style="padding: 4px 4px 2px">') });
+    return TAKES[take](STEPS[scene.id], scene.agent, scene.tx, scene.busy);
+  };
+
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  const pdots = `<span class="penna-dots"><span class="penna-dot" data-active></span><span class="penna-dot"></span><span class="penna-dot"></span></span>`;
+  const ppill = (agent, meta) => `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating"><span class="penna-pill-tile" data-penna="phone.pill.icon">${ic(agent.glyph)}</span><span class="penna-pill-copy"><span class="penna-pill-title">${agent.title}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">${meta}</span>${pdots}</span></span></button></div>`;
+  const pcomposer = (agent) => `<div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer" data-size="touch"><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Chat options">${ic("plus")}</button><span class="penna-chat-input" role="textbox" data-placeholder="${agent.hint}"></span><button class="penna-button" data-penna="button.send" data-shape="icon" disabled aria-label="Send">${ic("arrow-up")}</button></div></div>`;
+  const PTX = {
+    claude: [you("Move the tailnet client to the new auth flow and run its tests."), `<p>The flow lives in tailnet.rs. I'll swap the key exchange and keep the old path behind the fallback.</p>`, `<p>Done. The client uses the new flow and the 31 tailnet tests pass.</p>`].join(""),
+    codex: [you("Find out why the release DMG grew by 40 MB."), `<p>Comparing the last two bundles.</p>`, `<p>The CEF locales came back in. The strip list lost them in the last bundler change.</p>`].join(""),
+  };
+  const ppane = (agent, tx) => `<div class="zz-pane"><div class="zz-ptx">${tx}</div><div class="zz-dock">${pcomposer(agent)}</div>${ppill(agent, "zebrilus · main")}</div>`;
+  const disc = (glyph, side) => `<button class="penna-sheet-disc"${side ? ` data-side="${side}"` : ""} aria-label="${glyph}"><span class="penna-button" data-penna="button" data-size="touch">${ic(glyph)}</span></button>`;
+  const psheet = ({ title, back = true, waiting, body }) => `<div class="penna-sheet" style="--penna-sheet-rest: 8px"><div class="penna-sheet-scrim"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header">${back ? disc("chevron-left", "start") : ""}<span class="penna-sheet-title">${title}${waiting ? `<span class="zz-sheet-spin">${spin}</span>` : ""}</span>${disc("xmark")}</div>${body}</div></div></div>`;
+  const prow = ({ label, detail, glyph, value, check, chev, accent }) => `<div class="penna-touch-row" data-penna="phone.row" role="button"${detail ? ` data-lines="2"` : ""}${accent ? " data-accent" : ""}>${glyph ? ic(glyph) : ""}<span class="penna-touch-row-lines"><span>${label}</span>${detail ? `<span>${detail}</span>` : ""}</span>${value ? `<span class="penna-touch-row-value"><span>${value}</span></span>` : ""}${check ? `<span class="penna-touch-row-state">${ic("check")}</span>` : ""}${chev ? `<i class="zz-row-chev" data-icon="${chev}"></i>` : ""}</div>`;
+  const pgroup = (rows) => `<div class="penna-touch-group" data-penna="settings.card" data-ground data-ruled>${rows.map(prow).join("")}</div>`;
+  const pcard = (inner) => `<div class="penna-touch-group" data-penna="settings.card" data-ground>${inner}</div>`;
+  const pbtn = (label, primary) => primary
+    ? `<button class="penna-button" data-penna="button" data-size="touch-large" data-emphasis="solid" data-solid="primary"><span class="penna-label">${label}</span></button>`
+    : `<button class="penna-button" data-penna="button.quiet" data-size="touch-large"><span class="penna-label">${label}</span></button>`;
+  const pbar = (...buttons) => `<div class="penna-action-bar">${buttons.join("")}</div>`;
+  const pphone = (agent, tx, sheet) => `<div class="zz-crop"><div class="zz-phone">${status}${ppane(agent, tx)}${sheet}<span class="zz-home"></span></div></div>`;
+
+  const PHONE = {
+    local: {
+      note: "No browser on this machine on a phone. The entry points: Add account, and a signed-out row starts the same sign-in.",
+      html: pphone(CLAUDE, PTX.claude, psheet({ title: "Account", body: `<div class="zz-sgroups">${pgroup([
+        { label: "me@example.com", detail: "Max 20x", check: true },
+        { label: "old@example.com", detail: "Signed out", value: "Sign in" },
+        { label: "Add account", glyph: "plus" },
+      ])}</div>` })),
+    },
+    claude: {
+      note: "The whole row opens the page. Paste the code, Continue.",
+      html: pphone(CLAUDE, PTX.claude, psheet({ title: "Sign in to Claude", body: `<div class="zz-sgroups">${pgroup([{ label: "Open sign-in page", detail: "claude.ai", glyph: "globe", chev: "external-link" }])}<div class="zz-pfield"><label class="penna-input" data-penna="field" data-size="touch-large" data-state="focused"><span>aZ3kQ9vL2xR8mT4p#c1f7e2b9</span></label></div></div>${pbar(pbtn("Continue", true))}` })),
+    },
+    chatgpt: {
+      note: "The code tile copies on tap.",
+      html: pphone(CODEX, PTX.codex, psheet({ title: "Sign in to ChatGPT", waiting: true, body: `<div class="zz-sgroups">${pgroup([{ label: "Open sign-in page", detail: OPENAI_URL, glyph: "globe", chev: "external-link" }])}${pcard(`<div class="zz-pcode" role="button"><b>7KQM-4XWD</b>${ic("copy")}</div>`)}</div>` })),
+    },
+    failed: {
+      note: "",
+      html: pphone(CODEX, PTX.codex, psheet({ title: "Couldn't sign in", body: `<div class="zz-sgroups">${pcard(`<div class="zz-pline">${ic("triangle-alert")}<span>Device code sign-in is off for this account.</span></div>`)}</div>${pbar(pbtn("Retry", true), pbtn("Sign in in a terminal"))}` })),
+    },
+    done: {
+      note: "Back on the Account page with the new account checked.",
+      html: pphone(CLAUDE, PTX.claude, psheet({ title: "Account", body: `<div class="zz-sgroups">${pgroup([
+        { label: "me@example.com", detail: "Max 20x" },
+        { label: "work@acme.example", detail: "Team · Acme", check: true },
+        { label: "Add account", glyph: "plus" },
+      ])}</div>` })),
+    },
+    busy: {
+      note: "",
+      html: pphone(CODEX, PTX.codex, psheet({ title: "Added me@example.com", back: false, body: `<div class="zz-sgroups">${pcard(`<div class="zz-pline" style="color: var(--penna-muted)"><span>Switching now stops the running command.</span></div>`)}</div>${pbar(pbtn("Switch when idle", true), pbtn("Switch now"))}` })),
+    },
+  };
+
+  const COLS = [
+    ["a", "A. Sheet over the chat", "The kit's dialog, chat dimmed"],
+    ["b", "B. Card in the composer", "The busy card's look, above the field", true],
+    ["c", "C. The pill's menu", "The usage menu turns into the steps"],
+    ["phone", "Phone sheet", "B on iPhone: a page of the plus sheet"],
+  ].filter(([id]) => !only || only === id);
+
+  const board = document.querySelector("[data-board]");
+  board.style.setProperty("--zz-cols", COLS.length);
+  let html = `<div></div>${COLS.map(([id, name, say, pick]) => `<div class="zz-col-head" data-col="${id}"${pick ? " data-pick" : ""}><b>${name}</b><span>${say}</span></div>`).join("")}`;
+
+  const desktopCols = COLS.filter(([id]) => id !== "phone").length;
+  if (desktopCols > 1 || !only) {
+    html += `<div class="zz-state"><b>0. Start</b><span>Add account, or a signed-out row, in the pill's menu.</span></div>`;
+    html += `<div class="zz-cell" data-col="start" style="grid-column: 2 / span ${desktopCols}">${win({ agent: CLAUDE, tx: TX.claude, open: true, overlay: menu(CLAUDE, ACCOUNTS.claudeStart, 0, "", 1) })}</div>`;
+    if (COLS.some(([id]) => id === "phone")) html += `<div></div>`;
+  }
+
+  for (const scene of SCENES) {
+    html += `<div class="zz-state"><b>${scene.name}</b><span>${scene.where}</span></div>`;
+    for (const [id] of COLS) {
+      if (id === "phone") {
+        const p = PHONE[scene.id];
+        html += `<div class="zz-cell" data-col="phone">${p.html}${p.note ? `<p>${p.note}</p>` : ""}</div>`;
+      } else {
+        const note = NOTES[id]?.[scene.id];
+        html += `<div class="zz-cell" data-col="${id}">${cellFor(id, scene)}${note ? `<p>${note}</p>` : ""}</div>`;
+      }
+    }
+  }
+  board.innerHTML = html;
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>
