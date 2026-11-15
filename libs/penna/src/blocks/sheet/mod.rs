@@ -233,7 +233,16 @@ pub fn sheet_back(id: impl Into<ElementId>, cx: &App) -> Button {
 }
 
 fn disc_button(id: impl Into<ElementId>, icon: IconName, label: &'static str, cx: &App) -> Button {
-    let ground = sheet_ground(cx);
+    disc_on(id, icon, label, sheet_ground(cx), cx)
+}
+
+pub(crate) fn disc_on(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    label: &'static str,
+    ground: Ground,
+    cx: &App,
+) -> Button {
     let paint = cx.theme().paint_on(ground, Tone::Neutral, Emphasis::Soft);
     Button::new(id)
         .text()

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Add machine sheet</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/input/input.css">
+<link rel="stylesheet" href="/penna-src/components/field/field.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-row4 { display: grid; grid-template-columns: repeat(4, 424px); gap: 0 16px; align-items: start; }
+  .zz-cap { display: grid; gap: 2px; margin: 4px 10px 0; }
+  .zz-cap b { font-weight: 600; }
+  .zz-cap span { color: var(--penna-fg-muted); }
+  .zz-shot { display: grid; align-content: start; }
+  .zz-q { display: grid; gap: 4px; }
+  .zz-q + .zz-q { margin-top: 48px; }
+  .zz-nums { width: 100%; max-width: 1300px; border-collapse: collapse; }
+  .zz-nums th, .zz-nums td { padding: 9px 12px; text-align: left; vertical-align: top; box-shadow: inset 0 -1px 0 var(--penna-divider); }
+  .zz-nums th { color: var(--penna-fg-muted); font-weight: 500; }
+  .zz-nums td:first-child { width: 200px; font-weight: 600; }
+  .zz-nums td:last-child { width: 300px; color: var(--penna-fg-muted); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+
+  .zz-over { position: absolute; inset: 54px 0 0; display: flex; flex-direction: column; }
+  .zz-over > .penna-machine-grid { margin: 16px 16px 0; }
+  .zz-under { display: flex; flex-direction: column; gap: 4px; margin: 24px 16px 0; }
+  .zz-phone > .penna-sheet { z-index: 35; }
+  .zz-phone > .zz-kb { position: absolute; z-index: 36; right: 0; bottom: 0; left: 0; }
+  .zz-phone .penna-sheet-panel { padding-bottom: 20px; }
+  .zz-phone[data-kb] .penna-sheet-panel { padding-bottom: 8px; }
+
+  .zz-sgroups { display: flex; flex-direction: column; gap: 16px; padding: 0 8px; }
+  .zz-sgroups > * { flex: none; }
+  .zz-sgroups .penna-touch-header { padding-top: 0; }
+  .zz-addr { display: flex; flex-direction: column; gap: 8px; }
+  .zz-addr > .penna-input[data-penna] { --penna-r: calc(var(--penna-phone-radius) - 8px); }
+  .zz-addr > .penna-input > .zz-ph { color: var(--penna-fg-muted); }
+  .zz-addr > .penna-input > b { font-weight: inherit; }
+  .zz-caret { display: inline-block; width: 2px; height: 22px; margin-left: 1px; vertical-align: -5px; border-radius: 1px; background: var(--penna-accent); }
+  .zz-go { width: 100%; }
+  .zz-go[data-penna] { --penna-r: calc(var(--penna-phone-radius) - 8px); }
+  .penna-touch-row > [data-icon="plus"] { flex: none; color: var(--penna-accent-ink); --penna-icon-size: 20px; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro"><h1>Add machine as a sheet</h1></div>
+  <div data-board></div>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  const kb = () => {
+    const keys = (s) => [...s].map((k) => `<i>${k}</i>`).join("");
+    return `<div class="zz-kb"><div class="zz-kb-row">${keys("qwertyuiop")}</div><div class="zz-kb-row">${keys("asdfghjkl")}</div><div class="zz-kb-row"><i data-w>⇧</i>${keys("zxcvbnm")}<i data-w>⌫</i></div><div class="zz-kb-row"><i data-w>123</i><i data-space>space</i><i data-ret>return</i></div></div>`;
+  };
+  const tile = (name, state, foot, tone) => `<div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name">${tone ? `<span class="penna-tone-dot" data-tone="${tone}"></span>` : ""}<span>${name}</span></span><span class="penna-machine-state"${tone ? ` data-tone="${tone}"` : ""}>${state}</span><span class="penna-machine-foot">${foot.map((f) => `<span>${f}</span>`).join("")}</span></div>`;
+  const add = `<div class="penna-machine-tile" data-penna="phone.add" data-add role="button"><i data-icon="plus"></i>Add machine</div>`;
+  const bar = `<div class="zz-bar"><span class="zz-grow"></span><span class="penna-touch-disc" data-penna="floating"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Settings"><i data-icon="settings"></i></button></span></div>`;
+  const machines = (under = "") => `<div class="zz-over"><div class="penna-zoom-title">Machines</div><div class="penna-machine-grid">${tile("macbook", "1 waiting for you", ["3 chats", "2 working"], "warning")}${tile("Local socket", "Connected", ["2 sessions"])}${add}</div>${under}</div>${bar}`;
+
+  const row = ({ label, detail, glyph, plus, off }) => `<div class="penna-touch-row" data-penna="phone.row" role="button" data-lines="2"${off ? ` data-state="disabled" aria-disabled="true"` : ""}>${ic(glyph)}<span class="penna-touch-row-lines"><span>${label}</span><span>${detail}</span></span>${plus ? ic("plus") : ""}</div>`;
+  const group = (rows) => `<div class="penna-touch-group" data-penna="settings.card" data-ground data-ruled>${rows.map(row).join("")}</div>`;
+  const header = (text) => `<div class="penna-touch-header"><span>${text}</span></div>`;
+  const FOUND = [
+    { label: "alienware", detail: "Linux · runs zz", glyph: "hard-drive", plus: true },
+    { label: "xps", detail: "Linux · runs zz", glyph: "laptop", plus: true },
+    { label: "homelab", detail: "No zz on it yet", glyph: "hard-drive", off: true },
+  ];
+  const tailnet = `<div>${header("On your tailnet")}${group(FOUND)}</div>`;
+  const address = (typed) => `<div class="zz-addr">${header("Address")}<label class="penna-input" data-penna="field" data-size="touch"${typed != null ? ` data-state="focused"` : ""}>${typed != null ? `<b>${typed}</b><i class="zz-caret"></i>` : `<span class="zz-ph">user@host</span>`}</label></div>`;
+  const connect = (on) => `<button class="penna-button zz-go" data-penna="button" data-tone="primary" data-prominent data-size="touch-large"${on ? "" : " disabled aria-disabled=\"true\""}><span class="penna-label">Connect</span></button>`;
+
+  const disc = (glyph) => `<button class="penna-sheet-disc" aria-label="${glyph}"><span class="penna-button" data-penna="button" data-size="touch">${ic(glyph)}</span></button>`;
+  const sheet = (body, rest = "34px") => `<div class="penna-sheet" style="--penna-sheet-rest: ${rest}"><div class="penna-sheet-scrim"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header"><span class="penna-sheet-title">Add machine</span>${disc("xmark")}</div><div class="zz-sgroups">${body}</div></div></div></div>`;
+  const phone = (inner, attrs = "") => `<div class="zz-phone"${attrs}>${status}${inner}<span class="zz-home"></span></div>`;
+  const shot = (inner, title, note, attrs) => `<div class="zz-shot">${phone(inner, attrs)}<div class="zz-cap"><b>${title}</b><span>${note}</span></div></div>`;
+
+  const shots = [
+    shot(`${machines()}${sheet(`${tailnet}${address(null)}${connect(false)}`)}`, "On a tailnet", "Found machines first. A tap adds it and connects. The keyboard stays down until the field is tapped."),
+    shot(`${machines()}${sheet(`${tailnet}${address("fabrico@nas")}${connect(true)}`, "300px")}${kb()}`, "Typing an address", "The sheet rides the keyboard. Return or Connect adds it.", " data-kb"),
+    shot(`${machines()}${sheet(`${address("")}${connect(false)}`, "300px")}${kb()}`, "No tailnet", "Only the address, focused, keyboard up.", " data-kb"),
+    shot(machines(`<div class="zz-under">${header("On your tailnet")}${group(FOUND.slice(0, 2))}</div>`), "Also on Machines", "Optional: found machines listed under the grid too, no sheet needed. A tap adds and connects."),
+  ];
+
+  const NUMS = [
+    ["Sheet", "The kit's bottom sheet, title Add machine, close disc. Opens from the Add machine tile. Drag down or the disc closes it.", "bottom_sheet"],
+    ["On your tailnet", "Ruled group, 64 rows: system glyph, name, system and whether zz answers as detail, plus in accent. A machine without zz is off.", "TouchRow, FoundMachine"],
+    ["Address", "Header, then a 44 field, corner concentric with the sheet. Placeholder user@host.", "Input Size::Touch"],
+    ["Connect", "Full width, 56 tall, primary, off until something is typed.", "Button Size::TouchLarge"],
+    ["Discovery", "After connecting to any machine, the app asks its daemon for the tailnet's machines, not only over tailnet://, and probes each from the phone.", "ask_for_tailnet_hosts"],
+  ];
+
+  const html = `<section class="zz-q"><h2>Add machine</h2><div class="zz-row4">${shots.join("")}</div></section>`
+    + `<section class="zz-q"><h2>Numbers</h2><table class="zz-nums"><thead><tr><th>Part</th><th>What</th><th>Code</th></tr></thead><tbody>${NUMS.map(([a, b, c]) => `<tr><td>${a}</td><td>${b}</td><td>${c}</td></tr>`).join("")}</tbody></table></section>`;
+  document.querySelector("[data-board]").innerHTML = html;
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>

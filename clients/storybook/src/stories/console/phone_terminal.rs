@@ -6,8 +6,8 @@ use penna::{
     ActiveTheme as _, IconName, Tone,
     blocks::chat::phone_jump_button,
     blocks::compact::{
-        PillLabel, compact_floating_bar, compact_floating_pill, compact_pill_collapse,
-        compact_pill_label, mini_pill_width, over_pill, pill_bounds,
+        PillLabel, compact_floating_bar, compact_floating_pill, compact_pill_at,
+        compact_pill_label, over_pill, pill_bounds,
     },
     blocks::touch::{KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, PhoneFind, page_dots},
     components::input::InputState,
@@ -277,20 +277,18 @@ impl TerminalStates {
 }
 
 impl Render for TerminalStates {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let placement = placement();
         let width = px(PHONE_WIDTH);
-        let short = SharedString::from(TITLE);
-        let mini = mini_pill_width(&short, window, cx);
-        let bounds = pill_bounds(0.0, width, mini, &placement);
+        let bounds = pill_bounds(width, &placement);
         let jump_at = over_pill(bounds, px(penna::blocks::touch::TOUCH_TARGET));
-        let mini_label = compact_pill_label(
+        let back_label = compact_pill_label(
             label("", WHERE, Tone::Neutral),
             page_dots(&groups(), cx),
             &placement,
             cx,
         );
-        let mini_pill = div()
+        let back_pill = div()
             .absolute()
             .left_0()
             .right_0()
@@ -307,13 +305,10 @@ impl Render for TerminalStates {
                         cx.theme().ground(),
                     )),
             )
-            .child(compact_pill_collapse(
+            .child(compact_pill_at(
                 "term-back-pill",
-                mini_label,
-                short,
-                0.0,
+                back_label,
                 bounds,
-                width,
                 &placement,
                 cx,
             ))
@@ -411,7 +406,7 @@ impl Render for TerminalStates {
             .state("a tapped link: the link sheet", link_frame)
             .state(
                 "scrolled back: the mini pill and jump to bottom over it",
-                frame("term-back", &self.older, vec![mini_pill], cx),
+                frame("term-back", &self.older, vec![back_pill], cx),
             )
             .state(
                 "a failed command: Exit 1 in danger ink, then the folder",

@@ -39,6 +39,8 @@ impl AgentView {
             vendor: zz_client::window_summary::provider_program(self.pane_state.provider),
             ground: Some(self.pane_ground(cx)),
             touch: false,
+            inset_top: ala::px(0.0),
+            inset_bottom: ala::px(0.0),
         };
         chat_surface(self, look, window, cx)
     }

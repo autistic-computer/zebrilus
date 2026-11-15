@@ -206,6 +206,9 @@ impl RenderOnce for SegmentedControl {
                 let click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>> =
                     on_select.clone().map(|on_select| {
                         Rc::new(move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                            if index != selected {
+                                cx.haptic(ala::Haptic::Selection);
+                            }
                             on_select(index, window, cx);
                         }) as Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>
                     });

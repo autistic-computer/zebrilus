@@ -288,7 +288,7 @@ const PILL_GAP: f32 = 6.0;
 const METER_GAP: f32 = 12.0;
 const METER_LINE: f32 = 16.0;
 
-static TABULAR: LazyLock<FontFeatures> =
+pub(crate) static TABULAR: LazyLock<FontFeatures> =
     LazyLock::new(|| FontFeatures(Arc::new(vec![("tnum".into(), 1)])));
 
 pub struct UsagePill<'a> {
@@ -371,14 +371,14 @@ pub fn agent_usage_pill(
         .into_any_element()
 }
 
-struct UsageMeter {
-    label: &'static str,
-    detail: Option<String>,
-    fraction: f64,
-    warns: bool,
+pub(crate) struct UsageMeter {
+    pub(crate) label: &'static str,
+    pub(crate) detail: Option<String>,
+    pub(crate) fraction: f64,
+    pub(crate) warns: bool,
 }
 
-fn usage_meters(context: ContextUsage, quota: Option<QuotaWindows>) -> Vec<UsageMeter> {
+pub(crate) fn usage_meters(context: ContextUsage, quota: Option<QuotaWindows>) -> Vec<UsageMeter> {
     let window = |label, window: Option<QuotaWindow>| {
         window.map(|window| UsageMeter {
             label,

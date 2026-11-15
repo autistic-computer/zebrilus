@@ -10,7 +10,7 @@ mod tool_keys;
 pub use bento::{host_mark, window_mark};
 pub use browser::{FAILED_TOP, TabRow, failed_page, tabs_sheet};
 pub use faces::{
-    LEAD_FACE, PILL_GLYPH, TRAIL_FACE, attention_dot, lead_face, mark_dot, pill_face,
+    LEAD_FACE, PILL_GLYPH, TRAIL_FACE, attention_dot, lead_face, machine_face, mark_dot, pill_face,
     trailing_faces, trailing_split,
 };
 pub use machines::{FoundMachine, found_detail, found_machines, host_state};

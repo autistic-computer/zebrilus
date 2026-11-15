@@ -230,6 +230,15 @@ pub fn compact_bar_button(id: impl Into<ElementId>, icon: IconName) -> Button {
         .child(Icon::new(icon).size(rems_from_px(BUTTON_ICON)))
 }
 
+pub fn compact_disc_button(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    label: &'static str,
+    cx: &App,
+) -> Button {
+    crate::blocks::sheet::disc_on(id, icon, label, cx.theme().ground(), cx)
+}
+
 pub const PILL_TILE: f32 = COMPACT_PILL_HEIGHT - 2.0 * TILE_INSET.design_px();
 
 fn pill_tile_corner(pill: Pixels, backing: Pixels, cx: &App) -> Pixels {

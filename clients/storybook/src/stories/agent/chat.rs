@@ -456,6 +456,8 @@ impl Render for Thread {
                     vendor: self.vendor,
                     ground: None,
                     touch: self.touch,
+                    inset_top: px(0.0),
+                    inset_bottom: px(0.0),
                 };
                 fill.map(|fill| match height {
                     Some(height) => fill.h(px(height)),

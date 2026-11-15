@@ -1,6 +1,8 @@
+use std::rc::Rc;
+
 use ala::{
-    AnyElement, App, Context, Entity, IntoElement, Pixels, SharedString, Window, div, prelude::*,
-    px,
+    AnyElement, App, Context, Entity, IntoElement, Pixels, SharedString, Window, canvas, div,
+    prelude::*, px,
 };
 use penna::{
     ActiveTheme as _, Disableable as _,
@@ -8,7 +10,8 @@ use penna::{
         ComposerAction as Action, PhoneComposer, composer_ground, phone_action_button,
         phone_close_button, phone_plus_button, phone_queued_row, phone_thumbnail,
     },
-    blocks::sheet::{PageTurn, close_sheet, floating_sheet},
+    blocks::compact::edge_blur,
+    blocks::sheet::{PageTurn, bottom_sheet, close_sheet, floating_sheet, sheet_close},
     blocks::touch::PhoneEmpty,
     components::input::InputState,
 };
@@ -19,7 +22,7 @@ use zz_client::agent_resume::{Menu, Resume, folder_name};
 use zz_client::agent_settings;
 use zz_client::agent_timeline::unix_now;
 use zz_client::window_summary::{PaneTile, summarize_window};
-use zz_protocol::{AgentPaneWire, AgentSessionOpKind, ProtocolMessage};
+use zz_protocol::{AgentPaneWire, AgentSessionOpKind, ProtocolMessage, ViewDescriptor};
 use zz_ui::agent::{
     ask::{AskChoice, approval_subject},
     chat::{HeldMessage, shows_chat},
@@ -33,17 +36,24 @@ use zz_ui::agent::{
 use zz_ui::target::{TargetItem, TargetPicker};
 
 use super::{AgentPane, preview_image};
+use crate::app::view_pane::ViewPane;
 use crate::connection::Connection;
+use zz_ui::agent::preview::ViewRequest;
 
 pub(super) const SEARCH: &str = "Search";
 const DOCK_INSET: f32 = 16.0;
 const DOCK_GAP: f32 = 8.0;
+const VIEW_SHEET_TOP: f32 = 8.0;
+const VIEW_SHEET_BOTTOM: f32 = 16.0;
+const BOTTOM_FADE: f32 = 32.0;
 const EMPTY_TOP: f32 = 96.0;
 const START_GAP: f32 = 24.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(in super::super) struct PhoneDock {
     pub bottom: Pixels,
+    pub top: Pixels,
+    pub reserve: Pixels,
     pub keyboard: bool,
     pub veil: f32,
 }
@@ -53,6 +63,7 @@ pub(super) enum ChatSheet {
     Plus(PlusPage),
     Hold(HeldMessage),
     Resume(Menu),
+    View(String),
 }
 
 pub(super) struct PlusTurn {
@@ -280,6 +291,7 @@ impl AgentPane {
         if let Some(op) = self.resume.pick(row, &cwd) {
             self.send_session_op(op, cx);
         }
+        cx.haptic(ala::Haptic::Selection);
         close_sheet(CHAT_SHEET, cx);
     }
 
@@ -330,6 +342,7 @@ impl AgentPane {
                 _ => Some(PlusPage::Root),
             },
             PlusAction::Set(option, value) => {
+                cx.haptic(ala::Haptic::Selection);
                 let connection = self.connection.read(cx);
                 if connection.connected && !connection.core.attached_read_only() {
                     let pane = self.pane;
@@ -368,6 +381,7 @@ impl AgentPane {
                 None
             }
             PlusAction::Mention(item) => {
+                cx.haptic(ala::Haptic::Selection);
                 self.mention
                     .update(cx, |picker, cx| picker.accept_item(Some(item), window, cx));
                 close_sheet(CHAT_SHEET, cx);
@@ -400,6 +414,33 @@ impl AgentPane {
         cx.notify();
     }
 
+    pub(super) fn open_view_sheet(
+        &mut self,
+        request: ViewRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let descriptor = ViewDescriptor {
+            origin: Some(self.pane),
+            title: request.title.clone(),
+            content: request.content,
+        };
+        let pane = self.pane;
+        let connection = self.connection.clone();
+        let origin = cx.entity();
+        let vendor = self
+            .provider(cx)
+            .and_then(zz_client::window_summary::provider_program);
+        let view = cx.new(|cx| {
+            let mut view = ViewPane::new(pane, &descriptor, connection, cx)
+                .closing_with(|cx| close_sheet(CHAT_SHEET, cx));
+            view.synchronize(&descriptor, vendor, Some(origin), cx);
+            view
+        });
+        self.view_sheet = Some(view);
+        self.open_sheet(ChatSheet::View(request.title), window, cx);
+    }
+
     fn sheet_closed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.turn = None;
         match self.sheet {
@@ -409,6 +450,9 @@ impl AgentPane {
             }
             Some(ChatSheet::Resume(_)) => {
                 self.resume.close();
+            }
+            Some(ChatSheet::View(_)) => {
+                self.view_sheet = None;
             }
             _ => {}
         }
@@ -432,6 +476,24 @@ impl AgentPane {
             let _ = dismiss.update(cx, |this, cx| this.sheet_closed(window, cx));
         };
         let sheet = match sheet {
+            ChatSheet::View(title) => {
+                let view = self.view_sheet.clone()?;
+                let scroll = view.read(cx).scroll();
+                let close = sheet_close("phone-view-close", cx)
+                    .on_click(|_, _, cx| close_sheet(CHAT_SHEET, cx))
+                    .into_any_element();
+                let body = div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .pb(px(VIEW_SHEET_BOTTOM))
+                    .overflow_hidden()
+                    .child(view);
+                bottom_sheet(CHAT_SHEET, title, [close], body, dock.bottom, on_dismiss)
+                    .content_scroll(scroll)
+                    .full(dock.top + px(VIEW_SHEET_TOP))
+            }
             ChatSheet::Resume(menu) => {
                 let cwd = self.cwd(cx);
                 let rows = self
@@ -587,6 +649,15 @@ impl AgentPane {
     }
 
     #[allow(clippy::too_many_lines)]
+    pub(super) fn chat_insets(&self) -> (Pixels, Pixels) {
+        self.phone.map_or((px(0.0), px(0.0)), |dock| {
+            (
+                dock.top,
+                dock.reserve + self.dock_height.get() + px(DOCK_GAP),
+            )
+        })
+    }
+
     pub(super) fn render_phone(
         &mut self,
         state: &AgentPaneWire,
@@ -599,6 +670,8 @@ impl AgentPane {
     ) -> AnyElement {
         let dock = self.phone.unwrap_or(PhoneDock {
             bottom: px(0.0),
+            top: px(0.0),
+            reserve: px(0.0),
             keyboard: false,
             veil: 0.0,
         });
@@ -652,12 +725,14 @@ impl AgentPane {
         } else {
             Some(self.phone_composer(other, state, ready, running, writable, inside, window, cx))
         };
+        let measured = Rc::clone(&self.dock_height);
         let dock_element = div()
-            .relative()
+            .absolute()
+            .left_0()
+            .right_0()
+            .bottom(dock.reserve)
             .flex()
             .flex_col()
-            .flex_none()
-            .w_full()
             .gap(px(DOCK_GAP))
             .px(px(DOCK_INSET))
             .pb(px(if dock.keyboard { DOCK_GAP } else { 0.0 }))
@@ -667,7 +742,20 @@ impl AgentPane {
                 1.0 - dock.veil.clamp(0.0, 1.0)
             })
             .children(prefix)
-            .children(bottom);
+            .children(bottom)
+            .child(
+                canvas(
+                    move |bounds, window, _| {
+                        if (measured.get() - bounds.size.height).abs() > px(0.5) {
+                            measured.set(bounds.size.height);
+                            window.refresh();
+                        }
+                    },
+                    |_, (), _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            );
         let use_chat = shows_chat(&self.transcript.lens.chat);
         let chat = use_chat.then(|| self.render_chat(window, cx));
         let provider = self.provider(cx);
@@ -696,7 +784,7 @@ impl AgentPane {
         let empty = empty.map(|(empty, _)| {
             div()
                 .w_full()
-                .pt(px(EMPTY_TOP))
+                .pt(dock.top + px(EMPTY_TOP))
                 .child(empty)
                 .when(start, |column| {
                     column.child(div().w_full().px(px(DOCK_INSET)).pt(px(START_GAP)).child(
@@ -707,23 +795,28 @@ impl AgentPane {
                 })
         });
         let sheet = self.phone_sheet(dock, window, cx);
+        let fade = use_chat.then(|| {
+            edge_blur(
+                penna::Edge::Bottom,
+                dock.reserve + self.dock_height.get() + px(BOTTOM_FADE),
+                cx.theme().background,
+            )
+        });
         div()
             .relative()
-            .flex()
-            .flex_col()
             .size_full()
             .overflow_hidden()
             .text_color(cx.theme().foreground)
             .child(
                 div()
                     .id("web-agent-timeline")
-                    .relative()
-                    .flex_1()
-                    .min_h_0()
+                    .absolute()
+                    .inset_0()
                     .overflow_hidden()
                     .children(empty)
                     .children(chat),
             )
+            .children(fade)
             .child(dock_element)
             .children(sheet)
             .capture_action(cx.listener(Self::complete))

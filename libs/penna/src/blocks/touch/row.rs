@@ -502,10 +502,9 @@ impl RenderOnce for TouchGroup {
             inset: px(GROUP_INSET.design_px()),
         };
         if self.ruled {
-            let card = card.on(theme.content_ground());
-            let layer = theme.layer(card, PaintState::Rest);
+            let layer = theme.layer(ruled_card(cx), PaintState::Rest);
             let ground = layer.ground;
-            let corner = (outer - px(Space::S8.design_px())).max(px(0.0));
+            let corner = ruled_corner(cx);
             let last = self.rows.len().saturating_sub(1);
             return v_flex()
                 .w_full()
@@ -528,6 +527,28 @@ impl RenderOnce for TouchGroup {
             .refine_style(&self.style)
             .children(self.rows.into_iter().map(|row| row.nested(nest, ground)))
     }
+}
+
+fn ruled_card(cx: &App) -> Surface {
+    Surface::new(roles::SETTINGS_CARD).on(cx.theme().content_ground())
+}
+
+fn ruled_corner(cx: &App) -> Pixels {
+    (cx.theme().phone_radius() - px(Space::S8.design_px())).max(px(0.0))
+}
+
+#[must_use]
+pub fn touch_card(cx: &App) -> Div {
+    v_flex()
+        .w_full()
+        .layer(&cx.theme().layer(ruled_card(cx), PaintState::Rest))
+        .rounded(ruled_corner(cx))
+        .p(RULED_INSET)
+}
+
+#[must_use]
+pub fn touch_card_ground(cx: &App) -> Ground {
+    cx.theme().ground_of(ruled_card(cx))
 }
 
 #[derive(IntoElement)]

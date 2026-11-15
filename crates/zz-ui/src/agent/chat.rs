@@ -9,11 +9,11 @@ use std::{
 
 use ala::{
     AnyElement, App, ClipboardItem, Context, Div, FollowMode, Global, Image, ImageFormat,
-    IntoElement, ListAlignment, ListSizingBehavior, ListState, ScrollHandle, SharedString,
+    IntoElement, ListAlignment, ListSizingBehavior, ListState, Pixels, ScrollHandle, SharedString,
     Stateful, Subscription, Window, div, list, prelude::*, px, relative,
 };
 use penna::{
-    Card, CardLook, Label, Sizable as _, TextStyle,
+    Card, CardLook, Label, Sizable as _, Space, TextStyle,
     components::{
         button::{ButtonLook, ButtonVariants as _},
         scroll::{ScrollableElement as _, Scrollbar},
@@ -703,6 +703,8 @@ pub struct ChatLook {
     pub vendor: Option<&'static Program>,
     pub ground: Option<penna::Ground>,
     pub touch: bool,
+    pub inset_top: Pixels,
+    pub inset_bottom: Pixels,
 }
 
 pub fn chat_surface<T: ChatHost>(
@@ -815,8 +817,12 @@ pub fn chat_surface<T: ChatHost>(
     })
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .size_full()
-    .pt_3()
-    .pb(px(if touch { 0.0 } else { COMPOSER_OUTER_PADDING }));
+    .pt(look.inset_top + Space::S12.rems().to_pixels(window.rem_size()))
+    .pb(if touch {
+        look.inset_bottom
+    } else {
+        px(COMPOSER_OUTER_PADDING)
+    });
     let jump = {
         let entity = entity.clone();
         move |_: &ala::ClickEvent, _: &mut Window, cx: &mut App| {
@@ -837,10 +843,14 @@ pub fn chat_surface<T: ChatHost>(
         .child(
             div()
                 .absolute()
-                .top_0()
+                .top(look.inset_top)
                 .left_0()
                 .right_0()
-                .bottom(px(COMPOSER_OUTER_PADDING))
+                .bottom(if touch {
+                    look.inset_bottom
+                } else {
+                    px(COMPOSER_OUTER_PADDING)
+                })
                 .child(Scrollbar::vertical(&list_state)),
         )
         .when(show_jump, |column| {
@@ -858,11 +868,11 @@ pub fn chat_surface<T: ChatHost>(
                     .absolute()
                     .left_0()
                     .right_0()
-                    .bottom(px(if touch {
-                        JUMP_GAP
+                    .bottom(if touch {
+                        look.inset_bottom + px(JUMP_GAP)
                     } else {
-                        2.0 * COMPOSER_OUTER_PADDING
-                    }))
+                        px(2.0 * COMPOSER_OUTER_PADDING)
+                    })
                     .flex()
                     .justify_center()
                     .child(button.on_click(jump)),

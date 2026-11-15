@@ -9,9 +9,9 @@ use penna::{
     ActiveTheme as _, Colorize as _, IconName, Sizable as _, Space,
     blocks::compact::{
         BENTO_INSET, BentoSpan, COMPACT_TITLE_BAR_HEIGHT, MiniPane, PhoneTile, PillLabel,
-        PillPlacement, TopRowEnd, bento_grid, compact_bar_button, compact_floating_bar,
-        compact_floating_group, compact_floating_pill, folding_title_bar, scrolled, top_row_button,
-        window_span, zoom_card_ground,
+        PillPlacement, TopRowEnd, bento_grid, compact_disc_button, compact_floating_bar,
+        compact_floating_pill, folding_title_bar, scrolled, top_row_button, window_span,
+        zoom_card_ground,
     },
     blocks::settings::large_title,
     blocks::touch::StatusMark,
@@ -22,10 +22,7 @@ use penna::{
     components::button::{Button, ButtonVariants as _},
 };
 #[cfg(any(target_os = "ios", target_os = "android"))]
-use penna::{
-    Disableable as _, blocks::compact::ZoomCard, blocks::sheet::close_sheet,
-    blocks::touch::TouchRow, components::field::Field, components::input::Input,
-};
+use penna::{blocks::compact::ZoomCard, blocks::sheet::close_sheet, blocks::touch::TouchRow};
 use web_time::Instant;
 use zz_client::{
     AgentAttentionStatus, StatusBarModel, StatusBarWindow, agent_attention_status,
@@ -40,8 +37,8 @@ use zz_ui::compact::found_machines;
 use zz_ui::{
     compact::{
         HostState, MachineMenu, close_many_detail, close_pane_detail, host_mark, host_state,
-        lead_face, mark_dot, overview_count, session_in_view, session_tail, trailing_faces,
-        window_mark,
+        lead_face, machine_face, mark_dot, overview_count, session_in_view, session_tail,
+        trailing_faces, window_mark,
     },
     terminal::terminal_background,
 };
@@ -387,14 +384,8 @@ impl AppShell {
                     .child(self.host_bar(&hosts, index, placement, cx)),
             );
         }
-        if progress > 0.0 {
-            bars = bars.child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .opacity(progress)
-                    .child(self.hosts_bar(placement, cx)),
-            );
+        if progress >= 1.0 && !moving && !dragging {
+            bars = div().id("overview-bars");
         }
         if moving && !dragging {
             bars = bars.child(
@@ -442,6 +433,7 @@ impl AppShell {
             window.request_animation_frame();
         }
         if let Some(PagerEvent::Commit { index }) = self.compact.host_pager.take_event() {
+            cx.haptic(ala::Haptic::Selection);
             cx.defer_in(window, move |this, window, cx| {
                 this.show_host(index, window, cx);
             });
@@ -569,6 +561,10 @@ impl AppShell {
         let add = Some((BentoSpan::new(2, 2), self.add_tile(cx)));
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let add: Option<(BentoSpan, AnyElement)> = None;
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let found = self.found_list(cx);
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        let found: Option<AnyElement> = None;
         let tiles: Vec<(BentoSpan, AnyElement)> = hosts
             .iter()
             .enumerate()
@@ -588,7 +584,7 @@ impl AppShell {
                     .overflow_y_scroll()
                     .restrict_scroll_to_axis()
                     .track_scroll(&scroll)
-                    .pt(top_inset)
+                    .pt(top_inset + px(COMPACT_TITLE_BAR_HEIGHT))
                     .pb(placement.zone() + px(16.0))
                     .child(large_title("Machines", cx))
                     .child(
@@ -596,7 +592,8 @@ impl AppShell {
                             .px(px(BENTO_INSET))
                             .pt(px(16.0))
                             .child(bento_grid(grid, tiles)),
-                    ),
+                    )
+                    .children(found),
             )
             .child(folding_title_bar(
                 "Machines",
@@ -604,27 +601,67 @@ impl AppShell {
                 top_inset,
                 cx,
             ))
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right_0()
+                    .h(top_inset + px(COMPACT_TITLE_BAR_HEIGHT))
+                    .child(top_row_button(
+                        TopRowEnd::End,
+                        px(BENTO_INSET),
+                        compact_disc_button("hosts-settings", IconName::Settings, "Settings", cx)
+                            .on_click(cx.listener(|this, _, _, cx| this.open_settings(cx))),
+                    )),
+            )
             .into_any_element()
     }
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fn add_tile(&self, cx: &mut Context<Self>) -> AnyElement {
-        let bounds = Rc::clone(&self.compact.add_tile);
         PhoneTile::add("hosts-add", "Add machine")
-            .child(
-                canvas(
-                    move |tile, _, _| {
-                        bounds.borrow_mut().replace(tile);
-                    },
-                    |_, (), _, _| {},
-                )
-                .absolute()
-                .inset_0(),
-            )
-            .on_click(cx.listener(|this, _, window, cx| {
-                this.open_machine_card(MachineCard::Add, window, cx);
-            }))
+            .on_click(cx.listener(|this, _, window, cx| this.open_add_machine(window, cx)))
             .into_any_element()
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn open_add_machine(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.compact.held = None;
+        self.hosts.error = None;
+        self.hosts.sheet = Some(super::super::hosts::HostSheet::Add);
+        if self.found_machines(cx).is_empty() {
+            let input = self.hosts.destination.clone();
+            cx.on_next_frame(window, move |_, window, cx| {
+                input.update(cx, |input, cx| input.focus(window, cx));
+                window.request_virtual_keyboard();
+            });
+        }
+        cx.notify();
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn found_list(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let found = self.found_machines(cx);
+        let machines: Vec<_> = found.iter().map(|host| host.machine.clone()).collect();
+        let endpoints: Vec<String> = found.into_iter().map(|host| host.endpoint).collect();
+        let view = cx.entity().downgrade();
+        let list = found_machines(&machines, move |index, window, cx| {
+            let Some(endpoint) = endpoints.get(index).cloned() else {
+                return;
+            };
+            let _ = view.update(cx, |this, cx| {
+                this.hosts.saved.add(&endpoint);
+                this.connect_host(endpoint, window, cx);
+            });
+        })?;
+        Some(
+            div()
+                .px(px(BENTO_INSET))
+                .pt(Space::S24)
+                .child(list)
+                .into_any_element(),
+        )
     }
 
     fn host_bento_tile(&self, index: usize, host: &HostPage, cx: &mut Context<Self>) -> AnyElement {
@@ -633,13 +670,15 @@ impl AppShell {
             (HostState::Connected, Some(connection)) => Some(host_counts(connection, cx)),
             _ => None,
         };
-        let (mark, word) = host_mark(state, counts.as_ref().map_or(0, |counts| counts.waiting));
+        let waiting = counts.as_ref().map_or(0, |counts| counts.waiting);
+        let (mark, word) = host_mark(state, waiting);
         let foot: Vec<String> = match (state, counts) {
-            (HostState::Connected, Some(counts)) => {
+            (HostState::Connected, Some(counts)) => vec![
                 std::iter::once(overview_count(counts.sessions, "session"))
                     .chain((counts.working > 0).then(|| format!("{} working", counts.working)))
-                    .collect()
-            }
+                    .collect::<Vec<_>>()
+                    .join(" · "),
+            ],
             (HostState::Connecting, _) => host.location().into_iter().collect(),
             (HostState::Failed, _) => vec![host.status(cx)],
             _ => Vec::new(),
@@ -652,13 +691,30 @@ impl AppShell {
         let enterable = attached || state == HostState::Connected;
         let endpoint = host.endpoint.clone();
         let held = host.endpoint.clone();
+        let platform = host
+            .connection
+            .as_ref()
+            .map_or(zz_protocol::HostPlatform::Unknown, |connection| {
+                connection.read(cx).core.host_platform()
+            });
+        let spinning = mark == StatusMark::Spinner;
+        let face = machine_face(
+            platform,
+            mark_dot((!spinning).then_some(mark), cx),
+            zoom_card_ground(cx),
+        );
+        let minis = match (state, &host.connection) {
+            (HostState::Connected, Some(connection)) => self.machine_minis(connection, cx),
+            _ => Vec::new(),
+        };
+        let quiet = state == HostState::Connected && waiting == 0;
+        let tile = PhoneTile::new(("hosts-tile", index), host.title.clone())
+            .mark(spinning.then_some(mark))
+            .lead(face)
+            .panes(minis);
+        let tile = if quiet { tile } else { tile.state(word) };
         foot.into_iter()
-            .fold(
-                PhoneTile::new(("hosts-tile", index), host.title.clone())
-                    .mark(mark)
-                    .state(word),
-                PhoneTile::foot,
-            )
+            .fold(tile, PhoneTile::foot)
             .child(
                 canvas(
                     move |bounds, _, _| {
@@ -705,17 +761,6 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        #[cfg(any(target_os = "ios", target_os = "android"))]
-        if card == MachineCard::Add {
-            self.hosts.error = None;
-            if self.found_machines(cx).is_empty() {
-                cx.on_next_frame(window, |this, window, cx| {
-                    this.hosts
-                        .destination
-                        .update(cx, |input, cx| input.focus(window, cx));
-                });
-            }
-        }
         let _ = window;
         self.compact.held = None;
         self.compact.card = Some(card);
@@ -742,9 +787,7 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let MachineCard::Connecting(endpoint) = card else {
-            return false;
-        };
+        let MachineCard::Connecting(endpoint) = card;
         let hosts = self.host_pages(cx);
         let Some((index, host)) = hosts
             .iter()
@@ -780,7 +823,6 @@ impl AppShell {
 
     fn card_tile(&self, card: &MachineCard, cx: &App) -> Option<Bounds<Pixels>> {
         match card {
-            MachineCard::Add => *self.compact.add_tile.borrow(),
             MachineCard::Connecting(endpoint) => {
                 let index = self
                     .host_pages(cx)
@@ -813,7 +855,7 @@ impl AppShell {
     }
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
-    fn found_machines(&self, cx: &App) -> Vec<crate::connection::FoundHost> {
+    pub(in super::super) fn found_machines(&self, cx: &App) -> Vec<crate::connection::FoundHost> {
         let saved = self.hosts.saved.endpoints();
         let open: Vec<String> = self
             .host_connections()
@@ -841,59 +883,6 @@ impl AppShell {
         let ground = zoom_card_ground(cx);
         let close = cx.listener(|this, _, window, cx| this.close_machine_card(window, cx));
         match card {
-            MachineCard::Add => {
-                let found = self.found_machines(cx);
-                let rows: Vec<_> = found.iter().map(|host| host.machine.clone()).collect();
-                let endpoints: Vec<String> = found.into_iter().map(|host| host.endpoint).collect();
-                let view = cx.entity().downgrade();
-                let rows = found_machines(&rows, move |index, window, cx| {
-                    let Some(endpoint) = endpoints.get(index).cloned() else {
-                        return;
-                    };
-                    let _ = view.update(cx, |this, cx| {
-                        this.hosts.saved.add(&endpoint);
-                        this.connect_host(endpoint, window, cx);
-                        this.close_machine_card(window, cx);
-                    });
-                });
-                let label = if rows.is_some() {
-                    "Or an address"
-                } else {
-                    "Address"
-                };
-                let empty = self.hosts.destination.read(cx).value().trim().is_empty();
-                ZoomCard::new("add-machine-card", "Add machine")
-                    .top_inset(top_inset)
-                    .bottom_inset(bottom)
-                    .on_close(close)
-                    .children(rows)
-                    .child(
-                        Field::new()
-                            .with_size(penna::Size::TouchLarge)
-                            .label(label)
-                            .when_some(self.hosts.error.clone(), Field::error)
-                            .child(
-                                Input::new(&self.hosts.destination)
-                                    .with_size(penna::Size::TouchLarge)
-                                    .on(ground),
-                            ),
-                    )
-                    .action(
-                        Button::new("add-machine-connect")
-                            .primary()
-                            .label("Connect")
-                            .with_size(penna::Size::TouchLarge)
-                            .w_full()
-                            .on(ground)
-                            .disabled(empty)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                if this.add_host(window, cx) {
-                                    this.close_machine_card(window, cx);
-                                }
-                            })),
-                    )
-                    .into_any_element()
-            }
             MachineCard::Connecting(endpoint) => {
                 let target = endpoint.clone();
                 ZoomCard::new("connecting-card", host_title(endpoint))
@@ -985,14 +974,6 @@ impl AppShell {
         cx.notify();
     }
 
-    fn hosts_bar(&self, placement: &PillPlacement, cx: &mut Context<Self>) -> AnyElement {
-        let settings = compact_bar_button("hosts-settings", IconName::Settings)
-            .on_click(cx.listener(|this, _, _, cx| this.open_settings(cx)));
-        compact_floating_bar(div().flex_1(), placement, cx)
-            .child(compact_floating_group([settings], placement, cx))
-            .into_any_element()
-    }
-
     fn host_bar(
         &self,
         hosts: &[HostPage],
@@ -1069,6 +1050,7 @@ impl AppShell {
         }
         if response.event.is_some() {
             window.end_touch_momentum();
+            cx.haptic(ala::Haptic::Light);
         }
         cx.notify();
     }
@@ -1097,6 +1079,7 @@ impl AppShell {
             window.end_touch_momentum();
         }
         if let Some(PagerEvent::Commit { index }) = response.event {
+            cx.haptic(ala::Haptic::Selection);
             self.show_host(index, window, cx);
         }
         cx.notify();
@@ -1163,11 +1146,11 @@ impl AppShell {
                 frame.top,
                 cx,
             ))
-            .child(self.machine_close(page, frame, cx))
+            .child(self.machine_back(page, frame, cx))
             .into_any_element()
     }
 
-    fn machine_close(&self, page: usize, frame: &PageFrame, cx: &mut Context<Self>) -> AnyElement {
+    fn machine_back(&self, page: usize, frame: &PageFrame, cx: &mut Context<Self>) -> AnyElement {
         div()
             .absolute()
             .top_0()
@@ -1175,11 +1158,15 @@ impl AppShell {
             .right_0()
             .h(frame.line)
             .child(top_row_button(
-                TopRowEnd::End,
+                TopRowEnd::Start,
                 px(BENTO_INSET),
-                compact_bar_button(("machine-close", page), IconName::Xmark)
-                    .tooltip("Close")
-                    .on_click(cx.listener(|this, _, _, cx| this.open_hosts(cx))),
+                compact_disc_button(
+                    ("machine-back", page),
+                    IconName::ChevronLeft,
+                    "Machines",
+                    cx,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.open_hosts(cx))),
             ))
             .into_any_element()
     }
@@ -1444,6 +1431,51 @@ impl AppShell {
         .into_any_element()
     }
 
+    fn machine_minis(
+        &self,
+        connection: &Entity<Connection>,
+        cx: &App,
+    ) -> Vec<([f32; 4], MiniPane)> {
+        let (model, rects) = {
+            let core = &connection.read(cx).core;
+            let snapshot = core.snapshot();
+            let attached = core.attached_session();
+            let Some(session) = snapshot
+                .sessions
+                .iter()
+                .find(|session| Some(session.id) == attached)
+                .or_else(|| snapshot.sessions.first())
+            else {
+                return Vec::new();
+            };
+            let Some(window) = session
+                .windows
+                .iter()
+                .find(|window| window.id == session.active_window)
+                .or_else(|| session.windows.first())
+            else {
+                return Vec::new();
+            };
+            let rects: Vec<(PaneId, [f32; 4])> = pane_rects(&window.layout)
+                .into_iter()
+                .map(|(pane, rect)| (pane, [rect.x, rect.y, rect.width, rect.height]))
+                .collect();
+            (
+                StatusBarModel::from_snapshot(snapshot, Some(session.id)),
+                rects,
+            )
+        };
+        let here = *connection == self.connection;
+        let (pages, _) = pages(&model, &self.unseen_agents);
+        rects
+            .into_iter()
+            .filter_map(|(pane, rect)| {
+                let page = pages.iter().find(|page| page.pane == pane)?;
+                Some((rect, self.mini_preview(page, connection, here, cx)))
+            })
+            .collect()
+    }
+
     fn mini_preview(
         &self,
         page: &Page,
@@ -1455,7 +1487,7 @@ impl AppShell {
         let core = &connection.read(cx).core;
         match &page.kind {
             PaneKindSnapshot::Terminal => core.viewport(page.pane).map_or_else(
-                || MiniPane::blank(id),
+                || MiniPane::terminal(id, format!("$ {}", page.title)),
                 |viewport| {
                     MiniPane::terminal(
                         id,
@@ -1545,7 +1577,7 @@ impl AppShell {
             .child(
                 action_bar(frame.bottom).child(action.with_size(penna::Size::TouchLarge).w_full()),
             )
-            .child(self.machine_close(page, frame, cx))
+            .child(self.machine_back(page, frame, cx))
             .into_any_element()
     }
 
@@ -1766,7 +1798,6 @@ struct WindowShape {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
 pub(super) enum MachineCard {
-    Add,
     Connecting(String),
 }
 

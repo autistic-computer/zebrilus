@@ -79,7 +79,6 @@ pub(super) struct BrowserPane {
     header_drag_handler: Option<Rc<dyn Fn(&PaneDrag, &mut Window, &mut App)>>,
     float_rows_handler: Option<Rc<dyn Fn(&App) -> Option<u16>>>,
     header_touch_drag_handler: Option<Rc<dyn Fn(&ala::TouchDragEvent, &mut Window, &mut App)>>,
-    page_scroll_handler: Option<Rc<dyn Fn(f32, bool, &mut Window, &mut App)>>,
     notice_handler: Option<Rc<dyn Fn(&'static str, PillNotice, &mut Window, &mut App)>>,
     _subscriptions: Vec<Subscription>,
     _backdrop_tick: ala::Task<()>,
@@ -185,7 +184,6 @@ impl BrowserPane {
             header_drag_handler: None,
             float_rows_handler: None,
             header_touch_drag_handler: None,
-            page_scroll_handler: None,
             notice_handler: None,
             _subscriptions: vec![submit, commands],
             _backdrop_tick: cx.spawn(async move |this, cx| {
@@ -233,13 +231,6 @@ impl BrowserPane {
         handler: impl Fn(&ala::TouchDragEvent, &mut Window, &mut App) + 'static,
     ) {
         self.header_touch_drag_handler = Some(Rc::new(handler));
-    }
-
-    pub(super) fn set_page_scroll_handler(
-        &mut self,
-        handler: impl Fn(f32, bool, &mut Window, &mut App) + 'static,
-    ) {
-        self.page_scroll_handler = Some(Rc::new(handler));
     }
 
     pub(super) fn set_notice_handler(
@@ -547,15 +538,6 @@ impl BrowserPane {
                 if self.writable(cx) {
                     self.add_tab(url, window, cx);
                 }
-            }
-            BrowserEvent::Scrolled { travel, at_top } => {
-                if index == self.active
-                    && self.visible
-                    && let Some(handler) = self.page_scroll_handler.clone()
-                {
-                    handler(travel, at_top, window, cx);
-                }
-                return;
             }
             BrowserEvent::Focused => {
                 if std::mem::take(&mut self.address_open) {

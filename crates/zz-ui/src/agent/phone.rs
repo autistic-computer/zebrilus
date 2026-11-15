@@ -13,21 +13,25 @@ use penna::{
         BottomSheet, bottom_sheet, close_sheet, sheet_back, sheet_close, sheet_ground,
         sheet_group_ground, sheet_groups,
     },
-    blocks::touch::{TouchGroup, TouchHeader, TouchInk, TouchRow, TouchTrailing},
+    blocks::touch::{
+        TouchGroup, TouchHeader, TouchInk, TouchRow, TouchTrailing, concentric, touch_card,
+        touch_card_ground,
+    },
     components::input::{Input, InputState},
+    components::progress::Progress,
     components::spinner::Spinner,
     h_flex, v_flex,
 };
 use zz_client::agent_resume::{LOADING, Menu, ResumeRow};
 use zz_client::agent_settings::{self, LensSettings};
-use zz_client::agent_timeline::{ContextUsage, QUOTA_WARNING, percent_label, unix_now};
+use zz_client::agent_timeline::{ContextUsage, percent_label, unix_now};
 use zz_client::window_summary::PaneTile;
-use zz_protocol::{AgentAccount, AgentProvider, AgentQuota, QuotaWindows, chat::ItemId};
+use zz_protocol::{AgentAccount, AgentProvider, AgentQuota, chat::ItemId};
 
 use super::{
     ask::{ApprovalAction, AskChoice, AskSubject},
     chat::HeldMessage,
-    controls::{AccountAction, mode_icon},
+    controls::{AccountAction, TABULAR, UsageMeter, mode_icon, usage_meters},
     question::{QuestionCardAction, QuestionCardState},
 };
 use crate::command::PaletteTarget;
@@ -67,34 +71,6 @@ pub enum PlusAction {
     Drill(TargetItem),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct UsagePart {
-    pub label: &'static str,
-    pub value: String,
-    pub warns: bool,
-}
-
-#[must_use]
-pub fn usage_parts(context: ContextUsage, quota: Option<QuotaWindows>) -> Vec<UsagePart> {
-    let context = (context != ContextUsage::Unknown).then(|| UsagePart {
-        label: "Context",
-        value: context.label(),
-        warns: false,
-    });
-    let window = |label, window: Option<zz_protocol::QuotaWindow>| {
-        window.map(|window| UsagePart {
-            label,
-            value: percent_label(f64::from(window.used)),
-            warns: window.used >= QUOTA_WARNING,
-        })
-    };
-    context
-        .into_iter()
-        .chain(quota.and_then(|quota| window("5-hour", quota.five_hour)))
-        .chain(quota.and_then(|quota| window("Week", quota.week)))
-        .collect()
-}
-
 pub struct PlusSheet<'a> {
     pub agent: SharedString,
     pub provider: Option<AgentProvider>,
@@ -115,21 +91,27 @@ type OnPlus = Rc<dyn Fn(PlusAction, &mut Window, &mut App)>;
 
 const GLYPH: f32 = 20.0;
 const SPINNER: f32 = 16.0;
+const SEARCH_HEIGHT: f32 = 36.0;
+const SEARCH_GLYPH: f32 = 17.0;
 pub const FOLDER: &str = "Folder";
 
 fn search_field(search: &Entity<InputState>, cx: &App) -> AnyElement {
     let muted = penna::muted_on(sheet_ground(cx), cx);
+    let corner = concentric(cx.theme().phone_radius(), px(Space::S8.design_px()))
+        .min(px(SEARCH_HEIGHT / 2.0));
     div()
         .w_full()
         .px(Space::S8)
         .pb(Space::S8)
         .child(
             Input::new(search)
-                .with_size(Size::TouchLarge)
+                .with_size(Size::Touch)
+                .h(px(SEARCH_HEIGHT))
+                .rounded(corner)
                 .cleanable(true)
                 .prefix(
                     Icon::new(IconName::Search)
-                        .size(px(GLYPH))
+                        .size(px(SEARCH_GLYPH))
                         .text_color(muted),
                 ),
         )
@@ -406,35 +388,58 @@ impl PlusSheet<'_> {
     fn usage(&self, cx: &App) -> Option<AnyElement> {
         let provider = self.provider?;
         let quota = agent_settings::account_quota(self.quotas, provider, self.account, unix_now());
-        let parts = usage_parts(self.context, quota);
-        if parts.is_empty() {
+        let meters = usage_meters(self.context, quota);
+        if meters.is_empty() {
             return None;
         }
-        let ground = sheet_ground(cx);
-        let theme = cx.theme();
+        let ground = touch_card_ground(cx);
         let muted = penna::muted_on(ground, cx);
-        let warning = theme.paint_on(ground, Tone::Warning, Emphasis::Ghost).text;
-        let count = parts.len();
+        let warning = cx
+            .theme()
+            .paint_on(ground, Tone::Warning, Emphasis::Ghost)
+            .text;
+        let meter = |index: usize, meter: UsageMeter| {
+            let line = h_flex()
+                .gap(Space::S4)
+                .whitespace_nowrap()
+                .child(div().flex_none().child(meter.label))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .text_color(muted)
+                        .children(meter.detail.map(|detail| format!("· {detail}"))),
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .font_features(TABULAR.clone())
+                        .when(meter.warns, |percent| percent.text_color(warning))
+                        .child(percent_label(meter.fraction)),
+                );
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "a usage fraction sits in 0..=1"
+            )]
+            let fraction = meter.fraction as f32;
+            v_flex().gap(Space::S8).child(line).child(
+                Progress::new(("chat-plus-usage-meter", index), fraction)
+                    .label(meter.label)
+                    .with_size(Size::Small),
+            )
+        };
         Some(
-            h_flex()
+            touch_card(cx)
                 .debug_selector(|| "chat-plus-usage".to_owned())
-                .mt(-Space::S8.rems())
-                .px(Space::S16)
-                .pb(Space::S4)
-                .flex_wrap()
+                .gap(Space::S16)
                 .type_style(TextStyle::TouchSmall, cx)
-                .text_color(muted)
-                .children(parts.into_iter().enumerate().map(|(index, part)| {
-                    let tail = if index + 1 < count { " · " } else { "" };
-                    h_flex()
-                        .whitespace_nowrap()
-                        .child(
-                            div()
-                                .when(part.warns, |part| part.text_color(warning))
-                                .child(format!("{} {}", part.label, part.value)),
-                        )
-                        .child(tail)
-                }))
+                .children(
+                    meters
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, each)| meter(index, each)),
+                )
                 .into_any_element(),
         )
     }
@@ -844,12 +849,12 @@ pub fn other_label(state: &QuestionCardState) -> Option<SharedString> {
 
 #[cfg(test)]
 mod tests {
-    use zz_protocol::QuotaWindow;
+    use zz_protocol::{QuotaWindow, QuotaWindows};
 
     use super::*;
 
     #[test]
-    fn the_usage_line_meters_context_then_the_limits_and_warns_from_eighty_percent() {
+    fn the_usage_card_meters_context_then_the_limits_and_warns_from_eighty_percent() {
         let quota = QuotaWindows {
             five_hour: Some(QuotaWindow {
                 used: 0.8,
@@ -860,23 +865,32 @@ mod tests {
                 resets_at: None,
             }),
         };
-        let parts = usage_parts(
+        let meters = usage_meters(
             ContextUsage::Known {
                 used: 34_000,
                 size: 100_000,
             },
             Some(quota),
         );
-        let line = parts
+        let shown = meters
             .iter()
-            .map(|part| format!("{} {}", part.label, part.value))
-            .collect::<Vec<_>>()
-            .join(" · ");
-        assert_eq!(line, "Context 34% · 5-hour 80% · Week 12%");
+            .map(|meter| {
+                (
+                    meter.label,
+                    meter.detail.as_deref(),
+                    percent_label(meter.fraction),
+                    meter.warns,
+                )
+            })
+            .collect::<Vec<_>>();
         assert_eq!(
-            parts.iter().map(|part| part.warns).collect::<Vec<_>>(),
-            [false, true, false]
+            shown,
+            [
+                ("Context", Some("34k of 100k"), "34%".to_owned(), false),
+                ("5-hour", None, "80%".to_owned(), true),
+                ("Week", None, "12%".to_owned(), false),
+            ]
         );
-        assert!(usage_parts(ContextUsage::Unknown, None).is_empty());
+        assert!(usage_meters(ContextUsage::Unknown, None).is_empty());
     }
 }

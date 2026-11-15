@@ -33,6 +33,15 @@ enum NotificationType {
 }
 
 impl NotificationType {
+    fn haptic(self) -> Option<ala::Haptic> {
+        match self {
+            Self::Info => None,
+            Self::Success => Some(ala::Haptic::Success),
+            Self::Warning => Some(ala::Haptic::Warning),
+            Self::Error => Some(ala::Haptic::Error),
+        }
+    }
+
     fn icon(self, cx: &App) -> Icon {
         match self {
             Self::Info => Icon::new(IconName::Info).text_color(cx.theme().foreground),
@@ -349,6 +358,9 @@ impl NotificationList {
         if let Some(index) = self.showing(&notification, cx) {
             self.swap(index, notification, window, cx);
             return;
+        }
+        if let Some(haptic) = notification.type_.and_then(NotificationType::haptic) {
+            cx.haptic(haptic);
         }
         let view = cx.new(|_| notification);
         let id = view.entity_id();

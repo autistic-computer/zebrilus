@@ -84,8 +84,8 @@ pub fn found_machines(
     Some(
         v_flex()
             .w_full()
-            .child(TouchHeader::new("Found on your tailnet").count(found.len()))
-            .child(TouchGroup::new().rows(rows)),
+            .child(TouchHeader::new("On your tailnet"))
+            .child(TouchGroup::new().ruled().rows(rows)),
     )
 }
 

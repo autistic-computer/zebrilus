@@ -912,6 +912,7 @@ impl Slider {
         let on_change = self.on_change;
         let deferred = self.commit_on_release;
         let committed = scale.snap(self.value);
+        let stepped = scale.step > 0.0;
         let emit: ValueHandler = Rc::new({
             let drag = drag.clone();
             let on_change = Rc::clone(&on_change);
@@ -920,6 +921,9 @@ impl Slider {
                     cx.notify();
                     drag.live.replace(next)
                 });
+                if stepped && previous.is_some_and(|previous| previous != next) {
+                    cx.haptic(ala::Haptic::Selection);
+                }
                 if !deferred && previous != Some(next) {
                     on_change(next, window, cx);
                 }

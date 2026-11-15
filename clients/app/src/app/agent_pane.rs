@@ -104,7 +104,11 @@ impl AgentPane {
             .unwrap_or_default()
     }
 
-    fn open_view(&self, request: &ViewRequest, cx: &mut Context<Self>) {
+    fn open_view(&mut self, request: &ViewRequest, window: &mut Window, cx: &mut Context<Self>) {
+        if self.phone.is_some() {
+            self.open_view_sheet(request.clone(), window, cx);
+            return;
+        }
         let rows = self.float_rows.clone().and_then(|rows| rows(cx));
         let pane = self.pane;
         self.connection.update(cx, |connection, cx| {
@@ -126,7 +130,14 @@ impl AgentPane {
             open: Arc::new(move |target, _, cx| {
                 view.update(cx, |this, cx| this.open_ref(target, cx)).ok();
             }),
-            view: Some(Arc::new(move |request, _, cx| {
+            view: Some(Arc::new(move |request, window, cx| {
+                if let Some(phone) = view_rows
+                    .upgrade()
+                    .filter(|pane| pane.read(cx).phone.is_some())
+                {
+                    phone.update(cx, |this, cx| this.open_view_sheet(request, window, cx));
+                    return;
+                }
                 let rows = view_rows
                     .upgrade()
                     .and_then(|pane| pane.read(cx).float_rows.clone())
@@ -281,6 +292,8 @@ pub(super) struct AgentPane {
     chat: ChatPane,
     float_rows: Option<Rc<dyn Fn(&App) -> Option<u16>>>,
     phone: Option<PhoneDock>,
+    view_sheet: Option<Entity<super::view_pane::ViewPane>>,
+    dock_height: Rc<std::cell::Cell<Pixels>>,
     sheet: Option<phone::ChatSheet>,
     turn: Option<phone::PlusTurn>,
     search: Entity<InputState>,
@@ -442,6 +455,8 @@ impl AgentPane {
             chat: ChatPane::default(),
             float_rows: None,
             phone: None,
+            view_sheet: None,
+            dock_height: Rc::new(std::cell::Cell::new(ala::px(0.0))),
             sheet: None,
             turn: None,
             search,
@@ -804,6 +819,7 @@ impl AgentPane {
         if !self.send_prompt(&text, &attachments, cx) {
             return;
         }
+        cx.haptic(ala::Haptic::Light);
         self.attachments.clear();
         self.draft_error = None;
         self.input
@@ -1080,6 +1096,7 @@ impl AgentPane {
                             title: "Plan".to_owned(),
                             content: zz_protocol::ViewContent::Markdown { text: markdown },
                         },
+                        window,
                         cx,
                     );
                 }
@@ -1675,6 +1692,8 @@ impl AgentPane {
                 .and_then(zz_client::window_summary::provider_program),
             ground: Some(self.ground),
             touch: self.phone.is_some(),
+            inset_top: self.chat_insets().0,
+            inset_bottom: self.chat_insets().1,
         };
         chat_surface(self, look, window, cx)
     }

@@ -1,8 +1,9 @@
 use std::rc::Rc;
 
 use ala::{
-    Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent,
-    ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Window, div,
+    App, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent,
+    ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _, Styled as _, Window,
+    div,
 };
 use penna::v_flex;
 use zz_client::program::Program;
@@ -27,6 +28,8 @@ pub(crate) struct ViewPane {
     chat: ChatPane,
     focus: FocusHandle,
     source: bool,
+    on_close: Option<Rc<dyn Fn(&mut App)>>,
+    scroll: ScrollHandle,
 }
 
 impl ViewPane {
@@ -45,7 +48,18 @@ impl ViewPane {
             chat: ChatPane::default(),
             focus: cx.focus_handle(),
             source: false,
+            on_close: None,
+            scroll: ScrollHandle::new(),
         }
+    }
+
+    pub(crate) fn closing_with(mut self, close: impl Fn(&mut App) + 'static) -> Self {
+        self.on_close = Some(Rc::new(close));
+        self
+    }
+
+    pub(crate) fn scroll(&self) -> ScrollHandle {
+        self.scroll.clone()
     }
 
     pub(crate) fn synchronize(
@@ -82,6 +96,10 @@ impl ViewPane {
     }
 
     fn close(&self, cx: &mut Context<Self>) {
+        if let Some(close) = &self.on_close {
+            close(cx);
+            return;
+        }
         let close = CommandInvocation::new("kill-pane", ["-t".to_owned(), self.pane.to_string()]);
         self.connection
             .update(cx, |connection, cx| connection.invoke(close, cx));
@@ -156,6 +174,7 @@ impl Render for ViewPane {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
+                    .track_scroll(&self.scroll)
                     .child(body),
             )
     }

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone chat usage</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/input/input.css">
+<link rel="stylesheet" href="/penna-src/components/progress/progress.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-row4 { display: grid; grid-template-columns: repeat(4, 424px); gap: 0 16px; align-items: start; }
+  .zz-cap { display: grid; gap: 2px; margin: 4px 10px 0; }
+  .zz-cap b { font-weight: 600; }
+  .zz-cap span { color: var(--penna-fg-muted); }
+  .zz-shot { display: grid; align-content: start; }
+  .zz-q { display: grid; gap: 4px; }
+  .zz-q + .zz-q { margin-top: 48px; }
+
+  .zz-nums { width: 100%; max-width: 1300px; border-collapse: collapse; }
+  .zz-nums th, .zz-nums td { padding: 9px 12px; text-align: left; vertical-align: top; box-shadow: inset 0 -1px 0 var(--penna-divider); }
+  .zz-nums th { color: var(--penna-fg-muted); font-weight: 500; }
+  .zz-nums td:first-child { width: 200px; font-weight: 600; }
+  .zz-nums td:last-child { width: 300px; color: var(--penna-fg-muted); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+
+  .zz-pane { position: absolute; inset: 0; --zz-dock: 156px; }
+  .zz-tx { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 16px; padding: 70px 16px var(--zz-dock); overflow: hidden; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-tx > p { margin: 0; }
+  .zz-tx > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 85%; padding: 10px 14px; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-fade { position: absolute; z-index: 5; top: 0; right: 0; left: 0; height: 70px; background: linear-gradient(var(--penna-bg) 54px, transparent); }
+  .zz-dock { position: absolute; z-index: 15; right: 16px; bottom: 84px; left: 16px; display: flex; flex-direction: column; }
+  .zz-phone > .penna-sheet { z-index: 35; }
+  .zz-phone .penna-sheet-panel { padding-bottom: 16px; }
+
+  .zz-sgroups { display: flex; flex-direction: column; gap: 16px; padding: 0 8px; overflow: hidden; }
+  .zz-sgroups > * { flex: none; }
+  .zz-row-chev { flex: none; color: var(--penna-muted); opacity: 0.6; --penna-icon-size: 14px; }
+  .penna-touch-row-value > span { max-width: 160px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+  .zz-num { font-variant-numeric: tabular-nums; }
+  .zz-warn { color: var(--penna-warning-ink); }
+  .zz-muted { color: var(--penna-fg-muted); }
+  .zz-small { font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
+
+  .zz-old { margin-top: -8px; padding: 0 16px 4px; }
+
+  .zz-meters { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
+  .zz-meter { display: flex; flex-direction: column; gap: 8px; }
+  .zz-meter-line { display: flex; align-items: baseline; gap: 6px; }
+  .zz-meter-line > :first-child { flex: none; }
+  .zz-meter-line > .zz-muted { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+  .zz-rings { display: grid; grid-template-columns: repeat(3, 1fr); padding: 16px 0 14px; }
+  .zz-rings > div { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+  .zz-rings > div + div { box-shadow: inset 1px 0 0 var(--penna-divider); }
+  .zz-ring { --size: 44px; --w: 4px; position: relative; display: grid; place-items: center; width: var(--size); height: var(--size); margin-bottom: 6px; border-radius: 50%; background: conic-gradient(var(--c, var(--penna-accent)) calc(var(--v) * 1%), var(--penna-control) 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--w)), #000 calc(100% - var(--w) + 0.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - var(--w)), #000 calc(100% - var(--w) + 0.5px)); }
+  .zz-ring-wrap { position: relative; display: grid; place-items: center; }
+  .zz-ring-wrap > b { position: absolute; top: 0; height: 44px; display: grid; place-items: center; font-size: 13px; font-weight: 600; }
+  .zz-ring[data-warn] { --c: var(--penna-warning); }
+
+  .zz-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 0 8px; }
+  .zz-chip { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 8px; border-radius: 16px; background: var(--penna-control); }
+  .zz-chip > .zz-ring { --size: 16px; --w: 2.5px; margin: 0; }
+  .zz-chip[data-warn] { color: var(--penna-warning-ink); background: color-mix(in oklab, var(--penna-warning) 16%, transparent); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro"><h1>Usage in the phone chat's plus sheet</h1></div>
+  <div data-board></div>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  const dots = (on, count = 4) => `<span class="penna-dots">${Array.from({ length: count }, (_, i) => `<span class="penna-dot"${i === on ? " data-active" : ""}></span>`).join("")}</span>`;
+  const pill = (title, meta) => `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating"><span class="penna-pill-tile" data-penna="phone.pill.icon">${ic("asterisk")}</span><span class="penna-pill-copy"><span class="penna-pill-title">${title}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">${meta}</span>${dots(3)}</span></span></button></div>`;
+  const composer = () => `<div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer" data-size="touch"><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Chat options">${ic("plus")}</button><span class="penna-chat-input" role="textbox" data-placeholder="Message Claude Code…"></span><button class="penna-button" data-penna="button.send" data-shape="icon" disabled aria-label="Send">${ic("arrow-up")}</button></div></div>`;
+  const you = (text) => `<div class="penna-card penna-chat-bubble" data-penna="card.bubble" role="group"><span>${text}</span></div>`;
+  const tx = [you("The pill menu should offer New chat, nearest the thumb."), `<p>Done. New chat sits last in the New group, nearest the thumb, and the pill tests pass.</p>`].join("");
+  const chatPane = `<div class="zz-pane"><div class="zz-tx">${tx}</div><div class="zz-fade"></div><div class="zz-dock">${composer()}</div>${pill("Claude Code", "zebrilus")}</div>`;
+
+  const row = ({ label, glyph, value }) => `<div class="penna-touch-row" data-penna="phone.row" role="button">${ic(glyph)}<span class="penna-touch-row-lines"><span>${label}</span></span>${value ? `<span class="penna-touch-row-value"><span>${value}</span></span>` : ""}<i class="zz-row-chev" data-icon="chevron-right"></i></div>`;
+  const group = (rows) => `<div class="penna-touch-group" data-penna="settings.card" data-ground data-ruled>${rows.map(row).join("")}</div>`;
+  const card = (inner) => `<div class="penna-touch-group" data-penna="settings.card" data-ground>${inner}</div>`;
+  const disc = (glyph) => `<button class="penna-sheet-disc" aria-label="${glyph}"><span class="penna-button" data-penna="button" data-size="touch">${ic(glyph)}</span></button>`;
+  const sheet = (body) => `<div class="penna-sheet" style="--penna-sheet-rest: 34px"><div class="penna-sheet-scrim"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header"><span class="penna-sheet-title">Claude Code</span>${disc("xmark")}</div>${body}</div></div></div>`;
+  const phone = (inner) => `<div class="zz-phone">${status}${inner}<span class="zz-home"></span></div>`;
+  const shot = (usage, title, note, bare) => `<div class="zz-shot">${phone(`${chatPane}${sheet(`<div class="zz-sgroups"${bare ? ` style="gap: 16px"` : ""}>${ROOT}${usage}</div>`)}`)}<div class="zz-cap"><b>${title}</b><span>${note}</span></div></div>`;
+
+  const ROOT = group([{ label: "Mention", glyph: "list-tree" }]) + group([
+    { label: "Model", glyph: "sparkle", value: "Sonnet 5.5" },
+    { label: "Effort", glyph: "cpu", value: "Low" },
+    { label: "Permissions", glyph: "bolt", value: "Auto" },
+    { label: "Account", glyph: "user", value: "you@example.com" },
+  ]);
+
+  const USE = [
+    { label: "Context", detail: "68k of 200k", v: 34 },
+    { label: "5-hour", detail: "resets in 3h 20m", short: "3h 20m", v: 12 },
+    { label: "Week", detail: "resets Fri", short: "Fri", v: 82, warn: true },
+  ];
+
+  const OLD = `<div class="zz-old zz-small zz-muted">${USE.map((u) => `<span${u.warn ? ` class="zz-warn"` : ""}>${u.label} ${u.v}%</span>`).join(" · ")}</div>`;
+
+  const METERS = card(`<div class="zz-meters">${USE.map((u) => `<div class="zz-meter"><div class="zz-meter-line zz-small"><span>${u.label}</span><span class="zz-muted">· ${u.detail}</span><span class="zz-num${u.warn ? " zz-warn" : ""}">${u.v}%</span></div><div class="penna-progress" data-size="small"${u.warn ? " data-warn" : ""}><div class="penna-progress-fill" style="left: 0; width: ${u.v}%"></div></div></div>`).join("")}</div>`);
+
+  const ring = (u) => `<span class="zz-ring" style="--v: ${u.v}"${u.warn ? " data-warn" : ""}></span>`;
+  const RINGS = card(`<div class="zz-rings">${USE.map((u) => `<div><span class="zz-ring-wrap">${ring(u)}<b class="zz-num${u.warn ? " zz-warn" : ""}">${u.v}</b></span><span class="zz-small">${u.label}</span><span class="zz-small zz-muted">${u.short ?? "68k"}</span></div>`).join("")}</div>`);
+
+  const CHIPS = `<div class="zz-chips zz-small">${USE.map((u) => `<span class="zz-chip"${u.warn ? " data-warn" : ""}>${ring(u)}<span>${u.label} <span class="zz-num">${u.v}%</span></span></span>`).join("")}</div>`;
+
+  const shots = [
+    shot(OLD, "Now", "One muted line tucked 4 under the group, 20 off the sheet's bottom edge."),
+    shot(METERS, "A. Meters", "The desktop usage popover's meters in a card: label, detail, percent, a 4 bar. Week's percent warns from 80%."),
+    shot(RINGS, "B. Rings", "Three columns in one card, a 44 ring with the percent inside, label and what it counts under."),
+    shot(CHIPS, "C. Chips", "Capsules under the groups, a 16 ring and the label. Least room, no detail."),
+  ];
+
+  const NUMS = [
+    ["Search field", "36 tall, corner concentric with the sheet: sheet corner minus the 8 inset, capped at half the height. Glyph 17, touch text. Mention and Resume share it.", "search_field, concentric()"],
+    ["Usage card", "Last group on the plus sheet's root page, 16 under Account like any group gap, 8 from the sheet's sides, 16 from its bottom.", "sheet_groups, GAP_GROUP"],
+    ["A. Meter", "Touch small text. Label, then detail muted after a dot, percent right with tabular figures. Bar 4 tall 8 below. Meters 16 apart, card padding 16.", "Progress Size::Small"],
+    ["Detail", "Context: used of size. 5-hour and Week: when they reset.", "context_usage_detail, quota_reset_detail"],
+    ["Warning", "Percent in warning ink from 80% of a limit, as on the desktop. The bar stays accent.", "QUOTA_WARNING"],
+  ];
+
+  const html = `<section class="zz-q"><h2>Usage at the bottom of the plus sheet</h2><div class="zz-row4">${shots.join("")}</div></section>`
+    + `<section class="zz-q"><h2>Numbers</h2><table class="zz-nums"><thead><tr><th>Part</th><th>What</th><th>Code</th></tr></thead><tbody>${NUMS.map(([a, b, c]) => `<tr><td>${a}</td><td>${b}</td><td>${c}</td></tr>`).join("")}</tbody></table></section>`;
+  document.querySelector("[data-board]").innerHTML = html;
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>

@@ -95,10 +95,6 @@ pub enum BrowserEvent {
     },
     ElementPickCancelled,
     ElementPickFailed,
-    Scrolled {
-        travel: f32,
-        at_top: bool,
-    },
     Refresh,
     Backdrop {
         bounds: Bounds<Pixels>,
@@ -252,7 +248,6 @@ struct DelegateState {
     picker: ElementPickState,
     generation: Cell<u64>,
     picking: Cell<bool>,
-    offset: Cell<f64>,
     refreshing: Cell<bool>,
     view: Cell<id>,
     backdrop: Cell<Option<(Bounds<Pixels>, CGRect)>>,
@@ -280,7 +275,6 @@ impl BrowserView {
             picker: ElementPickState::default(),
             generation: Cell::new(0),
             picking: Cell::new(false),
-            offset: Cell::new(0.0),
             refreshing: Cell::new(false),
             view: Cell::new(nil),
             backdrop: Cell::new(None),
@@ -982,27 +976,15 @@ extern "C" fn observe(this: &Object, _: Sel, key: id, object: id, _: id, _: *mut
     unsafe {
         let offset: BOOL = msg_send![key, isEqualToString: ns_string(SCROLL_OFFSET)];
         if offset == YES {
-            scrolled(this, object);
+            scrolled(this);
         } else {
             changed(this, object, false);
         }
     }
 }
 
-unsafe fn scrolled(this: &Object, scroll: id) {
-    let state = state(this);
-    request_backdrop(&state);
-    let offset: CGPoint = msg_send![scroll, contentOffset];
-    let last = state.offset.replace(offset.y);
-    let tracking: BOOL = msg_send![scroll, isTracking];
-    let decelerating: BOOL = msg_send![scroll, isDecelerating];
-    if tracking != YES && decelerating != YES {
-        return;
-    }
-    let _ = state.events.unbounded_send(BrowserEvent::Scrolled {
-        travel: (offset.y - last) as f32,
-        at_top: offset.y <= 0.5,
-    });
+unsafe fn scrolled(this: &Object) {
+    request_backdrop(&state(this));
 }
 
 fn host_class() -> &'static Class {

@@ -317,6 +317,7 @@ impl KeyRow {
                 let on_key = self.on_key.clone();
                 Self::cap(index, KeyLook::Rest, key_glyph(label, icon), cx).on_click(
                     move |_, window, cx| {
+                        cx.haptic(ala::Haptic::Light);
                         let keystroke = StickyModifiers::apply(&keystroke, cx);
                         window.refresh();
                         if let Some(on_key) = &on_key {

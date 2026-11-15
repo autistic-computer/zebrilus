@@ -157,6 +157,7 @@ pub fn hold_listener(on_hold: Rc<dyn Fn(&mut Window, &mut App)>) -> impl IntoEle
                 {
                     window.prevent_default();
                     cx.stop_propagation();
+                    cx.haptic(ala::Haptic::Medium);
                     on_hold(window, cx);
                 }
             });

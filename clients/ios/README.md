@@ -168,8 +168,8 @@ connected. Hosts are saved in `Library/Application Support/ala/hosts.json`; a
 successful connection moves its host to the top. `ZZ_ALA_ENDPOINT` (or `ZZ_SOCKET`) connects
 for that launch only, and opening a `zz://attach/<session>` link connects to the most recent host.
 A `zz://host/<machine>:<port>` link (the QR code in desktop Settings › Hosts) adds that tailnet
-machine and connects it, and a `tailnet://` host tells the app about your other machines that run zz,
-which it saves and connects.
+machine and connects it. Every connected host is asked for the other machines on your tailnet; they
+are listed under On your tailnet on Machines and in Add machine, where a tap saves and connects one.
 SSH endpoints show host-key confirmation and authentication dialogs. The terminal example shares
 the native transport, key translation, and UIKit backend.
 

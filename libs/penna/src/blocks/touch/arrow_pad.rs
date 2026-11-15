@@ -241,7 +241,7 @@ impl Press for ArrowPad {
         }
         self.direction = direction;
         self.repeat = direction.map(|direction| {
-            cx.selection_haptic();
+            cx.haptic(ala::Haptic::Selection);
             cx.emit(ArrowPadEvent::Arrow(direction));
             Self::repeat(direction, cx)
         });

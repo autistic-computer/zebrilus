@@ -853,20 +853,17 @@ impl Connection {
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fn ask_for_tailnet_hosts(&mut self, cx: &mut Context<Self>) {
-        self.tailnet_offers = None;
-        if self
-            .endpoint
-            .as_deref()
-            .is_some_and(|endpoint| endpoint.starts_with("tailnet://"))
-        {
-            self.tailnet_offers =
-                Some(self.invoke(CommandInvocation::new("tailnet", ["hosts"]), cx));
-        }
+        self.tailnet_offers = Some(self.invoke(CommandInvocation::new("tailnet", ["hosts"]), cx));
     }
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fn probe_tailnet_hosts(&mut self, output: &str, cx: &mut Context<Self>) {
-        let offers = zz_daemon_client::tailnet_offer::parse_offers(output);
+        let offers: Vec<_> = zz_daemon_client::tailnet_offer::parse_offers(output)
+            .into_iter()
+            .filter(|offer| {
+                !offer.os.eq_ignore_ascii_case("ios") && !offer.os.eq_ignore_ascii_case("android")
+            })
+            .collect();
         if offers.is_empty() {
             return;
         }

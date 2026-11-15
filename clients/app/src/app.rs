@@ -1482,19 +1482,9 @@ impl AppShell {
                 let connection = self.connection.clone();
                 let view = cx.weak_entity();
                 let touch_view = view.clone();
-                let scroll_view = view.clone();
                 cx.new(|cx| {
                     let mut browser =
                         browser_pane::BrowserPane::new(pane, descriptor, connection, window, cx);
-                    browser.set_page_scroll_handler(move |travel, at_top, _, cx| {
-                        let _ = scroll_view.update(cx, |this, cx| {
-                            if at_top {
-                                this.expand_pill(cx);
-                            } else {
-                                this.compact_content_scrolled(travel, cx);
-                            }
-                        });
-                    });
                     let notice_view = view.clone();
                     browser.set_notice_handler(move |text, kind, _, cx| {
                         let _ = notice_view.update(cx, |this, cx| {

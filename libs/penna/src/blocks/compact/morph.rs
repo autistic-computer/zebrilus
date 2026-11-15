@@ -1,7 +1,7 @@
 use ala::{
     App, Bounds, Div, ElementId, FULL_CORNER_RADIUS, InteractiveElement as _, MouseButton,
-    ParentElement as _, Pixels, Point, SharedString, SpringConfig, SpringState, Stateful,
-    Styled as _, TextRun, Window, div, point, px, size,
+    ParentElement as _, Pixels, Point, SpringConfig, SpringState, Stateful, Styled as _, div,
+    point, px, size,
 };
 use web_time::Instant;
 
@@ -14,14 +14,9 @@ use crate::{
     foundation::roles,
 };
 
-pub const COMPACT_MINI_PILL_HEIGHT: f32 = 32.0;
-
 const SPRING: SpringConfig = SpringConfig::new(520.0, 46.0, 1.0);
 const SETTLE_EPSILON: f32 = 0.002;
 const FADE: f32 = 0.6;
-const MINI_MIN_WIDTH: f32 = 88.0;
-const MINI_DROP: f32 = 14.0;
-const MINI_BOTTOM_MIN: f32 = 6.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct PillSpring {
@@ -160,25 +155,14 @@ pub fn compact_pill_morph(
         )
 }
 
-pub fn pill_bounds(
-    progress: f32,
-    width: Pixels,
-    mini: Pixels,
-    placement: &PillPlacement,
-) -> Bounds<Pixels> {
-    let progress = progress.clamp(0.0, 1.0);
-    let between = |from: Pixels, to: Pixels| from + (to - from) * progress;
+pub fn pill_bounds(width: Pixels, placement: &PillPlacement) -> Bounds<Pixels> {
     let full = (width - placement.inset * 2.0).max(px(0.0));
-    let mini_bottom = (placement.bottom - px(MINI_DROP)).max(px(MINI_BOTTOM_MIN));
-    let pill_width = between(mini.min(full), full);
-    let height = between(px(COMPACT_MINI_PILL_HEIGHT), px(COMPACT_PILL_HEIGHT));
-    let bottom = between(mini_bottom, placement.bottom);
     Bounds::new(
         point(
-            (width - pill_width) / 2.0,
-            placement.zone() - bottom - height,
+            placement.inset,
+            placement.zone() - placement.bottom - px(COMPACT_PILL_HEIGHT),
         ),
-        size(pill_width, height),
+        size(full, px(COMPACT_PILL_HEIGHT)),
     )
 }
 
@@ -191,21 +175,8 @@ pub fn over_pill(pill: Bounds<Pixels>, size: Pixels) -> Point<Pixels> {
     )
 }
 
-pub fn pill_corner(
-    progress: f32,
-    bounds: Bounds<Pixels>,
-    placement: &PillPlacement,
-    cx: &App,
-) -> Pixels {
-    let pill = floating_layer(placement, cx);
-    if pill.radius >= FULL_CORNER_RADIUS {
-        return FULL_CORNER_RADIUS;
-    }
-    if cx.theme().style(roles::PHONE_PILL).shape == crate::Shape::Square {
-        return pill.radius;
-    }
-    let mini = px(COMPACT_MINI_PILL_HEIGHT / 2.0);
-    let radius = mini + (pill.radius - mini) * progress.clamp(0.0, 1.0);
+pub fn pill_corner(bounds: Bounds<Pixels>, placement: &PillPlacement, cx: &App) -> Pixels {
+    let radius = floating_layer(placement, cx).radius;
     if radius * 2.0 >= bounds.size.height - px(0.01) {
         FULL_CORNER_RADIUS
     } else {
@@ -213,47 +184,19 @@ pub fn pill_corner(
     }
 }
 
-pub fn mini_pill_width(text: &SharedString, window: &Window, cx: &App) -> Pixels {
-    let font_size = crate::TextStyle::Body.size().to_pixels(window.rem_size());
-    let mut font = ala::font(cx.theme().font_family.clone());
-    font.weight = crate::TextStyle::Body.strong_weight();
-    let run = TextRun {
-        len: text.len(),
-        font,
-        color: cx.theme().foreground,
-        background_color: None,
-        underline: None,
-        strikethrough: None,
-    };
-    let line = window
-        .text_system()
-        .shape_line(text.clone(), font_size, &[run], None);
-    let inset = Space::S16.rems().to_pixels(window.rem_size());
-    (line.width + inset * 2.0).max(px(MINI_MIN_WIDTH))
-}
-
-pub fn compact_pill_collapse(
+pub fn compact_pill_at(
     id: impl Into<ElementId>,
     label: Div,
-    short: SharedString,
-    progress: f32,
     bounds: Bounds<Pixels>,
-    width: Pixels,
     placement: &PillPlacement,
     cx: &App,
 ) -> Stateful<Div> {
-    let progress = progress.clamp(0.0, 1.0);
     let pill = floating_layer(placement, cx);
     let pressed = cx
         .theme()
         .layer(Surface::new(roles::PHONE_PILL), PaintState::Active)
         .fill;
-    let radius = pill_corner(progress, bounds, placement, cx);
-    let full = (width - placement.inset * 2.0).max(px(0.0));
-    let fade = |at: f32| {
-        let at = at.clamp(0.0, 1.0);
-        at * at * (3.0 - 2.0 * at)
-    };
+    let radius = pill_corner(bounds, placement, cx);
     div()
         .id(id)
         .debug_selector(|| "compact-bar-pill".to_owned())
@@ -263,6 +206,7 @@ pub fn compact_pill_collapse(
         .top(bounds.origin.y)
         .w(bounds.size.width)
         .h(bounds.size.height)
+        .flex()
         .overflow_hidden()
         .font_family(cx.theme().font_family.clone())
         .layer(&Layer { radius, ..pill })
@@ -272,33 +216,7 @@ pub fn compact_pill_collapse(
             pressed,
             radius,
         ))
-        .child(
-            div()
-                .absolute()
-                .left((bounds.size.width - full) / 2.0)
-                .top((bounds.size.height - px(COMPACT_PILL_HEIGHT)) / 2.0)
-                .w(full)
-                .h(px(COMPACT_PILL_HEIGHT))
-                .flex()
-                .opacity(fade((progress - (1.0 - FADE)) / FADE))
-                .child(label),
-        )
-        .child(
-            div()
-                .absolute()
-                .inset_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .px(Space::S16)
-                .whitespace_nowrap()
-                .overflow_hidden()
-                .text_ellipsis()
-                .type_style_strong(crate::TextStyle::Body, cx)
-                .text_color(pill.text)
-                .opacity(1.0 - fade(progress / FADE))
-                .child(short),
-        )
+        .child(label)
 }
 
 #[cfg(test)]
@@ -335,24 +253,13 @@ mod tests {
     }
 
     #[test]
-    fn the_small_pill_sits_centered_below_the_full_one() {
+    fn the_pill_spans_the_bar_above_its_bottom_inset() {
         let placement = PillPlacement::new(Some(px(62.0)), px(34.0));
-        let width = px(402.0);
-        let full = pill_bounds(1.0, width, px(120.0), &placement);
-        assert_eq!(full.origin.x, placement.inset);
-        assert_eq!(full.origin.y, placement.pill_top());
-        assert_eq!(full.size.height, px(COMPACT_PILL_HEIGHT));
-
-        let mini = pill_bounds(0.0, width, px(120.0), &placement);
-        assert_eq!(mini.size, size(px(120.0), px(COMPACT_MINI_PILL_HEIGHT)));
-        assert_eq!(mini.center().x, width / 2.0);
+        let pill = pill_bounds(px(402.0), &placement);
+        assert_eq!(pill.origin, point(placement.inset, placement.pill_top()));
         assert_eq!(
-            placement.zone() - mini.bottom(),
-            placement.bottom - px(MINI_DROP)
+            pill.size,
+            size(px(402.0) - placement.inset * 2.0, px(COMPACT_PILL_HEIGHT))
         );
-        assert!(mini.bottom() > full.bottom());
-
-        let wide = pill_bounds(0.0, width, px(600.0), &placement);
-        assert_eq!(wide.size.width, full.size.width);
     }
 }

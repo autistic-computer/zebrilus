@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Machine previews</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-row4 { display: grid; grid-template-columns: repeat(4, 424px); gap: 0 16px; align-items: start; }
+  .zz-cap { display: grid; gap: 2px; margin: 4px 10px 0; }
+  .zz-cap b { font-weight: 600; }
+  .zz-cap span { color: var(--penna-fg-muted); }
+  .zz-shot { display: grid; align-content: start; }
+  .zz-q { display: grid; gap: 4px; }
+  .zz-q + .zz-q { margin-top: 48px; }
+  .zz-nums { width: 100%; max-width: 1300px; border-collapse: collapse; }
+  .zz-nums th, .zz-nums td { padding: 9px 12px; text-align: left; vertical-align: top; box-shadow: inset 0 -1px 0 var(--penna-divider); }
+  .zz-nums th { color: var(--penna-fg-muted); font-weight: 500; }
+  .zz-nums td:first-child { width: 200px; font-weight: 600; }
+  .zz-nums td:last-child { width: 300px; color: var(--penna-fg-muted); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+
+  .zz-top { position: absolute; z-index: 5; top: 54px; right: 16px; left: 16px; display: flex; justify-content: flex-end; height: 44px; align-items: center; }
+  .zz-glass { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; --penna-icon-size: 20px; }
+  .zz-over { position: absolute; inset: 98px 0 0; display: flex; flex-direction: column; }
+  .zz-title { padding: 0 20px 4px; font-size: var(--penna-text-touch-title-size); line-height: var(--penna-text-touch-title-line); font-weight: 700; }
+  .zz-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 16px 0; }
+
+  .zz-mt { position: relative; display: flex; flex-direction: column; gap: 8px; height: 177px; padding: 12px; overflow: hidden; border-radius: calc(var(--penna-phone-radius)); background: var(--penna-card, color-mix(in oklab, var(--penna-fg) 6%, var(--penna-bg))); }
+  .zz-mt[data-wide] { grid-column: span 2; }
+  .zz-mt-head { display: flex; align-items: center; gap: 6px; font-size: var(--penna-text-touch-small-size); line-height: 20px; font-weight: 600; }
+  .zz-mt-head > .zz-st { margin-left: auto; font-weight: 400; color: var(--penna-fg-muted); font-size: 12px; }
+  .zz-mt-head > .zz-st[data-warn] { color: var(--penna-warning-ink); }
+  .zz-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--penna-success, #3c3); }
+  .zz-dot[data-tone="warning"] { background: var(--penna-warning); }
+  .zz-dot[data-tone="danger"] { background: var(--penna-danger); }
+  .zz-body { position: relative; flex: 1; min-height: 0; }
+  .zz-split { position: absolute; inset: 0; display: grid; gap: 4px; }
+  .zz-p { position: relative; min-width: 0; min-height: 0; padding: 6px; overflow: hidden; border-radius: calc(var(--penna-phone-radius) - 12px); background: var(--penna-bg); }
+  .zz-p pre { margin: 0; font: 5px/6px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; }
+  .zz-p pre b { color: var(--penna-success, #3c3); font-weight: 400; }
+  .zz-p pre i { color: var(--penna-accent-ink); font-style: normal; }
+  .zz-bar { display: block; height: 3px; margin: 3px 0; border-radius: 2px; background: color-mix(in oklab, var(--penna-fg) 18%, transparent); }
+  .zz-bub { margin: 4px 0 6px auto; width: 60%; padding: 4px; border-radius: 6px; background: color-mix(in oklab, var(--penna-fg) 10%, transparent); }
+  .zz-bub > .zz-bar { margin: 2px 0; }
+  .zz-url { display: block; height: 7px; margin-bottom: 6px; border-radius: 4px; background: color-mix(in oklab, var(--penna-fg) 10%, transparent); }
+  .zz-img { display: block; height: 30px; margin-top: 6px; border-radius: 4px; background: color-mix(in oklab, var(--penna-fg) 9%, transparent); }
+  .zz-face { position: absolute; top: 5px; left: 5px; display: grid; place-items: center; width: 12px; height: 12px; border-radius: 50%; color: #fff; background: #d97757; --penna-icon-size: 8px; }
+  .zz-p[data-face] { padding-top: 20px; }
+
+  .zz-stack { position: absolute; inset: 0; }
+  .zz-stack > .zz-p { position: absolute; inset: 0; }
+  .zz-stack > .zz-p:nth-child(1) { transform: translateY(-8px) scale(0.86); opacity: 0.45; }
+  .zz-stack > .zz-p:nth-child(2) { transform: translateY(-4px) scale(0.93); opacity: 0.7; }
+  .zz-stack > .zz-p:nth-child(3) { box-shadow: 0 -1px 0 color-mix(in oklab, var(--penna-fg) 8%, transparent); }
+
+  .zz-off { position: absolute; inset: 0; display: grid; place-items: center; border-radius: calc(var(--penna-phone-radius) - 12px); background: var(--penna-bg); color: var(--penna-fg-muted); opacity: 0.6; --penna-icon-size: 28px; }
+  .zz-foot { font-size: 12px; line-height: 16px; color: var(--penna-fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .zz-addt { display: grid; place-items: center; align-content: center; gap: 6px; height: 177px; border-radius: var(--penna-phone-radius); background: color-mix(in oklab, var(--penna-fg) 6%, var(--penna-bg)); color: var(--penna-fg-muted); font-size: var(--penna-text-touch-body-size); --penna-icon-size: 22px; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro"><h1>Machine previews</h1></div>
+  <div data-board></div>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  const gear = `<div class="zz-top"><span class="zz-glass penna-touch-disc" data-penna="floating">${ic("settings")}</span></div>`;
+
+  const term = (lines) => `<div class="zz-p"><pre>${lines.join("\n")}</pre></div>`;
+  const chat = `<div class="zz-p" data-face><span class="zz-face">${ic("asterisk")}</span><div class="zz-bub"><span class="zz-bar" style="width:100%"></span><span class="zz-bar" style="width:55%"></span></div><span class="zz-bar" style="width:100%"></span><span class="zz-bar" style="width:85%"></span><span class="zz-bar" style="width:92%"></span><span class="zz-bar" style="width:60%"></span></div>`;
+  const web = `<div class="zz-p"><span class="zz-url"></span><span class="zz-bar" style="width:45%;height:4px"></span><span class="zz-bar" style="width:90%"></span><span class="zz-bar" style="width:70%"></span><span class="zz-img"></span></div>`;
+  const T1 = term(["<b>fabrico@macbook</b> <i>~/dev/zz</i> $ cargo test", "   Compiling zz-ui v0.24.0", "   Compiling zz-app v0.24.0", "    Finished test [unoptimized]", "     Running unittests src/lib.rs", "test result: ok. 236 passed", "<b>fabrico@macbook</b> <i>~/dev/zz</i> $ "]);
+  const T2 = term(["<b>fabrico@xps</b> <i>~</i> $ htop", "  CPU[||||||||      34.2%]", "  Mem[|||||||   5.1G/31G]", "  PID USER   CPU% COMMAND", " 1204 fabrico 12.0 zz-daemon", "  833 root     3.1 tailscaled", "  921 fabrico  1.4 cargo"]);
+
+  const split = (cols, panes) => `<div class="zz-split" style="grid-template-columns:${cols}">${panes.join("")}</div>`;
+  const tile = ({ name, dot, st, warn, body, foot, wide }) => `<div class="zz-mt"${wide ? " data-wide" : ""}><div class="zz-mt-head"><span class="zz-dot" data-tone="${dot}"></span><span>${name}</span>${st ? `<span class="zz-st"${warn ? " data-warn" : ""}>${st}</span>` : ""}</div><div class="zz-body">${body}</div>${foot ? `<div class="zz-foot">${foot}</div>` : ""}</div>`;
+  const add = `<div class="zz-addt">${ic("plus")}<span>Add machine</span></div>`;
+  const off = (glyph) => `<div class="zz-off">${ic(glyph)}</div>`;
+  const page = (tiles) => `${gear}<div class="zz-over"><div class="zz-title">Machines</div><div class="zz-grid">${tiles.join("")}</div></div>`;
+  const phone = (inner) => `<div class="zz-phone">${status}${inner}<span class="zz-home"></span></div>`;
+  const shot = (inner, title, note) => `<div class="zz-shot">${phone(inner)}<div class="zz-cap"><b>${title}</b><span>${note}</span></div></div>`;
+
+  const failed = (body) => tile({ name: "zzios", dot: "danger", st: "Failed", body, foot: "daemon I/O error" });
+
+  const A = page([
+    tile({ name: "macbook", dot: "warning", st: "1 waiting", warn: true, body: split("1fr 1fr", [chat, T1]), foot: "zebrilus · 3 sessions" }),
+    tile({ name: "xps", dot: "success", st: "", body: split("1fr", [T2]), foot: "~ · 1 session" }),
+    failed(off("server")),
+    add,
+  ]);
+  const B = page([
+    tile({ name: "macbook", dot: "warning", st: "1 waiting", warn: true, body: split("1fr 1fr", [chat, T1, web, term(["$ just ios run", "  building zz-ios", "  [ala-ios] window open"])]).replace("zz-split\"", "zz-split\" data-q").replace("grid-template-columns:1fr 1fr", "grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr") }),
+    tile({ name: "xps", dot: "success", body: split("1fr", [T2]) }),
+    failed(off("server")),
+    add,
+  ]);
+  const C = page([
+    tile({ name: "macbook", dot: "warning", st: "1 waiting", warn: true, body: `<div class="zz-stack">${web}${T1}${chat}</div>`, foot: "3 sessions · 2 working" }),
+    tile({ name: "xps", dot: "success", body: `<div class="zz-stack"><span></span><span></span>${T2}</div>`, foot: "1 session" }),
+    failed(off("server")),
+    add,
+  ]);
+  const WIDE = page([
+    tile({ name: "macbook", dot: "warning", st: "1 waiting", warn: true, wide: true, body: split("1fr 1.4fr", [chat, T1]), foot: "zebrilus · 3 sessions · 2 working" }),
+    tile({ name: "xps", dot: "success", body: split("1fr", [T2]), foot: "~ · 1 session" }),
+    add,
+  ]);
+
+  const shots = [
+    shot(A, "A. Last window", "Each machine shows the window you used last there, its panes in their real split. Status on the right of the name, folder and sessions underneath."),
+    shot(B, "B. Mosaic", "Up to four of the machine's newest panes, from any session, in a 2 by 2 grid. No foot."),
+    shot(C, "C. Stack", "The last pane up front with the ones before it peeking behind."),
+    shot(WIDE, "A, one machine wide", "The machine that needs you, or the only one connected, takes the full row."),
+  ];
+
+  const NUMS = [
+    ["Settings", "Glass disc, 44, top right of the title row, same look as the back disc. The floating gear and its bar go away.", "compact_glass_button, TopRowEnd::End"],
+    ["Preview", "The window minis the machine page already draws: terminal text, chat and browser skeletons, laid out with the window's pane rects.", "PhoneTile::panes, mini_preview"],
+    ["Which window", "The machine's active session's active window, so it matches what opens on a tap.", "StatusBarModel"],
+    ["Header", "Status dot, name, then the state on the right: 1 waiting in warning ink, Connecting with a spinner, Failed in danger.", "PhoneTile::mark, state"],
+    ["Foot", "Folder of the shown window and the session count, one line.", "PhoneTile::foot"],
+    ["Not connected", "The preview area holds a muted server glyph. Failed keeps the error in the foot.", "HostState"],
+  ];
+
+  const html = `<section class="zz-q"><h2>Machines</h2><div class="zz-row4">${shots.join("")}</div></section>`
+    + `<section class="zz-q"><h2>Numbers</h2><table class="zz-nums"><thead><tr><th>Part</th><th>What</th><th>Code</th></tr></thead><tbody>${NUMS.map(([a, b, c]) => `<tr><td>${a}</td><td>${b}</td><td>${c}</td></tr>`).join("")}</tbody></table></section>`;
+  document.querySelector("[data-board]").innerHTML = html;
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>

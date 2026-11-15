@@ -297,6 +297,7 @@ impl RenderOnce for Switch {
                     let toggle =
                         Rc::new(move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
                             cx.stop_propagation();
+                            cx.haptic(ala::Haptic::Light);
                             let () = toggle_state.update(cx, |this, _| *this = checked);
                             on_click(&!checked, window, cx);
                         });

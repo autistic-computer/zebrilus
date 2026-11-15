@@ -1,6 +1,7 @@
 use ala::{App, Div, Hsla, IntoElement as _, ParentElement as _, Pixels, Styled as _, div, px};
 use penna::{
-    ActiveTheme as _, Ground, IconName, Space, StyledExt as _, TextStyle, blocks::touch::StatusMark,
+    ActiveTheme as _, Ground, Icon, IconName, Space, StyledExt as _, TextStyle,
+    blocks::touch::StatusMark,
 };
 use zz_client::{program::Program, window_summary::PaneTile};
 
@@ -12,6 +13,7 @@ use crate::navigation::{
 pub const LEAD_FACE: f32 = 24.0;
 pub const TRAIL_FACE: f32 = 16.0;
 pub const PILL_GLYPH: f32 = 20.0;
+const MACHINE_GLYPH: f32 = 20.0;
 const FACE_DOT: f32 = 8.0;
 const TRAILING: usize = 3;
 const GLYPH_SCALE: f32 = crate::program::PROGRAM_GLYPH_SCALE;
@@ -41,6 +43,20 @@ pub fn lead_face(tile: &PaneTile, dot: Option<Hsla>, ground: Ground, cx: &App) -
     )
     .relative()
     .children(dot.map(|color| ringed_dot(color, px(FACE_DOT), ground.fill)))
+}
+
+#[must_use]
+pub fn machine_face(platform: zz_protocol::HostPlatform, dot: Option<Hsla>, ground: Ground) -> Div {
+    let icon = crate::program::platform_icon(platform).unwrap_or(IconName::Server);
+    div()
+        .relative()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .size(px(LEAD_FACE))
+        .child(Icon::new(icon).size(px(MACHINE_GLYPH)))
+        .children(dot.map(|color| ringed_dot(color, px(FACE_DOT), ground.fill)))
 }
 
 #[must_use]

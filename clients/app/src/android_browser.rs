@@ -60,10 +60,6 @@ pub enum BrowserEvent {
     },
     ElementPickCancelled,
     ElementPickFailed,
-    Scrolled {
-        travel: f32,
-        at_top: bool,
-    },
     Refresh,
     Backdrop {
         bounds: Bounds<Pixels>,
@@ -745,15 +741,11 @@ extern "system" fn native_scrolled<'local>(
     _: JNIEnv<'local>,
     _: JClass<'local>,
     id: jlong,
-    travel: jfloat,
-    at_top: jboolean,
+    _: jfloat,
+    _: jboolean,
 ) {
     if let Some(shared) = shared(id) {
         shared.request_backdrop();
-        shared.send(BrowserEvent::Scrolled {
-            travel,
-            at_top: at_top == JNI_TRUE,
-        });
     }
 }
 

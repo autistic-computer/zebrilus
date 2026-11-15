@@ -484,11 +484,11 @@ impl StackMenu {
     fn react(&mut self, touch: StackTouch, cx: &mut Context<Self>) {
         match touch {
             StackTouch::Opened => {
-                cx.selection_haptic();
+                cx.haptic(ala::Haptic::Selection);
                 self.appear(cx);
             }
             StackTouch::Entered(_) => {
-                cx.selection_haptic();
+                cx.haptic(ala::Haptic::Selection);
                 self.over_since = Some(Instant::now());
                 cx.notify();
             }
@@ -542,7 +542,7 @@ impl StackMenu {
                 self.gesture.open();
                 self.pinned = true;
                 self.over_since = None;
-                cx.selection_haptic();
+                cx.haptic(ala::Haptic::Selection);
                 cx.notify();
             }
             Some(Target::Chip(id, true)) => {
@@ -551,6 +551,7 @@ impl StackMenu {
                 self.picked = Some((index, now));
                 self.trail = PillSpring::default();
                 self.disappear(cx);
+                cx.haptic(ala::Haptic::Light);
                 cx.emit(StackMenuEvent::Pick(id));
             }
             Some(Target::Chip(_, false)) | None => self.disappear(cx),

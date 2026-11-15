@@ -540,11 +540,16 @@ impl AppShell {
             .into_any_element()
         };
         let title = if picked { section.title() } else { "Settings" };
-        let back = penna::blocks::compact::compact_bar_button("settings-back", IconName::ArrowLeft)
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.settings_leaving = true;
-                cx.notify();
-            }));
+        let back = penna::blocks::compact::compact_disc_button(
+            "settings-back",
+            IconName::ChevronLeft,
+            "Back",
+            cx,
+        )
+        .on_click(cx.listener(|this, _, _, cx| {
+            this.settings_leaving = true;
+            cx.notify();
+        }));
         div()
             .relative()
             .size_full()

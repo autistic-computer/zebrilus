@@ -460,6 +460,7 @@ pub(super) struct PlusStates {
     input: Entity<InputState>,
     top: Entity<TargetPicker>,
     inside: Entity<TargetPicker>,
+    search: Entity<InputState>,
 }
 
 impl PlusStates {
@@ -493,6 +494,7 @@ impl PlusStates {
             input: composer_input("", window, cx),
             top,
             inside,
+            search: cx.new(|cx| InputState::new(window, cx).placeholder("Search")),
         }
     }
 }
@@ -535,6 +537,9 @@ impl Render for PlusStates {
                 quotas: &quotas,
                 context: usage.context,
                 mention,
+                headers: &[],
+                search: &self.search,
+                typed: false,
                 panes: &[],
                 enabled: true,
             }

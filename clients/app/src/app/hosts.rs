@@ -12,10 +12,10 @@ use penna::{
         bottom_sheet, close_sheet, floating_sheet, modal_groups, sheet_close, sheet_ground,
         sheet_groups, sheet_inset, sheet_note,
     },
-    blocks::touch::{TouchGroup, TouchRow},
+    blocks::touch::{TouchGroup, TouchHeader, TouchRow, concentric},
     components::button::ButtonVariants as _,
-    components::field::Field,
     components::input::{Input, InputEvent, InputState},
+    v_flex,
 };
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsStack, settings_card_ground, settings_page_heading,
@@ -232,7 +232,6 @@ impl Hosts {
             |this: &mut AppShell, _, event: &InputEvent, window, cx| match event {
                 InputEvent::PressEnter { .. } if this.add_host(window, cx) => {
                     close_sheet(ADD_HOST_SHEET, cx);
-                    this.close_machine_card(window, cx);
                 }
                 InputEvent::Change => {
                     this.hosts.error = None;
@@ -553,61 +552,68 @@ impl AppShell {
             .theme()
             .paint_on(ground, Tone::Danger, penna::Emphasis::Ghost)
             .text;
+        let found = self.found_machines(cx);
+        let machines: Vec<_> = found.iter().map(|host| host.machine.clone()).collect();
+        let endpoints: Vec<String> = found.into_iter().map(|host| host.endpoint).collect();
+        let view = cx.entity().downgrade();
+        let tailnet = zz_ui::compact::found_machines(&machines, move |index, window, cx| {
+            let Some(endpoint) = endpoints.get(index).cloned() else {
+                return;
+            };
+            let _ = view.update(cx, |this, cx| {
+                this.hosts.saved.add(&endpoint);
+                this.connect_host(endpoint, window, cx);
+            });
+            close_sheet(ADD_HOST_SHEET, cx);
+        });
+        let corner = concentric(cx.theme().phone_radius(), px(Space::S8.design_px()))
+            .min(px(Size::Touch.control_px() / 2.0));
+        let address = v_flex().w_full().child(TouchHeader::new("Address")).child(
+            Input::new(&self.hosts.destination)
+                .id("add-host-field")
+                .with_size(Size::Touch)
+                .rounded(corner)
+                .on(ground),
+        );
         bottom_sheet(
             ADD_HOST_SHEET,
-            "Add host",
+            "Add machine",
             [close.into_any_element()],
-            div()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(Space::S12)
-                        .px(Space::S16)
-                        .pb(Space::GAP_GROUP)
-                        .child(
-                            Field::new().with_size(Size::TouchLarge).child(
-                                Input::new(&self.hosts.destination)
-                                    .id("add-host-field")
-                                    .with_size(Size::TouchLarge)
-                                    .on(ground),
-                            ),
-                        )
-                        .children(self.hosts.error.clone().map(|error| {
-                            Label::new(TextStyle::TouchSmall, error).text_color(danger)
-                        }))
-                        .child(
-                            Button::new("add-host-connect")
-                                .primary()
-                                .label("Connect")
-                                .with_size(Size::TouchLarge)
-                                .w_full()
-                                .on(ground)
-                                .disabled(!ready)
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    if this.add_host(window, cx) {
-                                        on_added(this, cx);
-                                    }
-                                })),
-                        ),
+            sheet_groups()
+                .pb(Space::S8)
+                .children(tailnet)
+                .child(address)
+                .children(
+                    self.hosts
+                        .error
+                        .clone()
+                        .map(|error| sheet_note(error, cx).mt(-Space::S8.rems()).text_color(danger)),
                 )
                 .child(
-                    sheet_groups()
-                        .pb(Space::S8)
-                        .child(
-                            TouchGroup::new().ruled().row(
-                                TouchRow::new("add-host-copy-key", "Copy SSH key")
-                                    .icon(IconName::Copy)
-                                    .on_click(|_, window, cx| copy_ssh_key(window, cx)),
-                            ),
-                        )
-                        .child(sheet_note(
-                            "Add this phone's key to authorized_keys on the host to sign in without a password.",
-                            cx,
-                        )),
-                ),
+                    Button::new("add-host-connect")
+                        .primary()
+                        .label("Connect")
+                        .with_size(Size::TouchLarge)
+                        .w_full()
+                        .on(ground)
+                        .disabled(!ready)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            if this.add_host(window, cx) {
+                                on_added(this, cx);
+                            }
+                        })),
+                )
+                .child(
+                    TouchGroup::new().ruled().row(
+                        TouchRow::new("add-host-copy-key", "Copy SSH key")
+                            .icon(IconName::Copy)
+                            .on_click(|_, window, cx| copy_ssh_key(window, cx)),
+                    ),
+                )
+                .child(sheet_note(
+                    "Add this phone's key to authorized_keys on the host to sign in without a password.",
+                    cx,
+                )),
             bottom_inset,
             move |_, cx| {
                 let _ = dismiss.update(cx, |this, cx| on_dismiss(this, cx));

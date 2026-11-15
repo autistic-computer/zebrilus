@@ -1,12 +1,11 @@
 use ala::{
-    App, Div, GlassMaterial, IntoElement, ParentElement as _, Pixels, ScrollHandle, SharedString,
-    Styled as _, div, prelude::*, px, transparent_black,
+    App, Bounds, Div, GlassMaterial, Hsla, IntoElement, ParentElement as _, Pixels, ScrollHandle,
+    SharedString, Styled as _, canvas, div, fill, linear_color_stop, linear_gradient, prelude::*,
+    px, transparent_black,
 };
 
-use super::bar::{BUTTON, BUTTON_ICON};
 use crate::{
     ActiveTheme as _, Edge, StyledExt as _, foundation::RoleRuleExt as _, foundation::roles,
-    rems_from_px,
 };
 
 pub const COMPACT_TITLE_BAR_HEIGHT: f32 = 44.0;
@@ -17,7 +16,6 @@ const TITLE_SPAN: f32 = 14.0;
 const FROST_BLUR: f32 = 20.0;
 const FROST_TINT: f32 = 0.72;
 const FROST_SATURATION: f32 = 1.8;
-const GLYPH_INK: f32 = 3.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TopRowEnd {
@@ -26,8 +24,6 @@ pub enum TopRowEnd {
 }
 
 pub fn top_row_button(end: TopRowEnd, edge: Pixels, button: impl IntoElement) -> Div {
-    let glyph = -rems_from_px((BUTTON - BUTTON_ICON) / 2.0 + GLYPH_INK);
-    let button = div().flex_none().child(button);
     div()
         .absolute()
         .bottom_0()
@@ -35,9 +31,44 @@ pub fn top_row_button(end: TopRowEnd, edge: Pixels, button: impl IntoElement) ->
         .flex()
         .items_center()
         .map(|slot| match end {
-            TopRowEnd::Start => slot.left(edge).child(button.ml(glyph)),
-            TopRowEnd::End => slot.right(edge).child(button.mr(glyph)),
+            TopRowEnd::Start => slot.left(edge),
+            TopRowEnd::End => slot.right(edge),
         })
+        .child(div().flex_none().child(button))
+}
+
+const EDGE_BLUR: f32 = 12.0;
+const EDGE_TINT: f32 = 0.45;
+
+#[must_use]
+pub fn edge_blur(edge: Edge, height: Pixels, ground: Hsla) -> Div {
+    let top = edge == Edge::Top;
+    let tint = ground.opacity(EDGE_TINT);
+    let strip = div().absolute().left_0().right_0().h(height);
+    let strip = if top { strip.top_0() } else { strip.bottom_0() };
+    strip.child(
+        canvas(
+            |_, _, _| {},
+            move |bounds: Bounds<Pixels>, (), window, _| {
+                let (clear, solid) = if top {
+                    (bounds.bottom(), bounds.top())
+                } else {
+                    (bounds.top(), bounds.bottom())
+                };
+                if !window.paint_blur_fade(bounds, tint, px(EDGE_BLUR), clear, solid) {
+                    window.paint_quad(fill(
+                        bounds,
+                        linear_gradient(
+                            if top { 0.0 } else { 180.0 },
+                            linear_color_stop(tint.alpha(0.0), 0.0),
+                            linear_color_stop(tint, 1.0),
+                        ),
+                    ));
+                }
+            },
+        )
+        .size_full(),
+    )
 }
 
 pub fn scrolled(scroll: &ScrollHandle) -> f32 {

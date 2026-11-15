@@ -34,6 +34,7 @@ impl StickyModifiers {
     }
 
     pub fn toggle(modifier: StickyModifier, cx: &mut App) {
+        cx.haptic(ala::Haptic::Selection);
         let latched = cx.default_global::<Self>();
         match modifier {
             StickyModifier::Control => latched.control = !latched.control,
