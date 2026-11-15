@@ -93,8 +93,8 @@ something on another host switches the page to it. Each host gets its own WebSoc
 screen is attached and the rest hold only their tree. The page opens on this computer, and the
 hosts it was connected to before reconnect in the background (the list lives in local storage
 under `zz-web-hosts`, `zz-dev-web-hosts` for dev builds). Settings > Hosts lists the gateway's
-hosts with Connect, Disconnect and Open; adding or removing one is an edit to the gateway
-machine's `zz/config` and a gateway restart.
+hosts with Connect, Disconnect and Open, and the sidebar has no Add host row: adding or removing
+a host is an edit to the gateway machine's `zz/config` and a gateway restart.
 
 This computer keeps retrying every 2 s, as before. Another host is never redialed after a
 failed first connect, nor after a 4401: it shows the close reason as its state and waits for
