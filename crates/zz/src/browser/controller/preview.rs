@@ -14,7 +14,8 @@ const PREVIEW_TIMEOUT: Duration = Duration::from_secs(3);
 const PREVIEW_IDLE: Duration = Duration::from_mins(1);
 const PREVIEW_QUIET: Duration = Duration::from_millis(150);
 const PREVIEW_SETTLE_CAP: Duration = Duration::from_millis(1500);
-const PREVIEW_BACKGROUND: u32 = 0xffff_ffff;
+const PREVIEW_FIT_CAP: Duration = Duration::from_secs(5);
+const PREVIEW_BACKGROUND: u32 = 0;
 const PREVIEW_HEIGHT_SCRIPT: &str = "(() => { const body = document.body; \
      if (!body) return document.documentElement.scrollHeight; \
      const style = getComputedStyle(body); \
@@ -30,8 +31,19 @@ struct PreviewJob {
     id: u64,
     url: String,
     width: u32,
+    height: Option<u32>,
     scale: f32,
     done: Sender<PreviewResult>,
+}
+
+impl PreviewJob {
+    fn settle_cap(&self) -> Duration {
+        if self.height.is_some() {
+            PREVIEW_SETTLE_CAP
+        } else {
+            PREVIEW_FIT_CAP
+        }
+    }
 }
 
 impl Drop for PreviewJob {
@@ -51,6 +63,7 @@ enum PreviewStage {
         since: Instant,
         latest: Option<SettledFrame>,
         generation: u64,
+        measuring: bool,
     },
 }
 
@@ -151,6 +164,18 @@ fn preview_height(measured: f64) -> u32 {
         .ceil() as u32
 }
 
+pub(crate) fn straighten_alpha(bgra: &mut [u8]) {
+    for pixel in bgra.as_chunks_mut::<4>().0 {
+        let alpha = u32::from(pixel[3]);
+        if alpha == 0 || alpha == 255 {
+            continue;
+        }
+        for channel in &mut pixel[..3] {
+            *channel = (u32::from(*channel) * 255 / alpha).min(255) as u8;
+        }
+    }
+}
+
 fn frame_fits(frame_width: u32, frame_height: u32, width: u32, height: u32) -> bool {
     frame_width.abs_diff(width) <= 1 && frame_height.abs_diff(height) <= 1
 }
@@ -160,6 +185,7 @@ impl BrowserController {
         &mut self,
         html: &str,
         width: u32,
+        height: Option<u32>,
         scale: f32,
         cx: &mut Context<Self>,
     ) -> Task<PreviewResult> {
@@ -173,6 +199,7 @@ impl BrowserController {
             id: self.previews.next_job,
             url,
             width: width.max(1),
+            height: height.map(|height| height.max(1)),
             scale,
             done,
         });
@@ -234,7 +261,11 @@ impl BrowserController {
         let Some(job) = self.previews.queue.front() else {
             return;
         };
-        let viewport = preview_viewport(job.width, PREVIEW_LOAD_HEIGHT, job.scale);
+        let viewport = preview_viewport(
+            job.width,
+            job.height.map_or(PREVIEW_LOAD_HEIGHT, |height| height + 1),
+            job.scale,
+        );
         let Some(mut runtime) = self.detach_runtime(RuntimePhase::Running) else {
             return;
         };
@@ -316,14 +347,36 @@ impl BrowserController {
             self.previews.queue.push_front(job);
             return;
         };
-        session.set_viewport(preview_viewport(job.width, PREVIEW_LOAD_HEIGHT, job.scale));
+        session.set_viewport(preview_viewport(
+            job.width,
+            job.height.map_or(PREVIEW_LOAD_HEIGHT, |height| height + 1),
+            job.scale,
+        ));
         let sink = session.command_sink();
         let url = job.url.clone();
         let id = job.id;
+        let cap = job.settle_cap();
         self.previews.current = Some((job, PreviewStage::Loading { started: false }));
         self.queue_cef_work(move || sink.navigate(&url), cx);
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(PREVIEW_TIMEOUT).await;
+            let painting = this
+                .update(cx, |controller, cx| {
+                    match controller.previews.current.as_ref() {
+                        Some((job, PreviewStage::Painting { .. })) if job.id == id => true,
+                        Some((job, _)) if job.id == id => {
+                            controller.previews.fail_current("Preview timed out");
+                            controller.finish_preview_job(cx);
+                            false
+                        }
+                        _ => false,
+                    }
+                })
+                .unwrap_or(false);
+            if !painting {
+                return;
+            }
+            cx.background_executor().timer(cap).await;
             let _ = this.update(cx, |controller, cx| {
                 if controller
                     .previews
@@ -331,8 +384,7 @@ impl BrowserController {
                     .as_ref()
                     .is_some_and(|(job, _)| job.id == id)
                 {
-                    controller.previews.fail_current("Preview timed out");
-                    controller.finish_preview_job(cx);
+                    controller.finish_settled_preview(cx);
                 }
             });
         })
@@ -386,6 +438,22 @@ impl BrowserController {
                     return;
                 };
                 let id = job.id;
+                if let Some(height) = job.height {
+                    let (width, scale) = (job.width, job.scale);
+                    if let Some((_, stage)) = self.previews.current.as_mut() {
+                        *stage = PreviewStage::Painting {
+                            width: device_pixels(width, scale),
+                            height: device_pixels(height, scale),
+                            since: Instant::now(),
+                            latest: None,
+                            generation: 0,
+                            measuring: false,
+                        };
+                    }
+                    session.set_viewport(preview_viewport(width, height, scale));
+                    self.schedule_pump(0, cx);
+                    return;
+                }
                 match session.evaluate_number(PREVIEW_HEIGHT_SCRIPT) {
                     Ok((message_id, measured)) => {
                         if let Some((_, stage)) = self.previews.current.as_mut() {
@@ -461,8 +529,85 @@ impl BrowserController {
             since: Instant::now(),
             latest: None,
             generation: 0,
+            measuring: false,
         };
         session.set_viewport(preview_viewport(job.width, height, job.scale));
+        self.schedule_pump(0, cx);
+    }
+
+    fn settle_preview(&mut self, id: u64, cx: &mut Context<Self>) {
+        let Some(session) = self.previews.session.as_mut() else {
+            return;
+        };
+        let Some((job, PreviewStage::Painting { measuring, .. })) = self.previews.current.as_mut()
+        else {
+            return;
+        };
+        if job.id != id || *measuring {
+            return;
+        }
+        if job.height.is_some() {
+            self.finish_settled_preview(cx);
+            return;
+        }
+        match session.evaluate_number(PREVIEW_HEIGHT_SCRIPT) {
+            Ok((message_id, measured)) => {
+                *measuring = true;
+                cx.spawn(async move |this, cx| {
+                    let value = measured.recv().await.ok().flatten();
+                    let _ = this.update(cx, |controller, cx| {
+                        controller.preview_remeasured(id, message_id, value, cx);
+                    });
+                })
+                .detach();
+            }
+            Err(_) => self.finish_settled_preview(cx),
+        }
+    }
+
+    fn preview_remeasured(
+        &mut self,
+        id: u64,
+        message_id: i32,
+        value: Option<f64>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(session) = self.previews.session.as_mut() else {
+            return;
+        };
+        session.finish_site_data_clear(message_id);
+        let Some((
+            job,
+            PreviewStage::Painting {
+                height,
+                since,
+                latest,
+                generation,
+                measuring,
+                ..
+            },
+        )) = self.previews.current.as_mut()
+        else {
+            return;
+        };
+        if job.id != id {
+            return;
+        }
+        *measuring = false;
+        let grown = value
+            .map(preview_height)
+            .filter(|measured| device_pixels(*measured, job.scale).abs_diff(*height) > 1)
+            .filter(|_| since.elapsed() < PREVIEW_FIT_CAP);
+        let Some(measured) = grown else {
+            self.finish_settled_preview(cx);
+            return;
+        };
+        *height = device_pixels(measured, job.scale);
+        *generation += 1;
+        if let Some(stale) = latest.take() {
+            session.recycle_frame(stale.bgra);
+        }
+        session.set_viewport(preview_viewport(job.width, measured, job.scale));
         self.schedule_pump(0, cx);
     }
 
@@ -484,6 +629,7 @@ impl BrowserController {
                 since,
                 latest,
                 generation,
+                ..
             },
         )) = self.previews.current.as_mut()
         else {
@@ -501,7 +647,7 @@ impl BrowserController {
         }) {
             session.recycle_frame(previous.bgra);
         }
-        if since.elapsed() >= PREVIEW_SETTLE_CAP {
+        if since.elapsed() >= job.settle_cap() {
             self.finish_settled_preview(cx);
             return;
         }
@@ -515,7 +661,7 @@ impl BrowserController {
                     Some((job, PreviewStage::Painting { generation: latest, .. }))
                         if job.id == id && *latest == generation
                 ) {
-                    controller.finish_settled_preview(cx);
+                    controller.settle_preview(id, cx);
                 }
             });
         })
@@ -527,7 +673,7 @@ impl BrowserController {
             return;
         };
         let PreviewStage::Painting {
-            latest: Some(frame),
+            latest: Some(mut frame),
             ..
         } = stage
         else {
@@ -535,6 +681,7 @@ impl BrowserController {
             self.finish_preview_job(cx);
             return;
         };
+        straighten_alpha(&mut frame.bgra);
         let result =
             ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(frame.width, frame.height, frame.bgra)
                 .map(|buffer| Arc::new(RenderImage::new(vec![ImageFrame::new(buffer)])))
@@ -549,6 +696,13 @@ mod tests {
     use super::*;
     use ala::{AppContext as _, TestAppContext};
 
+    #[test]
+    fn part_covered_pixels_lose_their_premultiplied_color() {
+        let mut bgra = [10, 20, 40, 128, 0, 0, 0, 0, 9, 9, 9, 255];
+        straighten_alpha(&mut bgra);
+        assert_eq!(bgra, [19, 39, 79, 128, 0, 0, 0, 0, 9, 9, 9, 255]);
+    }
+
     #[ala::test]
     fn canceling_a_queued_preview_before_polling_releases_its_page(cx: &mut TestAppContext) {
         let (controller, render, token) = cx.update(|cx| {
@@ -556,7 +710,7 @@ mod tests {
                 cx.new(|cx| BrowserController::new(Err(BrowserError::AlreadyShutdown), cx));
             let (render, token) = controller.update(cx, |controller, cx| {
                 controller.previews.creating = true;
-                let render = controller.render_html_preview("<p>queued</p>", 320, 1.0, cx);
+                let render = controller.render_html_preview("<p>queued</p>", 320, None, 1.0, cx);
                 let job = controller.previews.queue.front().unwrap();
                 let (token, _) = ala_cef::parse_artifact_url(&job.url).unwrap();
                 (render, token)
@@ -580,7 +734,7 @@ mod tests {
                 cx.new(|cx| BrowserController::new(Err(BrowserError::AlreadyShutdown), cx));
             let (render, token) = controller.update(cx, |controller, cx| {
                 controller.previews.creating = true;
-                let render = controller.render_html_preview("<p>loading</p>", 320, 1.0, cx);
+                let render = controller.render_html_preview("<p>loading</p>", 320, None, 1.0, cx);
                 let job = controller.previews.queue.pop_front().unwrap();
                 let (token, _) = ala_cef::parse_artifact_url(&job.url).unwrap();
                 controller.previews.current = Some((job, PreviewStage::Loading { started: true }));

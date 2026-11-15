@@ -158,6 +158,7 @@ pub(crate) struct PreviewRun(pub(crate) Vec<Preview>);
 
 pub(crate) struct PreviewPlugin {
     pub(crate) open: ViewOpener,
+    pub(crate) pages: bool,
 }
 
 impl MarkdownPlugin for PreviewPlugin {
@@ -170,10 +171,10 @@ impl MarkdownPlugin for PreviewPlugin {
         node: &'a markdown_ast::AstNode<'a>,
         cx: &MarkdownParseContext<'_>,
     ) -> Option<MarkdownNode> {
-        let mut run = vec![preview(node, cx)?];
+        let mut run = vec![preview(node, cx, self.pages)?];
         let mut last = node;
         while let Some(next) = last.next_sibling() {
-            let Some(found) = preview(next, cx) else {
+            let Some(found) = preview(next, cx, self.pages) else {
                 break;
             };
             run.push(found);
@@ -217,6 +218,7 @@ impl MarkdownPlugin for PreviewPlugin {
 pub(crate) fn preview(
     node: &markdown_ast::AstNode<'_>,
     cx: &MarkdownParseContext<'_>,
+    pages: bool,
 ) -> Option<Preview> {
     let fence = cx.code_fence(node)?;
     if fence.value.len() > zz_protocol::MAX_VIEW_TEXT_BYTES {
@@ -254,9 +256,10 @@ pub(crate) fn preview(
             .is_some_and(|language| language.eq_ignore_ascii_case(name))
     };
     if is("html")
-        && meta
+        && (meta
             .split_whitespace()
             .any(|word| word.eq_ignore_ascii_case("preview"))
+            || (pages && super::is_html_document(&fence.value)))
     {
         return None;
     }

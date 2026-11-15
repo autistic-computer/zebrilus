@@ -718,8 +718,10 @@ calls:
   with braces otherwise), its file name when the fence names one (`rust src/main.rs`,
   `rust:src/main.rs`, `title="..."`) or its language, and its length. A markdown fence is named by
   its first heading. Fences that follow each other share one row: the card plugin claims the next
-  siblings with `MarkdownNode::absorbs`. Shorter code, `html preview` blocks, blocks over 64 KiB and
-  mermaid types pele does not draw stay inline. Clicking a card opens it in the view pane.
+  siblings with `MarkdownNode::absorbs`. Shorter code, blocks over 64 KiB and
+  mermaid types pele does not draw stay inline. On the desktop an `html preview` block is a visual
+  drawn bare on the chat's ground with penna's HTML kit, and an `html` block holding a whole
+  document is a page frame ([artifacts](/designs/userpanes.md#inline-previews-in-the-agent-pane)). Clicking a card opens it in the view pane.
 - **Diagrams.** Without a view opener, or inside a markdown view, a mermaid or SVG block sits in a
   `CardLook::Figure` card (`card.figure`), which has no fill and no header: Copy source and Open
   full diagram sit over its top right corner while the pointer is on it (always on touch). pele

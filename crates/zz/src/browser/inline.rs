@@ -17,7 +17,7 @@ use crate::{
     browser::{
         controller::{
             BrowserController, BrowserPaneFrameContent, BrowserSessionRequest, ControllerEvent,
-            TabId,
+            TabId, straighten_alpha,
         },
         element::{BrowserElement, BrowserSurfaceHost},
         view::{
@@ -32,7 +32,20 @@ use crate::{
 const INLINE_PANE: PaneId = PaneId(u64::MAX - 1);
 const INLINE_PROFILE: &str = ala_cef::ARTIFACT_PROFILE;
 const INLINE_BACKGROUND: u32 = 0xffff_ffff;
+const INLINE_CLEAR: u32 = 0;
 const REPLY_GAP: Duration = Duration::from_secs(1);
+
+fn straightened(image: &RenderImage) -> Option<Arc<RenderImage>> {
+    let size = image.size(0);
+    let mut bgra = image.as_bytes(0)?.to_vec();
+    straighten_alpha(&mut bgra);
+    let buffer = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
+        u32::try_from(size.width.0).ok()?,
+        u32::try_from(size.height.0).ok()?,
+        bgra,
+    )?;
+    Some(Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])))
+}
 
 pub(crate) struct InlineBrowser {
     controller: Entity<BrowserController>,
@@ -54,6 +67,9 @@ struct LivePage {
     image: Option<Arc<RenderImage>>,
     cursor: CursorStyle,
     marked_text: Option<String>,
+    clear: bool,
+    click: Option<Point<Pixels>>,
+    loaded: bool,
 }
 
 struct ReplyGate {
@@ -117,6 +133,8 @@ impl InlineBrowser {
         html: &str,
         size: Size<Pixels>,
         reply_to: Option<PaneId>,
+        clear: bool,
+        click: Option<Point<Pixels>>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -143,7 +161,11 @@ impl InlineBrowser {
         let request =
             BrowserSessionRequest::new(url.clone(), INLINE_PROFILE.to_owned(), viewport, 1.0, None)
                 .readback_only()
-                .with_background(INLINE_BACKGROUND);
+                .with_background(if clear {
+                    INLINE_CLEAR
+                } else {
+                    INLINE_BACKGROUND
+                });
         self.controller.update(cx, |controller, cx| {
             controller.set_active_tab(INLINE_PANE, tab, cx);
             controller.request_browser(INLINE_PANE, tab, request, cx);
@@ -164,6 +186,9 @@ impl InlineBrowser {
             image: None,
             cursor: CursorStyle::Arrow,
             marked_text: None,
+            clear,
+            click,
+            loaded: false,
         });
         self.focus_handle.focus(window, cx);
         cx.notify();
@@ -206,11 +231,49 @@ impl InlineBrowser {
                         if let Some(frame) = frame
                             && let BrowserPaneFrameContent::OwnedBgra(image) = frame.content
                         {
+                            let image = if live.clear {
+                                straightened(&image).unwrap_or(image)
+                            } else {
+                                image
+                            };
                             if let Some(previous) = live.image.replace(image) {
                                 self.retired.push(previous);
                             }
+                            if live.loaded
+                                && let Some(click) = live.click.take()
+                            {
+                                let tab = live.tab;
+                                let press = |phase| PointerEvent {
+                                    x: rounded_coordinate(click.x),
+                                    y: rounded_coordinate(click.y),
+                                    phase,
+                                    button: pointer_button(MouseButton::Left),
+                                    click_count: 1,
+                                    modifiers: browser_modifiers(
+                                        ala::Modifiers::default(),
+                                        None,
+                                        false,
+                                    ),
+                                };
+                                self.controller.update(cx, |controller, _| {
+                                    for phase in
+                                        [PointerPhase::Move, PointerPhase::Down, PointerPhase::Up]
+                                    {
+                                        controller.send_pointer(INLINE_PANE, tab, press(phase));
+                                    }
+                                });
+                            }
                             cx.notify();
                         }
+                    }
+                    BrowserEvent::AddressChanged { url, .. } => {
+                        live.loaded = false;
+                        if url.as_ref() != live.url && url.as_ref() != "about:blank" {
+                            live.click = None;
+                        }
+                    }
+                    BrowserEvent::LoadingChanged { loading: false, .. } => {
+                        live.loaded = true;
                     }
                     BrowserEvent::CursorChanged { cursor, .. } => {
                         live.cursor = cursor_style(*cursor);

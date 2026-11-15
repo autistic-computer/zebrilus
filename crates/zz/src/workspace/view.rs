@@ -1098,6 +1098,8 @@ impl AppView {
                             &live.html,
                             live.size,
                             live.owner.map(PaneId),
+                            live.clear,
+                            live.click,
                             window,
                             cx,
                         );
@@ -1109,8 +1111,11 @@ impl AppView {
         cx.set_global(zz_ui::agent::AgentHtmlPreviewer(Rc::new(
             move |html, size, cx| {
                 let width = f32::from(size.width).max(1.0).round() as u32;
+                let height = size
+                    .height
+                    .map(|height| f32::from(height).max(1.0).round() as u32);
                 previews.update(cx, |controller, cx| {
-                    controller.render_html_preview(&html, width, size.scale, cx)
+                    controller.render_html_preview(&html, width, height, size.scale, cx)
                 })
             },
         )));

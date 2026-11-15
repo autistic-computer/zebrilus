@@ -23,6 +23,7 @@ use zz_protocol::PaneId;
 use crate::diagnostics;
 
 mod preview;
+pub(crate) use preview::straighten_alpha;
 
 const GRACEFUL_CLOSE_TIMEOUT: Duration = Duration::from_secs(2);
 const FORCED_CLOSE_TIMEOUT: Duration = Duration::from_secs(2);

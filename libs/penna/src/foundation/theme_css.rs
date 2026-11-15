@@ -142,6 +142,33 @@ pub fn stylesheet(theme: &Theme, toned: &[SurfaceRole]) -> String {
     css
 }
 
+pub fn roles_stylesheet(theme: &Theme, roles: &[SurfaceRole]) -> String {
+    let mut css = String::new();
+    for (name, initial) in PAINT {
+        let _ = writeln!(
+            css,
+            "@property --penna-{name} {{ syntax: \"*\"; inherits: false; initial-value: {initial}; }}"
+        );
+    }
+    write_root(&mut css, theme);
+    for role in roles {
+        write_role(
+            &mut css,
+            theme,
+            &selector(*role),
+            Surface::new(*role),
+            "",
+            false,
+        );
+        if has_tones(role.kind) {
+            for (key, surface) in variants(*role) {
+                write_role(&mut css, theme, &key, surface, "", false);
+            }
+        }
+    }
+    css
+}
+
 fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, String)> {
     let mut rules = Vec::new();
     let mut rule = |key: String, surface: Surface, indent: &str| {

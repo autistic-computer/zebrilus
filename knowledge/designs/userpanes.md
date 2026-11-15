@@ -2,7 +2,7 @@
 type: Design Plan
 title: Artifacts . agent-written HTML in browser panes and inline
 description: "Proposed plan for showing HTML an agent writes. zz html <path> registers the page with the daemon that ran the caller, browser panes load it from a zz://<token>/ scheme whose bytes the daemon sends over the client's existing connection (so it works on ssh hosts), the daemon reloads the pane when a file the page loaded changes, pages get no bridge by default, and --reply grants one call that sends text to the pane that opened the page. In the Agent pane, svg blocks render inline through the mermaid path, and html blocks show code with a Preview toggle that one hidden browser renders as cached images; a click makes that block a live page in place, and Open opens it as a pane. A block opened with html preview shows the picture first and wraps a fragment in a page with the theme colors, which is also what Codex's visualize references become. Replaces the 2026-07-28 userpanes plan."
-status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; iOS and web not started; previews live in the agent chat since 2026-11-01 and were checked live end to end on 2026-11-15)
+status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; iOS and web not started; previews live in the agent chat since 2026-11-01 and were checked live end to end on 2026-11-15; since then html preview blocks draw bare with penna's HTML kit and whole documents draw as page frames)
 resource: libs/ala-cef/src/cef_runtime.rs
 tags:
 - browser
@@ -269,17 +269,23 @@ the GPU. Blocks go through it one at a time:
 
 1. The block is served from the client's memory: `ala_cef::host_local_page` mints a token, and
    the `zz://` handler answers from that table before asking the daemon. Nothing crosses the wire.
-   The browser uses the `artifacts` profile on a white canvas (`set_background_color` around its
-   creation, since pane browsers default to the dark backdrop), and `zz.reply` rejects.
+   The browser uses the `artifacts` profile on a clear canvas (`set_background_color` around its
+   creation, since pane browsers default to the dark backdrop), and `zz.reply` rejects. CEF hands
+   back premultiplied color, which `straighten_alpha` undoes before the frame becomes a picture, so
+   a visual's washes keep their strength over the chat. A plain `html` block's picture and a page
+   frame's get a white backing in the chat instead.
 2. It loads the page in a viewport the block's width wide and 801 px tall, then reads the content
    height through DevTools `Runtime.evaluate` (`BrowserSession::evaluate_number`): the bottom of
    `<body>`, or of its contents in quirks mode, where the body stretches to the viewport.
    `Page.getLayoutMetrics` can't be used, since the root never reports less than the viewport.
 3. It resizes to that height, clamped to 8–800 px. 801 is never a result, so the resize always
-   paints a fresh frame. It keeps the newest frame of the new size and finishes once no frame has
-   come for 150 ms, or 1.5 s after the resize for pages that never stop, so Chart.js and other
-   animated charts show their finished state. Taller pages show their top 800 px.
-4. A block that takes over 3 s shows "Preview timed out".
+   paints a fresh frame. It keeps the newest frame of the new size, and each time no frame has come
+   for 150 ms it reads the height again: a page that grew (a chart drawn by a script that loads
+   after the page) is resized and painted again, and one that did not is finished. It stops
+   5 s after the first resize whatever the page does. Taller pages show their top 800 px.
+4. A job asked for a fixed size (a page frame's 1280 × 720) skips the measuring: it loads one
+   pixel taller, resizes to its height, and finishes at the first 150 ms quiet or after 1.5 s.
+5. A block that has not started painting after 3 s shows "Preview timed out".
 
 The browser starts on the first Preview and closes after 60 s with nothing queued. While it works
 the controller keeps the pump at 16 ms and sends it BeginFrames each turn; idle, it costs nothing.
@@ -300,8 +306,11 @@ Open still opens it as a pane. Built in `crates/zz/src/browser/inline.rs` (`Inli
 for the window, behind the `AgentHtmlLive` global): a click asks for a controller session under a
 synthetic pane id the mux never allocates (`PaneId(u64::MAX - 1)`, a fresh `TabId` each time,
 since a closed session stays in the controller's map until its `Closed` event), readback only and
-on a white canvas (`BrowserSessionRequest::readback_only` and `with_background`), sized to the
-picture so the page lays out the same. `BrowserElement` is generic over `BrowserSurfaceHost`, so
+on a white canvas, or a clear one for a visual (`BrowserSessionRequest::readback_only` and
+`with_background`; a clear page's frames are straightened like the pictures), sized to the
+picture so the page lays out the same. A visual's first click also reaches the page: the block
+passes where it was clicked (`HtmlLiveBlock::click`), and the inline browser presses there on the
+first frame after the page has loaded. `BrowserElement` is generic over `BrowserSurfaceHost`, so
 the inline host and `BrowserView` paint and take IME input the same way; readback frames go through
 `paint_image`, which clips to the timeline's scroll area (the macOS underlay layer would not). The
 host takes its own focus handle; mouse, wheel, keys, text and the edit actions go straight to the
@@ -315,18 +324,50 @@ to the composer. Measured on macOS: first live frame 0.22 s after the click (480
 top of the preview it replaces. While live it costs what a small readback browser pane costs; at
 most one block is live.
 
-**Blocks meant as pictures.** An agent that wants to show something rather than hand over code
-opens the block with ```` ```html preview ````. The kit keeps the words after the language as
-`CodeBlock::meta`, and such a block shows the picture first; Show code flips it, through the same
-`HtmlPreviewToggles` entry. A fragment in one of these blocks is wrapped in a page before it renders
-(`visual_page_head`): the theme's colors as CSS variables, a small stylesheet, and a
-`window.openai` object. The variable and class names are the ones Codex's visualize skill writes
-against (`--background`, `--foreground`, `--card`, `--muted-foreground`, `--viz-series-1`,
-`.card`, `.btn-primary`, `.viz-grid` and the like), since those are names models already use. A
-whole page (`<!doctype` or `<html>` first) renders as it is, and a plain `html` block is never
-wrapped, because its code may be meant for another page. Agent panes learn the form from one
-paragraph the native Claude and Codex drivers add to the startup context
-(`workspace_context(.., true)`).
+**Blocks meant as pictures are visuals.** An agent that wants to show something rather than hand
+over code opens the block with ```` ```html preview ````. Where the app can make pictures
+(`AgentHtmlPreviewer` is set, so the desktop), `VisualPlugin` (`crates/zz-ui/src/agent/visual.rs`)
+takes such a block out of the code block path and draws it bare on the chat's ground: a
+`CardLook::Figure` card with no fill, the picture, and three controls in its top right corner under
+the pointer (Show code, which swaps the picture for the highlighted code through the same
+`HtmlPreviewToggles` entry, Open as a page, Copy code). While it draws, and while the block is still
+streaming, it is a wash with a spinner at the last picture's height, 148 px the first time.
+
+A fragment is wrapped in a page before it renders (`visual_head`, built once per theme): the live
+theme's tokens for the roles a visual uses (`penna::foundation::theme_css::roles_stylesheet` over
+`button`, `button.quiet`, `field`, `badge` and `card.activity`, with their tones), penna's HTML kit
+(`penna.css` and the button, card, badge, progress and segmented component sheets, about 70 KB with
+the tokens), a small sheet of its own, and a script. The page's ground is clear. The names a
+model writes are the ones Codex's visualize skill uses, since models already know them, and the
+script dresses them as kit parts when the page loads and whenever classes change:
+
+| A model writes | Drawn as |
+|---|---|
+| `.btn`, `.btn-primary` (or a `.btn` that is `.active`, `.is-selected` or `aria-pressed`) | `button`; prominent with the primary tone |
+| `.nav-pills` with `.nav-link`s | penna's segmented control, small; the pill follows `.active` |
+| `.form-range` | the native range input at the slider's sizes, filled to its value |
+| `.form-control`, `.form-select` | `field` |
+| `.card` | `card.activity` |
+| `.viz-badge`, with `data-tone` | `badge` |
+| `.progress` with a `.progress-bar` | penna's progress bar, small |
+| `.viz-stat-value`, `.text-muted`, `.text-small`, `table`, `hr`, `.viz-grid`, `.viz-row` | the sheet's own rules on penna's inks, divider and type sizes |
+| `--viz-series-1` to `6` | accent, success, warning, danger, then two hues between them |
+| `--background`, `--foreground`, `--card`, `--border`, `--primary` and the like | clear, the chat's ink, the activity wash, the divider, the primary tone |
+
+The script also rounds corners the way the kit's own script does and places the segmented pill. A
+whole page (`<!doctype` or `<html>` first) in an `html preview` block renders as it is. Agent panes
+learn the form from one paragraph the native Claude and Codex drivers add to the startup context
+(`workspace_context(.., true)`). Without the plugin (a markdown view, a client with no previewer)
+the block falls back to the code block with its picture.
+
+**Whole documents are pages.** An `html` block that starts with `<!doctype` or `<html>` and is not
+a `preview` block is the thing being built, so it keeps its own look: `PagePlugin` draws a
+`CardLook::Code` card holding a 32 px strip (a globe, the page's `<title>` or Page, Show code, Open
+as a page) over a picture of the page at 1280 × 720, scaled to the column on a white backing. A
+click on the picture opens the page in a browser pane beside the chat (`html - -- <text>`); it is
+never live in place. Show code opens the code in the chat's view pane. Fragments in plain `html`
+blocks stay code blocks and cards with the Preview toggle described above, and the card plugin
+leaves whole documents to the page plugin.
 
 **Codex's visualize references.** Codex's bundled visualize skill writes the fragment to a file and
 puts `\u{e200}visualize\u{e202}{"path": ...}\u{e201}` in its reply, which only Codex's own app

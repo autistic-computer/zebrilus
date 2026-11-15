@@ -125,27 +125,30 @@ pub struct ChatHooks<'a> {
 
 pub struct ChatMarkdown {
     refs: Arc<ChatRefs>,
+    html: Option<u64>,
     extensions: crate::text::MarkdownExtensions,
 }
 
 impl ChatMarkdown {
     #[must_use]
     pub fn new(refs: ChatRefs) -> Self {
+        Self::showing(refs, None)
+    }
+
+    fn showing(refs: ChatRefs, html: Option<u64>) -> Self {
         let refs = Arc::new(refs);
         let links = Arc::clone(&refs);
-        let extensions = match refs.view.clone() {
-            Some(open) => crate::agent::previewing_markdown_extensions(open),
-            None => assistant_markdown_extensions(),
-        };
+        let extensions = crate::agent::chat_markdown_extensions(refs.view.clone(), html);
         Self {
             extensions: extensions
                 .inline_links(move |text, source| ref_links(&links, text, source)),
+            html,
             refs,
         }
     }
 
-    fn reads(&self, refs: &ChatRefs) -> bool {
-        self.refs.hosts == refs.hosts && self.refs.cwd == refs.cwd
+    fn reads(&self, refs: &ChatRefs, html: Option<u64>) -> bool {
+        self.refs.hosts == refs.hosts && self.refs.cwd == refs.cwd && self.html == html
     }
 }
 
@@ -347,10 +350,14 @@ impl Global for ShownImages {}
 
 impl ChatPane {
     pub fn markdown(&mut self, refs: ChatRefs) -> Rc<ChatMarkdown> {
+        self.markdown_showing(refs, None)
+    }
+
+    fn markdown_showing(&mut self, refs: ChatRefs, html: Option<u64>) -> Rc<ChatMarkdown> {
         match &self.markdown {
-            Some(markdown) if markdown.reads(&refs) => Rc::clone(markdown),
+            Some(markdown) if markdown.reads(&refs, html) => Rc::clone(markdown),
             _ => {
-                let markdown = Rc::new(ChatMarkdown::new(refs));
+                let markdown = Rc::new(ChatMarkdown::showing(refs, html));
                 self.markdown = Some(Rc::clone(&markdown));
                 markdown
             }
@@ -753,8 +760,11 @@ pub fn chat_surface<T: ChatHost>(
             });
         })
     };
+    let html = cx
+        .has_global::<crate::agent::AgentHtmlPreviewer>()
+        .then_some(look.pane);
     let pane = host.chat_pane();
-    let markdown = look.refs.map(|refs| pane.markdown(refs));
+    let markdown = look.refs.map(|refs| pane.markdown_showing(refs, html));
     pane.frame = ChatFrame {
         now,
         phase,

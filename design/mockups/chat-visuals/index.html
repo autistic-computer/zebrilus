@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HTML in the chat: visuals and pages</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/badge/badge.css">
+<link rel="stylesheet" href="/penna-src/components/progress/progress.css">
+<link rel="stylesheet" href="/penna-src/components/segmented/segmented.css">
+<link rel="stylesheet" href="/penna-src/components/slider/slider.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  [hidden] { display: none !important; }
+  .zz-page { display: grid; gap: 56px; max-width: 2000px; margin: 0 auto; padding: 40px 32px 96px; }
+  .zz-page > section { display: grid; gap: 14px; min-width: 0; }
+  .zz-page h1 { margin: 0; font-size: var(--penna-text-title-size, 22px); line-height: var(--penna-text-title-line, 28px); font-weight: 600; }
+  .zz-page h2 { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+  .zz-page p.zz-lede { margin: 0; max-width: 96ch; color: var(--penna-fg-muted); }
+  .zz-page p.zz-lede b { color: var(--penna-fg); font-weight: 600; }
+  .zz-intro { display: grid; gap: 6px; }
+  .zz-pick { margin-left: 6px; color: var(--penna-accent); font-weight: 600; }
+
+  .zz-variants.penna-variants { padding: 0; --penna-variant-width: 600px; }
+  .zz-variants > figure { min-width: 0; }
+  .zz-states.penna-variants { --penna-variant-width: 440px; }
+  .zz-one.penna-variants { --penna-variant-width: 900px; }
+
+  .zz-chat { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 20px 24px; border: 1px solid var(--penna-border); border-radius: 14px; background: var(--penna-bg); font-size: var(--penna-text-read-body-size); line-height: var(--penna-text-read-body-line); }
+  .zz-chat > p { margin: 0; }
+  .zz-chat .penna-chat-bubble { width: fit-content; }
+  .zz-chat .penna-chat-message { margin-bottom: 4px; }
+
+  .zv { position: relative; display: grid; gap: 12px; min-width: 0; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); }
+  .zv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .zv-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .zv-tile.penna-card[data-penna] { display: grid; gap: 6px; min-width: 0; padding: 12px; overflow: hidden; }
+  .zv > .penna-card { min-width: 0; overflow: hidden; }
+  .zv-tile-head { display: flex; align-items: center; gap: 6px; min-height: 20px; color: var(--penna-muted); font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zv-tile-head > b { font-weight: 500; }
+  .zv-stat { font-size: 22px; line-height: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .zv-stat > small { margin-left: 3px; font-size: var(--penna-text-small-size); font-weight: 400; color: var(--penna-muted); }
+  .zv-wrap.penna-card[data-penna] { padding: 12px; }
+  .zv-wrap .zv-tile.penna-card[data-penna] { padding: 10px 12px; }
+
+  .zv-tools[data-penna="popover"] { position: absolute; top: -8px; right: -8px; z-index: 1; display: flex; flex-direction: row; gap: 2px; width: auto; min-width: 0; padding: 2px; }
+  .zv-tools > [data-penna] { width: 24px; height: 24px; --penna-icon-size: 13px; }
+  .zv-live { outline: 1.5px solid var(--penna-focus-neutral); outline-offset: 6px; border-radius: 6px; }
+
+  .zb.penna-card[data-penna] { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; }
+  .zb-head { display: flex; align-items: center; gap: 2px; height: 22px; }
+  .zb-head > span { flex: 1; font-family: var(--penna-mono); font-size: var(--penna-text-micro-size); letter-spacing: 0.04em; color: var(--penna-muted); }
+  .zb-head > [data-penna] { width: 22px; height: 22px; --penna-icon-size: 13px; }
+  .zb-shot { padding: 14px; background: var(--penna-bg); }
+  .zb-code { margin: 0; overflow: hidden; font-family: var(--penna-mono); font-size: var(--penna-text-mono-size); line-height: var(--penna-text-mono-line); white-space: pre; color: var(--penna-fg); }
+  .zb-code i { font-style: normal; color: var(--penna-syntax-tag); }
+  .zb-code u { text-decoration: none; color: var(--penna-syntax-attribute); }
+  .zb-code s { text-decoration: none; color: var(--penna-syntax-string); }
+
+  .old { display: grid; gap: 12px; font: 14px/1.5 system-ui, sans-serif; color: var(--penna-fg); }
+  .old-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .old-pills { display: flex; gap: 4px; }
+  .old-link { padding: 4px 12px; border-radius: 8px; color: var(--penna-fg-muted); }
+  .old-link[data-on] { color: var(--penna-fg); background: color-mix(in srgb, var(--penna-fg) 10%, transparent); }
+  .old-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .old-card { padding: 12px 14px; border: 1px solid var(--penna-border); border-radius: 10px; background: color-mix(in srgb, var(--penna-fg) 4%, var(--penna-bg)); }
+  .old-card > div:first-child { font-size: 12px; color: var(--penna-fg-muted); }
+  .old-stat { font-size: 1.6em; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .old-progress { height: 6px; margin-top: 6px; border-radius: 3px; background: color-mix(in srgb, var(--penna-fg) 10%, transparent); overflow: hidden; }
+  .old-progress > div { height: 100%; background: var(--penna-accent); }
+  .old-badge { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; background: color-mix(in srgb, var(--penna-fg) 10%, transparent); font-size: 12px; }
+  .old-btn { padding: 4px 12px; border: 1px solid var(--penna-border); border-radius: 8px; background: color-mix(in srgb, var(--penna-fg) 8%, transparent); }
+  .old-btn[data-primary] { border-color: var(--penna-accent); background: var(--penna-accent); color: var(--penna-on-accent); }
+
+  .pg { width: 900px; background: #faf6f0; color: #2a211c; font: 16px/1.5 Georgia, "Times New Roman", serif; }
+  .pg-nav { display: flex; align-items: center; gap: 28px; padding: 22px 48px; font: 500 14px/1 system-ui, sans-serif; }
+  .pg-nav > b { flex: 1; font: 700 20px/1 Georgia, serif; letter-spacing: -0.01em; }
+  .pg-hero { padding: 44px 48px 40px; }
+  .pg-hero > h3 { margin: 0 0 14px; max-width: 12ch; font-size: 60px; line-height: 1.02; font-weight: 700; letter-spacing: -0.02em; }
+  .pg-hero > p { margin: 0 0 24px; max-width: 44ch; font: 17px/1.5 system-ui, sans-serif; color: #6b5a4f; }
+  .pg-cta { display: inline-block; padding: 12px 22px; border-radius: 4px; background: #b4552d; color: #fff; font: 600 15px/1 system-ui, sans-serif; }
+  .pg-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; padding: 32px 48px 48px; border-top: 1px solid #e6dccf; font: 14px/1.5 system-ui, sans-serif; color: #6b5a4f; }
+  .pg-cols b { display: block; margin-bottom: 4px; font: 700 18px/1.2 Georgia, serif; color: #2a211c; }
+  .pg[data-narrow] { width: auto; }
+  .pg[data-narrow] .pg-nav { padding: 16px 20px; gap: 16px; }
+  .pg[data-narrow] .pg-hero { padding: 24px 20px; }
+  .pg[data-narrow] .pg-hero > h3 { font-size: 40px; }
+  .pg[data-narrow] .pg-cols { grid-template-columns: 1fr; gap: 14px; padding: 20px; }
+  .pg-clip { overflow: hidden; }
+
+  .zp-card.penna-card[data-penna] { display: flex; align-items: center; gap: 12px; width: fit-content; min-width: 300px; padding: 8px 14px 8px 8px; }
+  .zp-thumb { flex: none; width: 108px; height: 68px; overflow: hidden; border-radius: 7px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--penna-fg) 14%, transparent); }
+  .zp-thumb > .pg { zoom: 0.12; }
+  .zp-who { display: flex; flex-direction: column; min-width: 0; }
+  .zp-who > b { font-weight: 500; }
+  .zp-who > span { font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
+
+  .zp-frame { overflow: hidden; border-radius: 12px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--penna-fg) 16%, transparent); }
+  .zp-bar { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 6px 0 12px; background: color-mix(in srgb, var(--penna-fg) 6%, var(--penna-bg)); font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); --penna-icon-size: 13px; }
+  .zp-bar > span { flex: 1; min-width: 0; overflow: hidden; color: var(--penna-fg); text-overflow: ellipsis; white-space: nowrap; }
+  .zp-bar > [data-penna] { width: 24px; height: 24px; }
+  .zp-view { height: 300px; overflow: hidden; background: #faf6f0; }
+  .zp-view > .pg { zoom: 0.612; }
+
+  .zs-wash { display: grid; place-items: center; height: 148px; border-radius: 12px; background: color-mix(in srgb, var(--penna-fg) 4%, transparent); }
+  .zs-fail { display: flex; align-items: center; gap: 8px; color: var(--penna-fg-muted); --penna-icon-size: 14px; }
+  .zs-fail > span { flex: 1; }
+
+  .zk { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 20px 24px; align-items: start; }
+  .zk > div { display: grid; gap: 8px; justify-items: start; min-width: 0; }
+  .zk code { font-family: var(--penna-mono); font-size: var(--penna-text-micro-size); color: var(--penna-muted); }
+  .zk-field[data-penna="field"] { display: flex; align-items: center; width: 160px; height: var(--penna-control-md); padding: 0 12px; color: var(--penna-muted); }
+  .zk-series { display: flex; gap: 4px; }
+  .zk-series > i { width: 22px; height: 22px; border-radius: 6px; }
+  .zk-table { border-collapse: collapse; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zk-table th, .zk-table td { padding: 4px 16px 4px 0; border-bottom: 1px solid var(--penna-divider); text-align: left; font-weight: 400; }
+  .zk-table th { color: var(--penna-muted); }
+  .zk-table td:last-child, .zk-table th:last-child { padding-right: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .zk .penna-slider { width: 160px; }
+  .zk .penna-progress { width: 160px; }
+
+  .zr { border-collapse: collapse; width: 100%; max-width: 1180px; }
+  .zr th, .zr td { padding: 8px 20px 8px 0; border-bottom: 1px solid var(--penna-divider); text-align: left; vertical-align: top; }
+  .zr th { font-size: var(--penna-text-small-size); font-weight: 500; color: var(--penna-muted); }
+  .zr code { font-family: var(--penna-mono); font-size: var(--penna-text-mono-size); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>HTML in the chat: visuals and pages</h1>
+    <p class="zz-lede">Two things arrive as HTML. A <b>visual</b> is part of the answer and should be drawn by penna, in the user's theme. A <b>page</b> is the thing being built and should look like itself.</p>
+  </div>
+
+  <section data-shot="visual">
+    <h2>A visual in a reply</h2>
+    <div class="penna-variants zz-variants" data-visual></div>
+  </section>
+
+  <section data-shot="page">
+    <h2>A page the agent wrote</h2>
+    <div class="penna-variants zz-variants" data-pages></div>
+  </section>
+
+  <section data-shot="states">
+    <h2>A visual's states, on the chat ground</h2>
+    <div class="penna-variants zz-variants zz-states" data-states></div>
+  </section>
+
+  <section data-shot="parts">
+    <h2>Parts a visual draws with, and the name a model writes</h2>
+    <div class="penna-variants zz-variants zz-one"><figure><div class="zz-chat"><div class="zk" data-parts></div></div></figure></div>
+  </section>
+
+  <section data-shot="rule">
+    <h2>Which is which</h2>
+    <table class="zr">
+      <tr><th>The agent writes</th><th>Reads as</th><th>Drawn</th><th>A click</th></tr>
+      <tr><td><code>html preview</code> block, or a visualize reference</td><td>A visual</td><td>penna's kit and the live theme's tokens, no frame</td><td>reaches the page the first time</td></tr>
+      <tr><td><code>html</code> block holding a whole document</td><td>A page</td><td>its own styles, at desktop width, in a frame</td><td>opens it in a browser pane</td></tr>
+      <tr><td><code>html</code> block holding a fragment</td><td>Code</td><td>a code block or card, as today</td><td>Preview draws it as a page</td></tr>
+      <tr><td><code>zz html file</code></td><td>A page</td><td>a browser pane beside the chat, as today</td><td></td></tr>
+    </table>
+  </section>
+</main>
+<script>
+(() => {
+  const btn = (label, extra = "") => `<button class="penna-button" data-penna="button" ${extra}><span class="penna-label" data-penna-text>${label}</span></button>`;
+  const icon = (name, role = "icon-button") => `<button data-penna="${role}"><i data-icon="${name}"></i></button>`;
+  const badge = (label, tone) => `<span class="penna-badge" data-penna="badge"${tone ? ` data-tone="${tone}"` : ""}><span class="badge-text" data-penna-text>${label}</span></span>`;
+  const progress = (value) => `<div class="penna-progress" data-size="small" style="--penna-value: ${value}%"><div class="penna-progress-fill"></div></div>`;
+  const segmented = (labels, on = 0, size = "small") => `<div class="penna-segmented" data-penna="field" data-size="${size}" data-still data-value="${on}" role="radiogroup"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span>${labels
+    .map((label, index) => `<span class="penna-segment" role="button" aria-selected="${index === on}"><span class="penna-label" data-penna-text>${label}</span></span>`)
+    .join("")}</div></div>`;
+
+  const stores = [
+    ["Redis", "0.4", 14, "fastest"],
+    ["SQLite", "1.2", 43, ""],
+    ["Postgres", "2.8", 100, ""],
+  ];
+  const tiles = (role) => `<div class="zv-tiles">${stores
+    .map(([name, ms, share, note]) => `<div class="penna-card zv-tile" data-penna="${role}"><div class="zv-tile-head"><b>${name}</b>${note ? badge(note, "success") : ""}</div><div class="zv-stat">${ms}<small>ms</small></div>${progress(share)}</div>`)
+    .join("")}</div>`;
+  const picks = `<div class="zv-row">${btn("Use Redis", `data-tone="primary" data-prominent`)}${btn("Use SQLite")}${btn("Use Postgres")}</div>`;
+  const visual = (role, tools = "", live = false) => `<div class="zv${live ? " zv-live" : ""}">${tools}<div class="zv-row">${segmented(["p50", "p99", "Memory"])}</div>${tiles(role)}${picks}</div>`;
+  const tools = (first = "braces") => `<div class="zv-tools" data-penna="popover">${icon(first, "icon-button")}${icon("external-link")}${icon("copy")}</div>`;
+
+  const old = `<div class="old">
+    <div class="old-row"><div class="old-pills"><span class="old-link" data-on>p50</span><span class="old-link">p99</span><span class="old-link">Memory</span></div></div>
+    <div class="old-grid">${stores
+      .map(([name, ms, share, note]) => `<div class="old-card"><div>${name}${note ? `<span class="old-badge">${note}</span>` : ""}</div><div class="old-stat">${ms} ms</div><div class="old-progress"><div style="width: ${share}%"></div></div></div>`)
+      .join("")}</div>
+    <div class="old-row"><span class="old-btn" data-primary>Use Redis</span><span class="old-btn">Use SQLite</span><span class="old-btn">Use Postgres</span></div>
+  </div>`;
+  const block = (body, first = "braces") => `<div class="penna-card zb" data-penna="card.code"><div class="zb-head"><span>HTML</span>${icon(first, "icon-button")}${icon("globe")}${icon("copy")}</div>${body}</div>`;
+
+  const bubble = (text) => `<div class="penna-chat-message"><div class="penna-card penna-chat-bubble" data-penna="card.bubble"><span data-penna-text>${text}</span></div></div>`;
+  const chat = (ask, before, body, after) => `<div class="zz-chat">${bubble(ask)}${before ? `<p>${before}</p>` : ""}${body}${after ? `<p>${after}</p>` : ""}</div>`;
+  const figure = (name, note, body, pick) => `<figure>${body}<figcaption><b>${name}</b>${note}${pick ? `<span class="zz-pick">my pick</span>` : ""}</figcaption></figure>`;
+
+  const ask = "Which store should hold sessions?";
+  const before = "I ran each one with 10k sessions on this machine.";
+  const after = "Redis is fastest. SQLite needs nothing extra to run.";
+  document.querySelector("[data-visual]").innerHTML = [
+    figure("A. Today", "A code block around a picture, drawn with stand-in styles", chat(ask, before, block(`<div class="zb-shot">${old}</div>`), after)),
+    figure("B. On the chat ground", "No frame. penna's parts sit in the answer like its text does", chat(ask, before, visual("card.activity"), after), true),
+    figure("C. In a card", "penna's parts inside one card", chat(ask, before, `<div class="penna-card zv-wrap" data-penna="card.code">${visual("card.activity")}</div>`, after)),
+  ].join("");
+
+  const page = (narrow) => `<div class="pg"${narrow ? " data-narrow" : ""}>
+    <div class="pg-nav"><b>Fig &amp; Kettle</b><span>Beans</span><span>Visit</span><span>Subscribe</span></div>
+    <div class="pg-hero"><h3>Coffee, roasted on Tuesdays</h3><p>Small batches from three farms, on your doorstep by Thursday.</p><span class="pg-cta">Start a subscription</span></div>
+    <div class="pg-cols"><div><b>Three farms</b>Huila, Yirgacheffe and Tarrazú, bought direct.</div><div><b>One roast day</b>Every bag ships within two days of roasting.</div><div><b>No contract</b>Skip a week or stop from the same link.</div></div>
+  </div>`;
+  const pageAsk = "Build a landing page for the coffee shop.";
+  const pageAfter = "It is in site/index.html.";
+  document.querySelector("[data-pages]").innerHTML = [
+    figure("A. Today", "A code block. Preview draws the page at the block's width", chat(pageAsk, "", block(`<div class="pg-clip" style="height: 300px">${page(true)}</div>`, "braces"), pageAfter)),
+    figure("B. A card with a thumbnail", "Named by the page's title. A click opens it in a browser pane", chat(pageAsk, "", `<div class="penna-card zp-card" data-penna="card.code"><div class="zp-thumb">${page()}</div><div class="zp-who"><b>Fig &amp; Kettle</b><span>HTML · 48 lines</span></div></div>`, pageAfter)),
+    figure("C. The page in a frame", "Drawn at desktop width and scaled down. A click opens it in a browser pane", chat(pageAsk, "", `<div class="zp-frame"><div class="zp-bar"><i data-icon="globe"></i><span>Fig &amp; Kettle</span>${icon("braces", "icon-button")}${icon("external-link", "icon-button")}</div><div class="zp-view">${page()}</div></div>`, pageAfter), true),
+  ].join("");
+
+  const mini = (extra = "", live = false) => `<div class="zv${live ? " zv-live" : ""}">${extra}<div class="zv-row">${segmented(["p50", "p99", "Memory"])}</div>${tiles("card.activity")}</div>`;
+  const code = `<pre class="zb-code">&lt;<i>div</i> <u>class</u>=<s>"viz-grid"</s>&gt;
+  &lt;<i>div</i> <u>class</u>=<s>"card"</s>&gt;
+    &lt;<i>div</i> <u>class</u>=<s>"text-muted"</s>&gt;Redis&lt;/<i>div</i>&gt;
+    &lt;<i>div</i> <u>class</u>=<s>"viz-stat-value"</s>&gt;0.4&lt;/<i>div</i>&gt;
+  &lt;/<i>div</i>&gt;
+&lt;/<i>div</i>&gt;</pre>`;
+  const stage = (body) => `<div class="zz-chat">${body}</div>`;
+  document.querySelector("[data-states]").innerHTML = [
+    figure("Resting", "A picture", stage(mini())),
+    figure("Pointer over it", "Show the code, open as a page, copy", stage(mini(tools()))),
+    figure("In use", "Live after the first click, which also lands", stage(mini("", true))),
+    figure("Showing its code", "", stage(`<div class="zv">${tools("eye")}<div class="penna-card" data-penna="card.code">${code}</div></div>`)),
+    figure("Drawing", "", stage(`<div class="zs-wash"><span class="penna-spinner" data-color="muted"><i data-icon="loader"></i></span></div>`)),
+    figure("Could not draw", "", stage(`<div class="zs-fail"><i data-icon="triangle-alert"></i><span>Preview timed out</span>${btn("Open as a page")}</div>`)),
+  ].join("");
+
+  const part = (body, name) => `<div>${body}<code>${name}</code></div>`;
+  const series = ["var(--penna-accent)", "var(--penna-success)", "var(--penna-warning)", "var(--penna-danger)", "color-mix(in oklch, var(--penna-accent), var(--penna-danger))", "color-mix(in oklch, var(--penna-accent), var(--penna-success))"];
+  document.querySelector("[data-parts]").innerHTML = [
+    part(btn("Use this", `data-tone="primary" data-prominent`), ".btn-primary"),
+    part(btn("Compare"), ".btn"),
+    part(segmented(["Line", "Bars"], 0, "small"), ".nav-pills"),
+    part(`<div class="penna-slider" data-min="0" data-max="100" data-value="40" style="--penna-value: 40%"><div class="penna-rail"><div class="penna-fill"></div><div class="penna-knob"></div></div></div>`, ".form-range"),
+    part(`<div class="zk-field" data-penna="field">Filter</div>`, ".form-control"),
+    part(`<div class="zv-row">${badge("fastest", "success")}${badge("slow", "warning")}${badge("3 runs")}</div>`, ".viz-badge"),
+    part(progress(62), ".progress"),
+    part(`<div class="penna-card zv-tile" data-penna="card.activity" style="width: 160px"><div class="zv-tile-head"><b>Redis</b></div><div class="zv-stat">0.4<small>ms</small></div></div>`, ".card  .viz-stat-value"),
+    part(`<table class="zk-table"><tr><th>Store</th><th>p50</th></tr><tr><td>Redis</td><td>0.4</td></tr><tr><td>SQLite</td><td>1.2</td></tr></table>`, "table"),
+    part(`<div class="zk-series">${series.map((color) => `<i style="background: ${color}"></i>`).join("")}</div>`, "--viz-series-1 … 6"),
+  ].join("");
+
+  const place = () => {
+    for (const group of document.querySelectorAll(".penna-segmented")) {
+      const segments = group.querySelectorAll(".penna-segment");
+      const on = segments[Number(group.dataset.value) || 0];
+      const pill = group.querySelector(".penna-segment-pill");
+      if (!on || !pill) continue;
+      pill.style.setProperty("--pill-x", `${on.offsetLeft}px`);
+      pill.style.setProperty("--pill-w", `${on.offsetWidth}px`);
+      pill.style.setProperty("--penna-pill-r", `${on.offsetHeight / 2}px`);
+    }
+  };
+  const only = new URLSearchParams(location.search).get("shot");
+  if (only) {
+    for (const section of document.querySelectorAll("[data-shot]")) section.hidden = section.dataset.shot !== only;
+    document.querySelector(".zz-intro").hidden = only !== "visual";
+  }
+  window.pennaKit?.roundAll?.();
+  place();
+  addEventListener("load", () => { window.pennaKit?.roundAll?.(); place(); });
+})();
+</script>
+</body>
+</html>

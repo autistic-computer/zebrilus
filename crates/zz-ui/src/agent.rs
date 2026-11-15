@@ -9,10 +9,10 @@ pub mod refs;
 pub mod resume;
 pub mod tasks;
 pub mod view;
+pub mod visual;
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    fmt::Write as _,
     hash::{DefaultHasher, Hash, Hasher},
     rc::Rc,
     sync::{Arc, OnceLock},
@@ -163,6 +163,7 @@ impl Global for AgentHtmlOpener {}
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HtmlPreviewSize {
     pub width: Pixels,
+    pub height: Option<Pixels>,
     pub scale: f32,
     pub dark: bool,
 }
@@ -183,6 +184,8 @@ pub struct HtmlLiveBlock {
     pub html: String,
     pub size: ala::Size<Pixels>,
     pub owner: Option<u64>,
+    pub clear: bool,
+    pub click: Option<ala::Point<Pixels>>,
 }
 
 impl Global for AgentHtmlLive {}
@@ -269,95 +272,6 @@ fn html_block_page(code: &str, head: Option<&str>) -> String {
     }
 }
 
-fn visual_page_head(cx: &App) -> String {
-    let colors = MermaidThemeColors::from_app(cx);
-    let dark = cx.theme().is_dark();
-    let [blue, orange, purple] = if dark {
-        ["#5ea1ff", "#f0a050", "#b195ff"]
-    } else {
-        ["#2f6fd6", "#c96a12", "#7c4ddb"]
-    };
-    let variables = [
-        ("background", css_color(colors.background)),
-        ("foreground", css_color(colors.foreground)),
-        ("card", css_color(colors.surface)),
-        ("card-foreground", css_color(colors.foreground)),
-        ("popover", css_color(colors.surface)),
-        ("popover-foreground", css_color(colors.foreground)),
-        ("primary", css_color(colors.primary)),
-        ("primary-foreground", css_color(colors.primary_foreground)),
-        ("secondary", css_color(colors.muted)),
-        ("secondary-foreground", css_color(colors.foreground)),
-        ("muted", css_color(colors.muted)),
-        ("muted-foreground", css_color(colors.muted_foreground)),
-        ("accent", css_color(colors.muted)),
-        ("accent-foreground", css_color(colors.foreground)),
-        ("destructive", css_color(colors.danger)),
-        ("border", css_color(colors.border)),
-        ("input", css_color(colors.border)),
-        ("ring", css_color(colors.muted_foreground)),
-        ("red", css_color(colors.danger)),
-        ("green", css_color(colors.success)),
-        ("yellow", css_color(colors.warning)),
-        ("blue", blue.to_owned()),
-        ("orange", orange.to_owned()),
-        ("purple", purple.to_owned()),
-        ("viz-series-1", css_color(cx.theme().accent)),
-        ("viz-series-2", blue.to_owned()),
-        ("viz-series-3", orange.to_owned()),
-        ("viz-series-4", css_color(colors.success)),
-        ("viz-series-5", purple.to_owned()),
-        ("viz-series-6", css_color(colors.danger)),
-    ];
-    let root = variables
-        .iter()
-        .fold(String::new(), |mut root, (name, value)| {
-            let _ = write!(root, "--{name}:{value};");
-            root
-        });
-    format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><style>:root{{color-scheme:{};font-family:{};--font-size-base:14px;{root}}}{VISUAL_PAGE_CSS}</style><script>{VISUAL_PAGE_SCRIPT}</script></head><body>",
-        if dark { "dark" } else { "light" },
-        mermaid_font_family(cx.theme().font_family.as_ref(), "system-ui", "sans-serif"),
-    )
-}
-
-const VISUAL_PAGE_CSS: &str = r"*,*::before,*::after{box-sizing:border-box}
-html{background:var(--background);color:var(--foreground);font-size:var(--font-size-base);line-height:1.5}
-body{margin:0;padding:2px}
-h1,h2,h3{font-weight:500;line-height:1.25;margin:0 0 .5em}
-h1{font-size:1.5em}h2{font-size:1.25em}h3{font-size:1.1em}
-p{margin:0 0 .75em}
-a{color:var(--viz-series-1)}
-hr{border:0;border-top:1px solid var(--border);margin:12px 0}
-table{border-collapse:collapse;width:100%}
-th,td{padding:4px 8px;border-bottom:1px solid var(--border);text-align:left}
-th{font-weight:500;color:var(--muted-foreground)}
-.table-responsive{overflow-x:auto}
-.text-small{font-size:12px}
-.text-muted{color:var(--muted-foreground)}
-.tabular-nums{font-variant-numeric:tabular-nums}
-.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
-.viz-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
-.viz-row,.viz-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
-.viz-stat-value{font-size:1.6em;font-weight:500;font-variant-numeric:tabular-nums}
-.viz-badge{display:inline-block;padding:0 8px;border-radius:999px;background:var(--muted);font-size:12px}
-.btn{font:inherit;color:var(--secondary-foreground);background:var(--secondary);border:1px solid var(--border);border-radius:8px;padding:4px 12px;cursor:pointer}
-.btn-primary,.btn[aria-pressed=true],.btn[aria-selected=true],.btn.is-selected{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
-.viz-tile{width:100%;height:100%}
-.form-label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted-foreground)}
-.form-control,.form-select{font:inherit;color:var(--foreground);background:var(--background);border:1px solid var(--input);border-radius:6px;padding:4px 8px}
-.form-range{accent-color:var(--viz-series-1)}
-.nav-pills{display:flex;flex-wrap:wrap;gap:4px}
-.nav-justified>.nav-link{flex:1}
-.nav-link{font:inherit;color:var(--muted-foreground);background:none;border:0;border-radius:8px;padding:4px 12px;cursor:pointer}
-.nav-link.active{color:var(--foreground);background:var(--muted)}
-.progress{height:6px;border-radius:3px;background:var(--muted);overflow:hidden}
-.progress-bar{height:100%;background:var(--viz-series-1)}
-.tooltip{position:absolute;pointer-events:none;background:var(--popover);color:var(--popover-foreground);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px}
-.viz-dotted-background{background-image:radial-gradient(var(--border) 1px,transparent 1px);background-size:16px 16px}
-";
-
 const VISUAL_PAGE_SCRIPT: &str = r#"window.openai={widgetState:null,setWidgetState:function(){return Promise.resolve()},sendFollowUpMessage:function(message){return window.zz&&window.zz.reply?window.zz.reply(String(message&&message.prompt||message)):Promise.reject(new Error("this page cannot send follow-ups"))}};"#;
 
 fn previews_html(language: &str, cx: &App) -> bool {
@@ -382,6 +296,8 @@ enum HtmlPreviewResult {
 #[derive(Default)]
 struct HtmlPreviewState {
     width: Option<Pixels>,
+    origin: Option<ala::Point<Pixels>>,
+    height: Option<Pixels>,
     result: HtmlPreviewResult,
     render_key: Option<u64>,
     _task: Option<Task<()>>,
@@ -399,6 +315,9 @@ impl HtmlPreviewState {
         code.hash(&mut hasher);
         head.hash(&mut hasher);
         f32::from(size.width).to_bits().hash(&mut hasher);
+        size.height
+            .map(|height| f32::from(height).to_bits())
+            .hash(&mut hasher);
         size.scale.to_bits().hash(&mut hasher);
         size.dark.hash(&mut hasher);
         let key = hasher.finish();
@@ -407,6 +326,7 @@ impl HtmlPreviewState {
         }
         self.render_key = Some(key);
         if let Some(image) = cx.default_global::<HtmlPreviewCache>().get(key) {
+            self.height = Some(picture_height(&image, size.scale));
             self.result = HtmlPreviewResult::Ready(image, size.scale);
             self._task = None;
             cx.notify();
@@ -431,6 +351,7 @@ impl HtmlPreviewState {
                 }
                 state.result = match result {
                     Ok(image) => {
+                        state.height = Some(picture_height(&image, size.scale));
                         cx.default_global::<HtmlPreviewCache>()
                             .insert(key, Arc::clone(&image));
                         HtmlPreviewResult::Ready(image, size.scale)
@@ -442,6 +363,10 @@ impl HtmlPreviewState {
         }));
         cx.notify();
     }
+}
+
+fn picture_height(image: &RenderImage, scale: f32) -> Pixels {
+    px(image.size(0).height.0 as f32 / scale.max(1.0))
 }
 
 fn agent_code_block_body(
@@ -458,7 +383,7 @@ fn agent_code_block_body(
     if !previews_html(&language, cx) || !html_preview_shown(block, visual, cx) {
         return None;
     }
-    let head = visual.then(|| visual_page_head(cx));
+    let head = visual.then(|| visual::visual_head(cx).to_string());
     let state = window.use_keyed_state(
         SharedString::from(format!("zz-html-preview/{block}")),
         cx,
@@ -467,6 +392,7 @@ fn agent_code_block_body(
     if let Some(width) = state.read(cx).width {
         let size = HtmlPreviewSize {
             width: html_preview_width(width),
+            height: None,
             scale: window.scale_factor(),
             dark: cx.theme().is_dark(),
         };
@@ -527,6 +453,7 @@ fn agent_code_block_body(
                     .debug_selector(|| "agent-html-live".to_owned())
                     .w(picture.width)
                     .h(picture.height)
+                    .when(!visual, |this| this.bg(Hsla::white()))
                     .child(element)
                     .into_any_element()
             } else {
@@ -554,6 +481,8 @@ fn agent_code_block_body(
                                     html: page,
                                     size: picture,
                                     owner,
+                                    clear: visual,
+                                    click: None,
                                 },
                                 window,
                                 cx,
@@ -566,7 +495,8 @@ fn agent_code_block_body(
                         img(ImageSource::Render(Arc::clone(image)))
                             .debug_selector(|| "agent-html-preview".to_owned())
                             .w(picture.width)
-                            .h(picture.height),
+                            .h(picture.height)
+                            .when(!visual, |this| this.bg(Hsla::white())),
                     )
                     .into_any_element()
             }
@@ -676,7 +606,7 @@ fn agent_code_block_chrome(
                                 .on(ground)
                                 .tooltip("Open as a page")
                                 .on_click(move |_, window, cx| {
-                                    let head = visual.then(|| visual_page_head(cx));
+                                    let head = visual.then(|| visual::visual_head(cx).to_string());
                                     opener(html_block_page(&page, head.as_deref()), window, cx);
                                 }),
                                 cx,
@@ -728,8 +658,24 @@ pub(crate) fn assistant_markdown_extensions() -> MarkdownExtensions {
         .clone()
 }
 
-pub(crate) fn previewing_markdown_extensions(open: preview::ViewOpener) -> MarkdownExtensions {
-    assistant_plugins(MarkdownExtensions::default().plugin(preview::PreviewPlugin { open }))
+pub(crate) fn chat_markdown_extensions(
+    open: Option<preview::ViewOpener>,
+    html: Option<u64>,
+) -> MarkdownExtensions {
+    let mut extensions = MarkdownExtensions::default();
+    if let Some(owner) = html {
+        extensions = extensions
+            .plugin(visual::VisualPlugin { owner: Some(owner) })
+            .plugin(visual::PagePlugin { view: open.clone() });
+    }
+    match open {
+        Some(open) => assistant_plugins(extensions.plugin(preview::PreviewPlugin {
+            open,
+            pages: html.is_some(),
+        })),
+        None if html.is_none() => assistant_markdown_extensions(),
+        None => assistant_plugins(extensions),
+    }
 }
 
 fn assistant_plugins(extensions: MarkdownExtensions) -> MarkdownExtensions {
@@ -1733,7 +1679,7 @@ mod tests {
         let asked = asked.borrow();
         let html = asked.last().expect("the previewer was asked");
         assert!(html.starts_with("<!doctype html>"), "{html}");
-        assert!(html.contains("--background:#"), "{html}");
+        assert!(html.contains("--background:transparent;"), "{html}");
         assert!(html.contains("window.openai="), "{html}");
         assert!(
             html.ends_with("<body><p id=\"hi\">hi</p></body></html>"),
