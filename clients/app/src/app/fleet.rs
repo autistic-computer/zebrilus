@@ -2,7 +2,9 @@ use ala::{AppContext as _, Context, Entity, Window};
 use zz_protocol::{PaneId, SessionId};
 
 use super::{AppShell, compact, floating, watch_connection};
-use crate::connection::{Connection, FoundHost};
+use crate::connection::Connection;
+#[cfg(any(target_os = "ios", target_os = "android"))]
+use crate::connection::FoundHost;
 
 impl AppShell {
     pub(super) fn reconnect_saved_hosts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -21,6 +23,7 @@ impl AppShell {
         }
     }
 
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn found_hosts(&mut self, found: &[FoundHost], cx: &mut Context<Self>) {
         for host in found {
             match self
@@ -36,6 +39,7 @@ impl AppShell {
         cx.notify();
     }
 
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn open_host(
         &mut self,
         endpoint: String,
@@ -101,6 +105,7 @@ impl AppShell {
             connection.connect_background(endpoint, cx);
         });
         let observer = cx.observe(&connection, |_, _, cx| cx.notify());
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         self.fleet_found.push(cx.subscribe_in(
             &connection,
             window,
@@ -189,6 +194,7 @@ impl AppShell {
     fn reset_host_state(&mut self) {
         self.terminals.clear();
         self.agents.clear();
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         self.browsers.clear();
         self.pickers.clear();
         self.landing_picker = None;

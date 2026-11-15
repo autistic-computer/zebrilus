@@ -5,7 +5,6 @@ mod authentication;
 mod browser_pane;
 mod compact;
 pub(crate) use compact::HostPage;
-#[cfg(any(target_os = "ios", target_os = "android"))]
 mod fleet;
 mod floating;
 mod gui;
@@ -113,7 +112,6 @@ pub fn session_from_url(url: &str) -> Option<String> {
 pub struct AppShell {
     connection: Entity<Connection>,
     _connection_subscriptions: [Subscription; 4],
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     fleet: Vec<(Entity<Connection>, Subscription)>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fleet_found: Vec<Subscription>,
@@ -126,7 +124,6 @@ pub struct AppShell {
     auth_prompt_id: Option<(ala::EntityId, u64)>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     phone_auth: Option<authentication::PhoneAuth>,
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     hosts: hosts::Hosts,
     terminals: HashMap<PaneId, Entity<TerminalPane>>,
     waiting_panes: BTreeSet<PaneId>,
@@ -221,7 +218,6 @@ fn watch_connection(
                     }
                 }
                 zz_client::CoreEvent::HelloReceived | zz_client::CoreEvent::Attached { .. } => {
-                    #[cfg(any(target_os = "ios", target_os = "android"))]
                     if matches!(event, zz_client::CoreEvent::HelloReceived) {
                         this.remember_host(cx);
                     }
@@ -385,13 +381,10 @@ impl AppShell {
             window,
             |this, _, request: &HostRequest, window, cx| this.host_request(*request, window, cx),
         );
-        #[cfg(any(target_os = "ios", target_os = "android"))]
         let hosts = hosts::Hosts::new(window, cx);
-        #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(unused_mut))]
         let mut this = Self {
             connection,
             _connection_subscriptions: connection_subscriptions,
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             fleet: Vec::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             fleet_found: Vec::new(),
@@ -404,7 +397,6 @@ impl AppShell {
             auth_prompt_id: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             phone_auth: None,
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             hosts,
             terminals: HashMap::new(),
             waiting_panes: BTreeSet::new(),
@@ -472,8 +464,10 @@ impl AppShell {
             ],
         };
         this.connection.update(cx, Connection::start);
-        #[cfg(any(target_os = "ios", target_os = "android"))]
+        #[cfg(not(target_family = "wasm"))]
         this.reconnect_saved_hosts(window, cx);
+        #[cfg(target_family = "wasm")]
+        Self::load_gateway_hosts(window, cx);
         this.preferences.apply(&this.connection, window, cx);
         this.sync_roster(cx);
         #[cfg(target_os = "ios")]
@@ -503,10 +497,9 @@ impl AppShell {
     }
 
     pub(super) fn host_connections(&self) -> Vec<Entity<Connection>> {
-        let attached = std::iter::once(self.connection.clone());
-        #[cfg(any(target_os = "ios", target_os = "android"))]
-        let attached = attached.chain(self.fleet.iter().map(|(connection, _)| connection.clone()));
-        attached.collect()
+        std::iter::once(self.connection.clone())
+            .chain(self.fleet.iter().map(|(connection, _)| connection.clone()))
+            .collect()
     }
 
     fn send_input(&self, input: InputMessage, cx: &mut App) {
@@ -3211,7 +3204,6 @@ impl Render for AppShell {
         {
             self.release_sidebar_focus(window, cx);
         }
-        #[cfg(any(target_os = "ios", target_os = "android"))]
         self.open_machines_when_unattached(window, cx);
         let compact = self.compact_active(window, cx);
         self.sync_compact_mode(compact, cx);

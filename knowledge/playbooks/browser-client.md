@@ -84,6 +84,23 @@ with a code and a reason of at most 123 bytes when the host cannot be reached:
 The reason starts with the host name, then ssh's advice, for example
 `box: known_hosts has no matching key for the host: verify the host before connecting`.
 
+The page fetches `/hosts` once at start and uses every host the way iPad uses its saved hosts
+(`clients/app/src/app/hosts.rs`, `clients/app/src/app/fleet.rs`): the session tree, the chat
+sidebar, the palette, the `@` menu and New chat's machine rows list them all, and opening
+something on another host switches the page to it. Each host gets its own WebSocket; the one on
+screen is attached and the rest hold only their tree. The page opens on this computer, and the
+hosts it was connected to before reconnect in the background (the list lives in local storage
+under `zz-web-hosts`, `zz-dev-web-hosts` for dev builds). Settings > Hosts lists the gateway's
+hosts with Connect, Disconnect and Open; adding or removing one is an edit to the gateway
+machine's `zz/config` and a gateway restart.
+
+This computer keeps retrying every 2 s, as before. Another host is never redialed after a
+failed first connect, nor after a 4401: it shows the close reason as its state and waits for
+Connect. After it has been connected once, a dropped connection is redialed in 2 s, and each
+4502 doubles the wait from 4 s up to 60 s (`retry_after` in `clients/app/src/connection.rs`).
+When `/hosts` fails (an older gateway) or lists only this computer, the page is the single-host
+client it was.
+
 # Remote access
 
 Run the gateway beside the daemon on the remote host, then forward its port:
@@ -215,10 +232,16 @@ reject foreign origins, invalid frames, and asset paths outside the served direc
 `/ws?host=NAME` relays frames byte for byte to a second `unix://` host and that an unknown name
 is refused without reaching the local daemon.
 
+To try several hosts by hand, start throwaway daemons on sockets directly under `/tmp`, point a
+scratch `XDG_CONFIG_HOME` at a `zz-dev/config` with `host-second = unix:///tmp/second.sock`
+lines, and run `target/debug/zz-web --socket /tmp/first.sock` with that environment.
+
 # Source
 
 - `clients/web/src/lib.rs`: ala initialization, portable fonts, and browser entrypoint.
-- `clients/app/src/connection.rs`: protocol reduction, bounded receive queue, reconnect, and replay.
+- `clients/app/src/connection.rs`: protocol reduction, bounded receive queue, the `/ws?host=NAME` socket, reconnect and retry, and replay.
+- `clients/app/src/app/hosts.rs`: the gateway's host list, its saved connected hosts, and Settings > Hosts.
+- `clients/app/src/app/fleet.rs`: one connection per host, background connections, and switching host.
 - `clients/app/src/terminal.rs`: browser terminal input, selection, search, and shared-renderer adapter.
 - `clients/app/src/terminal_images.rs`: bounded Kitty and pasted-image transfer assembly and image retirement.
 - `crates/zz-ui/src/terminal.rs`: shared terminal painting, metrics, scrollbars, cursor, and image placement.

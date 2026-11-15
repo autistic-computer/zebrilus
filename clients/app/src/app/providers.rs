@@ -35,7 +35,7 @@ impl AppShell {
         let offline = (!offline.is_empty()).then(|| {
             SettingsStack::titled("Not connected").children(offline.into_iter().map(
                 |(_, connection)| {
-                    SettingEntry::new(host_name(connection.read(cx)))
+                    SettingEntry::new(self.connection_title(connection.read(cx)))
                         .title_icon(Icon::new(IconName::HardDrive).text_color(muted))
                 },
             ))
@@ -52,7 +52,7 @@ impl AppShell {
                 let target = connection.downgrade();
                 providers_stack(
                     format!("host-{index}"),
-                    host_name(read),
+                    self.connection_title(read),
                     &shown,
                     move |provider, _, cx| {
                         let _ = target.update(cx, |connection, cx| {
@@ -83,14 +83,10 @@ impl AppShell {
     }
 }
 
-#[cfg(any(target_os = "ios", target_os = "android"))]
-fn host_name(connection: &Connection) -> String {
-    connection
-        .endpoint()
-        .map_or_else(|| "Host".to_owned(), super::hosts::host_title)
-}
-
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn host_name(_: &Connection) -> String {
-    "This computer".to_owned()
+impl AppShell {
+    fn connection_title(&self, connection: &Connection) -> String {
+        connection
+            .endpoint()
+            .map_or_else(|| "Host".to_owned(), |key| self.hosts.title(key))
+    }
 }

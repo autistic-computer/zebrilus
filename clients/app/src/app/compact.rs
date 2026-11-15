@@ -321,7 +321,6 @@ fn binding_rows(core: &zz_client::ClientCore, prefix: &str) -> Arc<[WhichKeyRow]
 }
 
 impl AppShell {
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn open_machines_when_unattached(&mut self, window: &Window, cx: &App) {
         if Self::narrow(window)
             && self.settings.is_none()
@@ -1563,7 +1562,6 @@ impl AppShell {
                     .child(bottom),
             );
         let content = if open {
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             if let Some(endpoint) = self.compact.held.clone() {
                 sheets.push(self.machine_sheet(&endpoint, cx));
             }

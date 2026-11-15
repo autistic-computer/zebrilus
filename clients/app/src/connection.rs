@@ -42,26 +42,22 @@ pub struct AuthenticationPrompt {
 }
 
 pub struct Connection {
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     endpoint: Option<String>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     native: Option<crate::transport::Connection>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     client: Option<Arc<zz_daemon_client::InteractiveClient>>,
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     reader: Option<ala::Task<()>>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     auth_prompt: Option<(
         AuthenticationPrompt,
         std::sync::mpsc::Sender<zz_daemon_client::AskpassReply>,
     )>,
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     resume: bool,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     pending_session: Option<String>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     tailnet_offers: Option<u64>,
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     retry: Option<ala::Task<()>>,
     pub core: ClientCore,
     history: HistoryPacer,
@@ -94,9 +90,9 @@ pub struct Connection {
     #[cfg(target_family = "wasm")]
     welcome: Option<zz_protocol::Welcome>,
     #[cfg(target_family = "wasm")]
-    reader: Option<ala::Task<()>>,
+    instance: zz_protocol::ClientInstanceId,
     #[cfg(target_family = "wasm")]
-    retry: Option<ala::Task<()>>,
+    failures: u32,
 }
 
 impl EventEmitter<CoreEvent> for Connection {}
@@ -125,23 +121,19 @@ impl Connection {
     #[must_use]
     pub fn new(_: &mut Context<Self>) -> Self {
         Self {
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             endpoint: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             native: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             client: None,
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             reader: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             auth_prompt: None,
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             resume: false,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             pending_session: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             tailnet_offers: None,
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             retry: None,
             core: history_core(),
             history: HistoryPacer::default(),
@@ -174,9 +166,9 @@ impl Connection {
             #[cfg(target_family = "wasm")]
             welcome: None,
             #[cfg(target_family = "wasm")]
-            reader: None,
+            instance: browser::new_instance_id(),
             #[cfg(target_family = "wasm")]
-            retry: None,
+            failures: 0,
         }
     }
 
@@ -478,10 +470,13 @@ impl Connection {
         {
             self.endpoint = launch_endpoint();
         }
+        #[cfg(target_family = "wasm")]
+        {
+            self.endpoint = Some(GATEWAY_LOCAL.to_owned());
+        }
         self.reconnect(cx);
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     #[must_use]
     pub fn endpoint(&self) -> Option<&str> {
         self.endpoint.as_deref()
@@ -493,18 +488,30 @@ impl Connection {
         self.connected.then(|| self.client.clone()).flatten()
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     #[must_use]
     pub fn busy(&self) -> bool {
-        !self.connected && (self.native.is_some() || self.retry.is_some())
+        !self.connected && (self.dialing() || self.retry.is_some())
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn dialing(&self) -> bool {
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        {
+            self.native.is_some()
+        }
+        #[cfg(target_family = "wasm")]
+        {
+            self.socket.is_some()
+        }
+        #[cfg(not(any(target_family = "wasm", target_os = "ios", target_os = "android")))]
+        {
+            false
+        }
+    }
+
     pub fn connect_to(&mut self, endpoint: String, cx: &mut Context<Self>) {
         self.dial(endpoint, false, cx);
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     fn dial(&mut self, endpoint: String, background: bool, cx: &mut Context<Self>) {
         if self.endpoint.as_deref() != Some(endpoint.as_str()) {
             self.remembered_session = None;
@@ -512,21 +519,24 @@ impl Connection {
         self.endpoint = Some(endpoint);
         self.background = background;
         self.resume = false;
+        #[cfg(target_family = "wasm")]
+        {
+            self.failures = 0;
+        }
         self.reconnect(cx);
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub fn connect_background(&mut self, endpoint: String, cx: &mut Context<Self>) {
         self.dial(endpoint, true, cx);
     }
 
     #[must_use]
     pub fn busy_or_connecting(&self) -> bool {
-        #[cfg(any(target_os = "ios", target_os = "android"))]
+        #[cfg(any(target_family = "wasm", target_os = "ios", target_os = "android"))]
         {
             self.busy()
         }
-        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        #[cfg(not(any(target_family = "wasm", target_os = "ios", target_os = "android")))]
         {
             !self.connected
         }
@@ -583,11 +593,13 @@ impl Connection {
         cx.notify();
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub fn disconnect(&mut self, cx: &mut Context<Self>) {
         self.endpoint = None;
         self.resume = false;
-        self.pending_session = None;
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        {
+            self.pending_session = None;
+        }
         self.reconnect(cx);
     }
 
@@ -595,7 +607,7 @@ impl Connection {
     pub fn client_instance_id(&self) -> Option<zz_protocol::ClientInstanceId> {
         #[cfg(target_family = "wasm")]
         {
-            self.core.hello_received().then(browser::instance_id)
+            self.core.hello_received().then_some(self.instance)
         }
         #[cfg(any(target_os = "ios", target_os = "android"))]
         {
@@ -626,7 +638,17 @@ impl Connection {
             self.reader = None;
             self.socket = None;
             self.welcome = None;
-            match browser::Socket::connect() {
+            let Some(host) = self.endpoint.clone() else {
+                self.status = "Not connected".into();
+                cx.notify();
+                return;
+            };
+            let answer_within = if host == GATEWAY_LOCAL {
+                std::time::Duration::from_secs(15)
+            } else {
+                REMOTE_ANSWER_WITHIN
+            };
+            match browser::Socket::connect(&host) {
                 Ok((socket, receiver)) => {
                     self.socket = Some(socket);
                     self.reader = Some(cx.spawn(async move |entity, cx| {
@@ -638,13 +660,11 @@ impl Connection {
                                 return;
                             }
                         }
-                        let reason = receiver.close_reason();
-                        let _ = entity.update(cx, |this, cx| this.disconnected(reason, cx));
+                        let (code, reason) = receiver.close_reason();
+                        let _ = entity.update(cx, |this, cx| this.closed(code, reason, cx));
                     }));
                     self.retry = Some(cx.spawn(async move |entity, cx| {
-                        cx.background_executor()
-                            .timer(std::time::Duration::from_secs(15))
-                            .await;
+                        cx.background_executor().timer(answer_within).await;
                         let _ = entity.update(cx, |this, cx| {
                             this.disconnected("The daemon did not answer. Retrying…".into(), cx);
                         });
@@ -988,6 +1008,8 @@ impl Connection {
                     #[cfg(target_family = "wasm")]
                     {
                         self.retry = None;
+                        self.resume = true;
+                        self.failures = 0;
                     }
                     self.pasted_images.clear();
                     self.agent_events.clear();
@@ -1423,6 +1445,11 @@ impl Connection {
 
     #[cfg(target_family = "wasm")]
     fn disconnected(&mut self, reason: String, cx: &mut Context<Self>) {
+        self.closed(None, reason, cx);
+    }
+
+    #[cfg(target_family = "wasm")]
+    fn closed(&mut self, code: Option<u16>, reason: String, cx: &mut Context<Self>) {
         self.connected = false;
         self.epoch = self.epoch.wrapping_add(1);
         self.prefix_cancel_pending = None;
@@ -1430,16 +1457,31 @@ impl Connection {
         self.pasted_images.clear();
         self.pasted_images.release_retired(cx);
         self.attaching = false;
-        self.status = reason;
         self.socket = None;
         self.welcome = None;
         self.reader = None;
-        self.retry = Some(cx.spawn(async move |entity, cx| {
-            cx.background_executor()
-                .timer(std::time::Duration::from_secs(2))
-                .await;
-            let _ = entity.update(cx, Self::reconnect);
-        }));
+        if code == Some(SIGN_IN_CLOSE_CODE) {
+            self.resume = false;
+        }
+        if code == Some(UNREACHABLE_CLOSE_CODE) {
+            self.failures = self.failures.saturating_add(1);
+        }
+        let delay = retry_after(
+            self.endpoint.as_deref() == Some(GATEWAY_LOCAL),
+            self.resume,
+            code,
+            self.failures,
+        );
+        self.status = match delay {
+            Some(_) => reason,
+            None => settled(&reason).to_owned(),
+        };
+        self.retry = delay.map(|delay| {
+            cx.spawn(async move |entity, cx| {
+                cx.background_executor().timer(delay).await;
+                let _ = entity.update(cx, Self::reconnect);
+            })
+        });
         cx.notify();
     }
 
@@ -1450,11 +1492,15 @@ impl Connection {
                 self.focused = web_sys::window()
                     .and_then(|window| window.document())
                     .is_some_and(|document| document.has_focus().unwrap_or(false));
-                let target = self
-                    .remembered_session
-                    .map_or_else(String::new, |id| id.to_string());
-                self.attaching = true;
-                self.send(ProtocolMessage::Hello(browser::hello(target)), cx);
+                let target = (!self.background).then(|| {
+                    self.remembered_session
+                        .map_or_else(String::new, |id| id.to_string())
+                });
+                self.attaching = target.is_some();
+                self.send(
+                    ProtocolMessage::Hello(browser::hello(self.instance, target)),
+                    cx,
+                );
             }
             inbox::SocketEvent::Frame(bytes) => match zz_protocol::decode_protocol_frame(&bytes) {
                 Ok(message) if !supports_required_protocol(&message) => {
@@ -1512,6 +1558,46 @@ fn supports_required_protocol(message: &ProtocolMessage) -> bool {
     })
 }
 
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+pub(crate) const GATEWAY_LOCAL: &str = "local";
+
+#[cfg(any(target_family = "wasm", test))]
+const SIGN_IN_CLOSE_CODE: u16 = 4401;
+
+#[cfg(any(target_family = "wasm", test))]
+const UNREACHABLE_CLOSE_CODE: u16 = 4502;
+
+#[cfg(target_family = "wasm")]
+const REMOTE_ANSWER_WITHIN: std::time::Duration = std::time::Duration::from_secs(60);
+
+#[cfg(any(target_family = "wasm", test))]
+fn retry_after(
+    local: bool,
+    resumed: bool,
+    code: Option<u16>,
+    failures: u32,
+) -> Option<std::time::Duration> {
+    const RETRY: std::time::Duration = std::time::Duration::from_secs(2);
+    const LONGEST: std::time::Duration = std::time::Duration::from_secs(60);
+    if local {
+        return Some(RETRY);
+    }
+    if !resumed || code == Some(SIGN_IN_CLOSE_CODE) {
+        return None;
+    }
+    if code == Some(UNREACHABLE_CLOSE_CODE) {
+        return Some(RETRY.saturating_mul(1 << failures.min(5)).min(LONGEST));
+    }
+    Some(RETRY)
+}
+
+#[cfg(target_family = "wasm")]
+fn settled(reason: &str) -> &str {
+    reason
+        .trim_end_matches(" Retrying…")
+        .trim_end_matches(" Reconnecting…")
+}
+
 #[cfg(target_family = "wasm")]
 fn daemon_below_floor(message: &ProtocolMessage) -> Option<u32> {
     let revision = match message {
@@ -1539,7 +1625,7 @@ mod inbox {
     struct State {
         bytes: Cell<usize>,
         byte_limit: usize,
-        reason: RefCell<Option<String>>,
+        reason: RefCell<Option<(Option<u16>, String)>>,
     }
 
     #[derive(Clone)]
@@ -1609,7 +1695,11 @@ mod inbox {
         }
 
         pub fn close(&self, reason: String) {
-            self.state.reason.borrow_mut().get_or_insert(reason);
+            self.close_with(None, reason);
+        }
+
+        pub fn close_with(&self, code: Option<u16>, reason: String) {
+            self.state.reason.borrow_mut().get_or_insert((code, reason));
             self.sender.close();
         }
     }
@@ -1628,12 +1718,12 @@ mod inbox {
             Some(event)
         }
 
-        pub fn close_reason(&self) -> String {
+        pub fn close_reason(&self) -> (Option<u16>, String) {
             self.state
                 .reason
                 .borrow()
                 .clone()
-                .unwrap_or_else(|| "Connection lost. Retrying…".into())
+                .unwrap_or_else(|| (None, "Connection lost. Retrying…".into()))
         }
     }
 }
@@ -1663,7 +1753,7 @@ mod browser {
     }
 
     impl Socket {
-        pub fn connect() -> Result<(Self, Receiver), String> {
+        pub fn connect(host: &str) -> Result<(Self, Receiver), String> {
             let window = web_sys::window().ok_or("Browser window unavailable")?;
             let location = window.location();
             let scheme = if location.protocol().unwrap_or_default() == "https:" {
@@ -1671,10 +1761,13 @@ mod browser {
             } else {
                 "ws"
             };
-            let url = format!(
-                "{scheme}://{}/ws",
-                location.host().map_err(|_| "Missing gateway host")?
-            );
+            let gateway = location.host().map_err(|_| "Missing gateway host")?;
+            let url = if host == super::GATEWAY_LOCAL {
+                format!("{scheme}://{gateway}/ws")
+            } else {
+                let name = String::from(js_sys::encode_uri_component(host));
+                format!("{scheme}://{gateway}/ws?host={name}")
+            };
             let ws = web_sys::WebSocket::new(&url).map_err(|_| "Could not open WebSocket")?;
             ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
             let (sender, receiver) = inbox::channel(64, zz_protocol::MAX_ENCODED_FRAME_BYTES);
@@ -1712,7 +1805,7 @@ mod browser {
                 } else {
                     event.reason()
                 };
-                tx.close(reason);
+                tx.close_with(Some(event.code()), reason);
             });
             ws.set_onclose(Some(close.as_ref().unchecked_ref()));
             let tx = sender.clone();
@@ -1794,18 +1887,14 @@ mod browser {
         })
     }
 
-    thread_local! {
-        static INSTANCE_ID: ClientInstanceId = ClientInstanceId(js_sys::Math::random().to_bits().max(1));
+    pub fn new_instance_id() -> ClientInstanceId {
+        ClientInstanceId(js_sys::Math::random().to_bits().max(1))
     }
 
-    pub fn instance_id() -> ClientInstanceId {
-        INSTANCE_ID.with(|id| *id)
-    }
-
-    pub fn hello(target: String) -> Hello {
+    pub fn hello(instance: ClientInstanceId, target: Option<String>) -> Hello {
         let mut hello = Hello::from_client(ClientHello {
             protocol_version: PROTOCOL_VERSION,
-            client_instance_id: instance_id(),
+            client_instance_id: instance,
             kind: ClientKind::Interactive,
             device_name: Some("Browser".into()),
             capabilities: [
@@ -1824,7 +1913,7 @@ mod browser {
             process_id: 0,
             revision: zz_protocol::REVISION,
         });
-        hello.attach = Some(AttachOperation::Session(target));
+        hello.attach = target.map(AttachOperation::Session);
         hello
     }
 }
@@ -1914,9 +2003,19 @@ mod tests {
         assert!(sender.frame(8, || vec![0; 8]));
         assert!(!sender.frame(3, || panic!("overflow must be rejected before copying")));
         assert_eq!(ready(receiver.recv()), None);
-        assert!(receiver.close_reason().contains("Too much pending output"));
+        assert!(
+            receiver
+                .close_reason()
+                .1
+                .contains("Too much pending output")
+        );
         sender.close("Later close event".into());
-        assert!(receiver.close_reason().contains("Too much pending output"));
+        assert!(
+            receiver
+                .close_reason()
+                .1
+                .contains("Too much pending output")
+        );
     }
 
     #[test]
@@ -1925,8 +2024,25 @@ mod tests {
         assert!(sender.push(SocketEvent::Opened));
         sender.close("Daemon stopped".into());
         assert_eq!(ready(receiver.recv()), None);
-        assert_eq!(receiver.close_reason(), "Daemon stopped");
+        assert_eq!(receiver.close_reason(), (None, "Daemon stopped".to_owned()));
         assert!(!sender.push(SocketEvent::Focus(true)));
+    }
+
+    #[test]
+    fn gateway_hosts_wait_for_sign_in_and_back_off_when_unreachable() {
+        use super::retry_after;
+        use std::time::Duration;
+
+        let seconds = |seconds| Some(Duration::from_secs(seconds));
+        assert_eq!(retry_after(true, false, Some(4502), 9), seconds(2));
+        assert_eq!(retry_after(false, false, Some(4502), 1), None);
+        assert_eq!(retry_after(false, false, None, 0), None);
+        assert_eq!(retry_after(false, true, Some(4401), 1), None);
+        assert_eq!(retry_after(false, true, Some(1006), 0), seconds(2));
+        let backoff: Vec<_> = (1..=7)
+            .map(|failures| retry_after(false, true, Some(4502), failures))
+            .collect();
+        assert_eq!(backoff, [4, 8, 16, 32, 60, 60, 60].map(seconds));
     }
 
     #[test]
@@ -1935,7 +2051,12 @@ mod tests {
         assert!(sender.push(SocketEvent::Focus(true)));
         assert!(!sender.frame(8, || panic!("a full queue must not copy another frame")));
         assert_eq!(ready(receiver.recv()), None);
-        assert!(receiver.close_reason().contains("Too much pending output"));
+        assert!(
+            receiver
+                .close_reason()
+                .1
+                .contains("Too much pending output")
+        );
     }
 
     #[cfg(not(target_family = "wasm"))]

@@ -1,13 +1,14 @@
 #[cfg(any(target_os = "ios", target_os = "android"))]
-use ala::{AnyElement, Entity, IntoElement, Pixels, SharedString, Subscription, Window, div, px};
-use ala::{Context, prelude::*};
+use ala::{AnyElement, Entity, IntoElement, Pixels, SharedString, Subscription, div, px};
+use ala::{Context, Window, prelude::*};
+use penna::Colorize as _;
 use penna::{
     ActiveTheme as _, Ground, Icon, IconName, Label, TextStyle, Tone, components::button::Button,
     h_flex,
 };
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use penna::{
-    Colorize as _, Disableable as _, Sizable as _, Size, Space,
+    Disableable as _, Sizable as _, Size, Space,
     blocks::sheet::{
         bottom_sheet, close_sheet, floating_sheet, modal_groups, sheet_close, sheet_ground,
         sheet_groups, sheet_inset, sheet_note,
@@ -24,9 +25,8 @@ use zz_ui::settings::{
 
 use super::{AppShell, settings::with_control};
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
-use crate::connection::Connection;
+use crate::connection::{Connection, GATEWAY_LOCAL};
 
-#[cfg(any(target_os = "ios", target_os = "android", test))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub(super) struct SavedHosts {
@@ -34,7 +34,6 @@ pub(super) struct SavedHosts {
     connected: Vec<String>,
 }
 
-#[cfg(any(target_os = "ios", target_os = "android", test))]
 impl SavedHosts {
     pub(super) fn endpoints(&self) -> &[String] {
         &self.endpoints
@@ -42,13 +41,6 @@ impl SavedHosts {
 
     pub(super) fn connected(&self) -> &[String] {
         &self.connected
-    }
-
-    pub(super) fn most_recent(&self) -> Option<&str> {
-        self.connected
-            .first()
-            .or_else(|| self.endpoints.first())
-            .map(String::as_str)
     }
 
     pub(super) fn add(&mut self, endpoint: &str) {
@@ -70,6 +62,16 @@ impl SavedHosts {
 
     pub(super) fn mark_disconnected(&mut self, endpoint: &str) {
         self.connected.retain(|saved| saved != endpoint);
+    }
+}
+
+#[cfg(any(target_os = "ios", target_os = "android", test))]
+impl SavedHosts {
+    pub(super) fn most_recent(&self) -> Option<&str> {
+        self.connected
+            .first()
+            .or_else(|| self.endpoints.first())
+            .map(String::as_str)
     }
 
     pub(super) fn remove(&mut self, endpoint: &str) {
@@ -112,6 +114,189 @@ impl SavedHosts {
     pub(super) fn save(&self) {
         if let Err(error) = self.save_to(&Self::directory()) {
             log::warn!("Could not save hosts: {error}");
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+impl SavedHosts {
+    #[cfg(target_family = "wasm")]
+    const STORAGE_KEY: &str = if zz_protocol::app_identity::DEVELOPMENT {
+        "zz-dev-web-hosts"
+    } else {
+        "zz-web-hosts"
+    };
+
+    fn load() -> Self {
+        #[cfg(target_family = "wasm")]
+        if let Some(hosts) = web_sys::window()
+            .and_then(|window| window.local_storage().ok().flatten())
+            .and_then(|storage| storage.get_item(Self::STORAGE_KEY).ok().flatten())
+            .and_then(|value| serde_json::from_str(&value).ok())
+        {
+            return hosts;
+        }
+        Self::default()
+    }
+
+    pub(super) fn save(&self) {
+        #[cfg(target_family = "wasm")]
+        if let Some(storage) =
+            web_sys::window().and_then(|window| window.local_storage().ok().flatten())
+            && let Ok(value) = serde_json::to_string(self)
+        {
+            let _ = storage.set_item(Self::STORAGE_KEY, &value);
+        }
+    }
+
+    fn keep_only(&mut self, names: Vec<String>) {
+        self.connected.retain(|name| names.contains(name));
+        self.endpoints = names;
+    }
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize)]
+pub(super) struct GatewayHost {
+    name: String,
+    title: String,
+    local: bool,
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+pub(super) struct Hosts {
+    pub(super) saved: SavedHosts,
+    gateway: Vec<GatewayHost>,
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+impl Hosts {
+    pub(super) fn new(_: &mut Window, _: &mut Context<AppShell>) -> Self {
+        Self {
+            saved: SavedHosts::load(),
+            gateway: Vec::new(),
+        }
+    }
+
+    pub(super) fn title(&self, key: &str) -> String {
+        self.gateway
+            .iter()
+            .find(|host| host.name == key)
+            .map_or_else(
+                || {
+                    if key == GATEWAY_LOCAL {
+                        "This computer".to_owned()
+                    } else {
+                        key.to_owned()
+                    }
+                },
+                |host| host.title.clone(),
+            )
+    }
+
+    pub(super) fn location(&self, _: &str) -> Option<String> {
+        None
+    }
+
+    pub(super) fn waiting(&self, key: &str) -> String {
+        format!("Waiting for {}", self.title(key))
+    }
+
+    fn description(&self, key: &str) -> Option<String> {
+        self.gateway
+            .iter()
+            .any(|host| host.name == key && host.local)
+            .then(gateway_description)
+    }
+
+    fn icon(&self, key: &str) -> IconName {
+        if key == GATEWAY_LOCAL {
+            IconName::HardDrive
+        } else {
+            IconName::Globe
+        }
+    }
+
+    fn fleet(&self) -> bool {
+        self.gateway.len() > 1
+    }
+
+    #[cfg_attr(not(target_family = "wasm"), allow(dead_code))]
+    fn adopt(&mut self, gateway: Vec<GatewayHost>) {
+        self.saved
+            .keep_only(gateway.iter().map(|host| host.name.clone()).collect());
+        self.gateway = gateway;
+    }
+}
+
+#[cfg(target_family = "wasm")]
+impl AppShell {
+    pub(super) fn load_gateway_hosts(window: &mut Window, cx: &mut Context<Self>) {
+        cx.spawn_in(window, async move |this, cx| {
+            let hosts = gateway_hosts().await.unwrap_or_default();
+            this.update_in(cx, |this, window, cx| {
+                this.hosts.adopt(hosts);
+                this.reconnect_saved_hosts(window, cx);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+}
+
+#[cfg(target_family = "wasm")]
+async fn gateway_hosts() -> Option<Vec<GatewayHost>> {
+    use wasm_bindgen::JsCast as _;
+    use wasm_bindgen_futures::JsFuture;
+
+    let window = web_sys::window()?;
+    let response: web_sys::Response = JsFuture::from(window.fetch_with_str("/hosts"))
+        .await
+        .ok()?
+        .dyn_into()
+        .ok()?;
+    if !response.ok() {
+        return None;
+    }
+    let body = JsFuture::from(response.text().ok()?)
+        .await
+        .ok()?
+        .as_string()?;
+    serde_json::from_str(&body).ok()
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+impl Hosts {
+    pub(super) fn title(&self, key: &str) -> String {
+        host_title(key)
+    }
+
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "the browser has no location for a gateway host"
+    )]
+    pub(super) fn location(&self, key: &str) -> Option<String> {
+        Some(host_location(key))
+    }
+
+    pub(super) fn waiting(&self, key: &str) -> String {
+        waiting_for(key)
+    }
+
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "the browser describes only its own gateway"
+    )]
+    fn description(&self, key: &str) -> Option<String> {
+        Some(key.to_owned())
+    }
+
+    fn icon(&self, key: &str) -> IconName {
+        if key.starts_with("ssh://") {
+            IconName::Globe
+        } else {
+            IconName::HardDrive
         }
     }
 }
@@ -281,7 +466,6 @@ impl AppShell {
             .children(add)
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn remember_host(&mut self, cx: &mut Context<Self>) {
         if let Some(endpoint) = self.connection.read(cx).endpoint() {
             let endpoint = endpoint.to_owned();
@@ -326,8 +510,11 @@ impl AppShell {
         }
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     fn host_entries(&self, narrow: bool, cx: &mut Context<Self>) -> Vec<SettingEntry> {
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        if !self.hosts.fleet() {
+            return vec![self.gateway_entry(narrow, cx)];
+        }
         let muted = cx.theme().foreground.muted();
         let nothing_attached = self.connection.read(cx).endpoint().is_none();
         self.hosts
@@ -360,11 +547,8 @@ impl AppShell {
                     Some(_) if busy => cx.theme().warning,
                     Some(_) => cx.theme().danger,
                 };
-                let icon = if endpoint.starts_with("ssh://") {
-                    IconName::Globe
-                } else {
-                    IconName::HardDrive
-                };
+                let icon = self.hosts.icon(endpoint);
+                #[cfg(any(target_os = "ios", target_os = "android"))]
                 if narrow {
                     let status = match &state {
                         Some(_) if connected => "Connected",
@@ -384,8 +568,8 @@ impl AppShell {
                             });
                         });
                 }
-                let entry = SettingEntry::new(host_title(endpoint))
-                    .description(endpoint.clone())
+                let entry = SettingEntry::new(self.hosts.title(endpoint))
+                    .when_some(self.hosts.description(endpoint), SettingEntry::description)
                     .title_icon(Icon::new(icon).text_color(color))
                     .when_some(state.as_ref(), |entry, (.., status)| {
                         entry.child(status_line(
@@ -427,21 +611,28 @@ impl AppShell {
                             this.connect_host(target.clone(), window, cx);
                         }))
                 };
-                let removed = endpoint.clone();
-                let remove = Button::new(("hosts-remove", index))
-                    .ghost()
-                    .icon(IconName::Xmark)
-                    .tooltip("Remove host")
-                    .on(settings_card_ground(cx))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.disconnect_host(&removed, window, cx);
-                        this.hosts.saved.remove(&removed);
-                        this.hosts.saved.save();
-                        cx.notify();
-                    }));
+                #[cfg(any(target_os = "ios", target_os = "android"))]
+                let remove = {
+                    let removed = endpoint.clone();
+                    Some(
+                        Button::new(("hosts-remove", index))
+                            .ghost()
+                            .icon(IconName::Xmark)
+                            .tooltip("Remove host")
+                            .on(settings_card_ground(cx))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.disconnect_host(&removed, window, cx);
+                                this.hosts.saved.remove(&removed);
+                                this.hosts.saved.save();
+                                cx.notify();
+                            })),
+                    )
+                };
+                #[cfg(not(any(target_os = "ios", target_os = "android")))]
+                let remove: Option<Button> = None;
                 with_control(
                     entry,
-                    h_flex().gap_2().flex_none().child(action).child(remove),
+                    h_flex().gap_2().flex_none().child(action).children(remove),
                     narrow,
                 )
             })
@@ -449,16 +640,11 @@ impl AppShell {
     }
 
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    fn host_entries(&self, narrow: bool, cx: &mut Context<Self>) -> Vec<SettingEntry> {
+    fn gateway_entry(&self, narrow: bool, cx: &mut Context<Self>) -> SettingEntry {
         let connection = self.connection.read(cx);
         let connected = connection.connected;
-        let address = gateway_address();
         let entry = SettingEntry::new("This computer")
-            .description(if address.is_empty() {
-                "zz web gateway".to_owned()
-            } else {
-                format!("zz web gateway at {address}")
-            })
+            .description(gateway_description())
             .title_icon(Icon::new(IconName::HardDrive).text_color(if connected {
                 cx.theme().success
             } else {
@@ -477,7 +663,7 @@ impl AppShell {
                 },
                 cx,
             ));
-        vec![with_control(
+        with_control(
             entry,
             h_flex().child(
                 Button::new("hosts-reconnect")
@@ -488,7 +674,7 @@ impl AppShell {
                     })),
             ),
             narrow,
-        )]
+        )
     }
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -819,6 +1005,16 @@ fn toned(line: Label, tone: Tone, ground: Ground, cx: &ala::App) -> Label {
     match tone {
         Tone::Neutral => line.muted().on(ground),
         tone => line.text_color(cx.theme().tone(tone)),
+    }
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+fn gateway_description() -> String {
+    let address = gateway_address();
+    if address.is_empty() {
+        "zz web gateway".to_owned()
+    } else {
+        format!("zz web gateway at {address}")
     }
 }
 

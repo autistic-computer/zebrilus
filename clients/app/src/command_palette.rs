@@ -44,8 +44,8 @@ fn host_name(page: &HostPage) -> String {
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn host_name(_: &HostPage) -> String {
-    "local".to_owned()
+fn host_name(page: &HostPage) -> String {
+    page.endpoint.clone().unwrap_or_else(|| "local".to_owned())
 }
 
 static PATH_LISTS: AtomicU64 = AtomicU64::new(0);

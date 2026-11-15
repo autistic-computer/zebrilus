@@ -21,7 +21,6 @@ use penna::{
     },
     components::button::{Button, ButtonVariants as _},
 };
-#[cfg(any(target_os = "ios", target_os = "android"))]
 use penna::{blocks::compact::ZoomCard, blocks::sheet::close_sheet, blocks::touch::TouchRow};
 use web_time::Instant;
 use zz_client::{
@@ -58,7 +57,6 @@ const ZOOM_FADE_SPAN: f32 = 0.4;
 const TILE_FALLBACK_TOP: f32 = 160.0;
 const TILE_FALLBACK_HEIGHT: f32 = 178.0;
 const CARD_EMPTY_TOP: f32 = 96.0;
-#[cfg(any(target_os = "ios", target_os = "android"))]
 pub(super) const MACHINE_SHEET: &str = "machine-sheet";
 
 fn page_host(url: &str) -> &str {
@@ -288,7 +286,6 @@ impl AppShell {
     }
 
     fn show_host(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        #[cfg(any(target_os = "ios", target_os = "android"))]
         if let Some(endpoint) = self
             .host_pages(cx)
             .get(index)
@@ -298,7 +295,6 @@ impl AppShell {
         {
             self.switch_host(&endpoint, None, None, window, cx);
         }
-        let _ = (index, window, cx);
     }
 
     pub(super) fn overview_layers(
@@ -680,7 +676,12 @@ impl AppShell {
                     .collect::<Vec<_>>()
                     .join(" · "),
             ],
-            (HostState::Connecting, _) => host.location().into_iter().collect(),
+            (HostState::Connecting, _) => host
+                .endpoint
+                .as_deref()
+                .and_then(|key| self.hosts.location(key))
+                .into_iter()
+                .collect(),
             (HostState::Failed, _) => vec![host.status(cx)],
             _ => Vec::new(),
         };
@@ -737,9 +738,7 @@ impl AppShell {
                     }
                     _ if enterable => this.enter_host(index, window, cx),
                     (HostState::Offline | HostState::Failed, Some(endpoint)) => {
-                        #[cfg(any(target_os = "ios", target_os = "android"))]
                         this.connect_host(endpoint.clone(), window, cx);
-                        let _ = endpoint;
                     }
                     _ => {}
                 }),
@@ -843,18 +842,6 @@ impl AppShell {
         }
     }
 
-    #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    fn machine_card(
-        &mut self,
-        _: &MachineCard,
-        _: Pixels,
-        _: Pixels,
-        _: &mut Window,
-        _: &mut Context<Self>,
-    ) -> AnyElement {
-        div().into_any_element()
-    }
-
     #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(in super::super) fn found_machines(&self, cx: &App) -> Vec<crate::connection::FoundHost> {
         let saved = self.hosts.saved.endpoints();
@@ -871,7 +858,6 @@ impl AppShell {
             .collect()
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     fn machine_card(
         &mut self,
         card: &MachineCard,
@@ -880,20 +866,19 @@ impl AppShell {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        use super::super::hosts::{host_title, waiting_for};
         let ground = zoom_card_ground(cx);
         let close = cx.listener(|this, _, window, cx| this.close_machine_card(window, cx));
         match card {
             MachineCard::Connecting(endpoint) => {
                 let target = endpoint.clone();
-                ZoomCard::new("connecting-card", host_title(endpoint))
+                ZoomCard::new("connecting-card", self.hosts.title(endpoint))
                     .top_inset(top_inset)
                     .bottom_inset(bottom)
                     .on_close(close)
                     .child(
                         div().mt(px(CARD_EMPTY_TOP)).child(
                             PhoneEmpty::spinner("Connecting")
-                                .line(waiting_for(endpoint))
+                                .line(self.hosts.waiting(endpoint))
                                 .on(ground),
                         ),
                     )
@@ -913,9 +898,7 @@ impl AppShell {
         }
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn machine_sheet(&self, endpoint: &str, cx: &mut Context<Self>) -> AnyElement {
-        use super::super::hosts::host_title;
         let state = self
             .host_connection(endpoint, cx)
             .map_or(HostState::Offline, |connection| {
@@ -942,22 +925,29 @@ impl AppShell {
             ),
             HostState::Connecting => None,
         };
-        let removed = endpoint.to_owned();
-        let remove = TouchRow::new("machine-sheet-remove", "Remove machine")
-            .icon(IconName::Xmark)
-            .danger()
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.disconnect_host(&removed, window, cx);
-                this.hosts.saved.remove(&removed);
-                this.hosts.saved.save();
-                close_sheet(MACHINE_SHEET, cx);
-                cx.notify();
-            }));
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let remove = {
+            let removed = endpoint.to_owned();
+            Some(
+                TouchRow::new("machine-sheet-remove", "Remove machine")
+                    .icon(IconName::Xmark)
+                    .danger()
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.disconnect_host(&removed, window, cx);
+                        this.hosts.saved.remove(&removed);
+                        this.hosts.saved.save();
+                        close_sheet(MACHINE_SHEET, cx);
+                        cx.notify();
+                    })),
+            )
+        };
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        let remove: Option<TouchRow> = None;
         let dismiss = cx.weak_entity();
         zz_ui::compact::hold_sheet(
             MACHINE_SHEET,
-            host_title(endpoint),
-            toggle_row.into_iter().chain([remove]),
+            self.hosts.title(endpoint),
+            toggle_row.into_iter().chain(remove),
             move |_, cx| {
                 let _ = dismiss.update(cx, |this, cx| {
                     this.compact.held = None;
@@ -1419,14 +1409,10 @@ impl AppShell {
                     return;
                 }
                 CardTarget::Session(session) => this.open_pane(*session, page.pane, cx),
-                #[cfg(any(target_os = "ios", target_os = "android"))]
                 CardTarget::Host(endpoint, session) => {
                     this.switch_host(endpoint, Some(*session), Some(page.pane), window, cx);
                 }
-                #[cfg(not(any(target_os = "ios", target_os = "android")))]
-                CardTarget::Host(..) => {}
             }
-            let _ = window;
             this.close_overview(cx);
         }))
         .into_any_element()
@@ -1532,15 +1518,18 @@ impl AppShell {
         let endpoint = host.endpoint.clone();
         let (empty, action) = if state == HostState::Connecting {
             (
-                PhoneEmpty::spinner("Connecting").line(host.waiting()),
+                PhoneEmpty::spinner("Connecting").line(
+                    host.endpoint
+                        .as_deref()
+                        .map(|key| self.hosts.waiting(key))
+                        .unwrap_or_default(),
+                ),
                 Button::new(("machine-cancel", page))
                     .label("Cancel")
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        #[cfg(any(target_os = "ios", target_os = "android"))]
                         if let Some(endpoint) = &endpoint {
                             this.disconnect_host(endpoint, window, cx);
                         }
-                        let _ = (this, &endpoint, window, cx);
                     })),
             )
         } else {
@@ -1557,11 +1546,9 @@ impl AppShell {
                     .primary()
                     .label("Connect")
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        #[cfg(any(target_os = "ios", target_os = "android"))]
                         if let Some(endpoint) = &endpoint {
                             this.connect_host(endpoint.clone(), window, cx);
                         }
-                        let _ = (this, &endpoint, window, cx);
                     })),
             )
         };
@@ -1596,48 +1583,32 @@ impl AppShell {
     }
 
     pub(in super::super) fn host_pages(&self, cx: &App) -> Vec<HostPage> {
-        #[cfg(any(target_os = "ios", target_os = "android"))]
-        {
-            use super::super::hosts::host_title;
-            let connections = self.host_connections();
-            let saved = self.hosts.saved.endpoints();
-            let mut pages: Vec<HostPage> = connections
-                .iter()
-                .filter_map(|connection| {
-                    let endpoint = connection.read(cx).endpoint()?;
-                    (!saved.iter().any(|saved| saved == endpoint)).then(|| HostPage {
-                        id: self.host_ids.id(Some(endpoint)),
-                        endpoint: Some(endpoint.to_owned()),
-                        title: host_title(endpoint),
-                        connection: Some(connection.clone()),
-                    })
-                })
-                .collect();
-            pages.extend(saved.iter().map(|endpoint| {
-                HostPage {
+        let connections = self.host_connections();
+        let saved = self.hosts.saved.endpoints();
+        let mut pages: Vec<HostPage> = connections
+            .iter()
+            .filter_map(|connection| {
+                let endpoint = connection.read(cx).endpoint()?;
+                (!saved.iter().any(|saved| saved == endpoint)).then(|| HostPage {
                     id: self.host_ids.id(Some(endpoint)),
-                    endpoint: Some(endpoint.clone()),
-                    title: host_title(endpoint),
-                    connection: connections
-                        .iter()
-                        .find(|connection| {
-                            connection.read(cx).endpoint() == Some(endpoint.as_str())
-                        })
-                        .cloned(),
-                }
-            }));
-            pages
-        }
-        #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        {
-            let _ = cx;
-            vec![HostPage {
-                id: self.host_ids.id(None),
-                endpoint: None,
-                title: "This computer".into(),
-                connection: Some(self.connection.clone()),
-            }]
-        }
+                    endpoint: Some(endpoint.to_owned()),
+                    title: self.hosts.title(endpoint),
+                    connection: Some(connection.clone()),
+                })
+            })
+            .collect();
+        pages.extend(saved.iter().map(|endpoint| {
+            HostPage {
+                id: self.host_ids.id(Some(endpoint)),
+                endpoint: Some(endpoint.clone()),
+                title: self.hosts.title(endpoint),
+                connection: connections
+                    .iter()
+                    .find(|connection| connection.read(cx).endpoint() == Some(endpoint.as_str()))
+                    .cloned(),
+            }
+        }));
+        pages
     }
 
     pub(in super::super) fn host_page(&self, id: PaletteHostId, cx: &App) -> Option<HostPage> {
@@ -1693,7 +1664,6 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        #[cfg(any(target_os = "ios", target_os = "android"))]
         if self.compact.overview
             && let Some(endpoint) = self
                 .host_pages(cx)
@@ -1704,7 +1674,6 @@ impl AppShell {
             self.switch_host(&endpoint, session, None, window, cx);
             return true;
         }
-        let _ = (session, window, cx);
         false
     }
 
@@ -1789,7 +1758,6 @@ struct PageFrame {
 enum CardTarget {
     Here,
     Session(SessionId),
-    #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
     Host(String, SessionId),
 }
 
@@ -1804,7 +1772,6 @@ struct WindowShape {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
 pub(super) enum MachineCard {
     Connecting(String),
 }
@@ -1867,32 +1834,5 @@ impl HostPage {
             .as_ref()
             .map(|connection| connection.read(cx).status.clone())
             .unwrap_or_default()
-    }
-
-    fn location(&self) -> Option<String> {
-        #[cfg(any(target_os = "ios", target_os = "android"))]
-        {
-            self.endpoint
-                .as_deref()
-                .map(super::super::hosts::host_location)
-        }
-        #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        {
-            None
-        }
-    }
-
-    fn waiting(&self) -> String {
-        #[cfg(any(target_os = "ios", target_os = "android"))]
-        {
-            self.endpoint
-                .as_deref()
-                .map(super::super::hosts::waiting_for)
-                .unwrap_or_default()
-        }
-        #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        {
-            String::new()
-        }
     }
 }

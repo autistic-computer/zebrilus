@@ -4,7 +4,7 @@ title: Unified palette and tmux command completions
 description: The palette's words-and-verbs model (no sigils, words match places and actions, a verb asks for its slots in turn, the footer shows the tmux command, `:` for raw tmux), chips and the one key model the palette, the composer's @ menu and the files level share with their four-slot key strip, insert path and prefix F, the empty palette and recents, agent chats in chat mode, written @host:target places, GUI settings as verbs with a live theme preview, tmux command-alias entries as verbs, shared zz-ui presentation with key glyphs per platform, and preserved tmux prompt behavior.
 resource: crates/zz-ui/src/command.rs
 tags: [ala, command-prompt, tmux, completions, ui]
-timestamp: 2026-11-14T00:00:00-03:00
+timestamp: 2026-11-15T00:00:00-03:00
 ---
 
 # Overview
@@ -172,7 +172,8 @@ and files (three each), then this host's sessions and the other hosts. `zz_clien
 one decayed score per pick (three-day half-life, at most 200), recorded through `record_recent`.
 The desktop keeps it per client in `palette-recents.json` in the app's data folder
 (`app_identity::palette_recents_path`, `command::palette::init_recents`); the iPad and web keep it
-in memory. Their hosts are named after the endpoint on iOS and Android and `local` on the web.
+in memory. Their hosts are named after the endpoint on iOS and Android and by the gateway's host
+names (`local`, then the `host-<name>` entries) on the web.
 
 # Written places
 

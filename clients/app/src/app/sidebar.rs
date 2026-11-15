@@ -441,19 +441,9 @@ impl AppShell {
     }
 }
 
-#[cfg(any(target_os = "ios", target_os = "android"))]
-fn host_key(connection: &Connection) -> Option<&str> {
-    connection.endpoint()
-}
-
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn host_key(_: &Connection) -> Option<&str> {
-    None
-}
-
 impl AppShell {
     pub(super) fn host_id_of(&self, connection: &Connection) -> PaletteHostId {
-        self.host_ids.id(host_key(connection))
+        self.host_ids.id(connection.endpoint())
     }
 }
 
@@ -482,7 +472,6 @@ impl Flat {
         rows.pile = false;
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn leave_host(&mut self) {
         self.state = FlatState::default();
         self.place = ChatViewPlace::default();
@@ -661,7 +650,6 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        #[cfg(any(target_os = "ios", target_os = "android"))]
         if let Some(page) = self.host_page(host, cx)
             && let (Some(endpoint), Some(connection)) = (page.endpoint, page.connection)
             && connection != self.connection
@@ -669,8 +657,6 @@ impl AppShell {
             let session = connection.read(cx).remembered_session();
             self.switch_host(&endpoint, session, None, window, cx);
         }
-        #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        let _ = (host, window);
         new_chat(self, cx);
     }
 }
@@ -788,7 +774,6 @@ fn flat_event(
     activate(&connection, target, cx);
 }
 
-#[cfg(any(target_os = "ios", target_os = "android"))]
 fn connect(
     view: &mut AppShell,
     page: super::compact::HostPage,
@@ -797,18 +782,6 @@ fn connect(
 ) {
     if let Some(endpoint) = page.endpoint {
         view.connect_host(endpoint, window, cx);
-    }
-}
-
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn connect(
-    _: &mut AppShell,
-    page: super::compact::HostPage,
-    _: &mut Window,
-    cx: &mut Context<AppShell>,
-) {
-    if let Some(connection) = page.connection {
-        connection.update(cx, Connection::reconnect);
     }
 }
 
@@ -856,7 +829,6 @@ impl AppShell {
     }
 }
 
-#[cfg(any(target_os = "ios", target_os = "android"))]
 fn open_on_other_host(
     view: &mut AppShell,
     host: &super::compact::HostPage,
@@ -897,16 +869,6 @@ fn open_on_other_host(
     if let Some((session, pane)) = place {
         view.switch_host(endpoint, session, pane, window, cx);
     }
-}
-
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn open_on_other_host(
-    _: &mut AppShell,
-    _: &super::compact::HostPage,
-    _: Target,
-    _: &mut Window,
-    _: &mut Context<AppShell>,
-) {
 }
 
 fn leave_abandoned_picker(connection: &Entity<Connection>, target: Target, cx: &mut App) {
