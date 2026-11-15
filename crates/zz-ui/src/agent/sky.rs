@@ -1,10 +1,17 @@
-use std::{cell::RefCell, fmt::Write as _, rc::Rc, sync::LazyLock};
+use std::{
+    cell::RefCell,
+    f32::consts::TAU,
+    fmt::Write as _,
+    hash::{DefaultHasher, Hash as _, Hasher as _},
+    rc::Rc,
+    sync::LazyLock,
+};
 
 use ala::{
-    AnyElement, App, Bounds, CustomShader, Div, Element, ElementId, GlobalElementId, Hsla,
-    InspectorElementId, IntoElement, LayoutId, Pixels, Rgba, Window, div, prelude::*,
+    AnyElement, App, Bounds, CustomShader, Div, Element, ElementId, EntityId, GlobalElementId,
+    Hsla, InspectorElementId, IntoElement, LayoutId, Pixels, Rgba, Task, Window, div, prelude::*,
 };
-use penna::{ActiveTheme as _, foundation::pulse::pulse_phase};
+use penna::ActiveTheme as _;
 use web_time::{Duration, Instant};
 
 const CELL: f32 = 4.0;
@@ -14,9 +21,10 @@ const REVEAL: f32 = 0.8;
 const STILL: f32 = 40.0;
 const WRAP_GAP: f32 = 20.0;
 const WIDE: f32 = 700.0;
-const HEADER: usize = 7;
+const HEADER: usize = 8;
 const MAX_ZONES: usize = 8;
-const PULSE: Duration = Duration::from_secs(1);
+const STEP: Duration = Duration::from_millis(83);
+const MAX_GAP: Duration = Duration::from_millis(250);
 const FLAME: [f32; 3] = [242.0 / 255.0, 88.0 / 255.0, 32.0 / 255.0];
 const DARK_RAMP: [f32; 4] = [0.0, 0.12, 0.24, 0.4];
 const LIGHT_RAMP: [f32; 4] = [0.4, 0.24, 0.12, 0.0];
@@ -91,6 +99,7 @@ struct Sky {
     flame: vec4<f32>,
     ramp: vec4<f32>,
     counts: vec4<f32>,
+    seed: vec4<f32>,
     zones: array<vec4<f32>, 8>,
     birds: array<vec4<f32>, 5>,
 }
@@ -184,7 +193,7 @@ fn sky_fragment(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
     }
 
     let t = sky.frame.w;
-    let p = center / 160.0;
+    let p = (center + sky.seed.xy) / 160.0;
     let bias = (0.45 * (center.x / sky.frame.y) + 0.5 * (1.0 - center.y / sky.frame.z) - 0.55) * 0.4;
     let density = fbm(vec2<f32>(p.x * 2.8 - t * 0.018, p.y * 3.8)) * 0.6
         + fbm(vec2<f32>(p.x * 5.5 - t * 0.07, p.y * 7.0 + 4.7)) * 0.4
@@ -207,6 +216,8 @@ fn sky_fragment(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
     return vec4<f32>(sky.accent.rgb * alpha, alpha);
 }
 ";
+
+static EPOCH: LazyLock<Instant> = LazyLock::new(Instant::now);
 
 static SHADER: LazyLock<CustomShader> = LazyLock::new(|| CustomShader::new(wgsl()));
 
@@ -313,22 +324,37 @@ impl Element for Sky {
         let Some(global_id) = global_id else {
             return;
         };
-        let shown = window.with_element_state::<Instant, _>(global_id, |shown, _| {
-            let shown = shown.unwrap_or_else(Instant::now);
-            (shown, shown)
+        let still = cx.reduce_motion();
+        let running = !still && window.is_window_active();
+        let view = window.current_view();
+        let elapsed = window.with_element_state::<SkyClock, _>(global_id, |clock, _| {
+            let now = Instant::now();
+            let mut clock = clock.unwrap_or(SkyClock {
+                elapsed: Duration::ZERO,
+                last: now,
+                tick: None,
+            });
+            if running {
+                clock.elapsed += ala::animation_time((now - clock.last).min(MAX_GAP));
+            }
+            clock.last = now;
+            clock.tick = running.then(|| tick(view, cx));
+            (clock.elapsed, clock)
         });
-        let clock = if cx.reduce_motion() {
+        let clock = if still {
             Clock::Still
         } else {
-            pulse_phase(PULSE, window.current_view(), cx);
-            Clock::Running(ala::animation_time(shown.elapsed()).as_secs_f32())
+            Clock::Running(elapsed.as_secs_f32())
         };
+        let mut hasher = DefaultHasher::new();
+        self.id.hash(&mut hasher);
         let theme = cx.theme();
         let scene = Scene {
             bounds,
             scale: window.scale_factor(),
             zones: &self.zones.0.borrow(),
             clock,
+            seed: hasher.finish(),
             dark: theme.is_dark(),
             accent: theme.accent,
             ink: theme.foreground,
@@ -336,6 +362,24 @@ impl Element for Sky {
         let uniforms = scene.uniforms();
         window.paint_shader_layer(bounds, &SHADER, uniforms, |_| {});
     }
+}
+
+struct SkyClock {
+    elapsed: Duration,
+    last: Instant,
+    tick: Option<Task<()>>,
+}
+
+fn tick(view: EntityId, cx: &mut App) -> Task<()> {
+    let into = EPOCH.elapsed().as_nanos() % STEP.as_nanos();
+    let wait = STEP.saturating_sub(Duration::from_nanos(
+        u64::try_from(into).unwrap_or_default(),
+    ));
+    let wait = if wait < STEP / 8 { wait + STEP } else { wait };
+    cx.spawn(async move |cx| {
+        cx.background_executor().timer(wait).await;
+        cx.update(|cx| cx.notify(view));
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -365,6 +409,7 @@ struct Scene<'a> {
     scale: f32,
     zones: &'a [Bounds<Pixels>],
     clock: Clock,
+    seed: u64,
     dark: bool,
     accent: Hsla,
     ink: Hsla,
@@ -393,6 +438,12 @@ impl Scene<'_> {
             [FLAME[0], FLAME[1], FLAME[2], 1.0],
             if self.dark { DARK_RAMP } else { LIGHT_RAMP },
             [zones.len() as f32, birds.len() as f32, FADE / CELL, 0.0],
+            [
+                (self.seed & 0xfff) as f32,
+                ((self.seed >> 12) & 0xfff) as f32,
+                0.0,
+                0.0,
+            ],
         ];
         values.extend(zones.iter().copied());
         values.resize(HEADER + MAX_ZONES, [0.0; 4]);
@@ -423,8 +474,10 @@ impl Scene<'_> {
     }
 
     fn birds(&self, cols: f32, rows: f32, width: f32, zones: &[[f32; 4]]) -> Vec<[f32; 4]> {
+        let small = open_bands(zones, rows, 1.0);
+        let large = open_bands(zones, rows, 2.0);
         let count = if width >= WIDE { FLOCK.len() } else { 3 };
-        let bands = open_bands(zones, rows);
+        let phase = ((self.seed >> 24) & 0xffff) as f32 / 65536.0;
         let time = self.clock.time();
         let flight = match self.clock {
             Clock::Running(time) => (time - REVEAL).max(0.0),
@@ -434,12 +487,15 @@ impl Scene<'_> {
             .iter()
             .take(count)
             .enumerate()
-            .map(|(index, bird)| {
+            .filter_map(|(index, bird)| {
+                let bands = if bird.scale > 1.0 { &large } else { &small };
+                let (top, bottom) = *bands.get(index % bands.len().max(1))?;
                 let order = index as f32;
                 let span = SPRITE_WIDTH * bird.scale;
                 let (x, wing) = match self.clock {
                     Clock::Still => {
                         let spread = 0.16 + (index % 3) as f32 * 0.27 + (index / 3) as f32 * 0.135;
+                        let spread = 0.1 + 0.8 * (spread + phase).fract();
                         (cols * spread - span / 2.0, (index & 1) as f32)
                     }
                     Clock::Running(_) => {
@@ -448,9 +504,11 @@ impl Scene<'_> {
                         } else {
                             cols * (0.08 + order * 0.3)
                         };
+                        let lap = cols + span + WRAP_GAP;
                         let travel =
-                            (start + span + bird.speed * flight).rem_euclid(cols + span + WRAP_GAP);
-                        let wing = ((order * 0.7 + flight * 2.2).floor() as i32 & 1) as f32;
+                            (start + span + phase * lap + bird.speed * flight).rem_euclid(lap);
+                        let wing =
+                            ((order * 0.7 + phase * 2.0 + flight * 2.2).floor() as i32 & 1) as f32;
                         (travel - span, wing)
                     }
                 };
@@ -458,23 +516,19 @@ impl Scene<'_> {
                     Clock::Running(_) => flight,
                     Clock::Still => time,
                 };
-                let (top, bottom) = bands
-                    .get(index % bands.len().max(1))
-                    .copied()
-                    .unwrap_or((0.0, rows));
                 let low = (top.ceil() + 1.0).max(2.0);
                 let high = bottom.floor() - SPRITE_HEIGHT * bird.scale - 1.0;
-                let drift = (bob * 0.9 + order * 1.9).sin() * 1.2;
+                let drift = (bob * 0.9 + order * 1.9 + phase * TAU).sin() * 1.2;
                 let y = (low + bird.lane * (high - low) + drift)
-                    .clamp(low, low.max(high))
+                    .clamp(low, high)
                     .round();
-                [x.floor(), y, bird.scale, wing]
+                Some([x.floor(), y, bird.scale, wing])
             })
             .collect()
     }
 }
 
-fn open_bands(zones: &[[f32; 4]], rows: f32) -> Vec<(f32, f32)> {
+fn open_bands(zones: &[[f32; 4]], rows: f32, scale: f32) -> Vec<(f32, f32)> {
     let mut spans: Vec<(f32, f32)> = zones.iter().map(|zone| (zone[1], zone[3])).collect();
     spans.sort_by(|a, b| a.0.total_cmp(&b.0));
     let mut bands = Vec::new();
@@ -491,7 +545,7 @@ fn open_bands(zones: &[[f32; 4]], rows: f32) -> Vec<(f32, f32)> {
     bands
         .into_iter()
         .filter(|(top, bottom)| {
-            bottom.floor() - SPRITE_HEIGHT - 1.0 - (top.ceil() + 1.0).max(2.0) >= 2.0
+            bottom.floor() - SPRITE_HEIGHT * scale - 1.0 - (top.ceil() + 1.0).max(2.0) >= 2.0
         })
         .collect()
 }
@@ -522,7 +576,7 @@ mod tests {
             .iter()
             .find(|(_, global)| global.space == naga::AddressSpace::Uniform)
             .expect("uniform block");
-        assert_eq!(layouter[uniform.ty].size, 320);
-        assert_eq!((HEADER + MAX_ZONES + FLOCK.len()) * 16, 320);
+        assert_eq!(layouter[uniform.ty].size, 336);
+        assert_eq!((HEADER + MAX_ZONES + FLOCK.len()) * 16, 336);
     }
 }
