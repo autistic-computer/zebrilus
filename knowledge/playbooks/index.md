@@ -8,6 +8,7 @@
 * [Building and verifying a platform CEF bundle](build-cef-bundle.md) - Step-by-step use of cargo xtask and release recipes to assemble, sign, notarize, and validate platform CEF bundles.
 * [Running the tmux compatibility harness](compat-harness.md) - How to run the pinned tmux differential corpus, read topology, geometry, format, and query-stdout results, and record known divergences.
 * [Toolchain and system prerequisites](prerequisites.md) - The exact toolchain versions and per-platform system libraries required to build zz, pinned by rust-toolchain.toml, mise.toml, and CI.
+* [Releasing zz](releasing.md) - Ship a zz release from the Mac with just release ship, building every platform on our own machines through single-use self-hosted runners instead of hosted CI.
 * [Building and running zz](running-zz.md) - How to build and run the zz ala client and its daemon, what the first build downloads, and how to exercise the browser pane with the loopback fixture.
 * [Working with the zz storybook](storybook.md) - Run the zz storybook and penna's own, add a story, add an app's plates to the theme creator, change a look and check it in every theme, and drive or screenshot it from an agent.
 * [Running tmux compatibility cohorts](tmux-compat-cohorts.md) - A bounded, parallel workflow for closing the practical alias tmux=zz gap without letting new oracle findings extend one campaign forever.
