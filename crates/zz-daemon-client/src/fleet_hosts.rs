@@ -6,7 +6,9 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use crate::{Endpoint, tailnet};
+use crate::Endpoint;
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+use crate::tailnet;
 
 const CONFIG_DIRECTORY_NAME: &str = zz_protocol::app_identity::DIRECTORY;
 const CONFIG_FILE_NAME: &str = "config";
@@ -34,6 +36,7 @@ pub fn configured_fleet_hosts() -> io::Result<(Vec<HostEntry>, Vec<RejectedHost>
     read_config_source(&path).map(|source| parse_fleet_hosts(&source))
 }
 
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
 pub fn fleet_hosts_with_tailnet() -> io::Result<(Vec<HostEntry>, Vec<RejectedHost>)> {
     let (mut hosts, rejected) = configured_fleet_hosts()?;
     let found = tailnet_hosts_beside(&hosts);
@@ -41,6 +44,7 @@ pub fn fleet_hosts_with_tailnet() -> io::Result<(Vec<HostEntry>, Vec<RejectedHos
     Ok((hosts, rejected))
 }
 
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
 #[must_use]
 pub fn tailnet_hosts_beside(configured: &[HostEntry]) -> Vec<HostEntry> {
     let settings = discover_config_path(&config_candidates())
@@ -61,7 +65,7 @@ pub fn tailnet_hosts_beside(configured: &[HostEntry]) -> Vec<HostEntry> {
         .filter(|found| {
             !configured
                 .iter()
-                .any(|host| host.name == found.name || host.endpoint == found.endpoint)
+                .any(|host| host.name == found.name || host.endpoint.same_machine(&found.endpoint))
         })
         .collect()
 }
