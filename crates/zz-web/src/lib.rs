@@ -12,7 +12,7 @@ use axum::{
     body::Body,
     extract::{
         State,
-        ws::{Message, WebSocket, WebSocketUpgrade},
+        ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
     },
     http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     response::{IntoResponse, Response},
@@ -30,16 +30,24 @@ use tokio::{
     net::TcpListener,
 };
 use tokio_util::io::ReaderStream;
+use zz_daemon_client::{DaemonError, DaemonRoute, Endpoint, EndpointError, HostEntry};
 use zz_protocol::{MAX_ENCODED_FRAME_BYTES, MAX_FRAME_BYTES};
 
 const TOKEN_BYTES: usize = 32;
 const COOKIE_MAX_AGE_SECONDS: u32 = 30 * 24 * 60 * 60;
 const LOCKED_MESSAGE: &str = "Open the link zz-web printed when it started.\n";
+const LOCAL_HOST: &str = "local";
+const LOCAL_TITLE: &str = "This computer";
+const DAEMON_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_CLOSE_REASON_BYTES: usize = 123;
+const SIGN_IN_CLOSE_CODE: u16 = 4401;
+const UNREACHABLE_CLOSE_CODE: u16 = 4502;
 
 pub struct GatewayConfig {
     pub bind: SocketAddr,
     pub assets: PathBuf,
     pub socket: PathBuf,
+    pub hosts: Vec<HostEntry>,
 }
 
 pub struct Gateway {
@@ -53,6 +61,7 @@ struct GatewayState {
     address: SocketAddr,
     assets: PathBuf,
     socket: PathBuf,
+    hosts: Vec<HostEntry>,
     token: String,
     cookie: String,
 }
@@ -79,11 +88,13 @@ impl Gateway {
             address,
             assets,
             socket: config.socket,
+            hosts: config.hosts,
             token: token.clone(),
             cookie: format!("zz-web-{}", address.port()),
         });
         let router = Router::new()
             .route("/ws", get(upgrade))
+            .route("/hosts", get(hosts))
             .fallback(asset)
             .with_state(state);
         Ok(Self {
@@ -108,6 +119,31 @@ impl Gateway {
 }
 
 impl GatewayState {
+    fn target(&self, query: Option<&str>) -> Result<Target, StatusCode> {
+        let mut names = query
+            .into_iter()
+            .flat_map(|query| query.split('&'))
+            .filter_map(|pair| pair.strip_prefix("host="));
+        let Some(name) = names.next() else {
+            return Ok(Target::Local);
+        };
+        if names.next().is_some() {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        let name = percent_decode_str(name)
+            .decode_utf8()
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
+        if name == LOCAL_HOST {
+            return Ok(Target::Local);
+        }
+        self.hosts
+            .iter()
+            .find(|host| host.name == name)
+            .cloned()
+            .map(Target::Host)
+            .ok_or(StatusCode::NOT_FOUND)
+    }
+
     fn accepts_host(&self, headers: &HeaderMap) -> bool {
         let Some(host) = single_header(headers, header::HOST) else {
             return false;
@@ -205,28 +241,142 @@ fn single_header(headers: &HeaderMap, name: header::HeaderName) -> Option<&str> 
     values.next().is_none().then_some(value)
 }
 
+#[derive(serde::Serialize)]
+struct HostRow<'a> {
+    name: &'a str,
+    title: &'a str,
+    local: bool,
+}
+
+async fn hosts(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+    if !state.accepts_host(&headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    if !state.holds_token(&headers) {
+        return locked();
+    }
+    let hosts: Vec<HostRow<'_>> = std::iter::once(HostRow {
+        name: LOCAL_HOST,
+        title: LOCAL_TITLE,
+        local: true,
+    })
+    .chain(state.hosts.iter().map(|host| HostRow {
+        name: &host.name,
+        title: &host.name,
+        local: false,
+    }))
+    .collect();
+    let Ok(body) = serde_json::to_string(&hosts) else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    let mut response = body.into_response();
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    response
+}
+
+enum Target {
+    Local,
+    Host(HostEntry),
+}
+
 async fn upgrade(
     State(state): State<Arc<GatewayState>>,
     headers: HeaderMap,
+    uri: Uri,
     websocket: WebSocketUpgrade,
 ) -> Response {
     if !state.accepts_origin(&headers) || !state.holds_token(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let Ok(name) = state.socket.as_os_str().to_fs_name::<GenericFilePath>() else {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    let target = match state.target(uri.query()) {
+        Ok(target) => target,
+        Err(status) => return status.into_response(),
     };
-    let Ok(Ok(daemon)) = tokio::time::timeout(Duration::from_secs(5), Stream::connect(name)).await
-    else {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    };
-    websocket
+    let websocket = websocket
         .max_message_size(MAX_ENCODED_FRAME_BYTES)
         .max_frame_size(MAX_ENCODED_FRAME_BYTES)
-        .max_write_buffer_size(MAX_ENCODED_FRAME_BYTES * 2)
-        .on_upgrade(move |websocket| async move {
-            let _ = bridge(websocket, daemon).await;
-        })
+        .max_write_buffer_size(MAX_ENCODED_FRAME_BYTES * 2);
+    let host = match target {
+        Target::Local => {
+            let Ok(daemon) = connect_daemon(&state.socket).await else {
+                return StatusCode::SERVICE_UNAVAILABLE.into_response();
+            };
+            return websocket.on_upgrade(move |websocket| async move {
+                let _ = bridge(websocket, daemon).await;
+            });
+        }
+        Target::Host(host) => host,
+    };
+    websocket.on_upgrade(move |mut websocket| async move {
+        match open_host(host.endpoint).await {
+            Ok((route, daemon)) => {
+                let _ = bridge(websocket, daemon).await;
+                let _ = tokio::task::spawn_blocking(move || drop(route)).await;
+            }
+            Err(error) => {
+                let _ = websocket
+                    .send(Message::Close(Some(close_frame(&host.name, &error))))
+                    .await;
+            }
+        }
+    })
+}
+
+async fn connect_daemon(socket: &Path) -> io::Result<Stream> {
+    let name = socket.as_os_str().to_fs_name::<GenericFilePath>()?;
+    tokio::time::timeout(DAEMON_CONNECT_TIMEOUT, Stream::connect(name))
+        .await
+        .map_err(|_| io::Error::from(io::ErrorKind::TimedOut))?
+}
+
+async fn open_host(endpoint: Endpoint) -> Result<(DaemonRoute, Stream), DaemonError> {
+    let route = tokio::task::spawn_blocking(move || DaemonRoute::open_unattended(&endpoint))
+        .await
+        .map_err(io::Error::other)??;
+    match connect_daemon(route.socket()).await {
+        Ok(daemon) => Ok((route, daemon)),
+        Err(error) => {
+            let _ = tokio::task::spawn_blocking(move || drop(route)).await;
+            Err(error.into())
+        }
+    }
+}
+
+fn close_frame(name: &str, error: &DaemonError) -> CloseFrame {
+    let found = EndpointError::find(error);
+    let code = if found.is_some_and(EndpointError::needs_sign_in) {
+        SIGN_IN_CLOSE_CODE
+    } else {
+        UNREACHABLE_CLOSE_CODE
+    };
+    let detail = match found {
+        Some(
+            EndpointError::SshFailed { reason, .. } | EndpointError::ProbeFailure { reason, .. },
+        ) => reason.clone(),
+        Some(found) => found.ssh_reason().unwrap_or_else(|| found.to_string()),
+        None => error.to_string(),
+    };
+    let mut reason = format!("{name}: {detail}");
+    if reason.len() > MAX_CLOSE_REASON_BYTES {
+        let mut end = MAX_CLOSE_REASON_BYTES;
+        while !reason.is_char_boundary(end) {
+            end -= 1;
+        }
+        reason.truncate(end);
+    }
+    CloseFrame {
+        code,
+        reason: reason.into(),
+    }
 }
 
 async fn bridge(websocket: WebSocket, daemon: Stream) -> io::Result<()> {

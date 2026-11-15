@@ -654,6 +654,22 @@ struct SshAskpass<'a> {
     socket: &'a Path,
 }
 
+#[cfg(any(unix, windows))]
+pub(crate) enum SshLogin {
+    Prompts(Option<SshPrompts>),
+    Unattended,
+}
+
+#[cfg(any(unix, windows))]
+impl SshLogin {
+    fn split(self) -> (Option<SshPrompts>, bool) {
+        match self {
+            Self::Prompts(prompts) => (prompts, false),
+            Self::Unattended => (None, true),
+        }
+    }
+}
+
 #[cfg(any(unix, test))]
 fn forwarding_spec(local_socket: &Path, remote_socket: &Path) -> std::ffi::OsString {
     let mut forwarding = local_socket.as_os_str().to_os_string();
@@ -818,6 +834,7 @@ pub(crate) fn run_remote_script(
             control: Some(control),
             askpass: None,
             identity: None,
+            batch: false,
         };
         return match step.run(alive, "remote script", move |step| {
             Ok(run(&step.endpoint, step.session()))
@@ -1877,6 +1894,7 @@ fn riding_control(endpoint: &SshEndpoint) -> (Option<SshControl>, bool) {
         control: Some(control),
         askpass: None,
         identity: None,
+        batch: false,
     };
     let answered = match step.run(true, "remote command", master_answers) {
         Ok(()) => true,
@@ -2067,7 +2085,7 @@ fn forwarded_local_socket_path() -> io::Result<PathBuf> {
 #[cfg(unix)]
 pub(crate) fn connect_kept<T>(
     endpoint: &SshEndpoint,
-    prompts: Option<SshPrompts>,
+    login: SshLogin,
     resendable: bool,
     mut connect: impl FnMut(&Path, LocalStream) -> Result<T, DaemonError>,
 ) -> Result<(T, Option<SshForward>), DaemonError> {
@@ -2108,7 +2126,7 @@ pub(crate) fn connect_kept<T>(
     if stalled {
         abandon_stalled_master(endpoint, &kept);
     }
-    let forward = SshForward::keep(endpoint, prompts, &kept)?;
+    let forward = SshForward::keep(endpoint, login, &kept)?;
     let connected = dial(forward.local_socket())?;
     Ok((connected, (!forward.kept).then_some(forward)))
 }
@@ -2190,7 +2208,7 @@ pub(crate) fn remake_kept_forward(
     if stalled {
         abandon_stalled_master(endpoint, &kept);
     }
-    let forward = SshForward::keep(endpoint, None, &kept)?;
+    let forward = SshForward::keep(endpoint, SshLogin::Prompts(None), &kept)?;
     let socket = forward.local_socket.clone();
     Ok((socket, (!forward.kept).then_some(forward)))
 }
@@ -2241,6 +2259,7 @@ struct SshStep {
     control: Option<SshControl>,
     askpass: Option<(PathBuf, PathBuf)>,
     identity: Option<PathBuf>,
+    batch: bool,
 }
 
 #[cfg(unix)]
@@ -2253,7 +2272,7 @@ impl SshStep {
                 .as_ref()
                 .map(|(helper, socket)| SshAskpass { helper, socket }),
             identity: self.identity.as_deref(),
-            batch: false,
+            batch: self.batch,
         }
     }
 
@@ -2310,30 +2329,25 @@ pub(crate) struct SshForward {
     askpass: Option<AskpassListener>,
     identity: Option<PathBuf>,
     kept: bool,
+    batch: bool,
 }
 
 #[cfg(unix)]
 impl SshForward {
-    pub(crate) fn start(
-        endpoint: &SshEndpoint,
-        prompts: Option<SshPrompts>,
-    ) -> Result<Self, EndpointError> {
-        Self::open_new(endpoint, prompts, None)
+    pub(crate) fn start(endpoint: &SshEndpoint, login: SshLogin) -> Result<Self, EndpointError> {
+        Self::open_new(endpoint, login, None)
     }
 
-    fn keep(
-        endpoint: &SshEndpoint,
-        prompts: Option<SshPrompts>,
-        kept: &Path,
-    ) -> Result<Self, EndpointError> {
-        Self::open_new(endpoint, prompts, Some(kept))
+    fn keep(endpoint: &SshEndpoint, login: SshLogin, kept: &Path) -> Result<Self, EndpointError> {
+        Self::open_new(endpoint, login, Some(kept))
     }
 
     fn open_new(
         endpoint: &SshEndpoint,
-        prompts: Option<SshPrompts>,
+        login: SshLogin,
         kept: Option<&Path>,
     ) -> Result<Self, EndpointError> {
+        let (prompts, batch) = login.split();
         let askpass = start_askpass(endpoint, prompts);
         let (control, riding) =
             live_control(endpoint).map_or((None, false), |(control, alive)| (Some(control), alive));
@@ -2344,6 +2358,7 @@ impl SshForward {
                 .as_ref()
                 .map(|listener| (listener.helper().to_owned(), listener.socket().to_owned())),
             identity: None,
+            batch,
         };
 
         let (probed_socket, identity) = step.run(riding, "remote socket probe", |step| {
@@ -2385,6 +2400,7 @@ impl SshForward {
             askpass,
             identity: step.identity,
             kept: kept.is_some(),
+            batch,
         };
         if forward.kept {
             forward.cancel_forwards();
@@ -2430,7 +2446,7 @@ impl SshForward {
                 control: self.control.as_ref(),
                 askpass: session_askpass(self.askpass.as_ref()),
                 identity: self.identity.as_deref(),
-                batch: false,
+                batch: self.batch,
             };
             let child = ssh_forward_command(
                 &self.endpoint,
@@ -2575,11 +2591,11 @@ impl Drop for SshForward {
 #[cfg(windows)]
 pub(crate) fn connect_kept<T>(
     endpoint: &SshEndpoint,
-    prompts: Option<SshPrompts>,
+    login: SshLogin,
     _resendable: bool,
     mut connect: impl FnMut(&Path, LocalStream) -> Result<T, DaemonError>,
 ) -> Result<(T, Option<SshForward>), DaemonError> {
-    let forward = SshForward::start(endpoint, prompts)?;
+    let forward = SshForward::start(endpoint, login)?;
     let socket = forward.local_socket();
     let connected = connect(socket, LocalTransport::connect(socket)?)?;
     Ok((connected, Some(forward)))
@@ -2693,13 +2709,12 @@ pub(crate) struct SshForward {
 
 #[cfg(windows)]
 impl SshForward {
-    pub(crate) fn start(
-        endpoint: &SshEndpoint,
-        prompts: Option<SshPrompts>,
-    ) -> Result<Self, EndpointError> {
+    pub(crate) fn start(endpoint: &SshEndpoint, login: SshLogin) -> Result<Self, EndpointError> {
+        let (prompts, batch) = login.split();
         let askpass = start_askpass(endpoint, prompts);
         let session = SshSession {
             askpass: session_askpass(askpass.as_ref()),
+            batch,
             ..SshSession::default()
         };
         let identity = zz_identity();
@@ -4669,6 +4684,7 @@ mod tests {
             }),
             askpass: None,
             identity: None,
+            batch: false,
         };
         let stalled = |_: &SshStep| {
             thread::sleep(Duration::from_secs(30));

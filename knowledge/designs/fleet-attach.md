@@ -10,7 +10,7 @@ tags:
 - ssh
 - choose-tree
 - design-plan
-timestamp: 2026-11-13T12:00:00-03:00
+timestamp: 2026-11-15T00:00:00-03:00
 ---
 
 # Overview
@@ -246,8 +246,10 @@ Recorded so later phases inherit intent, ordered roughly by expected sequence.
   run commands and file listings on the host they name, and ask the shell through `HostRequest` to
   switch host before selecting. New session, New window and Close on another host run on its
   connection without switching (a new session there is `new-session -d`); opening a row or renaming
-  attaches that host first (`switch_host`). The web client stays on its one gateway and gets the
-  same UI once it has a second connection.
+  attaches that host first (`switch_host`). The web client still
+  talks to its one gateway, which dials every host in its machine's `zz/config` for it
+  ([browser client](/playbooks/browser-client.md#hosts)): `GET /hosts` lists them and
+  `/ws?host=NAME` relays to one, signing in to ssh hosts with the gateway user's identity only.
 - **Remote browser egress (M5)**: today a remote session's browser pane renders in the client's
   CEF, so its connections originate from the client machine and host-internal URLs
   (`localhost:3000`, VPN'd dashboards) fail. M5 adds an optional SOCKS/CONNECT tunnel over a

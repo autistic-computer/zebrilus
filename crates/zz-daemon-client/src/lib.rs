@@ -41,6 +41,8 @@ mod lifecycle;
 #[cfg_attr(any(target_os = "ios", target_os = "android"), allow(dead_code))]
 mod paths;
 pub mod process_info;
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+mod route;
 #[cfg(any(target_os = "ios", target_os = "android"))]
 mod russh_client;
 #[cfg(any(target_os = "ios", target_os = "android", test))]
@@ -95,6 +97,8 @@ pub use paths::{
     default_mux_config, discover_tmux_config, home_directory, mux_config_candidates,
     mux_config_write_path,
 };
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+pub use route::DaemonRoute;
 #[cfg(any(target_os = "ios", target_os = "android"))]
 pub use russh_client::app_ssh_public_key;
 pub use ssh_key::{ssh_key_path, ssh_public_key};

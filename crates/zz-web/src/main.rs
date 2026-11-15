@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some("--help" | "-h") => {
                 println!(
-                    "Usage: zz-web [--assets DIR] [--bind ADDRESS:PORT] [--socket PATH]\n\nDefaults: assets={}, bind={bind}, socket={}\nServe the zz browser client and connect each browser to the existing daemon.\nOnly loopback addresses are supported. Use SSH forwarding for remote hosts.\nOpen the printed link: its token is required, and each start makes a new one.",
+                    "Usage: zz-web [--assets DIR] [--bind ADDRESS:PORT] [--socket PATH]\n\nDefaults: assets={}, bind={bind}, socket={}\nServe the zz browser client and connect each browser to the existing daemon.\nOnly loopback addresses are supported. Hosts in zz/config are reached from this machine\nwith its own ssh identity; a host that asks for a password is refused.\nOpen the printed link: its token is required, and each start makes a new one.",
                     assets.display(),
                     socket.display()
                 );
@@ -46,10 +46,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => return Err(format!("unknown argument: {}", argument.to_string_lossy()).into()),
         }
     }
+    let (hosts, _) = zz_daemon_client::configured_fleet_hosts()
+        .map_err(|error| format!("could not read zz/config: {error}"))?;
     let gateway = Gateway::bind(GatewayConfig {
         bind,
         assets,
         socket,
+        hosts,
     })
     .await?;
     println!(

@@ -9,6 +9,7 @@ use tokio_tungstenite::tungstenite::{
     client::IntoClientRequest,
     http::{HeaderValue, Request},
 };
+use zz_daemon_client::{Endpoint, HostEntry};
 use zz_web::{Gateway, GatewayConfig};
 
 struct RunningGateway {
@@ -20,10 +21,15 @@ struct RunningGateway {
 
 impl RunningGateway {
     async fn start(assets: &Path, socket: &Path) -> Self {
+        Self::start_with_hosts(assets, socket, Vec::new()).await
+    }
+
+    async fn start_with_hosts(assets: &Path, socket: &Path, hosts: Vec<HostEntry>) -> Self {
         let gateway = Gateway::bind(GatewayConfig {
             bind: "127.0.0.1:0".parse().unwrap(),
             assets: assets.to_path_buf(),
             socket: socket.to_path_buf(),
+            hosts,
         })
         .await
         .unwrap();
@@ -65,7 +71,11 @@ impl RunningGateway {
     }
 
     fn websocket_request(&self) -> Request<()> {
-        let mut request = format!("ws://{}/ws", self.address)
+        self.websocket_request_to("/ws")
+    }
+
+    fn websocket_request_to(&self, path: &str) -> Request<()> {
+        let mut request = format!("ws://{}{path}", self.address)
             .into_client_request()
             .unwrap();
         request.headers_mut().insert(
@@ -170,6 +180,7 @@ async fn gateway_serves_assets_and_rejects_foreign_hosts_and_path_escape() {
             bind: "0.0.0.0:0".parse().unwrap(),
             assets,
             socket: scratch.path().join("absent.sock"),
+            hosts: Vec::new(),
         })
         .await
         .is_err()
@@ -222,6 +233,102 @@ async fn websocket_requires_an_exact_same_origin_before_connecting_the_daemon() 
         result,
         Err(tokio_tungstenite::tungstenite::Error::Http(response)) if response.status() == 503
     ));
+}
+
+#[cfg(unix)]
+mod hosts {
+    use super::*;
+    use futures_util::{SinkExt, StreamExt};
+    use tokio::net::UnixListener;
+    use tokio_tungstenite::tungstenite::{Error, Message};
+
+    fn short_socket(name: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let directory = tempfile::Builder::new()
+            .prefix("zzw-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let socket = directory.path().join(name);
+        (directory, socket)
+    }
+
+    #[tokio::test]
+    async fn a_named_host_relays_frames_unchanged_to_its_own_daemon() {
+        let (_directory, socket) = short_socket("b.sock");
+        let second = UnixListener::bind(&socket).unwrap();
+        let assets = tempfile::tempdir().unwrap();
+        let server = RunningGateway::start_with_hosts(
+            assets.path(),
+            &assets.path().join("absent.sock"),
+            vec![HostEntry {
+                name: "second".into(),
+                endpoint: Endpoint::parse(&format!("unix://{}", socket.display())).unwrap(),
+            }],
+        )
+        .await;
+        let listing = server.http("/hosts", &server.address.to_string()).await;
+        assert!(
+            listing.contains("content-type: application/json\r\n"),
+            "{listing}"
+        );
+        assert!(
+            listing.ends_with(
+                r#"[{"name":"local","title":"This computer","local":true},{"name":"second","title":"second","local":false}]"#
+            ),
+            "{listing}"
+        );
+
+        let (mut browser, _) =
+            tokio_tungstenite::connect_async(server.websocket_request_to("/ws?host=second"))
+                .await
+                .unwrap();
+        let (mut daemon, _) = second.accept().await.unwrap();
+        let upstream = [8, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8];
+        browser
+            .send(Message::Binary(upstream.to_vec().into()))
+            .await
+            .unwrap();
+        let mut received = [0; 12];
+        daemon.read_exact(&mut received).await.unwrap();
+        assert_eq!(received, upstream);
+        let downstream = [5, 0, 0, 0, 9, 8, 7, 6, 5, 6, 0, 0, 0, 0, 1, 2, 3, 4, 5];
+        daemon.write_all(&downstream).await.unwrap();
+        for frame in [&downstream[..9], &downstream[9..]] {
+            let Message::Binary(got) = browser.next().await.unwrap().unwrap() else {
+                panic!("expected a binary frame");
+            };
+            assert_eq!(&got[..], frame);
+        }
+    }
+
+    #[tokio::test]
+    async fn an_unknown_host_is_refused_without_falling_back_to_local() {
+        let (_directory, socket) = short_socket("l.sock");
+        let local = UnixListener::bind(&socket).unwrap();
+        let assets = tempfile::tempdir().unwrap();
+        let server = RunningGateway::start(assets.path(), &socket).await;
+        for path in [
+            "/ws?host=elsewhere",
+            "/ws?host=ssh%3A%2F%2Fattacker.example",
+            "/ws?host=",
+        ] {
+            let result = tokio_tungstenite::connect_async(server.websocket_request_to(path)).await;
+            assert!(
+                matches!(result, Err(Error::Http(ref response)) if response.status() == 404),
+                "{path} was not refused"
+            );
+        }
+        let result = tokio_tungstenite::connect_async(
+            server.websocket_request_to("/ws?host=local&host=elsewhere"),
+        )
+        .await;
+        assert!(matches!(result, Err(Error::Http(response)) if response.status() == 400));
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(200), local.accept())
+                .await
+                .is_err(),
+            "a refused host reached the local daemon"
+        );
+    }
 }
 
 #[cfg(unix)]
