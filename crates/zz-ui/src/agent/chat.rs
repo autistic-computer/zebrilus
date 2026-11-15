@@ -1279,9 +1279,9 @@ impl Draw<'_, '_> {
         tail: Option<&chat_rows::Run>,
     ) -> AnyElement {
         let seconds = self.now.saturating_sub(turn.started_at) / 1000;
-        let mut mark = ActivityMark::plain(IconName::Sparkle);
+        let mut mark = ActivityMark::bare();
         mark.touch = self.hooks.touch;
-        mark.shimmer = Some(self.now);
+        mark.live = true;
         mark.detail =
             (seconds > 0 && seconds < 86_400).then(|| chat_rows::duration(seconds * 1000).into());
         let run = tail.filter(|run| chat_rows::run_shows(self.view, &run.items));

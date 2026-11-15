@@ -6,16 +6,11 @@ mod composer;
 mod figure;
 mod message;
 mod phone;
+mod resolve;
 mod suggestions;
 mod tasks;
 
-use std::f32::consts::PI;
-use std::ops::Range;
-
-use ala::{
-    App, Div, EntityId, HighlightStyle, SharedString, StyledText, Transformation, percentage,
-    prelude::*, px,
-};
+use ala::{App, Div, EntityId, SharedString, Transformation, percentage, prelude::*, px};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Icon, IconName, Label, StyledExt as _, TextStyle,
@@ -61,14 +56,6 @@ pub use phone::{
 pub use suggestions::{suggestion_list, suggestion_list_height, suggestion_row};
 pub use tasks::{TrayPlan, plan_tray};
 
-const SWEEP_PASS_MS: u64 = 2000;
-const SWEEP_REST_MS: u64 = 600;
-const SWEEP_CYCLE_MS: u64 = SWEEP_PASS_MS + SWEEP_REST_MS;
-const SWEEP_CREST: f32 = 12.0;
-const SWEEP_STEPS: f32 = 32.0;
-const BREATH_OPACITY: f32 = 0.5;
-const BREATH_SCALE: f32 = 0.9;
-
 pub fn spinner_phase(view: EntityId, cx: &mut App) -> f32 {
     pulse_phase(SPIN, view, cx)
 }
@@ -76,65 +63,6 @@ pub fn spinner_phase(view: EntityId, cx: &mut App) -> f32 {
 #[must_use]
 pub fn spinner(phase: f32) -> Icon {
     Icon::new(IconName::Loader).transform(Transformation::rotate(percentage(phase)))
-}
-
-fn sweep_at(now: u64) -> f32 {
-    (now % SWEEP_CYCLE_MS) as f32 / SWEEP_CYCLE_MS as f32
-}
-
-fn crest_weights(count: usize, now: u64) -> impl Iterator<Item = u8> {
-    let half = SWEEP_CREST / 2.0;
-    let pass = (now % SWEEP_CYCLE_MS) as f32 / SWEEP_PASS_MS as f32;
-    let crest = -half + pass * (count as f32 + SWEEP_CREST);
-    (0..count).map(move |index| {
-        let distance = (index as f32 + 0.5 - crest).abs();
-        let weight = if distance < half {
-            f32::midpoint(1.0, (PI * distance / half).cos())
-        } else {
-            0.0
-        };
-        (weight * SWEEP_STEPS).round() as u8
-    })
-}
-
-fn breath(now: u64, cx: &App) -> (f32, f32) {
-    if cx.reduce_motion() {
-        return (1.0, 1.0);
-    }
-    let lift = f32::midpoint(1.0, (2.0 * PI * sweep_at(now)).cos());
-    (
-        BREATH_OPACITY + (1.0 - BREATH_OPACITY) * lift,
-        BREATH_SCALE + (1.0 - BREATH_SCALE) * lift,
-    )
-}
-
-#[must_use]
-pub fn shimmer(label: &str, now: u64, cx: &App) -> StyledText {
-    let text = format!("{label}…");
-    let theme = cx.theme();
-    let rest = theme.foreground.muted();
-    let still = cx.reduce_motion();
-    let weights = crest_weights(text.chars().count(), now).map(|step| if still { 0 } else { step });
-    let mut highlights: Vec<(Range<usize>, u8)> = Vec::new();
-    for ((offset, character), step) in text.char_indices().zip(weights) {
-        let range = offset..offset + character.len_utf8();
-        match highlights.last_mut() {
-            Some((last, seen)) if *seen == step => last.end = range.end,
-            _ => highlights.push((range, step)),
-        }
-    }
-    StyledText::new(text).with_highlights(highlights.into_iter().map(|(range, step)| {
-        let color = theme
-            .foreground
-            .mix_oklab(rest, f32::from(step) / SWEEP_STEPS);
-        (
-            range,
-            HighlightStyle {
-                color: Some(color),
-                ..HighlightStyle::default()
-            },
-        )
-    }))
 }
 
 pub fn welcome_state(
@@ -181,23 +109,4 @@ pub fn empty_state(
             )
         })
         .child(message.into())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::crest_weights;
-
-    #[test]
-    fn the_crest_sweeps_with_a_raised_cosine_and_rests_between_passes() {
-        assert_eq!(
-            crest_weights(8, 1000).collect::<Vec<_>>(),
-            [12, 20, 27, 31, 31, 27, 20, 12]
-        );
-        assert_eq!(crest_weights(8, 0).collect::<Vec<_>>(), [0; 8]);
-        assert_eq!(crest_weights(8, 2300).collect::<Vec<_>>(), [0; 8]);
-        assert_eq!(
-            crest_weights(8, 3600).collect::<Vec<_>>(),
-            [12, 20, 27, 31, 31, 27, 20, 12]
-        );
-    }
 }

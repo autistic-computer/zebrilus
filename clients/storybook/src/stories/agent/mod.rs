@@ -61,7 +61,7 @@ const STORY: Story = Story {
         Section {
             id: "live",
             name: "Live turn",
-            summary: "The last line of a running turn says what the agent is doing now, with a breathing sparkle, a soft sweep of light across the text and the time since the prompt. It takes the newest of three things: the CLI's own activity line, the running tool's own description (a command's own text when it has none), and the latest reasoning heading. It says Thinking only when nothing more specific is known. While the newest run of tools is still going, the line opens to its steps. A reply that lands while you watch types itself in over under a second.",
+            summary: "The last line of a running turn says what the agent is doing now, in a muted label with no glyph, and the time since the prompt. Each new label comes into focus from left to right, a character at a time. It takes the newest of three things: the CLI's own activity line, the running tool's own description (a command's own text when it has none), and the latest reasoning heading. It says Thinking only when nothing more specific is known. While the newest run of tools is still going, the line opens to its steps. A reply that lands while you watch types itself in over under a second.",
             build: chat::live,
         },
         Section {

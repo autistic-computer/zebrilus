@@ -1,6 +1,8 @@
+use std::time::Duration;
+
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Div, Entity, IntoElement,
-    ParentElement as _, Render, SharedString, Styled as _, Window, div, px,
+    ParentElement as _, Render, SharedString, Styled as _, Task, Window, div, px,
 };
 use penna::{
     ActiveTheme as _, Disableable as _, Ground, Icon, IconName, Label, TextStyle, Tone,
@@ -30,8 +32,14 @@ pub const STORY: Story = Story {
         Section {
             id: "activity",
             name: "Activity rows",
-            summary: "activity_row with an ActivityMark: an icon, a running spinner, a tint and tag for a failed or waiting tool, detail text, per-kind counts, a chevron that opens or a link that leaves, and the live line: a crest that sweeps the muted label and a glyph that breathes on the same 2.6s cycle, shown here frozen at four moments.",
+            summary: "activity_row with an ActivityMark: an icon, a running spinner, a tint and tag for a failed or waiting tool, detail text, per-kind counts, and a chevron that opens or a link that leaves.",
             build: |_, cx| stateless(activity, cx),
+        },
+        Section {
+            id: "live",
+            name: "Live line",
+            summary: "ActivityMark.live: the line under a working agent, a muted label with a still ellipsis and the elapsed time, no glyph. Each new label comes into focus from left to right, a character every 18ms (less for a long label, so it is sharp within 560ms), each one from a 5px blur to sharp over 160ms. Here the label changes every 2.4s.",
+            build: |_, cx| Live::view(cx),
         },
         Section {
             id: "messages",
@@ -120,11 +128,6 @@ fn activity(_: &mut Window, cx: &mut App) -> AnyElement {
     let mut long_step = ActivityMark::plain(IconName::SquareTerminal);
     long_step.detail = Some("Permission denied (os error 13) while opening the lock file".into());
     long_step.tag = Some(("exit 1".into(), Tone::Danger));
-    let live = |at: u64| {
-        let mut mark = ActivityMark::plain(IconName::Sparkle);
-        mark.shimmer = Some(at);
-        mark
-    };
     states()
         .state(
             "plain, detail, running",
@@ -213,37 +216,51 @@ fn activity(_: &mut Window, cx: &mut App) -> AnyElement {
                 )
                 .into_any_element(),
         )
-        .state(
-            "live: the sweep and the breathing glyph at 0.3s, 0.9s, 1.5s and 2.3s of the cycle",
-            column(
-                v_flex()
-                    .child(row(
-                        "activity-live-early",
-                        live(300),
-                        "Fetching the release notes",
-                        ActivityEnd::None,
-                    ))
-                    .child(row(
-                        "activity-live-middle",
-                        live(900),
-                        "Fetching the release notes",
-                        ActivityEnd::None,
-                    ))
-                    .child(row(
-                        "activity-live-late",
-                        live(1500),
-                        "Fetching the release notes",
-                        ActivityEnd::None,
-                    ))
-                    .child(row(
-                        "activity-live-rest",
-                        live(2300),
-                        "Fetching the release notes",
-                        ActivityEnd::None,
-                    )),
-            ),
-        )
         .into_any_element()
+}
+
+const LIVE_LABELS: [&str; 3] = ["Thinking", "Reading agent/view.rs", "Searching for popover"];
+const LIVE_EVERY: Duration = Duration::from_millis(2400);
+
+struct Live {
+    at: usize,
+    _cycle: Task<()>,
+}
+
+impl Live {
+    fn view(cx: &mut App) -> AnyView {
+        cx.new(|cx| Self {
+            at: 0,
+            _cycle: cx.spawn(async move |this, cx| {
+                loop {
+                    cx.background_executor().timer(LIVE_EVERY).await;
+                    let turned = this.update(cx, |live: &mut Self, cx| {
+                        live.at += 1;
+                        cx.notify();
+                    });
+                    if turned.is_err() {
+                        break;
+                    }
+                }
+            }),
+        })
+        .into()
+    }
+}
+
+impl Render for Live {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut mark = ActivityMark::bare();
+        mark.live = true;
+        mark.detail = Some("14s".into());
+        column(activity_row(
+            "activity-live",
+            mark,
+            LIVE_LABELS[self.at % LIVE_LABELS.len()].into(),
+            ActivityEnd::None,
+            cx,
+        ))
+    }
 }
 
 fn text(body: &'static str) -> AnyElement {

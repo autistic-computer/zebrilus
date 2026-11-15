@@ -3,6 +3,7 @@ use ala::{
     relative,
 };
 
+use super::resolve::Resolve;
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Sizable as _, Space,
     StyledExt as _, TextStyle, Tone, components::badge::Badge, components::icon::cap_center_drop,
@@ -34,7 +35,7 @@ pub struct ActivityCount {
 pub struct ActivityMark {
     pub icon: Option<IconName>,
     pub spin: Option<f32>,
-    pub shimmer: Option<u64>,
+    pub live: bool,
     pub tint: Option<Hsla>,
     pub label_color: Option<Hsla>,
     pub detail: Option<SharedString>,
@@ -51,7 +52,7 @@ impl ActivityMark {
         Self {
             icon: None,
             spin: None,
-            shimmer: None,
+            live: false,
             tint: None,
             label_color: None,
             detail: None,
@@ -163,18 +164,9 @@ pub fn activity_row(
         )
     };
     let drop = cap_center_drop(px(font), px(glyph_size), cx);
-    let breath = mark
-        .shimmer
-        .filter(|_| mark.spin.is_none())
-        .map(|now| super::breath(now, cx));
     let glyph = match (mark.spin, mark.icon) {
         (Some(phase), _) => Some(super::spinner(phase)),
-        (None, Some(icon)) => Some(match breath {
-            Some((_, scale)) => {
-                Icon::new(icon).transform(ala::Transformation::scale(ala::size(scale, scale)))
-            }
-            None => Icon::new(icon),
-        }),
+        (None, Some(icon)) => Some(Icon::new(icon)),
         (None, None) => None,
     }
     .map(|glyph| {
@@ -195,7 +187,7 @@ pub fn activity_row(
     } else {
         TextStyle::Small
     };
-    let live = mark.shimmer.is_some();
+    let live = mark.live;
     let end_icon = match end {
         ActivityEnd::None => None,
         ActivityEnd::Disclosure(expanded) => Some(disclosure_icon(expanded)),
@@ -233,12 +225,12 @@ pub fn activity_row(
                     .flex_none()
                     .relative()
                     .top(drop)
-                    .when_some(breath, |glyph, (opacity, _)| glyph.opacity(opacity))
                     .child(glyph),
             )
         })
-        .child(
-            div()
+        .map(|row| {
+            let label = single_line(label);
+            let text = div()
                 .debug_selector(|| "chat-activity-label".to_owned())
                 .min_w_0()
                 .flex_shrink_1()
@@ -246,12 +238,14 @@ pub fn activity_row(
                 .overflow_hidden()
                 .text_ellipsis()
                 .whitespace_nowrap()
-                .when_some(mark.label_color, Styled::text_color)
-                .map(|this| match mark.shimmer {
-                    Some(now) => this.child(super::shimmer(&single_line(label), now, cx)),
-                    None => this.child(single_line(label)),
-                }),
-        )
+                .when_some(mark.label_color, Styled::text_color);
+            if live {
+                let shown = format!("{label}…");
+                row.child(Resolve::new(label, &shown, text.child(shown.clone())))
+            } else {
+                row.child(text.child(label))
+            }
+        })
         .when_some(mark.detail, |this, detail| {
             this.child(
                 div()

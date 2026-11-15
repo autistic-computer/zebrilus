@@ -105,67 +105,21 @@
   height: 12px;
 }
 
-@property --penna-chat-crest {
-  syntax: "<length-percentage>";
-  inherits: false;
-  initial-value: -9999px;
+.penna-chat-resolve > i {
+  font-style: normal;
+  animation: penna-chat-resolve 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i) * var(--penna-chat-stagger, 18ms));
 }
 
-.penna-chat-shimmer {
-  color: transparent;
-  background-image: linear-gradient(
-    90deg,
-    var(--penna-fg-muted) calc(var(--penna-chat-crest) - 6ch),
-    color-mix(in oklab, var(--penna-fg) 15%, var(--penna-fg-muted)) calc(var(--penna-chat-crest) - 4.5ch),
-    color-mix(in oklab, var(--penna-fg) 50%, var(--penna-fg-muted)) calc(var(--penna-chat-crest) - 3ch),
-    color-mix(in oklab, var(--penna-fg) 85%, var(--penna-fg-muted)) calc(var(--penna-chat-crest) - 1.5ch),
-    var(--penna-fg) var(--penna-chat-crest),
-    color-mix(in oklab, var(--penna-fg) 85%, var(--penna-fg-muted)) calc(var(--penna-chat-crest) + 1.5ch),
-    color-mix(in oklab, var(--penna-fg) 50%, var(--penna-fg-muted)) calc(var(--penna-chat-crest) + 3ch),
-    color-mix(in oklab, var(--penna-fg) 15%, var(--penna-fg-muted)) calc(var(--penna-chat-crest) + 4.5ch),
-    var(--penna-fg-muted) calc(var(--penna-chat-crest) + 6ch)
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  animation: penna-chat-sweep 2600ms linear infinite;
-}
-
-.penna-chat-breath [data-icon] {
-  animation: penna-chat-breath 2600ms cubic-bezier(0.37, 0, 0.63, 1) infinite;
-}
-
-@keyframes penna-chat-sweep {
+@keyframes penna-chat-resolve {
   from {
-    --penna-chat-crest: -6ch;
-  }
-  76.923% {
-    --penna-chat-crest: calc(100% + 6ch);
-  }
-  to {
-    --penna-chat-crest: calc(100% + 6ch);
-  }
-}
-
-@keyframes penna-chat-breath {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.5;
-    transform: scale(0.9);
+    filter: blur(5px);
+    opacity: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .penna-chat-shimmer {
-    color: var(--penna-fg-muted);
-    background: none;
-    animation: none;
-  }
-
-  .penna-chat-breath [data-icon] {
+  .penna-chat-resolve > i {
     animation: none;
   }
 }

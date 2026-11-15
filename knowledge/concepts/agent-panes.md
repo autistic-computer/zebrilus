@@ -614,8 +614,9 @@ calls:
   shown images). The desktop agent view and the thin client's agent pane hook
   `ChatPane::close_on_release`, so closing the pane frees every image it held, through its window
   or, when the window closed with it, from the asset cache alone.
-- **Live turns.** The last line of a running turn says what the agent is doing now, with a soft sweep
-  of light across its text, a breathing sparkle and the time since the prompt (`chat_rows::live_line`). It takes the newest of:
+- **Live turns.** The last line of a running turn says what the agent is doing now, in a muted label
+  with no glyph, and the time since the prompt (`chat_rows::live_line`); each new label comes into
+  focus from left to right (penna's `ActivityMark.live`). It takes the newest of:
   the CLI's own activity line (`ChatEvent::TurnActivity`, from Claude Code's `task_summary`), a
   running tool's own description (`ItemBody::activity`: Claude's Bash, PowerShell and Agent
   `description`, Codex's `wait` as Waiting for agents), else the running tool's verb and target
