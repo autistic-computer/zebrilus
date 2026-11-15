@@ -2041,19 +2041,91 @@ fn pinned_executable(directory: &Path, executable: &Path) -> PathBuf {
     }
     #[cfg(target_os = "macos")]
     {
-        let Some(name) = executable.file_name() else {
-            return executable.to_path_buf();
-        };
-        let clone = directory.join(name);
-        if clone_file(executable, &clone).is_ok() || fs::hard_link(executable, &clone).is_ok() {
-            return clone;
-        }
-        executable.to_path_buf()
+        shared_pinned_executable(
+            &std::env::temp_dir().join(PINNED_ROOT),
+            directory,
+            executable,
+        )
+        .unwrap_or_else(|| executable.to_path_buf())
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         let _ = directory;
         executable.to_path_buf()
+    }
+}
+
+#[cfg(target_os = "macos")]
+const PINNED_ROOT: &str = "zz-pinned";
+
+#[cfg(target_os = "macos")]
+const PINNED_LINK: &str = "pin";
+
+#[cfg(target_os = "macos")]
+fn shared_pinned_executable(root: &Path, directory: &Path, executable: &Path) -> Option<PathBuf> {
+    use std::os::unix::fs::{DirBuilderExt as _, MetadataExt as _};
+
+    let name = executable.file_name()?;
+    let metadata = fs::metadata(executable).ok()?;
+    let key = format!(
+        "{:x}-{:x}-{:x}-{:x}.{:x}",
+        metadata.dev(),
+        metadata.ino(),
+        metadata.size(),
+        metadata.mtime(),
+        metadata.mtime_nsec()
+    );
+    let build = root.join(&key);
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&build)
+        .ok()?;
+    let pinned = build.join(name);
+    if !pinned.exists() {
+        let staged = build.join(format!(".{}", std::process::id()));
+        let _ = fs::remove_file(&staged);
+        clone_file(executable, &staged).ok()?;
+        let linked = fs::hard_link(&staged, &pinned);
+        let _ = fs::remove_file(&staged);
+        if let Err(error) = linked
+            && error.kind() != ErrorKind::AlreadyExists
+        {
+            return None;
+        }
+    }
+    fs::hard_link(&pinned, directory.join(PINNED_LINK)).ok()?;
+    remove_unused_pinned_builds(root, &key);
+    Some(pinned)
+}
+
+#[cfg(target_os = "macos")]
+fn remove_unused_pinned_builds(root: &Path, current: &str) {
+    use std::os::unix::fs::MetadataExt as _;
+
+    let Ok(builds) = fs::read_dir(root) else {
+        return;
+    };
+    for build in builds.flatten() {
+        if build.file_name() == current {
+            continue;
+        }
+        let path = build.path();
+        let settled = fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .is_ok_and(|modified| {
+                modified
+                    .elapsed()
+                    .is_ok_and(|age| age > Duration::from_secs(60))
+            });
+        let referenced = fs::read_dir(&path).is_ok_and(|entries| {
+            entries
+                .flatten()
+                .any(|entry| entry.metadata().is_ok_and(|metadata| metadata.nlink() > 1))
+        });
+        if settled && !referenced {
+            let _ = fs::remove_dir_all(&path);
+        }
     }
 }
 
@@ -2153,9 +2225,8 @@ impl TmuxShimGuard {
 #[cfg(unix)]
 impl Drop for TmuxShimGuard {
     fn drop(&mut self) {
-        if self.executable.parent() == Some(self.directory.as_path()) {
-            let _ = fs::remove_file(&self.executable);
-        }
+        #[cfg(target_os = "macos")]
+        let _ = fs::remove_file(self.directory.join(PINNED_LINK));
         let _ = fs::remove_file(self.directory.join("tmux"));
         let _ = fs::remove_file(self.directory.join("zz"));
         let _ = fs::remove_dir(&self.directory);
@@ -5579,7 +5650,10 @@ impl Shared {
             None => TmuxShimGuard::install(std::env::current_exe()?, true)?,
         };
         #[cfg(target_os = "macos")]
-        if shim.executable.parent() == Some(shim.directory.as_path()) {
+        if shim
+            .executable
+            .starts_with(std::env::temp_dir().join(PINNED_ROOT))
+        {
             zz_terminal::pin_pty_exec_helper(&shim.executable);
         }
         self.status

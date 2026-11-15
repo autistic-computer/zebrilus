@@ -55,7 +55,7 @@ timestamp: 2026-11-11T00:00:00-03:00
 >
 > **2026-11-10: step 4 is built.** On macOS the daemon starts each pane through a helper that runs
 > its own binary with `--zz-pty-exec`. That helper now runs from the pinned copy the daemon already
-> keeps under `$TMPDIR/zz-tmux-shim-<pid>-<seq>/` (`pin_pty_exec_helper` in
+> keeps (`pin_pty_exec_helper` in
 > `crates/zz-terminal/src/session/unix_pty.rs`, set from `Shared::install_tmux_shim`), so an old
 > daemon keeps starting panes with its own build after an update replaces the app bundle. If the
 > copy disappears, the helper tries the bundle path and then forks, as before. The daemon runs the
@@ -128,7 +128,12 @@ Not in this plan: keeping sessions alive across a daemon restart. A daemon resta
   protocol version already match.
 - What the daemon launches later stays on its own build: `pinned_executable`
   (`crates/zz-daemon/src/daemon.rs`) pins the `zz` and `tmux` that panes and status jobs run, and
-  since step 4 the macOS pty helper runs the daemon's pinned copy (`pin_pty_exec_helper` in
+  on macOS every daemon of one build shares one copy, `$TMPDIR/zz-pinned/<dev-inode-size-mtime>/`,
+  with a `pin` hard link in its `zz-tmux-shim-<pid>-<seq>/` holding it; a daemon start removes
+  builds no daemon links that are over a minute old. A fresh copy per daemon made macOS scan 170 MB
+  on every start, and a suite starting dozens of daemons crashed `syspolicyd`, which left every
+  process waiting on its scan stuck before its first instruction. Since step 4
+  the macOS pty helper runs the daemon's pinned copy (`pin_pty_exec_helper` in
   `crates/zz-terminal/src/session/unix_pty.rs`), then the bundle path, then fork.
 
 # Decisions
