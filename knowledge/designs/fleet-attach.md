@@ -10,7 +10,7 @@ tags:
 - ssh
 - choose-tree
 - design-plan
-timestamp: 2026-11-13T12:00:00-03:00
+timestamp: 2026-11-15T00:00:00-03:00
 ---
 
 # Overview
@@ -236,8 +236,10 @@ Recorded so later phases inherit intent, ordered roughly by expected sequence.
   session-keyed view, since each daemon numbers its own. Only the host on screen mirrors its
   localhost ports onto the phone (`InteractiveClient::set_loopback_discovery`), so two hosts never
   race for the same port. The overview shows one host per page, paged by swiping the pill; hosts
-  the user was on reconnect at launch from `hosts.json`'s `connected` list. The web client stays
-  on its one gateway.
+  the user was on reconnect at launch from `hosts.json`'s `connected` list. The web client still
+  talks to its one gateway, which dials every host in its machine's `zz/config` for it
+  ([browser client](/playbooks/browser-client.md#hosts)): `GET /hosts` lists them and
+  `/ws?host=NAME` relays to one, signing in to ssh hosts with the gateway user's identity only.
 - **Remote browser egress (M5)**: today a remote session's browser pane renders in the client's
   CEF, so its connections originate from the client machine and host-internal URLs
   (`localhost:3000`, VPN'd dashboards) fail. M5 adds an optional SOCKS/CONNECT tunnel over a

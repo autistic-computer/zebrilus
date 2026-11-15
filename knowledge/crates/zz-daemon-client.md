@@ -4,7 +4,7 @@ title: zz-daemon-client crate
 description: The client half of the zz daemon. Local and ssh endpoints, ssh askpass, the command and interactive clients, and the transport, config paths, and process facts the server shares.
 resource: crates/zz-daemon-client/src/lib.rs
 tags: [crate, client, ipc, transport, ssh, endpoint]
-timestamp: 2026-10-29T00:00:00-03:00
+timestamp: 2026-11-15T00:00:00-03:00
 ---
 
 # Overview
@@ -60,6 +60,7 @@ only the event loop uses it.
 | `askpass.rs` | `SshPrompts`, `AskpassPrompt`, `AskpassPromptKind`, `AskpassReply`, `ASKPASS_SOCKET_ENV`, `run_helper` | ssh's password and host-key prompts: the per-connect socket the GUI answers on, the prompt classifier, and the helper mode `zz` re-enters when ssh runs it as `SSH_ASKPASS` |
 | `lifecycle.rs` | `DaemonIdentityGuard`, `RecoveredDaemon`, `DaemonRecoveryError`, `terminate_incompatible_daemon`, `daemon_identity_protocol_version` | Single-instance identity file and guarded termination of an incompatible-protocol daemon |
 | `paths.rs` | `default_mux_config`, `discover_tmux_config`, `mux_config_candidates`, `mux_config_write_path`, `home_directory` | zz-owned config paths and donor discovery for explicit tmux imports |
+| `route.rs` | `DaemonRoute` | An unattended route to any endpoint's daemon socket for a caller that speaks the protocol itself (`zz-web`): the socket path for `unix://`, the tailnet forward's socket, or the kept ssh forward opened with `BatchMode=yes`. The route holds the forward until dropped |
 | `fleet_hosts.rs` | `HostEntry`, `RejectedHost`, `configured_fleet_hosts`, `validate_fleet_host`, `write_fleet_host`, `apply_fleet_host_entry` | `host-<name>` entries in `zz/config` |
 | `terminal_features.rs` | `TERMINAL_FEATURES`, `terminal_feature_mask`, `terminal_features_list`, `terminal_colour_count`, `terminal_default_features` | The `tty-features.c` table and the colours it decides |
 | `process_info.rs` | the `process_info` module | Per-OS process facts: start time, command name, cwd, parent, process group, samples, host name |

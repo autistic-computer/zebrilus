@@ -12039,6 +12039,8 @@ dependencies = [
  "getrandom 0.4.3",
  "interprocess",
  "percent-encoding",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",

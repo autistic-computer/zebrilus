@@ -1,7 +1,7 @@
 ---
 type: Playbook
 title: Running the browser client
-description: Build the shared ala browser client and connect it to a zz daemon through the local WebSocket gateway.
+description: Build the shared ala browser client and connect it, through the local WebSocket gateway, to the gateway machine's daemon or any host its zz config lists.
 resource: clients/web/src/lib.rs
 tags:
 - browser
@@ -9,7 +9,7 @@ tags:
 - client
 - websocket
 - ala
-timestamp: 2026-10-24T00:00:00-03:00
+timestamp: 2026-11-15T00:00:00-03:00
 ---
 
 # Overview
@@ -17,7 +17,8 @@ timestamp: 2026-10-24T00:00:00-03:00
 `clients/web` compiles the shared ala components from `zz-ui` and the state reducer from
 `zz-client` to WebAssembly. The app shell, navigation, settings, palette, overlays, pane entities, connection reducer,
 and image caches in `clients/app/src` also compile into the native iOS ala app. `zz-web` serves the page and forwards the existing binary protocol
-between each browser WebSocket and one daemon connection. The daemon owns sessions, PTYs,
+between each browser WebSocket and one daemon connection: the gateway machine's own daemon, or
+any host listed in its `zz/config`. The daemon owns sessions, PTYs,
 key bindings, copy mode, and Agent processes.
 
 # Run
@@ -51,6 +52,37 @@ just web serve --bind 127.0.0.1:8081 --socket /tmp/ala-cef.sock
 The browser and daemon must use the same protocol version. If an installed daemon reports a
 version mismatch, rebuild the client against that version or restart the daemon with the matching
 binary when its sessions can be stopped.
+
+# Hosts
+
+One gateway serves every host configured on its machine. At start it reads the
+`host-<name> = ssh://…|unix://…|tailnet://…` lines from `zz/config`; restart it after adding a
+host. `GET /hosts` answers with the list the page builds its machines from, this machine first:
+
+```json
+[{"name":"local","title":"This computer","local":true},
+ {"name":"alienware","title":"alienware","local":false}]
+```
+
+`/ws?host=NAME` relays to that host's daemon; no parameter, or `host=local`, is the local daemon
+exactly as before. A name that is not in the list gets 404 before anything is dialed, and two
+`host` parameters get 400. The name only selects a config entry; the endpoint comes from the
+config, never from the page.
+
+The gateway reaches the host itself, the way the desktop does (`DaemonRoute::open_unattended` in
+`zz-daemon-client`): `unix://` dials the socket, `tailnet://` starts the tailnet forward, and
+`ssh://` reuses or opens the kept ssh forward, probing and starting the remote daemon as needed.
+ssh signs in with the gateway user's identities (zz's own key first, then the agent and
+`~/.ssh`) and runs with `BatchMode=yes`, so it never prompts. The WebSocket opens, then closes
+with a code and a reason of at most 123 bytes when the host cannot be reached:
+
+| Code | Meaning |
+|------|---------|
+| 4401 | the host needs a password, a key passphrase or a host-key confirmation the gateway cannot give; sign in once from a terminal on the gateway machine (`ssh-add`, accept the host key) |
+| 4502 | anything else: refused, unresolved, timed out, zz missing or on another protocol there |
+
+The reason starts with the host name, then ssh's advice, for example
+`box: known_hosts has no matching key for the host: verify the host before connecting`.
 
 # Remote access
 
@@ -179,7 +211,9 @@ just web build
 
 Gateway integration tests start a real daemon, attach over WebSocket, resize and type into a
 terminal, execute commands, and check that disconnect closes the daemon attachment. Other tests
-reject foreign origins, invalid frames, and asset paths outside the served directory.
+reject foreign origins, invalid frames, and asset paths outside the served directory, check that
+`/ws?host=NAME` relays frames byte for byte to a second `unix://` host and that an unknown name
+is refused without reaching the local daemon.
 
 # Source
 
@@ -214,7 +248,8 @@ reject foreign origins, invalid frames, and asset paths outside the served direc
 - `crates/zz-ui/src/agent/controls.rs`: shared composer actions, option menus, Git counts, and context usage.
 - `crates/zz-ui/src/agent/presentation.rs`: shared permission, error, and empty-state cards.
 - `clients/app/src/attachments.rs`: browser image selection and protocol limits.
-- `crates/zz-web/src/lib.rs`: `Gateway`, asset serving, and the binary WebSocket bridge.
+- `crates/zz-web/src/lib.rs`: `Gateway`, asset serving, `/hosts`, and the binary WebSocket bridge.
+- `crates/zz-daemon-client/src/route.rs`: `DaemonRoute`, the unattended route to any endpoint's daemon socket.
 - `scripts/build-web-wasm.sh`: build and static distribution assembly.
 
 See [client core and contract](/designs/client-core-and-contract.md) and
