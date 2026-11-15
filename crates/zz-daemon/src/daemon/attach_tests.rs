@@ -597,6 +597,7 @@ fn a_server_hello_lists_the_daemon_capabilities_without_the_control_plane() {
         "new-session-attach-v1",
         "exec-v1",
         "pane-frame-v1",
+        "agent-login-v1",
     ];
     let (_, hello) =
         shared.register_subscribed(ClientKind::Command, None, None, OutboundMailbox::new());

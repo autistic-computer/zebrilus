@@ -1,8 +1,8 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-use crate::AgentProvider;
+use crate::{AgentProvider, PaneId};
 
 pub const MAX_PROVIDER_TEXT_BYTES: usize = 1024;
 
@@ -105,6 +105,153 @@ pub struct AgentQuota {
     pub provider: AgentProvider,
     pub account: Option<String>,
     pub windows: QuotaWindows,
+}
+
+pub const MAX_AGENT_LOGIN_CODE_BYTES: usize = 4096;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AgentLoginBrowser {
+    #[default]
+    Elsewhere,
+    Local,
+}
+
+impl AgentLoginBrowser {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Elsewhere => "elsewhere",
+            Self::Local => "local",
+        }
+    }
+}
+
+impl FromStr for AgentLoginBrowser {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "local" => Ok(Self::Local),
+            "elsewhere" => Ok(Self::Elsewhere),
+            _ => Err(format!(
+                "unknown browser `{value}`; expected local or elsewhere"
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentLogin {
+    pub id: u64,
+    pub provider: AgentProvider,
+    pub account: Option<String>,
+    pub pane: Option<PaneId>,
+    pub browser: AgentLoginBrowser,
+    pub step: AgentLoginStep,
+}
+
+impl AgentLogin {
+    #[must_use]
+    pub const fn finished(&self) -> bool {
+        self.step.finished()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AgentLoginStep {
+    Starting,
+    OpenUrl {
+        url: String,
+    },
+    DeviceCode {
+        url: String,
+        code: String,
+    },
+    PasteCode {
+        url: String,
+    },
+    Verifying,
+    Done {
+        email: Option<String>,
+        organization: Option<String>,
+        plan: Option<String>,
+        pane: Option<AgentLoginPane>,
+    },
+    Failed(AgentLoginFailure),
+    Cancelled,
+}
+
+impl AgentLoginStep {
+    #[must_use]
+    pub const fn finished(&self) -> bool {
+        matches!(self, Self::Done { .. } | Self::Failed(_) | Self::Cancelled)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AgentLoginPane {
+    Switched,
+    Busy,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AgentLoginFailure {
+    NotInstalled,
+    DeviceCodeDisabled,
+    TimedOut,
+    Cli(String),
+}
+
+impl AgentLoginFailure {
+    #[must_use]
+    pub fn message(&self, provider: AgentProvider) -> String {
+        let label = provider.label();
+        match self {
+            Self::NotInstalled => format!("{label} is not installed on this machine."),
+            Self::DeviceCodeDisabled => format!(
+                "This account cannot sign in to {label} with a device code. Sign in from a browser on the machine zz runs on."
+            ),
+            Self::TimedOut => "The sign-in timed out. Start it again.".to_owned(),
+            Self::Cli(message) => message.clone(),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct AgentLoginCode(String);
+
+impl AgentLoginCode {
+    #[must_use]
+    pub fn new(code: &str) -> Option<Self> {
+        let code = code.trim();
+        (!code.is_empty() && code.len() <= MAX_AGENT_LOGIN_CODE_BYTES)
+            .then(|| Self(code.to_owned()))
+    }
+
+    #[must_use]
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for AgentLoginCode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("AgentLoginCode(..)")
+    }
+}
+
+impl<'de> Deserialize<'de> for AgentLoginCode {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let code = String::deserialize(deserializer)?;
+        Self::new(&code).ok_or_else(|| serde::de::Error::custom("invalid sign-in code"))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AgentLoginRequest {
+    Code { login: u64, code: AgentLoginCode },
+    Cancel { login: u64 },
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

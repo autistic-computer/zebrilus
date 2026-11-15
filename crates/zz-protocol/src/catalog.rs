@@ -1050,13 +1050,27 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "agent-accounts",
         aliases: &[],
-        description: "List the agent CLI accounts on this host and who is signed in to each, or add one and open its login in a new window; the list arrives on the client event stream, not stdout",
-        usage: "[--add provider]",
-        options: &[CommandOptionSpec::value(
-            "--add",
-            FreeForm,
-            "add a claude or codex account and open its login",
-        )],
+        description: "List the agent CLI accounts on this host and who is signed in to each, or sign one in; the list and the sign-in steps arrive on the client event stream, not stdout",
+        usage: "[--add provider] [--account id|default] [--pane target-pane] [--browser local|elsewhere] [--terminal]",
+        options: &[
+            CommandOptionSpec::value("--add", FreeForm, "sign in a claude or codex account"),
+            CommandOptionSpec::value(
+                "--account",
+                FreeForm,
+                "the account to sign in: default or a signed-out one; a new one when left out",
+            ),
+            CommandOptionSpec::value(
+                "--pane",
+                Pane,
+                "agent chat to move to the account once signed in",
+            ),
+            CommandOptionSpec::value(
+                "--browser",
+                FreeForm,
+                "local when the client's browser runs on this host, elsewhere otherwise",
+            ),
+            CommandOptionSpec::flag("--terminal", "run the CLI's own login in a new window"),
+        ],
         positionals: &[],
         variadic: None,
     },

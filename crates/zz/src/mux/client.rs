@@ -4960,7 +4960,8 @@ impl MuxClient {
             | CoreEvent::StatusChanged
             | CoreEvent::CommandOutputChanged
             | CoreEvent::ProvidersChanged
-            | CoreEvent::AgentAccountsChanged => {}
+            | CoreEvent::AgentAccountsChanged
+            | CoreEvent::AgentLoginChanged { .. } => {}
             CoreEvent::AgentSessions { pane, result, .. } => {
                 #[cfg(feature = "agent-pane")]
                 if self.watched_agents.contains(&pane) {

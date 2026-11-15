@@ -3443,6 +3443,7 @@ pub enum EventPayload {
     Providers(crate::ProvidersReport),
     AgentAccounts(Vec<crate::AgentAccount>),
     AgentQuotas(Vec<crate::AgentQuota>),
+    AgentLogin(crate::AgentLogin),
 }
 
 impl EventPayload {
@@ -3517,6 +3518,7 @@ impl EventPayload {
             | Self::Providers(_)
             | Self::AgentAccounts(_) => None,
             Self::AgentQuotas(_) => Some(crate::AGENT_QUOTAS_CAPABILITY),
+            Self::AgentLogin(_) => Some(crate::AGENT_LOGIN_CAPABILITY),
         }
     }
 
@@ -3875,6 +3877,7 @@ pub enum ProtocolMessage {
         #[serde(deserialize_with = "deserialize_agent_prompt_text")]
         text: String,
     },
+    AgentLogin(crate::AgentLoginRequest),
 }
 
 impl ProtocolMessage {
@@ -3957,6 +3960,7 @@ impl ProtocolMessage {
             | Self::ArtifactUnavailable { .. }
             | Self::ArtifactReply { .. }
             | Self::AgentSteer { .. } => None,
+            Self::AgentLogin(_) => Some(crate::AGENT_LOGIN_CAPABILITY),
         }
     }
 }

@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and add one, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
+description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and reporting its steps or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
-timestamp: 2026-11-11T00:00:00-03:00
+timestamp: 2026-11-15T00:00:00-03:00
 ---
 
 # Overview
@@ -216,14 +216,16 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
   account (see [the footer](#the-empty-chat-and-the-footer)).
 - **Rate limits.** What each account has used of its 5-hour and weekly limits; see
   [below](#rate-limits).
-- **Not built yet.** Removing an account: a signed-out account directory is reused by the next add
-  instead.
+- **Not built yet.** Removing an account. A signed-out account directory is reused by the next add,
+  and a sign-in the daemon drives removes the directory it created when it fails or is cancelled.
 
 ## Listing and adding accounts
 
-`agent-accounts [--add claude|codex]` (`crates/zz-daemon/src/daemon/accounts.rs`, internal, like
+`agent-accounts [--add claude|codex] [--account id|default] [--pane target-pane]
+[--browser local|elsewhere] [--terminal]` (`crates/zz-daemon/src/daemon/accounts.rs`, internal, like
 `providers`) answers on the client event stream with `EventPayload::AgentAccounts(Vec<AgentAccount>)`
-(wire 122), never on stdout.
+(wire 122) and, for a sign-in, `EventPayload::AgentLogin`, never on stdout. `--account`, `--pane`,
+`--browser` and `--terminal` need `--add`.
 
 - **The list.** One `AgentAccount { provider, id, signed_in, email, organization, plan }` per
   account of each CLI installed on the daemon's host (found as `providers` finds it: the login-shell
@@ -250,17 +252,90 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
   asks for one more pass. The whole list goes to every watcher still connected when it changes.
   Every plain call refreshes, which is how a login that finished shows up: the daemon does not
   follow the login window.
-- **Adding.** `--add` subscribes the caller too, then in a worker thread asks that CLI's accounts,
-  picks the first account that is not signed in, else the lowest `aN` not taken (`a1`, `a2`, ...),
-  creates or completes it (`accounts::create`: 0700, links, Claude seed), and opens a new window
-  named after the provider and id in the caller's session, running `claude auth login` or
-  `codex login` through the user's interactive shell with `CLAUDE_CONFIG_DIR` or `CODEX_HOME` set
-  (`cli_session::interactive_shell`). The login itself is the CLI's own; zz types nothing into it.
+- **Which account.** `--add` subscribes the caller too. `--account default` signs in the CLI's own
+  login, `--account <id>` an existing account directory (signed out or not). Without `--account`
+  the daemon asks that CLI's accounts, picks the first account that is not signed in, else the
+  lowest `aN` not taken (`a1`, `a2`, ...), and creates or completes it (`accounts::create`: 0700,
+  links, Claude seed; `accounts::pick_account`).
+- **Two ways to sign in.** A caller that declared `agent-login-v1` in its hello gets a sign-in the
+  daemon drives ([below](#signing-in-without-a-terminal)). A caller without it, a one-shot CLI
+  connection (it opens with `Exec` and declares nothing), and any `--terminal` call get the
+  terminal window: a new window named after the provider and id (`default` for the CLI's own
+  login) in the caller's session, running `claude auth login` or `codex login` through the user's
+  interactive shell with `CLAUDE_CONFIG_DIR` or `CODEX_HOME` set for a named account
+  (`cli_session::interactive_shell`). The login there is the CLI's own; zz types nothing into it
+  and does not follow it.
 - **Clients.** zz-client's core keeps the last list (`ClientCore::agent_accounts`) and emits
   `CoreEvent::AgentAccountsChanged`. The desktop keeps one list per host beside the providers report
   (`MuxClient::host_agent_accounts`, `request_agent_accounts`, `add_agent_account`); zz-app reads the
   core (`Connection::request_agent_accounts`, `add_agent_account`, `switch_agent_account`). The
   composer's usage pill is their one reader.
+
+## Signing in without a terminal
+
+The daemon runs the CLI's own login on a pipe nobody sees and reports each step to the clients
+(`crates/zz-daemon/src/daemon/agent_login.rs`). zz has no OAuth client of its own: the unmodified
+CLI opens the flow, exchanges the code and writes the credentials into the account's directory
+(or the CLI's own place for `default`). zz never reads, stores or logs a token.
+
+- **Browser.** `--browser local` says the client's browser runs on the daemon's machine (the
+  desktop on its local daemon), so the CLI's callback on `localhost` can catch the redirect.
+  `--browser elsewhere` (the default) is for a remote host, an iPad or the web: Codex uses its
+  device code, Claude Code its manual page that shows a code for the user to paste back.
+- **Claude Code.** `claude -p --output-format stream-json --input-format stream-json --verbose`,
+  then the stream-json control requests the SDK uses: `initialize`, then `claude_authenticate`
+  with `loginWithClaudeAi: true`, which answers `{manualUrl, automaticUrl}` and opens no browser.
+  Local: the step shows `automaticUrl` and the daemon sends `claude_oauth_wait_for_completion`.
+  Elsewhere: the step shows `manualUrl`; the pasted code (`code#state`, or the code alone, when
+  the daemon takes `state` from `manualUrl`) goes back as `claude_oauth_callback`
+  `{authorizationCode, state}`. Both answer with the account once the CLI has stored the login;
+  an error answer is shown as the CLI wrote it. Checked on Claude Code 2.1.325.
+- **Codex.** `codex app-server` on stdio: `initialize`, `initialized`, then `account/login/start`
+  with `type: "chatgpt"` (local: `{loginId, authUrl}`, the callback listening on
+  `127.0.0.1:1455` on the daemon's machine) or `type: "chatgptDeviceCode"` (elsewhere:
+  `{loginId, verificationUrl, userCode}`). The notification `account/login/completed {loginId,
+  success, error}` ends it. An error that says device code login is not enabled becomes
+  `DeviceCodeDisabled`, one that says it timed out `TimedOut`. Checked on codex-cli 0.169.0.
+- **Steps.** `AgentLoginStep` in `zz_protocol::providers`: `Starting`, `OpenUrl { url }` (local
+  browser, waiting), `DeviceCode { url, code }`, `PasteCode { url }`, `Verifying` (a pasted code is
+  being exchanged, or the account is being probed), `Done { email, organization, plan, pane }`,
+  `Failed(AgentLoginFailure)` (`NotInstalled`, `DeviceCodeDisabled`, `TimedOut`, or `Cli(text)`;
+  `AgentLoginFailure::message` words each) and `Cancelled`.
+- **The machine.** `agent::login::LoginMachine` on zz-machine decides; a driver thread per login
+  owns the CLI process, feeds it facts (the CLI's answers, the client's code, cancel or restart, a
+  tick) and runs its effects (launch, stop the CLI, send the code, probe, switch the pane, remove
+  the directory). Starting has 1 minute to show a link and exchanging a pasted code 1 minute to
+  finish; a link waits 15 minutes. A step is published when it or the browser changes; a final one
+  only after its effects ran.
+- **One per provider.** A daemon runs one sign-in per provider. Another `--add` for that provider
+  while it runs restarts it in the other browser mode when `--browser` differs (same login id,
+  account and pane, a new CLI process) and otherwise sends the requester the current step.
+- **Done.** The daemon probes that account again as the list does, puts the answer in the list and
+  publishes `AgentAccounts`. With `--pane` naming an agent chat of the same provider, an idle chat
+  moves to the account as `agent-account -t` moves it (`switch_agent_account`, which reopens it
+  even when it already was on that account, so a chat that failed for want of a login picks it
+  up) and `pane` is `Switched`; a busy one is left alone and `pane` is `Busy`.
+- **Failed or cancelled.** The CLI is killed with its process group. An account directory this
+  sign-in created is removed; one it reused, or `default`, is kept.
+- **The pasted code.** It travels as `ProtocolMessage::AgentLogin(AgentLoginRequest::Code)`, never
+  as a command argument, so it stays out of command history. `AgentLoginCode` prints as
+  `AgentLoginCode(..)` in `Debug`, so the client's and daemon's trace logs never show it. The driver
+  holds it until it writes the control request to the CLI's stdin, then drops it.
+- **Events.** Each step goes to every client that declared `agent-login-v1`, as
+  `EventPayload::AgentLogin(AgentLogin { id, provider, account, pane, browser, step })`
+  ([wire protocol](/protocol/wire-protocol.md#adding-a-message-inside-an-epoch)); a plain
+  `agent-accounts` call sends it the logins still running.
+- **Client core.** `ClientCore::agent_logins()`, `agent_login(provider)` and
+  `dismiss_agent_login(id)` (drops a finished one) with `CoreEvent::AgentLoginChanged { provider }`;
+  `zz_client::agent_login` builds the requests: `start(provider, LoginAccount, pane, browser)` and
+  `restart(login, browser)` (commands), `submit_code(login, code)` and `cancel(login)` (messages),
+  and `daemon_signs_in(capabilities)` reads the daemon's hello. No client declares
+  `agent-login-v1` yet: it sits in `OPT_IN_CLIENT_CAPABILITY_NAMES`, which the daemon accepts and
+  no hello sends by itself, so every client still gets the terminal window until it draws the steps.
+- **Trying it.** `zz tools --agent-login <claude|codex> [--browser local|elsewhere]
+  [--account id|default] [--pane %N]` connects with the capability, starts a sign-in and prints
+  each step; a line on stdin is the pasted code, `local` or `elsewhere` restarts in that mode, and
+  `cancel` or the end of input cancels.
 
 ## Rate limits
 

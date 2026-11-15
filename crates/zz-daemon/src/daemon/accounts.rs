@@ -27,29 +27,67 @@ const CODEX_EXIT: Duration = Duration::from_secs(2);
 #[cfg(all(feature = "agent", unix))]
 #[derive(Default)]
 pub(super) struct Accounts {
-    list: Option<Vec<AgentAccount>>,
+    pub(super) list: Option<Vec<AgentAccount>>,
     quotas: BTreeMap<(AgentProvider, Option<String>), QuotaWindows>,
     watchers: BTreeSet<ClientId>,
     refreshing: bool,
     again: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum AccountChoice {
+    New,
+    Default,
+    Named(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AddAccount {
+    pub(super) provider: AgentProvider,
+    pub(super) account: AccountChoice,
+    pub(super) pane: Option<String>,
+    pub(super) browser: zz_protocol::AgentLoginBrowser,
+    pub(super) terminal: bool,
+}
+
 pub(super) fn parse_agent_accounts_args(
     args: &[RawText],
-) -> Result<Option<AgentProvider>, ServerError> {
+) -> Result<Option<AddAccount>, ServerError> {
     let spec = zz_protocol::catalog_command_spec("agent-accounts").expect("registered command");
     let parsed = zz_protocol::parse_tmux_options(spec, args)?;
     spec.validate_positional_maximum(parsed.positionals.len())?;
-    let mut add = None;
+    let mut provider = None;
+    let mut account = AccountChoice::New;
+    let mut pane = None;
+    let mut browser = None;
+    let mut terminal = false;
     for option in parsed.options {
         match option {
             zz_protocol::TmuxOption::Value("--add", value) => {
-                add = Some(
+                provider = Some(
                     value
                         .parse::<AgentProvider>()
                         .map_err(ServerError::CommandParse)?,
                 );
             }
+            zz_protocol::TmuxOption::Value("--account", zz_protocol::DEFAULT_AGENT_ACCOUNT) => {
+                account = AccountChoice::Default;
+            }
+            zz_protocol::TmuxOption::Value("--account", id)
+                if zz_protocol::valid_agent_account(id) =>
+            {
+                account = AccountChoice::Named(id.to_owned());
+            }
+            zz_protocol::TmuxOption::Value("--account", id) => {
+                return Err(ServerError::CommandParse(format!(
+                    "agent-accounts: `{id}` is not an account id or default"
+                )));
+            }
+            zz_protocol::TmuxOption::Value("--pane", value) => pane = Some(value.to_owned()),
+            zz_protocol::TmuxOption::Value("--browser", value) => {
+                browser = Some(value.parse().map_err(ServerError::CommandParse)?);
+            }
+            zz_protocol::TmuxOption::Flag("--terminal") => terminal = true,
             zz_protocol::TmuxOption::Flag(name) | zz_protocol::TmuxOption::Value(name, _) => {
                 return Err(ServerError::CommandParse(format!(
                     "agent-accounts: unknown option {name}"
@@ -57,7 +95,22 @@ pub(super) fn parse_agent_accounts_args(
             }
         }
     }
-    Ok(add)
+    let Some(provider) = provider else {
+        if account != AccountChoice::New || pane.is_some() || browser.is_some() || terminal {
+            return Err(ServerError::CommandParse(
+                "agent-accounts: --account, --pane, --browser and --terminal go with --add"
+                    .to_owned(),
+            ));
+        }
+        return Ok(None);
+    };
+    Ok(Some(AddAccount {
+        provider,
+        account,
+        pane,
+        browser: browser.unwrap_or_default(),
+        terminal,
+    }))
 }
 
 impl Shared {
@@ -81,17 +134,36 @@ impl Shared {
             self.agent_accounts.lock().watchers.insert(client);
             self.publish_agent_accounts();
             self.publish_agent_quotas();
-            let Some(provider) = add else {
+            let Some(add) = add else {
+                self.publish_agent_logins_to(client);
                 self.refresh_agent_accounts();
                 return Ok(Execution::default());
             };
+            if !add.terminal && self.client_draws_agent_logins(client) {
+                let pane = add
+                    .pane
+                    .as_deref()
+                    .map(|target| {
+                        self.inner.lock().engine.resolve_pane(
+                            Some(target),
+                            context.window,
+                            context.pane,
+                        )
+                    })
+                    .transpose()?;
+                return self
+                    .start_agent_login(client, add, pane)
+                    .map(|()| Execution::default())
+                    .map_err(DaemonError::from);
+            }
+            let provider = add.provider;
             let shared = Arc::downgrade(&self.server_owner());
             let context = ExecutionContext::new(context.session, context.window, context.pane);
             let spawned = thread::Builder::new()
                 .name("zz-agent-accounts-add".to_owned())
                 .spawn(move || {
                     if let Some(shared) = shared.upgrade() {
-                        shared.add_agent_account(provider, context);
+                        shared.add_agent_account(provider, &add.account, context);
                     }
                 });
             if let Err(error) = spawned {
@@ -103,6 +175,22 @@ impl Shared {
             }
             Ok(Execution::default())
         }
+    }
+}
+
+impl Shared {
+    #[cfg_attr(
+        not(all(feature = "agent", unix)),
+        expect(
+            clippy::needless_pass_by_value,
+            reason = "only zz with agent support on macOS or Linux signs in agent CLIs"
+        )
+    )]
+    pub(super) fn handle_agent_login(&self, request: zz_protocol::AgentLoginRequest) {
+        #[cfg(all(feature = "agent", unix))]
+        self.agent_login_request(request);
+        #[cfg(not(all(feature = "agent", unix)))]
+        let _ = request;
     }
 }
 
@@ -247,8 +335,50 @@ impl Shared {
         again
     }
 
-    fn add_agent_account(self: &Arc<Self>, provider: AgentProvider, mut context: ExecutionContext) {
-        use crate::agent::{accounts, cli_session};
+    pub(super) fn record_agent_account(
+        self: &Arc<Self>,
+        account: AgentAccount,
+        quota: Option<QuotaWindows>,
+    ) {
+        let quota_changed = {
+            let mut accounts = self.agent_accounts.lock();
+            let key = (account.provider, account.id.clone());
+            let quota_changed =
+                quota.is_some_and(|quota| accounts.quotas.insert(key, quota) != Some(quota));
+            let Some(list) = accounts.list.as_mut() else {
+                drop(accounts);
+                if quota_changed {
+                    self.publish_agent_quotas();
+                }
+                self.refresh_agent_accounts();
+                return;
+            };
+            let slot = list
+                .iter()
+                .position(|known| known.provider == account.provider && known.id == account.id);
+            match (slot, account.id.is_none() || account.signed_in) {
+                (Some(slot), true) => list[slot] = account,
+                (Some(slot), false) => {
+                    list.remove(slot);
+                }
+                (None, true) => list.push(account),
+                (None, false) => {}
+            }
+            quota_changed
+        };
+        self.publish_agent_accounts();
+        if quota_changed {
+            self.publish_agent_quotas();
+        }
+    }
+
+    fn add_agent_account(
+        self: &Arc<Self>,
+        provider: AgentProvider,
+        choice: &AccountChoice,
+        mut context: ExecutionContext,
+    ) {
+        use crate::agent::cli_session;
 
         let search = self.provider_search();
         let Some(program) = providers::locate(provider, search.as_ref()) else {
@@ -260,20 +390,10 @@ impl Shared {
             );
             return;
         };
-        let probed = provider_accounts(provider, &program, search.as_ref());
-        let existing = probed
-            .iter()
-            .filter_map(|(account, _)| Some((account.id.as_deref()?, account.signed_in)))
-            .collect::<Vec<_>>();
-        let id = login_account(&existing);
-        let home = match accounts::create(provider, &id) {
-            Ok(home) => home,
+        let (id, home) = match pick_account(provider, &program, search.as_ref(), choice) {
+            Ok(picked) => (picked.id, picked.home),
             Err(error) => {
-                log::warn!(
-                    target: "zz::agent",
-                    "could not create the {} account {id}: {error}",
-                    provider.label()
-                );
+                log::warn!(target: "zz::agent", "{error}");
                 return;
             }
         };
@@ -285,13 +405,14 @@ impl Shared {
             .iter()
             .map(|word| (*word).to_owned())
             .collect::<Vec<_>>();
+        let name = id.as_deref().unwrap_or(zz_protocol::DEFAULT_AGENT_ACCOUNT);
         let mut args = vec![
             "-n".to_owned(),
-            format!("{} {id}", provider.label()),
+            format!("{} {name}", provider.label()),
             "--".to_owned(),
         ];
         args.extend(cli_session::interactive_shell(
-            Some((provider, &home)),
+            home.as_deref().map(|home| (provider, home)),
             &login,
         ));
         context.no_hooks = true;
@@ -303,9 +424,62 @@ impl Shared {
         ) {
             log::warn!(
                 target: "zz::agent",
-                "could not open the login of the {} account {id}: {error}",
+                "could not open the login of the {} account {name}: {error}",
                 provider.label()
             );
+        }
+    }
+}
+
+#[cfg(all(feature = "agent", unix))]
+pub(super) struct PickedAccount {
+    pub(super) id: Option<String>,
+    pub(super) home: Option<PathBuf>,
+    pub(super) fresh: bool,
+}
+
+#[cfg(all(feature = "agent", unix))]
+pub(super) fn pick_account(
+    provider: AgentProvider,
+    program: &Path,
+    search: Option<&OsString>,
+    choice: &AccountChoice,
+) -> Result<PickedAccount, String> {
+    use crate::agent::accounts;
+
+    match choice {
+        AccountChoice::Default => Ok(PickedAccount {
+            id: None,
+            home: None,
+            fresh: false,
+        }),
+        AccountChoice::Named(id) => {
+            let home = accounts::prepare(provider, &accounts::Account::resolve(provider, id))?;
+            Ok(PickedAccount {
+                id: Some(id.clone()),
+                home: Some(home),
+                fresh: false,
+            })
+        }
+        AccountChoice::New => {
+            let probed = provider_accounts(provider, program, search);
+            let existing = probed
+                .iter()
+                .filter_map(|(account, _)| Some((account.id.as_deref()?, account.signed_in)))
+                .collect::<Vec<_>>();
+            let id = login_account(&existing);
+            let fresh = existing.iter().all(|(taken, _)| *taken != id);
+            let home = accounts::create(provider, &id).map_err(|error| {
+                format!(
+                    "could not create the {} account {id}: {error}",
+                    provider.label()
+                )
+            })?;
+            Ok(PickedAccount {
+                id: Some(id),
+                home: Some(home),
+                fresh,
+            })
         }
     }
 }
@@ -330,7 +504,7 @@ fn provider_accounts(
 }
 
 #[cfg(all(feature = "agent", unix))]
-fn identify(
+pub(super) fn identify(
     provider: AgentProvider,
     program: &Path,
     id: Option<String>,

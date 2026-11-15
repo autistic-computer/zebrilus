@@ -11,6 +11,7 @@ extern crate mimalloc;
 #[cfg(test)]
 use zz_daemon::{CommandStdinSink, append_stdin_payload};
 mod agent_hooks;
+mod agent_login;
 mod control_mode;
 pub use agent_hooks::install_agent_hooks;
 pub mod diagnostics;
@@ -804,6 +805,11 @@ fn run_command_mode(
         });
     }
     if canonical_command(&command) == "tools" && host.is_none() && command_chain.len() == 1 {
+        if let [flag, rest @ ..] = invocation.args.as_slice()
+            && flag == "--agent-login"
+        {
+            return Some(agent_login::run(socket_path, rest));
+        }
         return Some(agent_hooks::run(&invocation.args));
     }
     if host == Some(ALL_HOSTS) {

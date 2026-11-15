@@ -1703,6 +1703,7 @@ fn handle_core_event(
         | CoreEvent::AgentSessions { .. }
         | CoreEvent::ProvidersChanged
         | CoreEvent::AgentAccountsChanged
+        | CoreEvent::AgentLoginChanged { .. }
         | CoreEvent::Message(_) => Ok(ProtocolOutcome::None),
     }
 }

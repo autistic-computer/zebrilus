@@ -4,7 +4,7 @@ title: zz wire protocol (v123)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-11-13T00:00:00-03:00
+timestamp: 2026-11-15T00:00:00-03:00
 ---
 
 # Overview
@@ -54,7 +54,8 @@ names the capability its receiver must have, in `ProtocolMessage::required_capab
 `EventPayload::required_capability` (`crates/zz-protocol/src/message.rs`). Both are exhaustive
 matches with no wildcard arm, so a new variant does not compile until it answers.
 `ProtocolMessage::Event` answers with its payload's. Every variant shipped at v123 answers `None`;
-`EventPayload::AgentQuotas`, added inside it, answers `agent-quotas-v1`.
+`EventPayload::AgentQuotas`, added inside it, answers `agent-quotas-v1`, and `EventPayload::AgentLogin`
+and `ProtocolMessage::AgentLogin` answer `agent-login-v1`.
 
 The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only inside an epoch:
 
@@ -66,6 +67,12 @@ The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only
   appends all of them to `ClientHello.capabilities`: `connect_stream_hello` in `zz-daemon-client`,
   `browser::hello` in the browser client, `hello` in the HTML client. A message the daemon sends
   names one of these. It holds `agent-quotas-v1` (`AGENT_QUOTAS_CAPABILITY`).
+- `OPT_IN_CLIENT_CAPABILITY_NAMES` is what a client can decode only when it says so: the daemon
+  accepts these names like the ones above, but no hello sends them by itself. A client names one
+  in the extra capabilities it hands `connect_stream_hello` (`InteractiveClient::connect_with_capabilities`)
+  once it draws what the name gates. It holds `agent-login-v1` (`AGENT_LOGIN_CAPABILITY`), which is
+  in `CAPABILITY_NAMES` too, for the client's `AgentLogin` message. Moving a name to
+  `CLIENT_CAPABILITY_NAMES` turns it on for every client.
 
 The sender checks, so the receiver never sees what it cannot decode:
 
@@ -135,11 +142,11 @@ Those three are `#[cfg(windows)]` and are not even compiled on macOS or Linux, s
 there, such as a send from `serve_exec_ready`, does nothing on them.
 
 Two limits, both const assertions in `control.rs`. `CAPABILITY_NAMES` must stay under 64 names,
-because `Welcome.caps` is a `u64` and the daemon sets `(1 << len) - 1`; it holds 33.
+because `Welcome.caps` is a `u64` and the daemon sets `(1 << len) - 1`; it holds 34.
 `ClientHello.capabilities` decodes at most 64 entries (`MAX_SERVER_CAPABILITIES`), and
 `connect_stream_hello` fills up to 29 of them with its own entries (up to 16 are
-`client-features-v1:` specs, 2 come from its callers), so `CLIENT_CAPABILITY_NAMES` has room for 35
-at most.
+`client-features-v1:` specs, 2 come from its callers), so `CLIENT_CAPABILITY_NAMES` and
+`OPT_IN_CLIENT_CAPABILITY_NAMES` together have room for 35 at most.
 
 Each release says which epoch it speaks and which daemons it attaches to. The `draft` job in
 `.github/workflows/release.yml` reads `PROTOCOL_VERSION` and `MIN_DAEMON_REVISION` from
@@ -213,6 +220,7 @@ fields in declaration order.
 | `PastedImageUnavailable { pane, number }` | one placeholder | Daemon → client: that numbered image is gone or could not be encoded |
 | `AgentPrompt { pane, text, images: Vec<AgentImage> }` | one prompt | Client → daemon: submit a prompt to the agent runtime of a terminal pane. The lens types the text into the CLI and refuses images. `AgentImage { format, data }` carries encoded bytes; text plus every image totals at most `MAX_AGENT_PROMPT_BYTES` (6 MiB), each `format` at most 64 bytes |
 | `AgentSteer { pane, text }` | one message | Client → daemon (v115): type `text` into the turn the pane is running, which Claude Code and Codex take as steering. With no turn running, a permission waiting, or a runtime that cannot steer, it is an `AgentPrompt`. Bounded like a prompt's text |
+| `AgentLogin(AgentLoginRequest)` | one request | Client → daemon, gated by `agent-login-v1`: `Code { login, code: AgentLoginCode }` hands the code a user pasted to the agent sign-in `login`, `Cancel { login }` ends it. `AgentLoginCode` is trimmed, nonempty, at most `MAX_AGENT_LOGIN_CODE_BYTES` (4096) on decode, and prints as `AgentLoginCode(..)` in `Debug`. Read-only clients get `client is read-only` |
 | `AgentCancel { pane }` | . | Cancel the pane's running turn |
 | `AgentUnqueue { pane }` | . | Reclaim the pane's queued prompts; the daemon returns them inside the stream so the composer refills |
 | `AgentRespondPermission { pane, request_id, option_id: Option<String> }` | one answer | Answer a parked permission request; `None` cancels. First answer wins and a late one is a no-op |
@@ -394,6 +402,21 @@ whenever a record changes, and only records with a window. A client without the 
 it, and a daemon without it never sends it, so either side shows no limits
 ([rate limits](/concepts/agent-panes.md#rate-limits)). `AgentStreamPayload::QuotaChanged`, which
 the drivers send their host, never leaves the daemon.
+
+`AgentLogin(AgentLogin)` is appended inside v123 and gated by `agent-login-v1`. It is one step of a
+sign-in the daemon drives through a CLI's own login:
+`AgentLogin { id: u64, provider, account: Option<String>, pane: Option<PaneId>, browser:
+AgentLoginBrowser, step: AgentLoginStep }`. `account: None` is the CLI's own login (or a new
+account the daemon has not picked yet, in a `Failed` step), `pane` the chat the sign-in was started
+from, `browser` `Local` or `Elsewhere`. `AgentLoginStep` is `Starting`, `OpenUrl { url }`,
+`DeviceCode { url, code }`, `PasteCode { url }`, `Verifying`, `Done { email, organization, plan,
+pane: Option<AgentLoginPane> }` (`Switched` or `Busy`), `Failed(AgentLoginFailure)`
+(`NotInstalled`, `DeviceCodeDisabled`, `TimedOut`, `Cli(String)`) or `Cancelled`. The daemon sends
+every step to each client that declared the name, and the steps of a sign-in still running to a
+client that makes a plain `agent-accounts` call. The `agent-accounts` command gains `--account`,
+`--pane`, `--browser` and `--terminal` beside `--add`; a client sends them only to a daemon that
+lists `agent-login-v1`, since an older one refuses the options. A client that did not declare the
+name gets the terminal login window as before ([signing in](/concepts/agent-panes.md#signing-in-without-a-terminal)).
 
 The agent lane added at v53 carries four more: `AgentUpdates { pane, first_seq: u64, items: Vec<Vec<u8>> }`
 carries one coalesced batch of JSON agent stream items numbered by the pane's fanout lane

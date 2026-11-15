@@ -208,6 +208,9 @@ pub enum CoreEvent {
     },
     ProvidersChanged,
     AgentAccountsChanged,
+    AgentLoginChanged {
+        provider: zz_protocol::AgentProvider,
+    },
     Message(Box<ProtocolMessage>),
 }
 
@@ -285,6 +288,7 @@ pub struct ClientCore {
     providers: Option<zz_protocol::ProvidersReport>,
     agent_accounts: Option<Vec<zz_protocol::AgentAccount>>,
     agent_quotas: Vec<zz_protocol::AgentQuota>,
+    agent_logins: Vec<zz_protocol::AgentLogin>,
     full_pending: HashSet<PaneId>,
     prefix_armed: bool,
     key_table: Option<(String, bool)>,
@@ -666,6 +670,26 @@ impl ClientCore {
     #[must_use]
     pub fn agent_quotas(&self) -> &[zz_protocol::AgentQuota] {
         &self.agent_quotas
+    }
+
+    #[must_use]
+    pub fn agent_logins(&self) -> &[zz_protocol::AgentLogin] {
+        &self.agent_logins
+    }
+
+    #[must_use]
+    pub fn agent_login(
+        &self,
+        provider: zz_protocol::AgentProvider,
+    ) -> Option<&zz_protocol::AgentLogin> {
+        self.agent_logins
+            .iter()
+            .find(|login| login.provider == provider)
+    }
+
+    pub fn dismiss_agent_login(&mut self, login: u64) {
+        self.agent_logins
+            .retain(|known| known.id != login || !known.finished());
     }
 
     #[must_use]
@@ -1196,6 +1220,20 @@ impl ClientCore {
             EventPayload::AgentQuotas(quotas) => {
                 self.agent_quotas = quotas;
                 self.events.push_back(CoreEvent::AgentAccountsChanged);
+            }
+            EventPayload::AgentLogin(login) => {
+                let provider = login.provider;
+                match self
+                    .agent_logins
+                    .iter_mut()
+                    .find(|known| known.provider == provider)
+                {
+                    Some(known) if *known == login => return,
+                    Some(known) => *known = login,
+                    None => self.agent_logins.push(login),
+                }
+                self.events
+                    .push_back(CoreEvent::AgentLoginChanged { provider });
             }
             EventPayload::ControlExit { .. }
             | EventPayload::HookEvent { .. }

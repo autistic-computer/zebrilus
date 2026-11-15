@@ -3,6 +3,7 @@ pub mod agent_completion;
 pub mod agent_flip;
 pub mod agent_launch;
 pub mod agent_lens;
+pub mod agent_login;
 pub mod agent_output;
 pub mod agent_question;
 pub mod agent_resume;

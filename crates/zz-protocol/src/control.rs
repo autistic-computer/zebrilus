@@ -16,6 +16,7 @@ pub const CONTROL_STDIO_CAPABILITY: &str = "control-stdio-v1";
 pub const TTY_INPUT_CAPABILITY: &str = "tty-input-v1";
 pub const FLOW_WINDOW_CAPABILITY: &str = "flow-window-v1";
 pub const AGENT_QUOTAS_CAPABILITY: &str = "agent-quotas-v1";
+pub const AGENT_LOGIN_CAPABILITY: &str = "agent-login-v1";
 pub const MAX_BATCH_FRAMES: usize = 4096;
 
 pub const CAPABILITY_NAMES: &[&str] = &[
@@ -52,9 +53,12 @@ pub const CAPABILITY_NAMES: &[&str] = &[
     CONTROL_CAPABILITY,
     CONTROL_STDIO_CAPABILITY,
     TTY_INPUT_CAPABILITY,
+    AGENT_LOGIN_CAPABILITY,
 ];
 
 pub const CLIENT_CAPABILITY_NAMES: &[&str] = &[AGENT_QUOTAS_CAPABILITY];
+
+pub const OPT_IN_CLIENT_CAPABILITY_NAMES: &[&str] = &[AGENT_LOGIN_CAPABILITY];
 
 const CLIENT_OWN_HELLO_ENTRIES: usize = 29;
 
@@ -64,7 +68,7 @@ const _: () = assert!(
 );
 
 const _: () = assert!(
-    CLIENT_CAPABILITY_NAMES.len() + CLIENT_OWN_HELLO_ENTRIES
+    CLIENT_CAPABILITY_NAMES.len() + OPT_IN_CLIENT_CAPABILITY_NAMES.len() + CLIENT_OWN_HELLO_ENTRIES
         <= crate::message::MAX_SERVER_CAPABILITIES,
     "ClientHello.capabilities decodes at most 64 entries and connect_stream_hello fills up to 29 with its own"
 );

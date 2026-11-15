@@ -23,6 +23,8 @@ pub(crate) mod fixture;
 pub(crate) mod git_summary;
 pub(crate) mod host;
 pub(crate) mod journal;
+#[cfg(unix)]
+pub(crate) mod login;
 pub(crate) mod paths;
 pub(crate) mod runtime;
 pub(crate) mod stream;

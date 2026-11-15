@@ -1111,6 +1111,19 @@ impl Session {
             {
                 shared.reply_from_artifact(client, &token, &text);
             }
+            ProtocolMessage::AgentLogin(request) if hello.kind == ClientKind::Interactive => {
+                if shared.inner.lock().client_flags.contains(client) {
+                    let _ = outbound.enqueue_reliable(&ProtocolMessage::CommandResponse(
+                        CommandResponse::Error {
+                            request_id: 0,
+                            error: ServerError::InvalidCommand("client is read-only".to_owned()),
+                            output: RawText::default(),
+                        },
+                    ));
+                } else {
+                    shared.handle_agent_login(request);
+                }
+            }
             message @ (ProtocolMessage::AgentPrompt { .. }
             | ProtocolMessage::AgentCancel { .. }
             | ProtocolMessage::AgentUnqueue { .. }

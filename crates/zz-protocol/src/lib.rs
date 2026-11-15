@@ -43,10 +43,11 @@ pub use catalog::{
     unimplemented_tmux_command_spec,
 };
 pub use control::{
-    AGENT_QUOTAS_CAPABILITY, AttachOperation, Batch, CAPABILITY_NAMES, CLIENT_CAPABILITY_NAMES,
-    CONTROL_CAPABILITY, CONTROL_STDIO_CAPABILITY, ClientView, ClientViewport,
-    FLOW_WINDOW_CAPABILITY, Hello, HostPlatform, KeySubscription, LinuxDistro, MAX_BATCH_FRAMES,
-    MouseBindings, Subscriptions, TTY_INPUT_CAPABILITY, TreeSubscription, Welcome, key_tables_hash,
+    AGENT_LOGIN_CAPABILITY, AGENT_QUOTAS_CAPABILITY, AttachOperation, Batch, CAPABILITY_NAMES,
+    CLIENT_CAPABILITY_NAMES, CONTROL_CAPABILITY, CONTROL_STDIO_CAPABILITY, ClientView,
+    ClientViewport, FLOW_WINDOW_CAPABILITY, Hello, HostPlatform, KeySubscription, LinuxDistro,
+    MAX_BATCH_FRAMES, MouseBindings, OPT_IN_CLIENT_CAPABILITY_NAMES, Subscriptions,
+    TTY_INPUT_CAPABILITY, TreeSubscription, Welcome, key_tables_hash,
 };
 pub const UNZOOMED_LAYOUT_VARIABLE: &str = "unzoomed_layout";
 pub const EVENT_SESSION_VARIABLE: &str = "zz_event_session";
@@ -117,8 +118,10 @@ pub use path_list::{
     MAX_PATH_LIST_TEXT_BYTES, PathEntry, PathKind, PathListRoot, ShellKind,
 };
 pub use providers::{
-    AgentAccount, AgentQuota, MAX_PROVIDER_TEXT_BYTES, ManualUpdate, ProviderStatus, ProviderTask,
-    ProvidersReport, QuotaWindow, QuotaWindows, compare_versions,
+    AgentAccount, AgentLogin, AgentLoginBrowser, AgentLoginCode, AgentLoginFailure, AgentLoginPane,
+    AgentLoginRequest, AgentLoginStep, AgentQuota, MAX_AGENT_LOGIN_CODE_BYTES,
+    MAX_PROVIDER_TEXT_BYTES, ManualUpdate, ProviderStatus, ProviderTask, ProvidersReport,
+    QuotaWindow, QuotaWindows, compare_versions,
 };
 pub use snapshot::{
     AgentDescriptor, AgentProvider, Axis, BrowserDescriptor, BrowserProfileNameError,

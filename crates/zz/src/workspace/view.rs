@@ -5697,6 +5697,7 @@ mod tests {
             | CoreEvent::AgentSessions { .. }
             | CoreEvent::ProvidersChanged
             | CoreEvent::AgentAccountsChanged
+            | CoreEvent::AgentLoginChanged { .. }
             | CoreEvent::Message(_) => None,
         }
     }

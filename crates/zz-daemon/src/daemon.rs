@@ -27,6 +27,8 @@ mod agent_account;
 mod agent_flip;
 #[cfg(feature = "agent")]
 mod agent_inbox;
+#[cfg(all(feature = "agent", unix))]
+mod agent_login;
 #[cfg(feature = "agent")]
 mod agent_publisher;
 mod agent_waits;
@@ -3000,9 +3002,15 @@ impl OutboundMailbox {
     fn accept_client_capabilities(&self, declared: &[String]) {
         self.state.lock().client_capabilities = zz_protocol::CLIENT_CAPABILITY_NAMES
             .iter()
+            .chain(zz_protocol::OPT_IN_CLIENT_CAPABILITY_NAMES)
             .copied()
             .filter(|name| declared.iter().any(|capability| capability == name))
             .collect();
+    }
+
+    #[cfg(all(feature = "agent", unix))]
+    fn has_client_capability(&self, capability: &str) -> bool {
+        self.state.lock().client_capabilities.contains(&capability)
     }
 
     #[must_use]
@@ -4841,6 +4849,8 @@ struct SharedServer {
     providers: Mutex<providers::Providers>,
     #[cfg(all(feature = "agent", unix))]
     agent_accounts: Mutex<accounts::Accounts>,
+    #[cfg(all(feature = "agent", unix))]
+    agent_logins: Mutex<agent_login::Logins>,
     #[cfg(feature = "agent")]
     agent_stopped: AtomicBool,
     #[cfg(all(feature = "agent", unix))]
@@ -5810,6 +5820,8 @@ impl Shared {
             providers: Mutex::new(providers::Providers::default()),
             #[cfg(all(feature = "agent", unix))]
             agent_accounts: Mutex::new(accounts::Accounts::default()),
+            #[cfg(all(feature = "agent", unix))]
+            agent_logins: Mutex::new(agent_login::Logins::default()),
             #[cfg(feature = "agent")]
             agent_stopped: AtomicBool::new(false),
             #[cfg(all(feature = "agent", unix))]
@@ -52980,6 +52992,19 @@ fn handle_connection_message<S: TransportStream>(
                 if hello.kind == ClientKind::Interactive =>
             {
                 shared.reply_from_artifact(client, &token, &text);
+            }
+            ProtocolMessage::AgentLogin(request) if hello.kind == ClientKind::Interactive => {
+                if shared.inner.lock().client_flags.contains(client) {
+                    let _ = outbound.enqueue_reliable(&ProtocolMessage::CommandResponse(
+                        CommandResponse::Error {
+                            request_id: 0,
+                            error: ServerError::InvalidCommand("client is read-only".to_owned()),
+                            output: RawText::default(),
+                        },
+                    ));
+                } else {
+                    shared.handle_agent_login(request);
+                }
             }
             message @ (ProtocolMessage::AgentPrompt { .. }
             | ProtocolMessage::AgentCancel { .. }

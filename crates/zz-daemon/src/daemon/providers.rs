@@ -29,7 +29,7 @@ pub(super) struct Providers {
     watchers: BTreeSet<ClientId>,
     latest: BTreeMap<AgentProvider, (Instant, Option<String>)>,
     #[cfg(test)]
-    search: Option<OsString>,
+    pub(super) search: Option<OsString>,
 }
 
 impl Providers {
