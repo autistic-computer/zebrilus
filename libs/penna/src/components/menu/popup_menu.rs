@@ -335,6 +335,7 @@ pub struct PopupMenu {
     pub(crate) menu_items: Vec<PopupMenuItem>,
     pub(crate) action_context: Option<FocusHandle>,
     pub(crate) previous_focus_handle: Option<FocusHandle>,
+    pub(crate) in_popover: bool,
     selected_index: Option<usize>,
     min_width: Option<Pixels>,
     max_width: Option<Pixels>,
@@ -360,6 +361,7 @@ impl PopupMenu {
             focus_handle: cx.focus_handle(),
             action_context: None,
             previous_focus_handle: None,
+            in_popover: false,
             parent_menu: None,
             menu_items: Vec::new(),
             selected_index: None,
@@ -1535,7 +1537,10 @@ impl Render for PopupMenu {
             .when(scrollable, |this| {
                 this.vertical_scrollbar(&self.scroll_handle)
             });
-        crate::foundation::surface_enter(surface, "menu-open", px(0.0))
+        if self.in_popover {
+            return surface.into_any_element();
+        }
+        crate::foundation::surface_enter(surface, "menu-open", px(0.0)).into_any_element()
     }
 }
 

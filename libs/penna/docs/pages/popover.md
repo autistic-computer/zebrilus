@@ -50,6 +50,7 @@ Popover::new("rename")
 - Escape or a press outside closes it.
 - `.open()` lets the app open and close it from code; presses and Escape then ask it through `.on_toggle()`.
 - It stays 8 inside the window and moves up for the keyboard.
+- It fades in and moves 6 into place over 160ms, and fades out moving 6 back over 100ms, taking no input while it leaves.
 
 ## Content
 

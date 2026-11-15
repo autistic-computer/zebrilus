@@ -10,7 +10,11 @@ use ala::{
     Subscription, Window, anchored, canvas, deferred, div, prelude::FluentBuilder as _, px,
 };
 
-use crate::{Selectable, StyledExt as _, Surface, SurfaceRole, TextStyle, v_flex};
+use crate::{
+    Selectable, StyledExt as _, Surface, SurfaceRole, TextStyle,
+    foundation::{SURFACE_RISE, motion::Presence},
+    v_flex,
+};
 use actions::Cancel;
 
 const CONTEXT: &str = "PennaPopover";
@@ -197,21 +201,22 @@ impl RenderOnce for Popover {
 
         state.update(cx, |state, cx| {
             state.on_dismiss = self.on_dismiss;
-            if self.open.is_some_and(|open| open != state.open) {
+            if self.open.is_some_and(|open| open != state.is_open()) {
                 state.toggle_open(window, cx);
             }
         });
 
-        let (open, focus_handle, trigger_bounds, trigger_bounds_captured, panel_size) = {
+        let (presence, focus_handle, trigger_bounds, trigger_bounds_captured, panel_size) = {
             let state = state.read(cx);
             (
-                state.open,
+                state.presence,
                 state.focus_handle.clone(),
                 state.trigger_bounds,
                 state.trigger_bounds_captured,
                 state.panel_size,
             )
         };
+        let open = presence.is_open();
 
         let Some(trigger) = self.trigger else {
             return div().id("empty");
@@ -240,7 +245,7 @@ impl RenderOnce for Popover {
                     None => state.update(cx, |state, cx| {
                         if open {
                             state.dismiss(window, cx);
-                        } else if !state.open {
+                        } else if !state.is_open() {
                             state.toggle_open(window, cx);
                         }
                     }),
@@ -295,10 +300,19 @@ impl RenderOnce for Popover {
                 .size_full(),
             );
 
-        if !open || !trigger_bounds_captured {
+        let Some(shown) = presence
+            .shown(window, cx)
+            .filter(|_| trigger_bounds_captured)
+        else {
             return el;
-        }
+        };
 
+        let gap = Space::S4.rems().to_pixels(window.rem_size());
+        let (rest, toward) = if bottom_anchor(self.anchor) {
+            (-gap, 1.0)
+        } else {
+            (gap, -1.0)
+        };
         let panel = v_flex()
             .id("content")
             .occlude()
@@ -308,32 +322,31 @@ impl RenderOnce for Popover {
                     .p(Space::INSET_CARD)
                     .type_style(TextStyle::Body, cx)
             })
-            .map(|this| {
-                if bottom_anchor(self.anchor) {
-                    this.bottom(Space::S4)
-                } else {
-                    this.top(Space::S4)
-                }
-            });
+            .top(rest + px(toward * SURFACE_RISE * (1.0 - shown)))
+            .opacity(shown);
 
         let panel = panel
-            .track_focus(&focus_handle)
-            .key_context(CONTEXT)
-            .on_action({
-                let dismiss = Rc::clone(&dismiss);
-                move |_: &Cancel, window, cx| dismiss(window, cx)
+            .when(open, |this| {
+                this.track_focus(&focus_handle)
+                    .key_context(CONTEXT)
+                    .on_action({
+                        let dismiss = Rc::clone(&dismiss);
+                        move |_: &Cancel, window, cx| dismiss(window, cx)
+                    })
+                    .when(self.overlay_closable, |this| {
+                        this.on_mouse_down_out(move |_, window, cx| dismiss(window, cx))
+                    })
             })
             .when_some(self.content, |this, content| {
                 this.child(state.update(cx, |state, cx| content(state, window, cx)))
             })
-            .when(self.overlay_closable, |this| {
-                this.on_mouse_down_out(move |_, window, cx| dismiss(window, cx))
+            .when(!open, |this| {
+                this.child(div().absolute().inset_0().occlude())
             })
             .refine_style(&self.style);
 
         let corner = resolved_corner(self.anchor, trigger_bounds);
         let corner = panel_size.map_or(corner, |panel| {
-            let gap = Space::S4.rems().to_pixels(window.rem_size());
             fit_corner(
                 self.anchor,
                 corner,
@@ -375,7 +388,7 @@ pub struct PopoverState {
     trigger_bounds: Bounds<Pixels>,
     trigger_bounds_captured: bool,
     panel_size: Option<Size<Pixels>>,
-    open: bool,
+    presence: Presence,
     dismiss_subscription: Option<Subscription>,
     on_dismiss: Option<DismissHandler>,
 }
@@ -388,22 +401,28 @@ impl PopoverState {
             trigger_bounds: Bounds::default(),
             trigger_bounds_captured: false,
             panel_size: None,
-            open: false,
+            presence: Presence::default(),
             dismiss_subscription: None,
             on_dismiss: None,
         }
     }
 
+    #[must_use]
+    pub const fn is_open(&self) -> bool {
+        self.presence.is_open()
+    }
+
     pub fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.open {
+        if self.is_open() {
             self.toggle_open(window, cx);
         }
     }
 
     fn toggle_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.open = !self.open;
+        let open = !self.is_open();
+        self.presence.set(open, cx.background_executor().now());
 
-        if self.open {
+        if open {
             self.previous_focus_handle = window.focused(cx);
             self.focus_handle.focus(window, cx);
 
@@ -417,10 +436,12 @@ impl PopoverState {
             ));
         } else {
             self.dismiss_subscription = None;
-            if let Some(prev) = self.previous_focus_handle.take()
-                && self.focus_handle.contains_focused(window, cx)
-            {
-                prev.focus(window, cx);
+            let previous = self.previous_focus_handle.take();
+            if self.focus_handle.contains_focused(window, cx) {
+                match previous {
+                    Some(previous) => previous.focus(window, cx),
+                    None => window.blur(cx),
+                }
             }
             if let Some(handler) = self.on_dismiss.clone() {
                 handler(window, cx);

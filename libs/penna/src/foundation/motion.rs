@@ -9,7 +9,10 @@ use ala::{
     prelude::FluentBuilder as _, px, radians,
 };
 
-use crate::{Icon, IconName};
+use crate::{
+    Icon, IconName,
+    foundation::{SURFACE_ENTER_DURATION, SURFACE_LEAVE_DURATION},
+};
 
 pub const FAST_ANIMATION_SPEED: f32 = 2.0;
 
@@ -90,6 +93,76 @@ pub fn eased(
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Presence {
+    open: bool,
+    since: Option<Instant>,
+}
+
+impl Presence {
+    #[must_use]
+    pub const fn is_open(self) -> bool {
+        self.open
+    }
+
+    pub fn set(&mut self, open: bool, now: Instant) {
+        if self.open != open {
+            *self = Self {
+                open,
+                since: Some(now),
+            };
+        }
+    }
+
+    #[must_use]
+    pub fn at(self, now: Instant) -> Option<f32> {
+        let Some(since) = self.since else {
+            return self.open.then_some(1.0);
+        };
+        let elapsed = ala::animation_time(now.saturating_duration_since(since)).as_secs_f32();
+        if self.open {
+            let t = elapsed / SURFACE_ENTER_DURATION.as_secs_f32();
+            return Some(ease_out_quint()(t.min(1.0)));
+        }
+        let t = elapsed / SURFACE_LEAVE_DURATION.as_secs_f32();
+        (t < 1.0).then(|| 1.0 - accelerate(t))
+    }
+
+    #[must_use]
+    pub fn shown(self, window: &Window, cx: &App) -> Option<f32> {
+        if cx.reduce_motion() {
+            return self.open.then_some(1.0);
+        }
+        let shown = self.at(cx.background_executor().now());
+        if shown.is_some_and(|shown| shown < 1.0 || !self.open) {
+            window.request_animation_frame();
+        }
+        shown
+    }
+
+    #[must_use]
+    pub fn mounted(self, cx: &App) -> bool {
+        self.open || (!cx.reduce_motion() && self.at(cx.background_executor().now()).is_some())
+    }
+}
+
+fn accelerate(t: f32) -> f32 {
+    let curve = |a: f32, b: f32, s: f32| {
+        let rest = 1.0 - s;
+        3.0 * a * rest * rest * s + 3.0 * b * rest * s * s + s * s * s
+    };
+    let (mut low, mut high) = (0.0, 1.0);
+    for _ in 0..24 {
+        let mid = f32::midpoint(low, high);
+        if curve(0.4, 1.0, mid) < t {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+    curve(0.0, 1.0, f32::midpoint(low, high))
+}
+
 #[derive(IntoElement)]
 pub struct Disclosure {
     id: ElementId,
@@ -155,4 +228,26 @@ pub fn appear<E: IntoElement + Styled + 'static>(
     control.with_animation(id, Animation::new(APPEAR), |control, shown| {
         control.opacity(shown)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Duration, Instant, Presence};
+
+    #[test]
+    fn a_closed_surface_stays_mounted_for_its_exit_and_reopening_cancels_it() {
+        let start = Instant::now();
+        let at = |ms| start + Duration::from_millis(ms);
+        let mut presence = Presence::default();
+        assert_eq!(presence.at(at(0)), None);
+        presence.set(true, at(0));
+        presence.set(false, at(200));
+        assert_eq!(presence.at(at(200)), Some(1.0));
+        assert!(presence.at(at(299)).is_some_and(|shown| shown > 0.0));
+        assert_eq!(presence.at(at(300)), None);
+        presence.set(true, at(250));
+        assert_eq!(presence.at(at(250)), Some(0.0));
+        assert_eq!(presence.at(at(300)).map(|shown| shown > 0.0), Some(true));
+        assert_eq!(presence.at(at(410)), Some(1.0));
+    }
 }

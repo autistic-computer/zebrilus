@@ -30,7 +30,7 @@ mod variant;
 mod window_border;
 
 pub use animation::cubic_ease;
-pub use animation::{SURFACE_ENTER_DURATION, surface_enter};
+pub use animation::{SURFACE_ENTER_DURATION, SURFACE_LEAVE_DURATION, SURFACE_RISE, surface_enter};
 pub use color::{Colorize, oklab_lightness, oklch, parse_hex, to_hex, to_oklch};
 pub use element_ext::{AuthoredElement, ElementExt, InteractiveElementExt};
 pub(crate) use element_ext::{author_name, author_part};

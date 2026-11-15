@@ -6,6 +6,8 @@ use ala::{
 };
 
 pub const SURFACE_ENTER_DURATION: Duration = Duration::from_millis(160);
+pub const SURFACE_LEAVE_DURATION: Duration = Duration::from_millis(100);
+pub const SURFACE_RISE: f32 = 6.0;
 
 pub fn surface_enter<E: IntoElement + Styled + 'static>(
     surface: E,
@@ -17,7 +19,7 @@ pub fn surface_enter<E: IntoElement + Styled + 'static>(
         Animation::new(SURFACE_ENTER_DURATION).with_easing(ease_out_quint()),
         move |surface, delta| {
             surface
-                .top(resting_top + px(6.0 * (1.0 - delta)))
+                .top(resting_top + px(SURFACE_RISE * (1.0 - delta)))
                 .opacity(delta)
         },
     )

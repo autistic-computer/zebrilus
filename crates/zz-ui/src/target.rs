@@ -17,6 +17,7 @@ use penna::{
     Ground, Panel, PanelLook, TextStyle,
     blocks::chat::composer_add_button,
     components::{button::Button, popover::PopoverTrigger as _},
+    foundation::{SURFACE_RISE, motion::Presence},
 };
 
 use penna::blocks::palette::{
@@ -1428,7 +1429,19 @@ pub struct TargetPicker {
     raw_before: Option<String>,
     room: Option<Pixels>,
     pending: Option<String>,
+    presence: Presence,
+    last: Option<Shown>,
     subscriptions: Vec<Subscription>,
+}
+
+#[derive(Clone)]
+struct Shown {
+    crumb: SharedString,
+    keys: PaletteKeys,
+    items: Rc<[TargetItem]>,
+    headers: Rc<[(usize, SharedString)]>,
+    selected: usize,
+    empty: SharedString,
 }
 
 impl TargetPicker {
@@ -1473,6 +1486,8 @@ impl TargetPicker {
             raw_before: None,
             room: None,
             pending: None,
+            presence: Presence::default(),
+            last: None,
             subscriptions: Vec::new(),
         }
     }
@@ -1596,6 +1611,8 @@ impl TargetPicker {
     }
 
     fn rebuild(&mut self, cx: &mut Context<Self>) {
+        self.presence
+            .set(self.body.is_some(), cx.background_executor().now());
         let Some(body) = &self.body else {
             if let Some(listing) = self.listing.take() {
                 self.cancel(&listing, cx);
@@ -2311,8 +2328,19 @@ impl TargetPicker {
         .map(|row| div().h(px(palette_row_height())).child(row))
     }
 
-    fn list(&self, cx: &mut Context<Self>) -> ala::AnyElement {
-        let items = Rc::clone(&self.items);
+    fn shown(&self, query: &TargetQuery) -> Shown {
+        Shown {
+            crumb: breadcrumb(query, self.listing_root()).into(),
+            keys: self.keys(),
+            items: Rc::clone(&self.items),
+            headers: Rc::clone(&self.headers),
+            selected: self.selected,
+            empty: self.empty_message(),
+        }
+    }
+
+    fn list(&self, shown: &Shown, cx: &mut Context<Self>) -> ala::AnyElement {
+        let items = Rc::clone(&shown.items);
         if items.is_empty() {
             return div()
                 .debug_selector(|| "target-picker-empty".to_owned())
@@ -2320,12 +2348,12 @@ impl TargetPicker {
                 .text_center()
                 .type_style(TextStyle::Small, cx)
                 .text_color(cx.theme().foreground.muted())
-                .child(self.empty_message())
+                .child(shown.empty.clone())
                 .into_any_element();
         }
-        let selected = self.selected;
+        let selected = shown.selected;
         let picker = cx.entity();
-        let headers = Rc::clone(&self.headers);
+        let headers = Rc::clone(&shown.headers);
         let mut shown = Vec::with_capacity(items.len() + headers.len());
         let mut next = headers.iter().peekable();
         for index in 0..items.len() {
@@ -2376,10 +2404,15 @@ impl Render for TargetPicker {
         if let Some(room) = self.room {
             self.fit(room);
         }
-        let Some(query) = &self.query else {
+        let open = self.presence.is_open();
+        if open {
+            self.last = self.query.as_ref().map(|query| self.shown(query));
+        }
+        let (Some(presence), Some(shown)) = (self.presence.shown(window, cx), self.last.clone())
+        else {
+            self.last = None;
             return div().into_any_element();
         };
-        let crumb = breadcrumb(query, self.listing_root());
         let header = h_flex()
             .h(px(HEADER_HEIGHT))
             .px(px(14.0))
@@ -2395,10 +2428,10 @@ impl Render for TargetPicker {
                     .whitespace_nowrap()
                     .text_ellipsis()
                     .type_style_mono(TextStyle::Caption, cx)
-                    .child(crumb),
+                    .child(shown.crumb.clone()),
             );
-        let footer = palette_footer(cx).child(self.keys());
-        let body = self.list(cx);
+        let footer = palette_footer(cx).child(shown.keys);
+        let body = self.list(&shown, cx);
         let measure = cx.entity();
         let outside = cx.entity();
         div()
@@ -2426,17 +2459,27 @@ impl Render for TargetPicker {
                     .w_full()
                     .overflow_hidden()
                     .occlude()
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_mouse_down_out(move |event, window, cx| {
-                        let at = event.position;
-                        let picker = outside.clone();
-                        window.defer(cx, move |window, cx| {
-                            picker.update(cx, |picker, cx| picker.close_from(at, window, cx));
-                        });
+                    .top(px(SURFACE_RISE * (1.0 - presence)))
+                    .opacity(presence)
+                    .when(open, |panel| {
+                        panel
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .on_mouse_down_out(move |event, window, cx| {
+                                let at = event.position;
+                                let picker = outside.clone();
+                                window.defer(cx, move |window, cx| {
+                                    picker.update(cx, |picker, cx| {
+                                        picker.close_from(at, window, cx);
+                                    });
+                                });
+                            })
                     })
                     .child(header)
                     .child(div().list_inset(cx).pb(px(BOTTOM_PADDING)).child(body))
-                    .child(footer),
+                    .child(footer)
+                    .when(!open, |panel| {
+                        panel.child(div().absolute().inset_0().occlude())
+                    }),
             )
             .into_any_element()
     }
@@ -2466,7 +2509,8 @@ pub fn mention_button(
 pub fn mention_layer(picker: &Entity<TargetPicker>, cx: &App) -> Option<AnyElement> {
     picker
         .read(cx)
-        .is_open()
+        .presence
+        .mounted(cx)
         .then(|| picker.clone().into_any_element())
 }
 
