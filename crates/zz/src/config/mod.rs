@@ -472,15 +472,18 @@ fn theme_overrides_from(
         accent => Some(accent.spelled()),
     });
     interface_theme::ThemeOverrides {
-        radius: set(config.widget_corner_radius),
+        radius: Some(config.widget_corner_radius.value),
         accent,
         tint: set(config.chrome_tint),
         tint_hue: set(config.chrome_tint_hue),
-        controls: set(config.control_shape).map(interface_theme::kit_controls),
-        glass: glass
-            .value
-            .as_deref()
-            .and_then(interface_theme::parse_glass),
+        controls: Some(interface_theme::kit_controls(config.control_shape.value)),
+        glass: Some(
+            glass
+                .value
+                .as_deref()
+                .and_then(interface_theme::parse_glass)
+                .unwrap_or(interface_theme::Glass::Liquid),
+        ),
     }
 }
 
@@ -1058,12 +1061,8 @@ mod tests {
         let defaults = zz_config::AppConfig::default();
         let theme = interface_theme::default_theme();
         assert_eq!(
-            (
-                defaults.widget_corner_radius.value,
-                defaults.chrome_tint_hue.value,
-                defaults.chrome_tint.value,
-            ),
-            (theme.radius, theme.neutral.hue, theme.neutral.amount)
+            (defaults.chrome_tint_hue.value, defaults.chrome_tint.value),
+            (theme.neutral.hue, theme.neutral.amount)
         );
     }
 
@@ -1385,14 +1384,20 @@ mod tests {
     }
 
     #[test]
-    fn unset_theme_keys_take_the_platform_look_and_follow_the_system() {
+    fn unset_theme_keys_take_zz_look_and_follow_the_system() {
         let parsed = parse_config("pane-gaps = true\n");
         assert_eq!(parsed.config.theme_mode.value, ThemeModeSetting::System);
         assert_eq!(parsed.config.app_icon.value, AppIconSetting::Automatic);
         assert_eq!(
             theme_overrides_from(&parsed.config, &parsed.glass),
-            interface_theme::ThemeOverrides::default()
+            interface_theme::ThemeOverrides {
+                radius: Some(12.25),
+                controls: Some(interface_theme::Controls::Rounded),
+                glass: Some(interface_theme::Glass::Liquid),
+                ..interface_theme::ThemeOverrides::default()
+            }
         );
+        assert_eq!((interface_theme::corner_share(12.25) * 100.0).round(), 70.0);
     }
 
     #[test]
@@ -1985,7 +1990,10 @@ mod tests {
             parsed.config.window_corner_radius.provenance,
             ConfigProvenance::Override
         );
-        assert!(parsed.config.pointing_hand.value);
+        assert_eq!(
+            parsed.config.pointing_hand.value,
+            zz_config::DEFAULT_POINTING_HAND
+        );
         assert_eq!(
             parsed.config.pointing_hand.provenance,
             ConfigProvenance::Override
@@ -2143,7 +2151,7 @@ mod tests {
     }
 
     #[test]
-    fn widget_corner_radius_follows_the_platform_until_overridden() {
+    fn widget_corner_radius_defaults_until_overridden() {
         let parsed = parse_config("");
         assert_f32_eq(
             parsed.config.widget_corner_radius.value,
@@ -2266,7 +2274,7 @@ mod tests {
     }
 
     #[ala::test]
-    fn appearance_keys_redraw_the_look_and_reset_to_the_platform(cx: &mut ala::TestAppContext) {
+    fn appearance_keys_redraw_the_look_and_reset_to_zz_look(cx: &mut ala::TestAppContext) {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         cx.update(zz_ui::init);
@@ -2290,13 +2298,21 @@ mod tests {
                 crate::theme::refresh_current_theme(cx);
                 let mut expected = interface_theme::platform_theme().clone();
                 interface_theme::ThemeOverrides {
+                    radius: Some(zz_config::DEFAULT_WIDGET_CORNER_RADIUS),
                     accent: accent.map(str::to_owned),
                     tint: tint.map(|tint| tint.parse().expect("a number")),
-                    controls: controls.map(|controls| {
-                        serde_json::from_value(serde_json::Value::String(controls.to_owned()))
-                            .expect("a control shape")
-                    }),
-                    glass: glass.and_then(interface_theme::parse_glass),
+                    controls: Some(controls.map_or(
+                        interface_theme::Controls::Rounded,
+                        |controls| {
+                            serde_json::from_value(serde_json::Value::String(controls.to_owned()))
+                                .expect("a control shape")
+                        },
+                    )),
+                    glass: Some(
+                        glass
+                            .and_then(interface_theme::parse_glass)
+                            .unwrap_or(interface_theme::Glass::Liquid),
+                    ),
                     ..interface_theme::ThemeOverrides::default()
                 }
                 .apply_to(&mut expected);
@@ -2687,7 +2703,7 @@ mod tests {
     fn pane_gap_effective_values_follow_the_toggle(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| penna::Theme::global_mut(cx).radius = px(10.0));
-        assert_eq!(cx.update(|cx| pane_margin(cx)), px(0.0));
+        assert!(cx.update(|cx| pane_gaps(cx)));
 
         let config = parse_config("pane-gaps = true\n").config;
         cx.update(|cx| cx.set_global(AppConfig::from(config)));

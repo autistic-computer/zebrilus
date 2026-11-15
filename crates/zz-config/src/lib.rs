@@ -35,15 +35,15 @@ pub const MAX_WINDOW_CORNER_RADIUS: f32 = 32.0;
 
 pub const DEFAULT_WINDOW_CORNER_RADIUS: f32 = 13.5;
 
-pub const DEFAULT_PANE_GAPS: bool = false;
+pub const DEFAULT_PANE_GAPS: bool = true;
 pub const DEFAULT_PANE_GLOW_STRENGTH: f32 = 1.0;
 pub const DEFAULT_PANE_INACTIVE_OPACITY: f32 = 0.7;
 pub const MIN_PANE_INACTIVE_OPACITY: f32 = 0.0;
 pub const MAX_PANE_INACTIVE_OPACITY: f32 = 1.0;
 pub const DEFAULT_PANE_MARGIN: f32 = 6.0;
-pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 12.0;
+pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 12.25;
 pub const DEFAULT_CHROME_CONTRAST: f32 = 1.0;
-pub const DEFAULT_POINTING_HAND: bool = true;
+pub const DEFAULT_POINTING_HAND: bool = false;
 pub const DEFAULT_CHROME_TINT: f32 = 0.15;
 pub const DEFAULT_TRAY: bool = true;
 pub const DEFAULT_NOTIFICATIONS: bool = true;
@@ -401,7 +401,7 @@ impl Default for AppConfig {
             quit_daemon_on_exit: ConfigValue::from_default(DEFAULT_QUIT_DAEMON_ON_EXIT),
             auto_restart_stale_daemon: ConfigValue::from_default(DEFAULT_AUTO_RESTART_STALE_DAEMON),
             check_for_updates: ConfigValue::from_default(DEFAULT_CHECK_FOR_UPDATES),
-            flat_sidebar: ConfigValue::from_default(false),
+            flat_sidebar: ConfigValue::from_default(true),
             program_colors: ConfigValue::from_default(true),
             chrome_terminal_colors: ConfigValue::from_default(true),
             experimental_editor_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_EDITOR_PANE),

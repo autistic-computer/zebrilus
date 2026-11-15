@@ -249,8 +249,8 @@ stored page favicons, with a globe fallback.
 # Pointer
 
 Everything in the chrome that acts on a click sets its pointer with penna's `click_cursor()`
-(`StyledExt`), never `cursor_pointer()`: a hand when `pointing-hand` is on (the default), the arrow
-when it is off, so every row, chip, tab and button agrees. That includes rows that act on a press
+(`StyledExt`), never `cursor_pointer()`: a hand when `pointing-hand` is on, the arrow
+when it is off (the default), so every row, chip, tab and button agrees. That includes rows that act on a press
 (`on_mouse_down`), such as the pane picker's. Drag handles, scrollbars, resize edges and surfaces
 that only take focus keep the arrow, and text keeps the I-beam. A browser pane's page and a
 terminal's hyperlinks set their own pointer from the content and ignore the setting. The HTML client

@@ -294,6 +294,7 @@ mod tests {
 
         cx.update(|cx| {
             let mut config = config::AppConfig::default();
+            config.pane_gaps.value = false;
             cx.set_global(config);
             let plate = glass_look(cx)
                 .expect("regular glass has a look")
