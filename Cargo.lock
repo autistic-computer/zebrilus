@@ -12013,6 +12013,7 @@ dependencies = [
  "chrono",
  "image",
  "log",
+ "naga",
  "parking_lot 0.13.0",
  "pele",
  "penna",

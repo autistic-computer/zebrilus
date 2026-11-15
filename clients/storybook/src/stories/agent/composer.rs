@@ -24,6 +24,7 @@ use zz_ui::agent::{
     },
     presentation::{agent_resume_welcome, error_card},
     resume::{folder_button, resume_button, resume_menu, resume_rows},
+    sky::{SkyZones, sky},
 };
 
 use super::{
@@ -564,8 +565,34 @@ pub fn resume(_: &mut Window, cx: &mut App) -> AnyView {
                 chat("Queue retries for the mailer", Some("clairvo"), "1d"),
                 chat("Seed data for the demo tenant", Some("clairvo"), "6d"),
             ];
+            let scene = |id: u64, width: f32, cx: &App| {
+                let zones = SkyZones::default();
+                pane_fill(cx)
+                    .w(px(width))
+                    .h(px(520.0))
+                    .child(sky(("story-sky", id), &zones))
+                    .child(
+                        penna::v_flex()
+                            .size_full()
+                            .items_center()
+                            .justify_center()
+                            .child(zones.mark(agent_resume_welcome(
+                                zz_protocol::AgentProvider::ClaudeCode,
+                                cx,
+                            )))
+                            .child(zones.mark(buttons(id, None, cx))),
+                    )
+            };
             states()
                 .state("at rest: the welcome over the folder and Resume buttons", screen(0, None, cx))
+                .state(
+                    "the scene behind it: patches in the theme accent drift right, denser toward the top right and clear around the welcome, with three birds",
+                    scene(6, 560.0, cx),
+                )
+                .state(
+                    "700 px and wider: two more birds at twice the size",
+                    scene(7, 760.0, cx),
+                )
                 .state(
                     "the folder menu: this folder checked, then the others newest first, eight rows that scroll, the spinner while more pages arrive",
                     screen(1, Some((Menu::Folders, &folders, Some(0))), cx),

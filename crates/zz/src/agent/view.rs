@@ -21,6 +21,7 @@ use zz_ui::agent::presentation::{agent_resume_welcome, agent_welcome, error_card
 use zz_ui::agent::preview::ViewRequest;
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
 use zz_ui::agent::resume::{folder_button, resume_button, resume_menu, resume_rows};
+use zz_ui::agent::sky::{SkyZones, sky};
 use zz_ui::agent::tasks::plan_tray;
 
 use ala::{
@@ -864,21 +865,29 @@ impl AgentView {
             Menu::Chats,
             resume_button(("agent-resume-button", pane), cx),
         );
-        div().size_full().px_3().child(
-            v_flex()
-                .size_full()
-                .items_center()
-                .justify_center()
-                .py_3()
-                .child(agent_resume_welcome(self.pane_state.provider, cx))
-                .child(
-                    h_flex()
-                        .flex_none()
-                        .gap(px(6.0))
-                        .child(folder)
-                        .child(resume),
-                ),
-        )
+        let zones = SkyZones::default();
+        div()
+            .relative()
+            .size_full()
+            .px_3()
+            .child(sky(("agent-sky", pane), &zones))
+            .child(
+                v_flex()
+                    .size_full()
+                    .items_center()
+                    .justify_center()
+                    .py_3()
+                    .child(zones.mark(agent_resume_welcome(self.pane_state.provider, cx)))
+                    .child(
+                        zones.mark(
+                            h_flex()
+                                .flex_none()
+                                .gap(px(6.0))
+                                .child(folder)
+                                .child(resume),
+                        ),
+                    ),
+            )
     }
 
     fn recompute_completions(&mut self, commands: &[AgentCommand]) {

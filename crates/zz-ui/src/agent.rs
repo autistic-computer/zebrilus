@@ -7,6 +7,7 @@ pub mod preview;
 pub mod question;
 pub mod refs;
 pub mod resume;
+pub mod sky;
 pub mod tasks;
 pub mod view;
 pub mod visual;
