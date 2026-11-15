@@ -10,8 +10,6 @@ mod fleet;
 mod floating;
 mod gui;
 mod hosts;
-#[cfg(any(target_os = "ios", target_os = "android"))]
-pub(crate) use hosts::host_title;
 mod picker;
 mod providers;
 mod settings;
@@ -151,10 +149,10 @@ pub struct AppShell {
     pub focus: FocusHandle,
     sidebar_focus: FocusHandle,
     sidebar_scroll: UniformListScrollHandle,
-    collapsed_tree: BTreeSet<sidebar::Target>,
-    sidebar_selection: Option<sidebar::Target>,
+    collapsed_tree: BTreeSet<sidebar::Node>,
+    sidebar_selection: Option<sidebar::Node>,
     sidebar_pointer_selection: bool,
-    sidebar_active: Option<sidebar::Target>,
+    sidebar_active: Option<sidebar::Node>,
     flat: sidebar::Flat,
     unseen_agents: BTreeSet<PaneId>,
     chrome: ChromeKeymap,
@@ -563,7 +561,10 @@ impl AppShell {
         self.settings = None;
         self.focused_pane = self.active_window(cx).map(|window| window.active_pane);
         self.sidebar_pointer_selection = false;
-        self.sidebar_selection = self.focused_pane.map(sidebar::Target::Pane);
+        let here = self.host_id_of(self.connection.read(cx));
+        self.sidebar_selection = self
+            .focused_pane
+            .map(|pane| (here, sidebar::Target::Pane(pane)));
         self.sidebar_active = None;
         self.sidebar_focus.focus(window, cx);
         sidebar::reconcile(self, window, cx);
@@ -1115,17 +1116,15 @@ impl AppShell {
         } else {
             let tree = sidebar::session_tree(
                 sidebar::Runtime {
-                    connection: self.connection.clone(),
                     focus: self.sidebar_focus.clone(),
                     focused: self.sidebar_focus.is_focused(window),
                     view: cx.entity(),
                     selected: (!self.sidebar_pointer_selection)
                         .then_some(self.sidebar_selection)
                         .flatten(),
-                    unseen_agents: self.unseen_agents.clone(),
                     ground,
                 },
-                &self.collapsed_tree,
+                sidebar::tree_rows(self, cx),
                 &self.sidebar_scroll,
                 workspace_sidebar_fade(ground, cx),
                 cx,

@@ -16,6 +16,7 @@ use penna::{
 use std::{
     collections::{BTreeSet, HashMap},
     rc::Rc,
+    sync::Arc,
 };
 use zz_client::{
     ChromeAction,
@@ -30,7 +31,7 @@ use zz_client::{
         summarize_chat_machine,
     },
 };
-use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, WindowId};
+use zz_protocol::{CommandInvocation, HostPlatform, MuxSnapshot, WindowId};
 use zz_ui::{
     command::PaletteHostId,
     navigation::{
@@ -52,12 +53,22 @@ use zz_ui::{
 
 pub(super) use zz_client::sidebar::SidebarTarget as Target;
 
-fn target_id(target: Target) -> String {
+fn target_id((host, target): Node) -> String {
+    let host = host.0;
     match target {
-        Target::Host => "host".into(),
-        Target::Session(id) => format!("session-{id}"),
-        Target::Window(id) => format!("window-{id}"),
-        Target::Pane(id) => format!("pane-{id}"),
+        Target::Host => format!("{host}-host"),
+        Target::Session(id) => format!("{host}-session-{id}"),
+        Target::Window(id) => format!("{host}-window-{id}"),
+        Target::Pane(id) => format!("{host}-pane-{id}"),
+    }
+}
+
+fn add_command(target: Target, attached: bool) -> Option<(&'static str, CommandInvocation)> {
+    match target {
+        Target::Host if !attached => {
+            Some(("New session", CommandInvocation::new("new-session", ["-d"])))
+        }
+        _ => sidebar_add_command(target),
     }
 }
 
@@ -128,15 +139,88 @@ fn activate(connection: &Entity<Connection>, target: Target, cx: &mut App) {
     });
 }
 
-fn toggle(view: &mut AppShell, target: Target, cx: &mut Context<AppShell>) {
-    view.sidebar_selection = Some(target);
-    if !view.collapsed_tree.remove(&target) {
-        view.collapsed_tree.insert(target);
+pub(super) type Node = (PaletteHostId, Target);
+
+pub(super) struct Row {
+    host: PaletteHostId,
+    connection: Option<Entity<Connection>>,
+    attached: bool,
+    row: TreeRow,
+}
+
+impl Row {
+    const fn node(&self) -> Node {
+        (self.host, self.row.target)
+    }
+
+    fn connected(&self, cx: &App) -> bool {
+        self.connection
+            .as_ref()
+            .is_some_and(|connection| connection.read(cx).connected)
+    }
+}
+
+fn toggle(view: &mut AppShell, node: Node, cx: &mut Context<AppShell>) {
+    view.sidebar_selection = Some(node);
+    if !view.collapsed_tree.remove(&node) {
+        view.collapsed_tree.insert(node);
     }
     cx.notify();
 }
 
+pub(super) fn tree_rows(view: &AppShell, cx: &App) -> Vec<Row> {
+    let none = BTreeSet::new();
+    let mut rows = Vec::new();
+    for page in view.host_pages(cx) {
+        let host = page.id;
+        let attached = page.connection.as_ref() == Some(&view.connection);
+        let Some(connection) = page.connection else {
+            rows.push(Row {
+                host,
+                connection: None,
+                attached,
+                row: TreeRow {
+                    target: Target::Host,
+                    depth: 0,
+                    node: SidebarNode::Host,
+                    label: page.title,
+                    index: None,
+                    on_active_path: false,
+                    expanded: false,
+                    expandable: false,
+                    bell: false,
+                    badge: None,
+                    program: None,
+                },
+            });
+            continue;
+        };
+        let collapsed = view
+            .collapsed_tree
+            .iter()
+            .filter(|(owner, _)| *owner == host)
+            .map(|(_, target)| *target)
+            .collect();
+        let unseen = if attached { &view.unseen_agents } else { &none };
+        let tree = sidebar_rows(&connection.read(cx).core, &collapsed, unseen);
+        rows.extend(tree.into_iter().map(|mut row| {
+            if row.target == Target::Host {
+                row.label.clone_from(&page.title);
+            }
+            row.on_active_path &= attached;
+            Row {
+                host,
+                connection: Some(connection.clone()),
+                attached,
+                row,
+            }
+        }));
+    }
+    rows
+}
+
 pub(super) fn reconcile(view: &mut AppShell, window: &Window, cx: &App) {
+    let here = view.host_id_of(view.connection.read(cx));
     let core = &view.connection.read(cx).core;
     let snapshot = core.snapshot();
     view.unseen_agents
@@ -156,35 +240,37 @@ pub(super) fn reconcile(view: &mut AppShell, window: &Window, cx: &App) {
             .iter()
             .find(|window| window.id == snapshot.focused_window_for(session))
     });
-    let active = sidebar_active(snapshot, core.attached_session());
+    let active = (here, sidebar_active(snapshot, core.attached_session()));
     let active_changed = view.sidebar_active != Some(active);
     if active_changed {
         view.sidebar_active = Some(active);
-        view.collapsed_tree.remove(&Target::Host);
+        view.collapsed_tree.remove(&(here, Target::Host));
         if let Some(session) = session {
-            view.collapsed_tree.remove(&Target::Session(session.id));
+            view.collapsed_tree
+                .remove(&(here, Target::Session(session.id)));
         }
         if let Some(window) = mux_window {
-            view.collapsed_tree.remove(&Target::Window(window.id));
+            view.collapsed_tree
+                .remove(&(here, Target::Window(window.id)));
         }
         if !view.sidebar_focus.is_focused(window) || view.sidebar_pointer_selection {
             view.sidebar_selection = Some(active);
         }
     }
-    let rows = sidebar_rows(core, &view.collapsed_tree, &view.unseen_agents);
-    if active_changed && let Some(index) = rows.iter().position(|row| row.target == active) {
+    let rows = tree_rows(view, cx);
+    if active_changed && let Some(index) = rows.iter().position(|row| row.node() == active) {
         view.sidebar_scroll
             .scroll_to_item(index, ScrollStrategy::Nearest);
     }
     if !rows
         .iter()
-        .any(|row| Some(row.target) == view.sidebar_selection)
+        .any(|row| Some(row.node()) == view.sidebar_selection)
     {
         view.sidebar_selection = rows
             .iter()
-            .rfind(|row| row.on_active_path)
-            .map(|row| row.target)
-            .or(Some(Target::Host));
+            .rfind(|row| row.row.on_active_path)
+            .map(Row::node)
+            .or(Some((here, Target::Host)));
     }
 }
 
@@ -195,11 +281,10 @@ pub(super) fn handle_key(
     cx: &mut Context<AppShell>,
 ) -> bool {
     reconcile(view, window, cx);
-    let core = &view.connection.read(cx).core;
-    let rows = sidebar_rows(core, &view.collapsed_tree, &view.unseen_agents);
+    let rows = tree_rows(view, cx);
     let selected = rows
         .iter()
-        .position(|row| Some(row.target) == view.sidebar_selection);
+        .position(|row| Some(row.node()) == view.sidebar_selection);
     let direction = match action {
         ChromeAction::SidebarSelectUp => Some(TreeNavigation::Up),
         ChromeAction::SidebarSelectDown => Some(TreeNavigation::Down),
@@ -210,16 +295,16 @@ pub(super) fn handle_key(
         _ => None,
     };
     if let Some(direction) = direction {
-        let navigation_rows = navigation_rows(&rows);
+        let tree = rows.iter().map(|row| row.row.clone()).collect::<Vec<_>>();
         view.sidebar_pointer_selection = false;
-        match tree_navigation(&navigation_rows, selected, direction) {
+        match tree_navigation(&navigation_rows(&tree), selected, direction) {
             TreeNavigationResult::Select(index) => {
-                view.sidebar_selection = Some(rows[index].target);
+                view.sidebar_selection = Some(rows[index].node());
                 view.sidebar_scroll
                     .scroll_to_item(index, ScrollStrategy::Nearest);
                 cx.notify();
             }
-            TreeNavigationResult::Toggle(index) => toggle(view, rows[index].target, cx),
+            TreeNavigationResult::Toggle(index) => toggle(view, rows[index].node(), cx),
             TreeNavigationResult::None => {}
         }
         return true;
@@ -229,23 +314,19 @@ pub(super) fn handle_key(
             view.release_sidebar_focus(window, cx);
         }
         ChromeAction::SidebarConfirm => {
-            if let Some(target) = view.sidebar_selection {
-                if target == Target::Host && view.connection.read(cx).connected {
-                    toggle(view, target, cx);
+            if let Some(row) = selected.map(|index| &rows[index]) {
+                let (host, target) = row.node();
+                if target == Target::Host && row.attached && row.connected(cx) {
+                    toggle(view, row.node(), cx);
                 } else {
-                    activate(&view.connection, target, cx);
+                    view.open_on_host(host, target, window, cx);
                     view.release_sidebar_focus(window, cx);
                 }
             }
         }
         ChromeAction::SidebarRename => {
-            if view.connection.read(cx).connected
-                && !core.attached_read_only()
-                && let Some((_, command)) = view
-                    .sidebar_selection
-                    .and_then(|target| rename_command(core.snapshot(), target))
-            {
-                execute(&view.connection, &command, cx);
+            if let Some((host, target)) = view.sidebar_selection {
+                view.rename_on(host, target, window, cx);
             }
         }
         ChromeAction::SidebarCommandPalette => view.open_palette(
@@ -257,33 +338,27 @@ pub(super) fn handle_key(
     }
     true
 }
+
 pub(super) struct Runtime {
-    pub connection: Entity<Connection>,
     pub focus: FocusHandle,
     pub focused: bool,
     pub view: Entity<AppShell>,
-    pub selected: Option<Target>,
-    pub unseen_agents: BTreeSet<PaneId>,
+    pub selected: Option<Node>,
     pub ground: Ground,
 }
 
 pub(super) fn session_tree(
     runtime: Runtime,
-    collapsed: &BTreeSet<Target>,
+    rows: Vec<Row>,
     scroll: &UniformListScrollHandle,
     fade: Hsla,
     cx: &App,
 ) -> AnyElement {
-    let connection = &runtime.connection;
-    let connected = connection.read(cx).connected;
-    let mut rows = sidebar_rows(&connection.read(cx).core, collapsed, &runtime.unseen_agents);
-    if let Some(host) = rows.iter_mut().find(|row| row.target == Target::Host) {
-        host.label = host_label(connection.read(cx));
-    }
-    let active_row = connected
-        .then(|| rows.iter().rposition(|row| row.on_active_path))
-        .flatten();
-    let depths: Rc<[usize]> = rows.iter().map(|row| usize::from(row.depth)).collect();
+    let active_row = rows
+        .iter()
+        .rposition(|row| row.attached && row.row.on_active_path)
+        .filter(|index| rows[*index].connected(cx));
+    let depths: Rc<[usize]> = rows.iter().map(|row| usize::from(row.row.depth)).collect();
     let guides = IndentGuides::new(
         depths,
         active_row,
@@ -331,16 +406,39 @@ pub(super) fn session_tree(
         .into_any_element()
 }
 
-#[cfg(any(target_os = "ios", target_os = "android"))]
-fn host_label(connection: &Connection) -> String {
-    connection
-        .endpoint()
-        .map_or_else(|| "zz daemon".to_owned(), super::host_title)
-}
-
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn host_label(_: &Connection) -> String {
-    "This computer".to_owned()
+impl AppShell {
+    pub(super) fn rename_on(
+        &mut self,
+        host: PaletteHostId,
+        target: Target,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(page) = self.host_page(host, cx) else {
+            return;
+        };
+        let Some(connection) = page
+            .connection
+            .clone()
+            .filter(|connection| writable(connection.read(cx)))
+        else {
+            return;
+        };
+        let snapshot = Arc::clone(connection.read(cx).core.snapshot());
+        let Some((_, command)) = rename_command(&snapshot, target) else {
+            return;
+        };
+        if connection != self.connection {
+            let Some(session) = sidebar_activation(&snapshot, None, target).attach else {
+                return;
+            };
+            open_on_other_host(self, &page, Target::Session(session), window, cx);
+            if connection != self.connection {
+                return;
+            }
+        }
+        execute(&connection, &command, cx);
+    }
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -476,27 +574,24 @@ pub(super) fn flat_tree(
     });
     let shell = cx.entity().downgrade();
     let menu: FlatMenu = Rc::new(move |host, id, menu, _, cx| {
-        let Some((connection, attached)) = shell.upgrade().and_then(|shell| {
-            let shell = shell.read(cx);
-            let page = shell.host_page(host, cx)?;
-            let connection = page.connection?;
-            let attached = connection == shell.connection;
-            Some((connection, attached))
-        }) else {
+        let Some(connection) = shell
+            .upgrade()
+            .and_then(|shell| shell.read(cx).host_page(host, cx)?.connection)
+        else {
             return menu;
         };
         let disabled = !writable(connection.read(cx));
-        let rename = rename_command(connection.read(cx).core.snapshot(), Target::Window(id))
-            .filter(|_| attached)
-            .map(|(_, command)| command);
-        let (rename_connection, close_connection) = (connection.clone(), connection);
+        let renamable =
+            rename_command(connection.read(cx).core.snapshot(), Target::Window(id)).is_some();
+        let close_connection = connection;
+        let view = shell.clone();
         menu.item(
             PopupMenuItem::new("Rename window")
-                .disabled(disabled || rename.is_none())
-                .on_click(move |_, _, cx| {
-                    if let Some(command) = &rename {
-                        execute(&rename_connection, command, cx);
-                    }
+                .disabled(disabled || !renamable)
+                .on_click(move |_, window, cx| {
+                    let _ = view.update(cx, |view, cx| {
+                        view.rename_on(host, Target::Window(id), window, cx);
+                    });
                 }),
         )
         .item(
@@ -858,48 +953,52 @@ pub(super) fn set_chat_view(view: &mut AppShell, on: bool, cx: &mut Context<AppS
     }
 }
 
-fn disclosure_id(target: Target) -> String {
-    format!("web-tree-disclosure-{}", target_id(target))
+fn disclosure_id(node: Node) -> String {
+    format!("web-tree-disclosure-{}", target_id(node))
 }
 
-fn row_opened(rows: &[TreeRow], index: usize, cx: &mut App) -> Option<Instant> {
-    let mut depth = rows.get(index)?.depth;
+fn row_opened(rows: &[Row], index: usize, cx: &mut App) -> Option<Instant> {
+    let mut depth = rows.get(index)?.row.depth;
     let mut opened = None;
     for row in rows[..index].iter().rev() {
-        if row.depth < depth {
-            opened = opened.max(workspace_tree_opened(disclosure_id(row.target), cx));
-            depth = row.depth;
+        if row.row.depth < depth {
+            opened = opened.max(workspace_tree_opened(disclosure_id(row.node()), cx));
+            depth = row.row.depth;
         }
     }
     opened
 }
 
 fn render_row(
-    entry: &TreeRow,
+    entry: &Row,
     active: bool,
     opened: Option<Instant>,
     runtime: &Runtime,
     window: &Window,
     cx: &mut App,
 ) -> AnyElement {
-    let connection = &runtime.connection;
-    let connected = connection.read(cx).connected;
-    let disabled = !connected || connection.read(cx).core.attached_read_only();
-    let target = entry.target;
-    let id = target_id(target);
+    let connected = entry.connected(cx);
+    let disabled = !entry
+        .connection
+        .as_ref()
+        .is_some_and(|connection| writable(connection.read(cx)));
+    let node = entry.node();
+    let (host, target) = node;
+    let attached = entry.attached;
+    let id = target_id(node);
     let group = format!("web-tree-group-{id}");
     let is_host = matches!(target, Target::Host);
-    let selected = runtime.focused && runtime.selected == Some(target);
+    let selected = runtime.focused && runtime.selected == Some(node);
     let ink = WorkspaceTreeInk::new(active, selected, runtime.focused, runtime.ground, cx);
-    let color = ink.node(is_host || connected && entry.on_active_path);
+    let color = ink.node(is_host || connected && entry.row.on_active_path);
     let mut actions = Vec::new();
-    if let Some((label, command)) = sidebar_add_command(target) {
+    if let Some((label, command)) = add_command(target, attached) {
         let icon = if is_host {
             IconName::LayersPlus
         } else {
             IconName::WindowPlus
         };
-        let connection = connection.clone();
+        let connection = entry.connection.clone();
         actions.push(
             workspace_tree_action_button(
                 format!("web-tree-add-{id}"),
@@ -910,9 +1009,11 @@ fn render_row(
                 cx,
             )
             .on_click(move |_, _, cx| {
-                connection.update(cx, |connection, cx| {
-                    connection.invoke(command.clone(), cx);
-                });
+                if let Some(connection) = &connection {
+                    connection.update(cx, |connection, cx| {
+                        connection.invoke(command.clone(), cx);
+                    });
+                }
                 cx.stop_propagation();
             })
             .into_any_element(),
@@ -920,7 +1021,7 @@ fn render_row(
     }
 
     if let Some((label, command)) = sidebar_close_command(target) {
-        let connection = connection.clone();
+        let connection = entry.connection.clone();
         actions.push(
             workspace_tree_action_button(
                 format!("web-tree-close-{id}"),
@@ -931,32 +1032,43 @@ fn render_row(
                 cx,
             )
             .on_click(move |_, _, cx| {
-                connection.update(cx, |connection, cx| {
-                    connection.invoke(command.clone(), cx);
-                });
+                if let Some(connection) = &connection {
+                    connection.update(cx, |connection, cx| {
+                        connection.invoke(command.clone(), cx);
+                    });
+                }
                 cx.stop_propagation();
             })
             .into_any_element(),
         );
     }
     if is_host && !connected {
+        let status = entry
+            .connection
+            .as_ref()
+            .map(|connection| connection.read(cx).status.clone());
         actions.insert(
             0,
             tree_host_indicator(
-                "web-tree-host-indicator",
-                connection.read(cx).status == "Connecting…",
-                Some(connection.read(cx).status.clone().into()),
+                format!("web-tree-host-indicator-{id}"),
+                status.as_deref() == Some("Connecting…"),
+                status.map(Into::into),
                 cx,
             ),
         );
     }
     let actions = tree_action_strip(format!("web-tree-actions-{id}"), actions, cx);
-    let badge_color = entry.badge.map(|badge| badge_color(badge, cx));
+    let badge_color = entry.row.badge.map(|badge| badge_color(badge, cx));
     let marker = if is_host {
         tree_host_marker(
-            connection.read(cx).core.host_platform(),
+            entry
+                .connection
+                .as_ref()
+                .map_or(HostPlatform::Unknown, |connection| {
+                    connection.read(cx).core.host_platform()
+                }),
             color,
-            entry.bell,
+            entry.row.bell,
             badge_color,
             ink.ground,
             cx,
@@ -964,6 +1076,7 @@ fn render_row(
     } else {
         tree_node_marker(
             entry
+                .row
                 .program
                 .and_then(|program| {
                     program_mark(
@@ -974,23 +1087,23 @@ fn render_row(
                     )
                 })
                 .unwrap_or_else(|| {
-                    Icon::new(row_icon(entry.node))
+                    Icon::new(row_icon(entry.row.node))
                         .medium()
                         .text_color(color)
                         .into_any_element()
                 }),
-            entry.bell,
+            entry.row.bell,
             badge_color,
             ink.ground,
             cx,
         )
     };
-    let marker = if entry.expandable {
+    let marker = if entry.row.expandable {
         let view = runtime.view.clone();
         workspace_tree_disclosure(
-            disclosure_id(target),
+            disclosure_id(node),
             marker,
-            entry.expanded,
+            entry.row.expanded,
             group.clone().into(),
             ink,
         )
@@ -998,7 +1111,7 @@ fn render_row(
         .on_click(move |_, _, cx| {
             view.update(cx, |view, cx| {
                 view.sidebar_pointer_selection = true;
-                toggle(view, target, cx);
+                toggle(view, node, cx);
             });
             cx.stop_propagation();
         })
@@ -1006,17 +1119,17 @@ fn render_row(
     } else {
         marker
     };
-    let connection = connection.clone();
+    let connection = entry.connection.clone();
     let focus = runtime.focus.clone();
     let view = runtime.view.clone();
     let row = workspace_tree_row(
         format!("web-tree-row-{id}"),
-        entry.depth,
+        entry.row.depth,
         active,
         selected,
         runtime.focused,
         connected,
-        entry.expandable || connected && !is_host,
+        is_host || entry.row.expandable || connected,
         !is_host,
         group.into(),
         marker,
@@ -1026,9 +1139,15 @@ fn render_row(
             .items_baseline()
             .gap_2()
             .text_color(color)
-            .child(div().min_w_0().overflow_hidden().child(entry.label.clone()))
+            .child(
+                div()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .child(entry.row.label.clone()),
+            )
             .children(
                 entry
+                    .row
                     .index
                     .clone()
                     .map(|index| div().flex_none().text_color(ink.faint).child(index)),
@@ -1041,29 +1160,36 @@ fn render_row(
         focus.focus(window, cx);
     })
     .on_click(move |_, window, cx| {
+        let live = connection
+            .as_ref()
+            .is_some_and(|connection| connection.read(cx).connected);
         view.update(cx, |view, cx| {
-            view.sidebar_selection = Some(target);
+            view.sidebar_selection = Some(node);
             view.sidebar_pointer_selection = true;
-            if target == Target::Host && connection.read(cx).connected {
-                toggle(view, target, cx);
-            } else if view.slideover && target != Target::Host && connection.read(cx).connected {
-                view.release_sidebar_focus(window, cx);
+            if is_host && attached && live {
+                toggle(view, node, cx);
+            } else {
+                if view.slideover && !is_host && live {
+                    view.release_sidebar_focus(window, cx);
+                }
+                view.open_on_host(host, target, window, cx);
             }
             cx.notify();
         });
-        activate(&connection, target, cx);
         cx.stop_propagation();
     });
     let row = penna::foundation::motion::enter_since(row, opened, window, cx);
-    if !disabled
-        && let Some((label, command)) =
-            rename_command(runtime.connection.read(cx).core.snapshot(), target)
-    {
-        let connection = runtime.connection.clone();
+    let rename = entry
+        .connection
+        .as_ref()
+        .filter(|_| !disabled)
+        .and_then(|connection| rename_command(connection.read(cx).core.snapshot(), target));
+    if let Some((label, _)) = rename {
+        let view = runtime.view.clone();
         tree_row_menu(
             row,
-            vec![TreeRowMenuItem::new(label, move |_, cx| {
-                execute(&connection, &command, cx);
+            vec![TreeRowMenuItem::new(label, move |window, cx| {
+                view.update(cx, |view, cx| view.rename_on(host, target, window, cx));
             })],
         )
     } else {

@@ -194,7 +194,6 @@ impl AppShell {
         self.landing_picker = None;
         self.waiting_panes.clear();
         self.unseen_agents.clear();
-        self.collapsed_tree.clear();
         self.sidebar_selection = None;
         self.sidebar_active = None;
         self.flat.leave_host();
