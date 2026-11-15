@@ -1,7 +1,7 @@
 use std::{process::ExitCode, thread};
 
 use zz_daemon_client::{
-    Endpoint, HostEntry, HostProbe, HostStatus, RejectedHost, configured_fleet_hosts, probe_host,
+    Endpoint, HostEntry, HostProbe, HostStatus, RejectedHost, fleet_hosts_with_tailnet, probe_host,
 };
 use zz_mux::{FormatJobTag, StatusContext, StatusHooks, expand_format_values, format_references};
 
@@ -67,7 +67,7 @@ pub(crate) fn parse(arguments: &[String]) -> Result<Option<Listing<'_>>, String>
 
 pub(crate) fn output(listing: Listing<'_>) -> Result<String, String> {
     let (hosts, rejected) =
-        configured_fleet_hosts().map_err(|error| format!("could not read zz/config: {error}"))?;
+        fleet_hosts_with_tailnet().map_err(|error| format!("could not read zz/config: {error}"))?;
     for line in rejected_lines(&rejected) {
         eprintln!("{line}");
     }

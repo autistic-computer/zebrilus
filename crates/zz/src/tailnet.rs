@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use ala::{App, AsyncApp};
 use zz_daemon_client::{
-    CommandClient, Endpoint, HostEntry, TailnetEndpoint,
+    CommandClient, TailnetEndpoint,
     tailnet::{self, MODE_KEY, Mode, OwnState, Settings},
     tailnet_offer::host_link,
 };
@@ -146,14 +146,7 @@ fn scan() -> DiscoveredHosts {
                         }
                         format!("Signed in to {} as {}", status.tailnet, status.host)
                     },
-                    tailnet::discover(&status)
-                        .into_iter()
-                        .filter(|machine| !settings.hide.contains(&machine.label))
-                        .map(|machine| HostEntry {
-                            name: machine.label,
-                            endpoint: Endpoint::Tailnet(machine.endpoint),
-                        })
-                        .collect(),
+                    tailnet::hosts(&status, &settings),
                 ),
             },
         }

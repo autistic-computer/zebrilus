@@ -479,7 +479,8 @@ fn the_tmux_wrapper_runs_a_pinned_image_that_outlives_a_replaced_install() {
     let shim = TmuxShimGuard::install(installed.clone(), true).expect("install pinned wrapper");
     let clone_directory = shim.directory.clone();
     if cfg!(target_os = "macos") {
-        assert_eq!(shim.executable, clone_directory.join("zz"));
+        assert_eq!(shim.executable.file_name(), Some("zz".as_ref()));
+        assert_ne!(shim.executable, installed);
         fs::remove_file(&installed).expect("replace the install");
         fs::write(&installed, b"#!/bin/sh\nprintf 'new'\n").expect("write new zz");
         let output = std::process::Command::new(clone_directory.join("tmux"))
@@ -500,6 +501,27 @@ fn the_tmux_wrapper_runs_a_pinned_image_that_outlives_a_replaced_install() {
     }
     drop(shim);
     assert!(!clone_directory.exists());
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn daemons_from_one_build_share_one_pinned_copy() {
+    use std::os::unix::fs::MetadataExt as _;
+
+    let directory = tempfile::tempdir().expect("temporary pin root");
+    let installed = directory.path().join("zz");
+    fs::write(&installed, b"#!/bin/sh\n").expect("write installed zz");
+    let root = directory.path().join("pinned");
+    let shims = ["first", "second"].map(|name| directory.path().join(name));
+    for shim in &shims {
+        fs::create_dir(shim).expect("shim directory");
+    }
+    let pinned = shims
+        .each_ref()
+        .map(|shim| shared_pinned_executable(&root, shim, &installed).expect("pin the build"));
+    assert_eq!(pinned[0], pinned[1]);
+    assert_eq!(fs::metadata(&pinned[0]).expect("pinned copy").nlink(), 3);
+    assert_eq!(fs::read_dir(&root).expect("pin root").count(), 1);
 }
 
 #[cfg(unix)]

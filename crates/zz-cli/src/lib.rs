@@ -2738,8 +2738,12 @@ fn connect_host_command_client(name: &str, read_only: bool) -> Result<CommandCli
 }
 
 fn configured_host_endpoint(name: &str) -> Result<Endpoint, String> {
-    let (hosts, _) = zz_daemon_client::configured_fleet_hosts()
+    let (mut hosts, _) = zz_daemon_client::configured_fleet_hosts()
         .map_err(|error| format!("could not read zz/config: {error}"))?;
+    if !hosts.iter().any(|host| host.name == name) && !name.contains(['@', ':', '/']) {
+        let found = zz_daemon_client::tailnet_hosts_beside(&hosts);
+        hosts.extend(found);
+    }
     zz_daemon_client::resolve_fleet_host(&hosts, name)
 }
 
@@ -2935,11 +2939,11 @@ fn run_on_every_host(arguments: &[RawText], command_chain: &[CommandInvocation])
         eprintln!("{message}");
         return exit;
     }
-    let hosts = match zz_daemon_client::configured_fleet_hosts() {
+    let hosts = match zz_daemon_client::fleet_hosts_with_tailnet() {
         Ok((hosts, _)) if !hosts.is_empty() => hosts,
         Ok(_) => {
             eprintln!(
-                "zz: --host all: zz/config lists no hosts; add one with zz fleet add NAME user@box"
+                "zz: --host all: no hosts in zz/config or on the tailnet; add one with zz fleet add NAME user@box"
             );
             return exit_code_for(CliFailure::Runtime);
         }

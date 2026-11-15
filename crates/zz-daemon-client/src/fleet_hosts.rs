@@ -6,7 +6,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use crate::Endpoint;
+use crate::{Endpoint, tailnet};
 
 const CONFIG_DIRECTORY_NAME: &str = zz_protocol::app_identity::DIRECTORY;
 const CONFIG_FILE_NAME: &str = "config";
@@ -32,6 +32,38 @@ pub fn configured_fleet_hosts() -> io::Result<(Vec<HostEntry>, Vec<RejectedHost>
         return Ok((Vec::new(), Vec::new()));
     };
     read_config_source(&path).map(|source| parse_fleet_hosts(&source))
+}
+
+pub fn fleet_hosts_with_tailnet() -> io::Result<(Vec<HostEntry>, Vec<RejectedHost>)> {
+    let (mut hosts, rejected) = configured_fleet_hosts()?;
+    let found = tailnet_hosts_beside(&hosts);
+    hosts.extend(found);
+    Ok((hosts, rejected))
+}
+
+#[must_use]
+pub fn tailnet_hosts_beside(configured: &[HostEntry]) -> Vec<HostEntry> {
+    let settings = discover_config_path(&config_candidates())
+        .and_then(|path| read_config_source(&path).ok())
+        .map(|source| tailnet::Settings::from_config(&source))
+        .unwrap_or_default();
+    if matches!(settings.mode, tailnet::Mode::Off | tailnet::Mode::Own) {
+        return Vec::new();
+    }
+    let Ok(status) = tailnet::status() else {
+        return Vec::new();
+    };
+    if status.unusable().is_some() {
+        return Vec::new();
+    }
+    tailnet::hosts(&status, &settings)
+        .into_iter()
+        .filter(|found| {
+            !configured
+                .iter()
+                .any(|host| host.name == found.name || host.endpoint == found.endpoint)
+        })
+        .collect()
 }
 
 pub fn write_fleet_host(name: &str, endpoint: &str) -> io::Result<()> {

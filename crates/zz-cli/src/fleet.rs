@@ -735,7 +735,7 @@ mod tests {
         fs::create_dir_all(config_path.parent().unwrap()).unwrap();
         fs::write(
             &config_path,
-            "# keep\nhost-desktop = ssh://old-desktop # keep too\ntray = false\n",
+            "# keep\nhost-desktop = ssh://old-desktop # keep too\ntray = false\ntailnet = off\n",
         )
         .unwrap();
 
@@ -750,7 +750,7 @@ mod tests {
         }
         assert_eq!(
             fs::read_to_string(&config_path).unwrap(),
-            "# keep\nhost-desktop = ssh://fabrico@arch-desktop # keep too\ntray = false\n"
+            "# keep\nhost-desktop = ssh://fabrico@arch-desktop # keep too\ntray = false\ntailnet = off\n"
         );
 
         let key = run(["key".to_owned()]).unwrap();
@@ -790,7 +790,7 @@ mod tests {
         assert!(removed.contains("config line removed: yes"));
         assert_eq!(
             fs::read_to_string(&config_path).unwrap(),
-            "# keep\ntray = false\n"
+            "# keep\ntray = false\ntailnet = off\n"
         );
         assert_eq!(run(["list".to_owned()]).unwrap(), "");
         assert_eq!(
@@ -809,7 +809,7 @@ mod tests {
 
         fs::write(
             &config_path,
-            "# keep\nhost-gpu = quic://gpu:9922\ntray = false\n",
+            "# keep\nhost-gpu = quic://gpu:9922\ntray = false\ntailnet = off\n",
         )
         .unwrap();
         assert_eq!(
@@ -827,7 +827,7 @@ mod tests {
         );
         assert_eq!(
             fs::read_to_string(&config_path).unwrap(),
-            "# keep\ntray = false\n"
+            "# keep\ntray = false\ntailnet = off\n"
         );
     }
 }

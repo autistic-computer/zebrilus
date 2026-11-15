@@ -36,7 +36,8 @@ call it. `zz list-hosts` prints each host in config order with its probed `host_
 `host_protocol` and `host_error`), and `zz fleet list` keeps the old name-and-endpoint listing; rejected `host-` lines go to stderr. `zz fleet remove <name>` deletes every matching
 host line, as does a remote row's **Close host** . which additionally republishes `FleetHosts`
 (`config::remove_fleet_host_live`) so the running fleet drops the machine immediately. A
-`--host` value that names no host line is read as an ssh destination (`user@box`, `box:2222`,
+Machines the app finds on the tailnet are listed after them, and `--host NAME` and `--host all` reach them by name too, unless `tailnet` is `off` or `own`. A
+`--host` value that names neither is read as an ssh destination (`user@box`, `box:2222`,
 `ssh://...`), so the CLI can reach a machine before it has a line. There is no daemon-side setup:
 ssh owns transport, and zz adds only its own ed25519 key (`zz fleet key`), which the first
 login to a host listed here appends to that host's `authorized_keys`; a raw `--host` destination

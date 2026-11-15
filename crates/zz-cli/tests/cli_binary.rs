@@ -333,8 +333,11 @@ fn every_login_offers_the_zz_key_and_parallel_work_never_prompts() {
     std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o755)).expect("chmod ssh");
     let config = home.path().join(zz_protocol::app_identity::DIRECTORY);
     std::fs::create_dir_all(&config).expect("config directory");
-    std::fs::write(config.join("config"), "host-fake = ssh://you@fakebox\n")
-        .expect("write host config");
+    std::fs::write(
+        config.join("config"),
+        "tailnet = off\nhost-fake = ssh://you@fakebox\n",
+    )
+    .expect("write host config");
     let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
         &std::env::var_os("PATH").unwrap_or_default(),
     )))
@@ -453,8 +456,11 @@ fn a_host_probe_riding_a_master_that_stopped_answering_gives_up() {
     std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o755)).expect("chmod ssh");
     let config = home.path().join(zz_protocol::app_identity::DIRECTORY);
     std::fs::create_dir_all(&config).expect("config directory");
-    std::fs::write(config.join("config"), "host-fake = ssh://you@fakebox\n")
-        .expect("write host config");
+    std::fs::write(
+        config.join("config"),
+        "tailnet = off\nhost-fake = ssh://you@fakebox\n",
+    )
+    .expect("write host config");
     let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
         &std::env::var_os("PATH").unwrap_or_default(),
     )))
@@ -503,8 +509,11 @@ fn a_terminal_chain_that_stalls_on_a_kept_link_is_not_sent_again() {
     std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o755)).expect("chmod ssh");
     let config = home.path().join(zz_protocol::app_identity::DIRECTORY);
     std::fs::create_dir_all(&config).expect("config directory");
-    std::fs::write(config.join("config"), "host-fake = ssh://you@fakebox\n")
-        .expect("write host config");
+    std::fs::write(
+        config.join("config"),
+        "tailnet = off\nhost-fake = ssh://you@fakebox\n",
+    )
+    .expect("write host config");
     let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
         &std::env::var_os("PATH").unwrap_or_default(),
     )))
@@ -650,7 +659,7 @@ fn list_hosts_reads_zz_config_without_a_daemon_or_ssh() {
     std::fs::create_dir_all(config.parent().unwrap()).unwrap();
     std::fs::write(
         &config,
-        "host-xps = ssh://demfabris@xps\nhost-gpu = quic://gpu:9922\n",
+        "tailnet = off\nhost-xps = ssh://demfabris@xps\nhost-gpu = quic://gpu:9922\n",
     )
     .unwrap();
     let run = |arguments: &[&str]| {
@@ -1416,7 +1425,7 @@ mod daemon_autostart {
         std::fs::write(
             &config,
             format!(
-                "host-peer = unix://{}\nhost-gone = unix://{}/gone.sock\n",
+                "tailnet = off\nhost-peer = unix://{}\nhost-gone = unix://{}/gone.sock\n",
                 fixture.socket.display(),
                 fixture.home.display()
             ),
