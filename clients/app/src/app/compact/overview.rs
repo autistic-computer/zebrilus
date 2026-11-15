@@ -844,16 +844,23 @@ impl AppShell {
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(in super::super) fn found_machines(&self, cx: &App) -> Vec<crate::connection::FoundHost> {
-        let saved = self.hosts.saved.endpoints();
-        let open: Vec<String> = self
-            .host_connections()
+        let known: Vec<zz_daemon_client::Endpoint> = self
+            .hosts
+            .saved
+            .endpoints()
             .iter()
-            .filter_map(|connection| connection.read(cx).endpoint().map(ToOwned::to_owned))
+            .map(String::as_str)
+            .chain(
+                self.host_connections()
+                    .iter()
+                    .filter_map(|connection| connection.read(cx).endpoint()),
+            )
+            .filter_map(|endpoint| zz_daemon_client::Endpoint::parse(endpoint).ok())
             .collect();
         self.hosts
             .found
             .iter()
-            .filter(|host| !saved.contains(&host.endpoint) && !open.contains(&host.endpoint))
+            .filter(|host| !crate::connection::already_known(host, &known))
             .cloned()
             .collect()
     }

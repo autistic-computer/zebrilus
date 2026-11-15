@@ -100,7 +100,21 @@ impl EventEmitter<CoreEvent> for Connection {}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FoundHost {
     pub endpoint: String,
+    pub address: Option<std::net::IpAddr>,
     pub machine: zz_ui::compact::FoundMachine,
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+#[must_use]
+pub fn already_known(found: &FoundHost, known: &[zz_daemon_client::Endpoint]) -> bool {
+    zz_daemon_client::Endpoint::parse(&found.endpoint).is_ok_and(|endpoint| {
+        known.iter().any(|known| {
+            known.same_machine(&endpoint)
+                || found
+                    .address
+                    .is_some_and(|address| known.is_address(address))
+        })
+    })
 }
 
 pub struct FoundHosts(pub Vec<FoundHost>);
@@ -899,6 +913,7 @@ impl Connection {
                 .into_iter()
                 .map(|offer| FoundHost {
                     endpoint: zz_daemon_client::Endpoint::Tailnet(offer.endpoint()).to_string(),
+                    address: offer.address,
                     machine: zz_ui::compact::FoundMachine {
                         runs_zz: reachable.contains(&offer),
                         name: offer.name,

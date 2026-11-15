@@ -427,6 +427,40 @@ impl Endpoint {
     }
 }
 
+impl Endpoint {
+    #[must_use]
+    pub fn same_machine(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Tailnet(left), Self::Tailnet(right)) => {
+                machine_label(&left.peer) == machine_label(&right.peer)
+                    && left.port.unwrap_or(TailnetEndpoint::DEFAULT_PORT)
+                        == right.port.unwrap_or(TailnetEndpoint::DEFAULT_PORT)
+            }
+            (Self::Tailnet(tailnet), Self::Ssh(ssh)) | (Self::Ssh(ssh), Self::Tailnet(tailnet)) => {
+                machine_label(&tailnet.peer) == machine_label(&ssh.host)
+            }
+            _ => self == other,
+        }
+    }
+
+    #[must_use]
+    pub fn is_address(&self, address: std::net::IpAddr) -> bool {
+        let host = match self {
+            Self::Ssh(endpoint) => &endpoint.host,
+            Self::Tailnet(endpoint) => &endpoint.peer,
+            Self::Local(_) => return false,
+        };
+        host.parse() == Ok(address)
+    }
+}
+
+fn machine_label(host: &str) -> String {
+    if host.parse::<std::net::IpAddr>().is_ok() {
+        return host.to_owned();
+    }
+    host.split('.').next().unwrap_or(host).to_ascii_lowercase()
+}
+
 impl FromStr for Endpoint {
     type Err = EndpointError;
 
@@ -3032,6 +3066,31 @@ fn pump(reader: &mut impl io::Read, writer: &mut impl io::Write) -> io::Result<(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn one_machine_matches_across_ports_spellings_and_transports() {
+        let parse = |endpoint: &str| Endpoint::parse(endpoint).unwrap();
+        let macbook = parse("tailnet://macbook.beluga-wall.ts.net");
+        for same in [
+            "tailnet://macbook.beluga-wall.ts.net:9922",
+            "tailnet://MacBook",
+            "ssh://fabrico@macbook.beluga-wall.ts.net",
+        ] {
+            assert!(parse(same).same_machine(&macbook), "{same}");
+        }
+        for other in [
+            "tailnet://alienware.beluga-wall.ts.net",
+            "tailnet://macbook.beluga-wall.ts.net:9923",
+            "tailnet://100.121.220.88",
+            "/tmp/zz.sock",
+        ] {
+            assert!(!parse(other).same_machine(&macbook), "{other}");
+        }
+        let address = "100.121.220.88".parse().unwrap();
+        assert!(parse("tailnet://100.121.220.88").is_address(address));
+        assert!(parse("ssh://fabrico@100.121.220.88:22").is_address(address));
+        assert!(!macbook.is_address(address));
+    }
+
     use super::*;
 
     #[test]
@@ -3511,6 +3570,7 @@ mod tests {
         };
         for stderr in [
             "you@host: Permission denied (publickey).",
+            "you@host: Permission denied (publickey,password).",
             "Host key verification failed.",
             "sign_and_send_pubkey: signing failed for ED25519-SK \"/k\": device not found",
         ] {

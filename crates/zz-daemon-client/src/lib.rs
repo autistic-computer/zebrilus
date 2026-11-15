@@ -83,9 +83,10 @@ pub use endpoint::{
 pub use endpoint::{install_remote, install_remote_batch, run_remote_cli};
 pub use fleet_hosts::{
     HostEntry, RejectedHost, apply_fleet_host_entry, atomic_write, configured_fleet_hosts,
-    fleet_hosts_with_tailnet, resolve_fleet_host, tailnet_hosts_beside, validate_fleet_host,
-    write_fleet_host,
+    resolve_fleet_host, validate_fleet_host, write_fleet_host,
 };
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+pub use fleet_hosts::{fleet_hosts_with_tailnet, tailnet_hosts_beside};
 #[cfg(any(unix, windows))]
 pub use fleet_sync::{SyncLine, TrustReport, sync_fleet, trust_fleet_key};
 #[cfg(any(unix, windows))]

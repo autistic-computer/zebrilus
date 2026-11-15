@@ -82,7 +82,9 @@ with a code and a reason of at most 123 bytes when the host cannot be reached:
 | 4502 | anything else: refused, unresolved, timed out, zz missing or on another protocol there |
 
 The reason starts with the host name, then ssh's advice, for example
-`box: known_hosts has no matching key for the host: verify the host before connecting`.
+`box: known_hosts has no matching key for the host: verify the host before connecting`. The
+gateway then reads until the page answers the close, so frames the page sent first cannot turn
+the close into a reset that hides the code and reason.
 
 The page fetches `/hosts` once at start and uses every host the way iPad uses its saved hosts
 (`clients/app/src/app/hosts.rs`, `clients/app/src/app/fleet.rs`): the session tree, the chat
@@ -90,9 +92,11 @@ sidebar, the palette, the `@` menu and New chat's machine rows list them all, an
 something on another host switches the page to it. Each host gets its own WebSocket; the one on
 screen is attached and the rest hold only their tree. The page opens on this computer, and the
 hosts it was connected to before reconnect in the background (the list lives in local storage
-under `zz-web-hosts`, `zz-dev-web-hosts` for dev builds). Settings > Hosts lists the gateway's
-hosts with Connect, Disconnect and Open; adding or removing one is an edit to the gateway
-machine's `zz/config` and a gateway restart.
+under `zz-web-hosts`, `zz-dev-web-hosts` for dev builds); when the page was last on another host,
+it switches back to that host once it connects, and stays on this computer if it does not.
+Settings > Hosts lists the gateway's hosts with Connect, Disconnect and Open, and the sidebar has
+no Add host row: adding or removing a host is an edit to the gateway machine's `zz/config` and a
+gateway restart.
 
 This computer keeps retrying every 2 s, as before. Another host is never redialed after a
 failed first connect, nor after a 4401: it shows the close reason as its state and waits for

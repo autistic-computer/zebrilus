@@ -167,6 +167,8 @@ pub(super) struct GatewayHost {
 pub(super) struct Hosts {
     pub(super) saved: SavedHosts,
     gateway: Vec<GatewayHost>,
+    #[cfg(target_family = "wasm")]
+    _reopen: Option<ala::Subscription>,
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
@@ -175,6 +177,8 @@ impl Hosts {
         Self {
             saved: SavedHosts::load(),
             gateway: Vec::new(),
+            #[cfg(target_family = "wasm")]
+            _reopen: None,
         }
     }
 
@@ -232,16 +236,45 @@ impl Hosts {
 #[cfg(target_family = "wasm")]
 impl AppShell {
     pub(super) fn load_gateway_hosts(window: &mut Window, cx: &mut Context<Self>) {
+        let last = SavedHosts::load()
+            .connected
+            .into_iter()
+            .next()
+            .filter(|host| host != GATEWAY_LOCAL);
         cx.spawn_in(window, async move |this, cx| {
             let hosts = gateway_hosts().await.unwrap_or_default();
             this.update_in(cx, |this, window, cx| {
                 this.hosts.adopt(hosts);
                 this.reconnect_saved_hosts(window, cx);
+                if let Some(last) = last {
+                    this.reopen_once_connected(last, window, cx);
+                }
                 cx.notify();
             })
             .ok();
         })
         .detach();
+    }
+
+    fn reopen_once_connected(&mut self, host: String, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(connection) = self.host_connection(&host, cx) else {
+            return;
+        };
+        self.hosts._reopen =
+            Some(
+                cx.observe_in(&connection, window, move |this, connection, window, cx| {
+                    let (connected, busy) = {
+                        let connection = connection.read(cx);
+                        (connection.connected, connection.busy())
+                    };
+                    if connected && this.is_attached_host(GATEWAY_LOCAL, cx) {
+                        this.switch_host(&host, None, None, window, cx);
+                    }
+                    if connected || !busy {
+                        this.hosts._reopen = None;
+                    }
+                }),
+            );
     }
 }
 

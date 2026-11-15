@@ -1212,16 +1212,19 @@ impl AppShell {
         ground: Ground,
         cx: &Context<Self>,
     ) -> AnyElement {
+        let actions = SidebarAction::above(self.preferences.flat_sidebar)
+            .iter()
+            .filter(|action| !cfg!(target_family = "wasm") || **action != SidebarAction::AddHost)
+            .map(|action| self.sidebar_action(*action, ground, cx))
+            .collect::<Vec<_>>();
         div()
             .flex()
             .flex_col()
             .size_full()
             .min_h_0()
-            .child(workspace_sidebar_actions(
-                SidebarAction::above(self.preferences.flat_sidebar)
-                    .iter()
-                    .map(|action| self.sidebar_action(*action, ground, cx)),
-            ))
+            .when(!actions.is_empty(), |column| {
+                column.child(workspace_sidebar_actions(actions))
+            })
             .child(div().flex_1().min_h_0().child(navigation))
             .into_any_element()
     }
