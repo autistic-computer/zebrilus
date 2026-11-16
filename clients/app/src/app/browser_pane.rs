@@ -1,18 +1,20 @@
-use std::{collections::VecDeque, rc::Rc, sync::Arc, time::Duration};
+mod history;
+
+use std::{cell::Cell, collections::VecDeque, rc::Rc, sync::Arc, time::Duration};
 
 use crate::native_browser::{
     BrowserEvent, BrowserMount, BrowserProfile, BrowserView, ElementPickerAppearance,
 };
 use ala::{
     Anchor, AnyElement, App, Bounds, ClipboardEntry, ClipboardItem, ClipboardString, Context,
-    Corners, Entity, FocusHandle, Focusable, Hsla, Image, ImageFormat, Pixels, Render, RenderImage,
-    Rgba, Subscription, TextInputMode, TouchDragEvent, TouchPhase, Window, canvas, div, point,
-    prelude::*, px, size,
+    Corners, Entity, FocusHandle, Focusable, Hsla, Image, ImageFormat, KeyBinding, MouseButton,
+    Pixels, Render, RenderImage, Rgba, Subscription, TextInputMode, TouchDragEvent, TouchPhase,
+    Window, canvas, div, point, prelude::*, px, size,
 };
 use futures::StreamExt as _;
 use penna::{
-    ActiveTheme as _, Colorize as _, ElementExt as _, Elevation, IconName, Label, TextStyle,
-    WindowExt as _,
+    ActiveTheme as _, Colorize as _, ElementExt as _, Elevation, IconName, Label, PaintState,
+    PanelLook, TextStyle, WindowExt as _,
     blocks::compact::pill_backdrop_reach,
     blocks::sheet::{floating_sheet, sheet_inset},
     components::button::{Button, ButtonVariants as _},
@@ -20,7 +22,11 @@ use penna::{
     components::menu::DropdownMenu as _,
     components::progress::Progress,
 };
-use zz_client::ChromeAction;
+use zz_client::{
+    ChromeAction,
+    recent_pages::{Omnibox, OmniboxUse},
+    url_input::diagnostic_url,
+};
 use zz_protocol::{
     BrowserCommand, BrowserDescriptor, DEFAULT_BROWSER_PROFILE, PaneId, PaneKindSnapshot,
 };
@@ -29,7 +35,8 @@ use zz_ui::{
         BrowserActionMenuState, BrowserEmptyHint, BrowserErrorPanel, BrowserHeader,
         BrowserMenuActions, BrowserMenuEngine, BrowserMenuProfile, BrowserProfileDiscoveryState,
         BrowserSiteMenuState, BrowserTabInfo, BrowserTabStrip, BrowserToolbar, browser_action_menu,
-        browser_address, browser_site_controls_button, browser_site_menu, browser_start_surface,
+        browser_address, browser_omnibox_panel, browser_omnibox_row, browser_recent_row,
+        browser_site_controls_button, browser_site_menu, browser_start_surface,
         browser_toolbar_button,
     },
     compact::{TabRow, failed_page, tabs_sheet},
@@ -58,6 +65,8 @@ struct Tab {
     pick_status: Option<String>,
     page_zoom: f64,
     muted: bool,
+    visited: String,
+    history_use: Option<OmniboxUse>,
     _events: ala::Task<()>,
 }
 
@@ -79,6 +88,9 @@ pub(super) struct BrowserPane {
     compact: bool,
     tabs_sheet: bool,
     address_open: bool,
+    editing: bool,
+    omnibox: Omnibox,
+    suggestions_hole: Rc<Cell<Option<(Bounds<Pixels>, Pixels)>>>,
     holding_pick: bool,
     pick_reached_page: bool,
     covered_bottom: Pixels,
@@ -97,6 +109,27 @@ pub(super) struct BrowserPane {
 
 const BACKDROP_TICK: Duration = Duration::from_secs(1);
 const LOAD_LINE: f32 = 2.0;
+const SUGGESTION_LIMIT: usize = 8;
+const RECENT_LIMIT: usize = 8;
+const OMNIBOX_INPUT: &str = "BrowserOmnibox > PennaInput";
+
+ala::actions!(
+    browser,
+    [OmniboxNext, OmniboxPrevious, OmniboxDelete, OmniboxEscape]
+);
+
+fn init(cx: &mut App) {
+    if cx.has_global::<history::BrowserHistory>() {
+        return;
+    }
+    cx.set_global(history::BrowserHistory::default());
+    cx.bind_keys([
+        KeyBinding::new("down", OmniboxNext, Some(OMNIBOX_INPUT)),
+        KeyBinding::new("up", OmniboxPrevious, Some(OMNIBOX_INPUT)),
+        KeyBinding::new("shift-delete", OmniboxDelete, Some(OMNIBOX_INPUT)),
+        KeyBinding::new("escape", OmniboxEscape, Some(OMNIBOX_INPUT)),
+    ]);
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct PhoneBrowser {
@@ -117,6 +150,7 @@ impl BrowserPane {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        init(cx);
         let host = connection
             .read(cx)
             .endpoint()
@@ -136,7 +170,11 @@ impl BrowserPane {
                 InputEvent::PressEnter { .. } => {
                     let value = input.read(cx).value().to_string();
                     let open = this.address_open;
-                    this.navigate(&value, window, cx);
+                    if this.compact {
+                        this.navigate(&value, window, cx);
+                    } else {
+                        this.accept_omnibox(&value, window, cx);
+                    }
                     if open {
                         this.address_open = false;
                         window.dismiss_virtual_keyboard();
@@ -144,6 +182,16 @@ impl BrowserPane {
                     }
                 }
                 InputEvent::Change if this.address_open => cx.notify(),
+                InputEvent::Change if !this.compact => {
+                    let value = input.read(cx).value().to_string();
+                    this.update_omnibox(&value, window, cx);
+                }
+                InputEvent::Focus if !this.compact => {
+                    this.omnibox.begin(&input.read(cx).value());
+                    this.editing = true;
+                    cx.notify();
+                }
+                InputEvent::Blur => this.stop_editing(cx),
                 _ => {}
             },
         );
@@ -156,7 +204,9 @@ impl BrowserPane {
                         return;
                     }
                     match command {
-                        BrowserCommand::Navigate(url) => this.navigate(url, window, cx),
+                        BrowserCommand::Navigate(url) => {
+                            this.navigate(url, window, cx);
+                        }
                         BrowserCommand::Reload => this.reload(cx),
                         BrowserCommand::Back => this.tabs[this.active].view.back(),
                         BrowserCommand::Forward => this.tabs[this.active].view.forward(),
@@ -184,6 +234,9 @@ impl BrowserPane {
             compact: false,
             tabs_sheet: false,
             address_open: false,
+            editing: false,
+            omnibox: Omnibox::default(),
+            suggestions_hole: Rc::default(),
             holding_pick: false,
             pick_reached_page: false,
             covered_bottom: px(0.0),
@@ -461,6 +514,8 @@ impl BrowserPane {
             pick_status: None,
             page_zoom: 1.0,
             muted: false,
+            visited: String::new(),
+            history_use: None,
             _events: task,
         }
     }
@@ -479,6 +534,9 @@ impl BrowserPane {
                 committed,
                 progress,
             } => {
+                if let Some(url) = &url {
+                    self.record_history(index, url, &title, cx);
+                }
                 let tab = &mut self.tabs[index];
                 tab.progress = progress;
                 if committed {
@@ -501,7 +559,10 @@ impl BrowserPane {
                 self.update_address(window, cx);
                 self.publish(cx);
             }
-            BrowserEvent::Error(error) => self.tabs[index].error = Some(error),
+            BrowserEvent::Error(error) => {
+                self.tabs[index].error = Some(error);
+                self.tabs[index].history_use = None;
+            }
             BrowserEvent::ElementPicked { text, screenshot } => {
                 self.tabs[index].picking = false;
                 if index != self.active || !self.visible || !self.writable(cx) {
@@ -706,26 +767,250 @@ impl BrowserPane {
         }
     }
 
-    fn navigate(&mut self, value: &str, window: &mut Window, cx: &mut Context<Self>) {
+    fn navigate(&mut self, value: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if !self.writable(cx) {
-            return;
+            return false;
         }
         let search = cx
             .try_global::<crate::preferences::BrowserSearch>()
             .map_or_else(Default::default, |search| search.0);
         let Ok(url) = zz_client::url_input::resolve_address(value, search) else {
-            return;
+            return false;
         };
         let tab = &mut self.tabs[self.active];
         tab.url = url;
         tab.pick_status = None;
         tab.pending_load = true;
         tab.error = None;
+        tab.history_use = None;
         self.focus.focus(window, cx);
         self.resume();
         self.update_address(window, cx);
         self.publish(cx);
         cx.notify();
+        true
+    }
+
+    fn record_history(&mut self, index: usize, url: &str, title: &str, cx: &mut Context<Self>) {
+        let (host, profile) = (self.host.clone(), self.profile_name.clone());
+        let tab = &mut self.tabs[index];
+        if tab.visited != url {
+            url.clone_into(&mut tab.visited);
+            let history_use = tab.history_use.take();
+            history::update(&host, cx, |pages| {
+                let visited = pages.record_visit(&profile, url);
+                if visited && let Some(history_use) = history_use {
+                    pages.record_omnibox_use(
+                        &profile,
+                        &history_use.input,
+                        url,
+                        history_use.selected,
+                    );
+                }
+                visited
+            });
+        }
+        history::update(&host, cx, |pages| pages.record_title(&profile, url, title));
+    }
+
+    fn update_omnibox(&mut self, value: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.editing {
+            let url = &self.tabs[self.active].url;
+            self.omnibox
+                .begin(if url == "about:blank" { "" } else { url });
+            self.editing = true;
+        }
+        let suggestions =
+            history::suggestions(&self.host, &self.profile_name, value, SUGGESTION_LIMIT, cx);
+        if let Some(completion) = self.omnibox.update(value, suggestions) {
+            let query = self.omnibox.query.clone();
+            let address = self.address.clone();
+            cx.defer_in(window, move |this, window, cx| {
+                if !this.editing || this.omnibox.query != query || this.omnibox.selected != Some(0)
+                {
+                    return;
+                }
+                address.update(cx, |address, cx| {
+                    address.set_value(completion.clone(), window, cx);
+                    address.set_selected_range(query.len()..completion.len(), cx);
+                });
+            });
+        }
+        cx.notify();
+    }
+
+    fn accept_omnibox(&mut self, typed: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let (value, history_use) = self.omnibox.accept(typed);
+        if self.navigate(&value, window, cx) {
+            self.tabs[self.active].history_use = history_use;
+        }
+    }
+
+    fn accept_suggestion(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if index < self.omnibox.suggestions.len() {
+            self.omnibox.selected = Some(index);
+            let typed = self.address.read(cx).value().to_string();
+            self.accept_omnibox(&typed, window, cx);
+        }
+    }
+
+    fn stop_editing(&mut self, cx: &mut Context<Self>) {
+        if self.editing || !self.omnibox.is_clear() {
+            self.editing = false;
+            self.omnibox.reset();
+            cx.notify();
+        }
+    }
+
+    fn show_in_address(&self, value: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.address.update(cx, |address, cx| {
+            if address.value().as_ref() != value {
+                address.set_value(value.to_owned(), window, cx);
+            }
+            address.set_selected_range(value.len()..value.len(), cx);
+        });
+    }
+
+    fn step_suggestion(&mut self, direction: i64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(preview) = (self.editing && !self.compact)
+            .then(|| self.omnibox.step(direction))
+            .flatten()
+        else {
+            cx.propagate();
+            return;
+        };
+        self.show_in_address(&preview, window, cx);
+        cx.notify();
+    }
+
+    fn delete_suggestion(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(url) = self
+            .omnibox
+            .selected
+            .and_then(|index| self.omnibox.suggestions.get(index))
+            .map(|suggestion| suggestion.url.clone())
+        else {
+            cx.propagate();
+            return;
+        };
+        let (host, profile) = (self.host.clone(), self.profile_name.clone());
+        history::update(&host, cx, |pages| pages.remove(&profile, &url));
+        let query = self.omnibox.query.clone();
+        self.omnibox.suggestions =
+            history::suggestions(&host, &profile, &query, SUGGESTION_LIMIT, cx);
+        self.omnibox.selected = None;
+        self.show_in_address(&query, window, cx);
+        cx.notify();
+    }
+
+    fn escape_omnibox(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.omnibox.selected.take().is_some() {
+            let query = self.omnibox.query.clone();
+            self.show_in_address(&query, window, cx);
+        } else if !self.omnibox.suggestions.is_empty() {
+            self.omnibox.suggestions.clear();
+        } else {
+            cx.propagate();
+            return;
+        }
+        cx.notify();
+    }
+
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the page is cut out to the popover's own border box"
+    )]
+    fn suggestions_panel(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.editing || self.compact || self.omnibox.suggestions.is_empty() {
+            self.suggestions_hole.set(None);
+            return None;
+        }
+        let pane = cx.weak_entity();
+        let mut rows: Vec<AnyElement> = self
+            .omnibox
+            .suggestions
+            .iter()
+            .enumerate()
+            .map(|(index, suggestion)| {
+                let pane = pane.clone();
+                browser_omnibox_row(
+                    index,
+                    suggestion.title.clone(),
+                    suggestion.display_url.clone(),
+                    self.omnibox.selected == Some(index),
+                    None,
+                    cx,
+                )
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    let _ = pane.update(cx, |this, cx| this.accept_suggestion(index, window, cx));
+                    cx.stop_propagation();
+                })
+                .into_any_element()
+            })
+            .collect();
+        let layer = cx.theme().layer(PanelLook::Popover, PaintState::Rest);
+        let (edge, radius) = (layer.border_width, layer.radius);
+        let hole = self.suggestions_hole.clone();
+        rows.push(
+            canvas(
+                move |bounds, window, _| {
+                    let next = Some((bounds, radius));
+                    if hole.replace(next) != next {
+                        window.on_next_frame(move |_, cx| {
+                            let _ = pane.update(cx, |_, cx| cx.notify());
+                        });
+                    }
+                },
+                |_, (), _, _| {},
+            )
+            .absolute()
+            .top(-edge)
+            .left(-edge)
+            .right(-edge)
+            .bottom(-edge)
+            .into_any_element(),
+        );
+        Some(browser_omnibox_panel(rows, cx).into_any_element())
+    }
+
+    fn start_page(&self, cx: &mut Context<Self>) -> AnyElement {
+        let recents = history::recent(&self.host, &self.profile_name, RECENT_LIMIT, cx);
+        let content = if recents.is_empty() {
+            BrowserEmptyHint.into_any_element()
+        } else {
+            div()
+                .flex()
+                .flex_col()
+                .w_full()
+                .max_w(px(360.0))
+                .gap(px(4.0))
+                .children(recents.into_iter().enumerate().map(|(index, page)| {
+                    browser_recent_row(
+                        ("ios-browser-recent", index),
+                        diagnostic_url(&page.url),
+                        None,
+                        cx,
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _, window, cx| {
+                            this.navigate(&page.url, window, cx);
+                            cx.stop_propagation();
+                        }),
+                    )
+                }))
+                .into_any_element()
+        };
+        browser_start_surface(content)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    if this.writable(cx) {
+                        this.focus_address(window, cx);
+                    }
+                }),
+            )
+            .into_any_element()
     }
 
     fn reload(&mut self, cx: &mut Context<Self>) {
@@ -1496,6 +1781,10 @@ impl Render for BrowserPane {
                 })
                 .on_click(cx.listener(|this, _, _, cx| this.reload(cx)))
         });
+        let start_page = (blank && !compact).then(|| self.start_page(cx));
+        let suggestions = self.suggestions_panel(cx);
+        let suggestions_hole = self.suggestions_hole.clone();
+        let tab = &self.tabs[self.active];
         let picking = tab.picking && !tab.held;
         let pick_status = if compact {
             None
@@ -1507,6 +1796,19 @@ impl Render for BrowserPane {
         div()
             .id(("ios-browser", pane.0))
             .track_focus(&self.focus)
+            .on_action(cx.listener(|this, _: &OmniboxNext, window, cx| {
+                this.step_suggestion(1, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &OmniboxPrevious, window, cx| {
+                this.step_suggestion(-1, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &OmniboxDelete, window, cx| {
+                this.delete_suggestion(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &OmniboxEscape, window, cx| {
+                this.escape_omnibox(window, cx);
+            }))
+            .relative()
             .flex()
             .flex_col()
             .size_full()
@@ -1577,7 +1879,11 @@ impl Render for BrowserPane {
                                 bounds,
                                 radius,
                                 covered_bottom,
-                                holes: hole.into_iter().chain(strip).collect(),
+                                holes: hole
+                                    .into_iter()
+                                    .chain(strip)
+                                    .chain(suggestions_hole.get())
+                                    .collect(),
                                 backdrop,
                             },
                             window,
@@ -1648,9 +1954,7 @@ impl Render for BrowserPane {
                             .size_full(),
                         )
                     })
-                    .when(blank && !compact, |page| {
-                        page.child(browser_start_surface(BrowserEmptyHint))
-                    })
+                    .children(start_page)
                     .when_some(error, |page, error| {
                         if compact {
                             return page.child(
@@ -1678,6 +1982,7 @@ impl Render for BrowserPane {
                     }),
             )
             .children(tab_drawer)
+            .children(suggestions)
     }
 }
 

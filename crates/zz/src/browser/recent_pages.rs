@@ -2,9 +2,12 @@ mod store;
 
 use ala::{App, Global, Task};
 use std::{cell::OnceCell, future, path::PathBuf, sync::Arc, time::Duration};
-use store::RecentPages as StoredPages;
+use store::StoredPages;
+use zz_client::recent_pages::RecentPages as History;
 
-pub(crate) use store::{HistorySuggestion, MAX_TITLE_BYTES, MAX_URL_BYTES, RecentPage};
+pub(crate) use zz_client::recent_pages::{
+    HistorySuggestion, MAX_TITLE_BYTES, MAX_URL_BYTES, RecentPage,
+};
 
 #[derive(Default)]
 pub(crate) struct RecentPages {
@@ -22,14 +25,22 @@ const SAVE_INTERVAL: Duration = Duration::from_millis(250);
 impl Global for RecentPages {}
 
 impl RecentPages {
-    fn pages(&self) -> &StoredPages {
+    fn stored(&self) -> &StoredPages {
         self.pages
-            .get_or_init(|| StoredPages::load_deferred(self.path.clone()))
+            .get_or_init(|| StoredPages::load(self.path.clone()))
     }
 
-    fn pages_mut(&mut self) -> &mut StoredPages {
-        self.pages();
-        self.pages.get_mut().expect("recent pages were initialized")
+    fn pages(&self) -> &History {
+        &self.stored().history
+    }
+
+    fn pages_mut(&mut self) -> &mut History {
+        self.stored();
+        &mut self
+            .pages
+            .get_mut()
+            .expect("recent pages were initialized")
+            .history
     }
 }
 
@@ -55,7 +66,7 @@ fn init_at(path: Option<PathBuf>, cx: &mut App) {
 fn schedule_save(cx: &mut App) {
     let pages = cx.global_mut::<RecentPages>();
     pages.revision = pages.revision.wrapping_add(1);
-    if pages.closing || !pages.pages().is_persistent() || pages.save_task.is_some() {
+    if pages.closing || !pages.stored().is_persistent() || pages.save_task.is_some() {
         return;
     }
     let task = cx.spawn(async move |cx| {
@@ -66,7 +77,7 @@ fn schedule_save(cx: &mut App) {
                 if pages.closing {
                     return None;
                 }
-                let snapshot = pages.pages().clone();
+                let snapshot = pages.stored().clone();
                 let revision = pages.revision;
                 let (completed, receiver) = async_channel::bounded(1);
                 let task = cx.background_executor().spawn(async move {
@@ -263,9 +274,9 @@ mod tests {
     fn startup_and_untouched_shutdown_do_not_load_or_rewrite_history(cx: &mut TestAppContext) {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("recent-pages");
-        let mut stored = StoredPages::load_deferred(Some(path.clone()));
-        stored.record_visit("default", URL);
-        stored.record_title("default", URL, "Preserved");
+        let mut stored = StoredPages::load(Some(path.clone()));
+        stored.history.record_visit("default", URL);
+        stored.history.record_title("default", URL, "Preserved");
         stored.save().unwrap();
         fs::File::options()
             .write(true)
@@ -294,9 +305,11 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("recent-pages");
         cx.update(|cx| init_at(Some(path.clone()), cx));
-        let mut stored = StoredPages::load_deferred(Some(path));
-        stored.record_visit("default", URL);
-        stored.record_title("default", URL, "Loaded on demand");
+        let mut stored = StoredPages::load(Some(path));
+        stored.history.record_visit("default", URL);
+        stored
+            .history
+            .record_title("default", URL, "Loaded on demand");
         stored.save().unwrap();
 
         cx.update(|cx| {
@@ -315,9 +328,9 @@ mod tests {
     fn first_mutation_preserves_previously_persisted_entries(cx: &mut TestAppContext) {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("recent-pages");
-        let mut stored = StoredPages::load_deferred(Some(path.clone()));
-        stored.record_visit("default", URL);
-        stored.record_title("default", URL, "Existing page");
+        let mut stored = StoredPages::load(Some(path.clone()));
+        stored.history.record_visit("default", URL);
+        stored.history.record_title("default", URL, "Existing page");
         stored.save().unwrap();
         let new_url = "https://example.com/new";
 
@@ -330,8 +343,8 @@ mod tests {
         });
 
         let saved = StoredPages::load(Some(path));
-        assert_eq!(saved.title("default", URL), Some("Existing page"));
-        assert_eq!(saved.title("default", new_url), Some("New page"));
+        assert_eq!(saved.history.title("default", URL), Some("Existing page"));
+        assert_eq!(saved.history.title("default", new_url), Some("New page"));
     }
 
     struct RenderProbe(Rc<Cell<usize>>);
@@ -395,7 +408,7 @@ mod tests {
         cx.executor().advance_clock(SAVE_INTERVAL);
         cx.run_until_parked();
         assert_eq!(
-            StoredPages::load(Some(path)).title("default", URL),
+            StoredPages::load(Some(path)).history.title("default", URL),
             Some("Title 99")
         );
         cx.update(|cx| {
@@ -417,7 +430,7 @@ mod tests {
         while cx.executor().tick() {}
         cx.update(App::shutdown);
         assert_eq!(
-            StoredPages::load(Some(path)).title("default", URL),
+            StoredPages::load(Some(path)).history.title("default", URL),
             Some("Final")
         );
     }
@@ -434,7 +447,7 @@ mod tests {
             init_at(Some(path.clone()), cx);
             record_visit("default", URL, cx);
             record_title("default", URL, "First", cx);
-            let snapshot = cx.global::<RecentPages>().pages().clone();
+            let snapshot = cx.global::<RecentPages>().stored().clone();
             let timer = cx.background_executor().timer(delay);
             let task = cx.background_executor().spawn(async move {
                 timer.await;
@@ -452,7 +465,7 @@ mod tests {
         assert!(cx.executor().now().duration_since(started) >= delay);
         assert!(wrote_first.load(Ordering::SeqCst));
         assert_eq!(
-            StoredPages::load(Some(path)).title("default", URL),
+            StoredPages::load(Some(path)).history.title("default", URL),
             Some("Final")
         );
         cx.update(|cx| {

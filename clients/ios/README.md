@@ -207,6 +207,13 @@ the native transport, key translation, and UIKit backend.
   cookies and site data, which asks first, clears everything WebKit keeps for the site's
   domain in this profile and reloads. Addresses that are not URLs go to the search
   engine picked in Settings › Advanced › Browser, a setting kept on the iPad.
+- The iPad keeps its own browser history for each host and browser profile, in
+  `Library/Application Support/ala/browser-history/`, ranked the same way as on
+  desktop. A new tab lists the recently visited pages; typing in the address field
+  shows matching pages under it, completes the address of a page you have typed
+  before, and learns which result you pick for a prefix. Up and Down move through the
+  results, Escape steps back out, and Shift-Delete removes the selected page from
+  the history. Rows show a globe, not the site's icon.
 - With a hardware keyboard, a focused browser pane takes the desktop browser keys:
   Command-L for the address, Command-T for a new tab, Command-R to reload, Command-[
   and Command-] for back and forward, Command-Shift-[ and Command-Shift-] to change

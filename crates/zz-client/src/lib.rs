@@ -36,6 +36,7 @@ pub mod pick;
 pub mod place;
 pub mod program;
 pub mod providers;
+pub mod recent_pages;
 pub mod recents;
 pub mod scrollback;
 pub mod sidebar;

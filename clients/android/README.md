@@ -122,7 +122,9 @@ as `target_visual_viewport_bounds`, the way the iOS backend follows the keyboard
   Ctrl-plus, Ctrl-minus and Ctrl-0 set the web view's text zoom. On a tablet the toolbar's
   more button and the site menu are the iPad's, except that Clear site data is off and the
   site menu does not report whether the connection is secure. Settings › Advanced › Browser
-  picks the search engine for addresses that are not URLs.
+  picks the search engine for addresses that are not URLs. A tablet also gets the iPad's
+  address suggestions and recent pages, from a history kept per host and browser profile in
+  `files/ala/browser-history/`.
 - **Files.** Preferences and saved hosts are in `files/ala/`. Images copied from the app go
   through `ZzFileProvider` so other apps can paste them.
 - **Links.** `zz-dev://attach/<session>` (`zz://` for release builds) switches the running app to
