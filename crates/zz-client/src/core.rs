@@ -478,6 +478,27 @@ impl ClientCore {
     }
 
     #[must_use]
+    pub fn set_clipboard_writes(&self) -> bool {
+        self.mux_options
+            .get(zz_protocol::MuxOptionKey::SetClipboard)
+            .is_none_or(|option| option.value != "off")
+    }
+
+    #[must_use]
+    pub fn clipboard_write_lands(
+        &self,
+        producer: ClipboardProducer,
+        target: ClipboardTarget,
+    ) -> bool {
+        match target {
+            ClipboardTarget::Clipboard => true,
+            ClipboardTarget::Primary => {
+                producer == ClipboardProducer::Server && self.set_clipboard_writes()
+            }
+        }
+    }
+
+    #[must_use]
     pub const fn terminal_negotiation(&self) -> Option<&(Vec<String>, Vec<String>, Vec<String>)> {
         self.terminal_negotiation.as_ref()
     }

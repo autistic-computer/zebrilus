@@ -19,8 +19,9 @@ use zz_client::{
     },
     scrollback::RetainedTerminalViewport,
     terminal_view::{
-        PointerGrid, accumulate_scroll, mode_text as terminal_mode_text, pasted_image_number,
-        presented_uri, search_key_action, status_text as terminal_status_text, terminal_shortcut,
+        PointerGrid, accumulate_scroll, mode_text as terminal_mode_text, oversized_paste_warning,
+        pasted_image_number, presented_uri, search_key_action, selection_has_extent,
+        status_text as terminal_status_text, terminal_shortcut,
     },
 };
 use zz_protocol::{InputMessage, PaneId, TerminalUiCommand};
@@ -181,6 +182,7 @@ pub struct TerminalPane {
     image_hover_ready: bool,
     image_hover_task: Option<Task<()>>,
     link_hover_bounds: Option<Bounds<Pixels>>,
+    selection_anchor: Option<PointerCellEvent>,
     selection_pointer: Option<PointerCellEvent>,
     selection_autoscroll_lines: i32,
     selection_autoscroll_task: Option<Task<()>>,
@@ -338,6 +340,7 @@ impl TerminalPane {
             image_hover_ready: false,
             image_hover_task: None,
             link_hover_bounds: None,
+            selection_anchor: None,
             selection_pointer: None,
             selection_autoscroll_lines: 0,
             selection_autoscroll_task: None,
@@ -664,13 +667,7 @@ impl TerminalPane {
                 return;
             }
             Some(ChromeAction::TerminalCopy) => {
-                self.view(
-                    TerminalViewAction::CopySelection {
-                        request_id: 1,
-                        target: zz_terminal::ClipboardTarget::Clipboard,
-                    },
-                    cx,
-                );
+                self.copy_selection(zz_terminal::ClipboardTarget::Clipboard, cx);
                 cx.stop_propagation();
                 return;
             }
@@ -699,6 +696,22 @@ impl TerminalPane {
             }
             _ => {}
         }
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        if self.surface == TerminalSurface::Pane
+            && matches!(input.key, KeyCode::Character('v' | 'V'))
+            && input.modifiers.control()
+            && !input.modifiers.shift()
+            && !input.modifiers.alt()
+            && !input.modifiers.platform()
+            && let Some(image) = ala_platform::mobile::clipboard_image()
+        {
+            self.cancel_local_scroll(cx);
+            self.connection.update(cx, |connection, cx| {
+                connection.upload_image(self.pane, &image, cx);
+            });
+            cx.stop_propagation();
+            return;
+        }
         let raw = cfg!(any(target_os = "ios", target_os = "android"))
             || self
                 .viewport(&self.connection.read(cx).core)
@@ -720,6 +733,16 @@ impl TerminalPane {
             );
             cx.stop_propagation();
         }
+    }
+
+    fn copy_selection(&self, target: zz_terminal::ClipboardTarget, cx: &mut Context<Self>) {
+        self.view(
+            TerminalViewAction::CopySelection {
+                request_id: 1,
+                target,
+            },
+            cx,
+        );
     }
 
     fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1002,6 +1025,7 @@ impl TerminalPane {
             event.click_count,
         );
         self.selection_pointer = self.selection_dragging.then_some(input.cell);
+        self.selection_anchor = self.selection_pointer;
         self.flush_local_scroll(cx);
         self.view(TerminalViewAction::Mouse(input), cx);
         cx.stop_propagation();
@@ -1023,7 +1047,18 @@ impl TerminalPane {
                 mouse_button(event.button),
                 event.click_count,
             );
+            let copies = !self.compact
+                && event.button == MouseButton::Left
+                && self.selection_dragging
+                && (self.selection_autoscroll_lines != 0
+                    || self
+                        .selection_anchor
+                        .zip(self.selection_pointer)
+                        .is_some_and(|(anchor, pointer)| selection_has_extent(anchor, pointer)));
             self.view(TerminalViewAction::Mouse(input), cx);
+            if copies {
+                self.copy_selection(zz_terminal::ClipboardTarget::Primary, cx);
+            }
             if event.button == MouseButton::Left {
                 self.end_drag();
             }
@@ -1222,6 +1257,7 @@ impl TerminalPane {
         self.selection_dragging = false;
         self.scrollbar_dragging = false;
         self.force_local_selection = false;
+        self.selection_anchor = None;
         self.selection_pointer = None;
         self.selection_autoscroll_lines = 0;
         self.selection_autoscroll_task = None;
@@ -2089,6 +2125,14 @@ impl EntityInputHandler for TerminalPane {
         }
         self.reset_cursor_blink(cx);
         let composed = self.marked_text.take().is_some();
+        if !composed
+            && self.search.is_none()
+            && let Some(warning) = oversized_paste_warning(text)
+        {
+            self.connection
+                .update(cx, |connection, cx| connection.notify_warning(warning, cx));
+            return;
+        }
         if !text.is_empty() {
             cx.emit(TerminalTyped);
             self.cancel_local_scroll(cx);

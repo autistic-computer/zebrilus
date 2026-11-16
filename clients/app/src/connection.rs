@@ -399,6 +399,16 @@ impl Connection {
         cx.notify();
     }
 
+    pub fn notify_warning(&mut self, text: String, cx: &mut Context<Self>) {
+        cx.emit(CoreEvent::ClientMessage {
+            pane: None,
+            kind: zz_protocol::ClientMessageKind::Warning,
+            text,
+            duration_ms: None,
+            message_id: None,
+        });
+    }
+
     pub fn upload_image(&mut self, pane: PaneId, image: &ala::Image, cx: &mut Context<Self>) {
         let extension = image.format.extension();
         if zz_protocol::PastedImageFormat::from_extension(extension).is_none()
@@ -1157,7 +1167,12 @@ impl Connection {
                     }
                 }
                 CoreEvent::ClientMessage { text, .. } => self.status.clone_from(text),
-                CoreEvent::Clipboard { text, .. } => {
+                CoreEvent::Clipboard {
+                    producer,
+                    target,
+                    text,
+                    ..
+                } if !text.is_empty() && self.core.clipboard_write_lands(*producer, *target) => {
                     cx.write_to_clipboard(ala::ClipboardItem::new_string(text.clone()));
                 }
                 CoreEvent::OpenUri { pane, uri }

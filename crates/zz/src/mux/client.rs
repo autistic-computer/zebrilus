@@ -2559,14 +2559,6 @@ impl MuxClient {
             .is_some_and(|option| option.value == "on")
     }
 
-    #[must_use]
-    pub(crate) fn set_clipboard_writes(&self) -> bool {
-        self.core
-            .mux_options()
-            .get(MuxOptionKey::SetClipboard)
-            .is_none_or(|option| option.value != "off")
-    }
-
     fn write_clipboard(
         &self,
         pane: PaneId,
@@ -2580,10 +2572,7 @@ impl MuxClient {
         }
         let item = ClipboardItem::new_string(text);
         let empty_field = producer == ClipboardProducer::Server;
-        let lands_in_clipboard = match target {
-            ClipboardTarget::Clipboard => true,
-            ClipboardTarget::Primary => empty_field && self.set_clipboard_writes(),
-        };
+        let lands_in_clipboard = self.core.clipboard_write_lands(producer, target);
         if empty_field
             && lands_in_clipboard
             && let Some(retained) = self.viewports.get(&pane)
@@ -2594,7 +2583,7 @@ impl MuxClient {
         match target {
             ClipboardTarget::Clipboard => cx.write_to_clipboard(item),
             ClipboardTarget::Primary => {
-                if empty_field && self.set_clipboard_writes() {
+                if lands_in_clipboard {
                     cx.write_to_clipboard(item.clone());
                 }
                 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
@@ -6354,7 +6343,7 @@ mod tests {
                 install_fake_connection(mux, HostId::LOCAL);
             });
             assert!(
-                mux.read(cx).set_clipboard_writes(),
+                mux.read(cx).core.set_clipboard_writes(),
                 "the pin's set-clipboard default is external, which writes"
             );
 
@@ -6369,7 +6358,11 @@ mod tests {
                     mux.seed_core(EventPayload::MuxOptionsChanged { options });
                     clipboard_write(mux, ClipboardProducer::Server, 7, value, cx);
                 });
-                assert_eq!(mux.read(cx).set_clipboard_writes(), mirrored, "{value}");
+                assert_eq!(
+                    mux.read(cx).core.set_clipboard_writes(),
+                    mirrored,
+                    "{value}"
+                );
                 let clipboard = cx.read_from_clipboard().and_then(|item| item.text());
                 if mirrored {
                     assert_eq!(

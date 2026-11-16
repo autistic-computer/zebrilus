@@ -26,6 +26,7 @@ use zz_client::{
         LOCAL_SCROLL_DEBOUNCE, LOCAL_SCROLL_TIMEOUT, LocalScrollEffect, LocalScrollState,
         LocalScrollStep, LocalScrollSync, local_scroll_available, scroll_fraction_offset,
     },
+    terminal_view::{oversized_paste_warning, selection_has_extent},
 };
 use zz_protocol::{ClientMessageKind, CommandInvocation, InputMessage, PaneId, TerminalUiCommand};
 use zz_terminal::{
@@ -90,7 +91,6 @@ const SELECTION_AUTOSCROLL_INTERVAL: Duration = Duration::from_millis(33);
 const COPY_FLASH_SELECTION_GRACE: Duration = Duration::from_millis(500);
 const IMAGE_HOVER_DWELL: Duration = Duration::from_millis(250);
 const CURSOR_BLINK_TIMEOUT: Duration = Duration::from_secs(10);
-const MAX_PASTE_BYTES: usize = 4 * 1024 * 1024;
 const TERMINAL_KEY_CONTEXT: &str = "Terminal";
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2018,17 +2018,9 @@ impl TerminalView {
         if self.command_output || text.is_empty() {
             return;
         }
-        if text.len() > MAX_PASTE_BYTES {
+        if let Some(warning) = oversized_paste_warning(&text) {
             self.mux.update(cx, |_, cx| {
-                MuxClient::emit_notification(
-                    ClientMessageKind::Warning,
-                    format!(
-                        "Paste skipped: {} bytes exceeds the {} MiB limit",
-                        text.len(),
-                        MAX_PASTE_BYTES / (1024 * 1024)
-                    ),
-                    cx,
-                );
+                MuxClient::emit_notification(ClientMessageKind::Warning, warning, cx);
             });
             return;
         }
@@ -2666,10 +2658,6 @@ const fn owns_pressed_button(buttons: u8, pressed: Option<MouseButton>) -> bool 
     }
 }
 
-const fn selection_has_extent(anchor: PointerCellEvent, pointer: PointerCellEvent) -> bool {
-    anchor.click_count >= 2 || anchor.column != pointer.column || anchor.row != pointer.row
-}
-
 fn scrollbar_strip_hit(grid: HitGrid, scrollbar: ScrollbarState, position: Point<Pixels>) -> bool {
     zz_ui::terminal::scrollbar_strip_hit(
         grid.surface_bounds,
@@ -3249,35 +3237,6 @@ mod tests {
 
         buttons &= !mouse_button_bit(MouseButton::Left);
         assert!(!owns_pressed_button(buttons, Some(MouseButton::Left)));
-    }
-
-    #[test]
-    fn mouse_selection_needs_another_cell_unless_it_is_a_multi_click() {
-        let anchor = PointerCellEvent {
-            column: 4,
-            row: 2,
-            click_count: 1,
-            rectangle: false,
-        };
-        assert!(!selection_has_extent(anchor, anchor));
-        assert!(selection_has_extent(
-            anchor,
-            PointerCellEvent {
-                column: 5,
-                ..anchor
-            }
-        ));
-        assert!(selection_has_extent(
-            anchor,
-            PointerCellEvent { row: 3, ..anchor }
-        ));
-        assert!(selection_has_extent(
-            PointerCellEvent {
-                click_count: 2,
-                ..anchor
-            },
-            anchor
-        ));
     }
 
     #[test]

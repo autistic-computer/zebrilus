@@ -266,7 +266,10 @@ being composed, hardware keys go to the input method first.
   with the Open URL action. The deprecated native dev app also claims `zz-dev://`; remove
   it if links open the wrong app.
 - Long-press text in a terminal to select it; the system edit menu offers Copy, Paste,
-  and Select All.
+  and Select All. On iPad, letting go of a selection also copies it, as on the desktop,
+  unless the session's `set-clipboard` is `off`.
+- Ctrl-V with an image on the clipboard uploads the image to the pane instead of sending
+  Ctrl-V. Text pastes over 4 MiB are refused with a warning.
 - Drop images onto the workspace to upload them to the focused pane, as with a pasted
   image; dropped text or links paste as text.
 
