@@ -26,9 +26,9 @@ use std::{
 
 use ala::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, Context, Corners, DragMoveEvent, Entity,
-    FocusHandle, Focusable, IntoElement, KeyDownEvent, KeyUpEvent, MouseButton, Pixels, Point,
-    Render, ScrollStrategy, Subscription, UniformListScrollHandle, Window, div, prelude::*, px,
-    uniform_list,
+    FocusHandle, Focusable, IntoElement, KeyDownEvent, KeyUpEvent, Keystroke, Modifiers,
+    ModifiersChangedEvent, MouseButton, Pixels, Point, Render, ScrollStrategy, Subscription, Task,
+    UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use penna::{
     ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Label, Panel,
@@ -153,6 +153,9 @@ pub struct AppShell {
     flat: sidebar::Flat,
     unseen_agents: BTreeSet<PaneId>,
     chrome: ChromeKeymap,
+    window_shortcuts: bool,
+    window_shortcut_timer: Option<Task<()>>,
+    debug_marks: u64,
     prompt: Option<Entity<CommandPaletteView>>,
     prompt_revision: u64,
     chooser_revision: u64,
@@ -180,6 +183,20 @@ pub struct AppShell {
     rendered_drop_preview: Rc<Cell<DropPreviewFrame>>,
     compact: compact::CompactState,
     _subscriptions: Vec<Subscription>,
+}
+
+const WINDOW_SHORTCUT_HINT_DELAY: std::time::Duration = std::time::Duration::from_millis(300);
+
+fn debug_marker_key(keystroke: &Keystroke) -> bool {
+    let modifiers = keystroke.modifiers;
+    let primary = if cfg!(target_os = "ios") {
+        modifiers.platform && !modifiers.control
+    } else if cfg!(target_os = "android") {
+        modifiers.control && !modifiers.platform
+    } else {
+        modifiers.platform != modifiers.control
+    };
+    keystroke.key == "m" && modifiers.shift && !modifiers.alt && !modifiers.function && primary
 }
 
 fn watch_connection(
@@ -348,6 +365,9 @@ impl AppShell {
                     "shift" | "control" | "alt" | "platform" | "function"
                 )
             {
+                if !this.window_shortcuts {
+                    this.window_shortcut_timer = None;
+                }
                 this.key_down(
                     &KeyDownEvent {
                         keystroke: event.keystroke.clone(),
@@ -372,6 +392,9 @@ impl AppShell {
             let active = window.is_window_active();
             for connection in this.host_connections() {
                 connection.update(cx, |connection, cx| connection.set_focused(active, cx));
+            }
+            if !active {
+                this.hide_window_shortcuts(cx);
             }
         });
         let settings_controls = settings::Controls::new(&preferences, window, cx);
@@ -430,6 +453,9 @@ impl AppShell {
             } else {
                 ChromeProfile::Desktop
             }),
+            window_shortcuts: false,
+            window_shortcut_timer: None,
+            debug_marks: 0,
             prompt: None,
             prompt_revision: 1,
             chooser_revision: 1,
@@ -644,6 +670,11 @@ impl AppShell {
             cx.stop_propagation();
             return;
         }
+        if debug_marker_key(&event.keystroke) {
+            self.debug_marker(window, cx);
+            cx.stop_propagation();
+            return;
+        }
         let input = crate::terminal::key_input(event);
         let core = &self.connection.read(cx).core;
         if self.prompt.as_ref().is_some_and(|palette| {
@@ -747,6 +778,7 @@ impl AppShell {
             ChromeKeymap::for_profile(ChromeProfile::DesktopApple).resolve(UI_TABLE, &input)
         });
         match action {
+            Some(ChromeAction::SelectWindow(_)) if Self::narrow(window) => return,
             Some(
                 action @ (ChromeAction::OpenCommandPalette
                 | ChromeAction::OpenSettings
@@ -754,11 +786,83 @@ impl AppShell {
                 | ChromeAction::UiZoomIn
                 | ChromeAction::UiZoomOut
                 | ChromeAction::UiZoomReset
-                | ChromeAction::ClosePane),
+                | ChromeAction::ClosePane
+                | ChromeAction::SelectWindow(_)
+                | ChromeAction::NewSession
+                | ChromeAction::NewWindow
+                | ChromeAction::SplitRight
+                | ChromeAction::SplitDown
+                | ChromeAction::Detach),
             ) => self.chrome_command(action, window, cx),
             _ => return,
         }
         cx.stop_propagation();
+    }
+
+    fn window_shortcut_modifiers(&self) -> Option<Modifiers> {
+        self.window_shortcut_key(0).map(|stroke| stroke.modifiers)
+    }
+
+    fn window_shortcut_key(&self, position: u8) -> Option<Keystroke> {
+        let (key, _) = self
+            .chrome
+            .table_bindings(UI_TABLE)
+            .into_iter()
+            .find(|(_, action)| *action == ChromeAction::SelectWindow(position))?;
+        Some(Keystroke {
+            modifiers: Modifiers {
+                platform: key.command,
+                control: key.control,
+                alt: key.alt,
+                shift: key.shift,
+                function: false,
+            },
+            key: key.base,
+            key_char: None,
+        })
+    }
+
+    fn on_window_shortcut_modifiers(
+        &mut self,
+        event: &ModifiersChangedEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.window_shortcut_modifiers() != Some(event.modifiers) {
+            self.hide_window_shortcuts(cx);
+            return;
+        }
+        if self.window_shortcut_timer.is_some() {
+            return;
+        }
+        self.window_shortcut_timer = Some(cx.spawn_in(window, async move |view, cx| {
+            cx.background_executor()
+                .timer(WINDOW_SHORTCUT_HINT_DELAY)
+                .await;
+            view.update(cx, |view, cx| {
+                view.window_shortcuts = true;
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    fn hide_window_shortcuts(&mut self, cx: &mut Context<Self>) {
+        self.window_shortcut_timer = None;
+        if std::mem::take(&mut self.window_shortcuts) {
+            cx.notify();
+        }
+    }
+
+    fn debug_marker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.debug_marks += 1;
+        let seq = self.debug_marks;
+        log::info!(target: "zz_app::diagnostics::marker", "user_marker seq={seq}");
+        if self.connection.read(cx).connected {
+            self.command("debug-marker", vec![format!("seq={seq}")], cx);
+        }
+        use penna::{WindowExt as _, blocks::notification::Notification};
+        window.push_notification(Notification::info(format!("log marker #{seq}")), cx);
     }
 
     fn chrome_command(
@@ -804,6 +908,12 @@ impl AppShell {
                 }
                 cx.notify();
             }
+            ChromeAction::SelectWindow(position) => self.open_window_shortcut(position, window, cx),
+            ChromeAction::Detach => {
+                if self.connection.read(cx).connected {
+                    self.command("detach-client", Vec::new(), cx);
+                }
+            }
             ChromeAction::NewSession => self.tmux_command("new-session", cx),
             ChromeAction::NewWindow => self.tmux_command("new-window", cx),
             ChromeAction::SplitRight => self.tmux_command("split-window -h", cx),
@@ -835,7 +945,8 @@ impl AppShell {
                     shortcut: bindings
                         .iter()
                         .find(|(table, _, bound)| table == UI_TABLE && *bound == action)
-                        .map(|(_, key, _)| key.clone().into()),
+                        .map(|(_, key, _)| key.clone().into())
+                        .or_else(|| (action == ChromeAction::ClosePane).then(|| "D-w".into())),
                 },
             )
         };
@@ -858,6 +969,8 @@ impl AppShell {
                 ala::MenuItem::separator(),
                 chrome("Close Pane", ChromeAction::ClosePane),
                 tmux("Kill Window", "kill-window"),
+                ala::MenuItem::separator(),
+                chrome("Detach", ChromeAction::Detach),
             ]),
             ala::Menu::new("View").items([
                 chrome("Command Palette…", ChromeAction::OpenCommandPalette),
@@ -1116,6 +1229,7 @@ impl AppShell {
                         .then_some(self.sidebar_selection)
                         .flatten(),
                     ground,
+                    shortcuts: self.window_shortcut_keys(cx),
                 },
                 sidebar::tree_rows(self, cx),
                 &self.sidebar_scroll,
@@ -3361,6 +3475,7 @@ impl Render for AppShell {
         let shell = shell
             .track_focus(&self.focus)
             .on_key_up(cx.listener(Self::key_up))
+            .on_modifiers_changed(cx.listener(Self::on_window_shortcut_modifiers))
             .map(|shell| {
                 #[cfg(target_os = "ios")]
                 let shell = shell.on_action(cx.listener(Self::menu_command));

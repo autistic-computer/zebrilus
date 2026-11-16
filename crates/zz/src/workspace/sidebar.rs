@@ -22,7 +22,9 @@ use penna::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName,
     components::scroll::ScrollableElement as _, rems_from_px,
 };
-use zz_client::{ChromeAction, SIDEBAR_TABLE, UI_TABLE, program::Program};
+use zz_client::{
+    ChromeAction, SIDEBAR_TABLE, UI_TABLE, program::Program, sidebar::WINDOW_SHORTCUTS,
+};
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId, WindowId};
 use zz_ui::navigation::{
     SidebarAction, WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH as TREE_INDENT_WIDTH,
@@ -179,22 +181,17 @@ pub struct WorkspaceSidebar {
     window_shortcuts: bool,
 }
 
-const WINDOW_SHORTCUTS: u8 = 9;
-
-fn shortcut_windows(model: &MuxTreeModel) -> impl Iterator<Item = (HostId, WindowId)> + '_ {
-    model
-        .hosts
-        .iter()
-        .filter(|host| host.connected())
-        .flat_map(|host| {
-            host.sessions.iter().flat_map(move |session| {
-                session
-                    .windows
+fn shortcut_windows(model: &MuxTreeModel) -> Vec<(HostId, WindowId)> {
+    zz_client::sidebar::shortcut_windows(model.hosts.iter().filter(|host| host.connected()).map(
+        |host| {
+            (
+                host.id,
+                host.sessions
                     .iter()
-                    .map(move |window| (host.id, window.id))
-            })
-        })
-        .take(usize::from(WINDOW_SHORTCUTS))
+                    .flat_map(|session| session.windows.iter().map(|window| window.id)),
+            )
+        },
+    ))
 }
 
 impl WorkspaceSidebar {
@@ -244,7 +241,7 @@ impl WorkspaceSidebar {
         if self.flat {
             self.chat_shortcut_targets(cx)
         } else {
-            shortcut_windows(&self.tree_model).collect()
+            shortcut_windows(&self.tree_model)
         }
     }
 
@@ -2701,7 +2698,7 @@ mod tests {
         let local_window = |id| (HostId::LOCAL, WindowId(id));
         let studio_window = |id| (studio, WindowId(id));
         assert_eq!(
-            shortcut_windows(&model).collect::<Vec<_>>(),
+            shortcut_windows(&model),
             [
                 local_window(21),
                 local_window(22),

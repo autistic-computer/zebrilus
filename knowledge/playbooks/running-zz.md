@@ -241,7 +241,8 @@ with the `.ips` report from `~/Library/Logs/DiagnosticReports` . the ring guaran
 When something feels off mid-session, flag it instead of trying to remember the time:
 `cmd-shift-m` (`ctrl-shift-m` on Linux/Windows) stamps `user_marker seq=N` plus a state snapshot
 into both ring logs and confirms with a toast, and `zz debug-marker freeze while agent was busy`
-does the same from any shell. Main-thread freezes need no keypress . an always-on watchdog logs
+does the same from any shell. The iPad (`cmd-shift-m`) and web clients stamp the same marker into
+their own log and the daemon's, without the state snapshot or the stack sample. Main-thread freezes need no keypress . an always-on watchdog logs
 `main_thread_stall` / `main_thread_stall_recovered duration_us=…` for any pause over 500 ms . and
 every prefix-chord key logs its `key_decision` in the daemon log. Query afterwards with
 `rg 'user_marker|main_thread_stall' ~/Library/Logs/zz/zz.*.log*` and read the surrounding lines.

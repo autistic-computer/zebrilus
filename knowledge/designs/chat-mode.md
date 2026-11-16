@@ -53,7 +53,8 @@ every number is `design/mockups/chat-rows/index.html`):
   open, with the track lit; on the pile row, or on the window's nested row while the pile is open
   (`ChatMachine::current`).
 - ⌘ numbers go to chat window rows only, top to bottom across the connected machines
-  (`number_chat_rows`); in chat view the desktop's window shortcut keys open those same rows.
+  (`number_chat_rows`); in chat view the window shortcut keys open those same rows, on the desktop,
+  iPad and web alike (`chat_shortcut_windows`).
 
 Desktop, web and iPad draw this. The HTML client still draws one row per chat window
 (`summarize_chats`). An agent splitting its own window with `zz split-window` needs nothing new:

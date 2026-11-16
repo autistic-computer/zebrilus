@@ -259,8 +259,14 @@ being composed, hardware keys go to the input method first.
   workspace with its own connection. New windows come from the system's window controls.
 - The iPadOS menu bar and the Command-hold shortcut list show the zz, File, and View
   commands with their Command shortcuts: Settings, New Session, New Window, Split Right,
-  Split Down, Close Pane, Kill Window, Command Palette, Choose Window, Toggle Sidebar,
-  Zoom Pane, and UI zoom.
+  Split Down, Close Pane (Command-W), Kill Window, Detach, Command Palette, Choose Window,
+  Toggle Sidebar, Zoom Pane, and UI zoom. Detach leaves the session running and shows the
+  workspace's Attach to session screen.
+- Command-1 through Command-9 open the first nine windows the sidebar lists, across sessions
+  and connected hosts, or the first nine chat rows in the chat view. Holding Command for a moment
+  shows each row's number in the sidebar. The phone layout leaves these keys to the pane.
+- Command-Shift-M stamps `user_marker seq=N` into the app log and the daemon's log and
+  confirms with a toast, so a moment worth reporting can be found later.
 - `zz://attach/<session>` (`zz-dev://` for development builds) switches the frontmost
   window to that session, or attaches to it after the next connect. Shortcuts can open it
   with the Open URL action. The deprecated native dev app also claims `zz-dev://`; remove

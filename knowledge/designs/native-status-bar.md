@@ -52,7 +52,10 @@ Desktop shortcuts Cmd+1–9 on macOS and Ctrl+1–9 on Linux select windows by t
 position in the sidebar's list, across sessions and connected hosts, whether the
 sidebar or titlebar is visible, so with the titlebar showing a number can open a
 window of another session. They ignore missing positions. The `ui` chrome actions `select-window-1` through `select-window-9`
-support rebinding and take priority over pane shortcuts.
+support rebinding and take priority over pane shortcuts. The iPad and web clients take the same
+keys from their sidebar's list (Cmd on iPad, Ctrl on the web, where the browser keeps Cmd+1–9 and
+on Linux and Windows also Ctrl+1–9 for its tabs) and show the numbers while the modifier is held;
+the phone layout leaves them to the pane.
 
 Window pills sit in one strip (penna's `TabStrip`, the `tab.strip` role: a wash with no edge, 2px inside and 2px between pills, its corner the pills' corner plus 2px so the open pill's glass sits concentric in it; with glass off the open pill takes a hairline edge in place of the rim; a single window shows its pill alone, with no strip). The pills are 28px high, so the strip is 32px, vertically centered inside the titlebar, a pane header tall (34px) plus one pane margin (`Theme::title_bar_over_panes_height()`), 40px at the default margin, leaving 4px above it and 4px down to the panes, since the panes' own top margin finishes the gap. The pills
 start at 240px wide regardless of the title and shrink together only when the window strip runs
