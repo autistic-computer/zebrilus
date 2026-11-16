@@ -21,7 +21,10 @@ use std::{
     cell::{Cell, RefCell},
     collections::{BTreeSet, HashMap},
     rc::Rc,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use ala::{
@@ -155,7 +158,6 @@ pub struct AppShell {
     chrome: ChromeKeymap,
     window_shortcuts: bool,
     window_shortcut_timer: Option<Task<()>>,
-    debug_marks: u64,
     prompt: Option<Entity<CommandPaletteView>>,
     prompt_revision: u64,
     chooser_revision: u64,
@@ -186,6 +188,8 @@ pub struct AppShell {
 }
 
 const WINDOW_SHORTCUT_HINT_DELAY: std::time::Duration = std::time::Duration::from_millis(300);
+
+static DEBUG_MARK_SEQ: AtomicU64 = AtomicU64::new(0);
 
 fn debug_marker_key(keystroke: &Keystroke) -> bool {
     let modifiers = keystroke.modifiers;
@@ -455,7 +459,6 @@ impl AppShell {
             }),
             window_shortcuts: false,
             window_shortcut_timer: None,
-            debug_marks: 0,
             prompt: None,
             prompt_revision: 1,
             chooser_revision: 1,
@@ -775,10 +778,19 @@ impl AppShell {
             return;
         }
         let action = self.chrome.resolve(UI_TABLE, &input).or_else(|| {
-            ChromeKeymap::for_profile(ChromeProfile::DesktopApple).resolve(UI_TABLE, &input)
+            ChromeKeymap::for_profile(ChromeProfile::DesktopApple)
+                .resolve(UI_TABLE, &input)
+                .filter(|action| !matches!(action, ChromeAction::SelectWindow(_)))
         });
         match action {
-            Some(ChromeAction::SelectWindow(_)) if Self::narrow(window) => return,
+            Some(
+                ChromeAction::SelectWindow(_)
+                | ChromeAction::NewSession
+                | ChromeAction::NewWindow
+                | ChromeAction::SplitRight
+                | ChromeAction::SplitDown
+                | ChromeAction::Detach,
+            ) if Self::narrow(window) => return,
             Some(
                 action @ (ChromeAction::OpenCommandPalette
                 | ChromeAction::OpenSettings
@@ -828,7 +840,7 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.window_shortcut_modifiers() != Some(event.modifiers) {
+        if Self::narrow(window) || self.window_shortcut_modifiers() != Some(event.modifiers) {
             self.hide_window_shortcuts(cx);
             return;
         }
@@ -855,8 +867,7 @@ impl AppShell {
     }
 
     fn debug_marker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.debug_marks += 1;
-        let seq = self.debug_marks;
+        let seq = DEBUG_MARK_SEQ.fetch_add(1, Ordering::Relaxed) + 1;
         log::info!(target: "zz_app::diagnostics::marker", "user_marker seq={seq}");
         if self.connection.read(cx).connected {
             self.command("debug-marker", vec![format!("seq={seq}")], cx);
