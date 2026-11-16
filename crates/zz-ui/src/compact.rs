@@ -13,7 +13,7 @@ pub use faces::{
     LEAD_FACE, PILL_GLYPH, TRAIL_FACE, attention_dot, lead_face, machine_face, mark_dot, pill_face,
     trailing_faces, trailing_split,
 };
-pub use machines::{FoundMachine, found_detail, found_machines, host_state};
+pub use machines::{FoundMachine, found_detail, found_icon, found_machines, host_state};
 pub use menus::{
     ADDRESS, ALL_BINDINGS, ALL_MACHINES, BACK, BrowserMenu, CLOSE_PANE, FIND, FORWARD, MachineMenu,
     NEW_BROWSER, NEW_CHAT, NEW_SESSION, NEW_TERMINAL, OPEN_ON_PHONE, OVERVIEW, PICK_ELEMENT,

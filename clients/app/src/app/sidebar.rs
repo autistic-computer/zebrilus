@@ -781,6 +781,13 @@ fn connect(
     window: &mut Window,
     cx: &mut Context<AppShell>,
 ) {
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    if let Some(connection) = page.connection.as_ref().filter(|connection| {
+        connection.read(cx).install_offer() == Some(zz_daemon_client::InstallOffer::Install)
+    }) {
+        connection.update(cx, Connection::install_zz);
+        return;
+    }
     if let Some(endpoint) = page.endpoint {
         view.connect_host(endpoint, window, cx);
     }
@@ -1147,15 +1154,39 @@ fn render_row(
         .as_ref()
         .filter(|_| !disabled)
         .and_then(|connection| rename_command(connection.read(cx).core.snapshot(), target));
+    let mut items = Vec::new();
     if let Some((label, _)) = rename {
         let view = runtime.view.clone();
-        tree_row_menu(
-            row,
-            vec![TreeRowMenuItem::new(label, move |window, cx| {
-                view.update(cx, |view, cx| view.rename_on(host, target, window, cx));
-            })],
-        )
-    } else {
-        row.into_any_element()
+        items.push(TreeRowMenuItem::new(label, move |window, cx| {
+            view.update(cx, |view, cx| view.rename_on(host, target, window, cx));
+        }));
     }
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    if is_host {
+        items.extend(host_menu(entry, &runtime.view, cx));
+    }
+    tree_row_menu(row, items)
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+fn host_menu(entry: &Row, view: &Entity<AppShell>, cx: &App) -> Vec<TreeRowMenuItem> {
+    let mut items = Vec::new();
+    if let Some(connection) = &entry.connection
+        && let Some(offer) = connection.read(cx).install_offer()
+    {
+        let connection = connection.clone();
+        items.push(TreeRowMenuItem::new(offer.label(), move |window, cx| {
+            super::hosts::install_zz(connection.clone(), window, cx);
+        }));
+    }
+    let view = view.clone();
+    let host = entry.host;
+    items.push(TreeRowMenuItem::new("Remove host", move |window, cx| {
+        view.update(cx, |view, cx| {
+            if let Some(endpoint) = view.host_page(host, cx).and_then(|page| page.endpoint) {
+                view.remove_host(&endpoint, window, cx);
+            }
+        });
+    }));
+    items
 }

@@ -479,13 +479,13 @@ impl AppShell {
     ) -> SettingsScrollColumn {
         let entries = self.host_entries(narrow, cx);
         #[cfg(any(target_os = "ios", target_os = "android"))]
-        let add = Some(if narrow {
-            self.add_host_row(cx)
+        let (found, add) = if narrow {
+            (None, Some(self.add_host_row(cx)))
         } else {
-            self.add_host_stack(narrow, cx)
-        });
+            (self.found_stack(cx), Some(self.add_host_stack(narrow, cx)))
+        };
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        let add: Option<SettingsStack> = None;
+        let (found, add): (Option<SettingsStack>, Option<SettingsStack>) = (None, None);
         let hosts = if narrow {
             SettingsStack::new()
         } else {
@@ -496,7 +496,34 @@ impl AppShell {
             .when(!entries.is_empty(), |page| {
                 page.child(hosts.children(entries))
             })
+            .children(found)
             .children(add)
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn found_stack(&self, cx: &mut Context<Self>) -> Option<SettingsStack> {
+        let found = self.found_machines(cx);
+        if found.is_empty() {
+            return None;
+        }
+        let entries = found.into_iter().enumerate().map(|(index, host)| {
+            let endpoint = host.endpoint;
+            let machine = host.machine;
+            SettingEntry::new(machine.name.clone())
+                .description(zz_ui::compact::found_detail(&machine))
+                .title_icon(Icon::new(zz_ui::compact::found_icon(&machine)))
+                .control(
+                    Button::new(("hosts-found-add", index))
+                        .label("Add")
+                        .on(settings_card_ground(cx))
+                        .disabled(!machine.runs_zz)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.hosts.saved.add(&endpoint);
+                            this.connect_host(endpoint.clone(), window, cx);
+                        })),
+                )
+        });
+        Some(SettingsStack::titled("On your tailnet").children(entries))
     }
 
     pub(super) fn remember_host(&mut self, cx: &mut Context<Self>) {
@@ -523,15 +550,12 @@ impl AppShell {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn add_host(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let value = self.hosts.destination.read(cx).value().to_string();
-        match parsed_endpoint(&value) {
-            Ok(endpoint) => {
+        match self.add_destination(&value, window, cx) {
+            Ok(()) => {
                 self.hosts.error = None;
                 self.hosts
                     .destination
                     .update(cx, |input, cx| input.set_value("", window, cx));
-                self.hosts.saved.add(&endpoint);
-                self.connect_host(endpoint, window, cx);
-                super::settings::finish_field(window, cx);
                 cx.notify();
                 true
             }
@@ -541,6 +565,63 @@ impl AppShell {
                 false
             }
         }
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn add_destination(
+        &mut self,
+        value: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let endpoint = parsed_endpoint(value)?;
+        self.hosts.saved.add(&endpoint);
+        self.connect_host(endpoint, window, cx);
+        super::settings::finish_field(window, cx);
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    pub(super) fn open_add_host_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use penna::WindowExt as _;
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder("user@host"));
+        let error = cx.new(|_| None::<SharedString>);
+        let view = cx.entity().downgrade();
+        let field = input.clone();
+        window.open_dialog(cx, move |dialog, _, cx| {
+            let shown = error.read(cx).clone();
+            let (value, error, view) = (field.clone(), error.clone(), view.clone());
+            zz_ui::dialogs::add_host_prompt_dialog(dialog, &field, shown, cx).on_ok(
+                move |_, window, cx| {
+                    let typed = value.read(cx).value().to_string();
+                    let failed = view
+                        .update(cx, |this, cx| this.add_destination(&typed, window, cx))
+                        .ok()
+                        .and_then(Result::err);
+                    let done = failed.is_none();
+                    error.update(cx, |error, _| *error = failed.map(Into::into));
+                    window.refresh();
+                    done
+                },
+            )
+        });
+        cx.on_next_frame(window, move |_, window, cx| {
+            input.update(cx, |input, cx| input.focus(window, cx));
+            window.request_virtual_keyboard();
+        });
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    pub(super) fn remove_host(
+        &mut self,
+        endpoint: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.disconnect_host(endpoint, window, cx);
+        self.hosts.saved.remove(endpoint);
+        self.hosts.saved.save();
+        cx.notify();
     }
 
     fn host_entries(&self, narrow: bool, cx: &mut Context<Self>) -> Vec<SettingEntry> {
@@ -668,10 +749,7 @@ impl AppShell {
                             .tooltip("Remove host")
                             .on(settings_card_ground(cx))
                             .on_click(cx.listener(move |this, _, window, cx| {
-                                this.disconnect_host(&removed, window, cx);
-                                this.hosts.saved.remove(&removed);
-                                this.hosts.saved.save();
-                                cx.notify();
+                                this.remove_host(&removed, window, cx);
                             })),
                     )
                 };
@@ -920,11 +998,8 @@ impl AppShell {
             .icon(IconName::Xmark)
             .danger()
             .on_click(cx.listener(move |this, _, window, cx| {
-                this.disconnect_host(&target, window, cx);
-                this.hosts.saved.remove(&target);
-                this.hosts.saved.save();
+                this.remove_host(&target, window, cx);
                 close_sheet(HOST_SHEET, cx);
-                cx.notify();
             }));
         let close =
             sheet_close("host-sheet-close", cx).on_click(|_, _, cx| close_sheet(HOST_SHEET, cx));

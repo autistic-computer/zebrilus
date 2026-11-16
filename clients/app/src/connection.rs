@@ -533,6 +533,37 @@ impl Connection {
     }
 
     #[must_use]
+    pub fn palette_state(&self) -> zz_ui::command::PaletteHostState {
+        use zz_ui::command::PaletteHostState as State;
+        if self.connected {
+            return State::Connected {
+                sessions: self.core.snapshot().sessions.len(),
+            };
+        }
+        if self.installing() {
+            return State::Installing;
+        }
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        {
+            use zz_daemon_client::HostFailure;
+            match self.failure {
+                Some(HostFailure::Missing) => return State::Missing,
+                Some(
+                    HostFailure::Incompatible { .. }
+                    | HostFailure::DaemonTooOld { .. }
+                    | HostFailure::ClientTooOld { .. },
+                ) => return State::Incompatible,
+                _ => {}
+            }
+        }
+        match (self.busy(), self.resume) {
+            (false, _) => State::Offline,
+            (true, true) => State::Reconnecting,
+            (true, false) => State::Connecting,
+        }
+    }
+
+    #[must_use]
     pub fn installing(&self) -> bool {
         #[cfg(any(target_os = "ios", target_os = "android"))]
         {

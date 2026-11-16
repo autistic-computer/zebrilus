@@ -1204,17 +1204,25 @@ impl AppShell {
         ground: Ground,
         cx: &Context<Self>,
     ) -> ala::Stateful<ala::Div> {
-        workspace_sidebar_action(action, ground, cx).on_click(cx.listener(move |this, _, _, cx| {
-            match action {
-                SidebarAction::NewChat => sidebar::new_chat(this, cx),
-                SidebarAction::AddHost => this.settings = Some(SettingsSection::Hosts),
-                SidebarAction::Settings => this.settings = Some(SettingsSection::Appearance),
-            }
-            if action != SidebarAction::NewChat {
-                this.focused_pane = None;
-            }
-            cx.notify();
-        }))
+        workspace_sidebar_action(action, ground, cx).on_click(cx.listener(
+            move |this, _, window, cx| {
+                match action {
+                    SidebarAction::NewChat => sidebar::new_chat(this, cx),
+                    #[cfg(any(target_os = "ios", target_os = "android"))]
+                    SidebarAction::AddHost => this.open_add_host_dialog(window, cx),
+                    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+                    SidebarAction::AddHost => {
+                        let _ = window;
+                        this.settings = Some(SettingsSection::Hosts);
+                    }
+                    SidebarAction::Settings => this.settings = Some(SettingsSection::Appearance),
+                }
+                if action != SidebarAction::NewChat {
+                    this.focused_pane = None;
+                }
+                cx.notify();
+            },
+        ))
     }
 
     fn with_sidebar_actions(

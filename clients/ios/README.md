@@ -159,7 +159,9 @@ is **zz dev**, and build products live in `target/ios/ZZ Dev.app`.
 The tree shows the connected host, its sessions, windows, and panes. Tap a marker to expand or
 collapse it, or a row to select it. Arrow keys navigate the tree; Enter selects
 the highlighted row. The plus buttons create sessions and windows. Long-press a
-row or window pill to open its rename and close menu. Swipe to scroll. The top sidebar button hides the sidebar and remains available to reopen
+row or window pill to open its rename and close menu; on a host row that menu has Remove host, and
+Install zz or Update zz when the host offers it. Add host in the sidebar opens a dialog for the
+destination and connects the host it names. Swipe to scroll. The top sidebar button hides the sidebar and remains available to reopen
 it. The gear opens Settings; Command-comma also toggles Settings. The search button
 opens the command palette without a hardware keyboard.
 
@@ -176,7 +178,10 @@ successful connection moves its host to the top. `ZZ_ALA_ENDPOINT` (or `ZZ_SOCKE
 for that launch only, and opening a `zz://attach/<session>` link connects to the most recent host.
 A `zz://host/<machine>:<port>` link (the QR code in desktop Settings › Hosts) adds that tailnet
 machine and connects it. Every connected host is asked for the other machines on your tailnet; they
-are listed under On your tailnet on Machines and in Add machine, where a tap saves and connects one.
+are listed under On your tailnet on Machines and in Add machine, where a tap saves and connects one;
+on iPad they sit above Add host on Settings › Hosts and the connection screen, each with an Add
+button. In the command palette a host row says when it is reconnecting, installing zz, missing zz
+(Return installs it) or speaks an incompatible version.
 SSH endpoints show host-key confirmation and authentication dialogs. The terminal example shares
 the native transport, key translation, and UIKit backend.
 

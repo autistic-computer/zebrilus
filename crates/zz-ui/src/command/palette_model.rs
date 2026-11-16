@@ -154,6 +154,43 @@ impl PaletteTreeHost {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PaletteHostState {
+    Connected { sessions: usize },
+    Connecting,
+    Reconnecting,
+    Incompatible,
+    Missing,
+    Installing,
+    Offline,
+}
+
+impl PaletteHostState {
+    #[must_use]
+    pub fn right(self) -> String {
+        match self {
+            Self::Connected { sessions } => {
+                format!("{sessions} session{}", if sessions == 1 { "" } else { "s" })
+            }
+            Self::Connecting => "connecting…".to_owned(),
+            Self::Reconnecting => "reconnecting…".to_owned(),
+            Self::Incompatible => "incompatible version".to_owned(),
+            Self::Missing => "zz not installed · ↵ to install".to_owned(),
+            Self::Installing => "installing zz…".to_owned(),
+            Self::Offline => "offline · ↵ to connect".to_owned(),
+        }
+    }
+
+    #[must_use]
+    pub const fn status(self) -> PaletteStatus {
+        match self {
+            Self::Connected { .. } => PaletteStatus::Online,
+            Self::Connecting | Self::Reconnecting | Self::Installing => PaletteStatus::Waiting,
+            Self::Incompatible | Self::Missing | Self::Offline => PaletteStatus::Offline,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PaletteTreeSession {
     pub id: SessionId,

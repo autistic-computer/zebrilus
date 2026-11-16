@@ -2,7 +2,6 @@ use std::{rc::Rc, sync::Arc};
 
 use ala::{App, Entity, KeyDownEvent, SharedString, Subscription};
 use penna::IconName;
-use penna::blocks::palette::PaletteStatus;
 use zz_client::{
     completion::PaneKindAvailability, gui_actions::GuiOffer, place::ActionKind, recents::Recents,
 };
@@ -11,9 +10,9 @@ use zz_protocol::{
 };
 use zz_ui::{
     command::{
-        GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
-        PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
-        PaletteTreeWindow, palette_chats,
+        GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteHostState,
+        PaletteSettings, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
+        PaletteTreeSession, PaletteTreeWindow, palette_chats,
     },
     files::{FilesAction, ListingSink, ListingUpdate, listing_pane},
     target::TargetPicker,
@@ -168,26 +167,8 @@ impl PaletteBackend for MuxPalette {
                     id: host.id.into(),
                     name: host_name(host.id, &host.name),
                     detail: host_detail(host, cx),
-                    right: match host.state {
-                        HostState::Connected => format!(
-                            "{} session{}",
-                            host.sessions.len(),
-                            if host.sessions.len() == 1 { "" } else { "s" }
-                        ),
-                        HostState::Connecting => "connecting…".to_owned(),
-                        HostState::Reconnecting { .. } => "reconnecting…".to_owned(),
-                        HostState::Incompatible { .. } => "incompatible version".to_owned(),
-                        HostState::Missing => "zz not installed · ↵ to install".to_owned(),
-                        HostState::Installing => "installing zz…".to_owned(),
-                        _ => "offline · ↵ to connect".to_owned(),
-                    },
-                    status: match host.state {
-                        HostState::Connected => PaletteStatus::Online,
-                        HostState::Connecting
-                        | HostState::Reconnecting { .. }
-                        | HostState::Installing => PaletteStatus::Waiting,
-                        _ => PaletteStatus::Offline,
-                    },
+                    right: palette_state(host).right(),
+                    status: palette_state(host).status(),
                     sessions: host
                         .sessions
                         .iter()
@@ -440,6 +421,20 @@ impl PaletteBackend for MuxPalette {
         if let Some(text) = text {
             mux.paste_to_pane(pane, text);
         }
+    }
+}
+
+fn palette_state(host: &MuxTreeHost) -> PaletteHostState {
+    match host.state {
+        HostState::Connected => PaletteHostState::Connected {
+            sessions: host.sessions.len(),
+        },
+        HostState::Connecting => PaletteHostState::Connecting,
+        HostState::Reconnecting { .. } => PaletteHostState::Reconnecting,
+        HostState::Incompatible { .. } => PaletteHostState::Incompatible,
+        HostState::Missing => PaletteHostState::Missing,
+        HostState::Installing => PaletteHostState::Installing,
+        _ => PaletteHostState::Offline,
     }
 }
 

@@ -8,7 +8,6 @@ use std::{
 };
 
 use ala::{App, Entity, KeyDownEvent, SharedString, Subscription};
-use penna::blocks::palette::PaletteStatus;
 use penna::{ActiveTheme as _, IconName};
 use zz_client::completion::PaneKindAvailability;
 use zz_client::navigation::{ordered_panes, pane_index, pane_label, session_label};
@@ -23,9 +22,9 @@ use zz_protocol::{
 use zz_terminal::TerminalViewAction;
 use zz_ui::{
     command::{
-        GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
-        PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
-        PaletteTreeWindow, palette_chats,
+        GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteHostState,
+        PaletteSettings, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
+        PaletteTreeSession, PaletteTreeWindow, palette_chats,
     },
     files::{FilesAction, ListingSink, ListingUpdate, listing_pane},
 };
@@ -479,33 +478,18 @@ fn tree_host(page: &HostPage, here: bool, cx: &App) -> PaletteTreeHost {
             })
             .collect()
     });
-    let connecting = connection.is_none()
-        && page
-            .connection
-            .as_ref()
-            .is_some_and(|connection| connection.read(cx).status == "Connecting…");
+    let state = page
+        .connection
+        .as_ref()
+        .map_or(PaletteHostState::Offline, |connection| {
+            connection.read(cx).palette_state()
+        });
     PaletteTreeHost {
         id: page.id,
         name: host_name(page),
         detail: "Daemon host".to_owned(),
-        right: if connection.is_some() {
-            format!(
-                "{} session{}",
-                sessions.len(),
-                if sessions.len() == 1 { "" } else { "s" }
-            )
-        } else if connecting {
-            "connecting…".to_owned()
-        } else {
-            "offline · ↵ to connect".to_owned()
-        },
-        status: if connection.is_some() {
-            PaletteStatus::Online
-        } else if connecting {
-            PaletteStatus::Waiting
-        } else {
-            PaletteStatus::Offline
-        },
+        right: state.right(),
+        status: state.status(),
         sessions,
     }
 }
