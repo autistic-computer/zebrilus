@@ -12,7 +12,17 @@ pub fn ring(cx: &mut App) {
 #[cfg(target_os = "ios")]
 #[allow(unsafe_code)]
 mod ios {
+    use std::{
+        cell::Cell,
+        time::{Duration, Instant},
+    };
+
     const BEEP: u32 = 1052;
+    const QUIET: Duration = Duration::from_millis(200);
+
+    thread_local! {
+        static LAST: Cell<Option<Instant>> = const { Cell::new(None) };
+    }
 
     #[link(name = "AudioToolbox", kind = "framework")]
     unsafe extern "C" {
@@ -20,6 +30,14 @@ mod ios {
     }
 
     pub(super) fn ring() {
+        let now = Instant::now();
+        if LAST
+            .get()
+            .is_some_and(|last| now.duration_since(last) < QUIET)
+        {
+            return;
+        }
+        LAST.set(Some(now));
         unsafe { AudioServicesPlayAlertSound(BEEP) };
     }
 }

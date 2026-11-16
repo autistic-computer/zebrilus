@@ -275,7 +275,8 @@ being composed, hardware keys go to the input method first.
   (on the pinch's 5% grid, between 50% and 300%), so every terminal changes and the size is
   saved.
 - A terminal bell plays the system alert sound, which vibrates instead on an iPhone in silent
-  mode. The host's `bell-action` and `visual-bell` options decide which bells ring.
+  mode. Bells within 200 ms of the last sound are dropped. The host's `bell-action` and
+  `visual-bell` options decide which bells ring.
 - The cursor stops blinking after 10 seconds without input and while its pane is off screen,
   as on the desktop.
 - Drop images onto the workspace to upload them to the focused pane, as with a pasted

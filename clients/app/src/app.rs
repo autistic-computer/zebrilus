@@ -182,6 +182,22 @@ pub struct AppShell {
     _subscriptions: Vec<Subscription>,
 }
 
+fn watch_font_steps(
+    terminal: &Entity<TerminalPane>,
+    window: &mut Window,
+    cx: &mut Context<AppShell>,
+) {
+    cx.subscribe_in(
+        terminal,
+        window,
+        |this, _, step: &crate::terminal::TerminalFontStep, window, cx| {
+            this.preferences
+                .step_terminal_font_scale(step.0, &this.connection, window, cx);
+        },
+    )
+    .detach();
+}
+
 fn watch_connection(
     connection: &Entity<Connection>,
     window: &mut Window,
@@ -1350,19 +1366,7 @@ impl AppShell {
                     },
                 )
                 .detach();
-                cx.subscribe_in(
-                    &terminal,
-                    window,
-                    |this, _, step: &crate::terminal::TerminalFontStep, window, cx| {
-                        this.preferences.step_terminal_font_scale(
-                            step.0,
-                            &this.connection,
-                            window,
-                            cx,
-                        );
-                    },
-                )
-                .detach();
+                watch_font_steps(&terminal, window, cx);
                 terminal
             })
             .clone()
@@ -1388,6 +1392,7 @@ impl AppShell {
         {
             let connection = self.connection.clone();
             let terminal = cx.new(|cx| TerminalPane::new_command_output(pane, connection, cx));
+            watch_font_steps(&terminal, window, cx);
             terminal.read(cx).focus_handle(cx).focus(window, cx);
             self.output_terminal = Some((id, terminal));
         }
