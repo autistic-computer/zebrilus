@@ -195,6 +195,7 @@ impl AppShell {
     fn reset_host_state(&mut self) {
         self.terminals.clear();
         self.agents.clear();
+        self.editors.clear();
         #[cfg(any(target_os = "ios", target_os = "android"))]
         self.browsers.clear();
         self.pickers.clear();

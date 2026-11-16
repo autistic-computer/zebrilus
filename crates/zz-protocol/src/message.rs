@@ -67,6 +67,7 @@ pub const MAX_BROWSER_SCREENSHOT_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_BROWSER_SCREENSHOT_CHUNK_BYTES: usize = 256 * 1024;
 pub const MAX_FILE_EDIT_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_FILE_EDIT_ERROR_BYTES: usize = 4096;
+pub const MAX_FILE_WRITE_CHUNK_BYTES: usize = 256 * 1024;
 pub const MAX_STARTUP_CONFIG_CAUSES: usize = 1024;
 pub const MAX_STARTUP_CONFIG_CAUSE_BYTES: usize = 64 * 1024;
 pub const MAX_STARTUP_CONFIG_CAUSES_BYTES: usize = 1024 * 1024;
@@ -3929,8 +3930,13 @@ pub enum ProtocolMessage {
         pane: PaneId,
         #[serde(deserialize_with = "deserialize_file_edit_path")]
         path: String,
-        #[serde(deserialize_with = "deserialize_file_edit_text")]
-        text: String,
+        offset: u64,
+        last: bool,
+        #[serde(
+            serialize_with = "serde_bytes::serialize",
+            deserialize_with = "deserialize_file_write_chunk"
+        )]
+        bytes: Vec<u8>,
     },
     FileWriteResponse {
         request_id: u64,
@@ -4039,11 +4045,18 @@ where
     deserialize_bounded_text(deserializer, crate::MAX_EDITOR_PATH_BYTES)
 }
 
-fn deserialize_file_edit_text<'de, D>(deserializer: D) -> Result<String, D::Error>
+fn deserialize_file_write_chunk<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    deserialize_bounded_text(deserializer, MAX_FILE_EDIT_BYTES)
+    let bytes: Vec<u8> = serde_bytes::deserialize(deserializer)?;
+    if bytes.len() > MAX_FILE_WRITE_CHUNK_BYTES {
+        return Err(D::Error::invalid_length(
+            bytes.len(),
+            &"a file write chunk within the wire byte limit",
+        ));
+    }
+    Ok(bytes)
 }
 
 fn bounded_file_edit_error<E: serde::de::Error>(error: &str) -> Result<(), E> {

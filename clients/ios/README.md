@@ -205,10 +205,13 @@ the native transport, key translation, and UIKit backend.
 - Editor panes open, edit and save the host's files through the daemon (`file-edit-v1`),
   up to 2 MiB of UTF-8 text. The folder button in the pane's header, or Command-O,
   opens the palette's file list on the file's folder, and picking a file opens it in
-  that pane; a check button, or Command-S, saves once there are changes. A pane with
-  no file shows an Open a file button. Line numbers and soft wrap are on, vim mode is
-  off, and there is no Save As. A daemon from before `file-edit-v1` keeps the
-  placeholder. Editor does not appear in the new-pane picker.
+  that pane; a check button, or Command-S, saves once there are changes. The editor is
+  empty and read-only until the file arrives, and saving is refused until it has, so a
+  file that fails to open is never overwritten. A connection that drops before the host
+  answers shows the error with Try again; the pane stays while the iPad reconnects.
+  A pane with no file shows an Open a file button. Line numbers and soft wrap are on,
+  vim mode is off, and there is no Save As. A daemon from before `file-edit-v1` keeps
+  the placeholder. Editor does not appear in the new-pane picker.
 
 Command-P, Command-K, or the search button opens the palette that desktop and web also use. Use `:` for commands,
 `@` for windows, `%` for panes, and `~` for the connected host. Opening it closes

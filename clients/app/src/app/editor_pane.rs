@@ -1,7 +1,6 @@
 use std::{
     path::{Path, PathBuf},
     rc::Rc,
-    sync::Arc,
 };
 
 use ala::{
@@ -15,10 +14,7 @@ use penna::{
 };
 use zz_client::{
     CoreEvent,
-    editor::{
-        SyncAction, descriptor_sync_action, editor_title, language_for_path,
-        validated_descriptor_path,
-    },
+    editor::{EditorDocument, Publish, Restore, Retry, language_for_path},
 };
 use zz_protocol::{EditorDescriptor, PaneId, ProtocolMessage};
 use zz_ui::{
@@ -32,6 +28,7 @@ pub(crate) const EDITOR_OPEN: &str = "editor-open";
 pub(crate) const EDITOR_SAVE: &str = "editor-save";
 const EDITOR_KEY_CONTEXT: &str = "Editor";
 const EDITOR_FONT_SIZE: f32 = 13.0;
+const CONNECTION_LOST: &str = "The connection to the host dropped before it answered";
 
 ala::actions!(thin_editor, [OpenFile, SaveFile]);
 
@@ -49,42 +46,33 @@ pub(crate) fn init(cx: &mut App) {
 
 pub(crate) type OpenHandler = Rc<dyn Fn(PaneId, String, &mut Window, &mut App)>;
 
-#[derive(Clone)]
-enum Retry {
-    Open(PathBuf),
-    Save(PathBuf),
-}
-
-#[derive(Clone)]
-struct EditorError {
-    message: Arc<str>,
-    retry: Retry,
-}
-
 enum Request {
     Read {
         id: u64,
+        epoch: u64,
         path: PathBuf,
     },
     Write {
         id: u64,
+        epoch: u64,
         path: PathBuf,
         text: String,
     },
+}
+
+impl Request {
+    const fn epoch(&self) -> u64 {
+        match self {
+            Self::Read { epoch, .. } | Self::Write { epoch, .. } => *epoch,
+        }
+    }
 }
 
 pub(crate) struct EditorPane {
     pane: PaneId,
     connection: Entity<Connection>,
     editor: Entity<CodeEditorState>,
-    cwd: PathBuf,
-    path: Option<PathBuf>,
-    pending_path: Option<String>,
-    snapshot_path: Option<String>,
-    saved_contents: String,
-    dirty: bool,
-    last_title: String,
-    error: Option<EditorError>,
+    document: EditorDocument,
     request: Option<Request>,
     on_open: Option<OpenHandler>,
     _subscriptions: Vec<Subscription>,
@@ -94,6 +82,7 @@ impl EditorPane {
     pub(crate) fn new(
         pane: PaneId,
         descriptor: &EditorDescriptor,
+        title: &str,
         connection: Entity<Connection>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -109,7 +98,12 @@ impl EditorPane {
         let changes = cx.subscribe(&editor, |pane, editor, event: &CodeEditorEvent, cx| {
             if matches!(event, CodeEditorEvent::Change) {
                 let contents = editor.read(cx).value();
-                pane.on_buffer_changed(contents.as_ref(), cx);
+                let dirty = pane.document.is_dirty();
+                let title = pane.document.buffer_changed(contents.as_ref());
+                pane.publish(Publish { path: None, title }, cx);
+                if dirty != pane.document.is_dirty() {
+                    cx.notify();
+                }
             }
         });
         let answers = cx.subscribe_in(
@@ -121,23 +115,22 @@ impl EditorPane {
                 }
             },
         );
+        let epochs = cx.observe(&connection, |pane, connection, cx| {
+            let epoch = connection.read(cx).epoch();
+            pane.drop_stale_request(epoch, cx);
+        });
+        let mut document = EditorDocument::new(descriptor, title);
+        let restore = document.restore(descriptor);
         let mut pane = Self {
             pane,
             connection,
             editor,
-            cwd: PathBuf::from(&descriptor.cwd),
-            path: None,
-            pending_path: None,
-            snapshot_path: descriptor.path.clone(),
-            saved_contents: String::new(),
-            dirty: false,
-            last_title: String::new(),
-            error: None,
+            document,
             request: None,
             on_open: None,
-            _subscriptions: vec![changes, answers],
+            _subscriptions: vec![changes, answers, epochs],
         };
-        pane.restore_descriptor(descriptor, window, cx);
+        pane.apply_restore(restore, window, cx);
         pane
     }
 
@@ -160,7 +153,8 @@ impl EditorPane {
             icon: penna::IconName::Folder,
             label: "Open a file",
         }];
-        if self.dirty && self.path.is_some() {
+        if self.document.is_dirty() && self.document.path().is_some() && self.document.holds_file()
+        {
             buttons.push(PaneKindButton {
                 key: EDITOR_SAVE,
                 icon: penna::IconName::Check,
@@ -181,74 +175,73 @@ impl EditorPane {
     pub(crate) fn synchronize(
         &mut self,
         descriptor: &EditorDescriptor,
+        title: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.cwd = PathBuf::from(&descriptor.cwd);
-        self.snapshot_path.clone_from(&descriptor.path);
-        match descriptor_sync_action(
-            self.pending_path.as_deref(),
-            descriptor.path.as_deref(),
-            self.path.as_deref(),
-        ) {
-            SyncAction::Ignore => {}
-            SyncAction::ClearPending => self.pending_path = None,
-            SyncAction::Restore => self.restore_descriptor(descriptor, window, cx),
+        if let Some(restore) = self.document.synchronize(descriptor, title) {
+            self.apply_restore(restore, window, cx);
         }
     }
 
-    fn restore_descriptor(
-        &mut self,
-        descriptor: &EditorDescriptor,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.cwd = PathBuf::from(&descriptor.cwd);
-        let Some(path) = descriptor.path.as_deref().map(PathBuf::from) else {
-            self.path = None;
-            self.saved_contents.clear();
-            self.dirty = false;
-            self.error = None;
-            self.editor.update(cx, |editor, cx| {
-                editor.set_value("", window, cx);
-                editor.set_language("text", window, cx);
-            });
-            self.publish_title(cx);
-            return;
-        };
-        self.path = Some(path.clone());
+    fn apply_restore(&mut self, restore: Restore, window: &mut Window, cx: &mut Context<Self>) {
+        self.request = None;
         self.editor.update(cx, |editor, cx| {
-            editor.set_language(language_for_path(&path), window, cx);
+            editor.set_value("", window, cx);
+            editor.set_language(restore.language, window, cx);
         });
-        self.publish_title(cx);
-        self.load_file(path, cx);
+        self.publish(
+            Publish {
+                path: None,
+                title: restore.title,
+            },
+            cx,
+        );
+        if let Some(path) = restore.load {
+            self.load_file(path, cx);
+        }
+        cx.notify();
     }
 
     fn load_file(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         let Some(text) = path.to_str().map(str::to_owned) else {
+            self.document
+                .fail(Retry::Open(path), "Editor paths must be valid UTF-8");
+            cx.notify();
             return;
         };
         let pane = self.pane;
-        let id = self.connection.update(cx, |connection, cx| {
+        let sent = self.connection.update(cx, |connection, cx| {
             connection
-                .edits_files()
-                .then(|| connection.read_file(pane, text, cx))
+                .read_file(pane, text, cx)
+                .map(|id| (id, connection.epoch()))
         });
-        match id {
-            Some(id) => self.request = Some(Request::Read { id, path }),
-            None => self.fail(
-                Retry::Open(path),
-                "This host's zz cannot open files here",
-                cx,
-            ),
+        if let Some((id, epoch)) = sent {
+            self.request = Some(Request::Read { id, epoch, path });
+        } else {
+            let message = self.unsent(cx);
+            self.document.fail(Retry::Open(path), message);
+        }
+        cx.notify();
+    }
+
+    fn unsent(&self, cx: &App) -> &'static str {
+        if self.connection.read(cx).edits_files() {
+            "Not connected to the host"
+        } else {
+            "This host's zz cannot open or save files here"
         }
     }
 
-    fn fail(&mut self, retry: Retry, message: impl Into<Arc<str>>, cx: &mut Context<Self>) {
-        self.error = Some(EditorError {
-            message: message.into(),
-            retry,
-        });
+    fn drop_stale_request(&mut self, epoch: u64, cx: &mut Context<Self>) {
+        let Some(request) = self.request.take_if(|request| request.epoch() != epoch) else {
+            return;
+        };
+        let retry = match request {
+            Request::Read { path, .. } => Retry::Open(path),
+            Request::Write { path, .. } => Retry::Save(path),
+        };
+        self.document.fail(retry, CONNECTION_LOST);
         cx.notify();
     }
 
@@ -261,29 +254,28 @@ impl EditorPane {
         match (message, self.request.take()) {
             (
                 ProtocolMessage::FileReadResponse { request_id, result },
-                Some(Request::Read { id, path }),
+                Some(Request::Read { id, path, .. }),
             ) if *request_id == id => match result {
-                Ok(contents) => self.apply_loaded_file(path, contents.clone(), window, cx),
-                Err(message) => self.fail(Retry::Open(path), message.as_str(), cx),
+                Ok(contents) => self.apply_loaded_file(path, contents, window, cx),
+                Err(message) => self.document.fail(Retry::Open(path), message.as_str()),
             },
             (
                 ProtocolMessage::FileWriteResponse { request_id, result },
-                Some(Request::Write { id, path, text }),
+                Some(Request::Write { id, path, text, .. }),
             ) if *request_id == id => match result {
-                Ok(()) => self.finish_save(path, text, cx),
-                Err(message) => self.fail(Retry::Save(path), message.as_str(), cx),
+                Ok(()) => {
+                    let current = self.editor.read(cx).value();
+                    if let Some(publish) = self.document.saved(path, text, &current) {
+                        self.publish(publish, cx);
+                    }
+                }
+                Err(message) => self.document.fail(Retry::Save(path), message.as_str()),
             },
-            (_, request) => self.request = request,
+            (_, request) => {
+                self.request = request;
+                return;
+            }
         }
-    }
-
-    fn on_buffer_changed(&mut self, contents: &str, cx: &mut Context<Self>) {
-        let dirty = contents != self.saved_contents.as_str();
-        if self.dirty == dirty {
-            return;
-        }
-        self.dirty = dirty;
-        self.publish_title(cx);
         cx.notify();
     }
 
@@ -292,13 +284,13 @@ impl EditorPane {
             return;
         };
         let folder = self
-            .path
-            .as_deref()
+            .document
+            .path()
             .and_then(Path::parent)
-            .unwrap_or(&self.cwd)
+            .unwrap_or(self.document.cwd())
             .to_string_lossy()
             .into_owned();
-        self.error = None;
+        self.document.clear_error();
         cx.notify();
         open(self.pane, folder, window, cx);
     }
@@ -306,91 +298,66 @@ impl EditorPane {
     fn apply_loaded_file(
         &mut self,
         path: PathBuf,
-        contents: String,
+        contents: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let path_string = match validated_descriptor_path(&path, &self.cwd) {
-            Ok(path_string) => path_string,
-            Err(message) => {
-                self.fail(Retry::Open(path), message, cx);
-                return;
-            }
+        let language = language_for_path(&path);
+        let Some(publish) = self.document.loaded(path, contents) else {
+            return;
         };
         self.editor.update(cx, |editor, cx| {
-            editor.set_value(&contents, window, cx);
-            editor.set_language(language_for_path(&path), window, cx);
+            editor.set_value(contents, window, cx);
+            editor.set_language(language, window, cx);
         });
-        self.path = Some(path);
-        self.saved_contents = contents;
-        self.dirty = false;
-        self.error = None;
-        self.publish_path(path_string, cx);
-        self.publish_title(cx);
-        cx.notify();
+        self.publish(publish, cx);
     }
 
     fn save_file(&mut self, _: &SaveFile, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(path) = self.path.clone() {
+        if let Some(path) = self.document.path() {
+            let path = path.to_owned();
             self.begin_save(path, cx);
         }
     }
 
     fn begin_save(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        let path_string = match validated_descriptor_path(&path, &self.cwd) {
-            Ok(path_string) => path_string,
-            Err(message) => {
-                self.fail(Retry::Save(path), message, cx);
-                return;
-            }
+        if self.request.is_some() {
+            return;
+        }
+        let Some(path_string) = self.document.prepare_save(&path) else {
+            cx.notify();
+            return;
         };
         let text = self.editor.read(cx).value().to_string();
         if text.len() > zz_protocol::MAX_FILE_EDIT_BYTES {
-            self.fail(
+            self.document.fail(
                 Retry::Save(path),
                 format!(
                     "{path_string} is larger than the {} MiB limit for saving from here",
                     zz_protocol::MAX_FILE_EDIT_BYTES / (1024 * 1024)
                 ),
-                cx,
             );
+            cx.notify();
             return;
         }
         let pane = self.pane;
         let sent = text.clone();
-        let id = self.connection.update(cx, |connection, cx| {
+        let request = self.connection.update(cx, |connection, cx| {
             connection
-                .edits_files()
-                .then(|| connection.write_file(pane, path_string, sent, cx))
+                .write_file(pane, path_string, sent, cx)
+                .map(|id| (id, connection.epoch()))
         });
-        match id {
-            Some(id) => {
-                self.request = Some(Request::Write { id, path, text });
-                self.error = None;
-                cx.notify();
-            }
-            None => self.fail(
-                Retry::Save(path),
-                "This host's zz cannot save files from here",
-                cx,
-            ),
+        if let Some((id, epoch)) = request {
+            self.request = Some(Request::Write {
+                id,
+                epoch,
+                path,
+                text,
+            });
+        } else {
+            let message = self.unsent(cx);
+            self.document.fail(Retry::Save(path), message);
         }
-    }
-
-    fn finish_save(&mut self, path: PathBuf, saved_contents: String, cx: &mut Context<Self>) {
-        let path_string = match validated_descriptor_path(&path, &self.cwd) {
-            Ok(path_string) => path_string,
-            Err(message) => {
-                self.fail(Retry::Save(path), message, cx);
-                return;
-            }
-        };
-        self.path = Some(path);
-        self.saved_contents = saved_contents;
-        self.dirty = self.editor.read(cx).value().as_ref() != self.saved_contents.as_str();
-        self.error = None;
-        self.publish_path(path_string, cx);
-        self.publish_title(cx);
         cx.notify();
     }
 
@@ -401,31 +368,23 @@ impl EditorPane {
         }
     }
 
-    fn publish_path(&mut self, path: String, cx: &mut Context<Self>) {
-        if self.snapshot_path.as_deref() == Some(path.as_str()) {
-            self.pending_path = None;
-            return;
-        }
-        self.pending_path = Some(path.clone());
+    fn publish(&self, publish: Publish, cx: &mut Context<Self>) {
         let pane = self.pane.to_string();
         self.connection.update(cx, |connection, cx| {
-            connection.command("set-editor-path", vec!["-t".to_owned(), pane, path], cx);
-        });
-    }
-
-    fn publish_title(&mut self, cx: &mut Context<Self>) {
-        let title = editor_title(self.path.as_deref(), self.dirty);
-        if title == self.last_title {
-            return;
-        }
-        self.last_title.clone_from(&title);
-        let pane = self.pane.to_string();
-        self.connection.update(cx, |connection, cx| {
-            connection.command(
-                "select-pane",
-                vec!["-t".to_owned(), pane, "-T".to_owned(), title],
-                cx,
-            );
+            if let Some(path) = publish.path {
+                connection.command(
+                    "set-editor-path",
+                    vec!["-t".to_owned(), pane.clone(), path],
+                    cx,
+                );
+            }
+            if let Some(title) = publish.title {
+                connection.command(
+                    "select-pane",
+                    vec!["-t".to_owned(), pane, "-T".to_owned(), title],
+                    cx,
+                );
+            }
         });
     }
 }
@@ -433,20 +392,19 @@ impl EditorPane {
 impl Render for EditorPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus = self.focus_handle(cx);
-        let empty =
-            self.path.is_none() && self.editor.read(cx).value().is_empty() && self.error.is_none();
+        let error = self.document.error().cloned();
+        let empty = self.document.path().is_none()
+            && self.editor.read(cx).value().is_empty()
+            && error.is_none();
+        let waiting = !self.document.holds_file();
         let vim_mode = self.editor.read(cx).vim_mode();
         let entity = cx.entity();
-        let error = self.error.clone().map(|error| {
-            let title = match error.retry {
-                Retry::Open(_) => "Couldn’t open this file",
-                Retry::Save(_) => "Couldn’t save this file",
-            };
-            let retry = error.retry;
+        let error = error.map(|error| {
+            let retry = error.retry.clone();
             let view = entity.clone();
             editor_error(
                 self.pane,
-                title,
+                error.title(),
                 &error.message,
                 move |_, cx| view.update(cx, |pane, cx| pane.retry(retry.clone(), cx)),
                 cx,
@@ -479,7 +437,11 @@ impl Render for EditorPane {
             .overflow_hidden()
             .on_action(cx.listener(Self::open_file))
             .on_action(cx.listener(Self::save_file))
-            .child(CodeEditor::new(&self.editor).background_opacity(0.0))
+            .child(
+                CodeEditor::new(&self.editor)
+                    .background_opacity(0.0)
+                    .disabled(waiting),
+            )
             .children(open)
             .when_some(vim_mode, |this, mode| {
                 this.child(vim_mode_chip(self.pane, mode))

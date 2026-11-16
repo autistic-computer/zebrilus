@@ -3,6 +3,7 @@ use std::{fs::File, io::Read};
 use super::*;
 
 const FILE_EDIT_LIMIT: u64 = zz_protocol::MAX_FILE_EDIT_BYTES as u64;
+const MAX_CONCURRENT_FILE_WRITES: usize = 4;
 
 pub fn read_text_file(path: &Path, limit: u64) -> Result<String, String> {
     let too_large = || {
@@ -104,19 +105,37 @@ impl Shared {
         });
     }
 
-    pub(super) fn start_file_write(
+    pub(super) fn receive_file_write(
         &self,
         client: ClientId,
         kind: ClientKind,
-        request: (u64, PaneId, String, String),
+        chunk: &FileWriteChunk,
         outbound: &Arc<OutboundMailbox>,
     ) {
-        let (request_id, pane, path, text) = request;
-        if let Some(error) = self.file_edit_refusal(client, kind, pane, &path) {
+        let request_id = chunk.request_id;
+        let refuse = |error: String| {
             let _ = outbound.enqueue_reliable(&ProtocolMessage::FileWriteResponse {
                 request_id,
-                result: Err(error),
+                result: Err(bounded_error(error)),
             });
+        };
+        if chunk.offset == 0
+            && let Some(error) = self.file_edit_refusal(client, kind, chunk.pane, &chunk.path)
+        {
+            refuse(error);
+            return;
+        }
+        let assembled = append_file_write(&mut self.inner.lock().file_writes, client, chunk);
+        let (pane, path, text) = match assembled {
+            Ok(Some(write)) => write,
+            Ok(None) => return,
+            Err(error) => {
+                refuse(error);
+                return;
+            }
+        };
+        if let Some(error) = self.file_edit_refusal(client, kind, pane, &path) {
+            refuse(error);
             return;
         }
         spawn_file_edit(outbound, move || ProtocolMessage::FileWriteResponse {
@@ -125,6 +144,73 @@ impl Shared {
                 .map_err(|error| bounded_error(format!("Could not save {path}: {error}"))),
         });
     }
+}
+
+pub(super) struct FileWriteChunk {
+    pub request_id: u64,
+    pub pane: PaneId,
+    pub path: String,
+    pub offset: u64,
+    pub last: bool,
+    pub bytes: Vec<u8>,
+}
+
+pub(super) struct PendingFileWrite {
+    pane: PaneId,
+    path: String,
+    bytes: Vec<u8>,
+}
+
+fn append_file_write(
+    writes: &mut BTreeMap<(ClientId, u64), PendingFileWrite>,
+    client: ClientId,
+    chunk: &FileWriteChunk,
+) -> Result<Option<(PaneId, String, String)>, String> {
+    let key = (client, chunk.request_id);
+    let mut write = if chunk.offset == 0 {
+        writes.remove(&key);
+        if writes
+            .keys()
+            .filter(|(writer, _)| *writer == client)
+            .count()
+            >= MAX_CONCURRENT_FILE_WRITES
+        {
+            return Err(format!(
+                "too many saves in flight (limit {MAX_CONCURRENT_FILE_WRITES})"
+            ));
+        }
+        PendingFileWrite {
+            pane: chunk.pane,
+            path: chunk.path.clone(),
+            bytes: Vec::new(),
+        }
+    } else {
+        let Some(write) = writes.remove(&key) else {
+            return Ok(None);
+        };
+        write
+    };
+    if write.pane != chunk.pane
+        || write.path != chunk.path
+        || u64::try_from(write.bytes.len()) != Ok(chunk.offset)
+    {
+        return Err("the save arrived out of order".to_owned());
+    }
+    if write.bytes.len().saturating_add(chunk.bytes.len()) > zz_protocol::MAX_FILE_EDIT_BYTES {
+        return Err(format!(
+            "{} is larger than the {} MiB limit for saving",
+            write.path,
+            zz_protocol::MAX_FILE_EDIT_BYTES / (1024 * 1024)
+        ));
+    }
+    write.bytes.extend_from_slice(&chunk.bytes);
+    if !chunk.last {
+        writes.insert(key, write);
+        return Ok(None);
+    }
+    let text = String::from_utf8(write.bytes)
+        .map_err(|_| format!("the text for {} is not valid UTF-8", write.path))?;
+    Ok(Some((write.pane, write.path, text)))
 }
 
 #[cfg(test)]
@@ -200,10 +286,25 @@ mod tests {
             }
         );
 
-        shared.start_file_write(
+        let chunk = |request_id, offset, last, bytes: &[u8]| FileWriteChunk {
+            request_id,
+            pane,
+            path: path_text.clone(),
+            offset,
+            last,
+            bytes: bytes.to_vec(),
+        };
+        shared.receive_file_write(
             client,
             ClientKind::Interactive,
-            (3, pane, path_text.clone(), "after\n".to_owned()),
+            &chunk(3, 0, false, b"af"),
+            &outbound,
+        );
+        assert_eq!(fs::read_to_string(&path).expect("unchanged"), "before\n");
+        shared.receive_file_write(
+            client,
+            ClientKind::Interactive,
+            &chunk(3, 2, true, b"ter\n"),
             &outbound,
         );
         assert_eq!(
@@ -230,10 +331,10 @@ mod tests {
         );
 
         shared.inner.lock().client_flags.insert(client);
-        shared.start_file_write(
+        shared.receive_file_write(
             client,
             ClientKind::Interactive,
-            (5, pane, path_text, "watcher\n".to_owned()),
+            &chunk(5, 0, true, b"watcher\n"),
             &outbound,
         );
         assert_eq!(

@@ -437,7 +437,7 @@ impl Connection {
         self.send_in_chunks(
             image.bytes.clone(),
             zz_protocol::MAX_PASTE_UPLOAD_CHUNK_BYTES,
-            move |bytes, _| ProtocolMessage::PasteUploadChunk {
+            move |bytes, _, _| ProtocolMessage::PasteUploadChunk {
                 upload_id,
                 bytes: bytes.to_vec(),
             },
@@ -449,7 +449,7 @@ impl Connection {
         &self,
         bytes: Vec<u8>,
         chunk: usize,
-        message: impl Fn(&[u8], bool) -> ProtocolMessage + 'static,
+        message: impl Fn(&[u8], usize, bool) -> ProtocolMessage + 'static,
         cx: &mut Context<Self>,
     ) {
         let epoch = self.epoch;
@@ -470,7 +470,7 @@ impl Connection {
                             return true;
                         }
                         let end = (offset + chunk).min(bytes.len());
-                        this.send(message(&bytes[offset..end], end == bytes.len()), cx);
+                        this.send(message(&bytes[offset..end], offset, end == bytes.len()), cx);
                         offset = end;
                         offset < bytes.len()
                     })
@@ -1023,15 +1023,21 @@ impl Connection {
     }
 
     pub fn edits_files(&self) -> bool {
-        self.connected
-            && self
-                .core
-                .capabilities()
-                .iter()
-                .any(|capability| capability == zz_protocol::FILE_EDIT_CAPABILITY)
+        self.core
+            .capabilities()
+            .iter()
+            .any(|capability| capability == zz_protocol::FILE_EDIT_CAPABILITY)
     }
 
-    pub fn read_file(&mut self, pane: PaneId, path: String, cx: &mut Context<Self>) -> u64 {
+    pub const fn epoch(&self) -> u64 {
+        self.epoch
+    }
+
+    pub fn read_file(&mut self, pane: PaneId, path: String, cx: &mut Context<Self>) -> Option<u64> {
+        if !self.connected || !self.edits_files() {
+            return None;
+        }
+        let epoch = self.epoch;
         let request_id = self.next_request_id();
         self.send(
             ProtocolMessage::FileReadRequest {
@@ -1041,7 +1047,7 @@ impl Connection {
             },
             cx,
         );
-        request_id
+        (self.connected && self.epoch == epoch).then_some(request_id)
     }
 
     pub fn write_file(
@@ -1050,18 +1056,25 @@ impl Connection {
         path: String,
         text: String,
         cx: &mut Context<Self>,
-    ) -> u64 {
+    ) -> Option<u64> {
+        if !self.connected || !self.edits_files() {
+            return None;
+        }
         let request_id = self.next_request_id();
-        self.send(
-            ProtocolMessage::FileWriteRequest {
+        self.send_in_chunks(
+            text.into_bytes(),
+            zz_protocol::MAX_FILE_WRITE_CHUNK_BYTES,
+            move |bytes, offset, last| ProtocolMessage::FileWriteRequest {
                 request_id,
                 pane,
-                path,
-                text,
+                path: path.clone(),
+                offset: u64::try_from(offset).unwrap_or(u64::MAX),
+                last,
+                bytes: bytes.to_vec(),
             },
             cx,
         );
-        request_id
+        Some(request_id)
     }
 
     pub fn terminal_themes(&self) -> &[zz_protocol::TerminalTheme] {
@@ -1101,7 +1114,7 @@ impl Connection {
                 self.send_in_chunks(
                     png,
                     zz_protocol::MAX_BROWSER_SCREENSHOT_CHUNK_BYTES,
-                    move |png, last| ProtocolMessage::BrowserScreenshot {
+                    move |png, _, last| ProtocolMessage::BrowserScreenshot {
                         request_id,
                         last,
                         png: png.to_vec(),

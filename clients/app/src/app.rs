@@ -1475,6 +1475,7 @@ impl AppShell {
         &mut self,
         pane: PaneId,
         descriptor: &zz_protocol::EditorDescriptor,
+        title: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<editor_pane::EditorPane> {
@@ -1484,8 +1485,9 @@ impl AppShell {
                 let connection = self.connection.clone();
                 let view = cx.weak_entity();
                 cx.new(|cx| {
-                    let mut editor =
-                        editor_pane::EditorPane::new(pane, descriptor, connection, window, cx);
+                    let mut editor = editor_pane::EditorPane::new(
+                        pane, descriptor, title, connection, window, cx,
+                    );
                     editor.set_open_handler(Rc::new(move |pane, folder, window, cx| {
                         let view = view.clone();
                         window.defer(cx, move |window, cx| {
@@ -2369,9 +2371,9 @@ impl AppShell {
                     cx,
                 ),
                 PaneKindSnapshot::Editor(descriptor) if self.connection.read(cx).edits_files() => {
-                    let editor = self.editor_entity(pane_id, descriptor, window, cx);
+                    let editor = self.editor_entity(pane_id, descriptor, &pane.title, window, cx);
                     editor.update(cx, |editor, cx| {
-                        editor.synchronize(descriptor, window, cx);
+                        editor.synchronize(descriptor, &pane.title, window, cx);
                         editor.set_corner_radii(
                             Corners {
                                 top_left: px(0.0),

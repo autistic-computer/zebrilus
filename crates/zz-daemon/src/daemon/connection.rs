@@ -898,12 +898,21 @@ impl Session {
                 request_id,
                 pane,
                 path,
-                text,
+                offset,
+                last,
+                bytes,
             } => {
-                shared.start_file_write(
+                shared.receive_file_write(
                     client,
                     hello.kind,
-                    (request_id, pane, path, text),
+                    &super::file_edit::FileWriteChunk {
+                        request_id,
+                        pane,
+                        path,
+                        offset,
+                        last,
+                        bytes,
+                    },
                     outbound,
                 );
             }

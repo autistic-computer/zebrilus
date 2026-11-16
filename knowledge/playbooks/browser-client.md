@@ -214,7 +214,8 @@ direct SSH host setup require capabilities outside the browser client. Browser p
 toolbar and offer an external tab for their URL. Editor panes use the shared code editor on the
 host's files: `FileReadRequest` and `FileWriteRequest` (`file-edit-v1`) carry up to 2 MiB of text,
 the header's folder button or Ctrl/Command-O opens the palette's file list to pick one, and the check
-button or Ctrl/Command-S saves. There is no Save As. File paths in `save-buffer`, `load-buffer`, and `source-file` resolve on the daemon host;
+button or Ctrl/Command-S saves, sending the text in 256 KiB chunks. The editor stays read-only and
+refuses to save until the file has loaded. There is no Save As. File paths in `save-buffer`, `load-buffer`, and `source-file` resolve on the daemon host;
 the daemon only asks command-line clients for their files. Browser
 screenshot commands return an error because the page has no Chromium pane runtime. Daemon
 `OpenUri` requests open HTTP, HTTPS, and mailto links; other schemes show a client error toast.

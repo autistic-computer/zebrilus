@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 
 use ala::{
     App, Context, Div, Entity, FocusHandle, Focusable, IntoElement, KeyBinding, MouseButton,
@@ -9,9 +9,7 @@ use penna::{
     ActiveTheme as _, Label, TextStyle,
     blocks::code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState},
 };
-use zz_client::editor::{
-    SyncAction, descriptor_sync_action, editor_title, language_for_path, validated_descriptor_path,
-};
+use zz_client::editor::{EditorDocument, EditorError, Publish, Restore, Retry, language_for_path};
 use zz_protocol::{CommandInvocation, EditorDescriptor, PaneId};
 use zz_ui::editor::{editor_error, vim_mode_chip};
 
@@ -52,30 +50,11 @@ const OPEN_HINT: &str = "⌘O to open a file";
 #[cfg(not(target_os = "macos"))]
 const OPEN_HINT: &str = "Ctrl+O to open a file";
 
-#[derive(Clone)]
-enum Retry {
-    Open(PathBuf),
-    Save(PathBuf),
-}
-
-#[derive(Clone)]
-struct EditorError {
-    message: Arc<str>,
-    retry: Retry,
-}
-
 pub(crate) struct EditorView {
     pane: PaneId,
     mux: Entity<MuxClient>,
     editor: Entity<CodeEditorState>,
-    cwd: PathBuf,
-    path: Option<PathBuf>,
-    snapshot_path: Option<String>,
-    pending_path: Option<String>,
-    saved_contents: String,
-    dirty: bool,
-    last_title: String,
-    error: Option<EditorError>,
+    document: EditorDocument,
     picker: Option<Entity<FilePickerView>>,
     window_corners: WindowCorners,
     _subscriptions: Vec<Subscription>,
@@ -85,6 +64,7 @@ impl EditorView {
     pub(crate) fn new(
         pane: PaneId,
         descriptor: &EditorDescriptor,
+        title: &str,
         mux: Entity<MuxClient>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -100,27 +80,27 @@ impl EditorView {
             |view, editor, event: &CodeEditorEvent, _, cx| {
                 if matches!(event, CodeEditorEvent::Change) {
                     let contents = editor.read(cx).value();
-                    view.on_buffer_changed(contents.as_ref(), cx);
+                    let dirty = view.document.is_dirty();
+                    let title = view.document.buffer_changed(contents.as_ref());
+                    view.publish(Publish { path: None, title }, cx);
+                    if dirty != view.document.is_dirty() {
+                        cx.notify();
+                    }
                 }
             },
         );
+        let mut document = EditorDocument::new(descriptor, title);
+        let restore = document.restore(descriptor);
         let mut view = Self {
             pane,
             mux,
             editor,
-            cwd: PathBuf::from(&descriptor.cwd),
-            path: None,
-            snapshot_path: descriptor.path.clone(),
-            pending_path: None,
-            saved_contents: String::new(),
-            dirty: false,
-            last_title: String::new(),
-            error: None,
+            document,
             picker: None,
             window_corners: WindowCorners::NONE,
             _subscriptions: vec![subscription],
         };
-        view.restore_descriptor(descriptor, window, cx);
+        view.apply_restore(restore, window, cx);
         view
     }
 
@@ -138,48 +118,31 @@ impl EditorView {
     pub(crate) fn synchronize_descriptor(
         &mut self,
         descriptor: &EditorDescriptor,
+        title: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.cwd = PathBuf::from(&descriptor.cwd);
-        self.snapshot_path.clone_from(&descriptor.path);
-        match descriptor_sync_action(
-            self.pending_path.as_deref(),
-            descriptor.path.as_deref(),
-            self.path.as_deref(),
-        ) {
-            SyncAction::Ignore => {}
-            SyncAction::ClearPending => self.pending_path = None,
-            SyncAction::Restore => self.restore_descriptor(descriptor, window, cx),
+        if let Some(restore) = self.document.synchronize(descriptor, title) {
+            self.apply_restore(restore, window, cx);
         }
     }
 
-    fn restore_descriptor(
-        &mut self,
-        descriptor: &EditorDescriptor,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.cwd = PathBuf::from(&descriptor.cwd);
-        let Some(path) = descriptor.path.as_deref().map(PathBuf::from) else {
-            self.path = None;
-            self.saved_contents.clear();
-            self.dirty = false;
-            self.error = None;
-            self.editor.update(cx, |editor, cx| {
-                editor.set_value("", window, cx);
-                editor.set_language("text", window, cx);
-            });
-            self.publish_title(cx);
-            return;
-        };
-
-        self.path = Some(path.clone());
+    fn apply_restore(&mut self, restore: Restore, window: &mut Window, cx: &mut Context<Self>) {
         self.editor.update(cx, |editor, cx| {
-            editor.set_language(language_for_path(&path), window, cx);
+            editor.set_value("", window, cx);
+            editor.set_language(restore.language, window, cx);
         });
-        self.publish_title(cx);
-        self.load_file(path, window, cx);
+        self.publish(
+            Publish {
+                path: None,
+                title: restore.title,
+            },
+            cx,
+        );
+        if let Some(path) = restore.load {
+            self.load_file(path, window, cx);
+        }
+        cx.notify();
     }
 
     #[allow(
@@ -205,16 +168,6 @@ impl EditorView {
         .detach();
     }
 
-    fn on_buffer_changed(&mut self, contents: &str, cx: &mut Context<Self>) {
-        let dirty = contents != self.saved_contents.as_str();
-        if self.dirty == dirty {
-            return;
-        }
-        self.dirty = dirty;
-        self.publish_title(cx);
-        cx.notify();
-    }
-
     fn open_file(&mut self, _: &OpenFile, window: &mut Window, cx: &mut Context<Self>) {
         if self.picker.is_some() {
             return;
@@ -222,7 +175,7 @@ impl EditorView {
         let picker = cx.new(|cx| {
             FilePickerView::new(
                 FilePickerMode::Files,
-                self.cwd.clone(),
+                self.document.cwd().to_owned(),
                 "Open a file in the editor",
                 window,
                 cx,
@@ -241,7 +194,7 @@ impl EditorView {
             },
         )
         .detach();
-        self.error = None;
+        self.document.clear_error();
         self.picker = Some(picker);
         cx.notify();
     }
@@ -254,52 +207,29 @@ impl EditorView {
         cx: &mut Context<Self>,
     ) {
         match result {
-            Ok(contents) => self.apply_loaded_file(path, contents, window, cx),
-            Err(message) => {
-                self.error = Some(EditorError {
-                    message: message.into(),
-                    retry: Retry::Open(path),
-                });
-                cx.notify();
+            Ok(contents) => {
+                let language = language_for_path(&path);
+                if let Some(publish) = self.document.loaded(path, &contents) {
+                    self.editor.update(cx, |editor, cx| {
+                        editor.set_value(&contents, window, cx);
+                        editor.set_language(language, window, cx);
+                    });
+                    self.publish(publish, cx);
+                }
             }
+            Err(message) => self.document.fail(Retry::Open(path), message),
         }
-    }
-
-    fn apply_loaded_file(
-        &mut self,
-        path: PathBuf,
-        contents: String,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Ok(path_string) = validated_descriptor_path(&path, &self.cwd) else {
-            self.error = Some(EditorError {
-                message: format!("{} cannot be stored as an editor path", path.display()).into(),
-                retry: Retry::Open(path),
-            });
-            cx.notify();
-            return;
-        };
-        self.editor.update(cx, |editor, cx| {
-            editor.set_value(&contents, window, cx);
-            editor.set_language(language_for_path(&path), window, cx);
-        });
-        self.path = Some(path);
-        self.saved_contents = contents;
-        self.dirty = false;
-        self.error = None;
-        self.publish_path(path_string, cx);
-        self.publish_title(cx);
         cx.notify();
     }
 
     fn save_file(&mut self, _: &SaveFile, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(path) = self.path.clone() {
+        if let Some(path) = self.document.path() {
+            let path = path.to_owned();
             self.begin_save(path, window, cx);
             return;
         }
 
-        let selected = cx.prompt_for_new_path(&self.cwd, Some("untitled"));
+        let selected = cx.prompt_for_new_path(self.document.cwd(), Some("untitled"));
         let view = cx.entity();
         cx.spawn_in(window, async move |_, window| {
             let path = selected.await.ok()?.ok()??;
@@ -313,12 +243,9 @@ impl EditorView {
     }
 
     fn begin_save(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        if let Err(message) = validated_descriptor_path(&path, &self.cwd) {
-            self.error = Some(EditorError {
-                message: message.into(),
-                retry: Retry::Save(path),
-            });
-            cx.notify();
+        let ready = self.document.prepare_save(&path).is_some();
+        cx.notify();
+        if !ready {
             return;
         }
         let contents = self.editor.read(cx).value().to_string();
@@ -326,8 +253,6 @@ impl EditorView {
         let write_contents = contents.clone();
         let background = cx.background_executor().clone();
         let view = cx.entity();
-        self.error = None;
-        cx.notify();
         cx.spawn_in(window, async move |_, window| {
             let result = background
                 .spawn(async move {
@@ -354,31 +279,15 @@ impl EditorView {
         result: Result<(), String>,
         cx: &mut Context<Self>,
     ) {
-        if let Err(message) = result {
-            self.error = Some(EditorError {
-                message: message.into(),
-                retry: Retry::Save(path),
-            });
-            cx.notify();
-            return;
-        }
-        let path_string = match validated_descriptor_path(&path, &self.cwd) {
-            Ok(path) => path,
-            Err(message) => {
-                self.error = Some(EditorError {
-                    message: message.into(),
-                    retry: Retry::Save(path),
-                });
-                cx.notify();
-                return;
+        match result {
+            Ok(()) => {
+                let current = self.editor.read(cx).value();
+                if let Some(publish) = self.document.saved(path, saved_contents, &current) {
+                    self.publish(publish, cx);
+                }
             }
-        };
-        self.path = Some(path);
-        self.saved_contents = saved_contents;
-        self.dirty = self.editor.read(cx).value().as_ref() != self.saved_contents.as_str();
-        self.error = None;
-        self.publish_path(path_string, cx);
-        self.publish_title(cx);
+            Err(message) => self.document.fail(Retry::Save(path), message),
+        }
         cx.notify();
     }
 
@@ -397,41 +306,25 @@ impl EditorView {
         ));
     }
 
-    fn publish_path(&mut self, path: String, cx: &App) {
-        if self.snapshot_path.as_deref() == Some(path.as_str()) {
-            self.pending_path = None;
-            return;
+    fn publish(&self, publish: Publish, cx: &App) {
+        let pane = self.pane.to_string();
+        if let Some(path) = publish.path {
+            self.mux.read(cx).execute(CommandInvocation::new(
+                "set-editor-path",
+                vec!["-t".to_owned(), pane.clone(), path],
+            ));
         }
-        self.pending_path = Some(path.clone());
-        self.mux.read(cx).execute(CommandInvocation::new(
-            "set-editor-path",
-            vec!["-t".to_owned(), self.pane.to_string(), path],
-        ));
-    }
-
-    fn publish_title(&mut self, cx: &App) {
-        let title = editor_title(self.path.as_deref(), self.dirty);
-        if title == self.last_title {
-            return;
+        if let Some(title) = publish.title {
+            self.mux.read(cx).execute(CommandInvocation::new(
+                "select-pane",
+                vec!["-t".to_owned(), pane, "-T".to_owned(), title],
+            ));
         }
-        self.last_title.clone_from(&title);
-        self.mux.read(cx).execute(CommandInvocation::new(
-            "select-pane",
-            vec![
-                "-t".to_owned(),
-                self.pane.to_string(),
-                "-T".to_owned(),
-                title,
-            ],
-        ));
     }
 
     fn render_error(&self, error: EditorError, cx: &Context<Self>) -> impl IntoElement {
         let view = cx.entity();
-        let title = match error.retry {
-            Retry::Open(_) => "Couldn’t open this file",
-            Retry::Save(_) => "Couldn’t save this file",
-        };
+        let title = error.title();
         let retry = error.retry;
         editor_error(
             self.pane,
@@ -454,11 +347,11 @@ impl Focusable for EditorView {
 impl Render for EditorView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus = self.focus(cx);
-        let scratch_hint = self.path.is_none()
+        let error = self.document.error().cloned();
+        let scratch_hint = self.document.path().is_none()
             && self.editor.read(cx).value().is_empty()
-            && self.error.is_none()
+            && error.is_none()
             && self.picker.is_none();
-        let error = self.error.clone();
         let line_numbers = config::editor_line_numbers(cx);
         let relative_line_numbers = config::editor_relative_line_numbers(cx);
         let soft_wrap = config::editor_soft_wrap(cx);

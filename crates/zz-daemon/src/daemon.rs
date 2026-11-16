@@ -7236,6 +7236,7 @@ impl Shared {
             inner
                 .paste_uploads
                 .retain(|(uploader, _), _| *uploader != client);
+            inner.file_writes.retain(|(writer, _), _| *writer != client);
             let mut wait_wakes = remove_client_wait_items(&mut inner.wait_channels, client);
             wait_wakes.extend(hook_events::take_event_waiter_wakes(
                 &mut inner.event_waiters,
@@ -35448,6 +35449,7 @@ struct ServerState {
     next_display_panes_token: u64,
     pending_gui_requests: BTreeMap<u64, PendingGuiRequest>,
     paste_uploads: BTreeMap<(ClientId, u64), PasteUpload>,
+    file_writes: BTreeMap<(ClientId, u64), file_edit::PendingFileWrite>,
     wait_channels: BTreeMap<String, WaitChannel>,
     pane_pipes: BTreeMap<PaneId, PanePipe>,
     control_routes: BTreeMap<ClientId, ControlRoute>,
@@ -52960,12 +52962,21 @@ fn handle_connection_message<S: TransportStream>(
                 request_id,
                 pane,
                 path,
-                text,
+                offset,
+                last,
+                bytes,
             } => {
-                shared.start_file_write(
+                shared.receive_file_write(
                     client,
                     hello.kind,
-                    (request_id, pane, path, text),
+                    &file_edit::FileWriteChunk {
+                        request_id,
+                        pane,
+                        path,
+                        offset,
+                        last,
+                        bytes,
+                    },
                     &outbound,
                 );
             }
