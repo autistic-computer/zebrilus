@@ -338,6 +338,7 @@ fn watch_connection(
         connection,
         window,
         |_, _, event: &crate::connection::PreviewImage, window, cx| {
+            window.dismiss_virtual_keyboard();
             zz_ui::attachment::open_attachment_preview(event.0.clone(), window, cx);
         },
     );
