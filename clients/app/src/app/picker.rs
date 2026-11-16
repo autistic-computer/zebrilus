@@ -9,6 +9,7 @@ use penna::{
     blocks::touch::{TouchGroup, TouchRow},
 };
 use zz_client::{
+    agent_launch::AgentLaunches,
     new_chat::{
         AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, FolderChoice, MachineChoice,
         agent_picker_place, close_picker_command, folder_start, landing_chat_commands,
@@ -56,6 +57,7 @@ pub(super) struct PanePicker {
     sheet_closed: bool,
     chat: ChatPicker,
     chat_view: bool,
+    launches: AgentLaunches,
 }
 
 impl PanePicker {
@@ -95,6 +97,7 @@ impl PanePicker {
             sheet_closed: false,
             chat: ChatPicker::default(),
             chat_view: false,
+            launches: AgentLaunches::default(),
         }
     }
 
@@ -104,6 +107,10 @@ impl PanePicker {
             self.selected = 0;
             cx.notify();
         }
+    }
+
+    pub(super) fn set_launches(&mut self, launches: &AgentLaunches) {
+        self.launches.clone_from(launches);
     }
 
     fn id(&self) -> u64 {
@@ -175,11 +182,10 @@ impl PanePicker {
             return;
         }
         let folder = self.chat.folder(folders);
-        let launches = zz_client::agent_launch::AgentLaunches::default();
         let snapshot = connection.core.snapshot();
         let commands = match self.pane {
-            Some(pane) => start_agent_commands(snapshot, pane, folder, agent, &launches),
-            None => landing_chat_commands(snapshot, folder, agent, &launches),
+            Some(pane) => start_agent_commands(snapshot, pane, folder, agent, &self.launches),
+            None => landing_chat_commands(snapshot, folder, agent, &self.launches),
         };
         self.connection.update(cx, |connection, cx| {
             for command in commands {

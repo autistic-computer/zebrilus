@@ -153,8 +153,10 @@ settles. The command palette lists the chats too (see the
 A new chat starts on the model and effort last picked: `start_agent_commands` and
 `first_chat_commands` add `--model` and `--effort` from `zz_client::agent_launch::AgentLaunches`
 (`agent_flags`). The desktop remembers them per CLI in `agent-launch.json` from the chat's model
-and effort menu; web, iPad, iPhone and the HTML client remember none yet, so their chats start on
-the CLI's default.
+and effort menu. Web, iPad and iPhone keep them in the app's own preferences on the device
+(`Preferences::agent_launches`), set when you pick a model or effort in a chat's menu or with
+`/model` and `/effort`, never in the host's config. The HTML client remembers none yet, so its
+chats start on the CLI's default.
 
 # Daemon changes
 
@@ -167,6 +169,6 @@ flip adds the `agent <claude|codex>` kind to `select-pane-kind`, for a picker or
 
 - A way back to the CLI from a desktop agent pane.
 - A file picker in the HTML client.
-- Remembering the last picked model and effort on web, iPad, iPhone and the HTML client.
+- Remembering the last picked model and effort in the HTML client.
 - Agent CLIs beyond Claude Code and Codex; the list follows the programs zz can drive.
 - The HTML client draws agent tiles with kit glyphs rather than program marks.

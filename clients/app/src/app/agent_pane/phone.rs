@@ -729,7 +729,12 @@ impl AgentPane {
         let provider = self.provider(cx);
         let connected = self.connection.read(cx).connected;
         let empty = (!use_chat).then(|| {
-            let kind = agent_empty(connected, &state.phase, provider);
+            let kind = agent_empty(
+                connected,
+                &state.phase,
+                provider,
+                self.transcript.lens.settling(),
+            );
             let start = matches!(kind, AgentEmpty::Welcome(_)) && writable && !watch_only;
             let empty = match kind {
                 AgentEmpty::Welcome(provider) => PhoneEmpty::new(
@@ -858,13 +863,7 @@ impl AgentPane {
         };
         let action = phone_action_button(("phone-agent-action", pane), kind, enabled, inside);
         let action = if kind == Action::Stop {
-            let connection = self.connection.clone();
-            let pane = self.pane;
-            action.on_click(move |_, _, cx| {
-                connection.update(cx, |connection, cx| {
-                    connection.send(ProtocolMessage::AgentCancel { pane }, cx);
-                });
-            })
+            action.on_click(cx.listener(|this, _, _, cx| this.cancel(cx)))
         } else {
             action.on_click(cx.listener(|this, _, window, cx| this.submit(window, cx)))
         };

@@ -353,6 +353,13 @@ impl Connection {
     }
 
     #[must_use]
+    pub fn agent_images_supported(&self, pane: PaneId) -> bool {
+        self.agent_cursors
+            .get(&pane)
+            .is_some_and(|cursor| cursor.images_supported)
+    }
+
+    #[must_use]
     pub fn agent_watch_only(&self, pane: PaneId) -> bool {
         self.agent_cursors
             .get(&pane)

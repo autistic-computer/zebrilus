@@ -1380,7 +1380,7 @@ impl AppShell {
                 let connection = self.connection.clone();
                 let roster = self.roster.clone();
                 let rows_view = cx.weak_entity();
-                cx.new(|cx| {
+                let agent = cx.new(|cx| {
                     let mut agent = AgentPane::new(pane, connection, roster, window, cx);
                     agent.set_float_rows_handler(move |cx| {
                         rows_view
@@ -1388,7 +1388,18 @@ impl AppShell {
                             .and_then(|view| view.read(cx).pip_fill_rows(cx))
                     });
                     agent
+                });
+                cx.subscribe(&agent, |shell, _, picked: &agent_pane::LaunchPicked, _| {
+                    if shell.preferences.agent_launches.pick(
+                        picked.provider,
+                        picked.option,
+                        &picked.value,
+                    ) {
+                        shell.preferences.save();
+                    }
                 })
+                .detach();
+                agent
             })
             .clone()
     }
@@ -1552,7 +1563,11 @@ impl AppShell {
                 picker
             })
             .clone();
-        picker.update(cx, |picker, cx| picker.set_chat_view(chat_view, cx));
+        let launches = &self.preferences.agent_launches;
+        picker.update(cx, |picker, cx| {
+            picker.set_chat_view(chat_view, cx);
+            picker.set_launches(launches);
+        });
         picker
     }
 
@@ -1614,6 +1629,8 @@ impl AppShell {
             self.landing_picker = Some(picker.clone());
             picker
         };
+        let launches = &self.preferences.agent_launches;
+        picker.update(cx, |picker, _| picker.set_launches(launches));
         let focus = picker.read(cx).focus_handle(cx);
         if !focus.contains_focused(window, cx) && !self.sidebar_focus.contains_focused(window, cx) {
             focus.focus(window, cx);

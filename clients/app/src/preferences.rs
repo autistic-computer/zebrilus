@@ -1,5 +1,6 @@
 use penna::foundation::interface_theme::Tint;
 use serde::{Deserialize, Serialize, de::value::MapDeserializer};
+use zz_client::agent_launch::AgentLaunches;
 use zz_ui::interface_theme::{
     self, Appearance, AppearanceChange, InterfaceTheme, ThemeModeSetting, ThemeOverrides,
 };
@@ -26,6 +27,7 @@ pub struct Preferences {
     pub extend_bottom_safe_area: bool,
     pub keep_screen_awake: bool,
     pub system_text_size: bool,
+    pub agent_launches: AgentLaunches,
 }
 
 impl Default for Preferences {
@@ -52,6 +54,7 @@ impl Default for Preferences {
             extend_bottom_safe_area: false,
             keep_screen_awake: false,
             system_text_size: true,
+            agent_launches: AgentLaunches::default(),
         }
     }
 }

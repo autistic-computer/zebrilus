@@ -530,7 +530,12 @@ end no turn.
 - **The chat.** `crates/zz/src/agent` on the desktop and `clients/app/src/app/agent_pane.rs` on
   web, iPad and iPhone draw an agent pane with `zz_ui::agent::chat`: the composer, the model and
   effort menu, questions and approvals asked in the composer, subagent rows, images, references,
-  Copy and Fork, and preview cards. Both open subagents, images and cards in the
+  Copy and Fork, and preview cards. A send the agent cannot take says why above the composer, in
+  the shared words of `zz_client::agent_lens` (`prompt_not_ready`, `AGENT_QUEUE_FULL` at
+  `MAX_AGENT_QUEUED_PROMPTS`, `AGENT_REFUSES_IMAGES` when the driver's `ready` capabilities lack
+  `images`), and an empty chat reads Resuming the agent's session while a chat reopens and
+  Cancelling the current turn after Stop (`agent_empty` with `LensTranscript::settling`, read
+  from the stream's `sessionReset` `restoring` flag). Both open subagents, images and cards in the
   [view pane](#previews-and-the-view-pane); a host that gives the chat no view opener (the
   storybook) keeps the subagent PiP and draws diagrams and code inline. The storybook's Agent story
   draws them from fixed chat events. The HTML client (`clients/dom/src/agent.rs` and
@@ -657,7 +662,8 @@ the next chat starts in, and Resume, for a chat the CLI already has. Each opens 
     `effort_starts_unset`); then Permissions, the driver's `mode` option, the permissions the CLI
     runs with, one row per mode with a check on the current one. Model and permission rows sit the
     theme's row gap apart (`Theme::row_gap`, 2px in an inset list), so two highlights never touch.
-    Shift-Tab in the composer steps to the next mode (`LensSettings::next_mode`).
+    Shift-Tab in the composer steps to the next mode (`LensSettings::next_mode`), on the desktop
+    and in the thin client with a keyboard, except while the `@` menu is open.
     The glyph is the mode's own (`mode_icon`, by provider and mode value): a raised hand for
     Claude's Ask, a pencil for Accept edits and Codex's Auto (it edits the workspace without
     asking), a folded map for Plan, a bolt for Claude's Auto (the agent decides when to ask), a

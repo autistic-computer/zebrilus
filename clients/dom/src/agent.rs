@@ -820,7 +820,12 @@ impl Client {
                 })
             });
         let empty = rows.is_empty().then(|| {
-            match agent_empty(context.connected, &state.phase, context.provider) {
+            match agent_empty(
+                context.connected,
+                &state.phase,
+                context.provider,
+                lens.transcript.settling(),
+            ) {
                 AgentEmpty::Welcome(provider) => json!({
                     "welcome": {
                         "title": agent_welcome_title(provider),

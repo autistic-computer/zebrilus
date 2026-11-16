@@ -78,6 +78,7 @@ pub(crate) type AgentThreadEntry = zz_client::agent_transcript::AgentThreadEntry
 pub(crate) use zz_client::agent_completion::AgentCommand;
 
 use zz_client::agent_completion::agent_command_model;
+use zz_client::agent_lens::{AGENT_QUEUE_FULL, AGENT_REFUSES_IMAGES};
 use zz_client::agent_resume::Resume;
 use zz_client::agent_settings::{self, LensSettings};
 
@@ -213,7 +214,7 @@ impl AgentThread {
 
     fn image_refusal(&self, has_images: bool) -> Option<Arc<str>> {
         (has_images && !self.session_capabilities.images)
-            .then(|| Arc::<str>::from("this agent does not accept images"))
+            .then(|| Arc::<str>::from(AGENT_REFUSES_IMAGES))
     }
 
     fn begin_prompt(&mut self, prompt: String, images: Vec<Arc<Image>>) {
@@ -492,9 +493,7 @@ impl AgentController {
         }
         let queueing = active && !command;
         if queueing && self.queued_count(pane) >= MAX_AGENT_QUEUED_PROMPTS {
-            return Err(Arc::from(
-                "finish or unqueue one of the four queued prompts first",
-            ));
+            return Err(Arc::from(AGENT_QUEUE_FULL));
         }
         let wire_images = attachment::wire_images(&images);
         if !self.send(

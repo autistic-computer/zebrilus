@@ -49,6 +49,7 @@ use penna::{
     },
     h_flex,
 };
+use zz_client::agent_lens::AGENT_REFUSES_IMAGES;
 use zz_client::agent_login::CardAction;
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId, ViewContent};
 use zz_ui::agent::login::{CodeField, LoginEvent};
@@ -1115,7 +1116,7 @@ impl AgentView {
 
     fn attach_images(&mut self, images: &[Arc<Image>], cx: &mut Context<Self>) {
         if !self.pane_state.session_capabilities.images {
-            self.submission_error = Some(Arc::from("this agent does not accept images"));
+            self.submission_error = Some(Arc::from(AGENT_REFUSES_IMAGES));
             cx.notify();
             return;
         }
