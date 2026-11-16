@@ -68,13 +68,20 @@ mod resume;
 
 pub(super) use phone::PhoneDock;
 
-pub(super) struct LaunchPicked {
-    pub(super) provider: AgentProvider,
-    pub(super) option: &'static str,
-    pub(super) value: String,
+pub(super) enum LaunchChange {
+    Picked {
+        provider: AgentProvider,
+        option: &'static str,
+        value: String,
+    },
+    Followed {
+        provider: AgentProvider,
+        before: Box<LensSettings>,
+        after: Box<LensSettings>,
+    },
 }
 
-impl ala::EventEmitter<LaunchPicked> for AgentPane {}
+impl ala::EventEmitter<LaunchChange> for AgentPane {}
 
 impl AgentPane {
     fn lens_settings(&self, state: &AgentPaneWire) -> Option<LensSettings> {
@@ -290,7 +297,7 @@ impl AgentPane {
         if let Some(provider) = provider
             .filter(|_| picked && matches!(option, agent_settings::MODEL | agent_settings::EFFORT))
         {
-            cx.emit(LaunchPicked {
+            cx.emit(LaunchChange::Picked {
                 provider,
                 option,
                 value,
@@ -370,6 +377,8 @@ pub(super) struct AgentPane {
     transcript: Transcript,
     last_sequence: u64,
     last_reclaim_id: u64,
+    queued_seen: u32,
+    queued_since: usize,
     attachments: Vec<AgentImage>,
     mention: Entity<TargetPicker>,
     draft_error: Option<String>,
@@ -458,9 +467,13 @@ impl AgentPane {
                     && *changed == pane
                 {
                     this.apply_sessions(result, cx);
+                } else if let zz_client::CoreEvent::AgentStateChanged { pane: changed, .. } = event
+                    && *changed == pane
+                {
+                    this.note_queue(cx);
+                    cx.notify();
                 } else if matches!(event,
-                zz_client::CoreEvent::AgentUpdates { pane: changed, .. }
-                | zz_client::CoreEvent::AgentStateChanged { pane: changed, .. } if *changed == pane)
+                zz_client::CoreEvent::AgentUpdates { pane: changed, .. } if *changed == pane)
                     || matches!(event, zz_client::CoreEvent::AgentAccountsChanged)
                 {
                     cx.notify();
@@ -547,6 +560,8 @@ impl AgentPane {
             transcript: Transcript::default(),
             last_sequence: 0,
             last_reclaim_id: 0,
+            queued_seen: 0,
+            queued_since: 0,
             attachments: Vec::new(),
             mention,
             draft_error: None,
@@ -853,8 +868,29 @@ impl AgentPane {
             return prompt_not_ready(&state, self.transcript.lens.settling());
         }
         let command = connection.agent_verbs_supported(self.pane) && is_zz_command(text);
-        (!command && state.queued_prompts as usize >= MAX_AGENT_QUEUED_PROMPTS)
-            .then(|| AGENT_QUEUE_FULL.to_owned())
+        let queued = state.queued_prompts as usize + self.queued_since(state.queued_prompts);
+        (!command && queued >= MAX_AGENT_QUEUED_PROMPTS).then(|| AGENT_QUEUE_FULL.to_owned())
+    }
+
+    fn note_queue(&mut self, cx: &App) {
+        let queued = self
+            .connection
+            .read(cx)
+            .core
+            .agent_state(self.pane)
+            .map_or(0, |state| state.queued_prompts);
+        if queued != self.queued_seen {
+            self.queued_seen = queued;
+            self.queued_since = 0;
+        }
+    }
+
+    const fn queued_since(&self, queued: u32) -> usize {
+        if queued == self.queued_seen {
+            self.queued_since
+        } else {
+            0
+        }
     }
 
     fn send_prompt(&mut self, text: &str, images: &[AgentImage], cx: &mut Context<Self>) -> bool {
@@ -888,11 +924,16 @@ impl AgentPane {
             return false;
         }
         let command = connection.agent_verbs_supported(self.pane) && is_zz_command(text);
-        let queueing = connection
+        let queued = connection
             .core
             .agent_state(self.pane)
-            .is_some_and(|state| turn_running(&state.phase));
-        if !queueing && !command {
+            .filter(|state| turn_running(&state.phase))
+            .map(|state| state.queued_prompts);
+        if let Some(queued) = queued.filter(|_| !command) {
+            self.queued_since = self.queued_since(queued) + 1;
+            self.queued_seen = queued;
+        }
+        if queued.is_none() && !command {
             self.transcript.local_prompt(text, images);
             self.transcript_dirty = true;
         }
@@ -994,10 +1035,29 @@ impl AgentPane {
         if switched {
             self.permission_answered.clear();
         }
+        let provider = self.provider(cx);
         for (sequence, update) in updates {
             self.restore_prompts(&update, window, cx);
             track_usage(&mut self.usage, &update);
+            let follows = update["item"] == "configOptionsChanged"
+                && matches!(
+                    update["option_id"].as_str(),
+                    Some(agent_settings::MODEL | agent_settings::EFFORT)
+                );
+            let before = follows
+                .then(|| self.transcript.lens.settings.clone())
+                .flatten();
             self.transcript.apply(sequence, &update);
+            if let (Some(provider), Some(before), Some(after)) =
+                (provider, before, self.transcript.lens.settings.clone())
+                && before != after
+            {
+                cx.emit(LaunchChange::Followed {
+                    provider,
+                    before: Box::new(before),
+                    after: Box::new(after),
+                });
+            }
         }
         self.last_sequence = newest;
         self.transcript_dirty = false;

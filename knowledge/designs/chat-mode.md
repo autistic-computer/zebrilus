@@ -155,7 +155,8 @@ A new chat starts on the model and effort last picked: `start_agent_commands` an
 (`agent_flags`). The desktop remembers them per CLI in `agent-launch.json` from the chat's model
 and effort menu. Web, iPad and iPhone keep them in the app's own preferences on the device
 (`Preferences::agent_launches`), set when you pick a model or effort in a chat's menu or with
-`/model` and `/effort`, never in the host's config. The HTML client remembers none yet, so its
+`/model` and `/effort`, and following the agent when it changes or drops one in answer
+(`AgentLaunches::follow`), never in the host's config. The HTML client remembers none yet, so its
 chats start on the CLI's default.
 
 # Daemon changes

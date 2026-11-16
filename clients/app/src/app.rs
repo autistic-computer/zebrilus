@@ -1389,12 +1389,21 @@ impl AppShell {
                     });
                     agent
                 });
-                cx.subscribe(&agent, |shell, _, picked: &agent_pane::LaunchPicked, _| {
-                    if shell.preferences.agent_launches.pick(
-                        picked.provider,
-                        picked.option,
-                        &picked.value,
-                    ) {
+                cx.subscribe(&agent, |shell, _, change: &agent_pane::LaunchChange, _| {
+                    let launches = &mut shell.preferences.agent_launches;
+                    let changed = match change {
+                        agent_pane::LaunchChange::Picked {
+                            provider,
+                            option,
+                            value,
+                        } => launches.pick(*provider, option, value),
+                        agent_pane::LaunchChange::Followed {
+                            provider,
+                            before,
+                            after,
+                        } => launches.follow(*provider, Some(before.as_ref()), after),
+                    };
+                    if changed {
                         shell.preferences.save();
                     }
                 })
