@@ -59,7 +59,6 @@ use zz_ui::agent::login::{CodeField, LoginEvent};
 use zz_ui::agent::{composer_attachment, plan_progress, view::composer_image_view};
 
 use crate::{
-    agent::attachment as agent_attachment,
     agent::controller::{
         AgentCommand, AgentConnectionState, AgentController, AgentPaneState,
         AgentPermissionRequest, AgentSessionCapabilities, AgentThreadEntry,
@@ -1175,7 +1174,7 @@ impl AgentView {
             return;
         }
         for image in images {
-            match agent_attachment::normalize(image) {
+            match zz_ui::attachment::normalize(image) {
                 Ok(normalized) => {
                     self.attachments.push(normalized);
                     self.submission_error = None;

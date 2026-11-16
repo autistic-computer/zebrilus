@@ -410,6 +410,13 @@ impl Connection {
     }
 
     pub fn upload_image(&mut self, pane: PaneId, image: &ala::Image, cx: &mut Context<Self>) {
+        let image = match zz_ui::attachment::normalize(image) {
+            Ok(image) => image,
+            Err(error) => {
+                self.notify_warning(format!("Paste skipped: {error}"), cx);
+                return;
+            }
+        };
         let extension = image.format.extension();
         if zz_protocol::PastedImageFormat::from_extension(extension).is_none()
             || image.bytes.is_empty()

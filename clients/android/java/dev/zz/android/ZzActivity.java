@@ -62,6 +62,7 @@ public final class ZzActivity extends Activity {
         "Escape", "Tab", "Control", "Alt", "Left", "Down", "Up", "Right", "Hide keyboard",
     };
     private static final int KEY_ROW_HEIGHT = 48;
+    private static final int MAX_CLIPBOARD_IMAGE_BYTES = 64 * 1024 * 1024;
 
     ZzView view;
     FrameLayout root;
@@ -605,6 +606,12 @@ public final class ZzActivity extends Activity {
         if (clipboard == null || !clipboard.hasPrimaryClip()) {
             return null;
         }
+        ClipDescription shape = clipboard.getPrimaryClipDescription();
+        if (shape == null
+                || !(shape.hasMimeType("image/*")
+                        || shape.hasMimeType(ClipDescription.MIMETYPE_TEXT_URILIST))) {
+            return null;
+        }
         ClipData clip = clipboard.getPrimaryClip();
         if (clip == null) {
             return null;
@@ -631,6 +638,9 @@ public final class ZzActivity extends Activity {
                 int read;
                 while ((read = in.read(buffer)) > 0) {
                     out.write(buffer, 0, read);
+                    if (out.size() > MAX_CLIPBOARD_IMAGE_BYTES) {
+                        return null;
+                    }
                 }
                 return new Object[] {type, out.toByteArray()};
             } catch (Exception ignored) {

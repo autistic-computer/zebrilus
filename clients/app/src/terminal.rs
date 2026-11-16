@@ -1032,6 +1032,15 @@ impl TerminalPane {
     }
 
     fn on_mouse_up(&mut self, event: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.release_pointer(event, !self.compact, cx);
+    }
+
+    fn release_pointer(
+        &mut self,
+        event: &MouseUpEvent,
+        copy_on_select: bool,
+        cx: &mut Context<Self>,
+    ) {
         self.reset_cursor_blink(cx);
         if self.scrollbar_dragging && event.button == MouseButton::Left {
             self.scroll_to_pointer(event.position, cx);
@@ -1047,7 +1056,7 @@ impl TerminalPane {
                 mouse_button(event.button),
                 event.click_count,
             );
-            let copies = !self.compact
+            let copies = copy_on_select
                 && event.button == MouseButton::Left
                 && self.selection_dragging
                 && (self.selection_autoscroll_lines != 0
@@ -1759,14 +1768,14 @@ impl TerminalPane {
                 cx,
             ),
             ala::TouchPhase::Ended | ala::TouchPhase::Cancelled => {
-                self.on_mouse_up(
+                self.release_pointer(
                     &MouseUpEvent {
                         button: MouseButton::Left,
                         position,
                         modifiers: ala::Modifiers::default(),
                         click_count: 1,
                     },
-                    window,
+                    false,
                     cx,
                 );
                 #[cfg(any(target_os = "ios", target_os = "android"))]

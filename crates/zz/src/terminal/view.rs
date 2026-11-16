@@ -2040,7 +2040,7 @@ impl TerminalView {
         };
         let normalized = match self.last_clipboard_image.as_ref() {
             Some((id, normalized)) if *id == image.id() => Arc::clone(normalized),
-            _ => match crate::agent::attachment::normalize(&image) {
+            _ => match zz_ui::attachment::normalize(&image) {
                 Ok(normalized) => {
                     self.last_clipboard_image = Some((image.id(), Arc::clone(&normalized)));
                     normalized
@@ -2074,7 +2074,7 @@ impl TerminalView {
         }) else {
             return false;
         };
-        let normalized = match crate::agent::attachment::normalize(&image) {
+        let normalized = match zz_ui::attachment::normalize(&image) {
             Ok(normalized) => normalized,
             Err(error) => {
                 self.mux.update(cx, |_, cx| {
