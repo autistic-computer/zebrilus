@@ -6,6 +6,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const REPOSITORY_URL: &str = "https://github.com/autistic-computer/zebrilus";
 pub const RELEASES_URL: &str = "https://github.com/autistic-computer/zebrilus/releases";
 pub const ISSUES_URL: &str = "https://github.com/autistic-computer/zebrilus/issues/new";
+pub const DOCS_URL: &str = "https://github.com/autistic-computer/zebrilus/blob/main/docs/README.md";
 
 pub const ZZ_ABOUT: About = About {
     name: "zz",

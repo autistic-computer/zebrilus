@@ -587,7 +587,7 @@ impl TerminalPane {
             .update(cx, |connection, cx| connection.input(self.pane, input, cx));
     }
 
-    fn view(&self, action: TerminalViewAction, cx: &mut Context<Self>) {
+    pub(crate) fn view(&self, action: TerminalViewAction, cx: &mut Context<Self>) {
         self.send(
             match self.surface {
                 TerminalSurface::Pane => InputMessage::TerminalView {
@@ -722,7 +722,7 @@ impl TerminalPane {
         }
     }
 
-    fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.begin_search(SearchQuery::default(), false, cx);
         self.sync_search_input(window, cx);
     }

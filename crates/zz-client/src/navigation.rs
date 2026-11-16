@@ -37,6 +37,18 @@ pub fn rename_prompt_command(
 }
 
 #[must_use]
+pub fn kill_session_prompt_command(session: SessionId, name: &str) -> CommandInvocation {
+    CommandInvocation::new(
+        "confirm-before",
+        [
+            "-p".to_owned(),
+            format!("Kill session {name}? (y/n)"),
+            format!("kill-session -t {session}"),
+        ],
+    )
+}
+
+#[must_use]
 pub fn ordered_panes(window: &WindowSnapshot) -> Vec<&PaneSnapshot> {
     let mut layout_order = Vec::with_capacity(window.panes.len());
     window.layout.panes(&mut layout_order);

@@ -479,14 +479,9 @@ impl Render for AppShell {
                     if let Some((TreeTarget::Session(session), name)) =
                         shell.active_menu_target(true, cx)
                     {
-                        shell.mux.read(cx).execute(CommandInvocation::new(
-                            "confirm-before",
-                            [
-                                "-p".to_owned(),
-                                format!("Kill session {name}? (y/n)"),
-                                format!("kill-session -t {session}"),
-                            ],
-                        ));
+                        shell.mux.read(cx).execute(
+                            zz_client::navigation::kill_session_prompt_command(session, &name),
+                        );
                     }
                 }))
                 .on_action(cx.listener(|shell, _: &menus::Detach, _, cx| {
@@ -534,7 +529,7 @@ impl Render for AppShell {
                     }
                 }))
                 .on_action(|action: &menus::OpenUrl, _, cx| {
-                    if action.url == menus::RELEASE_NOTES_URL
+                    if action.url == zz_ui::settings::about::RELEASES_URL
                         && let Some(crate::update::Status {
                             check: crate::update::CheckState::Available(release),
                             ..

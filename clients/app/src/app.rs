@@ -10,6 +10,8 @@ mod floating;
 mod gui;
 mod hosts;
 mod keys;
+#[cfg(target_os = "ios")]
+mod menu_bar;
 mod picker;
 mod providers;
 mod settings;
@@ -187,6 +189,8 @@ pub struct AppShell {
     compact: compact::CompactState,
     which_key: Option<zz_ui::which_key::WhichKeySheet>,
     which_key_timer: Option<Task<()>>,
+    #[cfg(target_os = "ios")]
+    menu_sessions: Option<Vec<(String, zz_protocol::SessionId)>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -339,6 +343,8 @@ fn watch_connection(
                 }
                 _ => {}
             }
+            #[cfg(target_os = "ios")]
+            this.sync_menus(cx);
             cx.notify();
         },
     );
@@ -494,6 +500,8 @@ impl AppShell {
             compact: compact::CompactState::default(),
             which_key: None,
             which_key_timer: None,
+            #[cfg(target_os = "ios")]
+            menu_sessions: None,
             _subscriptions: vec![
                 key_events,
                 appearance_observer,
@@ -509,7 +517,7 @@ impl AppShell {
         this.preferences.apply(&this.connection, window, cx);
         this.sync_roster(cx);
         #[cfg(target_os = "ios")]
-        cx.set_menus(this.menus());
+        this.sync_menus(cx);
         #[cfg(target_os = "android")]
         window.on_system_back(cx, {
             let view = cx.weak_entity();
@@ -947,71 +955,6 @@ impl AppShell {
             self.command(name, words.map(str::to_owned).collect(), cx);
         }
         cx.notify();
-    }
-
-    #[cfg(target_os = "ios")]
-    fn menus(&self) -> Vec<ala::Menu> {
-        let bindings = self.chrome.bindings();
-        let chrome = |title: &'static str, action: ChromeAction| {
-            ala::MenuItem::action(
-                title,
-                ala_platform::ios::MenuCommand {
-                    id: action.name().into(),
-                    shortcut: bindings
-                        .iter()
-                        .find(|(table, _, bound)| table == UI_TABLE && *bound == action)
-                        .map(|(_, key, _)| key.clone().into())
-                        .or_else(|| (action == ChromeAction::ClosePane).then(|| "D-w".into())),
-                },
-            )
-        };
-        let tmux = |title: &'static str, command: &'static str| {
-            ala::MenuItem::action(
-                title,
-                ala_platform::ios::MenuCommand {
-                    id: format!("tmux:{command}").into(),
-                    shortcut: None,
-                },
-            )
-        };
-        vec![
-            ala::Menu::new("zz").items([chrome("Settings…", ChromeAction::OpenSettings)]),
-            ala::Menu::new("File").items([
-                chrome("New Session", ChromeAction::NewSession),
-                chrome("New Window", ChromeAction::NewWindow),
-                chrome("Split Right", ChromeAction::SplitRight),
-                chrome("Split Down", ChromeAction::SplitDown),
-                ala::MenuItem::separator(),
-                chrome("Close Pane", ChromeAction::ClosePane),
-                tmux("Kill Window", "kill-window"),
-                ala::MenuItem::separator(),
-                chrome("Detach", ChromeAction::Detach),
-            ]),
-            ala::Menu::new("View").items([
-                chrome("Command Palette…", ChromeAction::OpenCommandPalette),
-                tmux("Choose Window…", "choose-tree -w"),
-                chrome("Toggle Sidebar", ChromeAction::ToggleSidebar),
-                tmux("Zoom Pane", "resize-pane -Z"),
-                ala::MenuItem::separator(),
-                chrome("Zoom In", ChromeAction::UiZoomIn),
-                chrome("Zoom Out", ChromeAction::UiZoomOut),
-                chrome("Reset Zoom", ChromeAction::UiZoomReset),
-            ]),
-        ]
-    }
-
-    #[cfg(target_os = "ios")]
-    fn menu_command(
-        &mut self,
-        command: &ala_platform::ios::MenuCommand,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(command) = command.id.strip_prefix("tmux:") {
-            self.tmux_command(command, cx);
-        } else if let Some(action) = ChromeAction::from_name(&command.id) {
-            self.chrome_command(action, window, cx);
-        }
     }
 
     pub(super) fn open_palette(

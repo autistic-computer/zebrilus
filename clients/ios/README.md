@@ -272,10 +272,14 @@ being composed, hardware keys go to the input method first.
 
 - Each iPad window (Stage Manager, split view, or an external display) runs its own
   workspace with its own connection. New windows come from the system's window controls.
-- The iPadOS menu bar and the Command-hold shortcut list show the zz, File, and View
-  commands with their Command shortcuts: Settings, New Session, New Window, Split Right,
-  Split Down, Close Pane (Command-W), Kill Window, Detach, Command Palette, Choose Window,
-  Toggle Sidebar, Zoom Pane, and UI zoom. Detach leaves the session running and shows the
+- The iPadOS menu bar and the Command-hold shortcut list show the zz, File, Edit, View and
+  Help commands, with Command shortcuts where the desktop has them: Settings, New Session,
+  New Window, Split Right, Split Down, New Browser Pane, Switch Session (one row per session
+  on the host), Rename Session, Rename Window, Close Pane (Command-W), Kill Window, Kill
+  Session (asks first), Detach, Find, Copy Mode and Clear Scrollback in the active terminal,
+  Command Palette, Choose Window, Toggle Sidebar, Zoom Pane, Select Pane, UI zoom, Back,
+  Forward and Reload in the active browser pane, and links to the docs, release notes and a
+  new issue. Detach leaves the session running and shows the
   empty workspace: Attach to session (New session when the host has none, Return or a tap),
   Settings, and the prefix keys a session unlocks (`c`, `%`, `"`, `s`, `?`, or the keys the
   host binds to those commands).
