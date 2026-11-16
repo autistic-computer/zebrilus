@@ -498,7 +498,7 @@ fn omnibox(inputs: &[Entity<InputState>; 1], window: &mut Window, cx: &mut App) 
     .into_iter()
     .enumerate()
     .map(|(index, (title, url, selected))| {
-        browser_omnibox_row(index, title, url, selected, None, cx).into_any_element()
+        browser_omnibox_row(index, title, url, selected, None, px(32.0), cx).into_any_element()
     })
     .collect();
     states()
@@ -549,7 +549,15 @@ fn start_page(_: &mut Window, cx: &mut App) -> AnyElement {
             ]
             .into_iter()
             .enumerate()
-            .map(|(index, url)| browser_recent_row(("recent", index), url, None, cx)),
+            .map(|(index, url)| {
+                browser_recent_row(
+                    ("recent", index),
+                    url,
+                    None,
+                    penna::blocks::picker::list_row_height(cx),
+                    cx,
+                )
+            }),
         );
     states()
         .columns(2)

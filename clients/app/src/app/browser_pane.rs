@@ -17,6 +17,7 @@ use penna::{
     PanelLook, TextStyle, WindowExt as _,
     blocks::compact::pill_backdrop_reach,
     blocks::sheet::{floating_sheet, sheet_inset},
+    blocks::touch::TOUCH_TARGET,
     components::button::{Button, ButtonVariants as _},
     components::input::{InputEvent, InputState, SelectAll},
     components::menu::DropdownMenu as _,
@@ -67,6 +68,7 @@ struct Tab {
     muted: bool,
     visited: String,
     history_use: Option<OmniboxUse>,
+    history_started: bool,
     _events: ala::Task<()>,
 }
 
@@ -208,8 +210,8 @@ impl BrowserPane {
                             this.navigate(url, window, cx);
                         }
                         BrowserCommand::Reload => this.reload(cx),
-                        BrowserCommand::Back => this.tabs[this.active].view.back(),
-                        BrowserCommand::Forward => this.tabs[this.active].view.forward(),
+                        BrowserCommand::Back => this.go_back(),
+                        BrowserCommand::Forward => this.go_forward(),
                         _ => {}
                     }
                 }
@@ -516,6 +518,7 @@ impl BrowserPane {
             muted: false,
             visited: String::new(),
             history_use: None,
+            history_started: false,
             _events: task,
         }
     }
@@ -534,9 +537,7 @@ impl BrowserPane {
                 committed,
                 progress,
             } => {
-                if let Some(url) = &url {
-                    self.record_history(index, url, &title, cx);
-                }
+                self.record_history(index, url.as_deref(), &title, loading, committed, cx);
                 let tab = &mut self.tabs[index];
                 tab.progress = progress;
                 if committed {
@@ -791,26 +792,43 @@ impl BrowserPane {
         true
     }
 
-    fn record_history(&mut self, index: usize, url: &str, title: &str, cx: &mut Context<Self>) {
+    fn record_history(
+        &mut self,
+        index: usize,
+        url: Option<&str>,
+        title: &str,
+        loading: bool,
+        committed: bool,
+        cx: &mut Context<Self>,
+    ) {
         let (host, profile) = (self.host.clone(), self.profile_name.clone());
         let tab = &mut self.tabs[index];
-        if tab.visited != url {
+        tab.history_started |= loading && tab.history_use.is_some();
+        let Some(url) = url else {
+            return;
+        };
+        let settled = (committed || !loading) && tab.error.is_none();
+        let visit = settled && tab.visited != url;
+        if visit {
             url.clone_into(&mut tab.visited);
-            let history_use = tab.history_use.take();
-            history::update(&host, cx, |pages| {
-                let visited = pages.record_visit(&profile, url);
-                if visited && let Some(history_use) = history_use {
-                    pages.record_omnibox_use(
-                        &profile,
-                        &history_use.input,
-                        url,
-                        history_use.selected,
-                    );
-                }
-                visited
-            });
         }
-        history::update(&host, cx, |pages| pages.record_title(&profile, url, title));
+        let history_use = if settled && committed && !loading && tab.history_started {
+            tab.history_use.take()
+        } else {
+            None
+        };
+        history::update(&host, cx, |pages| {
+            let mut changed = visit && pages.record_visit(&profile, url);
+            if let Some(history_use) = history_use {
+                changed |= pages.record_omnibox_use(
+                    &profile,
+                    &history_use.input,
+                    url,
+                    history_use.selected,
+                );
+            }
+            pages.record_title(&profile, url, title) || changed
+        });
     }
 
     fn update_omnibox(&mut self, value: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -842,7 +860,9 @@ impl BrowserPane {
     fn accept_omnibox(&mut self, typed: &str, window: &mut Window, cx: &mut Context<Self>) {
         let (value, history_use) = self.omnibox.accept(typed);
         if self.navigate(&value, window, cx) {
-            self.tabs[self.active].history_use = history_use;
+            let tab = &mut self.tabs[self.active];
+            tab.history_use = history_use;
+            tab.history_started = false;
         }
     }
 
@@ -939,6 +959,7 @@ impl BrowserPane {
                     suggestion.display_url.clone(),
                     self.omnibox.selected == Some(index),
                     None,
+                    px(TOUCH_TARGET),
                     cx,
                 )
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -989,6 +1010,7 @@ impl BrowserPane {
                         ("ios-browser-recent", index),
                         diagnostic_url(&page.url),
                         None,
+                        px(TOUCH_TARGET),
                         cx,
                     )
                     .on_mouse_down(
@@ -1018,6 +1040,7 @@ impl BrowserPane {
             return;
         }
         let tab = &mut self.tabs[self.active];
+        tab.history_use = None;
         if tab.error.take().is_some() {
             tab.pending_load = true;
         }
@@ -1134,12 +1157,16 @@ impl BrowserPane {
         }
     }
 
-    pub(super) fn go_back(&self) {
-        self.tabs[self.active].view.back();
+    pub(super) fn go_back(&mut self) {
+        let tab = &mut self.tabs[self.active];
+        tab.history_use = None;
+        tab.view.back();
     }
 
-    pub(super) fn go_forward(&self) {
-        self.tabs[self.active].view.forward();
+    pub(super) fn go_forward(&mut self) {
+        let tab = &mut self.tabs[self.active];
+        tab.history_use = None;
+        tab.view.forward();
     }
 
     pub(super) fn reload_page(&mut self, cx: &mut Context<Self>) {
@@ -1179,8 +1206,8 @@ impl BrowserPane {
             }
             ChromeAction::BrowserSelectLastTab => self.select_index(count - 1, window, cx),
             ChromeAction::BrowserNewTab => self.add_tab("about:blank".into(), window, cx),
-            ChromeAction::BrowserBack if writable => tab.view.back(),
-            ChromeAction::BrowserForward if writable => tab.view.forward(),
+            ChromeAction::BrowserBack if writable => self.go_back(),
+            ChromeAction::BrowserForward if writable => self.go_forward(),
             ChromeAction::BrowserReload if writable && tab.loading => tab.view.reload(),
             ChromeAction::BrowserReload => self.reload(cx),
             ChromeAction::BrowserFocusAddress if self.compact => self.open_address(window, cx),
@@ -1714,7 +1741,7 @@ impl Render for BrowserPane {
                     !writable || !tab.back,
                     false,
                 )
-                .on_click(cx.listener(|this, _, _, _| this.tabs[this.active].view.back())),
+                .on_click(cx.listener(|this, _, _, _| this.go_back())),
                 browser_toolbar_button(
                     cx,
                     "ios-browser-forward",
@@ -1723,7 +1750,7 @@ impl Render for BrowserPane {
                     !writable || !tab.forward,
                     false,
                 )
-                .on_click(cx.listener(|this, _, _, _| this.tabs[this.active].view.forward())),
+                .on_click(cx.listener(|this, _, _, _| this.go_forward())),
                 browser_toolbar_button(
                     cx,
                     "ios-browser-reload",

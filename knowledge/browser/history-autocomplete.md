@@ -137,6 +137,12 @@ never sent to the host. Its rows show a globe: the native web views report no
 favicon, so nothing is stored for them. The native page is cut out where the result
 panel covers it.
 
+On those clients a page counts as visited once its load commits, or when its address
+changes with no load running. An address-bar submission is credited to the page it lands on
+after the load commits and finishes without an error. A load that fails before it
+commits records nothing, and reload, stop, back and forward drop a pending
+submission.
+
 CEF's favicon URL callback downloads the page icon through the browser session and converts
 it to a PNG at up to 32px. Each completion carries the page URL captured before the download,
 so navigating elsewhere does not attach the icon to the new page. The history store keeps

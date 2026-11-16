@@ -3021,6 +3021,7 @@ impl BrowserView {
                     suggestion.display_url.clone(),
                     self.omnibox.selected == Some(index),
                     recent_pages::favicon(&self.profile, &suggestion.url, cx),
+                    px(32.0),
                     cx,
                 )
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -3089,6 +3090,7 @@ impl BrowserView {
             ("browser-recent", index),
             display_url(&page.url),
             page.favicon(),
+            penna::blocks::picker::list_row_height(cx),
             cx,
         )
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {

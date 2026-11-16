@@ -645,10 +645,10 @@ pub fn browser_recent_row(
     id: impl Into<ala::ElementId>,
     url: impl Into<SharedString>,
     favicon: Option<Arc<[u8]>>,
+    height: Pixels,
     cx: &App,
 ) -> Row {
     let url = url.into();
-    let height = crate::picker::list_row_height(cx);
     Row::new(id, RowLook::MenuTint)
         .row_height(height)
         .flex()
@@ -695,6 +695,7 @@ pub fn browser_omnibox_row(
     url: impl Into<SharedString>,
     selected: bool,
     favicon: Option<Arc<[u8]>>,
+    height: Pixels,
     cx: &App,
 ) -> ala::Stateful<ala::Div> {
     let title = title.into();
@@ -712,7 +713,7 @@ pub fn browser_omnibox_row(
     );
     crate::list_row(
         ("browser-omnibox-suggestion", index),
-        px(32.0),
+        height,
         selected,
         true,
         cx,
@@ -1461,7 +1462,7 @@ mod tests {
             .enumerate()
             .map(|(index, (title, url, selected))| {
                 let accepted = Arc::clone(&self.accepted);
-                browser_omnibox_row(index, title, url, selected, None, cx)
+                browser_omnibox_row(index, title, url, selected, None, px(32.0), cx)
                     .on_mouse_down(MouseButton::Left, move |_, _, cx| {
                         accepted.lock().unwrap().push(index);
                         cx.stop_propagation();
