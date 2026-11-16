@@ -38,7 +38,6 @@ use crate::{
 
 const ROW_HEIGHT: f32 = 48.0;
 const NEST_HEIGHT: f32 = 32.0;
-const ROW_ROOM: usize = 3;
 const TRACK_GAP: f32 = 4.0;
 const CHEVRON_SLOP: f32 = 4.0;
 const ROW_PADDING: f32 = 10.0;
@@ -230,7 +229,6 @@ pub struct FlatRowState {
     pub hovered: bool,
     pub dimmed: bool,
     pub ground: Option<Ground>,
-    pub stack_tiles: usize,
 }
 
 impl FlatRowState {
@@ -593,7 +591,6 @@ fn main_row(
                 (!state.dimmed).then_some(handler),
                 cx,
             )
-            .room(state.stack_tiles)
             .beside(
                 v_flex()
                     .flex_1()
@@ -1358,7 +1355,6 @@ pub fn flat_sidebar(
         let base = FlatRowState {
             dimmed: !host.live(),
             ground: Some(ground),
-            stack_tiles: ROW_ROOM,
             ..FlatRowState::default()
         };
         let current = state

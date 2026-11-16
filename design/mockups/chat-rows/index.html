@@ -53,7 +53,7 @@
 
   .zz-row[data-penna="row.nav"] { position: relative; flex: none; flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; height: 46px; margin: 1px var(--penna-row-inset); padding: 0 13px 0 10px; font-weight: 400; cursor: var(--penna-click-cursor); --zz-row-fill: var(--penna-fill); }
   .zz-row.zz-nest[data-penna="row.nav"] { height: 30px; padding-left: 32px; gap: 10px; }
-  .zz-stack { position: relative; flex: none; width: 42px; height: 28px; }
+  .zz-stack { position: relative; flex: none; height: 28px; }
   .zz-lead { position: relative; flex: none; height: 20px; }
   .zz-tile[data-penna] { position: absolute; top: 0; display: grid; place-items: center; width: 28px; height: 28px; background: linear-gradient(color-mix(in srgb, var(--penna-fg) 6%, var(--penna-fill)), var(--penna-fill)); box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--penna-fg) 16%, transparent), var(--penna-shadow-contact); --penna-icon-size: 16px; }
   .zz-lead > .zz-tile[data-penna] { width: 20px; height: 20px; --penna-icon-size: 14px; }
@@ -188,7 +188,7 @@
 
   const dot = (tone) => (tone ? `<span class="zz-dot" data-tone="${tone}"></span>` : "");
   const tiles = (faces, step) => faces.slice(0, 3).map((face, slot) => `<span class="zz-tile" data-penna="tile.stack" style="left: ${slot * step}px; z-index: ${10 - slot}">${slot === 0 ? ic(face.icon) : ""}${dot(face.tone)}</span>`).join("");
-  const stack = (faces) => `<span class="zz-stack">${tiles(faces, 7)}</span>`;
+  const stack = (faces) => `<span class="zz-stack" style="width: ${28 + (Math.min(3, faces.length) - 1) * 7}px">${tiles(faces, 7)}</span>`;
   const lead = (faces, room) => `<span class="zz-lead" style="width: ${20 + (room - 1) * 5}px">${tiles(faces, 5)}</span>`;
   const parts = (detail) => detail.map(([part, tone = "muted"]) => `<span data-tone="${tone}">${esc(part)}</span>`).join("");
   const chevron = (open, hover) => ic("chevron-right", ` class="zz-chev"${open ? " data-open" : ""}${hover ? ` data-state="hover"` : ""}`);
@@ -324,14 +324,14 @@
     ["Sidebar", "256 wide; list right gutter 8; x below is from the sidebar's left edge", "SIDEBAR_DEFAULT_WIDTH, SIDEBAR_SCROLLBAR_GUTTER"],
     ["Row fill", "inset 6 left and right, 1 top and bottom; row.nav look", "theme.row_inset, WORKSPACE_TREE_FILL_VERTICAL_INSET"],
     ["Window row", "48 high; content from x 16 (6 + 10); trailing pad 19", "ROW_HEIGHT, ROW_PADDING, row_trailing_inset"],
-    ["Window stack", "tile 28, glyph 16, step 7, room 3 = 42 wide, x 16 to 58", "StackSize::Row"],
-    ["Window text", "x 68 (stack + gap 10); title Body 13/17 medium; second line Small 12/15, gap 1", "TILE_GAP, TITLE_LINE, DETAIL_LINE, LINE_GAP"],
+    ["Window stack", "tile 28, glyph 16, step 7; as wide as its faces: 28, 35 or 42, from x 16", "StackSize::Row"],
+    ["Window text", "stack + gap 10: x 54 after one face, 61 after two, 68 after three; title Body 13/17 medium; second line Small 12/15, gap 1", "TILE_GAP, TITLE_LINE, DETAIL_LINE, LINE_GAP"],
     ["Age, badge", "Caption 11 tabular, gap 8; ⌘ cap (Kbd small) replaces the age", "AGE, DETAIL_AGE_GAP, window_shortcut_cap"],
     ["Chevron", "Disclosure 10 after the title, gap 6; foreground.muted, foreground on hover; turns 90° open", "CHEVRON_SIZE, TITLE_TRAILING_GAP"],
     ["Status dot", "round(tile × 0.3), min 5: 8 on 28, 6 on 20; ring 1.5 in the row's ground; offset −2.5 right and bottom", "DOT_SHARE, DOT_RING, DOT_OVERHANG"],
     ["Nested row", "32 high, one line, same row.nav fill and insets", "new; = WORKSPACE_TREE_ROW_HEIGHT"],
-    ["Nested lead", "x 38 = 68 − 10 − 20; tile 20, glyph 14, step 5; a pile's rows reserve its widest stack, up to 30", "new; StackSize::Bar"],
-    ["Nested text", "x = 38 + stack width + 10: 68 after one face, lining up with the window title; 73 after two, 78 after three. Body 13/17, medium for chats, regular otherwise", "new"],
+    ["Nested lead", "x 38 = 58 − 20, ending where a three-face stack ends; tile 20, glyph 14, step 5; a pile's rows reserve its widest stack, up to 30", "new; StackSize::Bar"],
+    ["Nested text", "x = 38 + stack width + 10: 68 after one face, lining up with a three-face window title; 73 after two, 78 after three. Body 13/17, medium for chats, regular otherwise", "new"],
     ["Nested trailing", "one of: status word Caption 11 in its tone, spinner 12, age Caption 11 tabular; gap 8; trailing pad 19", "new"],
     ["Track", "x 30 = 6 + 10 + 28/2, the front tile's center; 1 device px wide", "new; IndentGuides hairline"],
     ["Track length", "from the parent row's top + 42 (stack bottom + 4) to the last nested row's bottom − 4", "TREE_INDENT_GUIDE_PADDING"],
