@@ -1156,6 +1156,9 @@ impl AppShell {
             divider,
             cx,
         )
+        .when(self.inline_sidebar(window), |panel| {
+            panel.pt(window.fully_visible_bounds().top())
+        })
         .children(footer)
         .track_focus(&self.sidebar_focus)
         .child(
@@ -3245,7 +3248,8 @@ impl Render for AppShell {
         overlays
             .extend(Root::render_notification_layer(window, cx).map(IntoElement::into_any_element));
         let phone_settings = !compact && Self::narrow(window) && self.settings.is_some();
-        if phone_settings {
+        let sidebar_to_top = !compact && self.inline_sidebar(window);
+        if phone_settings || sidebar_to_top {
             overlays = vec![
                 div()
                     .absolute()
@@ -3264,7 +3268,17 @@ impl Render for AppShell {
                 zz_ui::shell::shell_frame(cx.theme().background, self.preferences.gaps, cx),
                 sidebar,
                 titlebar,
-                app_workspace_surface("web-workspace", workspace, terminal_overlays, cx),
+                div()
+                    .size_full()
+                    .when(sidebar_to_top, |content| {
+                        content.pt(window.fully_visible_bounds().top())
+                    })
+                    .child(app_workspace_surface(
+                        "web-workspace",
+                        workspace,
+                        terminal_overlays,
+                        cx,
+                    )),
                 overlays,
             )
         } else {
@@ -3392,7 +3406,7 @@ impl Render for AppShell {
         div()
             .size_full()
             .bg(cx.theme().background)
-            .pt(if compact || phone_settings {
+            .pt(if compact || phone_settings || sidebar_to_top {
                 px(0.0)
             } else {
                 visible.top()
