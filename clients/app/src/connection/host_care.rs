@@ -116,12 +116,6 @@ impl Connection {
         }
     }
 
-    pub fn restart_daemon(&mut self, cx: &mut Context<Self>) {
-        if self.connected {
-            self.command("kill-server", Vec::new(), cx);
-        }
-    }
-
     pub(super) fn notice(&mut self, kind: AskpassPromptKind, text: String, cx: &mut Context<Self>) {
         match kind {
             AskpassPromptKind::KeyAdded => cx.emit(HostNotice::KeyAdded),

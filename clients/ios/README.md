@@ -121,8 +121,8 @@ later connections skip the password, and a toast says whether it was added. The 
 Add host sheet to copy by hand. On iPad, Settings > Hosts names why a host failed (zz missing, too
 old, or newer than the app) and offers **Install zz** or **Update zz** on ssh hosts, which runs the
 installer there over the same ssh login (release builds only; dev builds refuse, as on the
-desktop). When the attached daemon runs an older build, Settings > About offers **Restart
-daemon**, which runs `kill-server` and redials; an ssh host starts the new daemon on that redial. Override the
+desktop). An ssh host whose daemon is an older build than the app also gets **Update zz**, which
+installs the app's version and restarts the daemon. Override the
 choices with `ZZ_ALA_DEVICE`, `ZZ_ALA_SIGN_IDENTITY`, `ZZ_ALA_PROFILE`, or `ZZ_ALA_ENDPOINT`.
 
 Simulator and device builds use the zz Dev icon (`assets/zz-dev.icon`, compiled with `actool`).

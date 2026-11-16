@@ -746,9 +746,7 @@ impl AppShell {
                     })
                     .into_any_element();
             }
-            SettingsSection::About => {
-                return large(about_page(&self.connection, cx)).into_any_element();
-            }
+            SettingsSection::About => return large(about_page(cx)).into_any_element(),
             SettingsSection::Agents => {
                 return large(self.providers_page((!narrow).then_some(section.title()), cx))
                     .into_any_element();
@@ -914,7 +912,7 @@ impl AppShell {
     }
 }
 
-fn about_page(connection: &Entity<Connection>, cx: &mut Context<AppShell>) -> SettingsScrollColumn {
+fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
     static LOGOS: std::sync::LazyLock<[Arc<ala::Image>; 2]> = std::sync::LazyLock::new(|| {
         let [light, dark]: [&'static [u8]; 2] = if zz_protocol::app_identity::DEVELOPMENT {
             [
@@ -966,36 +964,7 @@ fn about_page(connection: &Entity<Connection>, cx: &mut Context<AppShell>) -> Se
                 }),
             cx,
         ))
-        .children(daemon_stack(connection, cx))
         .child(about_project_stack(&ZZ_ABOUT, cx))
-}
-
-#[cfg(any(target_os = "ios", target_os = "android"))]
-fn daemon_stack(
-    connection: &Entity<Connection>,
-    cx: &mut Context<AppShell>,
-) -> Option<SettingsStack> {
-    let read = connection.read(cx);
-    let behind = read.daemon_behind()?;
-    let description = behind.restart_text(read.session_count());
-    let connection = connection.clone();
-    Some(
-        SettingsStack::new().child(with_control(
-            SettingEntry::new("Daemon").description(description),
-            penna::components::button::Button::new("settings-daemon-restart")
-                .label("Restart daemon")
-                .on(settings_card_ground(cx))
-                .on_click(move |_, window, cx| {
-                    super::hosts::restart_daemon(connection.clone(), window, cx);
-                }),
-            phone(),
-        )),
-    )
-}
-
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn daemon_stack(_: &Entity<Connection>, _: &mut Context<AppShell>) -> Option<SettingsStack> {
-    None
 }
 
 pub(super) fn with_control(

@@ -1090,40 +1090,6 @@ pub(super) fn install_zz(
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
-pub(super) fn restart_daemon(
-    connection: Entity<crate::connection::Connection>,
-    window: &mut Window,
-    cx: &mut ala::App,
-) {
-    use penna::{
-        Emphasis, WindowExt as _, blocks::dialog::DialogButtonProps,
-        components::button::ButtonVariant,
-    };
-    let read = connection.read(cx);
-    let Some(behind) = read.daemon_behind() else {
-        return;
-    };
-    let description = behind.restart_text(read.session_count());
-    window.open_alert_dialog(cx, move |alert, _, _| {
-        let accept = connection.clone();
-        alert
-            .title("Restart the zz daemon?")
-            .description(description.clone())
-            .button_props(
-                DialogButtonProps::default()
-                    .ok_variant(ButtonVariant::Paint(Tone::Danger, Emphasis::Solid))
-                    .ok_text("Restart daemon")
-                    .cancel_text("Not now")
-                    .show_cancel(true),
-            )
-            .on_ok(move |_, _, cx| {
-                accept.update(cx, crate::connection::Connection::restart_daemon);
-                true
-            })
-    });
-}
-
-#[cfg(any(target_os = "ios", target_os = "android"))]
 pub(super) fn copy_ssh_key(window: &mut Window, cx: &mut ala::App) {
     use penna::{WindowExt as _, blocks::notification::Notification};
     let notification = match zz_daemon_client::app_ssh_public_key() {
