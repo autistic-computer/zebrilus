@@ -1599,15 +1599,12 @@ fn render_tree_row_context_menu(
             .and_then(MuxTreeHost::install_offer)
         {
             let install_mux = runtime.mux.clone();
-            items.push(TreeRowMenuItem::new(
-                crate::workspace::remote_install::menu_label(offer),
-                move |_, cx| {
-                    install_mux.update(cx, |mux, cx| match offer {
-                        InstallOffer::Install => mux.install_zz_on_host(host, cx),
-                        InstallOffer::Update => mux.offer_update(host, cx),
-                    });
-                },
-            ));
+            items.push(TreeRowMenuItem::new(offer.label(), move |_, cx| {
+                install_mux.update(cx, |mux, cx| match offer {
+                    InstallOffer::Install => mux.install_zz_on_host(host, cx),
+                    InstallOffer::Update => mux.offer_update(host, cx),
+                });
+            }));
         }
         let close_mux = runtime.mux.clone();
         items.push(TreeRowMenuItem::new("Remove host", move |_, cx| {

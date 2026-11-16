@@ -30,9 +30,11 @@ use zeroize::Zeroizing;
 use crate::{
     askpass::{AskpassMode, AskpassPrompt, AskpassReply, SshPrompts},
     endpoint::{
-        EndpointError, PROXY_READY_MARKER, REMOTE_DAEMON_TIMEOUT_STATUS, REMOTE_ZZ_MISSING_STATUS,
-        SshEndpoint, authorized_key_script, parse_remote_probe_output, remote_daemon_start_script,
-        remote_proxy_script, remote_socket_probe, shell_quote, ssh_failure_hint,
+        EndpointError, INSTALL_SCRIPT, PROXY_READY_MARKER, REMOTE_DAEMON_TIMEOUT_STATUS,
+        REMOTE_ZZ_MISSING_STATUS, RemoteInstall, SshEndpoint, authorized_key_script,
+        parse_remote_install_output, parse_remote_probe_output, remote_daemon_start_script,
+        remote_install_script, remote_proxy_script, remote_socket_probe, shell_quote,
+        ssh_failure_hint,
     },
     russh_prompt::{AsyncSshPrompts, HandshakeDeadline},
     russh_socks::{LoopbackForward, SocksForward, discover_loopback_ports},
@@ -378,16 +380,58 @@ async fn establish(
     from_remote_tx: &std_mpsc::Sender<Vec<u8>>,
 ) -> Result<(SshSession, russh::Channel<client::Msg>), EndpointError> {
     let target = endpoint.to_string();
-    let host = endpoint.host.clone();
-    let port = endpoint.port.unwrap_or(22);
-    let transport_failure = Arc::new(Mutex::new(None::<String>));
-    let ssh_failed = |reason: String| EndpointError::SshFailed {
-        target: target.clone(),
+    let (mut session, transport_failure) = sign_in(endpoint, prompts).await?;
+    let ssh_failed = |reason| ssh_failure(&target, &transport_failure, reason);
+
+    let probed_socket = probe_remote_socket(&mut session, &target).await?;
+    let remote_socket = endpoint
+        .remote_socket
+        .clone()
+        .unwrap_or_else(|| probed_socket.clone());
+    if endpoint.remote_socket.is_none() {
+        ensure_remote_daemon(&mut session, &target, &probed_socket).await?;
+    }
+
+    let channel = session
+        .channel_open_session()
+        .await
+        .map_err(|error| ssh_failed(format!("opening the proxy channel: {error}")))?;
+    let command = format!(
+        "sh -lc {}",
+        shell_quote(&remote_proxy_script(&remote_socket))
+    );
+    channel
+        .exec(true, command)
+        .await
+        .map_err(|error| ssh_failed(format!("starting zz proxy: {error}")))?;
+
+    let channel = await_proxy_marker(channel, from_remote_tx, &target).await?;
+    Ok((session, channel))
+}
+
+fn ssh_failure(
+    target: &str,
+    transport_failure: &Mutex<Option<String>>,
+    reason: String,
+) -> EndpointError {
+    EndpointError::SshFailed {
+        target: target.to_owned(),
         reason: match transport_failure.lock().as_ref() {
             Some(detail) if !reason.contains(detail) => format!("{reason} ({detail})"),
             _ => reason,
         },
-    };
+    }
+}
+
+async fn sign_in(
+    endpoint: &SshEndpoint,
+    prompts: Option<AsyncSshPrompts>,
+) -> Result<(SshSession, Arc<Mutex<Option<String>>>), EndpointError> {
+    let target = endpoint.to_string();
+    let host = endpoint.host.clone();
+    let port = endpoint.port.unwrap_or(22);
+    let transport_failure = Arc::new(Mutex::new(None::<String>));
+    let ssh_failed = |reason| ssh_failure(&target, &transport_failure, reason);
 
     let user = endpoint
         .user
@@ -420,31 +464,59 @@ async fn establish(
     };
 
     authenticate(&mut session, &user, &host, &directory, prompts, &ssh_failed).await?;
+    Ok((session, transport_failure))
+}
 
-    let probed_socket = probe_remote_socket(&mut session, &target).await?;
-    let remote_socket = endpoint
-        .remote_socket
-        .clone()
-        .unwrap_or_else(|| probed_socket.clone());
-    if endpoint.remote_socket.is_none() {
-        ensure_remote_daemon(&mut session, &target, &probed_socket).await?;
-    }
-
-    let channel = session
-        .channel_open_session()
-        .await
-        .map_err(|error| ssh_failed(format!("opening the proxy channel: {error}")))?;
-    let command = format!(
-        "sh -lc {}",
-        shell_quote(&remote_proxy_script(&remote_socket))
-    );
-    channel
-        .exec(true, command)
-        .await
-        .map_err(|error| ssh_failed(format!("starting zz proxy: {error}")))?;
-
-    let channel = await_proxy_marker(channel, from_remote_tx, &target).await?;
-    Ok((session, channel))
+pub(crate) fn install_remote(
+    endpoint: &SshEndpoint,
+    prompts: Option<SshPrompts>,
+    restart_daemon: bool,
+) -> Result<RemoteInstall, EndpointError> {
+    let target = endpoint.to_string();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .enable_time()
+        .build()
+        .map_err(|error| EndpointError::SshFailed {
+            target: target.clone(),
+            reason: format!("failed to start the ssh runtime: {error}"),
+        })?;
+    runtime.block_on(async {
+        let deadline = HandshakeDeadline::new(HANDSHAKE_TIMEOUT);
+        let prompts = prompts.map(|prompts| deadline.prompts(prompts));
+        let (mut session, _) = tokio::select! {
+            result = sign_in(endpoint, prompts) => result?,
+            () = deadline.expired() => return Err(EndpointError::SshFailed {
+                target: target.clone(),
+                reason: "ssh handshake timed out".to_owned(),
+            }),
+        };
+        let command = format!(
+            "sh -lc {}",
+            shell_quote(&remote_install_script(
+                endpoint.remote_socket.as_deref(),
+                restart_daemon,
+            ))
+        );
+        let ran = exec_with_input(&mut session, command, INSTALL_SCRIPT.as_bytes()).await;
+        let _ = session
+            .disconnect(Disconnect::ByApplication, "zz install finished", "")
+            .await;
+        let (status, stdout, stderr) = ran.map_err(|error| EndpointError::SshFailed {
+            target: target.clone(),
+            reason: format!("running the install: {error}"),
+        })?;
+        parse_remote_install_output(
+            &target,
+            status.and_then(|status| i32::try_from(status).ok()),
+            &stdout,
+            &stderr,
+            &status.map_or_else(
+                || "no exit status".to_owned(),
+                |status| format!("exit status: {status}"),
+            ),
+        )
+    })
 }
 
 async fn authenticate(
@@ -626,17 +698,26 @@ async fn offer_key(
         return;
     }
     let script = authorized_key_script(public_key, &format!("{public_key} {KEY_COMMENT}"));
-    match exec_capture(session, format!("sh -c {}", shell_quote(&script))).await {
-        Ok((Some(0), ..)) => {}
-        Ok((status, _, stderr)) => log::warn!(
-            target: "zz_daemon::russh",
-            "adding the zz key on {host} exited with {status:?}: {}",
-            String::from_utf8_lossy(&stderr).trim(),
-        ),
-        Err(error) => {
-            log::warn!(target: "zz_daemon::russh", "adding the zz key on {host}: {error}");
+    let failure = match exec_capture(session, format!("sh -c {}", shell_quote(&script))).await {
+        Ok((Some(0), ..)) => None,
+        Ok((status, _, stderr)) => {
+            let stderr = String::from_utf8_lossy(&stderr);
+            Some(match (stderr.trim(), status) {
+                ("", Some(status)) => format!("the command exited with status {status}"),
+                ("", None) => "the command ended without a status".to_owned(),
+                (stderr, _) => stderr.to_owned(),
+            })
         }
-    }
+        Err(error) => Some(error.to_string()),
+    };
+    let notice = match failure {
+        None => AskpassPrompt::new(AskpassMode::KeyAdded, format!("ssh://{user}@{host}")),
+        Some(reason) => {
+            log::warn!(target: "zz_daemon::russh", "adding the zz key on {host}: {reason}");
+            AskpassPrompt::new(AskpassMode::KeyFailed, reason)
+        }
+    };
+    prompts.respond(notice).await;
 }
 
 async fn ask(
@@ -775,6 +856,31 @@ async fn exec_capture(
 ) -> Result<(Option<u32>, Vec<u8>, Vec<u8>), russh::Error> {
     let mut channel = session.channel_open_session().await?;
     channel.exec(true, command).await?;
+    let mut status = None;
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    while let Some(message) = channel.wait().await {
+        match message {
+            ChannelMsg::Data { data } => stdout.extend_from_slice(&data),
+            ChannelMsg::ExtendedData { data, ext: 1 } => stderr.extend_from_slice(&data),
+            ChannelMsg::ExitStatus { exit_status } => status = Some(exit_status),
+            _ => {}
+        }
+    }
+    Ok((status, stdout, stderr))
+}
+
+async fn exec_with_input(
+    session: &mut SshSession,
+    command: String,
+    input: &[u8],
+) -> Result<(Option<u32>, Vec<u8>, Vec<u8>), russh::Error> {
+    let mut channel = session.channel_open_session().await?;
+    channel.exec(true, command).await?;
+    if let Err(error) = channel.data(input).await {
+        log::debug!(target: "zz_daemon::russh", "the remote install stopped reading its script: {error}");
+    }
+    let _ = channel.eof().await;
     let mut status = None;
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();

@@ -645,6 +645,20 @@ impl AppShell {
                         }))
                 };
                 #[cfg(any(target_os = "ios", target_os = "android"))]
+                let install = self.host_connection(endpoint, cx).and_then(|connection| {
+                    let offer = connection.read(cx).install_offer()?;
+                    Some(
+                        Button::new(("hosts-install", index))
+                            .label(offer.label())
+                            .on(settings_card_ground(cx))
+                            .on_click(move |_, window, cx| {
+                                install_zz(connection.clone(), window, cx);
+                            }),
+                    )
+                });
+                #[cfg(not(any(target_os = "ios", target_os = "android")))]
+                let install: Option<Button> = None;
+                #[cfg(any(target_os = "ios", target_os = "android"))]
                 let remove = {
                     let removed = endpoint.clone();
                     Some(
@@ -665,7 +679,12 @@ impl AppShell {
                 let remove: Option<Button> = None;
                 with_control(
                     entry,
-                    h_flex().gap_2().flex_none().child(action).children(remove),
+                    h_flex()
+                        .gap_2()
+                        .flex_none()
+                        .children(install)
+                        .child(action)
+                        .children(remove),
                     narrow,
                 )
             })
@@ -992,6 +1011,116 @@ impl AppShell {
                 narrow,
             ))
     }
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+pub(super) fn watch_host_notices(
+    connection: &Entity<crate::connection::Connection>,
+    window: &mut Window,
+    cx: &mut Context<AppShell>,
+) -> Subscription {
+    use crate::connection::HostNotice;
+    use penna::{WindowExt as _, blocks::notification::Notification};
+    use zz_protocol::ClientMessageKind;
+    cx.subscribe_in(
+        connection,
+        window,
+        |_, connection, notice: &HostNotice, window, cx| {
+            let title = connection
+                .read(cx)
+                .endpoint()
+                .map_or_else(String::new, host_title);
+            let notification = match notice {
+                HostNotice::KeyAdded => Notification::success(format!(
+                    "Added zz's key to {title}; it won't ask to sign in again"
+                )),
+                HostNotice::KeyFailed(reason) => {
+                    Notification::warning(format!("Could not add zz's key to {title}: {reason}"))
+                }
+                HostNotice::Installed(outcome) => match outcome.notice(&title) {
+                    (ClientMessageKind::Success, text) => Notification::success(text),
+                    (ClientMessageKind::Warning, text) => Notification::warning(text),
+                    (ClientMessageKind::Error, text) => Notification::error(text),
+                    (ClientMessageKind::Info, text) => Notification::info(text),
+                },
+                HostNotice::InstallFailed(reason) => Notification::error(reason.clone()),
+            };
+            window.push_notification(notification, cx);
+        },
+    )
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+pub(super) fn install_zz(
+    connection: Entity<crate::connection::Connection>,
+    window: &mut Window,
+    cx: &mut ala::App,
+) {
+    use penna::{
+        Emphasis, WindowExt as _, blocks::dialog::DialogButtonProps,
+        components::button::ButtonVariant,
+    };
+    let read = connection.read(cx);
+    let Some(offer) = read.install_offer() else {
+        return;
+    };
+    if offer == zz_daemon_client::InstallOffer::Install {
+        connection.update(cx, crate::connection::Connection::install_zz);
+        return;
+    }
+    let name = read.endpoint().map_or_else(String::new, host_title);
+    let (title, description) = zz_daemon_client::update_prompt(&[(name, read.session_count())]);
+    window.open_alert_dialog(cx, move |alert, _, _| {
+        let accept = connection.clone();
+        alert
+            .title(title.clone())
+            .description(description.clone())
+            .button_props(
+                DialogButtonProps::default()
+                    .ok_variant(ButtonVariant::Paint(Tone::Danger, Emphasis::Solid))
+                    .ok_text("Update and restart")
+                    .cancel_text("Not now")
+                    .show_cancel(true),
+            )
+            .on_ok(move |_, _, cx| {
+                accept.update(cx, crate::connection::Connection::install_zz);
+                true
+            })
+    });
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+pub(super) fn restart_daemon(
+    connection: Entity<crate::connection::Connection>,
+    window: &mut Window,
+    cx: &mut ala::App,
+) {
+    use penna::{
+        Emphasis, WindowExt as _, blocks::dialog::DialogButtonProps,
+        components::button::ButtonVariant,
+    };
+    let read = connection.read(cx);
+    let Some(behind) = read.daemon_behind() else {
+        return;
+    };
+    let description = behind.restart_text(read.session_count());
+    window.open_alert_dialog(cx, move |alert, _, _| {
+        let accept = connection.clone();
+        alert
+            .title("Restart the zz daemon?")
+            .description(description.clone())
+            .button_props(
+                DialogButtonProps::default()
+                    .ok_variant(ButtonVariant::Paint(Tone::Danger, Emphasis::Solid))
+                    .ok_text("Restart daemon")
+                    .cancel_text("Not now")
+                    .show_cancel(true),
+            )
+            .on_ok(move |_, _, cx| {
+                accept.update(cx, crate::connection::Connection::restart_daemon);
+                true
+            })
+    });
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]

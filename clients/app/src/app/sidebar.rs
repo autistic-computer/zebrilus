@@ -481,6 +481,7 @@ impl Flat {
 fn host_connection(connection: &Connection) -> HostConnection {
     match connection.status.as_str() {
         _ if connection.connected => HostConnection::Connected,
+        _ if connection.installing() => HostConnection::Connecting,
         "Connecting…" => HostConnection::Connecting,
         "" | "Not connected" => HostConnection::Disconnected,
         reason => HostConnection::Unreachable(reason.to_owned().into()),

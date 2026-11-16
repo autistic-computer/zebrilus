@@ -115,7 +115,7 @@ pub struct AppShell {
     _connection_subscriptions: [Subscription; 4],
     fleet: Vec<(Entity<Connection>, Subscription)>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
-    fleet_found: Vec<Subscription>,
+    fleet_watch: Vec<Subscription>,
     host_ids: compact::HostIds,
     roster: Entity<Roster>,
     connection_status: String,
@@ -387,12 +387,14 @@ impl AppShell {
             |this, _, request: &HostRequest, window, cx| this.host_request(*request, window, cx),
         );
         let hosts = hosts::Hosts::new(window, cx);
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let host_notices = hosts::watch_host_notices(&connection, window, cx);
         let mut this = Self {
             connection,
             _connection_subscriptions: connection_subscriptions,
             fleet: Vec::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]
-            fleet_found: Vec::new(),
+            fleet_watch: vec![host_notices],
             host_ids: compact::HostIds::default(),
             roster,
             connection_status: String::new(),

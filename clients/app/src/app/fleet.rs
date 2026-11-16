@@ -106,13 +106,17 @@ impl AppShell {
         });
         let observer = cx.observe(&connection, |_, _, cx| cx.notify());
         #[cfg(any(target_os = "ios", target_os = "android"))]
-        self.fleet_found.push(cx.subscribe_in(
-            &connection,
-            window,
-            |this, _, event: &crate::connection::FoundHosts, _, cx| {
-                this.found_hosts(&event.0, cx);
-            },
-        ));
+        {
+            self.fleet_watch.push(cx.subscribe_in(
+                &connection,
+                window,
+                |this, _, event: &crate::connection::FoundHosts, _, cx| {
+                    this.found_hosts(&event.0, cx);
+                },
+            ));
+            self.fleet_watch
+                .push(super::hosts::watch_host_notices(&connection, window, cx));
+        }
         self.fleet.push((connection, observer));
     }
 

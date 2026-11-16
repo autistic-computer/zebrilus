@@ -3,7 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use zz_daemon_client::Endpoint;
+pub(crate) use zz_daemon_client::{DaemonBehind, InstallOffer, session_count};
+use zz_daemon_client::{Endpoint, HostFailure};
 
 use crate::{config::HostEntry, profile::LocalHostPolicy};
 
@@ -44,50 +45,6 @@ pub enum HostState {
     Installing,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum InstallOffer {
-    Install,
-    Update,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DaemonBehind {
-    pub daemon: u32,
-    pub client: u32,
-}
-
-impl DaemonBehind {
-    #[must_use]
-    pub const fn compare(daemon: u32, client: u32) -> Option<Self> {
-        if daemon < client {
-            Some(Self { daemon, client })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn restart_text(self, sessions: Option<usize>) -> String {
-        format!(
-            "The zz daemon runs an older build, revision {}; this zz is revision {}. Restarting it \
-             to update ends {}.",
-            self.daemon,
-            self.client,
-            session_count(sessions)
-        )
-    }
-}
-
-#[must_use]
-pub fn session_count(sessions: Option<usize>) -> String {
-    match sessions {
-        None => "every running session".to_owned(),
-        Some(0) => "no sessions".to_owned(),
-        Some(1) => "1 session".to_owned(),
-        Some(sessions) => format!("{sessions} sessions"),
-    }
-}
-
 impl HostState {
     pub const fn label(&self) -> &'static str {
         match self {
@@ -104,59 +61,58 @@ impl HostState {
         }
     }
 
-    pub const fn install_offer(&self) -> Option<InstallOffer> {
-        match self {
-            Self::Missing => Some(InstallOffer::Install),
-            Self::Incompatible { remote: None, .. } | Self::DaemonTooOld { .. } => {
-                Some(InstallOffer::Update)
-            }
-            Self::Incompatible {
-                local,
-                remote: Some(remote),
-            } if *local >= *remote => Some(InstallOffer::Update),
-            _ => None,
-        }
+    pub fn install_offer(&self) -> Option<InstallOffer> {
+        self.failure()?.install_offer()
     }
 
     pub fn failure_detail(&self) -> Option<String> {
-        match self {
-            Self::Unreachable { reason } => Some(reason.clone()),
-            Self::Incompatible { remote: None, .. } => Some(
-                "That machine runs a zz too old to report its protocol.\nUpdate zz there, then \
-                 reconnect."
-                    .to_owned(),
-            ),
-            Self::Incompatible {
-                local,
-                remote: Some(remote),
-            } if local == remote => Some(format!(
-                "That machine runs an older build of protocol v{remote}.\nUpgrade zz there, or \
-                 restart its daemon, then reconnect."
-            )),
-            Self::Incompatible {
-                local,
-                remote: Some(remote),
-            } => Some(format!(
-                "This zz speaks protocol v{local}; that machine speaks v{remote}.\nUpgrade \
-                 whichever side is older, then reconnect."
-            )),
-            Self::DaemonTooOld { daemon, minimum } => Some(format!(
-                "That machine's zz daemon is revision {daemon}; this zz needs revision {minimum} \
-                 or newer.\nRight-click it and choose Update zz."
-            )),
-            Self::ClientTooOld { .. } => Some(
-                "That machine runs a newer zz.\nUpdate zz on this machine, then reconnect."
-                    .to_owned(),
-            ),
-            Self::Missing => Some(
-                "zz is not installed on that machine.\nRight-click it and choose Install zz."
-                    .to_owned(),
-            ),
+        let failure = self.failure()?;
+        if let HostFailure::Unreachable { reason } = failure {
+            return Some(reason);
+        }
+        let step = failure.step().unwrap_or(match failure {
+            HostFailure::DaemonTooOld { .. } => "Right-click it and choose Update zz.",
+            HostFailure::ClientTooOld { .. } => "Update zz on this machine, then reconnect.",
+            _ => "Right-click it and choose Install zz.",
+        });
+        Some(format!("{}\n{step}", failure.summary()))
+    }
+
+    fn failure(&self) -> Option<HostFailure> {
+        Some(match self {
+            Self::Unreachable { reason } => HostFailure::Unreachable {
+                reason: reason.clone(),
+            },
+            Self::Incompatible { local, remote } => HostFailure::Incompatible {
+                local: *local,
+                remote: *remote,
+            },
+            Self::DaemonTooOld { daemon, minimum } => HostFailure::DaemonTooOld {
+                daemon: *daemon,
+                minimum: *minimum,
+            },
+            Self::ClientTooOld { client, minimum } => HostFailure::ClientTooOld {
+                client: *client,
+                minimum: *minimum,
+            },
+            Self::Missing => HostFailure::Missing,
             Self::Disconnected
             | Self::Connecting
             | Self::Reconnecting { .. }
             | Self::Connected
-            | Self::Installing => None,
+            | Self::Installing => return None,
+        })
+    }
+}
+
+impl From<HostFailure> for HostState {
+    fn from(failure: HostFailure) -> Self {
+        match failure {
+            HostFailure::Unreachable { reason } => Self::Unreachable { reason },
+            HostFailure::Incompatible { local, remote } => Self::Incompatible { local, remote },
+            HostFailure::DaemonTooOld { daemon, minimum } => Self::DaemonTooOld { daemon, minimum },
+            HostFailure::ClientTooOld { client, minimum } => Self::ClientTooOld { client, minimum },
+            HostFailure::Missing => Self::Missing,
         }
     }
 }
@@ -326,74 +282,6 @@ mod tests {
             [(HostId(1), "desktop")]
         );
         assert_eq!(registry.local_socket_path(), Path::new("/tmp/local.sock"));
-    }
-
-    #[test]
-    fn only_a_missing_or_older_remote_offers_an_install() {
-        assert_eq!(
-            HostState::Missing.install_offer(),
-            Some(InstallOffer::Install)
-        );
-        for remote in [Some(107), Some(108), None] {
-            assert_eq!(
-                HostState::Incompatible { local: 108, remote }.install_offer(),
-                Some(InstallOffer::Update),
-                "{remote:?}"
-            );
-        }
-        assert_eq!(
-            HostState::DaemonTooOld {
-                daemon: 1,
-                minimum: 2
-            }
-            .install_offer(),
-            Some(InstallOffer::Update)
-        );
-        for state in [
-            HostState::Incompatible {
-                local: 107,
-                remote: Some(108),
-            },
-            HostState::ClientTooOld {
-                client: 1,
-                minimum: 2,
-            },
-            HostState::Unreachable {
-                reason: "no route".to_owned(),
-            },
-            HostState::Installing,
-            HostState::Connected,
-        ] {
-            assert_eq!(state.install_offer(), None, "{state:?}");
-        }
-    }
-
-    #[test]
-    fn a_daemon_behind_names_both_revisions_and_how_many_sessions_end() {
-        assert_eq!(DaemonBehind::compare(2, 2), None);
-        assert_eq!(DaemonBehind::compare(3, 2), None);
-        let behind = DaemonBehind::compare(1, 2).expect("revision 1 is behind 2");
-        assert_eq!(
-            behind,
-            DaemonBehind {
-                daemon: 1,
-                client: 2
-            }
-        );
-        for (sessions, ends) in [
-            (Some(0), "no sessions"),
-            (Some(1), "1 session"),
-            (Some(3), "3 sessions"),
-            (None, "every running session"),
-        ] {
-            assert_eq!(
-                behind.restart_text(sessions),
-                format!(
-                    "The zz daemon runs an older build, revision 1; this zz is revision 2. \
-                     Restarting it to update ends {ends}."
-                )
-            );
-        }
     }
 
     #[test]
