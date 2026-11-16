@@ -292,7 +292,7 @@ impl RenderOnce for Chip {
         .chain(children)
         .collect();
         plate.paint_with(window, cx, move |layer| {
-            if multiline {
+            if multiline && layer.radius < ala::FULL_CORNER_RADIUS {
                 layer.share = None;
                 layer.radius = layer.radius.min(line_corner);
             }
