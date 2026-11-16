@@ -126,6 +126,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     expected["pointer"] = "hand".into();
     expected["motion"] = "default".into();
     expected["mono_font_family"] = "".into();
+    expected["search_engine"] = "google".into();
     let fields = expected.as_object_mut().unwrap();
     for retired in [
         "theme",
@@ -138,4 +139,16 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
         fields.remove(retired);
     }
     assert_eq!(parsed(&written), expected);
+}
+
+#[test]
+fn the_search_engine_is_kept_and_an_unknown_one_falls_back_to_google() {
+    let picked = Preferences::decode(r#"{"search_engine":"duckduckgo"}"#).unwrap();
+    assert_eq!(picked.search_engine, "duckduckgo");
+    assert_eq!(
+        zz_client::url_input::resolve_address("rust lifetimes", picked.search_provider()).unwrap(),
+        "https://duckduckgo.com/?q=rust+lifetimes"
+    );
+    let unknown = Preferences::decode(r#"{"search_engine":"bing"}"#).unwrap();
+    assert_eq!(unknown.search_engine, "google");
 }

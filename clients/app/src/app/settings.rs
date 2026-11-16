@@ -14,6 +14,7 @@ use penna::{
     components::select::{Select, SelectEvent, SelectState},
     components::switch::Switch,
 };
+use zz_client::url_input::SearchProvider;
 use zz_ui::{
     interface_theme::{self, AppearanceChange},
     pane_look::{PaneLook, pane_color},
@@ -119,6 +120,7 @@ impl Preferences {
             cx.set_global(PlatformReduceMotion(cx.reduce_motion()));
         }
         cx.set_global(zz_ui::program::ProgramColors(self.program_colors));
+        cx.set_global(crate::preferences::BrowserSearch(self.search_provider()));
         #[cfg(any(target_os = "ios", target_os = "android"))]
         let (contrast, text_scale) = (
             self.appearance.contrast * if system.increase_contrast { 1.25 } else { 1.0 },
@@ -238,6 +240,7 @@ pub(super) struct Controls {
     panes: [Entity<InputState>; 3],
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     palette_layout: Entity<SelectState<Vec<SettingsSelectItem>>>,
+    search_engine: Entity<SelectState<Vec<SettingsSelectItem>>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -378,11 +381,26 @@ impl Controls {
                 cx.notify();
             },
         ));
+        let engines = SearchProvider::ALL.map(|provider| (provider.as_str(), provider.title()));
+        let search_engine = choice(&engines, preferences.search_provider().as_str(), window, cx);
+        subscriptions.push(cx.subscribe_in(
+            &search_engine,
+            window,
+            |this, _, event: &SelectEvent<Vec<SettingsSelectItem>>, window, cx| {
+                let SelectEvent::Confirm(Some(value)) = event else {
+                    return;
+                };
+                this.preferences.search_engine.clone_from(value);
+                this.preferences.save();
+                this.preferences.apply(&this.connection, window, cx);
+            },
+        ));
         Self {
             appearance,
             panes,
             terminal_font,
             palette_layout,
+            search_engine,
             _subscriptions: subscriptions,
         }
     }
@@ -717,6 +735,18 @@ impl AppShell {
                                             ),
                                     ),
                             )
+                        },
+                    )
+                    .when(
+                        cfg!(any(target_os = "ios", target_os = "android")),
+                        |page| {
+                            page.child(SettingsStack::titled("Browser").child(
+                                SettingEntry::new("Search engine").control(choice_select(
+                                    &self.settings_controls.search_engine,
+                                    "Search engine",
+                                    cx,
+                                )),
+                            ))
                         },
                     )
                     .when(shown(Setting::CommandPalette, phone), |page| {

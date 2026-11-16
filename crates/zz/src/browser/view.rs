@@ -52,10 +52,10 @@ use zz_protocol::{
 use zz_terminal::{KeyAction as TerminalKeyAction, KeyInput as TerminalKeyInput};
 use zz_ui::browser::{
     BrowserActionMenuState, BrowserEmptyHint, BrowserErrorPanel, BrowserHeader, BrowserMenuActions,
-    BrowserMenuProfile, BrowserPickStatus, BrowserProfileDiscoveryState, BrowserSiteMenuState,
-    BrowserTabInfo, BrowserTabStrip, BrowserToolbar, browser_action_menu, browser_address,
-    browser_omnibox_panel, browser_omnibox_row, browser_recent_row, browser_site_controls_button,
-    browser_site_menu, browser_start_surface, browser_toolbar_button,
+    BrowserMenuEngine, BrowserMenuProfile, BrowserPickStatus, BrowserProfileDiscoveryState,
+    BrowserSiteMenuState, BrowserTabInfo, BrowserTabStrip, BrowserToolbar, browser_action_menu,
+    browser_address, browser_omnibox_panel, browser_omnibox_row, browser_recent_row,
+    browser_site_controls_button, browser_site_menu, browser_start_surface, browser_toolbar_button,
 };
 use zz_ui::dialogs::browser_clear_site_data_alert;
 use zz_ui::pane::{PaneDrag, PaneDragSource, pane_header_icon_button};
@@ -3462,6 +3462,7 @@ impl Render for BrowserChromeView {
                     chrome_import::profiles::DetectedChromeProfile::menu_label,
                 );
             let state = BrowserActionMenuState {
+                engine: BrowserMenuEngine::Chromium,
                 current_profile_label: current_profile_label.into(),
                 selected_profile: menu_profile.clone().into(),
                 default_profile: ala_cef::DEFAULT_BROWSER_PROFILE.into(),

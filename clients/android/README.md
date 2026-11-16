@@ -119,7 +119,10 @@ as `target_visual_viewport_bounds`, the way the iOS backend follows the keyboard
   pinned SHA-256, into `target/android/deps`. With a hardware keyboard, a browser pane takes
   the desktop browser keys (Ctrl-L, Ctrl-T, Ctrl-R, Ctrl-W, Ctrl-Tab, Ctrl-1 to 9, Alt-Left and
   Alt-Right) while the address field has focus; a focused page gets keys before zz does.
-  Ctrl-plus, Ctrl-minus and Ctrl-0 set the web view's text zoom.
+  Ctrl-plus, Ctrl-minus and Ctrl-0 set the web view's text zoom. On a tablet the toolbar's
+  more button and the site menu are the iPad's, except that Clear site data is off and the
+  site menu does not report whether the connection is secure. Settings › Advanced › Browser
+  picks the search engine for addresses that are not URLs.
 - **Files.** Preferences and saved hosts are in `files/ala/`. Images copied from the app go
   through `ZzFileProvider` so other apps can paste them.
 - **Links.** `zz-dev://attach/<session>` (`zz://` for release builds) switches the running app to

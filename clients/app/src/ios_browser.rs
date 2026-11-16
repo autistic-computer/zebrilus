@@ -289,6 +289,7 @@ pub enum BrowserEvent {
     },
     ElementPickCancelled,
     ElementPickFailed,
+    SiteDataCleared,
     Refresh,
     Backdrop {
         bounds: Bounds<Pixels>,
@@ -586,6 +587,53 @@ impl BrowserView {
     pub fn set_page_zoom(&self, factor: f64) {
         unsafe {
             let _: () = msg_send![self.view, setPageZoom: factor];
+        }
+    }
+
+    pub fn evaluate(&self, script: &str) {
+        unsafe {
+            let _: () =
+                msg_send![self.view, evaluateJavaScript: ns_string(script) completionHandler: nil];
+        }
+    }
+
+    pub fn secure_content(&self) -> bool {
+        unsafe {
+            let secure: BOOL = msg_send![self.view, hasOnlySecureContent];
+            secure == YES
+        }
+    }
+
+    pub fn clear_site_data(&self, site: &str) {
+        let site = site.trim_end_matches('.').to_ascii_lowercase();
+        let state = self._state.clone();
+        let fetched = block2::RcBlock::new(move |records: *mut std::ffi::c_void| unsafe {
+            let records = records as id;
+            let count: usize = if records.is_null() {
+                0
+            } else {
+                msg_send![records, count]
+            };
+            let matched: Vec<id> = (0..count)
+                .map(|index| -> id { msg_send![records, objectAtIndex: index] })
+                .filter(|record| {
+                    let name: id = msg_send![*record, displayName];
+                    nsstring_to_string(name).is_some_and(|name| {
+                        let name = name.to_ascii_lowercase();
+                        site == name || site.ends_with(&format!(".{name}"))
+                    })
+                })
+                .collect();
+            let done = state.clone();
+            let removed = block2::RcBlock::new(move || {
+                let _ = done.events.unbounded_send(BrowserEvent::SiteDataCleared);
+            });
+            let types: id = msg_send![class!(WKWebsiteDataStore), allWebsiteDataTypes];
+            let _: () = msg_send![state.profile.store, removeDataOfTypes: types forDataRecords: ns_array(&matched) completionHandler: &*removed];
+        });
+        unsafe {
+            let types: id = msg_send![class!(WKWebsiteDataStore), allWebsiteDataTypes];
+            let _: () = msg_send![self._state.profile.store, fetchDataRecordsOfTypes: types completionHandler: &*fetched];
         }
     }
 

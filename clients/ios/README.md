@@ -198,6 +198,14 @@ the native transport, key translation, and UIKit backend.
   share the desktop browser's login or live page state.
   The element picker copies context and a cropped screenshot for pasting into an
   agent. Tap the picker, then tap a page element; Cancel exits without copying.
+  The toolbar's more button opens the page in the default browser, copies its URL,
+  switches the pane's browser profile (Default or any profile the host's browser panes
+  use), zooms the page, clears site data, reloads and starts the picker. The button at
+  the start of the address field opens the site menu: whether the connection is secure,
+  Sound (mutes the tab's audio and video elements, kept across navigations) and Clear
+  cookies and site data, which asks first, clears everything WebKit keeps for the site's
+  domain in this profile and reloads. Addresses that are not URLs go to the search
+  engine picked in Settings › Advanced › Browser, a setting kept on the iPad.
 - With a hardware keyboard, a focused browser pane takes the desktop browser keys:
   Command-L for the address, Command-T for a new tab, Command-R to reload, Command-[
   and Command-] for back and forward, Command-Shift-[ and Command-Shift-] to change

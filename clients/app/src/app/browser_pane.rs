@@ -4,28 +4,36 @@ use crate::native_browser::{
     BrowserEvent, BrowserMount, BrowserProfile, BrowserView, ElementPickerAppearance,
 };
 use ala::{
-    AnyElement, App, Bounds, ClipboardEntry, ClipboardItem, ClipboardString, Context, Corners,
-    Entity, FocusHandle, Focusable, Hsla, Image, ImageFormat, Pixels, Render, RenderImage, Rgba,
-    Subscription, TextInputMode, TouchDragEvent, TouchPhase, Window, canvas, div, point,
+    Anchor, AnyElement, App, Bounds, ClipboardEntry, ClipboardItem, ClipboardString, Context,
+    Corners, Entity, FocusHandle, Focusable, Hsla, Image, ImageFormat, Pixels, Render, RenderImage,
+    Rgba, Subscription, TextInputMode, TouchDragEvent, TouchPhase, Window, canvas, div, point,
     prelude::*, px, size,
 };
 use futures::StreamExt as _;
 use penna::{
-    ActiveTheme as _, Colorize as _, ElementExt as _, Elevation, Icon, IconName, Label, TextStyle,
+    ActiveTheme as _, Colorize as _, ElementExt as _, Elevation, IconName, Label, TextStyle,
+    WindowExt as _,
     blocks::compact::pill_backdrop_reach,
     blocks::sheet::{floating_sheet, sheet_inset},
     components::button::{Button, ButtonVariants as _},
     components::input::{InputEvent, InputState, SelectAll},
+    components::menu::DropdownMenu as _,
     components::progress::Progress,
 };
 use zz_client::ChromeAction;
-use zz_protocol::{BrowserCommand, BrowserDescriptor, PaneId};
+use zz_protocol::{
+    BrowserCommand, BrowserDescriptor, DEFAULT_BROWSER_PROFILE, PaneId, PaneKindSnapshot,
+};
 use zz_ui::{
     browser::{
-        BrowserEmptyHint, BrowserErrorPanel, BrowserHeader, BrowserTabInfo, BrowserTabStrip,
-        BrowserToolbar, browser_address, browser_start_surface, browser_toolbar_button,
+        BrowserActionMenuState, BrowserEmptyHint, BrowserErrorPanel, BrowserHeader,
+        BrowserMenuActions, BrowserMenuEngine, BrowserMenuProfile, BrowserProfileDiscoveryState,
+        BrowserSiteMenuState, BrowserTabInfo, BrowserTabStrip, BrowserToolbar, browser_action_menu,
+        browser_address, browser_site_controls_button, browser_site_menu, browser_start_surface,
+        browser_toolbar_button,
     },
     compact::{TabRow, failed_page, tabs_sheet},
+    dialogs::browser_clear_site_data_alert,
     pane::{PaneDrag, PaneDragSource, pane_header_icon_button},
     pane_look::PaneLook,
 };
@@ -49,6 +57,7 @@ struct Tab {
     held: bool,
     pick_status: Option<String>,
     page_zoom: f64,
+    muted: bool,
     _events: ala::Task<()>,
 }
 
@@ -445,6 +454,7 @@ impl BrowserPane {
             held: false,
             pick_status: None,
             page_zoom: 1.0,
+            muted: false,
             _events: task,
         }
     }
@@ -468,6 +478,9 @@ impl BrowserPane {
                 if committed {
                     tab.navigating = false;
                     tab.error = None;
+                    if tab.muted {
+                        tab.view.evaluate(&sound_script(true));
+                    }
                 }
                 if !tab.pending_load
                     && !tab.navigating
@@ -504,6 +517,13 @@ impl BrowserPane {
                 self.pick_notice(status, PillNotice::Done, window, cx);
             }
             BrowserEvent::ElementPickCancelled => self.tabs[index].picking = false,
+            #[cfg(target_os = "ios")]
+            BrowserEvent::SiteDataCleared => {
+                self.tabs[index].view.reload();
+                if index == self.active {
+                    self.pick_notice("Site data cleared", PillNotice::Done, window, cx);
+                }
+            }
             BrowserEvent::ElementPickFailed => {
                 self.tabs[index].picking = false;
                 if index == self.active {
@@ -684,10 +704,10 @@ impl BrowserPane {
         if !self.writable(cx) {
             return;
         }
-        let Ok(url) = zz_client::url_input::resolve_address(
-            value,
-            zz_client::url_input::SearchProvider::default(),
-        ) else {
+        let search = cx
+            .try_global::<crate::preferences::BrowserSearch>()
+            .map_or_else(Default::default, |search| search.0);
+        let Ok(url) = zz_client::url_input::resolve_address(value, search) else {
             return;
         };
         let tab = &mut self.tabs[self.active];
@@ -889,6 +909,216 @@ impl BrowserPane {
             _ => return false,
         }
         true
+    }
+
+    fn profiles(&self, cx: &App) -> Vec<String> {
+        let mut profiles: Vec<String> = self
+            .connection
+            .read(cx)
+            .core
+            .snapshot()
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .flat_map(|window| window.panes.values())
+            .filter_map(|pane| match &pane.kind {
+                PaneKindSnapshot::Browser(descriptor) => Some(descriptor.profile.clone()),
+                _ => None,
+            })
+            .chain(std::iter::once(self.profile_name.clone()))
+            .filter(|profile| profile != DEFAULT_BROWSER_PROFILE)
+            .collect();
+        profiles.sort();
+        profiles.dedup();
+        profiles
+    }
+
+    fn switch_profile(&mut self, profile: &str, cx: &mut Context<Self>) {
+        if profile == self.profile_name || !self.writable(cx) {
+            return;
+        }
+        let args = vec!["-t".into(), self.pane.to_string(), profile.to_owned()];
+        self.connection.update(cx, |connection, cx| {
+            connection.command("set-browser-profile", args, cx);
+        });
+    }
+
+    fn toggle_sound(&mut self, cx: &mut Context<Self>) {
+        let tab = &mut self.tabs[self.active];
+        tab.muted = !tab.muted;
+        tab.view.evaluate(&sound_script(tab.muted));
+        cx.notify();
+    }
+
+    fn can_clear_site_data(&self) -> bool {
+        cfg!(target_os = "ios") && http_origin(&self.tabs[self.active].url)
+    }
+
+    fn confirm_clear_site_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.writable(cx) || !self.can_clear_site_data() {
+            return;
+        }
+        let pane = cx.weak_entity();
+        let id = self.tabs[self.active].id;
+        window.open_alert_dialog(cx, move |alert, _, cx| {
+            let pane = pane.clone();
+            browser_clear_site_data_alert(alert, cx).on_ok(move |_, _, cx| {
+                let _ = pane.update(cx, |this, _| this.clear_site_data(id));
+                true
+            })
+        });
+    }
+
+    fn clear_site_data(&self, id: u64) {
+        let Some(tab) = self.tabs.iter().find(|tab| tab.id == id) else {
+            return;
+        };
+        let Some(site) = site_host(&tab.url) else {
+            return;
+        };
+        #[cfg(target_os = "ios")]
+        tab.view.clear_site_data(&site);
+        #[cfg(not(target_os = "ios"))]
+        let _ = site;
+    }
+
+    fn connection_secure(tab: &Tab) -> Option<bool> {
+        if tab.url.starts_with("http://") {
+            return Some(false);
+        }
+        if !tab.url.starts_with("https://") {
+            return None;
+        }
+        #[cfg(target_os = "ios")]
+        return Some(tab.view.secure_content());
+        #[cfg(not(target_os = "ios"))]
+        None
+    }
+
+    fn site_controls(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let pane = cx.weak_entity();
+        browser_site_controls_button(cx).dropdown_menu(move |menu, _, cx| {
+            let Some(browser) = pane.upgrade() else {
+                return menu;
+            };
+            let state = {
+                let this = browser.read(cx);
+                let tab = &this.tabs[this.active];
+                BrowserSiteMenuState {
+                    site: site_host(&tab.url)
+                        .unwrap_or_else(|| "This page".to_owned())
+                        .into(),
+                    connection_secure: Self::connection_secure(tab),
+                    audio_muted: Some(tab.muted),
+                    can_clear_site_data: this.can_clear_site_data() && this.writable(cx),
+                }
+            };
+            let sound = browser.downgrade();
+            let clear = browser.downgrade();
+            browser_site_menu(
+                menu,
+                state,
+                move |_, cx| {
+                    let _ = sound.update(cx, Self::toggle_sound);
+                },
+                move |window, cx| {
+                    let _ = clear.update(cx, |this, cx| this.confirm_clear_site_data(window, cx));
+                },
+            )
+        })
+    }
+
+    fn more_menu(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let pane = cx.weak_entity();
+        browser_toolbar_button(
+            cx,
+            "ios-browser-more",
+            IconName::EllipsisVertical,
+            "More browser actions",
+            false,
+            false,
+        )
+        .dropdown_menu(move |menu, window, cx| {
+            let Some(browser) = pane.upgrade() else {
+                return menu;
+            };
+            let (state, url) = {
+                let this = browser.read(cx);
+                let tab = &this.tabs[this.active];
+                let label = |profile: &str| {
+                    if profile == DEFAULT_BROWSER_PROFILE {
+                        "Default zz profile".to_owned()
+                    } else {
+                        profile.to_owned()
+                    }
+                };
+                (
+                    BrowserActionMenuState {
+                        engine: BrowserMenuEngine::WebView,
+                        current_profile_label: label(&this.profile_name).into(),
+                        selected_profile: this.profile_name.clone().into(),
+                        default_profile: DEFAULT_BROWSER_PROFILE.into(),
+                        profiles: this
+                            .profiles(cx)
+                            .into_iter()
+                            .map(|profile| BrowserMenuProfile::new(profile.clone(), profile))
+                            .collect(),
+                        profile_discovery: BrowserProfileDiscoveryState::Ready,
+                        zoom_percent: zoom_percent(tab.page_zoom),
+                        can_import_chrome_data: false,
+                        can_clear_site_data: this.can_clear_site_data() && this.writable(cx),
+                        picker_active: tab.picking,
+                    },
+                    tab.url.clone(),
+                )
+            };
+            let open_url = url.clone();
+            let weak = browser.downgrade();
+            let (switch, zoom_in, zoom_out, reset, read_zoom, clear, reload, picker) = (
+                weak.clone(),
+                weak.clone(),
+                weak.clone(),
+                weak.clone(),
+                weak.clone(),
+                weak.clone(),
+                weak.clone(),
+                weak,
+            );
+            let actions = BrowserMenuActions::new()
+                .open_url(move |_, cx| cx.open_url(&open_url))
+                .copy_url(move |_, cx| {
+                    cx.write_to_clipboard(ala::ClipboardItem::new_string(url.clone()));
+                })
+                .switch_profile(move |profile, _, cx| {
+                    let _ = switch.update(cx, |this, cx| this.switch_profile(&profile, cx));
+                })
+                .zoom_percent(move |cx| {
+                    read_zoom.upgrade().map_or(100, |browser| {
+                        let this = browser.read(cx);
+                        zoom_percent(this.tabs[this.active].page_zoom)
+                    })
+                })
+                .zoom_in(move |_, cx| {
+                    let _ = zoom_in.update(cx, |this, cx| this.zoom(Some(1), cx));
+                })
+                .zoom_out(move |_, cx| {
+                    let _ = zoom_out.update(cx, |this, cx| this.zoom(Some(-1), cx));
+                })
+                .reset_zoom(move |_, cx| {
+                    let _ = reset.update(cx, |this, cx| this.zoom(None, cx));
+                })
+                .clear_site_data(move |window, cx| {
+                    let _ = clear.update(cx, |this, cx| this.confirm_clear_site_data(window, cx));
+                })
+                .reload(move |_, cx| {
+                    let _ = reload.update(cx, Self::reload);
+                })
+                .toggle_picker(move |window, cx| {
+                    let _ = picker.update(cx, |this, cx| this.toggle_element_pick(window, cx));
+                });
+            browser_action_menu(menu, window, cx, state, actions)
+        })
+        .anchor(Anchor::TopRight)
     }
 
     fn select_index(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -1147,7 +1377,7 @@ impl Render for BrowserPane {
         let pane = self.pane;
         let tab = &self.tabs[self.active];
         let header = (!self.compact).then(|| {
-            let address = browser_address(&self.address, Icon::new(IconName::Globe), window, cx);
+            let address = browser_address(&self.address, self.site_controls(cx), window, cx);
             let picker = div()
                 .relative()
                 .flex_none()
@@ -1213,7 +1443,7 @@ impl Render for BrowserPane {
                 .on_click(cx.listener(|this, _, _, cx| this.reload(cx))),
                 address,
                 picker,
-                div(),
+                self.more_menu(cx),
             );
             let (strip, actions) = self.tab_row(writable, cx);
             BrowserHeader::new(self.active_pane, strip, actions, toolbar)
@@ -1495,6 +1725,57 @@ pub(super) fn host(url: &str) -> &str {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
     rest.split(['/', '?', '#']).next().unwrap_or(rest)
 }
+
+fn site_host(url: &str) -> Option<String> {
+    url::Url::parse(url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+}
+
+fn http_origin(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "page zoom stays on the 25% to 500% ladder"
+)]
+fn zoom_percent(factor: f64) -> u16 {
+    (factor * 100.0).round() as u16
+}
+
+fn sound_script(muted: bool) -> String {
+    format!("{SOUND_SCRIPT}({muted});")
+}
+
+const SOUND_SCRIPT: &str = r"(muted => {
+  const sound = globalThis.__zzSound ??= (() => {
+    const state = { muted: false, held: new Set() };
+    state.hush = media => {
+      if (state.muted && media instanceof HTMLMediaElement && !media.muted) {
+        state.held.add(media);
+        media.muted = true;
+      }
+    };
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function (...args) {
+      state.hush(this);
+      return play.apply(this, args);
+    };
+    for (const type of ['play', 'playing', 'volumechange']) {
+      document.addEventListener(type, event => state.hush(event.target), true);
+    }
+    return state;
+  })();
+  sound.muted = muted;
+  if (muted) {
+    document.querySelectorAll('audio, video').forEach(sound.hush);
+  } else {
+    sound.held.forEach(media => { media.muted = false; });
+    sound.held.clear();
+  }
+})";
 
 fn normalized(descriptor: &BrowserDescriptor) -> BrowserDescriptor {
     let mut descriptor = descriptor.clone();

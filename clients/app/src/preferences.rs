@@ -1,5 +1,6 @@
 use penna::foundation::interface_theme::Tint;
 use serde::{Deserialize, Serialize, de::value::MapDeserializer};
+use zz_client::url_input::SearchProvider;
 use zz_ui::interface_theme::{
     self, Appearance, AppearanceChange, InterfaceTheme, ThemeModeSetting, ThemeOverrides,
 };
@@ -26,6 +27,7 @@ pub struct Preferences {
     pub extend_bottom_safe_area: bool,
     pub keep_screen_awake: bool,
     pub system_text_size: bool,
+    pub search_engine: String,
 }
 
 impl Default for Preferences {
@@ -52,6 +54,7 @@ impl Default for Preferences {
             extend_bottom_safe_area: false,
             keep_screen_awake: false,
             system_text_size: true,
+            search_engine: SearchProvider::default().as_str().into(),
         }
     }
 }
@@ -98,11 +101,17 @@ impl Preferences {
             *value = bounded(*value, min, max, fallback);
         }
         self.appearance.mode = Some(self.theme_mode().as_str().into());
+        self.search_engine = self.search_provider().as_str().into();
         self.terminal_font_family = self
             .terminal_font_family
             .map(|family| family.trim().to_owned())
             .filter(|family| !family.is_empty());
         self
+    }
+
+    #[must_use]
+    pub fn search_provider(&self) -> SearchProvider {
+        SearchProvider::parse(&self.search_engine).unwrap_or_default()
     }
 
     #[must_use]
@@ -232,6 +241,10 @@ impl Preferences {
         "zz-web-preferences"
     };
 }
+
+pub struct BrowserSearch(pub SearchProvider);
+
+impl ala::Global for BrowserSearch {}
 
 fn bounded(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
     if value.is_finite() {

@@ -375,6 +375,10 @@ impl BrowserView {
         );
     }
 
+    pub fn evaluate(&self, script: &str) {
+        self.shared.evaluate(script);
+    }
+
     pub fn set_visible(&self, visible: bool) {
         if self.shared.visible.replace(visible) == visible {
             return;

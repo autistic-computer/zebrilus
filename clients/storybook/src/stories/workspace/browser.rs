@@ -12,11 +12,11 @@ use zz_protocol::PaneId;
 use zz_ui::{
     browser::{
         BrowserActionMenuState, BrowserEmptyHint, BrowserErrorPanel, BrowserHeader,
-        BrowserMenuActions, BrowserMenuProfile, BrowserPickStatus, BrowserProfileDiscoveryState,
-        BrowserSiteMenuState, BrowserTabInfo, BrowserTabStrip, BrowserToolbar, browser_action_menu,
-        browser_address, browser_omnibox_panel, browser_omnibox_row, browser_recent_row,
-        browser_site_controls_button, browser_site_menu, browser_start_surface,
-        browser_toolbar_button,
+        BrowserMenuActions, BrowserMenuEngine, BrowserMenuProfile, BrowserPickStatus,
+        BrowserProfileDiscoveryState, BrowserSiteMenuState, BrowserTabInfo, BrowserTabStrip,
+        BrowserToolbar, browser_action_menu, browser_address, browser_omnibox_panel,
+        browser_omnibox_row, browser_recent_row, browser_site_controls_button, browser_site_menu,
+        browser_start_surface, browser_toolbar_button,
     },
     pane::{PaneDragSource, pane_header_icon_button, pane_surface},
 };
@@ -125,6 +125,7 @@ fn menu_state(
     picker_active: bool,
 ) -> BrowserActionMenuState {
     BrowserActionMenuState {
+        engine: BrowserMenuEngine::Chromium,
         current_profile_label: "Default zz profile".into(),
         selected_profile: "default".into(),
         default_profile: "default".into(),
