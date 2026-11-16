@@ -148,10 +148,10 @@ without asking the host again. Backends hand it listings through `PaletteBackend
 | --- | --- |
 | Tab | Opens the highlighted folder; nothing on a file |
 | Shift-Tab, or Backspace right after a `/` | Goes to the parent, highlighting the folder it left; past `~/` once the host said where the home is |
-| Enter | Puts the path at the cursor of `prefix F`'s pane, else the focused pane (`insert_path`), and closes; copies it instead when that pane is not a terminal (an agent chat, a browser, an editor); hands the folder back in a folder pick |
+| Enter | Puts the path at the cursor of `prefix F`'s pane, else the focused pane (`insert_path`), and closes; copies it instead when that pane is not a terminal (an agent chat, a browser, an editor); hands the folder back in a folder pick; opens the file in an editor pane where the backend opens files (`PaletteBackend::opens_files`: zz-app on a daemon with `file-edit-v1`), and opens a folder there instead of inserting it |
 | Alt-Enter | Copies the plain path (absolute, `host:/abs/path` from another host, never quoted) and keeps the palette open |
 
-The strip's verb says which: `insert`, `copy`, or `choose` in a folder pick. Rows show the git letter on the right and a chevron on folders.
+The strip's verb says which: `insert`, `copy`, `open` for an editor, or `choose` in a folder pick. An editor pane's open button in zz-app starts the list with `CommandPaletteView::new_file_open`, whose verb is `open file`. Rows show the git letter on the right and a chevron on folders.
 
 An insert or a copy is kept as a recent file (`RecentKey::File` with the absolute path). Enter on
 one in the empty palette starts insert path on it, so its folder lists with the name as the

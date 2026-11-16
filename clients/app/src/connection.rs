@@ -1022,6 +1022,48 @@ impl Connection {
             .any(|capability| capability == zz_protocol::TERMINAL_THEMES_CAPABILITY)
     }
 
+    pub fn edits_files(&self) -> bool {
+        self.connected
+            && self
+                .core
+                .capabilities()
+                .iter()
+                .any(|capability| capability == zz_protocol::FILE_EDIT_CAPABILITY)
+    }
+
+    pub fn read_file(&mut self, pane: PaneId, path: String, cx: &mut Context<Self>) -> u64 {
+        let request_id = self.next_request_id();
+        self.send(
+            ProtocolMessage::FileReadRequest {
+                request_id,
+                pane,
+                path,
+            },
+            cx,
+        );
+        request_id
+    }
+
+    pub fn write_file(
+        &mut self,
+        pane: PaneId,
+        path: String,
+        text: String,
+        cx: &mut Context<Self>,
+    ) -> u64 {
+        let request_id = self.next_request_id();
+        self.send(
+            ProtocolMessage::FileWriteRequest {
+                request_id,
+                pane,
+                path,
+                text,
+            },
+            cx,
+        );
+        request_id
+    }
+
     pub fn terminal_themes(&self) -> &[zz_protocol::TerminalTheme] {
         match &self.terminal_themes {
             TerminalThemes::Listed(themes) => themes,

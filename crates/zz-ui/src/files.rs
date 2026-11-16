@@ -802,10 +802,30 @@ impl FilesLevel {
     }
 
     #[must_use]
+    pub fn opens(&self, cx: &App) -> bool {
+        let Some(pane) = self.insert_pane else {
+            return false;
+        };
+        self.here
+            && self.backend.opens_files(cx)
+            && self
+                .backend
+                .snapshot(cx)
+                .sessions
+                .iter()
+                .flat_map(|session| &session.windows)
+                .find_map(|window| window.panes.get(&pane))
+                .is_some_and(|pane| matches!(pane.kind, PaneKindSnapshot::Editor(_)))
+    }
+
+    #[must_use]
     pub fn inserts(&self, cx: &App) -> bool {
         let Some(pane) = self.insert_pane else {
             return false;
         };
+        if self.opens(cx) {
+            return true;
+        }
         let snapshot = self.backend.snapshot(cx);
         snapshot
             .sessions
@@ -898,6 +918,8 @@ impl FilesLevel {
         let row = self.selected_row();
         let verb = if pick {
             "choose"
+        } else if self.opens(cx) {
+            "open"
         } else if self.inserts(cx) {
             "insert"
         } else {
@@ -933,13 +955,13 @@ impl FilesLevel {
     fn row(
         row: &FileRow,
         index: usize,
-        selected: bool,
+        (selected, opens): (bool, bool),
         level: ala::Entity<Self>,
         cx: &App,
     ) -> ala::Div {
         let hover = level.clone();
         let folder = row.entry.kind == PathKind::Dir;
-        let insert = (folder && CoarsePointer::get(cx)).then(|| {
+        let insert = (folder && !opens && CoarsePointer::get(cx)).then(|| {
             let level = level.clone();
             Button::new(("files-insert", index))
                 .icon(IconName::KeyReturn)
@@ -1011,6 +1033,7 @@ impl Render for FilesLevel {
                 .into_any_element();
         }
         let selected = self.selected;
+        let opens = self.opens(cx);
         let level = cx.entity();
         let visible = f32::from(u16::try_from(rows.len().min(self.visible)).unwrap_or(u16::MAX));
         div()
@@ -1025,7 +1048,13 @@ impl Render for FilesLevel {
                         range
                             .filter_map(|index| {
                                 rows.get(index).map(|row| {
-                                    Self::row(row, index, selected == index, level.clone(), cx)
+                                    Self::row(
+                                        row,
+                                        index,
+                                        (selected == index, opens),
+                                        level.clone(),
+                                        cx,
+                                    )
                                 })
                             })
                             .collect::<Vec<_>>()
@@ -1052,7 +1081,11 @@ fn pick(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<LevelEffect> {
-    if open {
+    let folder = level
+        .read(cx)
+        .selected_row()
+        .is_some_and(|row| row.entry.kind == PathKind::Dir);
+    if open || folder && level.read(cx).opens(cx) {
         return level.read(cx).open().map(LevelEffect::SetRest);
     }
     if level.read(cx).inserts(cx) {

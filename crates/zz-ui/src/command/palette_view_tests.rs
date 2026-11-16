@@ -44,6 +44,7 @@ struct FakeBackend {
     sink: Sink,
     files: Option<std::rc::Weak<FakeBackend>>,
     vim: Rc<std::cell::Cell<bool>>,
+    opens_files: bool,
 }
 
 struct FakeLevel(Rc<RefCell<Vec<String>>>);
@@ -178,6 +179,10 @@ impl PaletteBackend for FakeBackend {
     fn home_dir(&self, _: PaletteHostId, _: &App) -> Option<String> {
         Some("/home/me".to_owned())
     }
+
+    fn opens_files(&self, _: &App) -> bool {
+        self.opens_files
+    }
 }
 
 fn fake_backend(
@@ -196,12 +201,20 @@ fn fake_backend(
         sink: Sink::default(),
         files: None,
         vim: Rc::default(),
+        opens_files: false,
     };
     (Rc::new(backend), calls)
 }
 
 fn files_backend() -> (Rc<dyn PaletteBackend>, Calls, Sink) {
-    let snapshot: &'static MuxSnapshot = Box::leak(Box::new(crate::files::tests::snapshot()));
+    files_backend_with(crate::files::tests::snapshot(), false)
+}
+
+fn files_backend_with(
+    snapshot: MuxSnapshot,
+    opens_files: bool,
+) -> (Rc<dyn PaletteBackend>, Calls, Sink) {
+    let snapshot: &'static MuxSnapshot = Box::leak(Box::new(snapshot));
     let calls = Calls::default();
     let sink = Sink::default();
     let backend = Rc::new_cyclic(|me| FakeBackend {
@@ -215,6 +228,7 @@ fn files_backend() -> (Rc<dyn PaletteBackend>, Calls, Sink) {
         sink: Rc::clone(&sink),
         files: Some(me.clone()),
         vim: Rc::default(),
+        opens_files,
     });
     (backend, calls, sink)
 }
@@ -286,6 +300,7 @@ fn level_backend(tree: PaletteTree) -> (Rc<dyn PaletteBackend>, Rc<RefCell<Vec<S
         sink: Sink::default(),
         files: None,
         vim: Rc::default(),
+        opens_files: false,
     };
     (Rc::new(backend), log)
 }
@@ -1037,6 +1052,42 @@ fn prefix_f_opens_files_on_the_panes_folder_and_inserts_into_that_pane(cx: &mut 
 }
 
 #[ala::test]
+fn files_for_an_editor_open_the_picked_file_and_go_into_folders(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let mut snapshot = crate::files::tests::snapshot();
+    for pane in snapshot.sessions[1].windows[0].panes.values_mut() {
+        pane.kind = zz_protocol::PaneKindSnapshot::Editor(zz_protocol::EditorDescriptor {
+            path: None,
+            cwd: "/home/me/one".to_owned(),
+        });
+    }
+    let (backend, calls, sink) = files_backend_with(snapshot, true);
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_file_open(backend, "~/one/", PaneId(30), window, cx)
+    });
+    cx.run_until_parked();
+    list_one(cx, &sink);
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), "~/one/assets/");
+    assert!(!palette.read_with(cx, |palette, _| palette.is_finished()));
+    cx.simulate_keystrokes("shift-tab");
+    cx.run_until_parked();
+    cx.simulate_input("readme");
+    cx.run_until_parked();
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
+    assert_eq!(
+        *calls.borrow(),
+        [
+            Call::List(LOCAL, "~/one/".to_owned(), Some(PaneId(30))),
+            Call::Insert(PaneId(30), "README.md".to_owned()),
+        ]
+    );
+}
+
+#[ala::test]
 fn files_open_folders_and_go_back_up_to_the_folder_left(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls, sink) = files_backend();
@@ -1678,6 +1729,7 @@ fn vim_palette(
         sink: Sink::default(),
         files: None,
         vim: Rc::clone(&toggle),
+        opens_files: false,
     });
     let (palette, cx) = mount(cx, move |window, cx| {
         CommandPaletteView::new_unified(backend, mode, window, cx)
@@ -1967,6 +2019,7 @@ fn a_picked_target_stays_picked_when_a_refresh_reorders_the_rows(cx: &mut TestAp
         sink: Sink::default(),
         files: None,
         vim: Rc::default(),
+        opens_files: false,
     });
     let (palette, cx) = mount(cx, move |window, cx| {
         CommandPaletteView::new_unified(backend, None, window, cx)

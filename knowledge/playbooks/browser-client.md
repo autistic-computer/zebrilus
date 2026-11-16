@@ -209,10 +209,12 @@ rules, including argument hints. The browser retains the provider command catalo
 of transcript limits so older replay entries can be discarded without losing completion.
 
 Settings and the new-pane picker omit unsupported controls. Native window behavior, OS fonts and credentials,
-native file dialogs, desktop notifications, local file editing, Chromium execution inside a pane, and
+native file dialogs, desktop notifications, Chromium execution inside a pane, and
 direct SSH host setup require capabilities outside the browser client. Browser panes retain their
-toolbar and offer an external tab for their URL. The browser client does not enable the shared
-code editor. File paths in `save-buffer`, `load-buffer`, and `source-file` resolve on the daemon host;
+toolbar and offer an external tab for their URL. Editor panes use the shared code editor on the
+host's files: `FileReadRequest` and `FileWriteRequest` (`file-edit-v1`) carry up to 2 MiB of text,
+the header's folder button or Ctrl/Command-O opens the palette's file list to pick one, and the check
+button or Ctrl/Command-S saves. There is no Save As. File paths in `save-buffer`, `load-buffer`, and `source-file` resolve on the daemon host;
 the daemon only asks command-line clients for their files. Browser
 screenshot commands return an error because the page has no Chromium pane runtime. Daemon
 `OpenUri` requests open HTTP, HTTPS, and mailto links; other schemes show a client error toast.

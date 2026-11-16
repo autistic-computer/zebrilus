@@ -4,6 +4,7 @@ mod authentication;
 #[cfg(any(target_os = "ios", target_os = "android"))]
 mod browser_pane;
 mod compact;
+mod editor_pane;
 pub(crate) use compact::HostPage;
 mod fleet;
 mod floating;
@@ -129,6 +130,7 @@ pub struct AppShell {
     waiting_panes: BTreeSet<PaneId>,
     agents: HashMap<PaneId, Entity<AgentPane>>,
     views: HashMap<PaneId, Entity<view_pane::ViewPane>>,
+    editors: HashMap<PaneId, Entity<editor_pane::EditorPane>>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     browsers: HashMap<PaneId, Entity<browser_pane::BrowserPane>>,
     pickers: HashMap<PaneId, Entity<picker::PanePicker>>,
@@ -353,6 +355,7 @@ fn watch_connection(
 
 impl AppShell {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        editor_pane::init(cx);
         let connection = cx.new(Connection::new);
         let window_handle = window.window_handle();
         let key_listener = cx.listener(move |this, event: &ala::KeystrokeEvent, window, cx| {
@@ -416,6 +419,7 @@ impl AppShell {
             waiting_panes: BTreeSet::new(),
             agents: HashMap::new(),
             views: HashMap::new(),
+            editors: HashMap::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             browsers: HashMap::new(),
             pickers: HashMap::new(),
@@ -1343,6 +1347,8 @@ impl AppShell {
             self.pip.depart(pane, Some(view), &self.pane_motion, cx);
             self.views.remove(&pane);
         }
+        self.editors
+            .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Editor(_))));
         #[cfg(any(target_os = "ios", target_os = "android"))]
         self.browsers
             .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Browser(_))));
@@ -1463,6 +1469,44 @@ impl AppShell {
             self.focused_pane = Some(pane);
         }
         view.into_any_element()
+    }
+
+    fn editor_entity(
+        &mut self,
+        pane: PaneId,
+        descriptor: &zz_protocol::EditorDescriptor,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<editor_pane::EditorPane> {
+        self.editors
+            .entry(pane)
+            .or_insert_with(|| {
+                let connection = self.connection.clone();
+                let view = cx.weak_entity();
+                cx.new(|cx| {
+                    let mut editor =
+                        editor_pane::EditorPane::new(pane, descriptor, connection, window, cx);
+                    editor.set_open_handler(Rc::new(move |pane, folder, window, cx| {
+                        let view = view.clone();
+                        window.defer(cx, move |window, cx| {
+                            let _ = view.update(cx, |this, cx| {
+                                let body = zz_ui::files::start_dir(Some(&folder), None);
+                                this.show_palette(
+                                    move |backend, window, cx| {
+                                        CommandPaletteView::new_file_open(
+                                            backend, &body, pane, window, cx,
+                                        )
+                                    },
+                                    window,
+                                    cx,
+                                );
+                            });
+                        });
+                    }));
+                    editor
+                })
+            })
+            .clone()
     }
 
     fn view_entity(
@@ -1711,6 +1755,11 @@ impl AppShell {
             .views
             .get(&pane_id)
             .map(|view| view.read(cx).header_buttons())
+            .or_else(|| {
+                self.editors
+                    .get(&pane_id)
+                    .map(|editor| editor.read(cx).header_buttons())
+            })
             .unwrap_or_default();
         let (place, folder) = {
             let snapshot = connection.read(cx).core.snapshot();
@@ -1742,7 +1791,7 @@ impl AppShell {
             &buttons,
             &zz_ui::pane::PaneActionKeys::default(),
             ala::px(0.0),
-            move |action, _, cx| {
+            move |action, window, cx| {
                 if action == zz_ui::pane::TerminalPaneAction::Flip {
                     let _ = flip_view.update(cx, |this, cx| this.flip_pane(pane_id, cx));
                     return;
@@ -1751,6 +1800,9 @@ impl AppShell {
                     let _ = kind_view.update(cx, |this, cx| {
                         if let Some(view) = this.views.get(&pane_id) {
                             view.update(cx, |view, cx| view.header_action(key, cx));
+                        }
+                        if let Some(editor) = this.editors.get(&pane_id).cloned() {
+                            editor.update(cx, |editor, cx| editor.header_action(key, window, cx));
                         }
                         cx.notify();
                     });
@@ -2188,6 +2240,7 @@ impl AppShell {
                     PaneKindSnapshot::Terminal
                         | PaneKindSnapshot::Agent(_)
                         | PaneKindSnapshot::View(_)
+                        | PaneKindSnapshot::Editor(_)
                 ) && !agent_picker,
                 is_float,
                 &self.preferences,
@@ -2315,10 +2368,32 @@ impl AppShell {
                     radii,
                     cx,
                 ),
+                PaneKindSnapshot::Editor(descriptor) if self.connection.read(cx).edits_files() => {
+                    let editor = self.editor_entity(pane_id, descriptor, window, cx);
+                    editor.update(cx, |editor, cx| {
+                        editor.synchronize(descriptor, window, cx);
+                        editor.set_corner_radii(
+                            Corners {
+                                top_left: px(0.0),
+                                top_right: px(0.0),
+                                ..radii
+                            },
+                            cx,
+                        );
+                    });
+                    if can_focus
+                        && pane_id == active_window.active_pane
+                        && self.focused_pane != Some(pane_id)
+                    {
+                        editor.read(cx).focus_handle(cx).focus(window, cx);
+                        self.focused_pane = Some(pane_id);
+                    }
+                    editor.into_any_element()
+                }
                 PaneKindSnapshot::Editor(_) => unsupported_pane(
                     "Editor",
                     IconName::File,
-                    "The daemon does not share editor file contents with browser clients yet.",
+                    "This host's zz is too old to open files here.",
                     None,
                     radii,
                     cx,

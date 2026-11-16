@@ -22,7 +22,7 @@ zz-client.workspace = true
 penna.workspace = true
 zz-protocol.workspace = true
 zz-terminal.workspace = true
-zz-ui = { workspace = true, features = ["agent"] }
+zz-ui = { workspace = true, features = ["agent", "editor"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 js-sys = "0.3"

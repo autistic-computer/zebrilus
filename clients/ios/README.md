@@ -202,8 +202,13 @@ the native transport, key translation, and UIKit backend.
   when its window is not on screen, and writes the PNG on the host, so agents can
   look at it. A daemon from before
   `browser-screenshot-v1`, or a pane this iPad has not laid out, answers with an error.
-- Existing Editor panes explain that file contents are not yet shared by the daemon.
-  Editor does not appear in the new-pane picker.
+- Editor panes open, edit and save the host's files through the daemon (`file-edit-v1`),
+  up to 2 MiB of UTF-8 text. The folder button in the pane's header, or Command-O,
+  opens the palette's file list on the file's folder, and picking a file opens it in
+  that pane; a check button, or Command-S, saves once there are changes. A pane with
+  no file shows an Open a file button. Line numbers and soft wrap are on, vim mode is
+  off, and there is no Save As. A daemon from before `file-edit-v1` keeps the
+  placeholder. Editor does not appear in the new-pane picker.
 
 Command-P, Command-K, or the search button opens the palette that desktop and web also use. Use `:` for commands,
 `@` for windows, `%` for panes, and `~` for the connected host. Opening it closes

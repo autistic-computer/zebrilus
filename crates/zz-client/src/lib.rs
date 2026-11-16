@@ -17,6 +17,7 @@ pub mod chooser;
 mod chrome;
 pub mod completion;
 mod core;
+pub mod editor;
 pub mod floating;
 pub mod fuzzy;
 pub mod gui_actions;
