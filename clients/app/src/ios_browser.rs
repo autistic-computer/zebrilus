@@ -571,6 +571,12 @@ impl BrowserView {
         }
     }
 
+    pub fn set_page_zoom(&self, factor: f64) {
+        unsafe {
+            let _: () = msg_send![self.view, setPageZoom: factor];
+        }
+    }
+
     pub fn set_visible(&self, visible: bool) {
         unsafe {
             if shown(self.host) != visible {

@@ -1,16 +1,18 @@
+#[cfg(any(feature = "cef-runtime", test))]
 pub(crate) const CHROMIUM_ZOOM_STEP: f64 = 1.2;
 
 const PAGE_ZOOM_FACTORS: &[f64] = &[
     0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0,
 ];
 
+#[cfg(any(feature = "cef-runtime", test))]
 #[must_use]
 pub(crate) fn chromium_zoom_level(factor: f64) -> f64 {
     factor.ln() / CHROMIUM_ZOOM_STEP.ln()
 }
 
 #[must_use]
-pub(crate) fn next_page_zoom_factor(current: f64, direction: i8) -> f64 {
+pub fn next_page_zoom_factor(current: f64, direction: i8) -> f64 {
     const EPSILON: f64 = 0.000_001;
     if direction > 0 {
         PAGE_ZOOM_FACTORS
@@ -28,6 +30,7 @@ pub(crate) fn next_page_zoom_factor(current: f64, direction: i8) -> f64 {
     }
 }
 
+#[cfg(any(feature = "cef-runtime", test))]
 #[must_use]
 pub(crate) fn sanitized_page_zoom_factor(factor: f64) -> f64 {
     if !factor.is_finite() || factor <= 0.0 {
@@ -44,6 +47,7 @@ pub(crate) fn sanitized_page_zoom_factor(factor: f64) -> f64 {
     clippy::cast_sign_loss,
     reason = "page zoom factors are clamped to a small positive percentage range"
 )]
+#[cfg(any(feature = "cef-runtime", test))]
 #[must_use]
 pub(crate) fn page_zoom_percent(factor: f64) -> u16 {
     (factor * 100.0).round() as u16

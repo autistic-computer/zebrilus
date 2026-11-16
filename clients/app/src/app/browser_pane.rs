@@ -18,6 +18,7 @@ use penna::{
     components::input::{InputEvent, InputState, SelectAll},
     components::progress::Progress,
 };
+use zz_client::ChromeAction;
 use zz_protocol::{BrowserCommand, BrowserDescriptor, PaneId};
 use zz_ui::{
     browser::{
@@ -47,6 +48,7 @@ struct Tab {
     picking: bool,
     held: bool,
     pick_status: Option<String>,
+    page_zoom: f64,
     _events: ala::Task<()>,
 }
 
@@ -399,7 +401,11 @@ impl BrowserPane {
                 .then(|| penna::to_hex(theme.shadow_color)),
             radius: f32::from(theme.radius),
             font_family: theme.mono_font_family.to_string(),
-            page_zoom: 1.0,
+            page_zoom: if cfg!(target_os = "ios") {
+                tab.page_zoom
+            } else {
+                1.0
+            },
         };
         match tab.view.start_element_pick(&appearance) {
             Ok(()) => tab.picking = true,
@@ -438,6 +444,7 @@ impl BrowserPane {
             picking: false,
             held: false,
             pick_status: None,
+            page_zoom: 1.0,
             _events: task,
         }
     }
@@ -828,6 +835,73 @@ impl BrowserPane {
         if self.tabs[self.active].loading {
             self.reload(cx);
         }
+    }
+
+    pub(super) fn chrome_action(
+        &mut self,
+        action: ChromeAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let count = self.tabs.len();
+        let tab = &self.tabs[self.active];
+        let writable = self.writable(cx);
+        match action {
+            ChromeAction::BrowserZoomIn => self.zoom(Some(1), cx),
+            ChromeAction::BrowserZoomOut => self.zoom(Some(-1), cx),
+            ChromeAction::BrowserZoomReset => self.zoom(None, cx),
+            ChromeAction::ClosePane if count > 1 => self.close_tab(tab.id, window, cx),
+            ChromeAction::BrowserNextTab => {
+                self.select_index((self.active + 1) % count, window, cx);
+            }
+            ChromeAction::BrowserPreviousTab => {
+                self.select_index((self.active + count - 1) % count, window, cx);
+            }
+            ChromeAction::BrowserSelectTab(index) => {
+                self.select_index(usize::from(index), window, cx);
+            }
+            ChromeAction::BrowserSelectLastTab => self.select_index(count - 1, window, cx),
+            ChromeAction::BrowserNewTab => self.add_tab("about:blank".into(), window, cx),
+            ChromeAction::BrowserBack if writable => tab.view.back(),
+            ChromeAction::BrowserForward if writable => tab.view.forward(),
+            ChromeAction::BrowserReload if writable && tab.loading => tab.view.reload(),
+            ChromeAction::BrowserReload => self.reload(cx),
+            ChromeAction::BrowserFocusAddress if self.compact => self.open_address(window, cx),
+            ChromeAction::BrowserFocusAddress if writable => {
+                self.address.update(cx, |input, cx| input.focus(window, cx));
+                cx.on_next_frame(window, |_, window, cx| {
+                    window.dispatch_action(Box::new(SelectAll), cx);
+                });
+            }
+            ChromeAction::BrowserElementSelector if !tab.loading || tab.picking => {
+                self.toggle_element_pick(window, cx);
+            }
+            ChromeAction::BrowserBack
+            | ChromeAction::BrowserForward
+            | ChromeAction::BrowserFocusAddress
+            | ChromeAction::BrowserElementSelector => {}
+            _ => return false,
+        }
+        true
+    }
+
+    fn select_index(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(id) = self.tabs.get(index).map(|tab| tab.id) {
+            self.select(id, window, cx);
+        }
+    }
+
+    fn zoom(&mut self, direction: Option<i8>, cx: &mut Context<Self>) {
+        let tab = &mut self.tabs[self.active];
+        tab.page_zoom = direction.map_or(1.0, |direction| {
+            ala_cef::next_page_zoom_factor(tab.page_zoom, direction)
+        });
+        tab.view.set_page_zoom(tab.page_zoom);
+        if std::mem::take(&mut tab.picking) {
+            tab.view.cancel_element_pick();
+            self.start_element_pick(cx);
+        }
+        cx.notify();
     }
 
     pub(super) fn tabs_open(&self) -> bool {

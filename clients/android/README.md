@@ -116,7 +116,10 @@ as `target_visual_viewport_bounds`, the way the iOS backend follows the keyboard
   whole app's, which matches having one host connection at a time. WebView builds without these
   features load pages over the phone's network and share one store. Plain http is allowed, so
   local dev servers open. The build fetches androidx.webkit 1.14.0 once, checked against a
-  pinned SHA-256, into `target/android/deps`.
+  pinned SHA-256, into `target/android/deps`. With a hardware keyboard, a browser pane takes
+  the desktop browser keys (Ctrl-L, Ctrl-T, Ctrl-R, Ctrl-W, Ctrl-Tab, Ctrl-1 to 9, Alt-Left and
+  Alt-Right) while the address field has focus; a focused page gets keys before zz does.
+  Ctrl-plus, Ctrl-minus and Ctrl-0 set the web view's text zoom.
 - **Files.** Preferences and saved hosts are in `files/ala/`. Images copied from the app go
   through `ZzFileProvider` so other apps can paste them.
 - **Links.** `zz-dev://attach/<session>` (`zz://` for release builds) switches the running app to

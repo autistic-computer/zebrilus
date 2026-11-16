@@ -228,6 +228,10 @@ final class ZzBrowser {
         web.stopLoading();
     }
 
+    void setPageZoom(int percent) {
+        web.getSettings().setTextZoom(percent);
+    }
+
     void setVisible(boolean visible) {
         int visibility = visible ? View.VISIBLE : View.GONE;
         if (host.getVisibility() != visibility) {

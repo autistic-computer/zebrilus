@@ -357,6 +357,18 @@ impl BrowserView {
         self.shared.call("stop", "()V", &[]);
     }
 
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "page zoom factors are a small positive percentage ladder"
+    )]
+    pub fn set_page_zoom(&self, factor: f64) {
+        self.shared.call(
+            "setPageZoom",
+            "(I)V",
+            &[JValue::Int((factor * 100.0).round() as i32)],
+        );
+    }
+
     pub fn set_visible(&self, visible: bool) {
         if self.shared.visible.replace(visible) == visible {
             return;

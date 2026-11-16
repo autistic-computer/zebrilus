@@ -112,7 +112,7 @@ runtime types (only under `cef-runtime`):
 | `src/event.rs` | `SessionId`, `BrowserEvent` variants, `BrowserCursor`. |
 | `src/input.rs` | Browser-neutral `Viewport`, packed `Modifiers`, pointer/wheel/key input types + `windows_key_code` mapping. |
 | `src/lifecycle.rs` | `RuntimePhase` and `SessionPhase` strict transition tables. |
-| `src/page_zoom.rs` | Chrome percentage ladder and logarithmic CEF zoom-level conversion. |
+| `src/page_zoom.rs` | Chrome percentage ladder and logarithmic CEF zoom-level conversion. `next_page_zoom_factor` is in the pure half; the thin clients step their native web views' page zoom with it. |
 | `src/profile.rs` | `BrowserProfilePaths`, profile-name rules; encoded named paths, user-only permissions. zz picks the data dir in `crates/zz/src/browser/mod.rs`. |
 | `src/cookie.rs` | Cookie-Editor JSON/Netscape parsing, normalization, limits, and secret-free result types (CEF-free, so `chrome_import` builds without Chromium). |
 | `src/chrome_import/profiles.rs` | Background Chrome profile discovery, platform paths, the sanitized label cache. |

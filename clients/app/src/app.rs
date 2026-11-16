@@ -170,6 +170,8 @@ pub struct AppShell {
     pane_drag: Option<PaneDragState>,
     #[cfg(target_os = "android")]
     system_back: Option<bool>,
+    #[cfg(target_os = "ios")]
+    browser_menus: bool,
     pane_layout_override: Option<PaneLayoutOverride>,
     pane_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
     float_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
@@ -447,6 +449,8 @@ impl AppShell {
             pane_drag: None,
             #[cfg(target_os = "android")]
             system_back: None,
+            #[cfg(target_os = "ios")]
+            browser_menus: false,
             pane_layout_override: None,
             pane_canvas_bounds: Rc::default(),
             float_canvas_bounds: Rc::default(),
@@ -743,6 +747,19 @@ impl AppShell {
             cx.stop_propagation();
             return;
         }
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        if let Some(action) = self
+            .chrome
+            .resolve(zz_client::BROWSER_TABLE, &input)
+            .or_else(|| {
+                ChromeKeymap::for_profile(ChromeProfile::DesktopApple)
+                    .resolve(zz_client::BROWSER_TABLE, &input)
+            })
+            && self.browser_command(action, window, cx)
+        {
+            cx.stop_propagation();
+            return;
+        }
         let action = self.chrome.resolve(UI_TABLE, &input).or_else(|| {
             ChromeKeymap::for_profile(ChromeProfile::DesktopApple).resolve(UI_TABLE, &input)
         });
@@ -812,6 +829,38 @@ impl AppShell {
         }
     }
 
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn browser_command(
+        &mut self,
+        action: ChromeAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(browser) = self.focused_browser(window, cx) else {
+            return false;
+        };
+        if browser.update(cx, |browser, cx| browser.chrome_action(action, window, cx)) {
+            return true;
+        }
+        if action == ChromeAction::ClosePane {
+            self.chrome_command(action, window, cx);
+            return true;
+        }
+        false
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn focused_browser(
+        &self,
+        window: &Window,
+        cx: &App,
+    ) -> Option<Entity<browser_pane::BrowserPane>> {
+        self.browsers
+            .values()
+            .find(|browser| browser.focus_handle(cx).contains_focused(window, cx))
+            .cloned()
+    }
+
     fn tmux_command(&mut self, command: &str, cx: &mut Context<Self>) {
         let connection = self.connection.read(cx);
         if !connection.connected || connection.core.attached_read_only() {
@@ -827,18 +876,65 @@ impl AppShell {
     #[cfg(target_os = "ios")]
     fn menus(&self) -> Vec<ala::Menu> {
         let bindings = self.chrome.bindings();
-        let chrome = |title: &'static str, action: ChromeAction| {
+        let command = |table: &str, title: &'static str, action: ChromeAction| {
             ala::MenuItem::action(
                 title,
                 ala_platform::ios::MenuCommand {
                     id: action.name().into(),
                     shortcut: bindings
                         .iter()
-                        .find(|(table, _, bound)| table == UI_TABLE && *bound == action)
+                        .filter(|(bound_table, _, bound)| bound_table == table && *bound == action)
+                        .min_by_key(|(_, key, _)| {
+                            (
+                                !key.starts_with("D-"),
+                                key.rsplit('-').next().is_some_and(|key| key.len() > 1),
+                            )
+                        })
                         .map(|(_, key, _)| key.clone().into()),
                 },
             )
         };
+        let chrome = |title, action| command(UI_TABLE, title, action);
+        let browser = |title, action| command(zz_client::BROWSER_TABLE, title, action);
+        let zoom = if self.browser_menus {
+            [
+                browser("Zoom In", ChromeAction::BrowserZoomIn),
+                browser("Zoom Out", ChromeAction::BrowserZoomOut),
+                browser("Reset Zoom", ChromeAction::BrowserZoomReset),
+            ]
+        } else {
+            [
+                chrome("Zoom In", ChromeAction::UiZoomIn),
+                chrome("Zoom Out", ChromeAction::UiZoomOut),
+                chrome("Reset Zoom", ChromeAction::UiZoomReset),
+            ]
+        };
+        let tabs = [
+            "Tab 1", "Tab 2", "Tab 3", "Tab 4", "Tab 5", "Tab 6", "Tab 7", "Tab 8",
+        ]
+        .into_iter()
+        .zip(0..)
+        .map(|(title, index)| browser(title, ChromeAction::BrowserSelectTab(index)))
+        .chain([browser("Last Tab", ChromeAction::BrowserSelectLastTab)]);
+        let browser_items = self
+            .browser_menus
+            .then(|| {
+                [
+                    ala::MenuItem::separator(),
+                    browser("Back", ChromeAction::BrowserBack),
+                    browser("Forward", ChromeAction::BrowserForward),
+                    browser("Reload", ChromeAction::BrowserReload),
+                    browser("Open Location…", ChromeAction::BrowserFocusAddress),
+                    browser("Pick Element", ChromeAction::BrowserElementSelector),
+                    ala::MenuItem::separator(),
+                    browser("New Tab", ChromeAction::BrowserNewTab),
+                    browser("Next Tab", ChromeAction::BrowserNextTab),
+                    browser("Previous Tab", ChromeAction::BrowserPreviousTab),
+                    ala::MenuItem::submenu(ala::Menu::new("Select Tab").items(tabs)),
+                ]
+            })
+            .into_iter()
+            .flatten();
         let tmux = |title: &'static str, command: &'static str| {
             ala::MenuItem::action(
                 title,
@@ -859,16 +955,18 @@ impl AppShell {
                 chrome("Close Pane", ChromeAction::ClosePane),
                 tmux("Kill Window", "kill-window"),
             ]),
-            ala::Menu::new("View").items([
-                chrome("Command Palette…", ChromeAction::OpenCommandPalette),
-                tmux("Choose Window…", "choose-tree -w"),
-                chrome("Toggle Sidebar", ChromeAction::ToggleSidebar),
-                tmux("Zoom Pane", "resize-pane -Z"),
-                ala::MenuItem::separator(),
-                chrome("Zoom In", ChromeAction::UiZoomIn),
-                chrome("Zoom Out", ChromeAction::UiZoomOut),
-                chrome("Reset Zoom", ChromeAction::UiZoomReset),
-            ]),
+            ala::Menu::new("View").items(
+                [
+                    chrome("Command Palette…", ChromeAction::OpenCommandPalette),
+                    tmux("Choose Window…", "choose-tree -w"),
+                    chrome("Toggle Sidebar", ChromeAction::ToggleSidebar),
+                    tmux("Zoom Pane", "resize-pane -Z"),
+                    ala::MenuItem::separator(),
+                ]
+                .into_iter()
+                .chain(zoom)
+                .chain(browser_items),
+            ),
         ]
     }
 
@@ -881,7 +979,9 @@ impl AppShell {
     ) {
         if let Some(command) = command.id.strip_prefix("tmux:") {
             self.tmux_command(command, cx);
-        } else if let Some(action) = ChromeAction::from_name(&command.id) {
+        } else if let Some(action) = ChromeAction::from_name(&command.id)
+            && !self.browser_command(action, window, cx)
+        {
             self.chrome_command(action, window, cx);
         }
     }
@@ -3195,6 +3295,11 @@ impl Render for AppShell {
             let host = self.connection.read(cx).endpoint().unwrap_or_default();
             self.browsers
                 .retain(|_, browser| browser.read(cx).belongs_to_host(host));
+        }
+        #[cfg(target_os = "ios")]
+        if self.focused_browser(window, cx).is_some() != self.browser_menus {
+            self.browser_menus = !self.browser_menus;
+            cx.set_menus(self.menus());
         }
         let dialog = window
             .root::<Root>()

@@ -198,6 +198,15 @@ the native transport, key translation, and UIKit backend.
   share the desktop browser's login or live page state.
   The element picker copies context and a cropped screenshot for pasting into an
   agent. Tap the picker, then tap a page element; Cancel exits without copying.
+- With a hardware keyboard, a focused browser pane takes the desktop browser keys:
+  Command-L for the address, Command-T for a new tab, Command-R to reload, Command-[
+  and Command-] for back and forward, Command-Shift-[ and Command-Shift-] to change
+  tabs, Command-1 to Command-8 for a tab and Command-9 for the last, and Command-Shift-C
+  for the element picker. Command-plus, Command-minus and Command-0 zoom the page
+  instead of the interface; each tab keeps its own zoom, stepped from 25% to 500% as on
+  desktop. These keys are View menu commands while a browser pane is focused, because a
+  focused page gets every other key before zz does. Control-Tab and
+  Command-Option-arrows also change tabs, but only while the address field has focus.
 - Existing Editor panes explain that file contents are not yet shared by the daemon.
   Editor does not appear in the new-pane picker.
 
@@ -260,7 +269,9 @@ being composed, hardware keys go to the input method first.
 - The iPadOS menu bar and the Command-hold shortcut list show the zz, File, and View
   commands with their Command shortcuts: Settings, New Session, New Window, Split Right,
   Split Down, Close Pane, Kill Window, Command Palette, Choose Window, Toggle Sidebar,
-  Zoom Pane, and UI zoom.
+  Zoom Pane, and UI zoom. While a browser pane is focused, View adds Back, Forward,
+  Reload, Open Location, Pick Element, New Tab, Next Tab, Previous Tab, and Select Tab,
+  its zoom items zoom the page, and Close Pane closes the tab when more than one is open.
 - `zz://attach/<session>` (`zz-dev://` for development builds) switches the frontmost
   window to that session, or attaches to it after the next connect. Shortcuts can open it
   with the Open URL action. The deprecated native dev app also claims `zz-dev://`; remove
