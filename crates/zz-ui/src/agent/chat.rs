@@ -768,12 +768,10 @@ pub fn chat_surface<T: ChatHost>(
             });
         })
     };
-    let html = cx
-        .has_global::<crate::agent::AgentHtmlPreviewer>()
-        .then_some(crate::agent::HtmlBlocks {
-            owner: look.pane,
-            touch: look.touch,
-        });
+    let html = crate::agent::draws_html(cx).then_some(crate::agent::HtmlBlocks {
+        owner: look.pane,
+        touch: look.touch,
+    });
     let pane = host.chat_pane();
     let markdown = look.refs.map(|refs| pane.markdown_showing(refs, html));
     pane.frame = ChatFrame {
@@ -814,6 +812,11 @@ pub fn chat_surface<T: ChatHost>(
             chat_agent_pip(view, now, &pane.open, phase, &hooks, cx)
         })
     };
+    let bottom = if touch {
+        look.inset_bottom
+    } else {
+        px(COMPOSER_OUTER_PADDING)
+    };
     let rows = entity.clone();
     let thread = list(list_state.clone(), move |index, _, cx| {
         let host = rows.read(cx);
@@ -827,11 +830,7 @@ pub fn chat_surface<T: ChatHost>(
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .size_full()
     .pt(look.inset_top + Space::S12.rems().to_pixels(window.rem_size()))
-    .pb(if touch {
-        look.inset_bottom
-    } else {
-        px(COMPOSER_OUTER_PADDING)
-    });
+    .pb(bottom);
     let jump = {
         let entity = entity.clone();
         move |_: &ala::ClickEvent, _: &mut Window, cx: &mut App| {
@@ -848,18 +847,26 @@ pub fn chat_surface<T: ChatHost>(
         .min_w_0()
         .h_full()
         .text_color(cx.theme().foreground)
+        .children(crate::agent::html_frame_clip(true, cx).map(|clip| {
+            div()
+                .absolute()
+                .inset_0()
+                .pt(look.inset_top)
+                .pb(bottom)
+                .child(clip)
+        }))
         .child(thread)
+        .children(
+            crate::agent::html_frame_clip(false, cx)
+                .map(|clip| div().absolute().size_0().child(clip)),
+        )
         .child(
             div()
                 .absolute()
                 .top(look.inset_top)
                 .left_0()
                 .right_0()
-                .bottom(if touch {
-                    look.inset_bottom
-                } else {
-                    px(COMPOSER_OUTER_PADDING)
-                })
+                .bottom(bottom)
                 .child(Scrollbar::vertical(&list_state)),
         )
         .when(show_jump, |column| {

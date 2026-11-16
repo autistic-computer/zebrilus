@@ -19,3 +19,5 @@ pub mod terminal;
 pub mod terminal_images;
 #[cfg(any(target_os = "ios", target_os = "android"))]
 pub mod transport;
+#[cfg(target_family = "wasm")]
+pub mod web_frames;

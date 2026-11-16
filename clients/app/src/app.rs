@@ -3310,14 +3310,15 @@ impl Render for AppShell {
         } else {
             self.compact_shell(terminal_overlays, overlays, window, cx)
         };
-        #[cfg(any(target_os = "ios", target_os = "android"))]
-        {
+        #[cfg(any(target_os = "ios", target_os = "android", target_family = "wasm"))]
+        let unobstructed = {
             let connection = self.connection.read(cx);
             let core = &connection.core;
-            let native_obscured = window
-                .root::<Root>()
-                .flatten()
-                .is_some_and(|root| !root.read(cx).notifications(cx).is_empty())
+            let native_obscured = (!cfg!(target_family = "wasm")
+                && window
+                    .root::<Root>()
+                    .flatten()
+                    .is_some_and(|root| !root.read(cx).notifications(cx).is_empty()))
                 || window.focused(cx).is_some_and(|focus| {
                     cx.build_action("penna_menu::Cancel", None)
                         .is_ok_and(|action| {
@@ -3326,7 +3327,7 @@ impl Render for AppShell {
                                 .is_some()
                         })
                 });
-            let unobstructed = connection.connected
+            connection.connected
                 && self.settings.is_none()
                 && !dialog
                 && !native_obscured
@@ -3339,7 +3340,10 @@ impl Render for AppShell {
                 && core.menu().is_none()
                 && core.confirm().is_none()
                 && core.command_output().is_none()
-                && core.display_panes().is_none();
+                && core.display_panes().is_none()
+        };
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        {
             let visible: BTreeSet<_> = if unobstructed && compact {
                 self.compact_visible_panes(cx)
             } else if unobstructed {
@@ -3384,6 +3388,8 @@ impl Render for AppShell {
                 });
             }
         }
+        #[cfg(target_family = "wasm")]
+        let shell = shell.child(crate::web_frames::drawn(!unobstructed, cx));
         let shell = shell
             .track_focus(&self.focus)
             .on_key_up(cx.listener(Self::key_up))

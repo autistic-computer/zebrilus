@@ -230,6 +230,85 @@ pub struct HtmlLiveBlock {
 
 impl Global for AgentHtmlLive {}
 
+#[derive(Clone, Debug)]
+pub struct HtmlFrame {
+    pub block: u64,
+    pub key: u64,
+    pub page: SharedString,
+    pub bounds: ala::Bounds<Pixels>,
+    pub clip: ala::Bounds<Pixels>,
+    pub layout: Option<ala::Size<Pixels>>,
+    pub live: bool,
+    pub dark: bool,
+}
+
+pub struct AgentHtmlFrames {
+    pub height: Rc<dyn Fn(u64) -> Option<Pixels>>,
+    pub place: Rc<dyn Fn(HtmlFrame)>,
+}
+
+impl Global for AgentHtmlFrames {}
+
+#[derive(Default)]
+struct HtmlFrameClip(Option<ala::Bounds<Pixels>>);
+
+impl Global for HtmlFrameClip {}
+
+pub(crate) fn html_frame_clip(clip: bool, cx: &App) -> Option<ala::Canvas<()>> {
+    cx.has_global::<AgentHtmlFrames>().then(|| {
+        canvas(
+            |_, _, _| {},
+            move |bounds, (), _, cx| {
+                cx.set_global(HtmlFrameClip(clip.then_some(bounds)));
+            },
+        )
+        .size_full()
+    })
+}
+
+pub(crate) fn draws_html(cx: &App) -> bool {
+    cx.has_global::<AgentHtmlPreviewer>() || cx.has_global::<AgentHtmlFrames>()
+}
+
+pub(crate) fn html_frame(
+    block: u64,
+    page: &str,
+    layout: Option<ala::Size<Pixels>>,
+    dark: bool,
+    cx: &App,
+) -> Option<(Option<Pixels>, ala::Canvas<()>)> {
+    let frames = cx.try_global::<AgentHtmlFrames>()?;
+    let place = Rc::clone(&frames.place);
+    let mut hasher = DefaultHasher::new();
+    page.hash(&mut hasher);
+    let key = hasher.finish();
+    let height = (frames.height)(key);
+    let live = layout.is_none() && !crate::touch::touch_targets(cx);
+    let page = SharedString::from(page.to_owned());
+    let frame = canvas(
+        |_, _, _| {},
+        move |bounds, (), window, cx| {
+            let mask = window.content_mask().bounds;
+            let clip = cx
+                .try_global::<HtmlFrameClip>()
+                .and_then(|clip| clip.0)
+                .map_or(mask, |clip| mask.intersect(&clip));
+            place(HtmlFrame {
+                block,
+                key,
+                page,
+                bounds,
+                clip,
+                layout,
+                live,
+                dark,
+            });
+        },
+    )
+    .size_full();
+    Some((height, frame))
+}
+
 #[derive(Default)]
 struct HtmlPreviewToggles(HashSet<u64>);
 
@@ -315,7 +394,7 @@ fn html_block_page(code: &str, head: Option<&str>) -> String {
 const VISUAL_PAGE_SCRIPT: &str = r#"window.openai={widgetState:null,setWidgetState:function(){return Promise.resolve()},sendFollowUpMessage:function(message){return window.zz&&window.zz.reply?window.zz.reply(String(message&&message.prompt||message)):Promise.reject(new Error("this page cannot send follow-ups"))}};"#;
 
 fn previews_html(language: &str, cx: &App) -> bool {
-    language.eq_ignore_ascii_case("html") && cx.has_global::<AgentHtmlPreviewer>()
+    language.eq_ignore_ascii_case("html") && draws_html(cx)
 }
 
 fn html_preview_width(width: Pixels) -> Pixels {
@@ -425,6 +504,25 @@ fn agent_code_block_body(
         return None;
     }
     let head = visual.then(|| visual::visual_head(cx).to_string());
+    let dark = visual && cx.theme().is_dark();
+    if cx.has_global::<AgentHtmlFrames>()
+        && let Some((height, frame)) = html_frame(
+            block,
+            &html_block_page(&code, head.as_deref()),
+            None,
+            dark,
+            cx,
+        )
+    {
+        return Some(
+            div()
+                .w_full()
+                .h(height.unwrap_or(px(120.0)))
+                .when(!visual, |this| this.bg(Hsla::white()))
+                .child(frame)
+                .into_any_element(),
+        );
+    }
     let state = window.use_keyed_state(
         SharedString::from(format!("zz-html-preview/{block}")),
         cx,

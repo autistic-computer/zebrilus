@@ -463,14 +463,30 @@ up in the numbers.
   drafting into the composer.
 * **Android** has the same shape as iOS, but its snapshot copies pixels from the window, so the web
   view has to be on screen; a hidden picture-maker needs another capture path. Not started.
-* **Web** shows a placeholder for every browser pane (`clients/app/src/app.rs:1834`). The web
-  client already runs in a browser, so artifacts and previews can be live sandboxed
-  `<iframe srcdoc>` frames without same-origin, placed over the canvas the way the accessibility
-  mirror places its nodes (`libs/ala/crates/ala-platform/src/web/a11y.rs`); no pictures needed. Single
-  files only, since relative assets have no origin to resolve against. Later.
+* **Web** draws visuals, page frames and an `html` block's preview in its chats since
+  2026-11-16, as live sandboxed `<iframe srcdoc>` frames placed over the canvas rather than
+  pictures. zz-ui sets no picture task there: `zz_ui::agent::AgentHtmlFrames` asks the host for a
+  frame's height and hands it each frame's bounds, the chat's clip and whether it takes input
+  every time the chat paints. `clients/app/src/web_frames.rs` keeps one `<iframe>` per block in a
+  fixed layer after the canvas, `sandbox="allow-scripts"` and no `allow-same-origin`, so a page's
+  scripts run on an opaque origin and cannot reach the app's page, its cookie or its socket. A
+  script appended to the page posts its height (the desktop's height script, 8 to 800 px) and the
+  wheel events it cannot scroll itself; the host sizes the frame from the first and replays the
+  second on the canvas (ala's web window places a wheel event by its client coordinates, so a
+  replayed one lands where the pointer is), so the chat scrolls over a visual. A visual and an `html` block take
+  pointer input, and a page frame is laid out at 1280 × 720, scaled to the column and takes none.
+  On a touch-only browser no frame takes input, so a drag over one scrolls the chat. The chat
+  clips its frames above the composer's band (`html_frame_clip`), a frame not painted in a draw
+  is hidden at the end of that draw (and removed after 30 s), and every frame hides while
+  settings, a dialog, a prompt, a menu or a tmux chooser is open, since the canvas cannot draw
+  over them; a popover from the composer that opens over a visual is still drawn under it. A
+  visual's Show code and Copy sit in a row above it, always shown, since the pointer over a frame
+  never reaches the canvas. Frames are single documents: relative assets have no origin
+  to resolve against, and the page inherits the app's cross-origin isolation, so a resource from
+  another site loads only if that site sends a cross-origin resource policy. There is no Open as
+  a page: the web's browser panes are placeholders.
 
-Until then the web client shows an artifact like any browser pane it can't show, and html blocks
-as code with no Open button, since the page it would open is a placeholder.
+Android still shows html blocks as code.
 
 # Error handling
 
