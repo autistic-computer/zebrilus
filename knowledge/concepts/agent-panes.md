@@ -892,7 +892,8 @@ calls:
 - **Preview cards.** With a view opener, mermaid and SVG blocks, code blocks of six lines or more
   and markdown fences of six lines or more leave the reply as cards (`agent::preview`), flat
   `CardLook::Activity` cards that wash deeper on hover. A diagram is a thumbnail of the drawn diagram
-  named by its kind (Flowchart, Sequence diagram, Gantt chart; the pop-out mark shows on hover). A
+  named by its kind (Flowchart, Sequence diagram, Gantt chart; the pop-out mark shows on hover,
+  always on touch). A
   code block is its language's tile (the program tile when zz knows the language: rust, python,
   go, typescript and the other program marks, plus 32 language marks from Devicon; a neutral tile
   with braces otherwise), its file name when the fence names one (`rust src/main.rs`,

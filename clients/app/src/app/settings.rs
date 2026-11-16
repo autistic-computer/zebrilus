@@ -82,6 +82,17 @@ pub(crate) fn phone() -> bool {
     false
 }
 
+fn touch_screen() -> bool {
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    return true;
+    #[cfg(target_family = "wasm")]
+    return web_sys::window()
+        .and_then(|window| window.match_media("(hover: none)").ok().flatten())
+        .is_some_and(|query| query.matches());
+    #[cfg(not(any(target_os = "ios", target_os = "android", target_family = "wasm")))]
+    false
+}
+
 pub(super) fn sections() -> Vec<SettingsSection> {
     let phone = phone();
     SECTIONS
@@ -119,6 +130,7 @@ impl Preferences {
             cx.set_global(PlatformReduceMotion(cx.reduce_motion()));
         }
         cx.set_global(zz_ui::program::ProgramColors(self.program_colors));
+        penna::blocks::touch::TouchScreen::set(touch_screen(), cx);
         #[cfg(any(target_os = "ios", target_os = "android"))]
         let (contrast, text_scale) = (
             self.appearance.contrast * if system.increase_contrast { 1.25 } else { 1.0 },

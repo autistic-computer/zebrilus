@@ -85,6 +85,29 @@ impl CoarsePointer {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TouchScreen(pub bool);
+
+impl Global for TouchScreen {}
+
+impl TouchScreen {
+    #[must_use]
+    pub fn get(cx: &App) -> bool {
+        cx.try_global::<Self>().is_some_and(|touch| touch.0)
+    }
+
+    pub fn set(touch: bool, cx: &mut App) {
+        if Self::get(cx) != touch {
+            cx.set_global(Self(touch));
+        }
+    }
+}
+
+#[must_use]
+pub fn hover_reveals(cx: &App) -> bool {
+    !CoarsePointer::get(cx) && !TouchScreen::get(cx)
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PhoneScreen(pub bool);
 
 impl Global for PhoneScreen {}

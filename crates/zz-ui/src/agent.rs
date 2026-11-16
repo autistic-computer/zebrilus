@@ -1068,7 +1068,7 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
     };
 
     let card = cx.theme().ground_of(CardLook::Figure);
-    let hover_only = !crate::touch::CoarsePointer::get(cx);
+    let hover_only = crate::touch::hover_reveals(cx);
     Card::new(("agent-figure", source_offset), CardLook::Figure)
         .group(FIGURE_GROUP)
         .relative()

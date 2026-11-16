@@ -1370,7 +1370,7 @@ impl Draw<'_, '_> {
             .flex_none()
             .gap_2()
             .items_center()
-            .when(!crate::touch::CoarsePointer::get(cx), |extras| {
+            .when(crate::touch::hover_reveals(cx), |extras| {
                 extras
                     .invisible()
                     .group_hover(AGENT_ROW_GROUP, ala::Styled::visible)
@@ -1756,7 +1756,7 @@ fn message_actions(
         .flex_none()
         .gap_0p5()
         .items_center()
-        .when(!crate::touch::CoarsePointer::get(cx), |row| {
+        .when(crate::touch::hover_reveals(cx), |row| {
             row.invisible().group_hover(group, ala::Styled::visible)
         })
         .when_some(stamp, |row, stamp| {

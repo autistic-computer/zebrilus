@@ -565,7 +565,7 @@ fn render_visual(
         }
     };
     let ground = cx.theme().ground_of(CardLook::Code);
-    let hover_only = !crate::touch::CoarsePointer::get(cx);
+    let hover_only = crate::touch::hover_reveals(cx);
     let code = source.html.clone();
     let html = source.html.clone();
     let (toggle_icon, toggle_tip) = if shows_code {
@@ -580,8 +580,11 @@ fn render_visual(
         .p_0p5()
         .h_flex()
         .gap_0p5()
-        .invisible()
-        .group_hover(VISUAL_GROUP, ala::Styled::visible)
+        .when(hover_only, |tools| {
+            tools
+                .invisible()
+                .group_hover(VISUAL_GROUP, ala::Styled::visible)
+        })
         .child(
             message_action(
                 Button::compact_icon(("agent-visual-code", offset), toggle_icon)
@@ -631,7 +634,9 @@ fn render_visual(
         .debug_selector(|| "agent-visual".to_owned())
         .child(measure(&state))
         .child(content)
-        .when(hover_only, |visual| visual.child(tools))
+        .when(!crate::touch::CoarsePointer::get(cx), |visual| {
+            visual.child(tools)
+        })
         .into_any_element()
 }
 

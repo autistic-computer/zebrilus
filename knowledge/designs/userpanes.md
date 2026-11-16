@@ -440,7 +440,7 @@ up in the numbers.
   buttons inherit their color, or WebKit paints their text in its own blue. On the phone shell a
   visual is laid out narrower and drawn larger by 17 / 14, the ratio of the chat's touch text to
   the desktop's, so its type matches the reply around it. The corner controls are left out on
-  touch.
+  the phone; on iPad they always show, since a finger cannot hover.
 
   iOS browser panes also load `zz://` pages since 2026-11-15, so `zz html` works there. The web
   view's delegate is its `WKURLSchemeHandler` for `zz` (`start_page` and `stop_page` in

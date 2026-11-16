@@ -5,7 +5,7 @@ use ala::{
 use crate::{
     ActiveTheme as _, CHROME_GAP, Card, CardLook, Colorize as _, Emphasis, Icon, IconName, Label,
     PaintExt as _, PaintState, Panel, PanelLook, Sizable as _, StyledExt as _, TextStyle, Tone,
-    blocks::touch::CoarsePointer,
+    blocks::touch::hover_reveals,
     components::button::{Button, ButtonLook},
     components::check::Check,
     components::icon::cap_center_drop,
@@ -27,7 +27,7 @@ pub fn message_action(button: Button, cx: &App) -> Button {
 
 #[must_use]
 pub fn shown_on_hover(group: &'static str, cx: &App) -> Div {
-    div().flex_none().when(!CoarsePointer::get(cx), |slot| {
+    div().flex_none().when(hover_reveals(cx), |slot| {
         slot.invisible().group_hover(group, Styled::visible)
     })
 }
@@ -97,13 +97,12 @@ impl RenderOnce for UserMessage {
                 .items_center()
                 .gap_1()
                 .child(
-                    div()
-                        .flex_none()
-                        .invisible()
-                        .when(enabled, |slot| {
-                            slot.group_hover(USER_MESSAGE_GROUP, Styled::visible)
-                        })
-                        .child(action),
+                    if enabled {
+                        shown_on_hover(USER_MESSAGE_GROUP, cx)
+                    } else {
+                        div().flex_none().invisible()
+                    }
+                    .child(action),
                 )
                 .child(bubble.min_w_0()),
         )
