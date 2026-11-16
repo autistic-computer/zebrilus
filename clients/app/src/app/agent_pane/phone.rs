@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, Context, Entity, IntoElement, Pixels, SharedString, Window, canvas, div,
-    prelude::*, px,
+    AnyElement, App, Context, Entity, IntoElement, Pixels, ScrollHandle, SharedString, Window,
+    canvas, div, prelude::*, px,
 };
 use penna::{
     ActiveTheme as _, Disableable as _,
@@ -15,15 +15,13 @@ use penna::{
     blocks::touch::PhoneEmpty,
     components::input::InputState,
 };
-use std::path::{Path, PathBuf};
 
 use zz_client::agent_lens::{AgentEmpty, PendingPermission, agent_empty};
 use zz_client::agent_login::LoginAccount;
-use zz_client::agent_resume::{Menu, Resume, folder_name};
+use zz_client::agent_resume::{Menu, folder_name};
 use zz_client::agent_settings;
-use zz_client::agent_timeline::unix_now;
 use zz_client::window_summary::{PaneTile, summarize_window};
-use zz_protocol::{AgentPaneWire, AgentSessionOpKind, ProtocolMessage, ViewDescriptor};
+use zz_protocol::{AgentPaneWire, ProtocolMessage, ViewDescriptor};
 use zz_ui::agent::{
     ask::{AskChoice, approval_subject},
     chat::{HeldMessage, shows_chat},
@@ -182,19 +180,6 @@ impl AgentPane {
         cx.notify();
     }
 
-    fn reset_search(
-        &mut self,
-        text: &str,
-        placeholder: &'static str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.search.update(cx, |input, cx| {
-            input.set_placeholder(placeholder, cx);
-            input.set_value(text.to_owned(), window, cx);
-        });
-    }
-
     fn mention_turned(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.mention_level = self
             .mention
@@ -228,51 +213,13 @@ impl AgentPane {
                 self.mention
                     .update(cx, |picker, cx| picker.search(&level, &text, window, cx));
             }
-            Some(ChatSheet::Resume(_)) if self.resume.set_search(&text) => {
+            _ if self.resume.menu().is_some() && self.resume.set_search(&text) => {
+                self.menu_scroll = ScrollHandle::new();
                 self.send_wanted(cx);
                 cx.notify();
             }
             _ => {}
         }
-    }
-
-    fn cwd(&self, cx: &App) -> PathBuf {
-        PathBuf::from(self.chat_cwd(cx))
-    }
-
-    fn send_session_op(&self, op: AgentSessionOpKind, cx: &mut Context<Self>) {
-        let pane = self.pane;
-        self.connection.update(cx, |connection, cx| {
-            connection.send(ProtocolMessage::AgentSessionOp { pane, op }, cx);
-        });
-    }
-
-    fn send_wanted(&mut self, cx: &mut Context<Self>) {
-        let cwd = self.cwd(cx);
-        if let Some(op) = self.resume.wanted(&cwd) {
-            self.send_session_op(op, cx);
-        }
-    }
-
-    fn request_resume(&mut self, cx: &mut Context<Self>) {
-        let key = (self.session(cx), self.chat_cwd(cx));
-        if self.resume_for.as_ref() == Some(&key) {
-            return;
-        }
-        self.resume = Resume::default();
-        for op in Resume::start(Path::new(&key.1)) {
-            self.send_session_op(op, cx);
-        }
-        self.resume_for = Some(key);
-    }
-
-    pub(super) fn apply_sessions(&mut self, reply: &str, cx: &mut Context<Self>) {
-        let cwd = self.cwd(cx);
-        if !self.resume.apply(&cwd, reply) {
-            return;
-        }
-        self.send_wanted(cx);
-        cx.notify();
     }
 
     fn open_resume(&mut self, menu: Menu, window: &mut Window, cx: &mut Context<Self>) {
@@ -284,18 +231,8 @@ impl AgentPane {
     }
 
     fn pick_resume(&mut self, index: usize, cx: &mut Context<Self>) {
-        let cwd = self.cwd(cx);
-        let rows = self
-            .resume
-            .rows(&cwd, self.session(cx).as_deref(), unix_now());
-        let Some(row) = rows.get(index) else {
+        if !self.pick_row(index, cx) {
             return;
-        };
-        if !row.picks() {
-            return;
-        }
-        if let Some(op) = self.resume.pick(row, &cwd) {
-            self.send_session_op(op, cx);
         }
         cx.haptic(ala::Haptic::Selection);
         close_sheet(CHAT_SHEET, cx);
@@ -526,10 +463,7 @@ impl AgentPane {
                     .full(dock.top + px(VIEW_SHEET_TOP))
             }
             ChatSheet::Resume(menu) => {
-                let cwd = self.cwd(cx);
-                let rows = self
-                    .resume
-                    .rows(&cwd, self.session(cx).as_deref(), unix_now());
+                let rows = self.resume_rows(cx);
                 let pick = entity.downgrade();
                 resume_sheet(
                     menu,

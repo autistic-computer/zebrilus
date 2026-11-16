@@ -17,17 +17,16 @@ use zz_ui::agent::controls::{
 use zz_ui::agent::presentation::MAX_RENDERED_ERROR_BYTES;
 #[cfg(test)]
 use zz_ui::agent::presentation::rendered_error;
-use zz_ui::agent::presentation::{agent_resume_welcome, agent_welcome, error_card};
+use zz_ui::agent::presentation::{agent_welcome, error_card};
 use zz_ui::agent::preview::ViewRequest;
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
-use zz_ui::agent::resume::{folder_button, resume_button, resume_menu, resume_rows};
-use zz_ui::agent::sky::{SkyZones, sky};
+use zz_ui::agent::resume::EmptyChat;
 use zz_ui::agent::tasks::plan_tray;
 
 use ala::{
-    Anchor, Bounds, Context, Entity, EntityId, FocusHandle, Focusable, Image, IntoElement,
-    KeyDownEvent, MouseButton, MouseDownEvent, Pixels, Render, ScrollHandle, ScrollStrategy,
-    SharedString, Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
+    Bounds, Context, Entity, EntityId, FocusHandle, Focusable, Image, IntoElement, KeyDownEvent,
+    MouseButton, MouseDownEvent, Pixels, Render, ScrollHandle, ScrollStrategy, SharedString,
+    Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use zz_client::agent_ask::{DENY_PLACEHOLDER, REPLAN_PLACEHOLDER};
 use zz_client::agent_completion::{
@@ -44,14 +43,11 @@ use zz_ui::{
 use crate::command::palette::palette_backend;
 use penna::{
     ActiveTheme as _, Ground,
-    components::{
-        input::{
-            Escape, IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight, MoveUp,
-            OutdentInline,
-        },
-        popover::Popover,
+    components::input::{
+        Escape, IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight, MoveUp,
+        OutdentInline,
     },
-    h_flex, v_flex,
+    h_flex,
 };
 use zz_client::agent_login::CardAction;
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId, ViewContent};
@@ -822,82 +818,31 @@ impl AgentView {
         open: Option<Menu>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let pane = self.pane.0;
-        let view = cx.entity();
-        let searching = !self.search.read(cx).value().trim().is_empty();
-        let menu = |which: Menu, trigger: penna::components::button::Button| {
-            let toggle = view.clone();
-            let pick = view.clone();
-            let hover = view.clone();
-            let search = self.search.clone();
-            let scroll = self.resume_scroll.clone();
-            let rows = rows.to_vec();
-            let shown = open == Some(which);
-            Popover::new(match which {
-                Menu::Folders => ("agent-folder-menu", pane),
-                Menu::Chats => ("agent-resume-menu", pane),
-            })
-            .anchor(Anchor::TopCenter)
-            .p(px(0.0))
-            .trigger(trigger)
-            .open(shown)
-            .on_toggle(move |open, window, cx| {
+        let toggle = cx.entity();
+        let pick = cx.entity();
+        let hover = cx.entity();
+        EmptyChat {
+            pane: self.pane.0,
+            provider: self.pane_state.provider,
+            folder: &folder_name(&self.pane_state.cwd),
+            rows,
+            selected,
+            open,
+            search: &self.search,
+            scroll: &self.resume_scroll,
+        }
+        .render(
+            move |which, open, window, cx| {
                 toggle.update(cx, |view, cx| view.toggle_menu(which, open, window, cx));
-            })
-            .content(move |_, _, cx| {
-                let pick = pick.clone();
-                let hover = hover.clone();
-                let items = resume_rows(
-                    pane,
-                    &rows,
-                    selected,
-                    searching,
-                    move |index, window, cx| {
-                        pick.update(cx, |view, cx| view.pick_resume(index, window, cx));
-                    },
-                    move |index, _, cx| {
-                        hover.update(cx, |view, cx| view.hover_resume(index, cx));
-                    },
-                    cx,
-                );
-                resume_menu(&search, &scroll, items, cx)
-            })
-        };
-        let folder = menu(
-            Menu::Folders,
-            folder_button(
-                ("agent-folder-button", pane),
-                &folder_name(&self.pane_state.cwd),
-                cx,
-            ),
-        );
-        let resume = menu(
-            Menu::Chats,
-            resume_button(("agent-resume-button", pane), cx),
-        );
-        let zones = SkyZones::default();
-        div()
-            .relative()
-            .size_full()
-            .px_3()
-            .child(sky(("agent-sky", pane), &zones))
-            .child(
-                v_flex()
-                    .size_full()
-                    .items_center()
-                    .justify_center()
-                    .py_3()
-                    .child(zones.mark(agent_resume_welcome(self.pane_state.provider, cx)))
-                    .child(
-                        zones.mark(
-                            h_flex()
-                                .flex_none()
-                                .gap(px(6.0))
-                                .child(folder)
-                                .child(resume),
-                        ),
-                    ),
-            )
+            },
+            move |index, window, cx| {
+                pick.update(cx, |view, cx| view.pick_resume(index, window, cx));
+            },
+            move |index, _, cx| {
+                hover.update(cx, |view, cx| view.hover_resume(index, cx));
+            },
+            cx,
+        )
     }
 
     fn recompute_completions(&mut self, commands: &[AgentCommand]) {

@@ -1,21 +1,31 @@
 use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, Entity, IntoElement, ScrollHandle, SharedString, Window, div, prelude::*, px,
+    Anchor, AnyElement, App, Div, Entity, IntoElement, ScrollHandle, SharedString, Window, div,
+    prelude::*, px,
 };
 use penna::{
     Label, Row, RowLook, TextStyle,
     components::{
         button::{Button, ButtonLook},
         input::{Input, InputState},
+        popover::Popover,
         spinner::Spinner,
     },
 };
-use zz_client::agent_resume::{LOADING, ResumeRow};
+use zz_client::agent_resume::{LOADING, Menu, ResumeRow};
+use zz_protocol::AgentProvider;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, StyledExt as _, h_flex,
-    kbd::Kbd, muted_on, row_state, tooltip::Tooltip,
+    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, StyledExt as _,
+    agent::{
+        presentation::agent_resume_welcome,
+        sky::{SkyZones, sky},
+    },
+    h_flex,
+    kbd::Kbd,
+    muted_on, row_state,
+    tooltip::Tooltip,
 };
 
 pub const MENU_WIDTH: f32 = 300.0;
@@ -30,6 +40,96 @@ const ICON_SIZE: f32 = 14.0;
 const CHEVRON_SIZE: f32 = 10.0;
 const CHECK_SIZE: f32 = 12.0;
 const AGE_WIDTH: f32 = 26.0;
+
+pub struct EmptyChat<'a> {
+    pub pane: u64,
+    pub provider: AgentProvider,
+    pub folder: &'a str,
+    pub rows: &'a [ResumeRow],
+    pub selected: Option<usize>,
+    pub open: Option<Menu>,
+    pub search: &'a Entity<InputState>,
+    pub scroll: &'a ScrollHandle,
+}
+
+impl EmptyChat<'_> {
+    pub fn render(
+        self,
+        on_toggle: impl Fn(Menu, bool, &mut Window, &mut App) + 'static,
+        on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
+        on_hover: impl Fn(usize, &mut Window, &mut App) + 'static,
+        cx: &App,
+    ) -> Div {
+        let pane = self.pane;
+        let searching = !self.search.read(cx).value().trim().is_empty();
+        let on_toggle = Rc::new(on_toggle);
+        let on_pick = Rc::new(on_pick);
+        let on_hover = Rc::new(on_hover);
+        let menu = |which: Menu, trigger: Button| {
+            let toggle = on_toggle.clone();
+            let pick = on_pick.clone();
+            let hover = on_hover.clone();
+            let search = self.search.clone();
+            let scroll = self.scroll.clone();
+            let rows = self.rows.to_vec();
+            let selected = self.selected;
+            Popover::new(match which {
+                Menu::Folders => ("agent-folder-menu", pane),
+                Menu::Chats => ("agent-resume-menu", pane),
+            })
+            .anchor(Anchor::TopCenter)
+            .p(px(0.0))
+            .trigger(trigger)
+            .open(self.open == Some(which))
+            .on_toggle(move |open, window, cx| toggle(which, open, window, cx))
+            .content(move |_, _, cx| {
+                let pick = pick.clone();
+                let hover = hover.clone();
+                let items = resume_rows(
+                    pane,
+                    &rows,
+                    selected,
+                    searching,
+                    move |index, window, cx| pick(index, window, cx),
+                    move |index, window, cx| hover(index, window, cx),
+                    cx,
+                );
+                resume_menu(&search, &scroll, items, cx)
+            })
+        };
+        let folder = menu(
+            Menu::Folders,
+            folder_button(("agent-folder-button", pane), self.folder, cx),
+        );
+        let resume = menu(
+            Menu::Chats,
+            resume_button(("agent-resume-button", pane), cx),
+        );
+        let zones = SkyZones::default();
+        div()
+            .relative()
+            .size_full()
+            .px_3()
+            .child(sky(("agent-sky", pane), &zones))
+            .child(
+                crate::v_flex()
+                    .size_full()
+                    .items_center()
+                    .justify_center()
+                    .py_3()
+                    .child(zones.mark(agent_resume_welcome(self.provider, cx)))
+                    .child(
+                        zones.mark(
+                            h_flex()
+                                .flex_none()
+                                .gap(px(6.0))
+                                .child(folder)
+                                .child(resume),
+                        ),
+                    ),
+            )
+    }
+}
 
 pub fn folder_button(id: impl Into<ala::ElementId>, name: &str, cx: &App) -> Button {
     menu_button(id, IconName::Folder, name.to_owned(), cx)

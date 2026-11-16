@@ -191,6 +191,10 @@ the native transport, key translation, and UIKit backend.
   Claude permission cards, and queued prompt feedback. Plans, permissions, and
   structured tool output use the shared transcript reducer. Code blocks use the native
   syntax highlighter.
+- An empty agent chat on iPad is the desktop's: the welcome over the dithered sky, then the
+  folder button and Resume, each opening the desktop's popover menu at its desktop size. A tap
+  on its search field raises the keyboard and the popover moves up to stay above it. On iPhone
+  the two are rows under the title that open sheets, with no sky.
 - Browser panes use native WebKit with tabs, an address field, back/forward, and reload.
   SSH connections route page traffic through the host; `localhost` addresses reach
   the host's loopback servers through port forwarding. Cookies and site storage

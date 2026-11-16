@@ -543,7 +543,7 @@ zz keeps no chats of its own. A chat with nothing in it shows the welcome and, c
 two buttons 6 px apart (`zz_ui::agent::resume::folder_button` and `resume_button`): the folder
 the next chat starts in, and Resume, for a chat the CLI already has. Each opens a menu.
 
-- **The listings.** While the pane is ready and its chat is empty, the desktop asks the pane's
+- **The listings.** While the pane is ready and its chat is empty, the client asks the pane's
   driver for two lists with `AgentSessionOp::List` (`zz_client::agent_resume::Resume::start`): the
   chats in the pane's folder, and the newest chats in any folder. Claude Code's come from
   `~/.claude/projects`: the driver reads the first and last 64 KiB of each transcript once and
@@ -551,7 +551,9 @@ the next chat starts in, and Resume, for a chat the CLI already has. Each opens 
   the whole sorted list per folder filter so a page after the first is a slice of it, about 12 ms,
   not a new walk. Codex's come from `thread/list` with `archived: false` and `useStateDbOnly:
   true`, so Codex answers from its state database instead of scanning its rollouts. The reply is
-  `EventPayload::AgentSessions`, which `MuxClient` hands to `AgentController::apply_sessions`.
+  `EventPayload::AgentSessions`, which `MuxClient` hands to `AgentController::apply_sessions`
+  on the desktop and `CoreEvent::AgentSessions` hands to the thin client's agent pane
+  (`clients/app/src/app/agent_pane/resume.rs`), each keeping its own `Resume`.
   The pane's own session is left out of both menus.
 - **The menus.** One popover shape for both (`zz_ui::agent::resume::resume_menu`): 300 px wide,
   6 px in, a 30 px search field ("Search folders" or "Search chats"), then 32 px rows in a list
@@ -590,7 +592,9 @@ the next chat starts in, and Resume, for a chat the CLI already has. Each opens 
   picks; Escape clears the search, then closes the menu. The first pickable row is picked when
   nothing else is. Closing puts focus back in the composer; a press outside closes the menu too.
   The menus are penna `Popover`s the view opens and closes itself (`Popover::open` and
-  `on_toggle`).
+  `on_toggle`). The thin client's popovers take Up, Down and Enter the same way, but Up from
+  the composer does not open Resume there; while a menu is open the pane's focus target is
+  its search field.
 - **The pane's folder.** After a `New` or a `Switch`, the driver answers `SessionSwitched` with
   the session's folder. `AgentController` takes it as the pane's folder, which the folder button
   and the next listings use, and the pane header reads it for an agent pane
@@ -666,8 +670,12 @@ the next chat starts in, and Resume, for a chat the CLI already has. Each opens 
     permissions; the driver starts the CLI with `--allow-dangerously-skip-permissions` unless its
     command already has that flag or `--dangerously-skip-permissions`, since without one the CLI
     refuses to switch a running session to it.
-- **Where.** The desktop has all of it. Web, iPad and iPhone have the footer, the usage pill
-  included, but not the empty chat's menus yet, and the HTML client has neither. The storybook's
+- **Where.** The desktop has all of it. The empty chat (the sky behind the welcome, the two
+  buttons and their popovers) is one widget, `zz_ui::agent::resume::EmptyChat`, which the
+  desktop view and the thin client's wide layout (iPad and the web, 640 pt and up) both draw.
+  On iPhone the two are rows under the title that open sheets (`zz_ui::agent::phone::start_rows`
+  and `resume_sheet`), with no sky. Web, iPad and iPhone have the footer, the usage pill
+  included, and the HTML client has neither. The storybook's
   Agent story shows the menus (Empty chat: at rest, each menu open, searching, loading and Nothing
   matches) and the controls (Composer controls: the pill in a new chat, at each context fill and before
   the use is known, a model pill per Claude Code mode and per Codex mode, then the footer as

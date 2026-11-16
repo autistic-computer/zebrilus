@@ -64,6 +64,7 @@ use crate::{command_palette::palette_backend, connection::Connection, roster::Ro
 
 mod login;
 mod phone;
+mod resume;
 
 pub(super) use phone::PhoneDock;
 
@@ -324,6 +325,7 @@ pub(super) struct AgentPane {
     mention_level: String,
     resume: zz_client::agent_resume::Resume,
     resume_for: Option<(Option<String>, String)>,
+    menu_scroll: ala::ScrollHandle,
     ask_open: Option<u64>,
     other: Option<(u64, usize)>,
     carded: Option<u64>,
@@ -447,11 +449,12 @@ impl AgentPane {
             this.follow_mention(window, cx);
         });
         let search = cx.new(|cx| InputState::new(window, cx).placeholder(phone::SEARCH));
-        let search_subscription = cx.subscribe_in(&search, window, |this, _, event, window, cx| {
-            if matches!(event, InputEvent::Change) {
-                this.search_changed(window, cx);
-            }
-        });
+        let search_subscription =
+            cx.subscribe_in(&search, window, |this, _, event, window, cx| match event {
+                InputEvent::Change => this.search_changed(window, cx),
+                InputEvent::PressEnter { shift: false, .. } => this.pick_selected(window, cx),
+                _ => {}
+            });
         connection.update(cx, |connection, cx| {
             if connection.core.agent_accounts().is_none() {
                 connection.request_agent_accounts(cx);
@@ -499,6 +502,7 @@ impl AgentPane {
             mention_level: String::new(),
             resume: zz_client::agent_resume::Resume::default(),
             resume_for: None,
+            menu_scroll: ala::ScrollHandle::new(),
             ask_open: None,
             other: None,
             carded: None,
@@ -666,6 +670,10 @@ impl AgentPane {
     }
 
     fn move_completion_up(&mut self, _: &MoveUp, window: &mut Window, cx: &mut Context<Self>) {
+        if self.step_menu(false, cx) {
+            cx.stop_propagation();
+            return;
+        }
         if self.completions.is_empty() {
             self.ask_arrow("up", window, cx);
             return;
@@ -675,6 +683,10 @@ impl AgentPane {
     }
 
     fn move_completion_down(&mut self, _: &MoveDown, window: &mut Window, cx: &mut Context<Self>) {
+        if self.step_menu(true, cx) {
+            cx.stop_propagation();
+            return;
+        }
         if self.completions.is_empty() {
             self.ask_arrow("down", window, cx);
             return;
@@ -1431,6 +1443,9 @@ impl AgentPane {
 
 impl Focusable for AgentPane {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
+        if self.phone.is_none() && self.resume.menu().is_some() {
+            return self.search.read(cx).focus_handle(cx);
+        }
         self.row_input(cx).read(cx).focus_handle(cx)
     }
 }
@@ -1672,6 +1687,9 @@ impl Render for AgentPane {
             .pane_snapshot(cx)
             .and_then(zz_client::window_summary::pane_agent);
         let empty = (!use_chat).then(|| match agent_empty(connected, &state.phase, provider) {
+            AgentEmpty::Welcome(provider) if writable && !watch_only => {
+                self.render_empty_chat(provider, cx)
+            }
             AgentEmpty::Welcome(provider) => agent_welcome(provider, cx),
             AgentEmpty::Message { text, busy } => empty_state(text, busy, cx.entity_id(), cx),
         });
