@@ -1841,6 +1841,11 @@ impl TerminalPane {
             }
         }));
     }
+
+    #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+    pub(crate) fn typing(&self, window: &Window) -> bool {
+        self.focus.is_focused(window)
+    }
 }
 
 impl Focusable for TerminalPane {

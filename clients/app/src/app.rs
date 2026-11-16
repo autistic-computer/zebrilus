@@ -3338,6 +3338,7 @@ impl Render for AppShell {
         self.open_machines_when_unattached(window, cx);
         let compact = self.compact_active(window, cx);
         self.sync_compact_mode(compact, cx);
+        let key_row = self.wide_key_row(compact, window, cx);
         self.sync_keyboard_motion(window);
         #[cfg(target_os = "android")]
         self.sync_system_back(dialog, window, cx);
@@ -3406,6 +3407,7 @@ impl Render for AppShell {
                     )),
                 overlays,
             )
+            .children(key_row)
         } else {
             self.compact_shell(terminal_overlays, overlays, window, cx)
         };

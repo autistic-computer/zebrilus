@@ -214,11 +214,14 @@ On iPhone the pill opens the pane menu, and dragging it up opens navigation.
 ## Keyboard
 
 Without a hardware keyboard, tapping a terminal, the agent composer, or any text
-field raises the on-screen keyboard. For a terminal, a row above it adds Escape, Tab,
-Control, Option, the arrows, and a hide button; the backend shows it only for an input
-whose Return inserts a line break, so settings fields, prompts, the palette, and host
-forms get the plain keyboard, and the phone shell uses its own key row instead.
-Control and Option latch for the next key, so Control then C sends Ctrl-C. The
+field raises the on-screen keyboard. For a terminal the app draws the phone's key row
+across the bottom of the window, above the keys: the prefix key, then esc, tab, ctrl,
+alt, `/`, `@`, the arrow pad, and hide. On iPad the prefix key sends the prefix (⌃B
+unless the host rebinds it) instead of opening the pane menu. Settings fields, prompts,
+the palette, and host forms get the plain keyboard. The terminal example keeps the
+backend's own row (Escape, Tab, Control, Option, the arrows, and hide), which it shows
+only for an input whose Return inserts a line break.
+Ctrl and alt latch for the next key, so ctrl then C sends Ctrl-C. The
 workspace shrinks to the space above the docked keyboard, and a focused settings
 field scrolls back into view above it; a focused row of a long settings page keeps
 painting while it is off screen, so the keyboard stays up. A floating keyboard

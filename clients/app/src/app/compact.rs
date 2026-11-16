@@ -21,9 +21,9 @@ use penna::{
     },
     blocks::sheet::{bottom_sheet, close_sheet},
     blocks::touch::{
-        ArrowPadEvent, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, Lift, LiftEvent,
-        PageDot, Pager, PagerEvent, PhoneFind, StackClose, StackMenu, StackMenuEvent, WhichKeyList,
-        page_dots_in,
+        ArrowPadEvent, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, KeyRowKey, Lift,
+        LiftEvent, PageDot, Pager, PagerEvent, PhoneFind, StackClose, StackMenu, StackMenuEvent,
+        WhichKeyList, page_dots_in,
     },
     blocks::which_key::{WhichKeyCap, WhichKeyRow},
     components::kbd::Kbd,
@@ -255,6 +255,14 @@ fn send_chord(
     }
 }
 
+fn key_row(keys: &ToolKeys) -> KeyRow {
+    KeyRow::new(keys.row())
+        .trail(keys.trail())
+        .track_scroll(&keys.scroll)
+        .on_key(|keystroke, window, cx| dispatch_key(keystroke.clone(), window, cx))
+        .on_hide(|window, _| window.dismiss_virtual_keyboard())
+}
+
 fn key_row_lift(zone: Pixels, overlap: Pixels) -> Pixels {
     (zone - px(KEY_ROW_HEIGHT) - overlap).max(px(0.0))
 }
@@ -358,6 +366,8 @@ impl AppShell {
             self.compact.compact_keyboard = Some(compact);
             #[cfg(any(target_os = "ios", target_os = "android"))]
             ala_platform::mobile::set_compact_keyboard(compact);
+            #[cfg(target_os = "ios")]
+            ala_platform::mobile::set_app_key_row(!compact);
         }
         if !compact {
             self.compact.chat_dock = None;
@@ -366,7 +376,6 @@ impl AppShell {
             }
             #[cfg(any(target_os = "ios", target_os = "android"))]
             ala_platform::mobile::set_status_bar_on_dark(None);
-            penna::blocks::touch::StickyModifiers::take(cx);
             if self.compact.pinch.take().is_some() {
                 self.terminal_resize_suppressed.set(false);
                 self.preferences.save();
@@ -1786,12 +1795,50 @@ impl AppShell {
             key.set_armed(armed, cx);
             key.set_keystroke(prefix, cx);
         });
-        KeyRow::new(keys.row())
-            .lead(keys.lead())
-            .trail(keys.trail())
-            .track_scroll(&keys.scroll)
-            .on_key(|keystroke, window, cx| dispatch_key(keystroke.clone(), window, cx))
-            .on_hide(|window, _| window.dismiss_virtual_keyboard())
+        key_row(&keys).lead(keys.lead())
+    }
+
+    pub(super) fn wide_key_row(
+        &mut self,
+        compact: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<KeyRow> {
+        if compact {
+            return None;
+        }
+        if !self.wide_keys_wanted(window, cx) {
+            penna::blocks::touch::StickyModifiers::take(cx);
+            self.close_key_stacks(cx);
+            return None;
+        }
+        let keys = self.tool_keys(window, cx);
+        let row = key_row(&keys);
+        let prefix = tmux_keystroke(&prefix_spelling(&self.connection.read(cx).core));
+        Some(match prefix {
+            Some(keystroke) => row.lead(KeyRowKey::Key {
+                label: Kbd::format(&keystroke).into(),
+                icon: None,
+                keystroke,
+            }),
+            None => row,
+        })
+    }
+
+    fn wide_keys_wanted(&self, window: &Window, cx: &App) -> bool {
+        #[cfg(target_os = "ios")]
+        if keyboard_visible(window)
+            && !ala_platform::mobile::hardware_keyboard()
+            && self
+                .terminals
+                .values()
+                .chain(self.output_terminal.iter().map(|(_, terminal)| terminal))
+                .any(|terminal| terminal.read(cx).typing(window))
+        {
+            return true;
+        }
+        let _ = (window, cx);
+        false
     }
 
     fn compact_bindings_sheet(
