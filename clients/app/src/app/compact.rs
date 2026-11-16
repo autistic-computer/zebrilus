@@ -299,6 +299,17 @@ fn prefix_spelling(core: &zz_client::ClientCore) -> String {
         )
 }
 
+fn live_prefix(options: &zz_protocol::MuxOptions) -> Option<Keystroke> {
+    [
+        zz_protocol::MuxOptionKey::Prefix,
+        zz_protocol::MuxOptionKey::Prefix2,
+    ]
+    .into_iter()
+    .filter_map(|key| options.get(key))
+    .find(|option| !option.value.eq_ignore_ascii_case("none"))
+    .and_then(|option| tmux_keystroke(&zz_protocol::canonical_key(&option.value)))
+}
+
 fn binding_rows(core: &zz_client::ClientCore, prefix: &str) -> Arc<[WhichKeyRow]> {
     let cap = |keys: &[String], yours: bool| WhichKeyCap {
         keys: keys
@@ -1814,7 +1825,7 @@ impl AppShell {
         }
         let keys = self.tool_keys(window, cx);
         let row = key_row(&keys);
-        let prefix = tmux_keystroke(&prefix_spelling(&self.connection.read(cx).core));
+        let prefix = live_prefix(self.connection.read(cx).core.mux_options());
         Some(match prefix {
             Some(keystroke) => row.lead(KeyRowKey::Key {
                 label: Kbd::format(&keystroke).into(),
@@ -1827,7 +1838,7 @@ impl AppShell {
 
     fn wide_keys_wanted(&self, window: &Window, cx: &App) -> bool {
         #[cfg(target_os = "ios")]
-        if keyboard_visible(window)
+        if (ala_platform::mobile::soft_keyboard() || keyboard_visible(window))
             && !ala_platform::mobile::hardware_keyboard()
             && self
                 .terminals
@@ -2001,6 +2012,25 @@ mod tests {
         assert_eq!(top(0.0), zone);
         assert_eq!(top(20.0), zone);
         assert_eq!(top(300.0), px(KEY_ROW_HEIGHT + 300.0));
+    }
+
+    #[test]
+    fn the_wide_prefix_key_sends_a_live_prefix_or_is_left_out() {
+        use zz_protocol::{MuxOptionKey, MuxOptionSource, MuxOptions};
+        let mut options = MuxOptions::default();
+        assert_eq!(live_prefix(&options), tmux_keystroke("C-b"));
+        options.set(
+            MuxOptionKey::Prefix,
+            "None",
+            MuxOptionSource::RuntimeCommand,
+        );
+        assert_eq!(live_prefix(&options), None);
+        options.set(
+            MuxOptionKey::Prefix2,
+            "C-a",
+            MuxOptionSource::RuntimeCommand,
+        );
+        assert_eq!(live_prefix(&options), tmux_keystroke("C-a"));
     }
 
     #[test]

@@ -216,16 +216,18 @@ On iPhone the pill opens the pane menu, and dragging it up opens navigation.
 Without a hardware keyboard, tapping a terminal, the agent composer, or any text
 field raises the on-screen keyboard. For a terminal the app draws the phone's key row
 across the bottom of the window, above the keys: the prefix key, then esc, tab, ctrl,
-alt, `/`, `@`, the arrow pad, and hide. On iPad the prefix key sends the prefix (⌃B
-unless the host rebinds it) instead of opening the pane menu. Settings fields, prompts,
-the palette, and host forms get the plain keyboard. The terminal example keeps the
+alt, `/`, `@`, the arrow pad, and hide. In the wide layout (640 points and up) the
+prefix key sends the prefix (⌃B unless the host rebinds it, `prefix2` when `prefix` is
+`None`, and no key when both are) instead of opening the pane menu. Settings fields,
+prompts, the palette, and host forms get the plain keyboard. The terminal example keeps the
 backend's own row (Escape, Tab, Control, Option, the arrows, and hide), which it shows
 only for an input whose Return inserts a line break.
 Ctrl and alt latch for the next key, so ctrl then C sends Ctrl-C. The
 workspace shrinks to the space above the docked keyboard, and a focused settings
 field scrolls back into view above it; a focused row of a long settings page keeps
 painting while it is off screen, so the keyboard stays up. A floating keyboard
-leaves the layout alone. Attaching a hardware
+leaves the layout alone; in the wide layout the key row still sits at the bottom of the
+window while it is up. Attaching a hardware
 keyboard hides the on-screen one, and detaching it brings it back for the focused
 field. Autocorrect, smart punctuation, and capitalization stay off unless a field
 asks for them.
