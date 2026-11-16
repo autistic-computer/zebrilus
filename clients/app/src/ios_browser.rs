@@ -736,8 +736,10 @@ impl BrowserView {
             },
         );
         unsafe {
-            let _: () =
-                msg_send![view, takeSnapshotWithConfiguration: nil completionHandler: &*completion];
+            let configuration: id = msg_send![class!(WKSnapshotConfiguration), new];
+            let _: () = msg_send![configuration, setAfterScreenUpdates: NO];
+            let _: () = msg_send![view, takeSnapshotWithConfiguration: configuration completionHandler: &*completion];
+            let _: () = msg_send![configuration, release];
         }
     }
 
