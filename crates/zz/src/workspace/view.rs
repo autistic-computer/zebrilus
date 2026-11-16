@@ -66,7 +66,7 @@ use super::{
         ChromeMode, SidebarModeChanged, SidebarReleaseFocus, SidebarRouteChanged, WorkspaceRoute,
         WorkspaceSidebar,
     },
-    which_key::{self, WhichKeySheet},
+    which_key,
 };
 use crate::{
     agent::AgentController,
@@ -94,7 +94,7 @@ use crate::{
         },
         hosts::HostId,
         nav::{TreeTarget, kill_target_command},
-        prefix::{binds_input, is_all_keys_input, terminal_key_input},
+        prefix::terminal_key_input,
     },
     pane::display::DisplayPanesView,
     pane::layout::{SeparatorSide, pane_separator},
@@ -830,7 +830,7 @@ pub struct AppView {
     dialog_prefix_cancel_sent: bool,
     dialog_prefix_cancel_pending: Option<u64>,
     synchronized_signature: Option<SynchronizeSignature>,
-    which_key: Option<WhichKeySheet>,
+    which_key: Option<zz_ui::which_key::WhichKeySheet>,
     which_key_timer: Option<Task<()>>,
     which_key_generation: u64,
     window_shortcut_timer: Option<Task<()>>,
@@ -1418,16 +1418,21 @@ impl AppView {
                 Effect::Chrome(action) => self.run_chrome_action(action, window, cx),
                 Effect::ForwardKey { pane, input } => {
                     if armed
-                        && which_key::delay(config::resolved_config(cx).which_key_delay.value)
-                            .is_some()
-                        && is_all_keys_input(self.mux.read(cx).prefix_bindings(), &input)
+                        && zz_client::prefix_keys::which_key_delay(
+                            config::resolved_config(cx).which_key_delay.value,
+                        )
+                        .is_some()
+                        && zz_client::prefix_keys::is_all_keys_input(
+                            self.mux.read(cx).prefix_bindings(),
+                            &input,
+                        )
                     {
                         self.input_router.suppress_release(
                             input
                                 .unshifted_codepoint
                                 .map_or(input.key, zz_terminal::KeyCode::Character),
                         );
-                        self.which_key = WhichKeySheet::build(self.mux.read(cx), "prefix", true);
+                        self.which_key = which_key::sheet(self.mux.read(cx), "prefix", true);
                         cx.notify();
                     } else if armed
                         && let Some(action) = self.prefix_chrome_action(keystroke, &input, cx)
@@ -1466,7 +1471,9 @@ impl AppView {
         cx: &App,
     ) -> Option<ChromeAction> {
         let mux = self.mux.read(cx);
-        if mux.key_table() != Some(("prefix", false)) || binds_input(mux.prefix_bindings(), input) {
+        if mux.key_table() != Some(("prefix", false))
+            || zz_client::prefix_keys::binds_input(mux.prefix_bindings(), input)
+        {
             return None;
         }
         crate::keymap::resolve(cx, zz_client::PREFIX_TABLE, keystroke)
@@ -1538,8 +1545,9 @@ impl AppView {
             return;
         };
         let table = table.to_owned();
-        let Some(delay) = which_key::delay(config::resolved_config(cx).which_key_delay.value)
-        else {
+        let Some(delay) = zz_client::prefix_keys::which_key_delay(
+            config::resolved_config(cx).which_key_delay.value,
+        ) else {
             return;
         };
         let generation = self.which_key_generation;
@@ -1568,7 +1576,7 @@ impl AppView {
         {
             return;
         }
-        self.which_key = WhichKeySheet::build(self.mux.read(cx), table, false);
+        self.which_key = which_key::sheet(self.mux.read(cx), table, false);
         cx.notify();
     }
 

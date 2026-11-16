@@ -181,6 +181,8 @@ the native transport, key translation, and UIKit backend.
   keeps its own input focus, viewport, and content state.
 - Split right or bottom from the header, then choose Terminal or Browser. Close
   removes the pane through the daemon. Drag a divider to resize the split.
+- With a pointer, the header's Split, Float, Tile, Zoom and Close buttons show their
+  prefix keys in the tooltip, read from the host's prefix table as on the desktop.
 - A zoomed pane has an Exit zoom control. Drag a header grip to split or swap panes;
   the preview animates to the drop target. Mouse and touch divider drags update the daemon.
 - Hardware keys, search, copy/paste, terminal images, mouse tracking, and
@@ -254,6 +256,14 @@ phone) get a Done button above them; a comma from the decimal pad is typed as a 
 or Return in any settings field, commits the value and hides the keyboard. Return in the Hosts
 destination field connects and hides it too.
 
+In the wide layout, pausing after the prefix shows the which-key sheet at the bottom of the
+panes: the core bindings of the prefix table, or of a custom `-T` table, grouped as on the
+desktop. `?` (whatever is bound to `list-keys -N`) while the prefix is armed shows every
+binding instead and keeps the prefix armed, so the next key runs its binding. Any other key
+hides the sheet. The delay is a setting on this device (System > Navigation, 400 ms, 0 turns
+the sheet off and gives `?` back to the host's `list-keys`). The phone keeps its All bindings
+sheet.
+
 The view implements `UITextInput`, so IME composition (Japanese, Chinese, Korean),
 dead keys, dictation, and Pencil handwriting reach the focused field. While text is
 being composed, hardware keys go to the input method first.
@@ -266,7 +276,9 @@ being composed, hardware keys go to the input method first.
   commands with their Command shortcuts: Settings, New Session, New Window, Split Right,
   Split Down, Close Pane (Command-W), Kill Window, Detach, Command Palette, Choose Window,
   Toggle Sidebar, Zoom Pane, and UI zoom. Detach leaves the session running and shows the
-  workspace's Attach to session screen.
+  empty workspace: Attach to session (New session when the host has none, Return or a tap),
+  Settings, and the prefix keys a session unlocks (`c`, `%`, `"`, `s`, `?`, or the keys the
+  host binds to those commands).
 - Command-1 through Command-9 open the first nine windows the sidebar lists, across sessions
   and connected hosts, or the first nine chat rows in the chat view. Holding Command for a moment
   shows each row's number in the sidebar. The phone layout leaves these keys to the pane.
@@ -354,13 +366,13 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
   cursor, and padding remain visible as host-owned settings.
 - **Hosts:** the configured endpoint, connection status, and reconnect.
 - **Advanced:** command palette layout (tree or flat), host prefix, and command shortcuts;
-  Display: drawing under the home indicator, matching the system text size, and keeping
-  the screen awake while connected.
+  Navigation: the which-key delay; Display: drawing under the home indicator, matching the
+  system text size, and keeping the screen awake while connected.
 - **About:** app version and source link.
 
 The page omits desktop-only options and controls for unsupported pane kinds. iPhone also
 leaves out Panes and Status bar (the phone shell shows one pane without gaps or frames and
-has its own bottom bar), UI zoom, and Match system text size.
+has its own bottom bar), UI zoom, Match system text size, and the which-key delay.
 Interface and pane preferences are saved atomically in the app container
 at `Library/Application Support/ala/preferences.json` and restored on launch.
 Touch controls work without a keyboard; numeric values open a decimal pad and hex colors

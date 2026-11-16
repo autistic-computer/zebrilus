@@ -26,6 +26,7 @@ pub struct Preferences {
     pub extend_bottom_safe_area: bool,
     pub keep_screen_awake: bool,
     pub system_text_size: bool,
+    pub which_key_delay: f32,
 }
 
 impl Default for Preferences {
@@ -52,6 +53,7 @@ impl Default for Preferences {
             extend_bottom_safe_area: false,
             keep_screen_awake: false,
             system_text_size: true,
+            which_key_delay: zz_client::prefix_keys::DEFAULT_WHICH_KEY_DELAY,
         }
     }
 }
@@ -94,6 +96,12 @@ impl Preferences {
             (&mut self.pane_inactive_opacity, 0., 1., 0.7),
             (&mut self.pane_glow_strength, 0., 2., 1.),
             (&mut self.pane_margin, 0., 32., 6.),
+            (
+                &mut self.which_key_delay,
+                0.,
+                zz_client::prefix_keys::MAX_WHICH_KEY_DELAY,
+                zz_client::prefix_keys::DEFAULT_WHICH_KEY_DELAY,
+            ),
         ] {
             *value = bounded(*value, min, max, fallback);
         }

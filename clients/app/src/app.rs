@@ -9,6 +9,7 @@ mod fleet;
 mod floating;
 mod gui;
 mod hosts;
+mod keys;
 mod picker;
 mod providers;
 mod settings;
@@ -184,6 +185,8 @@ pub struct AppShell {
     pane_arrivals: PaneArrivals,
     rendered_drop_preview: Rc<Cell<DropPreviewFrame>>,
     compact: compact::CompactState,
+    which_key: Option<zz_ui::which_key::WhichKeySheet>,
+    which_key_timer: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -316,6 +319,7 @@ fn watch_connection(
                     this.pane_layout_override = None;
                 }
                 zz_client::CoreEvent::FocusSidebar => this.focus_sidebar(window, cx),
+                zz_client::CoreEvent::KeyTableChanged => this.key_table_changed(window, cx),
                 zz_client::CoreEvent::OpenPathPicker { pane, start_dir } => {
                     this.open_files_palette(*pane, start_dir.clone(), window, cx);
                 }
@@ -371,6 +375,9 @@ impl AppShell {
             {
                 if !this.window_shortcuts {
                     this.window_shortcut_timer = None;
+                }
+                if !(event.is_held && this.connection.read(cx).core.prefix_armed()) {
+                    this.hide_which_key(cx);
                 }
                 this.key_down(
                     &KeyDownEvent {
@@ -485,6 +492,8 @@ impl AppShell {
             pane_arrivals: PaneArrivals::default(),
             rendered_drop_preview: Rc::default(),
             compact: compact::CompactState::default(),
+            which_key: None,
+            which_key_timer: None,
             _subscriptions: vec![
                 key_events,
                 appearance_observer,
@@ -754,6 +763,11 @@ impl AppShell {
             && !event.keystroke.modifiers.function
             && core.claims_prefix_input(&input)
         {
+            if !event.is_held && self.show_all_keys(&input, window, cx) {
+                cx.stop_propagation();
+                return;
+            }
+            let core = &self.connection.read(cx).core;
             if (!event.is_held || !core.prefix_armed())
                 && let Some(pane) = self.active_window(cx).map(|window| window.active_pane)
             {
@@ -766,6 +780,11 @@ impl AppShell {
                     cx,
                 );
             }
+            cx.stop_propagation();
+            return;
+        }
+        if self.empty_workspace_key(event, window, cx) {
+            self.open_empty_workspace(cx);
             cx.stop_propagation();
             return;
         }
@@ -816,22 +835,7 @@ impl AppShell {
     }
 
     fn window_shortcut_key(&self, position: u8) -> Option<Keystroke> {
-        let (key, _) = self
-            .chrome
-            .table_bindings(UI_TABLE)
-            .into_iter()
-            .find(|(_, action)| *action == ChromeAction::SelectWindow(position))?;
-        Some(Keystroke {
-            modifiers: Modifiers {
-                platform: key.command,
-                control: key.control,
-                alt: key.alt,
-                shift: key.shift,
-                function: false,
-            },
-            key: key.base,
-            key_char: None,
-        })
+        self.chrome_keystroke(ChromeAction::SelectWindow(position))
     }
 
     fn on_window_shortcut_modifiers(
@@ -1833,7 +1837,7 @@ impl AppShell {
             place,
             None,
             &buttons,
-            &zz_ui::pane::PaneActionKeys::default(),
+            &self.pane_action_keys(cx),
             ala::px(0.0),
             move |action, _, cx| {
                 if action == zz_ui::pane::TerminalPaneAction::Flip {
@@ -2162,6 +2166,10 @@ impl AppShell {
                     .children(sheet)
                     .into_any_element();
             }
+            if !Self::narrow(window) {
+                let empty = self.empty_workspace(window, cx);
+                return self.plated("web-empty-pane", empty, window, cx);
+            }
             let has_sessions = !self.connection.read(cx).core.snapshot().sessions.is_empty();
             let empty = div()
                 .flex()
@@ -2182,22 +2190,7 @@ impl AppShell {
                         } else {
                             "Create session"
                         })
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            let first = this
-                                .connection
-                                .read(cx)
-                                .core
-                                .snapshot()
-                                .sessions
-                                .first()
-                                .map(|session| session.id);
-                            if let Some(session) = first {
-                                this.connection
-                                    .update(cx, |connection, cx| connection.attach(session, cx));
-                            } else {
-                                this.command("new-session", Vec::new(), cx);
-                            }
-                        })),
+                        .on_click(cx.listener(|this, _, _, cx| this.open_empty_workspace(cx))),
                 )
                 .into_any_element();
             return self.plated("web-empty-pane", empty, window, cx);
@@ -2650,6 +2643,7 @@ impl AppShell {
                     .into_any_element(),
             );
         }
+        overlays.extend(self.which_key_overlay(window, cx));
         let canvas_bounds = Rc::clone(&self.pane_canvas_bounds);
         let release_view = cx.weak_entity();
         let preview = self.pane_drop_preview(cx);

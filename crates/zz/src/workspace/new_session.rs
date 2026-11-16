@@ -1,105 +1,34 @@
 use crate::config::settings::OpenSettings;
 use crate::mux::client::MuxClient;
-use crate::mux::prefix::{bound_key, display_keystroke, split_hint_matches};
+use crate::mux::prefix::display_keystroke;
 use ala::{
     App, Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, MouseButton, Render, Window,
     prelude::*,
 };
 use penna::components::button::{Button, ButtonVariants as _};
 use zz_client::{ChromeAction, UI_TABLE};
-use zz_protocol::{CommandInvocation, KeyBindingSnapshot};
 use zz_ui::shell::{
-    empty_workspace, empty_workspace_action, empty_workspace_caption, empty_workspace_connect,
-    empty_workspace_hint, empty_workspace_keys,
+    empty_workspace, empty_workspace_action, empty_workspace_connect, empty_workspace_keys,
+    empty_workspace_prefix_hints,
 };
 
 const DEFAULT_PREFIX: &str = "C-b";
 
 struct Hint {
-    prefixed: bool,
     key: &'static str,
     label: &'static str,
 }
 
-struct BindingHint {
-    hint: Hint,
-    matches: fn(&CommandInvocation) -> bool,
-}
-
 const ACTIONS: [Hint; 2] = [
     Hint {
-        prefixed: false,
         key: "enter",
         label: "New session",
     },
     Hint {
-        prefixed: false,
         key: crate::config::settings::KEYBIND,
         label: "Settings",
     },
 ];
-
-const BINDINGS: [BindingHint; 5] = [
-    BindingHint {
-        hint: Hint {
-            prefixed: true,
-            key: "c",
-            label: "New window",
-        },
-        matches: |command| command.name == "new-window",
-    },
-    BindingHint {
-        hint: Hint {
-            prefixed: true,
-            key: "%",
-            label: "Split right",
-        },
-        matches: |command| split_hint_matches(command, true),
-    },
-    BindingHint {
-        hint: Hint {
-            prefixed: true,
-            key: "\"",
-            label: "Split down",
-        },
-        matches: |command| split_hint_matches(command, false),
-    },
-    BindingHint {
-        hint: Hint {
-            prefixed: true,
-            key: "s",
-            label: "Sessions and windows",
-        },
-        matches: |command| matches!(command.name.as_str(), "focus-sidebar" | "choose-tree"),
-    },
-    BindingHint {
-        hint: Hint {
-            prefixed: true,
-            key: "?",
-            label: "Every key binding",
-        },
-        matches: |command| command.name == "list-keys",
-    },
-];
-
-fn resolve_binding_key(
-    hint: &BindingHint,
-    prefix_bindings: &[KeyBindingSnapshot],
-) -> Option<Keystroke> {
-    bound_key(prefix_bindings, hint.hint.key, hint.matches)
-}
-
-fn hint_keys(
-    hint: &Hint,
-    prefix: Option<&Keystroke>,
-    key: Option<Keystroke>,
-) -> impl Iterator<Item = Keystroke> {
-    hint.prefixed
-        .then(|| prefix.cloned())
-        .flatten()
-        .into_iter()
-        .chain(key)
-}
 
 fn activates_new_session(keystroke: &Keystroke) -> bool {
     let modifiers = keystroke.modifiers;
@@ -174,24 +103,13 @@ impl Render for NewSessionView {
             .canonical_prefix()
             .unwrap_or_else(|| DEFAULT_PREFIX.to_owned());
         let prefix = display_keystroke(&prefix);
-        let binding_keys = {
-            let mux = self.mux.read(cx);
-            BINDINGS
-                .iter()
-                .map(|hint| resolve_binding_key(hint, mux.prefix_bindings()))
-                .collect::<Vec<_>>()
-        };
         let mut actions = ACTIONS.iter();
         let new_session = actions.next().expect("the new-session hint");
         let settings = actions.next().expect("the settings hint");
         let settings_key = crate::keymap::chord_for(cx, UI_TABLE, ChromeAction::OpenSettings);
         let activate = empty_workspace_action(
             "new-session-activate",
-            hint_keys(
-                new_session,
-                prefix.as_ref(),
-                Keystroke::parse(new_session.key).ok(),
-            ),
+            Keystroke::parse(new_session.key).ok(),
             new_session.label,
             true,
             self.focus_handle.is_focused(window),
@@ -203,11 +121,7 @@ impl Render for NewSessionView {
         });
         let open_settings = empty_workspace_action(
             "new-session-settings",
-            hint_keys(
-                settings,
-                prefix.as_ref(),
-                Keystroke::parse(settings_key.as_deref().unwrap_or(settings.key)).ok(),
-            ),
+            Keystroke::parse(settings_key.as_deref().unwrap_or(settings.key)).ok(),
             settings.label,
             false,
             false,
@@ -216,23 +130,21 @@ impl Render for NewSessionView {
         .on_click(|_, window, cx| {
             window.dispatch_action(Box::new(OpenSettings), cx);
         });
-        let hints = BINDINGS.iter().zip(binding_keys).filter_map(|(hint, key)| {
-            key.map(|key| {
-                empty_workspace_hint(
-                    hint_keys(&hint.hint, prefix.as_ref(), Some(key)),
-                    hint.hint.label,
-                    cx,
-                )
-                .into_any_element()
-            })
-        });
+        let hints = {
+            let mux = self.mux.read(cx);
+            empty_workspace_prefix_hints(
+                prefix.as_ref(),
+                mux.prefix_bindings(),
+                display_keystroke,
+                cx,
+            )
+        };
         empty_workspace(
             "new-session-empty-state",
             empty_workspace_keys(
                 [
                     activate.into_any_element(),
                     open_settings.into_any_element(),
-                    empty_workspace_caption("In a session", cx).into_any_element(),
                 ]
                 .into_iter()
                 .chain(hints),
@@ -282,106 +194,15 @@ mod tests {
                 hint.label
             );
         }
-        for hint in &BINDINGS {
+        for hint in &zz_client::prefix_keys::PREFIX_HINTS {
             assert!(
-                display_keystroke(hint.hint.key).is_some(),
+                display_keystroke(hint.key).is_some(),
                 "`{}` ({})",
-                hint.hint.key,
-                hint.hint.label
+                hint.key,
+                hint.label
             );
         }
         assert!(crate::mux::prefix::display_keystroke(DEFAULT_PREFIX).is_some());
-    }
-
-    #[test]
-    fn split_hints_match_only_terminal_and_picker_kinds() {
-        for name in ["split-window", "splitw"] {
-            for kind in ["terminal", "picker", "browser", "agent"] {
-                for (flag, horizontal) in [("-h", true), ("-v", false)] {
-                    let command = CommandInvocation::new(name, ["--kind", kind, flag]);
-                    assert_eq!(
-                        split_hint_matches(&command, horizontal),
-                        matches!(kind, "terminal" | "picker")
-                    );
-                    assert!(!split_hint_matches(&command, !horizontal));
-                }
-            }
-            assert!(split_hint_matches(
-                &CommandInvocation::new(name, ["-h"]),
-                true
-            ));
-            assert!(split_hint_matches(
-                &CommandInvocation::new(name, [] as [&str; 0]),
-                false
-            ));
-        }
-    }
-
-    #[test]
-    fn non_stock_binding_is_preferred_over_stock() {
-        let bindings = [
-            KeyBindingSnapshot {
-                key: "%".to_owned(),
-                commands: vec![CommandInvocation::new(
-                    "split-window",
-                    ["--kind", "picker", "-h"],
-                )],
-                repeat: false,
-                note: None,
-            },
-            KeyBindingSnapshot {
-                key: "|".to_owned(),
-                commands: vec![CommandInvocation::new(
-                    "split-window",
-                    ["--kind", "picker", "-h"],
-                )],
-                repeat: false,
-                note: None,
-            },
-        ];
-
-        assert_eq!(
-            resolve_binding_key(&BINDINGS[1], &bindings),
-            display_keystroke("|")
-        );
-    }
-
-    #[test]
-    fn empty_binding_table_uses_the_stock_key() {
-        assert_eq!(
-            resolve_binding_key(&BINDINGS[1], &[]),
-            display_keystroke("%")
-        );
-    }
-
-    #[test]
-    fn missing_binding_omits_the_row() {
-        let bindings = [KeyBindingSnapshot {
-            key: "c".to_owned(),
-            commands: vec![CommandInvocation::new("new-window", [] as [&str; 0])],
-            repeat: false,
-            note: None,
-        }];
-
-        assert_eq!(resolve_binding_key(&BINDINGS[1], &bindings), None);
-    }
-
-    #[test]
-    fn unparseable_binding_uses_the_stock_key() {
-        let bindings = [KeyBindingSnapshot {
-            key: String::new(),
-            commands: vec![CommandInvocation::new(
-                "split-window",
-                ["--kind", "picker", "-h"],
-            )],
-            repeat: false,
-            note: None,
-        }];
-
-        assert_eq!(
-            resolve_binding_key(&BINDINGS[1], &bindings),
-            display_keystroke("%")
-        );
     }
 
     #[ala::test]

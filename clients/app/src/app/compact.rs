@@ -25,7 +25,7 @@ use penna::{
         LiftEvent, PageDot, Pager, PagerEvent, PhoneFind, StackClose, StackMenu, StackMenuEvent,
         WhichKeyList, page_dots_in,
     },
-    blocks::which_key::{WhichKeyCap, WhichKeyRow},
+    blocks::which_key::WhichKeyRow,
     components::kbd::Kbd,
 };
 use web_time::Instant;
@@ -311,31 +311,10 @@ fn live_prefix(options: &zz_protocol::MuxOptions) -> Option<Keystroke> {
 }
 
 fn binding_rows(core: &zz_client::ClientCore, prefix: &str) -> Arc<[WhichKeyRow]> {
-    let cap = |keys: &[String], yours: bool| WhichKeyCap {
-        keys: keys
-            .iter()
-            .map(|key| tmux_keystroke(key))
-            .collect::<Option<Vec<_>>>()
-            .unwrap_or_default(),
-        raw: keys.join(" ").into(),
-        yours,
-    };
     zz_client::which_key::action_rows(core.key_tables(), "prefix", prefix)
         .into_iter()
         .filter(|row| tmux_keystroke(row.first_key()).is_some())
-        .map(|row| WhichKeyRow {
-            id: row.first_key().to_owned().into(),
-            caps: row
-                .keys
-                .iter()
-                .map(|set| cap(&set.keys, set.yours))
-                .collect(),
-            label: row.label.into(),
-            group: row
-                .group
-                .map(|group| SharedString::new_static(group.title())),
-            repeat: row.repeat,
-        })
+        .map(|row| zz_ui::which_key::row(row, tmux_keystroke))
         .collect()
 }
 

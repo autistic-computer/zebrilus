@@ -216,6 +216,27 @@ pub fn empty_workspace_hint(
         .px(px(12.0))
 }
 
+pub fn empty_workspace_prefix_hints(
+    prefix: Option<&Keystroke>,
+    bindings: &[zz_protocol::KeyBindingSnapshot],
+    display: impl Fn(&str) -> Option<Keystroke>,
+    cx: &App,
+) -> Vec<AnyElement> {
+    let hints = zz_client::prefix_keys::PREFIX_HINTS
+        .iter()
+        .filter_map(|hint| {
+            let key =
+                zz_client::prefix_keys::bound_key(bindings, hint.key, hint.matches, &display)?;
+            Some(
+                empty_workspace_hint(prefix.cloned().into_iter().chain([key]), hint.label, cx)
+                    .into_any_element(),
+            )
+        });
+    std::iter::once(empty_workspace_caption("In a session", cx).into_any_element())
+        .chain(hints)
+        .collect()
+}
+
 pub fn empty_workspace_connect(action: impl IntoElement, cx: &App) -> ala::Div {
     div()
         .flex()

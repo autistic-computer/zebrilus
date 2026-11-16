@@ -1,143 +1,19 @@
 use ala::Keystroke;
 use zz_client::ChromeKey;
-use zz_protocol::{
-    Binding, CommandInvocation, KeyBindingSnapshot, KeyTables, TmuxOption, command_spec,
-    parse_tmux_command_options,
-};
+use zz_protocol::KeyBindingSnapshot;
 use zz_terminal::{KeyAction, KeyCode, KeyInput, Modifiers as TerminalModifiers};
-use zz_ui::pane::{PaneActionKeys, TerminalPaneAction};
+use zz_ui::pane::PaneActionKeys;
 
 pub(crate) fn display_keystroke(canonical: &str) -> Option<Keystroke> {
     let key = ChromeKey::parse(canonical)?;
     Keystroke::parse(&crate::keymap::ala_source(&key)?).ok()
 }
 
-pub(crate) fn split_hint_matches(command: &CommandInvocation, horizontal: bool) -> bool {
-    if !matches!(command.name.as_str(), "split-window" | "splitw") {
-        return false;
-    }
-    let Some(spec) = command_spec(&command.name) else {
-        return false;
-    };
-    let Ok(parsed) = parse_tmux_command_options(spec, command) else {
-        return false;
-    };
-    let kind = parsed
-        .options
-        .iter()
-        .rev()
-        .find_map(|option| match option {
-            TmuxOption::Value("--kind", kind) => Some(*kind),
-            _ => None,
-        })
-        .unwrap_or("terminal");
-    matches!(kind, "terminal" | "picker")
-        && parsed.options.contains(&TmuxOption::Flag("-h")) == horizontal
-}
-
-fn runs(command: &CommandInvocation, name: &str, flag: Option<&str>) -> bool {
-    let runs_words = |mut words: std::str::SplitWhitespace<'_>| {
-        words.next() == Some(name) && flag.is_none_or(|flag| words.any(|word| word == flag))
-    };
-    let direct =
-        command.name == name && flag.is_none_or(|flag| command.args.iter().any(|arg| *arg == flag));
-    direct
-        || command.name == "if-shell"
-            && command.args.iter().any(|arg| {
-                arg.trim()
-                    .strip_prefix('{')
-                    .and_then(|text| text.strip_suffix('}'))
-                    .is_some_and(|inner| runs_words(inner.split_whitespace()))
-            })
-}
-
-type PaneActionBinding = (
-    TerminalPaneAction,
-    &'static str,
-    fn(&CommandInvocation) -> bool,
-);
-
-const PANE_ACTION_BINDINGS: [PaneActionBinding; 6] = [
-    (TerminalPaneAction::SplitBottom, "\"", |command| {
-        split_hint_matches(command, false)
-    }),
-    (TerminalPaneAction::SplitRight, "%", |command| {
-        split_hint_matches(command, true)
-    }),
-    (TerminalPaneAction::Float, "@", |command| {
-        runs(command, "break-pane", Some("-W"))
-    }),
-    (TerminalPaneAction::Tile, "@", |command| {
-        runs(command, "join-pane", None)
-    }),
-    (TerminalPaneAction::Zoom, "z", |command| {
-        runs(command, "resize-pane", Some("-Z"))
-    }),
-    (TerminalPaneAction::Close, "x", |command| {
-        runs(command, "kill-pane", None)
-            || command.name == "confirm-before"
-                && command
-                    .args
-                    .last()
-                    .is_some_and(|arg| arg.split_whitespace().next() == Some("kill-pane"))
-    }),
-];
-
-pub(crate) fn bound_key(
-    bindings: &[KeyBindingSnapshot],
-    stock: &str,
-    matches: fn(&CommandInvocation) -> bool,
-) -> Option<Keystroke> {
-    let stock_key = || display_keystroke(stock);
-    if bindings.is_empty() {
-        return stock_key();
-    }
-    let binding = bindings
-        .iter()
-        .filter(|binding| binding.commands.first().is_some_and(matches))
-        .min_by_key(|binding| binding.key == stock)?;
-    display_keystroke(&binding.key).or_else(stock_key)
-}
-
 pub(crate) fn pane_action_keys(
     prefix: Option<&str>,
     bindings: &[KeyBindingSnapshot],
 ) -> PaneActionKeys {
-    let Some(prefix) = prefix.and_then(display_keystroke) else {
-        return PaneActionKeys::default();
-    };
-    PaneActionKeys::new(
-        PANE_ACTION_BINDINGS
-            .iter()
-            .filter_map(|(action, stock, matches)| {
-                bound_key(bindings, stock, *matches).map(|key| (*action, vec![prefix.clone(), key]))
-            }),
-    )
-}
-
-fn prefix_binding(bindings: &[KeyBindingSnapshot], input: &KeyInput) -> Option<Binding> {
-    let mut tables = KeyTables::empty();
-    for binding in bindings {
-        tables.bind(
-            "prefix",
-            &binding.key,
-            Binding {
-                commands: binding.commands.clone(),
-                repeat: binding.repeat,
-                note: None,
-            },
-        );
-    }
-    tables.resolve_input("prefix", input).cloned()
-}
-
-pub(crate) fn binds_input(bindings: &[KeyBindingSnapshot], input: &KeyInput) -> bool {
-    prefix_binding(bindings, input).is_some()
-}
-
-pub(crate) fn is_all_keys_input(bindings: &[KeyBindingSnapshot], input: &KeyInput) -> bool {
-    prefix_binding(bindings, input)
-        .is_some_and(|binding| zz_client::which_key::opens_all_keys(&binding.commands))
+    PaneActionKeys::bound(prefix, bindings, display_keystroke)
 }
 
 pub(crate) fn terminal_key_input(keystroke: &Keystroke, action: KeyAction) -> KeyInput {
@@ -192,48 +68,5 @@ fn terminal_key(key: &str) -> KeyCode {
                     .map_or(KeyCode::Unidentified, KeyCode::Function)
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pane_buttons_show_the_prefix_and_the_key_bound_to_their_command() {
-        let mut tables = KeyTables::default();
-        tables.bind(
-            "prefix",
-            "|",
-            Binding {
-                commands: vec![CommandInvocation::new("split-window", ["-h"])],
-                repeat: false,
-                note: None,
-            },
-        );
-        let prefix = tables
-            .snapshot()
-            .into_iter()
-            .find(|table| table.name == "prefix")
-            .expect("the prefix table")
-            .bindings;
-        let keys = pane_action_keys(Some("C-a"), &prefix);
-        let spelled = |action| {
-            keys.of(action)
-                .iter()
-                .map(ala::Keystroke::unparse)
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(spelled(TerminalPaneAction::SplitRight), ["ctrl-a", "|"]);
-        assert_eq!(spelled(TerminalPaneAction::SplitBottom), ["ctrl-a", "\""]);
-        assert_eq!(spelled(TerminalPaneAction::Float), ["ctrl-a", "@"]);
-        assert_eq!(spelled(TerminalPaneAction::Tile), ["ctrl-a", "@"]);
-        assert_eq!(spelled(TerminalPaneAction::Zoom), ["ctrl-a", "z"]);
-        assert_eq!(spelled(TerminalPaneAction::Close), ["ctrl-a", "x"]);
-        assert!(
-            pane_action_keys(None, &prefix)
-                .of(TerminalPaneAction::Zoom)
-                .is_empty()
-        );
     }
 }

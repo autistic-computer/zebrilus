@@ -2536,10 +2536,7 @@ impl MuxClient {
     #[must_use]
     pub(crate) fn canonical_prefix(&self) -> Option<String> {
         self.attached_connection().client.as_ref()?;
-        self.core
-            .mux_options()
-            .get(MuxOptionKey::Prefix)
-            .map(|option| zz_protocol::canonical_key(&option.value))
+        self.core.canonical_prefix()
     }
 
     #[must_use]

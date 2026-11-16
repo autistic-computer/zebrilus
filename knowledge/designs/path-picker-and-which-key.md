@@ -368,6 +368,12 @@ pub trait PathPickerBackend {
   `? all keys` hint. The desktop catches the key bound to `list-keys -N` while the prefix is armed and
   shows every row instead, without sending it to the daemon, so the prefix stays armed and the next key
   runs its binding. With `which-key-delay` at 0 `?` keeps tmux's `list-keys` output.
+- The thin clients' wide layout (iPad and web, 640 points and up) shows the same two sheets from the
+  same parts: `zz_ui::which_key::WhichKeySheet` builds the sheet from a client's key tables, prefix and
+  key-cap function, and `zz_client::prefix_keys` holds the delay rule and the `list-keys -N` check. The
+  delay is a device preference there (`which_key_delay` in `zz-app`'s preferences, same range and
+  default), since a remote client does not write the host's config. The phone keeps its All bindings
+  sheet.
 - `WhichKeyView` (zz-ui): a passive, occluding bottom sheet over the workspace, drawn as the `sheet` kind.
   Groups that fit stack under each other in one column, so the sheet is as narrow as the tallest group
   allows; the key column is measured from the widest cap. It is never focused and never counted in

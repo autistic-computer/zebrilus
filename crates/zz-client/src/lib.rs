@@ -34,6 +34,7 @@ pub mod path_insert;
 pub mod path_rank;
 pub mod pick;
 pub mod place;
+pub mod prefix_keys;
 pub mod program;
 pub mod providers;
 pub mod recents;
