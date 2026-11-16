@@ -95,7 +95,10 @@ resolves OSC 8 metadata (authoritative) and `plain_uri_at` recognizes bounded pl
 never injects text into the PTY. The
 [`zz` client](/crates/zz.md) normalizes browser-supported web URLs and queues navigation for the
 topologically nearest browser pane in the source pane's mux window. It preserves the platform URL
-opener for unsupported schemes or when that window has no browser pane.
+opener for unsupported schemes or when that window has no browser pane. The pick is
+`zz_client::open_uri::open_uri_route`, shared with the thin clients: on an iPad or tablet layout
+the link loads in that browser pane, the web client opens it in a browser tab, and a pasted image
+placeholder (`zz-image://N`) opens the image preview everywhere.
 
 # Local scroll (client side)
 

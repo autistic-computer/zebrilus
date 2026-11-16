@@ -29,7 +29,9 @@ use penna::{
     components::kbd::Kbd,
 };
 use web_time::Instant;
-use zz_client::{StatusBarModel, program::Program, window_summary::pane_program};
+use zz_client::{
+    StatusBarModel, open_uri::OpenUriRoute, program::Program, window_summary::pane_program,
+};
 use zz_protocol::{InputMessage, PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::KeyAction;
 use zz_ui::{
@@ -557,20 +559,37 @@ impl AppShell {
             })
     }
 
-    pub(super) fn open_link_sheet(
+    pub(super) fn open_link(
         &mut self,
-        uri: String,
+        link: &crate::connection::OpenLink,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.compact_active(window, cx) {
-            if zz_client::terminal_view::openable_uri(&uri) {
-                cx.open_url(&uri);
+        let compact = self.compact_active(window, cx);
+        match self.connection.read(cx).uri_route(link.pane, &link.uri) {
+            OpenUriRoute::PastedImage { pane, number } => {
+                self.connection.update(cx, |connection, cx| {
+                    connection.preview_pasted_image(pane, number, cx);
+                });
             }
-            return;
+            _ if compact && link.tapped => {
+                window.dismiss_virtual_keyboard();
+                self.open_phone_sheet(sheets::PhoneSheet::Link(link.uri.clone()), window, cx);
+            }
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            OpenUriRoute::Embedded { pane, url }
+                if !compact
+                    && !self.connection.read(cx).core.attached_read_only()
+                    && self.browsers.contains_key(&pane) =>
+            {
+                let browser = self.browsers[&pane].clone();
+                browser.update(cx, |browser, cx| browser.load_url(url, window, cx));
+            }
+            _ if zz_client::terminal_view::openable_uri(&link.uri) => cx.open_url(&link.uri),
+            _ => self.connection.update(cx, |connection, cx| {
+                connection.notify_error(format!("Cannot open this URI: {}", link.uri), cx);
+            }),
         }
-        window.dismiss_virtual_keyboard();
-        self.open_phone_sheet(sheets::PhoneSheet::Link(uri), window, cx);
     }
 
     pub(super) fn open_link_in_browser(&mut self, uri: &str, cx: &mut Context<Self>) {

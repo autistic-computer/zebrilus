@@ -215,7 +215,8 @@ toolbar and offer an external tab for their URL. The browser client does not ena
 code editor. File paths in `save-buffer`, `load-buffer`, and `source-file` resolve on the daemon host;
 the daemon only asks command-line clients for their files. Browser
 screenshot commands return an error because the page has no Chromium pane runtime. Daemon
-`OpenUri` requests open HTTP, HTTPS, and mailto links; other schemes show a client error toast.
+`OpenUri` requests open HTTP, HTTPS, and mailto links in a browser tab, and a pasted image
+placeholder opens the image preview; other schemes show a client error toast.
 
 # Checks
 

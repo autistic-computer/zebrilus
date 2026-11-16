@@ -683,12 +683,19 @@ impl BrowserPane {
         ) else {
             return;
         };
+        self.focus.focus(window, cx);
+        self.load_url(url, window, cx);
+    }
+
+    pub(super) fn load_url(&mut self, url: String, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.writable(cx) {
+            return;
+        }
         let tab = &mut self.tabs[self.active];
         tab.url = url;
         tab.pick_status = None;
         tab.pending_load = true;
         tab.error = None;
-        self.focus.focus(window, cx);
         self.resume();
         self.update_address(window, cx);
         self.publish(cx);

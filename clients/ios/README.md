@@ -273,6 +273,10 @@ being composed, hardware keys go to the input method first.
   Ctrl-V. Text pastes over 4 MiB are refused with a warning.
 - Drop images onto the workspace to upload them to the focused pane, as with a pasted
   image; dropped text or links paste as text.
+- Tap a link in a terminal to open it. On iPhone it opens the link sheet. On iPad a web link
+  opens in the nearest browser pane of the terminal's window, as on the desktop, and in
+  the system browser when that window has no browser pane. Tapping a pasted image's `[Image #N]`
+  opens the image preview.
 
 ## Lifecycle
 

@@ -182,6 +182,7 @@ pub struct TerminalPane {
     image_hover_ready: bool,
     image_hover_task: Option<Task<()>>,
     link_hover_bounds: Option<Bounds<Pixels>>,
+    image_preview_press: Option<(u32, Bounds<Pixels>)>,
     selection_anchor: Option<PointerCellEvent>,
     selection_pointer: Option<PointerCellEvent>,
     selection_autoscroll_lines: i32,
@@ -340,6 +341,7 @@ impl TerminalPane {
             image_hover_ready: false,
             image_hover_task: None,
             link_hover_bounds: None,
+            image_preview_press: None,
             selection_anchor: None,
             selection_pointer: None,
             selection_autoscroll_lines: 0,
@@ -568,13 +570,18 @@ impl TerminalPane {
         cx.notify();
     }
 
-    fn image_hover_popover(&self, cx: &App) -> Option<AnyElement> {
+    fn visible_image_hover(&self, cx: &App) -> Option<(u32, Bounds<Pixels>, Arc<ala::Image>)> {
         if !self.image_hover_ready {
             return None;
         }
         let bounds = self.link_hover_bounds?;
         let number = pasted_image_number(self.hovered_image_uri.as_deref()?)?;
         let image = self.connection.read(cx).pasted_image(self.pane, number)?;
+        Some((number, bounds, image))
+    }
+
+    fn image_hover_popover(&self, cx: &App) -> Option<AnyElement> {
+        let (_, bounds, image) = self.visible_image_hover(cx)?;
         Some(zz_ui::terminal::pasted_image_preview(bounds, image, cx))
     }
 
@@ -1000,7 +1007,7 @@ impl TerminalPane {
                 !tracking || event.modifiers.shift || self.force_local_selection;
         }
         self.pressed_buttons.insert(event.button);
-        let link_tap = self.compact
+        let link_tap = (self.compact || cfg!(any(target_os = "ios", target_os = "android")))
             && self.surface == TerminalSurface::Pane
             && event.button == MouseButton::Left
             && event.click_count == 1
@@ -1013,6 +1020,14 @@ impl TerminalPane {
             self.connection
                 .update(cx, |connection, _| connection.expect_link_tap(pane));
         }
+        self.image_preview_press = (!link_tap
+            && event.button == MouseButton::Left
+            && event.click_count == 1
+            && event.modifiers == ala::Modifiers::default())
+        .then(|| self.visible_image_hover(cx))
+        .flatten()
+        .filter(|(_, bounds, _)| bounds.contains(&event.position))
+        .map(|(number, bounds, _)| (number, bounds));
         let input = self.mouse(
             event.position,
             if link_tap {
@@ -1032,7 +1047,25 @@ impl TerminalPane {
     }
 
     fn on_mouse_up(&mut self, event: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let image_press = (event.button == MouseButton::Left)
+            .then(|| self.image_preview_press.take())
+            .flatten();
+        let dragged = self
+            .selection_anchor
+            .zip(self.selection_pointer)
+            .is_some_and(|(anchor, pointer)| selection_has_extent(anchor, pointer));
         self.release_pointer(event, !self.compact, cx);
+        if let Some((number, bounds)) = image_press
+            && !dragged
+            && event.click_count == 1
+            && event.modifiers == ala::Modifiers::default()
+            && bounds.contains(&event.position)
+        {
+            let pane = self.pane;
+            self.connection.update(cx, |connection, cx| {
+                connection.preview_pasted_image(pane, number, cx);
+            });
+        }
     }
 
     fn release_pointer(
