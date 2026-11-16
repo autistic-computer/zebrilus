@@ -1209,7 +1209,10 @@ impl AppShell {
                 match action {
                     SidebarAction::NewChat => sidebar::new_chat(this, cx),
                     #[cfg(any(target_os = "ios", target_os = "android"))]
-                    SidebarAction::AddHost => this.open_add_host_dialog(window, cx),
+                    SidebarAction::AddHost => {
+                        this.release_sidebar_focus(window, cx);
+                        this.open_add_host_dialog(window, cx);
+                    }
                     #[cfg(not(any(target_os = "ios", target_os = "android")))]
                     SidebarAction::AddHost => {
                         let _ = window;
@@ -2126,7 +2129,12 @@ impl AppShell {
             .mux_options()
             .get(zz_protocol::MuxOptionKey::FocusFollowsMouse)
             .is_some_and(|option| option.value == "on");
-        let can_focus = self.prompt.is_none()
+        let dialog = window
+            .root::<Root>()
+            .flatten()
+            .is_some_and(|root| root.read(cx).has_active_dialog());
+        let can_focus = !dialog
+            && self.prompt.is_none()
             && !self.sidebar_focus.is_focused(window)
             && core.choose_tree().is_none()
             && core.choose_buffer().is_none()
