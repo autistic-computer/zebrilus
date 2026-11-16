@@ -5,7 +5,7 @@ use ala::{
     Window, div, prelude::*, px,
 };
 use penna::{
-    Label, Panel, PanelLook, TextStyle, Well,
+    Panel, PanelLook, TextStyle, Well,
     blocks::chat::{COMPOSER_BUTTON, COMPOSER_INSET},
     components::spinner::Spinner,
 };
@@ -14,20 +14,14 @@ use zz_protocol::{AgentLogin, AgentLoginStep, PaneId, ProtocolMessage};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Sizable as _, StyledExt as _,
-    button::{Button, ButtonLook, ButtonVariants as _},
-    h_flex,
+    button::{Button, ButtonLook, ButtonVariants as _, INSIDE_GAP},
+    h_flex, icon,
     input::{Input, InputEvent, InputState},
-    v_flex,
+    pane::{CARD_GLYPH, CARD_LINE, card_close, card_head, card_lead_gap, card_lead_inset},
 };
 
 const GAP: f32 = 10.0;
-const LINE: f32 = 16.0;
-const GLYPH: f32 = 13.0;
-const GLYPH_DROP: f32 = 1.5;
-const HEAD_GAP: f32 = 7.0;
-const HEAD_DROP: f32 = 4.0;
 const LINK_HEIGHT: f32 = 32.0;
-const LINK_GLYPH: f32 = 12.0;
 const CODE_HEIGHT: f32 = 64.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -91,27 +85,21 @@ type OnLogin = Rc<dyn Fn(LoginEvent, &mut Window, &mut App)>;
 
 fn glyph(glyph: CardGlyph, pane: PaneId, cx: &App) -> AnyElement {
     let muted = cx.theme().foreground.muted();
-    let inner = match glyph {
+    match glyph {
         CardGlyph::Working => Spinner::new()
             .id(("agent-login-spinner", pane.0))
-            .with_size(px(GLYPH))
+            .with_size(px(CARD_GLYPH))
             .color(muted)
             .into_any_element(),
         CardGlyph::Failed => Icon::new(IconName::TriangleAlert)
-            .size(px(GLYPH))
+            .size(px(CARD_GLYPH))
             .text_color(cx.theme().danger)
             .into_any_element(),
         CardGlyph::Waiting => Icon::new(IconName::Clock)
-            .size(px(GLYPH))
+            .size(px(CARD_GLYPH))
             .text_color(muted)
             .into_any_element(),
-    };
-    div()
-        .flex_none()
-        .relative()
-        .top(px(GLYPH_DROP))
-        .child(inner)
-        .into_any_element()
+    }
 }
 
 fn row_icon(
@@ -147,29 +135,36 @@ fn copy(text: String) -> impl Fn(&ala::ClickEvent, &mut Window, &mut App) + 'sta
 pub fn link_row(pane: PaneId, url: &str, cx: &App) -> AnyElement {
     let muted = cx.theme().foreground.muted();
     let open = url.to_owned();
+    let drop = icon::cap_center_drop(px(TextStyle::Small.design_px()), px(CARD_GLYPH), cx);
     well(cx)
         .flex()
         .items_center()
-        .gap(px(4.0))
+        .gap(INSIDE_GAP)
         .h(px(LINK_HEIGHT))
-        .pl(px(10.0))
-        .pr(px(4.0))
+        .pl(card_lead_inset())
+        .pr(INSIDE_GAP)
         .child(
-            Icon::new(IconName::Globe)
-                .size(px(LINK_GLYPH))
-                .flex_none()
-                .text_color(muted),
-        )
-        .child(
-            div()
+            h_flex()
                 .flex_1()
                 .min_w_0()
-                .pl(px(4.0))
-                .type_style(TextStyle::Small, cx)
-                .font_family(cx.theme().mono_font_family.clone())
-                .text_color(muted)
-                .truncate()
-                .child(SharedString::from(agent_login::shown_url(url).to_owned())),
+                .gap(card_lead_gap())
+                .child(
+                    div().flex_none().relative().top(drop).child(
+                        Icon::new(IconName::Globe)
+                            .size(px(CARD_GLYPH))
+                            .text_color(muted),
+                    ),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .type_style(TextStyle::Small, cx)
+                        .font_family(cx.theme().mono_font_family.clone())
+                        .text_color(muted)
+                        .truncate()
+                        .child(SharedString::from(agent_login::shown_url(url).to_owned())),
+                ),
         )
         .child(
             row_icon(
@@ -206,7 +201,7 @@ fn code_tile(pane: PaneId, code: &str, cx: &App) -> AnyElement {
         .font_family(cx.theme().mono_font_family.clone())
         .child(SharedString::from(code.to_owned()))
         .child(
-            div().absolute().right(px(8.0)).child(
+            div().absolute().right(INSIDE_GAP).child(
                 row_icon(
                     ("agent-login-copy-code", pane.0),
                     IconName::Copy,
@@ -276,36 +271,18 @@ pub fn card_view(
             CardClose::Cancel => "Cancel",
             CardClose::Dismiss => "Close",
         };
-        row_icon(("agent-login-close", pane.0), IconName::Xmark, tooltip, cx)
-            .mt(px(-HEAD_DROP))
-            .on_click(move |_, window, cx| {
-                cx.stop_propagation();
-                on(LoginEvent::Close, window, cx);
-            })
+        card_close(("agent-login-close", pane.0), tooltip, cx).on_click(move |_, window, cx| {
+            cx.stop_propagation();
+            on(LoginEvent::Close, window, cx);
+        })
     };
-    let head = h_flex()
-        .w_full()
-        .items_start()
-        .pt(px(HEAD_DROP))
-        .gap(px(HEAD_GAP))
-        .child(glyph(card.glyph, pane, cx))
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .gap(px(2.0))
-                .child(
-                    Label::new(TextStyle::Body, card.title.clone())
-                        .strong()
-                        .line_height(px(LINE)),
-                )
-                .children(card.detail.clone().map(|detail| {
-                    div()
-                        .text_color(cx.theme().foreground.muted())
-                        .child(detail)
-                })),
-        )
-        .child(close);
+    let head = card_head(
+        glyph(card.glyph, pane, cx),
+        card.title.clone(),
+        card.detail.clone(),
+        close,
+        cx,
+    );
     let (lead, trail): (Vec<CardAction>, Vec<CardAction>) =
         card.actions.iter().partition(|action| action.leads());
     let actions = (!card.actions.is_empty()).then(|| {
@@ -343,7 +320,7 @@ pub fn card_view(
         .p(px(COMPOSER_INSET))
         .font_family(cx.theme().font_family.clone())
         .type_style(TextStyle::Body, cx)
-        .line_height(px(LINE))
+        .line_height(px(CARD_LINE))
         .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(head)
         .children(card.url.as_deref().map(|url| link_row(pane, url, cx)))

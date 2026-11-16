@@ -1,8 +1,10 @@
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, Fill, Icon,
     IconName, Layer, PaintState, Selectable as _, Sizable as _, StyledExt as _, Tone,
-    button::{Button, ButtonLook},
+    button::{Button, ButtonLook, COMPACT_ICON_BUTTON_SIZE, INSIDE_GAP},
+    h_flex, icon,
     pane_look::PaneLook,
+    v_flex,
 };
 use ala::{
     AnyElement, App, BorderStyle, Bounds, Corners, CursorStyle, ElementId, GlassMaterial, Hsla,
@@ -11,7 +13,7 @@ use ala::{
 };
 use penna::{
     Bar, BarLook, Chip, ChipLook, ContentLook, Label, Panel, PanelLook, Row, RowLook, RuleLook,
-    Tab, TabLook, TextStyle, Tile, TileVariant,
+    Size, Space, Tab, TabLook, TextStyle, Tile, TileVariant,
     blocks::chat::{COMPOSER_BUTTON, COMPOSER_INSET},
 };
 
@@ -388,8 +390,72 @@ pub fn pane_flip_button(
         })
 }
 
-const BUSY_TEXT_INSET: f32 = 4.0;
-const BUSY_HEAD_DROP: f32 = 6.0;
+pub const CARD_GLYPH: f32 = 13.0;
+pub const CARD_LINE: f32 = 16.0;
+const CARD_FIELD: Size = Size::Medium;
+const CARD_HEAD: Pixels = px(COMPACT_ICON_BUTTON_SIZE);
+
+pub fn card_lead_inset() -> Space {
+    CARD_FIELD.field_inset()
+}
+
+pub fn card_lead_gap() -> Space {
+    CARD_FIELD.icon_gap()
+}
+
+fn card_text_drop() -> Pixels {
+    (CARD_HEAD - px(CARD_LINE)) / 2.0
+}
+
+pub fn card_close(id: impl Into<ElementId>, tooltip: &'static str, cx: &App) -> Button {
+    Button::compact_icon(id, IconName::Xmark)
+        .look(ButtonLook::RowIcon)
+        .on(cx.theme().ground_of(PanelLook::Inline))
+        .text_color(cx.theme().foreground.muted())
+        .tooltip(tooltip)
+}
+
+pub fn card_head(
+    glyph: impl IntoElement,
+    title: impl Into<SharedString>,
+    detail: Option<impl IntoElement>,
+    close: Button,
+    cx: &App,
+) -> ala::Div {
+    let drop = icon::cap_center_drop(px(TextStyle::Body.design_px()), px(CARD_GLYPH), cx);
+    h_flex()
+        .w_full()
+        .items_start()
+        .pl(card_lead_inset())
+        .pr(INSIDE_GAP)
+        .gap(card_lead_gap())
+        .child(
+            div()
+                .flex_none()
+                .flex()
+                .items_center()
+                .h(CARD_HEAD)
+                .child(div().relative().top(drop).child(glyph)),
+        )
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .pt(card_text_drop())
+                .gap(px(2.0))
+                .child(
+                    Label::new(TextStyle::Body, title)
+                        .strong()
+                        .line_height(px(CARD_LINE)),
+                )
+                .children(detail.map(|detail| {
+                    div()
+                        .text_color(cx.theme().foreground.muted())
+                        .child(detail)
+                })),
+        )
+        .child(close)
+}
 
 fn flip_choice_button(
     id: impl Into<ElementId>,
@@ -466,6 +532,7 @@ fn busy_card(
     on_choice: &std::rc::Rc<dyn Fn(FlipChoice, &mut Window, &mut App)>,
     cx: &App,
 ) -> Panel {
+    let dismiss = std::rc::Rc::clone(on_choice);
     Panel::new(("pane-flip-busy", pane.0), PanelLook::Inline)
         .inset(px(COMPOSER_INSET))
         .rows(px(COMPOSER_BUTTON))
@@ -479,52 +546,24 @@ fn busy_card(
         .p(px(COMPOSER_INSET))
         .font_family(cx.theme().font_family.clone())
         .type_style(TextStyle::Body, cx)
-        .line_height(px(16.0))
+        .line_height(px(CARD_LINE))
         .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(
-            div()
-                .flex()
-                .items_start()
-                .gap(px(7.0))
-                .pl(px(BUSY_TEXT_INSET))
-                .pt(px(BUSY_HEAD_DROP))
-                .pb(px(BUSY_TEXT_INSET))
-                .child(
-                    div().relative().top(px(1.5)).child(
-                        Icon::new(IconName::TriangleAlert)
-                            .size(px(13.0))
-                            .text_color(cx.theme().warning),
-                    ),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(2.0))
-                        .child(
-                            Label::new(TextStyle::Body, zz_client::agent_flip::BUSY_TITLE)
-                                .strong()
-                                .line_height(px(16.0)),
-                        )
-                        .child(
-                            div()
-                                .text_color(cx.theme().foreground.muted())
-                                .child(detail),
-                        ),
-                )
-                .child(
-                    flip_choice_button(
-                        ("pane-flip-dismiss", pane.0),
-                        "",
-                        FlipChoice::Dismiss,
-                        on_choice,
-                    )
-                    .icon(IconName::Xmark)
-                    .tooltip("Keep this pane as it is")
-                    .mt(px(-BUSY_HEAD_DROP)),
+            card_head(
+                Icon::new(IconName::TriangleAlert)
+                    .size(px(CARD_GLYPH))
+                    .text_color(cx.theme().warning),
+                zz_client::agent_flip::BUSY_TITLE,
+                Some(detail),
+                card_close(("pane-flip-dismiss", pane.0), "Keep this pane as it is", cx).on_click(
+                    move |_, window, cx| {
+                        cx.stop_propagation();
+                        dismiss(FlipChoice::Dismiss, window, cx);
+                    },
                 ),
+                cx,
+            )
+            .pb(card_text_drop()),
         )
 }
 
