@@ -51854,7 +51854,11 @@ Other machines: `zz list-hosts` names them and `zz --host NAME VERB -t %N` runs 
 "#;
 
 const AGENT_PANE_CONTEXT: &str = r"
-This is an Agent pane. To show a chart, diagram, mockup, or small page, put the HTML in your reply in a fenced block opened with ```html preview (a fragment or a whole page; scripts may load from CDNs). The pane shows it rendered, and a click makes it live. For a bigger page beside you, write a file and run `zz html PATH`.
+This is an Agent pane, and it draws HTML you put in a reply.
+
+- To show something in the chat (a chart, diagram, comparison, stats, a small control), open a fenced block with ```html preview and write a fragment. It is drawn on the chat's ground in the user's theme, so set no background, font or colors of your own. Styled for you: `.btn` (`.btn-primary`), `.card`, `.nav-pills` of `.nav-link`s (`.active` is the chosen one), `.form-control`, `.form-select`, `.form-range`, `.progress` holding a `.progress-bar`, `.viz-badge` (`data-tone` success, warning or danger), `.viz-stat-value`, `.viz-grid`, `.viz-row`, `.text-muted`, `.text-small` and `table`. Colors: `var(--foreground)`, `var(--border)`, `var(--primary)`, and `var(--viz-series-1)` to `6` for data. Scripts may load from CDNs. A click makes it live, and `zz.reply(text)` then puts text in the user's composer.
+- To show a page you are building (a site, a screen of the user's product), put the whole document, starting with `<!doctype html>`, in a plain ```html block. It keeps its own styles and is drawn in a frame at desktop size; a click opens it beside the chat.
+- For a page with files of its own, write it to disk and run `zz html PATH`.
 
 This pane approves `zz` commands without asking, alone or piped into `head`, `tail`, `grep`, `rg`, `wc` or `jq`, with no redirect but `2>&1` or `>/dev/null`.
 ";
@@ -84416,8 +84420,9 @@ set-option -g @alias-mixed-next yes
         assert!(text.len() < 1600, "context grew to {} bytes", text.len());
         let agent = workspace_context("%4", "work", true);
         assert!(agent.starts_with(&text) && agent.contains("```html preview"));
+        assert!(agent.contains("starting with `<!doctype html>`, in a plain ```html block"));
         assert!(
-            agent.len() < 2100,
+            agent.len() < 3000,
             "agent context grew to {} bytes",
             agent.len()
         );

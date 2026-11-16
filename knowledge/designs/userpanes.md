@@ -356,8 +356,16 @@ script dresses them as kit parts when the page loads and whenever classes change
 
 The script also rounds corners the way the kit's own script does and places the segmented pill. A
 whole page (`<!doctype` or `<html>` first) in an `html preview` block renders as it is. Agent panes
-learn the form from one paragraph the native Claude and Codex drivers add to the startup context
-(`workspace_context(.., true)`). Without the plugin (a markdown view, a client with no previewer)
+learn the forms from three lines the native Claude and Codex drivers add to the startup context
+(`AGENT_PANE_CONTEXT`, through `workspace_context(.., true)`): an `html preview` fragment for
+something shown in the chat, with the names in the table above, the color variables, the note to
+set no background, font or colors, and `zz.reply`; a whole document in a plain `html` block for a
+page being built; `zz html PATH` for a page with files. That is about 1.3 KB on every agent
+session, and a Claude session started with its own system prompt flag gets none of it. Checked on
+2026-11-16 with a Haiku chat: asked to compare three algorithms it wrote an `html preview` fragment
+using `table`, `.progress`, `.text-muted` and `--viz-series-N` with no colors of its own, and asked
+for a landing page draft it wrote a whole document in a plain `html` block. Without the
+plugin (a markdown view, a client with no previewer)
 the block falls back to the code block with its picture.
 
 **Whole documents are pages.** An `html` block that starts with `<!doctype` or `<html>` and is not
