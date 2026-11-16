@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and reporting its steps or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
+description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
-timestamp: 2026-11-15T00:00:00-03:00
+timestamp: 2026-11-16T00:00:00-03:00
 ---
 
 # Overview
@@ -205,15 +205,19 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
 - **Switching a live chat.** `agent-account [-t pane] <id|default>`
   (`crates/zz-daemon/src/daemon/agent_account.rs`). Anything running fails it with an error that
   starts with `busy:`, using the flip's `chat_running`, which for Codex also counts a running turn,
-  since that turn lives in the old home's app server. Otherwise the daemon closes the driver and
+  since that turn lives in the old home's app server. `--now` moves it anyway (the reopen stops
+  what runs), and `--when-idle` waits in the daemon, checking every 250 ms as an armed flip does,
+  and moves it once nothing runs; another `agent-account` for the pane, or the pane no longer
+  being a chat, drops the wait, which no client shows. Otherwise the daemon closes the driver and
   waits (`AgentRuntime::close_for_reopen`), sets the account (`MuxState::update_agent`), and opens
   the pane again on its session. The reopened stream carries on from the old one's sequence
   numbers, so a client keeps its cursor and takes the resume as a session reset.
 - **`default`** means no account everywhere: `agent-account default` and `select-pane-kind
   --account default` both run the CLI's own login, and `valid_agent_account` refuses `default`, so
   a directory of that name is never listed, created or flipped into.
-- **In the chat.** The composer footer's usage pill shows the account's limits and switches the
-  account (see [the footer](#the-empty-chat-and-the-footer)).
+- **In the chat.** The composer footer's usage pill shows the account's limits, switches the
+  account and signs one in (see [the footer](#the-empty-chat-and-the-footer) and
+  [signing in](#in-the-chat)).
 - **Rate limits.** What each account has used of its 5-hour and weekly limits; see
   [below](#rate-limits).
 - **Not built yet.** Removing an account. A signed-out account directory is reused by the next add,
@@ -267,8 +271,8 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
   and does not follow it.
 - **Clients.** zz-client's core keeps the last list (`ClientCore::agent_accounts`) and emits
   `CoreEvent::AgentAccountsChanged`. The desktop keeps one list per host beside the providers report
-  (`MuxClient::host_agent_accounts`, `request_agent_accounts`, `add_agent_account`); zz-app reads the
-  core (`Connection::request_agent_accounts`, `add_agent_account`, `switch_agent_account`). The
+  (`MuxClient::host_agent_accounts`, `request_agent_accounts`, `start_agent_login`); zz-app reads the
+  core (`Connection::request_agent_accounts`, `start_agent_login`, `switch_agent_account`). The
   composer's usage pill is their one reader.
 
 ## Signing in without a terminal
@@ -329,13 +333,74 @@ CLI opens the flow, exchanges the code and writes the credentials into the accou
   `dismiss_agent_login(id)` (drops a finished one) with `CoreEvent::AgentLoginChanged { provider }`;
   `zz_client::agent_login` builds the requests: `start(provider, LoginAccount, pane, browser)` and
   `restart(login, browser)` (commands), `submit_code(login, code)` and `cancel(login)` (messages),
-  and `daemon_signs_in(capabilities)` reads the daemon's hello. No client declares
-  `agent-login-v1` yet: it sits in `OPT_IN_CLIENT_CAPABILITY_NAMES`, which the daemon accepts and
-  no hello sends by itself, so every client still gets the terminal window until it draws the steps.
+  and `daemon_signs_in(capabilities)` reads the daemon's hello.
+- **Who declares it.** `agent-login-v1` sits in `OPT_IN_CLIENT_CAPABILITY_NAMES`, which the daemon
+  accepts and no hello sends by itself. The clients that draw the card name it: the desktop app in
+  both of its interactive connections (`connect_interactive_client` in `crates/zz/src/lib.rs` for the
+  local daemon, `MuxClient`'s host connect for every other host), and zz-app in the native
+  transport (iOS, Android: `clients/app/src/transport.rs`) and the browser hello
+  (`browser::hello` in `clients/app/src/connection.rs`). The TUI, the HTML client and one-shot CLI
+  connections do not, so they keep the terminal window.
 - **Trying it.** `zz tools --agent-login <claude|codex> [--browser local|elsewhere]
   [--account id|default] [--pane %N]` connects with the capability, starts a sign-in and prints
   each step; a line on stdin is the pasted code, `local` or `elsewhere` restarts in that mode, and
   `cancel` or the end of input cancels.
+
+## In the chat
+
+Every entry point names the chat's pane, so the steps land in that chat
+(`zz_client::agent_login::entry`). Against a daemon without `agent-login-v1` it sends the plain
+`agent-accounts --add <provider>` as before, the pill shows no Sign in, and the terminal window
+opens.
+
+- **Entry points.** In the usage pill's menu Add account starts a sign-in for a new account, and a
+  signed-out account's row reads Sign in at its end; picking it signs that account in, the default
+  one too (`LoginAccount::of`). On iPhone the same rows sit on the plus sheet's Account page.
+- **Browser.** `--browser local` only from the desktop on its own machine
+  (`agent_login::browser(host == HostId::LOCAL)` in `MuxClient::start_agent_login`); the desktop on
+  a remote host, iPad, iPhone, Android and the web send `elsewhere`. On `OpenUrl` with a local
+  browser the desktop opens the link in the system browser once per login id
+  (`MuxClient::observe_agent_login`).
+- **The card.** `zz_client::agent_login::card` turns a step into what to show (title, glyph, line,
+  link, code, field, actions, and whether X cancels or closes); `zz_ui::agent::login::login_card`
+  draws it for the desktop (`AgentView::render_login`, `crates/zz/src/agent/view/harness.rs`) and
+  zz-app (`AgentPane::render_login`, `clients/app/src/app/agent_pane/login.rs`) in the composer's
+  prefix, right above the field, in the chat whose pane the sign-in names, wherever it was started.
+  It has the busy card's look (`ChipLook::Floating`, 10 px in, a 13 px glyph 7 px from a 13/16
+  title) and leaves the chat usable.
+  - Starting and Verifying: "Sign in to Claude" (or ChatGPT) with the spinner.
+  - `OpenUrl`: "Sign in to Claude in your browser", the link row (a 32 px well: globe, the URL
+    without its scheme in mono, Copy link, Open again) and Use a code instead, which restarts the
+    sign-in as `elsewhere`.
+  - `PasteCode`: the link row, a field for the code and Continue; Enter sends too. The field is an
+    `InputState` of its own (`CodeField`), made for that login id and dropped when the step moves
+    on; `CodeField::take` hands its text to `submit_code` alone and empties it, which also clears
+    its undo history. Nothing else keeps the code: not the composer draft, the view state, a log
+    or a preference.
+  - `DeviceCode`: the link row and the code in a 64 px well, 26 px mono, with Copy code.
+  - `Failed`: "Couldn't sign in to ..." and one line (`failure_line`: not installed, device code
+    sign-in is off for this account, the sign-in timed out, or the CLI's own text), Sign in in a
+    terminal (`--terminal`) and Retry, both with the same account and browser; when the account the
+    failed sign-in made is gone from the list they start a new one (`agent_login::retry`).
+  - `Done` with the chat moved, or no chat: the client dismisses the login, the card goes and the
+    usage pill's menu opens on the new account (`UsagePill::open`, a one-time `Popover::open`).
+    `Done` with the chat busy: "Added <email>", "Switching now stops what is running.", Switch when
+    idle and Switch now, which send `agent-account --when-idle` or `--now` through
+    `AgentFlips::switch_account_when`.
+  - `Cancelled`: the card goes.
+
+  X cancels a running sign-in (`cancel`) and closes a finished card.
+- **iPhone.** The plus sheet gets a Sign in page after Account (`PlusPage::SignIn`,
+  `PlusSheet::sign_in` in `crates/zz-ui/src/agent/phone.rs`), titled like the card ("Couldn't sign
+  in" when it failed), with back and X in the header: back returns to Account and leaves the
+  sign-in running, X cancels. The link is a whole touch row (Open sign-in page, the site under it)
+  that opens the page, the device code a tile that copies on tap, the field touch-large, and the
+  actions tall full-width buttons. When it is done the sheet goes back to Account with the new
+  account checked; a busy chat gets the Switch page without back. A sign-in started on another
+  client for the chat opens the page when no sheet is up.
+- **Storybook.** Agent > Sign in draws every card state from fixed steps
+  (`clients/storybook/src/stories/agent/login.rs`), Agent > Composer controls the menu with Sign in,
+  and Phone > Plus sheet the phone pages.
 
 ## Rate limits
 
@@ -560,8 +625,12 @@ the next chat starts in, and Resume, for a chat the CLI already has. Each opens 
       account again." and only its close button (`Flip::AccountBusy`, `pane::pane_account_busy`),
       and any other error, the missing-directory one included, becomes a notification that starts
       with `agent-account:`.
-    - Under a rule, Add account sends `agent-accounts --add` for the pane's provider. Both close
-      the popover.
+    - A signed-out account's row reads Sign in at its end, in the muted small style, instead of the
+      check, and picking it signs that account in, when the daemon signs in itself
+      (`UsagePill::signs_in`).
+    - Under a rule, Add account starts a sign-in for a new account of the pane's provider
+      ([in the chat](#in-the-chat)). Both close the popover, which opens again on the new account
+      once the sign-in is done.
   - `agent_model_picker`: a popover over the footer, the model, its effort and the permissions in
     one menu. The button shows the permission mode's glyph in its tone (`mode_glyph`, centred on
     the label's cap height), then the model by its choice's display name
@@ -592,8 +661,8 @@ the next chat starts in, and Resume, for a chat the CLI already has. Each opens 
   matches) and the controls (Composer controls: the pill in a new chat, at each context fill and before
   the use is known, a model pill per Claude Code mode and per Codex mode, then the footer as
   usual, in a new chat, before the use is known, with a 5-hour window at 92%,
-  with an account that has no limits yet, with two accounts and the second picked, and with a
-  signed-out default).
+  with an account that has no limits yet, with two accounts and the second picked, with a
+  signed-out account to sign in, and with a signed-out default).
 
 # References in the chat
 

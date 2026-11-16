@@ -4,7 +4,7 @@ title: zz wire protocol (v123)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-11-15T00:00:00-03:00
+timestamp: 2026-11-16T00:00:00-03:00
 ---
 
 # Overview
@@ -71,7 +71,9 @@ The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only
   accepts these names like the ones above, but no hello sends them by itself. A client names one
   in the extra capabilities it hands `connect_stream_hello` (`InteractiveClient::connect_with_capabilities`)
   once it draws what the name gates. It holds `agent-login-v1` (`AGENT_LOGIN_CAPABILITY`), which is
-  in `CAPABILITY_NAMES` too, for the client's `AgentLogin` message. Moving a name to
+  in `CAPABILITY_NAMES` too, for the client's `AgentLogin` message; the desktop app and zz-app
+  (iOS, Android, web) name it, the TUI, the HTML client and one-shot CLI connections do not
+  ([who declares it](/concepts/agent-panes.md#signing-in-without-a-terminal)). Moving a name to
   `CLIENT_CAPABILITY_NAMES` turns it on for every client.
 
 The sender checks, so the receiver never sees what it cannot decode:
