@@ -17,10 +17,9 @@ use penna::{
 use zz_protocol::ViewContent;
 
 use super::{
-    AgentHtmlLive, AgentHtmlOpener, HtmlLiveBlock, HtmlPreviewResult, HtmlPreviewSize,
-    HtmlPreviewState, HtmlPreviewToggles, MermaidThemeColors, VISUAL_PAGE_SCRIPT,
-    agent_markdown_style, css_color, html_preview_width, is_html_document, mermaid_font_family,
-    mermaid_theme_key,
+    AgentHtmlLive, HtmlLiveBlock, HtmlPreviewResult, HtmlPreviewSize, HtmlPreviewState,
+    HtmlPreviewToggles, MermaidThemeColors, VISUAL_PAGE_SCRIPT, agent_markdown_style, css_color,
+    html_opener, html_preview_width, is_html_document, mermaid_font_family, mermaid_theme_key,
     preview::{ViewOpener, ViewRequest},
 };
 use crate::{
@@ -298,6 +297,7 @@ fn html_fence(
 pub(crate) struct VisualPlugin {
     pub(crate) owner: Option<u64>,
     pub(crate) touch: bool,
+    pub(crate) pages: Option<ViewOpener>,
 }
 
 impl MarkdownPlugin for VisualPlugin {
@@ -324,7 +324,14 @@ impl MarkdownPlugin for VisualPlugin {
 
     fn render(&self, node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let source = node.data::<HtmlSource>().expect("visual node data");
-        render_visual(source, self.owner, self.touch, window, cx)
+        render_visual(
+            source,
+            self.owner,
+            self.touch,
+            self.pages.as_ref(),
+            window,
+            cx,
+        )
     }
 }
 
@@ -431,6 +438,7 @@ fn render_visual(
     source: &HtmlSource,
     owner: Option<u64>,
     touch: bool,
+    pages: Option<&ViewOpener>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -461,9 +469,7 @@ fn render_visual(
         };
         state.update(cx, |state, cx| state.synchronize(&page, None, size, cx));
     }
-    let opener = cx
-        .try_global::<AgentHtmlOpener>()
-        .map(|opener| Rc::clone(&opener.0));
+    let opener = html_opener(pages, cx);
     let content = if shows_code {
         let markdown = fenced(&source.html);
         let retained = window.use_keyed_state(
@@ -679,29 +685,7 @@ fn render_page(
         });
     }
     let title = page_title(&source.html);
-    let opener = cx
-        .try_global::<AgentHtmlOpener>()
-        .map(|opener| Rc::clone(&opener.0))
-        .or_else(|| {
-            let view = view.cloned()?;
-            let title = title.to_string();
-            let opener: Rc<dyn Fn(String, &mut Window, &mut App)> =
-                Rc::new(move |html, window, cx| {
-                    view(
-                        ViewRequest {
-                            page: true,
-                            title: title.clone(),
-                            content: ViewContent::Code {
-                                language: Some("html".to_owned()),
-                                text: html,
-                            },
-                        },
-                        window,
-                        cx,
-                    );
-                });
-            Some(opener)
-        });
+    let opener = html_opener(view, cx);
     let ground = cx.theme().ground_of(CardLook::Code);
     let shows = view
         .filter(|_| source.html.len() <= zz_protocol::MAX_VIEW_TEXT_BYTES)

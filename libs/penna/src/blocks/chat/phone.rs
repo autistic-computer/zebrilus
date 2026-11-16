@@ -12,11 +12,15 @@ use crate::{
     blocks::touch::{Nest, TOUCH_TARGET, TouchRow, concentric, touch_row_frame},
     components::button::{Button, ButtonLook, ButtonVariants},
     components::input::{FieldLook, Input, InputState, field_chrome, field_underlay},
-    foundation::roles,
+    foundation::{roles, row_radius},
     h_flex, muted_on, rems_from_px, v_flex,
 };
 
-use super::composer::{ComposerAction, composer_ground};
+use super::{
+    composer::{ComposerAction, composer_ground},
+    message::plan_list_in,
+    tasks::TrayPlan,
+};
 
 pub const PHONE_COMPOSER_BUTTON: f32 = TOUCH_TARGET;
 pub const PHONE_COMPOSER_INSET: f32 = 6.0;
@@ -24,6 +28,8 @@ pub const PHONE_COMPOSER_HEIGHT: f32 = PHONE_COMPOSER_BUTTON + 2.0 * PHONE_COMPO
 pub const PHONE_COMPOSER_ROWS: usize = 5;
 pub const PHONE_THUMBNAIL: f32 = 88.0;
 pub const PHONE_QUEUED_HEIGHT: f32 = TOUCH_TARGET;
+const PLAN_LINE: f32 = 24.0;
+const PLAN_LIST_CORNER: f32 = 16.0;
 const GLYPH: f32 = 20.0;
 const BADGE: f32 = 24.0;
 const BADGE_GLYPH: f32 = 12.0;
@@ -413,6 +419,88 @@ pub fn phone_queued_row(
         .when(enabled, |row| {
             row.on_click(move |_, window, cx| on_click(window, cx))
         })
+        .into_any_element()
+}
+
+pub fn phone_plan_tray(
+    id: &str,
+    plan: TrayPlan,
+    open: bool,
+    on_toggle: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> AnyElement {
+    let surface = Surface::new(roles::PHONE_ROW);
+    let theme = cx.theme();
+    let layer = theme.layer(surface, PaintState::Rest);
+    let muted = layer.muted_text();
+    let radius = row_radius(&layer, px(PHONE_QUEUED_HEIGHT));
+    let list = open.then(|| {
+        div()
+            .w_full()
+            .layer(&layer)
+            .rounded(radius.min(px(PLAN_LIST_CORNER)))
+            .corner_smoothing(layer.smoothing)
+            .px(Space::S12)
+            .py(Space::S8)
+            .text_color(layer.text)
+            .child(plan_list_in(
+                &plan.items,
+                TextStyle::TouchSmall,
+                PLAN_LINE,
+                cx,
+            ))
+    });
+    let row_id = SharedString::from(format!("{id}-plan"));
+    let selector = row_id.clone();
+    let row = touch_row_frame(
+        row_id.clone(),
+        surface,
+        px(PHONE_QUEUED_HEIGHT),
+        None,
+        PaintState::Rest,
+        cx,
+    )
+    .role(Role::Button)
+    .accessibility_id(row_id)
+    .debug_selector(move || selector.to_string())
+    .type_style(TextStyle::TouchSmall, cx)
+    .text_color(layer.text)
+    .child(
+        Icon::new(IconName::CircleCheck)
+            .size(px(GLYPH))
+            .flex_none()
+            .text_color(muted),
+    )
+    .child(div().flex_none().child(plan.label))
+    .child(
+        div()
+            .flex_1()
+            .min_w_0()
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .text_ellipsis()
+            .text_color(muted)
+            .children(plan.current),
+    )
+    .child(
+        Icon::new(if open {
+            IconName::ChevronDown
+        } else {
+            IconName::ChevronUp
+        })
+        .size(px(GLYPH))
+        .flex_none()
+        .text_color(muted),
+    )
+    .on_click(move |_, window, cx| {
+        on_toggle(window, cx);
+        cx.stop_propagation();
+    });
+    v_flex()
+        .w_full()
+        .gap(Space::S4)
+        .children(list)
+        .child(row)
         .into_any_element()
 }
 

@@ -7,7 +7,7 @@ use zz_ui::agent::ask::{
     Approval, ApprovalAction, AskChoice, AskParts, AskSubject, PromptRow, approval_subject, rejects,
 };
 use zz_ui::agent::controls::{
-    ComposerAction, composer_action, composer_action_button, git_summary_footer,
+    ComposerAction, composer_action, composer_action_button, git_summary_footer, watch_composer,
 };
 #[cfg(test)]
 use zz_ui::agent::controls::{
@@ -1705,7 +1705,7 @@ impl AgentView {
         state: &AgentPaneState,
         view: &Entity<Self>,
         cx: &mut ala::App,
-    ) -> impl IntoElement {
+    ) -> ala::AnyElement {
         let ground = self.pane_ground(cx);
         let inside = composer_ground(ground, cx);
         let ask = self.ask_parts(state, view, inside, cx);
@@ -1796,27 +1796,32 @@ impl AgentView {
                 git.map(IntoElement::into_any_element).into_iter().collect(),
             ),
         };
+        let prefix = self
+            .render_queue_chip(state, cx)
+            .map(IntoElement::into_any_element)
+            .into_iter()
+            .chain(
+                self.render_plan_tray(state, view, cx)
+                    .map(IntoElement::into_any_element),
+            )
+            .chain(
+                self.render_error(state, cx)
+                    .map(IntoElement::into_any_element),
+            )
+            .chain(self.render_login(view, cx))
+            .chain(completions)
+            .collect();
+        if state.session_capabilities.watch {
+            return watch_composer(prefix);
+        }
         ChatComposer {
             controls,
             composer,
             footer,
-            prefix: self
-                .render_queue_chip(state, cx)
-                .map(IntoElement::into_any_element)
-                .into_iter()
-                .chain(
-                    self.render_plan_tray(state, view, cx)
-                        .map(IntoElement::into_any_element),
-                )
-                .chain(
-                    self.render_error(state, cx)
-                        .map(IntoElement::into_any_element),
-                )
-                .chain(self.render_login(view, cx))
-                .chain(completions)
-                .collect(),
+            prefix,
             over,
         }
+        .into_any_element()
     }
 }
 

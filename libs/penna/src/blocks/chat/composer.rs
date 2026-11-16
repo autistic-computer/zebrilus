@@ -274,7 +274,16 @@ pub fn composer_action_button(
 }
 
 pub fn composer_add_button(id: impl Into<ElementId>, tooltip: &'static str, on: Ground) -> Button {
-    Button::compact_icon(id, IconName::Plus)
+    composer_icon_button(id, IconName::Plus, tooltip, on)
+}
+
+pub fn composer_icon_button(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    tooltip: &'static str,
+    on: Ground,
+) -> Button {
+    Button::compact_icon(id, icon)
         .size(rems_from_px(COMPOSER_BUTTON))
         .secondary()
         .look(ButtonLook::Send)

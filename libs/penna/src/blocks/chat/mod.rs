@@ -38,8 +38,8 @@ pub use card::{
 pub use composer::{
     COMPOSER_BUTTON, COMPOSER_FOOTER_HEIGHT, COMPOSER_HEIGHT, COMPOSER_INSET, COMPOSER_MAX_WIDTH,
     COMPOSER_OUTER_PADDING, COMPOSER_SECTION_GAP, ChatComposer, Composer, ComposerAction,
-    chrome_button, composer_action_button, composer_add_button, composer_ground, context_meter,
-    context_ring, queue_chip,
+    chrome_button, composer_action_button, composer_add_button, composer_ground,
+    composer_icon_button, context_meter, context_ring, queue_chip,
 };
 pub use figure::{DiagramPaint, diagram_paint};
 pub use message::{
@@ -50,8 +50,8 @@ pub(crate) use phone::phone_button;
 pub use phone::{
     AskCard, PHONE_COMPOSER_BUTTON, PHONE_COMPOSER_HEIGHT, PHONE_COMPOSER_INSET,
     PHONE_COMPOSER_ROWS, PHONE_QUEUED_HEIGHT, PHONE_THUMBNAIL, PhoneComposer, phone_action_button,
-    phone_close_button, phone_composer_corner, phone_jump_button, phone_plus_button,
-    phone_queued_row, phone_thumbnail,
+    phone_close_button, phone_composer_corner, phone_jump_button, phone_plan_tray,
+    phone_plus_button, phone_queued_row, phone_thumbnail,
 };
 pub use suggestions::{suggestion_list, suggestion_list_height, suggestion_row};
 pub use tasks::{TrayPlan, plan_tray};

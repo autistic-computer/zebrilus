@@ -149,18 +149,54 @@ pub(crate) fn agent_text_view(
     owner: Option<u64>,
     cx: &App,
 ) -> TextView {
+    agent_chat_text_view(text, scope, owner, None, cx)
+}
+
+pub(crate) fn agent_chat_text_view(
+    text: TextView,
+    scope: u64,
+    owner: Option<u64>,
+    pages: Option<preview::ViewOpener>,
+    cx: &App,
+) -> TextView {
+    let body_pages = pages.clone();
     text.style(agent_markdown_style(cx))
         .code_block_actions(move |code_block, window, cx| {
-            agent_code_block_chrome(code_block, scope, window, cx)
+            agent_code_block_chrome(code_block, scope, pages.as_ref(), window, cx)
         })
         .code_block_body(move |code_block, window, cx| {
-            agent_code_block_body(code_block, scope, owner, window, cx)
+            agent_code_block_body(code_block, scope, owner, body_pages.as_ref(), window, cx)
         })
 }
 
-pub struct AgentHtmlOpener(pub Rc<dyn Fn(String, &mut Window, &mut App)>);
+type HtmlOpen = Rc<dyn Fn(String, &mut Window, &mut App)>;
+
+pub struct AgentHtmlOpener(pub HtmlOpen);
 
 impl Global for AgentHtmlOpener {}
+
+pub(crate) fn html_opener(pages: Option<&preview::ViewOpener>, cx: &App) -> Option<HtmlOpen> {
+    if let Some(opener) = cx.try_global::<AgentHtmlOpener>() {
+        return Some(Rc::clone(&opener.0));
+    }
+    let pages = pages
+        .filter(|_| cx.has_global::<AgentHtmlPreviewer>())?
+        .clone();
+    Some(Rc::new(move |html, window, cx| {
+        pages(
+            preview::ViewRequest {
+                page: true,
+                title: String::new(),
+                content: zz_protocol::ViewContent::Code {
+                    language: Some("html".to_owned()),
+                    text: html,
+                },
+            },
+            window,
+            cx,
+        );
+    }))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HtmlPreviewSize {
@@ -375,6 +411,7 @@ fn agent_code_block_body(
     code_block: &CodeBlock,
     scope: u64,
     owner: Option<u64>,
+    pages: Option<&preview::ViewOpener>,
     window: &mut Window,
     cx: &mut App,
 ) -> Option<AnyElement> {
@@ -445,9 +482,7 @@ fn agent_code_block_body(
             let live = cx
                 .try_global::<AgentHtmlLive>()
                 .map(|live| (Rc::clone(&live.live), Rc::clone(&live.activate)));
-            let opener = cx
-                .try_global::<AgentHtmlOpener>()
-                .map(|opener| Rc::clone(&opener.0));
+            let opener = html_opener(pages, cx);
             let page = code.clone();
             let head = head.clone();
             if let Some(element) = live.as_ref().and_then(|(live, _)| live(block, cx)) {
@@ -533,6 +568,7 @@ fn agent_code_block_body(
 fn agent_code_block_chrome(
     code_block: &CodeBlock,
     scope: u64,
+    pages: Option<&preview::ViewOpener>,
     _window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -541,10 +577,7 @@ fn agent_code_block_chrome(
     let source_offset = code_block.span.map_or(0, |span| span.start);
     let opener = language
         .eq_ignore_ascii_case("html")
-        .then(|| {
-            cx.try_global::<AgentHtmlOpener>()
-                .map(|opener| Rc::clone(&opener.0))
-        })
+        .then(|| html_opener(pages, cx))
         .flatten();
     let visual = previews_by_default(code_block);
     let block = html_block_id(scope, code_block);
@@ -676,6 +709,7 @@ pub(crate) fn chat_markdown_extensions(
             .plugin(visual::VisualPlugin {
                 owner: Some(html.owner),
                 touch: html.touch,
+                pages: open.clone(),
             })
             .plugin(visual::PagePlugin { view: open.clone() });
     }
@@ -1470,6 +1504,7 @@ mod tests {
     struct AnswerTest {
         text: SharedString,
         owner: Option<u64>,
+        pages: Option<preview::ViewOpener>,
     }
 
     impl AnswerTest {
@@ -1477,6 +1512,7 @@ mod tests {
             Self {
                 text: SharedString::from(text.to_owned()),
                 owner,
+                pages: None,
             }
         }
     }
@@ -1485,10 +1521,11 @@ mod tests {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             let scope = self.owner.unwrap_or_default();
             div().w(px(520.0)).h(px(600.0)).child(
-                agent_text_view(
+                agent_chat_text_view(
                     TextView::markdown("answer", self.text.clone()),
                     scope,
                     self.owner,
+                    self.pages.clone(),
                     cx,
                 )
                 .selectable(true)
@@ -1554,6 +1591,19 @@ mod tests {
         assert_eq!(figure.size.height, px(900.0));
     }
 
+    fn hover_html_block(cx: &mut VisualTestContext) {
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let language = cx
+            .debug_bounds("agent-code-language")
+            .expect("the html block is painted");
+        cx.simulate_mouse_move(language.center(), None, ala::Modifiers::none());
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+    }
+
     #[ala::test]
     fn an_html_block_opens_as_a_page_when_the_app_can_show_one(cx: &mut TestAppContext) {
         cx.update(crate::init);
@@ -1564,18 +1614,6 @@ mod tests {
             penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
-        let hover_html_block = |cx: &mut VisualTestContext| {
-            cx.update(|window, cx| {
-                _ = window.draw(cx);
-            });
-            let language = cx
-                .debug_bounds("agent-code-language")
-                .expect("the html block is painted");
-            cx.simulate_mouse_move(language.center(), None, ala::Modifiers::none());
-            cx.update(|window, cx| {
-                _ = window.draw(cx);
-            });
-        };
         hover_html_block(cx);
         assert!(cx.debug_bounds("agent-code-copy").is_some());
         assert!(
@@ -1598,6 +1636,60 @@ mod tests {
         cx.run_until_parked();
 
         assert_eq!(opened.borrow().as_slice(), ["<p>hi</p>"]);
+    }
+
+    #[ala::test]
+    fn a_chat_that_previews_html_opens_a_block_as_a_page_beside_it(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let asked = Arc::new(std::sync::Mutex::new(Vec::<preview::ViewRequest>::new()));
+        let sink = Arc::clone(&asked);
+        let pages: preview::ViewOpener = Arc::new(move |request, _, _| {
+            sink.lock().expect("requests lock").push(request);
+        });
+        let answer = "```html\n<p>hi</p>\n```\n";
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| AnswerTest {
+                pages: Some(pages),
+                ..AnswerTest::new(answer, Some(7))
+            });
+            penna::Root::new(view, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        hover_html_block(cx);
+        assert!(
+            cx.debug_bounds("agent-code-open").is_none(),
+            "a client that cannot preview html cannot show the page"
+        );
+
+        cx.update(|_, cx| {
+            cx.set_global(AgentHtmlPreviewer(Rc::new(|_, _, _| {
+                Task::ready(Err("not drawn".into()))
+            })));
+            cx.refresh_windows();
+        });
+        hover_html_block(cx);
+        let open = cx
+            .debug_bounds("agent-code-open")
+            .expect("an html block offers Open");
+        cx.simulate_click(open.center(), ala::Modifiers::none());
+        cx.run_until_parked();
+
+        let asked = asked.lock().expect("requests lock");
+        assert_eq!(
+            asked.as_slice(),
+            [preview::ViewRequest {
+                page: true,
+                title: String::new(),
+                content: zz_protocol::ViewContent::Code {
+                    language: Some("html".to_owned()),
+                    text: "<p>hi</p>".to_owned(),
+                },
+            }]
+        );
+        assert_eq!(
+            asked[0].command(zz_protocol::PaneId(7), None).args,
+            ["-t", "%7", "-", "--", "<p>hi</p>"]
+        );
     }
 
     #[ala::test]

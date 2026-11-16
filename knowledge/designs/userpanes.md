@@ -452,10 +452,12 @@ up in the numbers.
   out as `ArtifactReply`; the daemon decides whether the page may reply, and the page's promise
   resolves either way, where the desktop's rejects with the reason.
 
-  Open as a page works from an iOS chat too. A page frame without the desktop's opener asks the
-  chat's own view opener with a `ViewRequest` whose `page` is set, and `ViewRequest::command`
-  turns that into `html -t <chat> - -- <text>`, so the page opens beside the chat on the chat's
-  connection; the phone sends it to the daemon in place of its view sheet. The phone stays on the
+  Open as a page works from an iOS chat too. Without the desktop's opener, a page frame, a
+  visual's Open as a page and a plain `html` block's Globe button (and a tap on its preview
+  picture) ask the chat's own view opener with a `ViewRequest` whose `page` is set
+  (`zz_ui::agent::html_opener`, only where `AgentHtmlPreviewer` is set), and
+  `ViewRequest::command` turns that into `html -t <chat> - -- <text>`, so the page opens beside
+  the chat on the chat's connection; the phone sends it to the daemon in place of its view sheet. The phone stays on the
   chat and the page is the next pane. Still missing: a visual going live on a tap, with its reply
   drafting into the composer.
 * **Android** has the same shape as iOS, but its snapshot copies pixels from the window, so the web
@@ -467,7 +469,7 @@ up in the numbers.
   files only, since relative assets have no origin to resolve against. Later.
 
 Until then the web client shows an artifact like any browser pane it can't show, and html blocks
-as code.
+as code with no Open button, since the page it would open is a placeholder.
 
 # Error handling
 

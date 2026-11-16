@@ -165,10 +165,17 @@ pub enum PlanState {
 }
 
 pub fn plan_list(items: &[(PlanState, SharedString)], cx: &App) -> Div {
-    const FONT: f32 = 12.0;
-    const MARKER: f32 = 12.0;
-    const LINE: f32 = 19.0;
-    let drop = cap_center_drop(px(FONT), px(MARKER), cx);
+    plan_list_in(items, TextStyle::Small, 19.0, cx)
+}
+
+pub(crate) fn plan_list_in(
+    items: &[(PlanState, SharedString)],
+    style: TextStyle,
+    line: f32,
+    cx: &App,
+) -> Div {
+    let font = style.design_px();
+    let drop = cap_center_drop(px(font), px(font), cx);
     let muted = cx.theme().foreground.muted();
     let ring = cx.theme().paint(Tone::Accent, Emphasis::Outline);
     let dot = cx.theme().paint(Tone::Accent, Emphasis::Solid).fill;
@@ -177,15 +184,15 @@ pub fn plan_list(items: &[(PlanState, SharedString)], cx: &App) -> Div {
         .children(items.iter().map(|(state, text)| {
             let marker = match state {
                 PlanState::Pending | PlanState::Done => Check::checkbox(*state == PlanState::Done)
-                    .with_size(px(MARKER))
+                    .with_size(px(font))
                     .into_any_element(),
                 PlanState::Current => h_flex()
-                    .size(px(MARKER))
+                    .size(px(font))
                     .flex_none()
                     .justify_center()
                     .rounded(cx.theme().radius / 2.0)
                     .painted(ring, PaintState::Rest)
-                    .child(div().size(px(6.0)).rounded(px(1.5)).bg(dot))
+                    .child(div().size(px(font / 2.0)).rounded(px(font / 8.0)).bg(dot))
                     .into_any_element(),
             };
             h_flex()
@@ -194,7 +201,7 @@ pub fn plan_list(items: &[(PlanState, SharedString)], cx: &App) -> Div {
                 .gap(px(CHROME_GAP))
                 .child(
                     div()
-                        .h(px(LINE))
+                        .h(px(line))
                         .flex_none()
                         .flex()
                         .items_center()
@@ -203,8 +210,8 @@ pub fn plan_list(items: &[(PlanState, SharedString)], cx: &App) -> Div {
                         .child(marker),
                 )
                 .child(
-                    Label::new(TextStyle::Small, text.clone())
-                        .line_height(px(LINE))
+                    Label::new(style, text.clone())
+                        .line_height(px(line))
                         .flex_1()
                         .min_w_0()
                         .when(*state == PlanState::Done, |text| {

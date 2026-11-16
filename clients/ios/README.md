@@ -191,6 +191,10 @@ the native transport, key translation, and UIKit backend.
   Claude permission cards, and queued prompt feedback. Plans, permissions, and
   structured tool output use the shared transcript reducer. Code blocks use the native
   syntax highlighter.
+- An `html` block in an agent chat has an Open button, and a page or visual an Open as a page
+  button, that opens it in a browser pane beside the chat (`html -t <chat>`).
+- On iPhone a chat's plan is a row over the composer that unfolds the plan, and the plus sheet
+  shows the chat's Git branch and changes under its settings.
 - An empty agent chat on iPad is the desktop's: the welcome over the dithered sky, then the
   folder button and Resume, each opening the desktop's popover menu at its desktop size. A tap
   on its search field raises the keyboard and the popover moves up to stay above it. On iPhone

@@ -535,7 +535,14 @@ end no turn.
   `MAX_AGENT_QUEUED_PROMPTS`, `AGENT_REFUSES_IMAGES` when the driver's `ready` capabilities lack
   `images`), and an empty chat reads Resuming the agent's session while a chat reopens and
   Cancelling the current turn after Stop (`agent_empty` with `LensTranscript::settling`, read
-  from the stream's `sessionReset` `restoring` flag). Both open subagents, images and cards in the
+  from the stream's `sessionReset` `restoring` flag). A pane whose driver's `ready` capabilities
+  set `watch` shows the chat with no composer, only what sits above it (queue, plan, errors), on
+  both (`zz_ui::agent::controls::watch_composer`). On iPhone the plan tray is a whole-row button
+  over the composer that unfolds the plan above it (`zz_ui::agent::tasks::phone_plan_tray`), and
+  the plus sheet's first page ends with the chat's Git summary. The web client's composer has an
+  image button beside the plus (an Images row in the plus sheet on a narrow window) that opens the
+  browser's file picker (`attachments::choose_images`), shown when the agent takes images; iOS has
+  no picker yet. Both open subagents, images and cards in the
   [view pane](#previews-and-the-view-pane); a host that gives the chat no view opener (the
   storybook) keeps the subagent PiP and draws diagrams and code inline. The storybook's Agent story
   draws them from fixed chat events. The HTML client (`clients/dom/src/agent.rs` and

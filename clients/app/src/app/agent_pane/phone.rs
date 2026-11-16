@@ -31,6 +31,7 @@ use zz_ui::agent::{
         start_rows,
     },
     question::QuestionCardAction,
+    tasks::phone_plan_tray,
 };
 use zz_ui::target::{TargetItem, TargetPicker};
 
@@ -355,6 +356,11 @@ impl AgentPane {
                 close_sheet(CHAT_SHEET, cx);
                 None
             }
+            PlusAction::Images => {
+                close_sheet(CHAT_SHEET, cx);
+                self.pick_images(cx);
+                None
+            }
             PlusAction::Drill(item) => {
                 self.mention
                     .update(cx, |picker, cx| picker.drill(&item, window, cx));
@@ -536,6 +542,11 @@ impl AgentPane {
                     signs_in: connection.signs_in(),
                     login: self.login.as_ref(),
                     code: self.code.as_ref().map(|field| &field.input),
+                    git: connection
+                        .core
+                        .agent_state(self.pane)
+                        .and_then(|state| state.git.as_ref()),
+                    images: self.picks_images(cx),
                 };
                 let act = entity.downgrade();
                 let sheet = plus.sheet(
@@ -675,6 +686,21 @@ impl AgentPane {
                 move |_, cx| {
                     connection.update(cx, |connection, cx| {
                         connection.send(ProtocolMessage::AgentUnqueue { pane }, cx);
+                    });
+                },
+                cx,
+            ));
+        }
+        if let Some(plan) = self.current_plan(running).filter(|_| card.is_none()) {
+            let entity = cx.entity();
+            prefix.extend(phone_plan_tray(
+                &format!("phone-agent-{}", self.pane.0),
+                &plan,
+                self.plan_open,
+                move |_, cx| {
+                    entity.update(cx, |this, cx| {
+                        this.plan_open = !this.plan_open;
+                        cx.notify();
                     });
                 },
                 cx,

@@ -32,6 +32,8 @@ fn size_error() -> String {
     "The message and its images must total 6 MiB or less.".into()
 }
 
+pub const PICKS_IMAGES: bool = cfg!(target_family = "wasm");
+
 #[cfg(target_family = "wasm")]
 pub use browser::choose_images;
 

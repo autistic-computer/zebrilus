@@ -5,10 +5,10 @@ use ala::{
     SharedString, Subscription, Window, div, prelude::*,
 };
 use penna::{
-    ActiveTheme as _, Ground,
+    ActiveTheme as _, Ground, IconName,
     blocks::chat::{
-        ChatComposer, Composer, composer_ground, empty_state, queue_chip, suggestion_list,
-        suggestion_list_height, suggestion_row,
+        ChatComposer, Composer, composer_ground, composer_icon_button, empty_state, queue_chip,
+        suggestion_list, suggestion_list_height, suggestion_row,
     },
     components::input::{
         IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight, MoveUp, OutdentInline,
@@ -46,6 +46,7 @@ use zz_ui::{
         controls::{
             AccountAction, ComposerAction, ContextUsage, UsagePill, agent_model_picker,
             agent_usage_pill, composer_action, composer_action_button, git_summary_footer,
+            watch_composer,
         },
         login::{CodeField, LoginEvent},
         presentation::{agent_welcome, error_card},
@@ -1120,6 +1121,28 @@ impl AgentPane {
         cx.notify();
     }
 
+    fn picks_images(&self, cx: &App) -> bool {
+        crate::attachments::PICKS_IMAGES
+            && self.connection.read(cx).agent_images_supported(self.pane)
+    }
+
+    fn pick_images(&mut self, cx: &mut Context<Self>) {
+        let chosen = crate::attachments::choose_images();
+        cx.spawn(async move |this, cx| {
+            let chosen = chosen.await;
+            this.update(cx, |this, cx| match chosen {
+                Ok(images) if images.is_empty() => {}
+                Ok(images) => this.attach_images(images, cx),
+                Err(error) => {
+                    this.draft_error = Some(error);
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     fn pending_permissions(&self, cx: &App) -> Vec<PendingPermission> {
         pending_permissions(
             self.transcript.lens.model.permissions(),
@@ -1717,16 +1740,7 @@ impl Render for AgentPane {
         };
         let watch_only = self.connection.read(cx).agent_watch_only(self.pane);
         let composer = if watch_only {
-            div()
-                .flex()
-                .flex_col()
-                .w_full()
-                .flex_none()
-                .gap_2()
-                .px_3()
-                .pb_3()
-                .children(prefix)
-                .into_any_element()
+            watch_composer(prefix)
         } else {
             let controls = self.harness_controls(&state, ready, cx);
             let attachments =
@@ -1765,8 +1779,25 @@ impl Render for AgentPane {
             let command_hint = active_command_hint(&self.last_input, &self.commands)
                 .filter(|_| prompting)
                 .map(Into::into);
-            let add = mention_button(("agent-mention", self.pane.0), &self.mention, inside, cx)
-                .into_any_element();
+            let mention = mention_button(("agent-mention", self.pane.0), &self.mention, inside, cx);
+            let add = if self.picks_images(cx) {
+                penna::h_flex()
+                    .flex_none()
+                    .gap_1()
+                    .child(mention)
+                    .child(
+                        composer_icon_button(
+                            ("agent-images", self.pane.0),
+                            IconName::Image,
+                            "Attach images",
+                            inside,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.pick_images(cx))),
+                    )
+                    .into_any_element()
+            } else {
+                mention.into_any_element()
+            };
             let (composer, footer) = match ask {
                 Some(ask) => {
                     let (composer, hints) = ask.composer(

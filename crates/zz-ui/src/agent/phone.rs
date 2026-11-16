@@ -26,9 +26,11 @@ use penna::{
 use zz_client::agent_login::{self, CardAction, CardGlyph, LoginCard};
 use zz_client::agent_resume::{LOADING, Menu, ResumeRow};
 use zz_client::agent_settings::{self, LensSettings};
-use zz_client::agent_timeline::{ContextUsage, percent_label, unix_now};
+use zz_client::agent_timeline::{ContextUsage, git_file_count_label, percent_label, unix_now};
 use zz_client::window_summary::PaneTile;
-use zz_protocol::{AgentAccount, AgentLogin, AgentProvider, AgentQuota, chat::ItemId};
+use zz_protocol::{
+    AgentAccount, AgentGitSummary, AgentLogin, AgentProvider, AgentQuota, chat::ItemId,
+};
 
 use super::{
     ask::{ApprovalAction, AskChoice, AskSubject},
@@ -75,6 +77,7 @@ pub enum PlusAction {
     Login(LoginEvent),
     Mention(TargetItem),
     Drill(TargetItem),
+    Images,
 }
 
 pub struct PlusSheet<'a> {
@@ -94,6 +97,8 @@ pub struct PlusSheet<'a> {
     pub signs_in: bool,
     pub login: Option<&'a AgentLogin>,
     pub code: Option<&'a Entity<InputState>>,
+    pub git: Option<&'a AgentGitSummary>,
+    pub images: bool,
 }
 
 type OnPlus = Rc<dyn Fn(PlusAction, &mut Window, &mut App)>;
@@ -223,6 +228,14 @@ impl PlusSheet<'_> {
                     PlusAction::Open(PlusPage::Mention(Vec::new())),
                 )),
         ];
+        if self.images {
+            rows.push(
+                TouchRow::new("chat-plus-images", "Images")
+                    .icon(IconName::Image)
+                    .disabled(!self.enabled)
+                    .on_click(act(on_action, PlusAction::Images)),
+            );
+        }
         if let Some(settings) = self.settings {
             let setting = |id: &'static str, title: &'static str, icon, value: String, option| {
                 valued(TouchRow::new(id, title).icon(icon), value)
@@ -461,6 +474,57 @@ impl PlusSheet<'_> {
             .collect()
     }
 
+    fn git(&self, cx: &App) -> Option<AnyElement> {
+        let git = self.git?;
+        let ground = touch_card_ground(cx);
+        let muted = penna::muted_on(ground, cx);
+        let ink = |tone| cx.theme().paint_on(ground, tone, Emphasis::Ghost).text;
+        Some(
+            touch_card(cx)
+                .debug_selector(|| "chat-plus-git".to_owned())
+                .type_style(TextStyle::TouchSmall, cx)
+                .child(
+                    h_flex()
+                        .gap(Space::S8)
+                        .whitespace_nowrap()
+                        .child(
+                            Icon::new(IconName::GitBranch)
+                                .size(px(GLYPH))
+                                .flex_none()
+                                .text_color(muted),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .children(git.branch.clone()),
+                        )
+                        .child(
+                            div()
+                                .flex_none()
+                                .text_color(muted)
+                                .child(git_file_count_label(git.changed_files)),
+                        )
+                        .child(
+                            div()
+                                .flex_none()
+                                .font_features(TABULAR.clone())
+                                .text_color(ink(Tone::Success))
+                                .child(format!("+{}", git.additions)),
+                        )
+                        .child(
+                            div()
+                                .flex_none()
+                                .font_features(TABULAR.clone())
+                                .text_color(ink(Tone::Danger))
+                                .child(format!("-{}", git.deletions)),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
     fn usage(&self, cx: &App) -> Option<AnyElement> {
         let provider = self.provider?;
         let quota = agent_settings::account_quota(self.quotas, provider, self.account, unix_now());
@@ -537,7 +601,8 @@ impl PlusSheet<'_> {
         let (search, groups): (Option<AnyElement>, Vec<AnyElement>) = match page {
             PlusPage::Root => {
                 let mut rows = self.root_rows(&on_action).into_iter();
-                let first = group(rows.next().into_iter().collect());
+                let lead = if self.images { 2 } else { 1 };
+                let first = group(rows.by_ref().take(lead).collect());
                 (
                     None,
                     first.into_iter().chain(group(rows.collect())).collect(),
@@ -559,12 +624,15 @@ impl PlusSheet<'_> {
                 self.mention_sections(drilled, &on_action, cx),
             ),
         };
+        let git = root.then(|| self.git(cx)).flatten();
         let usage = root.then(|| self.usage(cx)).flatten();
         let title = self.title(page);
-        let list = v_flex()
-            .w_full()
-            .children(search)
-            .child(sheet_groups().children(groups).children(usage));
+        let list = v_flex().w_full().children(search).child(
+            sheet_groups()
+                .children(groups)
+                .children(git)
+                .children(usage),
+        );
         let close = if *page == PlusPage::SignIn {
             let on_action = Rc::clone(&on_action);
             sheet_close("phone-chat-sheet-close", cx).on_click(move |_, window, cx| {

@@ -36,7 +36,8 @@ use zz_protocol::{
 use super::preview::{ViewOpener, ViewRequest};
 use super::refs::{ChatRefs, RefLinks, ref_links, ref_text};
 use super::{
-    agent_jump_to_bottom_button, agent_text_view, assistant_markdown_extensions, attachment_tile,
+    agent_chat_text_view, agent_jump_to_bottom_button, agent_text_view,
+    assistant_markdown_extensions, attachment_tile,
 };
 use crate::navigation::pane_stack::status_dot;
 use crate::{
@@ -2295,12 +2296,13 @@ fn markdown(
     let id = SharedString::from(format!("chat-text-{}", id.as_str()));
     let scope = block_scope(hooks.owner, &id);
     let view = TextView::markdown(id, text);
-    let (view, extensions) = match hooks.markdown {
+    let (view, extensions, pages) = match hooks.markdown {
         Some(markdown) => (
             view.links(RefLinks::new(Arc::clone(&markdown.refs))),
             markdown.extensions.clone(),
+            markdown.refs.view.clone(),
         ),
-        None => (view, assistant_markdown_extensions()),
+        None => (view, assistant_markdown_extensions(), None),
     };
     let column = if hooks.touch {
         touch_transcript_text(div().w_full(), cx)
@@ -2309,7 +2311,7 @@ fn markdown(
     };
     column
         .child(
-            agent_text_view(view, scope, hooks.owner, cx)
+            agent_chat_text_view(view, scope, hooks.owner, pages, cx)
                 .selectable(true)
                 .streaming(streaming)
                 .markdown_extensions(extensions),
