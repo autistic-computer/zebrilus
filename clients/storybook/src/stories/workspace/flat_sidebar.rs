@@ -57,6 +57,18 @@ pub const STORY: Story = Story {
             build: |_, cx| cx.new(|_| Live::new(Opened::None, 0)).into(),
         },
         Section {
+            id: "one-face",
+            name: "One face each",
+            summary: "Every row on screen shows one face, so the icon column is one tile wide and every title starts 10px after it. studio is folded: its three-face rows are not drawn, so they do not widen the column.",
+            build: |_, cx| cx.new(|_| Live::one_face(6)).into(),
+        },
+        Section {
+            id: "two-faces",
+            name: "Two faces at most",
+            summary: "The widest stack on screen has two faces, so the column is two faces wide on both machines and one-face rows keep their titles on the same line. The two-face window is open: its pane rows lead from the track as in every other sidebar.",
+            build: |_, cx| cx.new(|_| Live::two_faces(7)).into(),
+        },
+        Section {
             id: "split-open",
             name: "The split chats opened",
             summary: "The window with two chats and cargo test opened: one 32px row per pane in window order on a track from the stack's foot, each with its face, title and age. The parent row keeps its face, title and age; only the chevron turns.",
@@ -385,7 +397,25 @@ impl Machine {
 
 const BOARD_MAC: &str = "/Users/fabrico/dev/zebrilus";
 const SPLIT: WindowId = WindowId(5);
+const FORK: WindowId = WindowId(6);
 const NVIM: WindowId = WindowId(2);
+
+fn keep(mut machine: Machine, windows: &[u64]) -> Machine {
+    for session in &mut machine.sessions {
+        session
+            .windows
+            .retain(|window| windows.contains(&window.id.0));
+    }
+    machine
+}
+
+fn studio() -> Machine {
+    Machine {
+        id: EXTRAS,
+        name: "studio",
+        ..board_macbook()
+    }
+}
 
 fn board_macbook() -> Machine {
     use PaneStatusKind::Permission;
@@ -1007,6 +1037,27 @@ impl Live {
             scroll: ScrollHandle::new(),
             shortcuts: false,
         }
+    }
+
+    fn one_face(section: u32) -> Self {
+        let machines = vec![
+            keep(board_macbook(), &[1, 7]),
+            keep(board_ubuntu(), &[1, 3]),
+            studio(),
+        ];
+        let mut live = Self::with(machines, Opened::None, section);
+        live.folded.insert(PaletteHostId(section * 10 + EXTRAS.0));
+        live.focus.1 = WindowId(1);
+        live
+    }
+
+    fn two_faces(section: u32) -> Self {
+        let machines = vec![keep(board_macbook(), &[1, 6, 7]), board_ubuntu()];
+        let mut live = Self::with(machines, Opened::None, section);
+        let mac = PaletteHostId(section * 10 + MACBOOK.0);
+        live.open.insert((mac, FORK));
+        live.focus = (mac, FORK);
+        live
     }
 
     const fn shortcuts(mut self) -> Self {

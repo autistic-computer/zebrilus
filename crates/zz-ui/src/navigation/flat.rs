@@ -229,6 +229,7 @@ pub struct FlatRowState {
     pub hovered: bool,
     pub dimmed: bool,
     pub ground: Option<Ground>,
+    pub column: usize,
 }
 
 impl FlatRowState {
@@ -591,6 +592,7 @@ fn main_row(
                 (!state.dimmed).then_some(handler),
                 cx,
             )
+            .room(state.column)
             .beside(
                 v_flex()
                     .flex_1()
@@ -1322,6 +1324,23 @@ fn pile_group(
     group(parent, nested, nested_at.is_some(), cx)
 }
 
+fn shown_faces(row: &FlatRow) -> usize {
+    match row {
+        FlatRow::Window(window) => window.row.summary.tiles.len(),
+        FlatRow::Pile(pile) => pile.pile.faces.len().min(pile.pile.summary.tiles.len()),
+    }
+}
+
+fn column_faces(hosts: &[FlatHost]) -> usize {
+    hosts
+        .iter()
+        .filter(|host| !host.folded)
+        .flat_map(|host| &host.rows)
+        .map(shown_faces)
+        .max()
+        .unwrap_or(1)
+}
+
 pub fn flat_sidebar(
     hosts: &[FlatHost],
     state: FlatState,
@@ -1330,6 +1349,7 @@ pub fn flat_sidebar(
     ground: Ground,
     cx: &App,
 ) -> Div {
+    let column = column_faces(hosts);
     let mut list = v_flex()
         .w_full()
         .flex_none()
@@ -1355,6 +1375,7 @@ pub fn flat_sidebar(
         let base = FlatRowState {
             dimmed: !host.live(),
             ground: Some(ground),
+            column,
             ..FlatRowState::default()
         };
         let current = state
@@ -1454,6 +1475,80 @@ mod tests {
         let settings = cx.debug_bounds("settings").unwrap();
         assert_eq!(settings.right(), rows.right() - SIDEBAR_SCROLLBAR_GUTTER);
         assert_eq!(settings.left(), rows.left());
+    }
+
+    #[test]
+    fn the_icon_column_fits_the_widest_stack_on_unfolded_hosts() {
+        let summary = |window: u64, faces: u64| WindowSummary {
+            window: WindowId(window),
+            index: 0,
+            headline: PaneId(window * 10),
+            title: String::new(),
+            detail: Vec::new(),
+            changed_at: 0,
+            tiles: (0..faces)
+                .map(|pane| PaneTile {
+                    pane: PaneId(window * 10 + pane),
+                    tag: PaneTag::Terminal,
+                    label: String::new(),
+                    program: None,
+                    attention: Attention::None,
+                })
+                .collect(),
+            attention: Attention::None,
+        };
+        let window = |id: u64, faces: u64| {
+            FlatRow::Window(FlatWindow::new(WindowRow {
+                session: zz_protocol::SessionId(0),
+                summary: summary(id, faces),
+                open_detail: Vec::new(),
+                chat: true,
+                opens: faces > 1,
+                panes: Vec::new(),
+                shortcut: None,
+            }))
+        };
+        let pile = |faces: u64| {
+            FlatRow::Pile(FlatPile {
+                pile: Pile {
+                    summary: summary(90, faces),
+                    open_detail: Vec::new(),
+                    working: false,
+                    faces: (0..faces).map(|face| WindowId(90 + face)).collect(),
+                    windows: Vec::new(),
+                },
+                open: false,
+            })
+        };
+        let host = |id: u32, folded: bool, rows: Vec<FlatRow>| FlatHost {
+            id: PaletteHostId(id),
+            name: "host".into(),
+            remote: id > 0,
+            platform: zz_protocol::HostPlatform::Macos,
+            connection: HostConnection::Connected,
+            folded,
+            rollup: AttentionRollup::default(),
+            rows,
+            now: 0,
+        };
+        let column = |hosts: &[FlatHost]| StackSize::Row.width(column_faces(hosts));
+        assert_eq!(
+            column(&[host(0, false, vec![window(1, 1), window(2, 1)])]),
+            28.0
+        );
+        assert_eq!(
+            column(&[
+                host(0, false, vec![window(1, 1)]),
+                host(1, false, vec![window(2, 2)]),
+                host(2, true, vec![window(3, 3), pile(3)]),
+            ]),
+            35.0
+        );
+        assert_eq!(
+            column(&[host(0, false, vec![window(1, 1), window(2, 5)])]),
+            42.0
+        );
+        assert_eq!(column(&[host(0, false, vec![window(1, 2), pile(3)])]), 42.0);
     }
 
     #[test]

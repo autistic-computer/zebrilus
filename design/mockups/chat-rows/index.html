@@ -188,7 +188,7 @@
 
   const dot = (tone) => (tone ? `<span class="zz-dot" data-tone="${tone}"></span>` : "");
   const tiles = (faces, step) => faces.slice(0, 3).map((face, slot) => `<span class="zz-tile" data-penna="tile.stack" style="left: ${slot * step}px; z-index: ${10 - slot}">${slot === 0 ? ic(face.icon) : ""}${dot(face.tone)}</span>`).join("");
-  const stack = (faces) => `<span class="zz-stack" style="width: ${28 + (Math.min(3, faces.length) - 1) * 7}px">${tiles(faces, 7)}</span>`;
+  const stack = (faces, column) => `<span class="zz-stack" style="width: ${28 + (Math.min(3, column) - 1) * 7}px">${tiles(faces, 7)}</span>`;
   const lead = (faces, room) => `<span class="zz-lead" style="width: ${20 + (room - 1) * 5}px">${tiles(faces, 5)}</span>`;
   const parts = (detail) => detail.map(([part, tone = "muted"]) => `<span data-tone="${tone}">${esc(part)}</span>`).join("");
   const chevron = (open, hover) => ic("chevron-right", ` class="zz-chev"${open ? " data-open" : ""}${hover ? ` data-state="hover"` : ""}`);
@@ -200,16 +200,17 @@
   };
   const pointer = (x, y) => `<span class="zz-pointer" style="left: ${x}px; top: ${y}px"></span>`;
 
-  const mainRow = ({ faces, body, current, hover, plain, number, chev = "", extra = "" }) =>
-    `<div class="zz-row" data-penna="row.nav" role="button"${states(current && "current", hover && "hover")}${plain ? " data-plain" : ""}>${stack(faces)}<span class="zz-text"><span class="zz-title"><span class="zz-label" data-penna-text>${esc(body.title)}</span>${body.working ? spinner : ""}${chev}</span><span class="zz-line"><span class="zz-parts">${parts(body.detail)}</span>${body.age ? `<span class="zz-age">${body.age}</span>` : ""}</span></span>${kbd(number)}${extra}</div>`;
+  const mainRow = ({ faces, column, body, current, hover, plain, number, chev = "", extra = "" }) =>
+    `<div class="zz-row" data-penna="row.nav" role="button"${states(current && "current", hover && "hover")}${plain ? " data-plain" : ""}>${stack(faces, column)}<span class="zz-text"><span class="zz-title"><span class="zz-label" data-penna-text>${esc(body.title)}</span>${body.working ? spinner : ""}${chev}</span><span class="zz-line"><span class="zz-parts">${parts(body.detail)}</span>${body.age ? `<span class="zz-age">${body.age}</span>` : ""}</span></span>${kbd(number)}${extra}</div>`;
   const trailing = ({ word, tone, working, age }) => (word ? `<span class="zz-word" data-tone="${tone}">${word}</span>` : working ? spinner : age ? `<span class="zz-age">${age}</span>` : "");
   const nestRow = ({ faces, room, title, plain, current, hover, tail, extra = "" }) =>
     `<div class="zz-row zz-nest" data-penna="row.nav" role="button"${states(current && "current", hover && "hover")}${plain ? " data-plain" : ""}>${lead(faces, room)}<span class="zz-one"><span class="zz-label" data-penna-text>${esc(title)}</span>${tail}</span>${extra}</div>`;
 
-  const windowGroup = (win, { number, open = false, hover = null, chevHover = false, ticks = false }) => {
+  const windowGroup = (win, { column, number, open = false, hover = null, chevHover = false, ticks = false }) => {
     const several = win.panes.length > 1;
     const head = mainRow({
       faces: facesOf(win),
+      column,
       body: headline(win, open),
       current: win.current && !open,
       hover: chevHover,
@@ -232,14 +233,14 @@
     const lit = win.current;
     return `<div class="zz-group"${lit ? " data-lit" : ""}${ticks ? " data-ticks" : ""}>${head}${nested}</div>`;
   };
-  const pileGroup = (wins, { open = false } = {}) => {
+  const pileGroup = (wins, { column, open = false }) => {
     const first = Math.max(0, wins.findIndex((win) => win.current));
     const piled = [wins[first], ...wins.filter((_, index) => index !== first)];
     const faces = piled.map((win) => ({ icon: iconOf(win.panes[frontOf(win)]), tone: loudest(win.panes) }));
     const top = headline(piled[0]);
     const behind = open ? null : piled.slice(1).find((win) => LOUD.has(loudest(win.panes)));
     const detail = behind ? [headline(behind).detail[0], [` · ${headline(behind).title}`]] : top.detail;
-    const head = mainRow({ faces, body: { ...top, detail }, current: !open && wins.some((win) => win.current), plain: true, chev: chevron(open) });
+    const head = mainRow({ faces, column, body: { ...top, detail }, current: !open && wins.some((win) => win.current), plain: true, chev: chevron(open) });
     if (!open) return head;
     const room = Math.min(3, Math.max(...wins.map((win) => win.panes.length)));
     const nested = wins.map((win) => {
@@ -251,20 +252,28 @@
   };
 
   const action = (icon, label) => `<div class="zz-action" data-penna="sidebar.row" role="button">${ic(icon)}<span data-penna-text>${label}</span></div>`;
+  const faceCounts = (windows) => HOSTS.flatMap((_, hostIndex) => {
+    const mine = windows.filter((win) => win.host === hostIndex);
+    const plain = mine.filter((win) => !hasChat(win));
+    return [...mine.filter(hasChat).map((win) => facesOf(win).length), ...(plain.length > 1 ? [plain.length] : plain.map((win) => facesOf(win).length))];
+  });
+  const columnOf = (counts) => Math.min(3, Math.max(1, ...counts));
   const listHtml = (windows, { open = new Set(), pile = false, hover = null, chevHover = null, ticks = false } = {}) => {
     let number = 0;
+    const column = columnOf(faceCounts(windows));
     return HOSTS.map((host, hostIndex) => {
       const mine = windows.map((win, at) => ({ win, at })).filter(({ win }) => win.host === hostIndex);
       const chats = mine.filter(({ win }) => hasChat(win));
       const plain = mine.filter(({ win }) => !hasChat(win)).map(({ win }) => win);
       const rows = chats.map(({ win, at }) => windowGroup(win, {
+        column,
         number: ++number <= 9 ? number : null,
         open: open.has(at),
         hover: hover && hover[0] === at ? hover[1] : null,
         chevHover: chevHover === at,
         ticks,
       })).join("");
-      const tail = plain.length > 1 ? pileGroup(plain, { open: pile && hostIndex === 0 }) : plain.map((win) => windowGroup(win, {})).join("");
+      const tail = plain.length > 1 ? pileGroup(plain, { column, open: pile && hostIndex === 0 }) : plain.map((win) => windowGroup(win, { column })).join("");
       return `<div class="zz-host" role="button">${ic(host.icon)}<span data-penna-text>${host.name}</span></div>${rows}${tail}`;
     }).join("");
   };
@@ -273,7 +282,8 @@
 
   const ticks = () => {
     const win = WINDOWS[SPLIT];
-    return `<div class="zz-snip"><nav class="zz-nav" data-penna="sidebar"><div class="zz-list">${windowGroup(win, { number: 3, open: true, ticks: true })}${windowGroup(WINDOWS[FORK], { number: 4 })}</div></nav></div>`;
+    const column = columnOf([win, WINDOWS[FORK]].map((one) => facesOf(one).length));
+    return `<div class="zz-snip"><nav class="zz-nav" data-penna="sidebar"><div class="zz-list">${windowGroup(win, { column, number: 3, open: true, ticks: true })}${windowGroup(WINDOWS[FORK], { column, number: 4 })}</div></nav></div>`;
   };
 
   const header = (icon, title) => `<div data-penna="bar.pane"><div data-penna="button.title">${ic(icon)}<span>${esc(title)}</span></div><span class="zz-grow"></span><button data-penna="icon-button.bar" aria-label="Pane menu">${ic("ellipsis")}</button></div>`;
@@ -324,14 +334,14 @@
     ["Sidebar", "256 wide; list right gutter 8; x below is from the sidebar's left edge", "SIDEBAR_DEFAULT_WIDTH, SIDEBAR_SCROLLBAR_GUTTER"],
     ["Row fill", "inset 6 left and right, 1 top and bottom; row.nav look", "theme.row_inset, WORKSPACE_TREE_FILL_VERTICAL_INSET"],
     ["Window row", "48 high; content from x 16 (6 + 10); trailing pad 19", "ROW_HEIGHT, ROW_PADDING, row_trailing_inset"],
-    ["Window stack", "tile 28, glyph 16, step 7; as wide as its faces: 28, 35 or 42, from x 16", "StackSize::Row"],
-    ["Window text", "stack + gap 10: x 54 after one face, 61 after two, 68 after three; title Body 13/17 medium; second line Small 12/15, gap 1", "TILE_GAP, TITLE_LINE, DETAIL_LINE, LINE_GAP"],
+    ["Window stack", "tile 28, glyph 16, step 7, from x 16; one icon column for the whole sidebar, as wide as the widest stack drawn: 28 when every row shows one face, 35 when the widest shows two, 42 for three. Rows under a folded machine do not count; rows scrolled out of view do", "StackSize::Row, column_faces"],
+    ["Window text", "column + gap 10, the same x on every row and machine: 54, 61 or 68; title Body 13/17 medium; second line Small 12/15, gap 1", "TILE_GAP, TITLE_LINE, DETAIL_LINE, LINE_GAP"],
     ["Age, badge", "Caption 11 tabular, gap 8; ⌘ cap (Kbd small) replaces the age", "AGE, DETAIL_AGE_GAP, window_shortcut_cap"],
     ["Chevron", "Disclosure 10 after the title, gap 6; foreground.muted, foreground on hover; turns 90° open", "CHEVRON_SIZE, TITLE_TRAILING_GAP"],
     ["Status dot", "round(tile × 0.3), min 5: 8 on 28, 6 on 20; ring 1.5 in the row's ground; offset −2.5 right and bottom", "DOT_SHARE, DOT_RING, DOT_OVERHANG"],
     ["Nested row", "32 high, one line, same row.nav fill and insets", "new; = WORKSPACE_TREE_ROW_HEIGHT"],
-    ["Nested lead", "x 38 = 58 − 20, ending where a three-face stack ends; tile 20, glyph 14, step 5; a pile's rows reserve its widest stack, up to 30", "new; StackSize::Bar"],
-    ["Nested text", "x = 38 + stack width + 10: 68 after one face, lining up with a three-face window title; 73 after two, 78 after three. Body 13/17, medium for chats, regular otherwise", "new"],
+    ["Nested lead", "x 38 whatever the column, 8 right of the track; ends where a 42 column ends; tile 20, glyph 14, step 5; a pile's rows reserve its widest stack, up to 30", "new; StackSize::Bar"],
+    ["Nested text", "x = 38 + stack width + 10: 68 after one face, lining up with the window titles when the column is 42; 73 after two, 78 after three. Body 13/17, medium for chats, regular otherwise", "new"],
     ["Nested trailing", "one of: status word Caption 11 in its tone, spinner 12, age Caption 11 tabular; gap 8; trailing pad 19", "new"],
     ["Track", "x 30 = 6 + 10 + 28/2, the front tile's center; 1 device px wide", "new; IndentGuides hairline"],
     ["Track length", "from the parent row's top + 42 (stack bottom + 4) to the last nested row's bottom − 4", "TREE_INDENT_GUIDE_PADDING"],

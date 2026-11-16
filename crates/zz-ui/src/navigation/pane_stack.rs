@@ -227,6 +227,7 @@ pub struct PaneStack {
     radius: Pixels,
     dimmed: f32,
     beside: Option<(AnyElement, Pixels)>,
+    room: usize,
     dots: Dots,
 }
 
@@ -246,6 +247,7 @@ impl PaneStack {
             radius,
             dimmed: 0.0,
             beside: None,
+            room: 1,
             dots: Dots::Loudest,
         }
     }
@@ -253,6 +255,12 @@ impl PaneStack {
     #[must_use]
     pub const fn dot_each_face(mut self) -> Self {
         self.dots = Dots::EachFace;
+        self
+    }
+
+    #[must_use]
+    pub fn room(mut self, tiles: usize) -> Self {
+        self.room = tiles;
         self
     }
 
@@ -591,6 +599,10 @@ impl RenderOnce for PaneStack {
         let Some((content, gap)) = beside else {
             return stack.into_any_element();
         };
+        let stack = div()
+            .flex_none()
+            .w(px(size.width(self.room.max(shown))))
+            .child(stack);
         let row = div()
             .flex()
             .flex_1()
