@@ -126,6 +126,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     expected["pointer"] = "hand".into();
     expected["motion"] = "default".into();
     expected["mono_font_family"] = "".into();
+    expected["notifications"] = true.into();
     let fields = expected.as_object_mut().unwrap();
     for retired in [
         "theme",

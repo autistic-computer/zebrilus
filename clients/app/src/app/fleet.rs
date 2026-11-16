@@ -167,6 +167,7 @@ impl AppShell {
             let observer = cx.observe(&previous, |_, _, cx| cx.notify());
             self.fleet.insert(index, (previous, observer));
             self.reset_host_state();
+            self.attention.forget_host(cx);
             self._connection_subscriptions = watch_connection(&self.connection, window, cx);
             let connection = self.connection.read(cx);
             self.connected = connection.connected;

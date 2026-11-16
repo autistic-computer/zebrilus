@@ -103,7 +103,8 @@ answer first. Surfaces without a PTY (output views) leave
   `if-shell -F '#{?pane_status_reported,,#{==:#{pane_pid},PID}}' 'set-option … @agent_state …'`,
   so a report that lands while it waits still wins, and a sample taken before `respawn-pane`
   does not land on the new process.
-- Desktop sidebar: every terminal pane feeds `AgentAttentionTracker` from its tree record
+- Desktop sidebar: every terminal pane feeds `AgentAttentionTracker`
+  (`crates/zz-client/src/attention.rs`) from its tree record
   (`agent_pane_statuses` in `crates/zz/src/workspace/sidebar.rs`), idle until it reports. `blocked` and `error` show the needs-input and failed badges and ring the
   request chime, even on a pane's first report. `done` rings the completion chime and leaves the
   finished badge until the pane is watched, whether or not the tracker saw `working` first (a
@@ -111,7 +112,18 @@ answer first. Surfaces without a PTY (output views) leave
   Chimes closer than two seconds apart are dropped, since any program can flip its state as
   fast as it writes. While zz is in the background the same edges post a desktop notification
   named after `app` with `msg` as its body, at most one per pane every two seconds; clicking it
-  selects the pane (`crates/zz/src/agent/notify.rs`).
+  selects the pane (`zz_client::attention::banner`).
+- Thin clients (web, iPad, iPhone, Android): the attached host's terminal panes and agent panes
+  feed the same tracker (`zz_client::attention::pane_statuses`, `clients/app/src/app/attention.rs`)
+  on every snapshot, agent state change and focus change, watching the active pane only while
+  the window is active. They ring the same chimes (`clients/app/src/chime.rs`: a system sound on
+  iOS, an audio element on the web, nothing on Android) and, while the app is inactive or in the
+  background and the device setting Notify when a pane needs you is on, post the same
+  notifications through ala (UNUserNotificationCenter on iOS; the web Notification API, whose
+  permission is asked on the first click or key press after a notification was due). Tapping one
+  selects the pane. The count of panes that need you, failed or finished unseen is the app icon
+  badge on iOS and an `(N)` prefix on the web tab title. A suspended iPad gets nothing: that
+  would need a push service.
 
 - Flat window list: on desktop, web and iPad, `zz_client::window_summary::pane_attention` turns
   the tree record into a row for any pane kind ([flat sidebar data](/designs/flat-sidebar-data.md)),
@@ -124,5 +136,5 @@ answer first. Surfaces without a PTY (output views) leave
   until that client focuses back in ([snapshots](/protocol/snapshots.md#pane-status-summary-and-time)).
 
 Not yet covered: the web and iPad session tree and the tray read only the agent runtime state of
-panes with an open lens, the TUI sidebar reads none of it, and only the desktop app notifies. Revision 0.4 dropped the terminfo capability;
+panes with an open lens, and the TUI sidebar reads none of it. Revision 0.4 dropped the terminfo capability;
 programs use the query.

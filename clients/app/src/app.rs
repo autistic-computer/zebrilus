@@ -1,4 +1,5 @@
 mod agent_pane;
+mod attention;
 #[cfg(any(target_os = "ios", target_os = "android"))]
 mod authentication;
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -152,6 +153,7 @@ pub struct AppShell {
     sidebar_active: Option<sidebar::Node>,
     flat: sidebar::Flat,
     unseen_agents: BTreeSet<PaneId>,
+    attention: attention::Attention,
     chrome: ChromeKeymap,
     prompt: Option<Entity<CommandPaletteView>>,
     prompt_revision: u64,
@@ -216,6 +218,7 @@ fn watch_connection(
                     {
                         this.unseen_agents.insert(*pane);
                     }
+                    this.reconcile_attention(window, cx);
                 }
                 zz_client::CoreEvent::HelloReceived | zz_client::CoreEvent::Attached { .. } => {
                     if matches!(event, zz_client::CoreEvent::HelloReceived) {
@@ -243,6 +246,7 @@ fn watch_connection(
                 }
                 zz_client::CoreEvent::SnapshotChanged => {
                     sidebar::follow_chat_view(this, cx);
+                    this.reconcile_attention(window, cx);
                     if this.split_drag.is_some_and(|state| {
                         state.committed_generation.is_some_and(|generation| {
                             generation < connection.read(cx).core.snapshot().generation
@@ -373,6 +377,7 @@ impl AppShell {
             for connection in this.host_connections() {
                 connection.update(cx, |connection, cx| connection.set_focused(active, cx));
             }
+            this.reconcile_attention(window, cx);
         });
         let settings_controls = settings::Controls::new(&preferences, window, cx);
         let roster = cx.new(|_| Roster::default());
@@ -425,6 +430,7 @@ impl AppShell {
             sidebar_active: None,
             flat: sidebar::Flat::default(),
             unseen_agents: BTreeSet::new(),
+            attention: attention::Attention::default(),
             chrome: ChromeKeymap::for_profile(if cfg!(target_os = "ios") {
                 ChromeProfile::DesktopApple
             } else {

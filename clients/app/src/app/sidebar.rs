@@ -117,7 +117,7 @@ fn rename_command(
     sidebar_rename_command(snapshot, target)
 }
 
-fn activate(connection: &Entity<Connection>, target: Target, cx: &mut App) {
+pub(super) fn activate(connection: &Entity<Connection>, target: Target, cx: &mut App) {
     connection.update(cx, |connection, cx| {
         if !connection.connected {
             if target == Target::Host {

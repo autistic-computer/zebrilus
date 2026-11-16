@@ -3,8 +3,6 @@ pub(crate) mod launch;
 
 #[cfg(feature = "agent-pane")]
 pub(crate) mod controller;
-#[cfg(feature = "agent-pane")]
-pub(crate) mod notify;
 pub(crate) mod sound;
 #[cfg(feature = "agent-pane")]
 mod view;

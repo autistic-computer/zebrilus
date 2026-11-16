@@ -26,6 +26,7 @@ pub struct Preferences {
     pub extend_bottom_safe_area: bool,
     pub keep_screen_awake: bool,
     pub system_text_size: bool,
+    pub notifications: bool,
 }
 
 impl Default for Preferences {
@@ -52,6 +53,7 @@ impl Default for Preferences {
             extend_bottom_safe_area: false,
             keep_screen_awake: false,
             system_text_size: true,
+            notifications: true,
         }
     }
 }

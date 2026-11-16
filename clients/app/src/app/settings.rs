@@ -719,6 +719,22 @@ impl AppShell {
                             )
                         },
                     )
+                    .child(
+                        SettingsStack::titled("Notifications").child(
+                            SettingEntry::new("Notify when a pane needs you")
+                                .description("While zz is in the background")
+                                .control(
+                                    Switch::new("settings-notifications")
+                                        .checked(self.preferences.notifications)
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.preferences.notifications =
+                                                !this.preferences.notifications;
+                                            this.preferences.save();
+                                            cx.notify();
+                                        })),
+                                ),
+                        ),
+                    )
                     .when(shown(Setting::CommandPalette, phone), |page| {
                         page.child(
                             SettingsStack::titled("Experimental")

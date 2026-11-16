@@ -11803,6 +11803,7 @@ dependencies = [
  "web-time",
  "zz-daemon",
  "zz-daemon-client",
+ "zz-mux",
  "zz-protocol",
  "zz-terminal",
 ]
