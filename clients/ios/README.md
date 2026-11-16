@@ -202,7 +202,8 @@ the native transport, key translation, and UIKit backend.
   switches the pane's browser profile (Default or any profile the host's browser panes
   use), zooms the page, clears site data, reloads and starts the picker. The button at
   the start of the address field opens the site menu: whether the connection is secure,
-  Sound (mutes the tab's audio and video elements, kept across navigations) and Clear
+  Sound (mutes the page's audio and video elements and suspends its Web Audio, kept
+  across navigations; frames from other sites keep playing) and Clear
   cookies and site data, which asks first, clears everything WebKit keeps for the site's
   domain in this profile and reloads. Addresses that are not URLs go to the search
   engine picked in Settings › Advanced › Browser, a setting kept on the iPad.

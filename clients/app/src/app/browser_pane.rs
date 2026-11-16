@@ -305,7 +305,13 @@ impl BrowserPane {
     }
 
     fn toggle_element_pick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.writable(cx) || !self.visible {
+        if self.visible {
+            self.switch_element_pick(window, cx);
+        }
+    }
+
+    fn switch_element_pick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.writable(cx) {
             return;
         }
         let tab = &mut self.tabs[self.active];
@@ -1042,7 +1048,7 @@ impl BrowserPane {
             let Some(browser) = pane.upgrade() else {
                 return menu;
             };
-            let (state, url) = {
+            let (state, url, picking) = {
                 let this = browser.read(cx);
                 let tab = &this.tabs[this.active];
                 let label = |profile: &str| {
@@ -1070,6 +1076,7 @@ impl BrowserPane {
                         picker_active: tab.picking,
                     },
                     tab.url.clone(),
+                    tab.picking,
                 )
             };
             let open_url = url.clone();
@@ -1114,7 +1121,11 @@ impl BrowserPane {
                     let _ = reload.update(cx, Self::reload);
                 })
                 .toggle_picker(move |window, cx| {
-                    let _ = picker.update(cx, |this, cx| this.toggle_element_pick(window, cx));
+                    let _ = picker.update(cx, |this, cx| {
+                        if this.tabs[this.active].picking == picking {
+                            this.switch_element_pick(window, cx);
+                        }
+                    });
                 });
             browser_action_menu(menu, window, cx, state, actions)
         })
@@ -1766,13 +1777,52 @@ const SOUND_SCRIPT: &str = r"(muted => {
     for (const type of ['play', 'playing', 'volumechange']) {
       document.addEventListener(type, event => state.hush(event.target), true);
     }
+    state.contexts = new Set();
+    state.quiet = context => {
+      if (state.muted && context.state !== 'closed') {
+        state.held.add(context);
+        context.suspend();
+      }
+    };
+    const Audio = globalThis.AudioContext;
+    if (Audio) {
+      const resume = Audio.prototype.resume;
+      Audio.prototype.resume = function (...args) {
+        if (state.muted) {
+          state.held.add(this);
+          return Promise.resolve();
+        }
+        return resume.apply(this, args);
+      };
+      globalThis.AudioContext = new Proxy(Audio, {
+        construct(target, args, newTarget) {
+          const context = Reflect.construct(target, args, newTarget);
+          state.contexts.add(context);
+          state.quiet(context);
+          return context;
+        },
+      });
+    }
     return state;
   })();
   sound.muted = muted;
   if (muted) {
     document.querySelectorAll('audio, video').forEach(sound.hush);
+    sound.contexts.forEach(context => {
+      if (context.state === 'closed') {
+        sound.contexts.delete(context);
+      } else if (context.state === 'running') {
+        sound.quiet(context);
+      }
+    });
   } else {
-    sound.held.forEach(media => { media.muted = false; });
+    sound.held.forEach(held => {
+      if (held instanceof HTMLMediaElement) {
+        held.muted = false;
+      } else if (held.state !== 'closed') {
+        held.resume();
+      }
+    });
     sound.held.clear();
   }
 })";
