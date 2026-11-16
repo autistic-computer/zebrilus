@@ -66,15 +66,15 @@ pub fn flip_command(pane: PaneId, mode: FlipMode) -> CommandInvocation {
 pub const DEFAULT_ACCOUNT: &str = "default";
 
 #[must_use]
-pub fn account_command(pane: PaneId, account: Option<&str>) -> CommandInvocation {
-    CommandInvocation::new(
-        "agent-account",
-        [
-            "-t".to_owned(),
-            pane.to_string(),
-            account.unwrap_or(DEFAULT_ACCOUNT).to_owned(),
-        ],
-    )
+pub fn account_command(pane: PaneId, account: Option<&str>, mode: FlipMode) -> CommandInvocation {
+    let mut args = vec!["-t".to_owned(), pane.to_string()];
+    args.extend(
+        mode.flag()
+            .filter(|_| mode != FlipMode::Cancel)
+            .map(str::to_owned),
+    );
+    args.push(account.unwrap_or(DEFAULT_ACCOUNT).to_owned());
+    CommandInvocation::new("agent-account", args)
 }
 
 #[must_use]
@@ -209,10 +209,22 @@ impl AgentFlips {
         account: Option<&str>,
         send: impl FnOnce(CommandInvocation) -> Option<u64>,
     ) -> bool {
-        if !matches!(self.state(pane), Flip::Idle | Flip::AccountBusy(_)) {
+        self.switch_account_when(pane, account, FlipMode::Ask, send)
+    }
+
+    pub fn switch_account_when(
+        &mut self,
+        pane: PaneId,
+        account: Option<&str>,
+        mode: FlipMode,
+        send: impl FnOnce(CommandInvocation) -> Option<u64>,
+    ) -> bool {
+        if mode == FlipMode::Cancel
+            || !matches!(self.state(pane), Flip::Idle | Flip::AccountBusy(_))
+        {
             return false;
         }
-        let Some(request) = send(account_command(pane, account)) else {
+        let Some(request) = send(account_command(pane, account, mode)) else {
             return false;
         };
         self.track(pane, FlipTo::Cli, Sent::Account, request);
@@ -523,6 +535,13 @@ mod tests {
         flips.switch_account(PANE, Some("a1"), sender(&log));
         assert_eq!(flips.settle(3, Ok(())), None);
         assert_eq!(flips.state(PANE), &Flip::Idle);
+
+        assert!(flips.switch_account_when(PANE, Some("a3"), FlipMode::WhenIdle, sender(&log)));
+        assert_eq!(args(&log.0.borrow()[3]), ["-t", "%7", "--when-idle", "a3"]);
+        assert_eq!(flips.settle(4, Ok(())), None);
+        assert!(flips.switch_account_when(PANE, None, FlipMode::Now, sender(&log)));
+        assert_eq!(args(&log.0.borrow()[4]), ["-t", "%7", "--now", "default"]);
+        assert!(!flips.switch_account_when(PANE, None, FlipMode::Cancel, sender(&log)));
     }
 
     fn pane(kind: PaneKindSnapshot, program: &str) -> PaneSnapshot {

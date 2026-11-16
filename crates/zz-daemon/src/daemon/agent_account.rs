@@ -1,28 +1,42 @@
+use super::agent_flip::FlipWhenBusy;
 use super::*;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct AgentAccountArgs {
     pub(super) target: Option<String>,
     pub(super) account: Option<String>,
+    pub(super) when_busy: FlipWhenBusy,
 }
 
 pub(super) fn parse_agent_account_args(args: &[RawText]) -> Result<AgentAccountArgs, ServerError> {
     let spec = zz_protocol::catalog_command_spec("agent-account").expect("registered command");
     let parsed = zz_protocol::parse_tmux_options(spec, args)?;
     let mut target = None;
+    let mut when_busy = FlipWhenBusy::Refuse;
     for option in parsed.options {
-        match option {
-            zz_protocol::TmuxOption::Value("-t", value) => target = Some(value.to_owned()),
+        let mode = match option {
+            zz_protocol::TmuxOption::Value("-t", value) => {
+                target = Some(value.to_owned());
+                continue;
+            }
+            zz_protocol::TmuxOption::Flag("--now") => FlipWhenBusy::Now,
+            zz_protocol::TmuxOption::Flag("--when-idle") => FlipWhenBusy::WhenIdle,
             zz_protocol::TmuxOption::Flag(name) | zz_protocol::TmuxOption::Value(name, _) => {
                 return Err(ServerError::CommandParse(format!(
                     "agent-account: unknown option {name}"
                 )));
             }
+        };
+        if when_busy != FlipWhenBusy::Refuse && when_busy != mode {
+            return Err(ServerError::CommandParse(
+                "agent-account takes at most one of --now, --when-idle".to_owned(),
+            ));
         }
+        when_busy = mode;
     }
     let [account] = parsed.positionals else {
         return Err(ServerError::CommandParse(
-            "usage: agent-account [-t pane] account|default".to_owned(),
+            "usage: agent-account [-t pane] [--now | --when-idle] account|default".to_owned(),
         ));
     };
     let account = match account.as_str() {
@@ -35,7 +49,11 @@ pub(super) fn parse_agent_account_args(args: &[RawText]) -> Result<AgentAccountA
             ));
         }
     };
-    Ok(AgentAccountArgs { target, account })
+    Ok(AgentAccountArgs {
+        target,
+        account,
+        when_busy,
+    })
 }
 
 impl Shared {
@@ -60,24 +78,10 @@ impl Shared {
         }
         #[cfg(all(feature = "agent", unix))]
         {
-            use crate::agent::{accounts, cli_session};
+            use crate::agent::accounts;
 
-            let kind = self
-                .inner
-                .lock()
-                .engine
-                .state
-                .pane(pane)
-                .map(|state| state.kind.clone());
-            let descriptor = match kind {
-                Some(PaneKind::Agent(descriptor)) => descriptor,
-                Some(_) => {
-                    return Err(
-                        ServerError::InvalidTarget(format!("{pane} is not an agent chat")).into(),
-                    );
-                }
-                None => return Err(ServerError::MissingTarget(pane.to_string()).into()),
-            };
+            let descriptor = self.agent_descriptor(pane)?;
+            self.inner.lock().armed_accounts.remove(&pane);
             if descriptor.account == args.account {
                 return Ok(Execution::default());
             }
@@ -86,12 +90,17 @@ impl Shared {
                 accounts::existing(provider, &accounts::Account::resolve(provider, id))
                     .map_err(ServerError::InvalidCommand)?;
             }
-            let state = self
-                .open_agent_runtime()
-                .and_then(|runtime| runtime.wire_state(pane))
-                .unwrap_or_default();
-            if let Some(busy) = cli_session::busy(&cli_session::chat_running(&state)) {
-                return Err(ServerError::InvalidCommand(busy).into());
+            if let Some(busy) = self.agent_busy(pane) {
+                match args.when_busy {
+                    FlipWhenBusy::Now => {}
+                    FlipWhenBusy::WhenIdle => {
+                        self.arm_account(pane, args.account);
+                        return Ok(Execution::default());
+                    }
+                    FlipWhenBusy::Refuse | FlipWhenBusy::Cancel => {
+                        return Err(ServerError::InvalidCommand(busy).into());
+                    }
+                }
             }
             let shared = Arc::downgrade(&self.server_owner());
             let account = args.account;
@@ -109,6 +118,70 @@ impl Shared {
                 .into());
             }
             Ok(Execution::default())
+        }
+    }
+
+    #[cfg(all(feature = "agent", unix))]
+    fn agent_descriptor(&self, pane: PaneId) -> Result<zz_protocol::AgentDescriptor, ServerError> {
+        let kind = self
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(pane)
+            .map(|state| state.kind.clone());
+        match kind {
+            Some(PaneKind::Agent(descriptor)) => Ok(descriptor),
+            Some(_) => Err(ServerError::InvalidTarget(format!(
+                "{pane} is not an agent chat"
+            ))),
+            None => Err(ServerError::MissingTarget(pane.to_string())),
+        }
+    }
+
+    #[cfg(all(feature = "agent", unix))]
+    fn agent_busy(&self, pane: PaneId) -> Option<String> {
+        use crate::agent::cli_session;
+
+        let state = self
+            .open_agent_runtime()
+            .and_then(|runtime| runtime.wire_state(pane))
+            .unwrap_or_default();
+        cli_session::busy(&cli_session::chat_running(&state))
+    }
+
+    #[cfg(all(feature = "agent", unix))]
+    fn arm_account(self: &Arc<Self>, pane: PaneId, account: Option<String>) {
+        self.inner
+            .lock()
+            .armed_accounts
+            .insert(pane, account.clone());
+        let shared = Arc::downgrade(&self.server_owner());
+        let spawned = std::thread::Builder::new()
+            .name("zz-agent-account-armed".to_owned())
+            .spawn(move || {
+                loop {
+                    std::thread::sleep(super::agent_flip::ARMED_POLL);
+                    let Some(shared) = shared.upgrade() else {
+                        return;
+                    };
+                    if shared.inner.lock().armed_accounts.get(&pane) != Some(&account) {
+                        return;
+                    }
+                    if shared.agent_descriptor(pane).is_err() {
+                        shared.inner.lock().armed_accounts.remove(&pane);
+                        return;
+                    }
+                    if shared.agent_busy(pane).is_none() {
+                        shared.inner.lock().armed_accounts.remove(&pane);
+                        shared.switch_agent_account(pane, account);
+                        return;
+                    }
+                }
+            });
+        if let Err(error) = spawned {
+            log::warn!(target: "zz::agent", "could not wait to move {pane} to another account: {error}");
+            self.inner.lock().armed_accounts.remove(&pane);
         }
     }
 
@@ -132,5 +205,37 @@ impl Shared {
             }
         }
         self.open_agent_pane(pane, None);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Result<AgentAccountArgs, ServerError> {
+        let args = args
+            .iter()
+            .map(|arg| RawText::from(*arg))
+            .collect::<Vec<_>>();
+        parse_agent_account_args(&args)
+    }
+
+    #[test]
+    fn an_account_switch_waits_for_idle_or_goes_now() {
+        assert_eq!(
+            parse(&["-t", "%3", "--when-idle", "work"]).unwrap(),
+            AgentAccountArgs {
+                target: Some("%3".to_owned()),
+                account: Some("work".to_owned()),
+                when_busy: FlipWhenBusy::WhenIdle,
+            }
+        );
+        assert_eq!(
+            parse(&["--now", "default"]).unwrap().when_busy,
+            FlipWhenBusy::Now
+        );
+        assert_eq!(parse(&["default"]).unwrap().when_busy, FlipWhenBusy::Refuse);
+        assert!(parse(&["--now", "--when-idle", "work"]).is_err());
+        assert!(parse(&["--cancel", "work"]).is_err());
     }
 }

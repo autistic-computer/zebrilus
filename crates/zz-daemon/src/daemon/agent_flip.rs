@@ -51,7 +51,7 @@ pub(super) fn parse_flip_agent_args(args: &[RawText]) -> Result<FlipAgentArgs, S
 }
 
 #[cfg(all(feature = "agent", unix))]
-const ARMED_POLL: Duration = Duration::from_millis(250);
+pub(super) const ARMED_POLL: Duration = Duration::from_millis(250);
 
 #[cfg(all(feature = "agent", unix))]
 pub(super) enum FlipStep {

@@ -35274,6 +35274,8 @@ struct ServerState {
     agent_panes: BTreeSet<PaneId>,
     #[cfg(all(feature = "agent", unix))]
     armed_flips: BTreeSet<PaneId>,
+    #[cfg(all(feature = "agent", unix))]
+    armed_accounts: BTreeMap<PaneId, Option<String>>,
     #[cfg(feature = "agent")]
     cli_exits: BTreeMap<PaneId, u32>,
     #[cfg(feature = "agent")]
@@ -51995,9 +51997,9 @@ Claude Code and Codex run two ways in a pane, and a pane flips between them on t
 
 Flip a terminal running Claude Code or Codex into a chat on the same session, or a chat into a terminal running the CLI with that session resumed, through the user's interactive shell. The pane keeps its id and place. When something runs (a turn, background shells or subagents, queued prompts) the flip fails with an error that starts with `busy:` and says what runs; `--now` flips anyway and stops it, `--when-idle` flips once nothing runs, and `--cancel` drops a waiting flip. Codex on its shared app server never refuses: the turn lives in the server and the other side picks it up.
 
-### `zz agent-account [-t %N] ID|default`
+### `zz agent-account [-t %N] [--now | --when-idle] ID|default`
 
-Move a chat to another account and resume the same session there. An account is a directory in zz's data directory (`accounts/claude/ID` or `accounts/codex/ID`) that shares sessions, settings and skills with the CLI's own directory and keeps its own login; everything the daemon runs for the pane gets `CLAUDE_CONFIG_DIR` or `CODEX_HOME` pointing at it. `default` goes back to the CLI's own login. While anything runs, a Codex turn included, it fails with an error that starts with `busy:`. A chat whose account directory is gone fails instead of running on another login. Flips keep the account: the CLI starts with the variable set, and a CLI started with an account's directory flips into a chat on that account. Forks and side chats opened from a chat stay on its account.
+Move a chat to another account and resume the same session there. An account is a directory in zz's data directory (`accounts/claude/ID` or `accounts/codex/ID`) that shares sessions, settings and skills with the CLI's own directory and keeps its own login; everything the daemon runs for the pane gets `CLAUDE_CONFIG_DIR` or `CODEX_HOME` pointing at it. `default` goes back to the CLI's own login. While anything runs, a Codex turn included, it fails with an error that starts with `busy:`; `--now` moves anyway and stops it, and `--when-idle` moves once nothing runs, unless another `agent-account` for the pane comes first. A chat whose account directory is gone fails instead of running on another login. Flips keep the account: the CLI starts with the variable set, and a CLI started with an account's directory flips into a chat on that account. Forks and side chats opened from a chat stay on its account.
 
 `zz select-pane-kind --resume ID --fork [--at MESSAGE] agent claude|codex` opens a chat on a copy of a session, through that message's turn when `--at` names one.
 
