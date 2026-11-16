@@ -1,8 +1,11 @@
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Entity, IntoElement as _, ParentElement as _,
-    Styled as _, Window, div, px,
+    SharedString, Styled as _, Window, div, px,
 };
-use penna::components::input::InputState;
+use penna::{
+    blocks::chat::{COMPOSER_MAX_WIDTH, COMPOSER_OUTER_PADDING},
+    components::input::InputState,
+};
 use zz_client::agent_login::card;
 use zz_protocol::{
     AgentLogin, AgentLoginBrowser, AgentLoginFailure, AgentLoginPane, AgentLoginStep,
@@ -10,10 +13,10 @@ use zz_protocol::{
 };
 use zz_ui::agent::login::card_view;
 
+use super::composer::{Draft, claude_settings, composer, composer_input};
 use crate::stories::workspace::fixtures::stateful;
 use crate::story::states;
 
-const CARD_WIDTH: f32 = 456.0;
 pub const CLAUDE_URL: &str = "https://claude.ai/oauth/authorize?code=true&client_id=9d1c25&response_type=code&scope=user%3Ainference";
 pub const OPENAI_URL: &str = "https://auth.openai.com/codex/device";
 pub const PASTED: &str = "aZ3kQ9vL2xR8mT4p#c1f7e2b9";
@@ -137,25 +140,52 @@ pub fn pasted(window: &mut Window, cx: &mut App) -> Entity<InputState> {
     })
 }
 
-pub fn cards(window: &mut Window, cx: &mut App) -> AnyView {
-    stateful(window, cx, pasted, render_cards)
+pub struct Cards {
+    code: Entity<InputState>,
+    composers: Vec<Entity<InputState>>,
 }
 
-fn render_cards(code: &Entity<InputState>, _: &mut Window, cx: &mut App) -> AnyElement {
-    steps()
-        .into_iter()
-        .filter_map(|(label, login)| Some((label, login.pane?, card(&login)?)))
-        .fold(states(), |states, (label, pane, card)| {
-            states.state(
-                label,
-                div().w_full().max_w(px(CARD_WIDTH)).child(card_view(
-                    pane,
-                    &card,
-                    Some(code),
-                    |_, _, _| {},
-                    cx,
-                )),
-            )
-        })
-        .into_any_element()
+fn new_cards(window: &mut Window, cx: &mut App) -> Cards {
+    Cards {
+        code: pasted(window, cx),
+        composers: steps()
+            .iter()
+            .map(|_| composer_input("", window, cx))
+            .collect(),
+    }
+}
+
+pub fn cards(window: &mut Window, cx: &mut App) -> AnyView {
+    stateful(window, cx, new_cards, render_cards)
+}
+
+fn render_cards(cards: &Cards, _: &mut Window, cx: &mut App) -> AnyElement {
+    let mut shown = states();
+    for (index, ((label, login), input)) in steps().into_iter().zip(&cards.composers).enumerate() {
+        let (Some(pane), Some(card)) = (login.pane, card(&login)) else {
+            continue;
+        };
+        let element = composer(
+            Draft {
+                id: SharedString::from(format!("sign-in-{index}")),
+                input: input.clone(),
+                running: false,
+                writable: true,
+                images: Vec::new(),
+                prefix: vec![card_view(pane, &card, Some(&cards.code), |_, _, _| {}, cx)],
+                mention: None,
+                settings: claude_settings(),
+            },
+            cx,
+        );
+        shown = shown.state(
+            label,
+            div()
+                .w_full()
+                .max_w(px(COMPOSER_MAX_WIDTH + 2.0 * COMPOSER_OUTER_PADDING))
+                .pt(px(COMPOSER_OUTER_PADDING))
+                .child(element),
+        );
+    }
+    shown.into_any_element()
 }

@@ -4,7 +4,7 @@ use ala::{
     AnyElement, App, ClipboardItem, Context, Entity, IntoElement, SharedString, Subscription,
     Window, div, prelude::*, px,
 };
-use penna::{Chip, ChipLook, Label, TextStyle, Well, components::spinner::Spinner};
+use penna::{Label, Panel, PanelLook, Size, TextStyle, Well, components::spinner::Spinner};
 use zz_client::agent_login::{self, CardAction, CardClose, CardGlyph, LoginCard};
 use zz_protocol::{AgentLogin, AgentLoginStep, PaneId, ProtocolMessage};
 
@@ -118,9 +118,19 @@ fn row_icon(
 ) -> Button {
     Button::compact_icon(id, icon)
         .look(ButtonLook::RowIcon)
-        .on(cx.theme().ground_of(ChipLook::Floating))
+        .on(cx.theme().ground_of(PanelLook::Inline))
         .text_color(cx.theme().foreground.muted())
         .tooltip(tooltip)
+}
+
+fn row() -> ala::Pixels {
+    px(Size::Medium.control_px())
+}
+
+fn well(cx: &App) -> Well {
+    Well::new()
+        .rounded(cx.theme().control_corner(row()))
+        .corner_radius_mode(ala::CornerRadiusMode::Fixed)
 }
 
 fn copy(text: String) -> impl Fn(&ala::ClickEvent, &mut Window, &mut App) + 'static {
@@ -133,7 +143,7 @@ fn copy(text: String) -> impl Fn(&ala::ClickEvent, &mut Window, &mut App) + 'sta
 pub fn link_row(pane: PaneId, url: &str, cx: &App) -> AnyElement {
     let muted = cx.theme().foreground.muted();
     let open = url.to_owned();
-    Well::new()
+    well(cx)
         .flex()
         .items_center()
         .gap(px(4.0))
@@ -182,7 +192,7 @@ pub fn link_row(pane: PaneId, url: &str, cx: &App) -> AnyElement {
 }
 
 fn code_tile(pane: PaneId, code: &str, cx: &App) -> AnyElement {
-    Well::new()
+    well(cx)
         .relative()
         .flex()
         .items_center()
@@ -214,7 +224,7 @@ fn action_button(pane: PaneId, action: CardAction, on: &OnLogin, cx: &App) -> Bu
     )))
     .label(action.label())
     .compact()
-    .on(cx.theme().ground_of(ChipLook::Floating))
+    .on(cx.theme().ground_of(PanelLook::Inline))
     .when(action == CardAction::Terminal, |button| {
         button.icon(IconName::SquareTerminal)
     })
@@ -314,11 +324,11 @@ pub fn card_view(
         Input::new(input)
             .w_full()
             .font_family(cx.theme().mono_font_family.clone())
-            .on(cx.theme().ground_of(ChipLook::Floating))
+            .on(cx.theme().ground_of(PanelLook::Inline))
     });
-    Chip::empty(("agent-login", pane.0))
-        .look(ChipLook::Floating)
-        .multiline(true)
+    Panel::new(("agent-login", pane.0), PanelLook::Inline)
+        .inset(px(PAD))
+        .rows(row())
         .debug_selector(|| "agent-login-card".into())
         .flex()
         .flex_col()

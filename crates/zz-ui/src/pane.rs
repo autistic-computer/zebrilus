@@ -10,8 +10,8 @@ use ala::{
     StyledText, Window, canvas, div, prelude::*, px, quad, relative, size,
 };
 use penna::{
-    Bar, BarLook, Chip, ChipLook, ContentLook, Label, Row, RowLook, RuleLook, Tab, TabLook,
-    TextStyle, Tile, TileVariant,
+    Bar, BarLook, Chip, ChipLook, ContentLook, Label, Panel, PanelLook, Row, RowLook, RuleLook,
+    Tab, TabLook, TextStyle, Tile, TileVariant,
 };
 
 mod drag;
@@ -387,6 +387,8 @@ pub fn pane_flip_button(
         })
 }
 
+const BUSY_PAD: f32 = 10.0;
+
 fn flip_choice_button(
     id: impl Into<ElementId>,
     label: &'static str,
@@ -411,10 +413,10 @@ pub fn pane_flip_busy(
     reason: &str,
     on_choice: impl Fn(FlipChoice, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> Chip {
+) -> Panel {
     let on_choice: std::rc::Rc<dyn Fn(FlipChoice, &mut Window, &mut App)> =
         std::rc::Rc::new(on_choice);
-    busy_chip(
+    busy_card(
         pane,
         zz_client::agent_flip::busy_detail(reason),
         &on_choice,
@@ -445,10 +447,10 @@ pub fn pane_account_busy(
     reason: &str,
     on_choice: impl Fn(FlipChoice, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> Chip {
+) -> Panel {
     let on_choice: std::rc::Rc<dyn Fn(FlipChoice, &mut Window, &mut App)> =
         std::rc::Rc::new(on_choice);
-    busy_chip(
+    busy_card(
         pane,
         zz_client::agent_flip::account_busy_detail(reason),
         &on_choice,
@@ -456,14 +458,14 @@ pub fn pane_account_busy(
     )
 }
 
-fn busy_chip(
+fn busy_card(
     pane: zz_protocol::PaneId,
     detail: String,
     on_choice: &std::rc::Rc<dyn Fn(FlipChoice, &mut Window, &mut App)>,
     cx: &App,
-) -> Chip {
-    pane_chip(("pane-flip-busy", pane.0), PaintState::Rest, cx)
-        .multiline(true)
+) -> Panel {
+    Panel::new(("pane-flip-busy", pane.0), PanelLook::Inline)
+        .inset(px(BUSY_PAD))
         .debug_selector(|| "pane-flip-busy".into())
         .flex()
         .flex_col()
@@ -471,7 +473,7 @@ fn busy_chip(
         .gap(px(8.0))
         .w(px(300.0))
         .max_w_full()
-        .p(px(10.0))
+        .p(px(BUSY_PAD))
         .font_family(cx.theme().font_family.clone())
         .type_style(TextStyle::Body, cx)
         .line_height(px(16.0))
