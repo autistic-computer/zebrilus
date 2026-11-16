@@ -697,6 +697,7 @@ impl AgentPane {
                 &format!("phone-agent-{}", self.pane.0),
                 &plan,
                 self.plan_open,
+                (window.visual_viewport_bounds().bottom() - dock.top - dock.reserve) * 0.5,
                 move |_, cx| {
                     entity.update(cx, |this, cx| {
                         this.plan_open = !this.plan_open;

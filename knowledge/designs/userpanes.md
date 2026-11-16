@@ -453,7 +453,8 @@ up in the numbers.
   resolves either way, where the desktop's rejects with the reason.
 
   Open as a page works from an iOS chat too. Without the desktop's opener, a page frame, a
-  visual's Open as a page and a plain `html` block's Globe button (and a tap on its preview
+  visual's Open as a page (iPad only: the phone hides a visual's tools, and offers Open as a page
+  only when its preview fails) and a plain `html` block's Globe button (and a tap on its preview
   picture) ask the chat's own view opener with a `ViewRequest` whose `page` is set
   (`zz_ui::agent::html_opener`, only where `AgentHtmlPreviewer` is set), and
   `ViewRequest::command` turns that into `html -t <chat> - -- <text>`, so the page opens beside

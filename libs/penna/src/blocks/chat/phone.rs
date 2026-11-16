@@ -426,6 +426,7 @@ pub fn phone_plan_tray(
     id: &str,
     plan: TrayPlan,
     open: bool,
+    max_list_height: Pixels,
     on_toggle: impl Fn(&mut Window, &mut App) + 'static,
     cx: &App,
 ) -> AnyElement {
@@ -436,7 +437,10 @@ pub fn phone_plan_tray(
     let radius = row_radius(&layer, px(PHONE_QUEUED_HEIGHT));
     let list = open.then(|| {
         div()
+            .id(SharedString::from(format!("{id}-plan-list")))
             .w_full()
+            .max_h(max_list_height)
+            .overflow_y_scroll()
             .layer(&layer)
             .rounded(radius.min(px(PLAN_LIST_CORNER)))
             .corner_smoothing(layer.smoothing)

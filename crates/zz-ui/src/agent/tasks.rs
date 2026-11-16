@@ -1,4 +1,4 @@
-use ala::{AnyElement, App, Div, Window};
+use ala::{AnyElement, App, Div, Pixels, Window};
 use penna::blocks::chat::{self, TrayPlan};
 
 pub use zz_client::agent_timeline::plan_chip_label;
@@ -26,6 +26,7 @@ pub fn phone_plan_tray(
     id: &str,
     plan: &str,
     open: bool,
+    max_list_height: Pixels,
     on_toggle: impl Fn(&mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Option<AnyElement> {
@@ -33,6 +34,7 @@ pub fn phone_plan_tray(
         id,
         tray_plan(plan)?,
         open,
+        max_list_height,
         on_toggle,
         cx,
     ))

@@ -56,6 +56,8 @@ const HTML_PREVIEW_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 const HTML_PREVIEW_WIDTH_STEP: f32 = 32.0;
 pub(crate) const MAX_STREAMING_MEND_BYTES: usize = 64 * 1024;
 const INERT_LINK_URL: &str = "data:,";
+const CODE_CHROME_SLOP: f32 =
+    (crate::touch::TOUCH_TARGET - crate::button::COMPACT_ICON_BUTTON_SIZE) / 2.0;
 
 pub use zz_client::agent_timeline::plan_progress;
 use zz_client::agent_timeline::{PlanItemState, plan_items};
@@ -606,7 +608,11 @@ fn agent_code_block_chrome(
         .child(
             shown_on_hover(CODE_BLOCK_GROUP, cx).child(
                 h_flex()
-                    .gap_1()
+                    .gap(px(if crate::touch::CoarsePointer::get(cx) {
+                        CODE_CHROME_SLOP * 2.0
+                    } else {
+                        4.0
+                    }))
                     .when_some(preview, |this, shown| {
                         let (icon, tooltip) = if shown {
                             (IconName::Braces, "Show code")
@@ -614,7 +620,7 @@ fn agent_code_block_chrome(
                             (IconName::AppWindow, "Preview")
                         };
                         this.child(
-                            message_action(
+                            code_chrome_action(
                                 Button::compact_icon(("agent-preview-html", source_offset), icon)
                                     .on(ground)
                                     .tooltip(tooltip)
@@ -633,7 +639,7 @@ fn agent_code_block_chrome(
                     })
                     .when_some(opener, |this, opener| {
                         this.child(
-                            message_action(
+                            code_chrome_action(
                                 Button::compact_icon(
                                     ("agent-open-html", source_offset),
                                     IconName::Globe,
@@ -650,7 +656,7 @@ fn agent_code_block_chrome(
                         )
                     })
                     .child(
-                        message_action(
+                        code_chrome_action(
                             Button::compact_icon(
                                 ("agent-copy-code", source_offset),
                                 IconName::Copy,
@@ -667,6 +673,10 @@ fn agent_code_block_chrome(
             ),
         )
         .into_any_element()
+}
+
+fn code_chrome_action(button: Button, cx: &App) -> Button {
+    message_action(button.hit_slop(CODE_CHROME_SLOP, CODE_CHROME_SLOP), cx)
 }
 
 fn code_block_language(language: Option<SharedString>) -> SharedString {

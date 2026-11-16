@@ -610,6 +610,7 @@ impl AgentView {
 
     fn lists_chats(&self, cx: &ala::App) -> bool {
         self.pane_state.connection == AgentConnectionState::Ready
+            && !self.pane_state.session_capabilities.watch
             && !self
                 .controller
                 .read(cx)
