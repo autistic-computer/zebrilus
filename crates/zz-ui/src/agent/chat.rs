@@ -1755,6 +1755,7 @@ fn message_actions(
     h_flex()
         .flex_none()
         .gap_0p5()
+        .map(|row| super::touch_action_gap(row, cx))
         .items_center()
         .when(crate::touch::hover_reveals(cx), |row| {
             row.invisible().group_hover(group, ala::Styled::visible)
@@ -1768,7 +1769,7 @@ fn message_actions(
         })
         .when_some(copy, |row, parts| {
             row.child(
-                penna::blocks::chat::message_action(
+                super::touch_action(
                     Button::compact_icon(
                         SharedString::from(format!("chat-copy-{key}")),
                         IconName::Copy,
@@ -1796,7 +1797,7 @@ fn message_actions(
         .when_some(fork, |row, (fork, id)| {
             let target = ChatClick::Fork(id);
             row.child(
-                penna::blocks::chat::message_action(
+                super::touch_action(
                     Button::compact_icon(
                         SharedString::from(format!("chat-fork-{key}")),
                         IconName::GitBranch,

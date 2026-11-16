@@ -595,7 +595,9 @@ impl RenderOnce for Button {
             }
         };
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
-        let slop = self.hit_slop.filter(|_| coarse);
+        let slop = self
+            .hit_slop
+            .filter(|_| crate::blocks::touch::touch_targets(cx));
         let press = (coarse && clickable)
             .then(|| crate::blocks::touch::press_feedback(self.id.clone(), window, cx));
         let pressed = press.as_ref().map_or(0.0, |press| press.amount);

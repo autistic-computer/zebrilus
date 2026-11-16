@@ -196,7 +196,8 @@ the native transport, key translation, and UIKit backend.
   page on iPad; on iPhone only when its preview fails.
 - Chat controls the desktop shows only under the pointer always show on iPad: Copy and Fork
   under messages, a code block's buttons, a visual's corner controls, a diagram card's pop-out
-  mark and a subagent row's time and PiP mark.
+  mark and a subagent row's time and PiP mark. The Copy, Fork, code block, figure and visual
+  buttons take a tap 44pt across and sit far enough apart that a finger hits the one it aims at.
 - On iPhone a chat's plan is a row over the composer that unfolds the plan, and the plus sheet
   shows the chat's Git branch and changes under its settings.
 - An empty agent chat on iPad is the desktop's: the welcome over the dithered sky, then the

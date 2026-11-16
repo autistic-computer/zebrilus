@@ -56,7 +56,7 @@ const HTML_PREVIEW_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 const HTML_PREVIEW_WIDTH_STEP: f32 = 32.0;
 pub(crate) const MAX_STREAMING_MEND_BYTES: usize = 64 * 1024;
 const INERT_LINK_URL: &str = "data:,";
-const CODE_CHROME_SLOP: f32 =
+const TOUCH_ACTION_SLOP: f32 =
     (crate::touch::TOUCH_TARGET - crate::button::COMPACT_ICON_BUTTON_SIZE) / 2.0;
 
 pub use zz_client::agent_timeline::plan_progress;
@@ -608,11 +608,8 @@ fn agent_code_block_chrome(
         .child(
             shown_on_hover(CODE_BLOCK_GROUP, cx).child(
                 h_flex()
-                    .gap(px(if crate::touch::CoarsePointer::get(cx) {
-                        CODE_CHROME_SLOP * 2.0
-                    } else {
-                        4.0
-                    }))
+                    .gap(px(4.0))
+                    .map(|row| touch_action_gap(row, cx))
                     .when_some(preview, |this, shown| {
                         let (icon, tooltip) = if shown {
                             (IconName::Braces, "Show code")
@@ -620,7 +617,7 @@ fn agent_code_block_chrome(
                             (IconName::AppWindow, "Preview")
                         };
                         this.child(
-                            code_chrome_action(
+                            touch_action(
                                 Button::compact_icon(("agent-preview-html", source_offset), icon)
                                     .on(ground)
                                     .tooltip(tooltip)
@@ -639,7 +636,7 @@ fn agent_code_block_chrome(
                     })
                     .when_some(opener, |this, opener| {
                         this.child(
-                            code_chrome_action(
+                            touch_action(
                                 Button::compact_icon(
                                     ("agent-open-html", source_offset),
                                     IconName::Globe,
@@ -656,7 +653,7 @@ fn agent_code_block_chrome(
                         )
                     })
                     .child(
-                        code_chrome_action(
+                        touch_action(
                             Button::compact_icon(
                                 ("agent-copy-code", source_offset),
                                 IconName::Copy,
@@ -675,8 +672,16 @@ fn agent_code_block_chrome(
         .into_any_element()
 }
 
-fn code_chrome_action(button: Button, cx: &App) -> Button {
-    message_action(button.hit_slop(CODE_CHROME_SLOP, CODE_CHROME_SLOP), cx)
+fn touch_action(button: Button, cx: &App) -> Button {
+    message_action(button.hit_slop(TOUCH_ACTION_SLOP, TOUCH_ACTION_SLOP), cx)
+}
+
+fn touch_action_gap<E: Styled>(row: E, cx: &App) -> E {
+    if crate::touch::touch_targets(cx) {
+        row.gap(px(TOUCH_ACTION_SLOP * 2.0))
+    } else {
+        row
+    }
 }
 
 fn code_block_language(language: Option<SharedString>) -> SharedString {
@@ -1083,13 +1088,14 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
                 .top_0()
                 .right_0()
                 .gap_1()
+                .map(|actions| touch_action_gap(actions, cx))
                 .items_center()
                 .when(hover_only, |actions| {
                     actions
                         .invisible()
                         .group_hover(FIGURE_GROUP, ala::Styled::visible)
                 })
-                .child(message_action(
+                .child(touch_action(
                     Button::compact_icon(("agent-mermaid-copy", source_offset), IconName::Copy)
                         .on(card)
                         .tooltip("Copy source")
@@ -1101,7 +1107,7 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
                     cx,
                 ))
                 .when_some(preview_image, |this, image| {
-                    this.child(message_action(
+                    this.child(touch_action(
                         Button::compact_icon(
                             ("agent-mermaid-preview", source_offset),
                             IconName::WindowMaximize,

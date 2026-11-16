@@ -580,13 +580,14 @@ fn render_visual(
         .p_0p5()
         .h_flex()
         .gap_0p5()
+        .map(|tools| super::touch_action_gap(tools, cx))
         .when(hover_only, |tools| {
             tools
                 .invisible()
                 .group_hover(VISUAL_GROUP, ala::Styled::visible)
         })
         .child(
-            message_action(
+            super::touch_action(
                 Button::compact_icon(("agent-visual-code", offset), toggle_icon)
                     .on(ground)
                     .tooltip(toggle_tip)
@@ -603,7 +604,7 @@ fn render_visual(
         )
         .when_some(opener, |this, opener| {
             this.child(
-                message_action(
+                super::touch_action(
                     Button::compact_icon(("agent-visual-open", offset), IconName::ExternalLink)
                         .on(ground)
                         .tooltip("Open as a page")
@@ -616,7 +617,7 @@ fn render_visual(
                 .debug_selector(|| "agent-visual-open".to_owned()),
             )
         })
-        .child(message_action(
+        .child(super::touch_action(
             Button::compact_icon(("agent-visual-copy", offset), IconName::Copy)
                 .on(ground)
                 .tooltip("Copy code")
