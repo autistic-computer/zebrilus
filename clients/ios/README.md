@@ -269,9 +269,10 @@ being composed, hardware keys go to the input method first.
 - The iPadOS menu bar and the Command-hold shortcut list show the zz, File, and View
   commands with their Command shortcuts: Settings, New Session, New Window, Split Right,
   Split Down, Close Pane, Kill Window, Command Palette, Choose Window, Toggle Sidebar,
-  Zoom Pane, and UI zoom. While a browser pane is focused, View adds Back, Forward,
-  Reload, Open Location, Pick Element, New Tab, Next Tab, Previous Tab, and Select Tab,
-  its zoom items zoom the page, and Close Pane closes the tab when more than one is open.
+  Zoom Pane, and UI zoom. While a browser pane is focused in the active window, View adds
+  Back, Forward, Reload, Open Location, Pick Element, New Tab, Next Tab, Previous Tab, and
+  Select Tab, its zoom items zoom the page, and Close Pane closes the tab when more than
+  one is open.
 - `zz://attach/<session>` (`zz-dev://` for development builds) switches the frontmost
   window to that session, or attaches to it after the next connect. Shortcuts can open it
   with the Open URL action. The deprecated native dev app also claims `zz-dev://`; remove

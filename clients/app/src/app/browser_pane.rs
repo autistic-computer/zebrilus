@@ -775,9 +775,15 @@ impl BrowserPane {
         if blank && self.compact {
             self.open_address(window, cx);
         } else if blank {
-            self.address.read(cx).focus_handle(cx).focus(window, cx);
+            self.focus_address(window, cx);
         }
         cx.notify();
+    }
+
+    fn focus_address(&self, window: &mut Window, cx: &mut App) {
+        self.address.read(cx).focus_handle(cx).focus(window, cx);
+        #[cfg(target_os = "ios")]
+        crate::native_browser::take_keyboard(window);
     }
 
     fn close_tab(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
@@ -868,7 +874,7 @@ impl BrowserPane {
             ChromeAction::BrowserReload => self.reload(cx),
             ChromeAction::BrowserFocusAddress if self.compact => self.open_address(window, cx),
             ChromeAction::BrowserFocusAddress if writable => {
-                self.address.update(cx, |input, cx| input.focus(window, cx));
+                self.focus_address(window, cx);
                 cx.on_next_frame(window, |_, window, cx| {
                     window.dispatch_action(Box::new(SelectAll), cx);
                 });
@@ -886,6 +892,9 @@ impl BrowserPane {
     }
 
     fn select_index(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if index == self.active {
+            return;
+        }
         if let Some(id) = self.tabs.get(index).map(|tab| tab.id) {
             self.select(id, window, cx);
         }
@@ -897,9 +906,8 @@ impl BrowserPane {
             ala_cef::next_page_zoom_factor(tab.page_zoom, direction)
         });
         tab.view.set_page_zoom(tab.page_zoom);
-        if std::mem::take(&mut tab.picking) {
-            tab.view.cancel_element_pick();
-            self.start_element_pick(cx);
+        if std::mem::take(&mut tab.picking) && !self.start_element_pick(cx) {
+            self.tabs[self.active].view.cancel_element_pick();
         }
         cx.notify();
     }

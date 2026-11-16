@@ -92,6 +92,18 @@ thread_local! {
     static PAGE_FETCHES: RefCell<HashMap<u64, PageFetch>> = RefCell::new(HashMap::new());
 }
 
+pub fn take_keyboard(window: &Window) {
+    let Ok(handle) = raw_window_handle::HasWindowHandle::window_handle(window) else {
+        return;
+    };
+    let RawWindowHandle::UiKit(handle) = handle.as_raw() else {
+        return;
+    };
+    unsafe {
+        let _: BOOL = msg_send![handle.ui_view.as_ptr() as id, becomeFirstResponder];
+    }
+}
+
 pub fn artifact_message(message: &ProtocolMessage) {
     let request = match message {
         ProtocolMessage::ArtifactBegin {
@@ -603,7 +615,9 @@ impl BrowserView {
     }
 
     pub fn start_element_pick(&self, appearance: &ElementPickerAppearance) -> Result<(), String> {
-        self.cancel_element_pick();
+        unsafe {
+            stop_picker(&self._state, self.view);
+        }
         let token = self
             ._state
             .picker
@@ -861,16 +875,22 @@ unsafe fn state(this: &Object) -> Rc<DelegateState> {
     Rc::from_raw(pointer)
 }
 
-unsafe fn cancel_picker(state: &DelegateState, view: id) {
+unsafe fn stop_picker(state: &DelegateState, view: id) -> bool {
     if !state.picking.replace(false) {
-        return;
+        return false;
     }
     state.generation.set(state.generation.get().wrapping_add(1));
     state.picker.cancel();
     let _: () = msg_send![view, evaluateJavaScript: ns_string(&format!("globalThis.{PICKER_API}?.cancel();")) completionHandler: nil];
-    let _ = state
-        .events
-        .unbounded_send(BrowserEvent::ElementPickCancelled);
+    true
+}
+
+unsafe fn cancel_picker(state: &DelegateState, view: id) {
+    if stop_picker(state, view) {
+        let _ = state
+            .events
+            .unbounded_send(BrowserEvent::ElementPickCancelled);
+    }
 }
 
 extern "C" fn navigation_started(this: &Object, _: Sel, view: id, _: id) {

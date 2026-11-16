@@ -236,15 +236,21 @@ impl Shared {
         self.snapshot(SNAPSHOT_PIXELS, rect);
     }
 
-    fn cancel_pick(&self) {
+    fn stop_pick(&self) -> bool {
         if !self.picking.replace(false) {
-            return;
+            return false;
         }
         self.generation.set(self.generation.get().wrapping_add(1));
         self.picker.cancel();
         self.picked.replace(None);
         self.evaluate(&format!("globalThis.{PICKER_API}?.cancel();"));
-        self.send(BrowserEvent::ElementPickCancelled);
+        true
+    }
+
+    fn cancel_pick(&self) {
+        if self.stop_pick() {
+            self.send(BrowserEvent::ElementPickCancelled);
+        }
     }
 }
 
@@ -395,7 +401,7 @@ impl BrowserView {
     }
 
     pub fn start_element_pick(&self, appearance: &ElementPickerAppearance) -> Result<(), String> {
-        self.cancel_element_pick();
+        self.shared.stop_pick();
         let token = self
             .shared
             .picker

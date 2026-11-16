@@ -109,6 +109,19 @@ pub fn session_from_url(url: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.into_owned())
 }
 
+#[cfg(target_os = "ios")]
+struct BrowserMenus(bool);
+
+#[cfg(target_os = "ios")]
+impl ala::Global for BrowserMenus {}
+
+#[cfg(target_os = "ios")]
+impl BrowserMenus {
+    fn shown(cx: &App) -> bool {
+        cx.try_global::<Self>().is_some_and(|menus| menus.0)
+    }
+}
+
 pub struct AppShell {
     connection: Entity<Connection>,
     _connection_subscriptions: [Subscription; 4],
@@ -170,8 +183,6 @@ pub struct AppShell {
     pane_drag: Option<PaneDragState>,
     #[cfg(target_os = "android")]
     system_back: Option<bool>,
-    #[cfg(target_os = "ios")]
-    browser_menus: bool,
     pane_layout_override: Option<PaneLayoutOverride>,
     pane_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
     float_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
@@ -449,8 +460,6 @@ impl AppShell {
             pane_drag: None,
             #[cfg(target_os = "android")]
             system_back: None,
-            #[cfg(target_os = "ios")]
-            browser_menus: false,
             pane_layout_override: None,
             pane_canvas_bounds: Rc::default(),
             float_canvas_bounds: Rc::default(),
@@ -475,7 +484,7 @@ impl AppShell {
         this.preferences.apply(&this.connection, window, cx);
         this.sync_roster(cx);
         #[cfg(target_os = "ios")]
-        cx.set_menus(this.menus());
+        cx.set_menus(this.menus(BrowserMenus::shown(cx)));
         #[cfg(target_os = "android")]
         window.on_system_back(cx, {
             let view = cx.weak_entity();
@@ -874,7 +883,7 @@ impl AppShell {
     }
 
     #[cfg(target_os = "ios")]
-    fn menus(&self) -> Vec<ala::Menu> {
+    fn menus(&self, browser_menus: bool) -> Vec<ala::Menu> {
         let bindings = self.chrome.bindings();
         let command = |table: &str, title: &'static str, action: ChromeAction| {
             ala::MenuItem::action(
@@ -896,7 +905,7 @@ impl AppShell {
         };
         let chrome = |title, action| command(UI_TABLE, title, action);
         let browser = |title, action| command(zz_client::BROWSER_TABLE, title, action);
-        let zoom = if self.browser_menus {
+        let zoom = if browser_menus {
             [
                 browser("Zoom In", ChromeAction::BrowserZoomIn),
                 browser("Zoom Out", ChromeAction::BrowserZoomOut),
@@ -916,8 +925,7 @@ impl AppShell {
         .zip(0..)
         .map(|(title, index)| browser(title, ChromeAction::BrowserSelectTab(index)))
         .chain([browser("Last Tab", ChromeAction::BrowserSelectLastTab)]);
-        let browser_items = self
-            .browser_menus
+        let browser_items = browser_menus
             .then(|| {
                 [
                     ala::MenuItem::separator(),
@@ -3297,9 +3305,12 @@ impl Render for AppShell {
                 .retain(|_, browser| browser.read(cx).belongs_to_host(host));
         }
         #[cfg(target_os = "ios")]
-        if self.focused_browser(window, cx).is_some() != self.browser_menus {
-            self.browser_menus = !self.browser_menus;
-            cx.set_menus(self.menus());
+        if cx.active_window() == Some(window.window_handle()) {
+            let browser_menus = self.focused_browser(window, cx).is_some();
+            if BrowserMenus::shown(cx) != browser_menus {
+                cx.set_global(BrowserMenus(browser_menus));
+                cx.set_menus(self.menus(browser_menus));
+            }
         }
         let dialog = window
             .root::<Root>()
