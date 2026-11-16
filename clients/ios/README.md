@@ -281,6 +281,9 @@ being composed, hardware keys go to the input method first.
   as on the desktop.
 - Drop images onto the workspace to upload them to the focused pane, as with a pasted
   image; dropped text or links paste as text.
+- An image pasted into an agent chat's composer goes through the desktop's step too: one
+  wider or taller than 1568 pixels is scaled down and re-encoded to PNG, so a full-size
+  screenshot attaches instead of being refused as over 6 MiB.
 - Tap a link in a terminal to open it. On iPhone it opens the link sheet. On iPad a web link
   opens in the nearest browser pane of the terminal's window, as on the desktop, and in
   the system browser when that window has no browser pane. Tapping a pasted image's `[Image #N]`

@@ -147,10 +147,14 @@ Hovering a terminal `[Image #N]` marker fetches its preview from the daemon and 
 250 ms in the desktop-style popover. The browser limits pasted-image transfers and cached encoded
 bytes to 64 MiB and 512 entries, drops them on reconnect or session attachment, and releases
 retired image assets from ala. Missing previews do not trigger repeated fetches while cached.
-Clipboard paste accepts PNG, JPEG, GIF, and WebP images up to 6 MiB through ala's browser paste
-callback. The browser uploads their original bytes in ordered chunks; the daemon writes the image
-on its host and pastes its path into the terminal. The browser does not resize or transcode clipboard
-images. Popup terminals, command output, and search retain text paste behavior.
+Clipboard paste takes images through ala's browser paste callback and runs them through the
+desktop's step in `zz_ui::attachment::normalize`: PNG, JPEG, GIF, and WebP images of 5 MiB or less
+whose long edge is at most 1568 pixels go up as they are; anything larger, and BMP or TIFF, is
+scaled to that edge and re-encoded to PNG. The browser uploads the bytes in ordered chunks; the
+daemon writes the image on its host and pastes its path into the terminal. An image pasted into
+an agent composer goes through the same step before it is attached. The step adds about 190 KB
+gzipped to the release WASM. Popup terminals, command output, and search retain text paste
+behavior.
 Page blur and local dialogs cancel the daemon prefix; ordinary keys wait for the cancellation
 acknowledgement after the dialog closes or the page regains focus.
 
@@ -279,7 +283,7 @@ lines, and run `target/debug/zz-web --socket /tmp/first.sock` with that environm
 - `libs/penna/src/blocks/picker/mod.rs`: shared history and path picker layout and rows.
 - `crates/zz-ui/src/agent/controls.rs`: shared composer actions, option menus, Git counts, and context usage.
 - `crates/zz-ui/src/agent/presentation.rs`: shared permission, error, and empty-state cards.
-- `clients/app/src/attachments.rs`: browser image selection and protocol limits.
+- `clients/app/src/attachments.rs`: agent composer images (scaled through `zz_ui::attachment::normalize`), browser image selection, and protocol limits.
 - `crates/zz-web/src/lib.rs`: `Gateway`, asset serving, `/hosts`, and the binary WebSocket bridge.
 - `crates/zz-daemon-client/src/route.rs`: `DaemonRoute`, the unattended route to any endpoint's daemon socket.
 - `scripts/build-web-wasm.sh`: build and static distribution assembly.

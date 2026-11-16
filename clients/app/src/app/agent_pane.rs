@@ -403,16 +403,13 @@ impl AgentPane {
                     this.draft_error = None;
                     cx.notify();
                 }
-                InputEvent::PasteImages(images) => this.attach_images(
-                    images
-                        .iter()
-                        .map(|image| AgentImage {
-                            format: image.format.mime_type().to_owned(),
-                            data: image.bytes.clone(),
-                        })
-                        .collect(),
-                    cx,
-                ),
+                InputEvent::PasteImages(images) => match crate::attachments::agent_images(images) {
+                    Ok(images) => this.attach_images(images, cx),
+                    Err(error) => {
+                        this.draft_error = Some(error);
+                        cx.notify();
+                    }
+                },
                 _ => {}
             });
         let input_observer = cx.observe(&input, |this, _, cx| {
