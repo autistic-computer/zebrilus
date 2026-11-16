@@ -284,6 +284,14 @@ The text system loads the iOS system fonts, so Chinese, Japanese, Korean, Arabic
 and other scripts render. Emoji still show as blank: ala's text system only treats Noto
 Color Emoji as a color font.
 
+When a pane on the attached host asks for input, fails or finishes while you are looking
+at another pane, the app plays the request or done chime. While the app is inactive or in
+the short background time, it also posts a notification naming the program and the pane;
+tapping it selects that pane. iOS asks for permission the first time a pane needs you,
+and Settings › System › Notifications turns them off. The app icon badge counts the panes
+that need you, failed or finished unseen. A suspended app gets nothing: that would need a
+push service.
+
 ## Frame rate
 
 The display link asks for the screen's top rate with the range Flutter uses (half the maximum, but
@@ -344,7 +352,7 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
 - **Hosts:** the configured endpoint, connection status, and reconnect.
 - **Advanced:** command palette layout (tree or flat), host prefix, and command shortcuts;
   Display: drawing under the home indicator, matching the system text size, and keeping
-  the screen awake while connected.
+  the screen awake while connected; Notifications: Notify when a pane needs you.
 - **About:** app version and source link.
 
 The page omits desktop-only options and controls for unsupported pane kinds. iPhone also
