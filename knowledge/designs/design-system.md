@@ -232,7 +232,7 @@ Kit widgets on the model:
 - `libs/penna/src/foundation/variant.rs`: `Tone`, `Emphasis`, `Paint`, `Ground`, the recipes.
 - `libs/penna/src/foundation/surface.rs`: kinds, roles, styles, `Theme::style` and `Theme::layer`.
 - `libs/penna/src/foundation/styled.rs`: `.surface`, `.surface_at`, `.layer`, `.rule`, `list_inset`, `focus_ring`, and the crate-private `rule_on`, `row_corners` and `row_radius`.
-- `libs/penna/src/foundation/theme.rs`: the material fields, `CORNER_SMOOTHING`, `casts_shadow`, `outlined`, `inset_rows` and `inner_radius`.
+- `libs/penna/src/foundation/theme.rs`: the material fields, `CORNER_SMOOTHING`, `casts_shadow`, `outlined`, `inset_rows` and `control_corner`.
 - `libs/penna/src/foundation/roles.rs`: the window chrome roles, the roles the kit's touch widgets, phone chrome (`penna::blocks::compact`), pickers and inline panels draw with, the recipes the looks pick and the retired ids; `libs/penna/src/foundation/content.rs`: `ContentLook`, the few recipes zz's content code reads.
 - `libs/penna/src/{badge,check,kbd}.rs`: `Badge`, `Check`, `Keycap`.
 - The storybook's Foundation → Design system story (`#/design-system`) draws every recipe from the same code. Its sections are:

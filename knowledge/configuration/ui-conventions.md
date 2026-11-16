@@ -280,8 +280,9 @@ dragged pane chip). Their offset, blur, spread and strength are fixed by the loo
 
 Corners come from the role's shape through its layer's `radius` (`Theme::shape_radius`), so new
 widgets read the look rather than a literal: `Row::row_height(height)` for rows,
-`Panel::inset(inset)` for a container around inset rows, `Theme::inner_radius(inset)` to keep
-other nested corners concentric, and `outlined()`, `inset_rows()`
+`Panel::inset(inset)` for a container around inset controls (its corner is their
+`Theme::control_corner` plus the inset, so whatever sits inside at that inset takes
+`control_corner` and stays concentric, as the agent sign-in card's wells do), and `outlined()`, `inset_rows()`
 and `casts_shadow(look)` for the theme's switches. Control heights, fills, rules and transitions
 no longer change per theme: `Theme::dense`, `Theme::control_background` and `Theme::duration` are
 gone, `Size::control_h()` and `input_py()` take no density, and `divider_color()` is the
