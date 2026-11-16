@@ -20,6 +20,7 @@ pub const AGENT_LOGIN_CAPABILITY: &str = "agent-login-v1";
 pub const TERMINAL_THEMES_CAPABILITY: &str = "terminal-themes-v1";
 pub const BROWSER_SCREENSHOT_CAPABILITY: &str = "browser-screenshot-v1";
 pub const FILE_EDIT_CAPABILITY: &str = "file-edit-v1";
+pub const AGENT_SETUP_CAPABILITY: &str = "agent-setup-v1";
 pub const MAX_BATCH_FRAMES: usize = 4096;
 
 pub const CAPABILITY_NAMES: &[&str] = &[
@@ -60,6 +61,7 @@ pub const CAPABILITY_NAMES: &[&str] = &[
     TERMINAL_THEMES_CAPABILITY,
     BROWSER_SCREENSHOT_CAPABILITY,
     FILE_EDIT_CAPABILITY,
+    AGENT_SETUP_CAPABILITY,
 ];
 
 pub const CLIENT_CAPABILITY_NAMES: &[&str] = &[

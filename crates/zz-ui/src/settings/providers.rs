@@ -14,7 +14,7 @@ use crate::{
     pane::agent_provider_icon,
     spinner::Spinner,
 };
-use penna::{Label, TextStyle};
+use penna::{Label, TextStyle, blocks::notification::Notification};
 
 pub use zz_client::providers::PROVIDERS;
 use zz_client::providers::{
@@ -23,6 +23,14 @@ use zz_client::providers::{
 };
 
 type ProviderAction = Rc<dyn Fn(AgentProvider, &mut Window, &mut App)>;
+
+pub fn agent_setup_notification(result: Result<String, String>) -> Notification {
+    match result {
+        Ok(report) => Notification::success(report).title("Agents set up"),
+        Err(report) => Notification::error(report).title("Agent setup failed"),
+    }
+    .autohide(false)
+}
 
 pub enum ProvidersHost {
     Offline(SharedString),

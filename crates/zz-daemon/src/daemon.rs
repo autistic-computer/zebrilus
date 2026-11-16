@@ -51929,7 +51929,16 @@ fn debug_marker(client: ClientId, context: &ExecutionContext, args: &[RawText]) 
 }
 
 fn workspace_tools_catalog(args: &[RawText]) -> Result<Execution, ServerError> {
-    workspace_tools(args).map(|output| Execution {
+    let hooks = match args {
+        [flag] if flag == "--install-hooks" => Some(crate::AgentHookChange::Install),
+        [flag] if flag == "--remove-hooks" => Some(crate::AgentHookChange::Remove),
+        _ => None,
+    };
+    let output = match hooks {
+        Some(change) => crate::change_agent_hooks(change).map_err(ServerError::InvalidCommand)?,
+        None => workspace_tools(args)?,
+    };
+    Ok(Execution {
         output: output.into(),
         effects: Vec::new(),
     })
@@ -52010,7 +52019,7 @@ This pane approves `zz` commands without asking, alone or piped into `head`, `ta
 
 pub const WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE: &str = "ZZ_AGENT_CONTEXT";
 
-const WORKSPACE_TOOLS_LOCAL_FLAGS: [&str; 3] = ["--context", "--install-hooks", "--remove-hooks"];
+const WORKSPACE_TOOLS_LOCAL_FLAGS: [&str; 1] = ["--context"];
 
 #[must_use]
 pub fn workspace_context(pane: &str, session: &str, agent_pane: bool) -> String {

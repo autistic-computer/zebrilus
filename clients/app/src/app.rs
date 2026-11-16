@@ -115,6 +115,7 @@ pub struct AppShell {
     fleet: Vec<(Entity<Connection>, Subscription)>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fleet_found: Vec<Subscription>,
+    agent_setup: Option<Subscription>,
     host_ids: compact::HostIds,
     roster: Entity<Roster>,
     connection_status: String,
@@ -402,6 +403,7 @@ impl AppShell {
             fleet: Vec::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             fleet_found: Vec::new(),
+            agent_setup: None,
             host_ids: compact::HostIds::default(),
             roster,
             connection_status: String::new(),

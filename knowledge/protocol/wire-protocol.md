@@ -1918,7 +1918,8 @@ to go idle ([agent panes](/concepts/agent-panes.md)).
   `Welcome.caps`, and the same list without the control-plane, control-stdio and tty-input names in
   `ServerHello.capabilities` (`mux-v1`, `terminal-viewport-v3`, `terminal-row-patches`,
   `terminal-appearance-v2`, `config-overrides-v1`, `browser-panes`, `tmux-config-subset`,
-  `new-session-attach-v1`, and the `native-*` command surfaces). A name appended inside an epoch
+  `new-session-attach-v1`, `agent-setup-v1` (the daemon runs `tools --install-hooks` and
+  `--remove-hooks` on its own machine), and the `native-*` command surfaces). A name appended inside an epoch
   says which gated variants a peer may be sent ([wire epochs](#wire-epochs)); it never changes how
   a frame is encoded. The two strings that were real switches, `terminal-zstd-v1` and `egress-v1`,
   went with QUIC at v43.

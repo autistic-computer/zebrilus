@@ -59,6 +59,7 @@ pub struct Connection {
     pending_session: Option<String>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     tailnet_offers: Option<u64>,
+    agent_setup: Option<u64>,
     retry: Option<ala::Task<()>>,
     pub core: ClientCore,
     history: HistoryPacer,
@@ -127,6 +128,10 @@ pub struct LinkTapped(pub String);
 
 pub struct TerminalThemesListed;
 
+pub struct AgentsSetUp(pub Result<String, String>);
+
+impl EventEmitter<AgentsSetUp> for Connection {}
+
 impl EventEmitter<TerminalThemesListed> for Connection {}
 
 enum TerminalThemes {
@@ -159,6 +164,7 @@ impl Connection {
             pending_session: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             tailnet_offers: None,
+            agent_setup: None,
             retry: None,
             core: history_core(),
             history: HistoryPacer::default(),
@@ -882,6 +888,20 @@ impl Connection {
         }
     }
 
+    pub fn sets_up_agents(&self) -> bool {
+        self.core
+            .capabilities()
+            .iter()
+            .any(|capability| capability == zz_protocol::AGENT_SETUP_CAPABILITY)
+    }
+
+    pub fn set_up_agents(&mut self, cx: &mut Context<Self>) {
+        if self.connected && self.sets_up_agents() {
+            self.agent_setup =
+                Some(self.invoke(CommandInvocation::new("tools", ["--install-hooks"]), cx));
+        }
+    }
+
     pub fn signs_in(&self) -> bool {
         zz_client::agent_login::daemon_signs_in(self.core.capabilities())
     }
@@ -1242,6 +1262,20 @@ impl Connection {
                         self.notify_error(error, cx);
                     }
                     cx.notify();
+                }
+                CoreEvent::CommandResponse(CommandResponse::Error {
+                    request_id, error, ..
+                }) if self.agent_setup == Some(*request_id) => {
+                    self.commands.remove(request_id);
+                    self.agent_setup = None;
+                    cx.emit(AgentsSetUp(Err(error.tmux_message())));
+                }
+                CoreEvent::CommandResponse(CommandResponse::Success {
+                    request_id, output, ..
+                }) if self.agent_setup == Some(*request_id) => {
+                    self.commands.remove(request_id);
+                    self.agent_setup = None;
+                    cx.emit(AgentsSetUp(Ok(output.to_string())));
                 }
                 #[cfg(any(target_os = "ios", target_os = "android"))]
                 CoreEvent::CommandResponse(CommandResponse::Error { request_id, .. })
