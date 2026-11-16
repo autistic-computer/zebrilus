@@ -10,7 +10,7 @@ use std::{
 use ala::{
     AnyElement, App, ClipboardItem, Context, Div, FollowMode, Global, Image, ImageFormat,
     IntoElement, ListAlignment, ListSizingBehavior, ListState, Pixels, ScrollHandle, SharedString,
-    Stateful, Subscription, Window, div, list, prelude::*, px, relative,
+    Stateful, Subscription, Window, canvas, div, list, prelude::*, px, relative,
 };
 use penna::{
     Card, CardLook, Label, Sizable as _, Space, TextStyle,
@@ -699,6 +699,9 @@ pub trait ChatHost: Sized + 'static {
     fn chat_read<'a>(&'a self, cx: &'a App) -> (&'a ChatPane, Option<&'a ChatView>);
     fn chat_fork(&mut self, item: &ItemId, cx: &mut Context<Self>);
     fn chat_hold(&mut self, _: &HeldMessage, _: &mut Context<Self>) {}
+    fn chat_covered(&self, _: &App) -> bool {
+        false
+    }
 }
 
 pub struct ChatLook {
@@ -817,6 +820,8 @@ pub fn chat_surface<T: ChatHost>(
     } else {
         px(COMPOSER_OUTER_PADDING)
     };
+    let frames_hidden = host.chat_covered(cx) || (pip.is_some() && !docked);
+    let floor = Rc::new(Cell::new(None));
     let rows = entity.clone();
     let thread = list(list_state.clone(), move |index, _, cx| {
         let host = rows.read(cx);
@@ -847,17 +852,27 @@ pub fn chat_surface<T: ChatHost>(
         .min_w_0()
         .h_full()
         .text_color(cx.theme().foreground)
-        .children(crate::agent::html_frame_clip(true, cx).map(|clip| {
-            div()
-                .absolute()
-                .inset_0()
-                .pt(look.inset_top)
-                .pb(bottom)
-                .child(clip)
-        }))
+        .children(
+            crate::agent::html_frame_clip(
+                Some(crate::agent::HtmlFrameBand {
+                    owner: look.pane,
+                    hidden: frames_hidden,
+                    floor: Rc::clone(&floor),
+                }),
+                cx,
+            )
+            .map(|clip| {
+                div()
+                    .absolute()
+                    .inset_0()
+                    .pt(look.inset_top)
+                    .pb(bottom)
+                    .child(clip)
+            }),
+        )
         .child(thread)
         .children(
-            crate::agent::html_frame_clip(false, cx)
+            crate::agent::html_frame_clip(None, cx)
                 .map(|clip| div().absolute().size_0().child(clip)),
         )
         .child(
@@ -891,7 +906,17 @@ pub fn chat_surface<T: ChatHost>(
                     })
                     .flex()
                     .justify_center()
-                    .child(button.on_click(jump)),
+                    .child(button.on_click(jump))
+                    .when(cx.has_global::<crate::agent::AgentHtmlFrames>(), |row| {
+                        row.child(
+                            canvas(
+                                move |bounds, _, _| floor.set(Some(bounds.top())),
+                                |_, (), _, _| {},
+                            )
+                            .absolute()
+                            .size_full(),
+                        )
+                    }),
             )
         });
     let pip = pip.map(|pip| chat_pip_frame(pip, docked));

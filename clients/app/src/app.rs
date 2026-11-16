@@ -3342,54 +3342,53 @@ impl Render for AppShell {
                 && core.command_output().is_none()
                 && core.display_panes().is_none()
         };
+        #[cfg(any(target_os = "ios", target_os = "android", target_family = "wasm"))]
+        let visible: BTreeSet<_> = if unobstructed && compact {
+            self.compact_visible_panes(cx)
+        } else if unobstructed {
+            self.active_window(cx)
+                .map(|window| {
+                    let cell = self.cell_size(&window, cx);
+                    let layout = window
+                        .zoomed_pane
+                        .map_or(window.layout, zz_protocol::LayoutNode::Pane);
+                    let canvas = self.float_canvas_bounds.get();
+                    let floats: Vec<_> = window
+                        .floating
+                        .iter()
+                        .filter(|float| float.visible)
+                        .filter_map(|float| {
+                            let placed = floating::float_placement(float, cell, canvas.size)?;
+                            Some((
+                                float.pane,
+                                floating::FloatPlacement {
+                                    frame: placed.frame + canvas.origin,
+                                    content: placed.content + canvas.origin,
+                                },
+                            ))
+                        })
+                        .collect();
+                    let bounds = self.pane_bounds.borrow();
+                    floating::native_panes_shown(
+                        pane_rects(&layout)
+                            .into_iter()
+                            .map(|(pane, _)| (pane, bounds.get(&pane).copied())),
+                        &floats,
+                        window.modal.map(|modal| modal.pane),
+                    )
+                })
+                .unwrap_or_default()
+        } else {
+            BTreeSet::new()
+        };
         #[cfg(any(target_os = "ios", target_os = "android"))]
-        {
-            let visible: BTreeSet<_> = if unobstructed && compact {
-                self.compact_visible_panes(cx)
-            } else if unobstructed {
-                self.active_window(cx)
-                    .map(|window| {
-                        let cell = self.cell_size(&window, cx);
-                        let layout = window
-                            .zoomed_pane
-                            .map_or(window.layout, zz_protocol::LayoutNode::Pane);
-                        let canvas = self.float_canvas_bounds.get();
-                        let floats: Vec<_> = window
-                            .floating
-                            .iter()
-                            .filter(|float| float.visible)
-                            .filter_map(|float| {
-                                let placed = floating::float_placement(float, cell, canvas.size)?;
-                                Some((
-                                    float.pane,
-                                    floating::FloatPlacement {
-                                        frame: placed.frame + canvas.origin,
-                                        content: placed.content + canvas.origin,
-                                    },
-                                ))
-                            })
-                            .collect();
-                        let bounds = self.pane_bounds.borrow();
-                        floating::native_panes_shown(
-                            pane_rects(&layout)
-                                .into_iter()
-                                .map(|(pane, _)| (pane, bounds.get(&pane).copied())),
-                            &floats,
-                            window.modal.map(|modal| modal.pane),
-                        )
-                    })
-                    .unwrap_or_default()
-            } else {
-                BTreeSet::new()
-            };
-            for (pane, browser) in &self.browsers {
-                browser.update(cx, |browser, cx| {
-                    browser.set_visible(visible.contains(pane), cx);
-                });
-            }
+        for (pane, browser) in &self.browsers {
+            browser.update(cx, |browser, cx| {
+                browser.set_visible(visible.contains(pane), cx);
+            });
         }
         #[cfg(target_family = "wasm")]
-        let shell = shell.child(crate::web_frames::drawn(!unobstructed, cx));
+        let shell = shell.child(crate::web_frames::drawn(!unobstructed, &visible, cx));
         let shell = shell
             .track_focus(&self.focus)
             .on_key_up(cx.listener(Self::key_up))

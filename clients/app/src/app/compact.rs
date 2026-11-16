@@ -1037,12 +1037,15 @@ impl AppShell {
         cx.notify();
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
+    #[cfg(any(target_os = "ios", target_os = "android", target_family = "wasm"))]
     pub(super) fn compact_visible_panes(&self, cx: &App) -> BTreeSet<PaneId> {
         if self.compact_lifted() || self.compact.bindings {
             return BTreeSet::new();
         }
         if self.shown_stack(cx).is_some() || self.compact.sheet.is_some() {
+            #[cfg(target_family = "wasm")]
+            return BTreeSet::new();
+            #[cfg(not(target_family = "wasm"))]
             return self
                 .active_window(cx)
                 .map(|window| window.active_pane)

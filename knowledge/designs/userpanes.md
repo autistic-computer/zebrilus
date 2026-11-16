@@ -475,13 +475,19 @@ up in the numbers.
   second on the canvas (ala's web window places a wheel event by its client coordinates, so a
   replayed one lands where the pointer is), so the chat scrolls over a visual. A visual and an `html` block take
   pointer input, and a page frame is laid out at 1280 × 720, scaled to the column and takes none.
-  On a touch-only browser no frame takes input, so a drag over one scrolls the chat. The chat
-  clips its frames above the composer's band (`html_frame_clip`), a frame not painted in a draw
-  is hidden at the end of that draw (and removed after 30 s), and every frame hides while
-  settings, a dialog, a prompt, a menu or a tmux chooser is open, since the canvas cannot draw
-  over them; a popover from the composer that opens over a visual is still drawn under it. A
-  visual's Show code and Copy sit in a row above it, always shown, since the pointer over a frame
-  never reaches the canvas. Frames are single documents: relative assets have no origin
+  On a touch-only browser no frame takes input, so a drag over one scrolls the chat. The canvas
+  cannot draw over a frame, so frames step aside for whatever it draws on top. The chat clips its
+  frames above the composer's band and above Jump to latest while it shows (`html_frame_clip`),
+  and cuts a tooltip's rows out of them. A chat's frames hide while its @ or slash menu, a phone
+  sheet or an undocked subagent PiP is open (`ChatHost::chat_covered`), and while its pane is
+  not in the set iOS shows browser panes in: a floating pane over a tiled one, or another pane's
+  modal, hides it. Every frame hides while settings, a dialog, a prompt, a menu or a tmux chooser
+  is open. A frame not painted in a draw is hidden at the end of that draw (and removed after
+  30 s). A visual is laid out at the column's width over the UI zoom and scaled up by it (17/14
+  in the phone layout), as the desktop draws it. While an agent streams a block, the frame keeps
+  the last page and its height until the page has stopped changing for 250 ms, as the desktop
+  waits before drawing a picture. A visual's Show code and Copy sit in a row above it, always
+  shown, since the pointer over a frame never reaches the canvas. Frames are single documents: relative assets have no origin
   to resolve against, and the page inherits the app's cross-origin isolation, so a resource from
   another site loads only if that site sends a cross-origin resource policy. There is no Open as
   a page: the web's browser panes are placeholders.

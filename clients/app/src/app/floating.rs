@@ -750,7 +750,7 @@ pub(super) fn float_placement(
     })
 }
 
-#[cfg(any(target_os = "ios", target_os = "android", test))]
+#[cfg(any(target_os = "ios", target_os = "android", target_family = "wasm", test))]
 pub(super) fn native_panes_shown(
     tiled: impl IntoIterator<Item = (zz_protocol::PaneId, Option<Bounds<Pixels>>)>,
     floats: &[(zz_protocol::PaneId, FloatPlacement)],

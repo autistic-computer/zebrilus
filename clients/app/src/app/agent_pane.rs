@@ -1923,6 +1923,10 @@ impl ChatHost for AgentPane {
     fn chat_hold(&mut self, held: &HeldMessage, cx: &mut Context<Self>) {
         self.phone_hold(held, cx);
     }
+
+    fn chat_covered(&self, cx: &App) -> bool {
+        self.sheet.is_some() || !self.completions.is_empty() || self.mention.read(cx).is_open()
+    }
 }
 
 impl AgentPane {

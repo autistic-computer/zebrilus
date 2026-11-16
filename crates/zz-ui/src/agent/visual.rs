@@ -495,7 +495,9 @@ fn render_visual(
             .min_w_0()
             .selectable(true)
             .into_any_element()
-    } else if let Some((height, frame)) = html_frame(block, &page, None, cx.theme().is_dark(), cx) {
+    } else if let Some((height, frame)) =
+        html_frame(block, &page, None, zoom, cx.theme().is_dark(), cx)
+    {
         div()
             .w_full()
             .h(height.unwrap_or(px(DRAWING_HEIGHT)))
@@ -782,6 +784,7 @@ fn render_page(
         block,
         &source.html,
         Some(ala::size(px(PAGE_WIDTH), px(PAGE_HEIGHT))),
+        1.0,
         false,
         cx,
     )
@@ -953,7 +956,7 @@ mod tests {
     }
 
     #[ala::test]
-    fn frames_hold_visuals_at_their_reported_height_and_pages_at_desktop_size(
+    fn frames_scale_visuals_with_the_ui_zoom_and_hold_pages_at_desktop_size(
         cx: &mut TestAppContext,
     ) {
         cx.update(crate::init);
@@ -961,7 +964,7 @@ mod tests {
         let sink = Rc::clone(&placed);
         cx.update(|cx| {
             cx.set_global(AgentHtmlFrames {
-                height: Rc::new(|_| Some(px(90.0))),
+                height: Rc::new(|_, _| Some(px(90.0))),
                 place: Rc::new(move |frame| sink.borrow_mut().push(frame)),
             });
         });
@@ -984,6 +987,7 @@ mod tests {
         for _ in 0..2 {
             placed.borrow_mut().clear();
             cx.update(|window, cx| {
+                penna::Theme::global_mut(cx).font_size = px(penna::BASE_UI_FONT_SIZE * 1.5);
                 _ = window.draw(cx);
             });
         }
@@ -993,16 +997,21 @@ mod tests {
         };
         assert!(visual.page.ends_with("<body><b>hi</b></body></html>"));
         assert_eq!(
-            (visual.bounds.size.height, visual.layout, visual.live),
-            (px(90.0), None, true)
+            (
+                visual.bounds.size.height,
+                visual.layout,
+                visual.zoom,
+                visual.live
+            ),
+            (px(135.0), None, 1.5, true)
         );
         assert_eq!(
             page.page.as_ref(),
             "<!doctype html><html><body>page</body></html>"
         );
         assert_eq!(
-            (page.layout, page.live),
-            (Some(ala::size(px(PAGE_WIDTH), px(PAGE_HEIGHT))), false)
+            (page.layout, page.zoom, page.live),
+            (Some(ala::size(px(PAGE_WIDTH), px(PAGE_HEIGHT))), 1.0, false)
         );
         assert!(cx.debug_bounds("agent-visual-picture").is_none());
     }

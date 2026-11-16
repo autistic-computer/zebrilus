@@ -14,6 +14,7 @@ pub mod view;
 pub mod visual;
 
 use std::{
+    cell::Cell,
     collections::{HashMap, HashSet, VecDeque},
     hash::{DefaultHasher, Hash, Hasher},
     rc::Rc,
@@ -50,7 +51,7 @@ const MERMAID_NODE_NAME: &str = "zz-mermaid";
 const SVG_NODE_NAME: &str = "zz-svg";
 const RICH_MARKDOWN_NODE_NAME: &str = "zz-rich-markdown";
 const FIGURE_MAX_SOURCE_BYTES: usize = 32 * 1024;
-const FIGURE_RENDER_DEBOUNCE: Duration = Duration::from_millis(250);
+pub const FIGURE_RENDER_DEBOUNCE: Duration = Duration::from_millis(250);
 const FIGURE_CACHE_CAPACITY: usize = 16;
 const HTML_PREVIEW_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 const HTML_PREVIEW_WIDTH_STEP: f32 = 32.0;
@@ -235,35 +236,71 @@ pub struct HtmlFrame {
     pub block: u64,
     pub key: u64,
     pub page: SharedString,
+    pub owner: Option<u64>,
     pub bounds: ala::Bounds<Pixels>,
     pub clip: ala::Bounds<Pixels>,
     pub layout: Option<ala::Size<Pixels>>,
+    pub zoom: f32,
     pub live: bool,
     pub dark: bool,
 }
 
 pub struct AgentHtmlFrames {
-    pub height: Rc<dyn Fn(u64) -> Option<Pixels>>,
+    pub height: Rc<dyn Fn(u64, u64) -> Option<Pixels>>,
     pub place: Rc<dyn Fn(HtmlFrame)>,
 }
 
 impl Global for AgentHtmlFrames {}
 
 #[derive(Default)]
-struct HtmlFrameClip(Option<ala::Bounds<Pixels>>);
+struct HtmlFrameClip(Option<(u64, ala::Bounds<Pixels>)>);
 
 impl Global for HtmlFrameClip {}
 
-pub(crate) fn html_frame_clip(clip: bool, cx: &App) -> Option<ala::Canvas<()>> {
+pub(crate) struct HtmlFrameBand {
+    pub(crate) owner: u64,
+    pub(crate) hidden: bool,
+    pub(crate) floor: Rc<Cell<Option<Pixels>>>,
+}
+
+pub(crate) fn html_frame_clip(band: Option<HtmlFrameBand>, cx: &App) -> Option<ala::Canvas<()>> {
     cx.has_global::<AgentHtmlFrames>().then(|| {
         canvas(
             |_, _, _| {},
             move |bounds, (), _, cx| {
-                cx.set_global(HtmlFrameClip(clip.then_some(bounds)));
+                cx.set_global(HtmlFrameClip(band.map(|band| {
+                    let bottom = band
+                        .floor
+                        .get()
+                        .map_or(bounds.bottom(), |floor| floor.min(bounds.bottom()));
+                    let bottom = if band.hidden { bounds.top() } else { bottom };
+                    (
+                        band.owner,
+                        ala::Bounds::from_corners(
+                            bounds.origin,
+                            ala::point(bounds.right(), bottom.max(bounds.top())),
+                        ),
+                    )
+                })));
             },
         )
         .size_full()
     })
+}
+
+fn clip_outside(clip: ala::Bounds<Pixels>, cover: ala::Bounds<Pixels>) -> ala::Bounds<Pixels> {
+    if !clip.intersects(&cover) {
+        return clip;
+    }
+    let (top, bottom) = if cover.top() - clip.top() >= clip.bottom() - cover.bottom() {
+        (clip.top(), cover.top())
+    } else {
+        (cover.bottom(), clip.bottom())
+    };
+    ala::Bounds::from_corners(
+        ala::point(clip.left(), top),
+        ala::point(clip.right(), bottom.max(top)),
+    )
 }
 
 pub(crate) fn draws_html(cx: &App) -> bool {
@@ -274,6 +311,7 @@ pub(crate) fn html_frame(
     block: u64,
     page: &str,
     layout: Option<ala::Size<Pixels>>,
+    zoom: f32,
     dark: bool,
     cx: &App,
 ) -> Option<(Option<Pixels>, ala::Canvas<()>)> {
@@ -282,24 +320,31 @@ pub(crate) fn html_frame(
     let mut hasher = DefaultHasher::new();
     page.hash(&mut hasher);
     let key = hasher.finish();
-    let height = (frames.height)(key);
+    let height = (frames.height)(block, key).map(|height| height * zoom);
     let live = layout.is_none() && !crate::touch::touch_targets(cx);
     let page = SharedString::from(page.to_owned());
     let frame = canvas(
         |_, _, _| {},
         move |bounds, (), window, cx| {
             let mask = window.content_mask().bounds;
-            let clip = cx
+            let (owner, clip) = cx
                 .try_global::<HtmlFrameClip>()
                 .and_then(|clip| clip.0)
-                .map_or(mask, |clip| mask.intersect(&clip));
+                .map_or((None, mask), |(owner, clip)| {
+                    (Some(owner), mask.intersect(&clip))
+                });
+            let clip = window
+                .tooltip_bounds()
+                .map_or(clip, |tooltip| clip_outside(clip, tooltip));
             place(HtmlFrame {
                 block,
                 key,
                 page,
+                owner,
                 bounds,
                 clip,
                 layout,
+                zoom,
                 live,
                 dark,
             });
@@ -510,6 +555,7 @@ fn agent_code_block_body(
             block,
             &html_block_page(&code, head.as_deref()),
             None,
+            1.0,
             dark,
             cx,
         )

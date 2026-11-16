@@ -1,13 +1,16 @@
 use std::{
     cell::{Cell, RefCell},
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     rc::{Rc, Weak},
 };
 
 use ala::{App, Global, IntoElement, Pixels, SharedString, Styled as _, canvas, px};
 use wasm_bindgen::{JsCast as _, JsValue, closure::Closure};
 use web_time::{Duration, Instant};
-use zz_ui::agent::{AgentHtmlFrames, HtmlFrame, visual::PREVIEW_HEIGHT_SCRIPT};
+use zz_protocol::PaneId;
+use zz_ui::agent::{
+    AgentHtmlFrames, FIGURE_RENDER_DEBOUNCE, HtmlFrame, visual::PREVIEW_HEIGHT_SCRIPT,
+};
 
 const MIN_HEIGHT: f64 = 8.0;
 const MAX_HEIGHT: f64 = 800.0;
@@ -47,6 +50,8 @@ struct Frame {
     element: web_sys::HtmlIFrameElement,
     page: SharedString,
     key: u64,
+    height: Option<f64>,
+    pending: Option<(SharedString, Instant)>,
     placement: Option<Placement>,
     drawn: u64,
     hidden: Option<Instant>,
@@ -68,7 +73,8 @@ struct Frames {
     origin: Cell<Option<(f64, f64)>>,
     draw: Cell<u64>,
     covered: Cell<bool>,
-    resized: async_channel::Sender<()>,
+    shown: RefCell<BTreeSet<u64>>,
+    wake: async_channel::Sender<Duration>,
 }
 
 struct WebFrames(Rc<Frames>);
@@ -99,7 +105,7 @@ pub fn show_html_in_chats(cx: &mut App) {
     if let Some(body) = document.body() {
         body.append_child(&layer).ok();
     }
-    let (resized, sizes) = async_channel::unbounded();
+    let (wake, wakes) = async_channel::unbounded();
     let frames = Rc::new(Frames {
         document,
         layer,
@@ -108,12 +114,18 @@ pub fn show_html_in_chats(cx: &mut App) {
         origin: Cell::new(None),
         draw: Cell::new(0),
         covered: Cell::new(false),
-        resized,
+        shown: RefCell::default(),
+        wake,
     });
     listen(Rc::downgrade(&frames));
     cx.spawn(async move |cx| {
-        while sizes.recv().await.is_ok() {
-            while sizes.try_recv().is_ok() {}
+        while let Ok(mut delay) = wakes.recv().await {
+            while let Ok(next) = wakes.try_recv() {
+                delay = delay.max(next);
+            }
+            if !delay.is_zero() {
+                cx.background_executor().timer(delay).await;
+            }
             cx.update(App::refresh_windows);
         }
     })
@@ -121,12 +133,17 @@ pub fn show_html_in_chats(cx: &mut App) {
     cx.set_global(AgentHtmlFrames {
         height: Rc::new({
             let frames = Rc::clone(&frames);
-            move |key| {
-                frames
-                    .heights
-                    .borrow()
-                    .get(&key)
-                    .map(|height| px(*height as f32))
+            move |block, key| {
+                let height = frames.heights.borrow().get(&key).copied();
+                height
+                    .or_else(|| {
+                        frames
+                            .frames
+                            .borrow()
+                            .get(&block)
+                            .and_then(|frame| frame.height)
+                    })
+                    .map(|height| px(height as f32))
             }
         }),
         place: Rc::new({
@@ -137,9 +154,10 @@ pub fn show_html_in_chats(cx: &mut App) {
     cx.set_global(WebFrames(frames));
 }
 
-pub fn drawn(covered: bool, cx: &App) -> impl IntoElement + use<> {
+pub fn drawn(covered: bool, shown: &BTreeSet<PaneId>, cx: &App) -> impl IntoElement + use<> {
     if let Some(frames) = cx.try_global::<WebFrames>() {
         frames.0.covered.set(covered);
+        *frames.0.shown.borrow_mut() = shown.iter().map(|pane| pane.0).collect();
     }
     canvas(
         |_, _, _| {},
@@ -196,6 +214,7 @@ impl Frames {
 
     fn place(&self, frame: &HtmlFrame) {
         let draw = self.draw.get();
+        let now = Instant::now();
         let mut frames = self.frames.borrow_mut();
         let entry = match frames.entry(frame.block) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
@@ -207,6 +226,8 @@ impl Frames {
                     element,
                     page: SharedString::default(),
                     key: frame.key,
+                    height: None,
+                    pending: None,
                     placement: None,
                     drawn: draw,
                     hidden: None,
@@ -215,13 +236,30 @@ impl Frames {
         };
         entry.drawn = draw;
         entry.hidden = None;
-        if entry.page != frame.page {
-            entry.key = frame.key;
-            entry.page = frame.page.clone();
-            entry.element.set_srcdoc(&format!(
-                "{}{FRAME_SCRIPT_HEAD}{PREVIEW_HEIGHT_SCRIPT}{FRAME_SCRIPT_TAIL}",
-                frame.page
-            ));
+        if entry.page == frame.page {
+            entry.pending = None;
+        } else {
+            let since = match &entry.pending {
+                Some((page, since)) if *page == frame.page => *since,
+                _ => {
+                    entry.pending = Some((frame.page.clone(), now));
+                    now
+                }
+            };
+            if entry.page.is_empty() || now.duration_since(since) >= FIGURE_RENDER_DEBOUNCE {
+                if entry.key != frame.key {
+                    self.heights.borrow_mut().remove(&entry.key);
+                }
+                entry.key = frame.key;
+                entry.page = frame.page.clone();
+                entry.pending = None;
+                entry.element.set_srcdoc(&format!(
+                    "{}{FRAME_SCRIPT_HEAD}{PREVIEW_HEIGHT_SCRIPT}{FRAME_SCRIPT_TAIL}",
+                    frame.page
+                ));
+            } else if since == now {
+                self.wake.try_send(FIGURE_RENDER_DEBOUNCE).ok();
+            }
         }
         let Some(placement) = self.placement(frame) else {
             entry.hide();
@@ -264,12 +302,22 @@ impl Frames {
     fn placement(&self, frame: &HtmlFrame) -> Option<Placement> {
         let bounds = frame.bounds;
         let clip = bounds.intersect(&frame.clip);
-        if self.covered.get() || clip.size.width <= px(0.0) || clip.size.height <= px(0.0) {
+        if self.covered.get()
+            || frame
+                .owner
+                .is_some_and(|owner| !self.shown.borrow().contains(&owner))
+            || clip.size.width <= px(0.0)
+            || clip.size.height <= px(0.0)
+        {
             return None;
         }
         let edge = |pixels: Pixels| f64::from(f32::from(pixels));
+        let zoom = f64::from(frame.zoom);
         let (width, height) = frame.layout.map_or(
-            (edge(bounds.size.width), edge(bounds.size.height)),
+            (
+                edge(bounds.size.width) / zoom,
+                edge(bounds.size.height) / zoom,
+            ),
             |layout| (edge(layout.width), edge(layout.height)),
         );
         let scale = if width > 0.0 {
@@ -353,8 +401,8 @@ impl Frames {
         else {
             return;
         };
-        let frames = self.frames.borrow();
-        let Some(frame) = frames.values().find(|frame| {
+        let mut frames = self.frames.borrow_mut();
+        let Some(frame) = frames.values_mut().find(|frame| {
             frame
                 .element
                 .content_window()
@@ -368,13 +416,16 @@ impl Frames {
                     return;
                 };
                 let height = height.clamp(MIN_HEIGHT, MAX_HEIGHT);
+                frame.height = Some(height);
                 let previous = self.heights.borrow_mut().insert(frame.key, height);
                 if previous != Some(height) {
-                    self.resized.try_send(()).ok();
+                    self.wake.try_send(Duration::ZERO).ok();
                 }
             }
             "wheel" => {
-                if let Some(placement) = frame.placement.filter(|placement| placement.live) {
+                let placement = frame.placement.filter(|placement| placement.live);
+                drop(frames);
+                if let Some(placement) = placement {
                     self.wheel(&data, placement);
                 }
             }
