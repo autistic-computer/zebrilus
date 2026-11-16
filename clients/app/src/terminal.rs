@@ -1007,7 +1007,9 @@ impl TerminalPane {
                 !tracking || event.modifiers.shift || self.force_local_selection;
         }
         self.pressed_buttons.insert(event.button);
-        let link_tap = (self.compact || cfg!(any(target_os = "ios", target_os = "android")))
+        let link_tap = (self.compact
+            || (cfg!(any(target_os = "ios", target_os = "android"))
+                && window.last_input_was_touch()))
             && self.surface == TerminalSurface::Pane
             && event.button == MouseButton::Left
             && event.click_count == 1

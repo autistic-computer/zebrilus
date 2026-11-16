@@ -276,7 +276,8 @@ being composed, hardware keys go to the input method first.
 - Tap a link in a terminal to open it. On iPhone it opens the link sheet. On iPad a web link
   opens in the nearest browser pane of the terminal's window, as on the desktop, and in
   the system browser when that window has no browser pane. Tapping a pasted image's `[Image #N]`
-  opens the image preview.
+  opens the image preview. On iPad a trackpad or mouse click selects as on the desktop:
+  Command-click or Control-click a link to open it.
 
 ## Lifecycle
 

@@ -578,12 +578,16 @@ impl AppShell {
             }
             #[cfg(any(target_os = "ios", target_os = "android"))]
             OpenUriRoute::Embedded { pane, url }
-                if !compact
-                    && !self.connection.read(cx).core.attached_read_only()
-                    && self.browsers.contains_key(&pane) =>
+                if !compact && !self.connection.read(cx).core.attached_read_only() =>
             {
-                let browser = self.browsers[&pane].clone();
-                browser.update(cx, |browser, cx| browser.load_url(url, window, cx));
+                window.dismiss_virtual_keyboard();
+                if let Some(browser) = self.browsers.get(&pane).cloned() {
+                    browser.update(cx, |browser, cx| browser.load_url(url, window, cx));
+                } else {
+                    self.connection.update(cx, |connection, cx| {
+                        connection.navigate_browser(pane, url, cx);
+                    });
+                }
             }
             _ if zz_client::terminal_view::openable_uri(&link.uri) => cx.open_url(&link.uri),
             _ => self.connection.update(cx, |connection, cx| {

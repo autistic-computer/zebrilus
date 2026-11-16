@@ -417,6 +417,34 @@ impl Connection {
         )
     }
 
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    pub fn navigate_browser(&mut self, pane: PaneId, url: String, cx: &mut Context<Self>) {
+        let Some(PaneKindSnapshot::Browser(descriptor)) =
+            self.pane_snapshot(pane).map(|pane| &pane.kind)
+        else {
+            return;
+        };
+        let mut tabs = descriptor.tabs.clone();
+        let active = if descriptor.active_tab < tabs.len() {
+            descriptor.active_tab
+        } else {
+            0
+        };
+        match tabs.get_mut(active) {
+            Some(tab) => *tab = url,
+            None => tabs.push(url),
+        }
+        let mut args = vec![
+            "-t".into(),
+            pane.to_string(),
+            "-a".into(),
+            active.to_string(),
+            "--".into(),
+        ];
+        args.extend(tabs);
+        self.command("set-browser-tabs", args, cx);
+    }
+
     pub fn notify_error(&mut self, text: String, cx: &mut Context<Self>) {
         self.status.clone_from(&text);
         cx.emit(CoreEvent::ClientMessage {

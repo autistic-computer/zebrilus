@@ -410,10 +410,12 @@ impl RenderOnce for Dialog {
             .children(self.props.close_button.then(|| {
                 let on_cancel = on_cancel.clone();
                 let on_close = on_close.clone();
+                let slop = crate::blocks::touch::control_slop(crate::Size::Medium);
                 Button::new("close")
                     .absolute()
                     .top(Space::S12)
                     .right(Space::S12)
+                    .hit_slop(slop, slop)
                     .ghost()
                     .icon(IconName::Xmark)
                     .on_click(move |_, window, cx| {
