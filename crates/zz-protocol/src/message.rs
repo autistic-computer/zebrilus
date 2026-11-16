@@ -64,6 +64,7 @@ pub const MAX_ENVIRONMENT_VALUE_BYTES: usize = 16 * 1024;
 pub const MAX_CLIENT_FILE_PATH_BYTES: usize = 16 * 1024;
 pub const MAX_CLIENT_FILE_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_BROWSER_SCREENSHOT_BYTES: usize = 32 * 1024 * 1024;
+pub const MAX_BROWSER_SCREENSHOT_CHUNK_BYTES: usize = 256 * 1024;
 pub const MAX_STARTUP_CONFIG_CAUSES: usize = 1024;
 pub const MAX_STARTUP_CONFIG_CAUSE_BYTES: usize = 64 * 1024;
 pub const MAX_STARTUP_CONFIG_CAUSES_BYTES: usize = 1024 * 1024;
@@ -1046,10 +1047,10 @@ where
     D: Deserializer<'de>,
 {
     let bytes: Vec<u8> = serde_bytes::deserialize(deserializer)?;
-    if bytes.len() > MAX_BROWSER_SCREENSHOT_BYTES {
+    if bytes.len() > MAX_BROWSER_SCREENSHOT_CHUNK_BYTES {
         return Err(D::Error::invalid_length(
             bytes.len(),
-            &"a browser screenshot within the wire byte limit",
+            &"a browser screenshot chunk within the wire byte limit",
         ));
     }
     Ok(bytes)
@@ -3903,6 +3904,7 @@ pub enum ProtocolMessage {
     },
     BrowserScreenshot {
         request_id: u64,
+        last: bool,
         #[serde(
             serialize_with = "serde_bytes::serialize",
             deserialize_with = "deserialize_browser_screenshot"

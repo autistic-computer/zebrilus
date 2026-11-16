@@ -858,9 +858,13 @@ impl EventLoop {
                     }
                     true
                 }
-                ProtocolMessage::BrowserScreenshot { request_id, png } => {
+                ProtocolMessage::BrowserScreenshot {
+                    request_id,
+                    last,
+                    png,
+                } => {
                     if let Some(client) = connection.client {
-                        shared.complete_browser_screenshot(client, request_id, png);
+                        shared.receive_browser_screenshot(client, request_id, last, &png);
                     }
                     true
                 }
@@ -888,8 +892,12 @@ impl EventLoop {
                 ProtocolMessage::GuiResponse(response) => {
                     shared.complete_gui_request(client, response);
                 }
-                ProtocolMessage::BrowserScreenshot { request_id, png } => {
-                    shared.complete_browser_screenshot(client, request_id, png);
+                ProtocolMessage::BrowserScreenshot {
+                    request_id,
+                    last,
+                    png,
+                } => {
+                    shared.receive_browser_screenshot(client, request_id, last, &png);
                 }
                 ProtocolMessage::ClientFileResponse(response) => {
                     shared.complete_client_file(client, response);

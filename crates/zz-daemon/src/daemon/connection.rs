@@ -1073,8 +1073,12 @@ impl Session {
             ProtocolMessage::GuiResponse(response) => {
                 shared.complete_gui_request(client, response);
             }
-            ProtocolMessage::BrowserScreenshot { request_id, png } => {
-                shared.complete_browser_screenshot(client, request_id, png);
+            ProtocolMessage::BrowserScreenshot {
+                request_id,
+                last,
+                png,
+            } => {
+                shared.receive_browser_screenshot(client, request_id, last, &png);
             }
             ProtocolMessage::Resync => shared.send_resync(client, outbound),
             ProtocolMessage::RequestFull { pane } => {

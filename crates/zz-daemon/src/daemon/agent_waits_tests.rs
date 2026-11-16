@@ -299,19 +299,23 @@ fn a_browser_screenshot_from_a_remote_window_is_written_where_the_caller_asked()
             PendingGuiRequest {
                 client: ClientId(1),
                 reply: send.clone().into(),
-                screenshot,
+                screenshot: screenshot.map(|path| PendingScreenshot {
+                    path,
+                    png: Vec::new(),
+                }),
             },
         );
     }
-    shared.complete_browser_screenshot(ClientId(2), 8, png.clone());
-    assert!(shared.inner.lock().pending_gui_requests.contains_key(&8));
-    shared.complete_browser_screenshot(ClientId(1), 8, png.clone());
+    shared.receive_browser_screenshot(ClientId(2), 8, true, &png);
+    shared.receive_browser_screenshot(ClientId(1), 8, false, &png[..5]);
+    assert!(response.try_recv().is_err());
+    shared.receive_browser_screenshot(ClientId(1), 8, true, &png[5..]);
     assert_eq!(
         response.recv_timeout(Duration::from_secs(5)).unwrap(),
         Ok(path.clone())
     );
     assert_eq!(std::fs::read(&path).unwrap(), png);
-    shared.complete_browser_screenshot(ClientId(1), 9, png);
+    shared.receive_browser_screenshot(ClientId(1), 9, true, &png);
     assert_eq!(
         response.recv_timeout(Duration::from_secs(5)).unwrap(),
         Err("the zz window sent a screenshot for another request".to_owned())

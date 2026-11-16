@@ -967,6 +967,12 @@ fn resolve_appearance(
 }
 
 fn write_browser_screenshot(path: &Path, png: &[u8]) -> Result<(), String> {
+    if png.len() > zz_protocol::MAX_BROWSER_SCREENSHOT_BYTES {
+        return Err(format!(
+            "the zz window sent a screenshot larger than {} MiB",
+            zz_protocol::MAX_BROWSER_SCREENSHOT_BYTES / (1024 * 1024)
+        ));
+    }
     if !png.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Err("the zz window sent a screenshot that is not a PNG".to_owned());
     }
@@ -30146,10 +30152,8 @@ impl Shared {
                 )))
             })?
         };
-        let (wait, reply) = agent_waits::reply::<Result<String, String>>(
-            self,
-            Some(GUI_REQUEST_TIMEOUT),
-            move |shared, outcome| {
+        let (wait, reply) =
+            agent_waits::reply::<Result<String, String>>(self, None, move |shared, outcome| {
                 shared.inner.lock().pending_gui_requests.remove(&request_id);
                 match outcome {
                     terminal_requests::ReplyOutcome::Ready(Ok(output)) => Ok(Execution {
@@ -30165,16 +30169,19 @@ impl Shared {
                     ))
                     .into()),
                 }
-            },
-        );
+            });
         self.inner.lock().pending_gui_requests.insert(
             request_id,
             PendingGuiRequest {
                 client,
                 reply,
-                screenshot,
+                screenshot: screenshot.map(|path| PendingScreenshot {
+                    path,
+                    png: Vec::new(),
+                }),
             },
         );
+        self.expire_stalled_gui_request(request_id, 0);
         if !subscriber.enqueue_reliable(&Self::event(payload(request_id))) {
             self.inner.lock().pending_gui_requests.remove(&request_id);
             wait.state
@@ -30185,13 +30192,32 @@ impl Shared {
         wait.finish(self, Execution::default())
     }
 
+    fn expire_stalled_gui_request(self: &Arc<Self>, request_id: u64, received: usize) {
+        self.terminal_requests
+            .schedule(Instant::now() + GUI_REQUEST_TIMEOUT, move |shared| {
+                let stalled = {
+                    let mut inner = shared.inner.lock();
+                    let Some(pending) = inner.pending_gui_requests.get(&request_id) else {
+                        return;
+                    };
+                    let now = pending
+                        .screenshot
+                        .as_ref()
+                        .map_or(0, |screenshot| screenshot.png.len());
+                    if now > received {
+                        drop(inner);
+                        shared.expire_stalled_gui_request(request_id, now);
+                        return;
+                    }
+                    inner.pending_gui_requests.remove(&request_id)
+                };
+                drop(stalled);
+            });
+    }
+
     fn take_gui_request(&self, client: ClientId, request_id: u64) -> Option<PendingGuiRequest> {
         let mut inner = self.inner.lock();
-        let pending = inner.pending_gui_requests.get(&request_id)?;
-        if pending.client != client {
-            log::warn!(target: "zz_daemon::diagnostics::connection", "discarding GUI response for request={request_id} from client={client}; owner is {}", pending.client);
-            return None;
-        }
+        owned_gui_request(&mut inner, client, request_id)?;
         inner.pending_gui_requests.remove(&request_id)
     }
 
@@ -30205,11 +30231,30 @@ impl Shared {
         });
     }
 
-    fn complete_browser_screenshot(&self, client: ClientId, request_id: u64, png: Vec<u8>) {
-        let Some(pending) = self.take_gui_request(client, request_id) else {
+    fn receive_browser_screenshot(
+        &self,
+        client: ClientId,
+        request_id: u64,
+        last: bool,
+        png: &[u8],
+    ) {
+        let pending = {
+            let mut inner = self.inner.lock();
+            let Some(pending) = owned_gui_request(&mut inner, client, request_id) else {
+                return;
+            };
+            if let Some(screenshot) = &mut pending.screenshot {
+                screenshot.png.extend_from_slice(png);
+                if !last && screenshot.png.len() <= zz_protocol::MAX_BROWSER_SCREENSHOT_BYTES {
+                    return;
+                }
+            }
+            inner.pending_gui_requests.remove(&request_id)
+        };
+        let Some(pending) = pending else {
             return;
         };
-        let Some(path) = pending.screenshot.clone() else {
+        let Some(PendingScreenshot { path, png }) = pending.screenshot else {
             pending.reply.try_send(Err(
                 "the zz window sent a screenshot for another request".to_owned()
             ));
@@ -35735,7 +35780,26 @@ impl DiagnosticSample {
 struct PendingGuiRequest {
     client: ClientId,
     reply: cmdq::Reply<Result<String, String>>,
-    screenshot: Option<String>,
+    screenshot: Option<PendingScreenshot>,
+}
+
+#[derive(Debug)]
+struct PendingScreenshot {
+    path: String,
+    png: Vec<u8>,
+}
+
+fn owned_gui_request(
+    inner: &mut ServerState,
+    client: ClientId,
+    request_id: u64,
+) -> Option<&mut PendingGuiRequest> {
+    let pending = inner.pending_gui_requests.get_mut(&request_id)?;
+    if pending.client != client {
+        log::warn!(target: "zz_daemon::diagnostics::connection", "discarding GUI response for request={request_id} from client={client}; owner is {}", pending.client);
+        return None;
+    }
+    Some(pending)
 }
 
 impl ServerState {
@@ -53036,8 +53100,12 @@ fn handle_connection_message<S: TransportStream>(
             ProtocolMessage::GuiResponse(response) => {
                 shared.complete_gui_request(client, response);
             }
-            ProtocolMessage::BrowserScreenshot { request_id, png } => {
-                shared.complete_browser_screenshot(client, request_id, png);
+            ProtocolMessage::BrowserScreenshot {
+                request_id,
+                last,
+                png,
+            } => {
+                shared.receive_browser_screenshot(client, request_id, last, &png);
             }
             ProtocolMessage::Resync => shared.send_resync(client, &outbound),
             ProtocolMessage::RequestFull { pane } => {

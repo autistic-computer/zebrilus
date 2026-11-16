@@ -434,14 +434,31 @@ impl Connection {
             },
             cx,
         );
-        let bytes = image.bytes.clone();
+        self.send_in_chunks(
+            image.bytes.clone(),
+            zz_protocol::MAX_PASTE_UPLOAD_CHUNK_BYTES,
+            move |bytes, _| ProtocolMessage::PasteUploadChunk {
+                upload_id,
+                bytes: bytes.to_vec(),
+            },
+            cx,
+        );
+    }
+
+    fn send_in_chunks(
+        &self,
+        bytes: Vec<u8>,
+        chunk: usize,
+        message: impl Fn(&[u8], bool) -> ProtocolMessage + 'static,
+        cx: &mut Context<Self>,
+    ) {
         let epoch = self.epoch;
         cx.spawn(async move |this, cx| {
             let mut offset = 0;
             loop {
                 let keep_running = this
                     .update(cx, |this, cx| {
-                        if !this.connected || this.epoch != epoch || offset == bytes.len() {
+                        if !this.connected || this.epoch != epoch {
                             return false;
                         }
                         #[cfg(target_family = "wasm")]
@@ -452,15 +469,8 @@ impl Connection {
                         {
                             return true;
                         }
-                        let end =
-                            (offset + zz_protocol::MAX_PASTE_UPLOAD_CHUNK_BYTES).min(bytes.len());
-                        this.send(
-                            ProtocolMessage::PasteUploadChunk {
-                                upload_id,
-                                bytes: bytes[offset..end].to_vec(),
-                            },
-                            cx,
-                        );
+                        let end = (offset + chunk).min(bytes.len());
+                        this.send(message(&bytes[offset..end], end == bytes.len()), cx);
                         offset = end;
                         offset < bytes.len()
                     })
@@ -1046,7 +1056,17 @@ impl Connection {
     ) {
         let message = match png {
             Ok(png) if self.takes_browser_screenshots() => {
-                ProtocolMessage::BrowserScreenshot { request_id, png }
+                self.send_in_chunks(
+                    png,
+                    zz_protocol::MAX_BROWSER_SCREENSHOT_CHUNK_BYTES,
+                    move |png, last| ProtocolMessage::BrowserScreenshot {
+                        request_id,
+                        last,
+                        png: png.to_vec(),
+                    },
+                    cx,
+                );
+                return;
             }
             Ok(_) => ProtocolMessage::GuiResponse(zz_protocol::GuiResponse::Error {
                 request_id,

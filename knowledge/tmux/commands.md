@@ -589,8 +589,9 @@ A new prompt keeps the previous code; a completion without a code clears it.
 
 `capture-browser` is a **round trip**: the daemon publishes the request to the desktop app
 attached to the session (then any other Interactive client) and parks the calling command thread on
-`ProtocolMessage::GuiResponse` or, from an iPad, on the PNG it sends in
-`ProtocolMessage::BrowserScreenshot` (5 s timeout), because only the GUI has the frame. The GUI
+`ProtocolMessage::GuiResponse` or, from an iPad, on the PNG it sends in 256 KiB
+`ProtocolMessage::BrowserScreenshot` chunks, because only the GUI has the frame. The call fails
+when 5 s pass with no answer and no new chunk, so a large picture on a slow link still arrives. The GUI
 answers from its mux observation rather than its render loop, so a minimized window still replies.
 `agent-send` never touches the GUI: the daemon delivers the text itself, and `--wait` parks the
 command thread on the turn's reply (600 s default, no lock held). `Shared::recent_agent_terminal`
