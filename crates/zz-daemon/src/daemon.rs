@@ -966,13 +966,20 @@ fn resolve_appearance(
     apply_appearance_overrides(load, entries)
 }
 
-fn send_terminal_themes(outbound: &Arc<OutboundMailbox>, request_id: u64) {
+fn send_terminal_themes(
+    outbound: &Arc<OutboundMailbox>,
+    listing: &Arc<Mutex<Option<u64>>>,
+    request_id: u64,
+) {
+    if listing.lock().replace(request_id).is_some() {
+        return;
+    }
     let outbound = Arc::clone(outbound);
+    let pending = Arc::clone(listing);
     let listed = std::thread::Builder::new()
         .name("zz-terminal-themes".to_owned())
         .spawn(move || {
-            let themes = zz_terminal::enumerate_ghostty_themes_for(
-                TerminalColorScheme::default(),
+            let themes = zz_terminal::enumerate_ghostty_themes(
                 zz_config::config_path_for_write().ok().as_deref(),
             )
             .into_iter()
@@ -980,10 +987,14 @@ fn send_terminal_themes(outbound: &Arc<OutboundMailbox>, request_id: u64) {
             .take(zz_protocol::MAX_TERMINAL_THEMES)
             .map(|theme| zz_protocol::TerminalTheme::new(theme.name, &theme.appearance))
             .collect();
+            let Some(request_id) = pending.lock().take() else {
+                return;
+            };
             let _ = outbound
                 .enqueue_reliable(&ProtocolMessage::TerminalThemesResponse { request_id, themes });
         });
     if let Err(error) = listed {
+        listing.lock().take();
         log::warn!("could not list terminal themes: {error}");
     }
 }
@@ -52722,6 +52733,7 @@ fn handle_connection_message<S: TransportStream>(
 
     let mut path_list: Option<(u64, Arc<AtomicBool>)> = None;
     let path_list_turn = Arc::new(Mutex::new(()));
+    let terminal_themes = Arc::new(Mutex::new(None));
     let mut stream = attach::inbound_reader(stream);
     let result = loop {
         let message = match read_protocol_message_into(&mut stream, &mut inbound_frame) {
@@ -52826,7 +52838,7 @@ fn handle_connection_message<S: TransportStream>(
                 });
             }
             ProtocolMessage::TerminalThemesRequest { request_id } => {
-                send_terminal_themes(&outbound, request_id);
+                send_terminal_themes(&outbound, &terminal_themes, request_id);
             }
             ProtocolMessage::PathListRequest {
                 request_id,

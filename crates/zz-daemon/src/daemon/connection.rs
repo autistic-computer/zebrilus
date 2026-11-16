@@ -9,6 +9,7 @@ pub(super) struct Session {
     context: Option<ExecutionContext>,
     path_list: Option<(u64, Arc<AtomicBool>)>,
     path_list_turn: Arc<Mutex<()>>,
+    terminal_themes: Arc<Mutex<Option<u64>>>,
     registration: ClientRegistrationGuard,
     pub(super) released: Arc<AtomicBool>,
     writer_registration: ClientWriterRegistrationGuard,
@@ -227,6 +228,7 @@ impl Session {
             context: Some(context),
             path_list: None,
             path_list_turn: Arc::new(Mutex::new(())),
+            terminal_themes: Arc::new(Mutex::new(None)),
             registration,
             released: Arc::new(AtomicBool::new(false)),
             writer_registration,
@@ -827,6 +829,7 @@ impl Session {
         let context = &mut self.context;
         let path_list = &mut self.path_list;
         let path_list_turn = &self.path_list_turn;
+        let terminal_themes = &self.terminal_themes;
         let message_started = diagnostic_timer();
         if shared.shutdown_pending.load(Ordering::Acquire)
             && !(hello.kind == ClientKind::Command
@@ -882,7 +885,7 @@ impl Session {
                 });
             }
             ProtocolMessage::TerminalThemesRequest { request_id } => {
-                super::send_terminal_themes(outbound, request_id);
+                super::send_terminal_themes(outbound, terminal_themes, request_id);
             }
             ProtocolMessage::PathListRequest {
                 request_id,
