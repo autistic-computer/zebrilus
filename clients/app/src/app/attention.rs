@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use ala::{App, Context, SystemNotification, Window};
 use web_time::Instant;
+use zz_client::AgentAttentionEdge;
 use zz_client::attention::{
     self, AgentAttentionTracker, AgentPaneStatus, AttentionBanners, AttentionEdge, chime_due,
     loudest,
@@ -15,7 +16,7 @@ pub(super) struct Attention {
     tracker: AgentAttentionTracker<PaneId>,
     banners: AttentionBanners<PaneId>,
     last_chime: Option<Instant>,
-    waiting: Option<usize>,
+    shown: Option<(usize, bool)>,
 }
 
 impl Attention {
@@ -28,13 +29,24 @@ impl Attention {
 }
 
 impl AppShell {
-    pub(super) fn reconcile_attention(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let statuses = attention::pane_statuses(&self.connection.read(cx).core);
+    pub(super) fn reconcile_attention(
+        &mut self,
+        window: &mut Window,
+        reported: Option<(PaneId, AgentAttentionEdge)>,
+        cx: &mut Context<Self>,
+    ) {
         let watched = window
             .is_window_active()
             .then(|| self.active_window(cx).map(|active| active.active_pane))
             .flatten();
-        let edges = self.attention.tracker.observe(&statuses, watched);
+        let core = &self.connection.read(cx).core;
+        let statuses = attention::pane_statuses(core);
+        let edges = self.attention.tracker.observe_reported(
+            &statuses,
+            watched,
+            |pane| core.agent_state(pane).is_some(),
+            reported.map(|(pane, edge)| (pane, edge.into())),
+        );
         if let Some(chime) = loudest(&edges)
             && chime_due(&mut self.attention.last_chime, Instant::now())
         {
@@ -42,8 +54,9 @@ impl AppShell {
         }
         self.post_banners(&statuses, watched, &edges, window, cx);
         let waiting = self.attention.tracker.waiting(&statuses);
-        if self.attention.waiting.replace(waiting) != Some(waiting) {
-            cx.set_app_badge(waiting);
+        let notify = self.preferences.notifications;
+        if self.attention.shown.replace((waiting, notify)) != Some((waiting, notify)) {
+            cx.set_app_badge(if notify { waiting } else { 0 });
             #[cfg(target_family = "wasm")]
             window.set_window_title(&tab_title(waiting));
         }
@@ -107,7 +120,11 @@ impl AppShell {
         };
         self.settings = None;
         sidebar::activate(&self.connection, sidebar::Target::Pane(pane), cx);
-        self.focus_pane(pane, window, cx);
+        if Self::narrow(window) {
+            self.close_overview(cx);
+        } else {
+            self.focus_pane(pane, window, cx);
+        }
         cx.notify();
     }
 }

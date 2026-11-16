@@ -287,10 +287,11 @@ Color Emoji as a color font.
 When a pane on the attached host asks for input, fails or finishes while you are looking
 at another pane, the app plays the request or done chime. While the app is inactive or in
 the short background time, it also posts a notification naming the program and the pane;
-tapping it selects that pane. iOS asks for permission the first time a pane needs you,
-and Settings › System › Notifications turns them off. The app icon badge counts the panes
-that need you, failed or finished unseen. A suspended app gets nothing: that would need a
-push service.
+tapping it selects that pane (on iPhone it leaves the overview and any sheet for the pane).
+iOS asks for permission the first time a pane needs you, and Settings › System ›
+Notifications turns them off. While they are on, the app icon badge counts the panes that
+need you, failed or finished unseen; turning them off clears the badge and never asks for
+permission. A suspended app gets nothing: that would need a push service.
 
 ## Frame rate
 

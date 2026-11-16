@@ -7,7 +7,7 @@ use web_time::{Duration, Instant};
 use zz_protocol::{MuxSnapshot, PaneId, PaneKindSnapshot, PaneStatusKind, PaneStatusState};
 
 use crate::{
-    AgentAttentionStatus, ClientCore, agent_attention_status,
+    AgentAttentionEdge, AgentAttentionStatus, ClientCore, agent_attention_status,
     navigation::{pane_label, session_label},
 };
 
@@ -48,6 +48,16 @@ impl From<AgentAttentionStatus> for AgentPaneStatus {
             AgentAttentionStatus::Working => Self::Working,
             AgentAttentionStatus::NeedsInput => Self::NeedsInput,
             AgentAttentionStatus::Failed => Self::Failed,
+        }
+    }
+}
+
+impl From<AgentAttentionEdge> for AgentPaneStatus {
+    fn from(edge: AgentAttentionEdge) -> Self {
+        match edge {
+            AgentAttentionEdge::Request => Self::NeedsInput,
+            AgentAttentionEdge::Failed => Self::Failed,
+            AgentAttentionEdge::Done => Self::Done,
         }
     }
 }
@@ -161,17 +171,36 @@ impl<K: Copy + Ord> AgentAttentionTracker<K> {
         statuses: &BTreeMap<K, AgentPaneStatus>,
         watched: Option<K>,
     ) -> Vec<AttentionEdge<K>> {
+        self.observe_reported(statuses, watched, |_| false, None)
+    }
+
+    pub fn observe_reported(
+        &mut self,
+        statuses: &BTreeMap<K, AgentPaneStatus>,
+        watched: Option<K>,
+        reported: impl Fn(K) -> bool,
+        edge: Option<(K, AgentPaneStatus)>,
+    ) -> Vec<AttentionEdge<K>> {
         self.previous.retain(|pane, _| statuses.contains_key(pane));
         self.unseen.retain(|pane| statuses.contains_key(pane));
 
+        let diffed = statuses.iter().filter_map(|(&pane, &status)| {
+            let previous = self.previous.insert(pane, status)?;
+            (!reported(pane))
+                .then(|| chime_for(previous, status))
+                .flatten()
+                .map(|chime| (pane, status, chime))
+        });
+        let mut changes = diffed.collect::<Vec<_>>();
+        changes.extend(
+            edge.filter(|(pane, _)| statuses.contains_key(pane))
+                .and_then(|(pane, status)| {
+                    Some((pane, status, chime_for(AgentPaneStatus::Idle, status)?))
+                }),
+        );
+
         let mut edges = Vec::new();
-        for (&pane, &status) in statuses {
-            let Some(previous) = self.previous.insert(pane, status) else {
-                continue;
-            };
-            let Some(chime) = chime_for(previous, status) else {
-                continue;
-            };
+        for (pane, status, chime) in changes {
             if watched == Some(pane) {
                 continue;
             }
@@ -521,6 +550,48 @@ mod tests {
             loudest(&tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), Some(PaneId(1))));
         assert_eq!(chime, None);
         assert_eq!(tracker.badge(PaneId(1), AgentPaneStatus::Idle), None);
+    }
+
+    #[test]
+    fn reported_panes_take_their_edges_from_the_report_not_the_diff() {
+        use AgentPaneStatus::{Done, Idle, NeedsInput, Working};
+        let mut tracker = AgentAttentionTracker::default();
+        let agent = |pane: PaneId| pane == PaneId(1);
+        tracker.observe_reported(&statuses(&[(1, Idle), (2, Working)]), None, agent, None);
+
+        let edges = tracker.observe_reported(
+            &statuses(&[(1, Idle), (2, Idle)]),
+            None,
+            agent,
+            Some((PaneId(1), Done)),
+        );
+        assert_eq!(
+            edges,
+            [
+                AttentionEdge {
+                    pane: PaneId(2),
+                    status: Idle,
+                    chime: Chime::Done,
+                },
+                AttentionEdge {
+                    pane: PaneId(1),
+                    status: Done,
+                    chime: Chime::Done,
+                },
+            ]
+        );
+        assert_eq!(tracker.waiting(&statuses(&[(1, Idle), (2, Idle)])), 2);
+
+        let edges =
+            tracker.observe_reported(&statuses(&[(1, NeedsInput), (2, Idle)]), None, agent, None);
+        assert_eq!(edges, []);
+        let edges = tracker.observe_reported(
+            &statuses(&[(1, Idle), (2, Idle)]),
+            None,
+            agent,
+            Some((PaneId(1), NeedsInput)),
+        );
+        assert_eq!(loudest(&edges), Some(Chime::Request));
     }
 
     #[test]
