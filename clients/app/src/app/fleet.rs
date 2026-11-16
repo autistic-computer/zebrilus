@@ -215,6 +215,8 @@ impl AppShell {
         self.prompt_revision = self.prompt_revision.wrapping_add(1).max(1);
         self.chooser_revision = self.chooser_revision.wrapping_add(1).max(1);
         self.compact.reset_host();
+        self.which_key = None;
+        self.which_key_timer = None;
     }
 }
 

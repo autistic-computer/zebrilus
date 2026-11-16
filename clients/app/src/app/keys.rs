@@ -66,7 +66,7 @@ impl AppShell {
         zz_client::prefix_keys::which_key_delay(self.preferences.which_key_delay)
     }
 
-    fn which_key_blocked(&self, window: &Window, cx: &App) -> bool {
+    fn workspace_covered(&self, window: &Window, cx: &App) -> bool {
         let core = &self.connection.read(cx).core;
         Self::narrow(window)
             || self.settings.is_some()
@@ -114,7 +114,7 @@ impl AppShell {
     fn show_which_key(&mut self, table: &str, window: &Window, cx: &mut Context<Self>) {
         self.which_key_timer = None;
         let core = &self.connection.read(cx).core;
-        if core.key_table() != Some((table, false)) || self.which_key_blocked(window, cx) {
+        if core.key_table() != Some((table, false)) || self.workspace_covered(window, cx) {
             return;
         }
         self.which_key = WhichKeySheet::build(sheet_keys(core), table, false);
@@ -130,7 +130,7 @@ impl AppShell {
         let core = &self.connection.read(cx).core;
         if !core.prefix_armed()
             || self.which_key_delay().is_none()
-            || self.which_key_blocked(window, cx)
+            || self.workspace_covered(window, cx)
             || !zz_client::prefix_keys::is_all_keys_input(core.prefix_bindings(), input)
         {
             return false;
@@ -149,7 +149,7 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         if (self.which_key.is_some() || self.which_key_timer.is_some())
-            && self.which_key_blocked(window, cx)
+            && self.workspace_covered(window, cx)
         {
             self.which_key_timer = None;
             self.which_key = None;
@@ -170,8 +170,9 @@ impl AppShell {
         window: &Window,
         cx: &App,
     ) -> bool {
-        self.settings.is_none()
-            && !Self::narrow(window)
+        let landing = self.preferences.flat_sidebar && self.flat.place.landing();
+        !landing
+            && !self.workspace_covered(window, cx)
             && !self.sidebar_focus.is_focused(window)
             && self.connection.read(cx).connected
             && self.active_window(cx).is_none()
