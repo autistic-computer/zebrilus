@@ -12,6 +12,7 @@ use ala::{
 use penna::{
     Bar, BarLook, Chip, ChipLook, ContentLook, Label, Panel, PanelLook, Row, RowLook, RuleLook,
     Tab, TabLook, TextStyle, Tile, TileVariant,
+    blocks::chat::{COMPOSER_BUTTON, COMPOSER_INSET},
 };
 
 mod drag;
@@ -387,7 +388,8 @@ pub fn pane_flip_button(
         })
 }
 
-const BUSY_PAD: f32 = 10.0;
+const BUSY_TEXT_INSET: f32 = 4.0;
+const BUSY_HEAD_DROP: f32 = 6.0;
 
 fn flip_choice_button(
     id: impl Into<ElementId>,
@@ -465,7 +467,8 @@ fn busy_card(
     cx: &App,
 ) -> Panel {
     Panel::new(("pane-flip-busy", pane.0), PanelLook::Inline)
-        .inset(px(BUSY_PAD))
+        .inset(px(COMPOSER_INSET))
+        .rows(px(COMPOSER_BUTTON))
         .debug_selector(|| "pane-flip-busy".into())
         .flex()
         .flex_col()
@@ -473,7 +476,7 @@ fn busy_card(
         .gap(px(8.0))
         .w(px(300.0))
         .max_w_full()
-        .p(px(BUSY_PAD))
+        .p(px(COMPOSER_INSET))
         .font_family(cx.theme().font_family.clone())
         .type_style(TextStyle::Body, cx)
         .line_height(px(16.0))
@@ -483,6 +486,9 @@ fn busy_card(
                 .flex()
                 .items_start()
                 .gap(px(7.0))
+                .pl(px(BUSY_TEXT_INSET))
+                .pt(px(BUSY_HEAD_DROP))
+                .pb(px(BUSY_TEXT_INSET))
                 .child(
                     div().relative().top(px(1.5)).child(
                         Icon::new(IconName::TriangleAlert)
@@ -516,7 +522,8 @@ fn busy_card(
                         on_choice,
                     )
                     .icon(IconName::Xmark)
-                    .tooltip("Keep this pane as it is"),
+                    .tooltip("Keep this pane as it is")
+                    .mt(px(-BUSY_HEAD_DROP)),
                 ),
         )
 }

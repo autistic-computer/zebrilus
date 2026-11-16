@@ -4,7 +4,11 @@ use ala::{
     AnyElement, App, ClipboardItem, Context, Entity, IntoElement, SharedString, Subscription,
     Window, div, prelude::*, px,
 };
-use penna::{Label, Panel, PanelLook, Size, TextStyle, Well, components::spinner::Spinner};
+use penna::{
+    Label, Panel, PanelLook, TextStyle, Well,
+    blocks::chat::{COMPOSER_BUTTON, COMPOSER_INSET},
+    components::spinner::Spinner,
+};
 use zz_client::agent_login::{self, CardAction, CardClose, CardGlyph, LoginCard};
 use zz_protocol::{AgentLogin, AgentLoginStep, PaneId, ProtocolMessage};
 
@@ -16,12 +20,12 @@ use crate::{
     v_flex,
 };
 
-const PAD: f32 = 10.0;
 const GAP: f32 = 10.0;
 const LINE: f32 = 16.0;
 const GLYPH: f32 = 13.0;
 const GLYPH_DROP: f32 = 1.5;
 const HEAD_GAP: f32 = 7.0;
+const HEAD_DROP: f32 = 4.0;
 const LINK_HEIGHT: f32 = 32.0;
 const LINK_GLYPH: f32 = 12.0;
 const CODE_HEIGHT: f32 = 64.0;
@@ -124,7 +128,7 @@ fn row_icon(
 }
 
 fn row() -> ala::Pixels {
-    px(Size::Medium.control_px())
+    px(COMPOSER_BUTTON)
 }
 
 fn well(cx: &App) -> Well {
@@ -273,8 +277,7 @@ pub fn card_view(
             CardClose::Dismiss => "Close",
         };
         row_icon(("agent-login-close", pane.0), IconName::Xmark, tooltip, cx)
-            .mt(px(-4.0))
-            .mr(px(-4.0))
+            .mt(px(-HEAD_DROP))
             .on_click(move |_, window, cx| {
                 cx.stop_propagation();
                 on(LoginEvent::Close, window, cx);
@@ -283,6 +286,7 @@ pub fn card_view(
     let head = h_flex()
         .w_full()
         .items_start()
+        .pt(px(HEAD_DROP))
         .gap(px(HEAD_GAP))
         .child(glyph(card.glyph, pane, cx))
         .child(
@@ -327,7 +331,7 @@ pub fn card_view(
             .on(cx.theme().ground_of(PanelLook::Inline))
     });
     Panel::new(("agent-login", pane.0), PanelLook::Inline)
-        .inset(px(PAD))
+        .inset(px(COMPOSER_INSET))
         .rows(row())
         .debug_selector(|| "agent-login-card".into())
         .flex()
@@ -336,7 +340,7 @@ pub fn card_view(
         .gap(px(GAP))
         .w_full()
         .h_auto()
-        .p(px(PAD))
+        .p(px(COMPOSER_INSET))
         .font_family(cx.theme().font_family.clone())
         .type_style(TextStyle::Body, cx)
         .line_height(px(LINE))
