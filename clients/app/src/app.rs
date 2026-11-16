@@ -2377,7 +2377,10 @@ impl AppShell {
                         && pane_id == active_window.active_pane
                         && self.focused_pane != Some(pane_id)
                     {
-                        browser.read(cx).focus_handle(cx).focus(window, cx);
+                        let focus = browser.read(cx).focus_handle(cx);
+                        if !focus.contains_focused(window, cx) {
+                            focus.focus(window, cx);
+                        }
                         self.focused_pane = Some(pane_id);
                     }
                     browser.into_any_element()
