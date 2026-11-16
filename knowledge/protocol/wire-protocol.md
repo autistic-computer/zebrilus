@@ -55,8 +55,9 @@ names the capability its receiver must have, in `ProtocolMessage::required_capab
 matches with no wildcard arm, so a new variant does not compile until it answers.
 `ProtocolMessage::Event` answers with its payload's. Every variant shipped at v123 answers `None`;
 `EventPayload::AgentQuotas`, added inside it, answers `agent-quotas-v1`, `EventPayload::AgentLogin`
-and `ProtocolMessage::AgentLogin` answer `agent-login-v1`, and `ProtocolMessage::TerminalThemesRequest`
-and `TerminalThemesResponse` answer `terminal-themes-v1`.
+and `ProtocolMessage::AgentLogin` answer `agent-login-v1`, `ProtocolMessage::TerminalThemesRequest`
+and `TerminalThemesResponse` answer `terminal-themes-v1`, and `ProtocolMessage::BrowserScreenshot`
+answers `browser-screenshot-v1`.
 
 The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only inside an epoch:
 
@@ -214,6 +215,7 @@ fields in declaration order.
 | `Input(InputMessage)` | see below | Keyboard / resize / view / split input |
 | `Event(Event)` | `sequence: u64`, `payload: EventPayload` | Ordered daemon → client push |
 | `GuiResponse(GuiResponse)` | `Success { request_id, output }` / `Error { request_id, message }` | Interactive client → daemon answer to a `BrowserCommand::Screenshot` request; both strings bounded to `MAX_GUI_TEXT_BYTES` (64 KiB) |
+| `BrowserScreenshot { request_id: u64, png: Vec<u8> }` | one picture | Client → daemon, gated by `browser-screenshot-v1`: the other answer to a `BrowserCommand::Screenshot`, from a client that cannot write the host's files (iOS captures its web view). At most `MAX_BROWSER_SCREENSHOT_BYTES` (32 MiB) on decode. Only the client the request went to can answer it; the daemon checks the PNG signature and writes the bytes to the request's path on a thread of its own, then answers the caller with the path or the write error |
 | `Resync` | . | Client requests a fresh snapshot after a shell-detected reconciliation error; event sequence gaps alone are valid because the daemon may supersede stale terminal frames |
 | `RequestFull { pane: PaneId }` | `pane` | Client asks for one full replacement viewport for a single pane after a dropped or unusable terminal frame |
 | `HistoryRequest { pane: PaneId, start: u32, count: u32 }` | scrollback window | Client asks for a chunk of a pane's scrollback; the daemon answers with `EventPayload::HistoryChunk` |

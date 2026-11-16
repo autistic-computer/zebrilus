@@ -198,6 +198,9 @@ the native transport, key translation, and UIKit backend.
   share the desktop browser's login or live page state.
   The element picker copies context and a cropped screenshot for pasting into an
   agent. Tap the picker, then tap a page element; Cancel exits without copying.
+  `zz capture-browser` on the host captures the pane's page from the iPad showing it
+  and writes the PNG on the host, so agents can look at it. A daemon from before
+  `browser-screenshot-v1`, or a pane this iPad has not laid out, answers with an error.
 - Existing Editor panes explain that file contents are not yet shared by the daemon.
   Editor does not appear in the new-pane picker.
 

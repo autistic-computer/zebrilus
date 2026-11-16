@@ -858,6 +858,12 @@ impl EventLoop {
                     }
                     true
                 }
+                ProtocolMessage::BrowserScreenshot { request_id, png } => {
+                    if let Some(client) = connection.client {
+                        shared.complete_browser_screenshot(client, request_id, png);
+                    }
+                    true
+                }
                 ProtocolMessage::ClientFileResponse(response) => {
                     if let Some(client) = connection.client {
                         shared.complete_client_file(client, response);
@@ -881,6 +887,9 @@ impl EventLoop {
             match message {
                 ProtocolMessage::GuiResponse(response) => {
                     shared.complete_gui_request(client, response);
+                }
+                ProtocolMessage::BrowserScreenshot { request_id, png } => {
+                    shared.complete_browser_screenshot(client, request_id, png);
                 }
                 ProtocolMessage::ClientFileResponse(response) => {
                     shared.complete_client_file(client, response);

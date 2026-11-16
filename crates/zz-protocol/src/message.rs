@@ -63,6 +63,7 @@ pub const MAX_ENVIRONMENT_NAME_BYTES: usize = 1024;
 pub const MAX_ENVIRONMENT_VALUE_BYTES: usize = 16 * 1024;
 pub const MAX_CLIENT_FILE_PATH_BYTES: usize = 16 * 1024;
 pub const MAX_CLIENT_FILE_BYTES: usize = 32 * 1024 * 1024;
+pub const MAX_BROWSER_SCREENSHOT_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_STARTUP_CONFIG_CAUSES: usize = 1024;
 pub const MAX_STARTUP_CONFIG_CAUSE_BYTES: usize = 64 * 1024;
 pub const MAX_STARTUP_CONFIG_CAUSES_BYTES: usize = 1024 * 1024;
@@ -1035,6 +1036,20 @@ where
         return Err(D::Error::invalid_length(
             bytes.len(),
             &"a client file payload within the wire byte limit",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn deserialize_browser_screenshot<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let bytes: Vec<u8> = serde_bytes::deserialize(deserializer)?;
+    if bytes.len() > MAX_BROWSER_SCREENSHOT_BYTES {
+        return Err(D::Error::invalid_length(
+            bytes.len(),
+            &"a browser screenshot within the wire byte limit",
         ));
     }
     Ok(bytes)
@@ -3886,6 +3901,14 @@ pub enum ProtocolMessage {
         #[serde(deserialize_with = "crate::terminal_theme::deserialize_terminal_themes")]
         themes: Vec<crate::TerminalTheme>,
     },
+    BrowserScreenshot {
+        request_id: u64,
+        #[serde(
+            serialize_with = "serde_bytes::serialize",
+            deserialize_with = "deserialize_browser_screenshot"
+        )]
+        png: Vec<u8>,
+    },
 }
 
 impl ProtocolMessage {
@@ -3972,6 +3995,7 @@ impl ProtocolMessage {
             Self::TerminalThemesRequest { .. } | Self::TerminalThemesResponse { .. } => {
                 Some(crate::TERMINAL_THEMES_CAPABILITY)
             }
+            Self::BrowserScreenshot { .. } => Some(crate::BROWSER_SCREENSHOT_CAPABILITY),
         }
     }
 }

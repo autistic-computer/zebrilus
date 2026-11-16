@@ -80,6 +80,7 @@ const PAGE_SCHEME: &str = "zz";
 const REPLY_HANDLER: &str = "zzReply";
 const REPLY_SCRIPT: &str = "if (location.protocol === 'zz:') { window.zz = { reply: (text) => { window.webkit.messageHandlers.zzReply.postMessage(String(text)); return Promise.resolve(); } }; }";
 const FILE_MISSING: isize = -1100;
+const MAX_PICK_SCREENSHOT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_REPLY_BYTES: usize = 64 * 1024;
 
 struct PageFetch {
@@ -283,6 +284,10 @@ pub enum BrowserEvent {
         image: Arc<RenderImage>,
     },
     Still(Arc<RenderImage>),
+    Captured {
+        request_id: u64,
+        png: Result<Vec<u8>, String>,
+    },
 }
 
 pub struct BrowserProfile {
@@ -710,6 +715,32 @@ impl BrowserView {
         }
     }
 
+    pub fn capture(&self, request_id: u64) {
+        let view = self._state.view.get();
+        if view.is_null() || self.mounted.borrow().is_none() {
+            let _ = self._state.events.unbounded_send(BrowserEvent::Captured {
+                request_id,
+                png: Err("the browser pane has not been laid out on this client yet".into()),
+            });
+            return;
+        }
+        let state = self._state.clone();
+        let completion = block2::RcBlock::new(
+            move |image: *mut std::ffi::c_void, _: *mut std::ffi::c_void| {
+                let png =
+                    unsafe { png_bytes(image as id, zz_protocol::MAX_BROWSER_SCREENSHOT_BYTES) }
+                        .ok_or_else(|| "the page could not be captured".to_owned());
+                let _ = state
+                    .events
+                    .unbounded_send(BrowserEvent::Captured { request_id, png });
+            },
+        );
+        unsafe {
+            let _: () =
+                msg_send![view, takeSnapshotWithConfiguration: nil completionHandler: &*completion];
+        }
+    }
+
     pub fn end_refresh(&self) {
         self._state.refreshing.set(false);
         unsafe {
@@ -964,28 +995,27 @@ unsafe fn snapshot(
     let _: () = msg_send![configuration, setAfterScreenUpdates: YES];
     let completion = block2::RcBlock::new(
         move |image: *mut std::ffi::c_void, _: *mut std::ffi::c_void| {
-            let image = image as id;
-            let data = if image.is_null() {
-                nil
-            } else {
-                UIImagePNGRepresentation(image)
-            };
-            let length: usize = if data.is_null() {
-                0
-            } else {
-                msg_send![data, length]
-            };
-            let screenshot = if length > 0 && length <= 16 * 1024 * 1024 {
-                let bytes: *const u8 = msg_send![data, bytes];
-                (!bytes.is_null()).then(|| std::slice::from_raw_parts(bytes, length).to_vec())
-            } else {
-                None
-            };
-            complete(screenshot);
+            complete(png_bytes(image as id, MAX_PICK_SCREENSHOT_BYTES));
         },
     );
     let _: () = msg_send![view, takeSnapshotWithConfiguration: configuration completionHandler: &*completion];
     let _: () = msg_send![configuration, release];
+}
+
+unsafe fn png_bytes(image: id, limit: usize) -> Option<Vec<u8>> {
+    if image.is_null() {
+        return None;
+    }
+    let data = UIImagePNGRepresentation(image);
+    if data.is_null() {
+        return None;
+    }
+    let length: usize = msg_send![data, length];
+    if length == 0 || length > limit {
+        return None;
+    }
+    let bytes: *const u8 = msg_send![data, bytes];
+    (!bytes.is_null()).then(|| std::slice::from_raw_parts(bytes, length).to_vec())
 }
 
 unsafe fn shown(host: id) -> bool {

@@ -259,6 +259,7 @@ fn gui_reply_from_another_client_preserves_the_owner_request() {
         PendingGuiRequest {
             client: ClientId(1),
             reply: send.into(),
+            screenshot: None,
         },
     );
     shared.complete_gui_request(
@@ -278,4 +279,45 @@ fn gui_reply_from_another_client_preserves_the_owner_request() {
         },
     );
     assert_eq!(response.try_recv().unwrap(), Ok("owner".to_owned()));
+}
+
+#[test]
+fn a_browser_screenshot_from_a_remote_window_is_written_where_the_caller_asked() {
+    let shared = Arc::new(Shared::new(1822));
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory
+        .path()
+        .join("page.png")
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let png = b"\x89PNG\r\n\x1a\nframe".to_vec();
+    let (send, response) = crossbeam_channel::bounded(2);
+    for (request_id, screenshot) in [(8, Some(path.clone())), (9, None)] {
+        shared.inner.lock().pending_gui_requests.insert(
+            request_id,
+            PendingGuiRequest {
+                client: ClientId(1),
+                reply: send.clone().into(),
+                screenshot,
+            },
+        );
+    }
+    shared.complete_browser_screenshot(ClientId(2), 8, png.clone());
+    assert!(shared.inner.lock().pending_gui_requests.contains_key(&8));
+    shared.complete_browser_screenshot(ClientId(1), 8, png.clone());
+    assert_eq!(
+        response.recv_timeout(Duration::from_secs(5)).unwrap(),
+        Ok(path.clone())
+    );
+    assert_eq!(std::fs::read(&path).unwrap(), png);
+    shared.complete_browser_screenshot(ClientId(1), 9, png);
+    assert_eq!(
+        response.recv_timeout(Duration::from_secs(5)).unwrap(),
+        Err("the zz window sent a screenshot for another request".to_owned())
+    );
+    assert_eq!(
+        write_browser_screenshot(&directory.path().join("text.png"), b"plain text"),
+        Err("the zz window sent a screenshot that is not a PNG".to_owned())
+    );
 }

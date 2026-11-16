@@ -1031,6 +1031,35 @@ impl Connection {
         self.send(ProtocolMessage::TerminalThemesRequest { request_id }, cx);
     }
 
+    fn takes_browser_screenshots(&self) -> bool {
+        self.core
+            .capabilities()
+            .iter()
+            .any(|capability| capability == zz_protocol::BROWSER_SCREENSHOT_CAPABILITY)
+    }
+
+    pub fn answer_browser_screenshot(
+        &mut self,
+        request_id: u64,
+        png: Result<Vec<u8>, String>,
+        cx: &mut Context<Self>,
+    ) {
+        let message = match png {
+            Ok(png) if self.takes_browser_screenshots() => {
+                ProtocolMessage::BrowserScreenshot { request_id, png }
+            }
+            Ok(_) => ProtocolMessage::GuiResponse(zz_protocol::GuiResponse::Error {
+                request_id,
+                message: "this host's zz is too old to receive browser screenshots".into(),
+            }),
+            Err(message) => ProtocolMessage::GuiResponse(zz_protocol::GuiResponse::Error {
+                request_id,
+                message,
+            }),
+        };
+        self.send(message, cx);
+    }
+
     pub fn set_focused(&mut self, focused: bool, cx: &mut Context<Self>) {
         #[cfg(any(target_os = "ios", target_os = "android"))]
         if focused && !self.focused && self.resume && self.native.is_none() {
@@ -1217,16 +1246,6 @@ impl Connection {
                         self.prefix_cancel_pending = None;
                     }
                 }
-                CoreEvent::BrowserCommand {
-                    command: zz_protocol::BrowserCommand::Screenshot { request_id, .. },
-                    ..
-                } => self.send(
-                    ProtocolMessage::GuiResponse(zz_protocol::GuiResponse::Error {
-                        request_id: *request_id,
-                        message: "Screenshots require the desktop browser runtime.".into(),
-                    }),
-                    cx,
-                ),
                 CoreEvent::Message(message) => match message.as_ref() {
                     ProtocolMessage::PastedImageBegin {
                         pane,

@@ -294,6 +294,13 @@ fn watch_connection(
                     this.set_split_drag(None);
                     this.pane_layout_override = None;
                 }
+                zz_client::CoreEvent::BrowserCommand {
+                    pane,
+                    command: zz_protocol::BrowserCommand::Screenshot { request_id, .. },
+                } => {
+                    this.capture_browser(*pane, *request_id, cx);
+                    return;
+                }
                 zz_client::CoreEvent::FocusSidebar => this.focus_sidebar(window, cx),
                 zz_client::CoreEvent::OpenPathPicker { pane, start_dir } => {
                     this.open_files_palette(*pane, start_dir.clone(), window, cx);
@@ -1241,6 +1248,24 @@ impl AppShell {
 
     fn status_bar(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         status_bar::render(self, window, cx)
+    }
+
+    fn capture_browser(&self, pane: PaneId, request_id: u64, cx: &mut Context<Self>) {
+        #[cfg(target_os = "ios")]
+        let message = if let Some(browser) = self.browsers.get(&pane) {
+            browser.read(cx).capture(request_id);
+            return;
+        } else {
+            format!("{pane} has no live browser view on this client")
+        };
+        #[cfg(not(target_os = "ios"))]
+        let message = {
+            let _ = pane;
+            "Screenshots require the desktop browser runtime.".to_owned()
+        };
+        self.connection.update(cx, |connection, cx| {
+            connection.answer_browser_screenshot(request_id, Err(message), cx);
+        });
     }
 
     fn focus_pane(&mut self, pane: PaneId, window: &mut Window, cx: &mut Context<Self>) {

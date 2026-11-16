@@ -966,6 +966,20 @@ fn resolve_appearance(
     apply_appearance_overrides(load, entries)
 }
 
+fn write_browser_screenshot(path: &Path, png: &[u8]) -> Result<(), String> {
+    if !png.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Err("the zz window sent a screenshot that is not a PNG".to_owned());
+    }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+        && !parent.is_dir()
+    {
+        return Err(format!("{} is not a directory", parent.display()));
+    }
+    std::fs::write(path, png)
+        .map_err(|error| format!("could not write {}: {error}", path.display()))
+}
+
 fn send_terminal_themes(
     outbound: &Arc<OutboundMailbox>,
     listing: &Arc<Mutex<Option<u64>>>,
@@ -17977,6 +17991,7 @@ impl Shared {
                      the zz app, then retry."
                 )
             },
+            Some(path.clone()),
             |request_id| EventPayload::BrowserCommand {
                 pane,
                 command: BrowserCommand::Screenshot { request_id, path },
@@ -30106,6 +30121,7 @@ impl Shared {
         self: &Arc<Self>,
         pane: PaneId,
         unavailable: impl FnOnce(&str) -> String,
+        screenshot: Option<String>,
         payload: impl FnOnce(u64) -> EventPayload,
     ) -> Result<Execution, DaemonError> {
         let request_id = Self::next_gui_request_id();
@@ -30151,10 +30167,14 @@ impl Shared {
                 }
             },
         );
-        self.inner
-            .lock()
-            .pending_gui_requests
-            .insert(request_id, PendingGuiRequest { client, reply });
+        self.inner.lock().pending_gui_requests.insert(
+            request_id,
+            PendingGuiRequest {
+                client,
+                reply,
+                screenshot,
+            },
+        );
         if !subscriber.enqueue_reliable(&Self::event(payload(request_id))) {
             self.inner.lock().pending_gui_requests.remove(&request_id);
             wait.state
@@ -30165,23 +30185,45 @@ impl Shared {
         wait.finish(self, Execution::default())
     }
 
+    fn take_gui_request(&self, client: ClientId, request_id: u64) -> Option<PendingGuiRequest> {
+        let mut inner = self.inner.lock();
+        let pending = inner.pending_gui_requests.get(&request_id)?;
+        if pending.client != client {
+            log::warn!(target: "zz_daemon::diagnostics::connection", "discarding GUI response for request={request_id} from client={client}; owner is {}", pending.client);
+            return None;
+        }
+        inner.pending_gui_requests.remove(&request_id)
+    }
+
     fn complete_gui_request(&self, client: ClientId, response: GuiResponse) {
-        let request_id = response.request_id();
-        let pending = {
-            let mut inner = self.inner.lock();
-            let Some(pending) = inner.pending_gui_requests.get(&request_id) else {
-                return;
-            };
-            if pending.client != client {
-                log::warn!(target: "zz_daemon::diagnostics::connection", "discarding GUI response for request={request_id} from client={client}; owner is {}", pending.client);
-                return;
-            }
-            inner.pending_gui_requests.remove(&request_id).unwrap()
+        let Some(pending) = self.take_gui_request(client, response.request_id()) else {
+            return;
         };
         pending.reply.try_send(match response {
             GuiResponse::Success { output, .. } => Ok(output),
             GuiResponse::Error { message, .. } => Err(message),
         });
+    }
+
+    fn complete_browser_screenshot(&self, client: ClientId, request_id: u64, png: Vec<u8>) {
+        let Some(pending) = self.take_gui_request(client, request_id) else {
+            return;
+        };
+        let Some(path) = pending.screenshot.clone() else {
+            pending.reply.try_send(Err(
+                "the zz window sent a screenshot for another request".to_owned()
+            ));
+            return;
+        };
+        let written = std::thread::Builder::new()
+            .name("zz-browser-screenshot".to_owned())
+            .spawn(move || {
+                let written = write_browser_screenshot(Path::new(&path), &png).map(|()| path);
+                pending.reply.try_send(written);
+            });
+        if let Err(error) = written {
+            log::warn!("could not write a browser screenshot: {error}");
+        }
     }
 
     fn fail_gui_requests_for(&self, client: ClientId) {
@@ -35693,6 +35735,7 @@ impl DiagnosticSample {
 struct PendingGuiRequest {
     client: ClientId,
     reply: cmdq::Reply<Result<String, String>>,
+    screenshot: Option<String>,
 }
 
 impl ServerState {
@@ -52216,8 +52259,9 @@ is read on that host; send a local page with `zz --host NAME html -t %N - < page
 
 ### `zz capture-browser -t %N -o /absolute/out.png`
 
-Save the latest browser frame as a PNG and print its path. Use an absolute path: the app window
-showing the pane writes the file, on its own machine. On Linux, restart with `ZZ_BROWSER_SHARED_TEXTURE=0` if the GPU
+Save the latest browser frame as a PNG and print its path. Use an absolute path: a desktop app
+window showing the pane writes the file on its own machine; an iPad sends the picture and the
+daemon writes it on this host. On Linux, restart with `ZZ_BROWSER_SHARED_TEXTURE=0` if the GPU
 path reports that readback is unavailable.
 
 ### Browser through CDP
@@ -52991,6 +53035,9 @@ fn handle_connection_message<S: TransportStream>(
             }
             ProtocolMessage::GuiResponse(response) => {
                 shared.complete_gui_request(client, response);
+            }
+            ProtocolMessage::BrowserScreenshot { request_id, png } => {
+                shared.complete_browser_screenshot(client, request_id, png);
             }
             ProtocolMessage::Resync => shared.send_resync(client, &outbound),
             ProtocolMessage::RequestFull { pane } => {
@@ -121141,6 +121188,7 @@ bind - split-window -v -c "#{pane_current_path}"
                 PendingGuiRequest {
                     client,
                     reply: reply.into(),
+                    screenshot: None,
                 },
             );
         }
