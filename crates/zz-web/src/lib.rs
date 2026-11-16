@@ -9,7 +9,7 @@ use std::{
 
 use axum::{
     Router,
-    body::Body,
+    body::{Body, Bytes},
     extract::{
         State,
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
@@ -28,10 +28,17 @@ use tokio::{
     fs::File,
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
+    sync::{mpsc, oneshot},
 };
 use tokio_util::io::ReaderStream;
-use zz_daemon_client::{DaemonError, DaemonRoute, Endpoint, EndpointError, HostEntry};
-use zz_protocol::{MAX_ENCODED_FRAME_BYTES, MAX_FRAME_BYTES};
+use zz_daemon_client::{
+    AskpassPrompt, AskpassReply, DaemonError, DaemonRoute, Endpoint, EndpointError, HostEntry,
+    SshPrompts, parse_add_host,
+};
+use zz_protocol::{
+    MAX_ENCODED_FRAME_BYTES, MAX_FRAME_BYTES,
+    gateway::{SignInAnswer, SignInPrompt},
+};
 
 const TOKEN_BYTES: usize = 32;
 const COOKIE_MAX_AGE_SECONDS: u32 = 30 * 24 * 60 * 60;
@@ -43,6 +50,7 @@ const CLOSE_REPLY_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CLOSE_REASON_BYTES: usize = 123;
 const SIGN_IN_CLOSE_CODE: u16 = 4401;
 const UNREACHABLE_CLOSE_CODE: u16 = 4502;
+const MAX_EARLY_FRAMES: usize = 64;
 
 pub struct GatewayConfig {
     pub bind: SocketAddr,
@@ -95,7 +103,7 @@ impl Gateway {
         });
         let router = Router::new()
             .route("/ws", get(upgrade))
-            .route("/hosts", get(hosts))
+            .route("/hosts", get(hosts).post(add_host))
             .fallback(asset)
             .with_state(state);
         Ok(Self {
@@ -137,12 +145,19 @@ impl GatewayState {
         if name == LOCAL_HOST {
             return Ok(Target::Local);
         }
-        self.hosts
-            .iter()
-            .find(|host| host.name == name)
-            .cloned()
-            .map(Target::Host)
-            .ok_or(StatusCode::NOT_FOUND)
+        if let Some(host) = self.hosts.iter().find(|host| host.name == name) {
+            return Ok(Target::Host(host.clone()));
+        }
+        if !name.starts_with("ssh://") {
+            return Err(StatusCode::NOT_FOUND);
+        }
+        match Endpoint::parse(&name) {
+            Ok(Endpoint::Ssh(ssh)) => Ok(Target::Host(HostEntry {
+                name: ssh.host.clone(),
+                endpoint: Endpoint::Ssh(ssh),
+            })),
+            _ => Err(StatusCode::BAD_REQUEST),
+        }
     }
 
     fn accepts_host(&self, headers: &HeaderMap) -> bool {
@@ -267,7 +282,40 @@ async fn hosts(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Re
         local: false,
     }))
     .collect();
-    let Ok(body) = serde_json::to_string(&hosts) else {
+    json(&hosts)
+}
+
+async fn add_host(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    destination: String,
+) -> Response {
+    if !state.accepts_origin(&headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    if !state.holds_token(&headers) {
+        return locked();
+    }
+    let configured: Vec<String> = state.hosts.iter().map(|host| host.name.clone()).collect();
+    match parse_add_host(&destination, &configured) {
+        Ok(request) => json(&HostRow {
+            name: &request.endpoint,
+            title: &request.name,
+            local: false,
+        }),
+        Err(reason) => {
+            let mut response = (StatusCode::UNPROCESSABLE_ENTITY, reason).into_response();
+            response.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/plain; charset=utf-8"),
+            );
+            response
+        }
+    }
+}
+
+fn json(value: &impl serde::Serialize) -> Response {
+    let Ok(body) = serde_json::to_string(value) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
     let mut response = body.into_response();
@@ -317,27 +365,128 @@ async fn upgrade(
         }
         Target::Host(host) => host,
     };
-    websocket.on_upgrade(move |mut websocket| async move {
-        match open_host(host.endpoint).await {
-            Ok((route, daemon)) => {
-                let _ = bridge(websocket, daemon).await;
-                let _ = tokio::task::spawn_blocking(move || drop(route)).await;
-            }
+    websocket.on_upgrade(move |websocket| relay_host(websocket, host))
+}
+
+async fn relay_host(mut websocket: WebSocket, host: HostEntry) {
+    let Some((opened, early)) = sign_in(&mut websocket, host.endpoint).await else {
+        return;
+    };
+    let opened = match opened {
+        Ok(route) => match connect_daemon(route.socket()).await {
+            Ok(daemon) => Ok((route, daemon)),
             Err(error) => {
-                let frame = close_frame(&host.name, &error);
-                if websocket.send(Message::Close(Some(frame))).await.is_ok() {
-                    let _ = tokio::time::timeout(CLOSE_REPLY_TIMEOUT, async {
-                        while let Some(Ok(message)) = websocket.recv().await {
-                            if matches!(message, Message::Close(_)) {
-                                break;
-                            }
-                        }
-                    })
-                    .await;
+                let _ = tokio::task::spawn_blocking(move || drop(route)).await;
+                Err(error.into())
+            }
+        },
+        Err(error) => Err(error),
+    };
+    match opened {
+        Ok((route, daemon)) => {
+            let mut sent = Ok(());
+            for frame in &early {
+                sent = (&daemon).write_all(frame).await;
+                if sent.is_err() {
+                    break;
                 }
             }
+            if sent.is_ok() {
+                let _ = bridge(websocket, daemon).await;
+            }
+            let _ = tokio::task::spawn_blocking(move || drop(route)).await;
         }
-    })
+        Err(error) => {
+            let frame = close_frame(&host.name, &error);
+            if websocket.send(Message::Close(Some(frame))).await.is_ok() {
+                let _ = tokio::time::timeout(CLOSE_REPLY_TIMEOUT, async {
+                    while let Some(Ok(message)) = websocket.recv().await {
+                        if matches!(message, Message::Close(_)) {
+                            break;
+                        }
+                    }
+                })
+                .await;
+            }
+        }
+    }
+}
+
+type Asked = (AskpassPrompt, oneshot::Sender<AskpassReply>);
+
+async fn sign_in(
+    websocket: &mut WebSocket,
+    endpoint: Endpoint,
+) -> Option<(Result<DaemonRoute, DaemonError>, Vec<Bytes>)> {
+    let (prompts, mut asked) = page_prompts();
+    let mut opening = tokio::task::spawn_blocking(move || match prompts {
+        Some(prompts) => DaemonRoute::open_with_prompts(&endpoint, prompts),
+        None => DaemonRoute::open_unattended(&endpoint),
+    });
+    let mut early = Vec::new();
+    let mut waiting: Option<oneshot::Sender<AskpassReply>> = None;
+    loop {
+        tokio::select! {
+            opened = &mut opening => {
+                let opened = opened.unwrap_or_else(|error| Err(io::Error::other(error).into()));
+                return Some((opened, early));
+            }
+            Some((prompt, reply)) = asked.recv() => {
+                let notice = prompt.kind().is_notice();
+                let text = serde_json::to_string(&SignInPrompt {
+                    kind: prompt.kind(),
+                    text: prompt.text().to_owned(),
+                    echo: prompt.echo(),
+                })
+                .unwrap_or_default();
+                if websocket.send(Message::Text(text.into())).await.is_err() {
+                    break;
+                }
+                if !notice {
+                    waiting = Some(reply);
+                }
+            }
+            message = websocket.recv() => match message {
+                Some(Ok(Message::Text(text))) => {
+                    let reply = match serde_json::from_str(&text) {
+                        Ok(SignInAnswer::Answer(answer)) => AskpassReply::answer(answer),
+                        _ => AskpassReply::Cancel,
+                    };
+                    if let Some(waiting) = waiting.take() {
+                        let _ = waiting.send(reply);
+                    }
+                }
+                Some(Ok(Message::Binary(frame)))
+                    if early.len() < MAX_EARLY_FRAMES && validate_frame(&frame).is_ok() =>
+                {
+                    early.push(frame);
+                }
+                Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
+                _ => break,
+            },
+        }
+    }
+    tokio::spawn(async move {
+        if let Ok(Ok(route)) = opening.await {
+            let _ = tokio::task::spawn_blocking(move || drop(route)).await;
+        }
+    });
+    None
+}
+
+fn page_prompts() -> (Option<SshPrompts>, mpsc::Receiver<Asked>) {
+    let (requests, asked) = mpsc::channel::<Asked>(1);
+    let prompts = std::env::current_exe().ok().map(|helper| {
+        SshPrompts::new(helper, move |prompt: &AskpassPrompt| {
+            let (reply, answer) = oneshot::channel();
+            if requests.blocking_send((prompt.clone(), reply)).is_err() || prompt.kind().is_notice()
+            {
+                return AskpassReply::Cancel;
+            }
+            answer.blocking_recv().unwrap_or(AskpassReply::Cancel)
+        })
+    });
+    (prompts, asked)
 }
 
 async fn connect_daemon(socket: &Path) -> io::Result<Stream> {
@@ -345,19 +494,6 @@ async fn connect_daemon(socket: &Path) -> io::Result<Stream> {
     tokio::time::timeout(DAEMON_CONNECT_TIMEOUT, Stream::connect(name))
         .await
         .map_err(|_| io::Error::from(io::ErrorKind::TimedOut))?
-}
-
-async fn open_host(endpoint: Endpoint) -> Result<(DaemonRoute, Stream), DaemonError> {
-    let route = tokio::task::spawn_blocking(move || DaemonRoute::open_unattended(&endpoint))
-        .await
-        .map_err(io::Error::other)??;
-    match connect_daemon(route.socket()).await {
-        Ok(daemon) => Ok((route, daemon)),
-        Err(error) => {
-            let _ = tokio::task::spawn_blocking(move || drop(route)).await;
-            Err(error.into())
-        }
-    }
 }
 
 fn close_frame(name: &str, error: &DaemonError) -> CloseFrame {

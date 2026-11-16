@@ -32,11 +32,10 @@ fn history_core() -> ClientCore {
     core
 }
 
-#[cfg(any(target_os = "ios", target_os = "android"))]
 #[derive(Clone)]
 pub struct AuthenticationPrompt {
     pub id: u64,
-    pub kind: zz_daemon_client::AskpassPromptKind,
+    pub kind: zz_protocol::gateway::AskpassPromptKind,
     pub text: String,
     pub echo: bool,
 }
@@ -53,6 +52,8 @@ pub struct Connection {
         AuthenticationPrompt,
         std::sync::mpsc::Sender<zz_daemon_client::AskpassReply>,
     )>,
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    auth_prompt: Option<AuthenticationPrompt>,
     resume: bool,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     pending_session: Option<String>,
@@ -152,7 +153,6 @@ impl Connection {
             #[cfg(any(target_os = "ios", target_os = "android"))]
             client: None,
             reader: None,
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             auth_prompt: None,
             resume: false,
             #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -687,15 +687,11 @@ impl Connection {
             self.reader = None;
             self.socket = None;
             self.welcome = None;
+            self.auth_prompt = None;
             let Some(host) = self.endpoint.clone() else {
                 self.status = "Not connected".into();
                 cx.notify();
                 return;
-            };
-            let answer_within = if host == GATEWAY_LOCAL {
-                std::time::Duration::from_secs(15)
-            } else {
-                REMOTE_ANSWER_WITHIN
             };
             match browser::Socket::connect(&host) {
                 Ok((socket, receiver)) => {
@@ -712,12 +708,7 @@ impl Connection {
                         let (code, reason) = receiver.close_reason();
                         let _ = entity.update(cx, |this, cx| this.closed(code, reason, cx));
                     }));
-                    self.retry = Some(cx.spawn(async move |entity, cx| {
-                        cx.background_executor().timer(answer_within).await;
-                        let _ = entity.update(cx, |this, cx| {
-                            this.disconnected("The daemon did not answer. Retrying…".into(), cx);
-                        });
-                    }));
+                    self.wait_for_answer(cx);
                 }
                 Err(error) => self.disconnected(error, cx),
             }
@@ -1487,6 +1478,43 @@ impl Connection {
         }
     }
 
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    #[must_use]
+    pub fn pending_auth_prompt(&self) -> Option<&AuthenticationPrompt> {
+        self.auth_prompt.as_ref()
+    }
+
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    pub fn answer_auth_prompt(&mut self, id: u64, answer: Option<String>, cx: &mut Context<Self>) {
+        if self
+            .auth_prompt
+            .as_ref()
+            .is_none_or(|prompt| prompt.id != id)
+        {
+            return;
+        }
+        self.auth_prompt = None;
+        #[cfg(target_family = "wasm")]
+        {
+            use zz_protocol::gateway::SignInAnswer;
+            let answer = answer.map_or(SignInAnswer::Cancel, SignInAnswer::Answer);
+            if matches!(answer, SignInAnswer::Cancel) {
+                self.resume = false;
+            }
+            if self
+                .socket
+                .as_ref()
+                .is_some_and(|socket| socket.answer(&answer).is_ok())
+            {
+                self.status = "Connecting…".into();
+                self.wait_for_answer(cx);
+            }
+        }
+        #[cfg(not(target_family = "wasm"))]
+        drop(answer);
+        cx.notify();
+    }
+
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fn disconnect_native(&mut self, status: String, cx: &mut Context<Self>) {
         self.connected = false;
@@ -1627,6 +1655,21 @@ impl Connection {
     }
 
     #[cfg(target_family = "wasm")]
+    fn wait_for_answer(&mut self, cx: &mut Context<Self>) {
+        let answer_within = if self.endpoint.as_deref() == Some(GATEWAY_LOCAL) {
+            std::time::Duration::from_secs(15)
+        } else {
+            REMOTE_ANSWER_WITHIN
+        };
+        self.retry = Some(cx.spawn(async move |entity, cx| {
+            cx.background_executor().timer(answer_within).await;
+            let _ = entity.update(cx, |this, cx| {
+                this.disconnected("The daemon did not answer. Retrying…".into(), cx);
+            });
+        }));
+    }
+
+    #[cfg(target_family = "wasm")]
     fn disconnected(&mut self, reason: String, cx: &mut Context<Self>) {
         self.closed(None, reason, cx);
     }
@@ -1643,6 +1686,7 @@ impl Connection {
         self.socket = None;
         self.welcome = None;
         self.reader = None;
+        self.auth_prompt = None;
         if code == Some(SIGN_IN_CLOSE_CODE) {
             self.resume = false;
         }
@@ -1666,6 +1710,39 @@ impl Connection {
             })
         });
         cx.notify();
+    }
+
+    #[cfg(target_family = "wasm")]
+    fn prompted(&mut self, prompt: zz_protocol::gateway::SignInPrompt, cx: &mut Context<Self>) {
+        use zz_protocol::gateway::AskpassPromptKind;
+        let (kind, text) = match prompt.kind {
+            AskpassPromptKind::Notification => (zz_protocol::ClientMessageKind::Info, prompt.text),
+            AskpassPromptKind::KeyAdded => (
+                zz_protocol::ClientMessageKind::Success,
+                format!(
+                    "Added zz's key to {}; it won't ask to sign in again",
+                    prompt.text
+                ),
+            ),
+            _ => {
+                self.retry = None;
+                self.auth_prompt = Some(AuthenticationPrompt {
+                    id: self.next_request_id(),
+                    kind: prompt.kind,
+                    text: prompt.text,
+                    echo: prompt.echo,
+                });
+                self.status = "Authentication required".into();
+                return;
+            }
+        };
+        cx.emit(CoreEvent::ClientMessage {
+            pane: None,
+            kind,
+            text,
+            duration_ms: None,
+            message_id: None,
+        });
     }
 
     #[cfg(target_family = "wasm")]
@@ -1718,6 +1795,7 @@ impl Connection {
                 }
             },
             inbox::SocketEvent::Focus(focused) => self.set_focused(focused, cx),
+            inbox::SocketEvent::Prompt(prompt) => self.prompted(prompt, cx),
         }
         cx.notify();
         self.socket.is_some()
@@ -1803,6 +1881,7 @@ mod inbox {
         Opened,
         Frame(Vec<u8>),
         Focus(bool),
+        Prompt(zz_protocol::gateway::SignInPrompt),
     }
 
     struct State {
@@ -1916,7 +1995,7 @@ mod browser {
     use wasm_bindgen::{JsCast, closure::Closure};
     use zz_protocol::{
         AttachOperation, ClientHello, ClientInstanceId, ClientKind, Hello, PROTOCOL_VERSION,
-        ProtocolMessage,
+        ProtocolMessage, gateway::SignInAnswer,
     };
 
     use super::inbox::{self, Receiver, Sender, SocketEvent};
@@ -1965,6 +2044,17 @@ mod browser {
             let tx = sender.clone();
             let overflow_socket = ws.clone();
             let message = Closure::new(move |event: web_sys::MessageEvent| {
+                if let Some(prompt) = event
+                    .data()
+                    .as_string()
+                    .and_then(|text| serde_json::from_str(&text).ok())
+                {
+                    if !tx.push(SocketEvent::Prompt(prompt)) {
+                        let _ = overflow_socket
+                            .close_with_code_and_reason(4008, "Client cannot keep up");
+                    }
+                    return;
+                }
                 let Ok(buffer) = event.data().dyn_into::<js_sys::ArrayBuffer>() else {
                     tx.close("Unexpected gateway message. Reconnecting…".into());
                     let _ =
@@ -2013,6 +2103,11 @@ mod browser {
                 .add_event_listener_with_callback("blur", socket.blur.as_ref().unchecked_ref())
                 .map_err(|_| "Cannot watch browser focus")?;
             Ok((socket, receiver))
+        }
+
+        pub fn answer(&self, answer: &SignInAnswer) -> Result<(), ()> {
+            let text = serde_json::to_string(answer).map_err(drop)?;
+            self.ws.send_with_str(&text).map_err(drop)
         }
 
         pub fn buffered_amount(&self) -> usize {

@@ -6,8 +6,8 @@ use std::{
 
 use ala::{App, Corners, Global, Pixels, WindowBackgroundAppearance, px};
 use zz_client::url_input::SearchProvider;
+pub(crate) use zz_daemon_client::HostEntry;
 use zz_daemon_client::{Endpoint, InteractiveClient};
-pub(crate) use zz_daemon_client::{HostEntry, validate_fleet_host};
 use zz_protocol::{CommandInvocation, ConfigOverrideEntry, PROTOCOL_VERSION};
 use zz_terminal::{
     AppearanceConfigKey, AppearanceLoad, TerminalColorScheme, apply_appearance_overrides,
@@ -1655,7 +1655,7 @@ mod tests {
         let edited = fs::read_to_string(&path).unwrap();
         assert!(edited.contains("host-desktop  = ssh://desktop:7444  # keep this too\r\n"));
         assert_eq!(edited.matches("host-desktop").count(), 1);
-        assert!(validate_fleet_host("local", "ssh://desktop:7444").is_err());
+        assert!(zz_daemon_client::validate_fleet_host("local", "ssh://desktop:7444").is_err());
     }
 
     #[test]

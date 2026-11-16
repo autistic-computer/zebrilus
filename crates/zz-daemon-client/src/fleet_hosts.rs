@@ -70,6 +70,38 @@ pub fn tailnet_hosts_beside(configured: &[HostEntry]) -> Vec<HostEntry> {
         .collect()
 }
 
+pub const ADD_HOST_PLACEHOLDER: &str = "user@desktop";
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct AddHostRequest {
+    pub name: String,
+    pub endpoint: String,
+}
+
+pub fn parse_add_host(input: &str, existing: &[String]) -> Result<AddHostRequest, String> {
+    let destination = input.trim();
+    let destination = destination.strip_prefix("ssh://").unwrap_or(destination);
+    if destination.is_empty() {
+        return Err(format!("Enter a host, like `{ADD_HOST_PLACEHOLDER}`."));
+    }
+    if destination.chars().any(char::is_whitespace) {
+        return Err("A host destination must not contain spaces.".to_owned());
+    }
+
+    let endpoint = format!("ssh://{destination}");
+    let Endpoint::Ssh(parsed) = Endpoint::parse(&endpoint)
+        .map_err(|error| format!("{destination} is not a host: {error}"))?
+    else {
+        unreachable!("an ssh:// URI parses as an SSH endpoint");
+    };
+    let name = parsed.host;
+    validate_fleet_host(&name, &endpoint)?;
+    if existing.contains(&name) {
+        return Err(format!("A host named `{name}` already exists."));
+    }
+    Ok(AddHostRequest { name, endpoint })
+}
+
 pub fn write_fleet_host(name: &str, endpoint: &str) -> io::Result<()> {
     let path = config_path_for_write()?;
     write_fleet_host_at(&path, name, endpoint)
@@ -837,5 +869,57 @@ mod tests {
             "invalid `host-box`: invalid endpoint URI `quic://box:7777`: quic endpoints were \
              removed; use ssh://"
         );
+    }
+
+    fn parse(input: &str) -> Result<AddHostRequest, String> {
+        parse_add_host(input, &["desktop".to_owned()])
+    }
+
+    #[test]
+    fn the_host_component_alone_names_the_entry() {
+        assert_eq!(
+            parse("  fabrico@arch-desktop  ").unwrap(),
+            AddHostRequest {
+                name: "arch-desktop".to_owned(),
+                endpoint: "ssh://fabrico@arch-desktop".to_owned(),
+            }
+        );
+        assert_eq!(
+            parse("gpu-box:2222").unwrap(),
+            AddHostRequest {
+                name: "gpu-box".to_owned(),
+                endpoint: "ssh://gpu-box:2222".to_owned(),
+            }
+        );
+        assert_eq!(parse("ssh://gpu-box").unwrap().name, "gpu-box");
+        assert!(
+            parse("gpu-box:9922")
+                .unwrap()
+                .endpoint
+                .starts_with("ssh://")
+        );
+    }
+
+    #[test]
+    fn empty_spaced_reserved_duplicate_and_malformed_entries_are_rejected() {
+        assert_eq!(
+            parse("   ").unwrap_err(),
+            format!("Enter a host, like `{ADD_HOST_PLACEHOLDER}`.")
+        );
+        assert_eq!(
+            parse("arch desktop").unwrap_err(),
+            "A host destination must not contain spaces."
+        );
+        assert_eq!(
+            parse("local").unwrap_err(),
+            "invalid `host-local`: host name `local` is reserved"
+        );
+        assert_eq!(
+            parse("fabrico@desktop").unwrap_err(),
+            "A host named `desktop` already exists."
+        );
+        assert!(parse("fabrico@").is_err());
+        assert!(parse("fabrico@@desktop").is_err());
+        assert!(parse("desktop:0").is_err());
     }
 }

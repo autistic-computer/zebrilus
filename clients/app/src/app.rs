@@ -1,5 +1,4 @@
 mod agent_pane;
-#[cfg(any(target_os = "ios", target_os = "android"))]
 mod authentication;
 #[cfg(any(target_os = "ios", target_os = "android"))]
 mod browser_pane;
@@ -121,9 +120,7 @@ pub struct AppShell {
     connection_status: String,
     connected: bool,
     idle_guard: Option<ala::Task<()>>,
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     auth_prompt_id: Option<(ala::EntityId, u64)>,
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     phone_auth: Option<authentication::PhoneAuth>,
     hosts: hosts::Hosts,
     terminals: HashMap<PaneId, Entity<TerminalPane>>,
@@ -410,9 +407,7 @@ impl AppShell {
             connection_status: String::new(),
             connected: false,
             idle_guard: None,
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             auth_prompt_id: None,
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             phone_auth: None,
             hosts,
             terminals: HashMap::new(),
@@ -3297,7 +3292,6 @@ impl Render for AppShell {
         }
         penna::blocks::touch::CoarsePointer::set(Self::narrow(window), cx);
         penna::blocks::touch::PhoneScreen::set(settings::phone(), cx);
-        #[cfg(any(target_os = "ios", target_os = "android"))]
         self.sync_authentication(window, cx);
         #[cfg(any(target_os = "ios", target_os = "android"))]
         {
@@ -3349,10 +3343,7 @@ impl Render for AppShell {
             overlays.push(self.slideover(window, cx));
         }
         overlays.extend(self.overlay(window, cx));
-        #[cfg(any(target_os = "ios", target_os = "android"))]
         let auth_modal = self.phone_auth_modal(window, cx);
-        #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        let auth_modal: Option<AnyElement> = None;
         overlays.extend(Root::render_dialog_layer(window, cx).map(IntoElement::into_any_element));
         overlays
             .extend(Root::render_notification_layer(window, cx).map(IntoElement::into_any_element));

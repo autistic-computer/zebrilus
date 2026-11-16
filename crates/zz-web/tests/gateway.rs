@@ -92,6 +92,30 @@ impl RunningGateway {
         self.http_with(path, host, Some(&self.cookie)).await
     }
 
+    async fn post(&self, path: &str, origin: bool, body: &str) -> String {
+        let origin = if origin {
+            format!("Origin: http://{}\r\n", self.address)
+        } else {
+            String::new()
+        };
+        let mut stream = TcpStream::connect(self.address).await.unwrap();
+        stream
+            .write_all(
+                format!(
+                    "POST {path} HTTP/1.1\r\nHost: {}\r\n{origin}Cookie: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    self.address,
+                    self.cookie,
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).await.unwrap();
+        response
+    }
+
     async fn http_with(&self, path: &str, host: &str, cookie: Option<&str>) -> String {
         let cookie = cookie.map_or_else(String::new, |cookie| format!("Cookie: {cookie}\r\n"));
         let mut stream = TcpStream::connect(self.address).await.unwrap();
@@ -301,6 +325,35 @@ mod hosts {
     }
 
     #[tokio::test]
+    async fn a_page_adds_an_ssh_host_by_destination_but_not_a_configured_name() {
+        let assets = tempfile::tempdir().unwrap();
+        let server = RunningGateway::start_with_hosts(
+            assets.path(),
+            &assets.path().join("absent.sock"),
+            vec![HostEntry {
+                name: "desktop".into(),
+                endpoint: Endpoint::parse("ssh://me@desktop").unwrap(),
+            }],
+        )
+        .await;
+        let added = server.post("/hosts", true, " fabrico@gpu-box:2222 ").await;
+        assert!(
+            added.ends_with(
+                r#"{"name":"ssh://fabrico@gpu-box:2222","title":"gpu-box","local":false}"#
+            ),
+            "{added}"
+        );
+        let taken = server.post("/hosts", true, "me@desktop").await;
+        assert!(taken.starts_with("HTTP/1.1 422"), "{taken}");
+        assert!(
+            taken.ends_with("A host named `desktop` already exists."),
+            "{taken}"
+        );
+        let foreign = server.post("/hosts", false, "fabrico@gpu-box").await;
+        assert!(foreign.starts_with("HTTP/1.1 403"), "{foreign}");
+    }
+
+    #[tokio::test]
     async fn an_unknown_host_is_refused_without_falling_back_to_local() {
         let (_directory, socket) = short_socket("l.sock");
         let local = UnixListener::bind(&socket).unwrap();
@@ -308,7 +361,7 @@ mod hosts {
         let server = RunningGateway::start(assets.path(), &socket).await;
         for path in [
             "/ws?host=elsewhere",
-            "/ws?host=ssh%3A%2F%2Fattacker.example",
+            "/ws?host=unix%3A%2F%2F%2Ftmp%2Felsewhere.sock",
             "/ws?host=",
         ] {
             let result = tokio_tungstenite::connect_async(server.websocket_request_to(path)).await;

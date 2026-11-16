@@ -65,20 +65,41 @@ host. `GET /hosts` answers with the list the page builds its machines from, this
 ```
 
 `/ws?host=NAME` relays to that host's daemon; no parameter, or `host=local`, is the local daemon
-exactly as before. A name that is not in the list gets 404 before anything is dialed, and two
-`host` parameters get 400. The name only selects a config entry; the endpoint comes from the
-config, never from the page.
+exactly as before. `NAME` is a config entry's name or an `ssh://` endpoint the page added; any other
+value gets 404 before anything is dialed, an `ssh://` value that does not parse gets 400, and two
+`host` parameters get 400.
 
-The gateway reaches the host itself, the way the desktop does (`DaemonRoute::open_unattended` in
+`POST /hosts` takes a destination as its plain-text body (`user@host[:port]`, with or without
+`ssh://`), checks it with `parse_add_host` from `zz-daemon-client`, the desktop's Add host check,
+against the configured names, and answers the row the page keeps, or 422 with the reason as text:
+
+```json
+{"name":"ssh://fabrico@gpu-box:2222","title":"gpu-box","local":false}
+```
+
+It needs the same Origin and cookie as the WebSocket and writes nothing on the gateway machine:
+the page keeps the hosts it added, and the gateway's `zz/config` is never written.
+
+The gateway reaches the host itself, the way the desktop does (`DaemonRoute::open_with_prompts` in
 `zz-daemon-client`): `unix://` dials the socket, `tailnet://` starts the tailnet forward, and
 `ssh://` reuses or opens the kept ssh forward, probing and starting the remote daemon as needed.
 ssh signs in with the gateway user's identities (zz's own key first, then the agent and
-`~/.ssh`) and runs with `BatchMode=yes`, so it never prompts. The WebSocket opens, then closes
-with a code and a reason of at most 123 bytes when the host cannot be reached:
+`~/.ssh`), then asks the page for what it still needs. Its askpass helper is the `zz-web` binary
+itself (`ZZ_ASKPASS_SOCKET` set), and each question goes to the page over the host's own WebSocket
+as a text message, `zz_protocol::gateway::SignInPrompt` in JSON
+(`{"kind":"secret","text":"(me@box) Password:","echo":false}`; the kinds are `secret`,
+`host-key`, `agent-confirm`, `save-key`, `notification` and `key-added`). The page shows the
+desktop's sign-in dialogs (`clients/app/src/app/authentication.rs`) and answers with a
+`SignInAnswer` text message, `{"answer":"…"}` or `"cancel"`; `notification` and `key-added` are
+shown as toasts and get no answer. Answers travel only over that authenticated WebSocket and
+neither side logs them. Binary frames the page sends while ssh is still signing in, its hello
+first, wait at the gateway (64 at most) and go to the daemon once it is reached. Closing the page
+mid-question cancels it. The WebSocket closes with a code and a reason of at most 123 bytes when
+the host cannot be reached:
 
 | Code | Meaning |
 |------|---------|
-| 4401 | the host needs a password, a key passphrase or a host-key confirmation the gateway cannot give; sign in once from a terminal on the gateway machine (`ssh-add`, accept the host key) |
+| 4401 | the sign-in was refused or cancelled: a declined host key, a cancelled or wrong password, a key passphrase nobody gave |
 | 4502 | anything else: refused, unresolved, timed out, zz missing or on another protocol there |
 
 The reason starts with the host name, then ssh's advice, for example
@@ -94,16 +115,19 @@ screen is attached and the rest hold only their tree. The page opens on this com
 hosts it was connected to before reconnect in the background (the list lives in local storage
 under `zz-web-hosts`, `zz-dev-web-hosts` for dev builds); when the page was last on another host,
 it switches back to that host once it connects, and stays on this computer if it does not.
-Settings > Hosts lists the gateway's hosts with Connect, Disconnect and Open, and the sidebar has
-no Add host row: adding or removing a host is an edit to the gateway machine's `zz/config` and a
-gateway restart.
+Settings > Hosts lists the gateway's hosts with Connect, Disconnect and Open, then an Add host
+field: a destination goes through `POST /hosts`, its reason shows under the field when refused,
+and an accepted one is saved in the same local storage list, keyed by its `ssh://` endpoint, and
+connected. Hosts added this way have a remove button; the ones from `zz/config` do not, since
+removing them is an edit to the gateway machine's `zz/config` and a gateway restart.
 
 This computer keeps retrying every 2 s, as before. Another host is never redialed after a
 failed first connect, nor after a 4401: it shows the close reason as its state and waits for
 Connect. After it has been connected once, a dropped connection is redialed in 2 s, and each
 4502 doubles the wait from 4 s up to 60 s (`retry_after` in `clients/app/src/connection.rs`).
-When `/hosts` fails (an older gateway) or lists only this computer, the page is the single-host
-client it was.
+When `/hosts` fails (an older gateway), the page is the single-host client it was, with no Add
+host field. When it lists only this computer and the page added no host, Settings > Hosts shows
+this computer and the Add host field.
 
 # Remote access
 

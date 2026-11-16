@@ -1,6 +1,7 @@
 use std::{fmt, path::PathBuf, sync::Arc};
 
 use zeroize::Zeroizing;
+pub use zz_protocol::gateway::AskpassPromptKind;
 
 #[cfg(unix)]
 use std::{
@@ -78,23 +79,6 @@ impl AskpassMode {
             b'k' => Some(Self::KeyAdded),
             _ => None,
         }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AskpassPromptKind {
-    Secret,
-    HostKey,
-    AgentConfirm,
-    SaveKey,
-    Notification,
-    KeyAdded,
-}
-
-impl AskpassPromptKind {
-    #[must_use]
-    pub const fn is_notice(self) -> bool {
-        matches!(self, Self::Notification | Self::KeyAdded)
     }
 }
 

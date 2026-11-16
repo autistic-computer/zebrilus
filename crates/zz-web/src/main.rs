@@ -1,9 +1,27 @@
-use std::{net::SocketAddr, path::PathBuf};
+use std::{
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 use zz_web::{Gateway, GatewayConfig};
 
+fn main() -> ExitCode {
+    if let Some(socket) = std::env::var_os(zz_daemon_client::ASKPASS_SOCKET_ENV) {
+        let prompt = std::env::args_os().nth(1).unwrap_or_default();
+        return zz_daemon_client::run_helper(Path::new(&socket), &prompt.to_string_lossy());
+    }
+    match serve() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn serve() -> Result<(), Box<dyn std::error::Error>> {
     let mut bind = SocketAddr::from((
         [127, 0, 0, 1],
         if zz_protocol::app_identity::DEVELOPMENT {
@@ -37,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some("--help" | "-h") => {
                 println!(
-                    "Usage: zz-web [--assets DIR] [--bind ADDRESS:PORT] [--socket PATH]\n\nDefaults: assets={}, bind={bind}, socket={}\nServe the zz browser client and connect each browser to the existing daemon.\nOnly loopback addresses are supported. Hosts in zz/config are reached from this machine\nwith its own ssh identity; a host that asks for a password is refused.\nOpen the printed link: its token is required, and each start makes a new one.",
+                    "Usage: zz-web [--assets DIR] [--bind ADDRESS:PORT] [--socket PATH]\n\nDefaults: assets={}, bind={bind}, socket={}\nServe the zz browser client and connect each browser to the existing daemon.\nOnly loopback addresses are supported. Hosts in zz/config, and the ones a page adds, are\nreached from this machine with its own ssh identity; a password or host key is asked in the page.\nOpen the printed link: its token is required, and each start makes a new one.",
                     assets.display(),
                     socket.display()
                 );

@@ -1,17 +1,10 @@
 use ala::{App, AppContext as _, Entity, Focusable as _, SharedString, Window};
 use penna::{WindowExt as _, components::input::InputState};
-use zz_daemon_client::Endpoint;
 use zz_ui::dialogs::add_host_prompt_dialog;
 
 use crate::config;
 
-pub(crate) const PLACEHOLDER: &str = "user@desktop";
-
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct AddHostRequest {
-    pub(crate) name: String,
-    pub(crate) endpoint: String,
-}
+pub(crate) use zz_daemon_client::{ADD_HOST_PLACEHOLDER as PLACEHOLDER, parse_add_host};
 
 struct AddHostDialogState {
     error: Option<SharedString>,
@@ -77,85 +70,4 @@ fn fail(
     });
     window.refresh();
     false
-}
-
-pub(crate) fn parse_add_host(input: &str, existing: &[String]) -> Result<AddHostRequest, String> {
-    let destination = input.trim();
-    let destination = destination.strip_prefix("ssh://").unwrap_or(destination);
-    if destination.is_empty() {
-        return Err(format!("Enter a host, like `{PLACEHOLDER}`."));
-    }
-    if destination.chars().any(char::is_whitespace) {
-        return Err("A host destination must not contain spaces.".to_owned());
-    }
-
-    let endpoint = format!("ssh://{destination}");
-    let Endpoint::Ssh(parsed) = Endpoint::parse(&endpoint)
-        .map_err(|error| format!("{destination} is not a host: {error}"))?
-    else {
-        unreachable!("an ssh:// URI parses as an SSH endpoint");
-    };
-    let name = parsed.host;
-    config::validate_fleet_host(&name, &endpoint)?;
-    if existing.contains(&name) {
-        return Err(format!("A host named `{name}` already exists."));
-    }
-    Ok(AddHostRequest { name, endpoint })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn parse(input: &str) -> Result<AddHostRequest, String> {
-        parse_add_host(input, &["desktop".to_owned()])
-    }
-
-    #[test]
-    fn the_host_component_alone_names_the_entry() {
-        assert_eq!(
-            parse("  fabrico@arch-desktop  ").unwrap(),
-            AddHostRequest {
-                name: "arch-desktop".to_owned(),
-                endpoint: "ssh://fabrico@arch-desktop".to_owned(),
-            }
-        );
-        assert_eq!(
-            parse("gpu-box:2222").unwrap(),
-            AddHostRequest {
-                name: "gpu-box".to_owned(),
-                endpoint: "ssh://gpu-box:2222".to_owned(),
-            }
-        );
-        assert_eq!(parse("ssh://gpu-box").unwrap().name, "gpu-box");
-        assert!(
-            parse("gpu-box:9922")
-                .unwrap()
-                .endpoint
-                .starts_with("ssh://")
-        );
-    }
-
-    #[test]
-    fn empty_spaced_reserved_duplicate_and_malformed_entries_are_rejected() {
-        assert_eq!(
-            parse("   ").unwrap_err(),
-            format!("Enter a host, like `{PLACEHOLDER}`.")
-        );
-        assert_eq!(
-            parse("arch desktop").unwrap_err(),
-            "A host destination must not contain spaces."
-        );
-        assert_eq!(
-            parse("local").unwrap_err(),
-            "invalid `host-local`: host name `local` is reserved"
-        );
-        assert_eq!(
-            parse("fabrico@desktop").unwrap_err(),
-            "A host named `desktop` already exists."
-        );
-        assert!(parse("fabrico@").is_err());
-        assert!(parse("fabrico@@desktop").is_err());
-        assert!(parse("desktop:0").is_err());
-    }
 }

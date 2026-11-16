@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use crate::endpoint::connect_kept;
 use crate::{
-    DaemonError,
+    DaemonError, SshPrompts,
     client::tailnet_failure,
     endpoint::{Endpoint, SshForward, SshLogin},
     tailnet::TailnetForward,
@@ -17,6 +17,17 @@ pub struct DaemonRoute {
 
 impl DaemonRoute {
     pub fn open_unattended(endpoint: &Endpoint) -> Result<Self, DaemonError> {
+        Self::open(endpoint, SshLogin::Unattended)
+    }
+
+    pub fn open_with_prompts(
+        endpoint: &Endpoint,
+        prompts: SshPrompts,
+    ) -> Result<Self, DaemonError> {
+        Self::open(endpoint, SshLogin::Prompts(Some(prompts)))
+    }
+
+    fn open(endpoint: &Endpoint, login: SshLogin) -> Result<Self, DaemonError> {
         match endpoint {
             Endpoint::Local(path) => Ok(Self {
                 socket: path.clone(),
@@ -35,12 +46,10 @@ impl DaemonRoute {
             Endpoint::Ssh(endpoint) => {
                 #[cfg(unix)]
                 let (socket, forward) =
-                    connect_kept(endpoint, SshLogin::Unattended, true, |socket, _| {
-                        Ok(socket.to_owned())
-                    })?;
+                    connect_kept(endpoint, login, true, |socket, _| Ok(socket.to_owned()))?;
                 #[cfg(windows)]
                 let (socket, forward) = {
-                    let forward = SshForward::start(endpoint, SshLogin::Unattended)?;
+                    let forward = SshForward::start(endpoint, login)?;
                     (forward.local_socket().to_owned(), Some(forward))
                 };
                 Ok(Self {

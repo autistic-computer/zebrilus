@@ -5,6 +5,7 @@ pub mod chat;
 mod control;
 mod exec;
 mod framing;
+pub mod gateway;
 mod id;
 mod key;
 mod key_frame;

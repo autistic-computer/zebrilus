@@ -28,7 +28,8 @@ Three surfaces write these lines and nothing else: `zz fleet add <name> <ssh-des
 CLI (which `zz fleet sync` also runs on each host for the lines it lacks), the sidebar's final
 **Add host** row, and the inline form in **Settings › Hosts**. The names `local` and `all` are
 reserved: `all` is the CLI's `--host all` fan-out. The
-two GUI fields share the same `parse_add_host` validation and name the entry after the destination's
+two GUI fields share the same `parse_add_host` validation (`zz-daemon-client`; the browser
+gateway's `POST /hosts` runs it too, but writes nothing) and name the entry after the destination's
 host component. The underlying writer replaces an existing `host-<name>` value in place while
 preserving every other byte, comments included; the GUI fields reject a duplicate name before they
 call it. `zz list-hosts` prints each host in config order with its probed `host_state` and
