@@ -315,6 +315,7 @@ enum Outgoing {
     StopTask,
     Title { session: String },
     Applied,
+    Usage,
 }
 
 enum Permission {
@@ -1258,6 +1259,11 @@ impl Runtime {
         }
         self.publish_commands().await?;
         self.ask_applied();
+        self.request(
+            &json!({ "subtype": "get_usage", "skip_behaviors": true }),
+            Outgoing::Usage,
+            CONTROL_TIMEOUT,
+        );
         if self.title.start(title.clone()) {
             self.emit(AgentStreamPayload::TitleChanged { title })
                 .await?;
@@ -1617,6 +1623,14 @@ impl Runtime {
             }
             (Outgoing::Title { session }, result) => self.titled(&session, result).await,
             (Outgoing::Applied, result) => self.applied(result).await,
+            (Outgoing::Usage, Ok(response)) => match translate::usage_rate_limits(&response) {
+                Some(quota) => self.emit(AgentStreamPayload::QuotaChanged { quota }).await,
+                None => Ok(()),
+            },
+            (Outgoing::Usage, Err(error)) => {
+                log::debug!(target: "zz::agent", "Claude Code get_usage: {error}");
+                Ok(())
+            }
             (Outgoing::StopTask, Err(error)) => {
                 self.notice(&format!("Could not stop the task: {error}"))
                     .await
@@ -2651,11 +2665,14 @@ read -r init
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[{"name":"compact","description":"Compact","argumentHint":""}],"models":[{"value":"default","displayName":"Default","description":"Opus"}],"current_permission_mode":"default"}}}'
 read -r probe
 printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request_id":"zz-2","error":"Unsupported control request subtype: get_settings"}}'
+read -r usage
+case "$usage" in *'"request_id":"zz-3"'*'"subtype":"get_usage"'*'"skip_behaviors":true'*) ;; *) echo "bad usage: $usage" >&2; exit 6 ;; esac
+printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-3","response":{"session":{"total_cost_usd":0,"model_usage":{}},"subscription_type":"max","rate_limits_available":true,"rate_limits":{"five_hour":null,"seven_day":{"utilization":2,"resets_at":"2026-11-20T22:00:00.220882+00:00"},"seven_day_opus":null},"behaviors":null}}}'
 read -r prompt
 case "$prompt" in *'"text":"hello"'*) ;; *) echo "bad prompt: $prompt" >&2; exit 3 ;; esac
 read -r title
-case "$title" in *'"request_id":"zz-3"'*'"generate_session_title"'*'"description":"hello"'*'"persist":true'*) ;; *) echo "bad title: $title" >&2; exit 5 ;; esac
-printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-3","response":{"title":"Say hello"}}}'
+case "$title" in *'"request_id":"zz-4"'*'"generate_session_title"'*'"description":"hello"'*'"persist":true'*) ;; *) echo "bad title: $title" >&2; exit 5 ;; esac
+printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-4","response":{"title":"Say hello"}}}'
 printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"running"}'
 printf '%s\n' '{"type":"assistant","parent_tool_use_id":null,"message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"rm -rf build"}}]}}'
 printf '%s\n' '{"type":"control_request","request_id":"perm-1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -rf build"},"tool_use_id":"t1","permission_suggestions":[]}}'
@@ -2740,6 +2757,18 @@ while read -r line; do :; done
             assert_eq!(config_options.expect("options")[0]["id"], "model");
             assert!(
                 matches!(next().await, AgentStreamPayload::Update { update } if update["sessionUpdate"] == "available_commands_update")
+            );
+            assert_eq!(
+                next().await,
+                AgentStreamPayload::QuotaChanged {
+                    quota: zz_protocol::QuotaWindows {
+                        five_hour: None,
+                        week: Some(zz_protocol::QuotaWindow {
+                            used: 0.02,
+                            resets_at: Some(1_795_212_000),
+                        }),
+                    },
+                }
             );
             commands
                 .send(RuntimeCommand::Prompt {
@@ -2972,9 +3001,11 @@ read -r init
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[],"models":[],"current_permission_mode":"default"}}}'
 read -r probe
 printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request_id":"zz-2","error":"Unsupported control request subtype: get_settings"}}'
+read -r usage
+printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request_id":"zz-3","error":"Unsupported control request subtype: get_usage"}}'
 read -r side
-case "$side" in *'"request_id":"zz-3"'*'"subtype":"side_question"'*'"question":"what is 2+2"'*) ;; *) echo "bad side: $side" >&2; exit 3 ;; esac
-printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-3","response":{"response":"4","synthetic":false}}}'
+case "$side" in *'"request_id":"zz-4"'*'"subtype":"side_question"'*'"question":"what is 2+2"'*) ;; *) echo "bad side: $side" >&2; exit 3 ;; esac
+printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-4","response":{"response":"4","synthetic":false}}}'
 while read -r line; do :; done
 "#;
 
@@ -3077,6 +3108,8 @@ read -r init
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[],"models":[],"current_permission_mode":"default"}}}'
 read -r probe
 printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request_id":"zz-2","error":"Unsupported control request subtype: get_settings"}}'
+read -r usage
+printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request_id":"zz-3","error":"Unsupported control request subtype: get_usage"}}'
 read -r prompt
 read -r title
 printf '%s\n' '{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"b1","task_type":"local_bash","description":"sleep 30"},{"task_id":"w1","task_type":"monitor","description":"watcher","ambient":true}]}'
@@ -3217,6 +3250,8 @@ read -r init
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[],"models":[],"current_permission_mode":"default"}}}'
 read -r probe
 printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request_id":"zz-2","error":"Unsupported control request subtype: get_settings"}}'
+read -r usage
+printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request_id":"zz-3","error":"Unsupported control request subtype: get_usage"}}'
 read -r prompt
 read -r title
 printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"running"}'

@@ -1338,6 +1338,26 @@ pub(crate) fn rate_limits(frame: &Value) -> Option<zz_protocol::QuotaWindows> {
     (!quota.is_empty()).then_some(quota)
 }
 
+pub(crate) fn usage_rate_limits(response: &Value) -> Option<zz_protocol::QuotaWindows> {
+    let limits = &response["rate_limits"];
+    let window = |key: &str| {
+        let window = &limits[key];
+        let resets_at = window["resets_at"]
+            .as_str()
+            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+            .and_then(|at| u64::try_from(at.timestamp()).ok());
+        Some(zz_protocol::QuotaWindow {
+            used: (window["utilization"].as_f64()? / 100.0) as f32,
+            resets_at,
+        })
+    };
+    let quota = zz_protocol::QuotaWindows {
+        five_hour: window("five_hour"),
+        week: window("seven_day"),
+    };
+    (!quota.is_empty()).then_some(quota)
+}
+
 #[cfg(test)]
 mod paste_tests {
     use super::without_paste_tags;

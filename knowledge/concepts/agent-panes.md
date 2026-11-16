@@ -412,9 +412,18 @@ CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
 
 - **Claude Code** writes `rate_limit_event` on its stream once per turn, with
   `rate_limit_info.unifiedWindows.five_hour` and `seven_day`, each `utilization` (0 to 1) and
-  `resetsAt` (unix seconds); the driver reads both (`claude::translate::rate_limits`). Nothing
-  reports it while idle, so a Claude Code account's limits are known only after a turn on it since
-  the daemon started.
+  `resetsAt` (unix seconds); the driver reads both (`claude::translate::rate_limits`). Without a
+  turn, the driver asks the CLI itself: once a chat's CLI answers `initialize`, it sends the control
+  request `{"subtype":"get_usage","skip_behaviors":true}`, which the CLI answers from the plan's
+  usage with no model call (`skip_behaviors` skips its scan of local transcripts). The answer's
+  `rate_limits.five_hour` and `seven_day` carry `utilization` (0 to 100) and `resets_at` (ISO 8601)
+  (`claude::translate::usage_rate_limits`); a window the plan has not started is `null` and is left
+  out. So every chat start fills its account's limits about a second after the CLI is up: a new
+  chat, a resumed one, a fork, and the reopen that follows a switch or a finished sign-in. Claude
+  Code 2.1.325 answers it; an older CLI refuses it, the error is dropped, and the limits wait for a
+  turn as before. A sign-in with no chat to move (`zz tools --agent-login` without `--pane`) leaves
+  the new account without limits until a chat opens on it: `claude auth status --json` and the
+  `initialize` answer carry none.
 - **Codex.** The account probe asks the same short app server for `account/rateLimits/read`
   (`excludeResetCreditDetails: true`) after `account/read`, so the limits are known while idle and
   come again with every `agent-accounts` call. A pane connection takes `account/rateLimits/updated`
@@ -428,7 +437,9 @@ CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
   the stream like `TitleChanged`: it merges it into the pane's state, the fanout hands a change to
   the daemon (`AgentPublisher::publish_agent_quota`), and the daemon merges it into the record of
   the pane's provider and account (`Shared::apply_agent_quota`). A window an update leaves out keeps
-  its last value; a probe answer replaces the record.
+  its last value; a probe answer replaces the record. Records are never dropped while the daemon
+  runs, and clients get every account's, so a chat moved to an account used before shows its last
+  figures at once, before its own `get_usage` answer comes in.
 - **To clients.** `EventPayload::AgentQuotas(Vec<AgentQuota { provider, account, windows }>)`,
   gated by `agent-quotas-v1` ([wire protocol](/protocol/wire-protocol.md#adding-a-message-inside-an-epoch)),
   goes to the `agent-accounts` watchers on every plain call and whenever a record changes, the
