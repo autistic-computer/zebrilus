@@ -1,4 +1,12 @@
 use ala::{AnyElement, Context, Entity, Window};
+use zz_client::agent_flip::FlipMode;
+use zz_client::agent_login::{
+    CardAction, CardClose, LoginAccount, cancel, card, in_terminal, restart, retry, settled,
+};
+use zz_protocol::{AgentLoginBrowser, AgentLoginStep};
+use zz_ui::agent::login::{LoginEvent, login_card};
+
+use crate::mux::client::MuxClient;
 use std::sync::Arc;
 use zz_client::agent_settings::{self, fork_chat_command, real_session, source_message};
 
@@ -93,11 +101,17 @@ impl AgentView {
                 quotas: &self.quotas,
                 context,
                 enabled,
+                signs_in: self
+                    .mux
+                    .read(cx)
+                    .host_signs_in(self.mux.read(cx).attached_host()),
+                open: self.open_usage.take(),
             },
             {
                 let mux = self.mux.clone();
                 let view = view.downgrade();
                 let provider = state.provider;
+                let pane = self.pane;
                 move |action, _, cx| match action {
                     AccountAction::Refresh => {
                         let mux = mux.read(cx);
@@ -105,11 +119,30 @@ impl AgentView {
                     }
                     AccountAction::Add => {
                         let mux = mux.read(cx);
-                        mux.add_agent_account(mux.attached_host(), provider);
+                        mux.start_agent_login(
+                            mux.attached_host(),
+                            provider,
+                            LoginAccount::New,
+                            pane,
+                        );
+                    }
+                    AccountAction::SignIn(account) => {
+                        let mux = mux.read(cx);
+                        mux.start_agent_login(
+                            mux.attached_host(),
+                            provider,
+                            LoginAccount::of(account.as_deref()),
+                            pane,
+                        );
                     }
                     AccountAction::Use(account) => {
-                        view.update(cx, |_, cx| cx.emit(AgentAccountPicked { account }))
-                            .ok();
+                        view.update(cx, |_, cx| {
+                            cx.emit(AgentAccountPicked {
+                                account,
+                                mode: FlipMode::Ask,
+                            });
+                        })
+                        .ok();
                     }
                 }
             },
@@ -172,5 +205,104 @@ impl AgentView {
             .as_deref()
             .is_some_and(real_session)
             && self.pane_state.settings.is_some()
+    }
+}
+
+impl AgentView {
+    pub(super) fn observe_login(&mut self, mux: &Entity<MuxClient>, cx: &mut Context<Self>) {
+        let host = mux.read(cx).attached_host();
+        let login = mux.read(cx).host_agent_login(host, self.pane).cloned();
+        if login == self.login {
+            return;
+        }
+        if let Some(login) = login.as_ref().filter(|login| settled(login)) {
+            let id = login.id;
+            if matches!(login.step, AgentLoginStep::Done { .. }) {
+                self.open_usage.set(true);
+            }
+            mux.update(cx, |mux, _| mux.dismiss_agent_login(host, id));
+        }
+        self.login = login.filter(|login| !settled(login));
+        cx.notify();
+    }
+
+    pub(super) fn render_login(&self, view: &Entity<Self>, cx: &ala::App) -> Option<AnyElement> {
+        let login = self.login.as_ref()?;
+        let view = view.downgrade();
+        login_card(
+            login,
+            self.code.as_ref(),
+            move |event, window, cx| {
+                view.update(cx, |view, cx| view.login_event(event, window, cx))
+                    .ok();
+            },
+            cx,
+        )
+    }
+
+    pub(super) fn login_event(
+        &mut self,
+        event: LoginEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(login) = self.login.clone() else {
+            return;
+        };
+        let Some(card) = card(&login) else {
+            return;
+        };
+        let host = self.mux.read(cx).attached_host();
+        let accounts = self.accounts.clone().unwrap_or_default();
+        let dismiss = |view: &mut Self, cx: &mut Context<Self>| {
+            view.mux
+                .update(cx, |mux, _| mux.dismiss_agent_login(host, login.id));
+            view.login = None;
+            cx.notify();
+        };
+        match event {
+            LoginEvent::Close if card.close == CardClose::Cancel => {
+                self.mux.read(cx).send_agent_login(host, &cancel(&login));
+            }
+            LoginEvent::Close => dismiss(self, cx),
+            LoginEvent::Action(CardAction::UseCode) => {
+                self.mux
+                    .read(cx)
+                    .execute_on_host(host, restart(&login, AgentLoginBrowser::Elsewhere));
+            }
+            LoginEvent::Action(CardAction::Retry) => {
+                dismiss(self, cx);
+                self.mux
+                    .read(cx)
+                    .execute_on_host(host, retry(&login, &accounts, login.browser));
+            }
+            LoginEvent::Action(CardAction::Terminal) => {
+                dismiss(self, cx);
+                self.mux
+                    .read(cx)
+                    .execute_on_host(host, in_terminal(&login, &accounts));
+            }
+            LoginEvent::Action(CardAction::Continue) => {
+                if let Some(message) = self
+                    .code
+                    .as_ref()
+                    .and_then(|field| field.take(&login, window, cx))
+                {
+                    self.mux.read(cx).send_agent_login(host, &message);
+                }
+            }
+            LoginEvent::Action(action @ (CardAction::SwitchWhenIdle | CardAction::SwitchNow)) => {
+                let mode = if action == CardAction::SwitchNow {
+                    FlipMode::Now
+                } else {
+                    FlipMode::WhenIdle
+                };
+                dismiss(self, cx);
+                cx.emit(AgentAccountPicked {
+                    account: login.account.clone(),
+                    mode,
+                });
+            }
+        }
     }
 }

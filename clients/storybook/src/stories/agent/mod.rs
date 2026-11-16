@@ -6,6 +6,7 @@ mod chrome;
 pub(super) mod composer;
 pub(super) mod fixtures;
 mod flight;
+pub(super) mod login;
 pub(super) mod pane;
 
 pub const STORIES: &[Story] = &[STORY];
@@ -45,6 +46,12 @@ const STORY: Story = Story {
             name: "Composer controls",
             summary: "The pieces of the composer on their own: the action button, the + that starts a mention, the git summary, and the footer's usage pill and model picker. The usage pill is the context ring and how full the context is; it turns warning when the account's 5-hour or weekly limit is at 80% or more, and shows the ring alone while the context size is unknown. Its menu meters the context, the 5-hour window and the week with when each resets, then lists the CLI's accounts with Add account under them; picking one sends agent-account, and a busy: answer shows the flip's busy card without its choices. The picker's button leads with the permission mode's glyph in its tone; its menu is every model in one list six rows tall that scrolls, opened on the current one, then a horizontal effort slider with a dot per step, then the permission modes. Bypass permissions draws the glyph in danger.",
             build: composer::controls,
+        },
+        Section {
+            id: "sign-in",
+            name: "Sign in",
+            summary: "Add account in the usage pill's menu, or Sign in at the end of a signed-out account's row, signs that account in without a terminal: the daemon runs the CLI's own login and the chat shows each step in a card above the composer, while the chat stays usable. On the desktop attached to its own machine the sign-in page opens in the browser there, with the link to open again or copy and Use a code instead. Anywhere else Claude shows the link and a field for the code its page ends on, and ChatGPT shows the link and a device code to type on the page. X cancels. A failure says why in one line, with Retry and Sign in in a terminal. When it is done the card goes and the pill's menu opens on the new account; a chat that is busy keeps its account and asks with the busy card's Switch when idle and Switch now.",
+            build: login::cards,
         },
         Section {
             id: "empty-chat",

@@ -103,7 +103,7 @@ pub const STORY: Story = Story {
         Section {
             id: "plus",
             name: "Plus sheet",
-            summary: "The plus opens a sheet titled with the agent: Mention, then Model, Effort, Permissions and Account with their values, and one muted line for the context and the account's limits. Each row opens its choices in the same sheet under a back control, the current one checked; Mention lists what the @ menu lists and goes inside sessions, hosts and folders.",
+            summary: "The plus opens a sheet titled with the agent: Mention, then Model, Effort, Permissions and Account with their values, and one muted line for the context and the account's limits. Each row opens its choices in the same sheet under a back control, the current one checked; Mention lists what the @ menu lists and goes inside sessions, hosts and folders. Add account, or Sign in at the end of a signed-out account, opens Sign in: the whole link row opens the page, Claude takes the pasted code with Continue, ChatGPT's code tile copies on tap, a failure offers Retry and a terminal, and an account added while the chat is busy asks Switch when idle or Switch now. X cancels.",
             build: super::phone_chat::plus_states,
         },
         Section {

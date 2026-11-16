@@ -262,11 +262,23 @@ impl Connection {
         account: Option<&str>,
         cx: &mut Context<Self>,
     ) {
+        self.switch_agent_account_when(pane, account, zz_client::agent_flip::FlipMode::Ask, cx);
+    }
+
+    pub fn switch_agent_account_when(
+        &mut self,
+        pane: PaneId,
+        account: Option<&str>,
+        mode: zz_client::agent_flip::FlipMode,
+        cx: &mut Context<Self>,
+    ) {
         if !self.connected || self.core.attached_read_only() {
             return;
         }
         let mut flips = std::mem::take(&mut self.flips);
-        flips.switch_account(pane, account, |command| Some(self.invoke(command, cx)));
+        flips.switch_account_when(pane, account, mode, |command| {
+            Some(self.invoke(command, cx))
+        });
         self.flips = flips;
         cx.notify();
     }
@@ -856,16 +868,33 @@ impl Connection {
         }
     }
 
-    pub fn add_agent_account(
+    pub fn signs_in(&self) -> bool {
+        zz_client::agent_login::daemon_signs_in(self.core.capabilities())
+    }
+
+    pub fn start_agent_login(
         &mut self,
         provider: zz_protocol::AgentProvider,
+        account: zz_client::agent_login::LoginAccount<'_>,
+        pane: PaneId,
         cx: &mut Context<Self>,
     ) {
-        self.command(
-            "agent-accounts",
-            vec!["--add".to_owned(), provider.as_str().to_owned()],
-            cx,
+        if !self.connected || self.core.attached_read_only() {
+            return;
+        }
+        let command = zz_client::agent_login::entry(
+            provider,
+            account,
+            pane,
+            zz_protocol::AgentLoginBrowser::Elsewhere,
+            self.core.capabilities(),
         );
+        self.invoke(command, cx);
+    }
+
+    pub fn dismiss_agent_login(&mut self, login: u64, cx: &mut Context<Self>) {
+        self.core.dismiss_agent_login(login);
+        cx.notify();
     }
 
     pub fn invoke(&mut self, command: CommandInvocation, cx: &mut Context<Self>) -> u64 {
@@ -1916,6 +1945,7 @@ mod browser {
                 ClientHello::CLIENT_TERMINAL_CAPABILITY,
                 ClientHello::CLIENT_UTF8_CAPABILITY,
                 ClientHello::CLIENT_PATH_PICKER_CAPABILITY,
+                zz_protocol::AGENT_LOGIN_CAPABILITY,
             ]
             .into_iter()
             .chain(zz_protocol::CLIENT_CAPABILITY_NAMES.iter().copied())

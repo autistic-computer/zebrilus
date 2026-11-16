@@ -941,6 +941,8 @@ struct HostConnection {
     providers_requested: bool,
     agent_accounts: Option<Vec<zz_protocol::AgentAccount>>,
     agent_quotas: Vec<zz_protocol::AgentQuota>,
+    agent_logins: Vec<zz_protocol::AgentLogin>,
+    opened_logins: BTreeSet<u64>,
     platform: zz_protocol::HostPlatform,
 }
 
@@ -977,6 +979,8 @@ impl HostConnection {
             providers_requested: false,
             agent_accounts: None,
             agent_quotas: Vec::new(),
+            agent_logins: Vec::new(),
+            opened_logins: BTreeSet::new(),
             platform: zz_protocol::HostPlatform::Unknown,
         }
     }
@@ -1065,6 +1069,8 @@ impl HostConnection {
             providers_requested: false,
             agent_accounts: None,
             agent_quotas: Vec::new(),
+            agent_logins: Vec::new(),
+            opened_logins: BTreeSet::new(),
             platform,
         })
     }
@@ -1900,7 +1906,10 @@ impl MuxClient {
                     &endpoint,
                     color_scheme,
                     prompts,
-                    &[zz_protocol::ClientHello::CLIENT_PATH_PICKER_CAPABILITY],
+                    &[
+                        zz_protocol::ClientHello::CLIENT_PATH_PICKER_CAPABILITY,
+                        zz_protocol::AGENT_LOGIN_CAPABILITY,
+                    ],
                 );
                 let _ = results.send_blocking(result);
             });
@@ -3562,11 +3571,93 @@ impl MuxClient {
         );
     }
 
-    pub(crate) fn add_agent_account(&self, host: HostId, provider: zz_protocol::AgentProvider) {
-        self.execute_on_host(
-            host,
-            CommandInvocation::new("agent-accounts", ["--add", provider.as_str()]),
+    pub(crate) fn host_signs_in(&self, host: HostId) -> bool {
+        self.connections
+            .get(&host)
+            .and_then(|connection| connection.client.as_ref())
+            .is_some_and(|client| {
+                zz_client::agent_login::daemon_signs_in(&client.server_hello().capabilities)
+            })
+    }
+
+    pub(crate) fn start_agent_login(
+        &self,
+        host: HostId,
+        provider: zz_protocol::AgentProvider,
+        account: zz_client::agent_login::LoginAccount<'_>,
+        pane: PaneId,
+    ) {
+        let capabilities = self
+            .connections
+            .get(&host)
+            .and_then(|connection| connection.client.as_ref())
+            .map_or(&[][..], |client| {
+                client.server_hello().capabilities.as_slice()
+            });
+        let command = zz_client::agent_login::entry(
+            provider,
+            account,
+            pane,
+            zz_client::agent_login::browser(host == HostId::LOCAL),
+            capabilities,
         );
+        self.execute_on_host(host, command);
+    }
+
+    pub(crate) fn host_agent_login(
+        &self,
+        host: HostId,
+        pane: PaneId,
+    ) -> Option<&zz_protocol::AgentLogin> {
+        zz_client::agent_login::for_pane(&self.connections.get(&host)?.agent_logins, pane)
+    }
+
+    pub(crate) fn dismiss_agent_login(&mut self, host: HostId, login: u64) {
+        if let Some(connection) = self.connections.get_mut(&host) {
+            connection
+                .agent_logins
+                .retain(|known| known.id != login || !known.finished());
+        }
+    }
+
+    pub(crate) fn send_agent_login(&self, host: HostId, message: &ProtocolMessage) {
+        let Some(client) = self
+            .connections
+            .get(&host)
+            .and_then(|connection| connection.client.as_ref())
+        else {
+            return;
+        };
+        if let Err(error) = client.send(message) {
+            log::warn!(target: "zz::agent", "could not send a sign-in request: {error}");
+        }
+    }
+
+    fn observe_agent_login(
+        &mut self,
+        host: HostId,
+        login: zz_protocol::AgentLogin,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(connection) = self.connections.get_mut(&host) else {
+            return;
+        };
+        let open = match &login.step {
+            zz_protocol::AgentLoginStep::OpenUrl { url }
+                if host == HostId::LOCAL
+                    && login.browser == zz_protocol::AgentLoginBrowser::Local
+                    && connection.opened_logins.insert(login.id) =>
+            {
+                Some(url.clone())
+            }
+            _ => None,
+        };
+        if zz_client::agent_login::reduce(&mut connection.agent_logins, login) {
+            cx.notify();
+        }
+        if let Some(url) = open {
+            cx.open_url(&url);
+        }
     }
 
     pub fn new_session(&self, host: HostId) {
@@ -4527,6 +4618,13 @@ impl MuxClient {
                     connection.agent_quotas = quotas;
                 }
                 cx.notify();
+                return;
+            }
+            ProtocolMessage::Event(Event {
+                payload: EventPayload::AgentLogin(login),
+                ..
+            }) => {
+                self.observe_agent_login(host, login, cx);
                 return;
             }
             ProtocolMessage::Batch(batch) => {

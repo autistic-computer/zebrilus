@@ -353,6 +353,18 @@ impl Usage {
     }
 
     #[must_use]
+    pub fn with_a_signed_out_one() -> Self {
+        let mut usage = Self::normal();
+        if let Some(accounts) = usage.accounts.as_mut() {
+            accounts.push(AgentAccount {
+                signed_in: false,
+                ..Self::account(Some("old"), Some("old@example.com"), None)
+            });
+        }
+        usage
+    }
+
+    #[must_use]
     pub fn signed_out_default() -> Self {
         Self {
             accounts: Some(vec![Self::account(None, None, None)]),
@@ -402,6 +414,8 @@ pub fn footer_controls(
                 quotas: &quotas,
                 context: usage.context,
                 enabled,
+                signs_in: true,
+                open: false,
             },
             |_, _, _| {},
             cx,
@@ -899,6 +913,8 @@ impl Render for Controls {
                         quotas: &[],
                         context,
                         enabled: true,
+                        signs_in: true,
+                        open: false,
                     },
                     |_, _, _| {},
                     cx,
@@ -1064,6 +1080,16 @@ impl Render for Controls {
                     "claude-accounts",
                     &claude_settings(),
                     &Usage::two_with_the_second_picked(),
+                    true,
+                    cx,
+                )),
+            )
+            .state(
+                "a signed-out account: Sign in at the end of its row, Add account under the list",
+                row().children(footer_controls(
+                    "claude-sign-in",
+                    &claude_settings(),
+                    &Usage::with_a_signed_out_one(),
                     true,
                     cx,
                 )),

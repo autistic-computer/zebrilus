@@ -18,6 +18,7 @@ use penna::{
 use std::path::{Path, PathBuf};
 
 use zz_client::agent_lens::{AgentEmpty, PendingPermission, agent_empty};
+use zz_client::agent_login::LoginAccount;
 use zz_client::agent_resume::{Menu, Resume, folder_name};
 use zz_client::agent_settings;
 use zz_client::agent_timeline::unix_now;
@@ -168,7 +169,12 @@ impl AgentPane {
         cx.notify();
     }
 
-    fn open_sheet(&mut self, sheet: ChatSheet, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn open_sheet(
+        &mut self,
+        sheet: ChatSheet,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         window.dismiss_virtual_keyboard();
         self.sheet = Some(sheet);
         self.turn = None;
@@ -339,6 +345,7 @@ impl AgentPane {
                         .update(cx, |picker, cx| picker.dismiss(window, cx));
                     Some(PlusPage::Root)
                 }
+                PlusPage::SignIn => Some(PlusPage::Account),
                 _ => Some(PlusPage::Root),
             },
             PlusAction::Set(option, value) => {
@@ -367,12 +374,36 @@ impl AgentPane {
                 Some(PlusPage::Root)
             }
             PlusAction::Account(AccountAction::Add) => {
+                let pane = self.pane;
+                let signs_in = self.connection.read(cx).signs_in();
                 if let Some(provider) = self.provider(cx) {
                     self.connection.update(cx, |connection, cx| {
-                        connection.add_agent_account(provider, cx);
+                        connection.start_agent_login(provider, LoginAccount::New, pane, cx);
                     });
                 }
-                close_sheet(CHAT_SHEET, cx);
+                if signs_in {
+                    Some(PlusPage::SignIn)
+                } else {
+                    close_sheet(CHAT_SHEET, cx);
+                    None
+                }
+            }
+            PlusAction::Account(AccountAction::SignIn(account)) => {
+                let pane = self.pane;
+                if let Some(provider) = self.provider(cx) {
+                    self.connection.update(cx, |connection, cx| {
+                        connection.start_agent_login(
+                            provider,
+                            LoginAccount::of(account.as_deref()),
+                            pane,
+                            cx,
+                        );
+                    });
+                }
+                Some(PlusPage::SignIn)
+            }
+            PlusAction::Login(event) => {
+                self.login_event(event, window, cx);
                 None
             }
             PlusAction::Account(AccountAction::Refresh) => {
@@ -568,6 +599,9 @@ impl AgentPane {
                     typed: self.typed,
                     panes: &panes,
                     enabled: writable,
+                    signs_in: connection.signs_in(),
+                    login: self.login.as_ref(),
+                    code: self.code.as_ref().map(|field| &field.input),
                 };
                 let act = entity.downgrade();
                 let sheet = plus.sheet(

@@ -544,7 +544,10 @@ fn connect_interactive_client(
         path,
         color_scheme,
         &[],
-        &[zz_protocol::ClientHello::CLIENT_PATH_PICKER_CAPABILITY],
+        &[
+            zz_protocol::ClientHello::CLIENT_PATH_PICKER_CAPABILITY,
+            zz_protocol::AGENT_LOGIN_CAPABILITY,
+        ],
         Some(&zz_protocol::AttachOperation::Session(String::new())),
     )
 }

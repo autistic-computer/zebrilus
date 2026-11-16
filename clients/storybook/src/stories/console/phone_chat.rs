@@ -17,7 +17,7 @@ use penna::{
     v_flex,
 };
 use zz_protocol::{
-    AgentProvider, AgentQuota, PaneId,
+    AgentLogin, AgentProvider, AgentQuota, PaneId,
     chat::{ItemId, ItemKind},
 };
 use zz_ui::{
@@ -461,6 +461,7 @@ pub(super) struct PlusStates {
     top: Entity<TargetPicker>,
     inside: Entity<TargetPicker>,
     search: Entity<InputState>,
+    code: Entity<InputState>,
 }
 
 impl PlusStates {
@@ -495,6 +496,7 @@ impl PlusStates {
             top,
             inside,
             search: cx.new(|cx| InputState::new(window, cx).placeholder("Search")),
+            code: crate::stories::agent::login::pasted(window, cx),
         }
     }
 }
@@ -527,6 +529,37 @@ impl Render for PlusStates {
             .find(|item| item.kind == zz_ui::target::TargetKind::Session)
             .cloned();
         let bottom = placement().bottom;
+        let signing_out = crate::stories::agent::composer::Usage::with_a_signed_out_one().accounts;
+        let logins = crate::stories::agent::login::steps();
+        let step = |index: usize| logins.get(index).map(|(_, login)| login);
+        let sign_in = |login: Option<&AgentLogin>, cx: &App| {
+            let provider = login.map_or(AgentProvider::ClaudeCode, |login| login.provider);
+            PlusSheet {
+                agent: provider.label().into(),
+                provider: Some(provider),
+                settings: Some(&settings),
+                account: usage.current,
+                accounts: signing_out.as_deref(),
+                quotas: &quotas,
+                context: usage.context,
+                mention: &[],
+                headers: &[],
+                search: &self.search,
+                typed: false,
+                panes: &[],
+                enabled: true,
+                signs_in: true,
+                login,
+                code: Some(&self.code),
+            }
+            .sheet(
+                &login.map_or(PlusPage::Account, |_| PlusPage::SignIn),
+                bottom,
+                |_, _, _| {},
+                |_, _| {},
+                cx,
+            )
+        };
         let sheet = |page: PlusPage, mention: &[zz_ui::target::TargetItem], cx: &App| {
             PlusSheet {
                 agent: AgentProvider::ClaudeCode.label().into(),
@@ -542,6 +575,9 @@ impl Render for PlusStates {
                 typed: false,
                 panes: &[],
                 enabled: true,
+                signs_in: true,
+                login: None,
+                code: None,
             }
             .sheet(&page, bottom, |_, _, _| {}, |_, _| {}, cx)
         };
@@ -601,6 +637,26 @@ impl Render for PlusStates {
             .state(
                 "Account, then Add account",
                 screen("plus-account", sheet(PlusPage::Account, &top, cx), cx),
+            )
+            .state(
+                "Account with a signed-out account: Sign in at its end",
+                screen("plus-sign-in-start", sign_in(None, cx), cx),
+            )
+            .state(
+                "Sign in to Claude: the row opens the page, paste the code, Continue",
+                screen("plus-sign-in-paste", sign_in(step(2), cx), cx),
+            )
+            .state(
+                "Sign in to ChatGPT: the code tile copies",
+                screen("plus-sign-in-device", sign_in(step(3), cx), cx),
+            )
+            .state(
+                "couldn't sign in: Retry, or a terminal",
+                screen("plus-sign-in-failed", sign_in(step(5), cx), cx),
+            )
+            .state(
+                "added while the chat is busy",
+                screen("plus-sign-in-busy", sign_in(step(9), cx), cx),
             )
             .state(
                 "Mention: chats, sessions, hosts, files",

@@ -17,21 +17,24 @@ use penna::{
         TouchGroup, TouchHeader, TouchInk, TouchRow, TouchTrailing, concentric, touch_card,
         touch_card_ground,
     },
+    components::button::{Button, ButtonVariants as _},
     components::input::{Input, InputState},
     components::progress::Progress,
     components::spinner::Spinner,
     h_flex, v_flex,
 };
+use zz_client::agent_login::{self, CardAction, CardGlyph, LoginCard};
 use zz_client::agent_resume::{LOADING, Menu, ResumeRow};
 use zz_client::agent_settings::{self, LensSettings};
 use zz_client::agent_timeline::{ContextUsage, percent_label, unix_now};
 use zz_client::window_summary::PaneTile;
-use zz_protocol::{AgentAccount, AgentProvider, AgentQuota, chat::ItemId};
+use zz_protocol::{AgentAccount, AgentLogin, AgentProvider, AgentQuota, chat::ItemId};
 
 use super::{
     ask::{ApprovalAction, AskChoice, AskSubject},
     chat::HeldMessage,
-    controls::{AccountAction, TABULAR, UsageMeter, mode_icon, usage_meters},
+    controls::{AccountAction, SIGN_IN, TABULAR, UsageMeter, mode_icon, usage_meters},
+    login::LoginEvent,
     question::{QuestionCardAction, QuestionCardState},
 };
 use crate::command::PaletteTarget;
@@ -47,6 +50,7 @@ pub enum PlusPage {
     Root,
     Setting(&'static str),
     Account,
+    SignIn,
     Mention(Vec<TargetItem>),
 }
 
@@ -56,6 +60,7 @@ impl PlusPage {
         match self {
             Self::Root => 0,
             Self::Setting(_) | Self::Account => 1,
+            Self::SignIn => 2,
             Self::Mention(drilled) => 1 + drilled.len(),
         }
     }
@@ -67,6 +72,7 @@ pub enum PlusAction {
     Back,
     Set(&'static str, String),
     Account(AccountAction),
+    Login(LoginEvent),
     Mention(TargetItem),
     Drill(TargetItem),
 }
@@ -85,6 +91,9 @@ pub struct PlusSheet<'a> {
     pub typed: bool,
     pub panes: &'a [PaneTile],
     pub enabled: bool,
+    pub signs_in: bool,
+    pub login: Option<&'a AgentLogin>,
+    pub code: Option<&'a Entity<InputState>>,
 }
 
 type OnPlus = Rc<dyn Fn(PlusAction, &mut Window, &mut App)>;
@@ -182,6 +191,21 @@ impl PlusSheet<'_> {
             PlusPage::Setting(agent_settings::EFFORT) => "Effort".into(),
             PlusPage::Setting(_) => "Permissions".into(),
             PlusPage::Account => "Account".into(),
+            PlusPage::SignIn => self.login.and_then(agent_login::card).map_or_else(
+                || {
+                    self.provider.map_or_else(
+                        || "Account".into(),
+                        |provider| format!("Sign in to {}", agent_login::service(provider)).into(),
+                    )
+                },
+                |card| {
+                    if card.glyph == CardGlyph::Failed {
+                        "Couldn\u{2019}t sign in".into()
+                    } else {
+                        card.title.into()
+                    }
+                },
+            ),
             PlusPage::Mention(drilled) => drilled
                 .last()
                 .map_or_else(|| "Mention".into(), |item| item.label.clone()),
@@ -289,20 +313,25 @@ impl PlusSheet<'_> {
             .enumerate()
             .map(|(index, account)| {
                 let current = account.id.as_deref() == self.account;
+                let signed_out = self.signs_in && !account.signed_in;
+                let action = if signed_out {
+                    AccountAction::SignIn(account.id.clone())
+                } else {
+                    AccountAction::Use(account.id.clone())
+                };
                 let row = TouchRow::new(
                     ("chat-plus-account-row", index),
                     agent_settings::account_name(&account),
                 )
                 .disabled(!self.enabled)
-                .on_click(act(
-                    on_action,
-                    PlusAction::Account(AccountAction::Use(account.id.clone())),
-                ));
+                .on_click(act(on_action, PlusAction::Account(action)));
                 let row = match agent_settings::account_detail(&account) {
                     Some(detail) => row.detail(detail),
                     None => row,
                 };
-                if current {
+                if signed_out {
+                    row.trailing(TouchTrailing::Value(SIGN_IN.into()))
+                } else if current {
                     row.trailing(TouchTrailing::Check)
                 } else {
                     row
@@ -313,6 +342,53 @@ impl PlusSheet<'_> {
                 .disabled(!self.enabled)
                 .on_click(act(on_action, PlusAction::Account(AccountAction::Add)))])
             .collect()
+    }
+
+    fn sign_in(&self, on_action: &OnPlus, cx: &App) -> Vec<AnyElement> {
+        let Some(card) = self.login.and_then(agent_login::card) else {
+            return vec![working_card(cx)];
+        };
+        let mut groups = Vec::new();
+        if let Some(url) = card.url.clone() {
+            groups.push(
+                TouchGroup::new()
+                    .ruled()
+                    .row(
+                        TouchRow::new("chat-sign-in-link", "Open sign-in page")
+                            .icon(IconName::Globe)
+                            .detail(agent_login::shown_site(&url).to_owned())
+                            .trailing(TouchTrailing::Glyph(IconName::ExternalLink))
+                            .on_click(move |_, _, cx| cx.open_url(&url)),
+                    )
+                    .into_any_element(),
+            );
+        }
+        if let Some(code) = card.code.clone() {
+            groups.push(code_tile(code, cx));
+        }
+        if card.paste
+            && let Some(code) = self.code
+        {
+            groups.push(
+                div()
+                    .px(Space::S8)
+                    .child(
+                        Input::new(code)
+                            .with_size(Size::TouchLarge)
+                            .w_full()
+                            .font_family(cx.theme().mono_font_family.clone()),
+                    )
+                    .into_any_element(),
+            );
+        }
+        if let Some(detail) = card.detail.clone() {
+            groups.push(line_card(&card, detail, cx));
+        }
+        if card.glyph == CardGlyph::Working && card.url.is_none() {
+            groups.push(working_card(cx));
+        }
+        groups.extend(action_bar(&card, on_action));
+        groups
     }
 
     fn pane_face(&self, item: &TargetItem, cx: &App) -> Option<AnyElement> {
@@ -477,6 +553,7 @@ impl PlusSheet<'_> {
                 None,
                 group(self.account_rows(&on_action)).into_iter().collect(),
             ),
+            PlusPage::SignIn => (None, self.sign_in(&on_action, cx)),
             PlusPage::Mention(drilled) => (
                 Some(search_field(self.search, cx)),
                 self.mention_sections(drilled, &on_action, cx),
@@ -488,11 +565,23 @@ impl PlusSheet<'_> {
             .w_full()
             .children(search)
             .child(sheet_groups().children(groups).children(usage));
-        let close = sheet_close("phone-chat-sheet-close", cx)
-            .on_click(|_, _, cx| close_sheet(CHAT_SHEET, cx))
-            .into_any_element();
+        let close = if *page == PlusPage::SignIn {
+            let on_action = Rc::clone(&on_action);
+            sheet_close("phone-chat-sheet-close", cx).on_click(move |_, window, cx| {
+                on_action(PlusAction::Login(LoginEvent::Close), window, cx);
+            })
+        } else {
+            sheet_close("phone-chat-sheet-close", cx)
+                .on_click(|_, _, cx| close_sheet(CHAT_SHEET, cx))
+        }
+        .into_any_element();
         let sheet = bottom_sheet(CHAT_SHEET, title, [close], list, bottom_inset, on_dismiss);
-        let first = root || (self.typed && *page == PlusPage::Mention(Vec::new()));
+        let busy = *page == PlusPage::SignIn
+            && self
+                .login
+                .and_then(agent_login::card)
+                .is_some_and(|card| card.glyph == CardGlyph::Waiting);
+        let first = root || busy || (self.typed && *page == PlusPage::Mention(Vec::new()));
         if first {
             return sheet;
         }
@@ -502,6 +591,119 @@ impl PlusSheet<'_> {
                 .on_click(move |_, window, cx| back(PlusAction::Back, window, cx)),
         )
     }
+}
+
+const CODE_TILE: f32 = 88.0;
+const CODE_GLYPH: f32 = 22.0;
+const LINE_GLYPH: f32 = 20.0;
+
+fn working_card(cx: &App) -> AnyElement {
+    touch_card(cx)
+        .items_center()
+        .py(Space::S16)
+        .child(
+            Spinner::new()
+                .id("chat-sign-in-working")
+                .with_size(px(SPINNER))
+                .color(penna::muted_on(touch_card_ground(cx), cx)),
+        )
+        .into_any_element()
+}
+
+fn code_tile(code: String, cx: &App) -> AnyElement {
+    let muted = penna::muted_on(touch_card_ground(cx), cx);
+    let copied = code.clone();
+    touch_card(cx)
+        .id("chat-sign-in-code")
+        .child(
+            h_flex()
+                .min_h(px(CODE_TILE))
+                .gap(Space::S12)
+                .pl(Space::S16)
+                .pr(Space::S8)
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .type_style(TextStyle::TouchTitle, cx)
+                        .font_family(cx.theme().mono_font_family.clone())
+                        .child(code),
+                )
+                .child(
+                    Icon::new(IconName::Copy)
+                        .size(px(CODE_GLYPH))
+                        .flex_none()
+                        .text_color(muted),
+                ),
+        )
+        .on_click(move |_, _, cx| {
+            cx.write_to_clipboard(ClipboardItem::new_string(copied.clone()));
+            cx.haptic(ala::Haptic::Selection);
+        })
+        .into_any_element()
+}
+
+fn line_card(card: &LoginCard, detail: String, cx: &App) -> AnyElement {
+    let ground = touch_card_ground(cx);
+    let failed = card.glyph == CardGlyph::Failed;
+    touch_card(cx)
+        .child(
+            h_flex()
+                .items_start()
+                .gap(Space::S12)
+                .px(Space::S8)
+                .py(Space::S6)
+                .type_style(TextStyle::TouchBody, cx)
+                .when(!failed, |line| line.text_color(penna::muted_on(ground, cx)))
+                .when(failed, |line| {
+                    line.child(
+                        Icon::new(IconName::TriangleAlert)
+                            .size(px(LINE_GLYPH))
+                            .flex_none()
+                            .mt(px(1.0))
+                            .text_color(cx.theme().danger),
+                    )
+                })
+                .child(div().flex_1().min_w_0().child(detail)),
+        )
+        .into_any_element()
+}
+
+fn action_bar(card: &LoginCard, on_action: &OnPlus) -> Option<AnyElement> {
+    let mut actions = card.actions.clone();
+    if actions.contains(&CardAction::SwitchNow) {
+        actions = vec![CardAction::SwitchWhenIdle, CardAction::SwitchNow];
+    } else {
+        actions.sort_by_key(|action| !action.primary());
+    }
+    let primary = actions.first().copied();
+    (!actions.is_empty()).then(|| {
+        v_flex()
+            .w_full()
+            .gap(Space::S8)
+            .px(Space::S8)
+            .children(actions.into_iter().map(|action| {
+                Button::new(SharedString::from(format!(
+                    "chat-sign-in-{}",
+                    action.label()
+                )))
+                .label(action.label())
+                .with_size(Size::TouchLarge)
+                .w_full()
+                .map(|button| {
+                    if Some(action) == primary {
+                        button.primary()
+                    } else {
+                        button.ghost()
+                    }
+                })
+                .on_click(act(
+                    on_action,
+                    PlusAction::Login(LoginEvent::Action(action)),
+                ))
+            }))
+            .into_any_element()
+    })
 }
 
 pub fn start_rows(

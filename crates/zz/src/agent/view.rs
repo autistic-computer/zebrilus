@@ -53,7 +53,9 @@ use penna::{
     },
     h_flex, v_flex,
 };
+use zz_client::agent_login::CardAction;
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId, ViewContent};
+use zz_ui::agent::login::{CodeField, LoginEvent};
 use zz_ui::agent::{composer_attachment, plan_progress, view::composer_image_view};
 
 use crate::{
@@ -270,6 +272,9 @@ pub(crate) struct AgentView {
     account: Option<String>,
     accounts: Option<Vec<zz_protocol::AgentAccount>>,
     quotas: Vec<zz_protocol::AgentQuota>,
+    login: Option<zz_protocol::AgentLogin>,
+    code: Option<CodeField>,
+    open_usage: Cell<bool>,
     resume_scroll: ScrollHandle,
     focus_search: bool,
     _subscriptions: Vec<Subscription>,
@@ -277,6 +282,7 @@ pub(crate) struct AgentView {
 
 pub(crate) struct AgentAccountPicked {
     pub(crate) account: Option<String>,
+    pub(crate) mode: zz_client::agent_flip::FlipMode,
 }
 
 impl ala::EventEmitter<AgentAccountPicked> for AgentView {}
@@ -388,6 +394,7 @@ impl AgentView {
             (account, accounts.map(<[_]>::to_vec), quotas.to_vec())
         };
         let mux_observer = cx.observe(&mux, |view, mux, cx| {
+            view.observe_login(&mux, cx);
             let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), view.pane);
             let active = mux.read(cx).active_pane() == Some(view.pane);
             let (account, accounts, quotas) = pane_accounts(mux.read(cx), view.pane);
@@ -457,6 +464,9 @@ impl AgentView {
             account,
             accounts,
             quotas,
+            login: None,
+            code: None,
+            open_usage: Cell::new(false),
             resume_scroll: ScrollHandle::new(),
             focus_search: false,
             _subscriptions: vec![
@@ -1856,6 +1866,7 @@ impl AgentView {
                     self.render_error(state, cx)
                         .map(IntoElement::into_any_element),
                 )
+                .chain(self.render_login(view, cx))
                 .chain(completions)
                 .collect(),
             over,
@@ -1901,6 +1912,15 @@ impl AgentView {
 impl Render for AgentView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.drain_pending_composer(window, cx);
+        CodeField::sync(
+            &mut self.code,
+            self.login.as_ref(),
+            window,
+            cx,
+            |view, window, cx| {
+                view.login_event(LoginEvent::Action(CardAction::Continue), window, cx);
+            },
+        );
         self.permission_wizard
             .sync(&self.pane_state.pending_permissions);
         self.synchronize_question_card(window, cx);
@@ -2255,6 +2275,9 @@ mod completion_tests {
                 account: None,
                 accounts: None,
                 quotas: Vec::new(),
+                login: None,
+                code: None,
+                open_usage: Cell::new(false),
                 resume_scroll: ScrollHandle::new(),
                 focus_search: false,
                 _subscriptions: Vec::new(),

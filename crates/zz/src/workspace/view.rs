@@ -2793,7 +2793,7 @@ impl AppView {
             &view,
             window,
             move |this, _, picked: &crate::agent::AgentAccountPicked, window, cx| {
-                this.switch_agent_account(pane, picked.account.as_deref(), window, cx);
+                this.switch_agent_account(pane, picked.account.as_deref(), picked.mode, window, cx);
             },
         )
         .detach();
@@ -2805,13 +2805,17 @@ impl AppView {
         &mut self,
         pane: PaneId,
         account: Option<&str>,
+        mode: zz_client::agent_flip::FlipMode,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let mux = self.mux.clone();
-        if self.flips.switch_account(pane, account, |command| {
-            mux.read(cx).execute_answered(command)
-        }) {
+        if self
+            .flips
+            .switch_account_when(pane, account, mode, |command| {
+                mux.read(cx).execute_answered(command)
+            })
+        {
             self.refresh_flip(pane, window, cx);
         }
     }

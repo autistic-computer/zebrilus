@@ -25,6 +25,7 @@ use zz_client::agent_lens::{
     conversation_changed, pending_permissions, restore_reclaim_id, restored_prompts, track_usage,
     turn_running,
 };
+use zz_client::agent_login::{CardAction, LoginAccount};
 use zz_client::agent_settings::{
     self, ComposerSetter, LensSettings, composer_setter, fork_chat_command, real_session,
     source_message,
@@ -46,6 +47,7 @@ use zz_ui::{
             AccountAction, ComposerAction, ContextUsage, UsagePill, agent_model_picker,
             agent_usage_pill, composer_action, composer_action_button, git_summary_footer,
         },
+        login::{CodeField, LoginEvent},
         presentation::{agent_welcome, error_card},
         preview::ViewRequest,
         question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
@@ -60,6 +62,7 @@ use zz_ui::{
 
 use crate::{command_palette::palette_backend, connection::Connection, roster::Roster};
 
+mod login;
 mod phone;
 
 pub(super) use phone::PhoneDock;
@@ -200,11 +203,21 @@ impl AgentPane {
                 quotas: read.core.agent_quotas(),
                 context,
                 enabled,
+                signs_in: read.signs_in(),
+                open: self.open_usage.take(),
             },
             move |action, _, cx| {
                 connection.update(cx, |connection, cx| match action {
                     AccountAction::Refresh => connection.request_agent_accounts(cx),
-                    AccountAction::Add => connection.add_agent_account(provider, cx),
+                    AccountAction::Add => {
+                        connection.start_agent_login(provider, LoginAccount::New, pane, cx);
+                    }
+                    AccountAction::SignIn(account) => connection.start_agent_login(
+                        provider,
+                        LoginAccount::of(account.as_deref()),
+                        pane,
+                        cx,
+                    ),
                     AccountAction::Use(account) => {
                         connection.switch_agent_account(pane, account.as_deref(), cx);
                     }
@@ -314,6 +327,9 @@ pub(super) struct AgentPane {
     ask_open: Option<u64>,
     other: Option<(u64, usize)>,
     carded: Option<u64>,
+    login: Option<zz_protocol::AgentLogin>,
+    code: Option<CodeField>,
+    open_usage: std::cell::Cell<bool>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -348,10 +364,13 @@ impl AgentPane {
                 cx.notify();
             }
         });
-        let events = cx.subscribe(
+        let events = cx.subscribe_in(
             &connection,
-            move |this, _, event: &zz_client::CoreEvent, cx| {
-                if matches!(
+            window,
+            move |this, _, event: &zz_client::CoreEvent, window, cx| {
+                if matches!(event, zz_client::CoreEvent::AgentLoginChanged { .. }) {
+                    this.observe_login(window, cx);
+                } else if matches!(
                     event,
                     zz_client::CoreEvent::HelloReceived | zz_client::CoreEvent::Attached { .. }
                 ) {
@@ -483,6 +502,9 @@ impl AgentPane {
             ask_open: None,
             other: None,
             carded: None,
+            login: None,
+            code: None,
+            open_usage: std::cell::Cell::new(false),
             _subscriptions: vec![
                 observation,
                 events,
@@ -1415,6 +1437,15 @@ impl Focusable for AgentPane {
 
 impl Render for AgentPane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        CodeField::sync(
+            &mut self.code,
+            self.login.as_ref(),
+            window,
+            cx,
+            |this, window, cx| {
+                this.login_event(LoginEvent::Action(CardAction::Continue), window, cx);
+            },
+        );
         self.synchronize(window, cx);
         self.synchronize_completions(cx);
         let state = self
@@ -1495,6 +1526,7 @@ impl Render for AgentPane {
             );
         }
         prefix.extend(self.render_error(&state, cx));
+        prefix.extend(self.render_login(cx));
         if prompting {
             prefix.extend(self.render_completions(cx));
         }

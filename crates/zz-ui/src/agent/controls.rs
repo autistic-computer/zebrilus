@@ -279,7 +279,10 @@ pub enum AccountAction {
     Refresh,
     Use(Option<String>),
     Add,
+    SignIn(Option<String>),
 }
+
+pub const SIGN_IN: &str = "Sign in";
 
 type OnAccount = Rc<dyn Fn(AccountAction, &mut Window, &mut App)>;
 
@@ -298,6 +301,8 @@ pub struct UsagePill<'a> {
     pub quotas: &'a [AgentQuota],
     pub context: ContextUsage,
     pub enabled: bool,
+    pub signs_in: bool,
+    pub open: bool,
 }
 
 pub fn agent_usage_pill(
@@ -355,15 +360,18 @@ pub fn agent_usage_pill(
             .collect::<Vec<_>>()
     });
     let current = pill.account.map(str::to_owned);
+    let signs_in = pill.signs_in;
     Popover::new(id)
         .anchor(Anchor::BottomRight)
         .p(px(0.0))
         .trigger(trigger)
+        .when(pill.open, |popover| popover.open(true))
         .content(move |_, _, cx| {
             usage_panel(
                 &usage_meters(context, quota),
                 accounts.as_deref().unwrap_or_default(),
                 current.as_deref(),
+                signs_in,
                 &on_action,
                 cx,
             )
@@ -418,6 +426,7 @@ fn usage_panel(
     meters: &[UsageMeter],
     accounts: &[AgentAccount],
     current: Option<&str>,
+    signs_in: bool,
     on_action: &OnAccount,
     cx: &mut ala::Context<PopoverState>,
 ) -> AnyElement {
@@ -432,22 +441,37 @@ fn usage_panel(
             }
         }
     };
+    let muted = cx.theme().foreground.muted();
     let rows = accounts.iter().enumerate().map(|(index, account)| {
         let chosen = account.id.as_deref() == current;
+        let signed_out = signs_in && !account.signed_in;
+        let action = if signed_out {
+            Some(AccountAction::SignIn(account.id.clone()))
+        } else {
+            (!chosen).then(|| AccountAction::Use(account.id.clone()))
+        };
         suggestion_row(
             ("agent-account-row", index),
             agent_settings::account_name(account),
             agent_settings::account_detail(account).map(SharedString::from),
             None,
-            chosen,
+            chosen && !signed_out,
             cx,
         )
         .px(px(10.0))
-        .on_click(pick(
-            (!chosen).then(|| AccountAction::Use(account.id.clone())),
-        ))
-        .when(chosen, |row| {
-            row.child(Icon::new(IconName::Check).with_size(px(12.0)))
+        .on_click(pick(action))
+        .map(|row| {
+            if signed_out {
+                row.child(
+                    Label::new(TextStyle::Small, SIGN_IN)
+                        .flex_none()
+                        .text_color(muted),
+                )
+            } else if chosen {
+                row.child(Icon::new(IconName::Check).with_size(px(12.0)))
+            } else {
+                row
+            }
         })
     });
     let metered = !meters.is_empty();

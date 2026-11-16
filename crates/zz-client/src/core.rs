@@ -1223,14 +1223,8 @@ impl ClientCore {
             }
             EventPayload::AgentLogin(login) => {
                 let provider = login.provider;
-                match self
-                    .agent_logins
-                    .iter_mut()
-                    .find(|known| known.provider == provider)
-                {
-                    Some(known) if *known == login => return,
-                    Some(known) => *known = login,
-                    None => self.agent_logins.push(login),
+                if !crate::agent_login::reduce(&mut self.agent_logins, login) {
+                    return;
                 }
                 self.events
                     .push_back(CoreEvent::AgentLoginChanged { provider });
