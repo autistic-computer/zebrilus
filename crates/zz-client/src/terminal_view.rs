@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use zz_protocol::PaneId;
 use zz_terminal::{
     Cursor, CursorBlinkPolicy, IMAGE_PLACEHOLDER_SCHEME, KeyCode, KeyInput, Modifiers,
@@ -129,6 +131,8 @@ pub fn accumulate_scroll(remainder: &mut f32, delta: f32) -> i32 {
     *remainder -= lines as f32;
     lines
 }
+
+pub const CURSOR_BLINK_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[must_use]
 pub fn cursor_should_blink(

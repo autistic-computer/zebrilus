@@ -38,8 +38,9 @@ use zz_ui::{
     },
     pane_look::pane_color,
     terminal::{
-        FindBarAction, GridSize, PaintState, RowRenderCache, ScrollbarFade, TerminalRenderInput,
-        cursor_should_blink, selection_autoscroll_lines, terminal_font_for_style,
+        CURSOR_BLINK_TIMEOUT, FindBarAction, GridSize, PaintState, RowRenderCache, ScrollbarFade,
+        TerminalRenderInput, cursor_should_blink, selection_autoscroll_lines,
+        terminal_font_for_style,
     },
 };
 
@@ -153,7 +154,6 @@ pub struct TerminalPane {
     text_font: Option<(Font, Pixels)>,
     scale: f32,
     force_local_selection: bool,
-    font_delta: f32,
     available_fonts: Vec<String>,
     text_opacity: f32,
     pane_status: (Option<String>, bool),
@@ -172,6 +172,9 @@ pub struct TerminalPane {
     focused: bool,
     cursor_blink_visible: bool,
     cursor_blink_task: Option<Task<()>>,
+    cursor_blink_idle_since: web_time::Instant,
+    cursor_blink_expired: bool,
+    painted: bool,
     selection_dragging: bool,
     scrollbar_dragging: bool,
     scrollbar_fade: ScrollbarFade,
@@ -205,6 +208,12 @@ pub struct TerminalPane {
 pub struct TerminalTyped;
 
 impl ala::EventEmitter<TerminalTyped> for TerminalPane {}
+
+pub struct TerminalFontStep(pub f32);
+
+impl ala::EventEmitter<TerminalFontStep> for TerminalPane {}
+
+const TERMINAL_FONT_STEP: f32 = 0.1;
 
 pub struct PhoneFindState {
     pub input: Entity<InputState>,
@@ -312,7 +321,6 @@ impl TerminalPane {
             text_font: None,
             scale: 1.0,
             force_local_selection: false,
-            font_delta: 0.,
             available_fonts: cx.text_system().all_font_names(),
             text_opacity: 1.0,
             pane_status: (None, false),
@@ -331,6 +339,9 @@ impl TerminalPane {
             focused: false,
             cursor_blink_visible: true,
             cursor_blink_task: None,
+            cursor_blink_idle_since: cx.background_executor().now(),
+            cursor_blink_expired: false,
+            painted: false,
             selection_dragging: false,
             scrollbar_dragging: false,
             scrollbar_fade: ScrollbarFade::default(),
@@ -666,10 +677,13 @@ impl TerminalPane {
             Some(
                 action @ (ChromeAction::TerminalFontIncrease | ChromeAction::TerminalFontDecrease),
             ) => {
-                let increment = action == ChromeAction::TerminalFontIncrease;
-                self.font_delta =
-                    (self.font_delta + if increment { 1. } else { -1. }).clamp(-6., 24.);
-                cx.notify();
+                cx.emit(TerminalFontStep(
+                    if action == ChromeAction::TerminalFontIncrease {
+                        TERMINAL_FONT_STEP
+                    } else {
+                        -TERMINAL_FONT_STEP
+                    },
+                ));
                 cx.stop_propagation();
                 return;
             }
@@ -1879,6 +1893,8 @@ impl TerminalPane {
         let hidden = !self.cursor_blink_visible;
         self.cursor_blink_visible = true;
         self.cursor_blink_task = None;
+        self.cursor_blink_idle_since = cx.background_executor().now();
+        self.cursor_blink_expired = false;
         self.ensure_cursor_blink(cx);
         if hidden {
             cx.notify();
@@ -1894,6 +1910,10 @@ impl TerminalPane {
         if self.cursor_blink_task.is_some() {
             return;
         }
+        if self.cursor_blink_expired {
+            self.cursor_blink_visible = true;
+            return;
+        }
         let interval = Duration::from_millis(u64::from(
             self.connection
                 .read(cx)
@@ -1905,12 +1925,22 @@ impl TerminalPane {
             loop {
                 cx.background_executor().timer(interval).await;
                 let Ok(keep_running) = this.update(cx, |view, cx| {
-                    if !view.should_blink(cx) {
+                    if !view.painted || !view.should_blink(cx) {
                         view.cursor_blink_visible = true;
+                        view.cursor_blink_task = None;
                         return false;
                     }
+                    view.painted = false;
                     view.cursor_blink_visible = !view.cursor_blink_visible;
                     cx.notify();
+                    if view.cursor_blink_visible
+                        && cx.background_executor().now() - view.cursor_blink_idle_since
+                            >= CURSOR_BLINK_TIMEOUT
+                    {
+                        view.cursor_blink_task = None;
+                        view.cursor_blink_expired = true;
+                        return false;
+                    }
                     true
                 }) else {
                     break;
@@ -1967,6 +1997,7 @@ impl Render for TerminalPane {
                 },
             ));
         }
+        self.painted = true;
         self.sync_search_input(window, cx);
         self.sync_focus(window, cx);
         let appearance = localized_font_appearance(
@@ -1976,7 +2007,7 @@ impl Render for TerminalPane {
             cx,
         );
         let font = terminal_font_for_style(&appearance, &cx.theme().mono_font_family, false, false);
-        let font_size = px((appearance.font_size_points + self.font_delta).clamp(7., 48.));
+        let font_size = px(appearance.font_size_points.clamp(7., 48.));
         self.text_font = Some((font.clone(), font_size));
         let prepare = cx.entity();
         let paint = cx.entity();
@@ -2365,17 +2396,20 @@ fn mouse_button(button: MouseButton) -> Option<TerminalMouseButton> {
 mod tests {
     use super::*;
 
-    #[ala::test]
-    fn shared_terminal_geometry_retries_the_same_grid_after_a_new_layout_view(
+    fn attached_terminal(
         cx: &mut ala::TestAppContext,
+        viewport: TerminalViewport,
+    ) -> (
+        Entity<TestHost>,
+        &mut ala::VisualTestContext,
+        Entity<Connection>,
+        Rc<std::cell::RefCell<Vec<zz_protocol::ProtocolMessage>>>,
     ) {
         use zz_protocol::{
             Batch, ClientView, Event, EventPayload, LayoutNode, MuxSnapshot, PaneKindSnapshot,
             PaneSnapshot, PaneSummary, ProtocolMessage, SessionId, SessionSnapshot, WindowId,
             WindowSnapshot,
         };
-        use zz_terminal::SessionStatus;
-
         cx.update(zz_ui::init);
         let connection_slot = Rc::new(std::cell::RefCell::new(None));
         let captured_connection = Rc::clone(&connection_slot);
@@ -2446,7 +2480,7 @@ mod tests {
                     }),
                     EventPayload::TerminalViewport {
                         pane: PaneId(1),
-                        viewport: TerminalViewport::blank(80, 24, SessionStatus::Running),
+                        viewport,
                     },
                 ]
                 .into_iter()
@@ -2464,9 +2498,37 @@ mod tests {
             });
             let sent = connection.update(cx, |connection, _| connection.record_input_for_test());
             captured_connection.replace(Some((connection.clone(), sent)));
-            TerminalPane::new(PaneId(1), connection, cx)
+            TestHost {
+                terminal: cx.new(|cx| TerminalPane::new(PaneId(1), connection, cx)),
+                shown: true,
+            }
         });
         let (connection, sent) = connection_slot.borrow().clone().unwrap();
+        (terminal, cx, connection, sent)
+    }
+
+    struct TestHost {
+        terminal: Entity<TerminalPane>,
+        shown: bool,
+    }
+
+    impl Render for TestHost {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .size_full()
+                .when(self.shown, |this| this.child(self.terminal.clone()))
+        }
+    }
+
+    #[ala::test]
+    fn shared_terminal_geometry_retries_the_same_grid_after_a_new_layout_view(
+        cx: &mut ala::TestAppContext,
+    ) {
+        use zz_protocol::{ClientView, Event, EventPayload, ProtocolMessage, SessionId, WindowId};
+        use zz_terminal::SessionStatus;
+
+        let (host, cx, connection, sent) =
+            attached_terminal(cx, TerminalViewport::blank(80, 24, SessionStatus::Running));
         let reports = || {
             sent.borrow()
                 .iter()
@@ -2522,7 +2584,63 @@ mod tests {
         assert_eq!(resized[0].3, resized[1].3);
         cx.update(|window, cx| window.draw(cx).clear(cx));
         assert_eq!(reports().len(), 2);
-        drop(terminal);
+        drop(host);
+    }
+
+    #[ala::test]
+    fn cursor_blink_settles_after_idle_and_stops_while_hidden(cx: &mut ala::TestAppContext) {
+        let mut viewport = TerminalViewport::blank(80, 24, zz_terminal::SessionStatus::Running);
+        viewport.cursor = Some(zz_terminal::Cursor::new(
+            0,
+            0,
+            true,
+            true,
+            false,
+            zz_terminal::CursorStyle::Block,
+            zz_terminal::Color::rgb(1, 2, 3),
+        ));
+        let (host, cx, _connection, _sent) = attached_terminal(cx, viewport);
+        let terminal = host.read_with(cx, |host, _| host.terminal.clone());
+        let blinking = |cx: &mut ala::VisualTestContext| {
+            terminal.read_with(cx, |view, _| {
+                (view.cursor_blink_task.is_some(), view.cursor_blink_visible)
+            })
+        };
+        let tick = |cx: &mut ala::VisualTestContext| {
+            cx.executor().advance_clock(Duration::from_millis(500));
+            cx.run_until_parked();
+        };
+        cx.update(|window, cx| {
+            window.activate_window();
+            terminal.update(cx, |view, cx| window.focus(&view.focus, cx));
+        });
+        cx.run_until_parked();
+        assert_eq!(blinking(cx), (true, true));
+        tick(cx);
+        assert_eq!(blinking(cx), (true, false));
+        host.update(cx, |host, cx| {
+            host.shown = false;
+            cx.notify();
+        });
+        cx.run_until_parked();
+        tick(cx);
+        tick(cx);
+        assert_eq!(blinking(cx), (false, true));
+        host.update(cx, |host, cx| {
+            host.shown = true;
+            cx.notify();
+        });
+        cx.run_until_parked();
+        assert_eq!(blinking(cx), (true, true));
+        for _ in 0..CURSOR_BLINK_TIMEOUT.as_millis() / 500 + 2 {
+            tick(cx);
+        }
+        assert_eq!(blinking(cx), (false, true));
+        terminal.update(cx, |view, cx| {
+            assert!(view.cursor_blink_expired);
+            view.reset_cursor_blink(cx);
+        });
+        assert_eq!(blinking(cx), (true, true));
     }
 
     #[test]

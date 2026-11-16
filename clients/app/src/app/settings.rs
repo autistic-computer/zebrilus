@@ -90,6 +90,10 @@ pub(super) fn sections() -> Vec<SettingsSection> {
         .collect()
 }
 
+fn stepped_font_scale(scale: f32, step: f32) -> f32 {
+    ((scale + step) * 20.0).round().clamp(10.0, 60.0) / 20.0
+}
+
 fn interface_zoom(preferences: &Preferences, system_scale: f32, phone: bool) -> f32 {
     let zoom = preferences.appearance.zoom;
     if phone {
@@ -217,6 +221,22 @@ impl Preferences {
     ) {
         let zoom = &mut self.appearance.zoom;
         *zoom = ((*zoom + step) * 10.0).round().clamp(5.0, 30.0) / 10.0;
+        self.save();
+        self.apply(connection, window, cx);
+    }
+
+    pub(super) fn step_terminal_font_scale(
+        &mut self,
+        step: f32,
+        connection: &Entity<Connection>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let scale = stepped_font_scale(self.terminal_font_scale, step);
+        if scale == self.terminal_font_scale {
+            return;
+        }
+        self.terminal_font_scale = scale;
         self.save();
         self.apply(connection, window, cx);
     }
@@ -1248,7 +1268,7 @@ impl PaneControl {
 mod tests {
     use super::{
         AppearanceChange, Preferences, SECTIONS, Setting, interface_theme, interface_zoom,
-        number_text, sample_terminal_viewport, shown,
+        number_text, sample_terminal_viewport, shown, stepped_font_scale,
     };
     use zz_terminal::{ATTR_BOLD, ATTR_ITALIC, CursorStyle, TerminalAppearance};
     use zz_ui::settings::SettingsSection;
@@ -1294,6 +1314,15 @@ mod tests {
         let mut following = Preferences::default();
         following.appearance.zoom = 1.5;
         assert!((interface_zoom(&following, 1.2, false) - 1.8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn font_keys_step_the_terminal_scale_ten_percent_on_the_pinch_grid() {
+        assert_eq!(stepped_font_scale(1.0, 0.1), 1.1);
+        assert_eq!(stepped_font_scale(1.05, 0.1), 1.15);
+        assert_eq!(stepped_font_scale(1.05, -0.1), 0.95);
+        assert_eq!(stepped_font_scale(2.95, 0.1), 3.0);
+        assert_eq!(stepped_font_scale(0.5, -0.1), 0.5);
     }
 
     #[test]

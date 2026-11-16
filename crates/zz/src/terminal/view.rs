@@ -90,7 +90,6 @@ static PASTE_UPLOAD_ID: AtomicU64 = AtomicU64::new(1);
 const SELECTION_AUTOSCROLL_INTERVAL: Duration = Duration::from_millis(33);
 const COPY_FLASH_SELECTION_GRACE: Duration = Duration::from_millis(500);
 const IMAGE_HOVER_DWELL: Duration = Duration::from_millis(250);
-const CURSOR_BLINK_TIMEOUT: Duration = Duration::from_secs(10);
 const TERMINAL_KEY_CONTEXT: &str = "Terminal";
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2677,7 +2676,7 @@ fn single_character(key: &str) -> Option<char> {
     characters.next().is_none().then_some(character)
 }
 
-use zz_ui::terminal::cursor_should_blink;
+use zz_ui::terminal::{CURSOR_BLINK_TIMEOUT, cursor_should_blink};
 
 const fn should_paste_primary(command_output: bool, mouse_tracking: bool, shift: bool) -> bool {
     !command_output && (shift || !mouse_tracking)

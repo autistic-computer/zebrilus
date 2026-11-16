@@ -133,8 +133,12 @@ and falls back to WebGL2. The page fills the viewport and reacts to browser resi
 Terminal panes receive full frames and patches through `ClientCore`. Both clients use the
 `zz-ui` terminal painter, which caches shaped rows and resolves shared style and grapheme
 dictionaries. Scrollbars, selection autoscroll, cursor blinking, inactive cursor outlines, and
-Kitty image placement use the shared rendering rules. Keyboard input, text composition,
+Kitty image placement use the shared rendering rules; the cursor stops blinking after 10 seconds
+without input and while its pane is off screen. Keyboard input, text composition,
 selection, scrolling, search, and paste reach the daemon through its existing input messages.
+Ctrl-= and Ctrl-- step the saved Terminal font scale setting by 10%, so every terminal changes.
+A terminal bell, when the host's `bell-action` and `visual-bell` let it ring, flashes a `•` in
+front of the page title three times.
 Reconnects attach to the remembered session and replay focus and Agent transcript state.
 Agent replay includes submitted prompts when the provider emits `user_message_chunk` updates;
 the daemon does not journal a separate copy of submitted prompt text. Browser image transfers

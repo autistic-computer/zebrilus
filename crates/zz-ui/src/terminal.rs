@@ -28,7 +28,7 @@ use zz_client::terminal_color::is_decorative_character;
 use zz_client::terminal_color::{
     contrast_ratio, decorative_glyph, ensure_minimum_contrast, faint_foreground, oklab,
 };
-pub use zz_client::terminal_view::cursor_should_blink;
+pub use zz_client::terminal_view::{CURSOR_BLINK_TIMEOUT, cursor_should_blink};
 use zz_terminal::{
     AppearanceColor, CellWidth, Color, Cursor, CursorStyle, GRAPHEME_TABLE_BIT, Glyph, KittyLayer,
     LocalColors, OVERLAY_RECTANGLE, OverlayKind, PackedCell, PackedStyle, ScrollbarState,

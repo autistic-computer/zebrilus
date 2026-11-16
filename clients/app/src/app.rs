@@ -210,6 +210,10 @@ fn watch_connection(
                 zz_client::CoreEvent::StatusChanged | zz_client::CoreEvent::AgentUpdates { .. } => {
                     return;
                 }
+                zz_client::CoreEvent::Bell { .. } => {
+                    crate::bell::ring(cx);
+                    return;
+                }
                 zz_client::CoreEvent::AgentStateChanged { pane, attention } => {
                     if *attention == Some(zz_client::AgentAttentionEdge::Done)
                         && (!window.is_window_active() || this.focused_pane != Some(*pane))
@@ -1325,7 +1329,12 @@ impl AppShell {
         self.pickers.retain(|pane, _| shown.contains(pane));
     }
 
-    fn terminal_entity(&mut self, pane: PaneId, cx: &mut Context<Self>) -> Entity<TerminalPane> {
+    fn terminal_entity(
+        &mut self,
+        pane: PaneId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<TerminalPane> {
         self.terminals
             .entry(pane)
             .or_insert_with(|| {
@@ -1338,6 +1347,19 @@ impl AppShell {
                     &terminal,
                     |this, _, _: &crate::terminal::TerminalTyped, cx| {
                         this.close_key_stacks(cx);
+                    },
+                )
+                .detach();
+                cx.subscribe_in(
+                    &terminal,
+                    window,
+                    |this, _, step: &crate::terminal::TerminalFontStep, window, cx| {
+                        this.preferences.step_terminal_font_scale(
+                            step.0,
+                            &this.connection,
+                            window,
+                            cx,
+                        );
                     },
                 )
                 .detach();
@@ -1357,7 +1379,7 @@ impl AppShell {
             core.command_output()
                 .is_some_and(|(output, _)| output == pane)
         }) else {
-            return self.terminal_entity(pane, cx);
+            return self.terminal_entity(pane, window, cx);
         };
         if self
             .output_terminal
