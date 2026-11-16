@@ -84,6 +84,7 @@ pub struct Connection {
     retry_default: bool,
     focused: bool,
     color_scheme: Option<zz_terminal::TerminalColorScheme>,
+    terminal_themes: TerminalThemes,
     link_tap: Option<(PaneId, web_time::Instant)>,
     #[cfg(target_family = "wasm")]
     socket: Option<browser::Socket>,
@@ -122,6 +123,16 @@ pub struct FoundHosts(pub Vec<FoundHost>);
 impl EventEmitter<FoundHosts> for Connection {}
 
 pub struct LinkTapped(pub String);
+
+pub struct TerminalThemesListed;
+
+impl EventEmitter<TerminalThemesListed> for Connection {}
+
+enum TerminalThemes {
+    Unasked,
+    Asked(u64),
+    Listed(Vec<zz_protocol::TerminalTheme>),
+}
 
 impl EventEmitter<LinkTapped> for Connection {}
 
@@ -174,6 +185,7 @@ impl Connection {
             retry_default: false,
             focused: true,
             color_scheme: None,
+            terminal_themes: TerminalThemes::Unasked,
             link_tap: None,
             #[cfg(target_family = "wasm")]
             socket: None,
@@ -649,6 +661,7 @@ impl Connection {
 
     pub fn reconnect(&mut self, cx: &mut Context<Self>) {
         self.color_scheme = None;
+        self.terminal_themes = TerminalThemes::Unasked;
         self.connected = false;
         self.epoch = self.epoch.wrapping_add(1);
         self.prefix_cancel_pending = None;
@@ -992,6 +1005,32 @@ impl Connection {
         }
     }
 
+    pub fn lists_terminal_themes(&self) -> bool {
+        self.core
+            .capabilities()
+            .iter()
+            .any(|capability| capability == zz_protocol::TERMINAL_THEMES_CAPABILITY)
+    }
+
+    pub fn terminal_themes(&self) -> &[zz_protocol::TerminalTheme] {
+        match &self.terminal_themes {
+            TerminalThemes::Listed(themes) => themes,
+            TerminalThemes::Unasked | TerminalThemes::Asked(_) => &[],
+        }
+    }
+
+    pub fn request_terminal_themes(&mut self, cx: &mut Context<Self>) {
+        if !self.connected
+            || !self.lists_terminal_themes()
+            || !matches!(self.terminal_themes, TerminalThemes::Unasked)
+        {
+            return;
+        }
+        let request_id = self.next_request_id();
+        self.terminal_themes = TerminalThemes::Asked(request_id);
+        self.send(ProtocolMessage::TerminalThemesRequest { request_id }, cx);
+    }
+
     pub fn set_focused(&mut self, focused: bool, cx: &mut Context<Self>) {
         #[cfg(any(target_os = "ios", target_os = "android"))]
         if focused && !self.focused && self.resume && self.native.is_none() {
@@ -1208,6 +1247,11 @@ impl Connection {
                     ProtocolMessage::PastedImageUnavailable { pane, number } => {
                         self.pasted_images.unavailable(*pane, *number);
                     }
+                    ProtocolMessage::TerminalThemesResponse { request_id, themes } if matches!(self.terminal_themes, TerminalThemes::Asked(asked) if asked == *request_id) =>
+                    {
+                        self.terminal_themes = TerminalThemes::Listed(themes.clone());
+                        cx.emit(TerminalThemesListed);
+                    }
                     #[cfg(target_os = "ios")]
                     ProtocolMessage::ArtifactBegin { .. }
                     | ProtocolMessage::ArtifactChunk { .. }
@@ -1356,6 +1400,7 @@ impl Connection {
         self.native = None;
         self.auth_prompt = None;
         self.color_scheme = None;
+        self.terminal_themes = TerminalThemes::Unasked;
         self.epoch = self.epoch.wrapping_add(1);
         self.prefix_cancel_pending = None;
         self.dialog_active = false;

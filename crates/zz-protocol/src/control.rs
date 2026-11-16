@@ -17,6 +17,7 @@ pub const TTY_INPUT_CAPABILITY: &str = "tty-input-v1";
 pub const FLOW_WINDOW_CAPABILITY: &str = "flow-window-v1";
 pub const AGENT_QUOTAS_CAPABILITY: &str = "agent-quotas-v1";
 pub const AGENT_LOGIN_CAPABILITY: &str = "agent-login-v1";
+pub const TERMINAL_THEMES_CAPABILITY: &str = "terminal-themes-v1";
 pub const MAX_BATCH_FRAMES: usize = 4096;
 
 pub const CAPABILITY_NAMES: &[&str] = &[
@@ -54,9 +55,10 @@ pub const CAPABILITY_NAMES: &[&str] = &[
     CONTROL_STDIO_CAPABILITY,
     TTY_INPUT_CAPABILITY,
     AGENT_LOGIN_CAPABILITY,
+    TERMINAL_THEMES_CAPABILITY,
 ];
 
-pub const CLIENT_CAPABILITY_NAMES: &[&str] = &[AGENT_QUOTAS_CAPABILITY];
+pub const CLIENT_CAPABILITY_NAMES: &[&str] = &[AGENT_QUOTAS_CAPABILITY, TERMINAL_THEMES_CAPABILITY];
 
 pub const OPT_IN_CLIENT_CAPABILITY_NAMES: &[&str] = &[AGENT_LOGIN_CAPABILITY];
 

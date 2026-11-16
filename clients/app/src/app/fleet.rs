@@ -168,6 +168,7 @@ impl AppShell {
             self.fleet.insert(index, (previous, observer));
             self.reset_host_state();
             self._connection_subscriptions = watch_connection(&self.connection, window, cx);
+            self.sync_terminal_themes(window, cx);
             let connection = self.connection.read(cx);
             self.connected = connection.connected;
             self.connection_status.clone_from(&connection.status);

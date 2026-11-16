@@ -11,6 +11,7 @@ use penna::{
         about_build_stack, about_copy_button, about_hero, about_project_stack,
     },
     components::input::{InputEvent, InputState, NumberInput},
+    components::menu::MenuScope,
     components::select::{Select, SelectEvent, SelectState},
     components::switch::Switch,
 };
@@ -26,6 +27,9 @@ use zz_ui::{
         settings_select_box, settings_title_bar,
     },
 };
+
+use zz_protocol::TerminalTheme;
+use zz_terminal::TerminalColorScheme;
 
 use super::AppShell;
 use crate::{
@@ -191,10 +195,7 @@ impl Preferences {
             ".SystemUIFont".to_owned()
         };
         Theme::global_mut(cx).font_family = ui_font.into();
-        cx.set_global(TerminalDisplayPreferences {
-            font_family: self.terminal_font_family.clone(),
-            font_scale: self.terminal_font_scale,
-        });
+        cx.set_global(self.terminal_display());
         let terminal =
             localized_font_appearance(&connection.read(cx).core, &available_fonts, "Lilex", cx);
         let mono = self.appearance.mono_font();
@@ -206,6 +207,29 @@ impl Preferences {
         }
         connection.update(cx, Connection::set_color_scheme);
         cx.refresh_windows();
+    }
+
+    fn terminal_theme(&self, scheme: TerminalColorScheme) -> Option<&TerminalTheme> {
+        match scheme {
+            TerminalColorScheme::Light => self.terminal_light_theme.as_ref(),
+            TerminalColorScheme::Dark => self.terminal_dark_theme.as_ref(),
+        }
+    }
+
+    fn terminal_theme_mut(&mut self, scheme: TerminalColorScheme) -> &mut Option<TerminalTheme> {
+        match scheme {
+            TerminalColorScheme::Light => &mut self.terminal_light_theme,
+            TerminalColorScheme::Dark => &mut self.terminal_dark_theme,
+        }
+    }
+
+    pub(super) fn terminal_display(&self) -> TerminalDisplayPreferences {
+        TerminalDisplayPreferences {
+            font_family: self.terminal_font_family.clone(),
+            font_scale: self.terminal_font_scale,
+            light_theme: self.terminal_light_theme.clone(),
+            dark_theme: self.terminal_dark_theme.clone(),
+        }
     }
 
     pub(super) fn change_zoom(
@@ -237,8 +261,85 @@ pub(super) struct Controls {
     appearance: AppearanceControls,
     panes: [Entity<InputState>; 3],
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
+    terminal_themes: [ThemeSelect; 2],
     palette_layout: Entity<SelectState<Vec<SettingsSelectItem>>>,
     _subscriptions: Vec<Subscription>,
+}
+
+const TERMINAL_THEME_SLOTS: [TerminalColorScheme; 2] =
+    [TerminalColorScheme::Light, TerminalColorScheme::Dark];
+
+const FOLLOW_HOST: &str = "Follow host";
+
+struct ThemeSelect {
+    select: Entity<SelectState<Vec<SettingsSelectItem>>>,
+    scopes: Vec<MenuScope>,
+    _subscription: Subscription,
+}
+
+impl ThemeSelect {
+    fn new(
+        scheme: TerminalColorScheme,
+        themes: &[TerminalTheme],
+        preferences: &Preferences,
+        window: &mut Window,
+        cx: &mut Context<AppShell>,
+    ) -> Self {
+        let picked = preferences.terminal_theme(scheme);
+        let mut items = vec![SettingsSelectItem::new(FOLLOW_HOST, "")];
+        items.extend(
+            themes
+                .iter()
+                .map(|theme| SettingsSelectItem::new(theme.name.clone(), theme.name.clone())),
+        );
+        if let Some(picked) = picked.filter(|picked| !themes.iter().any(|t| t.name == picked.name))
+        {
+            items.push(SettingsSelectItem::new(
+                picked.name.clone(),
+                picked.name.clone(),
+            ));
+        }
+        let selected = picked.map_or_else(String::new, |picked| picked.name.clone());
+        let select = cx.new(|cx| SelectState::new(items, None, window, cx));
+        select.update(cx, |select, cx| {
+            select.set_selected_value(&selected, window, cx);
+        });
+        let own: std::collections::HashSet<String> = themes
+            .iter()
+            .filter(|theme| theme.scheme == scheme)
+            .map(|theme| theme.name.clone())
+            .collect();
+        let subscription = cx.subscribe_in(
+            &select,
+            window,
+            move |this, _, event: &SelectEvent<Vec<SettingsSelectItem>>, window, cx| {
+                let SelectEvent::Confirm(Some(name)) = event else {
+                    return;
+                };
+                let picked = if name.is_empty() {
+                    None
+                } else if let Some(theme) = this
+                    .connection
+                    .read(cx)
+                    .terminal_themes()
+                    .iter()
+                    .find(|theme| theme.name == *name)
+                {
+                    Some(theme.clone())
+                } else {
+                    return;
+                };
+                *this.preferences.terminal_theme_mut(scheme) = picked;
+                this.preferences.save();
+                this.preferences.apply(&this.connection, window, cx);
+            },
+        );
+        Self {
+            select,
+            scopes: zz_ui::settings::terminal_theme_scopes(scheme, FOLLOW_HOST, own),
+            _subscription: subscription,
+        }
+    }
 }
 
 impl Controls {
@@ -378,10 +479,13 @@ impl Controls {
                 cx.notify();
             },
         ));
+        let terminal_themes = TERMINAL_THEME_SLOTS
+            .map(|scheme| ThemeSelect::new(scheme, &[], preferences, window, cx));
         Self {
             appearance,
             panes,
             terminal_font,
+            terminal_themes,
             palette_layout,
             _subscriptions: subscriptions,
         }
@@ -389,6 +493,13 @@ impl Controls {
 }
 
 impl AppShell {
+    pub(super) fn sync_terminal_themes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let themes = self.connection.read(cx).terminal_themes().to_vec();
+        self.settings_controls.terminal_themes = TERMINAL_THEME_SLOTS
+            .map(|scheme| ThemeSelect::new(scheme, &themes, &self.preferences, window, cx));
+        cx.notify();
+    }
+
     pub(super) fn theme_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_controls
             .appearance
@@ -829,16 +940,48 @@ impl AppShell {
             ),
             narrow,
         );
+        let connection = self.connection.read(cx);
+        let themes = !phone() && connection.lists_terminal_themes();
+        if themes && connection.terminal_themes().is_empty() {
+            let connection = self.connection.clone();
+            cx.defer(move |cx| connection.update(cx, Connection::request_terminal_themes));
+        }
         let host_title = if phone() {
             "Cursor shape and spacing"
+        } else if themes {
+            "Cursor and spacing"
         } else {
             "Colors, cursor, and spacing"
         };
+        let theme_entries = themes.then(|| {
+            TERMINAL_THEME_SLOTS.map(|scheme| {
+                let title = match scheme {
+                    TerminalColorScheme::Light => "Light theme",
+                    TerminalColorScheme::Dark => "Dark theme",
+                };
+                let control = &self.settings_controls.terminal_themes[scheme as usize];
+                SettingEntry::new(title).control(
+                    settings_select_box(cx).child(
+                        Select::new(&control.select)
+                            .title(title)
+                            .placeholder(FOLLOW_HOST)
+                            .search_placeholder("Search themes")
+                            .scopes(control.scopes.clone())
+                            .on(settings_card_ground(cx)),
+                    ),
+                )
+            })
+        });
         settings_scroll_column("settings-terminal")
             .children((!narrow).then(|| settings_page_heading("Terminal", cx)))
             .child(zz_ui::settings::settings_list_group_header("Preview", cx))
             .child(terminal_preview(appearance, cx))
-            .child(SettingsStack::titled("Display").child(font).child(scale))
+            .child(
+                SettingsStack::titled("Display")
+                    .child(font)
+                    .child(scale)
+                    .children(theme_entries.into_iter().flatten()),
+            )
             .child(
                 SettingsStack::titled("Host configuration").child(
                     SettingEntry::new(host_title)

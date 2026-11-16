@@ -1004,16 +1004,7 @@ fn theme_select(
         .filter(|theme| theme.appearance.background_scheme() == scheme)
         .map(|theme| theme.name.clone())
         .collect::<HashSet<_>>();
-    let label = match scheme {
-        TerminalColorScheme::Light => "Light",
-        TerminalColorScheme::Dark => "Dark",
-    };
-    let scopes = vec![
-        MenuScope::new(label, move |name| {
-            name == BUILT_IN_THEME || own.contains(name)
-        }),
-        MenuScope::all("All themes"),
-    ];
+    let scopes = zz_ui::settings::terminal_theme_scopes(scheme, BUILT_IN_THEME, own);
     (select, scopes)
 }
 

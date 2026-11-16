@@ -966,6 +966,28 @@ fn resolve_appearance(
     apply_appearance_overrides(load, entries)
 }
 
+fn send_terminal_themes(outbound: &Arc<OutboundMailbox>, request_id: u64) {
+    let outbound = Arc::clone(outbound);
+    let listed = std::thread::Builder::new()
+        .name("zz-terminal-themes".to_owned())
+        .spawn(move || {
+            let themes = zz_terminal::enumerate_ghostty_themes_for(
+                TerminalColorScheme::default(),
+                zz_config::config_path_for_write().ok().as_deref(),
+            )
+            .into_iter()
+            .filter(|theme| theme.name.len() <= zz_protocol::MAX_TERMINAL_THEME_NAME_BYTES)
+            .take(zz_protocol::MAX_TERMINAL_THEMES)
+            .map(|theme| zz_protocol::TerminalTheme::new(theme.name, &theme.appearance))
+            .collect();
+            let _ = outbound
+                .enqueue_reliable(&ProtocolMessage::TerminalThemesResponse { request_id, themes });
+        });
+    if let Err(error) = listed {
+        log::warn!("could not list terminal themes: {error}");
+    }
+}
+
 const CURSOR_STYLE_OVERRIDES: [(&str, Option<(CursorStyle, CursorBlinkPolicy)>); 7] = [
     ("default", None),
     (
@@ -52802,6 +52824,9 @@ fn handle_connection_message<S: TransportStream>(
                     request_id,
                     homes,
                 });
+            }
+            ProtocolMessage::TerminalThemesRequest { request_id } => {
+                send_terminal_themes(&outbound, request_id);
             }
             ProtocolMessage::PathListRequest {
                 request_id,

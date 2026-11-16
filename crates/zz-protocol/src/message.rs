@@ -3878,6 +3878,14 @@ pub enum ProtocolMessage {
         text: String,
     },
     AgentLogin(crate::AgentLoginRequest),
+    TerminalThemesRequest {
+        request_id: u64,
+    },
+    TerminalThemesResponse {
+        request_id: u64,
+        #[serde(deserialize_with = "crate::terminal_theme::deserialize_terminal_themes")]
+        themes: Vec<crate::TerminalTheme>,
+    },
 }
 
 impl ProtocolMessage {
@@ -3961,6 +3969,9 @@ impl ProtocolMessage {
             | Self::ArtifactReply { .. }
             | Self::AgentSteer { .. } => None,
             Self::AgentLogin(_) => Some(crate::AGENT_LOGIN_CAPABILITY),
+            Self::TerminalThemesRequest { .. } | Self::TerminalThemesResponse { .. } => {
+                Some(crate::TERMINAL_THEMES_CAPABILITY)
+            }
         }
     }
 }

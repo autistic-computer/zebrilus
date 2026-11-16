@@ -111,7 +111,7 @@ pub fn session_from_url(url: &str) -> Option<String> {
 
 pub struct AppShell {
     connection: Entity<Connection>,
-    _connection_subscriptions: [Subscription; 4],
+    _connection_subscriptions: [Subscription; 5],
     fleet: Vec<(Entity<Connection>, Subscription)>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fleet_found: Vec<Subscription>,
@@ -186,7 +186,7 @@ fn watch_connection(
     connection: &Entity<Connection>,
     window: &mut Window,
     cx: &mut Context<AppShell>,
-) -> [Subscription; 4] {
+) -> [Subscription; 5] {
     let observer = cx.observe(connection, |this, connection, cx| {
         let connection = connection.read(cx);
         if this.connected != connection.connected || this.connection_status != connection.status {
@@ -334,7 +334,14 @@ fn watch_connection(
             this.open_link_sheet(event.0.clone(), window, cx);
         },
     );
-    [observer, events, found, links]
+    let themes = cx.subscribe_in(
+        connection,
+        window,
+        |this, _, _: &crate::connection::TerminalThemesListed, window, cx| {
+            this.sync_terminal_themes(window, cx);
+        },
+    );
+    [observer, events, found, links, themes]
 }
 
 impl AppShell {

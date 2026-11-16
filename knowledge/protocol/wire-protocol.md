@@ -54,8 +54,9 @@ names the capability its receiver must have, in `ProtocolMessage::required_capab
 `EventPayload::required_capability` (`crates/zz-protocol/src/message.rs`). Both are exhaustive
 matches with no wildcard arm, so a new variant does not compile until it answers.
 `ProtocolMessage::Event` answers with its payload's. Every variant shipped at v123 answers `None`;
-`EventPayload::AgentQuotas`, added inside it, answers `agent-quotas-v1`, and `EventPayload::AgentLogin`
-and `ProtocolMessage::AgentLogin` answer `agent-login-v1`.
+`EventPayload::AgentQuotas`, added inside it, answers `agent-quotas-v1`, `EventPayload::AgentLogin`
+and `ProtocolMessage::AgentLogin` answer `agent-login-v1`, and `ProtocolMessage::TerminalThemesRequest`
+and `TerminalThemesResponse` answer `terminal-themes-v1`.
 
 The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only inside an epoch:
 
@@ -66,7 +67,9 @@ The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only
 - `CLIENT_CAPABILITY_NAMES` is what a client can decode. Every client built from this source
   appends all of them to `ClientHello.capabilities`: `connect_stream_hello` in `zz-daemon-client`,
   `browser::hello` in the browser client, `hello` in the HTML client. A message the daemon sends
-  names one of these. It holds `agent-quotas-v1` (`AGENT_QUOTAS_CAPABILITY`).
+  names one of these. It holds `agent-quotas-v1` (`AGENT_QUOTAS_CAPABILITY`) and
+  `terminal-themes-v1` (`TERMINAL_THEMES_CAPABILITY`), which is in `CAPABILITY_NAMES` too, for the
+  request the answer follows.
 - `OPT_IN_CLIENT_CAPABILITY_NAMES` is what a client can decode only when it says so: the daemon
   accepts these names like the ones above, but no hello sends them by itself. A client names one
   in the extra capabilities it hands `connect_stream_hello` (`InteractiveClient::connect_with_capabilities`)
@@ -144,7 +147,7 @@ Those three are `#[cfg(windows)]` and are not even compiled on macOS or Linux, s
 there, such as a send from `serve_exec_ready`, does nothing on them.
 
 Two limits, both const assertions in `control.rs`. `CAPABILITY_NAMES` must stay under 64 names,
-because `Welcome.caps` is a `u64` and the daemon sets `(1 << len) - 1`; it holds 34.
+because `Welcome.caps` is a `u64` and the daemon sets `(1 << len) - 1`; it holds 35.
 `ClientHello.capabilities` decodes at most 64 entries (`MAX_SERVER_CAPABILITIES`), and
 `connect_stream_hello` fills up to 29 of them with its own entries (up to 16 are
 `client-features-v1:` specs, 2 come from its callers), so `CLIENT_CAPABILITY_NAMES` and
@@ -223,6 +226,8 @@ fields in declaration order.
 | `AgentPrompt { pane, text, images: Vec<AgentImage> }` | one prompt | Client → daemon: submit a prompt to the agent runtime of a terminal pane. The lens types the text into the CLI and refuses images. `AgentImage { format, data }` carries encoded bytes; text plus every image totals at most `MAX_AGENT_PROMPT_BYTES` (6 MiB), each `format` at most 64 bytes |
 | `AgentSteer { pane, text }` | one message | Client → daemon (v115): type `text` into the turn the pane is running, which Claude Code and Codex take as steering. With no turn running, a permission waiting, or a runtime that cannot steer, it is an `AgentPrompt`. Bounded like a prompt's text |
 | `AgentLogin(AgentLoginRequest)` | one request | Client → daemon, gated by `agent-login-v1`: `Code { login, code: AgentLoginCode }` hands the code a user pasted to the agent sign-in `login`, `Cancel { login }` ends it. `AgentLoginCode` is trimmed, nonempty, at most `MAX_AGENT_LOGIN_CODE_BYTES` (4096) on decode, and prints as `AgentLoginCode(..)` in `Debug`. Read-only clients get `client is read-only` |
+| `TerminalThemesRequest { request_id: u64 }` | one request | Client → daemon, gated by `terminal-themes-v1`: list the terminal themes installed on the daemon's machine. Read-only: the daemon reads the theme directories its own config would (`enumerate_ghostty_themes_for`) on a thread of its own and writes nothing |
+| `TerminalThemesResponse { request_id: u64, themes: Vec<TerminalTheme> }` | one answer | Daemon → client, gated by `terminal-themes-v1`: every valid theme by name, each with what a client needs to paint it, `TerminalTheme { name, scheme, foreground, background, cursor, selection_foreground, selection_background, palette: [Color; 16] }` (`scheme` is `background_scheme`: light when the background is lighter than the text). At most `MAX_TERMINAL_THEMES` (4096) themes, names at most `MAX_TERMINAL_THEME_NAME_BYTES` (256) on decode. A thin client keeps a picked theme on the device and paints with it (`TerminalTheme::recolor`); nothing on the host changes |
 | `AgentCancel { pane }` | . | Cancel the pane's running turn |
 | `AgentUnqueue { pane }` | . | Reclaim the pane's queued prompts; the daemon returns them inside the stream so the composer refills |
 | `AgentRespondPermission { pane, request_id, option_id: Option<String> }` | one answer | Answer a parked permission request; `None` cancels. First answer wins and a late one is a no-op |

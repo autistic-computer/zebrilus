@@ -17,6 +17,7 @@ mod providers;
 mod snapshot;
 mod style;
 mod terminal_codec;
+mod terminal_theme;
 mod tree_delta;
 mod view;
 
@@ -47,8 +48,9 @@ pub use control::{
     CLIENT_CAPABILITY_NAMES, CONTROL_CAPABILITY, CONTROL_STDIO_CAPABILITY, ClientView,
     ClientViewport, FLOW_WINDOW_CAPABILITY, Hello, HostPlatform, KeySubscription, LinuxDistro,
     MAX_BATCH_FRAMES, MouseBindings, OPT_IN_CLIENT_CAPABILITY_NAMES, Subscriptions,
-    TTY_INPUT_CAPABILITY, TreeSubscription, Welcome, key_tables_hash,
+    TERMINAL_THEMES_CAPABILITY, TTY_INPUT_CAPABILITY, TreeSubscription, Welcome, key_tables_hash,
 };
+pub use terminal_theme::{MAX_TERMINAL_THEME_NAME_BYTES, MAX_TERMINAL_THEMES, TerminalTheme};
 pub const UNZOOMED_LAYOUT_VARIABLE: &str = "unzoomed_layout";
 pub const EVENT_SESSION_VARIABLE: &str = "zz_event_session";
 pub const EVENT_SESSION_NAME_VARIABLE: &str = "zz_event_session_name";

@@ -11,6 +11,23 @@ use crate::{ActiveTheme as _, Colorize as _, icon::Icon};
 use ala::{App, ElementId, SharedString, Styled as _, Window, div, prelude::*, px};
 use penna::{Label, TextStyle};
 
+pub fn terminal_theme_scopes<S: std::hash::BuildHasher + 'static>(
+    scheme: zz_terminal::TerminalColorScheme,
+    first: &'static str,
+    own: std::collections::HashSet<String, S>,
+) -> Vec<penna::components::menu::MenuScope> {
+    use penna::components::menu::MenuScope;
+
+    let label = match scheme {
+        zz_terminal::TerminalColorScheme::Light => "Light",
+        zz_terminal::TerminalColorScheme::Dark => "Dark",
+    };
+    vec![
+        MenuScope::new(label, move |name| name == first || own.contains(name)),
+        MenuScope::all("All themes"),
+    ]
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsSection {
     Appearance,

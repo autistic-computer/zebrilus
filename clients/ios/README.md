@@ -339,8 +339,13 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
   pinned modes also update the native status bar.
 - **Panes:** live preview, gaps, inactive opacity, selected glow and margin.
   Frame controls apply with gaps.
-- **Terminal:** a live preview, local font family, and text scale. Host colors,
-  cursor, and padding remain visible as host-owned settings.
+- **Terminal:** a live preview, local font family, and text scale. On iPad, Light theme
+  and Dark theme list the terminal themes installed on the host (searchable, opening on
+  themes of their own kind) and switch with the light and dark mode; the device keeps the
+  pick and paints with it, and Follow host keeps the host's colors. The host's config is
+  never written. A daemon from before `terminal-themes-v1` shows no theme rows. Cursor and
+  padding remain host-owned settings; iPhone keeps its terminal in the interface theme's
+  colors.
 - **Hosts:** the configured endpoint, connection status, and reconnect.
 - **Advanced:** command palette layout (tree or flat), host prefix, and command shortcuts;
   Display: drawing under the home indicator, matching the system text size, and keeping

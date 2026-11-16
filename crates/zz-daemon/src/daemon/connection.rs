@@ -881,6 +881,9 @@ impl Session {
                     homes,
                 });
             }
+            ProtocolMessage::TerminalThemesRequest { request_id } => {
+                super::send_terminal_themes(outbound, request_id);
+            }
             ProtocolMessage::PathListRequest {
                 request_id,
                 pane,
