@@ -48,6 +48,7 @@ mod exec;
 #[cfg(test)]
 mod exec_tests;
 mod file_commands;
+pub(crate) mod file_edit;
 #[cfg(unix)]
 mod flow;
 #[cfg(all(test, unix))]
@@ -52947,6 +52948,26 @@ fn handle_connection_message<S: TransportStream>(
             }
             ProtocolMessage::TerminalThemesRequest { request_id } => {
                 send_terminal_themes(&outbound, &terminal_themes, request_id);
+            }
+            ProtocolMessage::FileReadRequest {
+                request_id,
+                pane,
+                path,
+            } => {
+                shared.start_file_read(client, hello.kind, (request_id, pane, path), &outbound);
+            }
+            ProtocolMessage::FileWriteRequest {
+                request_id,
+                pane,
+                path,
+                text,
+            } => {
+                shared.start_file_write(
+                    client,
+                    hello.kind,
+                    (request_id, pane, path, text),
+                    &outbound,
+                );
             }
             ProtocolMessage::PathListRequest {
                 request_id,

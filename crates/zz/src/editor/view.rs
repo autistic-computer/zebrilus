@@ -1,6 +1,4 @@
 use std::{
-    fs::{self, File},
-    io::Read as _,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -222,7 +220,7 @@ impl EditorView {
         let view = cx.entity();
         cx.spawn_in(window, async move |_, window| {
             let result = background
-                .spawn(async move { read_editor_file(&read_path) })
+                .spawn(async move { zz_daemon::read_text_file(&read_path, MAX_EDITOR_FILE_BYTES) })
                 .await;
             window
                 .update(|window, cx| {
@@ -594,37 +592,6 @@ fn validated_descriptor_path(path: &Path, cwd: &Path) -> Result<String, String> 
     Ok(path)
 }
 
-fn read_editor_file(path: &Path) -> Result<String, String> {
-    let metadata = fs::metadata(path)
-        .map_err(|error| format!("Could not open {}: {error}", path.display()))?;
-    if metadata.len() > MAX_EDITOR_FILE_BYTES {
-        return Err(format!(
-            "{} is larger than the 8 MiB editor limit",
-            path.display()
-        ));
-    }
-    let mut file =
-        File::open(path).map_err(|error| format!("Could not open {}: {error}", path.display()))?;
-    let mut bytes = Vec::with_capacity(usize::try_from(metadata.len()).unwrap_or_default());
-    file.by_ref()
-        .take(MAX_EDITOR_FILE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
-    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_EDITOR_FILE_BYTES {
-        return Err(format!(
-            "{} is larger than the 8 MiB editor limit",
-            path.display()
-        ));
-    }
-    if bytes.contains(&0) {
-        return Err(format!(
-            "{} contains NUL bytes and appears to be binary",
-            path.display()
-        ));
-    }
-    String::from_utf8(bytes).map_err(|_| format!("{} is not valid UTF-8", path.display()))
-}
-
 fn language_for_path(path: &Path) -> &'static str {
     match path
         .extension()
@@ -655,8 +622,6 @@ fn editor_title(path: Option<&Path>, dirty: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write as _;
-
     use super::*;
 
     #[test]
@@ -702,29 +667,5 @@ mod tests {
             descriptor_sync_action(None, None, local),
             SyncAction::Restore
         );
-    }
-
-    #[test]
-    fn bounded_reader_rejects_binary_invalid_utf8_and_oversized_files() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-
-        let binary = directory.path().join("binary");
-        fs::write(&binary, b"a\0b").expect("binary fixture");
-        assert!(read_editor_file(&binary).unwrap_err().contains("NUL"));
-
-        let invalid = directory.path().join("invalid");
-        fs::write(&invalid, [0xff]).expect("invalid UTF-8 fixture");
-        assert!(
-            read_editor_file(&invalid)
-                .unwrap_err()
-                .contains("valid UTF-8")
-        );
-
-        let oversized = directory.path().join("oversized");
-        let mut file = File::create(&oversized).expect("oversized fixture");
-        file.write_all(b"x").expect("fixture byte");
-        file.set_len(MAX_EDITOR_FILE_BYTES + 1)
-            .expect("extend fixture");
-        assert!(read_editor_file(&oversized).unwrap_err().contains("8 MiB"));
     }
 }

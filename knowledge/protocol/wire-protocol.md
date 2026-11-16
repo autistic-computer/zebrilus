@@ -56,8 +56,9 @@ matches with no wildcard arm, so a new variant does not compile until it answers
 `ProtocolMessage::Event` answers with its payload's. Every variant shipped at v123 answers `None`;
 `EventPayload::AgentQuotas`, added inside it, answers `agent-quotas-v1`, `EventPayload::AgentLogin`
 and `ProtocolMessage::AgentLogin` answer `agent-login-v1`, `ProtocolMessage::TerminalThemesRequest`
-and `TerminalThemesResponse` answer `terminal-themes-v1`, and `ProtocolMessage::BrowserScreenshot`
-answers `browser-screenshot-v1`.
+and `TerminalThemesResponse` answer `terminal-themes-v1`, `ProtocolMessage::BrowserScreenshot`
+answers `browser-screenshot-v1`, and `ProtocolMessage::FileReadRequest`, `FileReadResponse`,
+`FileWriteRequest` and `FileWriteResponse` answer `file-edit-v1`.
 
 The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only inside an epoch:
 
@@ -69,8 +70,8 @@ The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only
   appends all of them to `ClientHello.capabilities`: `connect_stream_hello` in `zz-daemon-client`,
   `browser::hello` in the browser client, `hello` in the HTML client. A message the daemon sends
   names one of these. It holds `agent-quotas-v1` (`AGENT_QUOTAS_CAPABILITY`) and
-  `terminal-themes-v1` (`TERMINAL_THEMES_CAPABILITY`), which is in `CAPABILITY_NAMES` too, for the
-  request the answer follows.
+  `terminal-themes-v1` (`TERMINAL_THEMES_CAPABILITY`) and `file-edit-v1` (`FILE_EDIT_CAPABILITY`),
+  which are in `CAPABILITY_NAMES` too, for the requests the answers follow.
 - `OPT_IN_CLIENT_CAPABILITY_NAMES` is what a client can decode only when it says so: the daemon
   accepts these names like the ones above, but no hello sends them by itself. A client names one
   in the extra capabilities it hands `connect_stream_hello` (`InteractiveClient::connect_with_capabilities`)
@@ -230,6 +231,10 @@ fields in declaration order.
 | `AgentLogin(AgentLoginRequest)` | one request | Client → daemon, gated by `agent-login-v1`: `Code { login, code: AgentLoginCode }` hands the code a user pasted to the agent sign-in `login`, `Cancel { login }` ends it. `AgentLoginCode` is trimmed, nonempty, at most `MAX_AGENT_LOGIN_CODE_BYTES` (4096) on decode, and prints as `AgentLoginCode(..)` in `Debug`. Read-only clients get `client is read-only` |
 | `TerminalThemesRequest { request_id: u64 }` | one request | Client → daemon, gated by `terminal-themes-v1`: list the terminal themes installed on the daemon's machine. Read-only: the daemon reads the theme directories its own config would (`enumerate_ghostty_themes`, each theme over the defaults of its own kind, as the host loads it) on a thread of its own and writes nothing. One listing runs per connection: a request that comes while one runs replaces its `request_id`, and the single answer carries the latest |
 | `TerminalThemesResponse { request_id: u64, themes: Vec<TerminalTheme> }` | one answer | Daemon → client, gated by `terminal-themes-v1`: every valid theme by name, each with what a client needs to paint it, `TerminalTheme { name, scheme, foreground, background, cursor, selection_foreground, selection_background, palette: [Color; 16] }` (`scheme` is `background_scheme`: light when the background is lighter than the text). At most `MAX_TERMINAL_THEMES` (4096) themes, names at most `MAX_TERMINAL_THEME_NAME_BYTES` (256) on decode. A thin client keeps a picked theme on the device and paints with it (`TerminalTheme::recolor`); nothing on the host changes |
+| `FileReadRequest { request_id: u64, pane: PaneId, path: String }` | one request | Client → daemon, gated by `file-edit-v1`: read a text file on the daemon's machine for an editor pane. `path` is absolute, at most `MAX_EDITOR_PATH_BYTES` (16 KiB). The daemon answers only an interactive client that is not read-only and is attached to the session holding `pane`, the authority its terminal panes already give it, and refuses everything else with an error answer. It reads on a thread of its own with `read_text_file`, the reader the desktop editor uses: at most `MAX_FILE_EDIT_BYTES` (2 MiB), valid UTF-8, no NUL bytes |
+| `FileReadResponse { request_id: u64, result: Result<String, String> }` | one answer | Daemon → client, gated by `file-edit-v1`: the file's text, at most `MAX_FILE_EDIT_BYTES` on decode, or why it could not be read, at most `MAX_FILE_EDIT_ERROR_BYTES` (4 KiB; the daemon cuts longer ones) |
+| `FileWriteRequest { request_id: u64, pane: PaneId, path: String, text: String }` | one request | Client → daemon, gated by `file-edit-v1`: replace the file at `path` with `text` (at most `MAX_FILE_EDIT_BYTES` on decode), under the same checks as `FileReadRequest`. The daemon writes a temporary file beside it and renames it over the target on a thread of its own, keeping the old file's permissions and following a symlink to its target |
+| `FileWriteResponse { request_id: u64, result: Result<(), String> }` | one answer | Daemon → client, gated by `file-edit-v1`: the file was written, or why not, at most `MAX_FILE_EDIT_ERROR_BYTES` |
 | `AgentCancel { pane }` | . | Cancel the pane's running turn |
 | `AgentUnqueue { pane }` | . | Reclaim the pane's queued prompts; the daemon returns them inside the stream so the composer refills |
 | `AgentRespondPermission { pane, request_id, option_id: Option<String> }` | one answer | Answer a parked permission request; `None` cancels. First answer wins and a late one is a no-op |

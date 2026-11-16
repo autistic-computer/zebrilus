@@ -47,6 +47,7 @@ pub use agent::stream::{
     AgentAuthMethod, AgentImage as AgentStreamImage, AgentPrompt, AgentPromptOutcome,
     AgentSessionCapabilities, AgentSessionSummary, AgentStreamItem, AgentStreamPayload,
 };
+pub use daemon::file_edit::read_text_file;
 pub use daemon::path_listing::path_walk_enters;
 pub use daemon::{
     CommandStdinSink, Daemon, WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, WORKSPACE_STUB_SKILL,
