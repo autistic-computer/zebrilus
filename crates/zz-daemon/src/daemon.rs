@@ -77887,8 +77887,10 @@ set-option -g @alias-mixed-next yes
     #[cfg(unix)]
     #[test]
     fn run_pane_takes_turns_on_one_pane() {
-        let (shared, client, target) =
-            send_text_fixture("runturns", "printf 'zz-ready\\r\\n'; PS1='' exec /bin/sh");
+        let (shared, client, target) = send_text_fixture(
+            "runturns",
+            "printf 'zz-ready\\r\\n'; PS1='' exec /bin/sh +m",
+        );
         let other = ClientId(8);
         let first = {
             let shared = Arc::clone(&shared);

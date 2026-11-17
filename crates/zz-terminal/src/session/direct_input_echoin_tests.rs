@@ -339,8 +339,12 @@ fn a_plain_key_on_an_open_path_reaches_the_pty_without_the_queue() {
 
 #[test]
 fn a_queued_direct_key_wakes_the_actor_to_flush_it() {
-    let (commands, control_rx, _input, writer, read) = sender_with_direct();
-    drop(read);
+    let (commands, control_rx, _input, writer, _read) = sender_with_direct();
+    {
+        let state = writer.direct.state.lock();
+        let fd = state.fd.as_ref().expect("pty fd");
+        while rustix::io::write(fd, b"f").is_ok() {}
+    }
     writer.direct.reopen(|| true);
     assert!(commands.write_direct_key(&key('a', false, KeyAction::Press)));
     assert!(matches!(control_rx.try_recv(), Ok(Command::Wake)));
