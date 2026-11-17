@@ -51,7 +51,7 @@ use zz_ui::browser::{
     browser_site_controls_button, browser_site_menu, browser_start_surface, browser_toolbar_button,
 };
 use zz_ui::dialogs::browser_clear_site_data_alert;
-use zz_ui::pane::{PaneDrag, PaneDragSource, pane_header_icon_button};
+use zz_ui::pane::{PaneActions, PaneDrag, PaneDragSource};
 
 #[cfg(target_os = "macos")]
 use crate::browser::macos_surface::MacBrowserSurfaceCache;
@@ -3611,32 +3611,26 @@ impl Render for BrowserChromeView {
                 cx,
             )
         };
-        let actions = div().flex().flex_none().items_center().gap_1().children(
-            zz_ui::pane::pane_header_actions(self.state.place)
-                .into_iter()
-                .map(|(action, icon, label)| {
-                    let browser = self.browser.clone();
-                    pane_header_icon_button(label, icon, true, cx)
-                        .tooltip(label)
-                        .on_click(move |_, window, cx| {
-                            cx.stop_propagation();
-                            if let Some(browser) = browser.upgrade() {
-                                browser.update(cx, |view, cx| {
-                                    let mux = view.mux.read(cx);
-                                    let rows = crate::workspace::pip_fill_rows(
-                                        mux,
-                                        view.pane,
-                                        view.pane_canvas.get().size,
-                                        window,
-                                        cx,
-                                    );
-                                    for command in action.commands(view.pane, rows) {
-                                        mux.execute(command);
-                                    }
-                                });
-                            }
-                        })
-                }),
+        let browser = self.browser.clone();
+        let actions = PaneActions::new(
+            zz_ui::pane::pane_header_actions(self.state.place),
+            move |action, window, cx| {
+                if let Some(browser) = browser.upgrade() {
+                    browser.update(cx, |view, cx| {
+                        let mux = view.mux.read(cx);
+                        let rows = crate::workspace::pip_fill_rows(
+                            mux,
+                            view.pane,
+                            view.pane_canvas.get().size,
+                            window,
+                            cx,
+                        );
+                        for command in action.commands(view.pane, rows) {
+                            mux.execute(command);
+                        }
+                    });
+                }
+            },
         );
         div()
             .h(BrowserHeader::HEIGHT)

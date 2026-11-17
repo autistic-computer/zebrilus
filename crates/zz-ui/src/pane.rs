@@ -3,6 +3,7 @@ use crate::{
     IconName, Layer, PaintState, Selectable as _, Sizable as _, StyledExt as _, Tone,
     button::{Button, ButtonLook, COMPACT_ICON_BUTTON_SIZE, INSIDE_GAP},
     h_flex, icon,
+    menu::{DropdownMenu, PopupMenuItem},
     pane_look::PaneLook,
     v_flex,
 };
@@ -11,6 +12,7 @@ use ala::{
     IntoElement, Keystroke, ParentElement as _, Pixels, SharedString, Stateful, Styled as _,
     StyledText, Window, canvas, div, prelude::*, px, quad, relative, size,
 };
+use penna::components::popover::PopoverTrigger;
 use penna::{
     Bar, BarLook, Chip, ChipLook, ContentLook, Label, Panel, PanelLook, Row, RowLook, RuleLook,
     Size, Space, Tab, TabLook, TextStyle, Tile, TileVariant,
@@ -362,6 +364,230 @@ pub fn pane_header_actions(state: PaneState) -> Vec<(TerminalPaneAction, IconNam
     actions
 }
 
+const PANE_ACTION_GAP: Pixels = px(4.0);
+const PANE_HEADER_GAP: Pixels = px(8.0);
+pub const PANE_TITLE_MIN_WIDTH: Pixels = px(120.0);
+
+#[must_use]
+pub fn pane_actions_width(buttons: usize) -> Pixels {
+    crate::PANE_HEADER_CONTROL_HEIGHT * buttons as f32
+        + PANE_ACTION_GAP * buttons.saturating_sub(1) as f32
+}
+
+#[must_use]
+pub fn pane_actions_collapse(room: Pixels, buttons: usize, min_content: Pixels) -> bool {
+    buttons >= 2 && room - pane_actions_width(buttons) < min_content
+}
+
+pub(crate) fn by_width(
+    build: impl FnOnce(Pixels, &mut Window, &mut App) -> AnyElement + 'static,
+) -> ala::Canvas<AnyElement> {
+    canvas(
+        move |bounds, window, cx| {
+            let mut element = build(bounds.size.width, window, cx);
+            element.prepaint_as_root(
+                bounds.origin,
+                bounds.size.map(ala::AvailableSpace::Definite),
+                window,
+                cx,
+            );
+            element
+        },
+        |_, mut element, window, cx| element.paint(window, cx),
+    )
+    .size_full()
+}
+
+type PaneActionHandler = std::rc::Rc<dyn Fn(TerminalPaneAction, &mut Window, &mut App)>;
+
+pub struct PaneActions {
+    kinds: Vec<PaneKindButton>,
+    actions: Vec<(TerminalPaneAction, IconName, &'static str)>,
+    keys: PaneActionKeys,
+    enabled: bool,
+    on_action: PaneActionHandler,
+}
+
+impl PaneActions {
+    pub fn new(
+        actions: Vec<(TerminalPaneAction, IconName, &'static str)>,
+        on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        Self {
+            kinds: Vec::new(),
+            actions,
+            keys: PaneActionKeys::default(),
+            enabled: true,
+            on_action: std::rc::Rc::new(on_action),
+        }
+    }
+
+    #[must_use]
+    pub fn kinds(mut self, kinds: &[PaneKindButton]) -> Self {
+        self.kinds = kinds.to_vec();
+        self
+    }
+
+    #[must_use]
+    pub fn keys(mut self, keys: &PaneActionKeys) -> Self {
+        self.keys = keys.clone();
+        self
+    }
+
+    #[must_use]
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    #[must_use]
+    pub fn count(&self) -> usize {
+        self.kinds.len() + self.actions.len()
+    }
+
+    #[must_use]
+    pub fn collapses(&self, room: Pixels, min_content: Pixels) -> bool {
+        pane_actions_collapse(room, self.count(), min_content)
+    }
+
+    pub fn slot(self, collapsed: bool, hidden_in: Option<&'static str>, cx: &App) -> ala::Div {
+        let slot = div().flex().flex_none().items_center().gap(PANE_ACTION_GAP);
+        if collapsed {
+            return slot.child(self.more(hidden_in, cx));
+        }
+        let Self {
+            kinds,
+            actions,
+            keys,
+            enabled,
+            on_action,
+        } = self;
+        let kinds = kinds.into_iter().map(|button| {
+            let on_action = std::rc::Rc::clone(&on_action);
+            let key = button.key;
+            pane_header_icon_button(button.label, button.icon, enabled, cx)
+                .debug_selector(move || format!("pane-kind-{key}"))
+                .tooltip(button.label)
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    on_action(TerminalPaneAction::Kind(key), window, cx);
+                })
+        });
+        let actions = actions.into_iter().map(|(action, icon, label)| {
+            let on_action = std::rc::Rc::clone(&on_action);
+            pane_header_icon_button(label, icon, enabled, cx)
+                .debug_selector(move || format!("pane-action-{label}"))
+                .tooltip(label)
+                .tooltip_keys(keys.of(action).to_vec())
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    on_action(action, window, cx);
+                })
+        });
+        slot.when_some(hidden_in, |slot, group| {
+            slot.invisible().group_hover(group, ala::Styled::visible)
+        })
+        .children(kinds)
+        .children(actions)
+    }
+
+    fn more(self, hidden_in: Option<&'static str>, cx: &App) -> impl IntoElement {
+        let Self {
+            kinds,
+            actions,
+            enabled,
+            on_action,
+            ..
+        } = self;
+        let rows = kinds
+            .into_iter()
+            .map(|button| {
+                (
+                    TerminalPaneAction::Kind(button.key),
+                    button.icon,
+                    button.label,
+                )
+            })
+            .chain(actions)
+            .collect::<Vec<_>>();
+        PaneActionsMore {
+            button: pane_header_icon_button("pane-actions-more", IconName::Ellipsis, true, cx)
+                .debug_selector(|| "pane-actions-more".into())
+                .tooltip("Pane actions"),
+            hidden_in,
+        }
+        .dropdown_menu_with_anchor(ala::Anchor::TopRight, move |menu, _, _| {
+            rows.iter().fold(menu, |menu, (action, icon, label)| {
+                let action = *action;
+                let on_action = std::rc::Rc::clone(&on_action);
+                let menu = if action == TerminalPaneAction::Close {
+                    menu.separator()
+                } else {
+                    menu
+                };
+                menu.item(
+                    PopupMenuItem::new(*label)
+                        .icon(icon.clone())
+                        .disabled(!enabled)
+                        .on_click(move |_, window, cx| on_action(action, window, cx)),
+                )
+            })
+        })
+    }
+}
+
+#[derive(IntoElement)]
+struct PaneActionsMore {
+    button: Button,
+    hidden_in: Option<&'static str>,
+}
+
+impl ala::Styled for PaneActionsMore {
+    fn style(&mut self) -> &mut ala::StyleRefinement {
+        self.button.style()
+    }
+}
+
+impl ala::InteractiveElement for PaneActionsMore {
+    fn interactivity(&mut self) -> &mut ala::Interactivity {
+        self.button.interactivity()
+    }
+}
+
+impl crate::Selectable for PaneActionsMore {
+    fn selected(mut self, selected: bool) -> Self {
+        self.button = self.button.selected(selected);
+        self
+    }
+
+    fn is_selected(&self) -> bool {
+        self.button.is_selected()
+    }
+}
+
+impl PopoverTrigger for PaneActionsMore {
+    fn opened(mut self, open: bool) -> Self {
+        self.button = self.button.opened(open);
+        if open {
+            self.hidden_in = None;
+        }
+        self
+    }
+}
+
+impl DropdownMenu for PaneActionsMore {}
+
+impl RenderOnce for PaneActionsMore {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        div()
+            .flex()
+            .when_some(self.hidden_in, |more, group| {
+                more.invisible().group_hover(group, ala::Styled::visible)
+            })
+            .child(self.button)
+    }
+}
+
 pub fn terminal_pane_header(
     active: bool,
     title: impl Into<SharedString>,
@@ -660,83 +886,59 @@ pub fn pane_header(
 ) -> Stateful<ala::Div> {
     let on_action = std::rc::Rc::new(on_action);
     let toggle = std::rc::Rc::clone(&on_action);
-    let kind_buttons = buttons
-        .iter()
-        .map(|button| {
-            let on_action = std::rc::Rc::clone(&on_action);
-            let key = button.key;
-            pane_header_icon_button(button.label, button.icon.clone(), true, cx)
-                .debug_selector(move || format!("pane-kind-{key}"))
-                .tooltip(button.label)
-                .on_click(move |_, window, cx| {
-                    cx.stop_propagation();
-                    on_action(TerminalPaneAction::Kind(key), window, cx);
-                })
-        })
-        .collect::<Vec<_>>();
-    let action = |action, icon, label: &'static str| {
-        let on_action = std::rc::Rc::clone(&on_action);
-        pane_header_icon_button(label, icon, true, cx)
-            .debug_selector(move || format!("pane-action-{label}"))
-            .tooltip(label)
-            .tooltip_keys(keys.of(action).to_vec())
-            .on_click(move |_, window, cx| {
-                cx.stop_propagation();
-                on_action(action, window, cx);
-            })
-    };
-    let bar = Bar::new("terminal-pane-header-bar", BarLook::Pane)
-        .flex()
-        .size_full()
-        .items_center()
-        .gap(px(8.0))
-        .pl(px(crate::CHROME_GAP))
-        .pr(px(crate::CHROME_GAP) + trailing_inset)
-        .font_family(cx.theme().font_family.clone())
-        .type_style(TextStyle::Body, cx)
-        .line_height(px(16.0))
-        .text_color(cx.theme().foreground.muted())
-        .child(
-            div().flex().flex_1().min_w_0().items_center().child(
-                PaneTitle::new(
-                    "terminal-pane-title",
-                    icon,
-                    title.into(),
-                    drag.floating(state.floats),
-                )
-                .folder(folder),
-            ),
-        )
-        .children(flip.map(|flip| {
-            lit(div()
+    let actions = PaneActions::new(pane_header_actions(state), move |action, window, cx| {
+        on_action(action, window, cx);
+    })
+    .kinds(buttons)
+    .keys(keys);
+    let chrome = px(crate::CHROME_GAP * 2.0)
+        + trailing_inset
+        + PANE_HEADER_GAP
+        + flip.map_or(px(0.0), |_| {
+            crate::PANE_HEADER_CONTROL_HEIGHT + PANE_HEADER_GAP
+        });
+    let icon = icon.into();
+    let title = title.into();
+    let drag = drag.floating(state.floats);
+    let bar =
+        move |width: Pixels, cx: &App| {
+            let collapsed = actions.collapses(width - chrome, PANE_TITLE_MIN_WIDTH);
+            Bar::new("terminal-pane-header-bar", BarLook::Pane)
                 .flex()
-                .flex_none()
-                .when(!active && !flip.armed, |slot| {
-                    slot.invisible()
-                        .group_hover("terminal-pane-header", ala::Styled::visible)
-                })
-                .child(pane_flip_button(
-                    flip,
-                    move |window, cx| toggle(TerminalPaneAction::Flip, window, cx),
+                .size_full()
+                .items_center()
+                .gap(PANE_HEADER_GAP)
+                .pl(px(crate::CHROME_GAP))
+                .pr(px(crate::CHROME_GAP) + trailing_inset)
+                .font_family(cx.theme().font_family.clone())
+                .type_style(TextStyle::Body, cx)
+                .line_height(px(16.0))
+                .text_color(cx.theme().foreground.muted())
+                .child(
+                    div().flex().flex_1().min_w_0().items_center().child(
+                        PaneTitle::new("terminal-pane-title", icon, title, drag).folder(folder),
+                    ),
+                )
+                .children(flip.map(|flip| {
+                    lit(div()
+                        .flex()
+                        .flex_none()
+                        .when(!active && !flip.armed, |slot| {
+                            slot.invisible()
+                                .group_hover("terminal-pane-header", ala::Styled::visible)
+                        })
+                        .child(pane_flip_button(
+                            flip,
+                            move |window, cx| toggle(TerminalPaneAction::Flip, window, cx),
+                            cx,
+                        )))
+                }))
+                .child(lit(actions.slot(
+                    collapsed,
+                    (!active).then_some("terminal-pane-header"),
                     cx,
                 )))
-        }))
-        .child(lit(div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .gap_1()
-            .when(!active, |actions| {
-                actions
-                    .invisible()
-                    .group_hover("terminal-pane-header", ala::Styled::visible)
-            })
-            .children(kind_buttons)
-            .children(
-                pane_header_actions(state)
-                    .into_iter()
-                    .map(|(kind, icon, label)| action(kind, icon, label)),
-            )));
+        };
     div()
         .id("terminal-pane-header")
         .group("terminal-pane-header")
@@ -744,7 +946,9 @@ pub fn pane_header(
         .w_full()
         .h(cx.theme().pane_header_height())
         .flex_none()
-        .child(bar)
+        .child(by_width(move |width, _, cx| {
+            bar(width, cx).into_any_element()
+        }))
 }
 
 pub fn pane_header_frame(
@@ -2161,6 +2365,84 @@ mod tests {
         assert!(wide < px(300.0), "{wide:?}");
         assert_eq!(width(400.0, cx), wide);
         assert_eq!(width(60.0, cx), px(60.0));
+    }
+
+    struct HeaderActionsTest {
+        width: f32,
+        ran: std::rc::Rc<std::cell::RefCell<Vec<TerminalPaneAction>>>,
+    }
+
+    impl Render for HeaderActionsTest {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let ran = std::rc::Rc::clone(&self.ran);
+            div().w(px(self.width)).child(terminal_pane_header(
+                true,
+                "cargo test",
+                PaneDragSource::new(zz_protocol::PaneId(3), "cargo test", true, |_, _, _| {}),
+                PaneState::default(),
+                None,
+                move |action, _, _| ran.borrow_mut().push(action),
+                cx,
+            ))
+        }
+    }
+
+    #[ala::test]
+    fn narrow_header_folds_its_actions_into_a_menu(cx: &mut ala::TestAppContext) {
+        use ala::{Modifiers, Role};
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let ran = std::rc::Rc::default();
+        let (view, cx) = cx.add_window_view({
+            let ran = std::rc::Rc::clone(&ran);
+            |_, _| HeaderActionsTest { width: 600.0, ran }
+        });
+        let draw = |cx: &mut ala::VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                window.set_a11y_forced(true);
+                let _ = window.draw(cx);
+            });
+        };
+        let at = |width: f32, cx: &mut ala::VisualTestContext| {
+            view.update(cx, |view, cx| {
+                view.width = width;
+                cx.notify();
+            });
+            draw(cx);
+            (
+                cx.debug_bounds("pane-action-Close pane").is_some(),
+                cx.debug_bounds("pane-actions-more").is_some(),
+            )
+        };
+        assert_eq!(pane_actions_width(5), px(126.0));
+        assert_eq!(at(600.0, cx), (true, false));
+        assert_eq!(at(266.0, cx), (true, false));
+        assert_eq!(at(265.0, cx), (false, true));
+
+        let more = cx.debug_bounds("pane-actions-more").unwrap();
+        assert_eq!(more.right(), px(265.0 - crate::CHROME_GAP));
+        cx.simulate_click(more.center(), Modifiers::none());
+        draw(cx);
+        draw(cx);
+        let close = cx.update(|window, _| {
+            let tree = window.a11y_tree().expect("forced a11y builds a tree");
+            let (node, _) = tree
+                .nodes
+                .iter()
+                .find(|(_, node)| {
+                    node.role() == Role::MenuItem && node.label() == Some("Close pane")
+                })
+                .expect("the menu lists Close pane");
+            window
+                .a11y_node_bounds(*node)
+                .expect("Close pane row is laid out")
+        });
+        cx.simulate_click(close.center(), Modifiers::none());
+        draw(cx);
+        assert_eq!(*ran.borrow(), [TerminalPaneAction::Close]);
     }
 
     #[ala::test]

@@ -234,6 +234,13 @@ when the window holds another pane, since floating or zooming a lone pane does n
 Float on a zoomed pane, which the daemon refuses to float; and Close pane last. A floating pane has Tile back, Zoom and Close pane. Zoom is the arrows-out glyph
 (`IconName::Expand`); on a zoomed pane it reads Unzoom with the arrows-in glyph
 (`IconName::Shrink`), and no pill sits over the pane.
+Every header draws them through `pane::PaneActions`: terminal, agent, view and editor headers,
+PiPs, and both browser headers. When two or more buttons would leave the title under 120px
+(`PANE_TITLE_MIN_WIDTH`), or a browser's tab strip under 250px (`BROWSER_TABS_MIN_WIDTH`), they
+fold into one ⋯ button (`pane-actions-more`) whose menu lists the same actions with their icons,
+Close pane after a separator. The header decides from its own width in the frame it lays out
+(`pane::by_width`), so dragging a split never shows a frame of the wrong state. On an inactive
+pane the ⋯ hides until hover like the buttons do, and stays while its menu is open.
 The URL field contains a 24px site-controls button at its left edge. Its popup reads Chromium connection
 status and tab sound state when opened, and offers the existing site-data clearing confirmation.
 The URL field is a neutral ghost field: no resting background, the ghost hover fill, and a

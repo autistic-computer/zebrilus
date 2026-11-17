@@ -15,6 +15,7 @@ use crate::{
         },
         workspace_status_tab_ground, workspace_tab, workspace_tab_name, workspace_tab_strip,
     },
+    pane::PaneActions,
     separator::Separator,
     tooltip::Tooltip,
 };
@@ -38,11 +39,14 @@ const BROWSER_FAVICON_SIZE: Pixels = px(14.0);
 const SITE_CONTROLS_INSET: Pixels = px(1.5);
 const ADDRESS_EDGE_WIDTH: Pixels = px(1.0);
 
+pub const BROWSER_TABS_MIN_WIDTH: Pixels = px(250.0);
+const BROWSER_TAB_ROW_GAP: Pixels = px(8.0);
+
 #[derive(IntoElement)]
 pub struct BrowserHeader {
     active: bool,
     tabs: AnyElement,
-    actions: AnyElement,
+    actions: PaneActions,
     toolbar: BrowserToolbar,
     trailing_inset: Pixels,
 }
@@ -54,13 +58,13 @@ impl BrowserHeader {
     pub fn new(
         active: bool,
         tabs: impl IntoElement,
-        actions: impl IntoElement,
+        actions: PaneActions,
         toolbar: BrowserToolbar,
     ) -> Self {
         Self {
             active,
             tabs: tabs.into_any_element(),
-            actions: actions.into_any_element(),
+            actions,
             toolbar,
             trailing_inset: px(0.0),
         }
@@ -74,8 +78,35 @@ impl BrowserHeader {
 }
 
 impl RenderOnce for BrowserHeader {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let show_separator = self.toolbar.show_separator;
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let Self {
+            active,
+            tabs,
+            actions,
+            toolbar,
+            trailing_inset,
+        } = self;
+        let show_separator = toolbar.show_separator;
+        let chrome = px(crate::CHROME_GAP * 2.0) + trailing_inset + BROWSER_TAB_ROW_GAP;
+        let tab_row = move |width: Pixels, cx: &App| {
+            let collapsed = actions.collapses(width - chrome, BROWSER_TABS_MIN_WIDTH);
+            div()
+                .id("browser-tab-row")
+                .debug_selector(|| "browser-tab-row".into())
+                .flex()
+                .items_center()
+                .w_full()
+                .h(px(BROWSER_TAB_ROW_HEIGHT))
+                .gap(BROWSER_TAB_ROW_GAP)
+                .pl(px(crate::CHROME_GAP))
+                .pr(px(crate::CHROME_GAP) + trailing_inset)
+                .font_family(cx.theme().font_family.clone())
+                .type_style(BROWSER_TEXT, cx)
+                .line_height(BROWSER_LINE_HEIGHT)
+                .text_color(cx.theme().foreground.muted())
+                .child(tabs)
+                .child(actions.slot(collapsed, (!active).then_some("browser-pane-header"), cx))
+        };
         Bar::new("browser-pane-header", BarLook::Pane)
             .group("browser-pane-header")
             .relative()
@@ -88,32 +119,15 @@ impl RenderOnce for BrowserHeader {
             .pb(px(crate::CHROME_GAP))
             .child(
                 div()
-                    .id("browser-tab-row")
-                    .debug_selector(|| "browser-tab-row".into())
                     .flex()
-                    .items_center()
+                    .w_full()
                     .h(px(BROWSER_TAB_ROW_HEIGHT))
                     .flex_none()
-                    .gap_2()
-                    .pl(px(crate::CHROME_GAP))
-                    .pr(px(crate::CHROME_GAP) + self.trailing_inset)
-                    .font_family(cx.theme().font_family.clone())
-                    .type_style(BROWSER_TEXT, cx)
-                    .line_height(BROWSER_LINE_HEIGHT)
-                    .text_color(cx.theme().foreground.muted())
-                    .child(self.tabs)
-                    .child(
-                        div()
-                            .flex_none()
-                            .when(!self.active, |actions| {
-                                actions
-                                    .invisible()
-                                    .group_hover("browser-pane-header", ala::Styled::visible)
-                            })
-                            .child(self.actions),
-                    ),
+                    .child(crate::pane::by_width(move |width, _, cx| {
+                        tab_row(width, cx).into_any_element()
+                    })),
             )
-            .child(self.toolbar.show_separator(false))
+            .child(toolbar.show_separator(false))
             .when(show_separator, |header| {
                 header.child(
                     Separator::horizontal()
@@ -1291,25 +1305,21 @@ mod tests {
                     true,
                     move |drag, _, _| drags.lock().unwrap().push(*drag),
                 )),
-                browser_toolbar_cluster()
-                    .child(
-                        crate::pane::pane_header_icon_button(
-                            "split-bottom",
+                PaneActions::new(
+                    vec![
+                        (
+                            crate::pane::TerminalPaneAction::SplitBottom,
                             IconName::PanelBottom,
-                            true,
-                            cx,
-                        )
-                        .debug_selector(|| "split-bottom".into()),
-                    )
-                    .child(
-                        crate::pane::pane_header_icon_button(
-                            "split-right",
+                            "Split bottom",
+                        ),
+                        (
+                            crate::pane::TerminalPaneAction::SplitRight,
                             IconName::PanelRight,
-                            true,
-                            cx,
-                        )
-                        .debug_selector(|| "split-right".into()),
-                    ),
+                            "Split right",
+                        ),
+                    ],
+                    |_, _, _| {},
+                ),
                 BrowserToolbar::new(
                     button("back", IconName::ArrowLeft),
                     button("forward", IconName::ArrowRight),
@@ -1359,7 +1369,11 @@ mod tests {
             BrowserHeader::HEIGHT - navigation.bottom(),
             px(crate::CHROME_GAP)
         );
-        for id in ["pane-title", "split-bottom", "split-right"] {
+        for id in [
+            "pane-title",
+            "pane-action-Split bottom",
+            "pane-action-Split right",
+        ] {
             let bounds = cx.debug_bounds(id).unwrap();
             assert_eq!(
                 bounds.size.height,
@@ -1399,7 +1413,14 @@ mod tests {
         let new_tab = cx.debug_bounds("browser-new-tab").unwrap();
         assert!(title.right() <= strip.origin.x);
         assert!(strip.right() <= new_tab.origin.x);
-        assert!(new_tab.right() <= cx.debug_bounds("split-bottom").unwrap().origin.x);
+        assert!(
+            new_tab.right()
+                <= cx
+                    .debug_bounds("pane-action-Split bottom")
+                    .unwrap()
+                    .origin
+                    .x
+        );
         let first = cx.debug_bounds("browser-tab-0").unwrap();
         let last = cx.debug_bounds("browser-tab-4").unwrap();
         assert_eq!(first.size.width, last.size.width);

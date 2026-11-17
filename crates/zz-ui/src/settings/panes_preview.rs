@@ -6,9 +6,9 @@ use crate::{
     },
     input::InputState,
     pane::{
-        PaneChrome, PaneDragSource, PaneFlip, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide,
-        PaneState, pane_header_actions, pane_header_frame, pane_header_icon_button,
-        pane_split_surface, pane_surface, terminal_pane_header,
+        PaneActions, PaneChrome, PaneDragSource, PaneFlip, PaneSplitAxis, PaneSplitHighlight,
+        PaneSplitSide, PaneState, pane_header_actions, pane_header_frame, pane_split_surface,
+        pane_surface, terminal_pane_header,
     },
     pane_look::PaneLook,
 };
@@ -301,11 +301,7 @@ fn browser_sample(
     let button = |id, icon, tooltip, disabled| {
         browser_toolbar_button(cx, id, icon, tooltip, disabled, false)
     };
-    let actions = div().flex().flex_none().items_center().gap_1().children(
-        pane_header_actions(PaneState::default())
-            .iter()
-            .map(|(_, icon, label)| pane_header_icon_button(*label, icon.clone(), true, cx)),
-    );
+    let actions = PaneActions::new(pane_header_actions(PaneState::default()), |_, _, _| {});
     let header = BrowserHeader::new(
         active,
         BrowserTabStrip::new(vec![BrowserTabInfo::new(1, "zed.dev", "Zed docs")], 0)

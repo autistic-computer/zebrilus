@@ -18,7 +18,7 @@ use zz_ui::{
         browser_omnibox_row, browser_recent_row, browser_site_controls_button, browser_site_menu,
         browser_start_surface, browser_toolbar_button,
     },
-    pane::{PaneDragSource, pane_header_icon_button, pane_surface},
+    pane::{PaneActions, PaneDragSource, PaneState, pane_header_actions, pane_surface},
 };
 
 use super::fixtures::{chrome, radii, stateful};
@@ -34,8 +34,8 @@ pub const STORY: Story = Story {
         Section {
             id: "header",
             name: "Header",
-            summary: "BrowserHeader: the tab row with the pane's split, drag and close actions, over the navigation toolbar. An inactive pane hides its actions until hover.",
-            build: |window, cx| stateful(window, cx, inputs::<4>, headers),
+            summary: "BrowserHeader: the tab row with the pane's split, drag and close actions, over the navigation toolbar. An inactive pane hides its actions until hover. When the tab strip would get narrower than 250px, the actions fold into one menu.",
+            build: |window, cx| stateful(window, cx, inputs::<6>, headers),
         },
         Section {
             id: "toolbar",
@@ -219,23 +219,8 @@ pub fn toolbar(
     )
 }
 
-fn pane_actions(cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap_1()
-        .child(
-            pane_header_icon_button("Split bottom", IconName::PanelBottom, true, cx)
-                .tooltip("Split bottom"),
-        )
-        .child(
-            pane_header_icon_button("Split right", IconName::PanelRight, true, cx)
-                .tooltip("Split right"),
-        )
-        .child(
-            pane_header_icon_button("Float", IconName::PictureInPicture, true, cx).tooltip("Float"),
-        )
+fn pane_actions() -> PaneActions {
+    PaneActions::new(pane_header_actions(PaneState::default()), |_, _, _| {})
 }
 
 fn tab_infos(count: usize) -> Vec<BrowserTabInfo> {
@@ -274,7 +259,7 @@ pub fn header(
             true,
             |_, _, _| {},
         )),
-        pane_actions(cx),
+        pane_actions(),
         toolbar(
             browser_address(address, site_controls(cx), window, cx).into_any_element(),
             true,
@@ -329,7 +314,7 @@ fn framed(id: &'static str, content: impl IntoElement, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn headers(inputs: &[Entity<InputState>; 4], window: &mut Window, cx: &mut App) -> AnyElement {
+fn headers(inputs: &[Entity<InputState>; 6], window: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .state(
             "active pane, three tabs",
@@ -362,6 +347,22 @@ fn headers(inputs: &[Entity<InputState>; 4], window: &mut Window, cx: &mut App) 
                 header(true, 2, 1, &inputs[3], false, window, cx),
                 cx,
             ),
+        )
+        .state(
+            "one tab at 400px: room for every action",
+            div().w(px(400.0)).child(framed(
+                "header-roomy",
+                header(true, 1, 0, &inputs[4], true, window, cx),
+                cx,
+            )),
+        )
+        .state(
+            "one tab at 392px: the actions fold into a menu",
+            div().w(px(392.0)).child(framed(
+                "header-folded",
+                header(true, 1, 0, &inputs[5], true, window, cx),
+                cx,
+            )),
         )
         .into_any_element()
 }

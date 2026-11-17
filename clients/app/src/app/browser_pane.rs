@@ -42,7 +42,7 @@ use zz_ui::{
     },
     compact::{TabRow, failed_page, tabs_sheet},
     dialogs::browser_clear_site_data_alert,
-    pane::{PaneDrag, PaneDragSource, pane_header_icon_button},
+    pane::{PaneActions, PaneDrag, PaneDragSource},
     pane_look::PaneLook,
 };
 
@@ -1601,7 +1601,7 @@ impl Focusable for BrowserPane {
 }
 
 impl BrowserPane {
-    fn tab_row(&self, writable: bool, cx: &mut Context<Self>) -> (BrowserTabStrip, ala::Div) {
+    fn tab_row(&self, writable: bool, cx: &mut Context<Self>) -> (BrowserTabStrip, PaneActions) {
         let tabs = self
             .tabs
             .iter()
@@ -1661,26 +1661,20 @@ impl BrowserPane {
                 });
             })
             .title(drag);
-        let actions =
-            div()
-                .flex()
-                .gap_1()
-                .children(zz_ui::pane::pane_header_actions(place).into_iter().map(
-                    |(action, icon, label)| {
-                        let connection = self.connection.clone();
-                        let float_rows = self.float_rows_handler.clone();
-                        pane_header_icon_button(label, icon, writable, cx)
-                            .tooltip(label)
-                            .on_click(move |_, _, cx| {
-                                let rows = float_rows.as_ref().and_then(|rows| rows(cx));
-                                connection.update(cx, |connection, cx| {
-                                    for command in action.commands(pane, rows) {
-                                        connection.invoke(command, cx);
-                                    }
-                                });
-                            })
-                    },
-                ));
+        let connection = self.connection.clone();
+        let float_rows = self.float_rows_handler.clone();
+        let actions = PaneActions::new(
+            zz_ui::pane::pane_header_actions(place),
+            move |action, _, cx| {
+                let rows = float_rows.as_ref().and_then(|rows| rows(cx));
+                connection.update(cx, |connection, cx| {
+                    for command in action.commands(pane, rows) {
+                        connection.invoke(command, cx);
+                    }
+                });
+            },
+        )
+        .enabled(writable);
         (strip, actions)
     }
 

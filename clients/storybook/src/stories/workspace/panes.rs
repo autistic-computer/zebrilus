@@ -46,7 +46,7 @@ pub const STORY: Story = Story {
         Section {
             id: "terminal-header",
             name: "Terminal header",
-            summary: "terminal_pane_header with its split, Float, drag and close actions. Float sends break-pane -W at the tallest height the window fits, which turns the pane into a PiP. An inactive header hides its actions until the pointer is over it. A terminal running Claude Code or Codex, and an agent pane, add the flip button before them, which switches the pane between the CLI and the chat.",
+            summary: "terminal_pane_header with its split, Float, drag and close actions. Float sends break-pane -W at the tallest height the window fits, which turns the pane into a PiP. An inactive header hides its actions until the pointer is over it. When the title would get narrower than 120px, the actions fold into one menu. A terminal running Claude Code or Codex, and an agent pane, add the flip button before them, which switches the pane between the CLI and the chat.",
             build: |_, cx| stateless(terminal_header, cx),
         },
         Section {
@@ -273,6 +273,24 @@ fn terminal_header(_: &mut Window, cx: &mut App) -> AnyElement {
                     }),
                     cx,
                 ),
+                cx,
+            ),
+        )
+        .state(
+            "five actions at 272px: the title keeps 120px",
+            header_box(
+                "header-roomy",
+                Some(272.0),
+                header(7, "cargo test -p zz-ui", true, true, None, cx),
+                cx,
+            ),
+        )
+        .state(
+            "five actions at 260px: they fold into a menu",
+            header_box(
+                "header-folded",
+                Some(260.0),
+                header(8, "cargo test -p zz-ui", true, true, None, cx),
                 cx,
             ),
         )
