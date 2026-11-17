@@ -6,11 +6,11 @@ use zz_terminal::KeyAction;
 
 use crate::mux::prefix::terminal_key_input;
 
+pub(crate) use zz_client::chrome_override::{ChromeOverride, ala_source};
+#[cfg(test)]
+use zz_client::chrome_override::{parse_bind, parse_unbind, tmux_key_name};
 #[cfg(test)]
 use zz_client::{BROWSER_TABLE, ChromeProfile};
-pub(crate) use zz_config::keymap::{ChromeOverride, ala_source};
-#[cfg(test)]
-use zz_config::keymap::{parse_bind, parse_unbind, tmux_key_name};
 
 pub(crate) struct ChromeChord {
     action: ChromeAction,

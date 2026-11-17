@@ -379,6 +379,9 @@ leaves out Panes and Status bar (the phone shell shows one pane without gaps or 
 has its own bottom bar), UI zoom, Match system text size, and the which-key delay.
 Interface and pane preferences are saved atomically in the app container
 at `Library/Application Support/ala/preferences.json` and restored on launch.
+Its `chrome_keys` list rebinds the app's own keys on this device, entries like
+`{"chrome-keybind": "prefix:y=open-settings"}` or `{"chrome-unbind": "ui:D-,"}` with the
+desktop's `chrome-keybind`/`chrome-unbind` grammar; there is no Settings page for it yet.
 Touch controls work without a keyboard; numeric values open a decimal pad and hex colors
 open the on-screen keyboard.
 

@@ -42,8 +42,8 @@ use penna::{
     components::button::{Button, ButtonLook, ButtonVariants as _},
 };
 use zz_client::{
-    ChromeAction, ChromeKeymap, ChromeProfile, DropZone, PaneRect, UI_TABLE, coerced_drop_zone,
-    drop_preview_bounds, drop_zone_at, new_chat::agent_picker_place, pane_drop_command, pane_rects,
+    ChromeAction, DropZone, PaneRect, UI_TABLE, coerced_drop_zone, drop_preview_bounds,
+    drop_zone_at, new_chat::agent_picker_place, pane_drop_command, pane_rects,
     predicted_drop_layout, split_ratio_basis,
 };
 use zz_protocol::{
@@ -78,6 +78,7 @@ use crate::{
         CommandPaletteEvent, CommandPaletteView, palette_backend, palette_backend_with,
     },
     connection::Connection,
+    preferences::ChromeKeymaps,
     roster::{HostRequest, Roster},
     terminal::TerminalPane,
 };
@@ -158,7 +159,7 @@ pub struct AppShell {
     sidebar_active: Option<sidebar::Node>,
     flat: sidebar::Flat,
     unseen_agents: BTreeSet<PaneId>,
-    chrome: ChromeKeymap,
+    chrome: ChromeKeymaps,
     window_shortcuts: bool,
     window_shortcut_timer: Option<Task<()>>,
     prompt: Option<Entity<CommandPaletteView>>,
@@ -399,6 +400,8 @@ impl AppShell {
         let key_events = cx.intercept_keystrokes(key_listener);
         let connection_subscriptions = watch_connection(&connection, window, cx);
         let preferences = settings::Preferences::load();
+        let chrome = preferences.chrome_keymaps();
+        cx.set_global(chrome.clone());
         let appearance_view = cx.weak_entity();
         let appearance_observer = window.observe_window_appearance(move |window, cx| {
             let _ = appearance_view.update(cx, |this, cx| {
@@ -469,11 +472,7 @@ impl AppShell {
             sidebar_active: None,
             flat: sidebar::Flat::default(),
             unseen_agents: BTreeSet::new(),
-            chrome: ChromeKeymap::for_profile(if cfg!(target_os = "ios") {
-                ChromeProfile::DesktopApple
-            } else {
-                ChromeProfile::Desktop
-            }),
+            chrome,
             window_shortcuts: false,
             window_shortcut_timer: None,
             prompt: None,
@@ -779,6 +778,16 @@ impl AppShell {
                 cx.stop_propagation();
                 return;
             }
+            if !event.is_held
+                && let Some(action) = self
+                    .prefix_chrome_action(&input, cx)
+                    .filter(|action| Self::runs_chrome_action(*action, window))
+            {
+                self.connection.update(cx, Connection::cancel_prefix);
+                self.chrome_command(action, window, cx);
+                cx.stop_propagation();
+                return;
+            }
             let core = &self.connection.read(cx).core;
             if (!event.is_held || !core.prefix_armed())
                 && let Some(pane) = self.active_window(cx).map(|window| window.active_pane)
@@ -802,44 +811,56 @@ impl AppShell {
         }
         if self.sidebar_focus.is_focused(window)
             && self.settings.is_none()
-            && let Some(action) = self.chrome.resolve(zz_client::SIDEBAR_TABLE, &input)
+            && let Some(action) = self.chrome.native.resolve(zz_client::SIDEBAR_TABLE, &input)
             && sidebar::handle_key(self, action, window, cx)
         {
             cx.stop_propagation();
             return;
         }
-        let action = self.chrome.resolve(UI_TABLE, &input).or_else(|| {
-            ChromeKeymap::for_profile(ChromeProfile::DesktopApple)
+        let action = self.chrome.native.resolve(UI_TABLE, &input).or_else(|| {
+            self.chrome
+                .apple
                 .resolve(UI_TABLE, &input)
                 .filter(|action| !matches!(action, ChromeAction::SelectWindow(_)))
         });
-        match action {
-            Some(
-                ChromeAction::SelectWindow(_)
-                | ChromeAction::NewSession
-                | ChromeAction::NewWindow
-                | ChromeAction::SplitRight
-                | ChromeAction::SplitDown
-                | ChromeAction::Detach,
-            ) if Self::narrow(window) => return,
-            Some(
-                action @ (ChromeAction::OpenCommandPalette
-                | ChromeAction::OpenSettings
-                | ChromeAction::ToggleSidebar
-                | ChromeAction::UiZoomIn
-                | ChromeAction::UiZoomOut
-                | ChromeAction::UiZoomReset
-                | ChromeAction::ClosePane
-                | ChromeAction::SelectWindow(_)
-                | ChromeAction::NewSession
-                | ChromeAction::NewWindow
-                | ChromeAction::SplitRight
-                | ChromeAction::SplitDown
-                | ChromeAction::Detach),
-            ) => self.chrome_command(action, window, cx),
-            _ => return,
-        }
+        let Some(action) = action.filter(|action| Self::runs_chrome_action(*action, window)) else {
+            return;
+        };
+        self.chrome_command(action, window, cx);
         cx.stop_propagation();
+    }
+
+    fn runs_chrome_action(action: ChromeAction, window: &Window) -> bool {
+        match action {
+            ChromeAction::SelectWindow(_)
+            | ChromeAction::NewSession
+            | ChromeAction::NewWindow
+            | ChromeAction::SplitRight
+            | ChromeAction::SplitDown
+            | ChromeAction::Detach => !Self::narrow(window),
+            ChromeAction::OpenCommandPalette
+            | ChromeAction::OpenSettings
+            | ChromeAction::ToggleSidebar
+            | ChromeAction::UiZoomIn
+            | ChromeAction::UiZoomOut
+            | ChromeAction::UiZoomReset
+            | ChromeAction::ClosePane => true,
+            _ => false,
+        }
+    }
+
+    fn prefix_chrome_action(
+        &self,
+        input: &zz_terminal::KeyInput,
+        cx: &App,
+    ) -> Option<ChromeAction> {
+        let core = &self.connection.read(cx).core;
+        if core.key_table() != Some(("prefix", false))
+            || zz_client::prefix_keys::binds_input(core.prefix_bindings(), input)
+        {
+            return None;
+        }
+        self.chrome.native.resolve(zz_client::PREFIX_TABLE, input)
     }
 
     fn window_shortcut_modifiers(&self) -> Option<Modifiers> {

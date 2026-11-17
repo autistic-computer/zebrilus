@@ -46,6 +46,7 @@ impl AppShell {
     pub(super) fn chrome_keystroke(&self, wanted: ChromeAction) -> Option<Keystroke> {
         let (key, _) = self
             .chrome
+            .native
             .table_bindings(UI_TABLE)
             .into_iter()
             .find(|(_, action)| *action == wanted)?;

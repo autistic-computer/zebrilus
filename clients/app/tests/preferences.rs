@@ -128,6 +128,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     expected["motion"] = "default".into();
     expected["mono_font_family"] = "".into();
     expected["which_key_delay"] = 400.0.into();
+    expected["chrome_keys"] = serde_json::json!([]);
     let fields = expected.as_object_mut().unwrap();
     for retired in [
         "theme",

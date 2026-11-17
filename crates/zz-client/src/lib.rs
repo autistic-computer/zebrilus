@@ -15,6 +15,7 @@ pub mod chat_rows;
 mod chat_rows_tests;
 pub mod chooser;
 mod chrome;
+pub mod chrome_override;
 pub mod completion;
 mod core;
 pub mod floating;

@@ -75,7 +75,7 @@ impl AppShell {
     }
 
     fn menus(&self) -> Vec<Menu> {
-        let bindings = self.chrome.bindings();
+        let bindings = self.chrome.native.bindings();
         let chrome = |title: &'static str, action: ChromeAction| {
             MenuItem::action(
                 title,
