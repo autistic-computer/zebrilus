@@ -513,7 +513,8 @@ impl PaneActions {
         PaneActionsMore {
             button: pane_header_icon_button("pane-actions-more", IconName::Ellipsis, true, cx)
                 .debug_selector(|| "pane-actions-more".into())
-                .tooltip("Pane actions"),
+                .tooltip("Pane actions")
+                .on_click(|_, _, cx| cx.stop_propagation()),
             hidden_in,
         }
         .dropdown_menu_with_anchor(ala::Anchor::TopRight, move |menu, _, _| {
@@ -2424,22 +2425,25 @@ mod tests {
 
         let more = cx.debug_bounds("pane-actions-more").unwrap();
         assert_eq!(more.right(), px(265.0 - crate::CHROME_GAP));
+        let node = |role: Role, label: &'static str, cx: &mut ala::VisualTestContext| {
+            cx.update(|window, _| {
+                let tree = window.a11y_tree().expect("forced a11y builds a tree");
+                let (id, node) = tree
+                    .nodes
+                    .iter()
+                    .find(|(_, node)| node.role() == role && node.label() == Some(label))
+                    .unwrap_or_else(|| panic!("no {role:?} labelled {label}"));
+                (
+                    node.supports_action(ala::AccessibleAction::Click),
+                    window.a11y_node_bounds(*id).expect("the node is laid out"),
+                )
+            })
+        };
+        assert!(node(Role::Button, "Pane actions", cx).0);
         cx.simulate_click(more.center(), Modifiers::none());
         draw(cx);
         draw(cx);
-        let close = cx.update(|window, _| {
-            let tree = window.a11y_tree().expect("forced a11y builds a tree");
-            let (node, _) = tree
-                .nodes
-                .iter()
-                .find(|(_, node)| {
-                    node.role() == Role::MenuItem && node.label() == Some("Close pane")
-                })
-                .expect("the menu lists Close pane");
-            window
-                .a11y_node_bounds(*node)
-                .expect("Close pane row is laid out")
-        });
+        let (_, close) = node(Role::MenuItem, "Close pane", cx);
         cx.simulate_click(close.center(), Modifiers::none());
         draw(cx);
         assert_eq!(*ran.borrow(), [TerminalPaneAction::Close]);
