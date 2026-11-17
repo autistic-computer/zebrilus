@@ -5,13 +5,13 @@ use ala::{
     SharedString, Subscription, Window, div, prelude::*,
 };
 use penna::{
-    ActiveTheme as _, Ground,
+    ActiveTheme as _, Ground, IconName,
     blocks::chat::{
-        ChatComposer, Composer, composer_ground, empty_state, queue_chip, suggestion_list,
-        suggestion_list_height, suggestion_row,
+        ChatComposer, Composer, composer_ground, composer_icon_button, empty_state, queue_chip,
+        suggestion_list, suggestion_list_height, suggestion_row,
     },
     components::input::{
-        IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight, MoveUp,
+        IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight, MoveUp, OutdentInline,
     },
 };
 use serde_json::Value;
@@ -21,9 +21,9 @@ use zz_client::agent_completion::{
     meaningful_command_description, pane_commands,
 };
 use zz_client::agent_lens::{
-    AgentEmpty, LensTranscript, PendingPermission, accepts_prompt, agent_empty, agent_placeholder,
-    conversation_changed, pending_permissions, restore_reclaim_id, restored_prompts, track_usage,
-    turn_running,
+    AGENT_QUEUE_FULL, AGENT_REFUSES_IMAGES, AgentEmpty, LensTranscript, PendingPermission,
+    agent_empty, agent_placeholder, conversation_changed, pending_permissions, prompt_not_ready,
+    restore_reclaim_id, restored_prompts, track_usage, turn_running,
 };
 use zz_client::agent_login::{CardAction, LoginAccount};
 use zz_client::agent_settings::{
@@ -33,8 +33,8 @@ use zz_client::agent_settings::{
 use zz_client::agent_transcript::{AgentThreadEntry, is_zz_command};
 use zz_protocol::chat::{Ask, ChatView, ItemId, RequestId};
 use zz_protocol::{
-    AgentConnectionPhase, AgentImage, AgentPaneWire, AgentQuestionAnswer, PaneId, PaneSnapshot,
-    ProtocolMessage,
+    AgentConnectionPhase, AgentImage, AgentPaneWire, AgentProvider, AgentQuestionAnswer,
+    MAX_AGENT_QUEUED_PROMPTS, PaneId, PaneSnapshot, ProtocolMessage,
 };
 use zz_ui::{
     agent::{
@@ -46,6 +46,7 @@ use zz_ui::{
         controls::{
             AccountAction, ComposerAction, ContextUsage, UsagePill, agent_model_picker,
             agent_usage_pill, composer_action, composer_action_button, git_summary_footer,
+            watch_composer,
         },
         login::{CodeField, LoginEvent},
         presentation::{agent_welcome, error_card},
@@ -67,6 +68,53 @@ mod phone;
 mod resume;
 
 pub(super) use phone::PhoneDock;
+
+#[cfg(any(target_os = "ios", target_family = "wasm"))]
+const PAGE_REPLY_GAP: web_time::Duration = web_time::Duration::from_secs(1);
+
+#[cfg(any(target_os = "ios", target_family = "wasm"))]
+#[derive(Default)]
+struct PageReplies {
+    pending: std::collections::BTreeMap<PaneId, String>,
+    last: std::collections::BTreeMap<PaneId, web_time::Instant>,
+}
+
+#[cfg(any(target_os = "ios", target_family = "wasm"))]
+impl ala::Global for PageReplies {}
+
+#[cfg(any(target_os = "ios", target_family = "wasm"))]
+pub(crate) fn draft_page_reply(pane: PaneId, text: &str, cx: &mut App) {
+    let now = web_time::Instant::now();
+    if text.trim().is_empty()
+        || text.len() > zz_protocol::MAX_ARTIFACT_REPLY_BYTES
+        || cx.try_global::<PageReplies>().is_some_and(|replies| {
+            replies
+                .last
+                .get(&pane)
+                .is_some_and(|last| now.duration_since(*last) < PAGE_REPLY_GAP)
+        })
+    {
+        return;
+    }
+    let replies = cx.default_global::<PageReplies>();
+    replies.last.insert(pane, now);
+    zz_ui::agent::queue_draft(&mut replies.pending, pane, text);
+}
+
+pub(super) enum LaunchChange {
+    Picked {
+        provider: AgentProvider,
+        option: &'static str,
+        value: String,
+    },
+    Followed {
+        provider: AgentProvider,
+        before: Box<LensSettings>,
+        after: Box<LensSettings>,
+    },
+}
+
+impl ala::EventEmitter<LaunchChange> for AgentPane {}
 
 impl AgentPane {
     fn lens_settings(&self, state: &AgentPaneWire) -> Option<LensSettings> {
@@ -238,19 +286,10 @@ impl AgentPane {
         let Some(settings) = self.lens_settings(state) else {
             return account.into_iter().collect();
         };
-        let pane = self.pane;
-        let connection = self.connection.clone();
+        let view = cx.weak_entity();
         let pick = move |option: &'static str, value: String, _: &mut Window, cx: &mut App| {
-            connection.update(cx, |connection, cx| {
-                connection.send(
-                    ProtocolMessage::AgentSetConfigOption {
-                        pane,
-                        option_id: option.to_owned(),
-                        value,
-                    },
-                    cx,
-                );
-            });
+            view.update(cx, |this, cx| this.set_option(option, value, cx))
+                .ok();
         };
         let picker = agent_model_picker(
             ("agent-settings", self.pane.0),
@@ -261,6 +300,76 @@ impl AgentPane {
             cx,
         );
         account.into_iter().chain([picker]).collect()
+    }
+
+    fn set_option(&mut self, option: &'static str, value: String, cx: &mut Context<Self>) {
+        let pane = self.pane;
+        let picked = self
+            .connection
+            .read(cx)
+            .core
+            .agent_state(pane)
+            .and_then(|state| self.lens_settings(state))
+            .and_then(|settings| {
+                settings
+                    .choices(option)
+                    .map(|(choices, _)| choices.iter().any(|choice| choice.value == value))
+            })
+            .unwrap_or(false);
+        let provider = self.provider(cx);
+        self.connection.update(cx, |connection, cx| {
+            connection.send(
+                ProtocolMessage::AgentSetConfigOption {
+                    pane,
+                    option_id: option.to_owned(),
+                    value: value.clone(),
+                },
+                cx,
+            );
+        });
+        if let Some(provider) = provider
+            .filter(|_| picked && matches!(option, agent_settings::MODEL | agent_settings::EFFORT))
+        {
+            cx.emit(LaunchChange::Picked {
+                provider,
+                option,
+                value,
+            });
+        }
+    }
+
+    fn next_mode(&mut self, _: &OutdentInline, _: &mut Window, cx: &mut Context<Self>) {
+        if self.mention.read(cx).is_open() {
+            return;
+        }
+        let connection = self.connection.read(cx);
+        let Some(mode) = connection
+            .core
+            .agent_state(self.pane)
+            .filter(|state| {
+                connection.connected
+                    && !connection.core.attached_read_only()
+                    && matches!(
+                        state.phase,
+                        AgentConnectionPhase::Ready | AgentConnectionPhase::Running
+                    )
+            })
+            .and_then(|state| self.lens_settings(state))
+            .and_then(|settings| settings.next_mode().map(str::to_owned))
+        else {
+            return;
+        };
+        self.set_option(agent_settings::MODE, mode, cx);
+        cx.stop_propagation();
+    }
+
+    fn cancel(&mut self, cx: &mut Context<Self>) {
+        let pane = self.pane;
+        self.connection.update(cx, |connection, cx| {
+            connection.send(ProtocolMessage::AgentCancel { pane }, cx);
+        });
+        self.transcript.lens.cancel();
+        cx.notify();
     }
 
     fn fork_from(&mut self, item: &str, cx: &mut Context<Self>) {
@@ -301,6 +410,8 @@ pub(super) struct AgentPane {
     transcript: Transcript,
     last_sequence: u64,
     last_reclaim_id: u64,
+    queued_seen: u32,
+    queued_since: usize,
     attachments: Vec<AgentImage>,
     mention: Entity<TargetPicker>,
     draft_error: Option<String>,
@@ -389,9 +500,13 @@ impl AgentPane {
                     && *changed == pane
                 {
                     this.apply_sessions(result, cx);
+                } else if let zz_client::CoreEvent::AgentStateChanged { pane: changed, .. } = event
+                    && *changed == pane
+                {
+                    this.note_queue(cx);
+                    cx.notify();
                 } else if matches!(event,
-                zz_client::CoreEvent::AgentUpdates { pane: changed, .. }
-                | zz_client::CoreEvent::AgentStateChanged { pane: changed, .. } if *changed == pane)
+                zz_client::CoreEvent::AgentUpdates { pane: changed, .. } if *changed == pane)
                     || matches!(event, zz_client::CoreEvent::AgentAccountsChanged)
                 {
                     cx.notify();
@@ -475,6 +590,8 @@ impl AgentPane {
             transcript: Transcript::default(),
             last_sequence: 0,
             last_reclaim_id: 0,
+            queued_seen: 0,
+            queued_since: 0,
             attachments: Vec::new(),
             mention,
             draft_error: None,
@@ -515,8 +632,29 @@ impl AgentPane {
                 chat_release,
                 mention_observer,
                 search_subscription,
+                #[cfg(any(target_os = "ios", target_family = "wasm"))]
+                cx.observe_global_in::<PageReplies>(window, Self::take_page_reply),
             ],
         }
+    }
+
+    #[cfg(any(target_os = "ios", target_family = "wasm"))]
+    fn take_page_reply(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !cx
+            .try_global::<PageReplies>()
+            .is_some_and(|replies| replies.pending.contains_key(&self.pane))
+        {
+            return;
+        }
+        let Some(reply) = cx.global_mut::<PageReplies>().pending.remove(&self.pane) else {
+            return;
+        };
+        let draft = zz_ui::agent::merged_draft(&self.input.read(cx).value(), reply);
+        self.input
+            .update(cx, |input, cx| input.set_value(draft, window, cx));
+        self.draft_error = None;
+        self.chat.follow();
+        cx.notify();
     }
 
     fn pane_snapshot<'a>(&self, cx: &'a App) -> Option<&'a PaneSnapshot> {
@@ -764,15 +902,57 @@ impl AgentPane {
         Some(suggestion_list("agent-slash-suggestions", rows, cx).into_any_element())
     }
 
-    fn send_prompt(&mut self, text: &str, images: &[AgentImage], cx: &mut Context<Self>) -> bool {
+    fn prompt_refusal(&self, text: &str, images: &[AgentImage], cx: &App) -> Option<String> {
         let connection = self.connection.read(cx);
-        let allowed = connection.connected
-            && !connection.core.attached_read_only()
-            && connection
-                .core
-                .agent_state(self.pane)
-                .is_some_and(accepts_prompt);
-        if !allowed || (text.trim().is_empty() && images.is_empty()) {
+        if !connection.connected {
+            return Some("agent daemon is not connected".to_owned());
+        }
+        if !images.is_empty() && !connection.agent_images_supported(self.pane) {
+            return Some(AGENT_REFUSES_IMAGES.to_owned());
+        }
+        let state = connection
+            .core
+            .agent_state(self.pane)
+            .cloned()
+            .unwrap_or_default();
+        if !turn_running(&state.phase) {
+            return prompt_not_ready(&state, self.transcript.lens.settling());
+        }
+        let command = connection.agent_verbs_supported(self.pane) && is_zz_command(text);
+        let queued = state.queued_prompts as usize + self.queued_since(state.queued_prompts);
+        (!command && queued >= MAX_AGENT_QUEUED_PROMPTS).then(|| AGENT_QUEUE_FULL.to_owned())
+    }
+
+    fn note_queue(&mut self, cx: &App) {
+        let queued = self
+            .connection
+            .read(cx)
+            .core
+            .agent_state(self.pane)
+            .map_or(0, |state| state.queued_prompts);
+        if queued != self.queued_seen {
+            self.queued_seen = queued;
+            self.queued_since = 0;
+        }
+    }
+
+    const fn queued_since(&self, queued: u32) -> usize {
+        if queued == self.queued_seen {
+            self.queued_since
+        } else {
+            0
+        }
+    }
+
+    fn send_prompt(&mut self, text: &str, images: &[AgentImage], cx: &mut Context<Self>) -> bool {
+        if self.connection.read(cx).core.attached_read_only()
+            || (text.trim().is_empty() && images.is_empty())
+        {
+            return false;
+        }
+        if let Some(refusal) = self.prompt_refusal(text, images, cx) {
+            self.draft_error = Some(refusal);
+            cx.notify();
             return false;
         }
         if let Err(error) = crate::attachments::validate_images(text, images) {
@@ -795,11 +975,16 @@ impl AgentPane {
             return false;
         }
         let command = connection.agent_verbs_supported(self.pane) && is_zz_command(text);
-        let queueing = connection
+        let queued = connection
             .core
             .agent_state(self.pane)
-            .is_some_and(|state| turn_running(&state.phase));
-        if !queueing && !command {
+            .filter(|state| turn_running(&state.phase))
+            .map(|state| state.queued_prompts);
+        if let Some(queued) = queued.filter(|_| !command) {
+            self.queued_since = self.queued_since(queued) + 1;
+            self.queued_seen = queued;
+        }
+        if queued.is_none() && !command {
             self.transcript.local_prompt(text, images);
             self.transcript_dirty = true;
         }
@@ -818,17 +1003,7 @@ impl AgentPane {
                 if !connection.connected || connection.core.attached_read_only() {
                     return;
                 }
-                let (pane, value) = (self.pane, value.to_owned());
-                self.connection.update(cx, |connection, cx| {
-                    connection.send(
-                        ProtocolMessage::AgentSetConfigOption {
-                            pane,
-                            option_id: option.to_owned(),
-                            value,
-                        },
-                        cx,
-                    );
-                });
+                self.set_option(option, value.to_owned(), cx);
                 self.draft_error = None;
                 String::new()
             }
@@ -911,10 +1086,29 @@ impl AgentPane {
         if switched {
             self.permission_answered.clear();
         }
+        let provider = self.provider(cx);
         for (sequence, update) in updates {
             self.restore_prompts(&update, window, cx);
             track_usage(&mut self.usage, &update);
+            let follows = update["item"] == "configOptionsChanged"
+                && matches!(
+                    update["option_id"].as_str(),
+                    Some(agent_settings::MODEL | agent_settings::EFFORT)
+                );
+            let before = follows
+                .then(|| self.transcript.lens.settings.clone())
+                .flatten();
             self.transcript.apply(sequence, &update);
+            if let (Some(provider), Some(before), Some(after)) =
+                (provider, before, self.transcript.lens.settings.clone())
+                && before != after
+            {
+                cx.emit(LaunchChange::Followed {
+                    provider,
+                    before: Box::new(before),
+                    after: Box::new(after),
+                });
+            }
         }
         self.last_sequence = newest;
         self.transcript_dirty = false;
@@ -960,6 +1154,11 @@ impl AgentPane {
     }
 
     fn attach_images(&mut self, images: Vec<AgentImage>, cx: &mut Context<Self>) {
+        if !self.connection.read(cx).agent_images_supported(self.pane) {
+            self.draft_error = Some(AGENT_REFUSES_IMAGES.to_owned());
+            cx.notify();
+            return;
+        }
         let mut combined = self.attachments.clone();
         combined.extend(images);
         match crate::attachments::validate_images(&self.input.read(cx).value(), &combined) {
@@ -970,6 +1169,28 @@ impl AgentPane {
             Err(error) => self.draft_error = Some(error),
         }
         cx.notify();
+    }
+
+    fn picks_images(&self, cx: &App) -> bool {
+        crate::attachments::PICKS_IMAGES
+            && self.connection.read(cx).agent_images_supported(self.pane)
+    }
+
+    fn pick_images(&mut self, cx: &mut Context<Self>) {
+        let chosen = crate::attachments::choose_images();
+        cx.spawn(async move |this, cx| {
+            let chosen = chosen.await;
+            this.update(cx, |this, cx| match chosen {
+                Ok(images) if images.is_empty() => {}
+                Ok(images) => this.attach_images(images, cx),
+                Err(error) => {
+                    this.draft_error = Some(error);
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn pending_permissions(&self, cx: &App) -> Vec<PendingPermission> {
@@ -1557,14 +1778,8 @@ impl Render for AgentPane {
             inside,
         );
         let action = if action_kind == ComposerAction::Stop {
-            let connection = self.connection.clone();
-            let pane = self.pane;
             action
-                .on_click(move |_, _, cx| {
-                    connection.update(cx, |connection, cx| {
-                        connection.send(ProtocolMessage::AgentCancel { pane }, cx);
-                    });
-                })
+                .on_click(cx.listener(|this, _, _, cx| this.cancel(cx)))
                 .into_any_element()
         } else if asking {
             div().into_any_element()
@@ -1575,16 +1790,7 @@ impl Render for AgentPane {
         };
         let watch_only = self.connection.read(cx).agent_watch_only(self.pane);
         let composer = if watch_only {
-            div()
-                .flex()
-                .flex_col()
-                .w_full()
-                .flex_none()
-                .gap_2()
-                .px_3()
-                .pb_3()
-                .children(prefix)
-                .into_any_element()
+            watch_composer(prefix)
         } else {
             let controls = self.harness_controls(&state, ready, cx);
             let attachments =
@@ -1623,8 +1829,25 @@ impl Render for AgentPane {
             let command_hint = active_command_hint(&self.last_input, &self.commands)
                 .filter(|_| prompting)
                 .map(Into::into);
-            let add = mention_button(("agent-mention", self.pane.0), &self.mention, inside, cx)
-                .into_any_element();
+            let mention = mention_button(("agent-mention", self.pane.0), &self.mention, inside, cx);
+            let add = if self.picks_images(cx) {
+                penna::h_flex()
+                    .flex_none()
+                    .gap_1()
+                    .child(mention)
+                    .child(
+                        composer_icon_button(
+                            ("agent-images", self.pane.0),
+                            IconName::Image,
+                            "Attach images",
+                            inside,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.pick_images(cx))),
+                    )
+                    .into_any_element()
+            } else {
+                mention.into_any_element()
+            };
             let (composer, footer) = match ask {
                 Some(ask) => {
                     let (composer, hints) = ask.composer(
@@ -1683,12 +1906,19 @@ impl Render for AgentPane {
         let provider = self
             .pane_snapshot(cx)
             .and_then(zz_client::window_summary::pane_agent);
-        let empty = (!use_chat).then(|| match agent_empty(connected, &state.phase, provider) {
-            AgentEmpty::Welcome(provider) if writable && !watch_only => {
-                self.render_empty_chat(provider, cx)
+        let empty = (!use_chat).then(|| {
+            match agent_empty(
+                connected,
+                &state.phase,
+                provider,
+                self.transcript.lens.settling(),
+            ) {
+                AgentEmpty::Welcome(provider) if writable && !watch_only => {
+                    self.render_empty_chat(provider, cx)
+                }
+                AgentEmpty::Welcome(provider) => agent_welcome(provider, cx),
+                AgentEmpty::Message { text, busy } => empty_state(text, busy, cx.entity_id(), cx),
             }
-            AgentEmpty::Welcome(provider) => agent_welcome(provider, cx),
-            AgentEmpty::Message { text, busy } => empty_state(text, busy, cx.entity_id(), cx),
         });
         div()
             .relative()
@@ -1714,6 +1944,7 @@ impl Render for AgentPane {
             .capture_action(cx.listener(Self::move_ask_left))
             .capture_action(cx.listener(Self::move_ask_right))
             .capture_action(cx.listener(Self::complete))
+            .capture_action(cx.listener(Self::next_mode))
             .capture_action(cx.listener(Self::move_completion_up))
             .capture_action(cx.listener(Self::move_completion_down))
             .map(|root| mention_keys(root, &self.mention))
@@ -1741,6 +1972,10 @@ impl ChatHost for AgentPane {
 
     fn chat_hold(&mut self, held: &HeldMessage, cx: &mut Context<Self>) {
         self.phone_hold(held, cx);
+    }
+
+    fn chat_covered(&self, cx: &App) -> bool {
+        self.sheet.is_some() || !self.completions.is_empty() || self.mention.read(cx).is_open()
     }
 }
 

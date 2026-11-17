@@ -1106,6 +1106,7 @@ impl AppView {
                     });
                 }
             }),
+            overlay: false,
         });
         let previews = controller.clone();
         cx.set_global(zz_ui::agent::AgentHtmlPreviewer(Rc::new(

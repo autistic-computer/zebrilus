@@ -551,6 +551,8 @@ impl Render for PlusStates {
                 signs_in: true,
                 login,
                 code: Some(&self.code),
+                git: None,
+                images: false,
             }
             .sheet(
                 &login.map_or(PlusPage::Account, |_| PlusPage::SignIn),
@@ -559,6 +561,12 @@ impl Render for PlusStates {
                 |_, _| {},
                 cx,
             )
+        };
+        let git = zz_protocol::AgentGitSummary {
+            branch: Some("thin-chat".to_owned()),
+            changed_files: 3,
+            additions: 42,
+            deletions: 7,
         };
         let sheet = |page: PlusPage, mention: &[zz_ui::target::TargetItem], cx: &App| {
             PlusSheet {
@@ -578,6 +586,8 @@ impl Render for PlusStates {
                 signs_in: true,
                 login: None,
                 code: None,
+                git: Some(&git),
+                images: false,
             }
             .sheet(&page, bottom, |_, _, _| {}, |_, _| {}, cx)
         };

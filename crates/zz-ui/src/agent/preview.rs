@@ -526,7 +526,7 @@ fn diagram_card(
             .text_color(cx.theme().warning)
             .into_any_element(),
     };
-    let hover_only = !crate::touch::CoarsePointer::get(cx);
+    let hover_only = crate::touch::hover_reveals(cx);
     card.v_flex()
         .w(px(THUMB_WIDTH))
         .child(

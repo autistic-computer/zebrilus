@@ -27,6 +27,7 @@ pub struct AgentCursor {
     pub session_load_supported: bool,
     pub session_delete_supported: bool,
     pub verbs_supported: bool,
+    pub images_supported: bool,
     pub watch: bool,
     pub commands: Arc<[AgentCommand]>,
     command_session_reset: bool,
@@ -65,6 +66,8 @@ struct AgentCapabilities {
     delete: bool,
     #[serde(default)]
     verbs: bool,
+    #[serde(default)]
+    images: bool,
     #[serde(default)]
     watch: bool,
 }
@@ -106,6 +109,7 @@ impl AgentCursor {
                 self.session_load_supported = item.capabilities.load;
                 self.session_delete_supported = item.capabilities.delete;
                 self.verbs_supported = item.capabilities.verbs;
+                self.images_supported = item.capabilities.images;
                 self.watch = item.capabilities.watch;
             }
             if item.item == "sessionReset" {
@@ -189,6 +193,7 @@ pub struct LensTranscript<I> {
     pub settings: Option<crate::agent_settings::LensSettings>,
     decode: ImageDecoder<I>,
     session_reset: bool,
+    settling: Option<AgentSettling>,
 }
 
 impl<I> LensTranscript<I> {
@@ -199,7 +204,17 @@ impl<I> LensTranscript<I> {
             settings: None,
             decode,
             session_reset: false,
+            settling: None,
         }
+    }
+
+    #[must_use]
+    pub const fn settling(&self) -> Option<AgentSettling> {
+        self.settling
+    }
+
+    pub const fn cancel(&mut self) {
+        self.settling = Some(AgentSettling::Cancelling);
     }
 
     fn restart(&mut self) {
@@ -230,9 +245,15 @@ impl<I> LensTranscript<I> {
                 self.restart();
                 restarted = true;
                 self.session_reset = true;
+                self.settling = item
+                    .get("restoring")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                    .then_some(AgentSettling::Restoring);
             }
             "sessionReady" => {
                 self.session_reset = false;
+                self.settling = None;
                 self.model.finish_replay();
                 self.model.finish_turn();
             }
@@ -252,6 +273,7 @@ impl<I> LensTranscript<I> {
                     }
                 }
                 self.session_reset = false;
+                self.settling = None;
                 self.model.finish_replay();
             }
             "chat" => {
@@ -298,7 +320,9 @@ impl<I> LensTranscript<I> {
                     );
                 }
             }
+            "turnStarted" => self.settling = None,
             "promptFinished" => {
+                self.settling = None;
                 if item.pointer("/outcome/outcome").and_then(Value::as_str) == Some("failed") {
                     self.model.fail_inflight();
                 } else if item.pointer("/outcome/stop_reason").and_then(Value::as_str)
@@ -513,6 +537,29 @@ pub fn accepts_prompt(state: &AgentPaneWire) -> bool {
         || (state.phase == AgentConnectionPhase::Ready && state.pending_permission.is_none())
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentSettling {
+    Restoring,
+    Cancelling,
+}
+
+pub const AGENT_REFUSES_IMAGES: &str = "this agent does not accept images";
+pub const AGENT_QUEUE_FULL: &str = "finish or unqueue one of the four queued prompts first";
+
+#[must_use]
+pub fn prompt_not_ready(state: &AgentPaneWire, settling: Option<AgentSettling>) -> Option<String> {
+    if accepts_prompt(state) {
+        return None;
+    }
+    let label = match (&state.phase, settling) {
+        (AgentConnectionPhase::Starting, Some(AgentSettling::Restoring)) => "restoring",
+        (AgentConnectionPhase::Starting, _) => "starting",
+        (AgentConnectionPhase::Failed { .. }, _) => "failed",
+        _ => "awaiting permission",
+    };
+    Some(format!("agent is not ready ({label})"))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AgentEmpty {
     Welcome(AgentProvider),
@@ -542,20 +589,27 @@ pub fn agent_empty(
     connected: bool,
     phase: &AgentConnectionPhase,
     provider: Option<AgentProvider>,
+    settling: Option<AgentSettling>,
 ) -> AgentEmpty {
     let agent = provider.map_or("the agent", AgentProvider::label);
     let text = if connected {
-        match phase {
-            AgentConnectionPhase::Starting => format!("Starting {agent}…"),
-            AgentConnectionPhase::Ready => match provider {
+        match (phase, settling) {
+            (AgentConnectionPhase::Starting, Some(AgentSettling::Restoring)) => {
+                format!("Resuming {agent}’s session…")
+            }
+            (AgentConnectionPhase::Running, Some(AgentSettling::Cancelling)) => {
+                "Cancelling the current turn…".to_owned()
+            }
+            (AgentConnectionPhase::Starting, _) => format!("Starting {agent}…"),
+            (AgentConnectionPhase::Ready, _) => match provider {
                 Some(provider) => return AgentEmpty::Welcome(provider),
                 None => format!("{agent} is ready."),
             },
-            AgentConnectionPhase::Running => format!("Waiting for {agent}’s first update…"),
-            AgentConnectionPhase::AwaitingPermission => {
+            (AgentConnectionPhase::Running, _) => format!("Waiting for {agent}’s first update…"),
+            (AgentConnectionPhase::AwaitingPermission, _) => {
                 "The agent needs your permission.".to_owned()
             }
-            AgentConnectionPhase::Failed { .. } => format!("{agent} stopped."),
+            (AgentConnectionPhase::Failed { .. }, _) => format!("{agent} stopped."),
         }
     } else {
         "The agent is offline.".to_owned()
@@ -750,9 +804,8 @@ mod tests {
         assert!(!cursor.history_supported);
         assert!(!cursor.session_load_supported);
         assert!(!cursor.session_delete_supported);
-        let ready =
-            br#"{"seq":1,"item":"ready","capabilities":{"list":true,"load":true,"delete":true}}"#
-                .to_vec();
+        let ready = br#"{"seq":1,"item":"ready","capabilities":{"list":true,"load":true,"delete":true,"images":true}}"#
+            .to_vec();
         assert_eq!(
             cursor.apply(&mut journal, 1, &[ready.clone(), reset(2, false), blob(3)]),
             (None, false)
@@ -760,6 +813,7 @@ mod tests {
         assert!(cursor.history_supported);
         assert!(cursor.session_load_supported);
         assert!(cursor.session_delete_supported);
+        assert!(cursor.images_supported);
         assert_eq!(journal[0].0, 2);
         cursor.trim(&mut journal, 0, 0);
         assert!(cursor.history_supported);
@@ -772,6 +826,7 @@ mod tests {
         assert!(!cursor.history_supported);
         assert!(!cursor.session_load_supported);
         assert!(!cursor.session_delete_supported);
+        assert!(!cursor.images_supported);
     }
 
     #[test]
@@ -885,7 +940,8 @@ mod tests {
             agent_empty(
                 true,
                 &AgentConnectionPhase::Ready,
-                Some(AgentProvider::Codex)
+                Some(AgentProvider::Codex),
+                None
             ),
             AgentEmpty::Welcome(AgentProvider::Codex)
         );
@@ -893,7 +949,8 @@ mod tests {
             agent_empty(
                 true,
                 &AgentConnectionPhase::Starting,
-                Some(AgentProvider::Codex)
+                Some(AgentProvider::Codex),
+                None
             ),
             AgentEmpty::Message {
                 text: "Starting Codex…".to_owned(),
@@ -901,11 +958,55 @@ mod tests {
             }
         );
         assert_eq!(
-            agent_empty(false, &AgentConnectionPhase::Ready, None),
+            agent_empty(false, &AgentConnectionPhase::Ready, None, None),
             AgentEmpty::Message {
                 text: "The agent is offline.".to_owned(),
                 busy: false
             }
+        );
+    }
+
+    #[test]
+    fn a_resumed_or_cancelled_chat_says_so_until_the_agent_answers() {
+        let mut transcript = LensTranscript::<()>::new(|_, _| None);
+        let empty = |transcript: &LensTranscript<()>, phase| {
+            agent_empty(
+                true,
+                &phase,
+                Some(AgentProvider::ClaudeCode),
+                transcript.settling(),
+            )
+        };
+        let message = |text: &str| AgentEmpty::Message {
+            text: text.to_owned(),
+            busy: true,
+        };
+        transcript.apply(&json!({"item":"sessionReset","restoring":true}));
+        assert_eq!(
+            empty(&transcript, AgentConnectionPhase::Starting),
+            message("Resuming Claude Code’s session…")
+        );
+        let state = AgentPaneWire::default();
+        assert_eq!(
+            prompt_not_ready(&state, transcript.settling()).as_deref(),
+            Some("agent is not ready (restoring)")
+        );
+        transcript.apply(&json!({"item":"sessionReady","session_id":"s"}));
+        assert_eq!(transcript.settling(), None);
+        transcript.cancel();
+        assert_eq!(
+            empty(&transcript, AgentConnectionPhase::Running),
+            message("Cancelling the current turn…")
+        );
+        transcript.apply(&json!({"item":"promptFinished","outcome":{"stop_reason":"cancelled"}}));
+        assert_eq!(
+            empty(&transcript, AgentConnectionPhase::Running),
+            message("Waiting for Claude Code’s first update…")
+        );
+        transcript.apply(&json!({"item":"sessionReset","restoring":false}));
+        assert_eq!(
+            empty(&transcript, AgentConnectionPhase::Starting),
+            message("Starting Claude Code…")
         );
     }
 

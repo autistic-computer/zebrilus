@@ -93,6 +93,17 @@ pub(crate) fn phone() -> bool {
     false
 }
 
+fn touch_screen() -> bool {
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    return true;
+    #[cfg(target_family = "wasm")]
+    return web_sys::window()
+        .and_then(|window| window.match_media("(hover: none)").ok().flatten())
+        .is_some_and(|query| query.matches());
+    #[cfg(not(any(target_os = "ios", target_os = "android", target_family = "wasm")))]
+    false
+}
+
 pub(super) fn sections() -> Vec<SettingsSection> {
     let phone = phone();
     SECTIONS
@@ -182,6 +193,7 @@ impl Preferences {
         let system = system_accessibility();
         cx.set_global(zz_ui::program::ProgramColors(self.program_colors));
         cx.set_global(crate::preferences::BrowserSearch(self.search_provider()));
+        penna::blocks::touch::TouchScreen::set(touch_screen(), cx);
         let pinned = interface_theme::pinned_theme_mode(self.theme_mode());
         #[cfg(any(target_os = "ios", target_os = "android"))]
         cx.set_window_appearance(pinned.map(|mode| {

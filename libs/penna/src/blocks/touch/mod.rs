@@ -85,6 +85,34 @@ impl CoarsePointer {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TouchScreen(pub bool);
+
+impl Global for TouchScreen {}
+
+impl TouchScreen {
+    #[must_use]
+    pub fn get(cx: &App) -> bool {
+        cx.try_global::<Self>().is_some_and(|touch| touch.0)
+    }
+
+    pub fn set(touch: bool, cx: &mut App) {
+        if Self::get(cx) != touch {
+            cx.set_global(Self(touch));
+        }
+    }
+}
+
+#[must_use]
+pub fn touch_targets(cx: &App) -> bool {
+    CoarsePointer::get(cx) || TouchScreen::get(cx)
+}
+
+#[must_use]
+pub fn hover_reveals(cx: &App) -> bool {
+    !touch_targets(cx)
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PhoneScreen(pub bool);
 
 impl Global for PhoneScreen {}
@@ -306,6 +334,15 @@ mod tests {
         assert_eq!(clicks.get(), [4, 1, 1]);
         tap(cx, point(first.center().x, first.top() - px(12.0)));
         assert_eq!(clicks.get(), [4, 1, 2]);
+
+        cx.update(|window, cx| {
+            CoarsePointer::set(false, cx);
+            TouchScreen::set(true, cx);
+            window.refresh();
+            _ = window.draw(cx);
+        });
+        tap(cx, point(first.center().x, first.top() - px(8.0)));
+        assert_eq!(clicks.get(), [5, 1, 2]);
     }
 
     #[test]

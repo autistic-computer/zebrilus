@@ -2,6 +2,7 @@ use penna::foundation::interface_theme::Tint;
 use serde::{Deserialize, Serialize, de::value::MapDeserializer};
 use zz_client::{
     ChromeKeymap, ChromeProfile,
+    agent_launch::AgentLaunches,
     chrome_override::{ChromeOverride, parse_bind, parse_unbind},
     recents::Recents,
     url_input::SearchProvider,
@@ -49,6 +50,7 @@ pub struct Preferences {
     pub terminal_cursor_blink: Option<CursorBlinkPolicy>,
     pub terminal_padding_x: Option<f32>,
     pub terminal_padding_y: Option<f32>,
+    pub agent_launches: AgentLaunches,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,6 +132,7 @@ impl Default for Preferences {
             terminal_cursor_blink: None,
             terminal_padding_x: None,
             terminal_padding_y: None,
+            agent_launches: AgentLaunches::default(),
         }
     }
 }

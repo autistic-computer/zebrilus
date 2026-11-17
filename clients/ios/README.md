@@ -211,6 +211,20 @@ the native transport, key translation, and UIKit backend.
   Claude permission cards, and queued prompt feedback. Plans, permissions, and
   structured tool output use the shared transcript reducer. Code blocks use the native
   syntax highlighter.
+- An `html` block in an agent chat has an Open button, and a page an Open as a page button,
+  that opens it in a browser pane beside the chat (`html -t <chat>`). A visual has Open as a
+  page on iPad; on iPhone only when its preview fails.
+- On iPad, in a window 640 points or wider, a tap on a visual or on an `html` block's preview
+  makes it live: a web view takes the picture's place (a visual's also gets the tap), and the
+  page's `zz.reply` drafts its text into the chat's composer. An up or down drag on it scrolls the
+  chat, and a tap anywhere else turns it back into the picture. iPhone and narrower iPad windows
+  keep the pictures.
+- Chat controls the desktop shows only under the pointer always show on iPad: Copy and Fork
+  under messages, a code block's buttons, a visual's corner controls, a diagram card's pop-out
+  mark and a subagent row's time and PiP mark. The Copy, Fork, code block, figure and visual
+  buttons take a tap 44pt across and sit far enough apart that a finger hits the one it aims at.
+- On iPhone a chat's plan is a row over the composer that unfolds the plan, and the plus sheet
+  shows the chat's Git branch and changes under its settings.
 - An empty agent chat on iPad is the desktop's: the welcome over the dithered sky, then the
   folder button and Resume, each opening the desktop's popover menu at its desktop size. A tap
   on its search field raises the keyboard and the popover moves up to stay above it. On iPhone

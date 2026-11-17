@@ -46,6 +46,9 @@ struct Job {
 }
 
 pub fn show_html_in_chats(cx: &mut App) {
+    if !crate::app::phone() {
+        crate::ios_live::install(cx);
+    }
     let (jobs, queue) = mpsc::unbounded::<Job>();
     cx.spawn(async move |cx| work(queue, cx).await).detach();
     cx.set_global(AgentHtmlPreviewer(Rc::new(move |html, size, cx| {
@@ -161,27 +164,7 @@ impl Page {
             let view: id =
                 msg_send![view, initWithFrame: CGRect::default() configuration: configuration];
             let _: () = msg_send![configuration, release];
-            let clear: id = msg_send![class!(UIColor), clearColor];
-            let _: () = msg_send![view, setOpaque: NO];
-            let _: () = msg_send![view, setBackgroundColor: clear];
-            let scroll: id = msg_send![view, scrollView];
-            let _: () = msg_send![scroll, setBackgroundColor: clear];
-            let _: () = msg_send![scroll, setContentInsetAdjustmentBehavior: 2isize];
-            for edge in [
-                "topEdgeEffect",
-                "bottomEdgeEffect",
-                "leftEdgeEffect",
-                "rightEdgeEffect",
-            ] {
-                let has: BOOL =
-                    msg_send![scroll, respondsToSelector: objc::runtime::Sel::register(edge)];
-                if has == YES {
-                    let effect: id = msg_send![scroll, valueForKey: ns_string(edge)];
-                    if !effect.is_null() {
-                        let _: () = msg_send![effect, setHidden: YES];
-                    }
-                }
-            }
+            clear_web_view(view);
             let _: () = msg_send![view, setUserInteractionEnabled: NO];
             let _: () = msg_send![window, insertSubview: view atIndex: 0isize];
             Some(Self { view })
@@ -280,6 +263,29 @@ impl Drop for Page {
             let _: () = msg_send![self.view, stopLoading];
             let _: () = msg_send![self.view, removeFromSuperview];
             let _: () = msg_send![self.view, release];
+        }
+    }
+}
+
+pub(crate) unsafe fn clear_web_view(view: id) {
+    let clear: id = msg_send![class!(UIColor), clearColor];
+    let _: () = msg_send![view, setOpaque: NO];
+    let _: () = msg_send![view, setBackgroundColor: clear];
+    let scroll: id = msg_send![view, scrollView];
+    let _: () = msg_send![scroll, setBackgroundColor: clear];
+    let _: () = msg_send![scroll, setContentInsetAdjustmentBehavior: 2isize];
+    for edge in [
+        "topEdgeEffect",
+        "bottomEdgeEffect",
+        "leftEdgeEffect",
+        "rightEdgeEffect",
+    ] {
+        let has: BOOL = msg_send![scroll, respondsToSelector: objc::runtime::Sel::register(edge)];
+        if has == YES {
+            let effect: id = msg_send![scroll, valueForKey: ns_string(edge)];
+            if !effect.is_null() {
+                let _: () = msg_send![effect, setHidden: YES];
+            }
         }
     }
 }

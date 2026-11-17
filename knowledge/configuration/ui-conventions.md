@@ -534,7 +534,12 @@ opens something (`activity_row_marked`); a label in its own color (a running too
 you") keeps it. Its message actions (copy on answers, code blocks and diagrams, rewind on prompts)
 are `ButtonLook::RowIcon` icon buttons (`icon-button.row`) with muted ink and no fill in any state (`message_action`), shown
 only while their message, code block (`text::CODE_BLOCK_GROUP`) or figure is pointed at, and
-always under a coarse pointer (`shown_on_hover`). The slash menu's rows are 40px: the command at 12px over its description at
+always under a coarse pointer or on a touch screen (`shown_on_hover`, `touch::hover_reveals`).
+zz-app sets `touch::TouchScreen` on iOS and Android, and on the web when the browser's pointer
+cannot hover (`(hover: none)`), so the iPad's wide layout, which keeps the desktop's sizes, shows
+them too. Under either flag (`touch::touch_targets`) a button's `hit_slop` applies, the chat's
+action buttons (`touch_action`) take taps 44px across around their 24px drawing, and their rows
+space them 20px apart so two targets never overlap. The slash menu's rows are 40px: the command at 12px over its description at
 11px.
 
 Icons next to text are centred on the text's cap height, as Apple places SF Symbols. The icon is

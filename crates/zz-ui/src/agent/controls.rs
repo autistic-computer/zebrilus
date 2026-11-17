@@ -628,6 +628,20 @@ fn mode_glyph(provider: AgentProvider, mode: &str, cx: &App) -> Icon {
         .top(crate::icon::cap_center_drop(size, size, cx))
 }
 
+#[must_use]
+pub fn watch_composer(prefix: Vec<AnyElement>) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .flex_none()
+        .gap_2()
+        .px_3()
+        .pb_3()
+        .children(prefix)
+        .into_any_element()
+}
+
 pub fn git_summary_footer(
     id: impl Into<ElementId>,
     branch: Option<SharedString>,

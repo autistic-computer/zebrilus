@@ -440,7 +440,7 @@ up in the numbers.
   buttons inherit their color, or WebKit paints their text in its own blue. On the phone shell a
   visual is laid out narrower and drawn larger by 17 / 14, the ratio of the chat's touch text to
   the desktop's, so its type matches the reply around it. The corner controls are left out on
-  touch.
+  the phone; on iPad they always show, since a finger cannot hover.
 
   iOS browser panes also load `zz://` pages since 2026-11-15, so `zz html` works there. The web
   view's delegate is its `WKURLSchemeHandler` for `zz` (`start_page` and `stop_page` in
@@ -452,22 +452,67 @@ up in the numbers.
   out as `ArtifactReply`; the daemon decides whether the page may reply, and the page's promise
   resolves either way, where the desktop's rejects with the reason.
 
-  Open as a page works from an iOS chat too. A page frame without the desktop's opener asks the
-  chat's own view opener with a `ViewRequest` whose `page` is set, and `ViewRequest::command`
-  turns that into `html -t <chat> - -- <text>`, so the page opens beside the chat on the chat's
-  connection; the phone sends it to the daemon in place of its view sheet. The phone stays on the
-  chat and the page is the next pane. Still missing: a visual going live on a tap, with its reply
-  drafting into the composer.
+  Open as a page works from an iOS chat too. Without the desktop's opener, a page frame, a
+  visual's Open as a page (iPad only: the phone hides a visual's tools, and offers Open as a page
+  only when its preview fails) and a plain `html` block's Globe button (and on iPhone a tap on its
+  preview picture) ask the chat's own view opener with a `ViewRequest` whose `page` is set
+  (`zz_ui::agent::html_opener`, only where `AgentHtmlPreviewer` is set), and
+  `ViewRequest::command` turns that into `html -t <chat> - -- <text>`, so the page opens beside
+  the chat on the chat's connection; the phone sends it to the daemon in place of its view sheet. The phone stays on the
+  chat and the page is the next pane.
+
+  On iPad a visual, and an `html` block's preview, goes live on a tap since 2026-11-16, as a click
+  does on the desktop (`clients/app/src/ios_live.rs`, which sets `AgentHtmlLive` with `overlay`
+  on; iPhone does not set it, and the phone layout on iPad ignores it, so both keep the pictures
+  and the Open as a page tap). One `WKWebView` with a store never written to disk loads the page
+  at the picture's size and zoom, inside a clipping view added over the app's view; once a
+  visual's page has loaded, the tap is replayed where it landed (an `html` block's preview, as on
+  the desktop, takes the next tap). It follows the block every paint, clipped like the web's
+  frames (`html_overlay_clip`), and hides while its chat is covered or its pane is not shown. The
+  web view does not scroll itself: a drag that is more up or down than sideways goes to the app as
+  a scroll, so the chat moves under the finger. A tap anywhere else in the app, or a paint without
+  the block, closes it and the picture comes back. While it is live it covers the visual's corner
+  controls. A user script gives the page `zz.reply`, whose text reaches `draft_page_reply` and is
+  drafted into the chat's composer, one reply per second at most and none over 64 KiB, as the
+  desktop drafts a live block's reply. Only the page itself replies: a site it navigates to is
+  shown, but its replies are dropped, as on the desktop.
 * **Android** has the same shape as iOS, but its snapshot copies pixels from the window, so the web
   view has to be on screen; a hidden picture-maker needs another capture path. Not started.
-* **Web** shows a placeholder for every browser pane (`clients/app/src/app.rs:1834`). The web
-  client already runs in a browser, so artifacts and previews can be live sandboxed
-  `<iframe srcdoc>` frames without same-origin, placed over the canvas the way the accessibility
-  mirror places its nodes (`libs/ala/crates/ala-platform/src/web/a11y.rs`); no pictures needed. Single
-  files only, since relative assets have no origin to resolve against. Later.
+* **Web** draws visuals, page frames and an `html` block's preview in its chats since
+  2026-11-16, as live sandboxed `<iframe srcdoc>` frames placed over the canvas rather than
+  pictures. zz-ui sets no picture task there: `zz_ui::agent::AgentHtmlFrames` asks the host for a
+  frame's height and hands it each frame's bounds, the chat's clip and whether it takes input
+  every time the chat paints. `clients/app/src/web_frames.rs` keeps one `<iframe>` per block in a
+  fixed layer after the canvas, `sandbox="allow-scripts"` and no `allow-same-origin`, so a page's
+  scripts run on an opaque origin and cannot reach the app's page, its cookie or its socket. A
+  script appended to the page posts its height (the desktop's height script, 8 to 800 px) and the
+  wheel events it cannot scroll itself; the host sizes the frame from the first and replays the
+  second on the canvas (ala's web window places a wheel event by its client coordinates, so a
+  replayed one lands where the pointer is), so the chat scrolls over a visual. A visual and an `html` block take
+  pointer input, and a page frame is laid out at 1280 × 720, scaled to the column and takes none.
+  On a touch-only browser no frame takes input, so a drag over one scrolls the chat. The canvas
+  cannot draw over a frame, so frames step aside for whatever it draws on top. The chat clips its
+  frames above the composer's band and above Jump to latest while it shows (`html_frame_clip`),
+  and cuts a tooltip's rows out of them. A chat's frames hide while its @ or slash menu, a phone
+  sheet or an undocked subagent PiP is open (`ChatHost::chat_covered`), and while its pane is
+  not in the set iOS shows browser panes in: a floating pane over a tiled one, or another pane's
+  modal, hides it. Every frame hides while settings, a dialog, a prompt, a menu or a tmux chooser
+  is open. A frame not painted in a draw is hidden at the end of that draw (and removed after
+  30 s). A visual is laid out at the column's width over the UI zoom and scaled up by it (17/14
+  in the phone layout), as the desktop draws it. While an agent streams a block, the frame keeps
+  the last page and its height until the page has stopped changing for 250 ms, as the desktop
+  waits before drawing a picture. A visual's Show code and Copy sit in a row above it, always
+  shown, since the pointer over a frame never reaches the canvas. A visual's or `html` block's
+  frame in a chat also gets `zz.reply`: a script put first in the page posts `{zz: "reply",
+  token, text}` to the app, which takes it only from that frame, only with the random token that
+  page was written with (a site the frame navigates to never has it), only while the frame takes
+  input and has the focus (the user clicked into it), and drafts the text into the chat's
+  composer with iPad's limits. Frames are single documents: relative assets have no origin
+  to resolve against, and the page inherits the app's cross-origin isolation, so a resource from
+  another site loads only if that site sends a cross-origin resource policy. There is no Open as
+  a page: the web's browser panes are placeholders.
 
-Until then the web client shows an artifact like any browser pane it can't show, and html blocks
-as code.
+Android still shows html blocks as code.
 
 # Error handling
 

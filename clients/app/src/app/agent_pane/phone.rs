@@ -31,6 +31,7 @@ use zz_ui::agent::{
         start_rows,
     },
     question::QuestionCardAction,
+    tasks::phone_plan_tray,
 };
 use zz_ui::target::{TargetItem, TargetPicker};
 
@@ -355,6 +356,11 @@ impl AgentPane {
                 close_sheet(CHAT_SHEET, cx);
                 None
             }
+            PlusAction::Images => {
+                close_sheet(CHAT_SHEET, cx);
+                self.pick_images(cx);
+                None
+            }
             PlusAction::Drill(item) => {
                 self.mention
                     .update(cx, |picker, cx| picker.drill(&item, window, cx));
@@ -536,6 +542,11 @@ impl AgentPane {
                     signs_in: connection.signs_in(),
                     login: self.login.as_ref(),
                     code: self.code.as_ref().map(|field| &field.input),
+                    git: connection
+                        .core
+                        .agent_state(self.pane)
+                        .and_then(|state| state.git.as_ref()),
+                    images: self.picks_images(cx),
                 };
                 let act = entity.downgrade();
                 let sheet = plus.sheet(
@@ -680,6 +691,22 @@ impl AgentPane {
                 cx,
             ));
         }
+        if let Some(plan) = self.current_plan(running).filter(|_| card.is_none()) {
+            let entity = cx.entity();
+            prefix.extend(phone_plan_tray(
+                &format!("phone-agent-{}", self.pane.0),
+                &plan,
+                self.plan_open,
+                (window.visual_viewport_bounds().bottom() - dock.top - dock.reserve) * 0.5,
+                move |_, cx| {
+                    entity.update(cx, |this, cx| {
+                        this.plan_open = !this.plan_open;
+                        cx.notify();
+                    });
+                },
+                cx,
+            ));
+        }
         prefix.extend(self.render_error(state, cx));
         let prompting = other.is_none() && card.is_none();
         if prompting {
@@ -729,7 +756,12 @@ impl AgentPane {
         let provider = self.provider(cx);
         let connected = self.connection.read(cx).connected;
         let empty = (!use_chat).then(|| {
-            let kind = agent_empty(connected, &state.phase, provider);
+            let kind = agent_empty(
+                connected,
+                &state.phase,
+                provider,
+                self.transcript.lens.settling(),
+            );
             let start = matches!(kind, AgentEmpty::Welcome(_)) && writable && !watch_only;
             let empty = match kind {
                 AgentEmpty::Welcome(provider) => PhoneEmpty::new(
@@ -858,13 +890,7 @@ impl AgentPane {
         };
         let action = phone_action_button(("phone-agent-action", pane), kind, enabled, inside);
         let action = if kind == Action::Stop {
-            let connection = self.connection.clone();
-            let pane = self.pane;
-            action.on_click(move |_, _, cx| {
-                connection.update(cx, |connection, cx| {
-                    connection.send(ProtocolMessage::AgentCancel { pane }, cx);
-                });
-            })
+            action.on_click(cx.listener(|this, _, _, cx| this.cancel(cx)))
         } else {
             action.on_click(cx.listener(|this, _, window, cx| this.submit(window, cx)))
         };

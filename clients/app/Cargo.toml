@@ -28,7 +28,7 @@ zz-ui = { workspace = true, features = ["agent", "editor"] }
 js-sys = "0.3"
 wasm-bindgen = "=0.2.130"
 wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["BinaryType", "Blob", "Clipboard", "CloseEvent", "Document", "Element", "ErrorEvent", "Event", "File", "FileList", "HtmlAudioElement", "HtmlElement", "HtmlInputElement", "HtmlMediaElement", "Location", "MediaQueryList", "MessageEvent", "Navigator", "Node", "RequestInit", "Response", "Storage", "WebSocket", "Window"] }
+web-sys = { version = "0.3", features = ["BinaryType", "Blob", "Clipboard", "CloseEvent", "CssStyleDeclaration", "Document", "DomRect", "Element", "ErrorEvent", "Event", "EventTarget", "File", "FileList", "HtmlAudioElement", "HtmlElement", "HtmlIFrameElement", "HtmlInputElement", "HtmlMediaElement", "Location", "MediaQueryList", "MessageEvent", "Navigator", "Node", "RequestInit", "Response", "Storage", "WebSocket", "WheelEvent", "WheelEventInit", "Window"] }
 
 [target.'cfg(target_os = "ios")'.dependencies]
 block2.workspace = true

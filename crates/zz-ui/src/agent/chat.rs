@@ -10,7 +10,7 @@ use std::{
 use ala::{
     AnyElement, App, ClipboardItem, Context, Div, FollowMode, Global, Image, ImageFormat,
     IntoElement, ListAlignment, ListSizingBehavior, ListState, Pixels, ScrollHandle, SharedString,
-    Stateful, Subscription, Window, div, list, prelude::*, px, relative,
+    Stateful, Subscription, Window, canvas, div, list, prelude::*, px, relative,
 };
 use penna::{
     Card, CardLook, Label, Sizable as _, Space, TextStyle,
@@ -36,7 +36,8 @@ use zz_protocol::{
 use super::preview::{ViewOpener, ViewRequest};
 use super::refs::{ChatRefs, RefLinks, ref_links, ref_text};
 use super::{
-    agent_jump_to_bottom_button, agent_text_view, assistant_markdown_extensions, attachment_tile,
+    agent_chat_text_view, agent_jump_to_bottom_button, agent_text_view,
+    assistant_markdown_extensions, attachment_tile,
 };
 use crate::navigation::pane_stack::status_dot;
 use crate::{
@@ -698,6 +699,9 @@ pub trait ChatHost: Sized + 'static {
     fn chat_read<'a>(&'a self, cx: &'a App) -> (&'a ChatPane, Option<&'a ChatView>);
     fn chat_fork(&mut self, item: &ItemId, cx: &mut Context<Self>);
     fn chat_hold(&mut self, _: &HeldMessage, _: &mut Context<Self>) {}
+    fn chat_covered(&self, _: &App) -> bool {
+        false
+    }
 }
 
 pub struct ChatLook {
@@ -767,12 +771,10 @@ pub fn chat_surface<T: ChatHost>(
             });
         })
     };
-    let html = cx
-        .has_global::<crate::agent::AgentHtmlPreviewer>()
-        .then_some(crate::agent::HtmlBlocks {
-            owner: look.pane,
-            touch: look.touch,
-        });
+    let html = crate::agent::draws_html(cx).then_some(crate::agent::HtmlBlocks {
+        owner: look.pane,
+        touch: look.touch,
+    });
     let pane = host.chat_pane();
     let markdown = look.refs.map(|refs| pane.markdown_showing(refs, html));
     pane.frame = ChatFrame {
@@ -813,6 +815,13 @@ pub fn chat_surface<T: ChatHost>(
             chat_agent_pip(view, now, &pane.open, phase, &hooks, cx)
         })
     };
+    let bottom = if touch {
+        look.inset_bottom
+    } else {
+        px(COMPOSER_OUTER_PADDING)
+    };
+    let frames_hidden = host.chat_covered(cx) || (pip.is_some() && !docked);
+    let floor = Rc::new(Cell::new(None));
     let rows = entity.clone();
     let thread = list(list_state.clone(), move |index, _, cx| {
         let host = rows.read(cx);
@@ -826,11 +835,7 @@ pub fn chat_surface<T: ChatHost>(
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .size_full()
     .pt(look.inset_top + Space::S12.rems().to_pixels(window.rem_size()))
-    .pb(if touch {
-        look.inset_bottom
-    } else {
-        px(COMPOSER_OUTER_PADDING)
-    });
+    .pb(bottom);
     let jump = {
         let entity = entity.clone();
         move |_: &ala::ClickEvent, _: &mut Window, cx: &mut App| {
@@ -847,18 +852,36 @@ pub fn chat_surface<T: ChatHost>(
         .min_w_0()
         .h_full()
         .text_color(cx.theme().foreground)
+        .children(
+            crate::agent::html_frame_clip(
+                Some(crate::agent::HtmlFrameBand {
+                    owner: look.pane,
+                    hidden: frames_hidden,
+                    floor: Rc::clone(&floor),
+                }),
+                cx,
+            )
+            .map(|clip| {
+                div()
+                    .absolute()
+                    .inset_0()
+                    .pt(look.inset_top)
+                    .pb(bottom)
+                    .child(clip)
+            }),
+        )
         .child(thread)
+        .children(
+            crate::agent::html_frame_clip(None, cx)
+                .map(|clip| div().absolute().size_0().child(clip)),
+        )
         .child(
             div()
                 .absolute()
                 .top(look.inset_top)
                 .left_0()
                 .right_0()
-                .bottom(if touch {
-                    look.inset_bottom
-                } else {
-                    px(COMPOSER_OUTER_PADDING)
-                })
+                .bottom(bottom)
                 .child(Scrollbar::vertical(&list_state)),
         )
         .when(show_jump, |column| {
@@ -883,7 +906,17 @@ pub fn chat_surface<T: ChatHost>(
                     })
                     .flex()
                     .justify_center()
-                    .child(button.on_click(jump)),
+                    .child(button.on_click(jump))
+                    .when(cx.has_global::<crate::agent::AgentHtmlFrames>(), |row| {
+                        row.child(
+                            canvas(
+                                move |bounds, _, _| floor.set(Some(bounds.top())),
+                                |_, (), _, _| {},
+                            )
+                            .absolute()
+                            .size_full(),
+                        )
+                    }),
             )
         });
     let pip = pip.map(|pip| chat_pip_frame(pip, docked));
@@ -1369,7 +1402,7 @@ impl Draw<'_, '_> {
             .flex_none()
             .gap_2()
             .items_center()
-            .when(!crate::touch::CoarsePointer::get(cx), |extras| {
+            .when(crate::touch::hover_reveals(cx), |extras| {
                 extras
                     .invisible()
                     .group_hover(AGENT_ROW_GROUP, ala::Styled::visible)
@@ -1754,8 +1787,9 @@ fn message_actions(
     h_flex()
         .flex_none()
         .gap_0p5()
+        .map(|row| super::touch_action_gap(row, cx))
         .items_center()
-        .when(!crate::touch::CoarsePointer::get(cx), |row| {
+        .when(crate::touch::hover_reveals(cx), |row| {
             row.invisible().group_hover(group, ala::Styled::visible)
         })
         .when_some(stamp, |row, stamp| {
@@ -1767,7 +1801,7 @@ fn message_actions(
         })
         .when_some(copy, |row, parts| {
             row.child(
-                penna::blocks::chat::message_action(
+                super::touch_action(
                     Button::compact_icon(
                         SharedString::from(format!("chat-copy-{key}")),
                         IconName::Copy,
@@ -1795,7 +1829,7 @@ fn message_actions(
         .when_some(fork, |row, (fork, id)| {
             let target = ChatClick::Fork(id);
             row.child(
-                penna::blocks::chat::message_action(
+                super::touch_action(
                     Button::compact_icon(
                         SharedString::from(format!("chat-fork-{key}")),
                         IconName::GitBranch,
@@ -2295,12 +2329,13 @@ fn markdown(
     let id = SharedString::from(format!("chat-text-{}", id.as_str()));
     let scope = block_scope(hooks.owner, &id);
     let view = TextView::markdown(id, text);
-    let (view, extensions) = match hooks.markdown {
+    let (view, extensions, pages) = match hooks.markdown {
         Some(markdown) => (
             view.links(RefLinks::new(Arc::clone(&markdown.refs))),
             markdown.extensions.clone(),
+            markdown.refs.view.clone(),
         ),
-        None => (view, assistant_markdown_extensions()),
+        None => (view, assistant_markdown_extensions(), None),
     };
     let column = if hooks.touch {
         touch_transcript_text(div().w_full(), cx)
@@ -2309,7 +2344,7 @@ fn markdown(
     };
     column
         .child(
-            agent_text_view(view, scope, hooks.owner, cx)
+            agent_chat_text_view(view, scope, hooks.owner, pages, cx)
                 .selectable(true)
                 .streaming(streaming)
                 .markdown_extensions(extensions),

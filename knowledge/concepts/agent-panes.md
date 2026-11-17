@@ -530,7 +530,22 @@ end no turn.
 - **The chat.** `crates/zz/src/agent` on the desktop and `clients/app/src/app/agent_pane.rs` on
   web, iPad and iPhone draw an agent pane with `zz_ui::agent::chat`: the composer, the model and
   effort menu, questions and approvals asked in the composer, subagent rows, images, references,
-  Copy and Fork, and preview cards. Both open subagents, images and cards in the
+  Copy and Fork, and preview cards. A send the agent cannot take says why above the composer, in
+  the shared words of `zz_client::agent_lens` (`prompt_not_ready`, `AGENT_QUEUE_FULL` at
+  `MAX_AGENT_QUEUED_PROMPTS`, `AGENT_REFUSES_IMAGES` when the driver's `ready` capabilities lack
+  `images`), and an empty chat reads Resuming the agent's session while a chat reopens and
+  Cancelling the current turn after Stop (`agent_empty` with `LensTranscript::settling`, read
+  from the stream's `sessionReset` `restoring` flag). A pane whose driver's `ready` capabilities
+  set `watch` shows the chat with no composer, only what sits above it (queue, plan, errors), and
+  an empty chat with the welcome alone, no folder button or Resume, on both
+  (`zz_ui::agent::controls::watch_composer`). On iPhone the plan tray is a whole-row button over
+  the composer that unfolds the plan above it, scrolling once it passes half the space between
+  the top inset and the dock (`zz_ui::agent::tasks::phone_plan_tray`), and the plus sheet's first
+  page ends with the chat's Git summary. A code block's Preview, Open and Copy take a 44pt touch
+  area on iPhone, spaced so the areas do not overlap. The web client's composer has an
+  image button beside the plus (an Images row in the plus sheet on a narrow window) that opens the
+  browser's file picker (`attachments::choose_images`), shown when the agent takes images; iOS has
+  no picker yet. Both open subagents, images and cards in the
   [view pane](#previews-and-the-view-pane); a host that gives the chat no view opener (the
   storybook) keeps the subagent PiP and draws diagrams and code inline. The storybook's Agent story
   draws them from fixed chat events. The HTML client (`clients/dom/src/agent.rs` and
@@ -657,7 +672,8 @@ the next chat starts in, and Resume, for a chat the CLI already has. Each opens 
     `effort_starts_unset`); then Permissions, the driver's `mode` option, the permissions the CLI
     runs with, one row per mode with a check on the current one. Model and permission rows sit the
     theme's row gap apart (`Theme::row_gap`, 2px in an inset list), so two highlights never touch.
-    Shift-Tab in the composer steps to the next mode (`LensSettings::next_mode`).
+    Shift-Tab in the composer steps to the next mode (`LensSettings::next_mode`), on the desktop
+    and in the thin client with a keyboard, except while the `@` menu is open.
     The glyph is the mode's own (`mode_icon`, by provider and mode value): a raised hand for
     Claude's Ask, a pencil for Accept edits and Codex's Auto (it edits the workspace without
     asking), a folded map for Plan, a bolt for Claude's Auto (the agent decides when to ask), a
@@ -876,14 +892,15 @@ calls:
 - **Preview cards.** With a view opener, mermaid and SVG blocks, code blocks of six lines or more
   and markdown fences of six lines or more leave the reply as cards (`agent::preview`), flat
   `CardLook::Activity` cards that wash deeper on hover. A diagram is a thumbnail of the drawn diagram
-  named by its kind (Flowchart, Sequence diagram, Gantt chart; the pop-out mark shows on hover). A
+  named by its kind (Flowchart, Sequence diagram, Gantt chart; the pop-out mark shows on hover,
+  always on touch). A
   code block is its language's tile (the program tile when zz knows the language: rust, python,
   go, typescript and the other program marks, plus 32 language marks from Devicon; a neutral tile
   with braces otherwise), its file name when the fence names one (`rust src/main.rs`,
   `rust:src/main.rs`, `title="..."`) or its language, and its length. A markdown fence is named by
   its first heading. Fences that follow each other share one row: the card plugin claims the next
   siblings with `MarkdownNode::absorbs`. Shorter code, blocks over 64 KiB and
-  mermaid types pele does not draw stay inline. On the desktop and iOS an `html preview` block is a visual
+  mermaid types pele does not draw stay inline. On the desktop, iOS and the web an `html preview` block is a visual
   drawn bare on the chat's ground with penna's HTML kit, and an `html` block holding a whole
   document is a page frame ([artifacts](/designs/userpanes.md#inline-previews-in-the-agent-pane)). Clicking a card opens it in the view pane.
 - **Diagrams.** Without a view opener, or inside a markdown view, a mermaid or SVG block sits in a
@@ -910,7 +927,8 @@ calls:
   as code blocks and tables elsewhere (`agent_text_view`). Transcript text (answers, the user's
   bubble, thoughts, notices and side replies) is penna's `read-body`, 14 px on a 22 px line, and the
   markdown inside inherits it. The chat passes its pane as the owner
-  (`ChatHooks::owner`), so on the desktop an HTML block's live page can reply to the agent, and two
+  (`ChatHooks::owner`), so on the desktop, iPad and the web an HTML block's live page can draft a
+  reply into the composer, and two
   panes showing the same item keep their own preview toggles.
 
 # Previews and the view pane

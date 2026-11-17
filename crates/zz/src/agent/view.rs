@@ -7,7 +7,7 @@ use zz_ui::agent::ask::{
     Approval, ApprovalAction, AskChoice, AskParts, AskSubject, PromptRow, approval_subject, rejects,
 };
 use zz_ui::agent::controls::{
-    ComposerAction, composer_action, composer_action_button, git_summary_footer,
+    ComposerAction, composer_action, composer_action_button, git_summary_footer, watch_composer,
 };
 #[cfg(test)]
 use zz_ui::agent::controls::{
@@ -49,6 +49,7 @@ use penna::{
     },
     h_flex,
 };
+use zz_client::agent_lens::AGENT_REFUSES_IMAGES;
 use zz_client::agent_login::CardAction;
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId, ViewContent};
 use zz_ui::agent::login::{CodeField, LoginEvent};
@@ -608,6 +609,7 @@ impl AgentView {
 
     fn lists_chats(&self, cx: &ala::App) -> bool {
         self.pane_state.connection == AgentConnectionState::Ready
+            && !self.pane_state.session_capabilities.watch
             && !self
                 .controller
                 .read(cx)
@@ -1114,7 +1116,7 @@ impl AgentView {
 
     fn attach_images(&mut self, images: &[Arc<Image>], cx: &mut Context<Self>) {
         if !self.pane_state.session_capabilities.images {
-            self.submission_error = Some(Arc::from("this agent does not accept images"));
+            self.submission_error = Some(Arc::from(AGENT_REFUSES_IMAGES));
             cx.notify();
             return;
         }
@@ -1703,7 +1705,7 @@ impl AgentView {
         state: &AgentPaneState,
         view: &Entity<Self>,
         cx: &mut ala::App,
-    ) -> impl IntoElement {
+    ) -> ala::AnyElement {
         let ground = self.pane_ground(cx);
         let inside = composer_ground(ground, cx);
         let ask = self.ask_parts(state, view, inside, cx);
@@ -1794,27 +1796,32 @@ impl AgentView {
                 git.map(IntoElement::into_any_element).into_iter().collect(),
             ),
         };
+        let prefix = self
+            .render_queue_chip(state, cx)
+            .map(IntoElement::into_any_element)
+            .into_iter()
+            .chain(
+                self.render_plan_tray(state, view, cx)
+                    .map(IntoElement::into_any_element),
+            )
+            .chain(
+                self.render_error(state, cx)
+                    .map(IntoElement::into_any_element),
+            )
+            .chain(self.render_login(view, cx))
+            .chain(completions)
+            .collect();
+        if state.session_capabilities.watch {
+            return watch_composer(prefix);
+        }
         ChatComposer {
             controls,
             composer,
             footer,
-            prefix: self
-                .render_queue_chip(state, cx)
-                .map(IntoElement::into_any_element)
-                .into_iter()
-                .chain(
-                    self.render_plan_tray(state, view, cx)
-                        .map(IntoElement::into_any_element),
-                )
-                .chain(
-                    self.render_error(state, cx)
-                        .map(IntoElement::into_any_element),
-                )
-                .chain(self.render_login(view, cx))
-                .chain(completions)
-                .collect(),
+            prefix,
             over,
         }
+        .into_any_element()
     }
 }
 
@@ -1839,12 +1846,7 @@ impl AgentView {
         self.attachments.extend(images);
         if let Some(pending) = pending {
             self.input.update(cx, |input, cx| {
-                let current = input.value().to_string();
-                let value = if current.trim().is_empty() {
-                    pending
-                } else {
-                    format!("{}\n{pending}", current.trim_end_matches('\n'))
-                };
+                let value = zz_ui::agent::merged_draft(&input.value(), pending);
                 input.set_value(value, window, cx);
             });
         }

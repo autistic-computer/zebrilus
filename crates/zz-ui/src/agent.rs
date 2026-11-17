@@ -14,6 +14,7 @@ pub mod view;
 pub mod visual;
 
 use std::{
+    cell::Cell,
     collections::{HashMap, HashSet, VecDeque},
     hash::{DefaultHasher, Hash, Hasher},
     rc::Rc,
@@ -50,12 +51,14 @@ const MERMAID_NODE_NAME: &str = "zz-mermaid";
 const SVG_NODE_NAME: &str = "zz-svg";
 const RICH_MARKDOWN_NODE_NAME: &str = "zz-rich-markdown";
 const FIGURE_MAX_SOURCE_BYTES: usize = 32 * 1024;
-const FIGURE_RENDER_DEBOUNCE: Duration = Duration::from_millis(250);
+pub const FIGURE_RENDER_DEBOUNCE: Duration = Duration::from_millis(250);
 const FIGURE_CACHE_CAPACITY: usize = 16;
 const HTML_PREVIEW_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 const HTML_PREVIEW_WIDTH_STEP: f32 = 32.0;
 pub(crate) const MAX_STREAMING_MEND_BYTES: usize = 64 * 1024;
 const INERT_LINK_URL: &str = "data:,";
+const TOUCH_ACTION_SLOP: f32 =
+    (crate::touch::TOUCH_TARGET - crate::button::COMPACT_ICON_BUTTON_SIZE) / 2.0;
 
 pub use zz_client::agent_timeline::plan_progress;
 use zz_client::agent_timeline::{PlanItemState, plan_items};
@@ -149,18 +152,54 @@ pub(crate) fn agent_text_view(
     owner: Option<u64>,
     cx: &App,
 ) -> TextView {
+    agent_chat_text_view(text, scope, owner, None, cx)
+}
+
+pub(crate) fn agent_chat_text_view(
+    text: TextView,
+    scope: u64,
+    owner: Option<u64>,
+    pages: Option<preview::ViewOpener>,
+    cx: &App,
+) -> TextView {
+    let body_pages = pages.clone();
     text.style(agent_markdown_style(cx))
         .code_block_actions(move |code_block, window, cx| {
-            agent_code_block_chrome(code_block, scope, window, cx)
+            agent_code_block_chrome(code_block, scope, pages.as_ref(), window, cx)
         })
         .code_block_body(move |code_block, window, cx| {
-            agent_code_block_body(code_block, scope, owner, window, cx)
+            agent_code_block_body(code_block, scope, owner, body_pages.as_ref(), window, cx)
         })
 }
 
-pub struct AgentHtmlOpener(pub Rc<dyn Fn(String, &mut Window, &mut App)>);
+type HtmlOpen = Rc<dyn Fn(String, &mut Window, &mut App)>;
+
+pub struct AgentHtmlOpener(pub HtmlOpen);
 
 impl Global for AgentHtmlOpener {}
+
+pub(crate) fn html_opener(pages: Option<&preview::ViewOpener>, cx: &App) -> Option<HtmlOpen> {
+    if let Some(opener) = cx.try_global::<AgentHtmlOpener>() {
+        return Some(Rc::clone(&opener.0));
+    }
+    let pages = pages
+        .filter(|_| cx.has_global::<AgentHtmlPreviewer>())?
+        .clone();
+    Some(Rc::new(move |html, window, cx| {
+        pages(
+            preview::ViewRequest {
+                page: true,
+                title: String::new(),
+                content: zz_protocol::ViewContent::Code {
+                    language: Some("html".to_owned()),
+                    text: html,
+                },
+            },
+            window,
+            cx,
+        );
+    }))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HtmlPreviewSize {
@@ -179,6 +218,7 @@ impl Global for AgentHtmlPreviewer {}
 pub struct AgentHtmlLive {
     pub live: Rc<dyn Fn(u64, &App) -> Option<AnyElement>>,
     pub activate: Rc<dyn Fn(HtmlLiveBlock, &mut Window, &mut App)>,
+    pub overlay: bool,
 }
 
 pub struct HtmlLiveBlock {
@@ -188,9 +228,170 @@ pub struct HtmlLiveBlock {
     pub owner: Option<u64>,
     pub clear: bool,
     pub click: Option<ala::Point<Pixels>>,
+    pub zoom: f32,
 }
 
 impl Global for AgentHtmlLive {}
+
+pub(crate) fn html_live(cx: &App) -> Option<&AgentHtmlLive> {
+    cx.try_global::<AgentHtmlLive>()
+        .filter(|live| !(live.overlay && crate::touch::CoarsePointer::get(cx)))
+}
+
+pub fn queue_draft(
+    drafts: &mut std::collections::BTreeMap<zz_protocol::PaneId, String>,
+    pane: zz_protocol::PaneId,
+    text: &str,
+) -> bool {
+    if text.trim().is_empty() {
+        return false;
+    }
+    let pending = drafts.entry(pane).or_default();
+    if !pending.is_empty() {
+        pending.push('\n');
+    }
+    pending.push_str(text);
+    true
+}
+
+pub fn merged_draft(current: &str, pending: String) -> String {
+    if current.trim().is_empty() {
+        pending
+    } else {
+        format!("{}\n{pending}", current.trim_end_matches('\n'))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct HtmlFrame {
+    pub block: u64,
+    pub key: u64,
+    pub page: SharedString,
+    pub owner: Option<u64>,
+    pub bounds: ala::Bounds<Pixels>,
+    pub clip: ala::Bounds<Pixels>,
+    pub layout: Option<ala::Size<Pixels>>,
+    pub zoom: f32,
+    pub live: bool,
+    pub dark: bool,
+}
+
+pub struct AgentHtmlFrames {
+    pub height: Rc<dyn Fn(u64, u64) -> Option<Pixels>>,
+    pub place: Rc<dyn Fn(HtmlFrame)>,
+}
+
+impl Global for AgentHtmlFrames {}
+
+#[derive(Default)]
+struct HtmlFrameClip(Option<(u64, ala::Bounds<Pixels>)>);
+
+impl Global for HtmlFrameClip {}
+
+pub(crate) struct HtmlFrameBand {
+    pub(crate) owner: u64,
+    pub(crate) hidden: bool,
+    pub(crate) floor: Rc<Cell<Option<Pixels>>>,
+}
+
+pub(crate) fn html_frame_clip(band: Option<HtmlFrameBand>, cx: &App) -> Option<ala::Canvas<()>> {
+    let overlay = cx
+        .try_global::<AgentHtmlLive>()
+        .is_some_and(|live| live.overlay);
+    (overlay || cx.has_global::<AgentHtmlFrames>()).then(|| {
+        canvas(
+            |_, _, _| {},
+            move |bounds, (), _, cx| {
+                cx.set_global(HtmlFrameClip(band.map(|band| {
+                    let bottom = band
+                        .floor
+                        .get()
+                        .map_or(bounds.bottom(), |floor| floor.min(bounds.bottom()));
+                    let bottom = if band.hidden { bounds.top() } else { bottom };
+                    (
+                        band.owner,
+                        ala::Bounds::from_corners(
+                            bounds.origin,
+                            ala::point(bounds.right(), bottom.max(bounds.top())),
+                        ),
+                    )
+                })));
+            },
+        )
+        .size_full()
+    })
+}
+
+fn clip_outside(clip: ala::Bounds<Pixels>, cover: ala::Bounds<Pixels>) -> ala::Bounds<Pixels> {
+    if !clip.intersects(&cover) {
+        return clip;
+    }
+    let (top, bottom) = if cover.top() - clip.top() >= clip.bottom() - cover.bottom() {
+        (clip.top(), cover.top())
+    } else {
+        (cover.bottom(), clip.bottom())
+    };
+    ala::Bounds::from_corners(
+        ala::point(clip.left(), top),
+        ala::point(clip.right(), bottom.max(top)),
+    )
+}
+
+pub fn html_overlay_clip(window: &Window, cx: &App) -> (Option<u64>, ala::Bounds<Pixels>) {
+    let mask = window.content_mask().bounds;
+    let (owner, clip) = cx
+        .try_global::<HtmlFrameClip>()
+        .and_then(|clip| clip.0)
+        .map_or((None, mask), |(owner, clip)| {
+            (Some(owner), mask.intersect(&clip))
+        });
+    let clip = window
+        .tooltip_bounds()
+        .map_or(clip, |tooltip| clip_outside(clip, tooltip));
+    (owner, clip)
+}
+
+pub(crate) fn draws_html(cx: &App) -> bool {
+    cx.has_global::<AgentHtmlPreviewer>() || cx.has_global::<AgentHtmlFrames>()
+}
+
+pub(crate) fn html_frame(
+    block: u64,
+    page: &str,
+    layout: Option<ala::Size<Pixels>>,
+    zoom: f32,
+    dark: bool,
+    cx: &App,
+) -> Option<(Option<Pixels>, ala::Canvas<()>)> {
+    let frames = cx.try_global::<AgentHtmlFrames>()?;
+    let place = Rc::clone(&frames.place);
+    let mut hasher = DefaultHasher::new();
+    page.hash(&mut hasher);
+    let key = hasher.finish();
+    let height = (frames.height)(block, key).map(|height| height * zoom);
+    let live = layout.is_none() && !crate::touch::touch_targets(cx);
+    let page = SharedString::from(page.to_owned());
+    let frame = canvas(
+        |_, _, _| {},
+        move |bounds, (), window, cx| {
+            let (owner, clip) = html_overlay_clip(window, cx);
+            place(HtmlFrame {
+                block,
+                key,
+                page,
+                owner,
+                bounds,
+                clip,
+                layout,
+                zoom,
+                live,
+                dark,
+            });
+        },
+    )
+    .size_full();
+    Some((height, frame))
+}
 
 #[derive(Default)]
 struct HtmlPreviewToggles(HashSet<u64>);
@@ -277,7 +478,7 @@ fn html_block_page(code: &str, head: Option<&str>) -> String {
 const VISUAL_PAGE_SCRIPT: &str = r#"window.openai={widgetState:null,setWidgetState:function(){return Promise.resolve()},sendFollowUpMessage:function(message){return window.zz&&window.zz.reply?window.zz.reply(String(message&&message.prompt||message)):Promise.reject(new Error("this page cannot send follow-ups"))}};"#;
 
 fn previews_html(language: &str, cx: &App) -> bool {
-    language.eq_ignore_ascii_case("html") && cx.has_global::<AgentHtmlPreviewer>()
+    language.eq_ignore_ascii_case("html") && draws_html(cx)
 }
 
 fn html_preview_width(width: Pixels) -> Pixels {
@@ -375,6 +576,7 @@ fn agent_code_block_body(
     code_block: &CodeBlock,
     scope: u64,
     owner: Option<u64>,
+    pages: Option<&preview::ViewOpener>,
     window: &mut Window,
     cx: &mut App,
 ) -> Option<AnyElement> {
@@ -386,6 +588,26 @@ fn agent_code_block_body(
         return None;
     }
     let head = visual.then(|| visual::visual_head(cx).to_string());
+    let dark = visual && cx.theme().is_dark();
+    if cx.has_global::<AgentHtmlFrames>()
+        && let Some((height, frame)) = html_frame(
+            block,
+            &html_block_page(&code, head.as_deref()),
+            None,
+            1.0,
+            dark,
+            cx,
+        )
+    {
+        return Some(
+            div()
+                .w_full()
+                .h(height.unwrap_or(px(120.0)))
+                .when(!visual, |this| this.bg(Hsla::white()))
+                .child(frame)
+                .into_any_element(),
+        );
+    }
     let state = window.use_keyed_state(
         SharedString::from(format!("zz-html-preview/{block}")),
         cx,
@@ -442,12 +664,8 @@ fn agent_code_block_body(
                 px(size.width.0 as f32 / scale),
                 px(size.height.0 as f32 / scale),
             );
-            let live = cx
-                .try_global::<AgentHtmlLive>()
-                .map(|live| (Rc::clone(&live.live), Rc::clone(&live.activate)));
-            let opener = cx
-                .try_global::<AgentHtmlOpener>()
-                .map(|opener| Rc::clone(&opener.0));
+            let live = html_live(cx).map(|live| (Rc::clone(&live.live), Rc::clone(&live.activate)));
+            let opener = html_opener(pages, cx);
             let page = code.clone();
             let head = head.clone();
             if let Some(element) = live.as_ref().and_then(|(live, _)| live(block, cx)) {
@@ -485,6 +703,7 @@ fn agent_code_block_body(
                                     owner,
                                     clear: visual,
                                     click: None,
+                                    zoom: 1.0,
                                 },
                                 window,
                                 cx,
@@ -533,6 +752,7 @@ fn agent_code_block_body(
 fn agent_code_block_chrome(
     code_block: &CodeBlock,
     scope: u64,
+    pages: Option<&preview::ViewOpener>,
     _window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -541,10 +761,7 @@ fn agent_code_block_chrome(
     let source_offset = code_block.span.map_or(0, |span| span.start);
     let opener = language
         .eq_ignore_ascii_case("html")
-        .then(|| {
-            cx.try_global::<AgentHtmlOpener>()
-                .map(|opener| Rc::clone(&opener.0))
-        })
+        .then(|| html_opener(pages, cx))
         .flatten();
     let visual = previews_by_default(code_block);
     let block = html_block_id(scope, code_block);
@@ -573,7 +790,8 @@ fn agent_code_block_chrome(
         .child(
             shown_on_hover(CODE_BLOCK_GROUP, cx).child(
                 h_flex()
-                    .gap_1()
+                    .gap(px(4.0))
+                    .map(|row| touch_action_gap(row, cx))
                     .when_some(preview, |this, shown| {
                         let (icon, tooltip) = if shown {
                             (IconName::Braces, "Show code")
@@ -581,7 +799,7 @@ fn agent_code_block_chrome(
                             (IconName::AppWindow, "Preview")
                         };
                         this.child(
-                            message_action(
+                            touch_action(
                                 Button::compact_icon(("agent-preview-html", source_offset), icon)
                                     .on(ground)
                                     .tooltip(tooltip)
@@ -600,7 +818,7 @@ fn agent_code_block_chrome(
                     })
                     .when_some(opener, |this, opener| {
                         this.child(
-                            message_action(
+                            touch_action(
                                 Button::compact_icon(
                                     ("agent-open-html", source_offset),
                                     IconName::Globe,
@@ -617,7 +835,7 @@ fn agent_code_block_chrome(
                         )
                     })
                     .child(
-                        message_action(
+                        touch_action(
                             Button::compact_icon(
                                 ("agent-copy-code", source_offset),
                                 IconName::Copy,
@@ -634,6 +852,18 @@ fn agent_code_block_chrome(
             ),
         )
         .into_any_element()
+}
+
+fn touch_action(button: Button, cx: &App) -> Button {
+    message_action(button.hit_slop(TOUCH_ACTION_SLOP, TOUCH_ACTION_SLOP), cx)
+}
+
+fn touch_action_gap<E: Styled>(row: E, cx: &App) -> E {
+    if crate::touch::touch_targets(cx) {
+        row.gap(px(TOUCH_ACTION_SLOP * 2.0))
+    } else {
+        row
+    }
 }
 
 fn code_block_language(language: Option<SharedString>) -> SharedString {
@@ -676,6 +906,7 @@ pub(crate) fn chat_markdown_extensions(
             .plugin(visual::VisualPlugin {
                 owner: Some(html.owner),
                 touch: html.touch,
+                pages: open.clone(),
             })
             .plugin(visual::PagePlugin { view: open.clone() });
     }
@@ -1024,7 +1255,7 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
     };
 
     let card = cx.theme().ground_of(CardLook::Figure);
-    let hover_only = !crate::touch::CoarsePointer::get(cx);
+    let hover_only = crate::touch::hover_reveals(cx);
     Card::new(("agent-figure", source_offset), CardLook::Figure)
         .group(FIGURE_GROUP)
         .relative()
@@ -1039,13 +1270,14 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
                 .top_0()
                 .right_0()
                 .gap_1()
+                .map(|actions| touch_action_gap(actions, cx))
                 .items_center()
                 .when(hover_only, |actions| {
                     actions
                         .invisible()
                         .group_hover(FIGURE_GROUP, ala::Styled::visible)
                 })
-                .child(message_action(
+                .child(touch_action(
                     Button::compact_icon(("agent-mermaid-copy", source_offset), IconName::Copy)
                         .on(card)
                         .tooltip("Copy source")
@@ -1057,7 +1289,7 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
                     cx,
                 ))
                 .when_some(preview_image, |this, image| {
-                    this.child(message_action(
+                    this.child(touch_action(
                         Button::compact_icon(
                             ("agent-mermaid-preview", source_offset),
                             IconName::WindowMaximize,
@@ -1470,6 +1702,7 @@ mod tests {
     struct AnswerTest {
         text: SharedString,
         owner: Option<u64>,
+        pages: Option<preview::ViewOpener>,
     }
 
     impl AnswerTest {
@@ -1477,6 +1710,7 @@ mod tests {
             Self {
                 text: SharedString::from(text.to_owned()),
                 owner,
+                pages: None,
             }
         }
     }
@@ -1485,10 +1719,11 @@ mod tests {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             let scope = self.owner.unwrap_or_default();
             div().w(px(520.0)).h(px(600.0)).child(
-                agent_text_view(
+                agent_chat_text_view(
                     TextView::markdown("answer", self.text.clone()),
                     scope,
                     self.owner,
+                    self.pages.clone(),
                     cx,
                 )
                 .selectable(true)
@@ -1554,6 +1789,19 @@ mod tests {
         assert_eq!(figure.size.height, px(900.0));
     }
 
+    fn hover_html_block(cx: &mut VisualTestContext) {
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let language = cx
+            .debug_bounds("agent-code-language")
+            .expect("the html block is painted");
+        cx.simulate_mouse_move(language.center(), None, ala::Modifiers::none());
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+    }
+
     #[ala::test]
     fn an_html_block_opens_as_a_page_when_the_app_can_show_one(cx: &mut TestAppContext) {
         cx.update(crate::init);
@@ -1564,18 +1812,6 @@ mod tests {
             penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
-        let hover_html_block = |cx: &mut VisualTestContext| {
-            cx.update(|window, cx| {
-                _ = window.draw(cx);
-            });
-            let language = cx
-                .debug_bounds("agent-code-language")
-                .expect("the html block is painted");
-            cx.simulate_mouse_move(language.center(), None, ala::Modifiers::none());
-            cx.update(|window, cx| {
-                _ = window.draw(cx);
-            });
-        };
         hover_html_block(cx);
         assert!(cx.debug_bounds("agent-code-copy").is_some());
         assert!(
@@ -1598,6 +1834,60 @@ mod tests {
         cx.run_until_parked();
 
         assert_eq!(opened.borrow().as_slice(), ["<p>hi</p>"]);
+    }
+
+    #[ala::test]
+    fn a_chat_that_previews_html_opens_a_block_as_a_page_beside_it(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let asked = Arc::new(std::sync::Mutex::new(Vec::<preview::ViewRequest>::new()));
+        let sink = Arc::clone(&asked);
+        let pages: preview::ViewOpener = Arc::new(move |request, _, _| {
+            sink.lock().expect("requests lock").push(request);
+        });
+        let answer = "```html\n<p>hi</p>\n```\n";
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| AnswerTest {
+                pages: Some(pages),
+                ..AnswerTest::new(answer, Some(7))
+            });
+            penna::Root::new(view, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        hover_html_block(cx);
+        assert!(
+            cx.debug_bounds("agent-code-open").is_none(),
+            "a client that cannot preview html cannot show the page"
+        );
+
+        cx.update(|_, cx| {
+            cx.set_global(AgentHtmlPreviewer(Rc::new(|_, _, _| {
+                Task::ready(Err("not drawn".into()))
+            })));
+            cx.refresh_windows();
+        });
+        hover_html_block(cx);
+        let open = cx
+            .debug_bounds("agent-code-open")
+            .expect("an html block offers Open");
+        cx.simulate_click(open.center(), ala::Modifiers::none());
+        cx.run_until_parked();
+
+        let asked = asked.lock().expect("requests lock");
+        assert_eq!(
+            asked.as_slice(),
+            [preview::ViewRequest {
+                page: true,
+                title: String::new(),
+                content: zz_protocol::ViewContent::Code {
+                    language: Some("html".to_owned()),
+                    text: "<p>hi</p>".to_owned(),
+                },
+            }]
+        );
+        assert_eq!(
+            asked[0].command(zz_protocol::PaneId(7), None).args,
+            ["-t", "%7", "-", "--", "<p>hi</p>"]
+        );
     }
 
     #[ala::test]
@@ -1752,6 +2042,7 @@ mod tests {
                     started.set(Some(live.block));
                     window.refresh();
                 }),
+                overlay: false,
             });
         });
         let draw = |cx: &mut VisualTestContext| {
@@ -1847,6 +2138,7 @@ mod tests {
                     started.set(Some(live.block));
                     window.refresh();
                 }),
+                overlay: false,
             });
         });
         let draw = |cx: &mut VisualTestContext| {

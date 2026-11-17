@@ -84,6 +84,8 @@ use crate::{
     terminal::TerminalPane,
 };
 use agent_pane::AgentPane;
+#[cfg(any(target_os = "ios", target_family = "wasm"))]
+pub(crate) use agent_pane::draft_page_reply;
 pub(crate) use settings::phone;
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -1639,7 +1641,7 @@ impl AppShell {
                 let connection = self.connection.clone();
                 let roster = self.roster.clone();
                 let rows_view = cx.weak_entity();
-                cx.new(|cx| {
+                let agent = cx.new(|cx| {
                     let mut agent = AgentPane::new(pane, connection, roster, window, cx);
                     agent.set_float_rows_handler(move |cx| {
                         rows_view
@@ -1647,7 +1649,27 @@ impl AppShell {
                             .and_then(|view| view.read(cx).pip_fill_rows(cx))
                     });
                     agent
+                });
+                cx.subscribe(&agent, |shell, _, change: &agent_pane::LaunchChange, _| {
+                    let launches = &mut shell.preferences.agent_launches;
+                    let changed = match change {
+                        agent_pane::LaunchChange::Picked {
+                            provider,
+                            option,
+                            value,
+                        } => launches.pick(*provider, option, value),
+                        agent_pane::LaunchChange::Followed {
+                            provider,
+                            before,
+                            after,
+                        } => launches.follow(*provider, Some(before.as_ref()), after),
+                    };
+                    if changed {
+                        shell.preferences.save();
+                    }
                 })
+                .detach();
+                agent
             })
             .clone()
     }
@@ -1855,7 +1877,11 @@ impl AppShell {
                 picker
             })
             .clone();
-        picker.update(cx, |picker, cx| picker.set_chat_view(chat_view, cx));
+        let launches = &self.preferences.agent_launches;
+        picker.update(cx, |picker, cx| {
+            picker.set_chat_view(chat_view, cx);
+            picker.set_launches(launches);
+        });
         picker
     }
 
@@ -1917,6 +1943,8 @@ impl AppShell {
             self.landing_picker = Some(picker.clone());
             picker
         };
+        let launches = &self.preferences.agent_launches;
+        picker.update(cx, |picker, _| picker.set_launches(launches));
         let focus = picker.read(cx).focus_handle(cx);
         if !focus.contains_focused(window, cx) && !self.sidebar_focus.contains_focused(window, cx) {
             focus.focus(window, cx);
@@ -3713,14 +3741,15 @@ impl Render for AppShell {
         } else {
             self.compact_shell(terminal_overlays, overlays, window, cx)
         };
-        #[cfg(any(target_os = "ios", target_os = "android"))]
-        {
+        #[cfg(any(target_os = "ios", target_os = "android", target_family = "wasm"))]
+        let unobstructed = {
             let connection = self.connection.read(cx);
             let core = &connection.core;
-            let native_obscured = window
-                .root::<Root>()
-                .flatten()
-                .is_some_and(|root| !root.read(cx).notifications(cx).is_empty())
+            let native_obscured = (!cfg!(target_family = "wasm")
+                && window
+                    .root::<Root>()
+                    .flatten()
+                    .is_some_and(|root| !root.read(cx).notifications(cx).is_empty()))
                 || window.focused(cx).is_some_and(|focus| {
                     cx.build_action("penna_menu::Cancel", None)
                         .is_ok_and(|action| {
@@ -3729,7 +3758,7 @@ impl Render for AppShell {
                                 .is_some()
                         })
                 });
-            let unobstructed = connection.connected
+            connection.connected
                 && self.settings.is_none()
                 && !dialog
                 && !native_obscured
@@ -3742,51 +3771,57 @@ impl Render for AppShell {
                 && core.menu().is_none()
                 && core.confirm().is_none()
                 && core.command_output().is_none()
-                && core.display_panes().is_none();
-            let visible: BTreeSet<_> = if unobstructed && compact {
-                self.compact_visible_panes(cx)
-            } else if unobstructed {
-                self.active_window(cx)
-                    .map(|window| {
-                        let cell = self.cell_size(&window, cx);
-                        let layout = window
-                            .zoomed_pane
-                            .map_or(window.layout, zz_protocol::LayoutNode::Pane);
-                        let canvas = self.float_canvas_bounds.get();
-                        let floats: Vec<_> = window
-                            .floating
-                            .iter()
-                            .filter(|float| float.visible)
-                            .filter_map(|float| {
-                                let placed = floating::float_placement(float, cell, canvas.size)?;
-                                Some((
-                                    float.pane,
-                                    floating::FloatPlacement {
-                                        frame: placed.frame + canvas.origin,
-                                        content: placed.content + canvas.origin,
-                                    },
-                                ))
-                            })
-                            .collect();
-                        let bounds = self.pane_bounds.borrow();
-                        floating::native_panes_shown(
-                            pane_rects(&layout)
-                                .into_iter()
-                                .map(|(pane, _)| (pane, bounds.get(&pane).copied())),
-                            &floats,
-                            window.modal.map(|modal| modal.pane),
-                        )
-                    })
-                    .unwrap_or_default()
-            } else {
-                BTreeSet::new()
-            };
-            for (pane, browser) in &self.browsers {
-                browser.update(cx, |browser, cx| {
-                    browser.set_visible(visible.contains(pane), cx);
-                });
-            }
+                && core.display_panes().is_none()
+        };
+        #[cfg(any(target_os = "ios", target_os = "android", target_family = "wasm"))]
+        let visible: BTreeSet<_> = if unobstructed && compact {
+            self.compact_visible_panes(cx)
+        } else if unobstructed {
+            self.active_window(cx)
+                .map(|window| {
+                    let cell = self.cell_size(&window, cx);
+                    let layout = window
+                        .zoomed_pane
+                        .map_or(window.layout, zz_protocol::LayoutNode::Pane);
+                    let canvas = self.float_canvas_bounds.get();
+                    let floats: Vec<_> = window
+                        .floating
+                        .iter()
+                        .filter(|float| float.visible)
+                        .filter_map(|float| {
+                            let placed = floating::float_placement(float, cell, canvas.size)?;
+                            Some((
+                                float.pane,
+                                floating::FloatPlacement {
+                                    frame: placed.frame + canvas.origin,
+                                    content: placed.content + canvas.origin,
+                                },
+                            ))
+                        })
+                        .collect();
+                    let bounds = self.pane_bounds.borrow();
+                    floating::native_panes_shown(
+                        pane_rects(&layout)
+                            .into_iter()
+                            .map(|(pane, _)| (pane, bounds.get(&pane).copied())),
+                        &floats,
+                        window.modal.map(|modal| modal.pane),
+                    )
+                })
+                .unwrap_or_default()
+        } else {
+            BTreeSet::new()
+        };
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        for (pane, browser) in &self.browsers {
+            browser.update(cx, |browser, cx| {
+                browser.set_visible(visible.contains(pane), cx);
+            });
         }
+        #[cfg(target_family = "wasm")]
+        let shell = shell.child(crate::web_frames::drawn(!unobstructed, &visible, cx));
+        #[cfg(target_os = "ios")]
+        let shell = shell.child(crate::ios_live::drawn(!unobstructed, &visible, cx));
         let shell = shell
             .track_focus(&self.focus)
             .on_key_up(cx.listener(Self::key_up))

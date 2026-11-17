@@ -17,10 +17,10 @@ use penna::{
 use zz_protocol::ViewContent;
 
 use super::{
-    AgentHtmlLive, AgentHtmlOpener, HtmlLiveBlock, HtmlPreviewResult, HtmlPreviewSize,
+    AgentHtmlFrames, AgentHtmlLive, HtmlLiveBlock, HtmlPreviewResult, HtmlPreviewSize,
     HtmlPreviewState, HtmlPreviewToggles, MermaidThemeColors, VISUAL_PAGE_SCRIPT,
-    agent_markdown_style, css_color, html_preview_width, is_html_document, mermaid_font_family,
-    mermaid_theme_key,
+    agent_markdown_style, css_color, html_frame, html_live, html_opener, html_preview_width,
+    is_html_document, mermaid_font_family, mermaid_theme_key,
     preview::{ViewOpener, ViewRequest},
 };
 use crate::{
@@ -298,6 +298,7 @@ fn html_fence(
 pub(crate) struct VisualPlugin {
     pub(crate) owner: Option<u64>,
     pub(crate) touch: bool,
+    pub(crate) pages: Option<ViewOpener>,
 }
 
 impl MarkdownPlugin for VisualPlugin {
@@ -324,7 +325,14 @@ impl MarkdownPlugin for VisualPlugin {
 
     fn render(&self, node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let source = node.data::<HtmlSource>().expect("visual node data");
-        render_visual(source, self.owner, self.touch, window, cx)
+        render_visual(
+            source,
+            self.owner,
+            self.touch,
+            self.pages.as_ref(),
+            window,
+            cx,
+        )
     }
 }
 
@@ -431,6 +439,7 @@ fn render_visual(
     source: &HtmlSource,
     owner: Option<u64>,
     touch: bool,
+    pages: Option<&ViewOpener>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -445,14 +454,21 @@ fn render_visual(
         .try_global::<HtmlPreviewToggles>()
         .is_some_and(|toggles| toggles.0.contains(&block));
     let page = visual_page(&source.html, cx);
-    let zoom = if cx.has_global::<AgentHtmlLive>() {
+    let framed = cx.has_global::<AgentHtmlFrames>();
+    let zoom = if cx
+        .try_global::<AgentHtmlLive>()
+        .is_some_and(|live| !live.overlay)
+    {
         1.0
     } else if touch {
         TextStyle::TouchBody.design_px() / TextStyle::ReadBody.design_px()
     } else {
         (f32::from(window.rem_size()) / penna::BASE_UI_FONT_SIZE).max(0.5)
     };
-    if !shows_code && let Some(width) = state.read(cx).width {
+    if !shows_code
+        && !framed
+        && let Some(width) = state.read(cx).width
+    {
         let size = HtmlPreviewSize {
             width: html_preview_width(width) / zoom,
             height: None,
@@ -461,9 +477,7 @@ fn render_visual(
         };
         state.update(cx, |state, cx| state.synchronize(&page, None, size, cx));
     }
-    let opener = cx
-        .try_global::<AgentHtmlOpener>()
-        .map(|opener| Rc::clone(&opener.0));
+    let opener = html_opener(pages, cx);
     let content = if shows_code {
         let markdown = fenced(&source.html);
         let retained = window.use_keyed_state(
@@ -484,6 +498,14 @@ fn render_visual(
             .min_w_0()
             .selectable(true)
             .into_any_element()
+    } else if let Some((height, frame)) =
+        html_frame(block, &page, None, zoom, cx.theme().is_dark(), cx)
+    {
+        div()
+            .w_full()
+            .h(height.unwrap_or(px(DRAWING_HEIGHT)))
+            .child(frame)
+            .into_any_element()
     } else {
         match &state.read(cx).result {
             HtmlPreviewResult::Waiting => {
@@ -497,9 +519,8 @@ fn render_visual(
                     px(size.width.0 as f32 / scale),
                     px(size.height.0 as f32 / scale),
                 );
-                let live = cx
-                    .try_global::<AgentHtmlLive>()
-                    .map(|live| (Rc::clone(&live.live), Rc::clone(&live.activate)));
+                let live =
+                    html_live(cx).map(|live| (Rc::clone(&live.live), Rc::clone(&live.activate)));
                 if let Some(element) = live.as_ref().and_then(|(live, _)| live(block, cx)) {
                     div()
                         .debug_selector(|| "agent-visual-live".to_owned())
@@ -528,6 +549,7 @@ fn render_visual(
                                         owner,
                                         clear: true,
                                         click,
+                                        zoom,
                                     },
                                     window,
                                     cx,
@@ -559,7 +581,7 @@ fn render_visual(
         }
     };
     let ground = cx.theme().ground_of(CardLook::Code);
-    let hover_only = !crate::touch::CoarsePointer::get(cx);
+    let hover_only = crate::touch::hover_reveals(cx);
     let code = source.html.clone();
     let html = source.html.clone();
     let (toggle_icon, toggle_tip) = if shows_code {
@@ -568,16 +590,18 @@ fn render_visual(
         (IconName::Braces, "Show code")
     };
     let tools = Card::new(("agent-visual-tools", offset), CardLook::Code)
-        .absolute()
-        .top_0()
-        .right_0()
+        .when(!framed, |tools| tools.absolute().top_0().right_0())
         .p_0p5()
         .h_flex()
         .gap_0p5()
-        .invisible()
-        .group_hover(VISUAL_GROUP, ala::Styled::visible)
+        .map(|tools| super::touch_action_gap(tools, cx))
+        .when(hover_only && !framed, |tools| {
+            tools
+                .invisible()
+                .group_hover(VISUAL_GROUP, ala::Styled::visible)
+        })
         .child(
-            message_action(
+            super::touch_action(
                 Button::compact_icon(("agent-visual-code", offset), toggle_icon)
                     .on(ground)
                     .tooltip(toggle_tip)
@@ -594,7 +618,7 @@ fn render_visual(
         )
         .when_some(opener, |this, opener| {
             this.child(
-                message_action(
+                super::touch_action(
                     Button::compact_icon(("agent-visual-open", offset), IconName::ExternalLink)
                         .on(ground)
                         .tooltip("Open as a page")
@@ -607,7 +631,7 @@ fn render_visual(
                 .debug_selector(|| "agent-visual-open".to_owned()),
             )
         })
-        .child(message_action(
+        .child(super::touch_action(
             Button::compact_icon(("agent-visual-copy", offset), IconName::Copy)
                 .on(ground)
                 .tooltip("Copy code")
@@ -624,8 +648,17 @@ fn render_visual(
         .min_w_0()
         .debug_selector(|| "agent-visual".to_owned())
         .child(measure(&state))
-        .child(content)
-        .when(hover_only, |visual| visual.child(tools))
+        .map(|visual| {
+            if crate::touch::CoarsePointer::get(cx) {
+                visual.child(content)
+            } else if framed {
+                visual
+                    .child(h_flex().w_full().justify_end().child(tools))
+                    .child(content)
+            } else {
+                visual.child(content).child(tools)
+            }
+        })
         .into_any_element()
 }
 
@@ -666,7 +699,10 @@ fn render_page(
         |_, _| HtmlPreviewState::default(),
     );
     let width = state.read(cx).width;
-    if let Some(width) = width {
+    let block = block_id(&state, offset);
+    if !cx.has_global::<AgentHtmlFrames>()
+        && let Some(width) = width
+    {
         let column = html_preview_width(width);
         let size = HtmlPreviewSize {
             width: px(PAGE_WIDTH),
@@ -679,29 +715,7 @@ fn render_page(
         });
     }
     let title = page_title(&source.html);
-    let opener = cx
-        .try_global::<AgentHtmlOpener>()
-        .map(|opener| Rc::clone(&opener.0))
-        .or_else(|| {
-            let view = view.cloned()?;
-            let title = title.to_string();
-            let opener: Rc<dyn Fn(String, &mut Window, &mut App)> =
-                Rc::new(move |html, window, cx| {
-                    view(
-                        ViewRequest {
-                            page: true,
-                            title: title.clone(),
-                            content: ViewContent::Code {
-                                language: Some("html".to_owned()),
-                                text: html,
-                            },
-                        },
-                        window,
-                        cx,
-                    );
-                });
-            Some(opener)
-        });
+    let opener = html_opener(view, cx);
     let ground = cx.theme().ground_of(CardLook::Code);
     let shows = view
         .filter(|_| source.html.len() <= zz_protocol::MAX_VIEW_TEXT_BYTES)
@@ -769,8 +783,23 @@ fn render_page(
             )
         });
     let tall = width.map_or(px(0.0), |width| width * (PAGE_HEIGHT / PAGE_WIDTH));
-    let view = match &state.read(cx).result {
-        HtmlPreviewResult::Waiting => div()
+    let frame = html_frame(
+        block,
+        &source.html,
+        Some(ala::size(px(PAGE_WIDTH), px(PAGE_HEIGHT))),
+        1.0,
+        false,
+        cx,
+    )
+    .map(|(_, frame)| frame);
+    let view = match (frame, &state.read(cx).result) {
+        (Some(frame), _) => div()
+            .w_full()
+            .h(tall)
+            .bg(Hsla::white())
+            .child(frame)
+            .into_any_element(),
+        (None, HtmlPreviewResult::Waiting) => div()
             .w_full()
             .h(tall)
             .flex()
@@ -782,7 +811,7 @@ fn render_page(
                     .color(cx.theme().foreground.muted()),
             )
             .into_any_element(),
-        HtmlPreviewResult::Ready(image, _) => {
+        (None, HtmlPreviewResult::Ready(image, _)) => {
             let html = source.html.clone();
             div()
                 .id(("agent-page-picture", offset))
@@ -802,7 +831,7 @@ fn render_page(
                 )
                 .into_any_element()
         }
-        HtmlPreviewResult::Failed(error) => failure(error, cx)
+        (None, HtmlPreviewResult::Failed(error)) => failure(error, cx)
             .w_full()
             .h(px(FAILED_HEIGHT))
             .justify_center()
@@ -835,7 +864,10 @@ mod tests {
 
     use super::*;
     use crate::{
-        agent::{AgentHtmlPreviewer, FIGURE_RENDER_DEBOUNCE, HtmlBlocks, chat_markdown_extensions},
+        agent::{
+            AgentHtmlPreviewer, FIGURE_RENDER_DEBOUNCE, HtmlBlocks, HtmlFrame,
+            chat_markdown_extensions,
+        },
         text::MarkdownExtensions,
     };
 
@@ -924,6 +956,67 @@ mod tests {
         assert_eq!((size.width, size.height), (px(1280.0), Some(px(720.0))));
         assert_eq!(page_title(page), "Fig & Kettle");
         assert!(cx.debug_bounds("agent-page-picture").is_some());
+    }
+
+    #[ala::test]
+    fn frames_scale_visuals_with_the_ui_zoom_and_hold_pages_at_desktop_size(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let placed = Rc::new(RefCell::new(Vec::<HtmlFrame>::new()));
+        let sink = Rc::clone(&placed);
+        cx.update(|cx| {
+            cx.set_global(AgentHtmlFrames {
+                height: Rc::new(|_, _| Some(px(90.0))),
+                place: Rc::new(move |frame| sink.borrow_mut().push(frame)),
+            });
+        });
+        let text = SharedString::from(
+            "```html preview\n<b>hi</b>\n```\n\n```html\n<!doctype html><html><body>page</body></html>\n```\n",
+        );
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| ChatAnswer {
+                text,
+                extensions: chat_markdown_extensions(
+                    None,
+                    Some(HtmlBlocks {
+                        owner: 7,
+                        touch: false,
+                    }),
+                ),
+            });
+            penna::Root::new(view, window, cx)
+        });
+        for _ in 0..2 {
+            placed.borrow_mut().clear();
+            cx.update(|window, cx| {
+                penna::Theme::global_mut(cx).font_size = px(penna::BASE_UI_FONT_SIZE * 1.5);
+                _ = window.draw(cx);
+            });
+        }
+        let placed = placed.borrow();
+        let [visual, page] = placed.as_slice() else {
+            panic!("two frames placed: {placed:?}");
+        };
+        assert!(visual.page.ends_with("<body><b>hi</b></body></html>"));
+        assert_eq!(
+            (
+                visual.bounds.size.height,
+                visual.layout,
+                visual.zoom,
+                visual.live
+            ),
+            (px(135.0), None, 1.5, true)
+        );
+        assert_eq!(
+            page.page.as_ref(),
+            "<!doctype html><html><body>page</body></html>"
+        );
+        assert_eq!(
+            (page.layout, page.zoom, page.live),
+            (Some(ala::size(px(PAGE_WIDTH), px(PAGE_HEIGHT))), 1.0, false)
+        );
+        assert!(cx.debug_bounds("agent-visual-picture").is_none());
     }
 
     #[test]
