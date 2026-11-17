@@ -240,7 +240,7 @@ zz agent-respond -t %4 --deny
 [zz] %4 (codex) finished:
 <final text, last 64 KiB>
 
-Follow up with: zz agent-send -t %4 'TEXT'
+If this answers the user, answer the user now and send nothing to %4. Only if something is missing: zz agent-send -t %4 'TEXT'
 ```
 
 The other forms follow `agent_notify_message`:
@@ -249,7 +249,7 @@ The other forms follow `agent_notify_message`:
 [zz] %4 (codex) stopped (<reason>):
 <final text, last 64 KiB>
 
-Follow up with: zz agent-send -t %4 'TEXT'
+If this answers the user, answer the user now and send nothing to %4. Only if something is missing: zz agent-send -t %4 'TEXT'
 ```
 
 ```
@@ -625,15 +625,39 @@ Changed after it:
 
 Left as it is:
 
-- A Codex child runs a command once read-only before any ask exists: the ask only appears after
-  the sandboxed attempt fails, so in m4c the script ran once (read-only) before the host could
-  deny it. No text fixes this; it would take starting child Codex chats with an approval policy
-  that asks before every command that is not a read.
+- A Codex child at the default level runs a command once inside its read-only sandbox before any
+  ask exists: the ask only appears after the sandboxed attempt fails, so in m4c the script ran
+  once (read-only) before the host could deny it. When the blocked write shows up in the
+  script's own output (`./stamp.sh: line 4: ./stamped.txt: Operation not permitted`), the child
+  reports that error instead of escalating, even with the note. Both are how Codex chats behave
+  at that level, not something specific to mentions; changing them would take starting child
+  Codex chats with an approval policy that asks before every command that is not a read, or the
+  driver raising an ask itself when Codex reports a sandbox denial.
 - Untaught hosts (no mention, so no note) chain `sleep` onto `agent-send` (m6, 2 of 3 Claude
   hosts). They reach `agent-send` in one failed hop, and the reply comes back anyway.
 - A host that follows the note reports to the user when the child refuses (m8b, 2 runs) instead
   of reading the file itself: that is what the note asks for ("not you"), so it fails the token
   rule without being wrong.
+
+## Third batch
+
+26 targeted runs against `2f1048253`; results in `bench/agents/mentions/results/2026-11-17-c.md`.
+After `was closed` no host opened a new chat (6 of 6), and after a reply that lacked the result
+every host followed up on the same chat (12 of 12). But the follow-up line started a loop: in 2 of
+3 Codex-host m4c runs the host thanked the child with `agent-send`, the child's polite reply came
+back ending in the same line, and the host thanked it again; one run exchanged 24 messages over
+139 s before it stopped by itself.
+
+Changed after it:
+
+- The line after a finished or stopped report's text is now `If this answers the user, answer the
+  user now and send nothing to %N. Only if something is missing: zz agent-send -t %N 'TEXT'`. The
+  failed and closed forms stay.
+- A hard stop that does not depend on wording: a chat caller sends at most 8 prompts
+  (`MAX_SENDS_SINCE_USER`, decided) to one chat, its brief counting as the first, until it
+  receives a prompt the daemon did not inject (from the user or any client). The ninth fails, exit
+  1, with `%N has had 8 messages from you since the user last wrote; answer the user now`, and
+  nothing is sent. Sends from terminals are not counted.
 
 # UI choices
 
