@@ -95,6 +95,7 @@ pub(crate) enum RuntimeCommand {
     Prompt {
         turn_id: u64,
         prompt: AgentPrompt,
+        note: Option<String>,
     },
     Verb {
         prompt: AgentPrompt,
@@ -1349,7 +1350,11 @@ pub(crate) async fn run_agent_connection(
                             .await?,
                         }
                     }
-                    RuntimeCommand::Prompt { turn_id, prompt } => {
+                    RuntimeCommand::Prompt {
+                        turn_id,
+                        prompt,
+                        note,
+                    } => {
                         let Some(session_id) = session.clone() else {
                             send_payload(
                                 &event_tx,
@@ -1361,7 +1366,7 @@ pub(crate) async fn run_agent_connection(
                             continue;
                         };
                         let prompt_events = event_tx.clone();
-                        let note = zz_protocol::agent_mention::mention_note(&prompt.text);
+                        let note = zz_protocol::agent_mention::hidden_note(&prompt.text, note.as_deref());
                         let blocks = prompt_blocks(prompt);
                         let (cancel_tx, cancel_rx) = async_channel::bounded::<()>(1);
                         let (done_tx, done_rx) = async_channel::bounded::<()>(1);

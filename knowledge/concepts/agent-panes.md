@@ -83,7 +83,9 @@ ask whose request is answered by the time its turn comes is dropped. These promp
 against `MAX_AGENT_QUEUED_PROMPTS`, keep the byte cap (a prompt over it is logged and dropped), are
 never handed back to a composer when a queue is reclaimed (`/clear`, unqueue, close), and are
 dropped with a log line when the caller is gone. A caller flipped to a terminal gets them typed
-into its terminal the way `--notify` does. When a pane goes away, the chats it opened are killed
+into its terminal the way `--notify` does. Every pane a chat with a parent creates, a terminal from
+`split-window` included, gets that chat as its parent too (`adopt_child_chat_panes`). When a pane
+goes away, the chats and panes it opened are killed
 right after the command that removed it, on a thread (`close_orphaned_chats`); flipping a parent
 to a terminal closes nothing. From a chat caller `agent-send --wait` defaults to `--on-block fail`,
 and `--wait ''` on a chat joins the running turn (`HostCommand::Join`) or fails with `%N has no
@@ -91,9 +93,9 @@ running turn; read its last reply with: zz capture-pane -p -t %N`.
 
 **What the verbs tell an agent.** Every create with `--kind agent` prints one stderr line
 (`ReplyNotice::Opened`): `<verb>: opened %N (NAME)`, followed by `; its reply comes back to you as
-a message` for a chat caller with a brief or `; read its reply with: zz agent-send -t %N --wait ''`
+a message; end your turn now` for a chat caller with a brief or `; read its reply with: zz agent-send -t %N --wait ''`
 for any other caller with a brief. A plain `agent-send` prints the pane on stdout and on stderr
-either `agent-send: %N's reply comes back to you as a message` (chat caller) or `agent-send: read
+either `agent-send: %N's reply comes back to you as a message; end your turn now` (chat caller) or `agent-send: read
 %N's reply with: zz agent-send -t %N --wait ''`. `--notify` from a chat is a plain send. A chat
 whose queue already holds `MAX_AGENT_QUEUED_PROMPTS` prompts refuses a send at once
 (`refuse_full_chat`: `%N has 4 prompts waiting; wait for its turn with: ...`), and prompts the
@@ -107,12 +109,32 @@ no pending request (already answered, or none was asked)`.
 
 **The mention note.** A prompt whose text holds an agent token (`@+claude`, `@+codex`, either with
 `/MODEL`) or a chat token (`@HOST:%N`, the shape only the composer's Chats rows write) reaches the
-agent with `MENTION_NOTE` (`zz_protocol::agent_mention`, under 300 bytes) beside it, found by
-`mention_note` with the composer's token grammar. The note never joins the user's text: Claude
+agent with an instruction built from those tokens (`zz_protocol::agent_mention::mention_note`,
+one sentence per distinct token): for `@+codex`, `The user tagged codex: codex does this task, not
+you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end
+your turn. Do not do the task yourself. Its reply and any permission asks come back to you as
+messages.` (with `--model MODEL` when the token names one), and for `@macbook:%2`, `@macbook:%2 is
+another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to
+you as a message.` A chat opened by a chat gets a second note with its brief
+(`child_note`): `%P (NAME) opened this chat. Your final message is sent to it as your reply, so
+finish with the answer. You cannot open other agents or message %P; if you need something, say so
+in your reply.`, and for a Codex child `If a command fails with "Operation not permitted", rerun it
+with escalated permissions; %P is asked to approve it.` The daemon carries that note on the queued
+prompt (`QueuedPrompt::note`, `RuntimeCommand::Prompt`'s `note`), never in the text.
+`hidden_note` joins the two. Neither note joins the user's text: Claude
 Code gets it as a second content block wrapped in `<system-reminder>`, Codex as a second text item
 in `turn/start`'s `input`, and other ACP agents as a second text block in the prompt request. The
 stream's own echo of the prompt has only the user's text, and the transcript readers drop the
-note block when they replay a session (`claude::translate::message_text`, `codex::translate::user_text`).
+note block when they replay a session (`claude::translate::message_text`, `codex::translate::user_text`),
+recognising it with `is_hidden_note`.
+
+**Codex chats run `zz` outside the sandbox.** Before it starts Codex for a chat, the driver writes
+`rules/zz.rules` (`prefix_rule(pattern = ["zz"], decision = "allow")`, the file `zz tools
+--install-hooks` writes) into the Codex home the chat runs on, the account's or `$CODEX_HOME`,
+when that file is missing (`agent_hooks::ensure_codex_rule`); an existing file, edited or not, is
+left alone. Codex then runs a command made only of `zz` segments outside its sandbox without asking,
+so the first `zz` reaches the daemon socket. Codex reads rules when it starts, so a shared app
+server that was already running picks the rule up on its next start.
 Daemons from `REVISION` 6 on do this.
 
 **Running it.** The daemon opens the pane's runtime (`Shared::open_agent_pane`, `agent_pane_spec`)
