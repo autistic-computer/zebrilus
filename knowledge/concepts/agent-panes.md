@@ -927,7 +927,8 @@ calls:
   as code blocks and tables elsewhere (`agent_text_view`). Transcript text (answers, the user's
   bubble, thoughts, notices and side replies) is penna's `read-body`, 14 px on a 22 px line, and the
   markdown inside inherits it. The chat passes its pane as the owner
-  (`ChatHooks::owner`), so on the desktop an HTML block's live page can reply to the agent, and two
+  (`ChatHooks::owner`), so on the desktop, iPad and the web an HTML block's live page can draft a
+  reply into the composer, and two
   panes showing the same item keep their own preview toggles.
 
 # Previews and the view pane

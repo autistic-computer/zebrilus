@@ -16,6 +16,7 @@ const MIN_HEIGHT: f64 = 8.0;
 const MAX_HEIGHT: f64 = 800.0;
 const KEEP_HIDDEN: Duration = Duration::from_secs(30);
 const SANDBOX: &str = "allow-scripts";
+const REPLY_SCRIPT: &str = r#"<script>Object.defineProperty(window,"zz",{value:Object.freeze({reply:(text)=>{parent.postMessage({zz:"reply",text:String(text)},"*");return Promise.resolve()}})});</script>"#;
 
 const FRAME_SCRIPT_HEAD: &str = r#"<script>(()=>{const post=(message)=>parent.postMessage(message,"*");
 let last=-1;const send=()=>{const height="#;
@@ -50,6 +51,7 @@ struct Frame {
     element: web_sys::HtmlIFrameElement,
     page: SharedString,
     key: u64,
+    owner: Option<u64>,
     height: Option<f64>,
     pending: Option<(SharedString, Instant)>,
     placement: Option<Placement>,
@@ -75,6 +77,7 @@ struct Frames {
     covered: Cell<bool>,
     shown: RefCell<BTreeSet<u64>>,
     wake: async_channel::Sender<Duration>,
+    replies: async_channel::Sender<(PaneId, String)>,
 }
 
 struct WebFrames(Rc<Frames>);
@@ -106,6 +109,7 @@ pub fn show_html_in_chats(cx: &mut App) {
         body.append_child(&layer).ok();
     }
     let (wake, wakes) = async_channel::unbounded();
+    let (replies, sent) = async_channel::unbounded::<(PaneId, String)>();
     let frames = Rc::new(Frames {
         document,
         layer,
@@ -116,6 +120,7 @@ pub fn show_html_in_chats(cx: &mut App) {
         covered: Cell::new(false),
         shown: RefCell::default(),
         wake,
+        replies,
     });
     listen(Rc::downgrade(&frames));
     cx.spawn(async move |cx| {
@@ -127,6 +132,12 @@ pub fn show_html_in_chats(cx: &mut App) {
                 cx.background_executor().timer(delay).await;
             }
             cx.update(App::refresh_windows);
+        }
+    })
+    .detach();
+    cx.spawn(async move |cx| {
+        while let Ok((pane, text)) = sent.recv().await {
+            cx.update(|cx| crate::app::draft_page_reply(pane, &text, cx));
         }
     })
     .detach();
@@ -187,6 +198,21 @@ fn listen(frames: Weak<Frames>) {
     listener.forget();
 }
 
+fn with_reply(page: &str) -> String {
+    let lower = page.to_ascii_lowercase();
+    let after = |tag: &str| {
+        lower.match_indices(tag).find_map(|(start, _)| {
+            let rest = &lower[start + tag.len()..];
+            if !rest.starts_with(|next: char| next == '>' || next.is_ascii_whitespace()) {
+                return None;
+            }
+            rest.find('>').map(|close| start + tag.len() + close + 1)
+        })
+    };
+    let at = after("<head").or_else(|| after("<!doctype")).unwrap_or(0);
+    format!("{}{REPLY_SCRIPT}{}", &page[..at], &page[at..])
+}
+
 fn number(data: &JsValue, name: &str) -> Option<f64> {
     js_sys::Reflect::get(data, &JsValue::from_str(name))
         .ok()?
@@ -226,6 +252,7 @@ impl Frames {
                     element,
                     page: SharedString::default(),
                     key: frame.key,
+                    owner: frame.owner,
                     height: None,
                     pending: None,
                     placement: None,
@@ -236,6 +263,7 @@ impl Frames {
         };
         entry.drawn = draw;
         entry.hidden = None;
+        entry.owner = frame.owner;
         if entry.page == frame.page {
             entry.pending = None;
         } else {
@@ -253,9 +281,13 @@ impl Frames {
                 entry.key = frame.key;
                 entry.page = frame.page.clone();
                 entry.pending = None;
+                let page = if frame.owner.is_some() {
+                    with_reply(&frame.page)
+                } else {
+                    frame.page.to_string()
+                };
                 entry.element.set_srcdoc(&format!(
-                    "{}{FRAME_SCRIPT_HEAD}{PREVIEW_HEIGHT_SCRIPT}{FRAME_SCRIPT_TAIL}",
-                    frame.page
+                    "{page}{FRAME_SCRIPT_HEAD}{PREVIEW_HEIGHT_SCRIPT}{FRAME_SCRIPT_TAIL}"
                 ));
             } else if since == now {
                 self.wake.try_send(FIGURE_RENDER_DEBOUNCE).ok();
@@ -420,6 +452,23 @@ impl Frames {
                 let previous = self.heights.borrow_mut().insert(frame.key, height);
                 if previous != Some(height) {
                     self.wake.try_send(Duration::ZERO).ok();
+                }
+            }
+            "reply" => {
+                let text = js_sys::Reflect::get(&data, &JsValue::from_str("text"))
+                    .ok()
+                    .and_then(|text| text.as_string());
+                let used = self
+                    .document
+                    .active_element()
+                    .is_some_and(|active| js_sys::Object::is(&active, &frame.element));
+                if let (Some(text), Some(owner), true, true) = (
+                    text,
+                    frame.owner,
+                    used,
+                    frame.placement.is_some_and(|placement| placement.live),
+                ) {
+                    self.replies.try_send((PaneId(owner), text)).ok();
                 }
             }
             "wheel" => {

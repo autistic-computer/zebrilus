@@ -194,6 +194,9 @@ the native transport, key translation, and UIKit backend.
 - An `html` block in an agent chat has an Open button, and a page an Open as a page button,
   that opens it in a browser pane beside the chat (`html -t <chat>`). A visual has Open as a
   page on iPad; on iPhone only when its preview fails.
+- On iPad a tap on a visual, or on an `html` block's preview, makes it live: a web view takes
+  the picture's place and gets the tap, and the page's `zz.reply` drafts its text into the chat's
+  composer. A tap anywhere else turns it back into the picture. iPhone keeps the pictures.
 - Chat controls the desktop shows only under the pointer always show on iPad: Copy and Fork
   under messages, a code block's buttons, a visual's corner controls, a diagram card's pop-out
   mark and a subagent row's time and PiP mark. The Copy, Fork, code block, figure and visual

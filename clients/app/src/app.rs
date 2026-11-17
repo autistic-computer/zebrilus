@@ -76,6 +76,8 @@ use crate::{
     terminal::TerminalPane,
 };
 use agent_pane::AgentPane;
+#[cfg(any(target_os = "ios", target_family = "wasm"))]
+pub(crate) use agent_pane::draft_page_reply;
 pub(crate) use settings::phone;
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -3389,6 +3391,8 @@ impl Render for AppShell {
         }
         #[cfg(target_family = "wasm")]
         let shell = shell.child(crate::web_frames::drawn(!unobstructed, &visible, cx));
+        #[cfg(target_os = "ios")]
+        let shell = shell.child(crate::ios_live::drawn(!unobstructed, &visible, cx));
         let shell = shell
             .track_focus(&self.focus)
             .on_key_up(cx.listener(Self::key_up))

@@ -69,6 +69,42 @@ mod resume;
 
 pub(super) use phone::PhoneDock;
 
+#[cfg(any(target_os = "ios", target_family = "wasm"))]
+const PAGE_REPLY_GAP: web_time::Duration = web_time::Duration::from_secs(1);
+
+#[cfg(any(target_os = "ios", target_family = "wasm"))]
+#[derive(Default)]
+struct PageReplies {
+    pending: std::collections::BTreeMap<PaneId, String>,
+    last: std::collections::BTreeMap<PaneId, web_time::Instant>,
+}
+
+#[cfg(any(target_os = "ios", target_family = "wasm"))]
+impl ala::Global for PageReplies {}
+
+#[cfg(any(target_os = "ios", target_family = "wasm"))]
+pub(crate) fn draft_page_reply(pane: PaneId, text: &str, cx: &mut App) {
+    let now = web_time::Instant::now();
+    if text.trim().is_empty()
+        || text.len() > zz_protocol::MAX_ARTIFACT_REPLY_BYTES
+        || cx.try_global::<PageReplies>().is_some_and(|replies| {
+            replies
+                .last
+                .get(&pane)
+                .is_some_and(|last| now.duration_since(*last) < PAGE_REPLY_GAP)
+        })
+    {
+        return;
+    }
+    let replies = cx.default_global::<PageReplies>();
+    replies.last.insert(pane, now);
+    let pending = replies.pending.entry(pane).or_default();
+    if !pending.is_empty() {
+        pending.push('\n');
+    }
+    pending.push_str(text);
+}
+
 pub(super) enum LaunchChange {
     Picked {
         provider: AgentProvider,
@@ -603,8 +639,34 @@ impl AgentPane {
                 chat_release,
                 mention_observer,
                 search_subscription,
+                #[cfg(any(target_os = "ios", target_family = "wasm"))]
+                cx.observe_global_in::<PageReplies>(window, Self::take_page_reply),
             ],
         }
+    }
+
+    #[cfg(any(target_os = "ios", target_family = "wasm"))]
+    fn take_page_reply(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !cx
+            .try_global::<PageReplies>()
+            .is_some_and(|replies| replies.pending.contains_key(&self.pane))
+        {
+            return;
+        }
+        let Some(reply) = cx.global_mut::<PageReplies>().pending.remove(&self.pane) else {
+            return;
+        };
+        let current = self.input.read(cx).value().to_string();
+        let draft = if current.trim().is_empty() {
+            reply
+        } else {
+            format!("{}\n{reply}", current.trim_end_matches('\n'))
+        };
+        self.input
+            .update(cx, |input, cx| input.set_value(draft, window, cx));
+        self.draft_error = None;
+        self.chat.follow();
+        cx.notify();
     }
 
     fn pane_snapshot<'a>(&self, cx: &'a App) -> Option<&'a PaneSnapshot> {

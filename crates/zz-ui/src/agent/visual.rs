@@ -455,7 +455,10 @@ fn render_visual(
         .is_some_and(|toggles| toggles.0.contains(&block));
     let page = visual_page(&source.html, cx);
     let framed = cx.has_global::<AgentHtmlFrames>();
-    let zoom = if cx.has_global::<AgentHtmlLive>() {
+    let zoom = if cx
+        .try_global::<AgentHtmlLive>()
+        .is_some_and(|live| !live.overlay)
+    {
         1.0
     } else if touch {
         TextStyle::TouchBody.design_px() / TextStyle::ReadBody.design_px()
@@ -547,6 +550,7 @@ fn render_visual(
                                         owner,
                                         clear: true,
                                         click,
+                                        zoom,
                                     },
                                     window,
                                     cx,

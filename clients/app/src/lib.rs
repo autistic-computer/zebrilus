@@ -8,6 +8,8 @@ pub mod input;
 #[cfg(target_os = "ios")]
 pub mod ios_browser;
 #[cfg(target_os = "ios")]
+mod ios_live;
+#[cfg(target_os = "ios")]
 pub mod ios_preview;
 #[cfg(target_os = "android")]
 use android_browser as native_browser;

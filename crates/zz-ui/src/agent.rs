@@ -218,6 +218,7 @@ impl Global for AgentHtmlPreviewer {}
 pub struct AgentHtmlLive {
     pub live: Rc<dyn Fn(u64, &App) -> Option<AnyElement>>,
     pub activate: Rc<dyn Fn(HtmlLiveBlock, &mut Window, &mut App)>,
+    pub overlay: bool,
 }
 
 pub struct HtmlLiveBlock {
@@ -227,6 +228,7 @@ pub struct HtmlLiveBlock {
     pub owner: Option<u64>,
     pub clear: bool,
     pub click: Option<ala::Point<Pixels>>,
+    pub zoom: f32,
 }
 
 impl Global for AgentHtmlLive {}
@@ -264,7 +266,10 @@ pub(crate) struct HtmlFrameBand {
 }
 
 pub(crate) fn html_frame_clip(band: Option<HtmlFrameBand>, cx: &App) -> Option<ala::Canvas<()>> {
-    cx.has_global::<AgentHtmlFrames>().then(|| {
+    let overlay = cx
+        .try_global::<AgentHtmlLive>()
+        .is_some_and(|live| live.overlay);
+    (overlay || cx.has_global::<AgentHtmlFrames>()).then(|| {
         canvas(
             |_, _, _| {},
             move |bounds, (), _, cx| {
@@ -303,6 +308,20 @@ fn clip_outside(clip: ala::Bounds<Pixels>, cover: ala::Bounds<Pixels>) -> ala::B
     )
 }
 
+pub fn html_overlay_clip(window: &Window, cx: &App) -> (Option<u64>, ala::Bounds<Pixels>) {
+    let mask = window.content_mask().bounds;
+    let (owner, clip) = cx
+        .try_global::<HtmlFrameClip>()
+        .and_then(|clip| clip.0)
+        .map_or((None, mask), |(owner, clip)| {
+            (Some(owner), mask.intersect(&clip))
+        });
+    let clip = window
+        .tooltip_bounds()
+        .map_or(clip, |tooltip| clip_outside(clip, tooltip));
+    (owner, clip)
+}
+
 pub(crate) fn draws_html(cx: &App) -> bool {
     cx.has_global::<AgentHtmlPreviewer>() || cx.has_global::<AgentHtmlFrames>()
 }
@@ -326,16 +345,7 @@ pub(crate) fn html_frame(
     let frame = canvas(
         |_, _, _| {},
         move |bounds, (), window, cx| {
-            let mask = window.content_mask().bounds;
-            let (owner, clip) = cx
-                .try_global::<HtmlFrameClip>()
-                .and_then(|clip| clip.0)
-                .map_or((None, mask), |(owner, clip)| {
-                    (Some(owner), mask.intersect(&clip))
-                });
-            let clip = window
-                .tooltip_bounds()
-                .map_or(clip, |tooltip| clip_outside(clip, tooltip));
+            let (owner, clip) = html_overlay_clip(window, cx);
             place(HtmlFrame {
                 block,
                 key,
@@ -666,6 +676,7 @@ fn agent_code_block_body(
                                     owner,
                                     clear: visual,
                                     click: None,
+                                    zoom: 1.0,
                                 },
                                 window,
                                 cx,
@@ -2004,6 +2015,7 @@ mod tests {
                     started.set(Some(live.block));
                     window.refresh();
                 }),
+                overlay: false,
             });
         });
         let draw = |cx: &mut VisualTestContext| {
@@ -2099,6 +2111,7 @@ mod tests {
                     started.set(Some(live.block));
                     window.refresh();
                 }),
+                overlay: false,
             });
         });
         let draw = |cx: &mut VisualTestContext| {
