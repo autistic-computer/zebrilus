@@ -1,0 +1,60 @@
+claude	m1	1	0	done	8.2	0	0	0	0	0	1	1	eXUfs1	host did not delegate; last host turn is not after a report; host did the task itself (1 calls)	59877	434	0	0
+codex	m1	1	0	done	10.3	0	0	0	0	0	1	1	3CZTu3	host did not delegate; last host turn is not after a report; host did the task itself (1 calls)	0	0	31526	43
+claude	m3	1	1	done	10.3	1	0	0	0	0	2	1	C5G4fG	ok	93956	660	31308	16
+codex	m3	1	1	done	14.3	2	1	0	0	0	2	1	eejWXR	ok	59805	83	67488	342
+claude	m4	1	0	done	20.4	1	0	0	1	0	2	0	hUWQUt	answer lacks token; stamp.sh never ran; no ask reached the host	94957	1131	31618	132
+codex	m4	1	1	done	26.6	4	2	0	1	1	3	1	rgab9Y	ok	48494	192	127176	561
+claude	m4b	1	1	done	27.6	1	0	0	1	0	2	0	exbPRg	ok	112974	1356	31905	416
+codex	m4b	1	0	done	31.8	2	1	0	1	0	2	0	W49Q3z	host did the task itself (1 calls)	52739	1134	85134	735
+claude	m5	1	0	done	5.5	0	0	0	0	0	1	0	UMXwOI	host did not delegate; last host turn is not after a report; host did the task itself (1 calls); no closed report	58185	169	0	0
+codex	m5	1	0	done	16.6	2	1	0	1	0	2	0	dbS5eR	empty final answer	51216	141	63909	283
+claude	m6	1	1	done	19.5	5	1	2	0	0	2	1	VC7kuE	ok	219799	853	31310	12
+claude	m7	1	1	done	6.2	0	0	0	0	0	1	1	C6Kg0D	ok	51625	83	0	0
+codex	m6	1	1	done	19.5	5	2	0	0	0	2	1	Y0RrMf	ok	58121	135	116218	527
+codex	m7	1	1	done	8.3	0	0	0	0	0	1	1	8zoUNg	ok	0	0	31354	38
+claude	m8	1	0	done	7.2	0	0	0	0	0	1	1	QOQYzI	host did not delegate; last host turn is not after a report; host did the task itself (1 calls)	61909	161	0	0
+codex	m8	1	1	done	17.4	2	1	0	1	0	2	1	xMdbE1	ok	45651	166	67357	254
+claude	m1	2	1	done	17.5	1	0	0	1	0	2	1	8HCR5p	ok	94744	822	31450	58
+codex	m1	2	1	done	19.5	2	1	0	1	0	2	1	4QqIoQ	ok	47934	161	67695	299
+claude	m3	2	1	done	14.3	1	0	0	0	0	2	1	SULVgB	ok	84461	565	31304	13
+codex	m3	2	1	done	15.4	2	1	0	0	0	2	1	Q1cqcs	ok	55373	76	67770	420
+claude	m4	2	0	done	19.4	1	0	0	1	0	2	0	0dJB0r	answer lacks token; stamp.sh never ran; no ask reached the host	94987	1246	31629	146
+codex	m4	2	1	done	23.6	3	1	0	1	1	3	1	hd56rx	ok	48509	209	107272	547
+claude	m4b	2	1	done	29.7	1	0	0	1	0	2	0	l8aQbz	ok	125613	1258	31832	470
+codex	m4b	2	0	done	10.3	0	0	0	0	0	1	0	v5OtdO	host did not delegate; last host turn is not after a report; host did the task itself (1 calls)	0	0	31739	145
+claude	m5	2	0	done	6.2	0	0	0	0	0	1	0	ifKLdX	host did not delegate; last host turn is not after a report; host did the task itself (1 calls); no closed report	58095	91	0	0
+codex	m5	2	1	done	18.7	2	1	0	1	0	2	0	G7BE4Q	ok	51788	134	80358	428
+claude	m6	2	1	done	25.6	5	1	3	0	0	2	1	t2zHjU	ok	169310	818	34826	14
+codex	m6	2	1	done	23.6	5	2	0	0	0	2	1	k4z2iV	ok	57841	122	116183	487
+claude	m7	2	1	done	8.2	0	0	0	0	0	1	1	fJWNLG	ok	61679	141	0	0
+claude	m8	2	0	done	9.2	0	0	0	0	0	1	1	OlGiVr	host did not delegate; last host turn is not after a report; host did the task itself (1 calls)	61928	118	0	0
+codex	m7	2	1	done	8.2	0	0	0	0	0	1	1	mMIVtw	ok	0	0	31353	43
+claude	m1	3	1	done	16.4	1	0	0	1	0	2	1	5ffKNN	ok	91809	487	31457	81
+codex	m8	2	0	done	22.5	2	1	0	1	0	2	1	ecoQyE	host did the task itself (1 calls)	55624	170	84176	521
+codex	m1	3	1	done	20.4	2	1	0	1	0	2	1	cgmOwg	ok	52603	115	67452	293
+claude	m3	3	1	done	8.2	1	0	0	0	0	2	1	xpOSfI	ok	93565	472	31308	26
+codex	m3	3	0	done	2.1	0	0	0	0	0	1	0	m5jRkI	answer lacks token; 0 agent-send, wait=False; last host turn is not after a report	26427	143	15724	12
+claude	m4	3	0	done	22.6	1	0	0	1	0	2	0	ZrnlQc	answer lacks token; stamp.sh never ran; no ask reached the host	94519	1206	31658	125
+codex	m4	3	1	done	35.8	4	2	0	1	1	3	1	rIZ1Xl	ok	51853	219	129453	982
+claude	m4b	3	1	done	26.7	1	0	0	1	0	2	0	hjDhvc	ok	115172	1179	31754	277
+claude	m5	3	0	done	6.5	0	0	0	0	0	1	0	Tz3JWU	host did not delegate; last host turn is not after a report; host did the task itself (1 calls); no closed report	60862	297	0	0
+codex	m4b	3	0	done	26.7	2	1	0	1	0	2	0	cZMpuD	host did the task itself (1 calls)	52776	1377	84646	604
+codex	m5	3	0	done	10.8	0	0	0	0	0	1	0	TwZJmV	host did not delegate; last host turn is not after a report; host did the task itself (1 calls); no closed report	0	0	65545	102
+claude	m6	3	1	done	8.3	3	1	0	0	0	2	1	o7LMH2	ok	155787	592	31316	14
+claude	m7	3	1	done	6.2	0	0	0	0	0	1	1	VXGHB9	ok	51637	112	0	0
+codex	m6	3	1	done	20.6	5	2	0	0	0	2	1	N4xRnH	ok	51689	171	116247	535
+codex	m7	3	1	done	8.2	0	0	0	0	0	1	1	RZLTSq	ok	0	0	31358	42
+claude	m8	3	1	done	19.5	1	0	0	1	0	2	1	23LLvk	ok	94428	659	31378	62
+codex	m8	3	0	done	23.6	2	1	0	1	0	2	1	hgUqxn	host did the task itself (1 calls)	48049	217	84631	696
+claude	m4c	1	0	done	28.7	1	0	0	1	0	2	0	IgO0yC	stamp.sh ran (write blocked by the sandbox)	156221	2607	31404	98
+codex	m4c	1	0	done	32.8	4	2	0	1	1	3	0	4A5Sy9	host did the task itself (1 calls)	48482	384	129942	954
+codex	m8b	1	1	done	24.6	2	1	0	1	0	2	1	mS5ge0	ok	84724	1017	67553	332
+claude	m8b	1	1	done	53.4	10	3	2	1	0	2	1	wJ37Sp	ok	156291	1003	193982	1338
+claude	m4c	2	0	done	24.7	3	1	0	1	0	2	0	JX05X2	stamp.sh ran (write blocked by the sandbox)	128186	2167	31378	78
+codex	m4c	2	0	done	36.0	4	2	0	1	1	3	0	6zrIS3	host did the task itself (1 calls)	51767	370	145996	941
+claude	m8b	2	1	done	23.7	4	1	0	2	0	2	1	8jR5ms	ok	94615	791	63489	309
+codex	m8b	2	1	done	25.6	5	3	0	1	0	2	1	aBs3KR	ok	92612	1026	87014	282
+claude	m4c	3	0	done	26.7	3	1	0	1	0	2	0	E44Q9D	stamp.sh ran (write blocked by the sandbox)	155830	2540	31403	103
+claude	m8b	3	1	done	22.6	1	0	0	1	0	2	1	76EffU	ok	0	0	0	0
+codex	m4c	3	0	done	33.9	4	2	0	1	1	3	0	OjQLYi	host did the task itself (1 calls)	54673	435	146317	963
+codex	m8b	3	0	done	9.3	0	0	0	0	0	1	1	xx5Wtr	host did not delegate; last host turn is not after a report; host did the task itself (1 calls)	0	0	31553	61
