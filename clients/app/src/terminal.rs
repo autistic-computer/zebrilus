@@ -12,7 +12,7 @@ use penna::{
     components::input::{InputEvent, InputState},
 };
 use zz_client::{
-    ChromeAction, ChromeKeymap, ChromeProfile, ClientCore, CoreEvent, TERMINAL_TABLE,
+    ChromeAction, ClientCore, CoreEvent, TERMINAL_TABLE,
     local_scroll::{
         LOCAL_SCROLL_DEBOUNCE, LOCAL_SCROLL_TIMEOUT, LocalScrollEffect, LocalScrollState,
         LocalScrollStep, LocalScrollSync, local_scroll_available, scroll_fraction_offset,
@@ -42,7 +42,7 @@ use zz_ui::{
     },
 };
 
-use crate::connection::Connection;
+use crate::{connection::Connection, preferences::ChromeKeymaps};
 
 #[derive(Clone, PartialEq)]
 pub(crate) struct TerminalDisplayPreferences {
@@ -188,8 +188,6 @@ pub struct TerminalPane {
     forwarded: HashSet<String>,
     marked_text: Option<String>,
     surface: TerminalSurface,
-    chrome: ChromeKeymap,
-    apple_chrome: ChromeKeymap,
     search: Option<SearchQuery>,
     search_input: Option<Entity<InputState>>,
     search_focus_pending: bool,
@@ -345,12 +343,6 @@ impl TerminalPane {
             forwarded: HashSet::new(),
             marked_text: None,
             surface: TerminalSurface::Pane,
-            chrome: ChromeKeymap::for_profile(if cfg!(target_os = "ios") {
-                ChromeProfile::DesktopApple
-            } else {
-                ChromeProfile::Desktop
-            }),
-            apple_chrome: ChromeKeymap::for_profile(ChromeProfile::DesktopApple),
             search: None,
             search_input: None,
             search_focus_pending: false,
@@ -587,7 +579,7 @@ impl TerminalPane {
             .update(cx, |connection, cx| connection.input(self.pane, input, cx));
     }
 
-    fn view(&self, action: TerminalViewAction, cx: &mut Context<Self>) {
+    pub(crate) fn view(&self, action: TerminalViewAction, cx: &mut Context<Self>) {
         self.send(
             match self.surface {
                 TerminalSurface::Pane => InputMessage::TerminalView {
@@ -629,13 +621,30 @@ impl TerminalPane {
             cx.stop_propagation();
             return;
         }
+        let (search_shortcut, shortcut) = {
+            let fallback;
+            let chrome = if let Some(chrome) = cx.try_global::<ChromeKeymaps>() {
+                chrome
+            } else {
+                fallback = ChromeKeymaps::default();
+                &fallback
+            };
+            let core = &self.connection.read(cx).core;
+            (
+                chrome
+                    .native
+                    .resolve(TERMINAL_TABLE, &input)
+                    .or_else(|| chrome.apple.resolve(TERMINAL_TABLE, &input)),
+                terminal_shortcut(
+                    [&chrome.native, &chrome.apple],
+                    core.claims_prefix_input(&input),
+                    core.modal_capture(),
+                    &input,
+                ),
+            )
+        };
         if self.search.is_some() {
-            if self
-                .chrome
-                .resolve(TERMINAL_TABLE, &input)
-                .or_else(|| self.apple_chrome.resolve(TERMINAL_TABLE, &input))
-                == Some(ChromeAction::TerminalSearch)
-            {
+            if search_shortcut == Some(ChromeAction::TerminalSearch) {
                 self.open_search(window, cx);
             } else if let Some(input) = &self.search_input {
                 input.read(cx).focus_handle(cx).focus(window, cx);
@@ -643,15 +652,6 @@ impl TerminalPane {
             cx.stop_propagation();
             return;
         }
-        let shortcut = {
-            let core = &self.connection.read(cx).core;
-            terminal_shortcut(
-                [&self.chrome, &self.apple_chrome],
-                core.claims_prefix_input(&input),
-                core.modal_capture(),
-                &input,
-            )
-        };
         match shortcut {
             Some(
                 action @ (ChromeAction::TerminalFontIncrease | ChromeAction::TerminalFontDecrease),
@@ -722,7 +722,7 @@ impl TerminalPane {
         }
     }
 
-    fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.begin_search(SearchQuery::default(), false, cx);
         self.sync_search_input(window, cx);
     }
@@ -1841,6 +1841,11 @@ impl TerminalPane {
             }
         }));
     }
+
+    #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+    pub(crate) fn typing(&self, window: &Window) -> bool {
+        self.focus.is_focused(window)
+    }
 }
 
 impl Focusable for TerminalPane {
@@ -2276,6 +2281,7 @@ fn mouse_button(button: MouseButton) -> Option<TerminalMouseButton> {
 #[cfg(all(test, not(target_family = "wasm")))]
 mod tests {
     use super::*;
+    use zz_client::{ChromeKeymap, ChromeProfile};
 
     #[ala::test]
     fn shared_terminal_geometry_retries_the_same_grid_after_a_new_layout_view(

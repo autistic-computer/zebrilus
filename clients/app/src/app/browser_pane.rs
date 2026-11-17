@@ -810,12 +810,16 @@ impl BrowserPane {
         }
     }
 
-    pub(super) fn go_back(&self) {
-        self.tabs[self.active].view.back();
+    pub(super) fn go_back(&self, cx: &App) {
+        if self.writable(cx) {
+            self.tabs[self.active].view.back();
+        }
     }
 
-    pub(super) fn go_forward(&self) {
-        self.tabs[self.active].view.forward();
+    pub(super) fn go_forward(&self, cx: &App) {
+        if self.writable(cx) {
+            self.tabs[self.active].view.forward();
+        }
     }
 
     pub(super) fn reload_page(&mut self, cx: &mut Context<Self>) {

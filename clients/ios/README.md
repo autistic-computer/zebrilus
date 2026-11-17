@@ -181,6 +181,8 @@ the native transport, key translation, and UIKit backend.
   keeps its own input focus, viewport, and content state.
 - Split right or bottom from the header, then choose Terminal or Browser. Close
   removes the pane through the daemon. Drag a divider to resize the split.
+- With a pointer, the header's Split, Float, Tile, Zoom and Close buttons show their
+  prefix keys in the tooltip, read from the host's prefix table as on the desktop.
 - A zoomed pane has an Exit zoom control. Drag a header grip to split or swap panes;
   the preview animates to the drop target. Mouse and touch divider drags update the daemon.
 - Hardware keys, search, copy/paste, terminal images, mouse tracking, and
@@ -218,15 +220,20 @@ On iPhone the pill opens the pane menu, and dragging it up opens navigation.
 ## Keyboard
 
 Without a hardware keyboard, tapping a terminal, the agent composer, or any text
-field raises the on-screen keyboard. For a terminal, a row above it adds Escape, Tab,
-Control, Option, the arrows, and a hide button; the backend shows it only for an input
-whose Return inserts a line break, so settings fields, prompts, the palette, and host
-forms get the plain keyboard, and the phone shell uses its own key row instead.
-Control and Option latch for the next key, so Control then C sends Ctrl-C. The
+field raises the on-screen keyboard. For a terminal the app draws the phone's key row
+across the bottom of the window, above the keys: the prefix key, then esc, tab, ctrl,
+alt, `/`, `@`, the arrow pad, and hide. In the wide layout (640 points and up) the
+prefix key sends the prefix (⌃B unless the host rebinds it, `prefix2` when `prefix` is
+`None`, and no key when both are) instead of opening the pane menu. Settings fields,
+prompts, the palette, and host forms get the plain keyboard. The terminal example keeps the
+backend's own row (Escape, Tab, Control, Option, the arrows, and hide), which it shows
+only for an input whose Return inserts a line break.
+Ctrl and alt latch for the next key, so ctrl then C sends Ctrl-C. The
 workspace shrinks to the space above the docked keyboard, and a focused settings
 field scrolls back into view above it; a focused row of a long settings page keeps
 painting while it is off screen, so the keyboard stays up. A floating keyboard
-leaves the layout alone. Attaching a hardware
+leaves the layout alone; in the wide layout the key row still sits at the bottom of the
+window while it is up. Attaching a hardware
 keyboard hides the on-screen one, and detaching it brings it back for the focused
 field. Autocorrect, smart punctuation, and capitalization stay off unless a field
 asks for them.
@@ -253,6 +260,14 @@ phone) get a Done button above them; a comma from the decimal pad is typed as a 
 or Return in any settings field, commits the value and hides the keyboard. Return in the Hosts
 destination field connects and hides it too.
 
+In the wide layout, pausing after the prefix shows the which-key sheet at the bottom of the
+panes: the core bindings of the prefix table, or of a custom `-T` table, grouped as on the
+desktop. `?` (whatever is bound to `list-keys -N`) while the prefix is armed shows every
+binding instead and keeps the prefix armed, so the next key runs its binding. Any other key
+hides the sheet. The delay is a setting on this device (System > Navigation, 400 ms, 0 turns
+the sheet off and gives `?` back to the host's `list-keys`). The phone keeps its All bindings
+sheet.
+
 The view implements `UITextInput`, so IME composition (Japanese, Chinese, Korean),
 dead keys, dictation, and Pencil handwriting reach the focused field. While text is
 being composed, hardware keys go to the input method first.
@@ -261,10 +276,22 @@ being composed, hardware keys go to the input method first.
 
 - Each iPad window (Stage Manager, split view, or an external display) runs its own
   workspace with its own connection. New windows come from the system's window controls.
-- The iPadOS menu bar and the Command-hold shortcut list show the zz, File, and View
-  commands with their Command shortcuts: Settings, New Session, New Window, Split Right,
-  Split Down, Close Pane, Kill Window, Command Palette, Choose Window, Toggle Sidebar,
-  Zoom Pane, and UI zoom.
+- The iPadOS menu bar and the Command-hold shortcut list show the zz, File, Edit, View and
+  Help commands, with Command shortcuts where the desktop has them: Settings, New Session,
+  New Window, Split Right, Split Down, New Browser Pane, Switch Session (one row per session
+  on the host), Rename Session, Rename Window, Close Pane (Command-W), Kill Window, Kill
+  Session (asks first), Detach, Find, Copy Mode and Clear Scrollback in the active terminal,
+  Command Palette, Choose Window, Toggle Sidebar, Zoom Pane, Select Pane, UI zoom, Back,
+  Forward and Reload in the active browser pane, and links to the docs, release notes and a
+  new issue. Detach leaves the session running and shows the
+  empty workspace: Attach to session (New session when the host has none, Return or a tap),
+  Settings, and the prefix keys a session unlocks (`c`, `%`, `"`, `s`, `?`, or the keys the
+  host binds to those commands).
+- Command-1 through Command-9 open the first nine windows the sidebar lists, across sessions
+  and connected hosts, or the first nine chat rows in the chat view. Holding Command for a moment
+  shows each row's number in the sidebar. The phone layout leaves these keys to the pane.
+- Command-Shift-M stamps `user_marker seq=N` into the app log and the daemon's log and
+  confirms with a toast, so a moment worth reporting can be found later.
 - `zz://attach/<session>` (`zz-dev://` for development builds) switches the frontmost
   window to that session, or attaches to it after the next connect. Shortcuts can open it
   with the Open URL action. The deprecated native dev app also claims `zz-dev://`; remove
@@ -347,15 +374,18 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
   cursor, and padding remain visible as host-owned settings.
 - **Hosts:** the configured endpoint, connection status, and reconnect.
 - **Advanced:** command palette layout (tree or flat), host prefix, and command shortcuts;
-  Display: drawing under the home indicator, matching the system text size, and keeping
-  the screen awake while connected.
+  Navigation: the which-key delay; Display: drawing under the home indicator, matching the
+  system text size, and keeping the screen awake while connected.
 - **About:** app version and source link.
 
 The page omits desktop-only options and controls for unsupported pane kinds. iPhone also
 leaves out Panes and Status bar (the phone shell shows one pane without gaps or frames and
-has its own bottom bar), UI zoom, and Match system text size.
+has its own bottom bar), UI zoom, Match system text size, and the which-key delay.
 Interface and pane preferences are saved atomically in the app container
 at `Library/Application Support/ala/preferences.json` and restored on launch.
+Its `chrome_keys` list rebinds the app's own keys on this device, entries like
+`{"chrome-keybind": "prefix:y=open-settings"}` or `{"chrome-unbind": "ui:D-,"}` with the
+desktop's `chrome-keybind`/`chrome-unbind` grammar; there is no Settings page for it yet.
 Touch controls work without a keyboard; numeric values open a decimal pad and hex colors
 open the on-screen keyboard.
 

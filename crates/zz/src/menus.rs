@@ -3,6 +3,7 @@ use std::{collections::BTreeSet, sync::Arc};
 #[cfg(target_os = "macos")]
 use ala::SystemMenuType;
 use ala::{App, Entity, Global, Menu, MenuItem, OsAction};
+use zz_ui::settings::about::{DOCS_URL, ISSUES_URL, RELEASES_URL};
 
 #[cfg(target_os = "macos")]
 use crate::macos_app::{Hide, HideOthers, Minimize, Quit, ShowAll, Zoom};
@@ -72,9 +73,6 @@ pub(crate) struct SelectPane {
 pub(crate) struct OpenUrl {
     pub(crate) url: String,
 }
-
-pub(crate) const RELEASE_NOTES_URL: &str = "https://github.com/autistic-computer/zebrilus/releases";
-const DOCS_URL: &str = "https://github.com/autistic-computer/zebrilus/blob/main/docs/README.md";
 
 #[derive(Default)]
 struct MenuSessions(BTreeSet<String>);
@@ -227,12 +225,9 @@ fn menu_tree(sessions: &BTreeSet<String>) -> Vec<Menu> {
         Menu::new("Help").items([
             open_url("zz Documentation", DOCS_URL),
             open_url("Keyboard Shortcuts", DOCS_URL),
-            open_url("Release Notes", RELEASE_NOTES_URL),
+            open_url("Release Notes", RELEASES_URL),
             MenuItem::separator(),
-            open_url(
-                "Report an Issue",
-                "https://github.com/autistic-computer/zebrilus/issues/new",
-            ),
+            open_url("Report an Issue", ISSUES_URL),
             MenuItem::action("Open Logs", OpenLogs),
         ]),
     ]

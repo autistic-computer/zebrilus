@@ -21,11 +21,11 @@ use penna::{
     },
     blocks::sheet::{bottom_sheet, close_sheet},
     blocks::touch::{
-        ArrowPadEvent, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, Lift, LiftEvent,
-        PageDot, Pager, PagerEvent, PhoneFind, StackClose, StackMenu, StackMenuEvent, WhichKeyList,
-        page_dots_in,
+        ArrowPadEvent, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, KeyRowKey, Lift,
+        LiftEvent, PageDot, Pager, PagerEvent, PhoneFind, StackClose, StackMenu, StackMenuEvent,
+        WhichKeyList, page_dots_in,
     },
-    blocks::which_key::{WhichKeyCap, WhichKeyRow},
+    blocks::which_key::WhichKeyRow,
     components::kbd::Kbd,
 };
 use web_time::Instant;
@@ -255,6 +255,14 @@ fn send_chord(
     }
 }
 
+fn key_row(keys: &ToolKeys) -> KeyRow {
+    KeyRow::new(keys.row())
+        .trail(keys.trail())
+        .track_scroll(&keys.scroll)
+        .on_key(|keystroke, window, cx| dispatch_key(keystroke.clone(), window, cx))
+        .on_hide(|window, _| window.dismiss_virtual_keyboard())
+}
+
 fn key_row_lift(zone: Pixels, overlap: Pixels) -> Pixels {
     (zone - px(KEY_ROW_HEIGHT) - overlap).max(px(0.0))
 }
@@ -291,32 +299,22 @@ fn prefix_spelling(core: &zz_client::ClientCore) -> String {
         )
 }
 
+fn live_prefix(options: &zz_protocol::MuxOptions) -> Option<Keystroke> {
+    [
+        zz_protocol::MuxOptionKey::Prefix,
+        zz_protocol::MuxOptionKey::Prefix2,
+    ]
+    .into_iter()
+    .filter_map(|key| options.get(key))
+    .find(|option| !option.value.eq_ignore_ascii_case("none"))
+    .and_then(|option| tmux_keystroke(&zz_protocol::canonical_key(&option.value)))
+}
+
 fn binding_rows(core: &zz_client::ClientCore, prefix: &str) -> Arc<[WhichKeyRow]> {
-    let cap = |keys: &[String], yours: bool| WhichKeyCap {
-        keys: keys
-            .iter()
-            .map(|key| tmux_keystroke(key))
-            .collect::<Option<Vec<_>>>()
-            .unwrap_or_default(),
-        raw: keys.join(" ").into(),
-        yours,
-    };
     zz_client::which_key::action_rows(core.key_tables(), "prefix", prefix)
         .into_iter()
         .filter(|row| tmux_keystroke(row.first_key()).is_some())
-        .map(|row| WhichKeyRow {
-            id: row.first_key().to_owned().into(),
-            caps: row
-                .keys
-                .iter()
-                .map(|set| cap(&set.keys, set.yours))
-                .collect(),
-            label: row.label.into(),
-            group: row
-                .group
-                .map(|group| SharedString::new_static(group.title())),
-            repeat: row.repeat,
-        })
+        .map(|row| zz_ui::which_key::row(row, tmux_keystroke))
         .collect()
 }
 
@@ -358,6 +356,8 @@ impl AppShell {
             self.compact.compact_keyboard = Some(compact);
             #[cfg(any(target_os = "ios", target_os = "android"))]
             ala_platform::mobile::set_compact_keyboard(compact);
+            #[cfg(target_os = "ios")]
+            ala_platform::mobile::set_app_key_row(!compact);
         }
         if !compact {
             self.compact.chat_dock = None;
@@ -366,7 +366,6 @@ impl AppShell {
             }
             #[cfg(any(target_os = "ios", target_os = "android"))]
             ala_platform::mobile::set_status_bar_on_dark(None);
-            penna::blocks::touch::StickyModifiers::take(cx);
             if self.compact.pinch.take().is_some() {
                 self.terminal_resize_suppressed.set(false);
                 self.preferences.save();
@@ -1786,12 +1785,50 @@ impl AppShell {
             key.set_armed(armed, cx);
             key.set_keystroke(prefix, cx);
         });
-        KeyRow::new(keys.row())
-            .lead(keys.lead())
-            .trail(keys.trail())
-            .track_scroll(&keys.scroll)
-            .on_key(|keystroke, window, cx| dispatch_key(keystroke.clone(), window, cx))
-            .on_hide(|window, _| window.dismiss_virtual_keyboard())
+        key_row(&keys).lead(keys.lead())
+    }
+
+    pub(super) fn wide_key_row(
+        &mut self,
+        compact: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<KeyRow> {
+        if compact {
+            return None;
+        }
+        if !self.wide_keys_wanted(window, cx) {
+            penna::blocks::touch::StickyModifiers::take(cx);
+            self.close_key_stacks(cx);
+            return None;
+        }
+        let keys = self.tool_keys(window, cx);
+        let row = key_row(&keys);
+        let prefix = live_prefix(self.connection.read(cx).core.mux_options());
+        Some(match prefix {
+            Some(keystroke) => row.lead(KeyRowKey::Key {
+                label: Kbd::format(&keystroke).into(),
+                icon: None,
+                keystroke,
+            }),
+            None => row,
+        })
+    }
+
+    fn wide_keys_wanted(&self, window: &Window, cx: &App) -> bool {
+        #[cfg(target_os = "ios")]
+        if (ala_platform::mobile::soft_keyboard() || keyboard_visible(window))
+            && !ala_platform::mobile::hardware_keyboard()
+            && self
+                .terminals
+                .values()
+                .chain(self.output_terminal.iter().map(|(_, terminal)| terminal))
+                .any(|terminal| terminal.read(cx).typing(window))
+        {
+            return true;
+        }
+        let _ = (window, cx);
+        false
     }
 
     fn compact_bindings_sheet(
@@ -1954,6 +1991,25 @@ mod tests {
         assert_eq!(top(0.0), zone);
         assert_eq!(top(20.0), zone);
         assert_eq!(top(300.0), px(KEY_ROW_HEIGHT + 300.0));
+    }
+
+    #[test]
+    fn the_wide_prefix_key_sends_a_live_prefix_or_is_left_out() {
+        use zz_protocol::{MuxOptionKey, MuxOptionSource, MuxOptions};
+        let mut options = MuxOptions::default();
+        assert_eq!(live_prefix(&options), tmux_keystroke("C-b"));
+        options.set(
+            MuxOptionKey::Prefix,
+            "None",
+            MuxOptionSource::RuntimeCommand,
+        );
+        assert_eq!(live_prefix(&options), None);
+        options.set(
+            MuxOptionKey::Prefix2,
+            "C-a",
+            MuxOptionSource::RuntimeCommand,
+        );
+        assert_eq!(live_prefix(&options), tmux_keystroke("C-a"));
     }
 
     #[test]

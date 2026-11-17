@@ -126,6 +126,14 @@ Dialogs, popups, menus, local palettes, and Settings retain their keyboard handl
 For example, `chrome-keybind = ui:D-2=select-window-4` selects the fourth window
 with Cmd+2; `chrome-unbind = ui:D-2` restores the pane's handling of that chord.
 
+The thin clients (iOS, Android, web) never read `zz/config`. Each device keeps its own
+overrides in its preferences as `chrome_keys`, a list in file order whose entries are
+`{"chrome-keybind": "<table>:<key>=<action>"}` or `{"chrome-unbind": "<table>:<key>"}`, parsed by
+the same `zz_client::chrome_override` code the desktop uses. They apply to the `ui`, `sidebar`,
+`terminal` and `prefix` tables the thin clients resolve, and to both the platform's defaults and
+the Apple ones they fall back to; an entry that does not parse is skipped with a warning. Nothing
+in Settings edits them yet.
+
 ## Client-local keys
 
 The client-local schema includes these scalar settings and chrome colors.

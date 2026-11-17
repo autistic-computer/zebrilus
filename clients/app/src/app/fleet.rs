@@ -188,6 +188,8 @@ impl AppShell {
             self.command("select-window", vec!["-t".into(), target.clone()], cx);
             self.command("select-pane", vec!["-Z".into(), "-t".into(), target], cx);
         }
+        #[cfg(target_os = "ios")]
+        self.rebuild_menus(cx);
         cx.notify();
     }
 
@@ -215,6 +217,8 @@ impl AppShell {
         self.prompt_revision = self.prompt_revision.wrapping_add(1).max(1);
         self.chooser_revision = self.chooser_revision.wrapping_add(1).max(1);
         self.compact.reset_host();
+        self.which_key = None;
+        self.which_key_timer = None;
     }
 }
 

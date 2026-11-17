@@ -9,6 +9,9 @@ mod fleet;
 mod floating;
 mod gui;
 mod hosts;
+mod keys;
+#[cfg(target_os = "ios")]
+mod menu_bar;
 mod picker;
 mod providers;
 mod settings;
@@ -21,14 +24,17 @@ use std::{
     cell::{Cell, RefCell},
     collections::{BTreeSet, HashMap},
     rc::Rc,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use ala::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, Context, Corners, DragMoveEvent, Entity,
-    FocusHandle, Focusable, IntoElement, KeyDownEvent, KeyUpEvent, MouseButton, Pixels, Point,
-    Render, ScrollStrategy, Subscription, UniformListScrollHandle, Window, div, prelude::*, px,
-    uniform_list,
+    FocusHandle, Focusable, IntoElement, KeyDownEvent, KeyUpEvent, Keystroke, Modifiers,
+    ModifiersChangedEvent, MouseButton, Pixels, Point, Render, ScrollStrategy, Subscription, Task,
+    UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use penna::{
     ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Label, Panel,
@@ -36,8 +42,8 @@ use penna::{
     components::button::{Button, ButtonLook, ButtonVariants as _},
 };
 use zz_client::{
-    ChromeAction, ChromeKeymap, ChromeProfile, DropZone, PaneRect, UI_TABLE, coerced_drop_zone,
-    drop_preview_bounds, drop_zone_at, new_chat::agent_picker_place, pane_drop_command, pane_rects,
+    ChromeAction, DropZone, PaneRect, UI_TABLE, coerced_drop_zone, drop_preview_bounds,
+    drop_zone_at, new_chat::agent_picker_place, pane_drop_command, pane_rects,
     predicted_drop_layout, split_ratio_basis,
 };
 use zz_protocol::{
@@ -72,6 +78,7 @@ use crate::{
         CommandPaletteEvent, CommandPaletteView, palette_backend, palette_backend_with,
     },
     connection::Connection,
+    preferences::ChromeKeymaps,
     roster::{HostRequest, Roster},
     terminal::TerminalPane,
 };
@@ -152,7 +159,9 @@ pub struct AppShell {
     sidebar_active: Option<sidebar::Node>,
     flat: sidebar::Flat,
     unseen_agents: BTreeSet<PaneId>,
-    chrome: ChromeKeymap,
+    chrome: ChromeKeymaps,
+    window_shortcuts: bool,
+    window_shortcut_timer: Option<Task<()>>,
     prompt: Option<Entity<CommandPaletteView>>,
     prompt_revision: u64,
     chooser_revision: u64,
@@ -179,7 +188,27 @@ pub struct AppShell {
     pane_arrivals: PaneArrivals,
     rendered_drop_preview: Rc<Cell<DropPreviewFrame>>,
     compact: compact::CompactState,
+    which_key: Option<zz_ui::which_key::WhichKeySheet>,
+    which_key_timer: Option<Task<()>>,
+    #[cfg(target_os = "ios")]
+    menu_sessions: Option<Vec<(String, zz_protocol::SessionId)>>,
     _subscriptions: Vec<Subscription>,
+}
+
+const WINDOW_SHORTCUT_HINT_DELAY: std::time::Duration = std::time::Duration::from_millis(300);
+
+static DEBUG_MARK_SEQ: AtomicU64 = AtomicU64::new(0);
+
+fn debug_marker_key(keystroke: &Keystroke) -> bool {
+    let modifiers = keystroke.modifiers;
+    let primary = if cfg!(target_os = "ios") {
+        modifiers.platform && !modifiers.control
+    } else if cfg!(target_os = "android") {
+        modifiers.control && !modifiers.platform
+    } else {
+        modifiers.platform != modifiers.control
+    };
+    keystroke.key == "m" && modifiers.shift && !modifiers.alt && !modifiers.function && primary
 }
 
 fn watch_connection(
@@ -295,6 +324,7 @@ fn watch_connection(
                     this.pane_layout_override = None;
                 }
                 zz_client::CoreEvent::FocusSidebar => this.focus_sidebar(window, cx),
+                zz_client::CoreEvent::KeyTableChanged => this.key_table_changed(window, cx),
                 zz_client::CoreEvent::OpenPathPicker { pane, start_dir } => {
                     this.open_files_palette(*pane, start_dir.clone(), window, cx);
                 }
@@ -314,6 +344,8 @@ fn watch_connection(
                 }
                 _ => {}
             }
+            #[cfg(target_os = "ios")]
+            this.sync_menus(cx);
             cx.notify();
         },
     );
@@ -348,6 +380,12 @@ impl AppShell {
                     "shift" | "control" | "alt" | "platform" | "function"
                 )
             {
+                if !this.window_shortcuts {
+                    this.window_shortcut_timer = None;
+                }
+                if !(event.is_held && this.connection.read(cx).core.prefix_armed()) {
+                    this.hide_which_key(cx);
+                }
                 this.key_down(
                     &KeyDownEvent {
                         keystroke: event.keystroke.clone(),
@@ -362,6 +400,8 @@ impl AppShell {
         let key_events = cx.intercept_keystrokes(key_listener);
         let connection_subscriptions = watch_connection(&connection, window, cx);
         let preferences = settings::Preferences::load();
+        let chrome = preferences.chrome_keymaps();
+        cx.set_global(chrome.clone());
         let appearance_view = cx.weak_entity();
         let appearance_observer = window.observe_window_appearance(move |window, cx| {
             let _ = appearance_view.update(cx, |this, cx| {
@@ -372,6 +412,13 @@ impl AppShell {
             let active = window.is_window_active();
             for connection in this.host_connections() {
                 connection.update(cx, |connection, cx| connection.set_focused(active, cx));
+            }
+            if !active {
+                this.hide_window_shortcuts(cx);
+            }
+            #[cfg(target_os = "ios")]
+            if active {
+                this.rebuild_menus(cx);
             }
         });
         let settings_controls = settings::Controls::new(&preferences, window, cx);
@@ -425,11 +472,9 @@ impl AppShell {
             sidebar_active: None,
             flat: sidebar::Flat::default(),
             unseen_agents: BTreeSet::new(),
-            chrome: ChromeKeymap::for_profile(if cfg!(target_os = "ios") {
-                ChromeProfile::DesktopApple
-            } else {
-                ChromeProfile::Desktop
-            }),
+            chrome,
+            window_shortcuts: false,
+            window_shortcut_timer: None,
             prompt: None,
             prompt_revision: 1,
             chooser_revision: 1,
@@ -456,6 +501,10 @@ impl AppShell {
             pane_arrivals: PaneArrivals::default(),
             rendered_drop_preview: Rc::default(),
             compact: compact::CompactState::default(),
+            which_key: None,
+            which_key_timer: None,
+            #[cfg(target_os = "ios")]
+            menu_sessions: None,
             _subscriptions: vec![
                 key_events,
                 appearance_observer,
@@ -471,7 +520,7 @@ impl AppShell {
         this.preferences.apply(&this.connection, window, cx);
         this.sync_roster(cx);
         #[cfg(target_os = "ios")]
-        cx.set_menus(this.menus());
+        this.sync_menus(cx);
         #[cfg(target_os = "android")]
         window.on_system_back(cx, {
             let view = cx.weak_entity();
@@ -644,6 +693,11 @@ impl AppShell {
             cx.stop_propagation();
             return;
         }
+        if debug_marker_key(&event.keystroke) {
+            self.debug_marker(window, cx);
+            cx.stop_propagation();
+            return;
+        }
         let input = crate::terminal::key_input(event);
         let core = &self.connection.read(cx).core;
         if self.prompt.as_ref().is_some_and(|palette| {
@@ -720,6 +774,21 @@ impl AppShell {
             && !event.keystroke.modifiers.function
             && core.claims_prefix_input(&input)
         {
+            if !event.is_held && self.show_all_keys(&input, window, cx) {
+                cx.stop_propagation();
+                return;
+            }
+            if !event.is_held
+                && let Some(action) = self
+                    .prefix_chrome_action(&input, cx)
+                    .filter(|action| Self::runs_chrome_action(*action, window))
+            {
+                self.connection.update(cx, Connection::cancel_prefix);
+                self.chrome_command(action, window, cx);
+                cx.stop_propagation();
+                return;
+            }
+            let core = &self.connection.read(cx).core;
             if (!event.is_held || !core.prefix_armed())
                 && let Some(pane) = self.active_window(cx).map(|window| window.active_pane)
             {
@@ -735,30 +804,113 @@ impl AppShell {
             cx.stop_propagation();
             return;
         }
+        if self.empty_workspace_key(event, window, cx) {
+            self.open_empty_workspace(cx);
+            cx.stop_propagation();
+            return;
+        }
         if self.sidebar_focus.is_focused(window)
             && self.settings.is_none()
-            && let Some(action) = self.chrome.resolve(zz_client::SIDEBAR_TABLE, &input)
+            && let Some(action) = self.chrome.native.resolve(zz_client::SIDEBAR_TABLE, &input)
             && sidebar::handle_key(self, action, window, cx)
         {
             cx.stop_propagation();
             return;
         }
-        let action = self.chrome.resolve(UI_TABLE, &input).or_else(|| {
-            ChromeKeymap::for_profile(ChromeProfile::DesktopApple).resolve(UI_TABLE, &input)
+        let action = self.chrome.native.resolve(UI_TABLE, &input).or_else(|| {
+            self.chrome
+                .apple
+                .resolve(UI_TABLE, &input)
+                .filter(|action| !matches!(action, ChromeAction::SelectWindow(_)))
         });
-        match action {
-            Some(
-                action @ (ChromeAction::OpenCommandPalette
-                | ChromeAction::OpenSettings
-                | ChromeAction::ToggleSidebar
-                | ChromeAction::UiZoomIn
-                | ChromeAction::UiZoomOut
-                | ChromeAction::UiZoomReset
-                | ChromeAction::ClosePane),
-            ) => self.chrome_command(action, window, cx),
-            _ => return,
-        }
+        let Some(action) = action.filter(|action| Self::runs_chrome_action(*action, window)) else {
+            return;
+        };
+        self.chrome_command(action, window, cx);
         cx.stop_propagation();
+    }
+
+    fn runs_chrome_action(action: ChromeAction, window: &Window) -> bool {
+        match action {
+            ChromeAction::SelectWindow(_)
+            | ChromeAction::NewSession
+            | ChromeAction::NewWindow
+            | ChromeAction::SplitRight
+            | ChromeAction::SplitDown
+            | ChromeAction::Detach => !Self::narrow(window),
+            ChromeAction::OpenCommandPalette
+            | ChromeAction::OpenSettings
+            | ChromeAction::ToggleSidebar
+            | ChromeAction::UiZoomIn
+            | ChromeAction::UiZoomOut
+            | ChromeAction::UiZoomReset
+            | ChromeAction::ClosePane => true,
+            _ => false,
+        }
+    }
+
+    fn prefix_chrome_action(
+        &self,
+        input: &zz_terminal::KeyInput,
+        cx: &App,
+    ) -> Option<ChromeAction> {
+        let core = &self.connection.read(cx).core;
+        if core.key_table() != Some(("prefix", false))
+            || zz_client::prefix_keys::binds_input(core.prefix_bindings(), input)
+        {
+            return None;
+        }
+        self.chrome.native.resolve(zz_client::PREFIX_TABLE, input)
+    }
+
+    fn window_shortcut_modifiers(&self) -> Option<Modifiers> {
+        self.window_shortcut_key(0).map(|stroke| stroke.modifiers)
+    }
+
+    fn window_shortcut_key(&self, position: u8) -> Option<Keystroke> {
+        self.chrome_keystroke(ChromeAction::SelectWindow(position))
+    }
+
+    fn on_window_shortcut_modifiers(
+        &mut self,
+        event: &ModifiersChangedEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if Self::narrow(window) || self.window_shortcut_modifiers() != Some(event.modifiers) {
+            self.hide_window_shortcuts(cx);
+            return;
+        }
+        if self.window_shortcut_timer.is_some() {
+            return;
+        }
+        self.window_shortcut_timer = Some(cx.spawn_in(window, async move |view, cx| {
+            cx.background_executor()
+                .timer(WINDOW_SHORTCUT_HINT_DELAY)
+                .await;
+            view.update(cx, |view, cx| {
+                view.window_shortcuts = true;
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    fn hide_window_shortcuts(&mut self, cx: &mut Context<Self>) {
+        self.window_shortcut_timer = None;
+        if std::mem::take(&mut self.window_shortcuts) {
+            cx.notify();
+        }
+    }
+
+    fn debug_marker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let seq = DEBUG_MARK_SEQ.fetch_add(1, Ordering::Relaxed) + 1;
+        log::info!(target: "zz_app::diagnostics::marker", "user_marker seq={seq}");
+        if self.connection.read(cx).connected {
+            self.command("debug-marker", vec![format!("seq={seq}")], cx);
+        }
+        use penna::{WindowExt as _, blocks::notification::Notification};
+        window.push_notification(Notification::info(format!("log marker #{seq}")), cx);
     }
 
     fn chrome_command(
@@ -804,6 +956,12 @@ impl AppShell {
                 }
                 cx.notify();
             }
+            ChromeAction::SelectWindow(position) => self.open_window_shortcut(position, window, cx),
+            ChromeAction::Detach => {
+                if self.connection.read(cx).connected {
+                    self.command("detach-client", Vec::new(), cx);
+                }
+            }
             ChromeAction::NewSession => self.tmux_command("new-session", cx),
             ChromeAction::NewWindow => self.tmux_command("new-window", cx),
             ChromeAction::SplitRight => self.tmux_command("split-window -h", cx),
@@ -822,68 +980,6 @@ impl AppShell {
             self.command(name, words.map(str::to_owned).collect(), cx);
         }
         cx.notify();
-    }
-
-    #[cfg(target_os = "ios")]
-    fn menus(&self) -> Vec<ala::Menu> {
-        let bindings = self.chrome.bindings();
-        let chrome = |title: &'static str, action: ChromeAction| {
-            ala::MenuItem::action(
-                title,
-                ala_platform::ios::MenuCommand {
-                    id: action.name().into(),
-                    shortcut: bindings
-                        .iter()
-                        .find(|(table, _, bound)| table == UI_TABLE && *bound == action)
-                        .map(|(_, key, _)| key.clone().into()),
-                },
-            )
-        };
-        let tmux = |title: &'static str, command: &'static str| {
-            ala::MenuItem::action(
-                title,
-                ala_platform::ios::MenuCommand {
-                    id: format!("tmux:{command}").into(),
-                    shortcut: None,
-                },
-            )
-        };
-        vec![
-            ala::Menu::new("zz").items([chrome("Settings…", ChromeAction::OpenSettings)]),
-            ala::Menu::new("File").items([
-                chrome("New Session", ChromeAction::NewSession),
-                chrome("New Window", ChromeAction::NewWindow),
-                chrome("Split Right", ChromeAction::SplitRight),
-                chrome("Split Down", ChromeAction::SplitDown),
-                ala::MenuItem::separator(),
-                chrome("Close Pane", ChromeAction::ClosePane),
-                tmux("Kill Window", "kill-window"),
-            ]),
-            ala::Menu::new("View").items([
-                chrome("Command Palette…", ChromeAction::OpenCommandPalette),
-                tmux("Choose Window…", "choose-tree -w"),
-                chrome("Toggle Sidebar", ChromeAction::ToggleSidebar),
-                tmux("Zoom Pane", "resize-pane -Z"),
-                ala::MenuItem::separator(),
-                chrome("Zoom In", ChromeAction::UiZoomIn),
-                chrome("Zoom Out", ChromeAction::UiZoomOut),
-                chrome("Reset Zoom", ChromeAction::UiZoomReset),
-            ]),
-        ]
-    }
-
-    #[cfg(target_os = "ios")]
-    fn menu_command(
-        &mut self,
-        command: &ala_platform::ios::MenuCommand,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(command) = command.id.strip_prefix("tmux:") {
-            self.tmux_command(command, cx);
-        } else if let Some(action) = ChromeAction::from_name(&command.id) {
-            self.chrome_command(action, window, cx);
-        }
     }
 
     pub(super) fn open_palette(
@@ -1116,6 +1212,7 @@ impl AppShell {
                         .then_some(self.sidebar_selection)
                         .flatten(),
                     ground,
+                    shortcuts: self.window_shortcut_keys(cx),
                 },
                 sidebar::tree_rows(self, cx),
                 &self.sidebar_scroll,
@@ -1708,7 +1805,7 @@ impl AppShell {
             place,
             None,
             &buttons,
-            &zz_ui::pane::PaneActionKeys::default(),
+            &self.pane_action_keys(cx),
             ala::px(0.0),
             move |action, _, cx| {
                 if action == zz_ui::pane::TerminalPaneAction::Flip {
@@ -2037,6 +2134,10 @@ impl AppShell {
                     .children(sheet)
                     .into_any_element();
             }
+            if !Self::narrow(window) {
+                let empty = self.empty_workspace(window, cx);
+                return self.plated("web-empty-pane", empty, window, cx);
+            }
             let has_sessions = !self.connection.read(cx).core.snapshot().sessions.is_empty();
             let empty = div()
                 .flex()
@@ -2057,22 +2158,7 @@ impl AppShell {
                         } else {
                             "Create session"
                         })
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            let first = this
-                                .connection
-                                .read(cx)
-                                .core
-                                .snapshot()
-                                .sessions
-                                .first()
-                                .map(|session| session.id);
-                            if let Some(session) = first {
-                                this.connection
-                                    .update(cx, |connection, cx| connection.attach(session, cx));
-                            } else {
-                                this.command("new-session", Vec::new(), cx);
-                            }
-                        })),
+                        .on_click(cx.listener(|this, _, _, cx| this.open_empty_workspace(cx))),
                 )
                 .into_any_element();
             return self.plated("web-empty-pane", empty, window, cx);
@@ -2525,6 +2611,7 @@ impl AppShell {
                     .into_any_element(),
             );
         }
+        overlays.extend(self.which_key_overlay(window, cx));
         let canvas_bounds = Rc::clone(&self.pane_canvas_bounds);
         let release_view = cx.weak_entity();
         let preview = self.pane_drop_preview(cx);
@@ -3213,6 +3300,7 @@ impl Render for AppShell {
         self.open_machines_when_unattached(window, cx);
         let compact = self.compact_active(window, cx);
         self.sync_compact_mode(compact, cx);
+        let key_row = self.wide_key_row(compact, window, cx);
         self.sync_keyboard_motion(window);
         #[cfg(target_os = "android")]
         self.sync_system_back(dialog, window, cx);
@@ -3281,6 +3369,7 @@ impl Render for AppShell {
                     )),
                 overlays,
             )
+            .children(key_row)
         } else {
             self.compact_shell(terminal_overlays, overlays, window, cx)
         };
@@ -3361,6 +3450,7 @@ impl Render for AppShell {
         let shell = shell
             .track_focus(&self.focus)
             .on_key_up(cx.listener(Self::key_up))
+            .on_modifiers_changed(cx.listener(Self::on_window_shortcut_modifiers))
             .map(|shell| {
                 #[cfg(target_os = "ios")]
                 let shell = shell.on_action(cx.listener(Self::menu_command));

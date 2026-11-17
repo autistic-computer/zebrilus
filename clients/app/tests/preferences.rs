@@ -92,6 +92,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     assert!(preferences.extend_bottom_safe_area);
     assert!(preferences.keep_screen_awake);
     assert!(!preferences.system_text_size);
+    assert_eq!(preferences.which_key_delay, 400.0);
     assert_eq!(
         preferences.appearance,
         Appearance {
@@ -126,6 +127,8 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     expected["pointer"] = "hand".into();
     expected["motion"] = "default".into();
     expected["mono_font_family"] = "".into();
+    expected["which_key_delay"] = 400.0.into();
+    expected["chrome_keys"] = serde_json::json!([]);
     let fields = expected.as_object_mut().unwrap();
     for retired in [
         "theme",

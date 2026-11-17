@@ -197,6 +197,30 @@ impl PaneActionKeys {
     }
 
     #[must_use]
+    pub fn bound(
+        prefix: Option<&str>,
+        bindings: &[zz_protocol::KeyBindingSnapshot],
+        display: impl Fn(&str) -> Option<Keystroke>,
+    ) -> Self {
+        use zz_client::prefix_keys::PaneKey;
+        Self::new(
+            zz_client::prefix_keys::pane_keys(prefix, bindings, display)
+                .into_iter()
+                .map(|(key, keys)| {
+                    let action = match key {
+                        PaneKey::SplitBottom => TerminalPaneAction::SplitBottom,
+                        PaneKey::SplitRight => TerminalPaneAction::SplitRight,
+                        PaneKey::Float => TerminalPaneAction::Float,
+                        PaneKey::Tile => TerminalPaneAction::Tile,
+                        PaneKey::Zoom => TerminalPaneAction::Zoom,
+                        PaneKey::Close => TerminalPaneAction::Close,
+                    };
+                    (action, keys.into())
+                }),
+        )
+    }
+
+    #[must_use]
     pub fn of(&self, action: TerminalPaneAction) -> &[Keystroke] {
         self.0
             .iter()

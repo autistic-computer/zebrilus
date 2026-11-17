@@ -13,8 +13,8 @@ use zz_client::{
     new_chat::leave_picker_command,
     sidebar::SidebarTarget,
     window_summary::{
-        ChatHints, ChatMachine, ChatParent, ChatRow, chat_view_lists, number_chat_rows,
-        summarize_chat, summarize_chat_machine,
+        ChatHints, ChatMachine, ChatParent, chat_shortcut_windows, chat_view_lists,
+        number_chat_rows, summarize_chat, summarize_chat_machine,
     },
 };
 use zz_protocol::{MuxSnapshot, SessionId, WindowId, WindowSnapshot};
@@ -161,18 +161,6 @@ fn chat_machines<'a>(
     machines
         .into_iter()
         .map(|(host, _, machine)| (host, machine))
-        .collect()
-}
-
-fn chat_shortcut_windows(machines: &[(HostId, ChatMachine)]) -> Vec<(HostId, WindowId)> {
-    machines
-        .iter()
-        .flat_map(|(host, machine)| {
-            machine.rows.iter().filter_map(move |row| match row {
-                ChatRow::Window(row) => row.shortcut.map(|_| (*host, row.summary.window)),
-                ChatRow::Pile(_) => None,
-            })
-        })
         .collect()
 }
 

@@ -1,9 +1,9 @@
 use super::AppShell;
 use crate::{connection::Connection, roster::HostRequest};
 use ala::{
-    AnyElement, App, Context, Entity, FocusHandle, Hsla, ListSizingBehavior, MouseButton,
-    ScrollHandle, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*, px,
-    uniform_list,
+    AnyElement, App, Context, Entity, FocusHandle, Hsla, Keystroke, ListSizingBehavior,
+    MouseButton, ScrollHandle, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*,
+    px, uniform_list,
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName,
@@ -22,13 +22,13 @@ use zz_client::{
     ChromeAction,
     new_chat::{ChatViewPlace, leave_picker_command},
     sidebar::{
-        SidebarBadge, SidebarNode, SidebarRow as TreeRow, navigation_rows, sidebar_activation,
-        sidebar_active, sidebar_add_command, sidebar_close_command, sidebar_rename_command,
-        sidebar_rows,
+        SidebarBadge, SidebarNode, SidebarRow as TreeRow, WINDOW_SHORTCUTS, navigation_rows,
+        shortcut_windows, sidebar_activation, sidebar_active, sidebar_add_command,
+        sidebar_close_command, sidebar_rename_command, sidebar_rows,
     },
     window_summary::{
-        ChatCurrent, ChatHints, ChatMachine, ChatParent, PaneTag, number_chat_rows,
-        summarize_chat_machine,
+        ChatCurrent, ChatHints, ChatMachine, ChatParent, PaneTag, chat_shortcut_windows,
+        number_chat_rows, summarize_chat_machine,
     },
 };
 use zz_protocol::{CommandInvocation, HostPlatform, MuxSnapshot, WindowId};
@@ -46,7 +46,7 @@ use zz_ui::{
             tree_row_menu,
         },
         workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_opened,
-        workspace_tree_row,
+        workspace_tree_row, workspace_tree_shortcut,
     },
     program::program_mark,
 };
@@ -345,6 +345,7 @@ pub(super) struct Runtime {
     pub view: Entity<AppShell>,
     pub selected: Option<Node>,
     pub ground: Ground,
+    pub shortcuts: Rc<[(PaletteHostId, WindowId, Keystroke)]>,
 }
 
 pub(super) fn session_tree(
@@ -500,28 +501,10 @@ pub(super) fn flat_tree(
     let pages = view.host_pages(cx);
     let flat = &view.flat;
     let none = HostRows::default();
-    let mut machines = pages
-        .iter()
-        .map(|page| {
-            let rows = flat.hosts.get(&page.id).unwrap_or(&none);
-            page.connection
-                .as_ref()
-                .map_or_else(ChatMachine::default, |connection| {
-                    summarize_chat_machine(
-                        &connection.read(cx).core.snapshot().sessions,
-                        &rows.hints,
-                        |parent| match parent {
-                            ChatParent::Window(window) => rows.open.contains(&window),
-                            ChatParent::Pile => rows.pile,
-                        },
-                    )
-                })
-        })
-        .collect::<Vec<_>>();
-    number_chat_rows(&mut machines);
+    let machines = chat_machines(view, &pages, cx);
     let mut current = None;
     let mut hosts = Vec::with_capacity(pages.len());
-    for (page, machine) in pages.iter().zip(machines) {
+    for (page, (_, machine)) in pages.iter().zip(machines) {
         let id = page.id;
         let rows = flat.hosts.get(&id).unwrap_or(&none);
         let Some(connection) = &page.connection else {
@@ -548,7 +531,8 @@ pub(super) fn flat_tree(
             host_connection(connection),
             machine,
             connection.clock.now(super::unix_seconds()),
-        );
+        )
+        .shortcuts(|position| view.window_shortcut(position));
         host.folded = rows.folded;
         host.platform = connection.core.host_platform();
         hosts.push(host);
@@ -611,6 +595,113 @@ pub(super) fn flat_tree(
         .bottom_fade(scroll, fade, WORKSPACE_SIDEBAR_FADE_HEIGHT)
         .vertical_scrollbar(scroll)
         .into_any_element()
+}
+
+fn chat_machines(
+    view: &AppShell,
+    pages: &[super::compact::HostPage],
+    cx: &App,
+) -> Vec<(PaletteHostId, ChatMachine)> {
+    let none = HostRows::default();
+    let mut machines = pages
+        .iter()
+        .map(|page| {
+            let rows = view.flat.hosts.get(&page.id).unwrap_or(&none);
+            let machine =
+                page.connection
+                    .as_ref()
+                    .map_or_else(ChatMachine::default, |connection| {
+                        summarize_chat_machine(
+                            &connection.read(cx).core.snapshot().sessions,
+                            &rows.hints,
+                            |parent| match parent {
+                                ChatParent::Window(window) => rows.open.contains(&window),
+                                ChatParent::Pile => rows.pile,
+                            },
+                        )
+                    });
+            (page.id, machine)
+        })
+        .collect::<Vec<_>>();
+    number_chat_rows(
+        machines
+            .iter_mut()
+            .zip(pages)
+            .filter(|(_, page)| {
+                page.connection
+                    .as_ref()
+                    .is_some_and(|connection| connection.read(cx).connected)
+            })
+            .map(|((_, machine), _)| machine),
+    );
+    machines
+}
+
+fn shortcut_targets(view: &AppShell, cx: &App) -> Vec<(PaletteHostId, WindowId)> {
+    let pages = view.host_pages(cx);
+    if view.preferences.flat_sidebar {
+        return chat_shortcut_windows(&chat_machines(view, &pages, cx));
+    }
+    shortcut_windows(pages.iter().filter_map(|page| {
+        let connection = page.connection.as_ref()?.read(cx);
+        connection.connected.then(|| {
+            let windows = connection
+                .core
+                .snapshot()
+                .sessions
+                .iter()
+                .flat_map(|session| session.windows.iter().map(|window| window.id))
+                .collect::<Vec<_>>();
+            (page.id, windows)
+        })
+    }))
+}
+
+impl AppShell {
+    pub(super) fn window_shortcut(&self, position: u8) -> Option<Keystroke> {
+        if !self.window_shortcuts || position >= WINDOW_SHORTCUTS {
+            return None;
+        }
+        self.window_shortcut_key(position)
+    }
+
+    pub(super) fn window_shortcut_keys(
+        &self,
+        cx: &App,
+    ) -> Rc<[(PaletteHostId, WindowId, Keystroke)]> {
+        if !self.window_shortcuts {
+            return Rc::from([]);
+        }
+        shortcut_targets(self, cx)
+            .into_iter()
+            .zip(0..WINDOW_SHORTCUTS)
+            .filter_map(|((host, window), position)| {
+                Some((host, window, self.window_shortcut(position)?))
+            })
+            .collect()
+    }
+
+    pub(super) fn open_window_shortcut(
+        &mut self,
+        position: u8,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((host, id)) = shortcut_targets(self, cx)
+            .get(usize::from(position))
+            .copied()
+        else {
+            return;
+        };
+        if self.preferences.flat_sidebar {
+            flat_event(self, FlatEvent::Open(host, id), window, cx);
+        } else {
+            self.open_on_host(host, Target::Window(id), window, cx);
+        }
+        if self.slideover || self.sidebar_focus.is_focused(window) {
+            self.release_sidebar_focus(window, cx);
+        }
+    }
 }
 
 fn current_chat(connection: &Connection, machine: &ChatMachine) -> Option<ChatCurrent> {
@@ -1084,39 +1175,53 @@ fn render_row(
     let connection = entry.connection.clone();
     let focus = runtime.focus.clone();
     let view = runtime.view.clone();
-    let row = workspace_tree_row(
-        format!("web-tree-row-{id}"),
-        entry.row.depth,
-        active,
-        selected,
-        runtime.focused,
-        connected,
-        is_host || entry.row.expandable || connected,
-        !is_host,
-        group.into(),
-        marker,
-        div()
-            .flex()
-            .min_w_0()
-            .items_baseline()
-            .gap_2()
-            .text_color(color)
-            .child(
-                div()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .child(entry.row.label.clone()),
-            )
-            .children(
-                entry
-                    .row
-                    .index
-                    .clone()
-                    .map(|index| div().flex_none().text_color(ink.faint).child(index)),
-            ),
-        actions,
-        runtime.ground,
-        cx,
+    let shortcut = match target {
+        Target::Window(window_id) => runtime
+            .shortcuts
+            .iter()
+            .find(|(shortcut_host, shortcut_window, _)| {
+                (*shortcut_host, *shortcut_window) == (host, window_id)
+            })
+            .map(|(_, _, stroke)| stroke.clone()),
+        _ => None,
+    };
+    let row = workspace_tree_shortcut(
+        workspace_tree_row(
+            format!("web-tree-row-{id}"),
+            entry.row.depth,
+            active,
+            selected,
+            runtime.focused,
+            connected,
+            is_host || entry.row.expandable || connected,
+            !is_host,
+            group.into(),
+            marker,
+            div()
+                .flex()
+                .min_w_0()
+                .items_baseline()
+                .gap_2()
+                .text_color(color)
+                .child(
+                    div()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .child(entry.row.label.clone()),
+                )
+                .children(
+                    entry
+                        .row
+                        .index
+                        .clone()
+                        .map(|index| div().flex_none().text_color(ink.faint).child(index)),
+                ),
+            actions,
+            runtime.ground,
+            cx,
+        ),
+        shortcut,
+        ink.ground,
     )
     .on_mouse_down(MouseButton::Left, move |_, window, cx| {
         focus.focus(window, cx);

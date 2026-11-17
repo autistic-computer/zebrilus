@@ -104,7 +104,9 @@ geometry caches across same-actor updates and resets them only for a new actor o
 (`prefix` answers the key after the prefix when the daemon's prefix table leaves it unbound). It uses the
 same `KeyTables` resolution rules as the daemon contract, with a chrome-only grammar that preserves
 Command/Super (`D-`) and Shift (`S-`) chords. `ChromeProfile` supplies TUI, desktop, and Apple
-defaults; `chrome-keybind` and `chrome-unbind` apply user overrides. Skins resolve a key to a
+defaults; `chrome-keybind` and `chrome-unbind` apply user overrides, parsed by `chrome_override`
+(`parse_bind`, `parse_unbind`, the ala spelling bridge) and applied with `ChromeKeymap::apply`, which
+the desktop config and the thin clients' preferences share. Skins resolve a key to a
 `ChromeAction` and apply the action instead of matching chords in view code.
 
 # Overlay and palette rules

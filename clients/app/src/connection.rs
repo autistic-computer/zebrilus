@@ -470,7 +470,7 @@ impl Connection {
         request_id
     }
 
-    fn cancel_prefix(&mut self, cx: &mut Context<Self>) {
+    pub fn cancel_prefix(&mut self, cx: &mut Context<Self>) {
         if self.connected && self.prefix_cancel_pending.is_none() {
             let request_id = self.next_request_id();
             self.prefix_cancel_pending = Some(request_id);

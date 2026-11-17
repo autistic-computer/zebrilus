@@ -483,6 +483,13 @@ impl ClientCore {
     }
 
     #[must_use]
+    pub fn canonical_prefix(&self) -> Option<String> {
+        self.mux_options
+            .get(zz_protocol::MuxOptionKey::Prefix)
+            .map(|option| zz_protocol::canonical_key(&option.value))
+    }
+
+    #[must_use]
     pub fn key_tables(&self) -> &[KeyTableSnapshot] {
         &self.key_tables
     }

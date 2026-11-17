@@ -1871,7 +1871,7 @@ fn recorded_tmux_key(keystroke: &ala::Keystroke) -> Option<String> {
     let commanded = modifiers.control || modifiers.alt;
     let (base, shift) = match keystroke.key.as_str() {
         "space" => ("Space".to_owned(), modifiers.shift),
-        key => match zz_config::keymap::tmux_key_name(key) {
+        key => match zz_client::chrome_override::tmux_key_name(key) {
             Some(name) => (name.to_owned(), modifiers.shift),
             None => match keystroke.key_char.as_deref() {
                 Some(text) if !commanded && text.chars().count() == 1 => (text.to_owned(), false),

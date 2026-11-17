@@ -1,5 +1,9 @@
 use penna::foundation::interface_theme::Tint;
 use serde::{Deserialize, Serialize, de::value::MapDeserializer};
+use zz_client::{
+    ChromeKeymap, ChromeProfile,
+    chrome_override::{ChromeOverride, parse_bind, parse_unbind},
+};
 use zz_ui::interface_theme::{
     self, Appearance, AppearanceChange, InterfaceTheme, ThemeModeSetting, ThemeOverrides,
 };
@@ -26,6 +30,51 @@ pub struct Preferences {
     pub extend_bottom_safe_area: bool,
     pub keep_screen_awake: bool,
     pub system_text_size: bool,
+    pub which_key_delay: f32,
+    pub chrome_keys: Vec<ChromeKeyOverride>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ChromeKeyOverride {
+    #[serde(rename = "chrome-keybind")]
+    Keybind(String),
+    #[serde(rename = "chrome-unbind")]
+    Unbind(String),
+}
+
+#[derive(Clone)]
+pub struct ChromeKeymaps {
+    pub native: ChromeKeymap,
+    pub apple: ChromeKeymap,
+}
+
+impl ala::Global for ChromeKeymaps {}
+
+impl ChromeKeymaps {
+    #[must_use]
+    pub fn new(overrides: &[ChromeOverride]) -> Self {
+        let keymap = |profile| {
+            let mut keymap = ChromeKeymap::for_profile(profile);
+            for error in keymap.apply(overrides) {
+                log::warn!("Ignoring key binding for unknown action `{}`", error.0);
+            }
+            keymap
+        };
+        Self {
+            native: keymap(if cfg!(target_os = "ios") {
+                ChromeProfile::DesktopApple
+            } else {
+                ChromeProfile::Desktop
+            }),
+            apple: keymap(ChromeProfile::DesktopApple),
+        }
+    }
+}
+
+impl Default for ChromeKeymaps {
+    fn default() -> Self {
+        Self::new(&[])
+    }
 }
 
 impl Default for Preferences {
@@ -52,6 +101,8 @@ impl Default for Preferences {
             extend_bottom_safe_area: false,
             keep_screen_awake: false,
             system_text_size: true,
+            which_key_delay: zz_client::prefix_keys::DEFAULT_WHICH_KEY_DELAY,
+            chrome_keys: Vec::new(),
         }
     }
 }
@@ -94,6 +145,12 @@ impl Preferences {
             (&mut self.pane_inactive_opacity, 0., 1., 0.7),
             (&mut self.pane_glow_strength, 0., 2., 1.),
             (&mut self.pane_margin, 0., 32., 6.),
+            (
+                &mut self.which_key_delay,
+                0.,
+                zz_client::prefix_keys::MAX_WHICH_KEY_DELAY,
+                zz_client::prefix_keys::DEFAULT_WHICH_KEY_DELAY,
+            ),
         ] {
             *value = bounded(*value, min, max, fallback);
         }
@@ -103,6 +160,23 @@ impl Preferences {
             .map(|family| family.trim().to_owned())
             .filter(|family| !family.is_empty());
         self
+    }
+
+    #[must_use]
+    pub fn chrome_keymaps(&self) -> ChromeKeymaps {
+        let overrides = self
+            .chrome_keys
+            .iter()
+            .filter_map(|entry| {
+                match entry {
+                    ChromeKeyOverride::Keybind(value) => parse_bind(value),
+                    ChromeKeyOverride::Unbind(value) => parse_unbind(value),
+                }
+                .map_err(|error| log::warn!("Ignoring key binding {entry:?}: {error}"))
+                .ok()
+            })
+            .collect::<Vec<_>>();
+        ChromeKeymaps::new(&overrides)
     }
 
     #[must_use]
@@ -159,6 +233,19 @@ impl Preferences {
                 ThemeOverrides::deserialize(MapDeserializer::<_, serde_json::Error>::new(field))
                     .is_ok()
             });
+            if let Some(entries) = fields.get_mut("chrome_keys") {
+                *entries = entries
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|entry| {
+                        ChromeKeyOverride::deserialize(*entry)
+                            .map_err(|error| log::warn!("Ignoring key binding {entry}: {error}"))
+                            .is_ok()
+                    })
+                    .cloned()
+                    .collect();
+            }
         }
         let mut preferences: Self = serde_json::from_value(source.clone())?;
         if source.get("mode").is_none() && source.get("dark").is_none() {
@@ -307,6 +394,38 @@ mod tests {
             std::io::ErrorKind::InvalidData
         );
         std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn chrome_key_overrides_rebind_both_keymaps_and_skip_bad_entries() {
+        use zz_client::{ChromeAction, PREFIX_TABLE, UI_TABLE};
+        let preferences = Preferences::decode(
+            r#"{"sidebar_width":300,"chrome_keys":[{"chrome-keybind":"ui:D-j=open-command-palette"},{"chrome_keybind":"prefix:y=open-settings"},{"chrome-unbind":"ui:D-k"},{"chrome-keybind":"prefix:g=open-settings","chrome-unbind":"ui:D-p"},{"chrome-keybind":"prefix:g=open-settings"},{"chrome-keybind":"ui:D-y=fly"},{"chrome-unbind":"root:q"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(preferences.sidebar_width, 300.0);
+        assert_eq!(preferences.chrome_keys.len(), 5);
+        let keymaps = preferences.chrome_keymaps();
+        for keymap in [&keymaps.native, &keymaps.apple] {
+            assert_eq!(
+                keymap.action_for(UI_TABLE, "D-j"),
+                Some(ChromeAction::OpenCommandPalette)
+            );
+            assert_eq!(keymap.action_for(UI_TABLE, "D-k"), None);
+            assert_eq!(keymap.action_for(UI_TABLE, "D-y"), None);
+            assert_eq!(
+                keymap.action_for(PREFIX_TABLE, "g"),
+                Some(ChromeAction::OpenSettings)
+            );
+        }
+        assert_eq!(
+            keymaps.apple.action_for(UI_TABLE, "D-p"),
+            Some(ChromeAction::OpenCommandPalette)
+        );
+        assert_eq!(
+            Preferences::decode(&serde_json::to_string(&preferences).unwrap()).unwrap(),
+            preferences
+        );
     }
 
     #[test]

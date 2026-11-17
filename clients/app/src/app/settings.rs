@@ -63,6 +63,7 @@ pub(super) enum Setting {
     Section(SettingsSection),
     SystemTextSize,
     CommandPalette,
+    WhichKey,
 }
 
 pub(super) fn shown(setting: Setting, phone: bool) -> bool {
@@ -72,6 +73,7 @@ pub(super) fn shown(setting: Setting, phone: bool) -> bool {
             Setting::Section(SettingsSection::Panes)
                 | Setting::SystemTextSize
                 | Setting::CommandPalette
+                | Setting::WhichKey
         )
 }
 
@@ -236,6 +238,7 @@ impl Preferences {
 pub(super) struct Controls {
     appearance: AppearanceControls,
     panes: [Entity<InputState>; 3],
+    which_key_delay: Entity<InputState>,
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     palette_layout: Entity<SelectState<Vec<SettingsSelectItem>>>,
     _subscriptions: Vec<Subscription>,
@@ -272,42 +275,17 @@ impl Controls {
             };
             let (min, max, step) = (min * scale, max * scale, step * f64::from(scale));
             let value = pane_values[control as usize] * scale;
-            let input = cx.new(|cx| {
-                InputState::new(window, cx)
-                    .input_mode(TextInputMode::Decimal)
-                    .default_value(number_text(value))
-                    .min(f64::from(min))
-                    .max(f64::from(max))
-                    .step(step)
-            });
+            let input = number_input(value, (min, max, step), window, cx);
             subscriptions.push(cx.subscribe_in(
                 &input,
                 window,
                 move |this, input, event, window, cx| {
-                    number_field_event(event, window, cx);
-                    let commit = matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. });
-                    if !commit && !matches!(event, InputEvent::Change) {
-                        return;
-                    }
-                    let parsed = input
-                        .read(cx)
-                        .value()
-                        .parse::<f32>()
-                        .ok()
-                        .filter(|value| value.is_finite());
                     let previous = *control.value(&mut this.preferences) * scale;
-                    let value = match parsed {
-                        Some(value) if commit => value.clamp(min, max),
-                        Some(value) if (min..=max).contains(&value) => value,
-                        _ if commit => previous,
-                        _ => return,
+                    let Some(value) = number_entry(input, event, (min, max), previous, window, cx)
+                    else {
+                        return;
                     };
                     *control.value(&mut this.preferences) = value / scale;
-                    if commit {
-                        input.update(cx, |input, cx| {
-                            input.set_value(number_text(value), window, cx);
-                        });
-                    }
                     this.preferences.save();
                     cx.set_global(PaneLook {
                         frames: this.preferences.gaps,
@@ -320,6 +298,25 @@ impl Controls {
             ));
             input
         });
+        let delay_range = (0.0, zz_client::prefix_keys::MAX_WHICH_KEY_DELAY);
+        let which_key_delay = number_input(
+            preferences.which_key_delay,
+            (delay_range.0, delay_range.1, 50.0),
+            window,
+            cx,
+        );
+        subscriptions.push(cx.subscribe_in(
+            &which_key_delay,
+            window,
+            move |this, input, event, window, cx| {
+                let previous = this.preferences.which_key_delay;
+                if let Some(value) = number_entry(input, event, delay_range, previous, window, cx) {
+                    this.preferences.which_key_delay = value;
+                    this.preferences.save();
+                    cx.notify();
+                }
+            },
+        ));
         let mut families = cx.text_system().all_font_names();
         families.retain(|family| !family.starts_with('.') && !family.trim().is_empty());
         families.sort_by_cached_key(|family| family.to_lowercase());
@@ -381,6 +378,7 @@ impl Controls {
         Self {
             appearance,
             panes,
+            which_key_delay,
             terminal_font,
             palette_layout,
             _subscriptions: subscriptions,
@@ -683,6 +681,18 @@ impl AppShell {
                                 .children(self.palette_settings(cx)),
                         )
                     })
+                    .when(shown(Setting::WhichKey, phone), |page| {
+                        page.child(
+                            SettingsStack::titled("Navigation").child(
+                                SettingEntry::new("Which-key delay")
+                                    .description("Milliseconds after the prefix, 0 turns it off")
+                                    .control(number_control(
+                                        &self.settings_controls.which_key_delay,
+                                        cx,
+                                    )),
+                            ),
+                        )
+                    })
                     .when(
                         cfg!(any(target_os = "ios", target_os = "android")),
                         |page| {
@@ -970,6 +980,55 @@ pub(super) fn finish_field(window: &mut Window, cx: &mut App) {
     if super::compact::keyboard_visible(window) {
         window.blur(cx);
     }
+}
+
+fn number_input(
+    value: f32,
+    (min, max, step): (f32, f32, f64),
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<InputState> {
+    cx.new(|cx| {
+        InputState::new(window, cx)
+            .input_mode(TextInputMode::Decimal)
+            .default_value(number_text(value))
+            .min(f64::from(min))
+            .max(f64::from(max))
+            .step(step)
+    })
+}
+
+fn number_entry(
+    input: &Entity<InputState>,
+    event: &InputEvent,
+    (min, max): (f32, f32),
+    previous: f32,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<f32> {
+    number_field_event(event, window, cx);
+    let commit = matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. });
+    if !commit && !matches!(event, InputEvent::Change) {
+        return None;
+    }
+    let parsed = input
+        .read(cx)
+        .value()
+        .parse::<f32>()
+        .ok()
+        .filter(|value| value.is_finite());
+    let value = match parsed {
+        Some(value) if commit => value.clamp(min, max),
+        Some(value) if (min..=max).contains(&value) => value,
+        _ if commit => previous,
+        _ => return None,
+    };
+    if commit {
+        input.update(cx, |input, cx| {
+            input.set_value(number_text(value), window, cx);
+        });
+    }
+    Some(value)
 }
 
 fn number_text(value: f32) -> String {
@@ -1274,7 +1333,11 @@ mod tests {
                 SettingsSection::About,
             ]
         );
-        for setting in [Setting::SystemTextSize, Setting::CommandPalette] {
+        for setting in [
+            Setting::SystemTextSize,
+            Setting::CommandPalette,
+            Setting::WhichKey,
+        ] {
             assert!(shown(setting, false));
             assert!(!shown(setting, true));
         }

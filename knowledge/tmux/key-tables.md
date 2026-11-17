@@ -345,6 +345,7 @@ With control or alt held nothing is uppercased: the binding is spelled off the b
 | `crates/zz-daemon/src/keys.rs` | Daemon overlay-action projection and tmux `send-keys` token conversion; it consumes the shared fold and tables. |
 | `crates/zz-client/src/chrome.rs` | Client-side `ui`, `sidebar`, `browser`, `terminal`, and `prefix` chrome tables, resolved before the skin applies an action; `prefix` only answers an armed key the daemon's prefix table leaves unbound, and has no default bindings since `prefix A` went with the Driver Agent on 2026-10-28. |
 | `crates/zz/src/mux/prefix.rs` | The desktop window-root claim that forwards the configured prefix and the daemon-reported armed sequence from local widgets. |
+| `crates/zz-client/src/prefix_keys.rs` | Which prefix key runs a command, for pane header tooltips and the empty workspace's hints on desktop and the thin clients (`pane_keys`, `bound_key`, `PREFIX_HINTS`), the `list-keys -N` check behind `?`, and the which-key delay rule. |
 
 # Related
 

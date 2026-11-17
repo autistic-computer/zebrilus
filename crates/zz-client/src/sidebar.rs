@@ -184,6 +184,19 @@ pub fn sidebar_rows(
     rows
 }
 
+pub const WINDOW_SHORTCUTS: u8 = 9;
+
+#[must_use]
+pub fn shortcut_windows<H: Copy, W: IntoIterator<Item = WindowId>>(
+    hosts: impl IntoIterator<Item = (H, W)>,
+) -> Vec<(H, WindowId)> {
+    hosts
+        .into_iter()
+        .flat_map(|(host, windows)| windows.into_iter().map(move |window| (host, window)))
+        .take(usize::from(WINDOW_SHORTCUTS))
+        .collect()
+}
+
 #[must_use]
 pub fn sidebar_active(snapshot: &MuxSnapshot, attached: Option<SessionId>) -> SidebarTarget {
     let session = snapshot

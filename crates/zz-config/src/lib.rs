@@ -1,4 +1,3 @@
-use keymap::ChromeOverride;
 use std::{
     env, fmt,
     fs::{self, File},
@@ -10,6 +9,7 @@ use zz_client::appearance::{
     ACCENTS, AccentSetting, AppIconSetting, ControlShapeSetting, DEFAULT_TINT_HUE, DensitySetting,
     GLASSES, MAX_CORNER_RADIUS, MotionSetting, ThemeModeSetting,
 };
+use zz_client::chrome_override::{self, ChromeOverride};
 use zz_client::url_input::SearchProvider;
 pub use zz_daemon_client::{
     HostEntry, RejectedHost, atomic_write, configured_fleet_hosts, validate_fleet_host,
@@ -58,8 +58,7 @@ pub const CHROME_KEYBIND_KEY: &str = "chrome-keybind";
 pub const CHROME_UNBIND_KEY: &str = "chrome-unbind";
 pub const DEFAULT_BROWSER_SEARCH_PROVIDER: SearchProvider = SearchProvider::Google;
 pub const DEFAULT_BROWSER_EGRESS: bool = true;
-pub const DEFAULT_WHICH_KEY_DELAY: f32 = 400.0;
-pub const MAX_WHICH_KEY_DELAY: f32 = 2000.0;
+pub use zz_client::prefix_keys::{DEFAULT_WHICH_KEY_DELAY, MAX_WHICH_KEY_DELAY};
 pub const DEFAULT_EDITOR_FONT_SIZE: f32 = 13.0;
 pub const MIN_EDITOR_FONT_SIZE: f32 = 8.0;
 pub const MAX_EDITOR_FONT_SIZE: f32 = 32.0;
@@ -786,9 +785,9 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
 
         if matches!(key, CHROME_KEYBIND_KEY | CHROME_UNBIND_KEY) {
             let entry = if key == CHROME_KEYBIND_KEY {
-                keymap::parse_bind(value)
+                chrome_override::parse_bind(value)
             } else {
-                keymap::parse_unbind(value)
+                chrome_override::parse_unbind(value)
             };
             match entry {
                 Ok(entry) => parsed.chrome_overrides.push(entry),
@@ -1304,7 +1303,7 @@ pub fn config_comment_start(value: &str) -> Option<usize> {
 }
 
 pub fn normalize_browser_hotkey(value: &str) -> Result<String, String> {
-    let hotkey = keymap::parse_keystroke(value.trim()).ok_or_else(|| {
+    let hotkey = chrome_override::parse_keystroke(value.trim()).ok_or_else(|| {
         "expected modifiers and a key, for example `cmd-shift-c` or `ctrl-shift-c`".to_owned()
     })?;
     if !(hotkey.key.control || hotkey.key.alt || hotkey.key.command || hotkey.function) {

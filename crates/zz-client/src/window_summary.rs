@@ -470,6 +470,19 @@ pub fn summarize_chat_machine<'a>(
     ChatMachine { rows, rollup }
 }
 
+#[must_use]
+pub fn chat_shortcut_windows<H: Copy>(machines: &[(H, ChatMachine)]) -> Vec<(H, WindowId)> {
+    machines
+        .iter()
+        .flat_map(|(host, machine)| {
+            machine.rows.iter().filter_map(move |row| match row {
+                ChatRow::Window(row) => row.shortcut.map(|_| (*host, row.summary.window)),
+                ChatRow::Pile(_) => None,
+            })
+        })
+        .collect()
+}
+
 pub fn number_chat_rows<'a>(machines: impl IntoIterator<Item = &'a mut ChatMachine>) {
     let rows = machines
         .into_iter()
