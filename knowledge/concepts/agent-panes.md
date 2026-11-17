@@ -519,6 +519,19 @@ end no turn.
   peer socket. `--wait ''` still waits on such a terminal's `@agent_state`.
 - `agent-respond` answers a pending permission in an agent pane.
 - `flip-agent` and `select-pane-kind ... agent` as above.
+- Formats read a chat like a terminal. `#{pane_current_command}` is the provider's command name
+  (`claude`, `codex`, `AgentProvider::command_name`). `#{agent_state}` maps the chat's published
+  phase (`agent_chat_facts`, `crates/zz-daemon/src/daemon.rs`): `starting`, `idle`, `working`,
+  `needs-approval` for a pending permission, `needs-input` for a pending question, `failed`.
+  `#{agent_pending_permission}` is the pending request id. The daemon keeps both on the engine
+  (`MuxEngine::set_agent_chat`) when the runtime publishes a state, so `list-panes -F`,
+  `display-message -p` and `inspect` read the same values, and fires `agent-state-changed` with
+  both when either changes. `inspect` adds `agent_provider`, `agent_model` (the model the chat was
+  started with) and `agent_session_id`.
+- `send-keys`, `send-text`, `paste-buffer` and `run-pane` on a chat fail with
+  `%N is an agent chat; send with: zz agent-send -t %N TEXT`, and `pipe-pane` with
+  `%N is an agent chat; read it with: zz capture-pane -p -t %N`. `capture-pane` still fails with
+  "pane has exited", and a `synchronize-panes` send whose window holds a chat fails the same way.
 
 # What the clients draw
 

@@ -3359,8 +3359,17 @@ impl MuxEngine {
                 .pane_start_path
                 .clone_from(&context.pane_current_path);
         }
-        if context.pane_current_command.is_empty() && matches!(pane.kind, PaneKind::Terminal) {
-            context.pane_current_command = self.pane_command_fallback(pane.id);
+        match &pane.kind {
+            PaneKind::Agent(agent) => {
+                agent
+                    .provider
+                    .command_name()
+                    .clone_into(&mut context.pane_current_command);
+            }
+            PaneKind::Terminal if context.pane_current_command.is_empty() => {
+                context.pane_current_command = self.pane_command_fallback(pane.id);
+            }
+            _ => {}
         }
         let border_status = self.pane_border_status(window.id);
         if let Some(cell) = window

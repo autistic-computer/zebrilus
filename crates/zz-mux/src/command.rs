@@ -2236,6 +2236,7 @@ type SharedUserOptions = Arc<UserOptions>;
 pub struct FormatFacts {
     pane_kinds: BTreeMap<String, &'static str>,
     browser_urls: BTreeMap<String, String>,
+    agent_chats: BTreeMap<String, AgentChatFacts>,
     pane_windows: BTreeMap<String, String>,
     server: SharedUserOptions,
     global_session: SharedUserOptions,
@@ -2254,6 +2255,11 @@ impl FormatFacts {
     #[must_use]
     pub fn browser_url(&self, pane: &str) -> Option<&str> {
         self.browser_urls.get(pane).map(String::as_str)
+    }
+
+    #[must_use]
+    pub fn agent_chat(&self, pane: &str) -> Option<&AgentChatFacts> {
+        self.agent_chats.get(pane)
     }
 
     #[must_use]
@@ -2607,6 +2613,7 @@ pub struct MuxEngine {
     format_uid: String,
     format_user: String,
     pane_runtime_facts: BTreeMap<PaneId, PaneRuntimeFacts>,
+    agent_chats: BTreeMap<PaneId, AgentChatFacts>,
     pane_start_commands: BTreeMap<PaneId, Vec<String>>,
     pane_shells: BTreeMap<PaneId, String>,
     destroyed_sessions: Vec<(SessionId, String, String)>,
@@ -2663,6 +2670,12 @@ mod runtime_facts_tests;
 
 #[cfg(test)]
 mod format_cache_tests;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AgentChatFacts {
+    pub state: &'static str,
+    pub pending_permission: Option<u64>,
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PaneRuntimeFacts {
@@ -2956,6 +2969,7 @@ impl Default for MuxEngine {
             format_uid: String::new(),
             format_user: String::new(),
             pane_runtime_facts: BTreeMap::new(),
+            agent_chats: BTreeMap::new(),
             pane_start_commands: BTreeMap::new(),
             pane_shells: BTreeMap::new(),
             destroyed_sessions: Vec::new(),
@@ -5368,6 +5382,20 @@ impl MuxEngine {
         self.pane_runtime_facts.get(&pane)
     }
 
+    pub fn set_agent_chat(&mut self, pane: PaneId, facts: Option<AgentChatFacts>) -> bool {
+        let before = match facts {
+            Some(facts) if self.state.pane(pane).is_some() => self.agent_chats.insert(pane, facts),
+            Some(_) => return false,
+            None => self.agent_chats.remove(&pane),
+        };
+        before.as_ref() != self.agent_chats.get(&pane)
+    }
+
+    #[must_use]
+    pub fn agent_chat(&self, pane: PaneId) -> Option<&AgentChatFacts> {
+        self.agent_chats.get(&pane)
+    }
+
     pub fn format_host(&self) -> &str {
         &self.format_host
     }
@@ -6320,6 +6348,7 @@ impl MuxEngine {
             pane_start_commands,
             pane_shells,
             pane_runtime_facts,
+            agent_chats,
             pane_remain_on_exit,
         );
         removed
@@ -19314,6 +19343,11 @@ impl MuxEngine {
         let mut pane_kinds = BTreeMap::new();
         let mut browser_urls = BTreeMap::new();
         let mut pane_windows = BTreeMap::new();
+        let agent_chats = self
+            .agent_chats
+            .iter()
+            .map(|(pane, facts)| (pane.to_string(), facts.clone()))
+            .collect();
         for (window, entry) in &self.state.windows {
             for (pane, entry) in &entry.panes {
                 pane_kinds.insert(pane.to_string(), pane_kind_name(&entry.kind));
@@ -19335,6 +19369,7 @@ impl MuxEngine {
         FormatFacts {
             pane_kinds,
             browser_urls,
+            agent_chats,
             pane_windows,
             server: Arc::clone(&self.server_user_options),
             global_session: Arc::clone(&self.global_session_user_options),

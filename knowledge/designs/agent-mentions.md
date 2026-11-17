@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Agent mentions . the composer's @ hands work to another agent
-description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat in a PiP with one tmux-shaped command. The child's permission asks and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Proposed, nothing built."
-status: Proposed (2026-11-17; nothing built)
+description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat in a PiP with one tmux-shaped command. The child's permission asks and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Proposed; step 1 (chat facts and input errors) built."
+status: Proposed (2026-11-17; step 1 built)
 resource: crates/zz-ui/src/target.rs
 tags:
 - agent
@@ -20,7 +20,8 @@ and files. Picking one puts a mention in the prompt. The agent you are talking t
 a brief and opens the other agent as a chat in a [PiP](/designs/pip-panes.md). The child's
 permission asks and its final reply come back into the host chat.
 
-Status 2026-11-17: proposed, nothing built. The rulings below are the owner's. Everything under
+Status 2026-11-17: proposed, step 1 of the [build order](#build-order) built. The rulings below
+are the owner's. Everything under
 [Proposed commands](#proposed-commands) and after is proposed unless it says ruled, and
 [Open](#open) lists what is not decided.
 
@@ -134,7 +135,7 @@ reaches the daemon through the wrapper on `PATH` but is not approved.
 - `AGENT_PANE_CONTEXT` says this pane approves `zz` commands without asking, which is false at
   auto-approve `off`, and its filter list leaves out `cut` and `tr`.
 - The `events` help says `agent-state-changed` carries `agent_state` for every pane kind; a chat
-  sends none.
+  sends none. (Fixed by step 1.)
 
 # Proposed commands
 
@@ -302,12 +303,32 @@ a quoted block. The UI gets boarded in `design/mockups` before any app code.
 
 Each step lands alone.
 
-1. **Chat facts and input errors.** Formats, `inspect` and `agent-state-changed` for chats; the new
-   error text for the input verbs.
+1. **Chat facts and input errors.** Built 2026-11-17. Formats, `inspect` and
+   `agent-state-changed` for chats; the new error text for the input verbs.
    - On an idle codex chat `%4`, `zz list-panes -F '#{pane_id} #{pane_current_command}
      #{agent_state}' -f '#{==:#{pane_id},%4}'` prints `%4 codex idle`.
    - `zz send-keys -t %4 x` fails with exactly `%4 is an agent chat; send with: zz agent-send -t %4
      TEXT`.
+   Choices made while building it:
+   - `pipe-pane` on a chat fails with `%4 is an agent chat; read it with: zz capture-pane -p -t
+     %4`, not the `agent-send` text the [Type](#type) section gives. `capture-pane` on a chat
+     still fails with "pane has exited" until step 6, and the agent guide leaves `pipe-pane` out
+     until then.
+   - A pending permission or question decides the state before the phase does, so a permission
+     that outlives its turn reads `needs-approval` on a `Ready` chat. `Failed` and `Starting` win
+     over a pending request.
+   - The daemon keeps each chat's state and pending id on the engine (`MuxEngine::set_agent_chat`,
+     not on the wire) when the runtime publishes a state, and fires `agent-state-changed` only when
+     either value changes. A terminal fires it on every `@agent_state` write.
+   - `#{pane_current_command}` is the provider's command name even while the terminal a chat was
+     flipped from is still exiting.
+   - `inspect` names the new keys `agent_provider` (`claude` or `codex`, the words the create verbs
+     take), `agent_model` (the model the chat was started with, empty for the default) and
+     `agent_session_id`.
+   - `send-keys -R` (reset) on a chat fails with the `agent-send` text too, as does any verb that
+     reaches the send-keys path (`send-prefix`).
+   - A `synchronize-panes` send from a terminal whose window holds a chat still fails with "pane has
+     exited", as before.
 2. **`--kind agent` on the create verbs, with the brief.** Fix `bench/agents/fresh/run-one.sh`.
    - `zz new-pane -d -P -F '#{pane_id}' --kind agent codex hi` prints a pane id, and an immediate
      `zz agent-send -t <that id> again` exits 0.

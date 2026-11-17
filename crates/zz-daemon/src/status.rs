@@ -2923,7 +2923,13 @@ impl StatusHooks for DaemonFormatHooks<'_> {
                     .unwrap_or_default(),
             ),
             "pane_current_command"
-                if self.live_process_facts && context.pane_dead != Some(true) =>
+                if self.live_process_facts
+                    && context.pane_dead != Some(true)
+                    && context
+                        .engine()
+                        .and_then(|engine| engine.format_pane_kind(&context.pane_id))
+                        .or_else(|| self.facts.mux().pane_kind(&context.pane_id))
+                        != Some("agent") =>
             {
                 context
                     .pane_id
@@ -2969,7 +2975,19 @@ impl StatusHooks for DaemonFormatHooks<'_> {
                             .to_owned(),
                     );
                 }
-                Some(String::new())
+                let chat = context
+                    .engine()
+                    .and_then(|engine| engine.agent_chat(context.pane_id.parse().ok()?))
+                    .or_else(|| self.facts.mux().agent_chat(&context.pane_id))
+                    .filter(|_| pane_kind == Some("agent"));
+                Some(match (name, chat) {
+                    ("agent_state", Some(chat)) => chat.state.to_owned(),
+                    (_, Some(chat)) => chat
+                        .pending_permission
+                        .map(|id| id.to_string())
+                        .unwrap_or_default(),
+                    (_, None) => String::new(),
+                })
             }
             "pane_kind" => context
                 .engine()
