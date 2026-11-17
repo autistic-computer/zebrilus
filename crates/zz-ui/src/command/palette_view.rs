@@ -281,7 +281,13 @@ pub enum GuiEvent {
 
 impl EventEmitter<CommandPaletteEvent> for CommandPaletteView {}
 
-pub type FolderPick = Rc<dyn Fn(PaletteHostId, String, &mut Window, &mut App)>;
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FolderPicked {
+    Followed(String),
+    Chosen(String),
+}
+
+pub type FolderPick = Rc<dyn Fn(PaletteHostId, FolderPicked, &mut Window, &mut App)>;
 
 pub struct CommandPaletteView {
     backend: Rc<dyn PaletteBackend>,
@@ -1799,6 +1805,16 @@ impl CommandPaletteView {
             }
             LevelEffect::Copied(text) => Self::notify_action(format!("Copied {text}"), window, cx),
             LevelEffect::SetRest(rest) => self.set_query(rest, window, cx),
+            LevelEffect::Choose => {
+                self.choose_folder(window, cx);
+            }
+            LevelEffect::Followed(host, folder) => {
+                if !self.finishing
+                    && let Some(pick) = self.pick_folder.clone()
+                {
+                    pick(host, FolderPicked::Followed(folder), window, cx);
+                }
+            }
             LevelEffect::Leave(event) => {
                 if let Some(event) = event {
                     cx.emit(event);

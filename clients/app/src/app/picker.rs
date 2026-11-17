@@ -12,8 +12,8 @@ use zz_client::{
     agent_launch::AgentLaunches,
     new_chat::{
         AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, FolderChoice, MachineChoice,
-        agent_picker_place, close_picker_command, folder_start, landing_chat_commands,
-        picker_folders, recent_folders, start_agent_commands,
+        agent_picker_place, close_picker_command, landing_chat_commands, picker_folders,
+        recent_folders, start_agent_commands,
     },
     pane_picker::{PaneChoice, PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
 };
@@ -196,7 +196,7 @@ impl PanePicker {
 
     fn choose_folder(&self, folders: &[FolderChoice], cx: &mut Context<Self>) {
         cx.emit(ChooseFolder {
-            start: folder_start(self.chat.folder(folders)),
+            start: self.chat.folder(folders).to_owned(),
         });
     }
 
@@ -208,6 +208,11 @@ impl PanePicker {
     ) {
         self.chat.pick(folder);
         self.focus.focus(window, cx);
+        cx.notify();
+    }
+
+    pub(super) fn follow_folder(&mut self, folder: &str, cx: &mut Context<Self>) {
+        self.chat.follow(folder);
         cx.notify();
     }
 

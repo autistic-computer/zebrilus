@@ -53,6 +53,8 @@ pub enum LevelEffect {
     Stay,
     Close,
     SetRest(String),
+    Choose,
+    Followed(PaletteHostId, String),
     Copied(String),
     Emit(CommandPaletteEvent),
     Finish(CommandPaletteEvent),

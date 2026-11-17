@@ -1180,11 +1180,7 @@ fn tab_on_a_file_changes_nothing(cx: &mut TestAppContext) {
 fn a_folder_pick_hands_the_folder_back_instead_of_inserting(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls, sink) = files_backend();
-    let picked = Rc::new(RefCell::new(None));
-    let seen = Rc::clone(&picked);
-    let pick: super::FolderPick = Rc::new(move |host, folder, _, _| {
-        seen.replace(Some((host, folder)));
-    });
+    let (pick, picked) = folder_picks();
     let (palette, cx) = mount(cx, move |window, cx| {
         CommandPaletteView::new_folder_pick(backend, "", pick, window, cx)
     });
@@ -1194,14 +1190,56 @@ fn a_folder_pick_hands_the_folder_back_instead_of_inserting(cx: &mut TestAppCont
     cx.run_until_parked();
     assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
     assert_eq!(
-        picked.borrow().clone(),
-        Some((LOCAL, "~/one/crates".to_owned()))
+        *picked.borrow(),
+        [(LOCAL, FolderPicked::Chosen("~/one/crates".to_owned()))]
     );
     assert!(
         !calls
             .borrow()
             .iter()
             .any(|call| matches!(call, Call::Insert(..)))
+    );
+}
+
+type Picks = Rc<RefCell<Vec<(PaletteHostId, FolderPicked)>>>;
+
+fn folder_picks() -> (super::FolderPick, Picks) {
+    let picked = Picks::default();
+    let seen = Rc::clone(&picked);
+    let pick: super::FolderPick = Rc::new(move |host, folder, _, _| {
+        seen.borrow_mut().push((host, folder));
+    });
+    (pick, picked)
+}
+
+#[ala::test]
+fn a_folder_pick_follows_the_browsed_folder_until_escape(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let (backend, _, sink) = files_backend();
+    let (pick, picked) = folder_picks();
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_folder_pick(backend, "~/one/", pick, window, cx)
+    });
+    cx.run_until_parked();
+    list_one(cx, &sink);
+    assert_eq!(*picked.borrow(), []);
+    cx.simulate_keystrokes("down tab");
+    cx.run_until_parked();
+    cx.simulate_keystrokes("shift-tab");
+    cx.run_until_parked();
+    cx.simulate_input("missing/");
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), "~/one/missing/");
+    assert!(!palette.read_with(cx, |palette, _| palette.is_finished()));
+    cx.simulate_keystrokes("escape");
+    cx.run_until_parked();
+    assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
+    assert_eq!(
+        *picked.borrow(),
+        [
+            (LOCAL, FolderPicked::Followed("~/one/crates".to_owned())),
+            (LOCAL, FolderPicked::Followed("~/one".to_owned())),
+        ]
     );
 }
 

@@ -5,7 +5,7 @@ use ala::{
 use penna::IconName;
 use zz_client::new_chat::{
     AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, ChatStage, FolderChoice, MachineChoice,
-    agent_picker_place, close_picker_command, folder_start, landing_chat_commands, picker_folders,
+    agent_picker_place, close_picker_command, landing_chat_commands, picker_folders,
     picker_in_split, recent_folders, start_agent_commands,
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
@@ -346,9 +346,14 @@ impl PanePickerView {
         cx.notify();
     }
 
+    pub(crate) fn follow_folder(&mut self, folder: &str, cx: &mut Context<Self>) {
+        self.chat.follow(folder);
+        cx.notify();
+    }
+
     fn choose_folder(&self, chat: &Chat, cx: &mut Context<Self>) {
         cx.emit(ChooseFolder {
-            start: folder_start(self.chat.folder(&chat.folders)),
+            start: self.chat.folder(&chat.folders).to_owned(),
         });
     }
 

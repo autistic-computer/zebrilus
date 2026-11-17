@@ -1,3 +1,4 @@
+use zz_ui::command::FolderPicked;
 use zz_ui::command::floating::{FloatingFrame as PopupFrame, floating_frame};
 use zz_ui::shell::window_drag_handle;
 
@@ -1820,9 +1821,12 @@ impl AppView {
             if HostId::from(picked) != host {
                 return;
             }
-            let _ = picker.update(cx, |picker, cx| {
-                picker.pick_folder(&folder, cx);
-                picker.focus().focus(window, cx);
+            let _ = picker.update(cx, |picker, cx| match folder {
+                FolderPicked::Followed(folder) => picker.follow_folder(&folder, cx),
+                FolderPicked::Chosen(folder) => {
+                    picker.pick_folder(&folder, cx);
+                    picker.focus().focus(window, cx);
+                }
             });
         });
         self.show_command_palette(

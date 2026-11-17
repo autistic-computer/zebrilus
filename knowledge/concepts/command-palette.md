@@ -132,9 +132,11 @@ pane); on the host you are on with nothing under it, the pane a path goes into; 
 its home. A pane with no folder (a browser, an editor) starts at `~/`. `prefix F` opens straight
 into it, on the `-c` folder when given, else its pane's. The folder is written under `~` where the
 backend knows the home (`PaletteBackend::home_dir`: the desktop's own machine). The New agent
-picker's folder line opens the same browser with `CommandPaletteView::new_folder_pick`, where
-Enter hands the highlighted folder (or a file's folder) back (`PaletteActionLevel::picked_folder`)
-instead of inserting it.
+picker's folder line opens the same browser with `CommandPaletteView::new_folder_pick` in the
+chat's folder. There every folder the browser moves to, once listed, goes back to the picker as
+`FolderPicked::Followed` and the palette stays open; Enter, or a click on a file or a row's button,
+hands back `FolderPicked::Chosen` and closes: the highlighted folder, else the folder shown
+(`PaletteActionLevel::picked_folder`). It never inserts or copies a path.
 
 The field is a path with plain spaces: up to the last `/` is a folder, `/…` and `~…` as written
 and anything else under the start folder, and the rest filters (`split_rest`). The client folds
@@ -146,9 +148,9 @@ without asking the host again. Backends hand it listings through `PaletteBackend
 
 | Key | Does |
 | --- | --- |
-| Tab | Opens the highlighted folder; nothing on a file |
-| Shift-Tab, or Backspace right after a `/` | Goes to the parent, highlighting the folder it left; past `~/` once the host said where the home is |
-| Enter | Puts the path at the cursor of `prefix F`'s pane, else the focused pane (`insert_path`), and closes; copies it instead when that pane is not a terminal (an agent chat, a browser, an editor); hands the folder back in a folder pick; opens the file in an editor pane where the backend opens files (`PaletteBackend::opens_files`: zz-app on a daemon with `file-edit-v1`), and opens a folder there instead of inserting it |
+| Tab | Opens the highlighted folder; nothing on a file. In a folder pick the chat follows it |
+| Shift-Tab, or Backspace right after a `/` | Goes to the parent, highlighting the folder it left; past `~/` once the host said where the home is. In a folder pick the chat follows it |
+| Enter | Puts the path at the cursor of `prefix F`'s pane, else the focused pane (`insert_path`), and closes; copies it instead when that pane is not a terminal (an agent chat, a browser, an editor); in a folder pick chooses the highlighted folder, else the folder shown, and closes; opens the file in an editor pane where the backend opens files (`PaletteBackend::opens_files`: zz-app on a daemon with `file-edit-v1`), and opens a folder there instead of inserting it |
 | Alt-Enter | Copies the plain path (absolute, `host:/abs/path` from another host, never quoted) and keeps the palette open |
 
 The strip's verb says which: `insert`, `copy`, `open` for an editor, or `choose` in a folder pick. An editor pane's open button in zz-app starts the list with `CommandPaletteView::new_file_open`, whose verb is `open file`. Rows show the git letter on the right and a chevron on folders.

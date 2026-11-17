@@ -9,7 +9,7 @@ use zz_client::{
 };
 use zz_protocol::{CommandInvocation, MAX_COMMAND_PROMPT_BYTES, catalog_command_spec};
 
-use super::{CommandPaletteView, has_command_arguments};
+use super::{CommandPaletteView, FolderPicked, has_command_arguments};
 use penna::blocks::palette::PaletteKeys;
 
 use crate::{
@@ -445,15 +445,7 @@ impl CommandPaletteView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if key == ActionKey::Enter
-            && let Some(pick) = self.pick_folder.clone()
-            && let Some(picked) = self
-                .level
-                .as_ref()
-                .and_then(|(_, level)| level.picked_folder(cx))
-        {
-            self.close(cx);
-            pick(picked.0, picked.1, window, cx);
+        if key == ActionKey::Enter && self.choose_folder(window, cx) {
             return true;
         }
         let effect = match self.level.as_mut() {
@@ -464,6 +456,22 @@ impl CommandPaletteView {
             self.apply_level_effect(effect, window, cx);
             true
         })
+    }
+
+    pub(super) fn choose_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(pick) = self.pick_folder.clone() else {
+            return false;
+        };
+        let Some((host, folder)) = self
+            .level
+            .as_ref()
+            .and_then(|(_, level)| level.picked_folder(cx))
+        else {
+            return false;
+        };
+        self.close(cx);
+        pick(host, FolderPicked::Chosen(folder), window, cx);
+        true
     }
 
     pub(super) fn caret_at_end(&self, cx: &App) -> bool {

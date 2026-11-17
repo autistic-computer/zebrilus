@@ -126,9 +126,15 @@ sit on an empty host: the daemon makes a session when a client attaches to none,
 chats lands on a shell, which they show as a shell.
 
 Tab or a click on the folder opens the file picker (the command palette's insert path browser,
-`CommandPaletteView::new_folder_pick`) one folder up from the current one; Enter there hands the
-highlighted folder, or the folder holding a highlighted file, back to the picker as where the agent
-starts (`PaletteActionLevel::picked_folder`) instead of inserting it. The folder browser lists with no
+`CommandPaletteView::new_folder_pick`) in the current folder. While it is open the chat's folder is
+the folder it shows: each move to another folder (a click or Tab into a folder, Shift-Tab, Backspace
+after a `/`, a typed path ending in `/`) hands it back as `FolderPicked::Followed` once the host has
+listed it or a walk already holds it (`FilesLevel::current_folder`); a typed folder that does not
+exist changes nothing. Following leaves the palette open and the agent highlight where it was
+(`ChatPicker::follow`). Enter, or a click on a file, hands back `FolderPicked::Chosen`, closes the
+palette and focuses the picker: the highlighted folder, else the folder shown
+(`PaletteActionLevel::picked_folder`). Escape or a click outside closes it and keeps the folder last
+followed. Nothing in a folder pick inserts or copies a path. The folder browser lists with no
 terminal open: a folder named from its root goes out with no pane, or through a pane that is not a
 terminal (wire 118, see [the wire protocol](/protocol/wire-protocol.md)). The HTML client has no file
 picker yet, so its Tab lists the folders the host's panes have been in and takes a typed path

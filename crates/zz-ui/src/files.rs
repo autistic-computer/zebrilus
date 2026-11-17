@@ -320,6 +320,14 @@ fn last_name(dir: &str) -> Option<String> {
     (!name.is_empty() && !name.starts_with('~') && name != "..").then(|| name.to_owned())
 }
 
+fn display_path(root: &str, rel: &str) -> String {
+    match (root.trim_end_matches('/'), rel.trim_end_matches('/')) {
+        ("", "") => "/".to_owned(),
+        (root, "") => root.to_owned(),
+        (root, rel) => format!("{root}/{rel}"),
+    }
+}
+
 #[must_use]
 pub fn plain_path(root: &str, rel: &str, host: Option<&str>) -> String {
     let path = format!(
@@ -471,6 +479,7 @@ pub type ListingSink = Box<dyn Fn(PaletteHostId, u64, ListingUpdate, &mut App)>;
 
 pub enum FilesEvent {
     Picked { open: bool },
+    Browsed,
 }
 
 impl EventEmitter<FilesEvent> for FilesLevel {}
@@ -488,6 +497,7 @@ pub struct FilesLevel {
     selected: usize,
     pending: Option<String>,
     wanted: Option<String>,
+    followed: Option<String>,
     scroll: UniformListScrollHandle,
     visible: usize,
     generation: u64,
@@ -552,6 +562,7 @@ impl FilesLevel {
             selected: 0,
             pending: None,
             wanted: None,
+            followed: None,
             scroll: UniformListScrollHandle::new(),
             visible: usize::MAX,
             generation: 0,
@@ -593,6 +604,9 @@ impl FilesLevel {
         }
         let moved = path.dir != self.path.dir;
         self.path = path;
+        if self.followed.is_none() {
+            self.followed = Some(self.path.dir.clone());
+        }
         if !self
             .listing
             .as_ref()
@@ -616,6 +630,9 @@ impl FilesLevel {
             self.listing = Some(listing);
         }
         self.refresh(!moved, cx);
+        if moved {
+            cx.emit(FilesEvent::Browsed);
+        }
     }
 
     fn cancel(&self, listing: &Listing, cx: &mut App) {
@@ -640,6 +657,7 @@ impl FilesLevel {
         else {
             return;
         };
+        let began = matches!(update, ListingUpdate::Begin(_));
         let changed = match update {
             ListingUpdate::Begin(result) => {
                 listing.begin(result);
@@ -657,6 +675,9 @@ impl FilesLevel {
         };
         if changed {
             self.refresh(true, cx);
+        }
+        if began {
+            cx.emit(FilesEvent::Browsed);
         }
     }
 
@@ -852,22 +873,43 @@ impl FilesLevel {
     }
 
     #[must_use]
+    pub fn current_folder(&self) -> Option<String> {
+        let listing = self.listing.as_ref()?;
+        let root = listing.root.as_ref()?;
+        let under = self
+            .path
+            .dir
+            .strip_prefix(listing.dir.as_str())?
+            .trim_end_matches('/');
+        let known = under.is_empty()
+            || listing
+                .chunks
+                .iter()
+                .flat_map(|chunk| chunk.iter())
+                .any(|entry| {
+                    entry.kind == PathKind::Dir && entry.rel.trim_end_matches('/') == under
+                });
+        known.then(|| display_path(&root.display_root, under))
+    }
+
+    #[must_use]
     pub fn picked_folder(&self) -> Option<String> {
-        let root = self.listing.as_ref()?.root.as_ref()?;
-        let rel = self.selected_row().map_or_else(String::new, |row| {
-            let rel = row.entry.rel.trim_end_matches('/');
-            match row.entry.kind {
-                PathKind::Dir => rel.to_owned(),
-                PathKind::File => rel
-                    .rsplit_once('/')
-                    .map_or_else(String::new, |(parent, _)| parent.to_owned()),
+        match self.selected_row() {
+            Some(row) if row.entry.kind == PathKind::Dir => {
+                let root = self.listing.as_ref()?.root.as_ref()?;
+                Some(display_path(&root.display_root, &row.entry.rel))
             }
-        });
-        Some(if rel.is_empty() {
-            root.display_root.clone()
-        } else {
-            format!("{}/{rel}", root.display_root.trim_end_matches('/'))
-        })
+            _ => self.current_folder(),
+        }
+    }
+
+    fn follow(&mut self) -> Option<String> {
+        if self.followed.as_deref() == Some(self.path.dir.as_str()) {
+            return None;
+        }
+        let folder = self.current_folder()?;
+        self.followed = Some(self.path.dir.clone());
+        Some(folder)
     }
 
     #[must_use]
@@ -1078,6 +1120,7 @@ pub struct FilesAction {
 fn pick(
     level: &Entity<FilesLevel>,
     open: bool,
+    choose: bool,
     window: &mut Window,
     cx: &mut App,
 ) -> Option<LevelEffect> {
@@ -1085,8 +1128,11 @@ fn pick(
         .read(cx)
         .selected_row()
         .is_some_and(|row| row.entry.kind == PathKind::Dir);
-    if open || folder && level.read(cx).opens(cx) {
+    if open || !choose && folder && level.read(cx).opens(cx) {
         return level.read(cx).open().map(LevelEffect::SetRest);
+    }
+    if choose {
+        return Some(LevelEffect::Choose);
     }
     if level.read(cx).inserts(cx) {
         return level
@@ -1110,17 +1156,27 @@ impl FilesAction {
         }
     }
 
-    fn follow_clicks(&mut self, level: &Entity<FilesLevel>, window: &Window, cx: &mut App) {
+    fn follow_level(&mut self, level: &Entity<FilesLevel>, window: &Window, cx: &mut App) {
         let Some(palette) = self.palette.clone() else {
             return;
         };
         let handle = window.window_handle();
+        let choose = self.pick;
         self.clicks = Some(cx.subscribe(level, move |level, event: &FilesEvent, cx| {
-            let FilesEvent::Picked { open } = *event;
             let palette = palette.clone();
             handle
                 .update(cx, |_, window, cx| {
-                    if let Some(effect) = pick(&level, open, window, cx) {
+                    let effect = match *event {
+                        FilesEvent::Picked { open } => pick(&level, open, choose, window, cx),
+                        FilesEvent::Browsed if choose => {
+                            let host = level.read(cx).host;
+                            level
+                                .update(cx, |level, _| level.follow())
+                                .map(|folder| LevelEffect::Followed(host, folder))
+                        }
+                        FilesEvent::Browsed => None,
+                    };
+                    if let Some(effect) = effect {
                         palette
                             .update(cx, |palette, cx| {
                                 palette.apply_level_effect(effect, window, cx);
@@ -1172,7 +1228,7 @@ impl PaletteActionLevel for FilesAction {
             let insert = context.insert_pane;
             let level = cx.new(|cx| FilesLevel::new(backend, place, insert, None, cx));
             let start = level.read(cx).start().to_owned();
-            self.follow_clicks(&level, window, cx);
+            self.follow_level(&level, window, cx);
             self.level = Some((level, place));
             if context.rest.is_empty() {
                 return LevelEffect::SetRest(start);
@@ -1199,7 +1255,7 @@ impl PaletteActionLevel for FilesAction {
                 });
                 Some(LevelEffect::Stay)
             }
-            ActionKey::Tab => pick(&level, true, window, cx).or(Some(LevelEffect::Stay)),
+            ActionKey::Tab => pick(&level, true, self.pick, window, cx).or(Some(LevelEffect::Stay)),
             ActionKey::ShiftTab => {
                 rest(level.update(cx, |level, _| level.up())).or(Some(LevelEffect::Stay))
             }
@@ -1209,7 +1265,7 @@ impl PaletteActionLevel for FilesAction {
                     rest(level.update(cx, |level, _| level.up())).unwrap_or(LevelEffect::Stay)
                 })
             }
-            ActionKey::Enter => pick(&level, false, window, cx),
+            ActionKey::Enter => pick(&level, false, self.pick, window, cx),
             ActionKey::Copy => level
                 .update(cx, |level, cx| level.copy(cx))
                 .map(LevelEffect::Copied),

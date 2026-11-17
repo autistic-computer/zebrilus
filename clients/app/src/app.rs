@@ -57,6 +57,7 @@ use zz_ui::{
         ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind, ChooserSearch,
         buffer_chooser_row, chooser_has_key_gutter, chooser_subtitle, tree_chooser_row,
     },
+    command::FolderPicked,
     navigation::{
         SidebarAction, workspace_layout_button, workspace_sidebar_action,
         workspace_sidebar_actions, workspace_sidebar_fade, workspace_sidebar_footer,
@@ -1147,7 +1148,10 @@ impl AppShell {
     ) {
         let body = zz_ui::files::start_dir(Some(start), None);
         let pick: zz_ui::command::FolderPick = Rc::new(move |_, folder, window, cx| {
-            let _ = picker.update(cx, |picker, cx| picker.pick_folder(&folder, window, cx));
+            let _ = picker.update(cx, |picker, cx| match folder {
+                FolderPicked::Followed(folder) => picker.follow_folder(&folder, cx),
+                FolderPicked::Chosen(folder) => picker.pick_folder(&folder, window, cx),
+            });
         });
         self.show_palette(
             move |backend, window, cx| {

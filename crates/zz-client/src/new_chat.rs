@@ -620,8 +620,12 @@ impl ChatPicker {
         self.query.clear();
     }
 
-    pub fn pick(&mut self, path: &str) {
+    pub fn follow(&mut self, path: &str) {
         self.folder = Some(path.to_owned());
+    }
+
+    pub fn pick(&mut self, path: &str) {
+        self.follow(path);
         self.open(ChatStage::Agents);
     }
 
@@ -718,16 +722,6 @@ impl ChatPicker {
                 },
             },
         }
-    }
-}
-
-#[must_use]
-pub fn folder_start(folder: &str) -> String {
-    let folder = folder.trim_end_matches('/');
-    match folder.rsplit_once('/') {
-        Some(("", _)) | None if folder.starts_with('/') => "/".to_owned(),
-        Some((parent, _)) => format!("{parent}/"),
-        None => format!("{folder}/"),
     }
 }
 
@@ -1131,6 +1125,11 @@ mod tests {
         picker.open(ChatStage::Folders);
         let listed = rows(&picker, &[]);
         assert_eq!(picker.key("down", None, false, &listed), ChatKey::Changed);
+        picker.follow("~/dev");
+        assert_eq!(
+            (picker.folder(&recents), picker.stage, picker.selected),
+            ("~/dev", ChatStage::Folders, 1)
+        );
         assert_eq!(picker.key("enter", None, false, &listed), ChatKey::Changed);
         assert_eq!(picker.folder(&recents), "~/dev/clairvo");
         assert_eq!(picker.stage, ChatStage::Agents);
@@ -1273,10 +1272,6 @@ mod tests {
         assert_eq!(picker.folder(&recents), "~/dev/zz-landing");
         assert_eq!(picker.stage, ChatStage::Agents);
         assert_eq!(listing_dir("zz"), None);
-        assert_eq!(folder_start("~/dev/zz"), "~/dev/");
-        assert_eq!(folder_start("~"), "~/");
-        assert_eq!(folder_start("/srv"), "/");
-        assert_eq!(folder_start("/"), "/");
         assert_eq!(agents_note(2).as_deref(), Some("2 agents"));
     }
 }
