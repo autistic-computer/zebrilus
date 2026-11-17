@@ -2,10 +2,13 @@ pub mod flat;
 pub mod pane_stack;
 pub mod sidebar;
 pub mod status;
+pub mod tab;
+
+use std::rc::Rc;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, IconName, PaintState,
-    Sizable as _, StyledExt as _, Surface, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, Icon, IconName,
+    PaintState, Sizable as _, StyledExt as _, Surface, Tone,
     button::{Button, ButtonLook, ButtonVariants as _, INSIDE_GAP},
     kbd::Kbd,
     rems_from_px,
@@ -37,7 +40,6 @@ pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(32.0);
 pub const WORKSPACE_STATUS_TAB_HEIGHT: Pixels = px(28.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(18.0);
 pub(crate) const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
-const WORKSPACE_STATUS_WINDOW_MIN_WIDTH: Pixels = px(36.0);
 
 #[must_use]
 pub fn workspace_status_tab_height(alone: bool) -> Pixels {
@@ -239,22 +241,58 @@ pub fn workspace_status_window(
     name: SharedString,
     tooltip: SharedString,
     state: WorkspaceStatusWindowState,
-    deck: Option<pane_stack::PaneStack>,
+    panes: Vec<status::StatusPaneEntry>,
+    close: Option<tab::TabClose>,
+    reorder: Option<tab::TabReorder>,
     cx: &App,
 ) -> Tab {
-    let name = workspace_tab_name(name);
-    workspace_tab(
-        id,
+    let id = id.into();
+    let on = workspace_status_bar_ground(cx);
+    let surface =
+        Surface::from(TabLook::Window).on(workspace_status_tab_ground(on, state.alone, cx));
+    let ground = cx.theme().ground_at(surface, state.paint_state());
+    let deck = ElementId::Name(format!("status-window-panes-{id:?}").into());
+    let face = ElementId::Name(format!("status-window-face-{id:?}").into());
+    let front = status::front_pane(&panes);
+    let label = name.clone();
+    let full = Box::new(move |_: &mut Window, cx: &mut App| {
+        let name = workspace_tab_name(name);
+        match status::status_pane_deck(deck, panes, state.connected, ground, cx) {
+            Some(deck) => deck.beside(name, tab::TAB_GAP).into_any_element(),
+            None => name.into_any_element(),
+        }
+    });
+    let icon: tab::TabFace = Rc::new(move |_, cx| {
+        match status::status_pane_deck(
+            face.clone(),
+            front.clone().into_iter().collect(),
+            state.connected,
+            ground,
+            cx,
+        ) {
+            Some(deck) => deck.into_any_element(),
+            None => Icon::new(IconName::AppWindow)
+                .size(tab::TAB_ICON)
+                .into_any_element(),
+        }
+    });
+    let item = workspace_tab(id, TabLook::Window, on, state, cx)
+        .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx));
+    tab::tab_faces(
+        item,
         TabLook::Window,
-        workspace_status_bar_ground(cx),
+        on,
         state,
+        tab::TabFaces {
+            label,
+            lead: px(pane_stack::StackSize::Bar.widest()),
+            full,
+            icon,
+        },
+        close,
+        reorder,
         cx,
     )
-    .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-    .map(|item| match deck {
-        Some(deck) => item.child(deck.beside(name, px(5.0))),
-        None => item.child(name),
-    })
 }
 
 #[must_use]
@@ -275,7 +313,7 @@ pub fn workspace_tab(
         .flex()
         .flex_shrink_1()
         .w(WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH)
-        .min_w(WORKSPACE_STATUS_WINDOW_MIN_WIDTH)
+        .min_w(WORKSPACE_STATUS_TAB_HEIGHT)
         .max_w(WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH)
         .map(|item| {
             if state.alone {
@@ -285,8 +323,6 @@ pub fn workspace_tab(
             }
         })
         .items_center()
-        .gap(px(5.0))
-        .px(px(9.0))
         .overflow_hidden()
         .when(!state.active, |item| item.text_color(foreground.muted()))
         .type_style(TextStyle::Lead, cx)

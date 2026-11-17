@@ -105,6 +105,18 @@ pub fn status_pane_deck(
     })
 }
 
+pub(crate) fn front_pane(panes: &[StatusPaneEntry]) -> Option<StatusPaneEntry> {
+    let front = panes.iter().find(|pane| pane.active).or(panes.first())?;
+    Some(StatusPaneEntry {
+        attention: panes
+            .iter()
+            .map(|pane| pane.attention)
+            .max()
+            .unwrap_or_default(),
+        ..front.clone()
+    })
+}
+
 fn focused_first(mut panes: Vec<StatusPaneEntry>) -> Vec<StatusPaneEntry> {
     if let Some(active) = panes.iter().position(|pane| pane.active) {
         let focused = panes.remove(active);

@@ -2182,9 +2182,24 @@ impl BrowserView {
         if tabs.is_empty() || (self.mux_tabs == tabs && self.mux_active == active_tab) {
             return;
         }
+        let local = self.tab_urls();
+        let order = zz_client::navigation::tab_order(
+            &local.iter().map(String::as_str).collect::<Vec<_>>(),
+            tabs,
+        );
         self.mux_tabs = tabs.to_vec();
         self.mux_active = active_tab;
         self.applying_mux = true;
+        if let Some(order) = order {
+            let mut slots = std::mem::take(&mut self.tabs)
+                .into_iter()
+                .map(Some)
+                .collect::<Vec<_>>();
+            self.tabs = order
+                .into_iter()
+                .filter_map(|index| slots[index].take())
+                .collect();
+        }
         while self.tabs.len() > tabs.len() {
             let id = self.tabs[self.tabs.len() - 1].id;
             self.close_tab_by_id(id, window, cx);
@@ -2239,12 +2254,8 @@ impl BrowserView {
         });
     }
 
-    fn publish_tabs(&mut self, cx: &mut Context<Self>) {
-        if self.applying_mux {
-            return;
-        }
-        let tabs: Vec<String> = self
-            .tabs
+    fn tab_urls(&self) -> Vec<String> {
+        self.tabs
             .iter()
             .map(|tab| {
                 if tab.id == self.active_tab {
@@ -2253,7 +2264,27 @@ impl BrowserView {
                     tab.url.clone()
                 }
             })
-            .collect();
+            .collect()
+    }
+
+    fn move_tab(&mut self, tab: TabId, to: usize, cx: &mut Context<Self>) {
+        let Some(from) = self.tabs.iter().position(|entry| entry.id == tab) else {
+            return;
+        };
+        if to >= self.tabs.len() || to == from {
+            return;
+        }
+        let entry = self.tabs.remove(from);
+        self.tabs.insert(to, entry);
+        self.publish_tabs(cx);
+        cx.notify();
+    }
+
+    fn publish_tabs(&mut self, cx: &mut Context<Self>) {
+        if self.applying_mux {
+            return;
+        }
+        let tabs = self.tab_urls();
         let active = self.active_tab_index();
         if self.mux_tabs == tabs && self.mux_active == active {
             return;
@@ -3547,6 +3578,7 @@ impl Render for BrowserChromeView {
         let address_browser = self.browser.clone();
         let activate_browser = self.browser.clone();
         let close_browser = self.browser.clone();
+        let move_browser = self.browser.clone();
         let new_tab_browser = self.browser.clone();
         let address = browser_address(&self.address, site_controls, window, cx).on_mouse_down(
             MouseButton::Left,
@@ -3565,6 +3597,11 @@ impl Render for BrowserChromeView {
             .on_close(move |id, window, cx| {
                 if let Some(browser) = close_browser.upgrade() {
                     browser.update(cx, |view, cx| view.close_tab_by_id(TabId(id), window, cx));
+                }
+            })
+            .on_move(move |id, to, _, cx| {
+                if let Some(browser) = move_browser.upgrade() {
+                    browser.update(cx, |view, cx| view.move_tab(TabId(id), to, cx));
                 }
             })
             .on_new_tab(move |window, cx| {
@@ -5057,6 +5094,57 @@ mod tests {
                 assert_eq!(view.tabs.len(), 1);
                 assert_ne!(view.active_tab, TAB_ID);
                 assert!(!view.tabs[0].popup);
+            });
+        });
+    }
+
+    #[ala::test]
+    fn a_reordered_tab_list_reorders_tabs_without_navigating_them(cx: &mut TestAppContext) {
+        cx.update(zz_ui::init);
+        let view_slot = Rc::new(RefCell::new(None));
+        let captured_view = Rc::clone(&view_slot);
+        let urls = ["https://a.test/", "https://b.test/", "https://c.test/"].map(String::from);
+        let tabs = urls.to_vec();
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let controller =
+                cx.new(|cx| BrowserController::new(Err(BrowserError::AlreadyShutdown), cx));
+            let mux = cx.new(|cx| {
+                MuxClient::new(
+                    Err(DaemonError::Thread("test client".to_owned())),
+                    zz_daemon_client::default_socket_path(),
+                    cx,
+                )
+            });
+            let view = cx.new(|cx| {
+                let descriptor = BrowserDescriptor {
+                    tabs,
+                    active_tab: 1,
+                    profile: "default".to_owned(),
+                };
+                BrowserView::new(PaneId(7), &descriptor, controller, mux, window, cx)
+            });
+            captured_view.replace(Some(view.clone()));
+            Root::new(view, window, cx)
+        });
+        let view = view_slot.borrow().clone().expect("captured browser view");
+        cx.update(|window, cx| {
+            view.update(cx, |view, cx| {
+                let tabs = |view: &BrowserView| {
+                    view.tabs
+                        .iter()
+                        .map(|tab| tab.id)
+                        .zip(view.tab_urls())
+                        .collect::<Vec<_>>()
+                };
+                let before = tabs(view);
+                let active = view.active_tab;
+                let [a, b, c] = urls.clone();
+                view.synchronize_tabs(&[c, a, b], 2, window, cx);
+                assert_eq!(
+                    tabs(view),
+                    [before[2].clone(), before[0].clone(), before[1].clone()]
+                );
+                assert_eq!(view.active_tab, active);
             });
         });
     }

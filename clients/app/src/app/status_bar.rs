@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use ala::{AnyElement, App, Context, Entity, IntoElement, px};
-use penna::ActiveTheme as _;
-use zz_client::{StatusBarModel, StatusBarPane};
+use penna::{ActiveTheme as _, TabLook};
+use zz_client::{StatusBarModel, StatusBarPane, navigation::move_window_commands};
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use zz_protocol::PaneKindSnapshot;
 use zz_ui::{
@@ -12,6 +12,7 @@ use zz_ui::{
             MAX_VISIBLE_WINDOWS, StatusAction, StatusPaneEntry, StatusWindowActions,
             StatusWindowEntry, status_window, status_window_overflow, visible_window_range,
         },
+        tab::{TabMove, TabReorder, TabStripId},
     },
     shell::{WorkspaceStatusSlots, workspace_status_bar},
 };
@@ -37,9 +38,20 @@ pub(super) fn render(
         .unwrap_or(0);
     let visible = visible_window_range(model.windows.len(), active, MAX_VISIBLE_WINDOWS);
     let alone = model.windows.len() == 1;
-    let mut windows = model.windows[visible]
+    let strip = TabStripId::new(cx.entity_id(), TabLook::Window);
+    let on_move = writable.then(|| {
+        let windows = model.windows.clone();
+        let connection = view.connection.clone();
+        Rc::new(move |id, to, _: &mut ala::Window, cx: &mut App| {
+            for command in move_window_commands(&windows, zz_protocol::WindowId(id), to) {
+                sidebar::execute(&connection, &command, cx);
+            }
+        }) as TabMove
+    });
+    let mut windows = model.windows[visible.clone()]
         .iter()
-        .map(|window| {
+        .zip(visible)
+        .map(|(window, index)| {
             let id = window.id;
             let rename = writable.then(|| {
                 let (label, command) = zz_client::navigation::rename_prompt_command(
@@ -96,6 +108,12 @@ pub(super) fn render(
                     close: writable
                         .then(|| command_action(&view.connection, "kill-window", id.to_string())),
                     rename,
+                    reorder: on_move.as_ref().map(|on_move| TabReorder {
+                        strip,
+                        id: id.0,
+                        index,
+                        on_move: Rc::clone(on_move),
+                    }),
                 },
                 cx,
             )

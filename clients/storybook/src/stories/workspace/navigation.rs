@@ -648,6 +648,8 @@ fn pill(
         name.into(),
         format!("{index}:{name}").into(),
         state,
+        Vec::new(),
+        None,
         None,
         cx,
     )

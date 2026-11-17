@@ -1,14 +1,15 @@
-use penna::{ActiveTheme as _, blocks::sidebar::controls_leading_inset_in};
+use penna::{ActiveTheme as _, TabLook, blocks::sidebar::controls_leading_inset_in};
 use std::rc::Rc;
 
 use ala::{AnyElement, App, Entity, Pixels, Stateful, Window};
-use zz_client::{StatusBarModel, StatusBarWindow};
+use zz_client::{StatusBarModel, StatusBarWindow, navigation::move_window_commands};
 use zz_ui::navigation::{
     WorkspaceStatusWindowState,
     status::{
         MAX_VISIBLE_WINDOWS, StatusPaneEntry, StatusWindowActions, StatusWindowEntry,
         status_window, status_window_overflow, visible_window_range,
     },
+    tab::{TabMove, TabReorder, TabStripId},
 };
 
 use crate::mux::{
@@ -26,7 +27,7 @@ pub(crate) fn render_gui_status_bar(
     mux: &Entity<MuxClient>,
     titlebar_controls: Option<(AnyElement, Pixels)>,
     window_controls: Option<AnyElement>,
-    _window: &mut Window,
+    window: &mut Window,
     cx: &mut App,
 ) -> Stateful<ala::Div> {
     let (snapshot, attached_host, attached, connected) = {
@@ -48,9 +49,26 @@ pub(crate) fn render_gui_status_bar(
     let visible_range =
         visible_window_range(model.windows.len(), active_index, MAX_VISIBLE_WINDOWS);
     let alone = model.windows.len() == 1;
-    let visible_windows = model.windows[visible_range]
+    let strip = TabStripId::new(window.current_view(), TabLook::Window);
+    let on_move = connected.then(|| {
+        let windows = model.windows.clone();
+        let mux = mux.clone();
+        Rc::new(move |id, to, _: &mut Window, cx: &mut App| {
+            for command in move_window_commands(&windows, zz_protocol::WindowId(id), to) {
+                mux.read(cx).execute(command);
+            }
+        }) as TabMove
+    });
+    let visible_windows = model.windows[visible_range.clone()]
         .iter()
-        .map(|window| {
+        .zip(visible_range)
+        .map(|(window, index)| {
+            let reorder = on_move.as_ref().map(|on_move| TabReorder {
+                strip,
+                id: window.id.0,
+                index,
+                on_move: Rc::clone(on_move),
+            });
             render_status_window(
                 window,
                 connected,
@@ -58,6 +76,7 @@ pub(crate) fn render_gui_status_bar(
                 attached_host,
                 &tree_model,
                 mux,
+                reorder,
                 cx,
             )
         })
@@ -84,6 +103,7 @@ fn render_status_window(
     attached_host: HostId,
     model: &MuxTreeModel,
     mux: &Entity<MuxClient>,
+    reorder: Option<TabReorder>,
     cx: &App,
 ) -> AnyElement {
     let id = window.id;
@@ -147,6 +167,7 @@ fn render_status_window(
                     .execute(kill_target_command(TreeTarget::Window(id)));
             })),
             rename,
+            reorder,
         },
         cx,
     )
