@@ -11,10 +11,10 @@ use std::{
 
 use ala::{
     AnchoredPositionMode, Animation, AnimationExt as _, AnyElement, AnyView, AnyWindowHandle, App,
-    Bounds, Context, Corners, CursorStyle, DragMoveEvent, Entity, EntityId, FocusHandle,
-    IntoElement, KeyUpEvent, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseExitEvent,
-    MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Size, StyleRefinement, Task, WeakEntity,
-    Window, anchored, canvas, div, ease_out_quint, point, prelude::*, px,
+    Bounds, Context, Corners, DragMoveEvent, Entity, EntityId, FocusHandle, IntoElement,
+    KeyUpEvent, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseExitEvent, MouseMoveEvent,
+    MouseUpEvent, Pixels, Point, Render, Size, StyleRefinement, Task, WeakEntity, Window, anchored,
+    canvas, div, ease_out_quint, point, prelude::*, px,
 };
 use penna::blocks::dialog::DialogButtonProps;
 use penna::{
@@ -4610,123 +4610,49 @@ impl AppView {
         } else {
             (cell, Pixels::ZERO)
         };
-        let far_x = (frame.width - edge.width - near).max(Pixels::ZERO);
-        let far_y = (frame.height - edge.height - near).max(Pixels::ZERO);
-        let inner_width = (frame.width - edge.width * 2.0 - near * 2.0).max(Pixels::ZERO);
-        let top = near + edge.height;
-        let edges = |left, top, right, bottom| FloatGrip {
-            left,
-            top,
-            right,
-            bottom,
-        };
-        [
-            (
-                "move",
-                FloatGrip::MOVE,
-                Bounds::new(
-                    point(edge.width, Pixels::ZERO),
-                    ala::size(inner_width, edge.height),
-                ),
-                None,
-            ),
-            (
-                "left",
-                edges(true, false, false, false),
-                Bounds::new(
-                    point(near, top),
-                    ala::size(edge.width, (far_y - top).max(Pixels::ZERO)),
-                ),
-                Some(CursorStyle::ResizeLeftRight),
-            ),
-            (
-                "right",
-                edges(false, false, true, false),
-                Bounds::new(
-                    point(far_x, top),
-                    ala::size(edge.width, (far_y - top).max(Pixels::ZERO)),
-                ),
-                Some(CursorStyle::ResizeLeftRight),
-            ),
-            (
-                "top",
-                edges(false, true, false, false),
-                Bounds::new(
-                    point(near + edge.width, near),
-                    ala::size(inner_width, edge.height),
-                ),
-                Some(CursorStyle::ResizeUpDown),
-            ),
-            (
-                "bottom",
-                edges(false, false, false, true),
-                Bounds::new(
-                    point(near + edge.width, far_y),
-                    ala::size(inner_width, edge.height),
-                ),
-                Some(CursorStyle::ResizeUpDown),
-            ),
-            (
-                "top-left",
-                edges(true, true, false, false),
-                Bounds::new(point(near, near), edge),
-                Some(CursorStyle::ResizeUpLeftDownRight),
-            ),
-            (
-                "top-right",
-                edges(false, true, true, false),
-                Bounds::new(point(far_x, near), edge),
-                Some(CursorStyle::ResizeUpRightDownLeft),
-            ),
-            (
-                "bottom-left",
-                edges(true, false, false, true),
-                Bounds::new(point(near, far_y), edge),
-                Some(CursorStyle::ResizeUpRightDownLeft),
-            ),
-            (
-                "bottom-right",
-                edges(false, false, true, true),
-                Bounds::new(point(far_x, far_y), edge),
-                Some(CursorStyle::ResizeUpLeftDownRight),
-            ),
-        ]
-        .into_iter()
-        .filter(|(name, ..)| *name != if pip { "move" } else { "top" })
-        .map(|(name, grip, bounds, cursor)| {
-            div()
-                .id(ala::SharedString::from(format!(
-                    "floating-grip-{}-{name}",
-                    float.pane.0
-                )))
-                .debug_selector(move || format!("floating-grip-{}-{name}", float.pane.0))
-                .absolute()
-                .occlude()
-                .left(bounds.origin.x)
-                .top(bounds.origin.y)
-                .w(bounds.size.width)
-                .h(bounds.size.height)
-                .when_some(cursor, ala::Styled::cursor)
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |view, event: &MouseDownEvent, _, cx| {
-                        view.begin_float_drag(
-                            window,
-                            border_status,
-                            float,
-                            grip,
-                            cell,
-                            event.position,
-                            cx,
-                        );
-                    }),
-                )
-                .on_drag(FloatDrag { pane: float.pane }, |_, _, _, cx| {
-                    cx.new(|_| SplitDragPreview)
-                })
-                .into_any_element()
-        })
-        .collect()
+        zz_ui::pip::float_grip_areas(frame, edge, point(near, near), pip)
+            .into_iter()
+            .map(
+                |zz_ui::pip::FloatGripArea {
+                     name,
+                     grip,
+                     bounds,
+                     cursor,
+                 }| {
+                    div()
+                        .id(ala::SharedString::from(format!(
+                            "floating-grip-{}-{name}",
+                            float.pane.0
+                        )))
+                        .debug_selector(move || format!("floating-grip-{}-{name}", float.pane.0))
+                        .absolute()
+                        .occlude()
+                        .left(bounds.origin.x)
+                        .top(bounds.origin.y)
+                        .w(bounds.size.width)
+                        .h(bounds.size.height)
+                        .when_some(cursor, ala::Styled::cursor)
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |view, event: &MouseDownEvent, _, cx| {
+                                view.begin_float_drag(
+                                    window,
+                                    border_status,
+                                    float,
+                                    grip,
+                                    cell,
+                                    event.position,
+                                    cx,
+                                );
+                            }),
+                        )
+                        .on_drag(FloatDrag { pane: float.pane }, |_, _, _, cx| {
+                            cx.new(|_| SplitDragPreview)
+                        })
+                        .into_any_element()
+                },
+            )
+            .collect()
     }
 
     fn menu_overlay(&self, origin: Point<Pixels>, window: &Window, cx: &App) -> Option<AnyElement> {

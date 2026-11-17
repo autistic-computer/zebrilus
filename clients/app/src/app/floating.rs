@@ -8,7 +8,9 @@ use ala::{
 use penna::ActiveTheme as _;
 use zz_client::{
     MenuBox, MenuKeyResult, MenuPointerKind,
-    floating::{FloatCells, float_title},
+    floating::{
+        FloatCells, FloatGrip, FloatWindow, float_drag_command, float_drag_preview, float_title,
+    },
     resolve_menu_mouse,
 };
 use zz_protocol::{
@@ -22,7 +24,7 @@ use zz_ui::{
     },
     pane::{FloatingSurface, PipGrab, moving_pane},
     pane_look::pane_color,
-    pip::{PipCard, PipDrag, PipLayout, PipStage, PipSurface, PipThrow},
+    pip::{PipCard, PipDrag, PipLayout, PipStage, PipSurface, PipThrow, float_grip_areas},
 };
 
 use super::AppShell;
@@ -37,6 +39,37 @@ pub(super) struct AppPipDrag {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub(super) struct FloatGrab {
+    pane: PaneId,
+    grip: FloatGrip,
+    lines: PaneBorderLines,
+    area: FloatWindow,
+    start: FloatCells,
+    press: Point<Pixels>,
+    cell: (f32, f32),
+    delta: (i32, i32),
+    limit: Option<PipLayout>,
+    touch: bool,
+}
+
+impl FloatGrab {
+    fn target(&self) -> FloatCells {
+        let target = float_drag_preview(self.start, self.grip, self.delta);
+        self.limit
+            .map_or(target, |layout| layout.within(target, self.grip))
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct FloatGripDrag {
+    pane: PaneId,
+    grip: FloatGrip,
+}
+
+const TOUCH_GRIP: f32 = 44.0;
+const POINTER_GRIP: f32 = 8.0;
+
+#[derive(Clone, Copy, Debug)]
 pub(super) struct AppPipLanding {
     pane: PaneId,
     target: FloatCells,
@@ -46,6 +79,8 @@ pub(super) struct AppPipLanding {
 #[derive(Default)]
 pub(super) struct PipState {
     drag: Option<AppPipDrag>,
+    grab: Option<FloatGrab>,
+    press: Option<Point<Pixels>>,
     throw: PipThrow,
     landing: Option<AppPipLanding>,
     pub(super) stage: PipStage,
@@ -95,6 +130,16 @@ impl PipState {
 
     fn landing(&self, pane: PaneId) -> Option<AppPipLanding> {
         self.landing.filter(|landing| landing.pane == pane)
+    }
+
+    fn grabbed(&self, pane: PaneId) -> Option<FloatCells> {
+        self.grab
+            .filter(|grab| grab.pane == pane)
+            .map(|grab| grab.target())
+    }
+
+    pub(super) const fn grabbing(&self) -> bool {
+        self.grab.is_some()
     }
 }
 
@@ -395,6 +440,18 @@ impl AppShell {
         {
             self.release_pip(cx);
         }
+        if let Some(grab) = self.pip.grab {
+            if !active
+                .floating
+                .iter()
+                .any(|float| float.pane == grab.pane && float.visible)
+            {
+                self.pip.grab = None;
+                self.hold_terminal_resizes();
+            } else if !grab.touch && !cx.has_active_drag() {
+                self.release_float_grab(cx);
+            }
+        }
         let Some(landing) = self.pip.landing else {
             return;
         };
@@ -454,6 +511,196 @@ impl AppShell {
         if self.pip.drag.is_some_and(|drag| !drag.touch) {
             self.move_pip(position, cx);
         }
+    }
+
+    fn begin_float_grab(
+        &mut self,
+        pane: PaneId,
+        grip: FloatGrip,
+        press: Point<Pixels>,
+        touch: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(active) = self.active_window(cx) else {
+            return;
+        };
+        let Some(float) = active
+            .floating
+            .iter()
+            .find(|float| float.pane == pane && float.visible)
+            .copied()
+        else {
+            return;
+        };
+        let cell = self.cell_size(&active, cx);
+        let start = self
+            .pip
+            .landing
+            .take_if(|landing| landing.pane == pane)
+            .map_or_else(|| FloatCells::from(&float), |landing| landing.target);
+        let modal = active.modal.is_some_and(|modal| modal.pane == pane);
+        self.pip.drag = None;
+        self.pip.grab = Some(FloatGrab {
+            pane,
+            grip,
+            lines: float.border_lines,
+            area: FloatWindow {
+                border_status: active.pane_border_status,
+                rows: active.sy,
+            },
+            start,
+            press,
+            cell,
+            delta: (0, 0),
+            limit: (!modal).then(|| PipLayout {
+                window: (active.sx, active.sy),
+                cell: size(px(cell.0), px(cell.1)),
+                canvas: self.float_canvas_bounds.get().size,
+                lines: float.border_lines,
+                header: cx.theme().pane_header_height(),
+            }),
+            touch,
+        });
+        self.hold_terminal_resizes();
+        self.command("select-pane", vec!["-t".into(), pane.to_string()], cx);
+    }
+
+    fn move_float_grab(&mut self, pointer: Point<Pixels>, cx: &mut Context<Self>) {
+        let Some(grab) = self.pip.grab.as_mut() else {
+            return;
+        };
+        let offset = pointer - grab.press;
+        let delta = (
+            (f32::from(offset.x) / grab.cell.0).round() as i32,
+            (f32::from(offset.y) / grab.cell.1).round() as i32,
+        );
+        if grab.delta != delta {
+            grab.delta = delta;
+            cx.notify();
+        }
+    }
+
+    fn release_float_grab(&mut self, cx: &mut Context<Self>) {
+        let Some(grab) = self.pip.grab.take() else {
+            return;
+        };
+        self.hold_terminal_resizes();
+        cx.notify();
+        let target = grab.target();
+        if target == grab.start {
+            return;
+        }
+        self.invoke(
+            float_drag_command(
+                grab.pane, grab.grip, grab.start, target, grab.lines, grab.area,
+            ),
+            cx,
+        );
+        self.pip.landing = Some(AppPipLanding {
+            pane: grab.pane,
+            target,
+            at: cx.background_executor().now(),
+        });
+    }
+
+    fn drag_float_grip(
+        &mut self,
+        drag: FloatGripDrag,
+        position: Point<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.pip.grab.is_none_or(|grab| grab.pane != drag.pane) {
+            let press = self.pip.press.take().unwrap_or(position);
+            self.begin_float_grab(drag.pane, drag.grip, press, false, cx);
+        }
+        if self.pip.grab.is_some_and(|grab| !grab.touch) {
+            self.move_float_grab(position, cx);
+        }
+    }
+
+    fn touch_float_grip(
+        &mut self,
+        drag: FloatGripDrag,
+        event: &ala::TouchDragEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match event.phase {
+            ala::TouchPhase::Started => {
+                self.begin_float_grab(drag.pane, drag.grip, event.start_position, true, cx);
+                self.move_float_grab(event.position, cx);
+                window.prevent_default();
+            }
+            ala::TouchPhase::Moved => self.move_float_grab(event.position, cx),
+            ala::TouchPhase::Ended => self.release_float_grab(cx),
+            ala::TouchPhase::Cancelled => {
+                self.pip.grab = None;
+                self.hold_terminal_resizes();
+                cx.notify();
+            }
+        }
+        cx.stop_propagation();
+    }
+
+    fn float_grips(
+        &self,
+        pane: PaneId,
+        frame: ala::Size<Pixels>,
+        cell: (f32, f32),
+        pip: bool,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let band = px(if cfg!(any(target_os = "ios", target_os = "android")) {
+            TOUCH_GRIP
+        } else {
+            POINTER_GRIP
+        });
+        let cell = size(px(cell.0), px(cell.1));
+        let (edge, near) = if pip {
+            let inside = px(POINTER_GRIP / 2.0);
+            (size(band, band), point(inside - band, inside - band))
+        } else {
+            let edge = size(band.max(cell.width), band.max(cell.height));
+            (
+                edge,
+                point(cell.width - edge.width, cell.height - edge.height),
+            )
+        };
+        float_grip_areas(frame, edge, near, pip)
+            .into_iter()
+            .map(|area| {
+                let drag = FloatGripDrag {
+                    pane,
+                    grip: area.grip,
+                };
+                let view = cx.weak_entity();
+                div()
+                    .id(ala::SharedString::from(format!(
+                        "web-float-grip-{}-{}",
+                        pane.0, area.name
+                    )))
+                    .absolute()
+                    .occlude()
+                    .left(area.bounds.origin.x)
+                    .top(area.bounds.origin.y)
+                    .w(area.bounds.size.width)
+                    .h(area.bounds.size.height)
+                    .when_some(area.cursor, ala::Styled::cursor)
+                    .on_mouse_down(
+                        ala::MouseButton::Left,
+                        cx.listener(|this, event: &MouseDownEvent, _, _| {
+                            this.pip.press = Some(event.position);
+                        }),
+                    )
+                    .on_drag(drag, |_, _, _, cx| cx.new(|_| super::SplitDragPreview))
+                    .child(super::touch_drag_handle(move |event, window, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            this.touch_float_grip(drag, event, window, cx);
+                        });
+                    }))
+                    .into_any_element()
+            })
+            .collect()
     }
 
     #[allow(
@@ -544,10 +791,13 @@ impl AppShell {
                 let landing = self.pip.landing(float.pane);
                 let placed_cells = thrown
                     .map(|drag| drag.start)
+                    .or(self.pip.grabbed(float.pane))
                     .or(landing.map(|landing| landing.target));
                 let placed_float = placed_cells.map_or(*float, |cells| FloatingPaneSnapshot {
                     xoff: cells.xoff,
                     yoff: cells.yoff,
+                    sx: cells.sx,
+                    sy: cells.sy,
                     ..*float
                 });
                 let placed = float_placement(&placed_float, cell, canvas)?;
@@ -566,7 +816,13 @@ impl AppShell {
                 if let Some(drag) = thrown {
                     frame.origin = drag.drawn_origin();
                 }
-                Some((*float, modal, placed, frame, thrown.is_some()))
+                Some((
+                    *float,
+                    modal,
+                    placed,
+                    frame,
+                    thrown.is_some() || self.pip.grabbed(float.pane).is_some(),
+                ))
             })
             .collect::<Vec<_>>();
         let cards = laid
@@ -624,6 +880,7 @@ impl AppShell {
                 .unwrap_or_default();
             let inset = placed.content.origin - placed.frame.origin;
             let bordered = float.border_lines != PaneBorderLines::None;
+            let mut stashed = false;
             let surface = if modal {
                 let border_color =
                     zz_ui::pane::pane_border_color(active.active_pane == float.pane, cx);
@@ -638,12 +895,17 @@ impl AppShell {
                 if let Some(arranged) = arranged {
                     frame = arranged.frame;
                 }
-                let stashed = arranged.is_some_and(|arranged| arranged.stashed.is_some());
+                stashed = arranged.is_some_and(|arranged| arranged.stashed.is_some());
                 let surface = self.pip_surface(active, float, content, stashed, title, inset, cx);
                 moving_pane(float.pane, &self.pane_motion, surface)
                     .held(held)
                     .launches()
                     .into_any_element()
+            };
+            let grips = if bordered && !stashed && self.pip.thrown(float.pane).is_none() {
+                self.float_grips(float.pane, frame.size, cell, !modal, cx)
+            } else {
+                Vec::new()
             };
             layer.push(
                 div()
@@ -653,6 +915,7 @@ impl AppShell {
                     .w(frame.size.width)
                     .h(frame.size.height)
                     .child(surface)
+                    .children(grips)
                     .into_any_element(),
             );
         }
@@ -688,6 +951,12 @@ impl AppShell {
                     |this, event: &ala::DragMoveEvent<PipGrab>, _, cx| {
                         let pane = event.drag(cx).pane;
                         this.grab_pip(pane, event.event.position, cx);
+                    },
+                ))
+                .on_drag_move::<FloatGripDrag>(cx.listener(
+                    |this, event: &ala::DragMoveEvent<FloatGripDrag>, _, cx| {
+                        let drag = *event.drag(cx);
+                        this.drag_float_grip(drag, event.event.position, cx);
                     },
                 ))
                 .children(layer)

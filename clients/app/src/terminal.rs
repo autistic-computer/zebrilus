@@ -120,6 +120,22 @@ pub(crate) fn localized_font_appearance(
     appearance
 }
 
+pub(crate) fn tile_cell_size(
+    core: &ClientCore,
+    available_fonts: &[String],
+    window: &Window,
+    cx: &App,
+) -> ala::Size<Pixels> {
+    let fallback = &cx.theme().mono_font_family;
+    let appearance = localized_font_appearance(core, available_fonts, fallback, cx);
+    zz_ui::terminal::terminal_cell_size(
+        &terminal_font_for_style(&appearance, fallback, false, false),
+        px(appearance.font_size_points.clamp(7., 48.)),
+        &appearance,
+        window,
+    )
+}
+
 fn localize_font_stack(families: &mut Vec<String>, source: AppearanceSource, available: &[String]) {
     if source == AppearanceSource::Default {
         families.clear();

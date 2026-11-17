@@ -183,6 +183,10 @@ the native transport, key translation, and UIKit backend.
   removes the pane through the daemon. Drag a divider to resize the split.
 - A zoomed pane has an Exit zoom control. Drag a header grip to split or swap panes;
   the preview animates to the drop target. Mouse and touch divider drags update the daemon.
+- Drag a floating pane's edges or corners to resize it, and a modal float's top border to
+  move it. The grips are 44 pt, mostly outside the card.
+- Chat, view and browser panes report their size like terminals, so a window holding only a
+  chat follows the iPad's size and rotation.
 - Hardware keys, search, copy/paste, terminal images, mouse tracking, and
   scrollback use the shared terminal implementation. Swipe to scroll; long-press
   and drag to select text.

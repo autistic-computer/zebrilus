@@ -83,6 +83,12 @@ moves (`float_drag_within` keeps the edge the grip did not move), so a PiP alway
 travel between. `resize-pane` from the CLI can still make a float larger; the layout then pins it to the top
 left so its header shows.
 
+The web and iPad clients draw the same grips from `zz_ui::pip::float_grip_areas`, the geometry the
+desktop uses (`clients/app/src/app/floating.rs`). On iOS and Android each grip is 44 pt, 40 pt of it
+outside the card and 4 pt inside, so a finger reaches it without covering the content or more of the
+header than the desktop does; the web keeps the desktop's 8 px. Mouse drags and touch drags preview
+the frame locally, hold terminal resizes until release, and send the desktop's commands.
+
 # Throw
 
 `PipDrag` holds the drag in pixels: where it started, the pointer, and the frame origin, which

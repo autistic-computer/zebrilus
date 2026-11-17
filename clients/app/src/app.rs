@@ -167,6 +167,8 @@ pub struct AppShell {
     output_terminal: Option<(u64, Entity<TerminalPane>)>,
     split_drag: Option<SplitDragState>,
     terminal_resize_suppressed: Rc<Cell<bool>>,
+    tile_reports: Rc<RefCell<HashMap<PaneId, (u16, u16, u64)>>>,
+    available_fonts: Rc<[String]>,
     pane_drag: Option<PaneDragState>,
     #[cfg(target_os = "android")]
     system_back: Option<bool>,
@@ -251,6 +253,7 @@ fn watch_connection(
                     this.focused_pane = None;
                     this.compact.reset_attachment();
                     this.waiting_panes.clear();
+                    this.tile_reports.borrow_mut().clear();
                     this.output_terminal = None;
                     this.set_split_drag(None);
                     this.pane_drag = None;
@@ -472,6 +475,8 @@ impl AppShell {
             output_terminal: None,
             split_drag: None,
             terminal_resize_suppressed: Rc::new(Cell::new(false)),
+            tile_reports: Rc::default(),
+            available_fonts: cx.text_system().all_font_names().into(),
             pane_drag: None,
             #[cfg(target_os = "android")]
             system_back: None,
@@ -1321,6 +1326,9 @@ impl AppShell {
             .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Terminal)));
         self.waiting_panes
             .retain(|pane| existing.contains_key(pane));
+        self.tile_reports
+            .borrow_mut()
+            .retain(|pane, _| existing.contains_key(pane));
         if self.agents.keys().any(|pane| {
             self.focused_pane == Some(*pane)
                 && !matches!(existing.get(pane), Some(PaneKindSnapshot::Agent(_)))
@@ -2347,6 +2355,15 @@ impl AppShell {
                     picker.into_any_element()
                 }
             };
+            let content = match self.tile_size_report(pane_id, &pane.kind, is_float) {
+                Some(report) => div()
+                    .relative()
+                    .size_full()
+                    .child(content)
+                    .child(report)
+                    .into_any_element(),
+                None => content,
+            };
             let content = if frame.header {
                 let heading = zz_client::window_summary::pane_heading(pane);
                 let header = self.pane_header(
@@ -2618,6 +2635,75 @@ impl AppShell {
             .into_any_element()
     }
 
+    fn tile_size_report(
+        &self,
+        pane: PaneId,
+        kind: &PaneKindSnapshot,
+        floats: bool,
+    ) -> Option<AnyElement> {
+        if floats
+            || !matches!(
+                kind,
+                PaneKindSnapshot::Agent(_)
+                    | PaneKindSnapshot::View(_)
+                    | PaneKindSnapshot::Browser(_)
+                    | PaneKindSnapshot::Editor(_)
+            )
+        {
+            return None;
+        }
+        let connection = self.connection.clone();
+        let sent = Rc::clone(&self.tile_reports);
+        let held = Rc::clone(&self.terminal_resize_suppressed);
+        let fonts = Rc::clone(&self.available_fonts);
+        let motion = self.pane_motion.clone();
+        Some(
+            ala::canvas(
+                move |bounds, window, cx| {
+                    if held.get() || motion.moving() {
+                        return;
+                    }
+                    let core = &connection.read(cx).core;
+                    if core.attached_session().is_none() {
+                        return;
+                    }
+                    let cell = crate::terminal::tile_cell_size(core, &fonts, window, cx);
+                    if bounds.size.width < cell.width || bounds.size.height < cell.height {
+                        return;
+                    }
+                    let grid = zz_ui::terminal::terminal_grid_size(
+                        bounds.size,
+                        cell.width,
+                        cell.height,
+                        window.scale_factor(),
+                    );
+                    let report = (grid.columns, grid.rows, core.layout_generation());
+                    if sent.borrow().get(&pane) == Some(&report) {
+                        return;
+                    }
+                    sent.borrow_mut().insert(pane, report);
+                    connection.update(cx, |connection, cx| {
+                        connection.send(
+                            ProtocolMessage::Input(InputMessage::ResizeTerminalV2 {
+                                pane,
+                                columns: report.0,
+                                rows: report.1,
+                                cell_width_px: grid.cell_width_px,
+                                cell_height_px: grid.cell_height_px,
+                                layout_generation: report.2,
+                            }),
+                            cx,
+                        );
+                    });
+                },
+                |_, (), _, _| {},
+            )
+            .absolute()
+            .inset_0()
+            .into_any_element(),
+        )
+    }
+
     fn render_layout(
         &self,
         node: &zz_protocol::LayoutNode,
@@ -2787,7 +2873,12 @@ impl AppShell {
 
     fn set_split_drag(&mut self, state: Option<SplitDragState>) {
         self.split_drag = state;
-        self.terminal_resize_suppressed.set(state.is_some());
+        self.hold_terminal_resizes();
+    }
+
+    fn hold_terminal_resizes(&self) {
+        self.terminal_resize_suppressed
+            .set(self.split_drag.is_some() || self.pip.grabbing());
     }
 
     fn reconcile_split_drag(&mut self, active: &WindowSnapshot, cx: &mut Context<Self>) {
