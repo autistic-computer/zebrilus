@@ -42,7 +42,7 @@ use zz_ui::{
         terminal_link_popup, terminal_mode_indicator as terminal_mode_tag, terminal_status_popup,
     },
     pane_look::pane_color,
-    terminal::{FindBarAction, ScrollbarFade},
+    terminal::{CopyFlash, CopyFlashTracker, FindBarAction, ScrollbarFade},
 };
 
 use crate::{
@@ -54,10 +54,7 @@ use crate::{
         TerminalFontSizeAdjustment, TerminalSignal,
     },
     mux::hosts::HostId,
-    terminal::{
-        element::{RowRenderCache, TerminalElement},
-        shader,
-    },
+    terminal::element::{RowRenderCache, TerminalElement},
     window::corners::{WindowCorners, round_div_radii},
 };
 
@@ -88,7 +85,6 @@ const ALA_UNITS_PER_FONT_POINT: f32 = 96.0 / 72.0;
 static COPY_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 static PASTE_UPLOAD_ID: AtomicU64 = AtomicU64::new(1);
 const SELECTION_AUTOSCROLL_INTERVAL: Duration = Duration::from_millis(33);
-const COPY_FLASH_SELECTION_GRACE: Duration = Duration::from_millis(500);
 const IMAGE_HOVER_DWELL: Duration = Duration::from_millis(250);
 const TERMINAL_KEY_CONTEXT: &str = "Terminal";
 
@@ -448,20 +444,10 @@ pub(crate) struct TerminalView {
     scrollbar_fade_task: Task<()>,
     primary_paste_pressed: bool,
     last_clipboard_image: Option<(u64, Arc<Image>)>,
-    shader_epoch: Instant,
     observed_copy_generation: u64,
-    painted_selection: Vec<Bounds<Pixels>>,
-    selection_cleared_at: Option<Instant>,
-    copy_flash: Option<CopyFlash>,
+    copy_flash: CopyFlashTracker,
     _terminal_signal: Option<Entity<TerminalSignal>>,
     _subscriptions: Vec<Subscription>,
-}
-
-#[derive(Clone)]
-pub(crate) struct CopyFlash {
-    pub(crate) epoch: Instant,
-    pub(crate) started: Instant,
-    pub(crate) rects: Arc<[Bounds<Pixels>]>,
 }
 
 impl TerminalView {
@@ -534,7 +520,7 @@ impl TerminalView {
             }
             if copy_generation != self.observed_copy_generation {
                 self.observed_copy_generation = copy_generation;
-                changed |= !retained_changed && self.start_copy_flash();
+                changed |= !retained_changed && self.copy_flash.start();
             }
         }
         let mut retired_images = Vec::new();
@@ -1028,11 +1014,8 @@ impl TerminalView {
             scrollbar_fade_task: Task::ready(()),
             primary_paste_pressed: false,
             last_clipboard_image: None,
-            shader_epoch: Instant::now(),
             observed_copy_generation,
-            painted_selection: Vec::new(),
-            selection_cleared_at: None,
-            copy_flash: None,
+            copy_flash: CopyFlashTracker::new(),
             _terminal_signal: terminal_signal,
             _subscriptions: subscriptions,
         };
@@ -1045,44 +1028,7 @@ impl TerminalView {
     }
 
     pub(crate) fn record_selection(&mut self, selection: &[Bounds<Pixels>]) -> Option<CopyFlash> {
-        if selection.is_empty() {
-            if !self.painted_selection.is_empty() && self.selection_cleared_at.is_none() {
-                self.selection_cleared_at = Some(Instant::now());
-            }
-        } else {
-            self.selection_cleared_at = None;
-            if self.painted_selection != selection {
-                self.painted_selection = selection.to_vec();
-                if let Some(flash) = &mut self.copy_flash {
-                    flash.rects = shader::merge_rows(selection).into();
-                }
-            }
-        }
-        self.copy_flash.clone()
-    }
-
-    fn start_copy_flash(&mut self) -> bool {
-        let now = Instant::now();
-        let recent = self
-            .selection_cleared_at
-            .is_none_or(|cleared| now.duration_since(cleared) < COPY_FLASH_SELECTION_GRACE);
-        if self.painted_selection.is_empty() || !recent {
-            return false;
-        }
-        self.copy_flash = Some(CopyFlash {
-            epoch: self.shader_epoch,
-            started: now,
-            rects: shader::merge_rows(&self.painted_selection).into(),
-        });
-        true
-    }
-
-    fn live_copy_flash(&mut self) -> Option<CopyFlash> {
-        let flash = self.copy_flash.as_ref()?;
-        if flash.started.elapsed().as_secs_f32() > shader::COPY_FLASH_SECONDS {
-            self.copy_flash = None;
-        }
-        self.copy_flash.clone()
+        self.copy_flash.record(selection)
     }
 
     pub(crate) fn moving(&self) -> Rc<Cell<bool>> {
@@ -2362,7 +2308,7 @@ impl Render for TerminalView {
         let marked_text = self.marked_text();
         let status = self.status_message();
         let search_query = self.search_query.clone();
-        let copy_flash = self.live_copy_flash();
+        let copy_flash = self.copy_flash.live();
         let (mode, unseen_output, search_status, hovered_uri) = {
             let state = retained.read();
             (

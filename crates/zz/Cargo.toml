@@ -53,7 +53,6 @@ ignore = { workspace = true, optional = true }
 image = { workspace = true, features = ["bmp", "gif", "ico", "jpeg", "png", "pnm", "tiff", "webp"] }
 log.workspace = true
 mimalloc.workspace = true
-naga.workspace = true
 parking_lot.workspace = true
 penna = { workspace = true, features = ["tray"] }
 semver = "1"

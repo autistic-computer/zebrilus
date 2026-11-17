@@ -1123,6 +1123,13 @@ impl ClientCore {
                 text,
                 producer,
             } => {
+                if producer == ClipboardProducer::Server
+                    && !text.is_empty()
+                    && self.clipboard_write_lands(producer, target)
+                    && let Some(retained) = self.viewports.get_mut(&pane)
+                {
+                    retained.copy_generation = retained.copy_generation.wrapping_add(1);
+                }
                 self.events.push_back(CoreEvent::Clipboard {
                     pane,
                     request_id,

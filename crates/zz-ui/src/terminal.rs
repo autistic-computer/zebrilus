@@ -38,6 +38,10 @@ use zz_terminal::{
 
 use penna::{ThemeMode, foundation::interface_theme::BaseColors};
 
+mod copy_flash;
+
+pub use copy_flash::{CopyFlash, CopyFlashTracker, paint_copy_flash};
+
 const DIAGNOSTIC_TARGET: &str = "zz::diagnostics::terminal_render";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

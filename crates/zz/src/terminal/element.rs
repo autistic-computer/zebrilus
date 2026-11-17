@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use ala::{
     App, Bounds, Element, ElementId, ElementInputHandler, Entity, GlobalElementId,
@@ -6,17 +6,16 @@ use ala::{
 };
 use parking_lot::RwLock;
 use zz_terminal::{ScrollbarState, TerminalAppearance};
-use zz_ui::terminal::{PaintState, TerminalImageSource, TerminalRenderInput};
+use zz_ui::terminal::{
+    CopyFlash, PaintState, TerminalImageSource, TerminalRenderInput, paint_copy_flash,
+};
 
 pub(crate) use zz_ui::terminal::RowRenderCache;
 
 use crate::{
     mux::client::{KittyImageCache, RetainedTerminalViewport},
     pane,
-    terminal::{
-        shader,
-        view::{CopyFlash, TerminalView},
-    },
+    terminal::view::TerminalView,
 };
 
 pub(crate) struct TerminalElement {
@@ -190,38 +189,14 @@ impl Element for TerminalElement {
             ElementInputHandler::new(bounds, self.view.clone()),
             cx,
         );
-        let flash = self.copy_flash.as_ref().and_then(|flash| {
-            let shader = shader::copy_flash()?;
-            let scale = window.scale_factor();
-            let mut uniforms = shader.uniforms();
-            uniforms
-                .float(
-                    "iTime",
-                    Instant::now().duration_since(flash.epoch).as_secs_f32(),
-                )
-                .float(
-                    "iTimeCopy",
-                    flash.started.duration_since(flash.epoch).as_secs_f32(),
-                )
-                .vector(
-                    "iCellSize",
-                    &[
-                        f32::from(paint.geometry.cell_width) * scale,
-                        f32::from(paint.geometry.line_height) * scale,
-                    ],
-                )
-                .appearance(&self.appearance)
-                .copy_rects(&flash.rects, bounds.origin, scale);
-            Some((shader, uniforms.finish()))
-        });
-        match flash {
-            Some((shader, uniforms)) => {
-                window.paint_shader_layer(bounds, shader.shader(), uniforms, |window| {
-                    self.row_cache.borrow_mut().paint(paint, bounds, window, cx);
-                });
-                window.request_animation_frame();
-            }
-            None => self.row_cache.borrow_mut().paint(paint, bounds, window, cx),
-        }
+        paint_copy_flash(
+            self.copy_flash
+                .as_ref()
+                .map(|flash| (flash, self.appearance.as_ref())),
+            bounds,
+            ala::size(paint.geometry.cell_width, paint.geometry.line_height),
+            window,
+            |window| self.row_cache.borrow_mut().paint(paint, bounds, window, cx),
+        );
     }
 }

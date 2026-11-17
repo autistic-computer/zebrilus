@@ -38,9 +38,9 @@ use zz_ui::{
     },
     pane_look::pane_color,
     terminal::{
-        CURSOR_BLINK_TIMEOUT, FindBarAction, GridSize, PaintState, RowRenderCache, ScrollbarFade,
-        TerminalRenderInput, cursor_should_blink, selection_autoscroll_lines,
-        terminal_font_for_style,
+        CURSOR_BLINK_TIMEOUT, CopyFlash, CopyFlashTracker, FindBarAction, GridSize, PaintState,
+        RowRenderCache, ScrollbarFade, TerminalRenderInput, cursor_should_blink, paint_copy_flash,
+        selection_autoscroll_lines, terminal_font_for_style,
     },
 };
 
@@ -169,6 +169,9 @@ pub struct TerminalPane {
     overscroll: ala::RubberBand,
     geometry: Option<(GridSize, u64)>,
     cache: RowRenderCache,
+    copy_flash: CopyFlashTracker,
+    observed_copy_generation: Option<u64>,
+    painted_copy_flash: Option<(CopyFlash, TerminalAppearance)>,
     focused: bool,
     cursor_blink_visible: bool,
     cursor_blink_task: Option<Task<()>>,
@@ -336,6 +339,9 @@ impl TerminalPane {
             overscroll: ala::RubberBand::default(),
             geometry: None,
             cache: RowRenderCache::default(),
+            copy_flash: CopyFlashTracker::new(),
+            observed_copy_generation: None,
+            painted_copy_flash: None,
             focused: false,
             cursor_blink_visible: true,
             cursor_blink_task: None,
@@ -1558,6 +1564,7 @@ impl TerminalPane {
             .then(|| window.content_mask().bounds.bottom());
         let scrollbar_opacity = self.scrollbar_opacity(cx);
         let connection = self.connection.clone();
+        let flash_copies = !crate::app::phone() && !cx.reduce_motion();
         let (paint, attached, layout_generation) = connection.update(cx, |connection, cx| {
             for image in connection.take_retired_terminal_images() {
                 let _ = window.drop_image(image);
@@ -1615,6 +1622,20 @@ impl TerminalPane {
                 window,
                 cx,
             );
+            let copies = retained.copy_generation;
+            if self
+                .observed_copy_generation
+                .replace(copies)
+                .is_some_and(|seen| seen != copies)
+                && flash_copies
+            {
+                self.copy_flash.start();
+            }
+            self.copy_flash.record(paint.selection_bounds());
+            self.painted_copy_flash = self
+                .copy_flash
+                .live()
+                .zip(flash_copies.then_some(appearance));
             Some((
                 paint,
                 connection.core.attached_session().is_some(),
@@ -1692,7 +1713,16 @@ impl TerminalPane {
             cx,
         );
         if let Some(paint) = paint {
-            self.cache.paint(paint, bounds, window, cx);
+            let flash = self.painted_copy_flash.take();
+            paint_copy_flash(
+                flash
+                    .as_ref()
+                    .map(|(flash, appearance)| (flash, appearance)),
+                bounds,
+                ala::size(self.cell_width, self.line_height),
+                window,
+                |window| self.cache.paint(paint, bounds, window, cx),
+            );
         }
         {
             let view = cx.entity().downgrade();
