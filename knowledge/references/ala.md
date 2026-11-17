@@ -405,9 +405,9 @@ above).
 # Liquid glass
 
 `libs/ala/crates/ala/src/glass.rs` holds the `Glass` primitive, `GlassMaterial` and `plan_glass`;
-`glass.wgsl` is the one shader Metal (through naga) and wgpu draw it with. Glass whose tint is
+`glass.wgsl` is the shader Metal, wgpu and Direct3D 11 use. Glass whose tint is
 translucent reads its backdrop: a pass break, a copy of its region and a blur chain the size of that
-region. It writes its pixels with blending off (`reading_pipeline` in both renderers): its face
+region. It writes its pixels with blending off. Its face
 replaces what it covers with the blurred copy under its tint, and past the face it writes back the
 copy's own pixel under the contour. Blending can only keep at least `1 - alpha` of what is under,
 so over a translucent window bright content under a dark face showed through sharp
