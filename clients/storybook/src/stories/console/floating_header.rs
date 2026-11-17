@@ -250,7 +250,7 @@ struct FloatTerminal {
 }
 
 impl FloatTerminal {
-    fn new(id: u64, shown: Shown, active: bool, gaps: bool) -> Self {
+    fn new(id: u64, shown: Shown, active: bool, gaps: bool, cx: &App) -> Self {
         let all = shell_lines();
         let (viewport, history, title) = match shown {
             Shown::Live => {
@@ -267,6 +267,15 @@ impl FloatTerminal {
                 "Neovim",
             ),
         };
+        let mut appearance = appearance();
+        let local = zz_terminal::LocalColors::new(
+            viewport.foreground,
+            viewport.background,
+            &appearance.palette,
+            zz_ui::terminal::theme_terminal_colors(cx),
+        );
+        let viewport = local.viewport(&viewport);
+        appearance.local_colors = Some(local);
         Self {
             id,
             title,
@@ -274,7 +283,7 @@ impl FloatTerminal {
             gaps,
             viewport: Arc::new(viewport),
             history: Rc::new(history),
-            appearance: Arc::new(appearance()),
+            appearance: Arc::new(appearance),
             revisions: (1..=u64::from(ROWS)).collect(),
             cache: Rc::default(),
         }
@@ -472,7 +481,7 @@ fn terminals(_: &mut Window, cx: &mut App) -> AnyView {
         (Shown::Program, "full-screen program"),
     ] {
         for (active, gaps, caption) in variants() {
-            let view = cx.new(|_| FloatTerminal::new(id, shown, active, gaps));
+            let view = cx.new(|cx| FloatTerminal::new(id, shown, active, gaps, cx));
             items.push((format!("{name} · {caption}"), AnyView::from(view)));
             id += 1;
         }
