@@ -1023,7 +1023,7 @@ impl RenderOnce for SettingEntry {
                 this.child(
                     div()
                         .flex_none()
-                        .px(Space::INSET_CARD)
+                        .pl(Space::INSET_CARD)
                         .child(Separator::horizontal().look(RuleLook::List).h(RULE_WIDTH)),
                 )
             })

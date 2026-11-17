@@ -86,7 +86,7 @@
 .penna-setting-rule {
   flex: none;
   height: 1px;
-  padding: 0 var(--penna-inset-card);
+  padding-left: var(--penna-inset-card);
 }
 
 .penna-setting-rule > [data-penna] {

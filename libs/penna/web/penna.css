@@ -839,7 +839,7 @@ select[data-penna] {
 }
 
 .penna-setting + .penna-setting {
-  box-shadow: inset var(--penna-inset-card) 0 var(--penna-fill), inset calc(-1 * var(--penna-inset-card)) 0 var(--penna-fill), inset 0 1px var(--penna-divider);
+  box-shadow: inset var(--penna-inset-card) 0 var(--penna-fill), inset 0 1px var(--penna-divider);
 }
 
 .penna-setting > .penna-copy {
