@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent mentions: the window</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/badge/badge.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="mentions.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="mentions.js"></script>
+<style>
+  .zz-figs { display: grid; grid-template-columns: repeat(3, 700px); gap: 32px; }
+  .zz-figs > figure { display: grid; gap: 12px; margin: 0; }
+  .zz-figs figcaption { font-size: 15px; line-height: 20px; font-weight: 600; }
+  .zz-win.penna-window { height: 620px; }
+  .zz-pip[data-penna="floating.pip"] { width: 320px; height: 310px; }
+  .zz-pip-head .zz-ptile { margin-right: 1px; }
+  .zz-pip-compose { flex: none; padding: 6px 8px 8px; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Agent mentions: the window</h1>
+    <p>The host chat with codex open in the PiP, once per take, so the row and the PiP are seen together. Back to <a href="index.html">the child row</a>.</p>
+  </div>
+  <div class="zz-figs" data-figs></div>
+</main>
+<script>
+(() => {
+  const { ic, tile, you, step, live, frame, composer, takes, PROMPT } = window.zzm;
+  const BRIEF = "In crates/zz-daemon/src/agent/turn.rs, can the retry loop send the same prompt twice? Check what happens when a retry is scheduled before the first send's ack arrives. Answer yes or no, with the line that decides it.";
+  const pip = `<div class="zz-pip" data-penna="floating.pip">
+    <div class="zz-pip-head" data-penna="bar.pane">${tile("codex", null, "small")}<span class="zz-pip-title">codex</span><span class="zz-dim">zebrilus</span><span class="zz-grow"></span><button data-penna="icon-button.bar" aria-label="Close">${ic("xmark")}</button></div>
+    <div class="zz-pip-tx">${you(BRIEF)}<div class="zz-steps">${step("file", "Read turn.rs")}${live("Reading the retry loop", "42s")}</div></div>
+    <div class="zz-pip-compose">${composer({ hint: "Message Codex…" })}</div>
+  </div>`;
+  const win = (take) => `<div class="penna-window zz-win" data-penna="window">
+    <div class="penna-lights"><i></i><i></i><i></i></div>
+    <header data-penna="titlebar"><div data-penna="tab.strip"><div data-penna="tab.window" aria-selected="true">${ic("zz-claude")}<span>zebrilus</span></div><div data-penna="tab.window">${ic("terminal")}<span>cargo</span></div></div></header>
+    <section class="zz-host" data-penna="pane">
+      <div data-penna="bar.pane"><span data-penna="button.title">${ic("zz-claude")}<span>Claude Code</span><span class="zz-dim">~/dev/zebrilus</span></span></div>
+      <div class="zz-tx">${you(PROMPT)}<p>I'll have codex read turn.rs and answer that.</p><div class="zz-steps">${step("square-terminal", "zz new-pane -d --kind agent codex")}</div>${take("working")}</div>
+      ${frame()}
+      ${pip}
+    </section>
+  </div>`;
+  document.querySelector("[data-figs]").innerHTML = takes.map((take, index) => `<figure><figcaption>Take ${index + 1}</figcaption>${win(take)}</figure>`).join("");
+  window.zzm.round();
+})();
+</script>
+</body>
+</html>

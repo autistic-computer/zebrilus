@@ -1,0 +1,112 @@
+.zz-page { display: grid; gap: 32px; width: max-content; margin: 0; padding: 40px 32px 64px; }
+.zz-page h1 { margin: 0; font-size: var(--penna-text-title-size); line-height: var(--penna-text-title-line); font-weight: 600; }
+.zz-page h2 { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+.zz-intro { display: grid; gap: 6px; }
+.zz-intro p { margin: 0; max-width: 96ch; color: var(--penna-fg-muted); }
+.zz-intro b { color: var(--penna-fg); font-weight: 600; }
+.zz-intro a { color: var(--penna-fg); }
+
+.zz-board { display: grid; grid-template-columns: 96px repeat(3, 420px); gap: 20px 28px; align-items: start; }
+.zz-col { display: grid; gap: 4px; padding-bottom: 4px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+.zz-col > b { font-size: 15px; line-height: 20px; font-weight: 600; color: var(--penna-fg); }
+.zz-state { padding-top: 14px; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); font-weight: 600; }
+.zz-span { grid-column: 2 / -1; }
+
+.zz-chat { position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px 16px; border: 1px solid var(--penna-border); border-radius: 14px; background: var(--penna-bg); font-size: var(--penna-text-read-body-size); line-height: var(--penna-text-read-body-line); color: var(--penna-fg); }
+.zz-chat > p, .zz-tx > p { margin: 0; }
+.zz-chat > .penna-chat-bubble[data-penna], .zz-tx > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 85%; }
+
+.zz-ref { padding: 0 2px; margin: 0 -2px; border-radius: 4px; background: color-mix(in srgb, var(--penna-primary) 6%, transparent); color: var(--penna-primary-ink); font-weight: 500; }
+
+.zz-ptile { position: relative; display: grid; flex: none; place-items: center; width: 22px; height: 22px; border-radius: 6px; corner-shape: superellipse(var(--penna-window-k, 2)); box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--penna-fg) 16%, transparent); --penna-icon-size: 13px; }
+.zz-ptile[data-program="codex"] { background: #f8f8f8; color: #000; }
+.zz-ptile[data-program="claude"] { background: #e6683d; color: #fff; }
+.zz-ptile[data-size="small"] { width: 16px; height: 16px; border-radius: 4.5px; --penna-icon-size: 10px; }
+.zz-dot { position: absolute; right: -2.5px; bottom: -2.5px; display: grid; place-items: center; width: 9px; height: 9px; border-radius: 50%; background: linear-gradient(var(--zz-ring, var(--penna-fill)), var(--zz-ring, var(--penna-fill))), var(--penna-bg); }
+.zz-dot::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--zz-tone); }
+[data-tone="accent"] { --zz-tone: var(--penna-accent); }
+[data-tone="warning"] { --zz-tone: var(--penna-warning); }
+[data-tone="danger"] { --zz-tone: var(--penna-danger); }
+[data-tone="success"] { --zz-tone: var(--penna-success); }
+[data-tone="muted"] { --zz-tone: var(--penna-fg-muted); }
+
+.zz-word { flex: none; font-size: var(--penna-text-small-size); color: var(--penna-fg-muted); }
+.zz-word[data-tone="warning"] { color: var(--penna-warning); }
+.zz-word[data-tone="danger"] { color: var(--penna-danger); }
+.zz-word[data-tone="normal"] { color: var(--penna-fg); }
+.zz-word[data-tone="success"] { color: var(--penna-success-ink); }
+.zz-sep { flex: none; color: var(--penna-fg-faint); }
+.zz-time { flex: none; font-size: var(--penna-text-caption-size); font-variant-numeric: tabular-nums; color: var(--penna-fg-faint); }
+.zz-grow { flex: 1; min-width: 0; }
+.zz-pipmark { flex: none; color: var(--penna-fg-faint); --penna-icon-size: 13px; }
+.zz-mono { font-family: var(--penna-mono); font-size: 12px; }
+
+.zz-quote { margin: 2px 0 0; padding: 0 16px; border-left: 4px solid var(--penna-divider); font-size: var(--penna-text-read-body-size); line-height: var(--penna-text-read-body-line); color: var(--penna-fg-muted); white-space: normal; }
+
+.zz-agent[data-penna="card.activity"] { display: flex; align-items: center; gap: 8px; width: 100%; height: 36px; padding: 0 10px 0 8px; font-size: var(--penna-text-body-size); line-height: 16px; color: var(--penna-fg-muted); cursor: var(--penna-click-cursor); white-space: nowrap; }
+.zz-agent[data-state~="hover"] { color: var(--penna-fg); }
+.zz-agent[data-state~="hover"] .zz-pipmark, .zz-agent[data-state~="hover"] .zz-time { color: var(--penna-fg-muted); }
+.zz-agent[data-off] { cursor: default; }
+.zz-agent-name { flex: none; font-weight: 500; color: var(--penna-fg); }
+.zz-agent[data-off] .zz-agent-name { color: var(--penna-fg-muted); }
+.zz-under { display: flex; flex-direction: column; padding-left: 12px; }
+.zz-under > .penna-chat-activity .penna-chat-label { color: var(--penna-fg); }
+.zz-stack { display: flex; flex-direction: column; gap: 4px; }
+
+.zz-one.penna-chat-activity { width: 100%; }
+.zz-one > .zz-mark { display: flex; flex: none; color: var(--penna-fg-muted); --penna-icon-size: 13px; }
+.zz-one[data-state~="hover"] > .zz-mark { color: var(--penna-fg); }
+.zz-one .penna-chat-label[data-strong] { flex: none; font-weight: 500; }
+.zz-one[data-state~="hover"] .zz-pipmark { color: var(--penna-fg-muted); }
+.zz-one[data-off] { cursor: default; }
+.zz-one[data-off] .penna-chat-label[data-strong] { color: var(--penna-fg-muted); }
+.zz-one-detail { display: flex; flex: 0 1 auto; align-items: center; gap: 6px; min-width: 0; overflow: hidden; font-size: var(--penna-text-small-size); color: var(--penna-fg-muted); }
+.zz-one-detail > span { overflow: hidden; text-overflow: ellipsis; }
+.zz-grows { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 0 0 2px 21px; }
+.zz-grows::before { content: ""; position: absolute; top: 0; bottom: 4px; left: 6px; width: 1px; background: var(--penna-divider); }
+.zz-ask[data-penna="well"] { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; font-size: var(--penna-text-body-size); line-height: 16px; color: var(--penna-fg); white-space: nowrap; --penna-icon-size: 13px; }
+.zz-ask > [data-icon] { color: var(--penna-warning); }
+.zz-wait { display: flex; flex: none; align-items: center; gap: 6px; margin-left: auto; }
+.zz-wait .penna-spinner { color: var(--penna-fg-muted); }
+
+.zz-peek[data-penna="card.activity"] { display: flex; flex-direction: column; width: 100%; padding: 0; overflow: hidden; cursor: var(--penna-click-cursor); }
+.zz-peek[data-off] { cursor: default; }
+.zz-peek-head { display: flex; flex: none; align-items: center; gap: 8px; height: 36px; padding: 0 10px 0 8px; font-size: var(--penna-text-body-size); line-height: 16px; white-space: nowrap; color: var(--penna-fg-muted); }
+.zz-peek-body { position: relative; display: flex; flex-direction: column; justify-content: flex-end; gap: 0; height: 92px; margin: 0 8px 8px; padding: 0 10px 6px; overflow: hidden; border-radius: 8px; background: var(--penna-bg); -webkit-mask-image: linear-gradient(transparent, #000 34px); mask-image: linear-gradient(transparent, #000 34px); }
+.zz-peek-body[data-fit] { height: auto; padding-top: 8px; -webkit-mask-image: none; mask-image: none; }
+.zz-peek-body > p { margin: 0 0 6px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg); }
+.zz-peek-body .penna-chat-activity { height: 22px; font-size: var(--penna-text-small-size); }
+.zz-peek-body .penna-chat-activity [data-icon] { width: 12px; height: 12px; }
+.zz-peek-body .zz-quote { margin: 0; padding: 0 12px; border-left-width: 3px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+.zz-peek[data-state~="hover"] .zz-peek-head { color: var(--penna-fg); }
+.zz-peek[data-state~="hover"] .zz-pipmark, .zz-peek[data-state~="hover"] .zz-time { color: var(--penna-fg-muted); }
+.zz-peek-body .zz-ask[data-penna="well"] { height: 28px; margin-bottom: 2px; padding: 0 8px; font-size: var(--penna-text-small-size); }
+
+.penna-badge.zz-tag[data-penna] { flex: none; }
+
+.zz-pointer { position: absolute; z-index: 9; width: 12px; height: 18px; pointer-events: none; background: var(--penna-fg); clip-path: polygon(0 0, 0 15px, 4px 11px, 7px 18px, 9px 17px, 6px 10px, 11px 10px); filter: drop-shadow(0 0 1px var(--penna-bg)); }
+.zz-rel { position: relative; }
+
+.zz-win.penna-window { grid-template-columns: 1fr; grid-template-rows: 40px 1fr; }
+.zz-win > [data-penna="titlebar"] { padding-left: 82px; gap: 2px; }
+.zz-win [data-penna="tab.window"] { width: 180px; }
+.zz-host[data-penna="pane"] { position: relative; display: flex; flex-direction: column; min-height: 0; }
+.zz-host [data-penna="button.title"] { max-width: none; color: var(--penna-fg); }
+.zz-dim { color: var(--penna-muted); }
+.zz-tx { display: flex; flex: 1; flex-direction: column; gap: 10px; min-height: 0; padding: 8px 16px 0; overflow: hidden; font-size: var(--penna-text-read-body-size); line-height: var(--penna-text-read-body-line); }
+.zz-steps { display: flex; flex-direction: column; }
+.zz-host .penna-chat-frame, .zz-pip .penna-chat-frame { flex: none; }
+.zz-host .penna-chat-frame-foot > div:first-child, .zz-pip .penna-chat-frame-foot > div:first-child { flex: 1; }
+.penna-chat-chrome .zz-dim { color: var(--penna-muted); }
+.penna-chat-chrome [data-icon="chevron-down"] { color: var(--penna-muted); --penna-icon-size: 10px; }
+.penna-chat-chrome .penna-chat-meter { width: 16px; height: 16px; }
+
+.zz-pip[data-penna="floating.pip"] { position: absolute; z-index: 3; right: 12px; bottom: 12px; display: flex; flex-direction: column; overflow: hidden; }
+.zz-pip-head[data-penna="bar.pane"] { flex: none; padding: 0 6px 0 10px; gap: 7px; color: var(--penna-fg); }
+.zz-pip-title { flex: none; font-weight: 500; white-space: nowrap; }
+.zz-pip-tx { display: flex; flex: 1; flex-direction: column; gap: 8px; min-height: 0; padding: 2px 12px 0; overflow: hidden; font-size: var(--penna-text-body-size); line-height: 18px; }
+.zz-pip-tx > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 92%; padding: 6px 10px; font-size: var(--penna-text-body-size); line-height: 18px; }
+.zz-pip .penna-chat-frame { padding: 0 8px 8px; }
+.zz-pip .penna-chat-field[data-penna] { min-height: 34px; padding: 3px; }
+.zz-pip .penna-chat-field .penna-button[data-penna="button.send"] { width: 26px; height: 26px; }
+.zz-pip .penna-chat-field > .penna-chat-input { padding: 5px 0; }
