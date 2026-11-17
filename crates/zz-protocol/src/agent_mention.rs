@@ -150,7 +150,7 @@ pub fn child_note(parent: PaneId, parent_provider: AgentProvider, child: AgentPr
     let name = parent_provider.command_name();
     let escalate = if child == AgentProvider::Codex {
         format!(
-            " If a command fails with \"Operation not permitted\", rerun it with escalated permissions; {parent} is asked to approve it."
+            " If a command fails with \"Operation not permitted\", rerun it with escalated permissions even if your brief says to stop on failure; {parent} is asked to approve it."
         )
     } else {
         String::new()
@@ -360,14 +360,23 @@ pub enum AgentReport {
     },
 }
 
+const CLOSED_TAIL: &str = "was closed before it replied. Tell the user; do not open it again.";
+
+fn follow_up(pane: PaneId) -> String {
+    format!("Follow up with: zz agent-send -t {pane} 'TEXT'")
+}
+
+fn try_again(pane: PaneId) -> String {
+    format!("Tell the user, or try again with: zz agent-send -t {pane} 'TEXT'")
+}
+
 impl fmt::Display for AgentReport {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let body = |formatter: &mut fmt::Formatter<'_>, text: &str| {
-            if text.is_empty() {
-                Ok(())
-            } else {
-                write!(formatter, "\n{text}")
+        let body = |formatter: &mut fmt::Formatter<'_>, pane: PaneId, text: &str| {
+            if !text.is_empty() {
+                write!(formatter, "\n{text}")?;
             }
+            write!(formatter, "\n\n{}", follow_up(pane))
         };
         match self {
             Self::Finished {
@@ -377,7 +386,7 @@ impl fmt::Display for AgentReport {
             } => {
                 write_header(formatter, *pane, *provider)?;
                 formatter.write_str(" finished:")?;
-                body(formatter, text)
+                body(formatter, *pane, text)
             }
             Self::Stopped {
                 pane,
@@ -387,7 +396,7 @@ impl fmt::Display for AgentReport {
             } => {
                 write_header(formatter, *pane, *provider)?;
                 write!(formatter, " stopped ({reason}):")?;
-                body(formatter, text)
+                body(formatter, *pane, text)
             }
             Self::Failed {
                 pane,
@@ -395,11 +404,11 @@ impl fmt::Display for AgentReport {
                 message,
             } => {
                 write_header(formatter, *pane, *provider)?;
-                write!(formatter, " failed: {message}")
+                write!(formatter, " failed: {message}\n{}", try_again(*pane))
             }
             Self::Closed { pane, provider } => {
                 write_header(formatter, *pane, *provider)?;
-                formatter.write_str(" was closed.")
+                write!(formatter, " {CLOSED_TAIL}")
             }
         }
     }
@@ -421,18 +430,27 @@ impl AgentReport {
         let text = text.trim();
         let (line, rest) = text.split_once('\n').unwrap_or((text, ""));
         let (pane, provider, tail) = header(line)?;
-        let rest = rest.trim_end().to_owned();
+        let rest = rest.trim_end();
+        let reply = || {
+            let follow = follow_up(pane);
+            rest.strip_suffix(follow.as_str())
+                .unwrap_or(rest)
+                .trim()
+                .to_owned()
+        };
         if tail == "finished:" {
             return Some(Self::Finished {
                 pane,
                 provider,
-                text: rest,
+                text: reply(),
             });
         }
-        if tail == "was closed." && rest.is_empty() {
+        if (tail == CLOSED_TAIL || tail == "was closed.") && rest.is_empty() {
             return Some(Self::Closed { pane, provider });
         }
         if let Some(message) = tail.strip_prefix("failed: ") {
+            let again = try_again(pane);
+            let rest = rest.strip_suffix(again.as_str()).unwrap_or(rest).trim_end();
             let message = if rest.is_empty() {
                 message.to_owned()
             } else {
@@ -449,7 +467,7 @@ impl AgentReport {
             pane,
             provider,
             reason: reason.to_owned(),
-            text: rest,
+            text: reply(),
         })
     }
 }
@@ -720,7 +738,7 @@ mod tests {
                     provider: codex,
                     text: "all green\nno changes".to_owned(),
                 },
-                "[zz] %4 (codex) finished:\nall green\nno changes",
+                "[zz] %4 (codex) finished:\nall green\nno changes\n\nFollow up with: zz agent-send -t %4 'TEXT'",
             ),
             (
                 AgentReport::Stopped {
@@ -729,7 +747,7 @@ mod tests {
                     reason: "max_tokens".to_owned(),
                     text: "half".to_owned(),
                 },
-                "[zz] %4 (claude) stopped (max_tokens):\nhalf",
+                "[zz] %4 (claude) stopped (max_tokens):\nhalf\n\nFollow up with: zz agent-send -t %4 'TEXT'",
             ),
             (
                 AgentReport::Stopped {
@@ -738,7 +756,7 @@ mod tests {
                     reason: "cancelled".to_owned(),
                     text: String::new(),
                 },
-                "[zz] %4 (codex) stopped (cancelled):",
+                "[zz] %4 (codex) stopped (cancelled):\n\nFollow up with: zz agent-send -t %4 'TEXT'",
             ),
             (
                 AgentReport::Failed {
@@ -746,14 +764,14 @@ mod tests {
                     provider: codex,
                     message: "rate limited".to_owned(),
                 },
-                "[zz] %4 (codex) failed: rate limited",
+                "[zz] %4 (codex) failed: rate limited\nTell the user, or try again with: zz agent-send -t %4 'TEXT'",
             ),
             (
                 AgentReport::Closed {
                     pane,
                     provider: codex,
                 },
-                "[zz] %4 (codex) was closed.",
+                "[zz] %4 (codex) was closed before it replied. Tell the user; do not open it again.",
             ),
         ];
         for (report, text) in reports {
@@ -883,7 +901,7 @@ mod tests {
         let child = child_note(PaneId(1), AgentProvider::ClaudeCode, AgentProvider::Codex);
         assert_eq!(
             child,
-            "%1 (claude) opened this chat. Your final message is sent to it as your reply, so finish with the answer. You cannot open other agents or message %1; if you need something, say so in your reply. If a command fails with \"Operation not permitted\", rerun it with escalated permissions; %1 is asked to approve it."
+            "%1 (claude) opened this chat. Your final message is sent to it as your reply, so finish with the answer. You cannot open other agents or message %1; if you need something, say so in your reply. If a command fails with \"Operation not permitted\", rerun it with escalated permissions even if your brief says to stop on failure; %1 is asked to approve it."
         );
         assert_eq!(
             child_note(PaneId(1), AgentProvider::Codex, AgentProvider::ClaudeCode),

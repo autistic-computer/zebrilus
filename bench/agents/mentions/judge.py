@@ -94,11 +94,7 @@ def transcript(p):
 
 
 def tool_lines(text):
-    res = []
-    for l in text.splitlines():
-        if l.split(" ", 1)[0] in KINDS and (not res or res[-1] != l):
-            res.append(l)
-    return res
+    return [l for l in text.splitlines() if l.split(" ", 1)[0] in KINDS]
 
 
 def last_turn_reply(text):
@@ -148,7 +144,7 @@ sandboxed = []
 for p, cs in shell.items():
     for c in cs:
         cmd = c["cmd"] or ""
-        if re.search(r"(^|[;&|(]\s*|\s)(zz|tmux)\s", cmd) and "[escalated]" not in cmd and re.search(r"not permitted|Operation not permitted|sandbox", c["out"] or "", re.I):
+        if re.search(r"(^|[;&|(]\s*|\s)(zz|tmux)\s", cmd) and "[escalated]" not in cmd and re.search(r"error connecting to \S+ \(Operation not permitted\)", c["out"] or ""):
             sandboxed.append(p + " " + cmd[:200] + " => " + (c["out"] or "").strip().splitlines()[-1][:200] if (c["out"] or "").strip() else "")
 first_turn = host_tx.split("\n> ")[0]
 host_work = [
@@ -171,6 +167,8 @@ host_poll = sum(1 for c in hc if c["verb"] in WAITS or (c["verb"] == "agent-send
     v - 1 for (p, _), v in seen.items() if p == host and v > 1
 ) + sum(1 for s in sleeps if s.startswith(host + " "))
 stamp = read(os.path.join(d, "stamped.txt")).strip()
+after_path = os.path.join(d, "after-close.txt")
+left_after_close = [l for l in read(after_path).splitlines() if l.startswith("%") and l.split()[0] != meta["open_pane"]] if os.path.exists(after_path) else None
 ran_stamp = [
     p + " " + (c["cmd"] or "")[:160]
     for p, cs in shell.items()
@@ -189,7 +187,7 @@ done = fol["end"] == "done"
 why = []
 if not done:
     why.append(fol["end"] + (" (" + fol["host_permission"][:80] + ")" if fol["host_permission"] else ""))
-if done and not re.sub(r"^(execute|read|search|edit|fetch|tool|subagent) .*$", "", final, flags=re.M).strip():
+if done and not re.sub(r"^((execute|read|search|edit|fetch|tool|subagent) |error: ).*$", "", final, flags=re.M).strip():
     why.append("empty final answer")
 if want and not token_ok:
     why.append("answer lacks token")
@@ -263,6 +261,7 @@ res = {
     "sandboxed": sandboxed,
     "host_work": host_work,
     "ran_stamp": ran_stamp,
+    "left_after_close": left_after_close,
     "polling": polling,
     "host_polling": host_poll,
     "panes_created": len(created),

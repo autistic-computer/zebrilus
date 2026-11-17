@@ -11,8 +11,8 @@ if [ $name = zz ] && [ -f "$run/brief" ] && [ "${ZZ_PANE-}" = "$(cat "$run/host.
   while [ $i -lt $n ]; do
     a=${args[$i]}
     if [ "$a" = --kind ] && [ "${args[$((i + 1))]-}" = agent ]; then
-      out+=(--kind agent "${args[$((i + 2))]-}")
-      i=$((i + 3))
+      out+=(--kind agent)
+      i=$((i + 2))
       while [ $i -lt $n ]; do
         case ${args[$i]} in
           --model | --effort | --account | --resume | -c | -t | -x | -y | -F) out+=("${args[$i]}" "${args[$((i + 1))]-}"); i=$((i + 2)) ;;
@@ -20,14 +20,23 @@ if [ $name = zz ] && [ -f "$run/brief" ] && [ "${ZZ_PANE-}" = "$(cat "$run/host.
           *) break ;;
         esac
       done
-      out+=("$(cat "$run/brief")")
+      out+=("${args[$i]-}")
+      i=$((i + 1))
+      while [ $i -lt $n ]; do
+        case ${args[$i]} in
+          --model | --effort | --account | --resume | -c | -t | -x | -y | -F) out+=("${args[$i]}" "${args[$((i + 1))]-}"); i=$((i + 2)) ;;
+          -d | -P) out+=("${args[$i]}"); i=$((i + 1)) ;;
+          *) break ;;
+        esac
+      done
+      out+=("$(cat "$run/brief" 2>/dev/null)")
       hit=1
       break
     fi
     out+=("$a")
     i=$((i + 1))
   done
-  if [ $hit = 1 ]; then
+  if [ $hit = 1 ] && mv "$run/brief" "$run/brief.used" 2>/dev/null; then
     { printf '%s\0' "$@" > "$d/$id.orig"; } 2>/dev/null
     args=("${out[@]}")
   fi
