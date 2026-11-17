@@ -21,7 +21,7 @@ use penna::{
 };
 use zz_client::{
     chat_rows::{self, AgentState, ChildFold, Fold, RunLabel, Unit},
-    child_card::{ChildCard, ChildState, PEEK_LINES, PeekLine, PeekMark, Verdict},
+    child_card::{ChildCard, ChildState, PEEK_LINES, PeekLine, PeekMark, Verdict, current_pane},
     program::Program,
     window_summary::{Attention, provider_program},
 };
@@ -41,7 +41,6 @@ use super::{
     assistant_markdown_extensions, attachment_tile,
 };
 use crate::navigation::pane_stack::status_dot;
-use crate::target::{RefTarget, ResolvedTarget, TargetKind};
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, StyledExt as _, Tone,
     WindowExt as _,
@@ -73,11 +72,13 @@ pub struct ChatOpen {
     pub expanded: HashSet<ItemId>,
     pub tall: HashSet<ItemId>,
     pub unfolded: HashSet<ItemId>,
+    pub children: HashMap<PaneId, PaneId>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ChatClick {
     Turn(TurnId),
+    Child(PaneId),
     Run(ItemId),
     Agent(ItemId),
     CloseAgent,
@@ -401,7 +402,7 @@ impl ChatPane {
                 self.open.agent = None;
                 return;
             }
-            ChatClick::Fork(_) | ChatClick::Hold(_) => return,
+            ChatClick::Fork(_) | ChatClick::Hold(_) | ChatClick::Child(_) => return,
             ChatClick::Unfold(item) => {
                 if !self.open.unfolded.remove(item) {
                     self.open.unfolded.insert(item.clone());
@@ -721,6 +722,7 @@ pub trait ChatHost: Sized + 'static {
     fn chat_read<'a>(&'a self, cx: &'a App) -> (&'a ChatPane, Option<&'a ChatView>);
     fn chat_fork(&mut self, item: &ItemId, cx: &mut Context<Self>);
     fn chat_hold(&mut self, _: &HeldMessage, _: &mut Context<Self>) {}
+    fn chat_open_child(&mut self, _: PaneId, _: &mut Context<Self>) {}
     fn chat_covered(&self, _: &App) -> bool {
         false
     }
@@ -787,6 +789,7 @@ pub fn chat_surface<T: ChatHost>(
                 match click {
                     ChatClick::Fork(item) => host.chat_fork(item, cx),
                     ChatClick::Hold(held) => host.chat_hold(held, cx),
+                    ChatClick::Child(child) => host.chat_open_child(*child, cx),
                     _ => {}
                 }
                 host.chat_pane().click(click);
@@ -1181,23 +1184,32 @@ impl Draw<'_, '_> {
             Unit::Agents(ids) => self.agents(ids),
             Unit::Plan(id) => plan_card(self.view, id, cx),
             Unit::Child(card) => {
-                let chat = self
-                    .hooks
-                    .children
-                    .as_ref()
-                    .and_then(|children| children(card.pane, cx));
-                let alive = self.hooks.refs().map(|refs| {
-                    refs.hosts.iter().filter(|host| host.here).any(|host| {
-                        host.sessions
-                            .iter()
-                            .flat_map(|session| &session.windows)
-                            .any(|window| window.panes.iter().any(|pane| pane.id == card.pane))
-                    })
+                let current = self.hooks.refs().map(|refs| {
+                    let alive = |wanted: PaneId| {
+                        refs.hosts.iter().filter(|host| host.here).any(|host| {
+                            host.sessions
+                                .iter()
+                                .flat_map(|session| &session.windows)
+                                .any(|window| window.panes.iter().any(|pane| pane.id == wanted))
+                        })
+                    };
+                    current_pane(
+                        card.pane,
+                        self.open.children.get(&card.pane).copied(),
+                        alive,
+                    )
+                });
+                let shown = current.unwrap_or(Some(card.pane));
+                let chat = shown.and_then(|pane| {
+                    self.hooks
+                        .children
+                        .as_ref()
+                        .and_then(|children| children(pane, cx))
                 });
                 chat_child_card(
-                    &card.corrected(chat, alive),
+                    &card.corrected(chat, current.map(|pane| pane.is_some())),
                     chat,
-                    crate::pip::pip_in_view(card.pane, cx),
+                    shown.is_some_and(|pane| crate::pip::pip_in_view(pane, cx)),
                     self.now,
                     self.phase,
                     self.hooks,
@@ -1705,18 +1717,6 @@ const fn child_attention(state: &ChildState) -> Attention {
     }
 }
 
-fn child_target(card: &ChildCard, refs: &ChatRefs) -> ResolvedTarget {
-    let here = refs.hosts.iter().find(|host| host.here);
-    ResolvedTarget {
-        kind: TargetKind::Chat,
-        host: here.map(|host| host.id).unwrap_or_default(),
-        here: true,
-        label: card.name().to_owned(),
-        icon: crate::pane::agent_provider_icon(card.agent),
-        target: RefTarget::Pane(card.pane),
-    }
-}
-
 #[must_use]
 pub fn chat_child_card(
     card: &ChildCard,
@@ -1819,7 +1819,7 @@ pub fn chat_child_card(
                 .group_hover(CHILD_GROUP, |time| time.text_color(muted))
                 .child(time)
         }))
-        .when(!closed, |head| head.child(mark));
+        .child(mark);
     let collapsed = in_view || closed;
     let body = match &card.state {
         ChildState::Done { reply } if !collapsed && !reply.trim().is_empty() => Some(
@@ -1862,10 +1862,7 @@ pub fn chat_child_card(
         _ => child_peek(card, chat, host, now, phase, ground, cx),
     };
     let label = format!("{} {}", header.name, header.word);
-    let open = hooks
-        .refs()
-        .map(|refs| (Arc::clone(&refs.open), child_target(card, refs)));
-    Card::new(
+    let card_row = Card::new(
         SharedString::from(format!("chat-child-{}", card.anchor.as_str())),
         CardLook::Activity,
     )
@@ -1880,12 +1877,10 @@ pub fn chat_child_card(
     .overflow_hidden()
     .text_color(muted)
     .child(head)
-    .children(body)
-    .when_some(open, |card, (open, target)| {
-        card.click_cursor()
-            .on_click(move |_, window, cx| open(&target, window, cx))
-    })
-    .into_any_element()
+    .children(body);
+    hooks
+        .clickable(card_row, ChatClick::Child(card.pane))
+        .into_any_element()
 }
 
 fn child_peek(

@@ -141,7 +141,7 @@ const STORY: Story = Story {
         Section {
             id: "child-card",
             name: "Child card",
-            summary: "When a chat opens another agent as a chat in a PiP, its transcript shows one card for that child: the child's tile with its status dot, its name, the state word, and at the right the allowed count once it is done, the time and the PiP mark. While it works the card peeks at the child's last three rows, the oldest fading; while it asks, the request and who it waits for; a decision shows on its line; done shows the whole reply as a quote and failed the error. While the child's PiP is in view the card is its header line only, and a closed child is the header with no time. Clicking the card focuses the child, so its stashed PiP slides in.",
+            summary: "When a chat opens another agent as a chat in a PiP, its transcript shows one card for that child: the child's tile with its status dot, its name, the state word, and at the right the allowed count once it is done, the time and the PiP mark. While it works the card peeks at the child's last three rows, the oldest fading; while it asks, the request and who it waits for; a decision shows on its line; done shows the whole reply as a quote and failed the error. While the child's PiP is in view the card is its header line only, and a closed child is the header with no time and keeps the PiP mark, since it can be reopened. Clicking the card runs select-child-chat: the child's stashed PiP slides in, or a closed child comes back in a new PiP on its session.",
             build: child::child_cards,
         },
         Section {

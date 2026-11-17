@@ -173,6 +173,7 @@ pub fn child_cards(_: &mut Window, cx: &mut App) -> AnyView {
 impl Render for ChildCards {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let hooks = ChatHooks {
+            click: Some(std::rc::Rc::new(|_, _, _| {})),
             markdown: Some(&self.markdown),
             vendor: Program::by_id("claude"),
             ..ChatHooks::default()

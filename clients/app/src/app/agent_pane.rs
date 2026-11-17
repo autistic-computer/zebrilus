@@ -1,4 +1,8 @@
-use std::{collections::HashSet, rc::Rc, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+    sync::Arc,
+};
 
 use ala::{
     AnyElement, App, Context, Corners, Entity, FocusHandle, Focusable, IntoElement, Pixels, Render,
@@ -429,6 +433,7 @@ pub(super) struct AgentPane {
     chat: ChatPane,
     float_rows: Option<Rc<dyn Fn(&App) -> Option<u16>>>,
     children: Option<zz_ui::agent::chat::ChildChats>,
+    child_requests: HashMap<u64, PaneId>,
     phone: Option<PhoneDock>,
     view_sheet: Option<Entity<super::view_pane::ViewPane>>,
     dock_height: Rc<std::cell::Cell<Pixels>>,
@@ -507,6 +512,17 @@ impl AgentPane {
                     && *changed == pane
                 {
                     this.apply_sessions(result, cx);
+                } else if let zz_client::CoreEvent::CommandResponse(response) = event
+                    && let zz_protocol::CommandResponse::Success { request_id, .. }
+                    | zz_protocol::CommandResponse::Error { request_id, .. } = response
+                    && let Some(child) = this.child_requests.remove(request_id)
+                {
+                    if let zz_protocol::CommandResponse::Success { output, .. } = response
+                        && let Ok(reopened) = AsRef::<str>::as_ref(output).trim().parse::<PaneId>()
+                    {
+                        this.chat.open.children.insert(child, reopened);
+                        cx.notify();
+                    }
                 } else if let zz_client::CoreEvent::AgentStateChanged { pane: changed, .. } = event
                     && *changed == pane
                 {
@@ -615,6 +631,7 @@ impl AgentPane {
             chat: ChatPane::default(),
             float_rows: None,
             children: None,
+            child_requests: HashMap::new(),
             phone: None,
             view_sheet: None,
             dock_height: Rc::new(std::cell::Cell::new(ala::px(0.0))),
@@ -2003,6 +2020,14 @@ impl ChatHost for AgentPane {
 
     fn chat_hold(&mut self, held: &HeldMessage, cx: &mut Context<Self>) {
         self.phone_hold(held, cx);
+    }
+
+    fn chat_open_child(&mut self, child: PaneId, cx: &mut Context<Self>) {
+        let command = zz_client::child_card::reopen_command(self.pane, child);
+        let request = self
+            .connection
+            .update(cx, |connection, cx| connection.invoke(command, cx));
+        self.child_requests.insert(request, child);
     }
 
     fn chat_covered(&self, cx: &App) -> bool {

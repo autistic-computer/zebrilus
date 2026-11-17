@@ -1,5 +1,5 @@
 use zz_protocol::{
-    AgentProvider, PaneId,
+    AgentProvider, CommandInvocation, PaneId,
     agent_mention::{AgentAsk, AgentDecision, AskAnswers},
     chat::{Ask, ChatView, ItemId, ItemKind, ItemStatus, RequestView},
 };
@@ -10,6 +10,25 @@ use crate::{
 };
 
 pub const PEEK_LINES: usize = 3;
+
+#[must_use]
+pub fn reopen_command(host: PaneId, child: PaneId) -> CommandInvocation {
+    CommandInvocation::new(
+        "select-child-chat",
+        ["-t".to_owned(), host.to_string(), child.to_string()],
+    )
+}
+
+#[must_use]
+pub fn current_pane(
+    original: PaneId,
+    remembered: Option<PaneId>,
+    alive: impl Fn(PaneId) -> bool,
+) -> Option<PaneId> {
+    std::iter::once(original)
+        .chain(remembered)
+        .find(|pane| alive(*pane))
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChildCard {
@@ -354,6 +373,45 @@ mod tests {
 
     fn parts(header: ChildHeader) -> (&'static str, &'static str, Option<String>, Option<String>) {
         (header.name, header.word, header.allowed, header.time)
+    }
+
+    #[test]
+    fn a_card_reopens_its_child_wherever_the_child_is_now() {
+        let command = reopen_command(PaneId(0), PaneId(2));
+        assert_eq!(
+            std::iter::once(command.name.as_str())
+                .chain(command.args.iter().map(AsRef::as_ref))
+                .collect::<Vec<_>>(),
+            ["select-child-chat", "-t", "%0", "%2"]
+        );
+        let live = [PaneId(2), PaneId(7)];
+        let current = |original, remembered, live: &[PaneId]| {
+            current_pane(original, remembered, |pane| live.contains(&pane))
+        };
+        assert_eq!(current(PaneId(2), Some(PaneId(7)), &live), Some(PaneId(2)));
+        assert_eq!(
+            current(PaneId(2), Some(PaneId(7)), &live[1..]),
+            Some(PaneId(7))
+        );
+        assert_eq!(current(PaneId(2), Some(PaneId(9)), &live[1..]), None);
+        assert_eq!(current(PaneId(2), None, &[]), None);
+        let done = ChildCard {
+            ended_at: Some(161_000),
+            ..card(ChildState::Done {
+                reply: "Yes.".to_owned(),
+            })
+        }
+        .corrected(None, Some(false));
+        assert_eq!(
+            (done.word(), done.header(999_000).time),
+            ("done", Some("2m 31s".to_owned()))
+        );
+        assert_eq!(
+            card(ChildState::Working)
+                .corrected(None, Some(false))
+                .word(),
+            "closed"
+        );
     }
 
     #[test]

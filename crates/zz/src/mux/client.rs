@@ -497,6 +497,11 @@ pub(crate) struct InitialConnectionFinished;
 
 pub(crate) struct AgentStateChanged;
 
+pub(crate) struct CommandPrinted {
+    pub(crate) request_id: u64,
+    pub(crate) output: String,
+}
+
 pub(crate) struct AgentCatalogReply(pub(crate) String);
 
 pub(crate) struct KeyTableChanged;
@@ -952,6 +957,7 @@ pub struct MuxClient {
     screenshot_requests: Vec<(PaneId, u64, String)>,
     terminal_commands: BTreeMap<PaneId, Vec<TerminalUiCommand>>,
     command_answers: Vec<(u64, Result<(), String>)>,
+    printed_commands: std::cell::RefCell<BTreeSet<u64>>,
     pane_images: BTreeMap<PaneId, PaneImageSnapshots>,
     pasted_image_assemblies: BTreeMap<(PaneId, u32), PastedImageAssembly>,
     pending_pasted_image_previews: BTreeSet<(PaneId, u32)>,
@@ -1126,6 +1132,7 @@ impl MuxClient {
             screenshot_requests: Vec::new(),
             terminal_commands: BTreeMap::new(),
             command_answers: Vec::new(),
+            printed_commands: std::cell::RefCell::default(),
             pane_images: BTreeMap::new(),
             pasted_image_assemblies: BTreeMap::new(),
             pending_pasted_image_previews: BTreeSet::new(),
@@ -3148,6 +3155,12 @@ impl MuxClient {
         Some(request_id)
     }
 
+    pub fn execute_printed(&self, command: CommandInvocation) -> Option<u64> {
+        let request_id = self.execute_on_host(self.attached_host, command)?;
+        self.printed_commands.borrow_mut().insert(request_id);
+        Some(request_id)
+    }
+
     pub(crate) fn has_command_answers(&self) -> bool {
         !self.command_answers.is_empty()
     }
@@ -4967,12 +4980,21 @@ impl MuxClient {
             CommandResponse::Error {
                 request_id, error, ..
             } => {
+                self.printed_commands.borrow_mut().remove(&request_id);
                 if !self.report_command_failure(host, request_id, &error, cx) {
                     self.attached_connection_mut().reconnect_attach = None;
                     self.error = Some(Arc::from(error.to_string()));
                 }
             }
-            CommandResponse::Success { request_id, .. } => {
+            CommandResponse::Success {
+                request_id, output, ..
+            } => {
+                if self.printed_commands.borrow_mut().remove(&request_id) {
+                    cx.emit(CommandPrinted {
+                        request_id,
+                        output: AsRef::<str>::as_ref(&output).to_owned(),
+                    });
+                }
                 if self.answer(host, request_id, Ok(())) {
                     cx.notify();
                 } else {
@@ -5193,6 +5215,7 @@ impl MuxClient {
 
 impl EventEmitter<InitialConnectionFinished> for MuxClient {}
 impl EventEmitter<AgentStateChanged> for MuxClient {}
+impl EventEmitter<CommandPrinted> for MuxClient {}
 impl EventEmitter<AgentCatalogReply> for MuxClient {}
 impl EventEmitter<KeyTableChanged> for MuxClient {}
 impl EventEmitter<ClientNotification> for MuxClient {}

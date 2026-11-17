@@ -694,6 +694,15 @@ keeps using the original id: `agent-send -t %N` reaches the reopened pane and co
 with: zz new-pane -d --kind agent NAME 'BRIEF'`. See
 [Agent panes](/concepts/agent-panes.md#agent-panes) for the record and lookup order.
 
+The card keeps the pane the verb printed in the chat view's state (`ChatOpen::children`), so a
+reload or restart forgets it and the next click asks the daemon again. Its current pane is the
+original one if alive, else that remembered one if alive, else none; the peek, the live state and
+the in-view collapse read it. With no current pane a card keeps the state its report gave (done,
+stopped, failed); a card closed by its report, or the latest card with no report, shows closed. Every
+card keeps its PiP mark and stays clickable, and only a click the daemon refuses shows a message,
+as the command's error toast. The desktop reads the printed pane from the command's response
+(`MuxClient::execute_printed`), the thin client from its connection's command response.
+
 # Open
 
 - Does the child get anything beyond the brief (the host's folder, files it touched)? Today it
