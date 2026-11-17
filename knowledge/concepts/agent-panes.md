@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
+description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, reopening a chat another chat opened on its session (select-child-chat), what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
 timestamp: 2026-11-16T00:00:00-03:00
@@ -115,6 +115,23 @@ running (agent_state STATE); the prompt was not sent`. `wait-pane` and `show-las
 still running` on stderr during a turn. `agent-respond --answer TEXT` answers a request that asks
 one question with typed text (`AgentAnswerQuestion`'s host path), and nothing pending reads `%N has
 no pending request (already answered, or none was asked)`.
+
+**Reopening a child.** A child chat is its session, not its pane. For every chat a chat opens,
+the daemon keeps a `ChildRecord` under the opener's provider and session
+(`AgentRuntime::update_child`): the child's original pane id, provider, session id once its
+session starts (`note_child_session`), folder, model, effort, account, and the pane that holds it
+now. The records are saved next to the opener's journal as `<key>.children.json`, so they outlive
+a daemon restart and the opener being resumed in another pane; they go when the opener's session is
+deleted (`AgentJournal::remove_for`), not when its pane closes. `select-child-chat [-t HOST] %N`
+(internal, for the card a host draws) selects the child's window and pane and prints the pane: the
+recorded pane while it still runs that session, else any live chat on that session, else a new
+float in the host's window resumed on the session with the same provider, folder, model, effort
+and account, no brief, and the host as parent. A child closed before its session started fails
+with `%N was closed before its session started; it cannot be opened again`, and a pane the host
+did not open with `%N is not a chat %H opened`. `agent-send -t %N` from the host to the original
+id reaches the pane that holds the child now (`Shared::moved_child`) and counts toward the same 8
+messages (`child_key`); with no pane holding it, it fails with `%N was closed; open a new chat
+with: zz new-pane -d --kind agent NAME 'BRIEF'`.
 
 **The mention note.** A prompt whose text holds an agent token (`@+claude`, `@+codex`, either with
 `/MODEL`) or a chat token (`@HOST:%N`, the shape only the composer's Chats rows write) reaches the

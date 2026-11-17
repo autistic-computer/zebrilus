@@ -4749,6 +4749,7 @@ enum DaemonCommandDispatch {
     IfShell,
     AgentSend,
     AgentRespond,
+    SelectChildChat,
     FlipAgent,
     AgentAccount,
     AgentAccounts,
@@ -4789,6 +4790,7 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("if", DaemonCommandDispatch::IfShell),
     ("agent-send", DaemonCommandDispatch::AgentSend),
     ("agent-respond", DaemonCommandDispatch::AgentRespond),
+    ("select-child-chat", DaemonCommandDispatch::SelectChildChat),
     ("flip-agent", DaemonCommandDispatch::FlipAgent),
     ("agent-account", DaemonCommandDispatch::AgentAccount),
     ("agent-accounts", DaemonCommandDispatch::AgentAccounts),
@@ -8649,6 +8651,16 @@ impl Shared {
                     }
                     DaemonCommandDispatch::AgentRespond => {
                         self.agent_respond(kind, context, &command.args)
+                    }
+                    DaemonCommandDispatch::SelectChildChat => {
+                        #[cfg(feature = "agent")]
+                        let selected = self.select_child_chat(client, kind, context, &command.args);
+                        #[cfg(not(feature = "agent"))]
+                        let selected = Err(ServerError::InvalidCommand(
+                            "select-child-chat needs a zz built with agent support".to_owned(),
+                        )
+                        .into());
+                        selected
                     }
                     DaemonCommandDispatch::FlipAgent => self.flip_agent(context, &command.args),
                     DaemonCommandDispatch::AgentAccount => {
@@ -17132,13 +17144,20 @@ impl Shared {
             )
             .into());
         }
+        #[cfg(feature = "agent")]
+        let moved = self.moved_child(client, context, parsed.target.as_deref())?;
+        #[cfg(not(feature = "agent"))]
+        let moved = None;
         let (pane, agent_pane) = {
             let inner = self.inner.lock();
-            let pane = inner.engine.resolve_pane(
-                parsed.target.as_deref(),
-                context.window,
-                context.pane,
-            )?;
+            let pane = match moved {
+                Some(pane) => pane,
+                None => inner.engine.resolve_pane(
+                    parsed.target.as_deref(),
+                    context.window,
+                    context.pane,
+                )?,
+            };
             let agent_pane = matches!(
                 inner.engine.state.pane(pane).map(|pane| &pane.kind),
                 Some(PaneKind::Agent(_))
@@ -33804,6 +33823,9 @@ impl Shared {
         if queued && let (Some(caller), Some(runtime)) = (caller, self.open_agent_runtime()) {
             runtime.count_send(caller, pane);
         }
+        if let Some(caller) = caller {
+            self.remember_child(caller, pane);
+        }
         let route = match (queued, caller) {
             (false, _) => None,
             (true, Some(_)) => Some(ReplyRoute::Back),
@@ -33828,6 +33850,212 @@ impl Shared {
         ServerError::InvalidCommand(format!(
             "{pane}'s agent is not running (agent_state {state}); the prompt was not sent"
         ))
+    }
+
+    fn chat_descriptor(&self, pane: PaneId) -> Option<zz_protocol::AgentDescriptor> {
+        match self
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(pane)
+            .map(|pane| &pane.kind)
+        {
+            Some(PaneKind::Agent(agent)) => Some(agent.clone()),
+            _ => None,
+        }
+    }
+
+    fn host_key(&self, host: PaneId) -> Option<(AgentProvider, String)> {
+        let agent = self.chat_descriptor(host)?;
+        Some((agent.provider, agent.session_id?))
+    }
+
+    fn remember_child(self: &Arc<Self>, host: PaneId, pane: PaneId) {
+        let (Some((provider, session)), Some(agent), Some(runtime)) = (
+            self.host_key(host),
+            self.chat_descriptor(pane),
+            self.open_agent_runtime(),
+        ) else {
+            return;
+        };
+        runtime.update_child(provider, &session, pane, |record| {
+            record.provider = agent.provider;
+            record.session = agent.session_id;
+            record.cwd = agent.cwd;
+            record.model = agent.model;
+            record.effort = agent.effort;
+            record.account = agent.account;
+            record.current = Some(pane.0);
+        });
+    }
+
+    fn note_child_session(self: &Arc<Self>, pane: PaneId, session: &str) {
+        let Some(host) = self.inner.lock().engine.agent_parent(pane) else {
+            return;
+        };
+        let (Some((provider, host_session)), Some(runtime)) =
+            (self.host_key(host), self.open_agent_runtime())
+        else {
+            return;
+        };
+        let Some(record) = runtime
+            .child_records(provider, &host_session)
+            .into_iter()
+            .find(|record| record.current == Some(pane.0))
+        else {
+            return;
+        };
+        runtime.update_child(provider, &host_session, PaneId(record.pane), |record| {
+            record.session = Some(session.to_owned());
+        });
+    }
+
+    fn child_record(
+        self: &Arc<Self>,
+        host: PaneId,
+        child: PaneId,
+    ) -> Option<crate::agent::journal::ChildRecord> {
+        let (provider, session) = self.host_key(host)?;
+        self.open_agent_runtime()?
+            .child_records(provider, &session)
+            .into_iter()
+            .find(|record| record.pane == child.0)
+    }
+
+    fn child_pane_now(&self, record: &crate::agent::journal::ChildRecord) -> Option<PaneId> {
+        let inner = self.inner.lock();
+        let holds = |pane: PaneId| match inner.engine.state.pane(pane).map(|pane| &pane.kind) {
+            Some(PaneKind::Agent(agent)) => {
+                agent.provider == record.provider
+                    && (record.session.is_none() || agent.session_id == record.session)
+            }
+            _ => false,
+        };
+        let recorded = record
+            .current
+            .into_iter()
+            .chain(std::iter::once(record.pane))
+            .map(PaneId)
+            .find(|pane| holds(*pane));
+        recorded.or_else(|| {
+            record.session.as_ref()?;
+            inner.agent_panes.iter().copied().find(|pane| holds(*pane))
+        })
+    }
+
+    fn select_child_chat(
+        self: &Arc<Self>,
+        client: ClientId,
+        kind: ClientKind,
+        context: &ExecutionContext,
+        args: &[RawText],
+    ) -> Result<Execution, DaemonError> {
+        let spec = zz_protocol::catalog_command_spec("select-child-chat").expect("spec");
+        let options = zz_protocol::parse_tmux_options(spec, args)?;
+        let mut target = None;
+        for option in options.options {
+            if let zz_protocol::TmuxOption::Value("-t", value) = option {
+                target = Some(value);
+            }
+        }
+        let [child] = options.positionals else {
+            return Err(ServerError::NativeCommandParse(
+                "usage: select-child-chat [-t host-pane] child-pane".to_owned(),
+            )
+            .into());
+        };
+        let child = child.parse::<PaneId>().map_err(|_| {
+            ServerError::NativeCommandParse(format!("select-child-chat: {child} is not a pane id"))
+        })?;
+        let host = self
+            .inner
+            .lock()
+            .engine
+            .resolve_pane(target, context.window, context.pane)?;
+        let record = self.child_record(host, child).ok_or_else(|| {
+            ServerError::InvalidCommand(format!("{child} is not a chat {host} opened"))
+        })?;
+        let pane = match self.child_pane_now(&record) {
+            Some(pane) => pane,
+            None => self.reopen_child(host, &record)?,
+        };
+        if let Some((provider, session)) = self.host_key(host)
+            && let Some(runtime) = self.open_agent_runtime()
+        {
+            runtime.update_child(provider, &session, child, |record| {
+                record.current = Some(pane.0);
+            });
+        }
+        let target = pane.to_string();
+        for verb in ["select-window", "select-pane"] {
+            let mut selection = context.clone();
+            self.execute(
+                client,
+                kind,
+                &mut selection,
+                &CommandInvocation::new(verb, ["-t", target.as_str()]),
+            )?;
+        }
+        Ok(Execution {
+            output: target.into(),
+            effects: Vec::new(),
+        })
+    }
+
+    fn reopen_child(
+        self: &Arc<Self>,
+        host: PaneId,
+        record: &crate::agent::journal::ChildRecord,
+    ) -> Result<PaneId, DaemonError> {
+        let child = PaneId(record.pane);
+        let Some(session) = record.session.clone() else {
+            return Err(ServerError::InvalidCommand(format!(
+                "{child} was closed before its session started; it cannot be opened again"
+            ))
+            .into());
+        };
+        let mut args = vec![
+            "-d".to_owned(),
+            "-P".to_owned(),
+            "-F".to_owned(),
+            "#{pane_id}".to_owned(),
+            "-t".to_owned(),
+            host.to_string(),
+            "-x".to_owned(),
+            zz_protocol::AGENT_FLOAT_WIDTH.to_owned(),
+            "-y".to_owned(),
+            zz_protocol::AGENT_FLOAT_HEIGHT.to_owned(),
+        ];
+        if let Some(cwd) = &record.cwd {
+            args.extend(["-c".to_owned(), cwd.display().to_string()]);
+        }
+        args.extend(["--kind".to_owned(), "agent".to_owned()]);
+        for (flag, value) in [
+            ("--resume", Some(&session)),
+            ("--model", record.model.as_ref()),
+            ("--effort", record.effort.as_ref()),
+            ("--account", record.account.as_ref()),
+        ] {
+            if let Some(value) = value {
+                args.extend([flag.to_owned(), value.clone()]);
+            }
+        }
+        args.push(record.provider.command_name().to_owned());
+        let created = self.execute(
+            ClientId(u64::MAX),
+            ClientKind::Command,
+            &mut ExecutionContext::default(),
+            &CommandInvocation::new("new-pane", args),
+        )?;
+        let pane = created
+            .output
+            .to_string()
+            .trim()
+            .parse::<PaneId>()
+            .map_err(|_| ServerError::Internal(format!("could not reopen {child}")))?;
+        self.inner.lock().engine.set_agent_parent(pane, host);
+        Ok(pane)
     }
 
     fn adopt_child_chat_panes(
@@ -33858,10 +34086,53 @@ impl Shared {
         }
     }
 
+    fn moved_child(
+        self: &Arc<Self>,
+        client: ClientId,
+        context: &ExecutionContext,
+        target: Option<&str>,
+    ) -> Result<Option<PaneId>, DaemonError> {
+        let Some(child) = target.and_then(|target| target.parse::<PaneId>().ok()) else {
+            return Ok(None);
+        };
+        if self.inner.lock().engine.state.pane(child).is_some() {
+            return Ok(None);
+        }
+        let Some(host) = self.chat_caller(client, context, None) else {
+            return Ok(None);
+        };
+        let Some(record) = self.child_record(host, child) else {
+            return Ok(None);
+        };
+        match self.child_pane_now(&record) {
+            Some(pane) => Ok(Some(pane)),
+            None => Err(ServerError::InvalidCommand(format!(
+                "{child} was closed; open a new chat with: zz new-pane -d --kind agent {} 'BRIEF'",
+                record.provider.command_name()
+            ))
+            .into()),
+        }
+    }
+
+    fn child_key(self: &Arc<Self>, host: PaneId, pane: PaneId) -> PaneId {
+        let Some((provider, session)) = self.host_key(host) else {
+            return pane;
+        };
+        self.open_agent_runtime()
+            .and_then(|runtime| {
+                runtime
+                    .child_records(provider, &session)
+                    .into_iter()
+                    .find(|record| record.current == Some(pane.0))
+            })
+            .map_or(pane, |record| PaneId(record.pane))
+    }
+
     fn count_chat_send(self: &Arc<Self>, caller: PaneId, pane: PaneId) -> Result<(), DaemonError> {
         let Some(runtime) = self.open_agent_runtime() else {
             return Ok(());
         };
+        let pane = self.child_key(caller, pane);
         let limit = crate::agent::fanout::MAX_SENDS_SINCE_USER;
         if runtime.sends_since_user(caller, pane) >= limit {
             return Err(ServerError::InvalidCommand(format!(
@@ -34656,6 +34927,9 @@ impl Shared {
         });
         if adopted {
             self.publish_snapshot_state();
+            if let Some(session) = state.session_id.as_deref() {
+                self.note_child_session(pane, session);
+            }
         }
         self.apply_agent_title(pane, state.title.as_deref());
         let subscribers = {
@@ -52879,7 +53153,7 @@ Claude Code and Codex run two ways in a pane, and a pane flips between them on t
 
 Open a new chat as a float. `split-window` and `new-window` take the same `--kind agent` words and give the chat a split beside the target or a window of its own. `--model`, `--effort`, `--account` and `--resume` go before the provider or right after it. The words after them are the brief, sent as the chat's first prompt once its session is up, with the same checks and 1 MiB cap as `agent-send` TEXT; no brief opens an empty chat. Without `-c` the chat starts in the folder a terminal made the same way would. `-P -F '#{pane_id}'` prints the new pane, which takes `agent-send` at once: `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'review the diff in this folder'`. A missing or unknown provider, or a bad flag value, exits 2. Every create prints one line on stderr, `new-pane: opened %N (codex)` (with the verb's own name); with a brief it goes on `; its reply comes back to you as a message; end your turn now` when run from a chat, and `; read its reply with: zz agent-send -t %N --wait ''` when run from anywhere else.
 
-Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends, and each permission it asks for during that turn comes to you with the `agent-respond` lines that answer it. Do not wait or poll. The chat you open gets a note with its brief, kept out of its transcript, saying which chat opened it and that its final message is its reply. It cannot open chats of its own (it is told to do the work itself or say what it needs), and closing your pane closes it and every pane it opened. A message reads `[zz] %N (codex) finished:` or `stopped (REASON):`, then the reply and `If this answers the user, answer the user now and send nothing to %N. Only if something is missing: zz agent-send -t %N 'TEXT'`; `failed: MESSAGE` and `Tell the user, or try again with: zz agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it, one `--option ID  # LABEL` line per choice of a question and `--answer 'TEXT'` for one that wants typed text.
+Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends, and each permission it asks for during that turn comes to you with the `agent-respond` lines that answer it. Do not wait or poll. The chat you open gets a note with its brief, kept out of its transcript, saying which chat opened it and that its final message is its reply. It cannot open chats of its own (it is told to do the work itself or say what it needs), and closing your pane closes it and every pane it opened. If the user closes it and opens it again, `zz agent-send -t %N` still reaches it by the id you were given; while it stays closed, the send fails with `%N was closed; open a new chat with: zz new-pane -d --kind agent codex 'BRIEF'`. A message reads `[zz] %N (codex) finished:` or `stopped (REASON):`, then the reply and `If this answers the user, answer the user now and send nothing to %N. Only if something is missing: zz agent-send -t %N 'TEXT'`; `failed: MESSAGE` and `Tell the user, or try again with: zz agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it, one `--option ID  # LABEL` line per choice of a question and `--answer 'TEXT'` for one that wants typed text.
 
 A prompt that names an agent with `@+claude`, `@+codex` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a note, kept out of the transcript, that tells you to hand the task over with the exact command (`zz new-pane -d --kind agent codex 'BRIEF'`, or `zz agent-send -t %N 'TEXT'` for a chat) and end your turn.
 
@@ -124450,6 +124724,98 @@ bind - split-window -v -c "#{pane_current_path}"
             );
             workspace.prompt("one more, please").expect("user prompt");
             assert_eq!(send(), Ok("turn 8".to_owned()));
+        }
+
+        #[test]
+        fn a_closed_child_reopens_on_its_session_and_keeps_its_old_id() {
+            let workspace = workspace(Behavior::Chunk);
+            let host = workspace.agent;
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(99),
+                    Some(host),
+                    "new-pane",
+                    &[
+                        "-d",
+                        "-P",
+                        "-F",
+                        "#{pane_id}",
+                        "--kind",
+                        "agent",
+                        "claude",
+                        "reply with ok"
+                    ],
+                ),
+                Ok("%2\n".to_owned())
+            );
+            wait_until("the child's session in its record", || {
+                workspace
+                    .shared
+                    .child_record(host, PaneId(2))
+                    .is_some_and(|record| record.session.as_deref() == Some("fixture-session"))
+            });
+            run_as(&workspace, ClientId(97), None, "kill-pane", &["-t", "%2"]).expect("kill");
+            let reopen = || {
+                run_as(
+                    &workspace,
+                    ClientId(97),
+                    None,
+                    "select-child-chat",
+                    &["-t", "%1", "%2"],
+                )
+            };
+            assert_eq!(reopen(), Ok("%3".to_owned()));
+            {
+                let inner = workspace.shared.inner.lock();
+                assert!(matches!(
+                    inner.engine.state.pane(PaneId(3)).map(|pane| &pane.kind),
+                    Some(PaneKind::Agent(agent))
+                        if agent.provider == AgentProvider::ClaudeCode
+                            && agent.session_id.as_deref() == Some("fixture-session")
+                ));
+                assert_eq!(inner.engine.agent_parent(PaneId(3)), Some(host));
+            }
+            assert_eq!(reopen(), Ok("%3".to_owned()));
+            assert!(
+                workspace
+                    .shared
+                    .inner
+                    .lock()
+                    .engine
+                    .state
+                    .pane(PaneId(4))
+                    .is_none()
+            );
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(99),
+                    Some(host),
+                    "agent-send",
+                    &["-t", "%2", "--wait", "hi again"],
+                ),
+                Ok("turn 0".to_owned())
+            );
+            workspace.runtime.update_child(
+                AgentProvider::Codex,
+                "fixture-session",
+                PaneId(9),
+                |record| record.provider = AgentProvider::Codex,
+            );
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(97),
+                    None,
+                    "select-child-chat",
+                    &["-t", "%1", "%9"],
+                ),
+                Err(
+                    "%9 was closed before its session started; it cannot be opened again"
+                        .to_owned()
+                )
+            );
         }
 
         #[test]

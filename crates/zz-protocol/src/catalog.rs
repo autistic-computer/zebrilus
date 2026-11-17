@@ -663,6 +663,7 @@ pub static DAEMON_COMMAND_NAMES: &[&str] = &[
     "if",
     "agent-send",
     "agent-respond",
+    "select-child-chat",
     "flip-agent",
     "agent-account",
     "agent-accounts",
@@ -804,6 +805,7 @@ pub static INTERNAL_COMMAND_NAMES: &[&str] = &[
     "agent-catalog",
     "providers",
     "agent-accounts",
+    "select-child-chat",
 ];
 
 pub static NATIVE_COMMAND_NAMES: &[&str] = &[
@@ -828,6 +830,7 @@ pub static NATIVE_COMMAND_NAMES: &[&str] = &[
     "providers",
     "reload-config",
     "run-pane",
+    "select-child-chat",
     "select-pane-kind",
     "send-last-output",
     "send-text",
@@ -1026,6 +1029,15 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
                 "typed answer to a one-question request",
             ),
         ],
+        positionals: &[FreeForm],
+        variadic: None,
+    },
+    CommandSpec {
+        name: "select-child-chat",
+        aliases: &[],
+        description: "Bring a chat a host chat opened into view, reopening it on its session in a new float when its pane is gone; print the pane",
+        usage: "[-t host-pane] child-pane",
+        options: &[CommandOptionSpec::value("-t", Pane, "the host chat")],
         positionals: &[FreeForm],
         variadic: None,
     },

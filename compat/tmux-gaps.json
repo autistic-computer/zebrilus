@@ -347,6 +347,7 @@
         "native-command:providers",
         "native-command:reload-config",
         "native-command:run-pane",
+        "native-command:select-child-chat",
         "native-command:select-pane-kind",
         "native-command:send-last-output",
         "native-command:send-text",

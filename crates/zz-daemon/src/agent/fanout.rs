@@ -24,7 +24,7 @@ use crate::agent::{
         AgentConnectionPhase, AgentHost, AgentPaneSpec, AgentPaneState, AgentTurnFailure,
         AgentTurnWaiter, HostCommand, PromptSource, QueuedPrompt,
     },
-    journal::{AgentJournal, JournalEntry},
+    journal::{AgentJournal, ChildRecord, JournalEntry},
     runtime::AgentSpawnConfig,
     stream::{AgentPrompt, AgentStreamItem, AgentStreamPayload},
 };
@@ -85,6 +85,8 @@ pub(crate) struct AgentRuntime {
     _publisher: Arc<dyn AgentPublisher>,
     lifecycle: Arc<Mutex<()>>,
     sends: Mutex<BTreeMap<(PaneId, PaneId), u32>>,
+    journal: Option<Arc<AgentJournal>>,
+    children: Mutex<BTreeMap<(AgentProvider, String), Vec<ChildRecord>>>,
 }
 
 impl AgentRuntime {
@@ -94,6 +96,7 @@ impl AgentRuntime {
         journal: Option<Arc<AgentJournal>>,
     ) -> Self {
         let lifecycle = Arc::new(Mutex::new(()));
+        let journal_handle = journal.clone();
         let fanout = Arc::new(AgentFanout::new(
             publisher,
             journal.clone(),
@@ -116,6 +119,63 @@ impl AgentRuntime {
             _publisher: Arc::clone(publisher),
             lifecycle,
             sends: Mutex::new(BTreeMap::new()),
+            journal: journal_handle,
+            children: Mutex::new(BTreeMap::new()),
+        }
+    }
+
+    pub(crate) fn child_records(&self, provider: AgentProvider, session: &str) -> Vec<ChildRecord> {
+        let children = self.children.lock();
+        self.read_children(&children, provider, session)
+    }
+
+    pub(crate) fn update_child(
+        &self,
+        provider: AgentProvider,
+        session: &str,
+        pane: PaneId,
+        update: impl FnOnce(&mut ChildRecord),
+    ) {
+        let mut children = self.children.lock();
+        let mut records = self.read_children(&children, provider, session);
+        let index = records
+            .iter()
+            .position(|record| record.pane == pane.0)
+            .unwrap_or_else(|| {
+                records.push(ChildRecord {
+                    pane: pane.0,
+                    ..ChildRecord::default()
+                });
+                records.len() - 1
+            });
+        update(&mut records[index]);
+        match &self.journal {
+            Some(journal) => {
+                if let Err(error) = journal.save_children_for(provider, session, &records) {
+                    log::warn!(target: "zz::agent", "could not save the chats {session} opened: {error}");
+                }
+            }
+            None => {
+                children.insert((provider, session.to_owned()), records);
+            }
+        }
+    }
+
+    fn read_children(
+        &self,
+        children: &BTreeMap<(AgentProvider, String), Vec<ChildRecord>>,
+        provider: AgentProvider,
+        session: &str,
+    ) -> Vec<ChildRecord> {
+        match &self.journal {
+            Some(journal) => journal.children_for(provider, session).unwrap_or_else(|error| {
+                log::warn!(target: "zz::agent", "could not read the chats {session} opened: {error}");
+                Vec::new()
+            }),
+            None => children
+                .get(&(provider, session.to_owned()))
+                .cloned()
+                .unwrap_or_default(),
         }
     }
 

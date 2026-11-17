@@ -679,6 +679,21 @@ Recorded for the UI lane, which built them in `crates/zz-ui` and `crates/zz`:
 - **PiP.** An agent chat opened without focus starts stashed, and the card collapses to its header
   while the child is in view.
 
+# Reopening a child
+
+A child is its session, not its pane (fabrico, 2026-11-17). The X on its PiP keeps killing the
+pane like every PiP's X; nothing asks first. Clicking the card runs `select-child-chat -t HOST
+%CHILD`, which brings the child into view and prints its pane: the pane that holds it now, or a new
+float in the host's window resumed on its session with the same provider, folder, model, effort and
+account, parented to the host. The daemon keeps one record per child under the host's session, next
+to the host's journal, so this works after a restart and after the host is resumed in another pane,
+and the records go when the host's session is deleted. A child closed before its session started
+cannot come back: `%N was closed before its session started; it cannot be opened again`. The host
+keeps using the original id: `agent-send -t %N` reaches the reopened pane and counts toward the same
+8 messages, and while the child is closed the send fails with `%N was closed; open a new chat
+with: zz new-pane -d --kind agent NAME 'BRIEF'`. See
+[Agent panes](/concepts/agent-panes.md#agent-panes) for the record and lookup order.
+
 # Open
 
 - Does the child get anything beyond the brief (the host's folder, files it touched)? Today it
