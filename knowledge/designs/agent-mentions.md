@@ -310,13 +310,15 @@ client parses with:
 
 - The tool call that opened or messaged a child: an execute item whose command runs
   `new-pane|split-window|new-window ... --kind agent` or `agent-send`. Its output holds the stderr
-  line `ReplyNotice` parses: `new-pane: opened %N (codex); its reply comes back to you as a
-  message` or `agent-send: %N's reply comes back to you as a message`, which names the child.
+  line `ReplyNotice` parses, which names the child: `new-pane: opened %N (codex)`, alone or
+  followed by `; its reply comes back to you as a message` or `; read its reply with: zz
+  agent-send -t %N --wait ''`, or `agent-send: %N's reply comes back to you as a message` or
+  `agent-send: read %N's reply with: zz agent-send -t %N --wait ''`.
 - The injected prompts: a user message that `AgentReport::parse` reads as finished, stopped,
   failed or closed, or that `AgentAsk::parse` reads as an ask with its answers.
 - The host's own answers: an execute item whose command `AgentRespond::parse` reads as
-  `zz agent-respond -t %N --allow|--deny|--option ID`, with or without the leading `zz` and
-  inside a shell wrapper.
+  `zz agent-respond -t %N --allow|--deny|--option ID|--answer TEXT`, with or without the
+  leading `zz` and inside a shell wrapper.
 
 For both drivers the command text is the tool call's `rawInput.command` (in a chat item,
 `ItemBody.target` unless the driver set its own target), and the output, stdout and stderr
@@ -471,19 +473,46 @@ Each step lands alone.
    Agents section of the tools guide was checked against the code; four protocol messages with
    no sender stay under [Open](#open).
 
+   After the steps, a pass over what each verb tells an agent (for a stress test where an agent
+   gets no teaching beyond zz's own output), built 2026-11-17:
+   - Every create with `--kind agent` prints `<verb>: opened %N (NAME)` on stderr, with `; its
+     reply comes back to you as a message` (chat caller with a brief) or `; read its reply with:
+     zz agent-send -t %N --wait ''` (any other caller with a brief).
+   - A plain `agent-send` from a caller that is not a chat prints on stderr `agent-send: read
+     %N's reply with: zz agent-send -t %N --wait ''`. `--notify` from a chat is a plain send.
+   - `%N has no running turn; read its last reply with: zz capture-pane -p -t %N`.
+   - `wait-pane` on a chat: `%N is an agent chat; wait for its turn with: zz agent-send -t %N
+     --wait ''`; `show-last-output` (and `send-last-output`): `%N is an agent chat; read it
+     with: zz capture-pane -p -t %N`.
+   - `agent-respond` with nothing pending: `%N has no pending request (already answered, or none
+     was asked)`.
+   - The grandchild error ends `. Do the work yourself, or say in your reply what you need`.
+   - A send to a chat that already holds 4 waiting prompts fails at once, exit 1: `%N has 4
+     prompts waiting; wait for its turn with: zz agent-send -t %N --wait ''`. Prompts queued for
+     `agent-send` and briefs are `PromptSource::Command` and never go back to a composer; a
+     race past the check is logged and, for a chat caller, reported as `failed:`.
+   - `capture-pane` during a turn adds `capture-pane: %N's turn is still running` on stderr.
+   - `agent-respond --answer TEXT` is built: it answers a request that asks exactly one question
+     through the host path the GUI's `AgentAnswerQuestion` uses, and prints `answered request
+     ID`. The free-text ask now reads `zz agent-respond -t %N --answer 'TEXT'` and then the
+     dismiss line. A request with several questions is refused with `request N asks K
+     questions; --answer answers one`.
+   - A prompt the chat's host does not take (its agent is not running) fails with `%N's agent is
+     not running (agent_state STATE); the prompt was not sent` instead of "pane has exited".
+   - Left as they were: `respawn-pane` on a chat, and a `synchronize-panes` send whose window
+     holds a chat.
+
 # Open
 
 - Should `tmux ...` commands be approved like `zz ...` ones?
 - Does the child get anything beyond the brief (the host's folder, files it touched)? Today it
   gets the brief and starts in the folder a terminal would.
-- A question that wants free text has no command-line answer; the ask tells the host to answer
-  it in the pane or dismiss it.
 - Trimming `agent-send` to chats.
 
 Settled along the way: `send-keys` on a chat only points to `agent-send` (step 1); a child cannot
 create children (step 3); replies and asks do not count against the caller's queue of 4 (step 3);
 the teaching travels as a note with the prompt that has the mention, not in the standing context
-(step 4).
+(step 4); a question that wants typed text is answered with `agent-respond --answer`.
 - For each message with no sender (`AgentSteer`, `AgentStopTask`, `AgentSetMode`,
   `AgentAuthenticate`): give it a verb or remove it.
 

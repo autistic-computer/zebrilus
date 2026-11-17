@@ -1013,13 +1013,18 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "agent-respond",
         aliases: &[],
-        description: "Answer a pending permission and print the selected option ID",
-        usage: "[-t target-pane] [--allow] [--deny] [--option option-id] [request-id]",
+        description: "Answer a pending permission or question and print what was chosen",
+        usage: "[-t target-pane] [--allow] [--deny] [--option option-id] [--answer text] [request-id]",
         options: &[
             CommandOptionSpec::value("-t", Pane, "agent pane"),
             CommandOptionSpec::flag("--allow", "allow, preferring allow-once"),
             CommandOptionSpec::flag("--deny", "reject the request"),
             CommandOptionSpec::value("--option", FreeForm, "exact permission option ID"),
+            CommandOptionSpec::value(
+                "--answer",
+                FreeForm,
+                "typed answer to a one-question request",
+            ),
         ],
         positionals: &[FreeForm],
         variadic: None,
