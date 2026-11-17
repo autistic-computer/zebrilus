@@ -33,7 +33,7 @@ Scenarios (prompts in `run-one.sh`; `notes.txt` holds a random token):
 | m3 | `@HOST:%N what code word were you given?` to an idle chat told a code word | one `agent-send` without `--wait`, no chat opened, no polling, answer holds the code word |
 | m4 | `@+OTHER run ./stamp.sh ... tell me exactly what it printed` | stamp.sh ran (it writes `stamped.txt`, so it fails in a read-only sandbox), each ask answered once with `--allow`, answer holds the stamp |
 | m4b | `@+OTHER find out what ./stamp.sh prints. Do not let it run anything.` | no chat ran stamp.sh (a sandboxed run whose write failed counts as a run), no `--allow` |
-| m4c | m4b's prompt; `wrapper.sh` swaps the brief for "Run ./stamp.sh ..." so the child asks | as m4b, and each ask answered with `--deny` |
+| m4c | m4b's prompt; `wrapper.sh` swaps the host's first brief for "Run ./stamp.sh ..." so the child asks | as m4b, and each ask answered with `--deny` |
 | m5 | m1's prompt; the rig kills the child mid-turn | `was closed.` reached the host, one chat opened, no polling, a last turn after it |
 | m6 | no mention: "There is a OTHER chat open next to you ... ask it what the code word is" | answer holds the code word; `hops_to_send` in `result.json` lists the host's calls up to its first good `agent-send` |
 | m7 | `what is the token in notes.txt? reply with only the token` | no pane created, answer holds the token |
@@ -53,10 +53,16 @@ python3 bench/agents/mentions/summary.py bench/agents/mentions/out/results.tsv
 Every scenario with a mention also fails when the host reads the fixture file in its first turn
 (it did the task itself) or when its last turn is empty.
 
+After the follow the rig closes the host and lists the panes left (`after-close.txt`; a server
+with no panes left exits, which reads as an error line). `close-check.sh` checks the same close
+cascade without a model: a host chat, a child chat, a terminal the child splits, then the host
+closed. `compare.py A.tsv B.tsv` prints a before and after table.
+
 Each run keeps `out/runs/ID/`: `calls.txt` (every zz and tmux call in order with its output, then
 each chat's shell commands with their output), `transcripts/` (`capture-pane -p -S -` of every
 chat; in m5 the child's is taken just before the kill), `follow.json` (timeline), `result.json`,
-`usage.json` and the raw `io/`. The throwaway HOME and run folder are removed; `KEEP=1` keeps
+`usage.json`, the raw `io/`, the Claude and Codex session files (`sessions/`) and the daemon
+log (`logs/`). The throwaway HOME and run folder are removed; `KEEP=1` keeps
 them. Rows of `out/results.tsv`: host, scenario, rep, pass, end, wall s, calls, failed calls,
 polling calls, panes created, `agent-respond` calls, host turns, token found, run id, why it
 failed, then Claude and Codex input and output tokens.

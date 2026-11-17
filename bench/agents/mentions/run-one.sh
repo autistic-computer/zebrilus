@@ -16,7 +16,7 @@ mkdir -p /tmp/mn-runs "$S/out/runs"
 RUN=$(cd "$(mktemp -d /tmp/mn-runs/XXXXXX)" && pwd -P)
 ID=${RUN##*/}
 H=$RUN/h WS=$RUN/ws SOCK=/tmp/mns-$ID.sock
-mkdir -p "$H/Library" "$H/.claude" "$H/.codex" "$H/.config/zz" "$WS" "$RUN/bin" "$RUN/io" "$RUN/transcripts" "$RUN/tmp"
+mkdir -p "$H/Library" "$H/.claude" "$H/.codex" "$H/.config/zz" "$WS" "$RUN/bin" "$RUN/io" "$RUN/transcripts" "$RUN/tmp" "$RUN/logs"
 ln -s "$HOME/Library/Keychains" "$H/Library/Keychains"
 ln -s "$HOME/.codex/auth.json" "$H/.codex/auth.json"
 printf 'model = "%s"\n' "$CODEX_MODEL" > "$H/.codex/config.toml"
@@ -26,7 +26,7 @@ for f in .profile .bash_profile .bashrc .zprofile .zshrc; do printf 'export PATH
 
 cat > "$RUN/z" <<EOF
 #!/bin/bash
-exec env -i HOME="$H" USER="$USER" LOGNAME="$USER" PATH="$CLEAN_PATH" SHELL=/bin/zsh TERM=xterm-256color LANG=en_US.UTF-8 TMPDIR="$RUN/tmp" ZZ_SOCKET="$SOCK" ZZ_TRAY=0 ZZ_UPDATE_CHECK=0 "$ZB" "\$@"
+exec env -i HOME="$H" USER="$USER" LOGNAME="$USER" PATH="$CLEAN_PATH" SHELL=/bin/zsh TERM=xterm-256color LANG=en_US.UTF-8 TMPDIR="$RUN/tmp" ZZ_LOG_DIR="$RUN/logs" ZZ_SOCKET="$SOCK" ZZ_TRAY=0 ZZ_UPDATE_CHECK=0 "$ZB" "\$@"
 EOF
 chmod +x "$RUN/z"
 Z() { "$RUN/z" "$@"; }
@@ -94,6 +94,10 @@ done
 Z capture-pane -p -t "$HOSTPANE" > "$RUN/host-last.txt" 2>&1
 Z inspect -a --json > "$RUN/panes.jsonl" 2>&1
 python3 "$S/usage.py" "$H" > "$RUN/usage.json" 2>>"$RUN/rig.err"
+Z list-panes -a -F '#{pane_id} #{pane_kind} #{agent_parent}' > "$RUN/before-close.txt" 2>&1
+Z kill-pane -t "$HOSTPANE" >>"$RUN/rig.err" 2>&1
+sleep 3
+Z list-panes -a -F '#{pane_id} #{pane_kind} #{agent_parent}' > "$RUN/after-close.txt" 2>&1
 
 Z kill-server >/dev/null 2>&1
 rm -f "$SOCK"
@@ -106,7 +110,10 @@ pgrep -fl "$RUN/|mns-$ID" >> "$RUN/rig.err" && pkill -9 -f "$RUN/|mns-$ID"
 
 DEST=$S/out/runs/$ID
 mkdir -p "$DEST"
-cp -R "$RUN/io" "$RUN/transcripts" "$RUN/tmp" "$DEST/"
+cp -R "$RUN/io" "$RUN/transcripts" "$RUN/logs" "$DEST/"
+mkdir -p "$DEST/sessions"
+[ -d "$H/.codex/sessions" ] && cp -R "$H/.codex/sessions" "$DEST/sessions/codex"
+[ -d "$H/.claude/projects" ] && cp -R "$H/.claude/projects" "$DEST/sessions/claude"
 cp "$RUN"/*.json "$RUN"/*.txt "$RUN/rig.err" "$RUN"/panes.jsonl "$DEST/" 2>/dev/null
 ls -la "$WS" > "$DEST/ws.txt"; cp "$WS/stamped.txt" "$DEST/" 2>/dev/null
 row=$(python3 "$S/judge.py" "$DEST")

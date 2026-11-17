@@ -50,11 +50,11 @@ claude	m4c	1	0	done	28.7	1	0	0	1	0	2	0	IgO0yC	stamp.sh ran (write blocked by the
 codex	m4c	1	0	done	32.8	4	2	0	1	1	3	0	4A5Sy9	host did the task itself (1 calls)	48482	384	129942	954
 codex	m8b	1	1	done	24.6	2	1	0	1	0	2	1	mS5ge0	ok	84724	1017	67553	332
 claude	m8b	1	1	done	53.4	10	3	2	1	0	2	1	wJ37Sp	ok	156291	1003	193982	1338
-claude	m4c	2	0	done	24.7	3	1	0	1	0	2	0	JX05X2	stamp.sh ran (write blocked by the sandbox)	128186	2167	31378	78
+claude	m4c	2	0	done	24.7	2	0	0	1	0	2	0	JX05X2	stamp.sh ran (write blocked by the sandbox)	128186	2167	31378	78
 codex	m4c	2	0	done	36.0	4	2	0	1	1	3	0	6zrIS3	host did the task itself (1 calls)	51767	370	145996	941
 claude	m8b	2	1	done	23.7	4	1	0	2	0	2	1	8jR5ms	ok	94615	791	63489	309
-codex	m8b	2	1	done	25.6	5	3	0	1	0	2	1	aBs3KR	ok	92612	1026	87014	282
-claude	m4c	3	0	done	26.7	3	1	0	1	0	2	0	E44Q9D	stamp.sh ran (write blocked by the sandbox)	155830	2540	31403	103
+codex	m8b	2	1	done	25.6	4	2	0	1	0	2	1	aBs3KR	ok	92612	1026	87014	282
+claude	m4c	3	0	done	26.7	2	0	0	1	0	2	0	E44Q9D	stamp.sh ran (write blocked by the sandbox)	155830	2540	31403	103
 claude	m8b	3	1	done	22.6	1	0	0	1	0	2	1	76EffU	ok	0	0	0	0
 codex	m4c	3	0	done	33.9	4	2	0	1	1	3	0	OjQLYi	host did the task itself (1 calls)	54673	435	146317	963
 codex	m8b	3	0	done	9.3	0	0	0	0	0	1	1	xx5Wtr	host did not delegate; last host turn is not after a report; host did the task itself (1 calls)	0	0	31553	61
