@@ -37,6 +37,43 @@ pub fn rename_prompt_command(
 }
 
 #[must_use]
+pub fn move_window_command(
+    windows: &[crate::StatusBarWindow],
+    window: WindowId,
+    to: usize,
+) -> Option<CommandInvocation> {
+    let from = windows.iter().position(|entry| entry.id == window)?;
+    let target = windows.get(to).filter(|_| to != from)?;
+    let mut args = vec![if from < to { "-a" } else { "-b" }.to_owned()];
+    if !windows[from].active {
+        args.push("-d".to_owned());
+    }
+    args.extend([
+        "-s".to_owned(),
+        window.to_string(),
+        "-t".to_owned(),
+        target.id.to_string(),
+    ]);
+    Some(CommandInvocation::new("move-window", args))
+}
+
+#[must_use]
+pub fn tab_order(local: &[&str], incoming: &[String]) -> Option<Vec<usize>> {
+    if local.len() != incoming.len() {
+        return None;
+    }
+    let mut taken = vec![false; local.len()];
+    incoming
+        .iter()
+        .map(|url| {
+            let index = (0..local.len()).find(|&index| !taken[index] && local[index] == url)?;
+            taken[index] = true;
+            Some(index)
+        })
+        .collect()
+}
+
+#[must_use]
 pub fn kill_session_prompt_command(session: SessionId, name: &str) -> CommandInvocation {
     CommandInvocation::new(
         "confirm-before",
@@ -203,9 +240,89 @@ pub(crate) fn last_component(path: &str) -> &str {
 mod tests {
     use std::path::PathBuf;
 
+    use zz_mux::{ExecutionContext, MuxEngine};
     use zz_protocol::{AgentDescriptor, PaneId, PaneSummary};
 
     use super::*;
+    use crate::StatusBarModel;
+
+    #[test]
+    fn dropping_a_window_on_another_takes_its_slot_and_keeps_the_current_window() {
+        let mut engine = MuxEngine::default();
+        let mut context = ExecutionContext::default();
+        let run = |engine: &mut MuxEngine, context: &mut ExecutionContext, command| {
+            engine.execute(context, &command).unwrap();
+        };
+        run(
+            &mut engine,
+            &mut context,
+            CommandInvocation::new("new-session", ["-s", "s", "-n", "a"]),
+        );
+        for name in ["b", "c", "d"] {
+            run(
+                &mut engine,
+                &mut context,
+                CommandInvocation::new("new-window", ["-d", "-n", name]),
+            );
+        }
+        let session = context.session;
+        let windows = |engine: &MuxEngine| {
+            StatusBarModel::from_snapshot(&engine.state.snapshot(), session).windows
+        };
+        let layout = |engine: &MuxEngine| {
+            windows(engine)
+                .iter()
+                .map(|window| {
+                    let current = if window.active { "*" } else { "" };
+                    format!("{}:{}{current}", window.index, window.name)
+                })
+                .collect::<Vec<_>>()
+        };
+        let ids = ["a", "b", "c", "d"].map(|name| {
+            windows(&engine)
+                .iter()
+                .find(|window| window.name == name)
+                .unwrap()
+                .id
+        });
+        let [a, b, c, d] = ids.map(|id| id.to_string());
+
+        let right = move_window_command(&windows(&engine), ids[1], 3).unwrap();
+        assert_eq!(
+            right,
+            CommandInvocation::new("move-window", ["-a", "-d", "-s", &b, "-t", &d])
+        );
+        run(&mut engine, &mut context, right);
+        assert_eq!(layout(&engine), ["0:a*", "2:c", "3:d", "4:b"]);
+
+        let left = move_window_command(&windows(&engine), ids[1], 1).unwrap();
+        assert_eq!(
+            left,
+            CommandInvocation::new("move-window", ["-b", "-d", "-s", &b, "-t", &c])
+        );
+        run(&mut engine, &mut context, left);
+        assert_eq!(layout(&engine), ["0:a*", "2:b", "3:c", "4:d"]);
+
+        let current = move_window_command(&windows(&engine), ids[0], 3).unwrap();
+        assert_eq!(
+            current,
+            CommandInvocation::new("move-window", ["-a", "-s", &a, "-t", &d])
+        );
+        run(&mut engine, &mut context, current);
+        assert_eq!(layout(&engine), ["2:b", "3:c", "4:d", "5:a*"]);
+        assert_eq!(move_window_command(&windows(&engine), ids[0], 3), None);
+    }
+
+    #[test]
+    fn a_reordered_url_list_maps_each_slot_to_a_local_tab_once() {
+        let incoming = ["c", "a", "b", "a"].map(String::from);
+        assert_eq!(
+            tab_order(&["a", "b", "a", "c"], &incoming),
+            Some(vec![3, 0, 1, 2])
+        );
+        assert_eq!(tab_order(&["a", "b", "b", "c"], &incoming), None);
+        assert_eq!(tab_order(&["a", "b", "a"], &incoming), None);
+    }
 
     #[test]
     fn a_chat_in_a_former_terminal_pane_names_its_own_folder() {

@@ -1,12 +1,13 @@
 use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, ElementId, IntoElement, Pixels, SharedString, Window, div, prelude::*, px,
+    AnyElement, App, Context, ElementId, EntityId, IntoElement, Pixels, Point, Render,
+    SharedString, Window, div, prelude::*, px,
 };
-use penna::{Tab, TabLook};
+use penna::{Chip, ChipLook, Label, Tab, TabLook, TabStrip, TextStyle};
 
 use crate::{
-    ActiveTheme as _, Ground, IconName, PaintState, Surface,
+    ActiveTheme as _, Emphasis, Ground, IconName, PaintState, Surface, Tone,
     button::{Button, INSIDE_GAP},
 };
 
@@ -22,8 +23,10 @@ const CLOSE_SIDE: Pixels = px(WORKSPACE_STATUS_TAB_HEIGHT.as_f32() - 2.0 * INSID
 const CLOSE_SLOP: f32 = (crate::touch::TOUCH_TARGET - CLOSE_SIDE.as_f32()) / 2.0;
 
 pub type TabFace = Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>;
+pub type TabMove = Rc<dyn Fn(u64, usize, &mut Window, &mut App)>;
 
 pub struct TabFaces {
+    pub label: SharedString,
     pub lead: Pixels,
     pub full: Box<dyn FnOnce(&mut Window, &mut App) -> AnyElement>,
     pub icon: TabFace,
@@ -33,6 +36,32 @@ pub struct TabClose {
     pub id: SharedString,
     pub tooltip: &'static str,
     pub action: Option<StatusAction>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TabStripId {
+    view: EntityId,
+    look: TabLook,
+}
+
+impl TabStripId {
+    #[must_use]
+    pub const fn new(view: EntityId, look: TabLook) -> Self {
+        Self { view, look }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TabDrag {
+    pub strip: TabStripId,
+    pub id: u64,
+}
+
+pub struct TabReorder {
+    pub strip: TabStripId,
+    pub id: u64,
+    pub index: usize,
+    pub on_move: TabMove,
 }
 
 #[must_use]
@@ -46,6 +75,7 @@ pub fn compact_below(lead: Pixels, closable: bool) -> Pixels {
 }
 
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn tab_faces(
     tab: Tab,
     look: TabLook,
@@ -53,23 +83,107 @@ pub fn tab_faces(
     state: WorkspaceStatusWindowState,
     faces: TabFaces,
     close: Option<TabClose>,
+    reorder: Option<TabReorder>,
+    cx: &App,
 ) -> Tab {
-    let TabFaces { lead, full, icon } = faces;
+    let TabFaces {
+        label,
+        lead,
+        full,
+        icon,
+    } = faces;
     let compact = compact_below(lead, close.is_some());
     let group = close
         .as_ref()
         .map(|close| SharedString::from(format!("{}-tab", close.id)));
     let hover = group.clone();
-    tab.px_0()
+    let face = Rc::clone(&icon);
+    let tab = tab
+        .px_0()
         .gap_0()
         .when_some(group, ala::InteractiveElement::group)
         .child(crate::pane::by_width(move |width, window, cx| {
             if width < compact {
-                compact_face(close, &icon, look, on, state, window, cx)
+                compact_face(close, &face, look, on, state, window, cx)
             } else {
                 full_face(full, close, hover, look, on, state, window, cx)
             }
-        }))
+        }));
+    match reorder {
+        Some(reorder) => reorderable(tab, reorder, label, icon, on, cx),
+        None => tab,
+    }
+}
+
+fn reorderable(
+    tab: Tab,
+    reorder: TabReorder,
+    label: SharedString,
+    icon: TabFace,
+    on: Ground,
+    cx: &App,
+) -> Tab {
+    let TabReorder {
+        strip,
+        id,
+        index,
+        on_move,
+    } = reorder;
+    let highlight = cx
+        .theme()
+        .paint_on(TabStrip::ground(on, 2, cx), Tone::Accent, Emphasis::Soft)
+        .fill;
+    let lands = move |drag: &TabDrag| drag.strip == strip && drag.id != id;
+    tab.on_drag(TabDrag { strip, id }, move |_, grab, _, cx| {
+        let label = label.clone();
+        let icon = Rc::clone(&icon);
+        cx.new(|_| TabDragPreview { label, icon, grab })
+    })
+    .drag_over::<TabDrag>(move |style, drag, _, _| {
+        if lands(drag) {
+            style.bg(highlight)
+        } else {
+            style
+        }
+    })
+    .on_drop(move |drag: &TabDrag, window, cx| {
+        if lands(drag) {
+            on_move(drag.id, index, window, cx);
+        }
+    })
+}
+
+struct TabDragPreview {
+    label: SharedString,
+    icon: TabFace,
+    grab: Point<Pixels>,
+}
+
+impl Render for TabDragPreview {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let ground = cx.theme().ground_of(ChipLook::Drag);
+        div()
+            .pl(self.grab.x + px(12.0))
+            .pt(self.grab.y + px(12.0))
+            .child(
+                Chip::empty("tab-drag-chip")
+                    .look(ChipLook::Drag)
+                    .min_w_auto()
+                    .h_auto()
+                    .gap(TAB_GAP)
+                    .max_w(super::WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH)
+                    .px(px(10.0))
+                    .py(px(6.0))
+                    .overflow_hidden()
+                    .child((self.icon)(window, cx))
+                    .child(
+                        Label::new(TextStyle::Small, self.label.clone())
+                            .on(ground)
+                            .truncate()
+                            .min_w_0(),
+                    ),
+            )
+    }
 }
 
 fn compact_face(

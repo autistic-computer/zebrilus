@@ -705,6 +705,21 @@ impl BrowserPane {
                 self.pending.drain(..=index);
             } else {
                 self.pending.clear();
+                let local = self
+                    .tabs
+                    .iter()
+                    .map(|tab| tab.url.as_str())
+                    .collect::<Vec<_>>();
+                if let Some(order) = zz_client::navigation::tab_order(&local, &descriptor.tabs) {
+                    let mut slots = std::mem::take(&mut self.tabs)
+                        .into_iter()
+                        .map(Some)
+                        .collect::<Vec<_>>();
+                    self.tabs = order
+                        .into_iter()
+                        .filter_map(|index| slots[index].take())
+                        .collect();
+                }
                 for (index, url) in descriptor.tabs.iter().enumerate() {
                     if let Some(tab) = self.tabs.get_mut(index) {
                         if tab.url != *url {
@@ -1149,6 +1164,28 @@ impl BrowserPane {
         self.address.read(cx).focus_handle(cx).focus(window, cx);
         #[cfg(target_os = "ios")]
         crate::native_browser::take_keyboard(window);
+    }
+
+    fn move_tab(&mut self, id: u64, to: usize, cx: &mut Context<Self>) {
+        if !self.writable(cx) {
+            return;
+        }
+        let Some(from) = self.tabs.iter().position(|tab| tab.id == id) else {
+            return;
+        };
+        if to >= self.tabs.len() || to == from {
+            return;
+        }
+        let active = self.tabs[self.active].id;
+        let tab = self.tabs.remove(from);
+        self.tabs.insert(to, tab);
+        self.active = self
+            .tabs
+            .iter()
+            .position(|tab| tab.id == active)
+            .unwrap_or_default();
+        self.publish(cx);
+        cx.notify();
     }
 
     fn close_tab(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
@@ -1648,6 +1685,7 @@ impl BrowserPane {
         let weak = cx.weak_entity();
         let close = weak.clone();
         let new = weak.clone();
+        let reorder = weak.clone();
         let strip = BrowserTabStrip::new(tabs, self.active)
             .on_activate(move |id, window, cx| {
                 let _ = weak.update(cx, |this, cx| this.select(id, window, cx));
@@ -1661,6 +1699,13 @@ impl BrowserPane {
                 });
             })
             .title(drag);
+        let strip = if writable {
+            strip.on_move(move |id, to, _, cx| {
+                let _ = reorder.update(cx, |this, cx| this.move_tab(id, to, cx));
+            })
+        } else {
+            strip
+        };
         let connection = self.connection.clone();
         let float_rows = self.float_rows_handler.clone();
         let actions = PaneActions::new(

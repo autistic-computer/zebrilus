@@ -13,7 +13,7 @@ use crate::{
             MAX_VISIBLE_WINDOWS, StatusAction, StatusWindowEntry, tab_overflow,
             visible_window_range,
         },
-        tab::{TAB_GAP, TabClose, TabFace, TabFaces, tab_faces},
+        tab::{TAB_GAP, TabClose, TabFace, TabFaces, TabMove, TabReorder, TabStripId, tab_faces},
         workspace_status_tab_ground, workspace_tab, workspace_tab_name, workspace_tab_strip,
     },
     pane::PaneActions,
@@ -362,6 +362,7 @@ pub struct BrowserTabStrip {
     on_activate: BrowserTabAction,
     on_close: BrowserTabAction,
     on_new_tab: BrowserMenuAction,
+    on_move: Option<TabMove>,
     title: Option<crate::pane::PaneDragSource>,
 }
 
@@ -373,8 +374,15 @@ impl BrowserTabStrip {
             on_activate: Rc::new(|_, _, _| {}),
             on_close: Rc::new(|_, _, _| {}),
             on_new_tab: Rc::new(|_, _| {}),
+            on_move: None,
             title: None,
         }
+    }
+
+    #[must_use]
+    pub fn on_move(mut self, action: impl Fn(u64, usize, &mut Window, &mut App) + 'static) -> Self {
+        self.on_move = Some(Rc::new(action));
+        self
     }
 
     #[must_use]
@@ -403,15 +411,17 @@ impl BrowserTabStrip {
 }
 
 impl RenderOnce for BrowserTabStrip {
-    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let Self {
             tabs,
             active,
             on_activate,
             on_close,
             on_new_tab,
+            on_move,
             title,
         } = self;
+        let strip = TabStripId::new(window.current_view(), TabLook::Page);
         let title = title.map(|drag| {
             crate::pane::PaneTitle::new("browser-pane-title", IconName::Globe, "Browser", drag)
         });
@@ -455,8 +465,15 @@ impl RenderOnce for BrowserTabStrip {
             .enumerate()
             .filter(|(index, _)| shown.contains(index))
             .map(|(index, tab)| {
+                let reorder = on_move.as_ref().map(|on_move| TabReorder {
+                    strip,
+                    id: tab.id,
+                    index,
+                    on_move: Rc::clone(on_move),
+                });
                 browser_tab_pill(
                     tab,
+                    reorder,
                     WorkspaceStatusWindowState {
                         connected: true,
                         active: index == active,
@@ -505,6 +522,7 @@ impl RenderOnce for BrowserTabStrip {
 
 fn browser_tab_pill(
     tab: BrowserTabInfo,
+    reorder: Option<TabReorder>,
     state: WorkspaceStatusWindowState,
     on: crate::Ground,
     on_activate: &BrowserTabAction,
@@ -534,6 +552,7 @@ fn browser_tab_pill(
     });
     let lead = Rc::clone(&icon);
     let name = label.clone();
+    let preview = label.clone();
     let full = Box::new(move |window: &mut Window, cx: &mut App| {
         div()
             .flex()
@@ -580,11 +599,14 @@ fn browser_tab_pill(
         on,
         state,
         TabFaces {
+            label: preview,
             lead: BROWSER_FAVICON_SIZE,
             full,
             icon,
         },
         close,
+        reorder,
+        cx,
     )
     .into_any_element()
 }
@@ -1281,6 +1303,7 @@ mod tests {
         active: usize,
         activated: Arc<Mutex<Vec<u64>>>,
         closed: Arc<Mutex<Vec<u64>>>,
+        moved: Arc<Mutex<Vec<(u64, usize)>>>,
     }
 
     impl BrowserTabStripTest {
@@ -1291,6 +1314,7 @@ mod tests {
                 active,
                 activated: Arc::default(),
                 closed: Arc::default(),
+                moved: Arc::default(),
             }
         }
     }
@@ -1541,6 +1565,7 @@ mod tests {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             let activated = Arc::clone(&self.activated);
             let closed = Arc::clone(&self.closed);
+            let moved = Arc::clone(&self.moved);
             div().w(px(self.width)).h(px(BROWSER_CONTROL_HEIGHT)).child(
                 BrowserTabStrip::new(
                     (1..=self.count)
@@ -1549,7 +1574,8 @@ mod tests {
                     self.active,
                 )
                 .on_activate(move |id, _, _| activated.lock().unwrap().push(id))
-                .on_close(move |id, _, _| closed.lock().unwrap().push(id)),
+                .on_close(move |id, _, _| closed.lock().unwrap().push(id))
+                .on_move(move |id, to, _, _| moved.lock().unwrap().push((id, to))),
             )
         }
     }
@@ -1744,6 +1770,37 @@ mod tests {
         cx.simulate_click(first.center(), Modifiers::none());
         assert_eq!(*activated.lock().unwrap(), [1]);
         assert_eq!(*closed.lock().unwrap(), [3]);
+    }
+
+    #[ala::test]
+    fn dropping_a_tab_on_another_moves_it_there_and_a_still_click_activates(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let test = BrowserTabStripTest::new(640.0, 3, 1);
+        let activated = Arc::clone(&test.activated);
+        let moved = Arc::clone(&test.moved);
+        let (_, cx) = cx.add_window_view(move |_, _| test);
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let first = cx.debug_bounds("browser-tab-1").unwrap().center();
+        let third = cx.debug_bounds("browser-tab-3").unwrap().center();
+        cx.simulate_mouse_down(first, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(third, MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+        assert!(cx.update(|_, cx| cx.has_active_drag()));
+        cx.simulate_mouse_up(third, MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+        assert_eq!(*moved.lock().unwrap(), [(1, 2)]);
+        assert!(activated.lock().unwrap().is_empty());
+
+        let second = cx.debug_bounds("browser-tab-2").unwrap().center();
+        cx.simulate_click(second, Modifiers::none());
+        assert_eq!(*activated.lock().unwrap(), [2]);
+        assert_eq!(*moved.lock().unwrap(), [(1, 2)]);
     }
 
     #[ala::test]

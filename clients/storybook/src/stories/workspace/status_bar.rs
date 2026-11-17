@@ -105,6 +105,7 @@ fn actions(closable: bool) -> StatusWindowActions {
         select: noop(),
         close: closable.then(noop),
         rename: closable.then(|| (SharedString::from("Rename window…"), noop())),
+        reorder: None,
     }
 }
 

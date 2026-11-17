@@ -235,6 +235,7 @@ pub fn workspace_tab_name(name: impl IntoElement) -> ala::Div {
 }
 
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn workspace_status_window(
     id: impl Into<ElementId>,
     name: SharedString,
@@ -242,6 +243,7 @@ pub fn workspace_status_window(
     state: WorkspaceStatusWindowState,
     panes: Vec<status::StatusPaneEntry>,
     close: Option<tab::TabClose>,
+    reorder: Option<tab::TabReorder>,
     cx: &App,
 ) -> Tab {
     let id = id.into();
@@ -252,6 +254,7 @@ pub fn workspace_status_window(
     let deck = ElementId::Name(format!("status-window-panes-{id:?}").into());
     let face = ElementId::Name(format!("status-window-face-{id:?}").into());
     let front = status::front_pane(&panes);
+    let label = name.clone();
     let full = Box::new(move |_: &mut Window, cx: &mut App| {
         let name = workspace_tab_name(name);
         match status::status_pane_deck(deck, panes, state.connected, ground, cx) {
@@ -281,11 +284,14 @@ pub fn workspace_status_window(
         on,
         state,
         tab::TabFaces {
+            label,
             lead: px(pane_stack::StackSize::Bar.widest()),
             full,
             icon,
         },
         close,
+        reorder,
+        cx,
     )
 }
 

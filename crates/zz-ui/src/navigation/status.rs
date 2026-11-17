@@ -12,7 +12,11 @@ use crate::{
     menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem},
 };
 
-use super::{WorkspaceStatusWindowState, tab::TabClose, workspace_status_window};
+use super::{
+    WorkspaceStatusWindowState,
+    tab::{TabClose, TabReorder},
+    workspace_status_window,
+};
 
 pub use zz_client::{MAX_VISIBLE_WINDOWS, visible_window_range};
 
@@ -22,6 +26,7 @@ pub struct StatusWindowActions {
     pub select: StatusAction,
     pub close: Option<StatusAction>,
     pub rename: Option<(SharedString, StatusAction)>,
+    pub reorder: Option<TabReorder>,
 }
 
 pub struct StatusWindowEntry {
@@ -35,7 +40,7 @@ pub fn status_window(
     name: SharedString,
     state: WorkspaceStatusWindowState,
     panes: Vec<StatusPaneEntry>,
-    actions: StatusWindowActions,
+    mut actions: StatusWindowActions,
     cx: &App,
 ) -> AnyElement {
     let id = id.into();
@@ -45,7 +50,8 @@ pub fn status_window(
         tooltip: "Close window",
         action: actions.close.clone(),
     };
-    let item = workspace_status_window(id, name, tooltip, state, panes, Some(close), cx)
+    let reorder = actions.reorder.take();
+    let item = workspace_status_window(id, name, tooltip, state, panes, Some(close), reorder, cx)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(move |_, window, cx| {
             cx.stop_propagation();
