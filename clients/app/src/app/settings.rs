@@ -807,7 +807,6 @@ impl AppShell {
                         });
                     }
                 },
-                cx,
             )
             .large_title("Settings", fold)
             .into_any_element()

@@ -8,9 +8,8 @@ use std::rc::Rc;
 
 pub use penna::blocks::settings::*;
 
-use crate::{ActiveTheme as _, Colorize as _, icon::Icon};
 use ala::{App, ElementId, SharedString, Styled as _, Window, div, prelude::*, px};
-use penna::{Label, TextStyle};
+use penna::blocks::touch::{TouchGroup, TouchRow, TouchTrailing};
 
 pub fn terminal_theme_scopes<S: std::hash::BuildHasher + 'static>(
     scheme: zz_terminal::TerminalColorScheme,
@@ -137,49 +136,31 @@ pub fn settings_section_index(
     sections: &[SettingsSection],
     meta: impl Fn(SettingsSection) -> Option<SharedString>,
     on_pick: impl Fn(SettingsSection, &mut Window, &mut App) + 'static,
-    cx: &App,
 ) -> SettingsScrollColumn {
     let on_pick = Rc::new(on_pick);
-    let muted = cx.theme().foreground.muted();
-    let faint = cx.theme().foreground.faint();
-    let card = settings_card_ground(cx);
-    let entry = |section: SettingsSection| {
+    let row = |section: SettingsSection| {
         let id = ElementId::Name(format!("settings-index-{}", section.title()).into());
         let on_pick = Rc::clone(&on_pick);
-        SettingEntry::new(section.title())
-            .title_icon(Icon::new(section.icon()).text_color(muted))
-            .control(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .gap(px(6.0))
-                    .children(meta(section).map(|value| {
-                        Label::new(TextStyle::Small, value)
-                            .muted()
-                            .on(card)
-                            .truncate()
-                            .max_w(px(160.0))
-                    }))
-                    .child(
-                        Icon::new(crate::IconName::ChevronRight)
-                            .size(px(14.0))
-                            .text_color(faint),
-                    ),
-            )
-            .on_click(id, move |_, window, cx| on_pick(section, window, cx))
+        let row = TouchRow::new(id, section.title())
+            .icon(section.icon())
+            .more()
+            .on_click(move |_, window, cx| on_pick(section, window, cx));
+        match meta(section) {
+            Some(value) => row.trailing(TouchTrailing::Value(value)),
+            None => row,
+        }
     };
-    let mut groups: Vec<(SettingsNavigationGroup, SettingsStack)> = Vec::new();
+    let mut groups: Vec<(SettingsNavigationGroup, TouchGroup)> = Vec::new();
     for &section in sections {
         let group = section.navigation_group();
         match groups.last_mut() {
-            Some((last, stack)) if *last == group => {
-                *stack = std::mem::take(stack).child(entry(section));
+            Some((last, rows)) if *last == group => {
+                *rows = std::mem::take(rows).row(row(section));
             }
-            _ => groups.push((group, SettingsStack::new().child(entry(section)))),
+            _ => groups.push((group, TouchGroup::new().ruled().row(row(section)))),
         }
     }
-    settings_scroll_column("settings-index").children(groups.into_iter().map(|(_, stack)| stack))
+    settings_scroll_column("settings-index").children(groups.into_iter().map(|(_, rows)| rows))
 }
 
 pub fn settings_page_title(section: SettingsSection, cx: &App) -> ala::Div {

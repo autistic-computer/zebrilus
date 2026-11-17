@@ -15,7 +15,7 @@ use penna::{
         bottom_sheet, close_sheet, floating_sheet, modal_groups, sheet_close, sheet_ground,
         sheet_groups, sheet_inset, sheet_note,
     },
-    blocks::touch::{TouchGroup, TouchHeader, TouchRow, concentric},
+    blocks::touch::{TouchGroup, TouchHeader, TouchRow, TouchTrailing, concentric},
     v_flex,
 };
 use zz_ui::settings::{
@@ -585,13 +585,17 @@ impl AppShell {
         narrow: bool,
         cx: &mut Context<Self>,
     ) -> SettingsScrollColumn {
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        if narrow {
+            let rows = self.host_rows(cx);
+            return settings_scroll_column(id)
+                .children(title.map(|title| settings_page_heading(title, cx)))
+                .when(!rows.is_empty(), |page| page.child(rows))
+                .child(self.add_host_row(cx));
+        }
         let entries = self.host_entries(narrow, cx);
         #[cfg(any(target_os = "ios", target_os = "android"))]
-        let (found, add) = if narrow {
-            (None, Some(self.add_host_row(cx)))
-        } else {
-            (self.found_stack(cx), Some(self.add_host_stack(narrow, cx)))
-        };
+        let (found, add) = (self.found_stack(cx), Some(self.add_host_stack(narrow, cx)));
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let (found, add): (Option<SettingsStack>, Option<SettingsStack>) = (
             None,
@@ -772,26 +776,6 @@ impl AppShell {
                     Some(_) => cx.theme().danger,
                 };
                 let icon = self.hosts.icon(endpoint);
-                #[cfg(any(target_os = "ios", target_os = "android"))]
-                if narrow {
-                    let status = match &state {
-                        Some(_) if connected => "Connected",
-                        Some(_) if busy => "Connecting…",
-                        _ => "Not connected",
-                    };
-                    let view = cx.entity().downgrade();
-                    let picked = endpoint.clone();
-                    return SettingEntry::new(host_title(endpoint))
-                        .description(host_location(endpoint))
-                        .title_icon(Icon::new(icon).text_color(color))
-                        .control(row_meta(status, cx))
-                        .on_click(("hosts-row", index), move |_, _, cx| {
-                            let _ = view.update(cx, |this, cx| {
-                                this.hosts.sheet = Some(HostSheet::Host(picked.clone()));
-                                cx.notify();
-                            });
-                        });
-                }
                 let entry = SettingEntry::new(self.hosts.title(endpoint))
                     .when_some(self.hosts.description(endpoint), SettingEntry::description)
                     .title_icon(Icon::new(icon).text_color(color))
@@ -874,6 +858,49 @@ impl AppShell {
             .collect()
     }
 
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn host_rows(&self, cx: &mut Context<Self>) -> TouchGroup {
+        let theme = cx.theme();
+        let (muted, success, warning, danger) = (
+            theme.foreground.muted(),
+            theme.success,
+            theme.warning,
+            theme.danger,
+        );
+        let rows = self
+            .hosts
+            .saved
+            .endpoints()
+            .iter()
+            .enumerate()
+            .map(|(index, endpoint)| {
+                let state = self.host_connection(endpoint, cx).map(|connection| {
+                    let connection = connection.read(cx);
+                    (connection.connected, connection.busy())
+                });
+                let (color, status) = match state {
+                    None => (muted, "Not connected"),
+                    Some((true, _)) => (success, "Connected"),
+                    Some((false, true)) => (warning, "Connecting…"),
+                    Some((false, false)) => (danger, "Not connected"),
+                };
+                let view = cx.entity().downgrade();
+                let picked = endpoint.clone();
+                TouchRow::new(("hosts-row", index), host_title(endpoint))
+                    .lead(row_glyph(self.hosts.icon(endpoint), color), ROW_GLYPH)
+                    .trailing(TouchTrailing::Value(status.into()))
+                    .more()
+                    .on_click(move |_, _, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            this.hosts.sheet = Some(HostSheet::Host(picked.clone()));
+                            cx.notify();
+                        });
+                    })
+            })
+            .collect::<Vec<_>>();
+        TouchGroup::new().ruled().rows(rows)
+    }
+
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     fn gateway_entry(&self, narrow: bool, cx: &mut Context<Self>) -> SettingEntry {
         let connection = self.connection.read(cx);
@@ -916,13 +943,13 @@ impl AppShell {
     }
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
-    fn add_host_row(&self, cx: &mut Context<Self>) -> SettingsStack {
+    fn add_host_row(&self, cx: &mut Context<Self>) -> TouchGroup {
         let view = cx.entity().downgrade();
-        SettingsStack::new().child(
-            SettingEntry::new("Add host")
-                .title_icon(Icon::new(IconName::Plus).text_color(cx.theme().accent))
-                .control(row_meta("", cx))
-                .on_click("hosts-add-row", move |_, window, cx| {
+        TouchGroup::new().ruled().row(
+            TouchRow::new("hosts-add-row", "Add host")
+                .lead(row_glyph(IconName::Plus, cx.theme().accent), ROW_GLYPH)
+                .more()
+                .on_click(move |_, window, cx| {
                     let _ = view.update(cx, |this, cx| {
                         this.hosts.error = None;
                         this.hosts.sheet = Some(HostSheet::Add);
@@ -1284,21 +1311,14 @@ pub(super) fn copy_ssh_key(window: &mut Window, cx: &mut ala::App) {
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
-fn row_meta(text: &'static str, cx: &ala::App) -> impl IntoElement {
-    let theme = cx.theme();
-    h_flex()
+const ROW_GLYPH: f32 = 20.0;
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+fn row_glyph(icon: IconName, color: ala::Hsla) -> Icon {
+    Icon::new(icon)
+        .size(px(ROW_GLYPH))
         .flex_none()
-        .gap(px(6.0))
-        .children((!text.is_empty()).then(|| {
-            Label::new(TextStyle::Small, text)
-                .muted()
-                .on(settings_card_ground(cx))
-        }))
-        .child(
-            Icon::new(IconName::ChevronRight)
-                .size(px(14.0))
-                .text_color(theme.foreground.faint()),
-        )
+        .text_color(color)
 }
 
 fn status_line(text: impl Into<ala::SharedString>, tone: Tone, cx: &ala::App) -> Label {

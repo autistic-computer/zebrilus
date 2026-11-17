@@ -92,7 +92,6 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
             _ => None,
         },
         |_, _, _| {},
-        cx,
     );
     let fold = SettingsFold::default();
     let phone_index = settings_section_index(
@@ -110,7 +109,6 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
             _ => None,
         },
         |_, _, _| {},
-        cx,
     )
     .large_title("Settings", &fold);
     let back =
