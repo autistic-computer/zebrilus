@@ -355,20 +355,29 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
   background/foreground/accent colors, UI zoom, contrast, animations, widget
   corners, font family, and shadow strength. Fresh installs use System appearance;
   saved choices survive upgrades. System appearance follows live iOS changes;
-  pinned modes also update the native status bar.
+  pinned modes also update the native status bar. On iPad and the web it also has a
+  terminal preview, Window follows the theme (on by default: the window wears the host's
+  terminal colors when they match the shown mode), and Terminal text contrast (Follow host,
+  On for 4.5:1, Off).
 - **Panes:** live preview, gaps, inactive opacity, selected glow and margin.
   Frame controls apply with gaps.
-- **Terminal:** a live preview, local font family, and text scale. Host colors,
-  cursor, and padding remain visible as host-owned settings.
+- **Terminal:** a live preview, local font family, and text scale. On iPad and the web,
+  cursor style, cursor blink, and padding X and Y follow the host until set on the device;
+  an empty padding field follows the host again. A device cursor style replaces the host's
+  default shape only, so a shape a program asks for still shows. Host colors and themes
+  remain visible as host-owned settings.
 - **Hosts:** the configured endpoint, connection status, and reconnect.
-- **Advanced:** command palette layout (tree or flat), host prefix, and command shortcuts;
+- **Advanced:** command palette layout (tree or flat), host prefix, and command shortcuts
+  (the palette's recents are kept across launches in `palette-recents.json` beside the
+  preferences);
   Display: drawing under the home indicator, matching the system text size, and keeping
   the screen awake while connected; Notifications: Notify when a pane needs you.
 - **About:** app version and source link.
 
 The page omits desktop-only options and controls for unsupported pane kinds. iPhone also
-leaves out Panes and Status bar (the phone shell shows one pane without gaps or frames and
-has its own bottom bar), UI zoom, and Match system text size.
+leaves out Panes (the phone shell shows one pane without gaps or frames), UI zoom, Match
+system text size, the command palette settings, and the terminal rows above that iPad and
+the web add (the phone draws terminals in the app's own colors).
 Interface and pane preferences are saved atomically in the app container
 at `Library/Application Support/ala/preferences.json` and restored on launch.
 Touch controls work without a keyboard; numeric values open a decimal pad and hex colors

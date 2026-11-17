@@ -102,6 +102,8 @@ pub struct Connection {
     instance: zz_protocol::ClientInstanceId,
     #[cfg(target_family = "wasm")]
     failures: u32,
+    #[cfg(target_family = "wasm")]
+    stale_page: bool,
 }
 
 impl EventEmitter<CoreEvent> for Connection {}
@@ -196,6 +198,20 @@ impl Connection {
             instance: browser::new_instance_id(),
             #[cfg(target_family = "wasm")]
             failures: 0,
+            #[cfg(target_family = "wasm")]
+            stale_page: false,
+        }
+    }
+
+    #[must_use]
+    pub fn stale_page(&self) -> bool {
+        #[cfg(target_family = "wasm")]
+        {
+            self.stale_page
+        }
+        #[cfg(not(target_family = "wasm"))]
+        {
+            false
         }
     }
 
@@ -1589,7 +1605,8 @@ impl Connection {
             self.resume,
             code,
             self.failures,
-        );
+        )
+        .filter(|_| !self.stale_page);
         self.status = match delay {
             Some(_) => reason,
             None => settled(&reason).to_owned(),
@@ -1621,6 +1638,14 @@ impl Connection {
                 );
             }
             inbox::SocketEvent::Frame(bytes) => match zz_protocol::decode_protocol_frame(&bytes) {
+                decoded if page_out_of_date(&decoded) => {
+                    self.stale_page = true;
+                    self.disconnected(
+                        "This page is older than zz on the host. Reload it to update.".to_owned(),
+                        cx,
+                    );
+                    return false;
+                }
                 Ok(message) if !supports_required_protocol(&message) => {
                     self.disconnected(
                         format!(
@@ -1656,6 +1681,21 @@ impl Connection {
         }
         cx.notify();
         self.socket.is_some()
+    }
+}
+
+#[cfg(any(target_family = "wasm", test))]
+fn page_out_of_date(decoded: &Result<ProtocolMessage, zz_protocol::ProtocolError>) -> bool {
+    match decoded {
+        Err(zz_protocol::ProtocolError::VersionMismatch { expected, received }) => {
+            received > expected
+        }
+        Ok(ProtocolMessage::CommandResponse(CommandResponse::Error { error, .. })) => match error {
+            ServerError::ProtocolMismatch { client, server } => server > client,
+            ServerError::ClientTooOld { .. } => true,
+            _ => false,
+        },
+        _ => false,
     }
 }
 
@@ -2088,6 +2128,45 @@ mod tests {
         assert!(super::supports_required_protocol(
             &ProtocolMessage::TreeSync
         ));
+    }
+
+    #[test]
+    fn only_a_newer_host_marks_the_web_page_out_of_date() {
+        use zz_protocol::{CommandResponse, ProtocolError, ServerError};
+        let mismatch = |received| {
+            Err(ProtocolError::VersionMismatch {
+                expected: 7,
+                received,
+            })
+        };
+        let refused = |error| {
+            Ok(ProtocolMessage::CommandResponse(CommandResponse::Error {
+                request_id: 0,
+                error,
+                output: zz_protocol::RawText::default(),
+            }))
+        };
+        assert!(super::page_out_of_date(&mismatch(8)));
+        assert!(!super::page_out_of_date(&mismatch(6)));
+        assert!(super::page_out_of_date(&refused(
+            ServerError::ClientTooOld {
+                client: 3,
+                minimum: 4
+            }
+        )));
+        assert!(super::page_out_of_date(&refused(
+            ServerError::ProtocolMismatch {
+                client: 7,
+                server: 8
+            }
+        )));
+        assert!(!super::page_out_of_date(&refused(
+            ServerError::ProtocolMismatch {
+                client: 8,
+                server: 7
+            }
+        )));
+        assert!(!super::page_out_of_date(&Ok(ProtocolMessage::TreeSync)));
     }
 
     fn ready<T>(future: impl Future<Output = T>) -> T {

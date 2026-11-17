@@ -793,16 +793,19 @@ impl AppShell {
                 },
                 cx,
             ));
+        let stale = connection.stale_page();
         with_control(
             entry,
-            h_flex().child(
+            h_flex().child(if stale {
+                reload_page_button(cx)
+            } else {
                 Button::new("hosts-reconnect")
                     .label(if connected { "Reconnect" } else { "Retry" })
                     .on(settings_card_ground(cx))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.connection.update(cx, Connection::reconnect);
-                    })),
-            ),
+                    }))
+            }),
             narrow,
         )
     }
@@ -1209,6 +1212,18 @@ fn toned(line: Label, tone: Tone, ground: Ground, cx: &ala::App) -> Label {
         Tone::Neutral => line.muted().on(ground),
         tone => line.text_color(cx.theme().tone(tone)),
     }
+}
+
+pub(super) fn reload_page_button(cx: &ala::App) -> Button {
+    Button::new("reload-page")
+        .label("Reload page")
+        .on(settings_card_ground(cx))
+        .on_click(|_, _, _| {
+            #[cfg(target_family = "wasm")]
+            if let Some(window) = web_sys::window() {
+                let _ = window.location().reload();
+            }
+        })
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]

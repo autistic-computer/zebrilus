@@ -298,6 +298,11 @@ fn watch_connection(
                     this.set_split_drag(None);
                     this.pane_layout_override = None;
                 }
+                zz_client::CoreEvent::AppearanceChanged => {
+                    if this.preferences.window_follows_theme && *connection == this.connection {
+                        this.preferences.apply(&this.connection, window, cx);
+                    }
+                }
                 zz_client::CoreEvent::FocusSidebar => this.focus_sidebar(window, cx),
                 zz_client::CoreEvent::OpenPathPicker { pane, start_dir } => {
                     this.open_files_palette(*pane, start_dir.clone(), window, cx);
@@ -366,6 +371,7 @@ impl AppShell {
         let key_events = cx.intercept_keystrokes(key_listener);
         let connection_subscriptions = watch_connection(&connection, window, cx);
         let preferences = settings::Preferences::load();
+        crate::preferences::install_palette_recents(cx);
         let appearance_view = cx.weak_entity();
         let appearance_observer = window.observe_window_appearance(move |window, cx| {
             let _ = appearance_view.update(cx, |this, cx| {
@@ -2542,10 +2548,17 @@ impl AppShell {
                     .right(px(8.0))
                     .top(px(8.0))
                     .p(px(8.0))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(8.0))
                     .child(
                         Label::new(TextStyle::Small, self.connection.read(cx).status.clone())
                             .text_color(cx.theme().warning),
                     )
+                    .when(self.connection.read(cx).stale_page(), |toast| {
+                        toast.child(hosts::reload_page_button(cx))
+                    })
                     .into_any_element(),
             );
         }

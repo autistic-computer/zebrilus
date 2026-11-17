@@ -102,6 +102,9 @@ This computer keeps retrying every 2 s, as before. Another host is never rediale
 failed first connect, nor after a 4401: it shows the close reason as its state and waits for
 Connect. After it has been connected once, a dropped connection is redialed in 2 s, and each
 4502 doubles the wait from 4 s up to 60 s (`retry_after` in `clients/app/src/connection.rs`).
+A page older than the host stops redialing and offers Reload page instead: a frame of a newer
+protocol version, or a hello refused as too old (`page_out_of_date`). That is a tab left open
+across a zz update, and reloading fetches the gateway's current client.
 When `/hosts` fails (an older gateway) or lists only this computer, the page is the single-host
 client it was.
 

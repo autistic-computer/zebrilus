@@ -25,10 +25,10 @@ use zz_client::{
 };
 use zz_protocol::{InputMessage, PaneId, TerminalUiCommand};
 use zz_terminal::{
-    AppearanceConfigKey, AppearanceSource, KeyAction, KeyCode, KeyInput, LocalColors,
-    PointerCellEvent, SearchCase, SearchDirection, SearchMode, SearchQuery, SearchStatus,
-    TerminalAppearance, TerminalMode, TerminalMouseButton, TerminalMouseInput, TerminalMousePhase,
-    TerminalPalette, TerminalViewAction, TerminalViewport,
+    AppearanceConfigKey, AppearanceSource, Cursor, CursorBlinkPolicy, CursorStyle, KeyAction,
+    KeyCode, KeyInput, LocalColors, PointerCellEvent, SearchCase, SearchDirection, SearchMode,
+    SearchQuery, SearchStatus, TerminalAppearance, TerminalMode, TerminalMouseButton,
+    TerminalMouseInput, TerminalMousePhase, TerminalPalette, TerminalViewAction, TerminalViewport,
 };
 use zz_ui::{
     pane::{
@@ -48,7 +48,14 @@ use crate::connection::Connection;
 pub(crate) struct TerminalDisplayPreferences {
     pub font_family: Option<String>,
     pub font_scale: f32,
+    pub contrast: Option<bool>,
+    pub cursor_style: Option<CursorStyle>,
+    pub cursor_blink: Option<CursorBlinkPolicy>,
+    pub padding_x: Option<f32>,
+    pub padding_y: Option<f32>,
 }
+
+pub(crate) const TERMINAL_CONTRAST_ON: f32 = 4.5;
 
 impl ala::Global for TerminalDisplayPreferences {}
 
@@ -114,8 +121,55 @@ pub(crate) fn localized_font_appearance(
         }
         appearance.font_size_points =
             (appearance.font_size_points * preferences.font_scale).clamp(7.0, 48.0);
+        if let Some(contrast) = preferences.contrast {
+            appearance.minimum_contrast = if contrast { TERMINAL_CONTRAST_ON } else { 1.0 };
+        }
+        if let Some(style) = preferences.cursor_style {
+            appearance.cursor_style = style;
+        }
+        if let Some(blink) = preferences.cursor_blink {
+            appearance.cursor_blink_policy = blink;
+        }
+        if let Some(padding) = preferences.padding_x {
+            appearance.padding_left = padding;
+            appearance.padding_right = padding;
+        }
+        if let Some(padding) = preferences.padding_y {
+            appearance.padding_top = padding;
+            appearance.padding_bottom = padding;
+        }
     }
     appearance
+}
+
+pub(crate) fn device_cursor(
+    cursor: Option<Cursor>,
+    host: CursorStyle,
+    device: CursorStyle,
+) -> Option<Cursor> {
+    cursor
+        .filter(|cursor| device != host && cursor.style() == host)
+        .map(|cursor| {
+            Cursor::new(
+                cursor.column(),
+                cursor.row(),
+                cursor.visible(),
+                cursor.blinking(),
+                cursor.at_wide_tail(),
+                device,
+                cursor.color(),
+            )
+        })
+}
+
+fn cursor_blink_policy(core: &ClientCore, cx: &App) -> CursorBlinkPolicy {
+    cx.try_global::<TerminalDisplayPreferences>()
+        .and_then(|preferences| preferences.cursor_blink)
+        .or_else(|| {
+            core.appearance()
+                .map(|appearance| appearance.cursor_blink_policy)
+        })
+        .unwrap_or_default()
 }
 
 fn localize_font_stack(families: &mut Vec<String>, source: AppearanceSource, available: &[String]) {
@@ -1482,9 +1536,20 @@ impl TerminalPane {
                 cx,
             );
             appearance.local_colors = phone_colors(&retained.viewport, &appearance.palette, cx);
-            let themed = appearance
+            let mut themed = appearance
                 .local_colors
                 .map(|local| local.viewport(&retained.viewport));
+            if let Some(cursor) = connection.core.appearance().and_then(|host| {
+                device_cursor(
+                    retained.viewport.cursor,
+                    host.cursor_style,
+                    appearance.cursor_style,
+                )
+            }) {
+                themed
+                    .get_or_insert_with(|| retained.viewport.clone())
+                    .cursor = Some(cursor);
+            }
             let paint = self.cache.prepaint(
                 TerminalRenderInput {
                     viewport: themed.as_ref().unwrap_or(&retained.viewport),
@@ -1784,14 +1849,7 @@ impl TerminalPane {
     fn should_blink(&self, cx: &App) -> bool {
         let core = &self.connection.read(cx).core;
         self.viewport(core).is_some_and(|viewport| {
-            cursor_should_blink(
-                viewport.cursor,
-                core.appearance()
-                    .map_or(zz_terminal::CursorBlinkPolicy::Terminal, |appearance| {
-                        appearance.cursor_blink_policy
-                    }),
-                self.focused,
-            )
+            cursor_should_blink(viewport.cursor, cursor_blink_policy(core, cx), self.focused)
         })
     }
 
@@ -2276,6 +2334,35 @@ fn mouse_button(button: MouseButton) -> Option<TerminalMouseButton> {
 #[cfg(all(test, not(target_family = "wasm")))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_device_cursor_replaces_only_the_hosts_default_shape() {
+        let color = zz_terminal::Color::rgb(0xff, 0x79, 0xc6);
+        let cursor = |style| Some(Cursor::new(4, 2, true, false, false, style, color));
+        let restyled = device_cursor(
+            cursor(CursorStyle::Block),
+            CursorStyle::Block,
+            CursorStyle::Underline,
+        )
+        .unwrap();
+        assert_eq!(restyled, cursor(CursorStyle::Underline).unwrap());
+        assert_eq!(
+            device_cursor(
+                cursor(CursorStyle::Bar),
+                CursorStyle::Block,
+                CursorStyle::Underline
+            ),
+            None
+        );
+        assert_eq!(
+            device_cursor(
+                cursor(CursorStyle::Block),
+                CursorStyle::Block,
+                CursorStyle::Block
+            ),
+            None
+        );
+    }
 
     #[ala::test]
     fn shared_terminal_geometry_retries_the_same_grid_after_a_new_layout_view(
