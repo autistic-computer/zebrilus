@@ -34,6 +34,7 @@
     {"name": "chevron-left", "variant": "ChevronLeft", "group": "Navigation", "solar": "alt-arrow-left", "parts": [["path", [15, 5], [9, 12], [15, 19]]]},
     {"name": "chevron-right", "variant": "ChevronRight", "group": "Navigation", "solar": "alt-arrow-right", "parts": [["path", [9, 5], [15, 12], [9, 19]]]},
     {"name": "external-link", "variant": "ExternalLink", "group": "Navigation", "solar": "square-arrow-right-up", "parts": [["rect", 2, 2, 22, 22, 0.83], ["line", 9, 15, 14.1, 9.9], ["path", [10.5, 9], [15, 9], [15, 13.5]]], "note": "Arrow inside a closed square, like Solar's square arrow."},
+    {"name": "menu", "variant": "Menu", "group": "Navigation", "parts": [["line", 3, 5, 21, 5], ["line", 3, 12, 21, 12], ["line", 3, 19, 21, 19]]},
     {"name": "ellipsis", "variant": "Ellipsis", "group": "Navigation", "solar": "menu-dots", "parts": [["dot", 5, 12, 3], ["dot", 12, 12, 3], ["dot", 19, 12, 3]]},
     {"name": "ellipsis-vertical", "variant": "EllipsisVertical", "group": "Navigation", "solar": "menu-dots-vertical", "parts": [["dot", 12, 5, 3], ["dot", 12, 12, 3], ["dot", 12, 19, 3]]},
     {"name": "plus", "variant": "Plus", "group": "Actions", "solar": "add", "parts": [["line", 4, 12, 20, 12], ["line", 12, 4, 12, 20]]},

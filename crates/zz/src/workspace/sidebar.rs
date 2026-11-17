@@ -40,11 +40,10 @@ use zz_ui::navigation::{
         tree_action_strip, tree_host_indicator, tree_host_marker, tree_navigation,
         tree_node_marker, tree_row_menu,
     },
-    workspace_layout_button, workspace_sidebar_action, workspace_sidebar_actions,
-    workspace_sidebar_fade, workspace_sidebar_footer, workspace_sidebar_ground,
-    workspace_sidebar_titlebar_controls, workspace_sidebar_view_button,
-    workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_opened,
-    workspace_tree_row, workspace_tree_shortcut,
+    workspace_chrome_controls, workspace_layout_button, workspace_sidebar_action,
+    workspace_sidebar_actions, workspace_sidebar_fade, workspace_sidebar_footer,
+    workspace_sidebar_ground, workspace_sidebar_view_button, workspace_tree_action_button,
+    workspace_tree_disclosure, workspace_tree_opened, workspace_tree_row, workspace_tree_shortcut,
 };
 use zz_ui::{program::program_mark, settings::settings_section_navigation};
 
@@ -827,15 +826,38 @@ impl WorkspaceSidebar {
         })
     }
 
-    fn render_view_button(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
+    pub(crate) fn render_header_controls(
+        &self,
+        sidebar: &Entity<Self>,
+        ground: Ground,
+        cx: &App,
+    ) -> AnyElement {
+        let layout = Self::render_controls(sidebar, self.mode == ChromeMode::Sidebar, ground, cx);
         let view = sidebar.clone();
-        workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
-            .on(self.content_ground(cx))
+        let view = workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
+            .on(ground)
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(move |_, _, cx| {
                 cx.stop_propagation();
                 view.update(cx, Self::toggle_flat);
-            })
+            });
+        let controls = workspace_chrome_controls();
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        let controls = controls.when(!crate::profile::profile(cx).fixed_window, |row| {
+            let logo = div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(penna::blocks::sidebar::CHROME_BUTTON_SIZE)
+                .child(ala::img(crate::app_icon::icon_preview(cx.theme().mode)).size(px(24.0)));
+            row.occlude()
+                .child(logo)
+                .child(crate::menus::AppMenuButton(ground))
+        });
+        controls
+            .child(view)
+            .child(div().children(layout))
             .into_any_element()
     }
 
@@ -992,24 +1014,15 @@ impl Render for WorkspaceSidebar {
                 .child(div().flex_1().min_h_0().child(list))
                 .into_any_element()
         };
-        let controls = if settings_route {
-            None
-        } else {
-            Some(
-                workspace_sidebar_titlebar_controls(
-                    self.render_view_button(&sidebar, cx),
-                    div().children(Self::render_controls(
-                        &sidebar,
-                        self.mode == ChromeMode::Sidebar,
-                        self.content_ground(cx),
-                        cx,
-                    )),
-                )
-                .into_any_element(),
-            )
-        };
+        let controls = (!settings_route)
+            .then(|| self.render_header_controls(&sidebar, self.content_ground(cx), cx));
         let footer = (!settings_route).then(|| self.render_footer(&sidebar, cx));
         let titlebar = sidebar_titlebar("workspace-sidebar-titlebar", div().children(controls), cx)
+            .when(
+                cfg!(any(target_os = "linux", target_os = "windows"))
+                    && !crate::profile::profile(cx).fixed_window,
+                |bar| bar.justify_start().pr_0(),
+            )
             .window_control_area(WindowControlArea::Drag);
         let titlebar = if crate::profile::profile(cx).fixed_window {
             titlebar

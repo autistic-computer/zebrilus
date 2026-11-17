@@ -248,13 +248,23 @@ impl AppShell {
     }
 
     fn render_status_bar(&self, window: &mut Window, cx: &mut App) -> AnyElement {
-        let width = workspace_chrome_controls_width_for(1, window);
-        let open = self.sidebar.read(cx).mode() == ChromeMode::Sidebar;
-        let controls =
-            WorkspaceSidebar::render_controls(&self.sidebar, open, cx.theme().ground(), cx);
+        let sidebar = self.sidebar.read(cx);
+        let ground = cx.theme().ground();
+        let controls = if cfg!(any(target_os = "linux", target_os = "windows")) {
+            (!crate::profile::profile(cx).fixed_window).then(|| {
+                (
+                    sidebar.render_header_controls(&self.sidebar, ground, cx),
+                    workspace_chrome_controls_width_for(4, window),
+                )
+            })
+        } else {
+            let open = sidebar.mode() == ChromeMode::Sidebar;
+            WorkspaceSidebar::render_controls(&self.sidebar, open, ground, cx)
+                .map(|layout| (layout, workspace_chrome_controls_width_for(1, window)))
+        };
         let bar = render_gui_status_bar(
             &self.mux,
-            controls.map(|controls| (controls, width)),
+            controls,
             Some(self.window_controls().into_any_element()),
             window,
             cx,

@@ -9,7 +9,11 @@ pub const ISSUES_URL: &str = "https://github.com/autistic-computer/zebrilus/issu
 pub const DOCS_URL: &str = "https://github.com/autistic-computer/zebrilus/blob/main/docs/README.md";
 
 pub const ZZ_ABOUT: About = About {
-    name: "zz",
+    name: if cfg!(any(target_os = "linux", target_os = "windows")) {
+        "Zebrilus"
+    } else {
+        "zz"
+    },
     tagline: "tmux, ghostty and ala walked into a mux.",
     version: VERSION,
     license: "MIT or Apache-2.0",
@@ -45,10 +49,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn build_info_names_zz_and_its_version() {
+    fn build_info_names_the_app_and_its_version() {
         assert_eq!(
             build_info("macos · aarch64"),
-            format!("zz {VERSION} (macos · aarch64)")
+            format!("{} {VERSION} (macos · aarch64)", ZZ_ABOUT.name)
         );
     }
 }

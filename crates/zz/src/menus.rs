@@ -1,9 +1,14 @@
 use std::{collections::BTreeSet, sync::Arc};
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+mod popup;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub(crate) use popup::AppMenuButton;
+
 #[cfg(target_os = "macos")]
 use ala::SystemMenuType;
 use ala::{App, Entity, Global, Menu, MenuItem, OsAction};
-use zz_ui::settings::about::{DOCS_URL, ISSUES_URL, RELEASES_URL};
+use zz_ui::settings::about::{DOCS_URL, ISSUES_URL, RELEASES_URL, ZZ_ABOUT};
 
 #[cfg(target_os = "macos")]
 use crate::macos_app::{Hide, HideOthers, Minimize, Quit, ShowAll, Zoom};
@@ -129,9 +134,10 @@ pub(crate) fn app_menus(cx: &App) -> Vec<Menu> {
 }
 
 fn menu_tree(sessions: &BTreeSet<String>) -> Vec<Menu> {
+    let app_name = ZZ_ABOUT.name;
     vec![
-        Menu::new("zz").items([
-            MenuItem::action("About zz", About),
+        Menu::new(app_name).items([
+            MenuItem::action(format!("About {app_name}"), About),
             MenuItem::action("Check for Updates…", CheckForUpdates),
             MenuItem::action("Settings…", OpenSettings),
             MenuItem::action("Import tmux config…", ImportTmuxConfig),
@@ -149,7 +155,7 @@ fn menu_tree(sessions: &BTreeSet<String>) -> Vec<Menu> {
             MenuItem::action("Show All", ShowAll),
             #[cfg(target_os = "macos")]
             MenuItem::separator(),
-            MenuItem::action("Quit zz", Quit),
+            MenuItem::action(format!("Quit {app_name}"), Quit),
         ]),
         Menu::new("File").items([
             MenuItem::action("New Session", NewSession),
@@ -223,7 +229,7 @@ fn menu_tree(sessions: &BTreeSet<String>) -> Vec<Menu> {
             MenuItem::separator(),
         ]),
         Menu::new("Help").items([
-            open_url("zz Documentation", DOCS_URL),
+            open_url(format!("{app_name} Documentation"), DOCS_URL),
             open_url("Keyboard Shortcuts", DOCS_URL),
             open_url("Release Notes", RELEASES_URL),
             MenuItem::separator(),
@@ -233,9 +239,9 @@ fn menu_tree(sessions: &BTreeSet<String>) -> Vec<Menu> {
     ]
 }
 
-fn open_url(label: &str, url: &str) -> MenuItem {
+fn open_url(label: impl Into<ala::SharedString>, url: &str) -> MenuItem {
     MenuItem::action(
-        label.to_owned(),
+        label,
         OpenUrl {
             url: url.to_owned(),
         },
@@ -324,7 +330,9 @@ mod tests {
             .collect::<Vec<_>>();
         #[cfg(target_os = "macos")]
         assert_eq!(names, ["zz", "File", "Edit", "View", "Window", "Help"]);
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        assert_eq!(names, ["Zebrilus", "File", "Edit", "View", "Help"]);
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
         assert_eq!(names, ["zz", "File", "Edit", "View", "Help"]);
         let window = menus.iter().find(|menu| menu.name.as_ref() == "Window");
         assert_eq!(window.is_some(), cfg!(target_os = "macos"));

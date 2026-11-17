@@ -103,12 +103,15 @@ pub fn workspace_sidebar_titlebar_controls(
     view: impl IntoElement,
     layout: impl IntoElement,
 ) -> ala::Div {
+    workspace_chrome_controls().child(view).child(layout)
+}
+
+#[must_use]
+pub fn workspace_chrome_controls() -> ala::Div {
     div()
         .flex()
         .items_center()
         .gap(rems_from_px(WORKSPACE_CHROME_CONTROL_GAP))
-        .child(view)
-        .child(layout)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
