@@ -1384,6 +1384,20 @@ pub fn enumerate_ghostty_themes_for(
     themes.into_values().collect()
 }
 
+#[must_use]
+pub fn enumerate_ghostty_themes(own_config: Option<&Path>) -> Vec<GhosttyTheme> {
+    let mut themes = enumerate_ghostty_themes_for(TerminalColorScheme::Dark, own_config);
+    for theme in &mut themes {
+        if theme.appearance.background_scheme() == TerminalColorScheme::Light {
+            let load = load_ghostty_theme_file_for(&theme.path, TerminalColorScheme::Light);
+            if !load.fatal {
+                theme.appearance = load.appearance;
+            }
+        }
+    }
+    themes
+}
+
 fn load_ghostty_theme_file_for(path: &Path, color_scheme: TerminalColorScheme) -> AppearanceLoad {
     let defaults = TerminalAppearance::default();
     let mut load = AppearanceLoad::defaults_for(color_scheme);
@@ -2749,6 +2763,40 @@ zz-rounded-selection = false\n",
         assert_eq!(
             load.provenance.source(AppearanceConfigKey::Theme),
             AppearanceSource::Ghostty
+        );
+    }
+
+    #[test]
+    fn a_listed_light_theme_fills_missing_keys_from_the_light_defaults() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let root = directory.path().join("config");
+        let themes = directory.path().join("themes");
+        fs::create_dir(&themes).expect("create themes");
+        fs::write(
+            themes.join("zz-listed-paper"),
+            "background = #f0f1f2\nforeground = #202122\n",
+        )
+        .expect("write light theme");
+        fs::write(&root, "theme = zz-listed-paper\n").expect("write config");
+
+        let listed = enumerate_ghostty_themes(Some(&root))
+            .into_iter()
+            .find(|theme| theme.name == "zz-listed-paper")
+            .expect("listed theme")
+            .appearance;
+        let host = load_ghostty_appearance_from_for(&root, TerminalColorScheme::Light).appearance;
+        assert_eq!(listed.cursor_color, Color::rgb(0x2f, 0x5f, 0xc4));
+        assert_eq!(
+            (
+                listed.cursor_color,
+                listed.selection_foreground,
+                listed.selection_background
+            ),
+            (
+                host.cursor_color,
+                host.selection_foreground,
+                host.selection_background
+            )
         );
     }
 

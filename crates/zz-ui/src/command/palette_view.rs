@@ -102,6 +102,9 @@ pub trait PaletteBackend {
     fn feed_listings(&self, _sink: ListingSink, _cx: &mut App) -> Option<Subscription> {
         None
     }
+    fn opens_files(&self, _cx: &App) -> bool {
+        false
+    }
     fn home_dir(&self, _host: PaletteHostId, _cx: &App) -> Option<String> {
         None
     }
@@ -494,6 +497,19 @@ impl CommandPaletteView {
         let mut palette = Self::new_unified(backend, None, window, cx);
         palette.insert_pane = pane;
         palette.set_files_body(body, window, cx);
+        palette
+    }
+
+    pub fn new_file_open(
+        backend: Rc<dyn PaletteBackend>,
+        body: &str,
+        pane: PaneId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut palette = Self::new_unified(backend, None, window, cx);
+        palette.insert_pane = Some(pane);
+        palette.set_open_file_body(body, window, cx);
         palette
     }
 

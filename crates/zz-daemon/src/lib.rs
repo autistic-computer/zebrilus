@@ -33,6 +33,7 @@ const TMUX_SHIM_DIRECTORY_ENVIRONMENT_VARIABLE: &str = "ZZ_TMUX_SHIM_DIR";
 #[cfg(feature = "agent")]
 mod agent;
 pub mod agent_fork;
+mod agent_hooks;
 #[cfg_attr(not(feature = "agent"), allow(dead_code))]
 mod bounded_command;
 mod daemon;
@@ -47,6 +48,8 @@ pub use agent::stream::{
     AgentAuthMethod, AgentImage as AgentStreamImage, AgentPrompt, AgentPromptOutcome,
     AgentSessionCapabilities, AgentSessionSummary, AgentStreamItem, AgentStreamPayload,
 };
+pub use agent_hooks::{AgentHookChange, agent_hook_lines, change_agent_hooks};
+pub use daemon::file_edit::read_text_file;
 pub use daemon::path_listing::path_walk_enters;
 pub use daemon::{
     CommandStdinSink, Daemon, WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, WORKSPACE_STUB_SKILL,

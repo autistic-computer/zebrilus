@@ -63,6 +63,11 @@ pub const MAX_ENVIRONMENT_NAME_BYTES: usize = 1024;
 pub const MAX_ENVIRONMENT_VALUE_BYTES: usize = 16 * 1024;
 pub const MAX_CLIENT_FILE_PATH_BYTES: usize = 16 * 1024;
 pub const MAX_CLIENT_FILE_BYTES: usize = 32 * 1024 * 1024;
+pub const MAX_BROWSER_SCREENSHOT_BYTES: usize = 32 * 1024 * 1024;
+pub const MAX_BROWSER_SCREENSHOT_CHUNK_BYTES: usize = 256 * 1024;
+pub const MAX_FILE_EDIT_BYTES: usize = 2 * 1024 * 1024;
+pub const MAX_FILE_EDIT_ERROR_BYTES: usize = 4096;
+pub const MAX_FILE_WRITE_CHUNK_BYTES: usize = 256 * 1024;
 pub const MAX_STARTUP_CONFIG_CAUSES: usize = 1024;
 pub const MAX_STARTUP_CONFIG_CAUSE_BYTES: usize = 64 * 1024;
 pub const MAX_STARTUP_CONFIG_CAUSES_BYTES: usize = 1024 * 1024;
@@ -1035,6 +1040,20 @@ where
         return Err(D::Error::invalid_length(
             bytes.len(),
             &"a client file payload within the wire byte limit",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn deserialize_browser_screenshot<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let bytes: Vec<u8> = serde_bytes::deserialize(deserializer)?;
+    if bytes.len() > MAX_BROWSER_SCREENSHOT_CHUNK_BYTES {
+        return Err(D::Error::invalid_length(
+            bytes.len(),
+            &"a browser screenshot chunk within the wire byte limit",
         ));
     }
     Ok(bytes)
@@ -3878,6 +3897,52 @@ pub enum ProtocolMessage {
         text: String,
     },
     AgentLogin(crate::AgentLoginRequest),
+    TerminalThemesRequest {
+        request_id: u64,
+    },
+    TerminalThemesResponse {
+        request_id: u64,
+        #[serde(deserialize_with = "crate::terminal_theme::deserialize_terminal_themes")]
+        themes: Vec<crate::TerminalTheme>,
+    },
+    BrowserScreenshot {
+        request_id: u64,
+        last: bool,
+        #[serde(
+            serialize_with = "serde_bytes::serialize",
+            deserialize_with = "deserialize_browser_screenshot"
+        )]
+        png: Vec<u8>,
+    },
+    FileReadRequest {
+        request_id: u64,
+        pane: PaneId,
+        #[serde(deserialize_with = "deserialize_file_edit_path")]
+        path: String,
+    },
+    FileReadResponse {
+        request_id: u64,
+        #[serde(deserialize_with = "deserialize_file_read_result")]
+        result: Result<String, String>,
+    },
+    FileWriteRequest {
+        request_id: u64,
+        pane: PaneId,
+        #[serde(deserialize_with = "deserialize_file_edit_path")]
+        path: String,
+        offset: u64,
+        last: bool,
+        #[serde(
+            serialize_with = "serde_bytes::serialize",
+            deserialize_with = "deserialize_file_write_chunk"
+        )]
+        bytes: Vec<u8>,
+    },
+    FileWriteResponse {
+        request_id: u64,
+        #[serde(deserialize_with = "deserialize_file_write_result")]
+        result: Result<(), String>,
+    },
 }
 
 impl ProtocolMessage {
@@ -3961,8 +4026,73 @@ impl ProtocolMessage {
             | Self::ArtifactReply { .. }
             | Self::AgentSteer { .. } => None,
             Self::AgentLogin(_) => Some(crate::AGENT_LOGIN_CAPABILITY),
+            Self::TerminalThemesRequest { .. } | Self::TerminalThemesResponse { .. } => {
+                Some(crate::TERMINAL_THEMES_CAPABILITY)
+            }
+            Self::BrowserScreenshot { .. } => Some(crate::BROWSER_SCREENSHOT_CAPABILITY),
+            Self::FileReadRequest { .. }
+            | Self::FileReadResponse { .. }
+            | Self::FileWriteRequest { .. }
+            | Self::FileWriteResponse { .. } => Some(crate::FILE_EDIT_CAPABILITY),
         }
     }
+}
+
+fn deserialize_file_edit_path<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, crate::MAX_EDITOR_PATH_BYTES)
+}
+
+fn deserialize_file_write_chunk<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let bytes: Vec<u8> = serde_bytes::deserialize(deserializer)?;
+    if bytes.len() > MAX_FILE_WRITE_CHUNK_BYTES {
+        return Err(D::Error::invalid_length(
+            bytes.len(),
+            &"a file write chunk within the wire byte limit",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn bounded_file_edit_error<E: serde::de::Error>(error: &str) -> Result<(), E> {
+    if error.len() > MAX_FILE_EDIT_ERROR_BYTES {
+        return Err(E::invalid_length(
+            error.len(),
+            &"a file error within the wire byte limit",
+        ));
+    }
+    Ok(())
+}
+
+fn deserialize_file_read_result<'de, D>(deserializer: D) -> Result<Result<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let result = Result::<String, String>::deserialize(deserializer)?;
+    match &result {
+        Ok(text) if text.len() > MAX_FILE_EDIT_BYTES => Err(D::Error::invalid_length(
+            text.len(),
+            &"file contents within the wire byte limit",
+        )),
+        Ok(_) => Ok(result),
+        Err(error) => bounded_file_edit_error(error).map(|()| result),
+    }
+}
+
+fn deserialize_file_write_result<'de, D>(deserializer: D) -> Result<Result<(), String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let result = Result::<(), String>::deserialize(deserializer)?;
+    if let Err(error) = &result {
+        bounded_file_edit_error(error)?;
+    }
+    Ok(result)
 }
 
 fn deserialize_client_terminal_type<'de, D>(deserializer: D) -> Result<String, D::Error>

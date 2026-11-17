@@ -37,11 +37,10 @@ fn history_core() -> ClientCore {
     core
 }
 
-#[cfg(any(target_os = "ios", target_os = "android"))]
 #[derive(Clone)]
 pub struct AuthenticationPrompt {
     pub id: u64,
-    pub kind: zz_daemon_client::AskpassPromptKind,
+    pub kind: zz_protocol::gateway::AskpassPromptKind,
     pub text: String,
     pub echo: bool,
 }
@@ -58,6 +57,8 @@ pub struct Connection {
         AuthenticationPrompt,
         std::sync::mpsc::Sender<zz_daemon_client::AskpassReply>,
     )>,
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    auth_prompt: Option<AuthenticationPrompt>,
     resume: bool,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     pending_session: Option<String>,
@@ -67,6 +68,7 @@ pub struct Connection {
     failure: Option<zz_daemon_client::HostFailure>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     installer: Option<crate::transport::Connection>,
+    agent_setup: Option<u64>,
     retry: Option<ala::Task<()>>,
     pub core: ClientCore,
     history: HistoryPacer,
@@ -93,6 +95,7 @@ pub struct Connection {
     retry_default: bool,
     focused: bool,
     color_scheme: Option<zz_terminal::TerminalColorScheme>,
+    terminal_themes: TerminalThemes,
     link_tap: Option<(PaneId, web_time::Instant)>,
     #[cfg(target_family = "wasm")]
     socket: Option<browser::Socket>,
@@ -144,6 +147,22 @@ pub struct PreviewImage(pub Arc<ala::Image>);
 
 impl EventEmitter<PreviewImage> for Connection {}
 
+pub struct TerminalThemesListed;
+
+pub struct AgentsSetUp(pub Result<String, String>);
+
+pub const CONNECTION_LOST: &str = "The connection to the host dropped before it answered";
+
+impl EventEmitter<AgentsSetUp> for Connection {}
+
+impl EventEmitter<TerminalThemesListed> for Connection {}
+
+enum TerminalThemes {
+    Unasked,
+    Asked(u64),
+    Listed(Vec<zz_protocol::TerminalTheme>),
+}
+
 const LINK_TAP_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 
 impl Connection {
@@ -160,7 +179,6 @@ impl Connection {
             #[cfg(any(target_os = "ios", target_os = "android"))]
             client: None,
             reader: None,
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             auth_prompt: None,
             resume: false,
             #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -171,6 +189,7 @@ impl Connection {
             failure: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             installer: None,
+            agent_setup: None,
             retry: None,
             core: history_core(),
             history: HistoryPacer::default(),
@@ -197,6 +216,7 @@ impl Connection {
             retry_default: false,
             focused: true,
             color_scheme: None,
+            terminal_themes: TerminalThemes::Unasked,
             link_tap: None,
             #[cfg(target_family = "wasm")]
             socket: None,
@@ -526,14 +546,31 @@ impl Connection {
             },
             cx,
         );
-        let bytes = image.bytes.clone();
+        self.send_in_chunks(
+            image.bytes.clone(),
+            zz_protocol::MAX_PASTE_UPLOAD_CHUNK_BYTES,
+            move |bytes, _, _| ProtocolMessage::PasteUploadChunk {
+                upload_id,
+                bytes: bytes.to_vec(),
+            },
+            cx,
+        );
+    }
+
+    fn send_in_chunks(
+        &self,
+        bytes: Vec<u8>,
+        chunk: usize,
+        message: impl Fn(&[u8], usize, bool) -> ProtocolMessage + 'static,
+        cx: &mut Context<Self>,
+    ) {
         let epoch = self.epoch;
         cx.spawn(async move |this, cx| {
             let mut offset = 0;
             loop {
                 let keep_running = this
                     .update(cx, |this, cx| {
-                        if !this.connected || this.epoch != epoch || offset == bytes.len() {
+                        if !this.connected || this.epoch != epoch {
                             return false;
                         }
                         #[cfg(target_family = "wasm")]
@@ -544,15 +581,8 @@ impl Connection {
                         {
                             return true;
                         }
-                        let end =
-                            (offset + zz_protocol::MAX_PASTE_UPLOAD_CHUNK_BYTES).min(bytes.len());
-                        this.send(
-                            ProtocolMessage::PasteUploadChunk {
-                                upload_id,
-                                bytes: bytes[offset..end].to_vec(),
-                            },
-                            cx,
-                        );
+                        let end = (offset + chunk).min(bytes.len());
+                        this.send(message(&bytes[offset..end], offset, end == bytes.len()), cx);
                         offset = end;
                         offset < bytes.len()
                     })
@@ -796,7 +826,9 @@ impl Connection {
     }
 
     pub fn reconnect(&mut self, cx: &mut Context<Self>) {
+        self.drop_agent_setup(cx);
         self.color_scheme = None;
+        self.terminal_themes = TerminalThemes::Unasked;
         self.connected = false;
         self.epoch = self.epoch.wrapping_add(1);
         self.prefix_cancel_pending = None;
@@ -812,15 +844,11 @@ impl Connection {
             self.reader = None;
             self.socket = None;
             self.welcome = None;
+            self.auth_prompt = None;
             let Some(host) = self.endpoint.clone() else {
                 self.status = "Not connected".into();
                 cx.notify();
                 return;
-            };
-            let answer_within = if host == GATEWAY_LOCAL {
-                std::time::Duration::from_secs(15)
-            } else {
-                REMOTE_ANSWER_WITHIN
             };
             match browser::Socket::connect(&host) {
                 Ok((socket, receiver)) => {
@@ -837,12 +865,7 @@ impl Connection {
                         let (code, reason) = receiver.close_reason();
                         let _ = entity.update(cx, |this, cx| this.closed(code, reason, cx));
                     }));
-                    self.retry = Some(cx.spawn(async move |entity, cx| {
-                        cx.background_executor().timer(answer_within).await;
-                        let _ = entity.update(cx, |this, cx| {
-                            this.disconnected("The daemon did not answer. Retrying…".into(), cx);
-                        });
-                    }));
+                    self.wait_for_answer(cx);
                 }
                 Err(error) => self.disconnected(error, cx),
             }
@@ -1018,6 +1041,26 @@ impl Connection {
         }
     }
 
+    pub fn sets_up_agents(&self) -> bool {
+        self.core
+            .capabilities()
+            .iter()
+            .any(|capability| capability == zz_protocol::AGENT_SETUP_CAPABILITY)
+    }
+
+    pub fn set_up_agents(&mut self, cx: &mut Context<Self>) {
+        if self.connected && self.sets_up_agents() {
+            self.agent_setup =
+                Some(self.invoke(CommandInvocation::new("tools", ["--install-hooks"]), cx));
+        }
+    }
+
+    fn drop_agent_setup(&mut self, cx: &mut Context<Self>) {
+        if self.agent_setup.take().is_some() {
+            cx.emit(AgentsSetUp(Err(CONNECTION_LOST.to_owned())));
+        }
+    }
+
     pub fn signs_in(&self) -> bool {
         zz_client::agent_login::daemon_signs_in(self.core.capabilities())
     }
@@ -1146,6 +1189,126 @@ impl Connection {
         }
     }
 
+    pub fn lists_terminal_themes(&self) -> bool {
+        self.core
+            .capabilities()
+            .iter()
+            .any(|capability| capability == zz_protocol::TERMINAL_THEMES_CAPABILITY)
+    }
+
+    pub fn edits_files(&self) -> bool {
+        self.core
+            .capabilities()
+            .iter()
+            .any(|capability| capability == zz_protocol::FILE_EDIT_CAPABILITY)
+    }
+
+    pub const fn epoch(&self) -> u64 {
+        self.epoch
+    }
+
+    pub fn read_file(&mut self, pane: PaneId, path: String, cx: &mut Context<Self>) -> Option<u64> {
+        if !self.connected || !self.edits_files() {
+            return None;
+        }
+        let epoch = self.epoch;
+        let request_id = self.next_request_id();
+        self.send(
+            ProtocolMessage::FileReadRequest {
+                request_id,
+                pane,
+                path,
+            },
+            cx,
+        );
+        (self.connected && self.epoch == epoch).then_some(request_id)
+    }
+
+    pub fn write_file(
+        &mut self,
+        pane: PaneId,
+        path: String,
+        text: String,
+        cx: &mut Context<Self>,
+    ) -> Option<u64> {
+        if !self.connected || !self.edits_files() {
+            return None;
+        }
+        let request_id = self.next_request_id();
+        self.send_in_chunks(
+            text.into_bytes(),
+            zz_protocol::MAX_FILE_WRITE_CHUNK_BYTES,
+            move |bytes, offset, last| ProtocolMessage::FileWriteRequest {
+                request_id,
+                pane,
+                path: path.clone(),
+                offset: u64::try_from(offset).unwrap_or(u64::MAX),
+                last,
+                bytes: bytes.to_vec(),
+            },
+            cx,
+        );
+        Some(request_id)
+    }
+
+    pub fn terminal_themes(&self) -> &[zz_protocol::TerminalTheme] {
+        match &self.terminal_themes {
+            TerminalThemes::Listed(themes) => themes,
+            TerminalThemes::Unasked | TerminalThemes::Asked(_) => &[],
+        }
+    }
+
+    pub fn request_terminal_themes(&mut self, cx: &mut Context<Self>) {
+        if !self.connected
+            || !self.lists_terminal_themes()
+            || !matches!(self.terminal_themes, TerminalThemes::Unasked)
+        {
+            return;
+        }
+        let request_id = self.next_request_id();
+        self.terminal_themes = TerminalThemes::Asked(request_id);
+        self.send(ProtocolMessage::TerminalThemesRequest { request_id }, cx);
+    }
+
+    fn takes_browser_screenshots(&self) -> bool {
+        self.core
+            .capabilities()
+            .iter()
+            .any(|capability| capability == zz_protocol::BROWSER_SCREENSHOT_CAPABILITY)
+    }
+
+    pub fn answer_browser_screenshot(
+        &mut self,
+        request_id: u64,
+        png: Result<Vec<u8>, String>,
+        cx: &mut Context<Self>,
+    ) {
+        let message = match png {
+            Ok(png) if self.takes_browser_screenshots() => {
+                self.send_in_chunks(
+                    png,
+                    zz_protocol::MAX_BROWSER_SCREENSHOT_CHUNK_BYTES,
+                    move |png, _, last| ProtocolMessage::BrowserScreenshot {
+                        request_id,
+                        last,
+                        png: png.to_vec(),
+                    },
+                    cx,
+                );
+                return;
+            }
+            Ok(_) => ProtocolMessage::GuiResponse(zz_protocol::GuiResponse::Error {
+                request_id,
+                message: "this host's zz is too old to receive browser screenshots".into(),
+            }),
+            Err(message) => ProtocolMessage::GuiResponse(zz_protocol::GuiResponse::Error {
+                request_id,
+                message,
+            }),
+        };
+        self.send(message, cx);
+    }
+
     pub fn set_focused(&mut self, focused: bool, cx: &mut Context<Self>) {
         #[cfg(any(target_os = "ios", target_os = "android"))]
         if focused && !self.focused && self.resume && self.native.is_none() {
@@ -1267,6 +1430,20 @@ impl Connection {
                     }
                     cx.notify();
                 }
+                CoreEvent::CommandResponse(CommandResponse::Error {
+                    request_id, error, ..
+                }) if self.agent_setup == Some(*request_id) => {
+                    self.commands.remove(request_id);
+                    self.agent_setup = None;
+                    cx.emit(AgentsSetUp(Err(error.tmux_message())));
+                }
+                CoreEvent::CommandResponse(CommandResponse::Success {
+                    request_id, output, ..
+                }) if self.agent_setup == Some(*request_id) => {
+                    self.commands.remove(request_id);
+                    self.agent_setup = None;
+                    cx.emit(AgentsSetUp(Ok(output.to_string())));
+                }
                 #[cfg(any(target_os = "ios", target_os = "android"))]
                 CoreEvent::CommandResponse(CommandResponse::Error { request_id, .. })
                     if self.tailnet_offers == Some(*request_id) =>
@@ -1338,16 +1515,6 @@ impl Connection {
                         self.prefix_cancel_pending = None;
                     }
                 }
-                CoreEvent::BrowserCommand {
-                    command: zz_protocol::BrowserCommand::Screenshot { request_id, .. },
-                    ..
-                } => self.send(
-                    ProtocolMessage::GuiResponse(zz_protocol::GuiResponse::Error {
-                        request_id: *request_id,
-                        message: "Screenshots require the desktop browser runtime.".into(),
-                    }),
-                    cx,
-                ),
                 CoreEvent::Message(message) => match message.as_ref() {
                     ProtocolMessage::PastedImageBegin {
                         pane,
@@ -1370,6 +1537,11 @@ impl Connection {
                     ProtocolMessage::PastedImageUnavailable { pane, number } => {
                         self.pasted_images.unavailable(*pane, *number);
                         self.show_pasted_preview(cx);
+                    }
+                    ProtocolMessage::TerminalThemesResponse { request_id, themes } if matches!(self.terminal_themes, TerminalThemes::Asked(asked) if asked == *request_id) =>
+                    {
+                        self.terminal_themes = TerminalThemes::Listed(themes.clone());
+                        cx.emit(TerminalThemesListed);
                     }
                     #[cfg(target_os = "ios")]
                     ProtocolMessage::ArtifactBegin { .. }
@@ -1524,13 +1696,52 @@ impl Connection {
         }
     }
 
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    #[must_use]
+    pub fn pending_auth_prompt(&self) -> Option<&AuthenticationPrompt> {
+        self.auth_prompt.as_ref()
+    }
+
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    pub fn answer_auth_prompt(&mut self, id: u64, answer: Option<String>, cx: &mut Context<Self>) {
+        if self
+            .auth_prompt
+            .as_ref()
+            .is_none_or(|prompt| prompt.id != id)
+        {
+            return;
+        }
+        self.auth_prompt = None;
+        #[cfg(target_family = "wasm")]
+        {
+            use zz_protocol::gateway::SignInAnswer;
+            let answer = answer.map_or(SignInAnswer::Cancel, SignInAnswer::Answer);
+            if matches!(answer, SignInAnswer::Cancel) {
+                self.resume = false;
+            }
+            if self
+                .socket
+                .as_ref()
+                .is_some_and(|socket| socket.answer(&answer).is_ok())
+            {
+                self.status = "Connecting…".into();
+                self.wait_for_answer(cx);
+            }
+        }
+        #[cfg(not(target_family = "wasm"))]
+        drop(answer);
+        cx.notify();
+    }
+
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fn disconnect_native(&mut self, status: String, cx: &mut Context<Self>) {
+        self.drop_agent_setup(cx);
         self.connected = false;
         self.client = None;
         self.native = None;
         self.auth_prompt = None;
         self.color_scheme = None;
+        self.terminal_themes = TerminalThemes::Unasked;
         self.epoch = self.epoch.wrapping_add(1);
         self.prefix_cancel_pending = None;
         self.dialog_active = false;
@@ -1663,12 +1874,28 @@ impl Connection {
     }
 
     #[cfg(target_family = "wasm")]
+    fn wait_for_answer(&mut self, cx: &mut Context<Self>) {
+        let answer_within = if self.endpoint.as_deref() == Some(GATEWAY_LOCAL) {
+            std::time::Duration::from_secs(15)
+        } else {
+            REMOTE_ANSWER_WITHIN
+        };
+        self.retry = Some(cx.spawn(async move |entity, cx| {
+            cx.background_executor().timer(answer_within).await;
+            let _ = entity.update(cx, |this, cx| {
+                this.disconnected("The daemon did not answer. Retrying…".into(), cx);
+            });
+        }));
+    }
+
+    #[cfg(target_family = "wasm")]
     fn disconnected(&mut self, reason: String, cx: &mut Context<Self>) {
         self.closed(None, reason, cx);
     }
 
     #[cfg(target_family = "wasm")]
     fn closed(&mut self, code: Option<u16>, reason: String, cx: &mut Context<Self>) {
+        self.drop_agent_setup(cx);
         self.connected = false;
         self.epoch = self.epoch.wrapping_add(1);
         self.prefix_cancel_pending = None;
@@ -1679,6 +1906,7 @@ impl Connection {
         self.socket = None;
         self.welcome = None;
         self.reader = None;
+        self.auth_prompt = None;
         if code == Some(SIGN_IN_CLOSE_CODE) {
             self.resume = false;
         }
@@ -1703,6 +1931,43 @@ impl Connection {
             })
         });
         cx.notify();
+    }
+
+    #[cfg(target_family = "wasm")]
+    fn prompted(&mut self, prompt: zz_protocol::gateway::SignInPrompt, cx: &mut Context<Self>) {
+        use zz_protocol::gateway::AskpassPromptKind;
+        let (kind, text) = match prompt.kind {
+            AskpassPromptKind::Notification => (zz_protocol::ClientMessageKind::Info, prompt.text),
+            AskpassPromptKind::KeyAdded => (
+                zz_protocol::ClientMessageKind::Success,
+                format!(
+                    "Added zz's key to {}; it won't ask to sign in again",
+                    prompt.text
+                ),
+            ),
+            AskpassPromptKind::KeyFailed => (
+                zz_protocol::ClientMessageKind::Warning,
+                format!("Could not add zz's key: {}", prompt.text),
+            ),
+            _ => {
+                self.retry = None;
+                self.auth_prompt = Some(AuthenticationPrompt {
+                    id: self.next_request_id(),
+                    kind: prompt.kind,
+                    text: prompt.text,
+                    echo: prompt.echo,
+                });
+                self.status = "Authentication required".into();
+                return;
+            }
+        };
+        cx.emit(CoreEvent::ClientMessage {
+            pane: None,
+            kind,
+            text,
+            duration_ms: None,
+            message_id: None,
+        });
     }
 
     #[cfg(target_family = "wasm")]
@@ -1768,6 +2033,7 @@ impl Connection {
                 }
             },
             inbox::SocketEvent::Focus(focused) => self.set_focused(focused, cx),
+            inbox::SocketEvent::Prompt(prompt) => self.prompted(prompt, cx),
         }
         cx.notify();
         self.socket.is_some()
@@ -1868,6 +2134,7 @@ mod inbox {
         Opened,
         Frame(Vec<u8>),
         Focus(bool),
+        Prompt(zz_protocol::gateway::SignInPrompt),
     }
 
     struct State {
@@ -1981,7 +2248,7 @@ mod browser {
     use wasm_bindgen::{JsCast, closure::Closure};
     use zz_protocol::{
         AttachOperation, ClientHello, ClientInstanceId, ClientKind, Hello, PROTOCOL_VERSION,
-        ProtocolMessage,
+        ProtocolMessage, gateway::SignInAnswer,
     };
 
     use super::inbox::{self, Receiver, Sender, SocketEvent};
@@ -2030,6 +2297,17 @@ mod browser {
             let tx = sender.clone();
             let overflow_socket = ws.clone();
             let message = Closure::new(move |event: web_sys::MessageEvent| {
+                if let Some(prompt) = event
+                    .data()
+                    .as_string()
+                    .and_then(|text| serde_json::from_str(&text).ok())
+                {
+                    if !tx.push(SocketEvent::Prompt(prompt)) {
+                        let _ = overflow_socket
+                            .close_with_code_and_reason(4008, "Client cannot keep up");
+                    }
+                    return;
+                }
                 let Ok(buffer) = event.data().dyn_into::<js_sys::ArrayBuffer>() else {
                     tx.close("Unexpected gateway message. Reconnecting…".into());
                     let _ =
@@ -2078,6 +2356,11 @@ mod browser {
                 .add_event_listener_with_callback("blur", socket.blur.as_ref().unchecked_ref())
                 .map_err(|_| "Cannot watch browser focus")?;
             Ok((socket, receiver))
+        }
+
+        pub fn answer(&self, answer: &SignInAnswer) -> Result<(), ()> {
+            let text = serde_json::to_string(answer).map_err(drop)?;
+            self.ws.send_with_str(&text).map_err(drop)
         }
 
         pub fn buffered_amount(&self) -> usize {

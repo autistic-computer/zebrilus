@@ -22,6 +22,8 @@ pub mod chooser;
 pub mod command;
 pub mod compact;
 pub mod dialogs;
+#[cfg(feature = "editor")]
+pub mod editor;
 pub mod files;
 pub mod interface_theme;
 pub mod mend;

@@ -63,7 +63,31 @@ fn insert_path_verb() -> Verb {
     }
 }
 
+fn open_file_verb() -> Verb {
+    Verb {
+        name: "open file".to_owned(),
+        keywords: String::new(),
+        description: "Open a file in the editor".to_owned(),
+        kind: VerbKind::Zz,
+        run: Run::InsertPath,
+        slots: vec![Slot::Path],
+        raw: false,
+    }
+}
+
 impl CommandPaletteView {
+    pub(super) fn set_open_file_body(
+        &mut self,
+        body: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(unified) = &mut self.unified {
+            unified.draft = Some(Draft::new(open_file_verb()));
+        }
+        self.set_files_body(body, window, cx);
+    }
+
     fn root_search(&self) -> Option<String> {
         let unified = self.unified.as_ref()?;
         if !self.places() || unified.draft.is_some() || !unified.chips.iter().all(|chip| chip.auto)

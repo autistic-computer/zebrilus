@@ -24,6 +24,10 @@ pub struct Preferences {
     pub dark: bool,
     pub terminal_font_family: Option<String>,
     pub terminal_font_scale: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal_light_theme: Option<zz_protocol::TerminalTheme>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal_dark_theme: Option<zz_protocol::TerminalTheme>,
     #[serde(flatten)]
     pub appearance: Appearance,
     pub pane_inactive_opacity: f32,
@@ -101,6 +105,8 @@ impl Default for Preferences {
             dark: true,
             terminal_font_family: None,
             terminal_font_scale: 1.0,
+            terminal_light_theme: None,
+            terminal_dark_theme: None,
             appearance: Appearance {
                 mode: Some("system".into()),
                 ..Appearance::default()

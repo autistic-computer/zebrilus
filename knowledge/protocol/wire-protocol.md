@@ -54,8 +54,11 @@ names the capability its receiver must have, in `ProtocolMessage::required_capab
 `EventPayload::required_capability` (`crates/zz-protocol/src/message.rs`). Both are exhaustive
 matches with no wildcard arm, so a new variant does not compile until it answers.
 `ProtocolMessage::Event` answers with its payload's. Every variant shipped at v123 answers `None`;
-`EventPayload::AgentQuotas`, added inside it, answers `agent-quotas-v1`, and `EventPayload::AgentLogin`
-and `ProtocolMessage::AgentLogin` answer `agent-login-v1`.
+`EventPayload::AgentQuotas`, added inside it, answers `agent-quotas-v1`, `EventPayload::AgentLogin`
+and `ProtocolMessage::AgentLogin` answer `agent-login-v1`, `ProtocolMessage::TerminalThemesRequest`
+and `TerminalThemesResponse` answer `terminal-themes-v1`, `ProtocolMessage::BrowserScreenshot`
+answers `browser-screenshot-v1`, and `ProtocolMessage::FileReadRequest`, `FileReadResponse`,
+`FileWriteRequest` and `FileWriteResponse` answer `file-edit-v1`.
 
 The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only inside an epoch:
 
@@ -66,7 +69,9 @@ The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only
 - `CLIENT_CAPABILITY_NAMES` is what a client can decode. Every client built from this source
   appends all of them to `ClientHello.capabilities`: `connect_stream_hello` in `zz-daemon-client`,
   `browser::hello` in the browser client, `hello` in the HTML client. A message the daemon sends
-  names one of these. It holds `agent-quotas-v1` (`AGENT_QUOTAS_CAPABILITY`).
+  names one of these. It holds `agent-quotas-v1` (`AGENT_QUOTAS_CAPABILITY`) and
+  `terminal-themes-v1` (`TERMINAL_THEMES_CAPABILITY`) and `file-edit-v1` (`FILE_EDIT_CAPABILITY`),
+  which are in `CAPABILITY_NAMES` too, for the requests the answers follow.
 - `OPT_IN_CLIENT_CAPABILITY_NAMES` is what a client can decode only when it says so: the daemon
   accepts these names like the ones above, but no hello sends them by itself. A client names one
   in the extra capabilities it hands `connect_stream_hello` (`InteractiveClient::connect_with_capabilities`)
@@ -144,7 +149,7 @@ Those three are `#[cfg(windows)]` and are not even compiled on macOS or Linux, s
 there, such as a send from `serve_exec_ready`, does nothing on them.
 
 Two limits, both const assertions in `control.rs`. `CAPABILITY_NAMES` must stay under 64 names,
-because `Welcome.caps` is a `u64` and the daemon sets `(1 << len) - 1`; it holds 34.
+because `Welcome.caps` is a `u64` and the daemon sets `(1 << len) - 1`; it holds 35.
 `ClientHello.capabilities` decodes at most 64 entries (`MAX_SERVER_CAPABILITIES`), and
 `connect_stream_hello` fills up to 29 of them with its own entries (up to 16 are
 `client-features-v1:` specs, 2 come from its callers), so `CLIENT_CAPABILITY_NAMES` and
@@ -211,6 +216,7 @@ fields in declaration order.
 | `Input(InputMessage)` | see below | Keyboard / resize / view / split input |
 | `Event(Event)` | `sequence: u64`, `payload: EventPayload` | Ordered daemon → client push |
 | `GuiResponse(GuiResponse)` | `Success { request_id, output }` / `Error { request_id, message }` | Interactive client → daemon answer to a `BrowserCommand::Screenshot` request; both strings bounded to `MAX_GUI_TEXT_BYTES` (64 KiB) |
+| `BrowserScreenshot { request_id: u64, last: bool, png: Vec<u8> }` | one chunk of a picture | Client → daemon, gated by `browser-screenshot-v1`: the other answer to a `BrowserCommand::Screenshot`, from a client that cannot write the host's files (iOS captures its web view). Each chunk is at most `MAX_BROWSER_SCREENSHOT_CHUNK_BYTES` (256 KiB) on decode, sent 10 ms apart so input frames go out between them, and `last` marks the final one. Only the client the request went to can answer it; the daemon appends the chunks, fails the request past `MAX_BROWSER_SCREENSHOT_BYTES` (32 MiB) or after 5 s with no new chunk, checks the PNG signature and writes the bytes to the request's path on a thread of its own, then answers the caller with the path or the write error |
 | `Resync` | . | Client requests a fresh snapshot after a shell-detected reconciliation error; event sequence gaps alone are valid because the daemon may supersede stale terminal frames |
 | `RequestFull { pane: PaneId }` | `pane` | Client asks for one full replacement viewport for a single pane after a dropped or unusable terminal frame |
 | `HistoryRequest { pane: PaneId, start: u32, count: u32 }` | scrollback window | Client asks for a chunk of a pane's scrollback; the daemon answers with `EventPayload::HistoryChunk` |
@@ -223,6 +229,12 @@ fields in declaration order.
 | `AgentPrompt { pane, text, images: Vec<AgentImage> }` | one prompt | Client → daemon: submit a prompt to the agent runtime of a terminal pane. The lens types the text into the CLI and refuses images. `AgentImage { format, data }` carries encoded bytes; text plus every image totals at most `MAX_AGENT_PROMPT_BYTES` (6 MiB), each `format` at most 64 bytes |
 | `AgentSteer { pane, text }` | one message | Client → daemon (v115): type `text` into the turn the pane is running, which Claude Code and Codex take as steering. With no turn running, a permission waiting, or a runtime that cannot steer, it is an `AgentPrompt`. Bounded like a prompt's text |
 | `AgentLogin(AgentLoginRequest)` | one request | Client → daemon, gated by `agent-login-v1`: `Code { login, code: AgentLoginCode }` hands the code a user pasted to the agent sign-in `login`, `Cancel { login }` ends it. `AgentLoginCode` is trimmed, nonempty, at most `MAX_AGENT_LOGIN_CODE_BYTES` (4096) on decode, and prints as `AgentLoginCode(..)` in `Debug`. Read-only clients get `client is read-only` |
+| `TerminalThemesRequest { request_id: u64 }` | one request | Client → daemon, gated by `terminal-themes-v1`: list the terminal themes installed on the daemon's machine. Read-only: the daemon reads the theme directories its own config would (`enumerate_ghostty_themes`, each theme over the defaults of its own kind, as the host loads it) on a thread of its own and writes nothing. One listing runs per connection: a request that comes while one runs replaces its `request_id`, and the single answer carries the latest |
+| `TerminalThemesResponse { request_id: u64, themes: Vec<TerminalTheme> }` | one answer | Daemon → client, gated by `terminal-themes-v1`: every valid theme by name, each with what a client needs to paint it, `TerminalTheme { name, scheme, foreground, background, cursor, selection_foreground, selection_background, palette: [Color; 16] }` (`scheme` is `background_scheme`: light when the background is lighter than the text). At most `MAX_TERMINAL_THEMES` (4096) themes, names at most `MAX_TERMINAL_THEME_NAME_BYTES` (256) on decode. A thin client keeps a picked theme on the device and paints with it (`TerminalTheme::recolor`); nothing on the host changes |
+| `FileReadRequest { request_id: u64, pane: PaneId, path: String }` | one request | Client → daemon, gated by `file-edit-v1`: read a text file on the daemon's machine for an editor pane. `path` is absolute, at most `MAX_EDITOR_PATH_BYTES` (16 KiB). The daemon answers only an interactive client that is not read-only and is attached to the session holding `pane`, the authority its terminal panes already give it, and refuses everything else with an error answer. It reads on a thread of its own with `read_text_file`, the reader the desktop editor uses: at most `MAX_FILE_EDIT_BYTES` (2 MiB), valid UTF-8, no NUL bytes |
+| `FileReadResponse { request_id: u64, result: Result<String, String> }` | one answer | Daemon → client, gated by `file-edit-v1`: the file's text, at most `MAX_FILE_EDIT_BYTES` on decode, or why it could not be read, at most `MAX_FILE_EDIT_ERROR_BYTES` (4 KiB; the daemon cuts longer ones) |
+| `FileWriteRequest { request_id: u64, pane: PaneId, path: String, offset: u64, last: bool, bytes: Vec<u8> }` | one request, in chunks | Client → daemon, gated by `file-edit-v1`: replace the file at `path` with the UTF-8 text that the chunks of one `request_id` add up to. Each chunk carries at most `MAX_FILE_WRITE_CHUNK_BYTES` (256 KiB) on decode, at the byte `offset` it starts at; the client sends them 10 ms apart like paste uploads, so a large save never holds its UI thread or the input behind it. The daemon checks the first chunk like `FileReadRequest`, keeps at most four saves per client in memory, and answers with an error for a chunk out of order, text past `MAX_FILE_EDIT_BYTES` or invalid UTF-8; it drops a client's unfinished saves when the client goes. After the `last` chunk it checks again, writes a temporary file beside the target and renames it over the target on a thread of its own, keeping the old file's permissions and following a symlink to its target |
+| `FileWriteResponse { request_id: u64, result: Result<(), String> }` | one answer | Daemon → client, gated by `file-edit-v1`: the file was written, or why not, at most `MAX_FILE_EDIT_ERROR_BYTES` |
 | `AgentCancel { pane }` | . | Cancel the pane's running turn |
 | `AgentUnqueue { pane }` | . | Reclaim the pane's queued prompts; the daemon returns them inside the stream so the composer refills |
 | `AgentRespondPermission { pane, request_id, option_id: Option<String> }` | one answer | Answer a parked permission request; `None` cancels. First answer wins and a late one is a no-op |
@@ -1907,7 +1919,8 @@ to go idle ([agent panes](/concepts/agent-panes.md)).
   `Welcome.caps`, and the same list without the control-plane, control-stdio and tty-input names in
   `ServerHello.capabilities` (`mux-v1`, `terminal-viewport-v3`, `terminal-row-patches`,
   `terminal-appearance-v2`, `config-overrides-v1`, `browser-panes`, `tmux-config-subset`,
-  `new-session-attach-v1`, and the `native-*` command surfaces). A name appended inside an epoch
+  `new-session-attach-v1`, `agent-setup-v1` (the daemon runs `tools --install-hooks` and
+  `--remove-hooks` on its own machine), and the `native-*` command surfaces). A name appended inside an epoch
   says which gated variants a peer may be sent ([wire epochs](#wire-epochs)); it never changes how
   a frame is encoded. The two strings that were real switches, `terminal-zstd-v1` and `egress-v1`,
   went with QUIC at v43.

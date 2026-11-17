@@ -24,7 +24,7 @@ use zz_client::{
         status_text as terminal_status_text, terminal_shortcut,
     },
 };
-use zz_protocol::{InputMessage, PaneId, TerminalUiCommand};
+use zz_protocol::{InputMessage, PaneId, TerminalTheme, TerminalUiCommand};
 use zz_terminal::{
     AppearanceConfigKey, AppearanceSource, Cursor, CursorBlinkPolicy, CursorStyle, KeyAction,
     KeyCode, KeyInput, LocalColors, PointerCellEvent, SearchCase, SearchDirection, SearchMode,
@@ -55,11 +55,25 @@ pub(crate) struct TerminalDisplayPreferences {
     pub cursor_blink: Option<CursorBlinkPolicy>,
     pub padding_x: Option<f32>,
     pub padding_y: Option<f32>,
+    pub light_theme: Option<TerminalTheme>,
+    pub dark_theme: Option<TerminalTheme>,
 }
 
 pub(crate) const TERMINAL_CONTRAST_ON: f32 = 4.5;
 
 impl ala::Global for TerminalDisplayPreferences {}
+
+pub(crate) fn shown_terminal_theme(cx: &App) -> Option<&TerminalTheme> {
+    if crate::app::phone() {
+        return None;
+    }
+    let preferences = cx.try_global::<TerminalDisplayPreferences>()?;
+    if cx.theme().mode.is_dark() {
+        preferences.dark_theme.as_ref()
+    } else {
+        preferences.light_theme.as_ref()
+    }
+}
 
 pub(crate) fn phone_colors(
     viewport: &TerminalViewport,
@@ -143,6 +157,9 @@ pub(crate) fn localized_font_appearance(
             appearance.padding_top = padding;
             appearance.padding_bottom = padding;
         }
+    }
+    if let Some(theme) = shown_terminal_theme(cx) {
+        theme.recolor(&mut appearance);
     }
     appearance
 }
@@ -616,7 +633,7 @@ impl TerminalPane {
             cx.theme().background,
             |viewport| {
                 zz_ui::terminal::terminal_background(
-                    viewport.background,
+                    shown_terminal_theme(cx).map_or(viewport.background, |theme| theme.background),
                     core.appearance()
                         .map_or(1.0, |appearance| appearance.background_opacity),
                 )
@@ -1656,13 +1673,23 @@ impl TerminalPane {
                 &cx.theme().mono_font_family,
                 cx,
             );
-            appearance.local_colors = phone_colors(&retained.viewport, &appearance.palette, cx);
-            let mut themed = appearance
-                .local_colors
-                .map(|local| local.viewport(&retained.viewport));
+            if let Some(local) = phone_colors(&retained.viewport, &appearance.palette, cx) {
+                appearance.local_colors = Some(local);
+            }
+            let mut themed = appearance.local_colors.map(|local| {
+                let mut viewport = local.viewport(&retained.viewport);
+                if let Some(theme) = shown_terminal_theme(cx) {
+                    viewport.cursor = viewport
+                        .cursor
+                        .map(|cursor| cursor.with_color(theme.cursor));
+                }
+                viewport
+            });
             if let Some(cursor) = connection.core.appearance().and_then(|host| {
                 device_cursor(
-                    retained.viewport.cursor,
+                    themed
+                        .as_ref()
+                        .map_or(retained.viewport.cursor, |viewport| viewport.cursor),
                     host.cursor_style,
                     appearance.cursor_style,
                 )

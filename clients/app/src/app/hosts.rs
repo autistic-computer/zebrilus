@@ -1,9 +1,11 @@
 #[cfg(any(target_os = "ios", target_os = "android"))]
-use ala::{AnyElement, Entity, IntoElement, Pixels, SharedString, Subscription, div, px};
-use ala::{Context, Window, prelude::*};
+use ala::{AnyElement, IntoElement, Pixels};
+use ala::{Context, Entity, SharedString, Subscription, Window, div, prelude::*, px};
 use penna::Colorize as _;
 use penna::{
-    ActiveTheme as _, Ground, Icon, IconName, Label, TextStyle, Tone, components::button::Button,
+    ActiveTheme as _, Ground, Icon, IconName, Label, TextStyle, Tone,
+    components::button::{Button, ButtonVariants as _},
+    components::input::{Input, InputEvent, InputState},
     h_flex,
 };
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -14,8 +16,6 @@ use penna::{
         sheet_groups, sheet_inset, sheet_note,
     },
     blocks::touch::{TouchGroup, TouchHeader, TouchRow, concentric},
-    components::button::ButtonVariants as _,
-    components::input::{Input, InputEvent, InputState},
     v_flex,
 };
 use zz_ui::settings::{
@@ -63,6 +63,11 @@ impl SavedHosts {
     pub(super) fn mark_disconnected(&mut self, endpoint: &str) {
         self.connected.retain(|saved| saved != endpoint);
     }
+
+    pub(super) fn remove(&mut self, endpoint: &str) {
+        self.endpoints.retain(|saved| saved != endpoint);
+        self.mark_disconnected(endpoint);
+    }
 }
 
 #[cfg(any(target_os = "ios", target_os = "android", test))]
@@ -72,11 +77,6 @@ impl SavedHosts {
             .first()
             .or_else(|| self.endpoints.first())
             .map(String::as_str)
-    }
-
-    pub(super) fn remove(&mut self, endpoint: &str) {
-        self.endpoints.retain(|saved| saved != endpoint);
-        self.mark_disconnected(endpoint);
     }
 
     fn load_from(directory: &std::path::Path) -> Self {
@@ -167,16 +167,40 @@ pub(super) struct GatewayHost {
 pub(super) struct Hosts {
     pub(super) saved: SavedHosts,
     gateway: Vec<GatewayHost>,
+    pub(super) destination: Entity<InputState>,
+    pub(super) error: Option<SharedString>,
+    _destination_events: Subscription,
     #[cfg(target_family = "wasm")]
     _reopen: Option<ala::Subscription>,
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
+fn added(key: &str) -> bool {
+    key.starts_with("ssh://")
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 impl Hosts {
-    pub(super) fn new(_: &mut Window, _: &mut Context<AppShell>) -> Self {
+    pub(super) fn new(window: &mut Window, cx: &mut Context<AppShell>) -> Self {
+        let destination = cx.new(|cx| InputState::new(window, cx).placeholder("user@host"));
+        let destination_events = cx.subscribe_in(
+            &destination,
+            window,
+            |this: &mut AppShell, _, event: &InputEvent, window, cx| match event {
+                InputEvent::PressEnter { .. } => this.add_host(window, cx),
+                InputEvent::Change => {
+                    this.hosts.error = None;
+                    cx.notify();
+                }
+                _ => {}
+            },
+        );
         Self {
             saved: SavedHosts::load(),
             gateway: Vec::new(),
+            destination,
+            error: None,
+            _destination_events: destination_events,
             #[cfg(target_family = "wasm")]
             _reopen: None,
         }
@@ -190,6 +214,8 @@ impl Hosts {
                 || {
                     if key == GATEWAY_LOCAL {
                         "This computer".to_owned()
+                    } else if added(key) {
+                        host_title(key)
                     } else {
                         key.to_owned()
                     }
@@ -207,10 +233,21 @@ impl Hosts {
     }
 
     fn description(&self, key: &str) -> Option<String> {
+        if added(key) {
+            return Some(host_location(key));
+        }
         self.gateway
             .iter()
             .any(|host| host.name == key && host.local)
             .then(gateway_description)
+    }
+
+    fn removable(&self, key: &str) -> bool {
+        added(key)
+    }
+
+    fn adds(&self) -> bool {
+        !self.gateway.is_empty()
     }
 
     fn icon(&self, key: &str) -> IconName {
@@ -222,14 +259,55 @@ impl Hosts {
     }
 
     fn fleet(&self) -> bool {
-        self.gateway.len() > 1
+        self.adds() && self.saved.endpoints().len() > 1
     }
 
     #[cfg_attr(not(target_family = "wasm"), allow(dead_code))]
     fn adopt(&mut self, gateway: Vec<GatewayHost>) {
-        self.saved
-            .keep_only(gateway.iter().map(|host| host.name.clone()).collect());
+        let keys = gateway
+            .iter()
+            .map(|host| host.name.clone())
+            .chain(
+                self.saved
+                    .endpoints()
+                    .iter()
+                    .filter(|key| added(key))
+                    .cloned(),
+            )
+            .collect();
+        self.saved.keep_only(keys);
         self.gateway = gateway;
+    }
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+impl AppShell {
+    pub(super) fn add_host(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(target_family = "wasm")]
+        {
+            let destination = self.hosts.destination.read(cx).value().to_string();
+            cx.spawn_in(window, async move |this, cx| {
+                let added = added_host(destination).await;
+                this.update_in(cx, |this, window, cx| {
+                    match added {
+                        Ok(host) => {
+                            this.hosts.error = None;
+                            this.hosts
+                                .destination
+                                .update(cx, |input, cx| input.set_value("", window, cx));
+                            this.hosts.saved.add(&host.name);
+                            this.connect_host(host.name, window, cx);
+                        }
+                        Err(error) => this.hosts.error = Some(error.into()),
+                    }
+                    cx.notify();
+                })
+                .ok();
+            })
+            .detach();
+        }
+        #[cfg(not(target_family = "wasm"))]
+        let _ = (window, cx);
     }
 }
 
@@ -299,10 +377,42 @@ async fn gateway_hosts() -> Option<Vec<GatewayHost>> {
     serde_json::from_str(&body).ok()
 }
 
+#[cfg(target_family = "wasm")]
+async fn added_host(destination: String) -> Result<GatewayHost, String> {
+    use wasm_bindgen::JsCast as _;
+    use wasm_bindgen_futures::JsFuture;
+
+    const UNREACHABLE: &str = "The gateway did not answer.";
+    let window = web_sys::window().ok_or(UNREACHABLE)?;
+    let init = web_sys::RequestInit::new();
+    init.set_method("POST");
+    init.set_body(&wasm_bindgen::JsValue::from_str(&destination));
+    let response: web_sys::Response =
+        JsFuture::from(window.fetch_with_str_and_init("/hosts", &init))
+            .await
+            .ok()
+            .and_then(|response| response.dyn_into().ok())
+            .ok_or(UNREACHABLE)?;
+    let body = JsFuture::from(response.text().map_err(|_| UNREACHABLE)?)
+        .await
+        .ok()
+        .and_then(|body| body.as_string())
+        .ok_or(UNREACHABLE)?;
+    match response.status() {
+        200 => serde_json::from_str(&body).map_err(|_| UNREACHABLE.to_owned()),
+        422 => Err(body),
+        _ => Err(UNREACHABLE.to_owned()),
+    }
+}
+
 #[cfg(any(target_os = "ios", target_os = "android"))]
 impl Hosts {
     pub(super) fn title(&self, key: &str) -> String {
         host_title(key)
+    }
+
+    fn removable(&self, _: &str) -> bool {
+        true
     }
 
     #[expect(
@@ -361,7 +471,6 @@ pub(super) fn destination_endpoint(input: &str) -> Result<String, String> {
     )
 }
 
-#[cfg(any(target_os = "ios", target_os = "android", test))]
 pub(crate) fn host_title(endpoint: &str) -> String {
     if let Some(rest) = endpoint.strip_prefix("tailnet://") {
         let machine = rest.split(':').next().unwrap_or(rest);
@@ -389,7 +498,6 @@ pub(crate) fn host_title(endpoint: &str) -> String {
     .to_owned()
 }
 
-#[cfg(any(target_os = "ios", target_os = "android", test))]
 pub(super) fn host_location(endpoint: &str) -> String {
     if let Some(rest) = endpoint
         .strip_prefix("ssh://")
@@ -485,7 +593,10 @@ impl AppShell {
             (self.found_stack(cx), Some(self.add_host_stack(narrow, cx)))
         };
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        let (found, add): (Option<SettingsStack>, Option<SettingsStack>) = (None, None);
+        let (found, add): (Option<SettingsStack>, Option<SettingsStack>) = (
+            None,
+            self.hosts.adds().then(|| self.add_host_stack(narrow, cx)),
+        );
         let hosts = if narrow {
             SettingsStack::new()
         } else {
@@ -611,7 +722,6 @@ impl AppShell {
         });
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn remove_host(
         &mut self,
         endpoint: &str,
@@ -739,22 +849,17 @@ impl AppShell {
                 });
                 #[cfg(not(any(target_os = "ios", target_os = "android")))]
                 let install: Option<Button> = None;
-                #[cfg(any(target_os = "ios", target_os = "android"))]
-                let remove = {
+                let remove = self.hosts.removable(endpoint).then(|| {
                     let removed = endpoint.clone();
-                    Some(
-                        Button::new(("hosts-remove", index))
-                            .ghost()
-                            .icon(IconName::Xmark)
-                            .tooltip("Remove host")
-                            .on(settings_card_ground(cx))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.remove_host(&removed, window, cx);
-                            })),
-                    )
-                };
-                #[cfg(not(any(target_os = "ios", target_os = "android")))]
-                let remove: Option<Button> = None;
+                    Button::new(("hosts-remove", index))
+                        .ghost()
+                        .icon(IconName::Xmark)
+                        .tooltip("Remove host")
+                        .on(settings_card_ground(cx))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.remove_host(&removed, window, cx);
+                        }))
+                });
                 with_control(
                     entry,
                     h_flex()
@@ -1043,51 +1148,49 @@ impl AppShell {
         .into_any_element()
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     fn add_host_stack(&self, narrow: bool, cx: &mut Context<Self>) -> SettingsStack {
         let destination = SettingEntry::new("Destination")
             .description("user@host, or user@host:port")
             .when_some(self.hosts.error.clone(), |entry, error| {
                 entry.child(status_line(error, Tone::Warning, cx))
             });
-        SettingsStack::titled("Add host")
-            .child(with_control(
-                destination,
-                h_flex()
-                    .gap_2()
-                    .when(narrow, ala::Styled::w_full)
-                    .child(
-                        div()
-                            .when(narrow, |field| field.flex_1().min_w_0())
-                            .when(!narrow, |field| field.w(px(220.0)).flex_none())
-                            .child(
-                                Input::new(&self.hosts.destination).on(settings_card_ground(cx)),
-                            ),
-                    )
-                    .child(
-                        Button::new("hosts-add")
-                            .when(self.hosts.saved.endpoints().is_empty(), |button| {
-                                button.primary()
-                            })
-                            .label("Connect")
-                            .on(settings_card_ground(cx))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.add_host(window, cx);
-                            })),
-                    ),
-                narrow,
-            ))
-            .child(with_control(
-                SettingEntry::new("SSH key")
-                    .description("Add it to ~/.ssh/authorized_keys on the host"),
-                h_flex().child(
-                    Button::new("hosts-copy-ssh-key")
-                        .label("Copy")
+        let stack = SettingsStack::titled("Add host").child(with_control(
+            destination,
+            h_flex()
+                .gap_2()
+                .when(narrow, ala::Styled::w_full)
+                .child(
+                    div()
+                        .when(narrow, |field| field.flex_1().min_w_0())
+                        .when(!narrow, |field| field.w(px(220.0)).flex_none())
+                        .child(Input::new(&self.hosts.destination).on(settings_card_ground(cx))),
+                )
+                .child(
+                    Button::new("hosts-add")
+                        .when(self.hosts.saved.endpoints().is_empty(), |button| {
+                            button.primary()
+                        })
+                        .label("Connect")
                         .on(settings_card_ground(cx))
-                        .on_click(|_, window, cx| copy_ssh_key(window, cx)),
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.add_host(window, cx);
+                        })),
                 ),
-                narrow,
-            ))
+            narrow,
+        ));
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let stack = stack.child(with_control(
+            SettingEntry::new("SSH key")
+                .description("Add it to ~/.ssh/authorized_keys on the host"),
+            h_flex().child(
+                Button::new("hosts-copy-ssh-key")
+                    .label("Copy")
+                    .on(settings_card_ground(cx))
+                    .on_click(|_, window, cx| copy_ssh_key(window, cx)),
+            ),
+            narrow,
+        ));
+        stack
     }
 }
 

@@ -1,10 +1,10 @@
 mod agent_pane;
 mod attention;
-#[cfg(any(target_os = "ios", target_os = "android"))]
 mod authentication;
 #[cfg(any(target_os = "ios", target_os = "android"))]
 mod browser_pane;
 mod compact;
+mod editor_pane;
 pub(crate) use compact::HostPage;
 mod fleet;
 mod floating;
@@ -132,24 +132,24 @@ impl BrowserMenus {
 
 pub struct AppShell {
     connection: Entity<Connection>,
-    _connection_subscriptions: [Subscription; 5],
+    _connection_subscriptions: [Subscription; 6],
     fleet: Vec<(Entity<Connection>, Subscription)>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fleet_watch: Vec<Subscription>,
+    agent_setup: Vec<(ala::WeakEntity<Connection>, Subscription)>,
     host_ids: compact::HostIds,
     roster: Entity<Roster>,
     connection_status: String,
     connected: bool,
     idle_guard: Option<ala::Task<()>>,
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     auth_prompt_id: Option<(ala::EntityId, u64)>,
-    #[cfg(any(target_os = "ios", target_os = "android"))]
     phone_auth: Option<authentication::PhoneAuth>,
     hosts: hosts::Hosts,
     terminals: HashMap<PaneId, Entity<TerminalPane>>,
     waiting_panes: BTreeSet<PaneId>,
     agents: HashMap<PaneId, Entity<AgentPane>>,
     views: HashMap<PaneId, Entity<view_pane::ViewPane>>,
+    editors: HashMap<PaneId, Entity<editor_pane::EditorPane>>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     browsers: HashMap<PaneId, Entity<browser_pane::BrowserPane>>,
     pickers: HashMap<PaneId, Entity<picker::PanePicker>>,
@@ -248,7 +248,7 @@ fn watch_connection(
     connection: &Entity<Connection>,
     window: &mut Window,
     cx: &mut Context<AppShell>,
-) -> [Subscription; 5] {
+) -> [Subscription; 6] {
     let observer = cx.observe(connection, |this, connection, cx| {
         let connection = connection.read(cx);
         if this.connected != connection.connected || this.connection_status != connection.status {
@@ -371,6 +371,13 @@ fn watch_connection(
                         this.preferences.apply(&this.connection, window, cx);
                     }
                 }
+                zz_client::CoreEvent::BrowserCommand {
+                    pane,
+                    command: zz_protocol::BrowserCommand::Screenshot { request_id, .. },
+                } => {
+                    this.capture_browser(*pane, *request_id, cx);
+                    return;
+                }
                 zz_client::CoreEvent::FocusSidebar => this.focus_sidebar(window, cx),
                 zz_client::CoreEvent::KeyTableChanged => this.key_table_changed(window, cx),
                 zz_client::CoreEvent::OpenPathPicker { pane, start_dir } => {
@@ -422,11 +429,19 @@ fn watch_connection(
             zz_ui::attachment::open_attachment_preview(event.0.clone(), window, cx);
         },
     );
-    [observer, events, found, links, previews]
+    let themes = cx.subscribe_in(
+        connection,
+        window,
+        |this, _, _: &crate::connection::TerminalThemesListed, window, cx| {
+            this.sync_terminal_themes(window, cx);
+        },
+    );
+    [observer, events, found, links, previews, themes]
 }
 
 impl AppShell {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        editor_pane::init(cx);
         let connection = cx.new(Connection::new);
         let window_handle = window.window_handle();
         let key_listener = cx.listener(move |this, event: &ala::KeystrokeEvent, window, cx| {
@@ -495,20 +510,20 @@ impl AppShell {
             fleet: Vec::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             fleet_watch: vec![host_notices],
+            agent_setup: Vec::new(),
             host_ids: compact::HostIds::default(),
             roster,
             connection_status: String::new(),
             connected: false,
             idle_guard: None,
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             auth_prompt_id: None,
-            #[cfg(any(target_os = "ios", target_os = "android"))]
             phone_auth: None,
             hosts,
             terminals: HashMap::new(),
             waiting_panes: BTreeSet::new(),
             agents: HashMap::new(),
             views: HashMap::new(),
+            editors: HashMap::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             browsers: HashMap::new(),
             pickers: HashMap::new(),
@@ -1450,6 +1465,24 @@ impl AppShell {
         status_bar::render(self, window, cx)
     }
 
+    fn capture_browser(&self, pane: PaneId, request_id: u64, cx: &mut Context<Self>) {
+        #[cfg(target_os = "ios")]
+        let message = if let Some(browser) = self.browsers.get(&pane) {
+            browser.read(cx).capture(request_id);
+            return;
+        } else {
+            format!("{pane} has no live browser view on this client")
+        };
+        #[cfg(not(target_os = "ios"))]
+        let message = {
+            let _ = pane;
+            "Screenshots require the desktop browser runtime.".to_owned()
+        };
+        self.connection.update(cx, |connection, cx| {
+            connection.answer_browser_screenshot(request_id, Err(message), cx);
+        });
+    }
+
     fn focus_pane(&mut self, pane: PaneId, window: &mut Window, cx: &mut Context<Self>) {
         self.focused_pane = Some(pane);
         #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -1528,6 +1561,8 @@ impl AppShell {
             self.pip.depart(pane, Some(view), &self.pane_motion, cx);
             self.views.remove(&pane);
         }
+        self.editors
+            .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Editor(_))));
         #[cfg(any(target_os = "ios", target_os = "android"))]
         self.browsers
             .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Browser(_))));
@@ -1655,6 +1690,46 @@ impl AppShell {
             self.focused_pane = Some(pane);
         }
         view.into_any_element()
+    }
+
+    fn editor_entity(
+        &mut self,
+        pane: PaneId,
+        descriptor: &zz_protocol::EditorDescriptor,
+        title: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<editor_pane::EditorPane> {
+        self.editors
+            .entry(pane)
+            .or_insert_with(|| {
+                let connection = self.connection.clone();
+                let view = cx.weak_entity();
+                cx.new(|cx| {
+                    let mut editor = editor_pane::EditorPane::new(
+                        pane, descriptor, title, connection, window, cx,
+                    );
+                    editor.set_open_handler(Rc::new(move |pane, folder, window, cx| {
+                        let view = view.clone();
+                        window.defer(cx, move |window, cx| {
+                            let _ = view.update(cx, |this, cx| {
+                                let body = zz_ui::files::start_dir(Some(&folder), None);
+                                this.show_palette(
+                                    move |backend, window, cx| {
+                                        CommandPaletteView::new_file_open(
+                                            backend, &body, pane, window, cx,
+                                        )
+                                    },
+                                    window,
+                                    cx,
+                                );
+                            });
+                        });
+                    }));
+                    editor
+                })
+            })
+            .clone()
     }
 
     fn view_entity(
@@ -1907,6 +1982,11 @@ impl AppShell {
             .views
             .get(&pane_id)
             .map(|view| view.read(cx).header_buttons())
+            .or_else(|| {
+                self.editors
+                    .get(&pane_id)
+                    .map(|editor| editor.read(cx).header_buttons())
+            })
             .unwrap_or_default();
         let (place, folder) = {
             let snapshot = connection.read(cx).core.snapshot();
@@ -1938,7 +2018,7 @@ impl AppShell {
             &buttons,
             &self.pane_action_keys(cx),
             ala::px(0.0),
-            move |action, _, cx| {
+            move |action, window, cx| {
                 if action == zz_ui::pane::TerminalPaneAction::Flip {
                     let _ = flip_view.update(cx, |this, cx| this.flip_pane(pane_id, cx));
                     return;
@@ -1947,6 +2027,9 @@ impl AppShell {
                     let _ = kind_view.update(cx, |this, cx| {
                         if let Some(view) = this.views.get(&pane_id) {
                             view.update(cx, |view, cx| view.header_action(key, cx));
+                        }
+                        if let Some(editor) = this.editors.get(&pane_id).cloned() {
+                            editor.update(cx, |editor, cx| editor.header_action(key, window, cx));
                         }
                         cx.notify();
                     });
@@ -2379,6 +2462,7 @@ impl AppShell {
                     PaneKindSnapshot::Terminal
                         | PaneKindSnapshot::Agent(_)
                         | PaneKindSnapshot::View(_)
+                        | PaneKindSnapshot::Editor(_)
                 ) && !agent_picker,
                 is_float,
                 &self.preferences,
@@ -2509,10 +2593,32 @@ impl AppShell {
                     radii,
                     cx,
                 ),
+                PaneKindSnapshot::Editor(descriptor) if self.connection.read(cx).edits_files() => {
+                    let editor = self.editor_entity(pane_id, descriptor, &pane.title, window, cx);
+                    editor.update(cx, |editor, cx| {
+                        editor.synchronize(descriptor, &pane.title, window, cx);
+                        editor.set_corner_radii(
+                            Corners {
+                                top_left: px(0.0),
+                                top_right: px(0.0),
+                                ..radii
+                            },
+                            cx,
+                        );
+                    });
+                    if can_focus
+                        && pane_id == active_window.active_pane
+                        && self.focused_pane != Some(pane_id)
+                    {
+                        editor.read(cx).focus_handle(cx).focus(window, cx);
+                        self.focused_pane = Some(pane_id);
+                    }
+                    editor.into_any_element()
+                }
                 PaneKindSnapshot::Editor(_) => unsupported_pane(
                     "Editor",
                     IconName::File,
-                    "The daemon does not share editor file contents with browser clients yet.",
+                    "This host's zz is too old to open files here.",
                     None,
                     radii,
                     cx,
@@ -3505,7 +3611,6 @@ impl Render for AppShell {
         }
         penna::blocks::touch::CoarsePointer::set(Self::narrow(window), cx);
         penna::blocks::touch::PhoneScreen::set(settings::phone(), cx);
-        #[cfg(any(target_os = "ios", target_os = "android"))]
         self.sync_authentication(window, cx);
         #[cfg(any(target_os = "ios", target_os = "android"))]
         {
@@ -3566,10 +3671,7 @@ impl Render for AppShell {
             overlays.push(self.slideover(window, cx));
         }
         overlays.extend(self.overlay(window, cx));
-        #[cfg(any(target_os = "ios", target_os = "android"))]
         let auth_modal = self.phone_auth_modal(window, cx);
-        #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        let auth_modal: Option<AnyElement> = None;
         overlays.extend(Root::render_dialog_layer(window, cx).map(IntoElement::into_any_element));
         overlays
             .extend(Root::render_notification_layer(window, cx).map(IntoElement::into_any_element));

@@ -13,7 +13,6 @@ use zz_daemon::{CommandStdinSink, append_stdin_payload};
 mod agent_hooks;
 mod agent_login;
 mod control_mode;
-pub use agent_hooks::install_agent_hooks;
 pub mod diagnostics;
 mod events;
 mod fleet;

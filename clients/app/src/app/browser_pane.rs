@@ -359,6 +359,11 @@ impl BrowserPane {
         color.filter(|_| shown && self.pill_hole.is_some() && *id == tab.id)
     }
 
+    #[cfg(target_os = "ios")]
+    pub(super) fn capture(&self, request_id: u64) {
+        self.tabs[self.active].view.capture(request_id);
+    }
+
     fn tick_backdrop(&self) {
         if self.visible && self.pill_hole.is_some() {
             self.tabs[self.active].view.refresh_backdrop();
@@ -631,6 +636,12 @@ impl BrowserPane {
                 if let Some((_, old)) = self.still.replace((self.tabs[index].id, image)) {
                     let _ = window.drop_image(old);
                 }
+            }
+            #[cfg(target_os = "ios")]
+            BrowserEvent::Captured { request_id, png } => {
+                self.connection.update(cx, |connection, cx| {
+                    connection.answer_browser_screenshot(request_id, png, cx);
+                });
             }
             BrowserEvent::Refresh => {
                 if index == self.active {

@@ -17,7 +17,7 @@ use zz_client::{
 };
 use zz_protocol::{
     CommandInvocation, InputMessage, MuxOptionKey, MuxSnapshot, PaneId, PaneKindSnapshot,
-    PathEntry, PathListRoot, ProtocolMessage, SessionId, WindowId,
+    PathEntry, PathKind, PathListRoot, ProtocolMessage, SessionId, WindowId,
 };
 use zz_terminal::TerminalViewAction;
 use zz_ui::{
@@ -357,6 +357,10 @@ impl PaletteBackend for ConnectionPalette {
         Some(cx.observe(&self.roster, follow))
     }
 
+    fn opens_files(&self, cx: &App) -> bool {
+        self.connection.read(cx).edits_files()
+    }
+
     fn insert_path(
         &self,
         pane: PaneId,
@@ -365,6 +369,29 @@ impl PaletteBackend for ConnectionPalette {
         entry: &PathEntry,
         cx: &mut App,
     ) {
+        let editor = self
+            .connection
+            .read(cx)
+            .core
+            .snapshot()
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .find_map(|window| window.panes.get(&pane))
+            .is_some_and(|pane| matches!(pane.kind, PaneKindSnapshot::Editor(_)));
+        if editor {
+            if entry.kind == PathKind::File {
+                let path = zz_ui::files::plain_path(&root.root, &entry.rel, None);
+                self.connection.update(cx, |connection, cx| {
+                    connection.command(
+                        "set-editor-path",
+                        vec!["-t".to_owned(), pane.to_string(), path],
+                        cx,
+                    );
+                });
+            }
+            return;
+        }
         if let Some(text) = zz_client::path_insert::insert_text(
             &root.root,
             &entry.rel,

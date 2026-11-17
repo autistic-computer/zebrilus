@@ -173,6 +173,7 @@ impl AppShell {
             self.reset_host_state();
             self.attention.forget_host(cx);
             self._connection_subscriptions = watch_connection(&self.connection, window, cx);
+            self.sync_terminal_themes(window, cx);
             let connection = self.connection.read(cx);
             self.connected = connection.connected;
             self.connection_status.clone_from(&connection.status);
@@ -201,6 +202,7 @@ impl AppShell {
     fn reset_host_state(&mut self) {
         self.terminals.clear();
         self.agents.clear();
+        self.editors.clear();
         #[cfg(any(target_os = "ios", target_os = "android"))]
         self.browsers.clear();
         self.pickers.clear();

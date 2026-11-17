@@ -173,7 +173,9 @@ toolbar above it. Settings › Hosts shows the same list. On iPhone each host is
 it opens a sheet with the full address, the last error, and Open, Connect, Disconnect or Remove
 host. Add host opens the same sheet as the Hosts page's tile: the destination field, Connect, and
 Copy SSH key. Settings › Agents lists each connected host's agents and gathers the rest under Not
-connected. Hosts are saved in `Library/Application Support/ala/hosts.json`; a
+connected. On iPad at 640 points wide or more, Coding agents above them has a Set up row per
+connected host that installs the Claude Code and Codex startup hook on that host, like
+`zz tools --install-hooks` there, and shows what it changed in a toast named after the host. Hosts are saved in `Library/Application Support/ala/hosts.json`; a
 successful connection moves its host to the top. `ZZ_ALA_ENDPOINT` (or `ZZ_SOCKET`) connects
 for that launch only, and opening a `zz://attach/<session>` link connects to the most recent host.
 A `zz://host/<machine>:<port>` link (the QR code in desktop Settings › Hosts) adds that tailnet
@@ -220,6 +222,10 @@ the native transport, key translation, and UIKit backend.
   share the desktop browser's login or live page state.
   The element picker copies context and a cropped screenshot for pasting into an
   agent. Tap the picker, then tap a page element; Cancel exits without copying.
+  `zz capture-browser` on the host captures the page as the iPad last drew it, also
+  when its window is not on screen, and writes the PNG on the host, so agents can
+  look at it. A daemon from before
+  `browser-screenshot-v1`, or a pane this iPad has not laid out, answers with an error.
   The toolbar's more button opens the page in the default browser, copies its URL,
   switches the pane's browser profile (Default or any profile the host's browser panes
   use), zooms the page, clears site data, reloads and starts the picker. The button at
@@ -256,8 +262,16 @@ the native transport, key translation, and UIKit backend.
   desktop. These keys are View menu commands while a browser pane is focused, because a
   focused page gets every other key before zz does. Control-Tab and
   Command-Option-arrows also change tabs, but only while the address field has focus.
-- Existing Editor panes explain that file contents are not yet shared by the daemon.
-  Editor does not appear in the new-pane picker.
+- Editor panes open, edit and save the host's files through the daemon (`file-edit-v1`),
+  up to 2 MiB of UTF-8 text. The folder button in the pane's header, or Command-O,
+  opens the palette's file list on the file's folder, and picking a file opens it in
+  that pane; a check button, or Command-S, saves once there are changes. The editor is
+  empty and read-only until the file arrives, and saving is refused until it has, so a
+  file that fails to open is never overwritten. A connection that drops before the host
+  answers shows the error with Try again; the pane stays while the iPad reconnects.
+  A pane with no file shows an Open a file button. Line numbers and soft wrap are on,
+  vim mode is off, and there is no Save As. A daemon from before `file-edit-v1` keeps
+  the placeholder. Editor does not appear in the new-pane picker.
 
 Command-P, Command-K, or the search button opens the palette that desktop and web also use. Use `:` for commands,
 `@` for windows, `%` for panes, and `~` for the connected host. Opening it closes
@@ -457,11 +471,14 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
   On for 4.5:1, Off).
 - **Panes:** live preview, gaps, inactive opacity, selected glow and margin.
   Frame controls apply with gaps.
-- **Terminal:** a live preview, local font family, and text scale. On iPad and the web,
-  cursor style, cursor blink, and padding X and Y follow the host until set on the device;
-  an empty padding field follows the host again. A device cursor style replaces the host's
-  default shape only, so a shape a program asks for still shows. Host colors and themes
-  remain visible as host-owned settings.
+- **Terminal:** a live preview, local font family, and text scale. On iPad and the web, Light
+  theme and Dark theme list the terminal themes installed on the host (searchable, opening on
+  themes of their own kind) and switch with the light and dark mode; the device keeps the pick
+  and paints with it, and Follow host keeps the host's colors. A daemon from before
+  `terminal-themes-v1` shows no theme rows. Cursor style, cursor blink, and padding X and Y
+  follow the host until set on the device; an empty padding field follows the host again. A
+  device cursor style replaces the host's default shape only, so a shape a program asks for
+  still shows. The host's config is never written.
 - **Multiplexer:** on iPad and the web, the host daemon's Prefix (typed as tmux spells it, such
   as `C-a`), Mode keys, Mouse, History limit, Clipboard and Escape time. Each change runs
   `set-option -g` on the host, or for Mouse `set-option -t` on the attached session, and lasts

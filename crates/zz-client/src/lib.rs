@@ -19,6 +19,7 @@ mod chrome;
 pub mod chrome_override;
 pub mod completion;
 mod core;
+pub mod editor;
 pub mod floating;
 pub mod fuzzy;
 pub mod gui_actions;

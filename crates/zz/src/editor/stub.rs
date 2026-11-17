@@ -16,6 +16,7 @@ impl EditorView {
     pub(crate) fn new(
         _pane: PaneId,
         _descriptor: &EditorDescriptor,
+        _title: &str,
         _mux: ala::Entity<MuxClient>,
         _window: &mut Window,
         cx: &mut Context<Self>,
@@ -32,6 +33,7 @@ impl EditorView {
     pub(crate) fn synchronize_descriptor(
         &mut self,
         _descriptor: &EditorDescriptor,
+        _title: &str,
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) {

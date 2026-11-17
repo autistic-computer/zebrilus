@@ -424,6 +424,7 @@ fn gui_replies_bypass_a_waiting_control_queue() {
         PendingGuiRequest {
             client,
             reply: reply.into(),
+            screenshot: None,
         },
     );
     let encoded = [

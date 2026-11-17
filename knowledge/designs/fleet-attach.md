@@ -249,12 +249,13 @@ Recorded so later phases inherit intent, ordered roughly by expected sequence.
   attaches that host first (`switch_host`). The web client runs the same shell over its one
   gateway, which dials every host in its machine's `zz/config` for it
   ([browser client](/playbooks/browser-client.md#hosts)): `GET /hosts` lists them and
-  `/ws?host=NAME` relays to one, signing in to ssh hosts with the gateway user's identity only.
+  `/ws?host=NAME` relays to one, signing in to ssh hosts with the gateway user's identity and
+  asking the page for passwords and host keys over that WebSocket.
   The page builds its hosts from `/hosts` (`Hosts::adopt` in `clients/app/src/app/hosts.rs`),
   keyed by gateway name where native keys by endpoint, keeps the `connected` list in local
   storage, and opens one WebSocket per host through the same `fleet`, `connect_host` and
-  `switch_host` as iPad. Hosts come only from the gateway's config, so the page has no add or
-  remove.
+  `switch_host` as iPad. The page adds its own ssh hosts through `POST /hosts`, keeps them in
+  local storage keyed by endpoint and can remove them; the config's hosts it can only connect.
 - **Remote browser egress (M5)**: today a remote session's browser pane renders in the client's
   CEF, so its connections originate from the client machine and host-internal URLs
   (`localhost:3000`, VPN'd dashboards) fail. M5 adds an optional SOCKS/CONNECT tunnel over a

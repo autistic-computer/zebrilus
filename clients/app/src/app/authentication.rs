@@ -11,7 +11,7 @@ use penna::{
     components::field::Field,
     components::input::{Input, InputContentType, InputEvent, InputState},
 };
-use zz_daemon_client::AskpassPromptKind;
+use zz_protocol::gateway::AskpassPromptKind;
 
 use super::AppShell;
 use crate::connection::{AuthenticationPrompt, Connection};
@@ -111,7 +111,7 @@ impl AppShell {
         let host = connection
             .read(cx)
             .endpoint()
-            .map_or_else(|| "host".to_owned(), super::hosts::host_title);
+            .map_or_else(|| "host".to_owned(), |key| self.hosts.title(key));
         if super::settings::phone() {
             self.open_phone_auth(key, connection, prompt, &host, window, cx);
             return;

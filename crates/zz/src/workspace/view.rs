@@ -2161,14 +2161,21 @@ impl AppView {
                             wanted_editors.insert(*pane);
                             if let Some(view) = self.editors.get(pane) {
                                 view.update(cx, |view, cx| {
-                                    view.synchronize_descriptor(editor, window, cx);
+                                    view.synchronize_descriptor(
+                                        editor,
+                                        &snapshot.title,
+                                        window,
+                                        cx,
+                                    );
                                 });
                             } else {
                                 let mux = self.mux.clone();
                                 let pane = *pane;
                                 let descriptor = editor.clone();
-                                let view = cx
-                                    .new(|cx| EditorView::new(pane, &descriptor, mux, window, cx));
+                                let title = snapshot.title.clone();
+                                let view = cx.new(|cx| {
+                                    EditorView::new(pane, &descriptor, &title, mux, window, cx)
+                                });
                                 self.editors.insert(pane, view);
                             }
                         }

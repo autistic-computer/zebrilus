@@ -48,6 +48,7 @@ mod exec;
 #[cfg(test)]
 mod exec_tests;
 mod file_commands;
+pub(crate) mod file_edit;
 #[cfg(unix)]
 mod flow;
 #[cfg(all(test, unix))]
@@ -964,6 +965,59 @@ fn resolve_appearance(
     let mut load = AppearanceLoad::defaults_for(color_scheme);
     load.root = zz_config::config_path_for_write().ok();
     apply_appearance_overrides(load, entries)
+}
+
+fn write_browser_screenshot(path: &Path, png: &[u8]) -> Result<(), String> {
+    if png.len() > zz_protocol::MAX_BROWSER_SCREENSHOT_BYTES {
+        return Err(format!(
+            "the zz window sent a screenshot larger than {} MiB",
+            zz_protocol::MAX_BROWSER_SCREENSHOT_BYTES / (1024 * 1024)
+        ));
+    }
+    if !png.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Err("the zz window sent a screenshot that is not a PNG".to_owned());
+    }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+        && !parent.is_dir()
+    {
+        return Err(format!("{} is not a directory", parent.display()));
+    }
+    std::fs::write(path, png)
+        .map_err(|error| format!("could not write {}: {error}", path.display()))
+}
+
+fn send_terminal_themes(
+    outbound: &Arc<OutboundMailbox>,
+    listing: &Arc<Mutex<Option<u64>>>,
+    request_id: u64,
+) {
+    if listing.lock().replace(request_id).is_some() {
+        return;
+    }
+    let outbound = Arc::clone(outbound);
+    let pending = Arc::clone(listing);
+    let listed = std::thread::Builder::new()
+        .name("zz-terminal-themes".to_owned())
+        .spawn(move || {
+            let themes = zz_terminal::enumerate_ghostty_themes(
+                zz_config::config_path_for_write().ok().as_deref(),
+            )
+            .into_iter()
+            .filter(|theme| theme.name.len() <= zz_protocol::MAX_TERMINAL_THEME_NAME_BYTES)
+            .take(zz_protocol::MAX_TERMINAL_THEMES)
+            .map(|theme| zz_protocol::TerminalTheme::new(theme.name, &theme.appearance))
+            .collect();
+            let Some(request_id) = pending.lock().take() else {
+                return;
+            };
+            let _ = outbound
+                .enqueue_reliable(&ProtocolMessage::TerminalThemesResponse { request_id, themes });
+        });
+    if let Err(error) = listed {
+        listing.lock().take();
+        log::warn!("could not list terminal themes: {error}");
+    }
 }
 
 const CURSOR_STYLE_OVERRIDES: [(&str, Option<(CursorStyle, CursorBlinkPolicy)>); 7] = [
@@ -7182,6 +7236,7 @@ impl Shared {
             inner
                 .paste_uploads
                 .retain(|(uploader, _), _| *uploader != client);
+            inner.file_writes.retain(|(writer, _), _| *writer != client);
             let mut wait_wakes = remove_client_wait_items(&mut inner.wait_channels, client);
             wait_wakes.extend(hook_events::take_event_waiter_wakes(
                 &mut inner.event_waiters,
@@ -17944,6 +17999,7 @@ impl Shared {
                      the zz app, then retry."
                 )
             },
+            Some(path.clone()),
             |request_id| EventPayload::BrowserCommand {
                 pane,
                 command: BrowserCommand::Screenshot { request_id, path },
@@ -30073,6 +30129,7 @@ impl Shared {
         self: &Arc<Self>,
         pane: PaneId,
         unavailable: impl FnOnce(&str) -> String,
+        screenshot: Option<String>,
         payload: impl FnOnce(u64) -> EventPayload,
     ) -> Result<Execution, DaemonError> {
         let request_id = Self::next_gui_request_id();
@@ -30097,10 +30154,8 @@ impl Shared {
                 )))
             })?
         };
-        let (wait, reply) = agent_waits::reply::<Result<String, String>>(
-            self,
-            Some(GUI_REQUEST_TIMEOUT),
-            move |shared, outcome| {
+        let (wait, reply) =
+            agent_waits::reply::<Result<String, String>>(self, None, move |shared, outcome| {
                 shared.inner.lock().pending_gui_requests.remove(&request_id);
                 match outcome {
                     terminal_requests::ReplyOutcome::Ready(Ok(output)) => Ok(Execution {
@@ -30116,12 +30171,19 @@ impl Shared {
                     ))
                     .into()),
                 }
+            });
+        self.inner.lock().pending_gui_requests.insert(
+            request_id,
+            PendingGuiRequest {
+                client,
+                reply,
+                screenshot: screenshot.map(|path| PendingScreenshot {
+                    path,
+                    png: Vec::new(),
+                }),
             },
         );
-        self.inner
-            .lock()
-            .pending_gui_requests
-            .insert(request_id, PendingGuiRequest { client, reply });
+        self.expire_stalled_gui_request(request_id, 0);
         if !subscriber.enqueue_reliable(&Self::event(payload(request_id))) {
             self.inner.lock().pending_gui_requests.remove(&request_id);
             wait.state
@@ -30132,23 +30194,83 @@ impl Shared {
         wait.finish(self, Execution::default())
     }
 
+    fn expire_stalled_gui_request(self: &Arc<Self>, request_id: u64, received: usize) {
+        self.terminal_requests
+            .schedule(Instant::now() + GUI_REQUEST_TIMEOUT, move |shared| {
+                let stalled = {
+                    let mut inner = shared.inner.lock();
+                    let Some(pending) = inner.pending_gui_requests.get(&request_id) else {
+                        return;
+                    };
+                    let now = pending
+                        .screenshot
+                        .as_ref()
+                        .map_or(0, |screenshot| screenshot.png.len());
+                    if now > received {
+                        drop(inner);
+                        shared.expire_stalled_gui_request(request_id, now);
+                        return;
+                    }
+                    inner.pending_gui_requests.remove(&request_id)
+                };
+                drop(stalled);
+            });
+    }
+
+    fn take_gui_request(&self, client: ClientId, request_id: u64) -> Option<PendingGuiRequest> {
+        let mut inner = self.inner.lock();
+        owned_gui_request(&mut inner, client, request_id)?;
+        inner.pending_gui_requests.remove(&request_id)
+    }
+
     fn complete_gui_request(&self, client: ClientId, response: GuiResponse) {
-        let request_id = response.request_id();
-        let pending = {
-            let mut inner = self.inner.lock();
-            let Some(pending) = inner.pending_gui_requests.get(&request_id) else {
-                return;
-            };
-            if pending.client != client {
-                log::warn!(target: "zz_daemon::diagnostics::connection", "discarding GUI response for request={request_id} from client={client}; owner is {}", pending.client);
-                return;
-            }
-            inner.pending_gui_requests.remove(&request_id).unwrap()
+        let Some(pending) = self.take_gui_request(client, response.request_id()) else {
+            return;
         };
         pending.reply.try_send(match response {
             GuiResponse::Success { output, .. } => Ok(output),
             GuiResponse::Error { message, .. } => Err(message),
         });
+    }
+
+    fn receive_browser_screenshot(
+        &self,
+        client: ClientId,
+        request_id: u64,
+        last: bool,
+        png: &[u8],
+    ) {
+        let pending = {
+            let mut inner = self.inner.lock();
+            let Some(pending) = owned_gui_request(&mut inner, client, request_id) else {
+                return;
+            };
+            if let Some(screenshot) = &mut pending.screenshot {
+                screenshot.png.extend_from_slice(png);
+                if !last && screenshot.png.len() <= zz_protocol::MAX_BROWSER_SCREENSHOT_BYTES {
+                    return;
+                }
+            }
+            inner.pending_gui_requests.remove(&request_id)
+        };
+        let Some(pending) = pending else {
+            return;
+        };
+        let Some(PendingScreenshot { path, png }) = pending.screenshot else {
+            pending.reply.try_send(Err(
+                "the zz window sent a screenshot for another request".to_owned()
+            ));
+            return;
+        };
+        let written = std::thread::Builder::new()
+            .name("zz-browser-screenshot".to_owned())
+            .spawn(move || {
+                let written = write_browser_screenshot(Path::new(&path), &png).map(|()| path);
+                pending.reply.try_send(written);
+            });
+        if let Err(error) = written {
+            log::warn!("could not write a browser screenshot: {error}");
+        }
     }
 
     fn fail_gui_requests_for(&self, client: ClientId) {
@@ -35327,6 +35449,7 @@ struct ServerState {
     next_display_panes_token: u64,
     pending_gui_requests: BTreeMap<u64, PendingGuiRequest>,
     paste_uploads: BTreeMap<(ClientId, u64), PasteUpload>,
+    file_writes: BTreeMap<(ClientId, u64), file_edit::PendingFileWrite>,
     wait_channels: BTreeMap<String, WaitChannel>,
     pane_pipes: BTreeMap<PaneId, PanePipe>,
     control_routes: BTreeMap<ClientId, ControlRoute>,
@@ -35660,6 +35783,26 @@ impl DiagnosticSample {
 struct PendingGuiRequest {
     client: ClientId,
     reply: cmdq::Reply<Result<String, String>>,
+    screenshot: Option<PendingScreenshot>,
+}
+
+#[derive(Debug)]
+struct PendingScreenshot {
+    path: String,
+    png: Vec<u8>,
+}
+
+fn owned_gui_request(
+    inner: &mut ServerState,
+    client: ClientId,
+    request_id: u64,
+) -> Option<&mut PendingGuiRequest> {
+    let pending = inner.pending_gui_requests.get_mut(&request_id)?;
+    if pending.client != client {
+        log::warn!(target: "zz_daemon::diagnostics::connection", "discarding GUI response for request={request_id} from client={client}; owner is {}", pending.client);
+        return None;
+    }
+    Some(pending)
 }
 
 impl ServerState {
@@ -51786,7 +51929,16 @@ fn debug_marker(client: ClientId, context: &ExecutionContext, args: &[RawText]) 
 }
 
 fn workspace_tools_catalog(args: &[RawText]) -> Result<Execution, ServerError> {
-    workspace_tools(args).map(|output| Execution {
+    let hooks = match args {
+        [flag] if flag == "--install-hooks" => Some(crate::AgentHookChange::Install),
+        [flag] if flag == "--remove-hooks" => Some(crate::AgentHookChange::Remove),
+        _ => None,
+    };
+    let output = match hooks {
+        Some(change) => crate::change_agent_hooks(change).map_err(ServerError::InvalidCommand)?,
+        None => workspace_tools(args)?,
+    };
+    Ok(Execution {
         output: output.into(),
         effects: Vec::new(),
     })
@@ -51867,7 +52019,7 @@ This pane approves `zz` commands without asking, alone or piped into `head`, `ta
 
 pub const WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE: &str = "ZZ_AGENT_CONTEXT";
 
-const WORKSPACE_TOOLS_LOCAL_FLAGS: [&str; 3] = ["--context", "--install-hooks", "--remove-hooks"];
+const WORKSPACE_TOOLS_LOCAL_FLAGS: [&str; 1] = ["--context"];
 
 #[must_use]
 pub fn workspace_context(pane: &str, session: &str, agent_pane: bool) -> String {
@@ -52183,8 +52335,9 @@ is read on that host; send a local page with `zz --host NAME html -t %N - < page
 
 ### `zz capture-browser -t %N -o /absolute/out.png`
 
-Save the latest browser frame as a PNG and print its path. Use an absolute path: the app window
-showing the pane writes the file, on its own machine. On Linux, restart with `ZZ_BROWSER_SHARED_TEXTURE=0` if the GPU
+Save the latest browser frame as a PNG and print its path. Use an absolute path: a desktop app
+window showing the pane writes the file on its own machine; an iPad sends the picture and the
+daemon writes it on this host. On Linux, restart with `ZZ_BROWSER_SHARED_TEXTURE=0` if the GPU
 path reports that readback is unavailable.
 
 ### Browser through CDP
@@ -52700,6 +52853,7 @@ fn handle_connection_message<S: TransportStream>(
 
     let mut path_list: Option<(u64, Arc<AtomicBool>)> = None;
     let path_list_turn = Arc::new(Mutex::new(()));
+    let terminal_themes = Arc::new(Mutex::new(None));
     let mut stream = attach::inbound_reader(stream);
     let result = loop {
         let message = match read_protocol_message_into(&mut stream, &mut inbound_frame) {
@@ -52802,6 +52956,38 @@ fn handle_connection_message<S: TransportStream>(
                     request_id,
                     homes,
                 });
+            }
+            ProtocolMessage::TerminalThemesRequest { request_id } => {
+                send_terminal_themes(&outbound, &terminal_themes, request_id);
+            }
+            ProtocolMessage::FileReadRequest {
+                request_id,
+                pane,
+                path,
+            } => {
+                shared.start_file_read(client, hello.kind, (request_id, pane, path), &outbound);
+            }
+            ProtocolMessage::FileWriteRequest {
+                request_id,
+                pane,
+                path,
+                offset,
+                last,
+                bytes,
+            } => {
+                shared.receive_file_write(
+                    client,
+                    hello.kind,
+                    &file_edit::FileWriteChunk {
+                        request_id,
+                        pane,
+                        path,
+                        offset,
+                        last,
+                        bytes,
+                    },
+                    &outbound,
+                );
             }
             ProtocolMessage::PathListRequest {
                 request_id,
@@ -52954,6 +53140,13 @@ fn handle_connection_message<S: TransportStream>(
             }
             ProtocolMessage::GuiResponse(response) => {
                 shared.complete_gui_request(client, response);
+            }
+            ProtocolMessage::BrowserScreenshot {
+                request_id,
+                last,
+                png,
+            } => {
+                shared.receive_browser_screenshot(client, request_id, last, &png);
             }
             ProtocolMessage::Resync => shared.send_resync(client, &outbound),
             ProtocolMessage::RequestFull { pane } => {
@@ -121104,6 +121297,7 @@ bind - split-window -v -c "#{pane_current_path}"
                 PendingGuiRequest {
                     client,
                     reply: reply.into(),
+                    screenshot: None,
                 },
             );
         }

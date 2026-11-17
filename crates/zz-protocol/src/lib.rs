@@ -5,6 +5,7 @@ pub mod chat;
 mod control;
 mod exec;
 mod framing;
+pub mod gateway;
 mod id;
 mod key;
 mod key_frame;
@@ -17,6 +18,7 @@ mod providers;
 mod snapshot;
 mod style;
 mod terminal_codec;
+mod terminal_theme;
 mod tree_delta;
 mod view;
 
@@ -43,12 +45,14 @@ pub use catalog::{
     unimplemented_tmux_command_spec,
 };
 pub use control::{
-    AGENT_LOGIN_CAPABILITY, AGENT_QUOTAS_CAPABILITY, AttachOperation, Batch, CAPABILITY_NAMES,
-    CLIENT_CAPABILITY_NAMES, CONTROL_CAPABILITY, CONTROL_STDIO_CAPABILITY, ClientView,
-    ClientViewport, FLOW_WINDOW_CAPABILITY, Hello, HostPlatform, KeySubscription, LinuxDistro,
-    MAX_BATCH_FRAMES, MouseBindings, OPT_IN_CLIENT_CAPABILITY_NAMES, Subscriptions,
+    AGENT_LOGIN_CAPABILITY, AGENT_QUOTAS_CAPABILITY, AGENT_SETUP_CAPABILITY, AttachOperation,
+    BROWSER_SCREENSHOT_CAPABILITY, Batch, CAPABILITY_NAMES, CLIENT_CAPABILITY_NAMES,
+    CONTROL_CAPABILITY, CONTROL_STDIO_CAPABILITY, ClientView, ClientViewport, FILE_EDIT_CAPABILITY,
+    FLOW_WINDOW_CAPABILITY, Hello, HostPlatform, KeySubscription, LinuxDistro, MAX_BATCH_FRAMES,
+    MouseBindings, OPT_IN_CLIENT_CAPABILITY_NAMES, Subscriptions, TERMINAL_THEMES_CAPABILITY,
     TTY_INPUT_CAPABILITY, TreeSubscription, Welcome, key_tables_hash,
 };
+pub use terminal_theme::{MAX_TERMINAL_THEME_NAME_BYTES, MAX_TERMINAL_THEMES, TerminalTheme};
 pub const UNZOOMED_LAYOUT_VARIABLE: &str = "unzoomed_layout";
 pub const EVENT_SESSION_VARIABLE: &str = "zz_event_session";
 pub const EVENT_SESSION_NAME_VARIABLE: &str = "zz_event_session_name";
@@ -90,24 +94,25 @@ pub use message::{
     MAX_AGENT_TASKS, MAX_AGENT_TOOL_CONTENT_ITEMS, MAX_AGENT_UPDATES_BYTES, MAX_ARTIFACT_BYTES,
     MAX_ARTIFACT_CHUNK_BYTES, MAX_ARTIFACT_MIME_BYTES, MAX_ARTIFACT_PATH_BYTES,
     MAX_ARTIFACT_REPLY_BYTES, MAX_ARTIFACT_TOKEN_BYTES, MAX_BROWSER_KEY_REPEAT,
+    MAX_BROWSER_SCREENSHOT_BYTES, MAX_BROWSER_SCREENSHOT_CHUNK_BYTES,
     MAX_CHOOSE_BUFFER_QUERY_BYTES, MAX_CHOOSE_ITEM_KEY_BYTES, MAX_CHOOSE_ITEM_TEXT_BYTES,
     MAX_CHOOSE_TREE_QUERY_BYTES, MAX_CLIENT_ENVIRONMENT_BYTES, MAX_CLIENT_ENVIRONMENT_ENTRIES,
     MAX_CLIENT_ENVIRONMENT_ENTRY_BYTES, MAX_CLIENT_FILE_BYTES, MAX_CLIENT_FILE_PATH_BYTES,
     MAX_CLIENT_TERMINAL_FEATURE_BYTES, MAX_CLIENT_TERMINAL_FEATURES,
     MAX_CLIENT_TERMINAL_TYPE_BYTES, MAX_CLIENT_WORKING_DIRECTORY_BYTES, MAX_COMMAND_PROMPT_BYTES,
-    MAX_GUI_TEXT_BYTES, MAX_KITTY_IMAGE_BYTES, MAX_KITTY_IMAGE_CHUNK_BYTES,
-    MAX_KITTY_IMAGE_REMOVALS, MAX_MODE_PRESENTATIONS, MAX_PANE_BORDER_PRESENTATIONS,
-    MAX_PANE_INDICATOR_LABEL_BYTES, MAX_PASTE_UPLOAD_BYTES, MAX_PASTE_UPLOAD_CHUNK_BYTES,
-    MAX_PASTE_UPLOAD_EXTENSION_BYTES, MAX_STATUS_ROWS, MAX_STATUS_TEXT_BYTES, MIN_CLIENT_REVISION,
-    MIN_DAEMON_REVISION, MenuAction, MenuItem, MenuState, ModePresentation, MuxOptionKey,
-    MuxOptionSource, MuxOptionValue, MuxOptions, NEW_SESSION_ATTACH_CAPABILITY,
-    PANE_FRAME_CAPABILITY, PROTOCOL_VERSION, PaneBorderPresentation, PaneIndicator,
-    PasteUploadPurpose, PastedImageFormat, PopupAction, PopupBorderLines, PopupPointer,
-    PopupPointerButton, PopupState, PreparedCommand, PreparedCommandResult, PromptCursor,
-    ProtocolMessage, REVISION, RawText, SERVER_OPTION_CAPABILITY_PREFIX, SPLIT_RATIO_BASIS,
-    ServerError, ServerHello, SourceSpan, StatusLine, StatusPosition, StdoutClaim,
-    TerminalUiCommand, agent_update_batch_bytes, paste_upload_extension_is_valid,
-    split_command_words,
+    MAX_FILE_EDIT_BYTES, MAX_FILE_EDIT_ERROR_BYTES, MAX_FILE_WRITE_CHUNK_BYTES, MAX_GUI_TEXT_BYTES,
+    MAX_KITTY_IMAGE_BYTES, MAX_KITTY_IMAGE_CHUNK_BYTES, MAX_KITTY_IMAGE_REMOVALS,
+    MAX_MODE_PRESENTATIONS, MAX_PANE_BORDER_PRESENTATIONS, MAX_PANE_INDICATOR_LABEL_BYTES,
+    MAX_PASTE_UPLOAD_BYTES, MAX_PASTE_UPLOAD_CHUNK_BYTES, MAX_PASTE_UPLOAD_EXTENSION_BYTES,
+    MAX_STATUS_ROWS, MAX_STATUS_TEXT_BYTES, MIN_CLIENT_REVISION, MIN_DAEMON_REVISION, MenuAction,
+    MenuItem, MenuState, ModePresentation, MuxOptionKey, MuxOptionSource, MuxOptionValue,
+    MuxOptions, NEW_SESSION_ATTACH_CAPABILITY, PANE_FRAME_CAPABILITY, PROTOCOL_VERSION,
+    PaneBorderPresentation, PaneIndicator, PasteUploadPurpose, PastedImageFormat, PopupAction,
+    PopupBorderLines, PopupPointer, PopupPointerButton, PopupState, PreparedCommand,
+    PreparedCommandResult, PromptCursor, ProtocolMessage, REVISION, RawText,
+    SERVER_OPTION_CAPABILITY_PREFIX, SPLIT_RATIO_BASIS, ServerError, ServerHello, SourceSpan,
+    StatusLine, StatusPosition, StdoutClaim, TerminalUiCommand, agent_update_batch_bytes,
+    paste_upload_extension_is_valid, split_command_words,
 };
 pub use message::{
     MAX_STARTUP_CONFIG_CAUSE_BYTES, MAX_STARTUP_CONFIG_CAUSES, MAX_STARTUP_CONFIG_CAUSES_BYTES,
