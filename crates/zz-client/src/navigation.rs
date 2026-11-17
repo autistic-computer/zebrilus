@@ -37,24 +37,56 @@ pub fn rename_prompt_command(
 }
 
 #[must_use]
-pub fn move_window_command(
+pub fn move_window_commands(
     windows: &[crate::StatusBarWindow],
     window: WindowId,
     to: usize,
-) -> Option<CommandInvocation> {
-    let from = windows.iter().position(|entry| entry.id == window)?;
-    let target = windows.get(to).filter(|_| to != from)?;
-    let mut args = vec![if from < to { "-a" } else { "-b" }.to_owned()];
-    if !windows[from].active {
-        args.push("-d".to_owned());
+) -> Vec<CommandInvocation> {
+    let Some(from) = windows.iter().position(|entry| entry.id == window) else {
+        return Vec::new();
+    };
+    if to >= windows.len() {
+        return Vec::new();
     }
-    args.extend([
-        "-s".to_owned(),
-        window.to_string(),
-        "-t".to_owned(),
-        target.id.to_string(),
-    ]);
-    Some(CommandInvocation::new("move-window", args))
+    let current = windows
+        .iter()
+        .find(|entry| entry.active)
+        .map(|entry| entry.id);
+    let passed: Vec<WindowId> = if from < to {
+        windows[from + 1..=to]
+            .iter()
+            .map(|entry| entry.id)
+            .collect()
+    } else {
+        windows[to..from]
+            .iter()
+            .rev()
+            .map(|entry| entry.id)
+            .collect()
+    };
+    passed
+        .into_iter()
+        .map(|neighbour| {
+            let (select, source, target) = if current == Some(window) {
+                (true, window, neighbour)
+            } else if current == Some(neighbour) {
+                (true, neighbour, window)
+            } else {
+                (false, window, neighbour)
+            };
+            let mut args = Vec::with_capacity(5);
+            if select {
+                args.push("-d".to_owned());
+            }
+            args.extend([
+                "-s".to_owned(),
+                source.to_string(),
+                "-t".to_owned(),
+                target.to_string(),
+            ]);
+            CommandInvocation::new("swap-window", args)
+        })
+        .collect()
 }
 
 #[must_use]
@@ -246,71 +278,108 @@ mod tests {
     use super::*;
     use crate::StatusBarModel;
 
-    #[test]
-    fn dropping_a_window_on_another_takes_its_slot_and_keeps_the_current_window() {
+    fn session(windows: &[(&str, u32)], current: &str) -> (MuxEngine, ExecutionContext) {
         let mut engine = MuxEngine::default();
         let mut context = ExecutionContext::default();
-        let run = |engine: &mut MuxEngine, context: &mut ExecutionContext, command| {
-            engine.execute(context, &command).unwrap();
+        let mut run = |args: &[&str]| {
+            engine
+                .execute(
+                    &mut context,
+                    &CommandInvocation::new(args[0], args[1..].iter().copied()),
+                )
+                .unwrap();
         };
-        run(
-            &mut engine,
-            &mut context,
-            CommandInvocation::new("new-session", ["-s", "s", "-n", "a"]),
-        );
-        for name in ["b", "c", "d"] {
-            run(
-                &mut engine,
-                &mut context,
-                CommandInvocation::new("new-window", ["-d", "-n", name]),
-            );
+        let (first, rest) = windows.split_first().unwrap();
+        run(&["new-session", "-s", "s", "-n", first.0]);
+        for (name, index) in rest {
+            run(&["new-window", "-d", "-t", &format!("s:{index}"), "-n", name]);
         }
-        let session = context.session;
-        let windows = |engine: &MuxEngine| {
-            StatusBarModel::from_snapshot(&engine.state.snapshot(), session).windows
-        };
-        let layout = |engine: &MuxEngine| {
-            windows(engine)
+        run(&["select-window", "-t", &format!("s:{current}")]);
+        (engine, context)
+    }
+
+    fn windows(engine: &MuxEngine, context: &ExecutionContext) -> Vec<crate::StatusBarWindow> {
+        StatusBarModel::from_snapshot(&engine.state.snapshot(), context.session).windows
+    }
+
+    fn layout(engine: &MuxEngine, context: &ExecutionContext) -> Vec<String> {
+        windows(engine, context)
+            .iter()
+            .map(|window| {
+                let current = if window.active { "*" } else { "" };
+                format!("{}:{}{current}", window.index, window.name)
+            })
+            .collect()
+    }
+
+    fn drag(
+        engine: &mut MuxEngine,
+        context: &mut ExecutionContext,
+        name: &str,
+        to: usize,
+    ) -> Vec<String> {
+        let shown = windows(engine, context);
+        let window = shown.iter().find(|window| window.name == name).unwrap().id;
+        let names = |id: &str| {
+            shown
                 .iter()
-                .map(|window| {
-                    let current = if window.active { "*" } else { "" };
-                    format!("{}:{}{current}", window.index, window.name)
-                })
-                .collect::<Vec<_>>()
+                .find(|window| window.id.to_string() == id)
+                .map_or_else(|| id.to_owned(), |window| window.name.clone())
         };
-        let ids = ["a", "b", "c", "d"].map(|name| {
-            windows(&engine)
-                .iter()
-                .find(|window| window.name == name)
-                .unwrap()
-                .id
-        });
-        let [a, b, c, d] = ids.map(|id| id.to_string());
+        let commands = move_window_commands(&shown, window, to);
+        let shown_commands = commands
+            .iter()
+            .map(|command| {
+                let args = command
+                    .args
+                    .iter()
+                    .map(|arg| names(arg.as_ref()))
+                    .collect::<Vec<_>>();
+                format!("{} {}", command.name, args.join(" "))
+            })
+            .collect();
+        for command in &commands {
+            engine.execute(context, command).unwrap();
+        }
+        shown_commands
+    }
 
-        let right = move_window_command(&windows(&engine), ids[1], 3).unwrap();
+    #[test]
+    fn dropping_a_window_on_another_takes_its_slot_and_keeps_indices_and_the_current_window() {
+        let (mut engine, mut context) = session(&[("a", 0), ("b", 1), ("c", 2), ("d", 3)], "a");
         assert_eq!(
-            right,
-            CommandInvocation::new("move-window", ["-a", "-d", "-s", &b, "-t", &d])
+            drag(&mut engine, &mut context, "b", 3),
+            ["swap-window -s b -t c", "swap-window -s b -t d"]
         );
-        run(&mut engine, &mut context, right);
-        assert_eq!(layout(&engine), ["0:a*", "2:c", "3:d", "4:b"]);
+        assert_eq!(layout(&engine, &context), ["0:a*", "1:c", "2:d", "3:b"]);
+        assert_eq!(
+            drag(&mut engine, &mut context, "b", 1),
+            ["swap-window -s b -t d", "swap-window -s b -t c"]
+        );
+        assert_eq!(layout(&engine, &context), ["0:a*", "1:b", "2:c", "3:d"]);
+        assert_eq!(
+            drag(&mut engine, &mut context, "a", 3),
+            [
+                "swap-window -d -s a -t b",
+                "swap-window -d -s a -t c",
+                "swap-window -d -s a -t d"
+            ]
+        );
+        assert_eq!(layout(&engine, &context), ["0:b", "1:c", "2:d", "3:a*"]);
+        assert!(drag(&mut engine, &mut context, "a", 3).is_empty());
 
-        let left = move_window_command(&windows(&engine), ids[1], 1).unwrap();
+        let (mut engine, mut context) = session(&[("p", 0), ("q", 2), ("r", 5), ("s", 6)], "5");
+        engine
+            .execute(
+                &mut context,
+                &CommandInvocation::new("set-option", ["-g", "renumber-windows", "on"]),
+            )
+            .unwrap();
         assert_eq!(
-            left,
-            CommandInvocation::new("move-window", ["-b", "-d", "-s", &b, "-t", &c])
+            drag(&mut engine, &mut context, "p", 2),
+            ["swap-window -s p -t q", "swap-window -d -s r -t p"]
         );
-        run(&mut engine, &mut context, left);
-        assert_eq!(layout(&engine), ["0:a*", "2:b", "3:c", "4:d"]);
-
-        let current = move_window_command(&windows(&engine), ids[0], 3).unwrap();
-        assert_eq!(
-            current,
-            CommandInvocation::new("move-window", ["-a", "-s", &a, "-t", &d])
-        );
-        run(&mut engine, &mut context, current);
-        assert_eq!(layout(&engine), ["2:b", "3:c", "4:d", "5:a*"]);
-        assert_eq!(move_window_command(&windows(&engine), ids[0], 3), None);
+        assert_eq!(layout(&engine, &context), ["0:q", "2:r*", "5:p", "6:s"]);
     }
 
     #[test]

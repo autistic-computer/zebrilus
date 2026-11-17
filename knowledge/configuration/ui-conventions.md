@@ -217,11 +217,12 @@ Dragging a tab onto another tab of the same strip moves it into that tab's slot 
 between by one (`tab::TabReorder`); the tab under the pointer takes the accent's soft fill, and the
 dragged tab follows the pointer as a chip with its icon and label. A page tab reorders the pane's
 tab list and publishes it; a client that receives a reordered list reorders its own tabs instead
-of loading each URL in place (`zz_client::navigation::tab_order`). A window pill runs one
-`move-window` (`zz_client::navigation::move_window_command`): `-a` when it came from the left, `-b`
-from the right, and `-d` unless it is the current window, so the current window stays current.
-Like tmux's `move-window -s`, that leaves the dragged window's old index empty even with
-`renumber-windows` on. A strip whose client cannot write (read-only or disconnected) does not drag.
+of loading each URL in place (`zz_client::navigation::tab_order`). A window pill swaps the
+dragged window with each window it passes, in order (`zz_client::navigation::move_window_commands`),
+so the set of window indices stays the same whatever `renumber-windows` is. A swap that involves
+the current window is `swap-window -d` with the current window as `-s`, so it stays current and
+the window it last swapped with becomes the last window; the other swaps take no `-d`. A strip whose client cannot write (read-only or disconnected) does not
+drag.
 Every header's title is the drag handle: `pane::PaneTitle`, a 22px button
 (a `Tab` in `TabLook::Title`, `button.title`) holding the kind icon, the title and the pane's
 folder (`navigation::pane_folder`, home as `~`, one ink step under the title). It is as wide as

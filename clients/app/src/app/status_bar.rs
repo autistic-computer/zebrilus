@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use ala::{AnyElement, App, Context, Entity, IntoElement, px};
 use penna::{ActiveTheme as _, TabLook};
-use zz_client::{StatusBarModel, StatusBarPane, navigation::move_window_command};
+use zz_client::{StatusBarModel, StatusBarPane, navigation::move_window_commands};
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use zz_protocol::PaneKindSnapshot;
 use zz_ui::{
@@ -43,7 +43,7 @@ pub(super) fn render(
         let windows = model.windows.clone();
         let connection = view.connection.clone();
         Rc::new(move |id, to, _: &mut ala::Window, cx: &mut App| {
-            if let Some(command) = move_window_command(&windows, zz_protocol::WindowId(id), to) {
+            for command in move_window_commands(&windows, zz_protocol::WindowId(id), to) {
                 sidebar::execute(&connection, &command, cx);
             }
         }) as TabMove

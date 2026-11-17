@@ -2,7 +2,7 @@ use penna::{ActiveTheme as _, TabLook, blocks::sidebar::controls_leading_inset_i
 use std::rc::Rc;
 
 use ala::{AnyElement, App, Entity, Pixels, Stateful, Window};
-use zz_client::{StatusBarModel, StatusBarWindow, navigation::move_window_command};
+use zz_client::{StatusBarModel, StatusBarWindow, navigation::move_window_commands};
 use zz_ui::navigation::{
     WorkspaceStatusWindowState,
     status::{
@@ -54,7 +54,7 @@ pub(crate) fn render_gui_status_bar(
         let windows = model.windows.clone();
         let mux = mux.clone();
         Rc::new(move |id, to, _: &mut Window, cx: &mut App| {
-            if let Some(command) = move_window_command(&windows, zz_protocol::WindowId(id), to) {
+            for command in move_window_commands(&windows, zz_protocol::WindowId(id), to) {
                 mux.read(cx).execute(command);
             }
         }) as TabMove
