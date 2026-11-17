@@ -65,9 +65,9 @@ use zz_ui::{
         workspace_sidebar_view_button,
     },
     pane::{
-        DropPreview, DropPreviewFrame, PaneArrivals, PaneChrome, PaneDrag, PaneDragOverlayState,
-        PaneDragSource, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, content_pane,
-        pane_drag_overlay, pane_drag_preview, pane_drop_preview, pane_header_frame,
+        DropPreview, DropPreviewFrame, HeaderPlace, PaneArrivals, PaneChrome, PaneDrag,
+        PaneDragOverlayState, PaneDragSource, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide,
+        content_pane, pane_drag_overlay, pane_drag_preview, pane_drop_preview, pane_header_frame,
         pane_split_hit_target, pane_split_surface, pane_surface,
     },
     pane_look::PaneLook,
@@ -2521,6 +2521,36 @@ impl AppShell {
             };
             let dead_label = zz_client::terminal_view::dead_label(pane.dead, pane.dead_status);
             let agent_shown = matches!(pane.kind, PaneKindSnapshot::Agent(_));
+            let header_place = if frame.header {
+                HeaderPlace::of(&pane.kind, is_float)
+            } else {
+                HeaderPlace::Stacked
+            };
+            let tiled_ground = zz_ui::pane::tiled_pane_ground(
+                cx.theme().background,
+                frame.framed,
+                pane_id == active_window.active_pane,
+                cx,
+            );
+            let header_band = header_place.band(
+                zz_ui::pane::tiled_pane_surface(
+                    cx.theme().background,
+                    zz_ui::shell::shell_frame(cx.theme().background, self.preferences.gaps, cx),
+                    frame.framed,
+                    pane_id == active_window.active_pane,
+                    cx,
+                ),
+                cx,
+            );
+            let content_radii = if header_band.is_some() {
+                radii
+            } else {
+                Corners {
+                    top_left: px(0.0),
+                    top_right: px(0.0),
+                    ..radii
+                }
+            };
             let content = match &pane.kind {
                 PaneKindSnapshot::Terminal if agent_picker => {
                     let picker = self.picker_entity(pane_id, self.preferences.flat_sidebar, cx);
@@ -2543,27 +2573,15 @@ impl AppShell {
                 ),
                 PaneKindSnapshot::Agent(_) => {
                     let agent = self.agent_entity(pane_id, window, cx);
-                    let ground = if frame.framed {
-                        PaneLook::global(cx).ground(
-                            cx.theme(),
-                            cx.theme().background,
-                            pane_id == active_window.active_pane,
-                        )
-                    } else if is_float {
+                    let ground = if is_float && !frame.framed {
                         cx.theme().ground()
                     } else {
-                        cx.theme().content_ground()
+                        tiled_ground
                     };
                     agent.update(cx, |agent, cx| {
                         agent.set_ground(ground, cx);
-                        agent.set_corner_radii(
-                            Corners {
-                                top_left: px(0.0),
-                                top_right: px(0.0),
-                                ..radii
-                            },
-                            cx,
-                        );
+                        agent.set_header_band(header_band, cx);
+                        agent.set_corner_radii(content_radii, cx);
                     });
                     if can_focus
                         && pane_id == active_window.active_pane
@@ -2590,14 +2608,8 @@ impl AppShell {
                             cx,
                         );
                         terminal.set_pane_status(dead_label.clone(), pane.synchronized_input, cx);
-                        terminal.set_corner_radii(
-                            Corners {
-                                top_left: px(0.0),
-                                top_right: px(0.0),
-                                ..radii
-                            },
-                            cx,
-                        );
+                        terminal.set_header_band(header_band, cx);
+                        terminal.set_corner_radii(content_radii, cx);
                         terminal.set_rows_above(false, cx);
                         terminal.set_rows_below(false, cx);
                         terminal.set_compact(false, cx);
@@ -2690,15 +2702,7 @@ impl AppShell {
                     picker.into_any_element()
                 }
             };
-            let content = match self.tile_size_report(pane_id, &pane.kind, is_float) {
-                Some(report) => div()
-                    .relative()
-                    .size_full()
-                    .child(content)
-                    .child(report)
-                    .into_any_element(),
-                None => content,
-            };
+            let report = self.tile_size_report(pane_id, &pane.kind, is_float);
             let content = if frame.header {
                 let heading = zz_client::window_summary::pane_heading(pane);
                 let header = self.pane_header(
@@ -2713,11 +2717,9 @@ impl AppShell {
                     false,
                     cx,
                 );
-                div()
-                    .flex()
-                    .flex_col()
-                    .size_full()
-                    .child(pane_header_frame(
+                zz_ui::pane::headed_pane(
+                    header_place,
+                    pane_header_frame(
                         header,
                         radii,
                         if active_window.active_pane == pane_id {
@@ -2725,8 +2727,19 @@ impl AppShell {
                         } else {
                             self.preferences.pane_inactive_opacity
                         },
-                    ))
-                    .child(div().flex_1().min_h_0().min_w_0().child(content))
+                    )
+                    .into_any_element(),
+                    content,
+                    report,
+                    cx,
+                )
+                .into_any_element()
+            } else if let Some(report) = report {
+                div()
+                    .relative()
+                    .size_full()
+                    .child(content)
+                    .child(report)
                     .into_any_element()
             } else {
                 content

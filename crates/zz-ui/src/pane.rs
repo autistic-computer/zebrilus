@@ -20,10 +20,15 @@ use penna::{
 };
 
 mod drag;
+mod header_band;
 mod launch;
 mod motion;
 pub use drag::{
     DropPreview, DropPreviewFrame, PaneDrag, PaneDragSource, PipGrab, pane_drag_preview,
+};
+pub use header_band::{
+    HeaderBand, HeaderPlace, HeaderScrim, SCRIM_AT_EDGE, SCRIM_TAIL, headed_pane, header_scrim,
+    paint_header_scrim, stacked_surface, tiled_pane_ground, tiled_pane_surface,
 };
 pub use launch::{
     Flight, Lit, PipPart, PipSource, Riding, Sourced, flight, lit, pip_part, pip_picture,

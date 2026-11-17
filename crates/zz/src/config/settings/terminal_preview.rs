@@ -196,6 +196,7 @@ impl Render for TerminalPreview {
                                         marked_text: None,
                                         rows_above: None,
                                         rows_below: None,
+                                        header: None,
                                     },
                                     bounds,
                                     window,

@@ -2,7 +2,7 @@ use std::{rc::Rc, sync::Arc};
 
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Div, Entity, Image, IntoElement,
-    ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px,
+    ParentElement as _, Pixels, Render, SharedString, Styled as _, Window, div, prelude::*, px,
 };
 use penna::{
     ActiveTheme as _, WindowExt as _,
@@ -86,6 +86,7 @@ pub struct Thread {
     width: Option<f32>,
     leave: bool,
     touch: bool,
+    inset_top: Pixels,
 }
 
 impl Thread {
@@ -105,7 +106,13 @@ impl Thread {
             width: None,
             leave: false,
             touch: false,
+            inset_top: px(0.0),
         }
+    }
+
+    pub const fn inset_top(mut self, inset: Pixels) -> Self {
+        self.inset_top = inset;
+        self
     }
 
     pub fn touch(mut self) -> Self {
@@ -456,7 +463,7 @@ impl Render for Thread {
                     vendor: self.vendor,
                     ground: None,
                     touch: self.touch,
-                    inset_top: px(0.0),
+                    inset_top: self.inset_top,
                     inset_bottom: px(0.0),
                     children: None,
                 };
@@ -508,7 +515,7 @@ impl Render for Thread {
                 let now = self.script.at;
                 let body = chat_column(chat_thread(view, now, &self.pane.open, PHASE, &hooks, app));
                 let pip = chat_agent_pip(view, now, &self.pane.open, PHASE, &hooks, app)
-                    .map(|pip| chat_pip_frame(pip, true));
+                    .map(|pip| chat_pip_frame(pip, true, px(0.0)));
                 let row = ala::div()
                     .flex()
                     .flex_row()

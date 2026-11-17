@@ -111,6 +111,9 @@ impl Element for TerminalElement {
         let command_output = view.is_command_output();
         let local_scroll_target = view.local_scroll_target();
         let scroll_pixel_offset = view.scroll_pixel_offset();
+        let header = view
+            .header_band()
+            .map(|band| band.scrim(window.content_mask().bounds));
         let scrollbar =
             local_scroll_target.map_or(retained.viewport.scrollbar, |offset| ScrollbarState {
                 offset,
@@ -148,6 +151,7 @@ impl Element for TerminalElement {
                 marked_text: self.marked_text.as_deref(),
                 rows_above: None,
                 rows_below: None,
+                header,
             },
             bounds,
             window,

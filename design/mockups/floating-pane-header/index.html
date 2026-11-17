@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floating pane header</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="board.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+</head>
+<body>
+<main class="hf-page">
+  <div class="hf-intro">
+    <h1>Floating pane header</h1>
+    <p>Terminal and agent panes only. The header sits over the content, which runs to the pane's top edge. A terminal's live screen still starts under the header, so its row count is today's; chat and scrollback can pass under it.</p>
+  </div>
+
+  <section class="hf-take" id="take1">
+    <h2>1. Scrim</h2>
+    <figure>
+      <div class="hf-window penna-window penna-gaps" data-penna="window" data-take="scrim" data-state="scrolled"></div>
+      <figcaption><b>Always on</b>Surface gradient behind the title and buttons, clear 20px below the header.</figcaption>
+    </figure>
+  </section>
+
+  <section class="hf-take" id="take2">
+    <h2>2. Scroll edge</h2>
+    <figure>
+      <div class="hf-window penna-window penna-gaps" data-penna="window" data-take="edge" data-state="rest"></div>
+      <figcaption><b>At rest</b>No fill. Chat at its top, shell on its live screen.</figcaption>
+    </figure>
+    <figure>
+      <div class="hf-window penna-window penna-gaps" data-penna="window" data-take="edge" data-state="scrolled"></div>
+      <figcaption><b>Scrolled</b>The fade shows on the chat and the shell; the empty chat and Neovim never scroll, so they stay bare.</figcaption>
+    </figure>
+  </section>
+
+  <section class="hf-take" id="take3">
+    <h2>3. Glass</h2>
+    <figure>
+      <div class="hf-window penna-window penna-gaps" data-penna="window" data-take="glass" data-state="scrolled"></div>
+      <figcaption><b>Blurred</b>Surface at 72% over a 20px backdrop blur, soft shadow under the edge.</figcaption>
+    </figure>
+    <figure>
+      <div class="hf-window hf-short penna-window penna-gaps" data-penna="window" data-take="flat" data-state="scrolled" data-slots="chat sky"></div>
+      <figcaption><b>Without blur</b>What a window without backdrop sampling draws: surface at 90%, same shadow.</figcaption>
+    </figure>
+  </section>
+
+  <section class="hf-numbers">
+    <h2>Numbers</h2>
+    <div class="hf-tables">
+      <table>
+        <caption>1. Scrim</caption>
+        <tr><td>Header</td><td>34px with pane gaps, 40px flush; controls 22px, 6px in, 8px apart, actions 4px apart</td></tr>
+        <tr><td>Band</td><td>54px: the header plus a 20px tail</td></tr>
+        <tr><td>Stops</td><td>surface 100% at 0, 88% at 34px, 0% at 54px</td></tr>
+        <tr><td>As painted</td><td>two quads, one two-stop gradient each</td></tr>
+        <tr><td>Shown</td><td>always, on every terminal and agent pane</td></tr>
+        <tr><td>Inactive</td><td>title and buttons at 70%, band at 100%</td></tr>
+        <tr><td>First row</td><td>top inset 34px + 6px padding = 40px, as today; the tail covers its top 14px</td></tr>
+        <tr><td>Scrollback</td><td>history rows draw up to the pane's top edge</td></tr>
+      </table>
+      <table>
+        <caption>2. Scroll edge</caption>
+        <tr><td>Header</td><td>34px with pane gaps, 40px flush</td></tr>
+        <tr><td>At rest</td><td>no fill</td></tr>
+        <tr><td>Scrolled</td><td>54px fade: surface 100% to 16px, 0% at 54px</td></tr>
+        <tr><td>Grows in</td><td>height = min(54px, 2 × scrolled distance)</td></tr>
+        <tr><td>Shown on</td><td>chat list offset above 0; terminal in scrollback</td></tr>
+        <tr><td>Never on</td><td>empty chat, alternate screen</td></tr>
+        <tr><td>First row</td><td>40px from the top, as today, and bare at rest</td></tr>
+        <tr><td>As painted</td><td>penna's <code>top_fade</code> at 54px over the pane's content</td></tr>
+      </table>
+      <table>
+        <caption>3. Glass</caption>
+        <tr><td>Header</td><td>34px with pane gaps, 40px flush</td></tr>
+        <tr><td>Fill</td><td>surface at 72%</td></tr>
+        <tr><td>Blur</td><td>20px backdrop, no refraction, no rim</td></tr>
+        <tr><td>Shadow</td><td>0 4px 12px −2px, black 30%</td></tr>
+        <tr><td>Without blur</td><td>surface at 90%, same shadow</td></tr>
+        <tr><td>Shown</td><td>always, on every terminal and agent pane</td></tr>
+        <tr><td>First row</td><td>40px from the top, as today; the shadow reaches about 10px into the gap</td></tr>
+        <tr><td>Scrollback</td><td>history rows draw up to the pane's top edge, blurred under the band</td></tr>
+      </table>
+    </div>
+  </section>
+</main>
+<script src="sky.js"></script>
+<script src="board.js"></script>
+</body>
+</html>

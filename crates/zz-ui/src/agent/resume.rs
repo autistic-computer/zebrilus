@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use ala::{
-    Anchor, AnyElement, App, Div, Entity, IntoElement, ScrollHandle, SharedString, Window, div,
-    prelude::*, px,
+    Anchor, AnyElement, App, Div, Entity, IntoElement, Pixels, ScrollHandle, SharedString, Window,
+    div, prelude::*, px,
 };
 use penna::{
     Label, Row, RowLook, TextStyle,
@@ -50,6 +50,7 @@ pub struct EmptyChat<'a> {
     pub open: Option<Menu>,
     pub search: &'a Entity<InputState>,
     pub scroll: &'a ScrollHandle,
+    pub inset_top: Pixels,
 }
 
 impl EmptyChat<'_> {
@@ -110,6 +111,7 @@ impl EmptyChat<'_> {
             .relative()
             .size_full()
             .px_3()
+            .pt(self.inset_top)
             .child(sky(("agent-sky", pane), &zones))
             .child(
                 crate::v_flex()

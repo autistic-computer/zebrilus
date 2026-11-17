@@ -38,7 +38,7 @@ use zz_terminal::{
 };
 use zz_ui::{
     pane::{
-        PaneOverlayCorner, pane_overlay_stack, pane_status_badge, pane_sync_badge,
+        HeaderBand, PaneOverlayCorner, pane_overlay_stack, pane_status_badge, pane_sync_badge,
         terminal_link_popup, terminal_mode_indicator as terminal_mode_tag, terminal_status_popup,
     },
     pane_look::pane_color,
@@ -407,6 +407,7 @@ pub(crate) struct TerminalView {
     search_input: Entity<InputState>,
     search_focus: FocusHandle,
     pane_status: (Option<String>, bool),
+    header: Option<HeaderBand>,
     search_prompt_behavior: SearchPromptBehavior,
     swallowed_overlay_key: Option<KeyCode>,
     forwarded_keys: HashSet<String>,
@@ -977,6 +978,7 @@ impl TerminalView {
             search_input,
             search_focus,
             pane_status: (None, false),
+            header: None,
             search_prompt_behavior: SearchPromptBehavior::default(),
             swallowed_overlay_key: None,
             forwarded_keys: HashSet::new(),
@@ -1235,6 +1237,21 @@ impl TerminalView {
         self.command_output
     }
 
+    pub(crate) fn set_header_band(&mut self, header: Option<HeaderBand>, cx: &mut Context<Self>) {
+        if self.header != header {
+            self.header = header;
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn header_band(&self) -> Option<HeaderBand> {
+        self.header.filter(|_| !self.floating)
+    }
+
+    fn header_inset(&self) -> Pixels {
+        self.header_band().map_or(Pixels::ZERO, |band| band.height)
+    }
+
     pub(crate) fn set_floating(&mut self, floating: bool, cx: &mut Context<Self>) {
         if self.floating != floating {
             self.floating = floating;
@@ -1485,7 +1502,8 @@ impl TerminalView {
                     + px(self.render_appearance.source.padding_left))
                 .max(px(0.0)),
                 (position.y - grid.surface_bounds.origin.y
-                    + px(self.render_appearance.source.padding_top))
+                    + px(self.render_appearance.source.padding_top)
+                    + self.header_inset())
                 .max(px(0.0)),
             )
         });
@@ -2302,6 +2320,7 @@ impl Render for TerminalView {
         }
         self.ensure_cursor_blink(cx);
         let appearance = Arc::clone(&self.render_appearance.source);
+        let header_inset = self.header_inset();
         let font = self.render_appearance.font.clone();
         let appearance_hash = self.render_appearance.stable_hash;
         let retained = self.retained();
@@ -2328,7 +2347,7 @@ impl Render for TerminalView {
                     terminal
                         .pl(px(appearance.padding_left))
                         .pr(px(appearance.padding_right))
-                        .pt(px(appearance.padding_top))
+                        .pt(px(appearance.padding_top) + header_inset)
                         .pb(px(appearance.padding_bottom))
                 })
                 .overflow_hidden()
@@ -2398,7 +2417,7 @@ impl Render for TerminalView {
                 pane_content_radii(cx, self.window_corners)
             },
         )
-        .when(!self.floating, |root| {
+        .when(!self.floating && self.header.is_none(), |root| {
             root.rounded_tl(px(0.0)).rounded_tr(px(0.0))
         });
 
@@ -2426,6 +2445,7 @@ impl Render for TerminalView {
         if !top_right.is_empty() {
             root = root.child(
                 pane_overlay_stack(PaneOverlayCorner::TopRight, top_right)
+                    .top(px(8.0) + header_inset)
                     .left(px(8.0))
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
@@ -3302,6 +3322,67 @@ mod tests {
         cx.update(|window, cx| window.draw(cx).clear(cx));
         assert_eq!(reports().len(), 2);
         drop(terminal);
+    }
+
+    struct HeadedTerminal {
+        place: zz_ui::pane::HeaderPlace,
+        terminal: Entity<TerminalView>,
+    }
+
+    impl Render for HeadedTerminal {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let header = cx.theme().pane_header_height();
+            div()
+                .w(px(800.0))
+                .h(px(600.0))
+                .child(zz_ui::pane::headed_pane(
+                    self.place,
+                    div().w_full().h(header).flex_none().into_any_element(),
+                    self.terminal.clone().into_any_element(),
+                    None,
+                    cx,
+                ))
+        }
+    }
+
+    fn reported_grid(place: zz_ui::pane::HeaderPlace, cx: &mut ala::TestAppContext) -> (u16, u16) {
+        let sent_slot = Rc::new(RefCell::new(None));
+        let captured = Rc::clone(&sent_slot);
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let mux = cx.new(|cx| {
+                MuxClient::new(
+                    Err(zz_daemon_client::DaemonError::Thread(
+                        "test client".to_owned(),
+                    )),
+                    zz_daemon_client::default_socket_path(),
+                    cx,
+                )
+            });
+            captured.replace(Some(mux.update(cx, |mux, _| mux.record_input_for_test())));
+            let terminal = cx
+                .new(|cx| TerminalView::new(PaneId(0), mux, Rc::new(Cell::new(false)), window, cx));
+            let band = place.band(cx.theme().ground().fill, cx);
+            terminal.update(cx, |terminal, cx| terminal.set_header_band(band, cx));
+            HeadedTerminal { place, terminal }
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        let sent = sent_slot.borrow().clone().expect("captured input");
+        let sent = sent.borrow();
+        sent.iter()
+            .find_map(|message| match message {
+                InputMessage::ResizeTerminalV2 { columns, rows, .. } => Some((*columns, *rows)),
+                _ => None,
+            })
+            .expect("the terminal reports its grid")
+    }
+
+    #[ala::test]
+    fn a_floating_header_keeps_the_terminal_grid(cx: &mut ala::TestAppContext) {
+        cx.update(zz_ui::init);
+        let stacked = reported_grid(zz_ui::pane::HeaderPlace::Stacked, cx);
+        let over = reported_grid(zz_ui::pane::HeaderPlace::Over, cx);
+        assert_eq!(stacked, over);
+        assert_eq!(over, (98, 40));
     }
 
     #[ala::test]

@@ -639,6 +639,16 @@ pub struct GridPlacement {
 }
 
 #[must_use]
+pub fn scrolled_back(viewport: &TerminalViewport, scrolled_locally: bool) -> bool {
+    scrolled_locally
+        || viewport
+            .scrollbar
+            .offset
+            .saturating_add(viewport.scrollbar.len)
+            < viewport.scrollbar.total
+}
+
+#[must_use]
 pub fn grid_placement(
     viewport: &TerminalViewport,
     local: Option<&LocalColors>,
@@ -646,12 +656,7 @@ pub fn grid_placement(
     scrolled_locally: bool,
 ) -> GridPlacement {
     let anchorable = !matches!(viewport.mode, TerminalMode::View { .. }) && !command_output;
-    let at_live_bottom = viewport
-        .scrollbar
-        .offset
-        .saturating_add(viewport.scrollbar.len)
-        >= viewport.scrollbar.total;
-    let scrolled_back = scrolled_locally || !at_live_bottom;
+    let scrolled_back = scrolled_back(viewport, scrolled_locally);
     let last_row_filled = last_visible_row_has_content(viewport, local, viewport.rows);
     GridPlacement {
         bottom_anchored: anchorable && (scrolled_back || last_row_filled),

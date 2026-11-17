@@ -49,8 +49,8 @@ use zz_ui::attachment::open_attachment_preview;
 use zz_ui::pip::{PipCard, PipDrag, PipLayout, PipPlaced, PipStage, PipSurface, PipThrow};
 use zz_ui::{
     pane::{
-        DropPreview, DropPreviewFrame, FloatingSurface, PaneArrivals, PaneChrome, PaneDrag,
-        PaneDragOverlayState, PaneDragSource, PaneFlip, PaneMotion, PaneOverlayCorner,
+        DropPreview, DropPreviewFrame, FloatingSurface, HeaderPlace, PaneArrivals, PaneChrome,
+        PaneDrag, PaneDragOverlayState, PaneDragSource, PaneFlip, PaneMotion, PaneOverlayCorner,
         PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, PipGrab, TerminalPaneAction,
         content_pane, moving_pane, pane_border_color, pane_drag_overlay, pane_drag_preview,
         pane_drop_preview, pane_header_frame, pane_indicator, pane_indicator_overlay,
@@ -3778,10 +3778,32 @@ impl AppView {
                             .get(pane)
                             .filter(|_| !self.pickers.contains_key(pane))
                     });
+                let floats = window.floating.iter().any(|float| float.pane == *pane);
+                let header_place = pane_snapshot
+                    .filter(|_| {
+                        !self.pickers.contains_key(pane) && self.terminal_headers.contains_key(pane)
+                    })
+                    .map_or(HeaderPlace::Stacked, |held| {
+                        HeaderPlace::of(&held.kind, floats)
+                    });
+                let header_band = header_place.band(
+                    zz_ui::pane::tiled_pane_surface(
+                        crate::theme::chrome_background(cx),
+                        crate::theme::shell_frame(cx),
+                        config::pane_gaps(cx),
+                        active,
+                        cx,
+                    ),
+                    cx,
+                );
                 if let Some(terminal) = terminal_overlay {
                     terminal.update(cx, |terminal, cx| {
                         terminal.set_pane_status(dead_label.clone(), synchronized, cx);
+                        terminal.set_header_band(header_band, cx);
                     });
+                }
+                if let Some(agent) = self.agents.get(pane) {
+                    agent.update(cx, |agent, cx| agent.set_header_band(header_band, cx));
                 }
                 let pane_content = self.pane_content(*pane, dimmed, inactive_opacity, cx);
                 let newer_kind = pane_snapshot.and_then(|held| match &held.kind {
@@ -3826,7 +3848,7 @@ impl AppView {
                             && window.zoomed_pane.is_none()
                             && window.panes.len() > 1,
                         place: zz_ui::pane::PaneState {
-                            floats: window.floating.iter().any(|float| float.pane == *pane),
+                            floats,
                             lone: window.panes.len() == 1,
                             zoomed: window.zoomed_pane == Some(*pane),
                         },
@@ -3841,28 +3863,21 @@ impl AppView {
                         opacity: if dimmed { inactive_opacity } else { 1.0 },
                     };
                     header_view.update(cx, |header, cx| header.sync(state, cx));
-                    div()
-                        .flex()
-                        .flex_col()
-                        .size_full()
-                        .child(
-                            AnyView::from(header_view.clone()).cached(
+                    zz_ui::pane::headed_pane(
+                        header_place,
+                        AnyView::from(header_view.clone())
+                            .cached(
                                 StyleRefinement::default()
                                     .h(cx.theme().pane_header_height())
                                     .w_full()
                                     .flex_none(),
-                            ),
-                        )
-                        .child(
-                            div()
-                                .relative()
-                                .flex_1()
-                                .min_h_0()
-                                .min_w_0()
-                                .child(content)
-                                .children(self.tile_size_report(*pane, pane_snapshot)),
-                        )
-                        .into_any_element()
+                            )
+                            .into_any_element(),
+                        content,
+                        self.tile_size_report(*pane, pane_snapshot),
+                        cx,
+                    )
+                    .into_any_element()
                 } else if let Some(report) = self.tile_size_report(*pane, pane_snapshot) {
                     div()
                         .relative()

@@ -33,7 +33,7 @@ use zz_terminal::{
 };
 use zz_ui::{
     pane::{
-        PaneOverlayCorner, pane_overlay_stack, pane_status_badge, pane_sync_badge,
+        HeaderBand, PaneOverlayCorner, pane_overlay_stack, pane_status_badge, pane_sync_badge,
         terminal_link_popup, terminal_mode_indicator, terminal_status_popup,
     },
     pane_look::pane_color,
@@ -249,6 +249,7 @@ pub struct TerminalPane {
     text_opacity: f32,
     pane_status: (Option<String>, bool),
     corner_radii: Corners<Pixels>,
+    header: Option<HeaderBand>,
     rows_above: bool,
     rows_below: bool,
     resize_suppressed: Rc<Cell<bool>>,
@@ -417,6 +418,7 @@ impl TerminalPane {
             text_opacity: 1.0,
             pane_status: (None, false),
             corner_radii: Corners::default(),
+            header: None,
             rows_above: false,
             rows_below: false,
             resize_suppressed: Rc::default(),
@@ -590,6 +592,17 @@ impl TerminalPane {
             font,
             font_size,
         })
+    }
+
+    pub fn set_header_band(&mut self, header: Option<HeaderBand>, cx: &mut Context<Self>) {
+        if self.header != header {
+            self.header = header;
+            cx.notify();
+        }
+    }
+
+    fn header_band(&self) -> Option<HeaderBand> {
+        self.header.filter(|_| !self.floating)
     }
 
     pub fn set_rows_above(&mut self, rows_above: bool, cx: &mut Context<Self>) {
@@ -1653,6 +1666,9 @@ impl TerminalPane {
         let rows_below = self
             .rows_below
             .then(|| window.content_mask().bounds.bottom());
+        let header = self
+            .header_band()
+            .map(|band| band.scrim(window.content_mask().bounds));
         let scrollbar_opacity = self.scrollbar_opacity(cx);
         let connection = self.connection.clone();
         let flash_copies = !self.compact && !cx.reduce_motion();
@@ -1729,6 +1745,7 @@ impl TerminalPane {
                         .flatten(),
                     rows_above,
                     rows_below,
+                    header,
                 },
                 bounds,
                 window,
@@ -2152,6 +2169,7 @@ impl Render for TerminalPane {
         let font = terminal_font_for_style(&appearance, &cx.theme().mono_font_family, false, false);
         let font_size = px(appearance.font_size_points.clamp(7., 48.));
         self.text_font = Some((font.clone(), font_size));
+        let header_inset = self.header_band().map_or(Pixels::ZERO, |band| band.height);
         let prepare = cx.entity();
         let paint = cx.entity();
         let mut mode = None;
@@ -2194,10 +2212,14 @@ impl Render for TerminalPane {
             )
             .rounded_bl(self.corner_radii.bottom_left)
             .rounded_br(self.corner_radii.bottom_right)
+            .when(header_inset > Pixels::ZERO, |root| {
+                root.rounded_tl(self.corner_radii.top_left)
+                    .rounded_tr(self.corner_radii.top_right)
+            })
             .when(!self.floating, |root| {
                 root.pl(px(appearance.padding_left))
                     .pr(px(appearance.padding_right))
-                    .pt(px(appearance.padding_top))
+                    .pt(px(appearance.padding_top) + header_inset)
                     .pb(px(appearance.padding_bottom))
             })
             .key_context("Terminal")
@@ -2252,6 +2274,7 @@ impl Render for TerminalPane {
         if !top_right.is_empty() {
             root = root.child(
                 pane_overlay_stack(PaneOverlayCorner::TopRight, top_right)
+                    .top(px(8.0) + header_inset)
                     .left(px(8.0))
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation()),

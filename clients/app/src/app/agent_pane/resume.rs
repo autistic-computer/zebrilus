@@ -148,6 +148,7 @@ impl AgentPane {
             open: self.resume.menu(),
             search: &self.search,
             scroll: &self.menu_scroll,
+            inset_top: self.header_inset(),
         }
         .render(
             move |menu, open, window, cx| {

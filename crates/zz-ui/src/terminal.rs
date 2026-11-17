@@ -21,7 +21,7 @@ use ala::{
 use smallvec::SmallVec;
 use zz_client::local_scroll::{
     GridPlacement, LocalRowSource, RowProjection, grid_placement, kitty_display_row,
-    local_live_projection, local_row_source, peek_row_source,
+    local_live_projection, local_row_source, peek_row_source, scrolled_back,
 };
 #[cfg(test)]
 use zz_client::terminal_color::is_decorative_character;
@@ -131,6 +131,7 @@ pub struct TerminalRenderInput<'a> {
     pub marked_text: Option<&'a str>,
     pub rows_above: Option<Pixels>,
     pub rows_below: Option<Pixels>,
+    pub header: Option<crate::pane::HeaderScrim>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -485,6 +486,7 @@ pub struct PaintState {
     row_clip: Option<Bounds<Pixels>>,
     rows_above_top: Option<Pixels>,
     rows_below_bottom: Option<Pixels>,
+    header_scrim: Option<crate::pane::HeaderScrim>,
     scrollbar: Option<PaintQuad>,
     cursor_glyph: Option<PositionedLine>,
     composition: Option<PositionedLine>,
@@ -496,6 +498,11 @@ impl PaintState {
     #[must_use]
     pub fn selection_bounds(&self) -> &[Bounds<Pixels>] {
         &self.buffers.selection
+    }
+
+    #[must_use]
+    pub const fn header_scrim(&self) -> Option<crate::pane::HeaderScrim> {
+        self.header_scrim
     }
 }
 
@@ -706,6 +713,7 @@ impl RowRenderCache {
         } else {
             px(0.0)
         };
+        let scrolled_locally = local_scroll_target.is_some() || scroll_shift > px(0.0);
         let GridPlacement {
             bottom_anchored,
             project_from_bottom,
@@ -713,8 +721,11 @@ impl RowRenderCache {
             viewport,
             input.appearance.local_colors.as_ref(),
             command_output,
-            local_scroll_target.is_some() || scroll_shift > px(0.0),
+            scrolled_locally,
         );
+        let header_scrim = input
+            .header
+            .filter(|_| bottom_anchored && scrolled_back(viewport, scrolled_locally));
         let history_rows = input.history.map_or(0, TerminalHistorySource::row_count);
         let below_rows = input.history.map_or(0, TerminalHistorySource::below_count);
         let row_projection = RowProjection::new(viewport.rows, rows, project_from_bottom);
@@ -742,6 +753,7 @@ impl RowRenderCache {
         let content_origin = point(origin.x, origin.y + scroll_shift);
         let rows_above_top = input
             .rows_above
+            .or(header_scrim.map(|scrim| scrim.band.top()))
             .filter(|top| bottom_anchored && *top < grid_bounds.origin.y);
         let row_clip = match rows_above_top {
             Some(top) => Some(Bounds::new(
@@ -1242,6 +1254,7 @@ impl RowRenderCache {
             row_clip,
             rows_above_top,
             rows_below_bottom,
+            header_scrim,
             scrollbar,
             cursor_glyph,
             composition,
@@ -1288,7 +1301,11 @@ impl RowRenderCache {
                 window.paint_quad(quad);
             }
         });
-        if let Some(quad) = paint.scrollbar.take() {
+        let (scrollbar, scrollbar_over_scrim) = match paint.header_scrim {
+            Some(_) => (None, paint.scrollbar.take()),
+            None => (paint.scrollbar.take(), None),
+        };
+        if let Some(quad) = scrollbar {
             window.with_content_mask(Some(ContentMask { bounds }), |window| {
                 window.paint_quad(quad);
             });
@@ -1404,6 +1421,14 @@ impl RowRenderCache {
                 log::error!("failed to paint IME composition: {error}");
             }
         });
+        if let Some(scrim) = paint.header_scrim {
+            crate::pane::paint_header_scrim(window, scrim);
+            if let Some(quad) = scrollbar_over_scrim {
+                window.with_content_mask(Some(ContentMask { bounds }), |window| {
+                    window.paint_quad(quad);
+                });
+            }
+        }
         self.paint = std::mem::take(&mut paint.buffers);
         log::trace!(
             target: "zz::diagnostics::terminal_render",
@@ -5184,6 +5209,7 @@ mod tests {
                             marked_text: None,
                             rows_above: None,
                             rows_below: None,
+                            header: None,
                         },
                         Bounds::new(point(px(0.0), px(10.0)), size(px(400.0), height)),
                         window,
@@ -5244,6 +5270,7 @@ mod tests {
                         marked_text: None,
                         rows_above: None,
                         rows_below: None,
+                        header: None,
                     },
                     Bounds::new(point(px(0.0), px(0.0)), size(px(400.0), height)),
                     window,
@@ -5338,6 +5365,7 @@ mod tests {
                         marked_text: None,
                         rows_above,
                         rows_below: None,
+                        header: None,
                     },
                     bounds,
                     window,
@@ -5405,6 +5433,65 @@ mod tests {
     }
 
     #[ala::test]
+    fn the_header_scrim_shows_only_while_scrolled_back(cx: &mut ala::TestAppContext) {
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        let mut viewport = filled_viewport(8, 4, 'x');
+        let ring = RingRows(
+            vec![vec![PackedCell::new(u32::from('h'), 0, CellWidth::Narrow); 8]; 6],
+            TerminalDictionary::default(),
+        );
+        let revisions = [1, 2, 3, 4];
+        let appearance = TerminalAppearance::default();
+        let header = crate::pane::HeaderScrim {
+            band: Bounds::new(point(px(0.0), px(0.0)), size(px(400.0), px(34.0))),
+            ground: ala::hsla(0.0, 0.0, 0.1, 1.0),
+        };
+        let bounds = Bounds::new(point(px(6.0), px(40.0)), size(px(388.0), px(300.0)));
+        cx.update(|window, cx| {
+            let mut cache = RowRenderCache::default();
+            let mut scrim_at = |offset: u32, window: &mut Window| {
+                viewport.scrollbar = ScrollbarState {
+                    total: 40,
+                    offset,
+                    len: 4,
+                };
+                let paint = cache.prepaint(
+                    TerminalRenderInput {
+                        viewport: &viewport,
+                        row_revisions: &revisions,
+                        revision_epoch: 1,
+                        history: Some(&ring),
+                        images: None,
+                        local_scroll_target: None,
+                        scroll_pixel_offset: px(0.0),
+                        overscroll: px(0.0),
+                        scrollbar_opacity: 1.0,
+                        extra_height: px(0.0),
+                        command_output: false,
+                        appearance: &appearance,
+                        appearance_hash: 0,
+                        text_opacity: 1.0,
+                        focused: false,
+                        cursor_blink_visible: true,
+                        marked_text: None,
+                        rows_above: None,
+                        rows_below: None,
+                        header: Some(header),
+                    },
+                    bounds,
+                    window,
+                    cx,
+                );
+                (paint.header_scrim(), paint.rows_above_top)
+            };
+            assert_eq!(scrim_at(36, window), (None, None));
+            assert_eq!(scrim_at(35, window), (Some(header), Some(px(0.0))));
+            assert_eq!(scrim_at(36, window), (None, None));
+        });
+    }
+
+    #[ala::test]
     fn rows_below_the_grid_show_newer_rows_while_scrolled_back(cx: &mut ala::TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();
@@ -5447,6 +5534,7 @@ mod tests {
                         marked_text: None,
                         rows_above: None,
                         rows_below,
+                        header: None,
                     },
                     bounds,
                     window,
@@ -5558,6 +5646,7 @@ mod tests {
                         marked_text: None,
                         rows_above: None,
                         rows_below,
+                        header: None,
                     },
                     bounds,
                     window,
