@@ -620,6 +620,7 @@ impl Connection {
         #[cfg(target_family = "wasm")]
         {
             self.failures = 0;
+            self.stale_page = false;
         }
         self.reconnect(cx);
     }
@@ -1639,9 +1640,14 @@ impl Connection {
             }
             inbox::SocketEvent::Frame(bytes) => match zz_protocol::decode_protocol_frame(&bytes) {
                 decoded if page_out_of_date(&decoded) => {
-                    self.stale_page = true;
+                    self.stale_page = self.endpoint.as_deref() == Some(GATEWAY_LOCAL);
                     self.disconnected(
-                        "This page is older than zz on the host. Reload it to update.".to_owned(),
+                        if self.stale_page {
+                            "This page is older than zz on the host. Reload it to update."
+                        } else {
+                            "This host runs a newer zz than the computer serving this page. Update zz on that computer."
+                        }
+                        .to_owned(),
                         cx,
                     );
                     return false;

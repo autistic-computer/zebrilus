@@ -223,6 +223,9 @@ fn watch_connection(
                 zz_client::CoreEvent::HelloReceived | zz_client::CoreEvent::Attached { .. } => {
                     if matches!(event, zz_client::CoreEvent::HelloReceived) {
                         this.remember_host(cx);
+                        if this.preferences.window_follows_theme && *connection == this.connection {
+                            this.preferences.apply(&this.connection, window, cx);
+                        }
                     }
                     if matches!(event, zz_client::CoreEvent::Attached { .. }) {
                         connection.update(cx, Connection::set_color_scheme);

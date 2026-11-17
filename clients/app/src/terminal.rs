@@ -121,6 +121,9 @@ pub(crate) fn localized_font_appearance(
         }
         appearance.font_size_points =
             (appearance.font_size_points * preferences.font_scale).clamp(7.0, 48.0);
+        if crate::app::phone() {
+            return appearance;
+        }
         if let Some(contrast) = preferences.contrast {
             appearance.minimum_contrast = if contrast { TERMINAL_CONTRAST_ON } else { 1.0 };
         }
@@ -164,6 +167,7 @@ pub(crate) fn device_cursor(
 
 fn cursor_blink_policy(core: &ClientCore, cx: &App) -> CursorBlinkPolicy {
     cx.try_global::<TerminalDisplayPreferences>()
+        .filter(|_| !crate::app::phone())
         .and_then(|preferences| preferences.cursor_blink)
         .or_else(|| {
             core.appearance()
