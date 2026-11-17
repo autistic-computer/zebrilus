@@ -1,7 +1,7 @@
 use zz_protocol::{
     AgentProvider, PaneId,
     agent_mention::{AgentAsk, AgentDecision, AskAnswers},
-    chat::{ChatView, ItemId, ItemKind, ItemStatus},
+    chat::{Ask, ChatView, ItemId, ItemKind, ItemStatus, RequestView},
 };
 
 use crate::{
@@ -39,6 +39,32 @@ pub struct ChildAsk {
 }
 
 impl ChildAsk {
+    fn pending(chat: &ChatView, request: &RequestView) -> Self {
+        let title = match &request.ask {
+            Ask::Approval { title, .. } => title.clone(),
+            Ask::Questions { questions } => questions
+                .first()
+                .map(|question| {
+                    question
+                        .header
+                        .clone()
+                        .filter(|header| !header.is_empty())
+                        .unwrap_or_else(|| question.question.clone())
+                })
+                .unwrap_or_default(),
+            Ask::Plan { .. } => "Plan".to_owned(),
+        };
+        let kind = match &request.ask {
+            Ask::Questions { .. } => ItemKind::Tool,
+            Ask::Approval { .. } | Ask::Plan { .. } => request
+                .item
+                .as_ref()
+                .and_then(|id| chat.item(id))
+                .map_or(ItemKind::Tool, |item| item.kind),
+        };
+        Self { kind, title }
+    }
+
     #[must_use]
     pub fn of(ask: &AgentAsk) -> Self {
         let (word, rest) = ask.what.split_once(' ').unwrap_or((&ask.what, ""));
@@ -75,31 +101,28 @@ pub enum Verdict {
 impl Verdict {
     #[must_use]
     pub fn of(decision: &AgentDecision, ask: Option<&AgentAsk>) -> Self {
-        if *decision == AgentDecision::Allow {
-            return Self::Allowed;
-        }
-        if *decision == AgentDecision::Deny {
-            return Self::Denied;
-        }
-        if let AgentDecision::Option(id) = decision {
-            let label = ask
-                .and_then(|ask| match &ask.answers {
+        match decision {
+            AgentDecision::Allow => Self::Allowed,
+            AgentDecision::Deny => Self::Denied,
+            AgentDecision::Option(id) => Self::Picked(
+                ask.and_then(|ask| match &ask.answers {
                     AskAnswers::Options(options) => options
                         .iter()
                         .find(|option| option.id == *id && !option.label.is_empty())
                         .map(|option| option.label.clone()),
-                    _ => None,
+                    AskAnswers::AllowDeny | AskAnswers::FreeText => None,
                 })
-                .unwrap_or_else(|| id.clone());
-            return Self::Picked(label);
+                .unwrap_or_else(|| id.clone()),
+            ),
+            AgentDecision::Answer(_) => Self::Answered,
         }
-        Self::Answered
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Decision {
     pub verdict: Verdict,
+    pub kind: ItemKind,
     pub title: String,
 }
 
@@ -149,21 +172,30 @@ impl ChildCard {
     }
 
     #[must_use]
-    pub fn allowed(&self) -> usize {
-        self.decisions
-            .iter()
-            .filter(|decision| decision.verdict == Verdict::Allowed)
-            .count()
-    }
-
-    #[must_use]
     pub fn header(&self, now: u64) -> ChildHeader {
-        let allowed = self.allowed();
+        let count = |kept: fn(&Verdict) -> bool| {
+            self.decisions
+                .iter()
+                .filter(|decision| kept(&decision.verdict))
+                .count()
+        };
+        let counts = [
+            (count(|verdict| *verdict == Verdict::Allowed), "allowed"),
+            (count(|verdict| *verdict == Verdict::Denied), "denied"),
+            (
+                count(|verdict| matches!(verdict, Verdict::Picked(_) | Verdict::Answered)),
+                "answered",
+            ),
+        ]
+        .into_iter()
+        .filter(|(count, _)| *count > 0)
+        .map(|(count, word)| format!("{count} {word}"))
+        .collect::<Vec<_>>();
         ChildHeader {
             name: self.name(),
             word: self.word(),
-            allowed: (matches!(self.state, ChildState::Done { .. }) && allowed > 0)
-                .then(|| format!("{allowed} allowed")),
+            allowed: (matches!(self.state, ChildState::Done { .. }) && !counts.is_empty())
+                .then(|| counts.join(" · ")),
             time: (self.state != ChildState::Closed)
                 .then(|| duration(self.ended_at.unwrap_or(now).saturating_sub(self.started_at))),
         }
@@ -186,10 +218,19 @@ impl ChildCard {
         }
         if alive == Some(false) {
             card.state = ChildState::Closed;
-        } else if matches!(self.state, ChildState::Asking(_))
-            && chat.is_some_and(|chat| chat.open_requests().next().is_none())
-        {
-            card.state = ChildState::Working;
+            return card;
+        }
+        let Some(chat) = chat else {
+            return card;
+        };
+        match chat.open_requests().next() {
+            None if matches!(self.state, ChildState::Asking(_)) => {
+                card.state = ChildState::Working;
+            }
+            Some(request) if self.state == ChildState::Working => {
+                card.state = ChildState::Asking(ChildAsk::pending(chat, request));
+            }
+            _ => {}
         }
         card
     }
@@ -231,6 +272,19 @@ impl ChildCard {
                 verdict: None,
             }),
             ChildState::Working => {
+                if let Some(decision) = self
+                    .decisions
+                    .last()
+                    .filter(|decision| !lines.iter().any(|line| line.label == decision.title))
+                {
+                    lines.push(PeekLine {
+                        mark: PeekMark::Step(decision.kind),
+                        label: decision.title.clone(),
+                        detail: None,
+                        code: decision.kind == ItemKind::Execute,
+                        verdict: Some(decision.verdict.clone()),
+                    });
+                }
                 if let Some(live) = turn
                     .filter(|(_, turn)| !running && turn.is_open())
                     .and_then(|(chat, turn)| live_line(chat, turn))
@@ -292,6 +346,7 @@ mod tests {
             ended_at: None,
             decisions: vec![Decision {
                 verdict: Verdict::Allowed,
+                kind: ItemKind::Execute,
                 title: "cargo test -p zz-daemon".to_owned(),
             }],
         }

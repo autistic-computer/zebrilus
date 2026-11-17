@@ -1404,7 +1404,7 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
     use zz_protocol::{
         AgentProvider, PaneId,
         agent_mention::{
-            AgentAsk, AgentDecision, AgentReport, AgentRespond, AskAnswers, ReplyNotice,
+            AgentAsk, AgentDecision, AgentReport, AgentRespond, AskAnswers, ReplyNotice, ReplyRoute,
         },
     };
 
@@ -1440,6 +1440,7 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
                     verb: "new-pane".to_owned(),
                     pane,
                     provider: codex,
+                    route: Some(ReplyRoute::Back),
                 }
                 .to_string(),
             )),
@@ -1471,7 +1472,11 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
             Some((
                 "send",
                 "zz agent-send -t %4 'again'".to_owned(),
-                ReplyNotice::Sent { pane }.to_string(),
+                ReplyNotice::Sent {
+                    pane,
+                    route: ReplyRoute::Back,
+                }
+                .to_string(),
             )),
         ),
         ("u5", finished("still green"), None),
@@ -1592,6 +1597,7 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
                     7000,
                     vec![Decision {
                         verdict: Verdict::Allowed,
+                        kind: ItemKind::Execute,
                         title: "cargo test".to_owned(),
                     }],
                 ),

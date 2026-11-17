@@ -8,7 +8,7 @@ use ala::{
 use penna::ContentLook;
 use web_time::{Duration, Instant};
 use zz_client::floating::{FloatCells, FloatGrip, FloatPlace, PipGeometry};
-use zz_protocol::{PaneBorderLines, PaneId, WindowId, WindowSnapshot};
+use zz_protocol::{PaneBorderLines, PaneId, PaneKindSnapshot, WindowId, WindowSnapshot};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Layer, PaintState, StyledExt as _, pane_look::pane_color,
@@ -264,6 +264,21 @@ impl PipStage {
             })
             .map(|float| float.pane)
             .collect::<BTreeSet<_>>();
+        let chats = if self.window == Some(window.id) {
+            floats
+                .difference(&self.floats)
+                .copied()
+                .filter(|pane| *pane != window.active_pane)
+                .filter(|pane| {
+                    window
+                        .panes
+                        .get(pane)
+                        .is_some_and(|pane| matches!(pane.kind, PaneKindSnapshot::Agent(_)))
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         self.focus(
             window.id,
             window.active_pane,
@@ -271,6 +286,7 @@ impl PipStage {
             |pane| window.floating.iter().any(|float| float.pane == pane),
             |pane| window.panes.contains_key(&pane),
         );
+        self.stashed.extend(chats);
     }
 
     fn focus(

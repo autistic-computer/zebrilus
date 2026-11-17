@@ -1796,11 +1796,18 @@ pub fn chat_child_card(
                 .child(header.word),
         )
         .child(div().flex_1())
-        .children(
-            header
-                .allowed
-                .map(|allowed| Badge::new(allowed).tone(Tone::Success).small().on(ground)),
-        )
+        .children(header.allowed.map(|allowed| {
+            let tone = if card
+                .decisions
+                .iter()
+                .all(|decision| decision.verdict == Verdict::Allowed)
+            {
+                Tone::Success
+            } else {
+                Tone::Neutral
+            };
+            Badge::new(allowed).tone(tone).small().on(ground)
+        }))
         .children(header.time.map(|time| {
             div()
                 .flex_none()
@@ -1833,7 +1840,19 @@ pub fn chat_child_card(
                         .type_style(TextStyle::Body, cx)
                         .line_height(px(QUOTE_LINE))
                         .text_color(muted)
-                        .child(reply.clone()),
+                        .child({
+                            let id = SharedString::from(format!(
+                                "chat-child-reply-{}",
+                                card.anchor.as_str()
+                            ));
+                            let scope = block_scope(hooks.owner, &id);
+                            agent_text_view(
+                                TextView::markdown(id, reply.clone()),
+                                scope,
+                                hooks.owner,
+                                cx,
+                            )
+                        }),
                 )
                 .into_any_element(),
         ),

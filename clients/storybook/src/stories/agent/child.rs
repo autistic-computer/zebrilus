@@ -7,7 +7,9 @@ use zz_client::child_card::{ChildAsk, ChildCard, ChildState, Decision, Verdict};
 use zz_client::program::Program;
 use zz_protocol::{
     AgentProvider, PaneId,
-    agent_mention::{AgentAsk, AgentDecision, AgentReport, AgentRespond, AskAnswers, ReplyNotice},
+    agent_mention::{
+        AgentAsk, AgentDecision, AgentReport, AgentRespond, AskAnswers, ReplyNotice, ReplyRoute,
+    },
     chat::{ChatView, ItemBody, ItemId, ItemKind},
 };
 
@@ -81,6 +83,7 @@ pub fn child_cards(_: &mut Window, cx: &mut App) -> AnyView {
         decisions: allowed
             .then(|| Decision {
                 verdict: Verdict::Allowed,
+                kind: ItemKind::Execute,
                 title: COMMAND.to_owned(),
             })
             .into_iter()
@@ -255,6 +258,7 @@ pub fn child_transcript(window: &mut Window, cx: &mut App) -> AnyView {
             verb: "new-pane".to_owned(),
             pane,
             provider: codex,
+            route: Some(ReplyRoute::Back),
         }
         .to_string(),
     );
@@ -303,7 +307,11 @@ pub fn child_transcript(window: &mut Window, cx: &mut App) -> AnyView {
         &mut script,
         "send",
         "zz agent-send -t %4 'Does the guard cover resumed sessions too?'".to_owned(),
-        ReplyNotice::Sent { pane }.to_string(),
+        ReplyNotice::Sent {
+            pane,
+            route: ReplyRoute::Back,
+        }
+        .to_string(),
     );
     script.reply("a5", "Asked codex again.").finish(completed());
     script

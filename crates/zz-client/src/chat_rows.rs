@@ -642,11 +642,21 @@ pub fn child_fold(view: &ChatView) -> ChildFold {
             let Some(exchange) = open.get(&respond.pane).map(|at| &mut exchanges[*at]) else {
                 continue;
             };
+            let failed = matches!(item.status, ItemStatus::Failed { .. })
+                || item.body.exit_code.is_some_and(|code| code != 0);
+            if failed {
+                continue;
+            }
             hidden.insert(item.id.clone());
+            if item.status.is_open() {
+                continue;
+            }
             let ask = exchange.ask.take();
+            let asked = ask.as_ref().map(ChildAsk::of);
             exchange.card.decisions.push(Decision {
                 verdict: Verdict::of(&respond.decision, ask.as_ref()),
-                title: ask.map(|ask| ChildAsk::of(&ask).title).unwrap_or_default(),
+                kind: asked.as_ref().map_or(ItemKind::Tool, |asked| asked.kind),
+                title: asked.map(|asked| asked.title).unwrap_or_default(),
             });
             if matches!(exchange.card.state, ChildState::Asking(_)) {
                 exchange.card.state = ChildState::Working;
@@ -658,7 +668,7 @@ pub fn child_fold(view: &ChatView) -> ChildFold {
         };
         let (pane, provider) = match notice {
             ReplyNotice::Opened { pane, provider, .. } => (pane, Some(provider)),
-            ReplyNotice::Sent { pane } => (pane, None),
+            ReplyNotice::Sent { pane, .. } => (pane, None),
         };
         let earlier = open.get(&pane).map(|at| &mut exchanges[*at]);
         let provider = provider.or_else(|| {
