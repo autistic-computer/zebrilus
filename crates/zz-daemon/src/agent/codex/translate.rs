@@ -642,7 +642,7 @@ fn user_text(item: &Value, cwd: &Path) -> Option<(String, Vec<(String, String)>)
         .iter()
         .filter(|part| part["type"] == "text")
         .filter_map(|part| part["text"].as_str())
-        .filter(|text| *text != zz_protocol::agent_mention::MENTION_NOTE)
+        .filter(|text| !zz_protocol::agent_mention::is_hidden_note(text))
         .collect::<Vec<_>>()
         .join("\n");
     let images = parts
@@ -1243,12 +1243,12 @@ mod tests {
             text: text.to_owned(),
             ..Default::default()
         };
-        let input = crate::agent::codex::turn_input(&prompt("@+codex fix it"));
+        let input = crate::agent::codex::turn_input(&prompt("@+codex fix it"), None);
         assert_eq!(
             input,
             json!([
                 { "type": "text", "text": "@+codex fix it", "text_elements": [] },
-                { "type": "text", "text": zz_protocol::agent_mention::MENTION_NOTE, "text_elements": [] },
+                { "type": "text", "text": zz_protocol::agent_mention::mention_note("@+codex fix it"), "text_elements": [] },
             ])
         );
         let item = json!({ "type": "userMessage", "id": "m1", "content": input });
@@ -1257,7 +1257,7 @@ mod tests {
             Some(("@+codex fix it".to_owned(), Vec::new()))
         );
         assert_eq!(
-            crate::agent::codex::turn_input(&prompt("fix it")),
+            crate::agent::codex::turn_input(&prompt("fix it"), None),
             json!([{ "type": "text", "text": "fix it", "text_elements": [] }])
         );
     }

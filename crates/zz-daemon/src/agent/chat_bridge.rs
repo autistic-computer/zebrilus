@@ -30,6 +30,7 @@ pub(crate) struct Shadow {
     plan: Option<ItemId>,
     plans: u64,
     splits: HashMap<ItemId, u32>,
+    tools: HashMap<String, (u32, ItemId)>,
     loose: Option<ItemId>,
     asked: HashMap<u64, ItemId>,
     denials: HashMap<u64, (ItemId, Vec<String>)>,
@@ -310,12 +311,23 @@ impl Shadow {
         }
     }
 
+    fn tool_item(&self, id: &str) -> ItemId {
+        self.tools
+            .get(id)
+            .map_or_else(|| ItemId::new(id), |(_, item)| item.clone())
+    }
+
     fn tool_call(&mut self, update: &Value) {
         let Some(id) = update["toolCallId"].as_str() else {
             return;
         };
         self.settle_loose();
-        let item = ItemId::new(id);
+        let mut item = self.tool_item(id);
+        if !self.replaying && !self.open(&item) && self.started(&item) {
+            let run = self.tools.get(id).map_or(2, |(run, _)| run + 1);
+            item = ItemId::new(format!("{id}~{run}"));
+            self.tools.insert(id.to_owned(), (run, item.clone()));
+        }
         let body = ItemBody {
             title: update["title"].as_str().unwrap_or_default().to_owned(),
             target: target(update),
@@ -359,7 +371,7 @@ impl Shadow {
         let Some(id) = update["toolCallId"].as_str() else {
             return;
         };
-        let item = ItemId::new(id);
+        let item = self.tool_item(id);
         let mut body = self.bodies.get(&item).cloned().unwrap_or_default();
         let mut changed = false;
         if let Some(title) = update["title"]

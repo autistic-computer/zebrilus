@@ -179,7 +179,7 @@ impl AgentRuntime {
         prompt: AgentPrompt,
         waiter: Option<AgentTurnWaiter>,
     ) -> bool {
-        self.prompt_from(pane, prompt, waiter, PromptSource::Composer)
+        self.prompt_from(pane, prompt, waiter, PromptSource::Composer, None)
     }
 
     pub(crate) fn command_prompt(
@@ -187,8 +187,9 @@ impl AgentRuntime {
         pane: PaneId,
         prompt: AgentPrompt,
         waiter: Option<AgentTurnWaiter>,
+        note: Option<String>,
     ) -> bool {
-        self.prompt_from(pane, prompt, waiter, PromptSource::Command)
+        self.prompt_from(pane, prompt, waiter, PromptSource::Command, note)
     }
 
     pub(crate) fn answer_question(
@@ -228,12 +229,14 @@ impl AgentRuntime {
         prompt: AgentPrompt,
         waiter: Option<AgentTurnWaiter>,
         source: PromptSource,
+        note: Option<String>,
     ) -> bool {
         let _lifecycle = self.lifecycle.lock();
         let queued = QueuedPrompt {
             prompt,
             waiter,
             source,
+            note,
         };
         match self.host.command(pane, HostCommand::Prompt(queued)) {
             Ok(()) => true,
@@ -251,6 +254,7 @@ impl AgentRuntime {
             prompt,
             waiter: None,
             source: PromptSource::Injected,
+            note: None,
         };
         self.host.command(pane, HostCommand::Prompt(queued)).is_ok()
     }

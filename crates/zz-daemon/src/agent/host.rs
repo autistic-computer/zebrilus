@@ -242,6 +242,7 @@ pub(crate) struct QueuedPrompt {
     pub(crate) prompt: AgentPrompt,
     pub(crate) waiter: Option<AgentTurnWaiter>,
     pub(crate) source: PromptSource,
+    pub(crate) note: Option<String>,
 }
 
 fn waiting_prompts(queue: &VecDeque<QueuedPrompt>) -> usize {
@@ -277,6 +278,7 @@ impl From<AgentPrompt> for QueuedPrompt {
             prompt,
             waiter: None,
             source: PromptSource::Composer,
+            note: None,
         }
     }
 }
@@ -1517,6 +1519,7 @@ impl PanePump {
 
     fn dispatch(&mut self, queued: QueuedPrompt) {
         let source = queued.source;
+        let note = queued.note.clone();
         self.next_turn_id = self.next_turn_id.saturating_add(1).max(1);
         let turn_id = self.next_turn_id;
         self.active_turn = Some(turn_id);
@@ -1530,10 +1533,11 @@ impl PanePump {
         }
         let prompt = queued.prompt;
         let retained = prompt.clone();
-        match self
-            .commands
-            .try_send(RuntimeCommand::Prompt { turn_id, prompt })
-        {
+        match self.commands.try_send(RuntimeCommand::Prompt {
+            turn_id,
+            prompt,
+            note,
+        }) {
             Ok(()) => {
                 self.dispatched_prompt =
                     (source == PromptSource::Composer).then_some((turn_id, retained));
@@ -1546,13 +1550,14 @@ impl PanePump {
                     state.phase = AgentConnectionPhase::Ready;
                     settle_turn(&mut state);
                 }
-                let RuntimeCommand::Prompt { prompt, .. } = error.into_inner() else {
+                let RuntimeCommand::Prompt { prompt, note, .. } = error.into_inner() else {
                     return;
                 };
                 self.queue.push_front(QueuedPrompt {
                     prompt,
                     waiter: self.active_waiter.take(),
                     source,
+                    note,
                 });
                 self.reclaim_queue();
             }
@@ -2225,6 +2230,7 @@ mod tests {
                     asks: None,
                 }),
                 source: PromptSource::Composer,
+                note: None,
             }));
             reply
         }
@@ -2287,7 +2293,9 @@ mod tests {
                     .map_err(|error| error.to_string())?;
                 while let Ok(command) = channels.commands.recv().await {
                     match command {
-                        RuntimeCommand::Prompt { turn_id, prompt } => {
+                        RuntimeCommand::Prompt {
+                            turn_id, prompt, ..
+                        } => {
                             send(AgentStreamPayload::Update {
                                 update: serde_json::json!({
                                     "sessionUpdate": "agent_message_chunk",
@@ -2374,7 +2382,9 @@ mod tests {
                                 .await
                                 .map_err(|error| error.to_string())?;
                         }
-                        RuntimeCommand::Prompt { turn_id, prompt } => {
+                        RuntimeCommand::Prompt {
+                            turn_id, prompt, ..
+                        } => {
                             send(format!("prompt {}", prompt.text))
                                 .await
                                 .map_err(|error| error.to_string())?;
@@ -2446,7 +2456,9 @@ mod tests {
                 let mut running = None;
                 while let Ok(command) = channels.commands.recv().await {
                     let payloads = match command {
-                        RuntimeCommand::Prompt { turn_id, prompt } => {
+                        RuntimeCommand::Prompt {
+                            turn_id, prompt, ..
+                        } => {
                             running = Some(turn_id);
                             vec![text(format!("prompt {}", prompt.text))]
                         }
@@ -3236,6 +3248,7 @@ mod tests {
                 },
                 waiter: None,
                 source,
+                note: None,
             })
         };
         fixture.prompt("busy");
@@ -3289,6 +3302,7 @@ mod tests {
                 asks: None,
             }),
             source: PromptSource::Composer,
+            note: None,
         }));
         let Err(AgentTurnFailure::Blocked { permission, reply }) =
             result.recv_timeout(DEADLINE).expect("blocked waiter")
@@ -3607,6 +3621,7 @@ mod tests {
                     asks: None,
                 }),
                 source: PromptSource::Composer,
+                note: None,
             })
             .unwrap();
         pump.observe(AgentStreamPayload::SessionReset { restoring: true });

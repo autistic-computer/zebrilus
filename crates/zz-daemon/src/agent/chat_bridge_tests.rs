@@ -856,3 +856,27 @@ fn text_streamed_outside_a_turn_stays_one_item() {
     assert_eq!(item.status, ItemStatus::Completed);
     assert!(view.item(&ItemId::new("a:m:0~1")).is_none());
 }
+
+#[test]
+fn a_tool_call_run_again_under_its_id_is_a_second_item() {
+    let mut shadow = Shadow::recording();
+    ready(&mut shadow);
+    running(&mut shadow, "c1");
+    let ended = |status: &str| {
+        update(json!({ "sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": status }))
+    };
+    shadow.payload(&tool("t1", "in_progress"));
+    shadow.payload(&ended("failed"));
+    shadow.payload(&tool("t1", "in_progress"));
+    shadow.payload(&ended("completed"));
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    let view = view(&shadow);
+    let status = |id: &str| {
+        view.items
+            .get(&ItemId::new(id))
+            .map(|item| item.status.clone())
+    };
+    assert_eq!(view.items.len(), 2);
+    assert_eq!(status("t1"), Some(ItemStatus::Failed { message: None }));
+    assert_eq!(status("t1~2"), Some(ItemStatus::Completed));
+}

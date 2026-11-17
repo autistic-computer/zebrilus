@@ -12308,6 +12308,7 @@ impl Shared {
                 });
                 self.open_created_chat(client, context, command_name, created, agent_briefs);
             }
+            self.adopt_child_chat_panes(client, context, &execution.effects);
             self.close_orphaned_chats(&removed_panes);
         }
         #[cfg(not(feature = "agent"))]
@@ -17209,6 +17210,7 @@ impl Shared {
                     images: Vec::new(),
                 },
                 waiter,
+                None,
             ) {
                 return Err(self.untaken_prompt(pane).into());
             }
@@ -33774,6 +33776,13 @@ impl Shared {
         if let Some(runtime) = self.agent_runtime() {
             for (pane, text) in briefs {
                 let waiter = caller.map(|caller| self.chat_report_waiter(caller, pane));
+                let note = caller.map(|caller| {
+                    zz_protocol::agent_mention::child_note(
+                        caller,
+                        self.agent_provider_of(caller),
+                        self.agent_provider_of(pane),
+                    )
+                });
                 queued |= runtime.command_prompt(
                     pane,
                     AgentPrompt {
@@ -33782,6 +33791,7 @@ impl Shared {
                         images: Vec::new(),
                     },
                     waiter,
+                    note,
                 );
                 if !queued {
                     log::warn!(target: "zz::agent", "{pane} did not take its brief");
@@ -33812,6 +33822,34 @@ impl Shared {
         ServerError::InvalidCommand(format!(
             "{pane}'s agent is not running (agent_state {state}); the prompt was not sent"
         ))
+    }
+
+    fn adopt_child_chat_panes(
+        &self,
+        client: ClientId,
+        context: &ExecutionContext,
+        effects: &[MuxEffect],
+    ) {
+        let created = effects
+            .iter()
+            .filter_map(|effect| match effect {
+                MuxEffect::PaneCreated { pane, .. } => Some(*pane),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if created.is_empty() {
+            return;
+        }
+        let Some(caller) = self.chat_caller(client, context, None) else {
+            return;
+        };
+        let mut inner = self.inner.lock();
+        if inner.engine.agent_parent(caller).is_none() {
+            return;
+        }
+        for pane in created {
+            inner.engine.set_agent_parent(pane, caller);
+        }
     }
 
     fn refuse_full_chat(self: &Arc<Self>, pane: PaneId) -> Result<(), DaemonError> {
@@ -34245,6 +34283,7 @@ impl Shared {
                 images: Vec::new(),
             },
             Some(waiter),
+            None,
         ) {
             return Err(ServerError::PaneExited(pane).into());
         }
@@ -34395,6 +34434,7 @@ impl Shared {
                     images: Vec::new(),
                 },
                 Some(waiter),
+                None,
             ),
             None => runtime.join(pane, waiter),
         };
@@ -52816,11 +52856,11 @@ Claude Code and Codex run two ways in a pane, and a pane flips between them on t
 
 ### `zz new-pane [-d] [-P -F FORMAT] [-c DIR] [-t TARGET] --kind agent claude|codex [--model M] [--effort E] [--account ID] [--resume ID] [BRIEF]`
 
-Open a new chat as a float. `split-window` and `new-window` take the same `--kind agent` words and give the chat a split beside the target or a window of its own. `--model`, `--effort`, `--account` and `--resume` go before the provider or right after it. The words after them are the brief, sent as the chat's first prompt once its session is up, with the same checks and 1 MiB cap as `agent-send` TEXT; no brief opens an empty chat. Without `-c` the chat starts in the folder a terminal made the same way would. `-P -F '#{pane_id}'` prints the new pane, which takes `agent-send` at once: `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'review the diff in this folder'`. A missing or unknown provider, or a bad flag value, exits 2. Every create prints one line on stderr, `new-pane: opened %N (codex)` (with the verb's own name); with a brief it goes on `; its reply comes back to you as a message` when run from a chat, and `; read its reply with: zz agent-send -t %N --wait ''` when run from anywhere else.
+Open a new chat as a float. `split-window` and `new-window` take the same `--kind agent` words and give the chat a split beside the target or a window of its own. `--model`, `--effort`, `--account` and `--resume` go before the provider or right after it. The words after them are the brief, sent as the chat's first prompt once its session is up, with the same checks and 1 MiB cap as `agent-send` TEXT; no brief opens an empty chat. Without `-c` the chat starts in the folder a terminal made the same way would. `-P -F '#{pane_id}'` prints the new pane, which takes `agent-send` at once: `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'review the diff in this folder'`. A missing or unknown provider, or a bad flag value, exits 2. Every create prints one line on stderr, `new-pane: opened %N (codex)` (with the verb's own name); with a brief it goes on `; its reply comes back to you as a message; end your turn now` when run from a chat, and `; read its reply with: zz agent-send -t %N --wait ''` when run from anywhere else.
 
-Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends, and each permission it asks for during that turn comes to you with the `agent-respond` lines that answer it. Do not wait or poll. A chat you open cannot open chats of its own (it is told to do the work itself or say what it needs), and closing your pane closes it. A message reads `[zz] %N (codex) finished:` and the reply, `stopped (REASON):`, `failed: MESSAGE` or `was closed.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it, `--answer 'TEXT'` for a question that wants typed text.
+Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends, and each permission it asks for during that turn comes to you with the `agent-respond` lines that answer it. Do not wait or poll. The chat you open gets a note with its brief, kept out of its transcript, saying which chat opened it and that its final message is its reply. It cannot open chats of its own (it is told to do the work itself or say what it needs), and closing your pane closes it and every pane it opened. A message reads `[zz] %N (codex) finished:` and the reply, `stopped (REASON):`, `failed: MESSAGE` or `was closed.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it, one `--option ID  # LABEL` line per choice of a question and `--answer 'TEXT'` for one that wants typed text.
 
-A prompt that names an agent with `@+claude`, `@+codex` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a short note that says what those tokens ask of you.
+A prompt that names an agent with `@+claude`, `@+codex` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a note, kept out of the transcript, that tells you to hand the task over with the exact command (`zz new-pane -d --kind agent codex 'BRIEF'`, or `zz agent-send -t %N 'TEXT'` for a chat) and end your turn.
 
 A chat answers the same reads as a terminal. `#{pane_current_command}` is `claude` or `codex`. `#{agent_state}` is `starting`, `idle`, `working`, `needs-approval`, `needs-input` or `failed`, and `#{agent_pending_permission}` is the pending request ID or empty, in `list-panes -F`, `display-message -p` and `inspect`. `capture-pane -p -t %N` prints the chat's last turn as text: `> ` and the prompt, one line per tool call (its kind and title), then the reply; `-S -` prints the whole chat, and an empty chat prints nothing. While a turn runs, stderr says `capture-pane: %N's turn is still running`. `wait-pane` on a chat fails with `%N is an agent chat; wait for its turn with: zz agent-send -t %N --wait ''`, and `show-last-output` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`. Typing into a chat fails and names the verb to use: `send-keys`, `send-text`, `paste-buffer` and `run-pane` fail with `%N is an agent chat; send with: zz agent-send -t %N TEXT`, and `pipe-pane` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`.
 
@@ -52842,7 +52882,7 @@ Send TEXT as a prompt to an agent pane (a chat), or to another agent in a termin
 
 Turn facts: `final_text` contains message text after the last tool call or tool update. `tool_calls` counts the turn's tool calls; permission counters count the chat's requests. Each buffer keeps its tail when capped: 1 MiB for the transcript and 256 KiB for final text. The JSON object has `pane`, `stop_reason`, `duration_ms`, `tool_calls`, `permissions` (`requested`, `allowed`, `denied`), `truncated`, `final_text`, and `transcript`. A blocked reply also has a nested `permission` object. Exit 0 means `end_turn`; other stop reasons exit 1 with the reply still printed, except cancellation, which keeps its existing error output. A blocked wait exits 3 and a timeout exits 124. Stderr carries the pane ID and on-block audit lines. `--progress` requires `--wait` and an explicit `-t %N`. It prints tool calls, state changes, and a heartbeat after 60 seconds without a line to stderr. Titles in progress lines stop at 120 characters.
 
-A send without `--wait` prints the pane ID. From a chat, the reply comes back to you as a message when that turn ends, the chat's permission asks come to you as they open, and stderr says `agent-send: %N's reply comes back to you as a message`; from anywhere else stderr says `agent-send: read %N's reply with: zz agent-send -t %N --wait ''`. A chat that already has 4 prompts waiting refuses a send with exit 1 and `%N has 4 prompts waiting; wait for its turn with: zz agent-send -t %N --wait ''`. With `--wait` from a chat, `--on-block` defaults to `fail`, and a blocked wait ends its output with the `agent-respond` and `agent-send --wait ''` lines to run next. A chat cannot send to the chat that opened it: its reply reaches that chat when its turn ends. `--wait ''` on a chat waits for the turn that is running and prints its reply; with no turn running it exits 1 with `%N has no running turn; read its last reply with: zz capture-pane -p -t %N`.
+A send without `--wait` prints the pane ID. From a chat, the reply comes back to you as a message when that turn ends, the chat's permission asks come to you as they open, and stderr says `agent-send: %N's reply comes back to you as a message; end your turn now`; from anywhere else stderr says `agent-send: read %N's reply with: zz agent-send -t %N --wait ''`. A chat that already has 4 prompts waiting refuses a send with exit 1 and `%N has 4 prompts waiting; wait for its turn with: zz agent-send -t %N --wait ''`. With `--wait` from a chat, `--on-block` defaults to `fail`, and a blocked wait ends its output with the `agent-respond` and `agent-send --wait ''` lines to run next. A chat cannot send to the chat that opened it: its reply reaches that chat when its turn ends. `--wait ''` on a chat waits for the turn that is running and prints its reply; with no turn running it exits 1 with `%N has no running turn; read its last reply with: zz capture-pane -p -t %N`.
 
 ### `zz agent-respond [-t %N] (--allow | --deny | --option ID | --answer TEXT) [REQUEST_ID]`
 
@@ -124319,6 +124359,44 @@ bind - split-window -v -c "#{pane_current_path}"
         }
 
         #[test]
+        fn a_question_ask_prints_option_lines_a_shell_hands_to_agent_respond() {
+            let permission = crate::agent::host::AgentPendingPermission {
+                request_id: 7,
+                tool_call: serde_json::json!({ "title": "Which color?" }),
+                options: serde_json::json!([
+                    { "optionId": "answer-0", "name": "Dark blue", "kind": "allow_once" },
+                    { "optionId": "answer-1", "name": "Red", "kind": "allow_once" },
+                ]),
+                questions: vec![zz_protocol::agent_stream::AgentQuestion {
+                    id: "q1".to_owned(),
+                    header: None,
+                    question: "Which color?".to_owned(),
+                    options: Vec::new(),
+                    multi_select: false,
+                    allow_other: false,
+                    secret: false,
+                }],
+            };
+            let ask = agent_ask(PaneId(2), AgentProvider::Codex, &permission).to_string();
+            assert_eq!(
+                ask,
+                "[zz] %2 (codex) asks: Which color?\nzz agent-respond -t %2 --option answer-0  # Dark blue\nzz agent-respond -t %2 --option answer-1  # Red\nzz agent-respond -t %2 --deny"
+            );
+            let line = ask.lines().nth(1).expect("option line");
+            let words = std::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg(format!("set -- {line}\nprintf '%s\\n' \"$@\""))
+                .output()
+                .expect("sh");
+            let words = String::from_utf8(words.stdout).expect("words");
+            let args = words.lines().skip(2).map(RawText::from).collect::<Vec<_>>();
+            let parsed = parse_agent_respond_args(&args).expect("agent-respond takes the line");
+            assert_eq!(parsed.target.as_deref(), Some("%2"));
+            assert_eq!(parsed.option.as_deref(), Some("answer-0"));
+            assert_eq!(parsed.request_id, None);
+        }
+
+        #[test]
         fn chat_verbs_say_what_to_run_next() {
             let workspace = workspace_with(&[Behavior::Hang, Behavior::Chunk]);
             let terminal = ClientId(97);
@@ -124372,7 +124450,7 @@ bind - split-window -v -c "#{pane_current_path}"
             );
             assert_eq!(
                 take_stderr(&workspace, ClientId(98)),
-                "agent-send: %3's reply comes back to you as a message\n"
+                "agent-send: %3's reply comes back to you as a message; end your turn now\n"
             );
             assert_eq!(
                 run("wait-pane", &["-t", "%1"]),
@@ -124545,10 +124623,22 @@ bind - split-window -v -c "#{pane_current_path}"
                     .sum::<usize>(),
                 panes
             );
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(98),
+                    Some(child),
+                    "split-window",
+                    &["-d", "-P", "-F", "#{pane_id}"],
+                ),
+                Ok("%3\n".to_owned())
+            );
             run_as(&workspace, ClientId(97), None, "kill-pane", &["-t", "%1"]).expect("kill-pane");
-            wait_until("the child to close with its host", || {
+            wait_until("the child and its terminal to close with its host", || {
                 let inner = workspace.shared.inner.lock();
-                inner.engine.state.pane(host).is_none() && inner.engine.state.pane(child).is_none()
+                [host, child, PaneId(3)]
+                    .iter()
+                    .all(|pane| inner.engine.state.pane(*pane).is_none())
             });
         }
 

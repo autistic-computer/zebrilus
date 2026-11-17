@@ -145,6 +145,10 @@ fn line(kind: ItemKind, body: &ItemBody) -> Option<String> {
             let text = body.text.trim();
             return (!text.is_empty()).then(|| text.to_owned());
         }
+        ItemKind::Error => {
+            let text = body.text.trim();
+            return (!text.is_empty()).then(|| format!("error: {text}"));
+        }
         ItemKind::Read => "read",
         ItemKind::Edit => "edit",
         ItemKind::Search => "search",
@@ -154,11 +158,7 @@ fn line(kind: ItemKind, body: &ItemBody) -> Option<String> {
         ItemKind::Mcp => "mcp",
         ItemKind::Tool => "tool",
         ItemKind::Subagent => "subagent",
-        ItemKind::User
-        | ItemKind::Reasoning
-        | ItemKind::Plan
-        | ItemKind::Notice
-        | ItemKind::Error => return None,
+        ItemKind::User | ItemKind::Reasoning | ItemKind::Plan | ItemKind::Notice => return None,
     };
     let title = if body.title.trim().is_empty() {
         body.target.as_deref().unwrap_or_default()
@@ -201,6 +201,7 @@ mod tests {
             item("r1", ItemKind::Reasoning, "", "thinking"),
             item("t1", ItemKind::Execute, "cargo  test -p\nzz-daemon", ""),
             item("a2", ItemKind::Agent, "", "all green\n"),
+            item("e1", ItemKind::Error, "", "rate limited"),
         ];
         assert_eq!(
             chat_text(events[..2].iter(), false),
@@ -208,11 +209,11 @@ mod tests {
         );
         assert_eq!(
             chat_text(events.iter(), false),
-            "> run it\n  please\n\nexecute cargo test -p zz-daemon\nall green"
+            "> run it\n  please\n\nexecute cargo test -p zz-daemon\nall green\nerror: rate limited"
         );
         assert_eq!(
             chat_text(events.iter(), true),
-            "> reply with ok\n\nok\n\n> run it\n  please\n\nexecute cargo test -p zz-daemon\nall green"
+            "> reply with ok\n\nok\n\n> run it\n  please\n\nexecute cargo test -p zz-daemon\nall green\nerror: rate limited"
         );
         assert_eq!(chat_text([].iter(), true), "");
     }
