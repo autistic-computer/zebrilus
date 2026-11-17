@@ -497,6 +497,8 @@ pub(crate) struct InitialConnectionFinished;
 
 pub(crate) struct AgentStateChanged;
 
+pub(crate) struct AgentCatalogReply(pub(crate) String);
+
 pub(crate) struct KeyTableChanged;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -4775,6 +4777,7 @@ impl MuxClient {
             | CoreEvent::AgentAccountsChanged
             | CoreEvent::AgentLoginChanged { .. } => {}
             CoreEvent::AgentSessions { pane, result, .. } => {
+                cx.emit(AgentCatalogReply(result.clone()));
                 #[cfg(feature = "agent-pane")]
                 if self.watched_agents.contains(&pane) {
                     self.agent_events.sessions.push((pane, result));
@@ -5190,6 +5193,7 @@ impl MuxClient {
 
 impl EventEmitter<InitialConnectionFinished> for MuxClient {}
 impl EventEmitter<AgentStateChanged> for MuxClient {}
+impl EventEmitter<AgentCatalogReply> for MuxClient {}
 impl EventEmitter<KeyTableChanged> for MuxClient {}
 impl EventEmitter<ClientNotification> for MuxClient {}
 impl EventEmitter<ClientNotificationCleared> for MuxClient {}

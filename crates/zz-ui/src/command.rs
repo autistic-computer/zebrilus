@@ -17,8 +17,8 @@ pub use palette_model::{
 };
 pub use palette_places::palette_fleet;
 pub use palette_view::{
-    CommandPaletteEvent, CommandPaletteView, FolderPick, FolderPicked, GuiEvent, PaletteBackend,
-    mention_picker, target_hosts,
+    CatalogSink, CommandPaletteEvent, CommandPaletteView, FolderPick, FolderPicked, GuiEvent,
+    PaletteBackend, mention_picker, target_hosts,
 };
 
 use ala::{Keystroke, SharedString};

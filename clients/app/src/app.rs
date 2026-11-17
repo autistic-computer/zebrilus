@@ -476,6 +476,9 @@ impl AppShell {
         let preferences = settings::Preferences::load();
         let chrome = preferences.chrome_keymaps();
         cx.set_global(chrome.clone());
+        cx.set_global(crate::preferences::AgentPicks(
+            preferences.agent_launches.clone(),
+        ));
         crate::preferences::install_palette_recents(cx);
         let appearance_view = cx.weak_entity();
         let appearance_observer = window.observe_window_appearance(move |window, cx| {
@@ -1654,7 +1657,7 @@ impl AppShell {
                     });
                     agent
                 });
-                cx.subscribe(&agent, |shell, _, change: &agent_pane::LaunchChange, _| {
+                cx.subscribe(&agent, |shell, _, change: &agent_pane::LaunchChange, cx| {
                     let launches = &mut shell.preferences.agent_launches;
                     let changed = match change {
                         agent_pane::LaunchChange::Picked {
@@ -1670,6 +1673,9 @@ impl AppShell {
                     };
                     if changed {
                         shell.preferences.save();
+                        cx.set_global(crate::preferences::AgentPicks(
+                            shell.preferences.agent_launches.clone(),
+                        ));
                     }
                 })
                 .detach();

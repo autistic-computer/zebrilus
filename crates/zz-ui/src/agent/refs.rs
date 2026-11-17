@@ -28,6 +28,7 @@ pub struct ChatRefs {
 impl ChatRefs {
     fn resolve(&self, token: &str) -> Option<ResolvedTarget> {
         resolve_target(token, &self.hosts)
+            .filter(|target| !matches!(target.target, RefTarget::Agent { .. }))
     }
 
     fn resolve_code(&self, code: &str) -> Option<ResolvedTarget> {

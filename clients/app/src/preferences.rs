@@ -365,6 +365,10 @@ pub struct BrowserSearch(pub SearchProvider);
 
 impl ala::Global for BrowserSearch {}
 
+pub struct AgentPicks(pub AgentLaunches);
+
+impl ala::Global for AgentPicks {}
+
 #[cfg(target_family = "wasm")]
 const RECENTS_STORAGE_KEY: &str = if zz_protocol::app_identity::DEVELOPMENT {
     "zz-dev-web-palette-recents"

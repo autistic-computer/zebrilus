@@ -222,6 +222,7 @@ impl AgentPane {
             RefTarget::Session(id) => PaletteTarget::Session(*id),
             RefTarget::Window(id) => PaletteTarget::Window(*id),
             RefTarget::Pane(id) => PaletteTarget::Pane(*id),
+            RefTarget::Agent { .. } => return,
             RefTarget::Path { .. } => {
                 if let Some(command) = open_path(&target.target, target.here.then_some(self.pane)) {
                     backend.execute(target.host, command, cx);

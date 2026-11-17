@@ -11,7 +11,11 @@ use ala::{
 };
 use penna::blocks::palette::PaletteStatus;
 use penna::{ActiveTheme as _, IconName};
-use zz_client::{completion::PaneKindAvailability, place::ActionKind};
+use zz_client::{
+    agent_launch::{AgentLaunch, AgentLaunches},
+    completion::PaneKindAvailability,
+    place::ActionKind,
+};
 use zz_protocol::{
     ChooseTreeItem, ChooseTreeKind, ChooseTreePaneKind, ChooseTreeState, ChooseTreeTarget,
     CommandInvocation, CommandPromptKind, CommandPromptMode, CommandPromptState, CommandPromptType,
@@ -325,9 +329,14 @@ struct StoryBackend {
     requests: Cell<u64>,
     me: Weak<StoryBackend>,
     gui: Vec<zz_client::gui_actions::GuiOffer>,
+    launches: Option<AgentLaunches>,
 }
 
 impl PaletteBackend for StoryBackend {
+    fn agent_launches(&self, _: &App) -> Option<AgentLaunches> {
+        self.launches.clone()
+    }
+
     fn verbs(&self, cx: &App) -> Vec<zz_client::verbs::Verb> {
         let gui = self
             .gui
@@ -489,6 +498,7 @@ fn story_backend(
         requests: Cell::new(0),
         me,
         gui: Vec::new(),
+        launches: None,
     }
 }
 
@@ -836,7 +846,20 @@ fn online_tree() -> PaletteTree {
 }
 
 pub(crate) fn chat_backend() -> Rc<dyn PaletteBackend> {
-    backend(chat_tree(), true)
+    let launches = AgentLaunches {
+        claude: AgentLaunch {
+            model: "opus-5.5".to_owned(),
+            effort: String::new(),
+        },
+        codex: AgentLaunch {
+            model: "gpt-6.1-sol".to_owned(),
+            effort: String::new(),
+        },
+    };
+    Rc::new_cyclic(|me| StoryBackend {
+        launches: Some(launches),
+        ..story_backend(me.clone(), chat_tree(), true, Files::Listed)
+    })
 }
 
 fn chat_tree() -> PaletteTree {
