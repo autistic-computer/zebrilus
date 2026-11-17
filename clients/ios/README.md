@@ -405,9 +405,9 @@ saved by this example.
 - ANSI styles, true color, alternate screen applications, cursor state, terminal
   replies, and Kitty images use the existing daemon and shared renderer.
 - Command-C/V/A copy, paste, and select all. The toolbar also exposes Copy and
-  Paste. Pasted text uses the daemon's bracketed-paste handling. On iPad a
-  copy sweeps a short shimmer over the copied text, as on the desktop, except
-  under Reduce Motion.
+  Paste. Pasted text uses the daemon's bracketed-paste handling. On iPad, when
+  the window is at least 640pt wide, a copy sweeps a short shimmer over the
+  copied text, as on the desktop, except under Reduce Motion.
 - Drag to scroll; enable **Select** to drag a selection. **End** returns to the
   live screen. Shift-Page Up/Down and Shift-Home/End navigate scrollback.
 - Touch events become terminal mouse events when the application requests mouse

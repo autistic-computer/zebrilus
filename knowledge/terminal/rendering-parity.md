@@ -176,8 +176,9 @@ the translated block, so the Rust side never hand-computes std140. Coordinates a
 Ghostty on Metal; `iResolution` comes from the input texture's size. All 46 shaders in two community
 collections translated when this landed.
 
-The copy flash is the first user. `MuxClient` on the desktop and `ClientCore` in the thin client bump
-`RetainedTerminalViewport::copy_generation` when a server-produced selection lands in the system clipboard (copy-mode yank, `Cmd-C`, and
+The copy flash is the first user. `MuxClient` on the desktop bumps
+`RetainedTerminalViewport::copy_generation`, and `ClientCore` in the thin client bumps a per-pane
+count that outlives the viewport (`ClientCore::copy_generation`), when a server-produced selection lands in the system clipboard (copy-mode yank, `Cmd-C`, and
 copy-on-select, which writes the clipboard on macOS unless `set-clipboard` is `off`; an application's
 OSC 52 never counts). The view flashes the selection it last painted if it is still visible or
 cleared under 500 ms ago, and keeps following the painted selection while the flash runs: the copy
@@ -189,7 +190,7 @@ background are pushed away from it, so glyphs brighten on a dark selection and d
 one, and the background gets a soft sheen with a faint glow past the edge. Frames are requested only
 while it runs. `CopyFlashTracker` and `paint_copy_flash` in zz-ui hold the timing and the layer, so
 the desktop and the thin client's wide layout (iPad, web) draw the same flash; the thin client skips
-it on phones and under reduced motion, and a renderer that cannot build the shader paints the
+it in the compact layout (phones, and iPad or web windows under 640pt) and under reduced motion, and a renderer that cannot build the shader paints the
 terminal without it.
 
 # Non-goals

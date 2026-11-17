@@ -1564,7 +1564,7 @@ impl TerminalPane {
             .then(|| window.content_mask().bounds.bottom());
         let scrollbar_opacity = self.scrollbar_opacity(cx);
         let connection = self.connection.clone();
-        let flash_copies = !crate::app::phone() && !cx.reduce_motion();
+        let flash_copies = !self.compact && !cx.reduce_motion();
         let (paint, attached, layout_generation) = connection.update(cx, |connection, cx| {
             for image in connection.take_retired_terminal_images() {
                 let _ = window.drop_image(image);
@@ -1622,7 +1622,10 @@ impl TerminalPane {
                 window,
                 cx,
             );
-            let copies = retained.copy_generation;
+            let copies = match self.surface {
+                TerminalSurface::Pane => connection.core.copy_generation(self.pane),
+                TerminalSurface::CommandOutput => 0,
+            };
             if self
                 .observed_copy_generation
                 .replace(copies)
