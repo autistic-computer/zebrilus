@@ -233,6 +233,19 @@ impl Preferences {
                 ThemeOverrides::deserialize(MapDeserializer::<_, serde_json::Error>::new(field))
                     .is_ok()
             });
+            if let Some(entries) = fields.get_mut("chrome_keys") {
+                *entries = entries
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|entry| {
+                        ChromeKeyOverride::deserialize(*entry)
+                            .map_err(|error| log::warn!("Ignoring key binding {entry}: {error}"))
+                            .is_ok()
+                    })
+                    .cloned()
+                    .collect();
+            }
         }
         let mut preferences: Self = serde_json::from_value(source.clone())?;
         if source.get("mode").is_none() && source.get("dark").is_none() {
@@ -387,9 +400,11 @@ mod tests {
     fn chrome_key_overrides_rebind_both_keymaps_and_skip_bad_entries() {
         use zz_client::{ChromeAction, PREFIX_TABLE, UI_TABLE};
         let preferences = Preferences::decode(
-            r#"{"chrome_keys":[{"chrome-keybind":"ui:D-j=open-command-palette"},{"chrome-unbind":"ui:D-k"},{"chrome-keybind":"prefix:g=open-settings"},{"chrome-keybind":"ui:D-y=fly"},{"chrome-unbind":"root:q"}]}"#,
+            r#"{"sidebar_width":300,"chrome_keys":[{"chrome-keybind":"ui:D-j=open-command-palette"},{"chrome_keybind":"prefix:y=open-settings"},{"chrome-unbind":"ui:D-k"},{"chrome-keybind":"prefix:g=open-settings","chrome-unbind":"ui:D-p"},{"chrome-keybind":"prefix:g=open-settings"},{"chrome-keybind":"ui:D-y=fly"},{"chrome-unbind":"root:q"}]}"#,
         )
         .unwrap();
+        assert_eq!(preferences.sidebar_width, 300.0);
+        assert_eq!(preferences.chrome_keys.len(), 5);
         let keymaps = preferences.chrome_keymaps();
         for keymap in [&keymaps.native, &keymaps.apple] {
             assert_eq!(
