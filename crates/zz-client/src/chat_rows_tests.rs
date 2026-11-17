@@ -1437,7 +1437,7 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
         }
         .to_string()
     };
-    let turns: [(&str, String, Vec<(&str, String, String, bool)>); 6] = [
+    let turns: [(&str, String, Vec<(&str, String, String, bool)>); 8] = [
         (
             "u1",
             "@+codex can the retry loop send twice?".to_owned(),
@@ -1494,6 +1494,29 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
             "u6",
             AgentReport::Closed {
                 pane: PaneId(9),
+                provider: codex,
+            }
+            .to_string(),
+            Vec::new(),
+        ),
+        (
+            "u7",
+            "and once more".to_owned(),
+            vec![(
+                "send2",
+                "zz agent-send -t %4 'once more'".to_owned(),
+                ReplyNotice::Sent {
+                    pane,
+                    route: ReplyRoute::Back,
+                }
+                .to_string(),
+                true,
+            )],
+        ),
+        (
+            "u8",
+            AgentReport::Closed {
+                pane,
                 provider: codex,
             }
             .to_string(),
@@ -1625,11 +1648,27 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
             vec![
                 user("u4"),
                 run("send"),
-                card("send", true, "still green", 12_000, 14_000, Vec::new()),
+                card("send", false, "still green", 12_000, 14_000, Vec::new()),
                 text("a4")
             ],
             vec![text("a5")],
             vec![user("u6"), text("a6")],
+            vec![
+                user("u7"),
+                run("send2"),
+                Unit::Child(Box::new(ChildCard {
+                    anchor: ItemId::new("send2"),
+                    pane,
+                    agent: codex,
+                    latest: true,
+                    state: ChildState::Closed,
+                    started_at: 19_000,
+                    ended_at: Some(21_000),
+                    decisions: Vec::new(),
+                })),
+                text("a7"),
+            ],
+            vec![text("a8")],
         ]
     );
     assert_eq!(

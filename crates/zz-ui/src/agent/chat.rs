@@ -3691,6 +3691,7 @@ mod tests {
                 touch: false,
                 inset_top: px(34.0),
                 inset_bottom: px(0.0),
+                children: None,
             };
             div()
                 .w(px(420.0))
