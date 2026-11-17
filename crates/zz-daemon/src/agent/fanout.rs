@@ -180,7 +180,11 @@ impl AgentRuntime {
         waiter: Option<AgentTurnWaiter>,
     ) -> bool {
         let _lifecycle = self.lifecycle.lock();
-        let queued = QueuedPrompt { prompt, waiter };
+        let queued = QueuedPrompt {
+            prompt,
+            waiter,
+            injected: false,
+        };
         match self.host.command(pane, HostCommand::Prompt(queued)) {
             Ok(()) => true,
             Err(HostCommand::Prompt(mut queued)) => {
@@ -189,6 +193,51 @@ impl AgentRuntime {
             }
             Err(_) => unreachable!(),
         }
+    }
+
+    pub(crate) fn inject(&self, pane: PaneId, prompt: AgentPrompt) -> bool {
+        let _lifecycle = self.lifecycle.lock();
+        let queued = QueuedPrompt {
+            prompt,
+            waiter: None,
+            injected: true,
+        };
+        self.host.command(pane, HostCommand::Prompt(queued)).is_ok()
+    }
+
+    pub(crate) fn chat_text(&self, pane: PaneId, whole: bool) -> String {
+        let lanes = self.fanout.lanes.lock();
+        let Some(lane) = lanes.get(&pane) else {
+            return String::new();
+        };
+        if !lane.chat.is_empty() {
+            return crate::agent::capture::chat_text(lane.chat.events(), whole);
+        }
+        let updates = lane
+            .ring
+            .iter()
+            .filter_map(|(_, encoded)| serde_json::from_slice::<AgentStreamItem>(encoded).ok())
+            .filter_map(|item| match item.payload {
+                AgentStreamPayload::Update { update } => Some(update),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let events = crate::agent::capture::stream_events(updates.iter());
+        crate::agent::capture::chat_text(events.iter(), whole)
+    }
+
+    pub(crate) fn has_pending_permission(&self, pane: PaneId, request: u64) -> bool {
+        self.host.snapshot_state(pane).is_some_and(|state| {
+            state
+                .pending_permissions
+                .iter()
+                .any(|pending| pending.request_id == request)
+        })
+    }
+
+    pub(crate) fn join(&self, pane: PaneId, waiter: AgentTurnWaiter) -> bool {
+        let _lifecycle = self.lifecycle.lock();
+        self.host.command(pane, HostCommand::Join(waiter)).is_ok()
     }
 
     pub(crate) fn prewarm(&self) {
@@ -576,7 +625,9 @@ impl AgentFanout {
             },
             HostCommand::AnswerQuestion { .. }
             | HostCommand::StopTask { .. }
+            | HostCommand::Join(_)
             | HostCommand::RefreshGit => return false,
+            HostCommand::Prompt(queued) if queued.injected => return false,
             HostCommand::Prompt(mut queued) => {
                 queued.settle(Err(AgentTurnFailure::Reclaimed));
                 return self.reclaim_prompt(pane, queued.prompt);

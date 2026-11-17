@@ -61,6 +61,43 @@ folder). `new-pane` without `-x`/`-y` floats at `AGENT_FLOAT_WIDTH` by `AGENT_FL
 (46% by 72%), the size the fork float below uses. A missing or unknown provider, a bad flag value,
 or an agent flag without `--kind agent` exits 2.
 
+**Chats that open chats.** A caller is a chat caller when its client's origin pane
+(`ClientHello.origin`, from `ZZ_PANE`) is a chat other than the target (`Shared::chat_caller`).
+A chat a chat caller creates gets that chat as its parent, kept daemon-side on the engine
+(`MuxEngine::set_agent_parent`, no wire field) and read as `#{agent_parent}` and `inspect`'s
+`agent_parent`. A chat with a parent cannot open one (`refuse_grandchild_chat`: `%C was opened by
+%P; a chat opened by another chat cannot open one`, exit 1, checked before the mux runs) and
+cannot `agent-send` to its parent. The brief of such a chat, and a chat caller's plain
+`agent-send` to a chat, carry a waiter (`Shared::chat_report_waiter`) that reports the turn into
+the caller as a prompt the daemon makes (`AgentRuntime::inject`): `[zz] %N (codex) finished:` with
+the final text (or the full text when the final part is empty, last 64 KiB), `stopped (reason):`,
+`failed: message`, `stopped (cancelled):` or `was closed.`. While that turn waits on a permission
+or a question, the waiter's `asks` sink sends one `[zz] %N (codex) asks: kind title` message per
+request id with the `zz agent-respond` lines that answer it. Every string here, the stderr lines
+included, is built and parsed by `zz_protocol::agent_mention` (`AgentReport`, `AgentAsk`,
+`ReplyNotice`, `AgentRespond`), so clients read them with the same code. Deliveries to one caller
+go out in the order they were made, from one queue per caller (`Shared::deliver_to_chat`), and an
+ask whose request is answered by the time its turn comes is dropped. These prompts are
+`injected`: they travel the pane's inbox rather than its 4-slot prompt channel, do not count
+against `MAX_AGENT_QUEUED_PROMPTS`, keep the byte cap (a prompt over it is logged and dropped), are
+never handed back to a composer when a queue is reclaimed (`/clear`, unqueue, close), and are
+dropped with a log line when the caller is gone. A caller flipped to a terminal gets them typed
+into its terminal the way `--notify` does. When a pane goes away, the chats it opened are killed
+right after the command that removed it, on a thread (`close_orphaned_chats`); flipping a parent
+to a terminal closes nothing. From a chat caller `agent-send --wait` defaults to `--on-block fail`,
+and `--wait ''` on a chat joins the running turn (`HostCommand::Join`) or fails with `%N has no
+running turn`.
+
+**The mention note.** A prompt whose text holds an agent token (`@+claude`, `@+codex`, either with
+`/MODEL`) or a chat token (`@HOST:%N`, the shape only the composer's Chats rows write) reaches the
+agent with `MENTION_NOTE` (`zz_protocol::agent_mention`, under 300 bytes) beside it, found by
+`mention_note` with the composer's token grammar. The note never joins the user's text: Claude
+Code gets it as a second content block wrapped in `<system-reminder>`, Codex as a second text item
+in `turn/start`'s `input`, and other ACP agents as a second text block in the prompt request. The
+stream's own echo of the prompt has only the user's text, and the transcript readers drop the
+note block when they replay a session (`claude::translate::message_text`, `codex::translate::user_text`).
+Daemons from `REVISION` 6 on do this.
+
 **Running it.** The daemon opens the pane's runtime (`Shared::open_agent_pane`, `agent_pane_spec`)
 with the descriptor's provider, folder, session, model and effort and the pane's workspace
 environment (`ZZ_PANE`, `TMUX`, `TMUX_PANE`). A resumed Claude session replays its transcript
@@ -545,8 +582,22 @@ end no turn.
   started with) and `agent_session_id`.
 - `send-keys`, `send-text`, `paste-buffer` and `run-pane` on a chat fail with
   `%N is an agent chat; send with: zz agent-send -t %N TEXT`, and `pipe-pane` with
-  `%N is an agent chat; read it with: zz capture-pane -p -t %N`. `capture-pane` still fails with
-  "pane has exited", and a `synchronize-panes` send whose window holds a chat fails the same way.
+  `%N is an agent chat; read it with: zz capture-pane -p -t %N`. A `synchronize-panes` send
+  whose window holds a chat fails with "pane has exited".
+- `capture-pane -p -t %N` on a chat prints its last turn as text, and `-S` (any value, so the
+  context's `-S -`) the whole chat, capped at the last 64 KiB (`agent::capture`). A prompt prints
+  as `> ` and its text, later lines indented two spaces; a tool call as its kind word and title
+  on one line (`execute cargo test`); a reply as its text; a blank line follows the prompt and
+  separates turns. Reasoning, plans, notices, errors and subagent steps are left out, and so is
+  the mention note, which never joins the user's text. An injected `[zz] ...` prompt prints like
+  any prompt. An empty chat prints nothing. The text comes from the chat state the daemon keeps
+  per pane for every client (`PaneLane::chat`, the `ChatLog` a client's replay recovers from):
+  the Claude Code and Codex drivers fill it, it is complete rather than byte-capped, and a
+  restored chat refills it when the driver replays its session, so it needs no client. A chat
+  on another ACP agent has no chat state, so it is read from the pane's retained stream
+  instead, which holds only the recent part. Without `-p` the text goes into a paste buffer, as
+  for a terminal; `-J`, `-e`, `-N`, `-T`, `-a`, `-q`, `-C`, `-E` and the value of `-S` change
+  nothing.
 
 # What the clients draw
 

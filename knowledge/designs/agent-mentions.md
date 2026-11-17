@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Agent mentions . the composer's @ hands work to another agent
-description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat in a PiP with one tmux-shaped command. The child's permission asks and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Proposed; steps 1 and 2 (chat facts, input errors, --kind agent on the create verbs) built."
-status: Proposed (2026-11-17; steps 1 and 2 built)
+description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat in a PiP with one tmux-shaped command. The child's permission asks and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Daemon side built (steps 1 to 4, 6 and 7); left: the picker rows and the host card in the UI."
+status: Partly built (2026-11-17; daemon side built, steps 1 to 4 daemon half, 6 and 7; left: the @ menu agent rows and the host card in the UI)
 resource: crates/zz-ui/src/target.rs
 tags:
 - agent
@@ -20,7 +20,9 @@ and files. Picking one puts a mention in the prompt. The agent you are talking t
 a brief and opens the other agent as a chat in a [PiP](/designs/pip-panes.md). The child's
 permission asks and its final reply come back into the host chat.
 
-Status 2026-11-17: proposed, steps 1 and 2 of the [build order](#build-order) built. The rulings below
+Status 2026-11-17: the daemon side is built: steps 1 to 3, the mention note of step 4, and steps
+6 and 7 of the [build order](#build-order). Left: the `@` menu's agent rows (step 4, UI lane) and
+the host card (step 5). The rulings below
 are the owner's. Everything under
 [Proposed commands](#proposed-commands) and after is proposed unless it says ruled, and
 [Open](#open) lists what is not decided.
@@ -132,9 +134,9 @@ reaches the daemon through the wrapper on `PATH` but is not approved.
 - `bench/agents/fresh/run-one.sh` still runs `split-window --kind agent --provider`. (Fixed by
   step 2.)
 - The `--wait` timeout message tells you to run `agent-send -t %N --wait ''`, which a chat refuses
-  ("is a chat; --wait needs text to send").
+  ("is a chat; --wait needs text to send"). (Fixed by step 3.)
 - `AGENT_PANE_CONTEXT` says this pane approves `zz` commands without asking, which is false at
-  auto-approve `off`, and its filter list leaves out `cut` and `tr`.
+  auto-approve `off`, and its filter list leaves out `cut` and `tr`. (Fixed by step 7.)
 - The `events` help says `agent-state-changed` carries `agent_state` for every pane kind; a chat
   sends none. (Fixed by step 1.)
 
@@ -145,13 +147,13 @@ top for shells.
 
 | Job | Command | Change |
 | --- | --- | --- |
-| Find | `list-panes -F '#{pane_id} #{pane_current_command} #{agent_state}'` | chat facts filled in formats, `inspect` and `agent-state-changed` |
-| Create | `new-pane\|split-window\|new-window [-d] [-P -F fmt] [-c dir] [-t target] --kind agent claude\|codex [--model M] [--effort E] [--resume ID] [BRIEF]` | `--kind agent` comes back, made directly, brief queued, parent recorded |
-| Read | `capture-pane -p -t %N` | prints the chat as plain text |
-| Talk | `agent-send -t %N TEXT` | a chat caller gets the reply as a message with no flag |
+| Find | `list-panes -F '#{pane_id} #{pane_current_command} #{agent_state}'` | built: chat facts in formats, `inspect` and `agent-state-changed` |
+| Create | `new-pane\|split-window\|new-window [-d] [-P -F fmt] [-c dir] [-t target] --kind agent claude\|codex [--model M] [--effort E] [--account A] [--resume ID] [BRIEF]` | built: made directly, brief queued, parent recorded; a chat with a parent cannot create one |
+| Read | `capture-pane -p -t %N` | built: the last turn as text, `-S -` the whole chat |
+| Talk | `agent-send -t %N TEXT` | built: a chat caller gets the reply and the asks as messages with no flag; `--wait ''` joins the running turn |
 | Answer | `agent-respond -t %N --allow\|--deny\|--option ID` | none |
-| Close | `kill-pane -t %N` | closing a parent closes its children |
-| Type | `send-keys`, `send-text`, `paste-buffer`, `pipe-pane`, `run-pane` | an error that names `agent-send` |
+| Close | `kill-pane -t %N` | built: closing a parent closes its children |
+| Type | `send-keys`, `send-text`, `paste-buffer`, `pipe-pane`, `run-pane` | built: an error that names `agent-send` (`pipe-pane`: `capture-pane -p`) |
 
 ## Find
 
@@ -186,9 +188,9 @@ pickers and the flip.
 ## Read
 
 `capture-pane -p -t %N` on a chat prints plain text: the last turn by default, the whole chat with
-`-S -`, capped at 64 KiB like the notify text. This needs a text renderer in the daemon over the
-journal. A prompt prints as `> ` and its text, a tool call as one line (its tool and title), a
-reply as its text.
+`-S -`, capped at 64 KiB like the notify text. A prompt prints as `> ` and its text, a tool call
+as one line (its tool and title), a reply as its text. Built in step 6, from the chat state rather
+than the journal (see the step).
 
 ## Talk
 
@@ -287,11 +289,11 @@ cycle limit, and whether a child may create children is [open](#open).
   shadowed in mentions and stays reachable by its `$N` id.
 - **Chats.** A Chats pick already exists and keeps its raw token, `@<host>:%N`.
 - **Teaching.** The agent has to be told what the two tokens mean. Where it goes is open: a few
-  lines in the standing context, or a short note added only to a prompt that has a mention. The
-  text fits either (286 bytes):
+  lines in the standing context, or a short note added only to a prompt that has a mention. Built
+  as the note (`MENTION_NOTE`, 293 bytes):
 
 ```
-@+claude or @+codex[/MODEL] asks you to delegate: write a brief that stands on its own and run zz new-pane -d --kind agent codex [--model MODEL] 'BRIEF'. @host:%N is a running chat: zz agent-send -t %N TEXT. Replies and permission asks come back to you as messages; do not wait or poll.
+@+claude or @+codex[/MODEL] asks you to delegate: write a brief that stands on its own and run zz new-pane -d --kind agent claude|codex [--model MODEL] 'BRIEF'. @host:%N is a running chat: zz agent-send -t %N TEXT. Replies and permission asks come back to you as messages; do not wait or poll.
 ```
 
 # Host chat
@@ -299,6 +301,26 @@ cycle limit, and whether a child may create children is [open](#open).
 One row per child in the host transcript: agent, state (working, asking, done, failed, closed),
 elapsed time, and what the host allowed or denied. Clicking it focuses the PiP. The reply shows as
 a quoted block. The UI gets boarded in `design/mockups` before any app code.
+
+# How the host card reads the transcript
+
+The host chat's card is drawn from the host's own transcript, with no new wire data. Every string
+it reads has one definition, `zz_protocol::agent_mention`, which the daemon formats with and a
+client parses with:
+
+- The tool call that opened or messaged a child: an execute item whose command runs
+  `new-pane|split-window|new-window ... --kind agent` or `agent-send`. Its output holds the stderr
+  line `ReplyNotice` parses: `new-pane: opened %N (codex); its reply comes back to you as a
+  message` or `agent-send: %N's reply comes back to you as a message`, which names the child.
+- The injected prompts: a user message that `AgentReport::parse` reads as finished, stopped,
+  failed or closed, or that `AgentAsk::parse` reads as an ask with its answers.
+- The host's own answers: an execute item whose command `AgentRespond::parse` reads as
+  `zz agent-respond -t %N --allow|--deny|--option ID`, with or without the leading `zz` and
+  inside a shell wrapper.
+
+For both drivers the command text is the tool call's `rawInput.command` (in a chat item,
+`ItemBody.target` unless the driver set its own target), and the output, stdout and stderr
+together, is the tool call update's `content` text (`ItemBody.text`).
 
 # Build order
 
@@ -354,37 +376,114 @@ Each step lands alone.
      does, right after the runtime opens. A handed-back brief is logged, not returned as an error.
    - The fork float's size moved to `zz_protocol::AGENT_FLOAT_WIDTH`/`AGENT_FLOAT_HEIGHT`, shared
      by `fork_chat_command` and `new-pane --kind agent`.
-3. **Parent link, replies and asks into chats, close cascade.** Also `--wait ''` on a chat.
+3. **Parent link, replies and asks into chats, close cascade.** Built 2026-11-17, with no wire
+   change. Also `--wait ''` on a chat.
    - Run from chat `%1`, `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'reply with ok'`
      prints `%2`; `zz display-message -p -t %2 '#{agent_parent}'` prints `%1`; the next prompt `%1`
      receives starts with `[zz] %2 (codex) finished:`.
    - After `zz kill-pane -t %1`, `zz list-panes -a -F '#{pane_id}'` lists neither `%1` nor `%2`.
-4. **Agents rows in the picker and the teaching text.**
+
+   Choices made while building it:
+   - The parent lives daemon-side on the engine (`MuxEngine::agent_parents`), not on the wire.
+     The "pane it came from" field on the injected prompt and anything a client needs to draw
+     the host row are still to do, in the UI step.
+   - A chat caller is only `client.origin` being a chat other than the target. The interactive
+     fallback `--notify` uses (the focused pane of a GUI client) does not count.
+   - The parent is recorded for any chat a create verb makes from a chat caller, brief or not.
+     A chat with a parent cannot open a chat (exit 1), so there is one level of children.
+   - Reports and asks are queued with `AgentRuntime::inject`: such a prompt goes through the
+     pane's inbox, is not counted against the 4 queued prompts, keeps the byte cap (over it, it is
+     logged and dropped), and is never handed back to a composer when a queue is reclaimed.
+     Deliveries to one caller leave one queue in order, drained by one thread at a time
+     (`Shared::deliver_to_chat`); an ask whose request is answered before its turn is dropped.
+   - A caller flipped to a terminal gets the message through the existing terminal delivery
+     (`deliver_to_terminal_pane`), as `--notify` does. A caller that is gone or is neither a chat
+     nor a terminal is logged and dropped.
+   - Message cases the shapes did not cover: a cancelled turn reports `[zz] %N (NAME) stopped
+     (cancelled):` (the stopped shape with no text; it read `stopped (cancelled).` until the
+     formats moved into `zz_protocol::agent_mention`), a prompt handed back before its turn reports `failed: the message was handed
+     back before its turn ran`, and a reply that never comes (the chat closed) reports `was
+     closed.`. An ask whose tool call has no kind leaves the kind out: `asks: <title>`.
+   - Asks ride the waiter as an `asks` sink beside `AgentBlockPolicy::Wait` (the waiter keeps
+     waiting), called once per request id. They come only from turns that report to a caller;
+     a turn the user types into the child does not ask the host.
+   - A plain `agent-send` from a chat caller to a terminal running an agent stays silent, as for
+     terminal callers. The default `--on-block fail` for chat callers applies to every `--wait`
+     they run, a terminal target included.
+   - `--wait ''` joins the running turn as an extra waiter (`HostCommand::Join`); the host now
+     records reply text for every turn so a late joiner gets the whole reply. A joined waiter
+     takes `--on-block wait` or `fail`.
+   - The cascade kills the children on a thread right after the command that removed the parent,
+     so `kill-pane` returns before they are gone.
+4. **Agents rows in the picker and the teaching text.** The teaching text (the mention note) is
+   built; the picker rows are built in the UI lane.
+
+   Choices made while building the note:
+   - The note goes with any prompt that holds an agent token or a chat token, from any client or
+     `agent-send`, as a separate block or item, never inside the user's text. Claude Code gets it
+     wrapped in `<system-reminder>`, Codex as a second `input` text item, ACP agents as a second
+     prompt block; replay drops that exact block, so the user's bubble shows only what they typed.
+   - Detection is by token shape alone (`zz_protocol::agent_mention::mentions`, the same grammar
+     the composer writes): `@+claude` and `@+codex` with an optional `/MODEL` (`\` escapes), and
+     `@HOST:%N` with nothing between the host and the pane, which only the Chats rows write. The
+     daemon does not check that `%N` is a chat, since the host may be another machine.
+   - The note reads: `@+claude or @+codex[/MODEL] asks you to delegate: write a brief that stands
+     on its own and run zz new-pane -d --kind agent claude|codex [--model MODEL] 'BRIEF'.
+     @host:%N is a running chat: zz agent-send -t %N TEXT. Replies and permission asks come back
+     to you as messages; do not wait or poll.` (293 bytes; `claude|codex` replaces the design's
+     `codex` so the provider the token names is the one opened.)
+   - `REVISION` is 6: clients can rely on a daemon at 6 or later to add the note, report child
+     turns and keep the message formats. No floor moved.
+
    - Picking the codex row in a composer holding `fix it` after the mention, `TargetPicker::raw_text`
      returns `@+codex fix it`.
    - The teaching text is at most 300 bytes.
 5. **Host row**, after the design board.
    - While `%2` waits on a permission, `%1`'s transcript has one row for `%2` reading `codex ·
      asking`.
-6. **`capture-pane` on a chat.**
+6. **`capture-pane` on a chat.** Built 2026-11-17.
    - After a turn whose prompt is `reply with ok` and whose reply is `ok`, `zz capture-pane -p -t %2`
-     prints exactly `> reply with ok\nok\n`.
-7. **Loose ends** listed [above](#loose-ends-found-on-the-way).
+     prints exactly `> reply with ok\n\nok\n` (a blank line follows the prompt).
+
+   Choices made while building it:
+   - Source: the chat state the daemon keeps per pane for every client (`PaneLane::chat`, the
+     `ChatLog` a client's replay recovers from), not the journal. The Claude Code and Codex
+     drivers fill it, it is complete, it needs no client, and a restored chat refills it when the
+     driver replays its session. The journal holds raw updates only for chats on other ACP agents,
+     and such a chat has no chat state, so it is read from the pane's retained stream, which keeps
+     only the recent part.
+   - Shapes: `> ` and the prompt, later prompt lines indented two spaces; a blank line after the
+     prompt and between turns; one line per tool call with the kind word (`read`, `edit`,
+     `search`, `execute`, `fetch`, `web`, `mcp`, `tool`, `subagent`) and the title, whitespace
+     collapsed; the reply's text. A turn is a prompt and what follows it up to the next prompt.
+     Reasoning, plans, notices, errors and the steps of subagents are left out. The cap keeps the
+     last 64 KiB.
+   - Flags: any `-S` value prints the whole chat; `-E`, `-J`, `-e`, `-N`, `-T`, `-a`, `-q`, `-C`,
+     `-H`, `-F`, `-L` and `-M` change nothing. Without `-p` the text goes into a paste buffer
+     (`-b` names it), the same path a terminal capture takes.
+   - `inspect` lists `capture-pane` among an agent pane's verbs.
+7. **Loose ends** listed [above](#loose-ends-found-on-the-way). Built 2026-11-17.
    - The `--wait` timeout message names a command a chat accepts.
    - `AGENT_PANE_CONTEXT` lists `cut` and `tr` and says the rule does not apply at `off`.
 
+   The timeout message is pinned in a test that also runs the `--wait ''` it recommends. The
+   `events` help now says when `agent-state-changed` fires for a terminal and for a chat. The
+   Agents section of the tools guide was checked against the code; four protocol messages with
+   no sender stay under [Open](#open).
+
 # Open
 
-- Should `send-keys` on a chat submit on Enter and cancel on `C-c`, or only point to `agent-send`?
-  The first needs a draft buffer in the daemon.
 - Should `tmux ...` commands be approved like `zz ...` ones?
-- Standing context, or a note in the prompt that has the mention?
-- Does the child get anything beyond the brief (the host's folder, files it touched)?
-- Can a child create children? There was never a depth guard.
-- Replies share the caller's queue of 4 with the user's own prompts; a host with several children
-  can overflow it.
-- A question that wants free text has no command-line answer.
+- Does the child get anything beyond the brief (the host's folder, files it touched)? Today it
+  gets the brief and starts in the folder a terminal would.
+- A question that wants free text has no command-line answer; the ask tells the host to answer
+  it in the pane or dismiss it.
 - Trimming `agent-send` to chats.
+
+Settled along the way: `send-keys` on a chat only points to `agent-send` (step 1); a child cannot
+create children (step 3); replies and asks do not count against the caller's queue of 4 (step 3);
+the teaching travels as a note with the prompt that has the mention, not in the standing context
+(step 4).
 - For each message with no sender (`AgentSteer`, `AgentStopTask`, `AgentSetMode`,
   `AgentAuthenticate`): give it a verb or remove it.
 

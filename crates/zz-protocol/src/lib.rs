@@ -1,3 +1,4 @@
+pub mod agent_mention;
 pub mod agent_stream;
 pub mod app_identity;
 mod catalog;

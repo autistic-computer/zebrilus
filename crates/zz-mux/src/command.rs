@@ -2241,6 +2241,7 @@ pub struct FormatFacts {
     pane_kinds: BTreeMap<String, &'static str>,
     browser_urls: BTreeMap<String, String>,
     agent_chats: BTreeMap<String, AgentChatFacts>,
+    agent_parents: BTreeMap<String, String>,
     pane_windows: BTreeMap<String, String>,
     server: SharedUserOptions,
     global_session: SharedUserOptions,
@@ -2264,6 +2265,11 @@ impl FormatFacts {
     #[must_use]
     pub fn agent_chat(&self, pane: &str) -> Option<&AgentChatFacts> {
         self.agent_chats.get(pane)
+    }
+
+    #[must_use]
+    pub fn agent_parent(&self, pane: &str) -> Option<&str> {
+        self.agent_parents.get(pane).map(String::as_str)
     }
 
     #[must_use]
@@ -2618,6 +2624,7 @@ pub struct MuxEngine {
     format_user: String,
     pane_runtime_facts: BTreeMap<PaneId, PaneRuntimeFacts>,
     agent_chats: BTreeMap<PaneId, AgentChatFacts>,
+    agent_parents: BTreeMap<PaneId, PaneId>,
     pane_start_commands: BTreeMap<PaneId, Vec<String>>,
     pane_shells: BTreeMap<PaneId, String>,
     destroyed_sessions: Vec<(SessionId, String, String)>,
@@ -2974,6 +2981,7 @@ impl Default for MuxEngine {
             format_user: String::new(),
             pane_runtime_facts: BTreeMap::new(),
             agent_chats: BTreeMap::new(),
+            agent_parents: BTreeMap::new(),
             pane_start_commands: BTreeMap::new(),
             pane_shells: BTreeMap::new(),
             destroyed_sessions: Vec::new(),
@@ -5400,6 +5408,26 @@ impl MuxEngine {
         self.agent_chats.get(&pane)
     }
 
+    pub fn set_agent_parent(&mut self, child: PaneId, parent: PaneId) {
+        if self.state.pane(child).is_some() {
+            self.agent_parents.insert(child, parent);
+        }
+    }
+
+    #[must_use]
+    pub fn agent_parent(&self, child: PaneId) -> Option<PaneId> {
+        self.agent_parents.get(&child).copied()
+    }
+
+    #[must_use]
+    pub fn agent_children(&self, parent: PaneId) -> Vec<PaneId> {
+        self.agent_parents
+            .iter()
+            .filter(|(_, candidate)| **candidate == parent)
+            .map(|(child, _)| *child)
+            .collect()
+    }
+
     pub fn format_host(&self) -> &str {
         &self.format_host
     }
@@ -6353,6 +6381,7 @@ impl MuxEngine {
             pane_shells,
             pane_runtime_facts,
             agent_chats,
+            agent_parents,
             pane_remain_on_exit,
         );
         removed
@@ -19387,6 +19416,11 @@ impl MuxEngine {
             .iter()
             .map(|(pane, facts)| (pane.to_string(), facts.clone()))
             .collect();
+        let agent_parents = self
+            .agent_parents
+            .iter()
+            .map(|(child, parent)| (child.to_string(), parent.to_string()))
+            .collect();
         for (window, entry) in &self.state.windows {
             for (pane, entry) in &entry.panes {
                 pane_kinds.insert(pane.to_string(), pane_kind_name(&entry.kind));
@@ -19409,6 +19443,7 @@ impl MuxEngine {
             pane_kinds,
             browser_urls,
             agent_chats,
+            agent_parents,
             pane_windows,
             server: Arc::clone(&self.server_user_options),
             global_session: Arc::clone(&self.global_session_user_options),
