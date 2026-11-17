@@ -66,7 +66,8 @@ or an agent flag without `--kind agent` exits 2.
 A chat a chat caller creates gets that chat as its parent, kept daemon-side on the engine
 (`MuxEngine::set_agent_parent`, no wire field) and read as `#{agent_parent}` and `inspect`'s
 `agent_parent`. A chat with a parent cannot open one (`refuse_grandchild_chat`: `%C was opened by
-%P; a chat opened by another chat cannot open one`, exit 1, checked before the mux runs) and
+%P; a chat opened by another chat cannot open one. Do the work yourself, or say in your reply what
+you need`, exit 1, checked before the mux runs) and
 cannot `agent-send` to its parent. The brief of such a chat, and a chat caller's plain
 `agent-send` to a chat, carry a waiter (`Shared::chat_report_waiter`) that reports the turn into
 the caller as a prompt the daemon makes (`AgentRuntime::inject`): `[zz] %N (codex) finished:` with
@@ -86,7 +87,23 @@ into its terminal the way `--notify` does. When a pane goes away, the chats it o
 right after the command that removed it, on a thread (`close_orphaned_chats`); flipping a parent
 to a terminal closes nothing. From a chat caller `agent-send --wait` defaults to `--on-block fail`,
 and `--wait ''` on a chat joins the running turn (`HostCommand::Join`) or fails with `%N has no
-running turn`.
+running turn; read its last reply with: zz capture-pane -p -t %N`.
+
+**What the verbs tell an agent.** Every create with `--kind agent` prints one stderr line
+(`ReplyNotice::Opened`): `<verb>: opened %N (NAME)`, followed by `; its reply comes back to you as
+a message` for a chat caller with a brief or `; read its reply with: zz agent-send -t %N --wait ''`
+for any other caller with a brief. A plain `agent-send` prints the pane on stdout and on stderr
+either `agent-send: %N's reply comes back to you as a message` (chat caller) or `agent-send: read
+%N's reply with: zz agent-send -t %N --wait ''`. `--notify` from a chat is a plain send. A chat
+whose queue already holds `MAX_AGENT_QUEUED_PROMPTS` prompts refuses a send at once
+(`refuse_full_chat`: `%N has 4 prompts waiting; wait for its turn with: ...`), and prompts the
+daemon queues for `agent-send` or a brief (`PromptSource::Command`) are never handed back to a
+composer if a queue is reclaimed; one the host cannot take at all fails with `%N's agent is not
+running (agent_state STATE); the prompt was not sent`. `wait-pane` and `show-last-output` on a chat name
+`agent-send --wait ''` and `capture-pane -p`; `capture-pane` adds `capture-pane: %N's turn is
+still running` on stderr during a turn. `agent-respond --answer TEXT` answers a request that asks
+one question with typed text (`AgentAnswerQuestion`'s host path), and nothing pending reads `%N has
+no pending request (already answered, or none was asked)`.
 
 **The mention note.** A prompt whose text holds an agent token (`@+claude`, `@+codex`, either with
 `/MODEL`) or a chat token (`@HOST:%N`, the shape only the composer's Chats rows write) reaches the

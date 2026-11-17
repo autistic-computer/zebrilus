@@ -22,7 +22,7 @@ use zz_protocol::{
 use crate::agent::{
     host::{
         AgentConnectionPhase, AgentHost, AgentPaneSpec, AgentPaneState, AgentTurnFailure,
-        AgentTurnWaiter, HostCommand, QueuedPrompt,
+        AgentTurnWaiter, HostCommand, PromptSource, QueuedPrompt,
     },
     journal::{AgentJournal, JournalEntry},
     runtime::AgentSpawnConfig,
@@ -179,17 +179,67 @@ impl AgentRuntime {
         prompt: AgentPrompt,
         waiter: Option<AgentTurnWaiter>,
     ) -> bool {
+        self.prompt_from(pane, prompt, waiter, PromptSource::Composer)
+    }
+
+    pub(crate) fn command_prompt(
+        &self,
+        pane: PaneId,
+        prompt: AgentPrompt,
+        waiter: Option<AgentTurnWaiter>,
+    ) -> bool {
+        self.prompt_from(pane, prompt, waiter, PromptSource::Command)
+    }
+
+    pub(crate) fn answer_question(
+        &self,
+        pane: PaneId,
+        request: Option<u64>,
+        text: &str,
+    ) -> Result<u64, String> {
+        let pending = self
+            .host
+            .snapshot_state(pane)
+            .map(|state| state.pending_permissions)
+            .unwrap_or_default();
+        let (request_id, answers) = crate::agent::host::typed_answer(&pending, request, text)?;
+        if self.command(
+            pane,
+            HostCommand::AnswerQuestion {
+                request_id,
+                answers,
+            },
+        ) {
+            Ok(request_id)
+        } else {
+            Err("the chat is closed".to_owned())
+        }
+    }
+
+    pub(crate) fn waiting_prompts(&self, pane: PaneId) -> usize {
+        self.host
+            .snapshot_state(pane)
+            .map_or(0, |state| state.waiting_prompts)
+    }
+
+    fn prompt_from(
+        &self,
+        pane: PaneId,
+        prompt: AgentPrompt,
+        waiter: Option<AgentTurnWaiter>,
+        source: PromptSource,
+    ) -> bool {
         let _lifecycle = self.lifecycle.lock();
         let queued = QueuedPrompt {
             prompt,
             waiter,
-            injected: false,
+            source,
         };
         match self.host.command(pane, HostCommand::Prompt(queued)) {
             Ok(()) => true,
             Err(HostCommand::Prompt(mut queued)) => {
                 queued.settle(Err(AgentTurnFailure::Reclaimed));
-                self.fanout.reclaim_prompt(pane, queued.prompt)
+                source == PromptSource::Composer && self.fanout.reclaim_prompt(pane, queued.prompt)
             }
             Err(_) => unreachable!(),
         }
@@ -200,7 +250,7 @@ impl AgentRuntime {
         let queued = QueuedPrompt {
             prompt,
             waiter: None,
-            injected: true,
+            source: PromptSource::Injected,
         };
         self.host.command(pane, HostCommand::Prompt(queued)).is_ok()
     }
@@ -627,7 +677,10 @@ impl AgentFanout {
             | HostCommand::StopTask { .. }
             | HostCommand::Join(_)
             | HostCommand::RefreshGit => return false,
-            HostCommand::Prompt(queued) if queued.injected => return false,
+            HostCommand::Prompt(mut queued) if queued.source != PromptSource::Composer => {
+                queued.settle(Err(AgentTurnFailure::Reclaimed));
+                return false;
+            }
             HostCommand::Prompt(mut queued) => {
                 queued.settle(Err(AgentTurnFailure::Reclaimed));
                 return self.reclaim_prompt(pane, queued.prompt);

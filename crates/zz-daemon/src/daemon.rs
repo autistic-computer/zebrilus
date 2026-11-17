@@ -13137,10 +13137,24 @@ impl Shared {
         };
         if let Some(pane) = chat {
             #[cfg(feature = "agent")]
-            let text = self
-                .open_agent_runtime()
-                .map(|runtime| runtime.chat_text(pane, parsed.start.is_some()))
-                .unwrap_or_default();
+            let text = match self.open_agent_runtime() {
+                Some(runtime) => {
+                    if runtime.wire_state(pane).is_some_and(|state| {
+                        matches!(
+                            state.phase,
+                            zz_protocol::AgentConnectionPhase::Running
+                                | zz_protocol::AgentConnectionPhase::AwaitingPermission
+                        )
+                    }) {
+                        self.record_command_stderr(
+                            client,
+                            &format!("capture-pane: {pane}'s turn is still running"),
+                        );
+                    }
+                    runtime.chat_text(pane, parsed.start.is_some())
+                }
+                None => String::new(),
+            };
             #[cfg(not(feature = "agent"))]
             let text = String::new();
             if parsed.print && text.is_empty() {
@@ -17160,7 +17174,8 @@ impl Shared {
                 }
                 return self.wait_for_agent_turn(client, pane, None, &parsed, caller.is_some());
             }
-            if parsed.notify {
+            self.refuse_full_chat(pane)?;
+            if parsed.notify && caller.is_none() {
                 let caller = self
                     .inner
                     .lock()
@@ -17169,7 +17184,7 @@ impl Shared {
                     .or(context.pane.filter(|_| kind == ClientKind::Interactive));
                 return self.submit_agent_prompt_and_notify(caller, pane, payload, kind);
             }
-            if parsed.wait || chat_only {
+            if parsed.wait || (chat_only && !parsed.notify) {
                 if !matches!(kind, ClientKind::Command | ClientKind::Control) {
                     return Err(ServerError::InvalidCommand(
                         "agent-send --wait needs a command client".to_owned(),
@@ -17186,7 +17201,7 @@ impl Shared {
             }
             let runtime = self.agent_runtime().ok_or(ServerError::PaneExited(pane))?;
             let waiter = caller.map(|caller| self.chat_report_waiter(caller, pane));
-            if !runtime.prompt_with_waiter(
+            if !runtime.command_prompt(
                 pane,
                 AgentPrompt {
                     owner: ClientInstanceId(u64::MAX),
@@ -17195,14 +17210,17 @@ impl Shared {
                 },
                 waiter,
             ) {
-                return Err(ServerError::PaneExited(pane).into());
+                return Err(self.untaken_prompt(pane).into());
             }
-            if caller.is_some() {
-                self.record_command_stderr(
-                    client,
-                    &zz_protocol::agent_mention::ReplyNotice::Sent { pane }.to_string(),
-                );
-            }
+            let route = if caller.is_some() {
+                zz_protocol::agent_mention::ReplyRoute::Back
+            } else {
+                zz_protocol::agent_mention::ReplyRoute::Read
+            };
+            self.record_command_stderr(
+                client,
+                &zz_protocol::agent_mention::ReplyNotice::Sent { pane, route }.to_string(),
+            );
             return Ok(Execution {
                 output: if kind == ClientKind::Interactive {
                     RawText::default()
@@ -17696,9 +17714,30 @@ impl Shared {
             .into());
         }
         let pane = self.resolve_agent_permission_pane(context, parsed.target.as_deref())?;
+        let none_pending = move || {
+            ServerError::InvalidCommand(format!(
+                "{pane} has no pending request (already answered, or none was asked)"
+            ))
+        };
         #[cfg(feature = "agent")]
         {
             use crate::agent::host::PermissionChoice;
+            if let Some(text) = &parsed.answer {
+                let runtime = self.open_agent_runtime().ok_or_else(none_pending)?;
+                let request = runtime
+                    .answer_question(pane, parsed.request_id, text)
+                    .map_err(|error| {
+                        if error == "no pending permission" {
+                            none_pending()
+                        } else {
+                            ServerError::InvalidCommand(format!("{pane}: {error}"))
+                        }
+                    })?;
+                return Ok(Execution {
+                    output: format!("answered request {request}").into(),
+                    effects: Vec::new(),
+                });
+            }
             let choice = if parsed.allow {
                 PermissionChoice::Allow
             } else if parsed.deny {
@@ -17706,15 +17745,17 @@ impl Shared {
             } else {
                 PermissionChoice::Option(parsed.option.expect("validated permission choice"))
             };
-            let runtime = self.open_agent_runtime().ok_or_else(|| {
-                ServerError::InvalidCommand(format!("no pending permission: {pane}"))
-            })?;
+            let runtime = self.open_agent_runtime().ok_or_else(none_pending)?;
             let (wait, reply) =
                 agent_waits::reply::<Result<String, String>>(self, None, move |_, outcome| {
                     let option = match outcome {
                         terminal_requests::ReplyOutcome::Ready(result) => {
                             result.map_err(|error| {
-                                ServerError::InvalidCommand(format!("{error}: {pane}"))
+                                if error == "no pending permission" {
+                                    none_pending()
+                                } else {
+                                    ServerError::InvalidCommand(format!("{error}: {pane}"))
+                                }
                             })?
                         }
                         _ => return Err(ServerError::PaneExited(pane).into()),
@@ -17740,7 +17781,7 @@ impl Shared {
             wait.finish(self, Execution::default())
         }
         #[cfg(not(feature = "agent"))]
-        Err(ServerError::InvalidCommand(format!("no pending permission: {pane}")).into())
+        Err(none_pending().into())
     }
 
     fn send_last_output(
@@ -17901,7 +17942,7 @@ impl Shared {
             .resolve_pane(target, context.window, context.pane)?;
         match inner.engine.state.pane(pane).map(|pane| &pane.kind) {
             Some(PaneKind::Terminal) => {}
-            Some(PaneKind::Agent(_)) if matches!(verb, "send-text" | "run-pane") => {
+            Some(PaneKind::Agent(_)) if matches!(verb, "send-text" | "run-pane" | "wait-pane") => {
                 return Err(agent_chat_refusal(verb, pane).into());
             }
             _ => {
@@ -17999,6 +18040,9 @@ impl Shared {
                 inner
                     .engine
                     .resolve_pane(target.as_deref(), context.window, context.pane)?;
+            if is_agent_chat(&inner, pane) {
+                return Err(agent_chat_refusal(verb, pane).into());
+            }
             if !matches!(
                 inner.engine.state.pane(pane).map(|pane| &pane.kind),
                 Some(PaneKind::Terminal)
@@ -33717,34 +33761,72 @@ impl Shared {
         created: Option<PaneId>,
         briefs: Vec<(PaneId, String)>,
     ) {
-        let caller = created.and_then(|pane| self.chat_caller(client, context, Some(pane)));
-        if let (Some(pane), Some(caller)) = (created, caller) {
-            self.inner.lock().engine.set_agent_parent(pane, caller);
-        }
-        let Some(runtime) = self.agent_runtime().filter(|_| !briefs.is_empty()) else {
+        use zz_protocol::agent_mention::{ReplyNotice, ReplyRoute};
+
+        let Some(pane) = created else {
             return;
         };
-        for (pane, text) in briefs {
-            let waiter = caller.map(|caller| self.chat_report_waiter(caller, pane));
-            if !runtime.prompt_with_waiter(
-                pane,
-                AgentPrompt {
-                    owner: ClientInstanceId(u64::MAX),
-                    text,
-                    images: Vec::new(),
-                },
-                waiter,
-            ) {
-                log::warn!(target: "zz::agent", "{pane} handed back its brief");
-            } else if caller.is_some() {
-                let notice = zz_protocol::agent_mention::ReplyNotice::Opened {
-                    verb: verb.to_owned(),
+        let caller = self.chat_caller(client, context, Some(pane));
+        if let Some(caller) = caller {
+            self.inner.lock().engine.set_agent_parent(pane, caller);
+        }
+        let mut queued = false;
+        if let Some(runtime) = self.agent_runtime() {
+            for (pane, text) in briefs {
+                let waiter = caller.map(|caller| self.chat_report_waiter(caller, pane));
+                queued |= runtime.command_prompt(
                     pane,
-                    provider: self.agent_provider_of(pane),
-                };
-                self.record_command_stderr(client, &notice.to_string());
+                    AgentPrompt {
+                        owner: ClientInstanceId(u64::MAX),
+                        text,
+                        images: Vec::new(),
+                    },
+                    waiter,
+                );
+                if !queued {
+                    log::warn!(target: "zz::agent", "{pane} did not take its brief");
+                }
             }
         }
+        let route = match (queued, caller) {
+            (false, _) => None,
+            (true, Some(_)) => Some(ReplyRoute::Back),
+            (true, None) => Some(ReplyRoute::Read),
+        };
+        let notice = ReplyNotice::Opened {
+            verb: verb.to_owned(),
+            pane,
+            provider: self.agent_provider_of(pane),
+            route,
+        };
+        self.record_command_stderr(client, &notice.to_string());
+    }
+
+    fn untaken_prompt(&self, pane: PaneId) -> ServerError {
+        let state = self
+            .inner
+            .lock()
+            .engine
+            .agent_chat(pane)
+            .map_or("starting", |chat| chat.state);
+        ServerError::InvalidCommand(format!(
+            "{pane}'s agent is not running (agent_state {state}); the prompt was not sent"
+        ))
+    }
+
+    fn refuse_full_chat(self: &Arc<Self>, pane: PaneId) -> Result<(), DaemonError> {
+        let waiting = self
+            .open_agent_runtime()
+            .map_or(0, |runtime| runtime.waiting_prompts(pane));
+        let limit = zz_protocol::MAX_AGENT_QUEUED_PROMPTS;
+        if waiting < limit {
+            return Ok(());
+        }
+        Err(ServerError::InvalidCommand(format!(
+            "{pane} has {limit} prompts waiting; wait for its turn with: {}",
+            zz_protocol::agent_mention::wait_command(pane)
+        ))
+        .into())
     }
 
     fn refuse_grandchild_chat(
@@ -33771,7 +33853,7 @@ impl Shared {
             return Ok(());
         };
         Err(ServerError::InvalidCommand(format!(
-            "{caller} was opened by {parent}; a chat opened by another chat cannot open one"
+            "{caller} was opened by {parent}; a chat opened by another chat cannot open one. Do the work yourself, or say in your reply what you need"
         ))
         .into())
     }
@@ -34155,7 +34237,7 @@ impl Shared {
             audit: Arc::default(),
             asks: None,
         };
-        if !runtime.prompt_with_waiter(
+        if !runtime.command_prompt(
             pane,
             AgentPrompt {
                 owner: ClientInstanceId(u64::MAX),
@@ -34274,7 +34356,7 @@ impl Shared {
                         }
                         Err(AgentTurnFailure::NoTurn) => {
                             return Err(ServerError::InvalidCommand(format!(
-                                "{pane} has no running turn"
+                                "{pane} has no running turn; read its last reply with: zz capture-pane -p -t {pane}"
                             ))
                             .into());
                         }
@@ -34305,7 +34387,7 @@ impl Shared {
             asks: None,
         };
         let submitted = match text {
-            Some(text) => runtime.prompt_with_waiter(
+            Some(text) => runtime.command_prompt(
                 pane,
                 AgentPrompt {
                     owner: ClientInstanceId(u64::MAX),
@@ -34317,7 +34399,7 @@ impl Shared {
             None => runtime.join(pane, waiter),
         };
         if !submitted {
-            return Err(ServerError::PaneExited(pane).into());
+            return Err(self.untaken_prompt(pane).into());
         }
         self.report_command_queue_park();
         wait.finish(self, Execution::default())
@@ -46324,10 +46406,15 @@ fn is_agent_chat(inner: &ServerState, pane: PaneId) -> bool {
 }
 
 fn agent_chat_refusal(verb: &str, pane: PaneId) -> ServerError {
-    ServerError::InvalidCommand(if verb == "pipe-pane" {
-        format!("{pane} is an agent chat; read it with: zz capture-pane -p -t {pane}")
-    } else {
-        format!("{pane} is an agent chat; send with: zz agent-send -t {pane} TEXT")
+    ServerError::InvalidCommand(match verb {
+        "pipe-pane" | "show-last-output" | "send-last-output" => {
+            format!("{pane} is an agent chat; read it with: zz capture-pane -p -t {pane}")
+        }
+        "wait-pane" => format!(
+            "{pane} is an agent chat; wait for its turn with: {}",
+            zz_protocol::agent_mention::wait_command(pane)
+        ),
+        _ => format!("{pane} is an agent chat; send with: zz agent-send -t {pane} TEXT"),
     })
 }
 
@@ -50960,6 +51047,7 @@ struct ParsedAgentRespond {
     allow: bool,
     deny: bool,
     option: Option<String>,
+    answer: Option<String>,
     request_id: Option<u64>,
 }
 
@@ -50993,6 +51081,12 @@ fn parse_agent_respond_args(args: &[RawText]) -> Result<ParsedAgentRespond, Serv
                 index += value.consumed;
                 continue;
             }
+            if let Some(value) = option_value("agent-respond", args, index, &["--answer"])? {
+                parsed.answer = Some(value.value);
+                choices += 1;
+                index += value.consumed;
+                continue;
+            }
         }
         if parsed.request_id.is_some() {
             return Err(ServerError::CommandParse(
@@ -51006,7 +51100,8 @@ fn parse_agent_respond_args(args: &[RawText]) -> Result<ParsedAgentRespond, Serv
     }
     if choices != 1 {
         return Err(ServerError::CommandParse(
-            "agent-respond needs exactly one of --allow, --deny, or --option ID".to_owned(),
+            "agent-respond needs exactly one of --allow, --deny, --option ID or --answer TEXT"
+                .to_owned(),
         ));
     }
     Ok(parsed)
@@ -52721,13 +52816,13 @@ Claude Code and Codex run two ways in a pane, and a pane flips between them on t
 
 ### `zz new-pane [-d] [-P -F FORMAT] [-c DIR] [-t TARGET] --kind agent claude|codex [--model M] [--effort E] [--account ID] [--resume ID] [BRIEF]`
 
-Open a new chat as a float. `split-window` and `new-window` take the same `--kind agent` words and give the chat a split beside the target or a window of its own. `--model`, `--effort`, `--account` and `--resume` go before the provider or right after it. The words after them are the brief, sent as the chat's first prompt once its session is up, with the same checks and 1 MiB cap as `agent-send` TEXT; no brief opens an empty chat. Without `-c` the chat starts in the folder a terminal made the same way would. `-P -F '#{pane_id}'` prints the new pane, which takes `agent-send` at once: `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'review the diff in this folder'`. A missing or unknown provider, or a bad flag value, exits 2.
+Open a new chat as a float. `split-window` and `new-window` take the same `--kind agent` words and give the chat a split beside the target or a window of its own. `--model`, `--effort`, `--account` and `--resume` go before the provider or right after it. The words after them are the brief, sent as the chat's first prompt once its session is up, with the same checks and 1 MiB cap as `agent-send` TEXT; no brief opens an empty chat. Without `-c` the chat starts in the folder a terminal made the same way would. `-P -F '#{pane_id}'` prints the new pane, which takes `agent-send` at once: `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'review the diff in this folder'`. A missing or unknown provider, or a bad flag value, exits 2. Every create prints one line on stderr, `new-pane: opened %N (codex)` (with the verb's own name); with a brief it goes on `; its reply comes back to you as a message` when run from a chat, and `; read its reply with: zz agent-send -t %N --wait ''` when run from anywhere else.
 
-Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends (stderr says so), and each permission it asks for during that turn comes to you with the `agent-respond` lines that answer it. Do not wait or poll. A chat you open cannot open chats of its own, and closing your pane closes it. A message reads `[zz] %N (codex) finished:` and the reply, `stopped (REASON):`, `failed: MESSAGE` or `was closed.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it.
+Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends, and each permission it asks for during that turn comes to you with the `agent-respond` lines that answer it. Do not wait or poll. A chat you open cannot open chats of its own (it is told to do the work itself or say what it needs), and closing your pane closes it. A message reads `[zz] %N (codex) finished:` and the reply, `stopped (REASON):`, `failed: MESSAGE` or `was closed.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it, `--answer 'TEXT'` for a question that wants typed text.
 
 A prompt that names an agent with `@+claude`, `@+codex` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a short note that says what those tokens ask of you.
 
-A chat answers the same reads as a terminal. `#{pane_current_command}` is `claude` or `codex`. `#{agent_state}` is `starting`, `idle`, `working`, `needs-approval`, `needs-input` or `failed`, and `#{agent_pending_permission}` is the pending request ID or empty, in `list-panes -F`, `display-message -p` and `inspect`. `capture-pane -p -t %N` prints the chat's last turn as text: `> ` and the prompt, one line per tool call (its kind and title), then the reply; `-S -` prints the whole chat, and an empty chat prints nothing. Typing into a chat fails and names the verb to use: `send-keys`, `send-text`, `paste-buffer` and `run-pane` fail with `%N is an agent chat; send with: zz agent-send -t %N TEXT`, and `pipe-pane` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`.
+A chat answers the same reads as a terminal. `#{pane_current_command}` is `claude` or `codex`. `#{agent_state}` is `starting`, `idle`, `working`, `needs-approval`, `needs-input` or `failed`, and `#{agent_pending_permission}` is the pending request ID or empty, in `list-panes -F`, `display-message -p` and `inspect`. `capture-pane -p -t %N` prints the chat's last turn as text: `> ` and the prompt, one line per tool call (its kind and title), then the reply; `-S -` prints the whole chat, and an empty chat prints nothing. While a turn runs, stderr says `capture-pane: %N's turn is still running`. `wait-pane` on a chat fails with `%N is an agent chat; wait for its turn with: zz agent-send -t %N --wait ''`, and `show-last-output` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`. Typing into a chat fails and names the verb to use: `send-keys`, `send-text`, `paste-buffer` and `run-pane` fail with `%N is an agent chat; send with: zz agent-send -t %N TEXT`, and `pipe-pane` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`.
 
 ### `zz flip-agent [-t %N] [--now | --when-idle | --cancel]`
 
@@ -52743,16 +52838,16 @@ Move a chat to another account and resume the same session there. An account is 
 
 Send TEXT as a prompt to an agent pane (a chat), or to another agent in a terminal pane, typed into its input with Enter only when `--submit` is given. A terminal running Claude Code or Codex refuses it: flip the pane to chat first. Read stdin when TEXT is omitted: `git diff | zz agent-send -t %3`. `--context` adds a file/line header and fences the payload; text is capped at 1 MiB.
 
-`--submit` sends now and prints the chosen pane. `--wait`, `--notify`, `--final`, `--json` and `--on-block` follow the chat's turn. `--notify` runs from inside another terminal pane and, when the target's turn ends, posts its reply back into the calling pane. `--wait` waits for the turn and prints its reply on stdout (pane ID on stderr). A terminal pane falls back to waiting on `@agent_state`, and `--notify`, `--final` and `--on-block allow|deny` exit 2 there. Failure, cancellation, hand-back, or timeout exits non-zero. The timeout defaults to 600 seconds; `0` waits forever. A timeout leaves the turn running. `--json` prints one object with turn facts, `final_text`, and `transcript`. `--final` prints only the text after the last tool call or tool update. Both require `--wait`; combining them is a usage error. `--on-block wait` waits for permission. `--on-block fail` prints the pending permission JSON and exits 3 while the turn continues. `--on-block allow` approves the pending permission and `--on-block deny` rejects it.
+`--submit` sends now and prints the chosen pane. `--wait`, `--notify`, `--final`, `--json` and `--on-block` follow the chat's turn. `--notify` runs from inside another terminal pane and, when the target's turn ends, posts its reply back into the calling pane; from a chat it is a plain send, since the reply comes back anyway. `--wait` waits for the turn and prints its reply on stdout (pane ID on stderr). A terminal pane falls back to waiting on `@agent_state`, and `--notify`, `--final` and `--on-block allow|deny` exit 2 there. Failure, cancellation, hand-back, or timeout exits non-zero. The timeout defaults to 600 seconds; `0` waits forever. A timeout leaves the turn running. `--json` prints one object with turn facts, `final_text`, and `transcript`. `--final` prints only the text after the last tool call or tool update. Both require `--wait`; combining them is a usage error. `--on-block wait` waits for permission. `--on-block fail` prints the pending permission JSON and exits 3 while the turn continues. `--on-block allow` approves the pending permission and `--on-block deny` rejects it.
 
 Turn facts: `final_text` contains message text after the last tool call or tool update. `tool_calls` counts the turn's tool calls; permission counters count the chat's requests. Each buffer keeps its tail when capped: 1 MiB for the transcript and 256 KiB for final text. The JSON object has `pane`, `stop_reason`, `duration_ms`, `tool_calls`, `permissions` (`requested`, `allowed`, `denied`), `truncated`, `final_text`, and `transcript`. A blocked reply also has a nested `permission` object. Exit 0 means `end_turn`; other stop reasons exit 1 with the reply still printed, except cancellation, which keeps its existing error output. A blocked wait exits 3 and a timeout exits 124. Stderr carries the pane ID and on-block audit lines. `--progress` requires `--wait` and an explicit `-t %N`. It prints tool calls, state changes, and a heartbeat after 60 seconds without a line to stderr. Titles in progress lines stop at 120 characters.
 
-From a chat, a send to another chat without `--wait` brings the reply back to you as a message when that turn ends, and the chat's permission asks come to you as they open; stdout still prints the pane ID. With `--wait` from a chat, `--on-block` defaults to `fail`, and a blocked wait ends its output with the `agent-respond` and `agent-send --wait ''` lines to run next. A chat cannot send to the chat that opened it: its reply reaches that chat when its turn ends. `--wait ''` on a chat waits for the turn that is running and prints its reply; with no turn running it exits 1 with `%N has no running turn`.
+A send without `--wait` prints the pane ID. From a chat, the reply comes back to you as a message when that turn ends, the chat's permission asks come to you as they open, and stderr says `agent-send: %N's reply comes back to you as a message`; from anywhere else stderr says `agent-send: read %N's reply with: zz agent-send -t %N --wait ''`. A chat that already has 4 prompts waiting refuses a send with exit 1 and `%N has 4 prompts waiting; wait for its turn with: zz agent-send -t %N --wait ''`. With `--wait` from a chat, `--on-block` defaults to `fail`, and a blocked wait ends its output with the `agent-respond` and `agent-send --wait ''` lines to run next. A chat cannot send to the chat that opened it: its reply reaches that chat when its turn ends. `--wait ''` on a chat waits for the turn that is running and prints its reply; with no turn running it exits 1 with `%N has no running turn; read its last reply with: zz capture-pane -p -t %N`.
 
-### `zz agent-respond [-t %N] (--allow | --deny | --option ID) [REQUEST_ID]`
+### `zz agent-respond [-t %N] (--allow | --deny | --option ID | --answer TEXT) [REQUEST_ID]`
 
 Answer the named or oldest pending permission in an agent pane. Read the pending request with `zz inspect -t %N --json | jq .permission`.
-Print the chosen option ID. `--allow` approves once and `--deny` rejects. Other panes exit 1 with `is not an agent chat`.
+Print the chosen option ID. `--allow` approves once and `--deny` rejects. `--answer TEXT` types the answer to a request that asks one question and prints `answered request ID`. Other panes exit 1 with `is not an agent chat`, and a chat with nothing pending exits 1 with `%N has no pending request (already answered, or none was asked)`.
 
 ### Permissions
 
@@ -124210,6 +124305,92 @@ bind - split-window -v -c "#{pane_current_path}"
                 })
         }
 
+        fn take_stderr(workspace: &Workspace, client: ClientId) -> String {
+            std::mem::take(
+                &mut workspace
+                    .shared
+                    .inner
+                    .lock()
+                    .client_entry(client)
+                    .command_streams
+                    .get_or_insert_default()
+                    .stderr,
+            )
+        }
+
+        #[test]
+        fn chat_verbs_say_what_to_run_next() {
+            let workspace = workspace_with(&[Behavior::Hang, Behavior::Chunk]);
+            let terminal = ClientId(97);
+            let run = |verb: &str, args: &[&str]| run_as(&workspace, terminal, None, verb, args);
+            run(
+                "new-pane",
+                &["-d", "-t", "%1", "--kind", "agent", "codex", "hi"],
+            )
+            .expect("new-pane with a brief");
+            assert_eq!(
+                take_stderr(&workspace, terminal),
+                "new-pane: opened %2 (codex); read its reply with: zz agent-send -t %2 --wait ''\n"
+            );
+            run("new-pane", &["-d", "-t", "%1", "--kind", "agent", "codex"]).expect("new-pane");
+            assert_eq!(
+                take_stderr(&workspace, terminal),
+                "new-pane: opened %3 (codex)\n"
+            );
+            assert_eq!(
+                run("agent-send", &["-t", "%1", "busy"]),
+                Ok("%1".to_owned())
+            );
+            assert_eq!(
+                take_stderr(&workspace, terminal),
+                "agent-send: read %1's reply with: zz agent-send -t %1 --wait ''\n"
+            );
+            wait_until("the turn to run", || {
+                run("capture-pane", &["-p", "-t", "%1"]).is_ok()
+                    && take_stderr(&workspace, terminal)
+                        == "capture-pane: %1's turn is still running\n"
+            });
+            for queued in 1..=4 {
+                run("agent-send", &["-t", "%1", "more"]).expect("queued");
+                wait_until("the prompt to queue", || {
+                    workspace.runtime.waiting_prompts(workspace.agent) == queued
+                });
+            }
+            assert_eq!(
+                run("agent-send", &["-t", "%1", "one too many"]),
+                Err("%1 has 4 prompts waiting; wait for its turn with: zz agent-send -t %1 --wait ''".to_owned())
+            );
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(98),
+                    Some(PaneId(2)),
+                    "agent-send",
+                    &["--notify", "-t", "%3", "hi"]
+                ),
+                Ok("%3".to_owned())
+            );
+            assert_eq!(
+                take_stderr(&workspace, ClientId(98)),
+                "agent-send: %3's reply comes back to you as a message\n"
+            );
+            assert_eq!(
+                run("wait-pane", &["-t", "%1"]),
+                Err(
+                    "%1 is an agent chat; wait for its turn with: zz agent-send -t %1 --wait ''"
+                        .to_owned()
+                )
+            );
+            assert_eq!(
+                run("show-last-output", &["-t", "%1"]),
+                Err("%1 is an agent chat; read it with: zz capture-pane -p -t %1".to_owned())
+            );
+            assert_eq!(
+                run("agent-respond", &["-t", "%3", "--allow"]),
+                Err("%3 has no pending request (already answered, or none was asked)".to_owned())
+            );
+        }
+
         #[test]
         fn a_timed_out_wait_names_a_wait_that_joins_the_running_turn() {
             let workspace = workspace(Behavior::Hang);
@@ -124314,7 +124495,10 @@ bind - split-window -v -c "#{pane_current_path}"
                     "agent-send",
                     &["-t", "%2", "--wait", ""]
                 ),
-                Err("%2 has no running turn".to_owned())
+                Err(
+                    "%2 has no running turn; read its last reply with: zz capture-pane -p -t %2"
+                        .to_owned()
+                )
             );
             assert_eq!(
                 run_as(
@@ -124345,7 +124529,7 @@ bind - split-window -v -c "#{pane_current_path}"
                     &["--kind", "agent", "codex", "x"],
                 ),
                 Err(
-                    "%2 was opened by %1; a chat opened by another chat cannot open one".to_owned()
+                    "%2 was opened by %1; a chat opened by another chat cannot open one. Do the work yourself, or say in your reply what you need".to_owned()
                 )
             );
             assert_eq!(
@@ -124823,7 +125007,7 @@ bind - split-window -v -c "#{pane_current_path}"
                     &run(&["agent-respond", "-t", &target, "--allow"])
                         .expect_err("no pending request")
                 ),
-                format!("no pending permission: {target}")
+                format!("{target} has no pending request (already answered, or none was asked)")
             );
             let inspected = run(&["inspect", "-t", &target, "--json"])
                 .expect("no pending request")

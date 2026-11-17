@@ -119,16 +119,29 @@ pub fn mention_note(text: &str) -> Option<&'static str> {
     (!mentions(text).is_empty()).then_some(MENTION_NOTE)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReplyRoute {
+    Back,
+    Read,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReplyNotice {
     Opened {
         verb: String,
         pane: PaneId,
         provider: AgentProvider,
+        route: Option<ReplyRoute>,
     },
     Sent {
         pane: PaneId,
+        route: ReplyRoute,
     },
+}
+
+#[must_use]
+pub fn wait_command(pane: PaneId) -> String {
+    format!("zz agent-send -t {pane} --wait ''")
 }
 
 impl fmt::Display for ReplyNotice {
@@ -138,12 +151,33 @@ impl fmt::Display for ReplyNotice {
                 verb,
                 pane,
                 provider,
+                route,
+            } => {
+                write!(
+                    formatter,
+                    "{verb}: opened {pane} ({})",
+                    provider.command_name()
+                )?;
+                match route {
+                    Some(ReplyRoute::Back) => write!(formatter, "; its {REPLY_TAIL}"),
+                    Some(ReplyRoute::Read) => {
+                        write!(formatter, "; read its reply with: {}", wait_command(*pane))
+                    }
+                    None => Ok(()),
+                }
+            }
+            Self::Sent {
+                pane,
+                route: ReplyRoute::Back,
+            } => write!(formatter, "agent-send: {pane}'s {REPLY_TAIL}"),
+            Self::Sent {
+                pane,
+                route: ReplyRoute::Read,
             } => write!(
                 formatter,
-                "{verb}: opened {pane} ({}); its {REPLY_TAIL}",
-                provider.command_name()
+                "agent-send: read {pane}'s reply with: {}",
+                wait_command(*pane)
             ),
-            Self::Sent { pane } => write!(formatter, "agent-send: {pane}'s {REPLY_TAIL}"),
         }
     }
 }
@@ -156,18 +190,37 @@ impl ReplyNotice {
 
     fn parse_line(line: &str) -> Option<Self> {
         if let Some(rest) = line.strip_prefix("agent-send: ") {
+            if let Some(rest) = rest.strip_prefix("read ") {
+                let (pane, tail) = rest.split_once("'s reply with: ")?;
+                let pane = pane.parse().ok()?;
+                return (tail == wait_command(pane)).then_some(Self::Sent {
+                    pane,
+                    route: ReplyRoute::Read,
+                });
+            }
             let pane = rest.strip_suffix(&format!("'s {REPLY_TAIL}"))?;
             return Some(Self::Sent {
                 pane: pane.parse().ok()?,
+                route: ReplyRoute::Back,
             });
         }
         let (verb, rest) = line.split_once(": opened ")?;
-        let rest = rest.strip_suffix(&format!("; its {REPLY_TAIL}"))?;
-        let (pane, name) = rest.split_once(" (")?;
+        let (pane, rest) = rest.split_once(" (")?;
+        let pane = pane.parse().ok()?;
+        let (name, tail) = rest.split_once(')')?;
+        let route = match tail {
+            "" => None,
+            tail if tail == format!("; its {REPLY_TAIL}") => Some(ReplyRoute::Back),
+            tail if tail == format!("; read its reply with: {}", wait_command(pane)) => {
+                Some(ReplyRoute::Read)
+            }
+            _ => return None,
+        };
         Some(Self::Opened {
             verb: verb.to_owned(),
-            pane: pane.parse().ok()?,
-            provider: provider(name.strip_suffix(')')?)?,
+            pane,
+            provider: provider(name)?,
+            route,
         })
     }
 }
@@ -365,7 +418,12 @@ impl fmt::Display for AgentAsk {
                 write!(formatter, "\n{deny}")
             }
             AskAnswers::FreeText => {
-                write!(formatter, "\nanswer it in the pane, or dismiss it: {deny}")
+                let answer = AgentRespond {
+                    pane,
+                    decision: AgentDecision::Answer("TEXT".to_owned()),
+                    request: None,
+                };
+                write!(formatter, "\n{answer}\n{deny}")
             }
         }
     }
@@ -379,15 +437,20 @@ impl AgentAsk {
         let what = tail.strip_prefix("asks: ")?.to_owned();
         let rest = lines.collect::<Vec<_>>();
         let respond = |line: &str| AgentRespond::parse(line).filter(|respond| respond.pane == pane);
+        let denies = |line: &str| respond(line).is_some_and(|r| r.decision == AgentDecision::Deny);
         let answers = match rest.as_slice() {
-            [free] if free.starts_with("answer it in the pane, or dismiss it: ") => {
-                AskAnswers::FreeText
-            }
             [allow, deny]
                 if respond(allow).is_some_and(|r| r.decision == AgentDecision::Allow)
-                    && respond(deny).is_some_and(|r| r.decision == AgentDecision::Deny) =>
+                    && denies(deny) =>
             {
                 AskAnswers::AllowDeny
+            }
+            [answer, deny]
+                if respond(answer)
+                    .is_some_and(|r| r.decision == AgentDecision::Answer("TEXT".to_owned()))
+                    && denies(deny) =>
+            {
+                AskAnswers::FreeText
             }
             [options @ .., deny]
                 if respond(deny).is_some_and(|r| r.decision == AgentDecision::Deny) =>
@@ -424,6 +487,7 @@ pub enum AgentDecision {
     Allow,
     Deny,
     Option(String),
+    Answer(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -440,6 +504,9 @@ impl fmt::Display for AgentRespond {
             AgentDecision::Allow => formatter.write_str(" --allow")?,
             AgentDecision::Deny => formatter.write_str(" --deny")?,
             AgentDecision::Option(id) => write!(formatter, " --option {id}")?,
+            AgentDecision::Answer(text) => {
+                write!(formatter, " --answer '{}'", text.replace('\'', "'\\''"))?;
+            }
         }
         if let Some(request) = self.request {
             write!(formatter, " {request}")?;
@@ -451,27 +518,33 @@ impl fmt::Display for AgentRespond {
 impl AgentRespond {
     #[must_use]
     pub fn parse(command: &str) -> Option<Self> {
-        let words = command
-            .split(|character: char| character.is_whitespace() || character == ';')
-            .map(|word| word.trim_matches(|character| matches!(character, '\'' | '"' | '`')))
-            .filter(|word| !word.is_empty())
-            .collect::<Vec<_>>();
-        let start = words.iter().position(|word| *word == "agent-respond")?;
+        let words = shell_words(command);
+        let Some(start) = words.iter().position(|word| word == "agent-respond") else {
+            return words
+                .iter()
+                .filter(|word| word.contains("agent-respond") && word.contains(char::is_whitespace))
+                .find_map(|word| Self::parse(word));
+        };
         let mut pane = None;
         let mut decision = None;
         let mut request = None;
         let mut index = start + 1;
-        while let Some(word) = words.get(index) {
-            match *word {
-                "&&" | "||" | "|" | "&" => break,
+        while let Some(word) = words.get(index).map(String::as_str) {
+            match word {
+                ";" | "&&" | "||" | "|" | "&" => break,
                 "-t" => {
                     pane = Some(words.get(index + 1)?.parse().ok()?);
                     index += 1;
                 }
                 "--allow" => decision = Some(AgentDecision::Allow),
                 "--deny" => decision = Some(AgentDecision::Deny),
-                "--option" => {
-                    decision = Some(AgentDecision::Option((*words.get(index + 1)?).to_owned()));
+                "--option" | "--answer" => {
+                    let value = words.get(index + 1)?.clone();
+                    decision = Some(if word == "--option" {
+                        AgentDecision::Option(value)
+                    } else {
+                        AgentDecision::Answer(value)
+                    });
                     index += 1;
                 }
                 other => {
@@ -492,6 +565,49 @@ impl AgentRespond {
             request,
         })
     }
+}
+
+fn shell_words(text: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word = None::<String>;
+    let mut chars = text.chars().peekable();
+    while let Some(character) = chars.next() {
+        match character {
+            '\'' | '"' => {
+                let current = word.get_or_insert_default();
+                while let Some(next) = chars.next() {
+                    if next == character {
+                        break;
+                    }
+                    if next == '\\'
+                        && character == '"'
+                        && let Some(escaped) = chars.next()
+                    {
+                        current.push(escaped);
+                        continue;
+                    }
+                    current.push(next);
+                }
+            }
+            '\\' => {
+                if let Some(escaped) = chars.next() {
+                    word.get_or_insert_default().push(escaped);
+                }
+            }
+            ';' | '&' | '|' => {
+                words.extend(word.take());
+                let mut operator = character.to_string();
+                if chars.next_if_eq(&character).is_some() {
+                    operator.push(character);
+                }
+                words.push(operator);
+            }
+            character if character.is_whitespace() => words.extend(word.take()),
+            character => word.get_or_insert_default().push(character),
+        }
+    }
+    words.extend(word);
+    words
 }
 
 #[cfg(test)]
@@ -569,7 +685,7 @@ mod tests {
             ),
             (
                 AskAnswers::FreeText,
-                "[zz] %4 (codex) asks: execute cargo test\nanswer it in the pane, or dismiss it: zz agent-respond -t %4 --deny",
+                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --answer 'TEXT'\nzz agent-respond -t %4 --deny",
             ),
         ];
         for (answers, text) in asks {
@@ -582,18 +698,35 @@ mod tests {
             assert_eq!(ask.to_string(), text);
             assert_eq!(AgentAsk::parse(text), Some(ask));
         }
+        let opened = |route| ReplyNotice::Opened {
+            verb: "new-pane".to_owned(),
+            pane,
+            provider: codex,
+            route,
+        };
         let notices = [
             (
-                ReplyNotice::Opened {
-                    verb: "new-pane".to_owned(),
-                    pane,
-                    provider: codex,
-                },
+                opened(Some(ReplyRoute::Back)),
                 "new-pane: opened %4 (codex); its reply comes back to you as a message",
             ),
+            (opened(None), "new-pane: opened %4 (codex)"),
             (
-                ReplyNotice::Sent { pane },
+                opened(Some(ReplyRoute::Read)),
+                "new-pane: opened %4 (codex); read its reply with: zz agent-send -t %4 --wait ''",
+            ),
+            (
+                ReplyNotice::Sent {
+                    pane,
+                    route: ReplyRoute::Back,
+                },
                 "agent-send: %4's reply comes back to you as a message",
+            ),
+            (
+                ReplyNotice::Sent {
+                    pane,
+                    route: ReplyRoute::Read,
+                },
+                "agent-send: read %4's reply with: zz agent-send -t %4 --wait ''",
             ),
         ];
         for (notice, line) in notices {
@@ -610,6 +743,16 @@ mod tests {
             "zz agent-respond -t %4 --option answer-1 7"
         );
         assert_eq!(AgentRespond::parse(&respond.to_string()), Some(respond));
+        let answer = AgentRespond {
+            pane,
+            decision: AgentDecision::Answer("it's blue".to_owned()),
+            request: None,
+        };
+        assert_eq!(
+            answer.to_string(),
+            "zz agent-respond -t %4 --answer 'it'\\''s blue'"
+        );
+        assert_eq!(AgentRespond::parse(&answer.to_string()), Some(answer));
         assert_eq!(
             AgentRespond::parse("/bin/zsh -lc 'agent-respond -t %4 --deny' && echo done"),
             Some(AgentRespond {
