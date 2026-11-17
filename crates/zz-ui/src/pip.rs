@@ -223,6 +223,29 @@ pub struct PipPlaced {
     pub stashed: Option<PipSide>,
 }
 
+#[derive(Default)]
+struct PipsInView(BTreeMap<ala::EntityId, BTreeSet<PaneId>>);
+
+impl ala::Global for PipsInView {}
+
+pub fn show_pips(owner: ala::EntityId, placed: &[PipPlaced], cx: &mut App) {
+    let shown = placed
+        .iter()
+        .filter(|placed| placed.stashed.is_none())
+        .map(|placed| placed.pane)
+        .collect::<BTreeSet<_>>();
+    let held = &mut cx.default_global::<PipsInView>().0;
+    if held.get(&owner) != Some(&shown) {
+        held.insert(owner, shown);
+    }
+}
+
+#[must_use]
+pub fn pip_in_view(pane: PaneId, cx: &App) -> bool {
+    cx.try_global::<PipsInView>()
+        .is_some_and(|held| held.0.values().any(|shown| shown.contains(&pane)))
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct PipStage {
     window: Option<WindowId>,

@@ -2,6 +2,7 @@ use crate::story::{Section, Story};
 
 pub(super) mod cards;
 pub(super) mod chat;
+mod child;
 mod chrome;
 pub(super) mod composer;
 pub(super) mod fixtures;
@@ -136,6 +137,12 @@ const STORY: Story = Story {
             name: "Subagents",
             summary: "Each subagent is its own flat row that washes deeper on hover: the CLI's tile in its program colors with a status dot (working, needs you, done, failed) that says the same in its tooltip and to screen readers, its name, and on hover how long it took and the PiP mark. Clicking a row opens its chat in a PiP docked beside the thread: its prompt, its own rows, its answer and a footer; the PiP's close button or a second click closes it. An approval waits right under its agent, or in its PiP while that is open.",
             build: chat::subagents,
+        },
+        Section {
+            id: "child-card",
+            name: "Child card",
+            summary: "When a chat opens another agent as a chat in a PiP, its transcript shows one card for that child: the child's tile with its status dot, its name, the state word, and at the right the allowed count once it is done, the time and the PiP mark. While it works the card peeks at the child's last three rows, the oldest fading; while it asks, the request and who it waits for; a decision shows on its line; done shows the whole reply as a quote and failed the error. While the child's PiP is in view the card is its header line only, and a closed child is the header with no time. Clicking the card focuses the child, so its stashed PiP slides in.",
+            build: child::child_cards,
         },
         Section {
             id: "background",

@@ -14,6 +14,7 @@ pub mod attention;
 pub mod chat_rows;
 #[cfg(test)]
 mod chat_rows_tests;
+pub mod child_card;
 pub mod chooser;
 mod chrome;
 pub mod chrome_override;

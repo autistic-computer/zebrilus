@@ -21,11 +21,12 @@ use penna::{
 };
 use zz_client::{
     chat_rows::{self, AgentState, Fold, RunLabel, Unit},
+    child_card::{ChildCard, ChildState, PEEK_LINES, PeekLine, PeekMark, Verdict},
     program::Program,
-    window_summary::Attention,
+    window_summary::{Attention, provider_program},
 };
 use zz_protocol::{
-    ViewContent,
+    PaneId, ViewContent,
     agent_stream::AgentImage,
     chat::{
         Ask, ChatView, ItemId, ItemKind, ItemStatus, RequestId, RequestView, SessionView,
@@ -40,9 +41,11 @@ use super::{
     assistant_markdown_extensions, attachment_tile,
 };
 use crate::navigation::pane_stack::status_dot;
+use crate::target::{RefTarget, ResolvedTarget, TargetKind};
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, StyledExt as _, Tone,
     WindowExt as _,
+    badge::Badge,
     button::Button,
     h_flex,
     notification::Notification,
@@ -113,6 +116,14 @@ impl HeldMessage {
 
 pub type ChatClicks = Rc<dyn Fn(&ChatClick, &mut Window, &mut App)>;
 
+pub type ChildChats = Rc<dyn for<'a> Fn(PaneId, &'a App) -> Option<&'a ChatView>>;
+
+pub fn child_chats(
+    find: impl for<'a> Fn(PaneId, &'a App) -> Option<&'a ChatView> + 'static,
+) -> ChildChats {
+    Rc::new(find)
+}
+
 #[derive(Default)]
 pub struct ChatHooks<'a> {
     pub click: Option<ChatClicks>,
@@ -122,6 +133,7 @@ pub struct ChatHooks<'a> {
     pub owner: Option<u64>,
     pub ground: Option<penna::Ground>,
     pub touch: bool,
+    pub children: Option<ChildChats>,
 }
 
 pub struct ChatMarkdown {
@@ -220,6 +232,7 @@ enum RowKey {
     Turn(TurnId),
     Item(ItemId),
     Request(RequestId),
+    Child(PaneId),
     Empty,
 }
 
@@ -244,6 +257,7 @@ impl Row {
                     .first()
                     .map_or(RowKey::Empty, |id| RowKey::Item(id.clone())),
                 Unit::Ask(request) | Unit::Record(request) => RowKey::Request(*request),
+                Unit::Child(card) => RowKey::Child(card.pane),
             },
         }
     }
@@ -258,7 +272,7 @@ fn holds(unit: &Unit, id: &ItemId) -> bool {
         | Unit::Notice(held) => held == id,
         Unit::Run(run) => run.items.contains(id),
         Unit::Agents(ids) => ids.contains(id),
-        Unit::Ask(_) | Unit::Record(_) => false,
+        Unit::Ask(_) | Unit::Record(_) | Unit::Child(_) => false,
     }
 }
 
@@ -288,6 +302,7 @@ pub struct ChatFrame {
     pub owner: Option<u64>,
     pub ground: Option<penna::Ground>,
     pub touch: bool,
+    pub children: Option<ChildChats>,
 }
 
 impl ChatFrame {
@@ -300,6 +315,7 @@ impl ChatFrame {
             owner: self.owner,
             ground: self.ground,
             touch: self.touch,
+            children: self.children.clone(),
         }
     }
 }
@@ -713,6 +729,7 @@ pub struct ChatLook {
     pub touch: bool,
     pub inset_top: Pixels,
     pub inset_bottom: Pixels,
+    pub children: Option<ChildChats>,
 }
 
 pub fn chat_surface<T: ChatHost>(
@@ -787,6 +804,7 @@ pub fn chat_surface<T: ChatHost>(
         owner: Some(look.pane),
         ground: look.ground,
         touch: look.touch,
+        children: look.children,
     };
     pane.jump = pane.shows_jump();
     pane.release(window, cx);
@@ -1151,6 +1169,18 @@ impl Draw<'_, '_> {
             Unit::Subagent(id) => self.agents(std::slice::from_ref(id)),
             Unit::Agents(ids) => self.agents(ids),
             Unit::Plan(id) => plan_card(self.view, id, cx),
+            Unit::Child(card) => chat_child_card(
+                card,
+                self.hooks
+                    .children
+                    .as_ref()
+                    .and_then(|children| children(card.pane, cx)),
+                crate::pip::pip_in_view(card.pane, cx),
+                self.now,
+                self.phase,
+                self.hooks,
+                cx,
+            ),
             Unit::Notice(id) => notice_row(self.view, id, self.hooks.touch, cx),
             Unit::Ask(request) => self.view.request(*request).map_or_else(
                 || div().into_any_element(),
@@ -1583,13 +1613,12 @@ fn agent_status(state: Option<&AgentState>) -> Option<&'static str> {
     })
 }
 
-fn vendor_tile(
-    id: impl Into<ala::ElementId>,
+fn agent_tile(
     vendor: Option<&'static Program>,
-    state: Option<&AgentState>,
+    attention: Attention,
     ground: penna::Ground,
     cx: &App,
-) -> Stateful<Div> {
+) -> Div {
     let size = px(VENDOR_TILE);
     let tile = match vendor.filter(|_| crate::program::program_colors(cx)) {
         Some(program) => crate::program::program_tile(program, size, 0.0, cx),
@@ -1610,13 +1639,338 @@ fn vendor_tile(
             ),
     };
     tile.relative()
-        .children(status_dot(agent_attention(state), size, ground.fill, cx))
+        .children(status_dot(attention, size, ground.fill, cx))
+}
+
+fn vendor_tile(
+    id: impl Into<ala::ElementId>,
+    vendor: Option<&'static Program>,
+    state: Option<&AgentState>,
+    ground: penna::Ground,
+    cx: &App,
+) -> Stateful<Div> {
+    agent_tile(vendor, agent_attention(state), ground, cx)
         .id(id)
         .when_some(agent_status(state), |tile, status| {
             tile.role(ala::Role::Image)
                 .aria_label(status)
                 .tooltip(move |window, cx| crate::tooltip::Tooltip::new(status).build(window, cx))
         })
+}
+
+const CHILD_GROUP: &str = "chat-child-card";
+const CHILD_HEADER: f32 = 36.0;
+const CHILD_LINE: f32 = 16.0;
+const CHILD_MARK: f32 = 13.0;
+const PEEK_LINE: f32 = 22.0;
+const PEEK_INDENT: f32 = 30.0;
+const PEEK_FADE: f32 = 22.0;
+const QUOTE_RULE: f32 = 4.0;
+const QUOTE_GAP: f32 = 12.0;
+const QUOTE_LINE: f32 = 18.0;
+
+static TABULAR: std::sync::LazyLock<ala::FontFeatures> =
+    std::sync::LazyLock::new(|| ala::FontFeatures(Arc::new(vec![("tnum".into(), 1)])));
+
+const fn child_attention(state: &ChildState) -> Attention {
+    match state {
+        ChildState::Working => Attention::Working,
+        ChildState::Asking(_) => Attention::NeedsYou,
+        ChildState::Done { .. } => Attention::Done,
+        ChildState::Failed { .. } => Attention::Failed,
+        ChildState::Closed => Attention::None,
+    }
+}
+
+fn child_target(card: &ChildCard, refs: &ChatRefs) -> ResolvedTarget {
+    let here = refs.hosts.iter().find(|host| host.here);
+    ResolvedTarget {
+        kind: TargetKind::Chat,
+        host: here.map(|host| host.id).unwrap_or_default(),
+        here: true,
+        label: card.name().to_owned(),
+        icon: crate::pane::agent_provider_icon(card.agent),
+        target: RefTarget::Pane(card.pane),
+    }
+}
+
+#[must_use]
+pub fn chat_child_card(
+    card: &ChildCard,
+    chat: Option<&ChatView>,
+    in_view: bool,
+    now: u64,
+    phase: f32,
+    hooks: &ChatHooks<'_>,
+    cx: &App,
+) -> AnyElement {
+    let theme = cx.theme();
+    let header = card.header(now);
+    let closed = card.state == ChildState::Closed;
+    let pane = hooks.ground.unwrap_or_else(|| theme.ground());
+    let ground = theme.ground_of(penna::Surface::from(CardLook::Activity).on(pane));
+    let (muted, faint) = (theme.foreground.muted(), theme.foreground.faint());
+    let word = match card.state {
+        ChildState::Asking(_) => theme.warning,
+        ChildState::Done { .. } => theme.foreground,
+        ChildState::Failed { .. } => theme.danger,
+        ChildState::Working | ChildState::Closed => muted,
+    };
+    let tile = agent_tile(
+        provider_program(card.agent),
+        child_attention(&card.state),
+        ground,
+        cx,
+    );
+    let mark = div()
+        .flex_none()
+        .relative()
+        .top(crate::icon::cap_center_drop(
+            px(TextStyle::Body.design_px()),
+            px(CHILD_MARK),
+            cx,
+        ))
+        .text_color(faint)
+        .group_hover(CHILD_GROUP, |mark| mark.text_color(muted))
+        .child(Icon::new(IconName::PictureInPicture).size(px(CHILD_MARK)));
+    let head = h_flex()
+        .flex_none()
+        .w_full()
+        .h(px(if hooks.touch {
+            penna::blocks::touch::TOUCH_TARGET
+        } else {
+            CHILD_HEADER
+        }))
+        .gap_2()
+        .items_center()
+        .whitespace_nowrap()
+        .type_style(
+            if hooks.touch {
+                TextStyle::TouchSmall
+            } else {
+                TextStyle::Body
+            },
+            cx,
+        )
+        .when(!hooks.touch, |head| head.line_height(px(CHILD_LINE)))
+        .child(tile)
+        .child({
+            let style = if hooks.touch {
+                TextStyle::TouchSmall
+            } else {
+                TextStyle::Body
+            };
+            Label::new(style, header.name)
+                .strong()
+                .flex_none()
+                .text_color(if closed { muted } else { theme.foreground })
+        })
+        .child(div().flex_none().text_color(faint).child("·"))
+        .child(
+            div()
+                .flex_none()
+                .type_style(TextStyle::Small, cx)
+                .text_color(word)
+                .child(header.word),
+        )
+        .child(div().flex_1())
+        .children(
+            header
+                .allowed
+                .map(|allowed| Badge::new(allowed).tone(Tone::Success).small().on(ground)),
+        )
+        .children(header.time.map(|time| {
+            div()
+                .flex_none()
+                .type_style(TextStyle::Caption, cx)
+                .font_features(TABULAR.clone())
+                .text_color(faint)
+                .group_hover(CHILD_GROUP, |time| time.text_color(muted))
+                .child(time)
+        }))
+        .when(!closed, |head| head.child(mark));
+    let collapsed = in_view || closed;
+    let body = match &card.state {
+        ChildState::Done { reply } if !collapsed => Some(
+            div()
+                .flex()
+                .flex_row()
+                .ml(px(PEEK_INDENT))
+                .mb(px(10.0))
+                .gap(px(QUOTE_GAP))
+                .child(
+                    div()
+                        .flex_none()
+                        .w(px(QUOTE_RULE))
+                        .bg(theme.divider_color()),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .type_style(TextStyle::Body, cx)
+                        .line_height(px(QUOTE_LINE))
+                        .text_color(muted)
+                        .child(reply.clone()),
+                )
+                .into_any_element(),
+        ),
+        _ if collapsed => None,
+        _ => chat.and_then(|chat| child_peek(card, chat, now, phase, ground, cx)),
+    };
+    let label = format!("{} {}", header.name, header.word);
+    let open = hooks
+        .refs()
+        .map(|refs| (Arc::clone(&refs.open), child_target(card, refs)));
+    Card::new(
+        SharedString::from(format!("chat-child-{}", card.pane.0)),
+        CardLook::Activity,
+    )
+    .on(pane)
+    .group(CHILD_GROUP)
+    .role(ala::Role::Button)
+    .aria_label(label)
+    .v_flex()
+    .w_full()
+    .p_0()
+    .px(px(8.0))
+    .overflow_hidden()
+    .text_color(muted)
+    .child(head)
+    .children(body)
+    .when_some(open, |card, (open, target)| {
+        card.click_cursor()
+            .on_click(move |_, window, cx| open(&target, window, cx))
+    })
+    .into_any_element()
+}
+
+fn child_peek(
+    card: &ChildCard,
+    chat: &ChatView,
+    now: u64,
+    phase: f32,
+    ground: penna::Ground,
+    cx: &App,
+) -> Option<AnyElement> {
+    let lines = card.peek(chat);
+    if lines.is_empty() {
+        return None;
+    }
+    let live = chat
+        .turns
+        .last()
+        .map(|turn| chat_rows::duration(now.saturating_sub(turn.started_at)));
+    let full = lines.len() == PEEK_LINES;
+    let rows = v_flex().ml(px(PEEK_INDENT)).mb(px(8.0)).children(
+        lines
+            .iter()
+            .map(|line| peek_line(line, card.host_name(), live.as_deref(), phase, ground, cx)),
+    );
+    Some(
+        FoldFade {
+            child: rows.into_any_element(),
+            fade: full.then_some(px(PEEK_FADE)),
+            from_top: true,
+        }
+        .into_any_element(),
+    )
+}
+
+fn peek_line(
+    line: &PeekLine,
+    host: &str,
+    elapsed: Option<&str>,
+    phase: f32,
+    ground: penna::Ground,
+    cx: &App,
+) -> Div {
+    let theme = cx.theme();
+    let glyph = match &line.mark {
+        PeekMark::Step(kind) => Some(Icon::new(kind_icon(*kind))),
+        PeekMark::Running => Some(penna::blocks::chat::spinner(phase)),
+        PeekMark::Failed(kind) => Some(Icon::new(kind_icon(*kind)).text_color(theme.danger)),
+        PeekMark::Declined(kind) | PeekMark::Asking(kind) => {
+            Some(Icon::new(kind_icon(*kind)).text_color(theme.warning))
+        }
+        PeekMark::Error => Some(Icon::new(IconName::TriangleAlert).text_color(theme.danger)),
+        PeekMark::Live => None,
+    };
+    let small = px(TextStyle::Small.design_px());
+    let glyph = glyph.map(|glyph| {
+        div()
+            .flex_none()
+            .relative()
+            .top(crate::icon::cap_center_drop(
+                small,
+                px(ACTIVITY_DISCLOSURE_SIZE),
+                cx,
+            ))
+            .child(glyph.size(px(ACTIVITY_DISCLOSURE_SIZE)))
+    });
+    let is_live = line.mark == PeekMark::Live;
+    let text = div()
+        .min_w_0()
+        .overflow_hidden()
+        .text_ellipsis()
+        .text_color(if is_live {
+            theme.foreground.muted()
+        } else {
+            theme.foreground
+        })
+        .when(line.code, |text| text.type_style_mono(TextStyle::Small, cx))
+        .child(line.label.clone());
+    let verdict = line.verdict.map(|verdict| {
+        let (word, tone) = match verdict {
+            Verdict::Allowed => ("allowed", Tone::Success),
+            Verdict::Denied => ("denied", Tone::Warning),
+        };
+        Badge::new(format!("{word} by {host}"))
+            .tone(tone)
+            .small()
+            .on(ground)
+    });
+    h_flex()
+        .flex_none()
+        .w_full()
+        .h(px(PEEK_LINE))
+        .gap_2()
+        .items_center()
+        .min_w_0()
+        .whitespace_nowrap()
+        .type_style(TextStyle::Small, cx)
+        .line_height(px(CHILD_LINE))
+        .text_color(theme.foreground.muted())
+        .children(glyph)
+        .child(text)
+        .children(line.detail.clone().map(|detail| {
+            div()
+                .min_w_0()
+                .flex_shrink(1000.0)
+                .overflow_hidden()
+                .text_ellipsis()
+                .child(detail)
+        }))
+        .when_some(elapsed.filter(|_| is_live), |row, time| {
+            row.child(
+                div()
+                    .flex_none()
+                    .text_color(theme.foreground.faint())
+                    .child(time.to_owned()),
+            )
+        })
+        .when(matches!(line.mark, PeekMark::Asking(_)), |row| {
+            row.child(
+                h_flex()
+                    .flex_none()
+                    .ml_auto()
+                    .gap(px(6.0))
+                    .items_center()
+                    .child(penna::blocks::chat::spinner(phase).size(px(ACTIVITY_DISCLOSURE_SIZE)))
+                    .child(format!("waiting for {host}")),
+            )
+        })
+        .children(verdict.map(|badge| div().flex_none().ml_auto().child(badge)))
 }
 
 #[must_use]
@@ -2023,12 +2377,18 @@ fn image_title(index: usize, count: usize) -> String {
 struct FoldFade {
     child: AnyElement,
     fade: Option<ala::Pixels>,
+    from_top: bool,
 }
 
 impl FoldFade {
     fn range(&self, bounds: ala::Bounds<ala::Pixels>) -> Option<(ala::Pixels, ala::Pixels)> {
-        self.fade
-            .map(|fade| (bounds.bottom() - fade, bounds.bottom()))
+        self.fade.map(|fade| {
+            if self.from_top {
+                (bounds.top() + fade, bounds.top())
+            } else {
+                (bounds.bottom() - fade, bounds.bottom())
+            }
+        })
     }
 }
 
@@ -2140,6 +2500,7 @@ fn user_text(
     let clip = FoldFade {
         child: clip.into_any_element(),
         fade: folded.then_some(px(USER_FADE_HEIGHT)),
+        from_top: false,
     };
     let target = ChatClick::Unfold(id.clone());
     v_flex()

@@ -458,6 +458,7 @@ impl Render for Thread {
                     touch: self.touch,
                     inset_top: px(0.0),
                     inset_bottom: px(0.0),
+                    children: None,
                 };
                 fill.map(|fill| match height {
                     Some(height) => fill.h(px(height)),
@@ -501,6 +502,7 @@ impl Render for Thread {
                     owner: None,
                     ground: None,
                     touch: self.touch,
+                    children: None,
                 };
                 let view = &self.script.view;
                 let now = self.script.at;

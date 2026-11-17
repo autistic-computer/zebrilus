@@ -851,10 +851,9 @@ impl AppShell {
                 held: *held,
             })
             .collect::<Vec<_>>();
-        let arranged = self
-            .pip
-            .stage
-            .arrange(&cards, canvas, header)
+        let arranged = self.pip.stage.arrange(&cards, canvas, header);
+        zz_ui::pip::show_pips(cx.entity_id(), &arranged, cx);
+        let arranged = arranged
             .into_iter()
             .map(|placed| (placed.pane, placed))
             .collect::<std::collections::BTreeMap<_, _>>();

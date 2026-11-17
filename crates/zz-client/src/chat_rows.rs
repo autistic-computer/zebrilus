@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::Path;
 
+use crate::child_card::ChildCard;
 use zz_protocol::chat::{
     Answer, Ask, ChatView, ItemId, ItemKind, ItemStatus, ItemView, RequestClose, RequestId,
     RequestView, TurnId, TurnOutcome, TurnView,
@@ -18,6 +19,7 @@ pub enum Unit {
     Notice(ItemId),
     Ask(RequestId),
     Record(RequestId),
+    Child(Box<ChildCard>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -196,7 +198,7 @@ fn still_running(view: &ChatView, unit: &Unit) -> bool {
                 .any(|request| request.item.as_ref().is_some_and(|id| subtree.contains(id)))
     };
     match unit {
-        Unit::User(_) | Unit::Record(_) => true,
+        Unit::User(_) | Unit::Record(_) | Unit::Child(_) => true,
         Unit::Ask(request) => view.request(*request).is_some_and(RequestView::is_open),
         Unit::Subagent(id) => alive(id),
         Unit::Agents(ids) => ids.iter().any(alive),
@@ -234,6 +236,7 @@ pub fn unit_at(view: &ChatView, unit: &Unit) -> Option<u64> {
         Unit::Ask(request) | Unit::Record(request) => {
             return view.request(*request).map(|request| request.opened_at);
         }
+        Unit::Child(card) => return Some(card.started_at),
     };
     view.item(item).map(|item| item.started_at)
 }

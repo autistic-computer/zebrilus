@@ -151,6 +151,7 @@ pub struct AppShell {
     terminals: HashMap<PaneId, Entity<TerminalPane>>,
     waiting_panes: BTreeSet<PaneId>,
     agents: HashMap<PaneId, Entity<AgentPane>>,
+    chats: Rc<RefCell<HashMap<PaneId, ala::WeakEntity<AgentPane>>>>,
     views: HashMap<PaneId, Entity<view_pane::ViewPane>>,
     editors: HashMap<PaneId, Entity<editor_pane::EditorPane>>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -528,6 +529,7 @@ impl AppShell {
             terminals: HashMap::new(),
             waiting_panes: BTreeSet::new(),
             agents: HashMap::new(),
+            chats: Rc::default(),
             views: HashMap::new(),
             editors: HashMap::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -1648,8 +1650,13 @@ impl AppShell {
                 let connection = self.connection.clone();
                 let roster = self.roster.clone();
                 let rows_view = cx.weak_entity();
+                let chats = Rc::clone(&self.chats);
                 let agent = cx.new(|cx| {
                     let mut agent = AgentPane::new(pane, connection, roster, window, cx);
+                    agent.set_children(zz_ui::agent::chat::child_chats(move |pane, cx| {
+                        let child = chats.borrow().get(&pane)?.upgrade()?;
+                        zz_ui::agent::chat::ChatHost::chat_read(child.read(cx), cx).1
+                    }));
                     agent.set_float_rows_handler(move |cx| {
                         rows_view
                             .upgrade()
@@ -1657,6 +1664,7 @@ impl AppShell {
                     });
                     agent
                 });
+                self.chats.borrow_mut().insert(pane, agent.downgrade());
                 cx.subscribe(&agent, |shell, _, change: &agent_pane::LaunchChange, cx| {
                     let launches = &mut shell.preferences.agent_launches;
                     let changed = match change {

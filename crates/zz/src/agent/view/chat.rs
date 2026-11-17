@@ -41,6 +41,10 @@ impl AgentView {
             touch: false,
             inset_top: ala::px(0.0),
             inset_bottom: ala::px(0.0),
+            children: Some({
+                let controller = self.controller.clone();
+                zz_ui::agent::chat::child_chats(move |pane, cx| controller.read(cx).pane_chat(pane))
+            }),
         };
         chat_surface(self, look, window, cx)
     }

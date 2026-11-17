@@ -427,6 +427,7 @@ pub(super) struct AgentPane {
     ground: Ground,
     chat: ChatPane,
     float_rows: Option<Rc<dyn Fn(&App) -> Option<u16>>>,
+    children: Option<zz_ui::agent::chat::ChildChats>,
     phone: Option<PhoneDock>,
     view_sheet: Option<Entity<super::view_pane::ViewPane>>,
     dock_height: Rc<std::cell::Cell<Pixels>>,
@@ -448,6 +449,10 @@ pub(super) struct AgentPane {
 }
 
 impl AgentPane {
+    pub(super) fn set_children(&mut self, children: zz_ui::agent::chat::ChildChats) {
+        self.children = Some(children);
+    }
+
     pub(super) fn set_float_rows_handler(
         &mut self,
         handler: impl Fn(&App) -> Option<u16> + 'static,
@@ -607,6 +612,7 @@ impl AgentPane {
             ground: cx.theme().ground(),
             chat: ChatPane::default(),
             float_rows: None,
+            children: None,
             phone: None,
             view_sheet: None,
             dock_height: Rc::new(std::cell::Cell::new(ala::px(0.0))),
@@ -1994,6 +2000,7 @@ impl AgentPane {
             touch: self.phone.is_some(),
             inset_top: self.chat_insets().0,
             inset_bottom: self.chat_insets().1,
+            children: self.children.clone(),
         };
         chat_surface(self, look, window, cx)
     }
