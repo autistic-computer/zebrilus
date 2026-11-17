@@ -1,4 +1,5 @@
 mod agent_pane;
+mod attention;
 #[cfg(any(target_os = "ios", target_os = "android"))]
 mod authentication;
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -134,7 +135,7 @@ pub struct AppShell {
     _connection_subscriptions: [Subscription; 5],
     fleet: Vec<(Entity<Connection>, Subscription)>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
-    fleet_found: Vec<Subscription>,
+    fleet_watch: Vec<Subscription>,
     host_ids: compact::HostIds,
     roster: Entity<Roster>,
     connection_status: String,
@@ -172,6 +173,7 @@ pub struct AppShell {
     sidebar_active: Option<sidebar::Node>,
     flat: sidebar::Flat,
     unseen_agents: BTreeSet<PaneId>,
+    attention: attention::Attention,
     chrome: ChromeKeymaps,
     window_shortcuts: bool,
     window_shortcut_timer: Option<Task<()>>,
@@ -280,10 +282,14 @@ fn watch_connection(
                     {
                         this.unseen_agents.insert(*pane);
                     }
+                    this.reconcile_attention(window, attention.map(|edge| (*pane, edge)), cx);
                 }
                 zz_client::CoreEvent::HelloReceived | zz_client::CoreEvent::Attached { .. } => {
                     if matches!(event, zz_client::CoreEvent::HelloReceived) {
                         this.remember_host(cx);
+                        if this.preferences.window_follows_theme && *connection == this.connection {
+                            this.preferences.apply(&this.connection, window, cx);
+                        }
                     }
                     if matches!(event, zz_client::CoreEvent::Attached { .. }) {
                         connection.update(cx, Connection::set_color_scheme);
@@ -308,6 +314,7 @@ fn watch_connection(
                 }
                 zz_client::CoreEvent::SnapshotChanged => {
                     sidebar::follow_chat_view(this, cx);
+                    this.reconcile_attention(window, None, cx);
                     if this.split_drag.is_some_and(|state| {
                         state.committed_generation.is_some_and(|generation| {
                             generation < connection.read(cx).core.snapshot().generation
@@ -358,6 +365,11 @@ fn watch_connection(
                 }) => {
                     this.set_split_drag(None);
                     this.pane_layout_override = None;
+                }
+                zz_client::CoreEvent::AppearanceChanged => {
+                    if this.preferences.window_follows_theme && *connection == this.connection {
+                        this.preferences.apply(&this.connection, window, cx);
+                    }
                 }
                 zz_client::CoreEvent::FocusSidebar => this.focus_sidebar(window, cx),
                 zz_client::CoreEvent::KeyTableChanged => this.key_table_changed(window, cx),
@@ -446,6 +458,7 @@ impl AppShell {
         let preferences = settings::Preferences::load();
         let chrome = preferences.chrome_keymaps();
         cx.set_global(chrome.clone());
+        crate::preferences::install_palette_recents(cx);
         let appearance_view = cx.weak_entity();
         let appearance_observer = window.observe_window_appearance(move |window, cx| {
             let _ = appearance_view.update(cx, |this, cx| {
@@ -464,6 +477,7 @@ impl AppShell {
             if active {
                 this.rebuild_menus(cx);
             }
+            this.reconcile_attention(window, None, cx);
         });
         let settings_controls = settings::Controls::new(&preferences, window, cx);
         let roster = cx.new(|_| Roster::default());
@@ -473,12 +487,14 @@ impl AppShell {
             |this, _, request: &HostRequest, window, cx| this.host_request(*request, window, cx),
         );
         let hosts = hosts::Hosts::new(window, cx);
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let host_notices = hosts::watch_host_notices(&connection, window, cx);
         let mut this = Self {
             connection,
             _connection_subscriptions: connection_subscriptions,
             fleet: Vec::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]
-            fleet_found: Vec::new(),
+            fleet_watch: vec![host_notices],
             host_ids: compact::HostIds::default(),
             roster,
             connection_status: String::new(),
@@ -516,6 +532,7 @@ impl AppShell {
             sidebar_active: None,
             flat: sidebar::Flat::default(),
             unseen_agents: BTreeSet::new(),
+            attention: attention::Attention::default(),
             chrome,
             window_shortcuts: false,
             window_shortcut_timer: None,
@@ -1382,17 +1399,28 @@ impl AppShell {
         ground: Ground,
         cx: &Context<Self>,
     ) -> ala::Stateful<ala::Div> {
-        workspace_sidebar_action(action, ground, cx).on_click(cx.listener(move |this, _, _, cx| {
-            match action {
-                SidebarAction::NewChat => sidebar::new_chat(this, cx),
-                SidebarAction::AddHost => this.settings = Some(SettingsSection::Hosts),
-                SidebarAction::Settings => this.settings = Some(SettingsSection::Appearance),
-            }
-            if action != SidebarAction::NewChat {
-                this.focused_pane = None;
-            }
-            cx.notify();
-        }))
+        workspace_sidebar_action(action, ground, cx).on_click(cx.listener(
+            move |this, _, window, cx| {
+                match action {
+                    SidebarAction::NewChat => sidebar::new_chat(this, cx),
+                    #[cfg(any(target_os = "ios", target_os = "android"))]
+                    SidebarAction::AddHost => {
+                        this.release_sidebar_focus(window, cx);
+                        this.open_add_host_dialog(window, cx);
+                    }
+                    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+                    SidebarAction::AddHost => {
+                        let _ = window;
+                        this.settings = Some(SettingsSection::Hosts);
+                    }
+                    SidebarAction::Settings => this.settings = Some(SettingsSection::Appearance),
+                }
+                if action != SidebarAction::NewChat {
+                    this.focused_pane = None;
+                }
+                cx.notify();
+            },
+        ))
     }
 
     fn with_sidebar_actions(
@@ -2206,6 +2234,7 @@ impl AppShell {
                 cx.stop_active_drag(window);
             }
             self.pane_layout_override = None;
+            self.sync_mux_controls(window, cx);
             return self.render_settings(section, window, cx);
         }
         if let Some(landing) = self.landing(window, cx) {
@@ -2299,7 +2328,12 @@ impl AppShell {
             .mux_options()
             .get(zz_protocol::MuxOptionKey::FocusFollowsMouse)
             .is_some_and(|option| option.value == "on");
-        let can_focus = self.prompt.is_none()
+        let dialog = window
+            .root::<Root>()
+            .flatten()
+            .is_some_and(|root| root.read(cx).has_active_dialog());
+        let can_focus = !dialog
+            && self.prompt.is_none()
             && !self.sidebar_focus.is_focused(window)
             && core.choose_tree().is_none()
             && core.choose_buffer().is_none()
@@ -2719,10 +2753,17 @@ impl AppShell {
                     .right(px(8.0))
                     .top(px(8.0))
                     .p(px(8.0))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(8.0))
                     .child(
                         Label::new(TextStyle::Small, self.connection.read(cx).status.clone())
                             .text_color(cx.theme().warning),
                     )
+                    .when(self.connection.read(cx).stale_page(), |toast| {
+                        toast.child(hosts::reload_page_button(cx))
+                    })
                     .into_any_element(),
             );
         }

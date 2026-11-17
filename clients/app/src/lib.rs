@@ -3,6 +3,7 @@ pub mod android_browser;
 pub mod app;
 pub mod attachments;
 mod bell;
+mod chime;
 pub mod command_palette;
 pub mod connection;
 pub mod input;

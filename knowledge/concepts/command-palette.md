@@ -171,8 +171,9 @@ places, recent actions (a verb's command, labelled the way the footer read it), 
 and files (three each), then this host's sessions and the other hosts. `zz_client::recents` keeps
 one decayed score per pick (three-day half-life, at most 200), recorded through `record_recent`.
 The desktop keeps it per client in `palette-recents.json` in the app's data folder
-(`app_identity::palette_recents_path`, `command::palette::init_recents`); the iPad and web keep it
-in memory. Their hosts are named after the endpoint on iOS and Android and by the gateway's host
+(`app_identity::palette_recents_path`, `command::palette::init_recents`); the thin clients keep it
+on the device (`preferences::install_palette_recents`): `palette-recents.json` beside the
+preferences on iOS and Android, a local storage key on the web. Their hosts are named after the endpoint on iOS and Android and by the gateway's host
 names (`local`, then the `host-<name>` entries) on the web.
 
 # Written places

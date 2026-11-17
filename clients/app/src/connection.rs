@@ -18,6 +18,11 @@ use zz_protocol::{
 };
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
+mod host_care;
+#[cfg(any(target_os = "ios", target_os = "android"))]
+pub use host_care::HostNotice;
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
 fn launch_endpoint() -> Option<String> {
     std::env::var("ZZ_ALA_ENDPOINT")
         .or_else(|_| std::env::var("ZZ_SOCKET"))
@@ -58,6 +63,10 @@ pub struct Connection {
     pending_session: Option<String>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     tailnet_offers: Option<u64>,
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    failure: Option<zz_daemon_client::HostFailure>,
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    installer: Option<crate::transport::Connection>,
     retry: Option<ala::Task<()>>,
     pub core: ClientCore,
     history: HistoryPacer,
@@ -93,6 +102,8 @@ pub struct Connection {
     instance: zz_protocol::ClientInstanceId,
     #[cfg(target_family = "wasm")]
     failures: u32,
+    #[cfg(target_family = "wasm")]
+    stale_page: bool,
 }
 
 impl EventEmitter<CoreEvent> for Connection {}
@@ -156,6 +167,10 @@ impl Connection {
             pending_session: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             tailnet_offers: None,
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            failure: None,
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            installer: None,
             retry: None,
             core: history_core(),
             history: HistoryPacer::default(),
@@ -191,6 +206,20 @@ impl Connection {
             instance: browser::new_instance_id(),
             #[cfg(target_family = "wasm")]
             failures: 0,
+            #[cfg(target_family = "wasm")]
+            stale_page: false,
+        }
+    }
+
+    #[must_use]
+    pub fn stale_page(&self) -> bool {
+        #[cfg(target_family = "wasm")]
+        {
+            self.stale_page
+        }
+        #[cfg(not(target_family = "wasm"))]
+        {
+            false
         }
     }
 
@@ -594,10 +623,53 @@ impl Connection {
         !self.connected && (self.dialing() || self.retry.is_some())
     }
 
+    #[must_use]
+    pub fn palette_state(&self) -> zz_ui::command::PaletteHostState {
+        use zz_ui::command::PaletteHostState as State;
+        if self.connected {
+            return State::Connected {
+                sessions: self.core.snapshot().sessions.len(),
+            };
+        }
+        if self.installing() {
+            return State::Installing;
+        }
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        {
+            use zz_daemon_client::HostFailure;
+            match self.failure {
+                Some(HostFailure::Missing) => return State::Missing,
+                Some(
+                    HostFailure::Incompatible { .. }
+                    | HostFailure::DaemonTooOld { .. }
+                    | HostFailure::ClientTooOld { .. },
+                ) => return State::Incompatible,
+                _ => {}
+            }
+        }
+        match (self.busy(), self.resume) {
+            (false, _) => State::Offline,
+            (true, true) => State::Reconnecting,
+            (true, false) => State::Connecting,
+        }
+    }
+
+    #[must_use]
+    pub fn installing(&self) -> bool {
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        {
+            self.installer.is_some()
+        }
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        {
+            false
+        }
+    }
+
     fn dialing(&self) -> bool {
         #[cfg(any(target_os = "ios", target_os = "android"))]
         {
-            self.native.is_some()
+            self.native.is_some() || self.installer.is_some()
         }
         #[cfg(target_family = "wasm")]
         {
@@ -623,6 +695,7 @@ impl Connection {
         #[cfg(target_family = "wasm")]
         {
             self.failures = 0;
+            self.stale_page = false;
         }
         self.reconnect(cx);
     }
@@ -779,6 +852,8 @@ impl Connection {
             self.retry = None;
             self.reader = None;
             self.native = None;
+            self.installer = None;
+            self.failure = None;
             self.client = None;
             self.auth_prompt = None;
             self.core = history_core();
@@ -972,6 +1047,10 @@ impl Connection {
         cx.notify();
     }
 
+    pub fn awaits(&self, request_id: u64) -> bool {
+        self.commands.contains_key(&request_id)
+    }
+
     pub fn invoke(&mut self, command: CommandInvocation, cx: &mut Context<Self>) -> u64 {
         let request_id = self.next_request_id();
         self.commands.insert(request_id, command.name.clone());
@@ -1116,6 +1195,10 @@ impl Connection {
                 CoreEvent::HelloReceived => {
                     self.history.clear();
                     self.connected = true;
+                    #[cfg(any(target_os = "ios", target_os = "android"))]
+                    {
+                        self.failure = None;
+                    }
                     self.clock = zz_client::window_summary::DaemonClock::from_hello(
                         self.core.server_clock(),
                         crate::app::unix_seconds(),
@@ -1378,23 +1461,32 @@ impl Connection {
                     self.receive(ProtocolMessage::ServerHello(Box::new(hello)), cx);
                 }
                 crate::transport::Event::Message(message) => self.receive(*message, cx),
-                crate::transport::Event::Prompt(prompt) => {
-                    self.auth_prompt = Some((
-                        AuthenticationPrompt {
-                            id: self.next_request_id(),
-                            kind: prompt.kind,
-                            text: prompt.text,
-                            echo: prompt.echo,
-                        },
-                        prompt.reply,
-                    ));
-                    self.status = "Authentication required".into();
-                    cx.notify();
+                crate::transport::Event::Prompt(prompt) => self.ask(prompt, cx),
+                crate::transport::Event::Notice(notice) => {
+                    self.notice(notice.kind, notice.text, cx);
                 }
-                crate::transport::Event::Failed(error) => self.disconnect_native(error, cx),
+                crate::transport::Event::Failed(failure) => self.fail_native(failure, cx),
+                crate::transport::Event::Installed(_) => {}
             }
         }
         true
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn ask(&mut self, prompt: crate::transport::Prompt, cx: &mut Context<Self>) {
+        self.auth_prompt = Some((
+            AuthenticationPrompt {
+                id: self.next_request_id(),
+                kind: prompt.kind,
+                text: prompt.text,
+                echo: prompt.echo,
+            },
+            prompt.reply,
+        ));
+        if !self.connected && self.installer.is_none() {
+            self.status = "Authentication required".into();
+        }
+        cx.notify();
     }
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -1418,7 +1510,10 @@ impl Connection {
             zz_daemon_client::AskpassReply::Cancel,
             zz_daemon_client::AskpassReply::answer,
         );
-        if reply.send(answer).is_err() {
+        if self.installer.is_some() {
+            let _ = reply.send(answer);
+            cx.notify();
+        } else if reply.send(answer).is_err() {
             self.disconnect_native("Authentication expired. Reconnect to try again.".into(), cx);
         } else if cancelled {
             self.resume = false;
@@ -1595,7 +1690,8 @@ impl Connection {
             self.resume,
             code,
             self.failures,
-        );
+        )
+        .filter(|_| !self.stale_page);
         self.status = match delay {
             Some(_) => reason,
             None => settled(&reason).to_owned(),
@@ -1627,6 +1723,19 @@ impl Connection {
                 );
             }
             inbox::SocketEvent::Frame(bytes) => match zz_protocol::decode_protocol_frame(&bytes) {
+                decoded if page_out_of_date(&decoded) => {
+                    self.stale_page = self.endpoint.as_deref() == Some(GATEWAY_LOCAL);
+                    self.disconnected(
+                        if self.stale_page {
+                            "This page is older than zz on the host. Reload it to update."
+                        } else {
+                            "This host runs a newer zz than the computer serving this page. Update zz on that computer."
+                        }
+                        .to_owned(),
+                        cx,
+                    );
+                    return false;
+                }
                 Ok(message) if !supports_required_protocol(&message) => {
                     self.disconnected(
                         format!(
@@ -1662,6 +1771,21 @@ impl Connection {
         }
         cx.notify();
         self.socket.is_some()
+    }
+}
+
+#[cfg(any(target_family = "wasm", test))]
+fn page_out_of_date(decoded: &Result<ProtocolMessage, zz_protocol::ProtocolError>) -> bool {
+    match decoded {
+        Err(zz_protocol::ProtocolError::VersionMismatch { expected, received }) => {
+            received > expected
+        }
+        Ok(ProtocolMessage::CommandResponse(CommandResponse::Error { error, .. })) => match error {
+            ServerError::ProtocolMismatch { client, server } => server > client,
+            ServerError::ClientTooOld { .. } => true,
+            _ => false,
+        },
+        _ => false,
     }
 }
 
@@ -2094,6 +2218,45 @@ mod tests {
         assert!(super::supports_required_protocol(
             &ProtocolMessage::TreeSync
         ));
+    }
+
+    #[test]
+    fn only_a_newer_host_marks_the_web_page_out_of_date() {
+        use zz_protocol::{CommandResponse, ProtocolError, ServerError};
+        let mismatch = |received| {
+            Err(ProtocolError::VersionMismatch {
+                expected: 7,
+                received,
+            })
+        };
+        let refused = |error| {
+            Ok(ProtocolMessage::CommandResponse(CommandResponse::Error {
+                request_id: 0,
+                error,
+                output: zz_protocol::RawText::default(),
+            }))
+        };
+        assert!(super::page_out_of_date(&mismatch(8)));
+        assert!(!super::page_out_of_date(&mismatch(6)));
+        assert!(super::page_out_of_date(&refused(
+            ServerError::ClientTooOld {
+                client: 3,
+                minimum: 4
+            }
+        )));
+        assert!(super::page_out_of_date(&refused(
+            ServerError::ProtocolMismatch {
+                client: 7,
+                server: 8
+            }
+        )));
+        assert!(!super::page_out_of_date(&refused(
+            ServerError::ProtocolMismatch {
+                client: 8,
+                server: 7
+            }
+        )));
+        assert!(!super::page_out_of_date(&Ok(ProtocolMessage::TreeSync)));
     }
 
     fn ready<T>(future: impl Future<Output = T>) -> T {

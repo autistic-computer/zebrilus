@@ -23,9 +23,15 @@ use penna::{
     components::scroll::ScrollableElement as _, rems_from_px,
 };
 use zz_client::{
-    ChromeAction, SIDEBAR_TABLE, UI_TABLE, program::Program, sidebar::WINDOW_SHORTCUTS,
+    ChromeAction, SIDEBAR_TABLE, UI_TABLE,
+    attention::{
+        self, AgentAttentionTracker, AgentBadge, AgentPaneStatus, AttentionBanners, AttentionEdge,
+        loudest,
+    },
+    program::Program,
+    sidebar::WINDOW_SHORTCUTS,
 };
-use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId, WindowId};
+use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
 use zz_ui::navigation::{
     SidebarAction, WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH as TREE_INDENT_WIDTH,
     WORKSPACE_TREE_NODE_ICON_SIZE as TREE_NODE_ICON_SIZE, WorkspaceTreeInk,
@@ -43,10 +49,6 @@ use zz_ui::navigation::{
 use zz_ui::{program::program_mark, settings::settings_section_navigation};
 
 use crate::{
-    agent::{
-        notify::{self, AttentionBanners},
-        sound::{AgentAttentionTracker, AgentBadge, AgentPaneStatus, AttentionEdge, loudest},
-    },
     config::{
         frame_content_corner_radius, notifications_enabled, pane_gaps, settings::SettingsView,
     },
@@ -325,7 +327,7 @@ impl WorkspaceSidebar {
         cx: &mut Context<Self>,
     ) {
         for pane in self.banners.retire(statuses, watched) {
-            cx.dismiss_system_notification(&notify::tag_for(pane));
+            cx.dismiss_system_notification(&attention::tag_for(pane));
         }
         if edges.is_empty() || cx.active_window().is_some() || !notifications_enabled(cx) {
             return;
@@ -335,11 +337,11 @@ impl WorkspaceSidebar {
         let banners = edges
             .iter()
             .filter_map(|edge| {
-                let (title, body) = notify::banner(&snapshot, edge.pane.1, edge.status)?;
+                let (title, body) = attention::banner(&snapshot, edge.pane.1, edge.status)?;
                 self.banners
                     .admit(edge.pane, now)
                     .then(|| SystemNotification {
-                        tag: notify::tag_for(edge.pane).into(),
+                        tag: attention::tag_for(edge.pane).into(),
                         title: title.into(),
                         body: body.into(),
                         actions: Vec::new(),
@@ -376,13 +378,7 @@ impl WorkspaceSidebar {
             .flat_map(|window| &window.panes)
             .filter_map(|pane| {
                 let status = match pane.kind {
-                    MuxTreePaneKind::Terminal => match pane.status {
-                        Some(PaneStatusState::Working) => AgentPaneStatus::Working,
-                        Some(PaneStatusState::Blocked) => AgentPaneStatus::NeedsInput,
-                        Some(PaneStatusState::Error) => AgentPaneStatus::Failed,
-                        Some(PaneStatusState::Done) => AgentPaneStatus::Done,
-                        Some(PaneStatusState::Idle) | None => AgentPaneStatus::Idle,
-                    },
+                    MuxTreePaneKind::Terminal => AgentPaneStatus::from_pane_status(pane.status),
                     _ => return None,
                 };
                 Some(((attached_host, pane.id), status))
@@ -1599,15 +1595,12 @@ fn render_tree_row_context_menu(
             .and_then(MuxTreeHost::install_offer)
         {
             let install_mux = runtime.mux.clone();
-            items.push(TreeRowMenuItem::new(
-                crate::workspace::remote_install::menu_label(offer),
-                move |_, cx| {
-                    install_mux.update(cx, |mux, cx| match offer {
-                        InstallOffer::Install => mux.install_zz_on_host(host, cx),
-                        InstallOffer::Update => mux.offer_update(host, cx),
-                    });
-                },
-            ));
+            items.push(TreeRowMenuItem::new(offer.label(), move |_, cx| {
+                install_mux.update(cx, |mux, cx| match offer {
+                    InstallOffer::Install => mux.install_zz_on_host(host, cx),
+                    InstallOffer::Update => mux.offer_update(host, cx),
+                });
+            }));
         }
         let close_mux = runtime.mux.clone();
         items.push(TreeRowMenuItem::new("Remove host", move |_, cx| {
@@ -1859,7 +1852,7 @@ mod tests {
     use zz_daemon_client::DaemonError;
     use zz_protocol::{
         Axis, BrowserDescriptor, LayoutNode, PaneKindSnapshot, PaneSnapshot, PaneStatus,
-        PaneSummary, SessionSnapshot, SplitId, WindowId, WindowSnapshot,
+        PaneStatusState, PaneSummary, SessionSnapshot, SplitId, WindowId, WindowSnapshot,
     };
 
     use super::*;

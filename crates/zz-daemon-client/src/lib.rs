@@ -31,6 +31,7 @@ mod fleet_hosts;
 #[cfg(any(unix, windows))]
 #[cfg_attr(any(target_os = "ios", target_os = "android"), allow(dead_code))]
 mod fleet_sync;
+mod host_failure;
 #[cfg(any(unix, windows))]
 #[cfg_attr(any(target_os = "ios", target_os = "android"), allow(dead_code))]
 mod host_probe;
@@ -89,6 +90,7 @@ pub use fleet_hosts::{
 pub use fleet_hosts::{fleet_hosts_with_tailnet, tailnet_hosts_beside};
 #[cfg(any(unix, windows))]
 pub use fleet_sync::{SyncLine, TrustReport, sync_fleet, trust_fleet_key};
+pub use host_failure::{DaemonBehind, HostFailure, InstallOffer, session_count, update_prompt};
 #[cfg(any(unix, windows))]
 pub use host_probe::{HostProbe, HostStatus, probe_host};
 pub use lifecycle::{

@@ -27,20 +27,22 @@ use zz_client::{
     open_uri::{OpenUriRoute, open_uri_route},
     url_input::diagnostic_url,
 };
-use zz_daemon_client::{
-    AskpassPrompt, AskpassPromptKind, AskpassReply, DaemonError, Endpoint, EndpointError,
-    InteractiveClient, RemoteInstall, RemoteRestart, terminate_incompatible_daemon,
-};
 #[cfg(test)]
-use zz_protocol::StatusLine;
+use zz_daemon_client::EndpointError;
+use zz_daemon_client::{
+    AskpassPrompt, AskpassPromptKind, AskpassReply, DaemonError, Endpoint, InteractiveClient,
+    RemoteInstall, terminate_incompatible_daemon,
+};
 use zz_protocol::{
     BrowserCommand, CONFIG_RELOADED_MESSAGE, ChooseBufferState, ChooseTreeState, ClientMessageKind,
     ClipboardProducer, CommandInvocation, CommandPromptState, CommandResponse, ConfirmState,
     DisplayPanesState, Event, EventPayload, GitMark, GuiResponse, InputMessage, KeyBindingSnapshot,
-    KeyTableSnapshot, MenuState, MuxOptionKey, MuxSnapshot, NEW_SESSION_ATTACH_CAPABILITY,
-    PROTOCOL_VERSION, PaneId, PastedImageFormat, PathEntry, PathListRoot, ProtocolError,
-    ProtocolMessage, ServerError, ServerHello, SessionId, TerminalUiCommand,
+    KeyTableSnapshot, MenuState, MuxOptionKey, MuxSnapshot, NEW_SESSION_ATTACH_CAPABILITY, PaneId,
+    PastedImageFormat, PathEntry, PathListRoot, ProtocolMessage, ServerError, ServerHello,
+    SessionId, TerminalUiCommand,
 };
+#[cfg(test)]
+use zz_protocol::{PROTOCOL_VERSION, ProtocolError, StatusLine};
 use zz_terminal::{
     AppearanceProvenance, ClipboardTarget, LocalColors, PackedCell, TerminalAppearance,
     TerminalColorScheme, TerminalDictionary, TerminalDiffScratch, TerminalViewAction,
@@ -236,85 +238,7 @@ fn drain_decoded_batch<T>(
 }
 
 fn connect_error_state(error: &DaemonError) -> HostState {
-    if let DaemonError::DaemonTooOld { daemon, minimum } = *error {
-        return HostState::DaemonTooOld { daemon, minimum };
-    }
-    if let DaemonError::IncompatibleDaemon { daemon, client } = error {
-        return daemon.map_or_else(
-            || HostState::Unreachable {
-                reason: error.to_string(),
-            },
-            |daemon| HostState::Incompatible {
-                local: *client,
-                remote: Some(daemon),
-            },
-        );
-    }
-    let mut ssh_reason = None;
-    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(error);
-    while let Some(current) = source {
-        if ssh_reason.is_none()
-            && let Some(endpoint_error) = current.downcast_ref::<EndpointError>()
-        {
-            if let EndpointError::RemoteProtocolMismatch { daemon, client, .. } = endpoint_error {
-                return HostState::Incompatible {
-                    local: *client,
-                    remote: Some(*daemon),
-                };
-            }
-            if matches!(endpoint_error, EndpointError::RemoteProtocolUnknown { .. }) {
-                return HostState::Incompatible {
-                    local: PROTOCOL_VERSION,
-                    remote: None,
-                };
-            }
-            if matches!(endpoint_error, EndpointError::RemoteBinaryMissing { .. }) {
-                return HostState::Missing;
-            }
-            ssh_reason = endpoint_error.ssh_reason();
-        }
-        if let Some(ProtocolError::VersionMismatch { received, .. }) =
-            current.downcast_ref::<ProtocolError>()
-        {
-            return HostState::Incompatible {
-                local: PROTOCOL_VERSION,
-                remote: Some(*received),
-            };
-        }
-        match current.downcast_ref::<ServerError>() {
-            Some(ServerError::ProtocolMismatch { server, .. }) => {
-                return HostState::Incompatible {
-                    local: PROTOCOL_VERSION,
-                    remote: Some(*server),
-                };
-            }
-            Some(ServerError::ClientTooOld { client, minimum }) => {
-                return HostState::ClientTooOld {
-                    client: *client,
-                    minimum: *minimum,
-                };
-            }
-            _ => {}
-        }
-        if let Some(DaemonError::DaemonTooOld { daemon, minimum }) =
-            current.downcast_ref::<DaemonError>()
-        {
-            return HostState::DaemonTooOld {
-                daemon: *daemon,
-                minimum: *minimum,
-            };
-        }
-        if let Some(error) = current.downcast_ref::<io::Error>()
-            && let Some(inner) = error.get_ref()
-        {
-            source = Some(inner);
-            continue;
-        }
-        source = current.source();
-    }
-    HostState::Unreachable {
-        reason: ssh_reason.unwrap_or_else(|| error.to_string()),
-    }
+    zz_daemon_client::HostFailure::classify(error).into()
 }
 
 #[cfg(test)]
@@ -323,21 +247,6 @@ fn connect_result_state<T>(result: &Result<T, DaemonError>) -> HostState {
         Ok(_) => HostState::Connected,
         Err(error) => connect_error_state(error),
     }
-}
-
-fn install_notification(name: &str, outcome: &RemoteInstall) -> (ClientMessageKind, String) {
-    let kind = if matches!(outcome.restart, RemoteRestart::Failed(_)) {
-        ClientMessageKind::Error
-    } else if outcome.warnings.is_empty() {
-        ClientMessageKind::Success
-    } else {
-        ClientMessageKind::Warning
-    };
-    let text = std::iter::once(format!("{name}: {}", outcome.summary()))
-        .chain(outcome.warnings.iter().cloned())
-        .collect::<Vec<_>>()
-        .join("\n");
-    (kind, text)
 }
 
 fn reconnect_timer_is_current(connection: &HostConnection, generation: u64, attempt: u32) -> bool {
@@ -2153,7 +2062,7 @@ impl MuxClient {
     ) {
         let Some(previous) = previous else {
             let (kind, text) = match &result {
-                Ok(outcome) => install_notification(name, outcome),
+                Ok(outcome) => outcome.notice(name),
                 Err(reason) => (ClientMessageKind::Error, reason.clone()),
             };
             Self::emit_notification(kind, text, cx);
@@ -2168,7 +2077,7 @@ impl MuxClient {
         match result {
             Ok(outcome) => {
                 connection.state = HostState::Disconnected;
-                let (kind, text) = install_notification(name, &outcome);
+                let (kind, text) = outcome.notice(name);
                 Self::emit_notification(kind, text, cx);
                 self.ensure_connected(host, cx);
             }
@@ -6479,49 +6388,6 @@ mod tests {
             *offers.borrow(),
             3,
             "a dialog closed with Not now does not hide the next offer"
-        );
-    }
-
-    #[test]
-    fn an_install_toast_says_what_happened_on_the_host() {
-        let version = env!("CARGO_PKG_VERSION");
-        let outcome = |restart, warnings: &[&str]| RemoteInstall {
-            installed: zz_daemon_client::RemoteInstalled::Headless,
-            restart,
-            warnings: warnings
-                .iter()
-                .map(|warning| (*warning).to_owned())
-                .collect(),
-        };
-        assert_eq!(
-            install_notification("xps", &outcome(RemoteRestart::Restarted, &[])),
-            (
-                ClientMessageKind::Success,
-                format!("xps: zz {version} installed (headless), daemon restarted")
-            )
-        );
-        assert_eq!(
-            install_notification("xps", &outcome(RemoteRestart::NotAsked, &["restart it"])),
-            (
-                ClientMessageKind::Warning,
-                format!("xps: zz {version} installed (headless)\nrestart it")
-            )
-        );
-        assert_eq!(
-            install_notification(
-                "xps",
-                &outcome(
-                    RemoteRestart::Failed("recovery failed".to_owned()),
-                    &["restart it"]
-                )
-            ),
-            (
-                ClientMessageKind::Error,
-                format!(
-                    "xps: zz {version} installed (headless), but its daemon did not stop: \
-                     recovery failed\nrestart it"
-                )
-            )
         );
     }
 

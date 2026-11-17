@@ -130,6 +130,17 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     expected["which_key_delay"] = 400.0.into();
     expected["chrome_keys"] = serde_json::json!([]);
     expected["search_engine"] = "google".into();
+    expected["notifications"] = true.into();
+    expected["window_follows_theme"] = true.into();
+    for device in [
+        "terminal_contrast",
+        "terminal_cursor_style",
+        "terminal_cursor_blink",
+        "terminal_padding_x",
+        "terminal_padding_y",
+    ] {
+        expected[device] = serde_json::Value::Null;
+    }
     let fields = expected.as_object_mut().unwrap();
     for retired in [
         "theme",

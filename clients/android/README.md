@@ -134,6 +134,8 @@ as `target_visual_viewport_bounds`, the way the iOS backend follows the keyboard
 - **Screen.** Settings › System › Display can keep the screen on while connected. The window asks
   for the display's top refresh rate. Font size, dark mode, removed animations and high contrast
   text from the system settings apply live.
+- **Attention.** A pane that needs you plays no chime and posts no notification or badge yet:
+  ala has no notification or sound backend on Android.
 
 ## Verification
 

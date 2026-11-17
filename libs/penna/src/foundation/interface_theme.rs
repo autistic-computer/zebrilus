@@ -890,11 +890,19 @@ impl Appearance {
         }
     }
 
-    pub fn apply(&self, mut window: Option<&mut Window>, cx: &mut App) {
+    pub fn apply(&self, window: Option<&mut Window>, cx: &mut App) {
+        self.apply_theme(&self.shown_theme(), window, cx);
+    }
+
+    pub fn apply_theme(
+        &self,
+        theme: &InterfaceTheme,
+        mut window: Option<&mut Window>,
+        cx: &mut App,
+    ) {
         cx.set_reduce_motion(self.motion.reduced());
         cx.set_animation_speed(self.motion.speed());
-        self.shown_theme()
-            .activate(self.theme_mode(), window.as_deref_mut(), cx);
+        theme.activate(self.theme_mode(), window.as_deref_mut(), cx);
         let font = self.ui_font();
         let family = if !font.is_empty() && cx.text_system().has_font(font) {
             SharedString::from(font.to_owned())

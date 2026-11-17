@@ -5,6 +5,7 @@ use zz_protocol::{CommandInvocation, MuxOptionKey, MuxOptions};
 use zz_terminal::{
     AppearanceConfigKey, GhosttyTheme, TerminalAppearance, TerminalColorScheme, ThemeChoice,
 };
+use zz_ui::settings::multiplexer::{MUX_SETTINGS, MuxControl, MuxSetting, mux_setting};
 
 const BUILT_IN_THEME: &str = "Built-in";
 const CONTRAST_ON: &str = "4.5";
@@ -102,22 +103,16 @@ impl SettingsView {
         let source = self.config_file_editor(kind).saved.clone();
         if let std::collections::btree_map::Entry::Vacant(vacant) = self.file_options.entry(kind) {
             let mut definitions = match kind {
-                ConfigFileKind::Mux => vec![
-                    (FileKey::Mux(MuxOptionKey::Prefix), "Prefix", false),
-                    (FileKey::Mux(MuxOptionKey::ModeKeys), "Mode keys", false),
-                    (FileKey::Mux(MuxOptionKey::Mouse), "Mouse", false),
-                    (
-                        FileKey::Mux(MuxOptionKey::HistoryLimit),
-                        "History limit",
-                        true,
-                    ),
-                    (FileKey::Mux(MuxOptionKey::SetClipboard), "Clipboard", false),
-                    (
-                        FileKey::Mux(MuxOptionKey::EscapeTime),
-                        "Escape time (ms)",
-                        true,
-                    ),
-                ],
+                ConfigFileKind::Mux => MUX_SETTINGS
+                    .into_iter()
+                    .map(|setting| {
+                        (
+                            FileKey::Mux(setting.key),
+                            setting.title,
+                            setting.control == MuxControl::Number,
+                        )
+                    })
+                    .collect(),
                 ConfigFileKind::Terminal => vec![
                     (
                         FileKey::Appearance(AppearanceConfigKey::FontFamily),
@@ -459,11 +454,11 @@ impl SettingsView {
         let controls = &self.file_options[&kind];
         let row = &controls.rows[index];
         let disabled = self.file_controls_disabled(kind, cx);
-        let description = match row.key.name() {
-            "light-theme" | "dark-theme" => Some("Replaces custom terminal colors"),
-            "minimum-contrast" => Some("Lifts terminal text under 4.5:1 against its background"),
-            "prefix" => Some("The key you press before each shortcut"),
-            _ => None,
+        let description = match row.key {
+            FileKey::Mux(key) => mux_setting(key).and_then(|setting| setting.description),
+            FileKey::ThemeSlot(_) => Some("Replaces custom terminal colors"),
+            FileKey::Contrast => Some("Lifts terminal text under 4.5:1 against its background"),
+            FileKey::Appearance(_) => None,
         };
         let entry = SettingEntry::new(row.title)
             .when_some(description, SettingEntry::description)
@@ -1018,21 +1013,22 @@ fn theme_select(
 }
 
 fn option_choices(key: FileKey) -> Vec<(String, String)> {
-    let choices = match key.name() {
-        "mode-keys" => vec![("Vi", "vi"), ("Emacs", "emacs")],
-        "set-clipboard" => vec![("On", "on"), ("External", "external"), ("Off", "off")],
-        "cursor-style" => vec![
+    let choices: &[(&str, &str)] = match key {
+        FileKey::Mux(key) => mux_setting(key).map_or(&[], MuxSetting::choices),
+        FileKey::Appearance(AppearanceConfigKey::CursorStyle) => &[
             ("Block", "block"),
             ("Bar", "bar"),
             ("Underline", "underline"),
             ("Hollow block", "block_hollow"),
         ],
-        "cursor-style-blink" => vec![("On", "on"), ("Off", "off"), ("Terminal", "terminal")],
-        _ => Vec::new(),
+        FileKey::Appearance(AppearanceConfigKey::CursorStyleBlink) => {
+            &[("On", "on"), ("Off", "off"), ("Terminal", "terminal")]
+        }
+        _ => &[],
     };
     choices
-        .into_iter()
-        .map(|(label, value)| (label.to_owned(), value.to_owned()))
+        .iter()
+        .map(|&(label, value)| (label.to_owned(), value.to_owned()))
         .collect()
 }
 

@@ -420,29 +420,13 @@ pub(crate) fn shown_theme(cx: &App) -> InterfaceTheme {
             .and_then(zz_ui::terminal::terminal_look)
         && look.mode == crate::theme::asked_mode(cx)
     {
-        wear_terminal_look(&mut theme, look, appearance.overrides.accent.is_some());
+        zz_ui::terminal::wear_terminal_look(
+            &mut theme,
+            look,
+            appearance.overrides.accent.is_some(),
+        );
     }
     theme
-}
-
-fn wear_terminal_look(
-    theme: &mut InterfaceTheme,
-    look: zz_ui::terminal::TerminalLook,
-    accent_picked: bool,
-) {
-    use penna::foundation::interface_theme::{ModeLock, Tint};
-    theme.colors.set(look.mode, look.colors);
-    theme.mode = if look.mode.is_dark() {
-        ModeLock::Dark
-    } else {
-        ModeLock::Light
-    };
-    if !accent_picked && let Some(accent) = look.accent {
-        theme.tint = Tint {
-            light: accent,
-            dark: accent,
-        };
-    }
 }
 
 pub(crate) fn appearance(cx: &App) -> Appearance {

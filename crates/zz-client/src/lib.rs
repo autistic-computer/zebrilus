@@ -10,6 +10,7 @@ pub mod agent_resume;
 pub mod agent_settings;
 pub mod agent_timeline;
 pub mod agent_transcript;
+pub mod attention;
 pub mod chat_rows;
 #[cfg(test)]
 mod chat_rows_tests;

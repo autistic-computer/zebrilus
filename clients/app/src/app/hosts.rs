@@ -479,13 +479,13 @@ impl AppShell {
     ) -> SettingsScrollColumn {
         let entries = self.host_entries(narrow, cx);
         #[cfg(any(target_os = "ios", target_os = "android"))]
-        let add = Some(if narrow {
-            self.add_host_row(cx)
+        let (found, add) = if narrow {
+            (None, Some(self.add_host_row(cx)))
         } else {
-            self.add_host_stack(narrow, cx)
-        });
+            (self.found_stack(cx), Some(self.add_host_stack(narrow, cx)))
+        };
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        let add: Option<SettingsStack> = None;
+        let (found, add): (Option<SettingsStack>, Option<SettingsStack>) = (None, None);
         let hosts = if narrow {
             SettingsStack::new()
         } else {
@@ -496,7 +496,34 @@ impl AppShell {
             .when(!entries.is_empty(), |page| {
                 page.child(hosts.children(entries))
             })
+            .children(found)
             .children(add)
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn found_stack(&self, cx: &mut Context<Self>) -> Option<SettingsStack> {
+        let found = self.found_machines(cx);
+        if found.is_empty() {
+            return None;
+        }
+        let entries = found.into_iter().enumerate().map(|(index, host)| {
+            let endpoint = host.endpoint;
+            let machine = host.machine;
+            SettingEntry::new(machine.name.clone())
+                .description(zz_ui::compact::found_detail(&machine))
+                .title_icon(Icon::new(zz_ui::compact::found_icon(&machine)))
+                .control(
+                    Button::new(("hosts-found-add", index))
+                        .label("Add")
+                        .on(settings_card_ground(cx))
+                        .disabled(!machine.runs_zz)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.hosts.saved.add(&endpoint);
+                            this.connect_host(endpoint.clone(), window, cx);
+                        })),
+                )
+        });
+        Some(SettingsStack::titled("On your tailnet").children(entries))
     }
 
     pub(super) fn remember_host(&mut self, cx: &mut Context<Self>) {
@@ -523,15 +550,12 @@ impl AppShell {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn add_host(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let value = self.hosts.destination.read(cx).value().to_string();
-        match parsed_endpoint(&value) {
-            Ok(endpoint) => {
+        match self.add_destination(&value, window, cx) {
+            Ok(()) => {
                 self.hosts.error = None;
                 self.hosts
                     .destination
                     .update(cx, |input, cx| input.set_value("", window, cx));
-                self.hosts.saved.add(&endpoint);
-                self.connect_host(endpoint, window, cx);
-                super::settings::finish_field(window, cx);
                 cx.notify();
                 true
             }
@@ -541,6 +565,63 @@ impl AppShell {
                 false
             }
         }
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn add_destination(
+        &mut self,
+        value: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let endpoint = parsed_endpoint(value)?;
+        self.hosts.saved.add(&endpoint);
+        self.connect_host(endpoint, window, cx);
+        super::settings::finish_field(window, cx);
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    pub(super) fn open_add_host_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use penna::WindowExt as _;
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder("user@host"));
+        let error = cx.new(|_| None::<SharedString>);
+        let view = cx.entity().downgrade();
+        let field = input.clone();
+        window.open_dialog(cx, move |dialog, _, cx| {
+            let shown = error.read(cx).clone();
+            let (value, error, view) = (field.clone(), error.clone(), view.clone());
+            zz_ui::dialogs::add_host_prompt_dialog(dialog, &field, shown, cx).on_ok(
+                move |_, window, cx| {
+                    let typed = value.read(cx).value().to_string();
+                    let failed = view
+                        .update(cx, |this, cx| this.add_destination(&typed, window, cx))
+                        .ok()
+                        .and_then(Result::err);
+                    let done = failed.is_none();
+                    error.update(cx, |error, _| *error = failed.map(Into::into));
+                    window.refresh();
+                    done
+                },
+            )
+        });
+        cx.on_next_frame(window, move |_, window, cx| {
+            input.update(cx, |input, cx| input.focus(window, cx));
+            window.request_virtual_keyboard();
+        });
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    pub(super) fn remove_host(
+        &mut self,
+        endpoint: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.disconnect_host(endpoint, window, cx);
+        self.hosts.saved.remove(endpoint);
+        self.hosts.saved.save();
+        cx.notify();
     }
 
     fn host_entries(&self, narrow: bool, cx: &mut Context<Self>) -> Vec<SettingEntry> {
@@ -645,6 +726,20 @@ impl AppShell {
                         }))
                 };
                 #[cfg(any(target_os = "ios", target_os = "android"))]
+                let install = self.host_connection(endpoint, cx).and_then(|connection| {
+                    let offer = connection.read(cx).install_offer()?;
+                    Some(
+                        Button::new(("hosts-install", index))
+                            .label(offer.label())
+                            .on(settings_card_ground(cx))
+                            .on_click(move |_, window, cx| {
+                                install_zz(connection.clone(), window, cx);
+                            }),
+                    )
+                });
+                #[cfg(not(any(target_os = "ios", target_os = "android")))]
+                let install: Option<Button> = None;
+                #[cfg(any(target_os = "ios", target_os = "android"))]
                 let remove = {
                     let removed = endpoint.clone();
                     Some(
@@ -654,10 +749,7 @@ impl AppShell {
                             .tooltip("Remove host")
                             .on(settings_card_ground(cx))
                             .on_click(cx.listener(move |this, _, window, cx| {
-                                this.disconnect_host(&removed, window, cx);
-                                this.hosts.saved.remove(&removed);
-                                this.hosts.saved.save();
-                                cx.notify();
+                                this.remove_host(&removed, window, cx);
                             })),
                     )
                 };
@@ -665,7 +757,12 @@ impl AppShell {
                 let remove: Option<Button> = None;
                 with_control(
                     entry,
-                    h_flex().gap_2().flex_none().child(action).children(remove),
+                    h_flex()
+                        .gap_2()
+                        .flex_none()
+                        .children(install)
+                        .child(action)
+                        .children(remove),
                     narrow,
                 )
             })
@@ -696,16 +793,19 @@ impl AppShell {
                 },
                 cx,
             ));
+        let stale = connection.stale_page();
         with_control(
             entry,
-            h_flex().child(
+            h_flex().child(if stale {
+                reload_page_button(cx)
+            } else {
                 Button::new("hosts-reconnect")
                     .label(if connected { "Reconnect" } else { "Retry" })
                     .on(settings_card_ground(cx))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.connection.update(cx, Connection::reconnect);
-                    })),
-            ),
+                    }))
+            }),
             narrow,
         )
     }
@@ -901,11 +1001,8 @@ impl AppShell {
             .icon(IconName::Xmark)
             .danger()
             .on_click(cx.listener(move |this, _, window, cx| {
-                this.disconnect_host(&target, window, cx);
-                this.hosts.saved.remove(&target);
-                this.hosts.saved.save();
+                this.remove_host(&target, window, cx);
                 close_sheet(HOST_SHEET, cx);
-                cx.notify();
             }));
         let close =
             sheet_close("host-sheet-close", cx).on_click(|_, _, cx| close_sheet(HOST_SHEET, cx));
@@ -995,6 +1092,82 @@ impl AppShell {
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
+pub(super) fn watch_host_notices(
+    connection: &Entity<crate::connection::Connection>,
+    window: &mut Window,
+    cx: &mut Context<AppShell>,
+) -> Subscription {
+    use crate::connection::HostNotice;
+    use penna::{WindowExt as _, blocks::notification::Notification};
+    use zz_protocol::ClientMessageKind;
+    cx.subscribe_in(
+        connection,
+        window,
+        |_, connection, notice: &HostNotice, window, cx| {
+            let title = connection
+                .read(cx)
+                .endpoint()
+                .map_or_else(String::new, host_title);
+            let notification = match notice {
+                HostNotice::KeyAdded => Notification::success(format!(
+                    "Added zz's key to {title}; it won't ask to sign in again"
+                )),
+                HostNotice::KeyFailed(reason) => {
+                    Notification::warning(format!("Could not add zz's key to {title}: {reason}"))
+                }
+                HostNotice::Installed(outcome) => match outcome.notice(&title) {
+                    (ClientMessageKind::Success, text) => Notification::success(text),
+                    (ClientMessageKind::Warning, text) => Notification::warning(text),
+                    (ClientMessageKind::Error, text) => Notification::error(text),
+                    (ClientMessageKind::Info, text) => Notification::info(text),
+                },
+                HostNotice::InstallFailed(reason) => Notification::error(reason.clone()),
+            };
+            window.push_notification(notification, cx);
+        },
+    )
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+pub(super) fn install_zz(
+    connection: Entity<crate::connection::Connection>,
+    window: &mut Window,
+    cx: &mut ala::App,
+) {
+    use penna::{
+        Emphasis, WindowExt as _, blocks::dialog::DialogButtonProps,
+        components::button::ButtonVariant,
+    };
+    let read = connection.read(cx);
+    let Some(offer) = read.install_offer() else {
+        return;
+    };
+    if offer == zz_daemon_client::InstallOffer::Install {
+        connection.update(cx, crate::connection::Connection::install_zz);
+        return;
+    }
+    let name = read.endpoint().map_or_else(String::new, host_title);
+    let (title, description) = zz_daemon_client::update_prompt(&[(name, read.session_count())]);
+    window.open_alert_dialog(cx, move |alert, _, _| {
+        let accept = connection.clone();
+        alert
+            .title(title.clone())
+            .description(description.clone())
+            .button_props(
+                DialogButtonProps::default()
+                    .ok_variant(ButtonVariant::Paint(Tone::Danger, Emphasis::Solid))
+                    .ok_text("Update and restart")
+                    .cancel_text("Not now")
+                    .show_cancel(true),
+            )
+            .on_ok(move |_, _, cx| {
+                accept.update(cx, crate::connection::Connection::install_zz);
+                true
+            })
+    });
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
 pub(super) fn copy_ssh_key(window: &mut Window, cx: &mut ala::App) {
     use penna::{WindowExt as _, blocks::notification::Notification};
     let notification = match zz_daemon_client::app_ssh_public_key() {
@@ -1039,6 +1212,18 @@ fn toned(line: Label, tone: Tone, ground: Ground, cx: &ala::App) -> Label {
         Tone::Neutral => line.muted().on(ground),
         tone => line.text_color(cx.theme().tone(tone)),
     }
+}
+
+pub(super) fn reload_page_button(cx: &ala::App) -> Button {
+    Button::new("reload-page")
+        .label("Reload page")
+        .on(settings_card_ground(cx))
+        .on_click(|_, _, _| {
+            #[cfg(target_family = "wasm")]
+            if let Some(window) = web_sys::window() {
+                let _ = window.location().reload();
+            }
+        })
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]

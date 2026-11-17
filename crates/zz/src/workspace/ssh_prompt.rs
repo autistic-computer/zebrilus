@@ -44,6 +44,14 @@ pub(crate) fn open(
             );
             sync_fleet_in_background();
         }
+        AskpassPromptKind::KeyFailed => window.push_notification(
+            Notification::warning(format!(
+                "Could not add zz's key to {}: {}",
+                request.label,
+                request.prompt.text()
+            )),
+            cx,
+        ),
     }
 }
 

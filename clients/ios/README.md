@@ -117,7 +117,12 @@ connects straight away and adds the host to the saved list; later launches from 
 open the connection screen with it at the top. The Mac needs Remote Login
 enabled and `zz-dev` on its PATH (desktop dev runs link it into `~/.local/bin`). Sign in with your
 password; after a password sign-in the app offers to add its key to `~/.ssh/authorized_keys` so
-later connections skip the password. The key is also in the Add host sheet to copy by hand. Override the
+later connections skip the password, and a toast says whether it was added. The key is also in the
+Add host sheet to copy by hand. On iPad, Settings > Hosts names why a host failed (zz missing, too
+old, or newer than the app) and offers **Install zz** or **Update zz** on ssh hosts, which runs the
+installer there over the same ssh login (release builds only; dev builds refuse, as on the
+desktop). An ssh host whose daemon is an older build than the app also gets **Update zz**, which
+installs the app's version and restarts the daemon. Override the
 choices with `ZZ_ALA_DEVICE`, `ZZ_ALA_SIGN_IDENTITY`, `ZZ_ALA_PROFILE`, or `ZZ_ALA_ENDPOINT`.
 
 Simulator and device builds use the zz Dev icon (`assets/zz-dev.icon`, compiled with `actool`).
@@ -154,7 +159,9 @@ is **zz dev**, and build products live in `target/ios/ZZ Dev.app`.
 The tree shows the connected host, its sessions, windows, and panes. Tap a marker to expand or
 collapse it, or a row to select it. Arrow keys navigate the tree; Enter selects
 the highlighted row. The plus buttons create sessions and windows. Long-press a
-row or window pill to open its rename and close menu. Swipe to scroll. The top sidebar button hides the sidebar and remains available to reopen
+row or window pill to open its rename and close menu; on a host row that menu has Remove host, and
+Install zz or Update zz when the host offers it. Add host in the sidebar opens a dialog for the
+destination and connects the host it names. Swipe to scroll. The top sidebar button hides the sidebar and remains available to reopen
 it. The gear opens Settings; Command-comma also toggles Settings. The search button
 opens the command palette without a hardware keyboard.
 
@@ -171,7 +178,10 @@ successful connection moves its host to the top. `ZZ_ALA_ENDPOINT` (or `ZZ_SOCKE
 for that launch only, and opening a `zz://attach/<session>` link connects to the most recent host.
 A `zz://host/<machine>:<port>` link (the QR code in desktop Settings › Hosts) adds that tailnet
 machine and connects it. Every connected host is asked for the other machines on your tailnet; they
-are listed under On your tailnet on Machines and in Add machine, where a tap saves and connects one.
+are listed under On your tailnet on Machines and in Add machine, where a tap saves and connects one;
+on iPad they sit above Add host on Settings › Hosts and the connection screen, each with an Add
+button. In the command palette a host row says when it is reconnecting, installing zz, missing zz
+(Return installs it) or speaks an incompatible version.
 SSH endpoints show host-key confirmation and authentication dialogs. The terminal example shares
 the native transport, key translation, and UIKit backend.
 
@@ -380,6 +390,15 @@ The text system loads the iOS system fonts, so Chinese, Japanese, Korean, Arabic
 and other scripts render. Emoji still show as blank: ala's text system only treats Noto
 Color Emoji as a color font.
 
+When a pane on the attached host asks for input, fails or finishes while you are looking
+at another pane, the app plays the request or done chime. While the app is inactive or in
+the short background time, it also posts a notification naming the program and the pane;
+tapping it selects that pane (on iPhone it leaves the overview and any sheet for the pane).
+iOS asks for permission the first time a pane needs you, and Settings › System ›
+Notifications turns them off. While they are on, the app icon badge counts the panes that
+need you, failed or finished unseen; turning them off clears the badge and never asks for
+permission. A suspended app gets nothing: that would need a push service.
+
 ## Frame rate
 
 The display link asks for the screen's top rate with the range Flutter uses (half the maximum, but
@@ -432,20 +451,35 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
   background/foreground/accent colors, UI zoom, contrast, animations, widget
   corners, font family, and shadow strength. Fresh installs use System appearance;
   saved choices survive upgrades. System appearance follows live iOS changes;
-  pinned modes also update the native status bar.
+  pinned modes also update the native status bar. On iPad and the web it also has a
+  terminal preview, Window follows the theme (on by default: the window wears the host's
+  terminal colors when they match the shown mode), and Terminal text contrast (Follow host,
+  On for 4.5:1, Off).
 - **Panes:** live preview, gaps, inactive opacity, selected glow and margin.
   Frame controls apply with gaps.
-- **Terminal:** a live preview, local font family, and text scale. Host colors,
-  cursor, and padding remain visible as host-owned settings.
+- **Terminal:** a live preview, local font family, and text scale. On iPad and the web,
+  cursor style, cursor blink, and padding X and Y follow the host until set on the device;
+  an empty padding field follows the host again. A device cursor style replaces the host's
+  default shape only, so a shape a program asks for still shows. Host colors and themes
+  remain visible as host-owned settings.
+- **Multiplexer:** on iPad and the web, the host daemon's Prefix (typed as tmux spells it, such
+  as `C-a`), Mode keys, Mouse, History limit, Clipboard and Escape time. Each change runs
+  `set-option -g` on the host, or for Mouse `set-option -t` on the attached session, and lasts
+  until its daemon restarts; the host's `zz/mux.conf` is not written. Changes made elsewhere show as they happen, and a value the host refuses shows its
+  error and the field goes back to the host's value.
 - **Hosts:** the configured endpoint, connection status, and reconnect.
-- **Advanced:** command palette layout (tree or flat), host prefix, and command shortcuts;
+- **Advanced:** command palette layout (tree or flat), host prefix, and command shortcuts
+  (the palette's recents are kept across launches in `palette-recents.json` beside the
+  preferences);
   Navigation: the which-key delay; Display: drawing under the home indicator, matching the
-  system text size, and keeping the screen awake while connected.
+  system text size, and keeping the screen awake while connected; Notifications: Notify when
+  a pane needs you.
 - **About:** app version and source link.
 
 The page omits desktop-only options and controls for unsupported pane kinds. iPhone also
-leaves out Panes and Status bar (the phone shell shows one pane without gaps or frames and
-has its own bottom bar), UI zoom, Match system text size, and the which-key delay.
+leaves out Panes (the phone shell shows one pane without gaps or frames), Multiplexer, UI zoom, Match
+system text size, the command palette settings, the which-key delay, and the terminal rows above
+that iPad and the web add (the phone draws terminals in the app's own colors).
 Interface and pane preferences are saved atomically in the app container
 at `Library/Application Support/ala/preferences.json` and restored on launch.
 Its `chrome_keys` list rebinds the app's own keys on this device, entries like

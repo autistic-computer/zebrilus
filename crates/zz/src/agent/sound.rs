@@ -1,162 +1,24 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
     ffi::OsStr,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock, PoisonError},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
-use zz_protocol::PaneId;
+use zz_client::attention::{Chime, chime_due, chime_wav};
 
 const SOUND_ENV: &str = "ZZ_AGENT_SOUND";
-const SAMPLE_RATE: u32 = 44_100;
-const BITS_PER_SAMPLE: u16 = 16;
-const CHANNELS: u16 = 1;
-const WAV_HEADER_LEN: usize = 44;
 const PLAYER_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
-const MIN_CHIME_GAP: Duration = Duration::from_secs(2);
 
 static LAST_CHIME: Mutex<Option<Instant>> = Mutex::new(None);
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) enum AgentPaneStatus {
-    #[default]
-    Idle,
-    Working,
-    NeedsInput,
-    Failed,
-    Done,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AgentBadge {
-    NeedsInput,
-    Failed,
-    Working,
-    Finished,
-}
-
-impl AgentBadge {
-    const fn rank(self) -> u8 {
-        match self {
-            Self::NeedsInput => 0,
-            Self::Failed => 1,
-            Self::Working => 2,
-            Self::Finished => 3,
-        }
-    }
-
-    pub(crate) fn merge(self, other: Self) -> Self {
-        if other.rank() < self.rank() {
-            other
-        } else {
-            self
-        }
-    }
-
-    pub(crate) fn merge_into(slot: &mut Option<Self>, badge: Self) {
-        *slot = Some(slot.map_or(badge, |current| current.merge(badge)));
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Chime {
-    Request,
-    Done,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct AttentionEdge<K> {
-    pub(crate) pane: K,
-    pub(crate) status: AgentPaneStatus,
-    pub(crate) chime: Chime,
-}
-
-pub(crate) fn loudest<K>(edges: &[AttentionEdge<K>]) -> Option<Chime> {
-    edges
-        .iter()
-        .map(|edge| edge.chime)
-        .max_by_key(|chime| *chime == Chime::Request)
-}
-
-const fn chime_for(previous: AgentPaneStatus, next: AgentPaneStatus) -> Option<Chime> {
-    match (previous, next) {
-        (AgentPaneStatus::NeedsInput, AgentPaneStatus::NeedsInput)
-        | (AgentPaneStatus::Failed, AgentPaneStatus::Failed)
-        | (AgentPaneStatus::Done, AgentPaneStatus::Done) => None,
-        (_, AgentPaneStatus::NeedsInput | AgentPaneStatus::Failed) => Some(Chime::Request),
-        (AgentPaneStatus::Working, AgentPaneStatus::Idle) | (_, AgentPaneStatus::Done) => {
-            Some(Chime::Done)
-        }
-        _ => None,
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct AgentAttentionTracker<K = PaneId> {
-    previous: BTreeMap<K, AgentPaneStatus>,
-    unseen: BTreeSet<K>,
-}
-
-impl<K> Default for AgentAttentionTracker<K> {
-    fn default() -> Self {
-        Self {
-            previous: BTreeMap::new(),
-            unseen: BTreeSet::new(),
-        }
-    }
-}
-
-impl<K: Copy + Ord> AgentAttentionTracker<K> {
-    pub(crate) fn observe(
-        &mut self,
-        statuses: &BTreeMap<K, AgentPaneStatus>,
-        watched: Option<K>,
-    ) -> Vec<AttentionEdge<K>> {
-        self.previous.retain(|pane, _| statuses.contains_key(pane));
-        self.unseen.retain(|pane| statuses.contains_key(pane));
-
-        let mut edges = Vec::new();
-        for (&pane, &status) in statuses {
-            let Some(previous) = self.previous.insert(pane, status) else {
-                continue;
-            };
-            let Some(chime) = chime_for(previous, status) else {
-                continue;
-            };
-            if watched == Some(pane) {
-                continue;
-            }
-            if chime == Chime::Done {
-                self.unseen.insert(pane);
-            }
-            edges.push(AttentionEdge {
-                pane,
-                status,
-                chime,
-            });
-        }
-
-        if let Some(pane) = watched {
-            self.unseen.remove(&pane);
-        }
-        edges
-    }
-
-    pub(crate) fn badge(&self, pane: K, status: AgentPaneStatus) -> Option<AgentBadge> {
-        match status {
-            AgentPaneStatus::NeedsInput => Some(AgentBadge::NeedsInput),
-            AgentPaneStatus::Failed => Some(AgentBadge::Failed),
-            AgentPaneStatus::Working => Some(AgentBadge::Working),
-            AgentPaneStatus::Idle | AgentPaneStatus::Done => {
-                self.unseen.contains(&pane).then_some(AgentBadge::Finished)
-            }
-        }
-    }
-}
-
 pub(crate) fn play(chime: Chime) {
-    if !enabled(std::env::var_os(SOUND_ENV).as_deref()) || !due(&LAST_CHIME, Instant::now()) {
+    if !enabled(std::env::var_os(SOUND_ENV).as_deref())
+        || !chime_due(
+            &mut LAST_CHIME.lock().unwrap_or_else(PoisonError::into_inner),
+            Instant::now(),
+        )
+    {
         return;
     }
     std::thread::spawn(move || {
@@ -168,15 +30,6 @@ pub(crate) fn play(chime: Chime) {
 
 fn enabled(value: Option<&OsStr>) -> bool {
     value.is_none_or(|value| value != "0")
-}
-
-fn due(last: &Mutex<Option<Instant>>, now: Instant) -> bool {
-    let mut last = last.lock().unwrap_or_else(PoisonError::into_inner);
-    if last.is_some_and(|last| now.saturating_duration_since(last) < MIN_CHIME_GAP) {
-        return false;
-    }
-    *last = Some(now);
-    true
 }
 
 fn play_blocking(chime: Chime) -> Result<(), String> {
@@ -214,7 +67,7 @@ fn materialize(chime: Chime) -> Result<&'static Path, String> {
                 },
                 std::process::id()
             ));
-            std::fs::write(&path, wav(chime)).map_err(|error| error.to_string())?;
+            std::fs::write(&path, chime_wav(chime)).map_err(|error| error.to_string())?;
             Ok(path)
         })
     });
@@ -258,284 +111,9 @@ fn player_command(program: &str, args: &[&str], path: &Path) -> Option<std::proc
         .ok()
 }
 
-const fn segments(chime: Chime) -> &'static [(f32, u32)] {
-    match chime {
-        Chime::Request => &[(1318.0, 70), (0.0, 60), (1318.0, 70)],
-        Chime::Done => &[(880.0, 110), (1174.0, 190)],
-    }
-}
-
-fn wav(chime: Chime) -> Vec<u8> {
-    let mut samples = Vec::new();
-    for &(hz, ms) in segments(chime) {
-        let count = (SAMPLE_RATE as f32 * ms as f32 / 1000.0) as usize;
-        let fade = (count / 4).clamp(1, SAMPLE_RATE as usize / 125);
-        for index in 0..count {
-            if hz == 0.0 {
-                samples.push(0);
-                continue;
-            }
-            let phase = std::f32::consts::TAU * hz * index as f32 / SAMPLE_RATE as f32;
-            let envelope = (index.min(count - index - 1) as f32 / fade as f32).min(1.0);
-            samples.push((phase.sin() * envelope * 0.3 * f32::from(i16::MAX)) as i16);
-        }
-    }
-    encode(&samples)
-}
-
-fn encode(samples: &[i16]) -> Vec<u8> {
-    let data_len = u32::try_from(samples.len() * 2).unwrap_or(u32::MAX);
-    let block_align = CHANNELS * BITS_PER_SAMPLE / 8;
-    let mut out = Vec::with_capacity(WAV_HEADER_LEN + data_len as usize);
-    out.extend_from_slice(b"RIFF");
-    out.extend_from_slice(&(data_len + 36).to_le_bytes());
-    out.extend_from_slice(b"WAVEfmt ");
-    out.extend_from_slice(&16u32.to_le_bytes());
-    out.extend_from_slice(&1u16.to_le_bytes());
-    out.extend_from_slice(&CHANNELS.to_le_bytes());
-    out.extend_from_slice(&SAMPLE_RATE.to_le_bytes());
-    out.extend_from_slice(&(SAMPLE_RATE * u32::from(block_align)).to_le_bytes());
-    out.extend_from_slice(&block_align.to_le_bytes());
-    out.extend_from_slice(&BITS_PER_SAMPLE.to_le_bytes());
-    out.extend_from_slice(b"data");
-    out.extend_from_slice(&data_len.to_le_bytes());
-    for sample in samples {
-        out.extend_from_slice(&sample.to_le_bytes());
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn u32_at(data: &[u8], offset: usize) -> u32 {
-        u32::from_le_bytes(data[offset..offset + 4].try_into().expect("four bytes"))
-    }
-
-    fn u16_at(data: &[u8], offset: usize) -> u16 {
-        u16::from_le_bytes(data[offset..offset + 2].try_into().expect("two bytes"))
-    }
-
-    fn statuses(entries: &[(u64, AgentPaneStatus)]) -> BTreeMap<PaneId, AgentPaneStatus> {
-        entries
-            .iter()
-            .map(|&(pane, status)| (PaneId(pane), status))
-            .collect()
-    }
-
-    #[test]
-    fn chimes_closer_than_the_gap_are_dropped() {
-        let last = Mutex::new(None);
-        let start = Instant::now();
-        assert!(due(&last, start));
-        assert!(!due(&last, start + MIN_CHIME_GAP / 2));
-        assert!(due(&last, start + MIN_CHIME_GAP));
-        assert!(!due(&last, start));
-    }
-
-    #[test]
-    fn synthesized_chimes_carry_a_canonical_pcm_header() {
-        for chime in [Chime::Request, Chime::Done] {
-            let data = wav(chime);
-            assert_eq!(&data[..4], b"RIFF");
-            assert_eq!(u32_at(&data, 4) as usize, data.len() - 8);
-            assert_eq!(&data[8..12], b"WAVE");
-            assert_eq!(&data[12..16], b"fmt ");
-            assert_eq!(u32_at(&data, 16), 16);
-            assert_eq!(u16_at(&data, 20), 1);
-            assert_eq!(u16_at(&data, 22), CHANNELS);
-            assert_eq!(u32_at(&data, 24), SAMPLE_RATE);
-            assert_eq!(u32_at(&data, 28), SAMPLE_RATE * 2);
-            assert_eq!(u16_at(&data, 32), 2);
-            assert_eq!(u16_at(&data, 34), BITS_PER_SAMPLE);
-            assert_eq!(&data[36..40], b"data");
-            assert_eq!(u32_at(&data, 40) as usize, data.len() - WAV_HEADER_LEN);
-            assert_eq!((data.len() - WAV_HEADER_LEN) % 2, 0);
-        }
-    }
-
-    #[test]
-    fn the_two_chimes_are_distinct_and_audible() {
-        let request = wav(Chime::Request);
-        let done = wav(Chime::Done);
-        assert_ne!(request, done);
-        for data in [&request, &done] {
-            assert!(data.len() > SAMPLE_RATE as usize / 10);
-            assert!(data[WAV_HEADER_LEN..].iter().any(|&byte| byte != 0));
-        }
-    }
-
-    #[test]
-    fn chime_edges_follow_the_question_and_completion_rules() {
-        use AgentPaneStatus::{Done, Failed, Idle, NeedsInput, Working};
-        assert_eq!(chime_for(Working, NeedsInput), Some(Chime::Request));
-        assert_eq!(chime_for(Idle, NeedsInput), Some(Chime::Request));
-        assert_eq!(chime_for(Failed, NeedsInput), Some(Chime::Request));
-        assert_eq!(chime_for(Working, Failed), Some(Chime::Request));
-        assert_eq!(chime_for(Idle, Failed), Some(Chime::Request));
-        assert_eq!(chime_for(Working, Idle), Some(Chime::Done));
-        assert_eq!(chime_for(Working, Done), Some(Chime::Done));
-        assert_eq!(chime_for(Idle, Done), Some(Chime::Done));
-        assert_eq!(chime_for(NeedsInput, Done), Some(Chime::Done));
-        assert_eq!(chime_for(NeedsInput, Idle), None);
-        assert_eq!(chime_for(Failed, Idle), None);
-        assert_eq!(chime_for(Done, Idle), None);
-        assert_eq!(chime_for(NeedsInput, NeedsInput), None);
-        assert_eq!(chime_for(Failed, Failed), None);
-        assert_eq!(chime_for(Done, Done), None);
-        assert_eq!(chime_for(Idle, Working), None);
-    }
-
-    #[test]
-    fn a_done_report_chimes_and_badges_without_a_working_edge() {
-        let mut tracker = AgentAttentionTracker::default();
-        tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), None);
-
-        let chime = loudest(&tracker.observe(&statuses(&[(1, AgentPaneStatus::Done)]), None));
-        assert_eq!(chime, Some(Chime::Done));
-        assert_eq!(
-            tracker.badge(PaneId(1), AgentPaneStatus::Done),
-            Some(AgentBadge::Finished)
-        );
-
-        tracker.observe(&statuses(&[(1, AgentPaneStatus::Done)]), Some(PaneId(1)));
-        assert_eq!(tracker.badge(PaneId(1), AgentPaneStatus::Done), None);
-    }
-
-    #[test]
-    fn a_panes_first_observation_only_seeds_the_baseline() {
-        let mut tracker = AgentAttentionTracker::default();
-        let chime = loudest(&tracker.observe(&statuses(&[(1, AgentPaneStatus::NeedsInput)]), None));
-        assert_eq!(chime, None);
-        assert_eq!(
-            tracker.badge(PaneId(1), AgentPaneStatus::NeedsInput),
-            Some(AgentBadge::NeedsInput)
-        );
-    }
-
-    #[test]
-    fn an_unwatched_completion_chimes_and_stays_unseen_until_focus() {
-        let mut tracker = AgentAttentionTracker::default();
-        tracker.observe(&statuses(&[(1, AgentPaneStatus::Working)]), None);
-
-        let chime = loudest(&tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), None));
-        assert_eq!(chime, Some(Chime::Done));
-        assert_eq!(
-            tracker.badge(PaneId(1), AgentPaneStatus::Idle),
-            Some(AgentBadge::Finished)
-        );
-
-        let chime =
-            loudest(&tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), Some(PaneId(1))));
-        assert_eq!(chime, None);
-        assert_eq!(tracker.badge(PaneId(1), AgentPaneStatus::Idle), None);
-    }
-
-    #[test]
-    fn a_watched_pane_neither_chimes_nor_collects_a_badge() {
-        let mut tracker = AgentAttentionTracker::default();
-        tracker.observe(&statuses(&[(1, AgentPaneStatus::Working)]), Some(PaneId(1)));
-        let chime =
-            loudest(&tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), Some(PaneId(1))));
-        assert_eq!(chime, None);
-        assert_eq!(tracker.badge(PaneId(1), AgentPaneStatus::Idle), None);
-
-        let mut tracker = AgentAttentionTracker::default();
-        tracker.observe(&statuses(&[(1, AgentPaneStatus::Working)]), Some(PaneId(1)));
-        let chime = loudest(&tracker.observe(
-            &statuses(&[(1, AgentPaneStatus::NeedsInput)]),
-            Some(PaneId(1)),
-        ));
-        assert_eq!(chime, None);
-    }
-
-    #[test]
-    fn a_question_outranks_a_completion_in_the_same_batch() {
-        let mut tracker = AgentAttentionTracker::default();
-        tracker.observe(
-            &statuses(&[(1, AgentPaneStatus::Working), (2, AgentPaneStatus::Working)]),
-            None,
-        );
-        let chime = loudest(&tracker.observe(
-            &statuses(&[(1, AgentPaneStatus::Idle), (2, AgentPaneStatus::NeedsInput)]),
-            None,
-        ));
-        assert_eq!(chime, Some(Chime::Request));
-    }
-
-    #[test]
-    fn each_unwatched_edge_names_its_pane_and_status() {
-        use AgentPaneStatus::{Done, Failed, Idle, Working};
-        let mut tracker = AgentAttentionTracker::default();
-        tracker.observe(&statuses(&[(1, Working), (2, Working), (3, Working)]), None);
-
-        let edges = tracker.observe(
-            &statuses(&[(1, Idle), (2, Failed), (3, Done)]),
-            Some(PaneId(3)),
-        );
-        assert_eq!(
-            edges,
-            [
-                AttentionEdge {
-                    pane: PaneId(1),
-                    status: Idle,
-                    chime: Chime::Done,
-                },
-                AttentionEdge {
-                    pane: PaneId(2),
-                    status: Failed,
-                    chime: Chime::Request,
-                },
-            ]
-        );
-        assert_eq!(loudest(&edges), Some(Chime::Request));
-        assert_eq!(loudest::<PaneId>(&[]), None);
-    }
-
-    #[test]
-    fn a_closed_pane_drops_its_baseline_and_its_badge() {
-        let mut tracker = AgentAttentionTracker::default();
-        tracker.observe(&statuses(&[(1, AgentPaneStatus::Working)]), None);
-        tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), None);
-        assert_eq!(
-            tracker.badge(PaneId(1), AgentPaneStatus::Idle),
-            Some(AgentBadge::Finished)
-        );
-
-        tracker.observe(&statuses(&[]), None);
-        assert_eq!(tracker.badge(PaneId(1), AgentPaneStatus::Idle), None);
-        let chime = loudest(&tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), None));
-        assert_eq!(chime, None);
-    }
-
-    #[test]
-    fn identical_pane_ids_on_different_hosts_do_not_share_transitions() {
-        let mut tracker = AgentAttentionTracker::<(u8, PaneId)>::default();
-        tracker.observe(
-            &BTreeMap::from([((1, PaneId(7)), AgentPaneStatus::Working)]),
-            None,
-        );
-
-        let chime = loudest(&tracker.observe(
-            &BTreeMap::from([((2, PaneId(7)), AgentPaneStatus::Idle)]),
-            None,
-        ));
-
-        assert_eq!(chime, None);
-        assert_eq!(tracker.badge((2, PaneId(7)), AgentPaneStatus::Idle), None);
-    }
-
-    #[test]
-    fn rollup_badges_keep_the_most_urgent_pane() {
-        let mut slot = None;
-        AgentBadge::merge_into(&mut slot, AgentBadge::Finished);
-        AgentBadge::merge_into(&mut slot, AgentBadge::Working);
-        assert_eq!(slot, Some(AgentBadge::Working));
-        AgentBadge::merge_into(&mut slot, AgentBadge::NeedsInput);
-        AgentBadge::merge_into(&mut slot, AgentBadge::Failed);
-        assert_eq!(slot, Some(AgentBadge::NeedsInput));
-    }
 
     #[test]
     fn the_env_kill_switch_only_answers_to_zero() {

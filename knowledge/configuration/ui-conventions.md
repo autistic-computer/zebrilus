@@ -477,9 +477,13 @@ Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), w
 
 The thin clients keep their knobs in their preferences as a
 `penna::foundation::interface_theme::Appearance`, and `Preferences::apply` adjusts its mode,
-contrast, zoom and animations for the platform, turns glass off while the system reduces
-transparency (iOS's Reduce transparency, the browser's `prefers-reduced-transparency`), and calls
-`Appearance::apply`, which activates the platform's theme file with the device's `ThemeOverrides`
+contrast, zoom and animations for the platform (the system's Reduce motion and Increase contrast
+on iOS, and on the web `prefers-reduced-motion: reduce` and `prefers-contrast: more`; the web
+backend reruns it when either query or `prefers-reduced-transparency` changes), turns glass off while the system reduces
+transparency (iOS's Reduce transparency, the browser's `prefers-reduced-transparency`), wears the
+host's terminal look (`zz_ui::terminal::wear_terminal_look`) on iPad and the web while Window
+follows the theme is on and the look's mode is the shown one, and calls
+`Appearance::apply_theme`, which activates the platform's theme file with the device's `ThemeOverrides`
 applied as on desktop, so the mode's glass look sets the floating material and the pane rim; it then sets the UI font from the
 preference, else the platform file's face, else the bundled Inter. The HTML client's theme engine
 (`clients/dom/theme`) builds its kit theme from the same preferences, and sets the contrast before `theme_css::stylesheet` writes the tokens; the tokens' own

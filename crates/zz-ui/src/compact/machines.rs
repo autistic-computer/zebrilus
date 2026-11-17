@@ -56,7 +56,7 @@ pub fn found_detail(machine: &FoundMachine) -> String {
     }
 }
 
-fn found_icon(machine: &FoundMachine) -> IconName {
+pub fn found_icon(machine: &FoundMachine) -> IconName {
     if system_name(&machine.system) == "macOS" {
         IconName::Laptop
     } else {

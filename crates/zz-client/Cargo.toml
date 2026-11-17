@@ -27,6 +27,7 @@ comrak = { version = "0.59", default-features = false }
 tempfile.workspace = true
 zz-daemon = { workspace = true, features = ["default"] }
 zz-daemon-client.workspace = true
+zz-mux.workspace = true
 
 [lints]
 workspace = true

@@ -122,7 +122,7 @@ const REMOTE_INSTALL_FAILED_STATUS: i32 = 5;
 #[cfg(any(unix, windows, test))]
 const REMOTE_INSTALL_BROKEN_STATUS: i32 = 6;
 #[cfg(any(unix, windows, test))]
-const INSTALL_SCRIPT: &str = include_str!("../../../install.sh");
+pub(crate) const INSTALL_SCRIPT: &str = include_str!("../../../install.sh");
 #[cfg(any(unix, windows, test))]
 const REMOTE_DAEMON_POLL_ATTEMPTS: u32 = 50;
 #[cfg(any(unix, windows, test))]
@@ -2027,6 +2027,22 @@ impl RemoteInstall {
             }
         }
     }
+
+    #[must_use]
+    pub fn notice(&self, name: &str) -> (zz_protocol::ClientMessageKind, String) {
+        let kind = if matches!(self.restart, RemoteRestart::Failed(_)) {
+            zz_protocol::ClientMessageKind::Error
+        } else if self.warnings.is_empty() {
+            zz_protocol::ClientMessageKind::Success
+        } else {
+            zz_protocol::ClientMessageKind::Warning
+        };
+        let text = std::iter::once(format!("{name}: {}", self.summary()))
+            .chain(self.warnings.iter().cloned())
+            .collect::<Vec<_>>()
+            .join("\n");
+        (kind, text)
+    }
 }
 
 #[cfg(any(unix, windows))]
@@ -2035,6 +2051,12 @@ pub fn install_remote(
     prompts: Option<SshPrompts>,
     restart_daemon: bool,
 ) -> Result<RemoteInstall, EndpointError> {
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    {
+        refuse_development_install(endpoint)?;
+        crate::russh_client::install_remote(endpoint, prompts, restart_daemon)
+    }
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     install_remote_with(endpoint, prompts, restart_daemon, false)
 }
 
@@ -2047,16 +2069,10 @@ pub fn install_remote_batch(
 }
 
 #[cfg(any(unix, windows))]
-fn install_remote_with(
-    endpoint: &SshEndpoint,
-    prompts: Option<SshPrompts>,
-    restart_daemon: bool,
-    batch: bool,
-) -> Result<RemoteInstall, EndpointError> {
-    let target = endpoint.to_string();
+fn refuse_development_install(endpoint: &SshEndpoint) -> Result<(), EndpointError> {
     if zz_protocol::app_identity::DEVELOPMENT {
         return Err(EndpointError::RemoteInstallFailed {
-            target,
+            target: endpoint.to_string(),
             reason: format!(
                 "{} looks for {} there, and no release ships it",
                 zz_protocol::app_identity::DISPLAY_NAME,
@@ -2064,6 +2080,18 @@ fn install_remote_with(
             ),
         });
     }
+    Ok(())
+}
+
+#[cfg(any(unix, windows))]
+fn install_remote_with(
+    endpoint: &SshEndpoint,
+    prompts: Option<SshPrompts>,
+    restart_daemon: bool,
+    batch: bool,
+) -> Result<RemoteInstall, EndpointError> {
+    let target = endpoint.to_string();
+    refuse_development_install(endpoint)?;
     let askpass = start_askpass(endpoint, prompts);
     #[cfg(unix)]
     let (control, answered) = riding_control(endpoint);
@@ -3995,6 +4023,47 @@ mod tests {
             "#!/bin/sh\ncase \"$1\" in protocol-version) echo {protocol} ;; \
              --version) echo \"zz 0.0.1\" ;; *) echo \"$*\" >> \"$HOME/{calls}\" ;; esac\n"
         )
+    }
+
+    #[test]
+    fn an_install_toast_says_what_happened_on_the_host() {
+        let version = env!("CARGO_PKG_VERSION");
+        let outcome = |restart, warnings: &[&str]| RemoteInstall {
+            installed: RemoteInstalled::Headless,
+            restart,
+            warnings: warnings
+                .iter()
+                .map(|warning| (*warning).to_owned())
+                .collect(),
+        };
+        assert_eq!(
+            outcome(RemoteRestart::Restarted, &[]).notice("xps"),
+            (
+                zz_protocol::ClientMessageKind::Success,
+                format!("xps: zz {version} installed (headless), daemon restarted")
+            )
+        );
+        assert_eq!(
+            outcome(RemoteRestart::NotAsked, &["restart it"]).notice("xps"),
+            (
+                zz_protocol::ClientMessageKind::Warning,
+                format!("xps: zz {version} installed (headless)\nrestart it")
+            )
+        );
+        assert_eq!(
+            outcome(
+                RemoteRestart::Failed("recovery failed".to_owned()),
+                &["restart it"]
+            )
+            .notice("xps"),
+            (
+                zz_protocol::ClientMessageKind::Error,
+                format!(
+                    "xps: zz {version} installed (headless), but its daemon did not stop: \
+                     recovery failed\nrestart it"
+                )
+            )
+        );
     }
 
     #[cfg(unix)]

@@ -3,11 +3,15 @@ use serde::{Deserialize, Serialize, de::value::MapDeserializer};
 use zz_client::{
     ChromeKeymap, ChromeProfile,
     chrome_override::{ChromeOverride, parse_bind, parse_unbind},
+    recents::Recents,
     url_input::SearchProvider,
 };
+use zz_terminal::{CursorBlinkPolicy, CursorStyle};
 use zz_ui::interface_theme::{
     self, Appearance, AppearanceChange, InterfaceTheme, ThemeModeSetting, ThemeOverrides,
 };
+
+pub const MAX_TERMINAL_PADDING: f32 = 64.0;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -34,6 +38,13 @@ pub struct Preferences {
     pub which_key_delay: f32,
     pub chrome_keys: Vec<ChromeKeyOverride>,
     pub search_engine: String,
+    pub notifications: bool,
+    pub window_follows_theme: bool,
+    pub terminal_contrast: Option<bool>,
+    pub terminal_cursor_style: Option<CursorStyle>,
+    pub terminal_cursor_blink: Option<CursorBlinkPolicy>,
+    pub terminal_padding_x: Option<f32>,
+    pub terminal_padding_y: Option<f32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,6 +117,13 @@ impl Default for Preferences {
             which_key_delay: zz_client::prefix_keys::DEFAULT_WHICH_KEY_DELAY,
             chrome_keys: Vec::new(),
             search_engine: SearchProvider::default().as_str().into(),
+            notifications: true,
+            window_follows_theme: true,
+            terminal_contrast: None,
+            terminal_cursor_style: None,
+            terminal_cursor_blink: None,
+            terminal_padding_x: None,
+            terminal_padding_y: None,
         }
     }
 }
@@ -156,6 +174,11 @@ impl Preferences {
             ),
         ] {
             *value = bounded(*value, min, max, fallback);
+        }
+        for padding in [&mut self.terminal_padding_x, &mut self.terminal_padding_y] {
+            *padding = padding
+                .filter(|value| value.is_finite())
+                .map(|value| value.clamp(0.0, MAX_TERMINAL_PADDING));
         }
         self.appearance.mode = Some(self.theme_mode().as_str().into());
         self.search_engine = self.search_provider().as_str().into();
@@ -332,6 +355,52 @@ impl Preferences {
 pub struct BrowserSearch(pub SearchProvider);
 
 impl ala::Global for BrowserSearch {}
+
+#[cfg(target_family = "wasm")]
+const RECENTS_STORAGE_KEY: &str = if zz_protocol::app_identity::DEVELOPMENT {
+    "zz-dev-web-palette-recents"
+} else {
+    "zz-web-palette-recents"
+};
+
+pub fn install_palette_recents(cx: &mut ala::App) {
+    #[cfg(target_family = "wasm")]
+    let storage = web_sys::window().and_then(|window| window.local_storage().ok().flatten());
+    #[cfg(target_family = "wasm")]
+    let recents = storage
+        .as_ref()
+        .and_then(|storage| storage.get_item(RECENTS_STORAGE_KEY).ok().flatten())
+        .map_or_else(Recents::default, |text| Recents::from_json(&text));
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    let path = support_directory().join("palette-recents.json");
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    let recents = std::fs::read_to_string(&path)
+        .map_or_else(|_| Recents::default(), |text| Recents::from_json(&text));
+    #[cfg(not(any(target_family = "wasm", target_os = "ios", target_os = "android")))]
+    let recents = Recents::default();
+    zz_ui::command::install_recents(
+        recents,
+        move |recents, _| {
+            #[cfg(target_family = "wasm")]
+            if let Some(storage) = &storage {
+                let _ = storage.set_item(RECENTS_STORAGE_KEY, &recents.to_json());
+            }
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            {
+                let temporary = path.with_extension("json.tmp");
+                if let Err(error) = std::fs::create_dir_all(support_directory())
+                    .and_then(|()| std::fs::write(&temporary, recents.to_json()))
+                    .and_then(|()| std::fs::rename(&temporary, &path))
+                {
+                    log::warn!("Could not save palette recents: {error}");
+                }
+            }
+            #[cfg(not(any(target_family = "wasm", target_os = "ios", target_os = "android")))]
+            let _ = recents;
+        },
+        cx,
+    );
+}
 
 fn bounded(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
     if value.is_finite() {

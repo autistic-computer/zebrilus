@@ -36,7 +36,10 @@ use zz_terminal::{
     UnderlineStyle as TerminalUnderlineStyle,
 };
 
-use penna::{ThemeMode, foundation::interface_theme::BaseColors};
+use penna::{
+    ThemeMode,
+    foundation::interface_theme::{BaseColors, InterfaceTheme, ModeLock, Tint},
+};
 
 mod copy_flash;
 
@@ -1490,6 +1493,21 @@ pub struct TerminalLook {
     pub mode: ThemeMode,
     pub colors: BaseColors,
     pub accent: Option<Hsla>,
+}
+
+pub fn wear_terminal_look(theme: &mut InterfaceTheme, look: TerminalLook, accent_picked: bool) {
+    theme.colors.set(look.mode, look.colors);
+    theme.mode = if look.mode.is_dark() {
+        ModeLock::Dark
+    } else {
+        ModeLock::Light
+    };
+    if !accent_picked && let Some(accent) = look.accent {
+        theme.tint = Tint {
+            light: accent,
+            dark: accent,
+        };
+    }
 }
 
 pub fn terminal_look(appearance: &TerminalAppearance) -> Option<TerminalLook> {

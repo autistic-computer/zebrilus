@@ -48,6 +48,7 @@ pub enum AskpassMode {
     Notification,
     SaveKey,
     KeyAdded,
+    KeyFailed,
 }
 
 impl AskpassMode {
@@ -66,6 +67,7 @@ impl AskpassMode {
             Self::Notification => b'n',
             Self::SaveKey => b's',
             Self::KeyAdded => b'k',
+            Self::KeyFailed => b'f',
         }
     }
 
@@ -76,6 +78,7 @@ impl AskpassMode {
             b'n' => Some(Self::Notification),
             b's' => Some(Self::SaveKey),
             b'k' => Some(Self::KeyAdded),
+            b'f' => Some(Self::KeyFailed),
             _ => None,
         }
     }
@@ -89,12 +92,13 @@ pub enum AskpassPromptKind {
     SaveKey,
     Notification,
     KeyAdded,
+    KeyFailed,
 }
 
 impl AskpassPromptKind {
     #[must_use]
     pub const fn is_notice(self) -> bool {
-        matches!(self, Self::Notification | Self::KeyAdded)
+        matches!(self, Self::Notification | Self::KeyAdded | Self::KeyFailed)
     }
 }
 
@@ -143,6 +147,7 @@ impl AskpassPrompt {
             AskpassMode::SaveKey => AskpassPromptKind::SaveKey,
             AskpassMode::Notification => AskpassPromptKind::Notification,
             AskpassMode::KeyAdded => AskpassPromptKind::KeyAdded,
+            AskpassMode::KeyFailed => AskpassPromptKind::KeyFailed,
             AskpassMode::Answer => {
                 if is_host_key_prompt(&self.text) {
                     AskpassPromptKind::HostKey
@@ -190,7 +195,12 @@ pub(crate) struct HelperOutcome {
 
 pub(crate) fn helper_outcome(kind: AskpassPromptKind, reply: &AskpassReply) -> HelperOutcome {
     match (kind, reply) {
-        (AskpassPromptKind::Notification | AskpassPromptKind::KeyAdded, _) => HelperOutcome {
+        (
+            AskpassPromptKind::Notification
+            | AskpassPromptKind::KeyAdded
+            | AskpassPromptKind::KeyFailed,
+            _,
+        ) => HelperOutcome {
             stdout: None,
             success: true,
         },
@@ -809,6 +819,7 @@ mod tests {
             AskpassMode::Notification,
             AskpassMode::SaveKey,
             AskpassMode::KeyAdded,
+            AskpassMode::KeyFailed,
         ] {
             let prompt = AskpassPrompt::new(mode, HOST_KEY_PROMPT);
             assert_eq!(decode_request(&encode_request(&prompt)), Some(prompt));
@@ -1003,7 +1014,8 @@ mod tests {
                 | AskpassPromptKind::AgentConfirm
                 | AskpassPromptKind::SaveKey
                 | AskpassPromptKind::Notification
-                | AskpassPromptKind::KeyAdded => AskpassReply::Cancel,
+                | AskpassPromptKind::KeyAdded
+                | AskpassPromptKind::KeyFailed => AskpassReply::Cancel,
             },
         ))
         .expect("askpass listener");

@@ -15,6 +15,7 @@ use penna::{
     components::switch::Switch,
 };
 use zz_client::url_input::SearchProvider;
+use zz_terminal::{CursorBlinkPolicy, CursorStyle};
 use zz_ui::{
     interface_theme::{self, AppearanceChange},
     pane_look::{PaneLook, pane_color},
@@ -36,6 +37,8 @@ use crate::{
 
 pub(super) use crate::preferences::Preferences;
 
+mod multiplexer;
+
 const PALETTE_LAYOUTS: [(&str, &str); 2] = [("grouped", "Tree"), ("flat", "Flat")];
 
 fn palette_layout_value(preferences: &Preferences) -> &'static str {
@@ -46,10 +49,11 @@ fn palette_layout_value(preferences: &Preferences) -> &'static str {
     }
 }
 
-pub(super) const SECTIONS: [SettingsSection; 8] = [
+pub(super) const SECTIONS: [SettingsSection; 9] = [
     SettingsSection::Appearance,
     SettingsSection::Interface,
     SettingsSection::Panes,
+    SettingsSection::Multiplexer,
     SettingsSection::Terminal,
     SettingsSection::Hosts,
     SettingsSection::Agents,
@@ -71,7 +75,7 @@ pub(super) fn shown(setting: Setting, phone: bool) -> bool {
     !phone
         || !matches!(
             setting,
-            Setting::Section(SettingsSection::Panes)
+            Setting::Section(SettingsSection::Panes | SettingsSection::Multiplexer)
                 | Setting::SystemTextSize
                 | Setting::CommandPalette
                 | Setting::WhichKey
@@ -108,75 +112,113 @@ fn interface_zoom(preferences: &Preferences, system_scale: f32, phone: bool) -> 
     }
 }
 
-struct PlatformReduceMotion(bool);
+struct SystemAccessibility {
+    reduce_motion: bool,
+    reduce_transparency: bool,
+    increase_contrast: bool,
+    text_scale: f32,
+}
 
-impl ala::Global for PlatformReduceMotion {}
+#[cfg(any(target_os = "ios", target_os = "android"))]
+fn system_accessibility() -> SystemAccessibility {
+    let system = ala_platform::mobile::accessibility();
+    SystemAccessibility {
+        reduce_motion: system.reduce_motion,
+        reduce_transparency: system.reduce_transparency,
+        increase_contrast: system.increase_contrast,
+        text_scale: system.text_scale,
+    }
+}
+
+#[cfg(target_family = "wasm")]
+fn system_accessibility() -> SystemAccessibility {
+    let matches = |query: &str| {
+        web_sys::window()
+            .and_then(|window| window.match_media(query).ok().flatten())
+            .is_some_and(|query| query.matches())
+    };
+    SystemAccessibility {
+        reduce_motion: matches("(prefers-reduced-motion: reduce)"),
+        reduce_transparency: matches("(prefers-reduced-transparency: reduce)"),
+        increase_contrast: matches("(prefers-contrast: more)"),
+        text_scale: 1.0,
+    }
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android", target_family = "wasm")))]
+fn system_accessibility() -> SystemAccessibility {
+    SystemAccessibility {
+        reduce_motion: false,
+        reduce_transparency: false,
+        increase_contrast: false,
+        text_scale: 1.0,
+    }
+}
 
 impl Preferences {
     fn apply_pane_frame(&self, cx: &mut App) {
         Theme::global_mut(cx).pane_margin = self.margin();
     }
 
-    pub(super) fn apply(&self, connection: &Entity<Connection>, window: &mut Window, cx: &mut App) {
-        #[cfg(any(target_os = "ios", target_os = "android"))]
-        let system = ala_platform::mobile::accessibility();
-        #[cfg(any(target_os = "ios", target_os = "android"))]
-        cx.set_global(PlatformReduceMotion(system.reduce_motion));
-        if !cx.has_global::<PlatformReduceMotion>() {
-            cx.set_global(PlatformReduceMotion(cx.reduce_motion()));
+    pub(super) fn terminal_display(&self) -> TerminalDisplayPreferences {
+        TerminalDisplayPreferences {
+            font_family: self.terminal_font_family.clone(),
+            font_scale: self.terminal_font_scale,
+            contrast: self.terminal_contrast,
+            cursor_style: self.terminal_cursor_style,
+            cursor_blink: self.terminal_cursor_blink,
+            padding_x: self.terminal_padding_x,
+            padding_y: self.terminal_padding_y,
         }
+    }
+
+    pub(super) fn apply(&self, connection: &Entity<Connection>, window: &mut Window, cx: &mut App) {
+        let system = system_accessibility();
         cx.set_global(zz_ui::program::ProgramColors(self.program_colors));
         cx.set_global(crate::preferences::BrowserSearch(self.search_provider()));
-        #[cfg(any(target_os = "ios", target_os = "android"))]
-        let (contrast, text_scale) = (
-            self.appearance.contrast * if system.increase_contrast { 1.25 } else { 1.0 },
-            system.text_scale,
-        );
-        #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        let (contrast, text_scale) = (self.appearance.contrast, 1.0);
         let pinned = interface_theme::pinned_theme_mode(self.theme_mode());
         #[cfg(any(target_os = "ios", target_os = "android"))]
-        let mode = {
-            cx.set_window_appearance(pinned.map(|mode| {
-                if mode.is_dark() {
-                    ala::WindowAppearance::Dark
-                } else {
-                    ala::WindowAppearance::Light
-                }
-            }));
-            Some(pinned.unwrap_or_else(|| penna::ThemeMode::from(cx.window_appearance())))
-        };
+        cx.set_window_appearance(pinned.map(|mode| {
+            if mode.is_dark() {
+                ala::WindowAppearance::Dark
+            } else {
+                ala::WindowAppearance::Light
+            }
+        }));
+        let asked = pinned.unwrap_or_else(|| penna::ThemeMode::from(cx.window_appearance()));
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let mode = Some(asked);
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let mode = pinned;
         let mut shown = self.appearance.clone();
-        #[cfg(any(target_os = "ios", target_os = "android"))]
-        let reduce_transparency = system.reduce_transparency;
-        #[cfg(target_family = "wasm")]
-        let reduce_transparency = web_sys::window()
-            .and_then(|window| {
-                window
-                    .match_media("(prefers-reduced-transparency: reduce)")
-                    .ok()
-                    .flatten()
-            })
-            .is_some_and(|query| query.matches());
-        #[cfg(not(any(target_os = "ios", target_os = "android", target_family = "wasm")))]
-        let reduce_transparency = false;
-        if reduce_transparency {
+        if system.reduce_transparency {
             shown.overrides.glass = Some(penna::foundation::interface_theme::Glass::None);
         }
         shown.set_theme_mode(mode);
-        shown.contrast = contrast;
+        shown.contrast =
+            self.appearance.contrast * if system.increase_contrast { 1.25 } else { 1.0 };
         let phone = phone();
-        shown.zoom = interface_zoom(self, text_scale, phone);
+        shown.zoom = interface_zoom(self, system.text_scale, phone);
         if phone {
             shown.overrides.radius = None;
             shown.density = penna::Density::Comfortable;
         }
-        if cx.global::<PlatformReduceMotion>().0 {
+        if system.reduce_motion {
             shown.motion = penna::foundation::motion::Motion::Off;
         }
-        shown.apply(Some(window), cx);
+        let mut theme = shown.shown_theme();
+        if self.window_follows_theme
+            && !phone
+            && let Some(look) = connection
+                .read(cx)
+                .core
+                .appearance()
+                .and_then(zz_ui::terminal::terminal_look)
+            && look.mode == asked
+        {
+            zz_ui::terminal::wear_terminal_look(&mut theme, look, shown.overrides.accent.is_some());
+        }
+        shown.apply_theme(&theme, Some(window), cx);
         cx.set_global(PaneLook {
             frames: self.gaps,
             glow_strength: self.pane_glow_strength,
@@ -199,10 +241,7 @@ impl Preferences {
             ".SystemUIFont".to_owned()
         };
         Theme::global_mut(cx).font_family = ui_font.into();
-        cx.set_global(TerminalDisplayPreferences {
-            font_family: self.terminal_font_family.clone(),
-            font_scale: self.terminal_font_scale,
-        });
+        cx.set_global(self.terminal_display());
         let terminal =
             localized_font_appearance(&connection.read(cx).core, &available_fonts, "Lilex", cx);
         let mono = self.appearance.mono_font();
@@ -261,9 +300,12 @@ pub(super) struct Controls {
     appearance: AppearanceControls,
     panes: [Entity<InputState>; 3],
     which_key_delay: Entity<InputState>,
+    terminal_choices: [Entity<SelectState<Vec<SettingsSelectItem>>>; 3],
+    padding: [Entity<InputState>; 2],
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     palette_layout: Entity<SelectState<Vec<SettingsSelectItem>>>,
     search_engine: Entity<SelectState<Vec<SettingsSelectItem>>>,
+    multiplexer: multiplexer::MuxControls,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -412,13 +454,77 @@ impl Controls {
                 this.preferences.apply(&this.connection, window, cx);
             },
         ));
+        let terminal_choices = TerminalChoice::ALL.map(|control| {
+            let select = choice(control.choices(), control.value(preferences), window, cx);
+            subscriptions.push(cx.subscribe_in(
+                &select,
+                window,
+                move |this, _, event: &SelectEvent<Vec<SettingsSelectItem>>, window, cx| {
+                    let SelectEvent::Confirm(Some(value)) = event else {
+                        return;
+                    };
+                    control.set(&mut this.preferences, value);
+                    this.preferences.save();
+                    this.preferences.apply(&this.connection, window, cx);
+                    cx.notify();
+                },
+            ));
+            select
+        });
+        let padding = Axis::ALL.map(|axis| {
+            let input = cx.new(|cx| {
+                InputState::new(window, cx)
+                    .input_mode(TextInputMode::Decimal)
+                    .placeholder("Host")
+                    .default_value(axis.value(preferences).map(number_text).unwrap_or_default())
+                    .min(0.0)
+                    .max(f64::from(crate::preferences::MAX_TERMINAL_PADDING))
+                    .step(1.0)
+            });
+            subscriptions.push(cx.subscribe_in(
+                &input,
+                window,
+                move |this, input, event, window, cx| {
+                    number_field_event(event, window, cx);
+                    let commit = matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. });
+                    if !commit && !matches!(event, InputEvent::Change) {
+                        return;
+                    }
+                    let text = input.read(cx).value().trim().to_owned();
+                    let max = crate::preferences::MAX_TERMINAL_PADDING;
+                    let value = if text.is_empty() {
+                        None
+                    } else {
+                        match text.parse::<f32>().ok().filter(|value| value.is_finite()) {
+                            Some(value) if commit => Some(value.clamp(0.0, max)),
+                            Some(value) if (0.0..=max).contains(&value) => Some(value),
+                            _ if commit => axis.value(&this.preferences),
+                            _ => return,
+                        }
+                    };
+                    *axis.slot(&mut this.preferences) = value;
+                    if commit {
+                        input.update(cx, |input, cx| {
+                            input.set_value(value.map(number_text).unwrap_or_default(), window, cx);
+                        });
+                    }
+                    this.preferences.save();
+                    this.preferences.apply(&this.connection, window, cx);
+                    cx.notify();
+                },
+            ));
+            input
+        });
         Self {
             appearance,
             panes,
             which_key_delay,
+            terminal_choices,
+            padding,
             terminal_font,
             palette_layout,
             search_engine,
+            multiplexer: multiplexer::MuxControls::new(window, cx),
             _subscriptions: subscriptions,
         }
     }
@@ -624,7 +730,7 @@ impl AppShell {
                 let mut items = items
                     .into_iter()
                     .filter(|item| {
-                        !matches!(item, AppearancePageItem::App(row) if *row != ZzRow::ProgramColors)
+                        !matches!(item, AppearancePageItem::App(row) if !app_row_shown(*row, phone))
                     })
                     .filter(|item| {
                         !phone
@@ -694,6 +800,9 @@ impl AppShell {
             }
             SettingsSection::Terminal => {
                 return large(self.terminal_settings(narrow, cx)).into_any_element();
+            }
+            SettingsSection::Multiplexer => {
+                return large(self.multiplexer_page(narrow, cx)).into_any_element();
             }
             SettingsSection::Advanced => {
                 let text_size = shown(Setting::SystemTextSize, phone).then(|| {
@@ -779,6 +888,25 @@ impl AppShell {
                             ))
                         },
                     )
+                    .when(!cfg!(target_os = "android"), |page| {
+                        page.child(
+                            SettingsStack::titled("Notifications").child(
+                                SettingEntry::new("Notify when a pane needs you")
+                                    .description("While zz is in the background")
+                                    .control(
+                                        Switch::new("settings-notifications")
+                                            .checked(self.preferences.notifications)
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.preferences.notifications =
+                                                    !this.preferences.notifications;
+                                                this.preferences.save();
+                                                this.reconcile_attention(window, None, cx);
+                                                cx.notify();
+                                            })),
+                                    ),
+                            ),
+                        )
+                    })
                     .when(shown(Setting::CommandPalette, phone), |page| {
                         page.child(
                             SettingsStack::titled("Experimental")
@@ -825,6 +953,37 @@ impl AppShell {
                             })),
                     ),
             ),
+            AppearancePageItem::App(ZzRow::TerminalPreview) => {
+                let available = cx.text_system().all_font_names();
+                let appearance = localized_font_appearance(
+                    &self.connection.read(cx).core,
+                    &available,
+                    "Lilex",
+                    cx,
+                );
+                Some(
+                    SettingEntry::new(ZzRow::TerminalPreview.title())
+                        .child(terminal_preview(appearance, cx)),
+                )
+            }
+            AppearancePageItem::App(row @ ZzRow::TerminalColors) => Some(
+                SettingEntry::new(row.title())
+                    .description("Draw the window in the terminal theme's colors")
+                    .control(
+                        Switch::new("settings-window-follows-theme")
+                            .checked(self.preferences.window_follows_theme)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.preferences.window_follows_theme =
+                                    !this.preferences.window_follows_theme;
+                                this.preferences.save();
+                                this.preferences.apply(&this.connection, window, cx);
+                            })),
+                    ),
+            ),
+            AppearancePageItem::App(ZzRow::TerminalContrast) => Some(
+                self.terminal_choice(TerminalChoice::Contrast, cx)
+                    .description("Lifts terminal text under 4.5:1 against its background"),
+            ),
             AppearancePageItem::App(_) => None,
             item => kit_row(
                 item,
@@ -839,6 +998,14 @@ impl AppShell {
             || div().into_any_element(),
             |entry| entry.position(position).into_any_element(),
         )
+    }
+
+    fn terminal_choice(&self, control: TerminalChoice, cx: &Context<Self>) -> SettingEntry {
+        SettingEntry::new(control.title()).control(choice_select(
+            &self.settings_controls.terminal_choices[control as usize],
+            control.title(),
+            cx,
+        ))
     }
 
     fn pane_setting(&self, control: PaneControl, cx: &mut Context<Self>) -> SettingEntry {
@@ -889,16 +1056,33 @@ impl AppShell {
             ),
             narrow,
         );
-        let host_title = if phone() {
+        let phone = phone();
+        let host_title = if phone {
             "Cursor shape and spacing"
         } else {
-            "Colors, cursor, and spacing"
+            "Colors and themes"
         };
+        let device = (!phone).then(|| {
+            [TerminalChoice::CursorStyle, TerminalChoice::CursorBlink]
+                .map(|control| self.terminal_choice(control, cx))
+                .into_iter()
+                .chain(Axis::ALL.map(|axis| {
+                    SettingEntry::new(axis.title()).control(number_control(
+                        &self.settings_controls.padding[axis as usize],
+                        cx,
+                    ))
+                }))
+        });
         settings_scroll_column("settings-terminal")
             .children((!narrow).then(|| settings_page_heading("Terminal", cx)))
             .child(zz_ui::settings::settings_list_group_header("Preview", cx))
             .child(terminal_preview(appearance, cx))
-            .child(SettingsStack::titled("Display").child(font).child(scale))
+            .child(
+                SettingsStack::titled("Display")
+                    .child(font)
+                    .child(scale)
+                    .children(device.into_iter().flatten()),
+            )
             .child(
                 SettingsStack::titled("Host configuration").child(
                     SettingEntry::new(host_title)
@@ -1318,6 +1502,134 @@ fn sample_terminal_viewport(
     viewport
 }
 
+fn app_row_shown(row: ZzRow, phone: bool) -> bool {
+    match row {
+        ZzRow::ProgramColors => true,
+        ZzRow::TerminalPreview | ZzRow::TerminalColors | ZzRow::TerminalContrast => !phone,
+        _ => false,
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TerminalChoice {
+    Contrast,
+    CursorStyle,
+    CursorBlink,
+}
+
+const CURSOR_STYLES: [(&str, CursorStyle); 4] = [
+    ("block", CursorStyle::Block),
+    ("bar", CursorStyle::Bar),
+    ("underline", CursorStyle::Underline),
+    ("block_hollow", CursorStyle::BlockHollow),
+];
+
+const CURSOR_BLINKS: [(&str, CursorBlinkPolicy); 3] = [
+    ("on", CursorBlinkPolicy::On),
+    ("off", CursorBlinkPolicy::Off),
+    ("terminal", CursorBlinkPolicy::Terminal),
+];
+
+impl TerminalChoice {
+    const ALL: [Self; 3] = [Self::Contrast, Self::CursorStyle, Self::CursorBlink];
+
+    fn title(self) -> &'static str {
+        match self {
+            Self::Contrast => ZzRow::TerminalContrast.title(),
+            Self::CursorStyle => "Cursor style",
+            Self::CursorBlink => "Cursor blink",
+        }
+    }
+
+    fn choices(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            Self::Contrast => &[("", "Follow host"), ("on", "On"), ("off", "Off")],
+            Self::CursorStyle => &[
+                ("", "Follow host"),
+                ("block", "Block"),
+                ("bar", "Bar"),
+                ("underline", "Underline"),
+                ("block_hollow", "Hollow block"),
+            ],
+            Self::CursorBlink => &[
+                ("", "Follow host"),
+                ("on", "On"),
+                ("off", "Off"),
+                ("terminal", "Terminal"),
+            ],
+        }
+    }
+
+    fn value(self, preferences: &Preferences) -> &'static str {
+        match self {
+            Self::Contrast => match preferences.terminal_contrast {
+                None => "",
+                Some(true) => "on",
+                Some(false) => "off",
+            },
+            Self::CursorStyle => CURSOR_STYLES
+                .iter()
+                .find(|(_, style)| Some(*style) == preferences.terminal_cursor_style)
+                .map_or("", |(value, _)| value),
+            Self::CursorBlink => CURSOR_BLINKS
+                .iter()
+                .find(|(_, blink)| Some(*blink) == preferences.terminal_cursor_blink)
+                .map_or("", |(value, _)| value),
+        }
+    }
+
+    fn set(self, preferences: &mut Preferences, value: &str) {
+        match self {
+            Self::Contrast => {
+                preferences.terminal_contrast = (!value.is_empty()).then_some(value == "on");
+            }
+            Self::CursorStyle => {
+                preferences.terminal_cursor_style = CURSOR_STYLES
+                    .iter()
+                    .find(|(name, _)| *name == value)
+                    .map(|(_, style)| *style);
+            }
+            Self::CursorBlink => {
+                preferences.terminal_cursor_blink = CURSOR_BLINKS
+                    .iter()
+                    .find(|(name, _)| *name == value)
+                    .map(|(_, blink)| *blink);
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Axis {
+    Horizontal,
+    Vertical,
+}
+
+impl Axis {
+    const ALL: [Self; 2] = [Self::Horizontal, Self::Vertical];
+
+    fn value(self, preferences: &Preferences) -> Option<f32> {
+        match self {
+            Self::Horizontal => preferences.terminal_padding_x,
+            Self::Vertical => preferences.terminal_padding_y,
+        }
+    }
+
+    fn slot(self, preferences: &mut Preferences) -> &mut Option<f32> {
+        match self {
+            Self::Horizontal => &mut preferences.terminal_padding_x,
+            Self::Vertical => &mut preferences.terminal_padding_y,
+        }
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            Self::Horizontal => "Padding X",
+            Self::Vertical => "Padding Y",
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PaneControl {
     Opacity,
@@ -1363,7 +1675,7 @@ mod tests {
     use zz_ui::settings::SettingsSection;
 
     #[test]
-    fn phone_hides_pane_status_bar_and_system_text_settings_only() {
+    fn phone_hides_panes_multiplexer_system_text_size_and_command_palette() {
         let visible = |phone| {
             SECTIONS
                 .into_iter()
@@ -1488,6 +1800,55 @@ mod tests {
             );
             assert_eq!(theme.radius, px(5.0));
             assert!(theme.pill_controls());
+        });
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[ala::test]
+    fn the_window_wears_the_hosts_terminal_theme_while_it_follows_it(cx: &mut ala::TestAppContext) {
+        use ala::AppContext as _;
+        use penna::{ActiveTheme as _, ThemeMode};
+        use zz_terminal::{Color, TerminalAppearance, TerminalColorScheme};
+
+        cx.update(zz_ui::init);
+        let mut themed = TerminalAppearance::default_for(TerminalColorScheme::Dark);
+        themed.background = Color::rgb(0x13, 0x13, 0x13);
+        themed.foreground = Color::rgb(0xdd, 0xdd, 0xdd);
+        themed.palette[4] = Color::rgb(0xc2, 0x8b, 0x12);
+        let look = zz_ui::terminal::terminal_look(&themed).expect("a themed terminal has a look");
+        let hello = zz_protocol::ProtocolMessage::ServerHello(Box::new(zz_protocol::ServerHello {
+            protocol_version: zz_protocol::PROTOCOL_VERSION,
+            server_id: 1,
+            client_id: zz_protocol::ClientId(1),
+            client_instance_id: zz_protocol::ClientInstanceId(1),
+            capabilities: Vec::new(),
+            appearance: themed,
+            appearance_provenance: zz_terminal::AppearanceProvenance::default(),
+            mux_options: zz_protocol::MuxOptions::default(),
+            status: zz_protocol::StatusLine::default(),
+            key_tables: Vec::new(),
+            clock: 0,
+            platform: zz_protocol::HostPlatform::default(),
+            revision: zz_protocol::REVISION,
+        }));
+        let mut preferences = Preferences::default();
+        preferences.appearance.mode = Some("dark".into());
+        let mut worn = preferences.shown_theme();
+        zz_ui::terminal::wear_terminal_look(&mut worn, look, false);
+        let worn = worn.colors(ThemeMode::Dark);
+        let plain = preferences.shown_theme().colors(ThemeMode::Dark);
+        assert_ne!(worn.background, plain.background);
+        let window = cx.add_empty_window();
+        let connection = window.update(|_, cx| cx.new(crate::connection::Connection::new));
+        window.update(|window, cx| {
+            connection.update(cx, |connection, _| connection.core.handle_message(hello));
+            preferences.apply(&connection, window, cx);
+            assert_eq!(cx.theme().background, worn.background);
+            assert_eq!(cx.theme().accent, worn.accent);
+            preferences.window_follows_theme = false;
+            preferences.apply(&connection, window, cx);
+            assert_eq!(cx.theme().background, plain.background);
+            assert_eq!(cx.theme().accent, plain.accent);
         });
     }
 }

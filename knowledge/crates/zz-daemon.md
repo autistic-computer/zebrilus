@@ -294,6 +294,20 @@ same function from a shell on every named host in parallel without prompts
 login ([zz's own key](#zzs-own-key)); one line per host, a failing host prints its reason on stderr
 and the exit status is 1.
 
+The desktop's `connect_error_state` and the thin clients share `HostFailure::classify`
+(`crates/zz-daemon-client/src/host_failure.rs`), which reads a connect error into the same failures
+(`Unreachable`, `Incompatible`, `DaemonTooOld`, `ClientTooOld`, `Missing`) with
+`install_offer()`, a first line (`summary()`) and, where no button is named, a next step
+(`step()`); `DaemonBehind`, `InstallOffer`, `session_count`, `update_prompt` (the "Update zz on
+{host}?" copy) and `RemoteInstall::notice` (the toast) live there and in `endpoint.rs` for both. On
+iOS and Android `install_remote` runs the same script over russh (`russh_client::install_remote`:
+sign in, `exec` it, write `install.sh` to the channel, read the exit status and output) and refuses
+in dev builds like the desktop. The iOS and Android Hosts page in the wide layout puts
+**Install zz** or **Update zz** beside an ssh host that offers one; Install runs at once, Update
+asks with `update_prompt` first, the row reads installing meanwhile, and a toast reports the
+summary or the reason. A typed failure stops the automatic redial, since only that button or the
+other machine can change it.
+
 ## Connection sharing
 
 Every step also carries `ControlMaster=auto` and a `ControlPath`, so the probe authenticates and

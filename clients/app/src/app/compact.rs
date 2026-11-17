@@ -44,7 +44,7 @@ use zz_ui::{
 };
 
 use super::AppShell;
-use crate::terminal::{TerminalDisplayPreferences, TerminalPane, TerminalText};
+use crate::terminal::{TerminalPane, TerminalText};
 
 mod browser;
 mod overview;
@@ -768,10 +768,7 @@ impl AppShell {
                 let scale = pinch_font_scale(*start, *pinch);
                 if scale != self.preferences.terminal_font_scale {
                     self.preferences.terminal_font_scale = scale;
-                    cx.set_global(TerminalDisplayPreferences {
-                        font_family: self.preferences.terminal_font_family.clone(),
-                        font_scale: scale,
-                    });
+                    cx.set_global(self.preferences.terminal_display());
                 }
             }
             TouchPhase::Ended | TouchPhase::Cancelled => {
