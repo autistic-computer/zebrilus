@@ -366,6 +366,11 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
   an empty padding field follows the host again. A device cursor style replaces the host's
   default shape only, so a shape a program asks for still shows. Host colors and themes
   remain visible as host-owned settings.
+- **Multiplexer:** on iPad and the web, the host daemon's Prefix (typed as tmux spells it, such
+  as `C-a`), Mode keys, Mouse, History limit, Clipboard and Escape time. Each change runs
+  `set-option -g` on the host and lasts until its daemon restarts; the host's `zz/mux.conf` is
+  not written. Changes made elsewhere show as they happen, and a value the host refuses shows its
+  error and the field goes back to the host's value.
 - **Hosts:** the configured endpoint, connection status, and reconnect.
 - **Advanced:** command palette layout (tree or flat), host prefix, and command shortcuts
   (the palette's recents are kept across launches in `palette-recents.json` beside the
@@ -375,7 +380,7 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
 - **About:** app version and source link.
 
 The page omits desktop-only options and controls for unsupported pane kinds. iPhone also
-leaves out Panes (the phone shell shows one pane without gaps or frames), UI zoom, Match
+leaves out Panes (the phone shell shows one pane without gaps or frames), Multiplexer, UI zoom, Match
 system text size, the command palette settings, and the terminal rows above that iPad and
 the web add (the phone draws terminals in the app's own colors).
 Interface and pane preferences are saved atomically in the app container

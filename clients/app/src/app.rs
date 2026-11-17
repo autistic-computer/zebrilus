@@ -2034,6 +2034,7 @@ impl AppShell {
                 cx.stop_active_drag(window);
             }
             self.pane_layout_override = None;
+            self.sync_mux_controls(window, cx);
             return self.render_settings(section, window, cx);
         }
         if let Some(landing) = self.landing(window, cx) {

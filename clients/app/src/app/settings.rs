@@ -36,6 +36,8 @@ use crate::{
 
 pub(super) use crate::preferences::Preferences;
 
+mod multiplexer;
+
 const PALETTE_LAYOUTS: [(&str, &str); 2] = [("grouped", "Tree"), ("flat", "Flat")];
 
 fn palette_layout_value(preferences: &Preferences) -> &'static str {
@@ -46,10 +48,11 @@ fn palette_layout_value(preferences: &Preferences) -> &'static str {
     }
 }
 
-pub(super) const SECTIONS: [SettingsSection; 8] = [
+pub(super) const SECTIONS: [SettingsSection; 9] = [
     SettingsSection::Appearance,
     SettingsSection::Interface,
     SettingsSection::Panes,
+    SettingsSection::Multiplexer,
     SettingsSection::Terminal,
     SettingsSection::Hosts,
     SettingsSection::Agents,
@@ -70,7 +73,7 @@ pub(super) fn shown(setting: Setting, phone: bool) -> bool {
     !phone
         || !matches!(
             setting,
-            Setting::Section(SettingsSection::Panes)
+            Setting::Section(SettingsSection::Panes | SettingsSection::Multiplexer)
                 | Setting::SystemTextSize
                 | Setting::CommandPalette
         )
@@ -276,6 +279,7 @@ pub(super) struct Controls {
     padding: [Entity<InputState>; 2],
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     palette_layout: Entity<SelectState<Vec<SettingsSelectItem>>>,
+    multiplexer: multiplexer::MuxControls,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -484,6 +488,7 @@ impl Controls {
             padding,
             terminal_font,
             palette_layout,
+            multiplexer: multiplexer::MuxControls::new(window, cx),
             _subscriptions: subscriptions,
         }
     }
@@ -759,6 +764,9 @@ impl AppShell {
             }
             SettingsSection::Terminal => {
                 return large(self.terminal_settings(narrow, cx)).into_any_element();
+            }
+            SettingsSection::Multiplexer => {
+                return large(self.multiplexer_page(narrow, cx)).into_any_element();
             }
             SettingsSection::Advanced => {
                 let text_size = shown(Setting::SystemTextSize, phone).then(|| {
@@ -1558,7 +1566,7 @@ mod tests {
     use zz_ui::settings::SettingsSection;
 
     #[test]
-    fn phone_hides_panes_system_text_size_and_command_palette() {
+    fn phone_hides_panes_multiplexer_system_text_size_and_command_palette() {
         let visible = |phone| {
             SECTIONS
                 .into_iter()

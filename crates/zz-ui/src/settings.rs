@@ -1,5 +1,6 @@
 pub mod about;
 pub mod appearance;
+pub mod multiplexer;
 pub mod panes_preview;
 pub mod providers;
 

@@ -972,6 +972,10 @@ impl Connection {
         cx.notify();
     }
 
+    pub fn awaits(&self, request_id: u64) -> bool {
+        self.commands.contains_key(&request_id)
+    }
+
     pub fn invoke(&mut self, command: CommandInvocation, cx: &mut Context<Self>) -> u64 {
         let request_id = self.next_request_id();
         self.commands.insert(request_id, command.name.clone());
