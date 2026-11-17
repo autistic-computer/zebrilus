@@ -1,0 +1,16 @@
+codex	m4c	1	1	done	27.7	2	0	0	1	1	3	0	NcidOl	ok	84737	821	83925	515
+claude	m4c	1	0	done	44.4	3	0	0	1	1	4	0	RapuSq	stamp.sh ran (write blocked by the sandbox)	223416	2607	86992	760
+claude	m8b	1	1	done	39.0	2	0	0	1	0	3	1	YUGGJ7	ok	159437	1114	55092	364
+codex	m8b	1	1	done	36.8	3	0	0	1	1	3	1	UwK9lk	ok	97725	1020	131018	529
+claude	m4c	2	0	done	25.7	2	0	0	1	1	3	0	j059e2	stamp.sh ran (write blocked by the sandbox)	157413	1514	47653	274
+codex	m4c	2	1	done	32.7	3	0	0	1	1	4	0	2kOTsD	ok	115228	1182	123889	533
+claude	m8b	2	1	done	29.8	2	0	0	1	0	3	1	A7IpKj	ok	159034	1015	55243	466
+codex	m8b	2	1	done	24.5	1	0	0	1	0	2	1	SV3Rqf	ok	119252	1272	51134	130
+claude	m4c	3	0	done	28.5	2	0	0	1	1	3	0	8nVgDn	stamp.sh ran (write blocked by the sandbox)	155948	1627	47627	201
+codex	m4c	3	1	done	22.5	2	0	0	1	1	3	0	w6GAK9	ok	51919	415	90793	399
+codex	m8b	3	0	done	18.4	1	0	0	1	0	2	0	mrr62z	answer lacks token	24196	781	51113	122
+claude	m8b	3	1	done	40.8	6	1	0	1	0	3	1	AIAtaq	ok	155565	1130	181764	816
+claude	m1	1	1	done	16.3	1	0	0	1	0	2	1	FwigsI	ok	91704	456	31655	78
+claude	m3	1	1	done	6.2	1	0	0	0	0	2	1	iVfb9X	ok	93634	579	31354	15
+codex	m3	1	1	done	12.3	1	0	0	0	0	2	1	tjP9hu	ok	58918	267	67210	284
+codex	m1	1	1	done	76.6	1	0	0	1	0	2	1	JtyYPy	ok	0	0	0	0
