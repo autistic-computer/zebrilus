@@ -83,7 +83,7 @@ Add `--json` to `list-sessions`, `list-windows`, `list-panes`, `list-clients`, o
 `list-hosts` for one JSON object per row in the same order as text output. Keys are the format
 variable names for that entity; values are strings with the same expansion as
 `#{name}`, including empty strings for unavailable values. Pane rows include
-`pane_kind`, `agent_state`, `agent_pending_permission`, `browser_url`,
+`pane_kind`, `agent_state`, `agent_pending_permission`, `agent_parent`, `browser_url`,
 `pane_pb_state`, `pane_pb_progress`, and the `pane_status*` program status
 variables. Use `show-options --json` for one object
 mapping option names to value strings in the selected scope. Combining `-F` and
@@ -114,6 +114,8 @@ Claude Code and Codex run two ways in a pane, and a pane flips between them on t
 
 Open a new chat as a float. `split-window` and `new-window` take the same `--kind agent` words and give the chat a split beside the target or a window of its own. `--model`, `--effort`, `--account` and `--resume` go before the provider or right after it. The words after them are the brief, sent as the chat's first prompt once its session is up, with the same checks and 1 MiB cap as `agent-send` TEXT; no brief opens an empty chat. Without `-c` the chat starts in the folder a terminal made the same way would. `-P -F '#{pane_id}'` prints the new pane, which takes `agent-send` at once: `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'review the diff in this folder'`. A missing or unknown provider, or a bad flag value, exits 2.
 
+Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends (stderr says so), and each permission it asks for during that turn comes to you with the `agent-respond` lines that answer it. Do not wait or poll. A chat you open cannot open chats of its own, and closing your pane closes it.
+
 A chat answers the same reads as a terminal. `#{pane_current_command}` is `claude` or `codex`. `#{agent_state}` is `starting`, `idle`, `working`, `needs-approval`, `needs-input` or `failed`, and `#{agent_pending_permission}` is the pending request ID or empty, in `list-panes -F`, `display-message -p` and `inspect`. Typing into a chat fails and names the verb to use: `send-keys`, `send-text`, `paste-buffer` and `run-pane` fail with `%N is an agent chat; send with: zz agent-send -t %N TEXT`.
 
 ### `zz flip-agent [-t %N] [--now | --when-idle | --cancel]`
@@ -134,6 +136,8 @@ Send TEXT as a prompt to an agent pane (a chat), or to another agent in a termin
 
 Turn facts: `final_text` contains message text after the last tool call or tool update. `tool_calls` counts the turn's tool calls; permission counters count the chat's requests. Each buffer keeps its tail when capped: 1 MiB for the transcript and 256 KiB for final text. The JSON object has `pane`, `stop_reason`, `duration_ms`, `tool_calls`, `permissions` (`requested`, `allowed`, `denied`), `truncated`, `final_text`, and `transcript`. A blocked reply also has a nested `permission` object. Exit 0 means `end_turn`; other stop reasons exit 1 with the reply still printed, except cancellation, which keeps its existing error output. A blocked wait exits 3 and a timeout exits 124. Stderr carries the pane ID and on-block audit lines. `--progress` requires `--wait` and an explicit `-t %N`. It prints tool calls, state changes, and a heartbeat after 60 seconds without a line to stderr. Titles in progress lines stop at 120 characters.
 
+From a chat, a send to another chat without `--wait` brings the reply back to you as a message when that turn ends, and the chat's permission asks come to you as they open; stdout still prints the pane ID. With `--wait` from a chat, `--on-block` defaults to `fail`, and a blocked wait ends its output with the `agent-respond` and `agent-send --wait ''` lines to run next. A chat cannot send to the chat that opened it: its reply reaches that chat when its turn ends. `--wait ''` on a chat waits for the turn that is running and prints its reply; with no turn running it exits 1 with `%N has no running turn`.
+
 ### `zz agent-respond [-t %N] (--allow | --deny | --option ID) [REQUEST_ID]`
 
 Answer the named or oldest pending permission in an agent pane. Read the pending request with `zz inspect -t %N --json | jq .permission`.
@@ -146,13 +150,13 @@ Terminal agents keep their own permission settings: Codex `approval_policy`, Cla
 ### `zz inspect [-a | -t %N] [--json]`
 
 Describe a pane's kind, process, geometry, exit status, progress, agent facts, and browser URL.
-Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `agent_provider` (`claude` or `codex`), `agent_model` (the model the chat was started with, empty for the default) and `agent_session_id` are set for agent panes. `verbs` lists what applies to this pane's kind; agent panes list `agent-send`, `flip-agent`, `agent-account` and `agent-respond`, a terminal running Claude Code or Codex lists `flip-agent`, and another terminal with a nonempty `agent_state` lists `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
+Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `agent_provider` (`claude` or `codex`), `agent_model` (the model the chat was started with, empty for the default) and `agent_session_id` are set for agent panes, and `agent_parent` names the chat that opened this one. `verbs` lists what applies to this pane's kind; agent panes list `agent-send`, `flip-agent`, `agent-account` and `agent-respond`, a terminal running Claude Code or Codex lists `flip-agent`, and another terminal with a nonempty `agent_state` lists `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
 
 ```sh
 zz inspect -a --json | jq -c 'select(.agent_state!="") | {pane_id,agent_state}'
 ```
 
-The keys, in text output order, are `session_id`, `session_name`, `window_id`, `window_index`, `window_name`, `window_width`, `window_height`, `window_size`, `pane_id`, `pane_index`, `pane_active`, `pane_kind`, `pane_pid`, `pane_current_command`, `pane_current_path`, `pane_title`, `pane_width`, `pane_height`, `pane_dead`, `pane_dead_status`, `pane_dead_signal`, `pane_last_command_status`, `pane_pb_state`, `pane_pb_progress`, `pane_status`, `pane_status_kind`, `pane_status_progress`, `pane_status_app`, `pane_status_title`, `pane_status_message`, `pane_status_raw_title`, `pane_status_raw_message`, `pane_status_reported`, `agent_state`, `agent_pending_permission`, `agent_provider`, `agent_model`, `agent_session_id`, `permission`, `browser_url`, `verbs`, `events`.
+The keys, in text output order, are `session_id`, `session_name`, `window_id`, `window_index`, `window_name`, `window_width`, `window_height`, `window_size`, `pane_id`, `pane_index`, `pane_active`, `pane_kind`, `pane_pid`, `pane_current_command`, `pane_current_path`, `pane_title`, `pane_width`, `pane_height`, `pane_dead`, `pane_dead_status`, `pane_dead_signal`, `pane_last_command_status`, `pane_pb_state`, `pane_pb_progress`, `pane_status`, `pane_status_kind`, `pane_status_progress`, `pane_status_app`, `pane_status_title`, `pane_status_message`, `pane_status_raw_title`, `pane_status_raw_message`, `pane_status_reported`, `agent_state`, `agent_pending_permission`, `agent_provider`, `agent_model`, `agent_session_id`, `agent_parent`, `permission`, `browser_url`, `verbs`, `events`.
 
 `permission` is a nested `{"request_id":7,"tool_call":{...},"options":[...]}` object or `null` in JSON output; text output prints compact JSON on the `permission:` line, or an empty value.
 

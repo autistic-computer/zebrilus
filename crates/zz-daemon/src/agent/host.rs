@@ -44,6 +44,7 @@ pub(crate) type AgentStreamSink =
 #[derive(Debug)]
 pub(crate) enum HostCommand {
     Prompt(QueuedPrompt),
+    Join(AgentTurnWaiter),
     Steer(AgentPrompt),
     Cancel,
     Unqueue,
@@ -117,6 +118,7 @@ pub(crate) enum AgentTurnFailure {
     Cancelled,
     Reclaimed,
     Closed,
+    NoTurn,
 }
 
 #[derive(Debug)]
@@ -197,12 +199,23 @@ pub(crate) struct AgentTurnWaiter {
     pub(crate) reply: crate::daemon::cmdq::Reply<AgentTurnResult>,
     pub(crate) on_block: AgentBlockPolicy,
     pub(crate) audit: Arc<Mutex<Vec<String>>>,
+    pub(crate) asks: Option<AgentAsks>,
+}
+
+#[derive(Clone)]
+pub(crate) struct AgentAsks(pub(crate) Arc<dyn Fn(&AgentPendingPermission) + Send + Sync>);
+
+impl std::fmt::Debug for AgentAsks {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("AgentAsks")
+    }
 }
 
 #[derive(Debug)]
 pub(crate) struct QueuedPrompt {
     pub(crate) prompt: AgentPrompt,
     pub(crate) waiter: Option<AgentTurnWaiter>,
+    pub(crate) injected: bool,
 }
 
 impl QueuedPrompt {
@@ -223,6 +236,7 @@ impl From<AgentPrompt> for QueuedPrompt {
         Self {
             prompt,
             waiter: None,
+            injected: false,
         }
     }
 }
@@ -557,12 +571,15 @@ impl AgentHost {
         let Some(handle) = panes.get(&pane) else {
             return Err(command);
         };
-        if let HostCommand::Prompt(prompt) = command {
-            return handle
-                .prompts
-                .try_send(prompt)
-                .map_err(|error| HostCommand::Prompt(error.into_inner()));
-        }
+        let command = match command {
+            HostCommand::Prompt(prompt) if !prompt.injected => {
+                return handle
+                    .prompts
+                    .try_send(prompt)
+                    .map_err(|error| HostCommand::Prompt(error.into_inner()));
+            }
+            command => command,
+        };
         if matches!(
             &command,
             HostCommand::Cancel
@@ -689,6 +706,7 @@ async fn run_pane(
         active_turn: None,
         dispatched_prompt: None,
         active_waiter: None,
+        joined_waiters: Vec::new(),
         session_waiter: None,
         new_session_pending: false,
         turn_reply: AgentTurnReply::default(),
@@ -721,6 +739,7 @@ struct PanePump {
     active_turn: Option<u64>,
     dispatched_prompt: Option<(u64, AgentPrompt)>,
     active_waiter: Option<AgentTurnWaiter>,
+    joined_waiters: Vec<AgentTurnWaiter>,
     session_waiter: Option<crate::daemon::cmdq::Reply<Result<(), String>>>,
     new_session_pending: bool,
     turn_reply: AgentTurnReply,
@@ -904,6 +923,13 @@ impl PanePump {
     fn command(&mut self, command: HostCommand) {
         match command {
             HostCommand::Prompt(prompt) => self.prompt(prompt),
+            HostCommand::Join(waiter) => {
+                if self.active_turn.is_some() {
+                    self.joined_waiters.push(waiter);
+                } else {
+                    waiter.reply.try_send(Err(AgentTurnFailure::NoTurn));
+                }
+            }
             HostCommand::Steer(prompt) => self.steer(prompt),
             HostCommand::Cancel => self.cancel(),
             HostCommand::Unqueue => self.reclaim_queue(),
@@ -1402,9 +1428,19 @@ impl PanePump {
         let queued_bytes = self.queue.iter().fold(0usize, |total, queued| {
             total.saturating_add(queued.prompt.byte_len())
         });
-        if self.queue.len() >= MAX_AGENT_QUEUED_PROMPTS
-            || queued_bytes.saturating_add(queued.prompt.byte_len()) > MAX_AGENT_PROMPT_BYTES
-        {
+        let over_bytes =
+            queued_bytes.saturating_add(queued.prompt.byte_len()) > MAX_AGENT_PROMPT_BYTES;
+        if queued.injected && over_bytes {
+            log::warn!(
+                target: "zz::agent",
+                "{} dropped a {} byte message because its queue is full",
+                self.pane,
+                queued.prompt.byte_len()
+            );
+            return;
+        }
+        let user_prompts = self.queue.iter().filter(|queued| !queued.injected).count();
+        if !queued.injected && (user_prompts >= MAX_AGENT_QUEUED_PROMPTS || over_bytes) {
             self.emit(AgentStreamPayload::PromptsReclaimed {
                 prompts: vec![queued.into_reclaimed(AgentTurnFailure::Reclaimed)],
             });
@@ -1445,6 +1481,7 @@ impl PanePump {
     }
 
     fn dispatch(&mut self, queued: QueuedPrompt) {
+        let injected = queued.injected;
         self.next_turn_id = self.next_turn_id.saturating_add(1).max(1);
         let turn_id = self.next_turn_id;
         self.active_turn = Some(turn_id);
@@ -1479,6 +1516,7 @@ impl PanePump {
                 self.queue.push_front(QueuedPrompt {
                     prompt,
                     waiter: self.active_waiter.take(),
+                    injected,
                 });
                 self.reclaim_queue();
             }
@@ -1507,26 +1545,50 @@ impl PanePump {
     }
 
     fn settle_active_turn(&mut self, result: AgentTurnResult) {
+        for waiter in self.joined_waiters.drain(..) {
+            waiter.reply.try_send(result.clone());
+        }
         if let Some(waiter) = self.active_waiter.take() {
             waiter.reply.try_send(result);
         }
     }
 
     fn handle_waited_permission(&mut self, permission: &AgentPendingPermission) {
+        let blocked = || {
+            zz_protocol::AgentPermissionWire {
+            request_id: permission.request_id,
+            payload: serde_json::json!({ "toolCall": permission.tool_call, "options": permission.options }).to_string(),
+        }
+        };
+        let (failing, waiting): (Vec<_>, Vec<_>) = self
+            .joined_waiters
+            .drain(..)
+            .partition(|waiter| waiter.on_block == AgentBlockPolicy::Fail);
+        self.joined_waiters = waiting;
+        for waiter in failing {
+            let mut reply = self.turn_reply.clone();
+            "blocked".clone_into(&mut reply.stop_reason);
+            waiter.reply.try_send(Err(AgentTurnFailure::Blocked {
+                permission: blocked(),
+                reply: Box::new(reply),
+            }));
+        }
         let Some(waiter) = &self.active_waiter else {
             return;
         };
+        if let Some(asks) = &waiter.asks {
+            (asks.0)(permission);
+        }
         let policy = waiter.on_block;
         if policy == AgentBlockPolicy::Fail {
             "blocked".clone_into(&mut self.turn_reply.stop_reason);
             let reply = Box::new(std::mem::take(&mut self.turn_reply));
-            self.settle_active_turn(Err(AgentTurnFailure::Blocked {
-                permission: zz_protocol::AgentPermissionWire {
-                    request_id: permission.request_id,
-                    payload: serde_json::json!({ "toolCall": permission.tool_call, "options": permission.options }).to_string(),
-                },
-                reply,
-            }));
+            if let Some(waiter) = self.active_waiter.take() {
+                waiter.reply.try_send(Err(AgentTurnFailure::Blocked {
+                    permission: blocked(),
+                    reply,
+                }));
+            }
             return;
         }
         let question = serde_json::from_value(permission.options.clone()).map_or(
@@ -1573,9 +1635,6 @@ impl PanePump {
     }
 
     fn record_reply_chunk(&mut self, update: &Value) {
-        if self.active_waiter.is_none() {
-            return;
-        }
         match update.get("sessionUpdate").and_then(Value::as_str) {
             Some("tool_call" | "tool_call_update") => {
                 self.turn_reply.final_text.clear();
@@ -2116,7 +2175,9 @@ mod tests {
                     reply: waiter.into(),
                     on_block,
                     audit,
+                    asks: None,
                 }),
+                injected: false,
             }));
             reply
         }
@@ -3089,7 +3150,9 @@ mod tests {
                 reply: reply.into(),
                 on_block: AgentBlockPolicy::Fail,
                 audit: Arc::default(),
+                asks: None,
             }),
+            injected: false,
         }));
         let Err(AgentTurnFailure::Blocked { permission, reply }) =
             result.recv_timeout(DEADLINE).expect("blocked waiter")
@@ -3386,6 +3449,7 @@ mod tests {
             active_turn: None,
             dispatched_prompt: None,
             active_waiter: None,
+            joined_waiters: Vec::new(),
             session_waiter: None,
             new_session_pending: true,
             turn_reply: AgentTurnReply::default(),
@@ -3404,7 +3468,9 @@ mod tests {
                     reply: reply.into(),
                     on_block: AgentBlockPolicy::Wait,
                     audit: Arc::new(Mutex::new(Vec::new())),
+                    asks: None,
                 }),
+                injected: false,
             })
             .unwrap();
         pump.observe(AgentStreamPayload::SessionReset { restoring: true });

@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Agent mentions . the composer's @ hands work to another agent
-description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat in a PiP with one tmux-shaped command. The child's permission asks and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Proposed; steps 1 and 2 (chat facts, input errors, --kind agent on the create verbs) built."
-status: Proposed (2026-11-17; steps 1 and 2 built)
+description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat in a PiP with one tmux-shaped command. The child's permission asks and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Proposed; steps 1 to 3 (chat facts, input errors, --kind agent on the create verbs, parent link, replies and asks, close cascade) built."
+status: Proposed (2026-11-17; steps 1 to 3 built)
 resource: crates/zz-ui/src/target.rs
 tags:
 - agent
@@ -20,7 +20,7 @@ and files. Picking one puts a mention in the prompt. The agent you are talking t
 a brief and opens the other agent as a chat in a [PiP](/designs/pip-panes.md). The child's
 permission asks and its final reply come back into the host chat.
 
-Status 2026-11-17: proposed, steps 1 and 2 of the [build order](#build-order) built. The rulings below
+Status 2026-11-17: proposed, steps 1 to 3 of the [build order](#build-order) built. The rulings below
 are the owner's. Everything under
 [Proposed commands](#proposed-commands) and after is proposed unless it says ruled, and
 [Open](#open) lists what is not decided.
@@ -132,7 +132,7 @@ reaches the daemon through the wrapper on `PATH` but is not approved.
 - `bench/agents/fresh/run-one.sh` still runs `split-window --kind agent --provider`. (Fixed by
   step 2.)
 - The `--wait` timeout message tells you to run `agent-send -t %N --wait ''`, which a chat refuses
-  ("is a chat; --wait needs text to send").
+  ("is a chat; --wait needs text to send"). (Fixed by step 3.)
 - `AGENT_PANE_CONTEXT` says this pane approves `zz` commands without asking, which is false at
   auto-approve `off`, and its filter list leaves out `cut` and `tr`.
 - The `events` help says `agent-state-changed` carries `agent_state` for every pane kind; a chat
@@ -354,11 +354,43 @@ Each step lands alone.
      does, right after the runtime opens. A handed-back brief is logged, not returned as an error.
    - The fork float's size moved to `zz_protocol::AGENT_FLOAT_WIDTH`/`AGENT_FLOAT_HEIGHT`, shared
      by `fork_chat_command` and `new-pane --kind agent`.
-3. **Parent link, replies and asks into chats, close cascade.** Also `--wait ''` on a chat.
+3. **Parent link, replies and asks into chats, close cascade.** Built 2026-11-17, with no wire
+   change. Also `--wait ''` on a chat.
    - Run from chat `%1`, `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'reply with ok'`
      prints `%2`; `zz display-message -p -t %2 '#{agent_parent}'` prints `%1`; the next prompt `%1`
      receives starts with `[zz] %2 (codex) finished:`.
    - After `zz kill-pane -t %1`, `zz list-panes -a -F '#{pane_id}'` lists neither `%1` nor `%2`.
+
+   Choices made while building it:
+   - The parent lives daemon-side on the engine (`MuxEngine::agent_parents`), not on the wire.
+     The "pane it came from" field on the injected prompt and anything a client needs to draw
+     the host row are still to do, in the UI step.
+   - A chat caller is only `client.origin` being a chat other than the target. The interactive
+     fallback `--notify` uses (the focused pane of a GUI client) does not count.
+   - The parent is recorded for any chat a create verb makes from a chat caller, brief or not.
+     A chat with a parent cannot open a chat (exit 1), so there is one level of children.
+   - Reports and asks are queued with `AgentRuntime::inject`: such a prompt goes through the
+     pane's inbox, is not counted against the 4 queued prompts, keeps the byte cap (over it, it is
+     logged and dropped, never handed back to a composer), and is delivered on a short-lived
+     thread, so an ask and a reply that land close together may arrive in either order.
+   - A caller flipped to a terminal gets the message through the existing terminal delivery
+     (`deliver_to_terminal_pane`), as `--notify` does. A caller that is gone or is neither a chat
+     nor a terminal is logged and dropped.
+   - Message cases the shapes did not cover: a cancelled turn reports `[zz] %N (NAME) stopped
+     (cancelled).`, a prompt handed back before its turn reports `failed: the message was handed
+     back before its turn ran`, and a reply that never comes (the chat closed) reports `was
+     closed.`. An ask whose tool call has no kind leaves the kind out: `asks: <title>`.
+   - Asks ride the waiter as an `asks` sink beside `AgentBlockPolicy::Wait` (the waiter keeps
+     waiting), called once per request id. They come only from turns that report to a caller;
+     a turn the user types into the child does not ask the host.
+   - A plain `agent-send` from a chat caller to a terminal running an agent stays silent, as for
+     terminal callers. The default `--on-block fail` for chat callers applies to every `--wait`
+     they run, a terminal target included.
+   - `--wait ''` joins the running turn as an extra waiter (`HostCommand::Join`); the host now
+     records reply text for every turn so a late joiner gets the whole reply. A joined waiter
+     takes `--on-block wait` or `fail`.
+   - The cascade kills the children on a thread right after the command that removed the parent,
+     so `kill-pane` returns before they are gone.
 4. **Agents rows in the picker and the teaching text.**
    - Picking the codex row in a composer holding `fix it` after the mention, `TargetPicker::raw_text`
      returns `@+codex fix it`.

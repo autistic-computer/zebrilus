@@ -3499,10 +3499,11 @@ pub fn delegated_format_variable_names() -> impl Iterator<Item = &'static str> {
     })
 }
 
-const PANE_HOOK_FORMAT_VARIABLES: [&str; 16] = [
+const PANE_HOOK_FORMAT_VARIABLES: [&str; 17] = [
     "pane_kind",
     "agent_state",
     "agent_pending_permission",
+    "agent_parent",
     "browser_url",
     "pane_pb_state",
     "pane_pb_progress",

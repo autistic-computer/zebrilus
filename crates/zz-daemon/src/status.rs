@@ -669,6 +669,7 @@ pub(crate) fn status_cache_callbacks(request: &StatusRequest) -> Option<Vec<Stri
                 "pane_kind"
                     | "agent_state"
                     | "agent_pending_permission"
+                    | "agent_parent"
                     | "browser_url"
                     | "pane_last_command_status"
                     | "pane_status"
@@ -2989,6 +2990,22 @@ impl StatusHooks for DaemonFormatHooks<'_> {
                     (_, None) => String::new(),
                 })
             }
+            "agent_parent" => Some(
+                context
+                    .engine()
+                    .and_then(|engine| {
+                        engine
+                            .agent_parent(context.pane_id.parse().ok()?)
+                            .map(|parent| parent.to_string())
+                    })
+                    .or_else(|| {
+                        self.facts
+                            .mux()
+                            .agent_parent(&context.pane_id)
+                            .map(str::to_owned)
+                    })
+                    .unwrap_or_default(),
+            ),
             "pane_kind" => context
                 .engine()
                 .and_then(|engine| engine.format_pane_kind(&context.pane_id))

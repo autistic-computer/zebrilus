@@ -180,7 +180,11 @@ impl AgentRuntime {
         waiter: Option<AgentTurnWaiter>,
     ) -> bool {
         let _lifecycle = self.lifecycle.lock();
-        let queued = QueuedPrompt { prompt, waiter };
+        let queued = QueuedPrompt {
+            prompt,
+            waiter,
+            injected: false,
+        };
         match self.host.command(pane, HostCommand::Prompt(queued)) {
             Ok(()) => true,
             Err(HostCommand::Prompt(mut queued)) => {
@@ -189,6 +193,21 @@ impl AgentRuntime {
             }
             Err(_) => unreachable!(),
         }
+    }
+
+    pub(crate) fn inject(&self, pane: PaneId, prompt: AgentPrompt) -> bool {
+        let _lifecycle = self.lifecycle.lock();
+        let queued = QueuedPrompt {
+            prompt,
+            waiter: None,
+            injected: true,
+        };
+        self.host.command(pane, HostCommand::Prompt(queued)).is_ok()
+    }
+
+    pub(crate) fn join(&self, pane: PaneId, waiter: AgentTurnWaiter) -> bool {
+        let _lifecycle = self.lifecycle.lock();
+        self.host.command(pane, HostCommand::Join(waiter)).is_ok()
     }
 
     pub(crate) fn prewarm(&self) {
@@ -576,7 +595,9 @@ impl AgentFanout {
             },
             HostCommand::AnswerQuestion { .. }
             | HostCommand::StopTask { .. }
+            | HostCommand::Join(_)
             | HostCommand::RefreshGit => return false,
+            HostCommand::Prompt(queued) if queued.injected => return false,
             HostCommand::Prompt(mut queued) => {
                 queued.settle(Err(AgentTurnFailure::Reclaimed));
                 return self.reclaim_prompt(pane, queued.prompt);
