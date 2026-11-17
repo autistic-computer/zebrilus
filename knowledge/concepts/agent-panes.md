@@ -71,8 +71,11 @@ you need`, exit 1, checked before the mux runs) and
 cannot `agent-send` to its parent. The brief of such a chat, and a chat caller's plain
 `agent-send` to a chat, carry a waiter (`Shared::chat_report_waiter`) that reports the turn into
 the caller as a prompt the daemon makes (`AgentRuntime::inject`): `[zz] %N (codex) finished:` with
-the final text (or the full text when the final part is empty, last 64 KiB), `stopped (reason):`,
-`failed: message`, `stopped (cancelled):` or `was closed.`. While that turn waits on a permission
+the final text (or the full text when the final part is empty, last 64 KiB), `stopped (reason):`
+(or `stopped (cancelled):` with no text), each followed by a blank line and `Follow up with: zz
+agent-send -t %N 'TEXT'`; `failed: message` followed by `Tell the user, or try again with: zz
+agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`
+`AgentReport::parse` strips those trailing lines, so a client gets only the reply text. While that turn waits on a permission
 or a question, the waiter's `asks` sink sends one `[zz] %N (codex) asks: kind title` message per
 request id with the `zz agent-respond` lines that answer it. Every string here, the stderr lines
 included, is built and parsed by `zz_protocol::agent_mention` (`AgentReport`, `AgentAsk`,
@@ -119,7 +122,7 @@ you as a message.` A chat opened by a chat gets a second note with its brief
 (`child_note`): `%P (NAME) opened this chat. Your final message is sent to it as your reply, so
 finish with the answer. You cannot open other agents or message %P; if you need something, say so
 in your reply.`, and for a Codex child `If a command fails with "Operation not permitted", rerun it
-with escalated permissions; %P is asked to approve it.` The daemon carries that note on the queued
+with escalated permissions even if your brief says to stop on failure; %P is asked to approve it.` The daemon carries that note on the queued
 prompt (`QueuedPrompt::note`, `RuntimeCommand::Prompt`'s `note`), never in the text.
 `hidden_note` joins the two. Neither note joins the user's text: Claude
 Code gets it as a second content block wrapped in `<system-reminder>`, Codex as a second text item

@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Agent mentions . the composer's @ hands work to another agent
-description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat in a PiP with one tmux-shaped command. The child's permission asks and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Daemon side built (steps 1 to 4, 6 and 7); left: the picker rows and the host card in the UI."
-status: Partly built (2026-11-17; daemon side built, steps 1 to 4 daemon half, 6 and 7; left: the @ menu agent rows and the host card in the UI)
+description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat in a PiP with one tmux-shaped command. The child's permission asks and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Built: daemon, @ menu agent rows, child card."
+status: Built (2026-11-17; daemon side, @ menu agent rows and child card; unverified items listed under Status)
 resource: crates/zz-ui/src/target.rs
 tags:
 - agent
@@ -20,9 +20,12 @@ and files. Picking one puts a mention in the prompt. The agent you are talking t
 a brief and opens the other agent as a chat in a [PiP](/designs/pip-panes.md). The child's
 permission asks and its final reply come back into the host chat.
 
-Status 2026-11-17: the daemon side is built: steps 1 to 3, the mention note of step 4, and steps
-6 and 7 of the [build order](#build-order). Left: the `@` menu's agent rows (step 4, UI lane) and
-the host card (step 5). The rulings below
+Status 2026-11-17: built. The daemon side (steps 1 to 4, 6 and 7 of the
+[build order](#build-order)) and, in the UI lane, the `@` menu's agent rows and the child card
+(step 5; see [UI choices](#ui-choices)), checked by two [stress test](#stress-test-2026-11-17)
+batches. Not verified: typing `@` in the app for the Agents group and its Tab level; a real
+permission ask on the card (`1 allowed`); phones; very long tool output; the first `zz` call of a
+real Codex chat outside the rig (the zz rule only applies once Codex starts with it). The rulings below
 are the owner's. Everything under
 [Proposed commands](#proposed-commands) and after is proposed unless it says ruled, and
 [Open](#open) lists what is not decided.
@@ -236,6 +239,8 @@ zz agent-respond -t %4 --deny
 ```
 [zz] %4 (codex) finished:
 <final text, last 64 KiB>
+
+Follow up with: zz agent-send -t %4 'TEXT'
 ```
 
 The other forms follow `agent_notify_message`:
@@ -243,15 +248,21 @@ The other forms follow `agent_notify_message`:
 ```
 [zz] %4 (codex) stopped (<reason>):
 <final text, last 64 KiB>
+
+Follow up with: zz agent-send -t %4 'TEXT'
 ```
 
 ```
 [zz] %4 (codex) failed: <message>
+Tell the user, or try again with: zz agent-send -t %4 'TEXT'
 ```
 
 ```
-[zz] %4 (codex) was closed.
+[zz] %4 (codex) was closed before it replied. Tell the user; do not open it again.
 ```
+
+The trailing lines came from the second stress test batch; `AgentReport::parse` strips them, so a
+client reads only the reply text.
 
 An ask with options lists one `zz agent-respond -t %4 --option ID  # LABEL` line per option
 instead of allow and deny (the label is a shell comment, so the whole line runs as written).
@@ -561,6 +572,88 @@ changed because of it:
   Codex turn either failed or ended with no message; the run kept no Codex session log, and
   `capture-pane` did not print errors then. The missing `cd ... && ./stamp.sh` of one Codex child
   (`0dJB0r`) was not explained either.
+
+## Second batch
+
+60 runs against `d3cade423` (the fixes above); results in
+`bench/agents/mentions/results/2026-11-17-b.md`. 46 of 60 passed, against 35 of 60.
+
+| scenario | host | pass before | pass after | median calls before | after | median failed before | after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| m1 spawn | claude | 2/3 | 3/3 | 1 | 1 | 0 | 0 |
+| m1 spawn | codex | 2/3 | 3/3 | 2 | 1 | 1 | 0 |
+| m3 open chat | claude | 3/3 | 3/3 | 1 | 1 | 0 | 0 |
+| m3 open chat | codex | 2/3 | 3/3 | 2 | 1 | 1 | 0 |
+| m4 allow | claude | 0/3 | 1/3 | 1 | 1 | 0 | 0 |
+| m4 allow | codex | 3/3 | 3/3 | 4 | 2 | 2 | 0 |
+| m4b no run | claude | 3/3 | 3/3 | 1 | 1 | 0 | 0 |
+| m4b no run | codex | 0/3 | 3/3 | 2 | 1 | 1 | 0 |
+| m4c deny | claude | 0/3 | 0/3 | 2 | 3 | 0 | 0 |
+| m4c deny | codex | 0/3 | 1/3 | 4 | 3 | 2 | 0 |
+| m5 child dies | claude | 0/3 | 1/3 | 0 | 2 | 0 | 0 |
+| m5 child dies | codex | 1/3 | 1/3 | 2 | 2 | 1 | 0 |
+| m6 untaught | claude | 3/3 | 3/3 | 5 | 4 | 1 | 1 |
+| m6 untaught | codex | 3/3 | 3/3 | 5 | 3 | 2 | 0 |
+| m7 restraint | claude | 3/3 | 3/3 | 0 | 0 | 0 | 0 |
+| m7 restraint | codex | 3/3 | 3/3 | 0 | 0 | 0 | 0 |
+| m8 child restraint | claude | 1/3 | 3/3 | 0 | 1 | 0 | 0 |
+| m8 child restraint | codex | 1/3 | 3/3 | 2 | 1 | 1 | 0 |
+| m8b child pushed | claude | 3/3 | 1/3 | 4 | 4 | 1 | 1 |
+| m8b child pushed | codex | 2/3 | 2/3 | 2 | 3 | 1 | 1 |
+
+Checks that now pass:
+
+- A Codex host's first `zz` runs with no sandbox failure: 0 sandboxed calls in 30 Codex-host
+  runs (before: 22 of 22).
+- Hosts delegate on the one-line spawn prompt: 18 of 18 (before: 10 of 18).
+- Codex hosts no longer also do the work: 0 of 21 mention runs (before: 7 of 17).
+- A terminal a child opened with `split-window` closes with the host; nothing is left.
+- No empty answer after a `was closed.` report that lands while the host's first turn runs: 0
+  of 6.
+- Partly: a Codex child's refused write reaches the host as an ask in 3 of 6 Claude-host runs.
+
+Changed after it:
+
+- Hosts opened a fresh chat after `was closed.` (4 of 6 m5 runs) or after a child answered without
+  the result, where `agent-send` to the open chat was the cheaper move. `was closed.` now reads
+  `was closed before it replied. Tell the user; do not open it again.`, `finished:` and
+  `stopped (...):` end with a blank line and `Follow up with: zz agent-send -t %N 'TEXT'`, and
+  `failed:` with `Tell the user, or try again with: zz agent-send -t %N 'TEXT'`.
+- Codex children followed a brief that said to stop if they needed permission and reported the
+  sandbox failure (3 of 6). The child note's Codex sentence now says to rerun with escalated
+  permissions `even if your brief says to stop on failure`.
+
+Left as it is:
+
+- A Codex child runs a command once read-only before any ask exists: the ask only appears after
+  the sandboxed attempt fails, so in m4c the script ran once (read-only) before the host could
+  deny it. No text fixes this; it would take starting child Codex chats with an approval policy
+  that asks before every command that is not a read.
+- Untaught hosts (no mention, so no note) chain `sleep` onto `agent-send` (m6, 2 of 3 Claude
+  hosts). They reach `agent-send` in one failed hop, and the reply comes back anyway.
+- A host that follows the note reports to the user when the child refuses (m8b, 2 runs) instead
+  of reading the file itself: that is what the note asks for ("not you"), so it fails the token
+  rule without being wrong.
+
+# UI choices
+
+Recorded for the UI lane, which built them in `crates/zz-ui` and `crates/zz`:
+
+- **`@` menu.** Agents is the first group on a bare `@`; typed text ranks agents in the flat
+  list. The row's dim model is the last pick, else the catalog's current model, else `default`.
+  Tab opens the provider's models from `agent-catalog`, its first client; a typed `codex/` or
+  `+codex/` opens the models level. Agent picks are not kept as recents. In a transcript
+  `@+codex` shows as `@codex`, tinted and not clickable.
+- **Child card.** Built from the host's own transcript with no wire change. An exchange starts at
+  a tool call whose output carries the opened or sent line and absorbs the asks, reports and the
+  host's `agent-respond` calls for that pane; a second send to the same pane gets its own card; a
+  report for a pane with no exchange before it stays a user message. A decision counts only when
+  its call succeeded; a failed call followed by the same call succeeding is hidden with it; the
+  header counts every decision (allowed in green). The latest card reads the pending request and
+  closed state from the child's own chat. The peek shows the tool steps of the child's last turn;
+  the reply is drawn as markdown; a closed card shows no time; a denial shows as `denied by NAME`.
+- **PiP.** An agent chat opened without focus starts stashed, and the card collapses to its header
+  while the child is in view.
 
 # Open
 
