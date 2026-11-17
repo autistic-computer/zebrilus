@@ -36,10 +36,12 @@ pub struct PastedImages {
     entries: HashMap<(PaneId, u32), PastedEntry>,
     retired: Vec<Arc<ala::Image>>,
     sequence: u64,
+    preview: Option<(PaneId, u32)>,
 }
 
 impl PastedImages {
     pub fn clear(&mut self) {
+        self.preview = None;
         for entry in self.entries.drain().map(|(_, entry)| entry) {
             if let PastedState::Ready(image) = entry.state {
                 self.retired.push(image);
@@ -48,6 +50,7 @@ impl PastedImages {
     }
 
     pub fn remove_pane(&mut self, pane: PaneId) {
+        self.preview = self.preview.filter(|(id, _)| *id != pane);
         self.entries.retain(|(id, _), entry| {
             if *id != pane {
                 return true;
@@ -80,6 +83,25 @@ impl PastedImages {
         match &self.entries.get(&(pane, number))?.state {
             PastedState::Ready(image) => Some(image.clone()),
             _ => None,
+        }
+    }
+
+    pub fn want_preview(&mut self, pane: PaneId, number: u32) {
+        self.preview = Some((pane, number));
+    }
+
+    pub fn take_preview(&mut self) -> Option<Arc<ala::Image>> {
+        let key = self.preview?;
+        match self.entries.get(&key).map(|entry| &entry.state) {
+            Some(PastedState::Requested | PastedState::Loading { .. }) => None,
+            Some(PastedState::Ready(image)) => {
+                self.preview = None;
+                Some(image.clone())
+            }
+            Some(PastedState::Unavailable) | None => {
+                self.preview = None;
+                None
+            }
         }
     }
 
@@ -310,5 +332,31 @@ mod tests {
         assert_eq!(cache.retired.len(), 2);
         assert!(cache.entries.is_empty());
         assert!(cache.request(PaneId(2), 1));
+    }
+
+    #[test]
+    fn pasted_image_previews_wait_for_their_transfer_and_drop_when_it_fails() {
+        let mut cache = PastedImages::default();
+        let pane = PaneId(1);
+        cache.want_preview(pane, 1);
+        assert!(cache.take_preview().is_none());
+        assert_eq!(cache.preview, None);
+        cache.want_preview(pane, 1);
+        cache.request(pane, 1);
+        cache.begin(pane, 1, zz_protocol::PastedImageFormat::Png, 2);
+        cache.chunk(pane, 1, &[1]);
+        assert!(cache.take_preview().is_none());
+        cache.chunk(pane, 1, &[2]);
+        assert_eq!(cache.take_preview().unwrap().bytes, [1, 2]);
+        assert!(cache.take_preview().is_none());
+        cache.want_preview(pane, 2);
+        cache.request(pane, 2);
+        cache.unavailable(pane, 2);
+        assert!(cache.take_preview().is_none());
+        assert_eq!(cache.preview, None);
+        cache.want_preview(pane, 3);
+        cache.request(pane, 3);
+        cache.remove_pane(pane);
+        assert_eq!(cache.preview, None);
     }
 }

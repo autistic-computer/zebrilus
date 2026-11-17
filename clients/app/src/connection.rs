@@ -121,9 +121,17 @@ pub struct FoundHosts(pub Vec<FoundHost>);
 
 impl EventEmitter<FoundHosts> for Connection {}
 
-pub struct LinkTapped(pub String);
+pub struct OpenLink {
+    pub pane: PaneId,
+    pub uri: String,
+    pub tapped: bool,
+}
 
-impl EventEmitter<LinkTapped> for Connection {}
+impl EventEmitter<OpenLink> for Connection {}
+
+pub struct PreviewImage(pub Arc<ala::Image>);
+
+impl EventEmitter<PreviewImage> for Connection {}
 
 const LINK_TAP_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 
@@ -387,6 +395,56 @@ impl Connection {
         }
     }
 
+    pub fn preview_pasted_image(&mut self, pane: PaneId, number: u32, cx: &mut Context<Self>) {
+        self.pasted_images.want_preview(pane, number);
+        self.fetch_pasted_image(pane, number, cx);
+        self.show_pasted_preview(cx);
+    }
+
+    fn show_pasted_preview(&mut self, cx: &mut Context<Self>) {
+        if let Some(image) = self.pasted_images.take_preview() {
+            cx.emit(PreviewImage(image));
+        }
+    }
+
+    #[must_use]
+    pub fn uri_route(&self, pane: PaneId, uri: &str) -> zz_client::open_uri::OpenUriRoute {
+        zz_client::open_uri::open_uri_route(
+            self.core.snapshot(),
+            self.core.attached_session(),
+            pane,
+            uri,
+        )
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    pub fn navigate_browser(&mut self, pane: PaneId, url: String, cx: &mut Context<Self>) {
+        let Some(PaneKindSnapshot::Browser(descriptor)) =
+            self.pane_snapshot(pane).map(|pane| &pane.kind)
+        else {
+            return;
+        };
+        let mut tabs = descriptor.tabs.clone();
+        let active = if descriptor.active_tab < tabs.len() {
+            descriptor.active_tab
+        } else {
+            0
+        };
+        match tabs.get_mut(active) {
+            Some(tab) => *tab = url,
+            None => tabs.push(url),
+        }
+        let mut args = vec![
+            "-t".into(),
+            pane.to_string(),
+            "-a".into(),
+            active.to_string(),
+            "--".into(),
+        ];
+        args.extend(tabs);
+        self.command("set-browser-tabs", args, cx);
+    }
+
     pub fn notify_error(&mut self, text: String, cx: &mut Context<Self>) {
         self.status.clone_from(&text);
         cx.emit(CoreEvent::ClientMessage {
@@ -399,7 +457,24 @@ impl Connection {
         cx.notify();
     }
 
+    pub fn notify_warning(&mut self, text: String, cx: &mut Context<Self>) {
+        cx.emit(CoreEvent::ClientMessage {
+            pane: None,
+            kind: zz_protocol::ClientMessageKind::Warning,
+            text,
+            duration_ms: None,
+            message_id: None,
+        });
+    }
+
     pub fn upload_image(&mut self, pane: PaneId, image: &ala::Image, cx: &mut Context<Self>) {
+        let image = match zz_ui::attachment::normalize(image) {
+            Ok(image) => image,
+            Err(error) => {
+                self.notify_warning(format!("Paste skipped: {error}"), cx);
+                return;
+            }
+        };
         let extension = image.format.extension();
         if zz_protocol::PastedImageFormat::from_extension(extension).is_none()
             || image.bytes.is_empty()
@@ -1157,21 +1232,23 @@ impl Connection {
                     }
                 }
                 CoreEvent::ClientMessage { text, .. } => self.status.clone_from(text),
-                CoreEvent::Clipboard { text, .. } => {
+                CoreEvent::Clipboard {
+                    producer,
+                    target,
+                    text,
+                    ..
+                } if !text.is_empty() && self.core.clipboard_write_lands(*producer, *target) => {
                     cx.write_to_clipboard(ala::ClipboardItem::new_string(text.clone()));
                 }
-                CoreEvent::OpenUri { pane, uri }
-                    if self.link_tap.take().is_some_and(|(tapped, at)| {
+                CoreEvent::OpenUri { pane, uri } => {
+                    let tapped = self.link_tap.take().is_some_and(|(tapped, at)| {
                         tapped == *pane && at.elapsed() < LINK_TAP_WAIT
-                    }) =>
-                {
-                    cx.emit(LinkTapped(uri.clone()));
-                }
-                CoreEvent::OpenUri { uri, .. } if zz_client::terminal_view::openable_uri(uri) => {
-                    cx.open_url(uri);
-                }
-                CoreEvent::OpenUri { uri, .. } => {
-                    self.notify_error(format!("Cannot open this URI: {uri}"), cx);
+                    });
+                    cx.emit(OpenLink {
+                        pane: *pane,
+                        uri: uri.clone(),
+                        tapped,
+                    });
                 }
                 CoreEvent::PrefixCancelled { request_id } => {
                     if self.prefix_cancel_pending == Some(*request_id) {
@@ -1197,6 +1274,7 @@ impl Connection {
                     } => {
                         self.pasted_images
                             .begin(*pane, *number, *format, *total_bytes);
+                        self.show_pasted_preview(cx);
                     }
                     ProtocolMessage::PastedImageChunk {
                         pane,
@@ -1204,9 +1282,11 @@ impl Connection {
                         bytes,
                     } => {
                         self.pasted_images.chunk(*pane, *number, bytes);
+                        self.show_pasted_preview(cx);
                     }
                     ProtocolMessage::PastedImageUnavailable { pane, number } => {
                         self.pasted_images.unavailable(*pane, *number);
+                        self.show_pasted_preview(cx);
                     }
                     #[cfg(target_os = "ios")]
                     ProtocolMessage::ArtifactBegin { .. }

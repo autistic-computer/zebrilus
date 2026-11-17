@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use zz_protocol::PaneId;
 use zz_terminal::{
     Cursor, CursorBlinkPolicy, IMAGE_PLACEHOLDER_SCHEME, KeyCode, KeyInput, Modifiers,
@@ -87,6 +89,24 @@ pub fn selection_autoscroll_lines(top: f32, bottom: f32, line_height: f32, y: f3
 }
 
 #[must_use]
+pub const fn selection_has_extent(anchor: PointerCellEvent, pointer: PointerCellEvent) -> bool {
+    anchor.click_count >= 2 || anchor.column != pointer.column || anchor.row != pointer.row
+}
+
+pub const MAX_PASTE_BYTES: usize = 4 * 1024 * 1024;
+
+#[must_use]
+pub fn oversized_paste_warning(text: &str) -> Option<String> {
+    (text.len() > MAX_PASTE_BYTES).then(|| {
+        format!(
+            "Paste skipped: {} bytes exceeds the {} MiB limit",
+            text.len(),
+            MAX_PASTE_BYTES / (1024 * 1024)
+        )
+    })
+}
+
+#[must_use]
 pub fn scrollbar_strip_hit(
     right: f32,
     top: f32,
@@ -111,6 +131,8 @@ pub fn accumulate_scroll(remainder: &mut f32, delta: f32) -> i32 {
     *remainder -= lines as f32;
     lines
 }
+
+pub const CURSOR_BLINK_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[must_use]
 pub fn cursor_should_blink(
@@ -293,6 +315,35 @@ mod tests {
             false,
         );
         assert_eq!((outside.cell.column, outside.cell.row), (9, 1));
+    }
+
+    #[test]
+    fn mouse_selection_needs_another_cell_unless_it_is_a_multi_click() {
+        let anchor = PointerCellEvent {
+            column: 4,
+            row: 2,
+            click_count: 1,
+            rectangle: false,
+        };
+        assert!(!selection_has_extent(anchor, anchor));
+        assert!(selection_has_extent(
+            anchor,
+            PointerCellEvent {
+                column: 5,
+                ..anchor
+            }
+        ));
+        assert!(selection_has_extent(
+            anchor,
+            PointerCellEvent { row: 3, ..anchor }
+        ));
+        assert!(selection_has_extent(
+            PointerCellEvent {
+                click_count: 2,
+                ..anchor
+            },
+            anchor
+        ));
     }
 
     #[test]

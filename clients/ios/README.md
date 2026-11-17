@@ -185,6 +185,12 @@ the native transport, key translation, and UIKit backend.
   prefix keys in the tooltip, read from the host's prefix table as on the desktop.
 - A zoomed pane has an Exit zoom control. Drag a header grip to split or swap panes;
   the preview animates to the drop target. Mouse and touch divider drags update the daemon.
+- Drag a PiP's bottom corners to resize it and its header to move it. Drag a modal float's
+  top border to move it and its top or bottom border ends to resize it. The grips are 44 pt
+  and stay on the card, so touches beside it reach the pane underneath. A read-only or
+  disconnected client draws no grips.
+- Chat, view and browser panes report their size like terminals, so a window holding only a
+  chat follows the iPad's size and rotation.
 - Hardware keys, search, copy/paste, terminal images, mouse tracking, and
   scrollback use the shared terminal implementation. Swipe to scroll; long-press
   and drag to select text.
@@ -297,9 +303,29 @@ being composed, hardware keys go to the input method first.
   with the Open URL action. The deprecated native dev app also claims `zz-dev://`; remove
   it if links open the wrong app.
 - Long-press text in a terminal to select it; the system edit menu offers Copy, Paste,
-  and Select All.
+  and Select All. On iPad, letting go of a selection made with a trackpad or mouse also
+  copies it, as on the desktop, unless the session's `set-clipboard` is `off`. A long-press
+  selection leaves the clipboard alone, so Paste in its menu pastes what you copied.
+- Ctrl-V with an image on the clipboard uploads the image to the pane instead of sending
+  Ctrl-V. Text pastes over 4 MiB are refused with a warning.
+- Ctrl-= and Ctrl-- on a hardware keyboard step the Terminal font scale setting by 10%
+  (on the pinch's 5% grid, between 50% and 300%), so every terminal changes and the size is
+  saved.
+- A terminal bell plays the system alert sound, which vibrates instead on an iPhone in silent
+  mode. Bells within 200 ms of the last sound are dropped. The host's `bell-action` and
+  `visual-bell` options decide which bells ring.
+- The cursor stops blinking after 10 seconds without input and while its pane is off screen,
+  as on the desktop.
 - Drop images onto the workspace to upload them to the focused pane, as with a pasted
   image; dropped text or links paste as text.
+- An image pasted into an agent chat's composer goes through the desktop's step too: one
+  wider or taller than 1568 pixels is scaled down and re-encoded to PNG, so a full-size
+  screenshot attaches instead of being refused as over 6 MiB.
+- Tap a link in a terminal to open it. On iPhone it opens the link sheet. On iPad a web link
+  opens in the nearest browser pane of the terminal's window, as on the desktop, and in
+  the system browser when that window has no browser pane. Tapping a pasted image's `[Image #N]`
+  opens the image preview. On iPad a trackpad or mouse click selects as on the desktop:
+  Command-click or Control-click a link to open it.
 
 ## Lifecycle
 
@@ -419,7 +445,9 @@ saved by this example.
 - ANSI styles, true color, alternate screen applications, cursor state, terminal
   replies, and Kitty images use the existing daemon and shared renderer.
 - Command-C/V/A copy, paste, and select all. The toolbar also exposes Copy and
-  Paste. Pasted text uses the daemon's bracketed-paste handling.
+  Paste. Pasted text uses the daemon's bracketed-paste handling. On iPad, when
+  the window is at least 640pt wide, a copy sweeps a short shimmer over the
+  copied text, as on the desktop, except under Reduce Motion.
 - Drag to scroll; enable **Select** to drag a selection. **End** returns to the
   live screen. Shift-Page Up/Down and Shift-Home/End navigate scrollback.
 - Touch events become terminal mouse events when the application requests mouse

@@ -118,7 +118,7 @@ pub fn session_from_url(url: &str) -> Option<String> {
 
 pub struct AppShell {
     connection: Entity<Connection>,
-    _connection_subscriptions: [Subscription; 4],
+    _connection_subscriptions: [Subscription; 5],
     fleet: Vec<(Entity<Connection>, Subscription)>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fleet_found: Vec<Subscription>,
@@ -176,6 +176,8 @@ pub struct AppShell {
     output_terminal: Option<(u64, Entity<TerminalPane>)>,
     split_drag: Option<SplitDragState>,
     terminal_resize_suppressed: Rc<Cell<bool>>,
+    tile_reports: Rc<RefCell<HashMap<PaneId, (u16, u16, u64)>>>,
+    available_fonts: Rc<[String]>,
     pane_drag: Option<PaneDragState>,
     #[cfg(target_os = "android")]
     system_back: Option<bool>,
@@ -211,11 +213,27 @@ fn debug_marker_key(keystroke: &Keystroke) -> bool {
     keystroke.key == "m" && modifiers.shift && !modifiers.alt && !modifiers.function && primary
 }
 
+fn watch_font_steps(
+    terminal: &Entity<TerminalPane>,
+    window: &mut Window,
+    cx: &mut Context<AppShell>,
+) {
+    cx.subscribe_in(
+        terminal,
+        window,
+        |this, _, step: &crate::terminal::TerminalFontStep, window, cx| {
+            this.preferences
+                .step_terminal_font_scale(step.0, &this.connection, window, cx);
+        },
+    )
+    .detach();
+}
+
 fn watch_connection(
     connection: &Entity<Connection>,
     window: &mut Window,
     cx: &mut Context<AppShell>,
-) -> [Subscription; 4] {
+) -> [Subscription; 5] {
     let observer = cx.observe(connection, |this, connection, cx| {
         let connection = connection.read(cx);
         if this.connected != connection.connected || this.connection_status != connection.status {
@@ -239,6 +257,10 @@ fn watch_connection(
                 zz_client::CoreEvent::StatusChanged | zz_client::CoreEvent::AgentUpdates { .. } => {
                     return;
                 }
+                zz_client::CoreEvent::Bell { .. } => {
+                    crate::bell::ring(cx);
+                    return;
+                }
                 zz_client::CoreEvent::AgentStateChanged { pane, attention } => {
                     if *attention == Some(zz_client::AgentAttentionEdge::Done)
                         && (!window.is_window_active() || this.focused_pane != Some(*pane))
@@ -260,6 +282,7 @@ fn watch_connection(
                     this.focused_pane = None;
                     this.compact.reset_attachment();
                     this.waiting_panes.clear();
+                    this.tile_reports.borrow_mut().clear();
                     this.output_terminal = None;
                     this.set_split_drag(None);
                     this.pane_drag = None;
@@ -362,11 +385,19 @@ fn watch_connection(
     let links = cx.subscribe_in(
         connection,
         window,
-        |this, _, event: &crate::connection::LinkTapped, window, cx| {
-            this.open_link_sheet(event.0.clone(), window, cx);
+        |this, _, event: &crate::connection::OpenLink, window, cx| {
+            this.open_link(event, window, cx);
         },
     );
-    [observer, events, found, links]
+    let previews = cx.subscribe_in(
+        connection,
+        window,
+        |_, _, event: &crate::connection::PreviewImage, window, cx| {
+            window.dismiss_virtual_keyboard();
+            zz_ui::attachment::open_attachment_preview(event.0.clone(), window, cx);
+        },
+    );
+    [observer, events, found, links, previews]
 }
 
 impl AppShell {
@@ -489,6 +520,8 @@ impl AppShell {
             output_terminal: None,
             split_drag: None,
             terminal_resize_suppressed: Rc::new(Cell::new(false)),
+            tile_reports: Rc::default(),
+            available_fonts: cx.text_system().all_font_names().into(),
             pane_drag: None,
             #[cfg(target_os = "android")]
             system_back: None,
@@ -1390,6 +1423,9 @@ impl AppShell {
             .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Terminal)));
         self.waiting_panes
             .retain(|pane| existing.contains_key(pane));
+        self.tile_reports
+            .borrow_mut()
+            .retain(|pane, _| existing.contains_key(pane));
         if self.agents.keys().any(|pane| {
             self.focused_pane == Some(*pane)
                 && !matches!(existing.get(pane), Some(PaneKindSnapshot::Agent(_)))
@@ -1414,7 +1450,12 @@ impl AppShell {
         self.pickers.retain(|pane, _| shown.contains(pane));
     }
 
-    fn terminal_entity(&mut self, pane: PaneId, cx: &mut Context<Self>) -> Entity<TerminalPane> {
+    fn terminal_entity(
+        &mut self,
+        pane: PaneId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<TerminalPane> {
         self.terminals
             .entry(pane)
             .or_insert_with(|| {
@@ -1430,6 +1471,7 @@ impl AppShell {
                     },
                 )
                 .detach();
+                watch_font_steps(&terminal, window, cx);
                 terminal
             })
             .clone()
@@ -1446,7 +1488,7 @@ impl AppShell {
             core.command_output()
                 .is_some_and(|(output, _)| output == pane)
         }) else {
-            return self.terminal_entity(pane, cx);
+            return self.terminal_entity(pane, window, cx);
         };
         if self
             .output_terminal
@@ -1455,6 +1497,7 @@ impl AppShell {
         {
             let connection = self.connection.clone();
             let terminal = cx.new(|cx| TerminalPane::new_command_output(pane, connection, cx));
+            watch_font_steps(&terminal, window, cx);
             terminal.read(cx).focus_handle(cx).focus(window, cx);
             self.output_terminal = Some((id, terminal));
         }
@@ -2398,6 +2441,15 @@ impl AppShell {
                     picker.into_any_element()
                 }
             };
+            let content = match self.tile_size_report(pane_id, &pane.kind, is_float) {
+                Some(report) => div()
+                    .relative()
+                    .size_full()
+                    .child(content)
+                    .child(report)
+                    .into_any_element(),
+                None => content,
+            };
             let content = if frame.header {
                 let heading = zz_client::window_summary::pane_heading(pane);
                 let header = self.pane_header(
@@ -2586,7 +2638,7 @@ impl AppShell {
         let content = self.render_layout(&layout, &active_window, &mut panes, cx);
         self.tick_pip(&active_window, window, cx);
         self.pip.stage.observe(&active_window);
-        let float_layer = self.float_layer(&active_window, &floats, &mut panes, cx);
+        let float_layer = self.float_layer(&active_window, &floats, &mut panes, window, cx);
         let float_canvas = Rc::clone(&self.float_canvas_bounds);
         let content = div()
             .relative()
@@ -2668,6 +2720,75 @@ impl AppShell {
                 .inset_0(),
             )
             .into_any_element()
+    }
+
+    fn tile_size_report(
+        &self,
+        pane: PaneId,
+        kind: &PaneKindSnapshot,
+        floats: bool,
+    ) -> Option<AnyElement> {
+        if floats
+            || !matches!(
+                kind,
+                PaneKindSnapshot::Agent(_)
+                    | PaneKindSnapshot::View(_)
+                    | PaneKindSnapshot::Browser(_)
+                    | PaneKindSnapshot::Editor(_)
+            )
+        {
+            return None;
+        }
+        let connection = self.connection.clone();
+        let sent = Rc::clone(&self.tile_reports);
+        let held = Rc::clone(&self.terminal_resize_suppressed);
+        let fonts = Rc::clone(&self.available_fonts);
+        let motion = self.pane_motion.clone();
+        Some(
+            ala::canvas(
+                move |bounds, window, cx| {
+                    if held.get() || motion.moving() {
+                        return;
+                    }
+                    let core = &connection.read(cx).core;
+                    if core.attached_session().is_none() {
+                        return;
+                    }
+                    let cell = crate::terminal::tile_cell_size(core, &fonts, window, cx);
+                    if bounds.size.width < cell.width || bounds.size.height < cell.height {
+                        return;
+                    }
+                    let grid = zz_ui::terminal::terminal_grid_size(
+                        bounds.size,
+                        cell.width,
+                        cell.height,
+                        window.scale_factor(),
+                    );
+                    let report = (grid.columns, grid.rows, core.layout_generation());
+                    if sent.borrow().get(&pane) == Some(&report) {
+                        return;
+                    }
+                    sent.borrow_mut().insert(pane, report);
+                    connection.update(cx, |connection, cx| {
+                        connection.send(
+                            ProtocolMessage::Input(InputMessage::ResizeTerminalV2 {
+                                pane,
+                                columns: report.0,
+                                rows: report.1,
+                                cell_width_px: grid.cell_width_px,
+                                cell_height_px: grid.cell_height_px,
+                                layout_generation: report.2,
+                            }),
+                            cx,
+                        );
+                    });
+                },
+                |_, (), _, _| {},
+            )
+            .absolute()
+            .inset_0()
+            .into_any_element(),
+        )
     }
 
     fn render_layout(
@@ -2839,7 +2960,12 @@ impl AppShell {
 
     fn set_split_drag(&mut self, state: Option<SplitDragState>) {
         self.split_drag = state;
-        self.terminal_resize_suppressed.set(state.is_some());
+        self.hold_terminal_resizes();
+    }
+
+    fn hold_terminal_resizes(&self) {
+        self.terminal_resize_suppressed
+            .set(self.split_drag.is_some() || self.pip.grabbing());
     }
 
     fn reconcile_split_drag(&mut self, active: &WindowSnapshot, cx: &mut Context<Self>) {

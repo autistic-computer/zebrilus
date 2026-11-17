@@ -272,8 +272,9 @@ the same connection instead of opening a second one.
 
 Size reports use `ResizeTerminalV2` and `ClientTerminalSizeV2`, each carrying the layout generation
 the client rendered. A `ResizeTerminalV2` may name any tiled pane, not only a terminal: the desktop
-reports agent, view, browser and editor tiles in terminal cells too, so a window with no terminal
-still has its real size and its floats can grow to it. Only a pane with a PTY resizes one. The daemon drops a report from an older layout, including one that arrives
+and the wide web and iPad layout report agent, view, browser and editor tiles in terminal cells too
+(the phone layout does not), so a window with no terminal still has its real size and its floats can
+grow to it. Only a pane with a PTY resizes one. The daemon drops a report from an older layout, including one that arrives
 after unzoom. It checks the generation under the same model lock that applies the report;
 rejection skips geometry storage, actor resizing and the input publication/hook tail.
 Clients retry their measured geometry when the layout generation changes, including when

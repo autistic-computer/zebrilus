@@ -26,6 +26,7 @@ use zz_client::{
         LOCAL_SCROLL_DEBOUNCE, LOCAL_SCROLL_TIMEOUT, LocalScrollEffect, LocalScrollState,
         LocalScrollStep, LocalScrollSync, local_scroll_available, scroll_fraction_offset,
     },
+    terminal_view::{oversized_paste_warning, selection_has_extent},
 };
 use zz_protocol::{ClientMessageKind, CommandInvocation, InputMessage, PaneId, TerminalUiCommand};
 use zz_terminal::{
@@ -41,7 +42,7 @@ use zz_ui::{
         terminal_link_popup, terminal_mode_indicator as terminal_mode_tag, terminal_status_popup,
     },
     pane_look::pane_color,
-    terminal::{FindBarAction, ScrollbarFade},
+    terminal::{CopyFlash, CopyFlashTracker, FindBarAction, ScrollbarFade},
 };
 
 use crate::{
@@ -53,10 +54,7 @@ use crate::{
         TerminalFontSizeAdjustment, TerminalSignal,
     },
     mux::hosts::HostId,
-    terminal::{
-        element::{RowRenderCache, TerminalElement},
-        shader,
-    },
+    terminal::element::{RowRenderCache, TerminalElement},
     window::corners::{WindowCorners, round_div_radii},
 };
 
@@ -87,10 +85,7 @@ const ALA_UNITS_PER_FONT_POINT: f32 = 96.0 / 72.0;
 static COPY_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 static PASTE_UPLOAD_ID: AtomicU64 = AtomicU64::new(1);
 const SELECTION_AUTOSCROLL_INTERVAL: Duration = Duration::from_millis(33);
-const COPY_FLASH_SELECTION_GRACE: Duration = Duration::from_millis(500);
 const IMAGE_HOVER_DWELL: Duration = Duration::from_millis(250);
-const CURSOR_BLINK_TIMEOUT: Duration = Duration::from_secs(10);
-const MAX_PASTE_BYTES: usize = 4 * 1024 * 1024;
 const TERMINAL_KEY_CONTEXT: &str = "Terminal";
 
 #[derive(Debug, PartialEq, Eq)]
@@ -449,20 +444,10 @@ pub(crate) struct TerminalView {
     scrollbar_fade_task: Task<()>,
     primary_paste_pressed: bool,
     last_clipboard_image: Option<(u64, Arc<Image>)>,
-    shader_epoch: Instant,
     observed_copy_generation: u64,
-    painted_selection: Vec<Bounds<Pixels>>,
-    selection_cleared_at: Option<Instant>,
-    copy_flash: Option<CopyFlash>,
+    copy_flash: CopyFlashTracker,
     _terminal_signal: Option<Entity<TerminalSignal>>,
     _subscriptions: Vec<Subscription>,
-}
-
-#[derive(Clone)]
-pub(crate) struct CopyFlash {
-    pub(crate) epoch: Instant,
-    pub(crate) started: Instant,
-    pub(crate) rects: Arc<[Bounds<Pixels>]>,
 }
 
 impl TerminalView {
@@ -535,7 +520,7 @@ impl TerminalView {
             }
             if copy_generation != self.observed_copy_generation {
                 self.observed_copy_generation = copy_generation;
-                changed |= !retained_changed && self.start_copy_flash();
+                changed |= !retained_changed && self.copy_flash.start();
             }
         }
         let mut retired_images = Vec::new();
@@ -1029,11 +1014,8 @@ impl TerminalView {
             scrollbar_fade_task: Task::ready(()),
             primary_paste_pressed: false,
             last_clipboard_image: None,
-            shader_epoch: Instant::now(),
             observed_copy_generation,
-            painted_selection: Vec::new(),
-            selection_cleared_at: None,
-            copy_flash: None,
+            copy_flash: CopyFlashTracker::new(),
             _terminal_signal: terminal_signal,
             _subscriptions: subscriptions,
         };
@@ -1046,44 +1028,7 @@ impl TerminalView {
     }
 
     pub(crate) fn record_selection(&mut self, selection: &[Bounds<Pixels>]) -> Option<CopyFlash> {
-        if selection.is_empty() {
-            if !self.painted_selection.is_empty() && self.selection_cleared_at.is_none() {
-                self.selection_cleared_at = Some(Instant::now());
-            }
-        } else {
-            self.selection_cleared_at = None;
-            if self.painted_selection != selection {
-                self.painted_selection = selection.to_vec();
-                if let Some(flash) = &mut self.copy_flash {
-                    flash.rects = shader::merge_rows(selection).into();
-                }
-            }
-        }
-        self.copy_flash.clone()
-    }
-
-    fn start_copy_flash(&mut self) -> bool {
-        let now = Instant::now();
-        let recent = self
-            .selection_cleared_at
-            .is_none_or(|cleared| now.duration_since(cleared) < COPY_FLASH_SELECTION_GRACE);
-        if self.painted_selection.is_empty() || !recent {
-            return false;
-        }
-        self.copy_flash = Some(CopyFlash {
-            epoch: self.shader_epoch,
-            started: now,
-            rects: shader::merge_rows(&self.painted_selection).into(),
-        });
-        true
-    }
-
-    fn live_copy_flash(&mut self) -> Option<CopyFlash> {
-        let flash = self.copy_flash.as_ref()?;
-        if flash.started.elapsed().as_secs_f32() > shader::COPY_FLASH_SECONDS {
-            self.copy_flash = None;
-        }
-        self.copy_flash.clone()
+        self.copy_flash.record(selection)
     }
 
     pub(crate) fn moving(&self) -> Rc<Cell<bool>> {
@@ -2018,17 +1963,9 @@ impl TerminalView {
         if self.command_output || text.is_empty() {
             return;
         }
-        if text.len() > MAX_PASTE_BYTES {
+        if let Some(warning) = oversized_paste_warning(&text) {
             self.mux.update(cx, |_, cx| {
-                MuxClient::emit_notification(
-                    ClientMessageKind::Warning,
-                    format!(
-                        "Paste skipped: {} bytes exceeds the {} MiB limit",
-                        text.len(),
-                        MAX_PASTE_BYTES / (1024 * 1024)
-                    ),
-                    cx,
-                );
+                MuxClient::emit_notification(ClientMessageKind::Warning, warning, cx);
             });
             return;
         }
@@ -2048,7 +1985,7 @@ impl TerminalView {
         };
         let normalized = match self.last_clipboard_image.as_ref() {
             Some((id, normalized)) if *id == image.id() => Arc::clone(normalized),
-            _ => match crate::agent::attachment::normalize(&image) {
+            _ => match zz_ui::attachment::normalize(&image) {
                 Ok(normalized) => {
                     self.last_clipboard_image = Some((image.id(), Arc::clone(&normalized)));
                     normalized
@@ -2082,7 +2019,7 @@ impl TerminalView {
         }) else {
             return false;
         };
-        let normalized = match crate::agent::attachment::normalize(&image) {
+        let normalized = match zz_ui::attachment::normalize(&image) {
             Ok(normalized) => normalized,
             Err(error) => {
                 self.mux.update(cx, |_, cx| {
@@ -2371,7 +2308,7 @@ impl Render for TerminalView {
         let marked_text = self.marked_text();
         let status = self.status_message();
         let search_query = self.search_query.clone();
-        let copy_flash = self.live_copy_flash();
+        let copy_flash = self.copy_flash.live();
         let (mode, unseen_output, search_status, hovered_uri) = {
             let state = retained.read();
             (
@@ -2666,10 +2603,6 @@ const fn owns_pressed_button(buttons: u8, pressed: Option<MouseButton>) -> bool 
     }
 }
 
-const fn selection_has_extent(anchor: PointerCellEvent, pointer: PointerCellEvent) -> bool {
-    anchor.click_count >= 2 || anchor.column != pointer.column || anchor.row != pointer.row
-}
-
 fn scrollbar_strip_hit(grid: HitGrid, scrollbar: ScrollbarState, position: Point<Pixels>) -> bool {
     zz_ui::terminal::scrollbar_strip_hit(
         grid.surface_bounds,
@@ -2689,7 +2622,7 @@ fn single_character(key: &str) -> Option<char> {
     characters.next().is_none().then_some(character)
 }
 
-use zz_ui::terminal::cursor_should_blink;
+use zz_ui::terminal::{CURSOR_BLINK_TIMEOUT, cursor_should_blink};
 
 const fn should_paste_primary(command_output: bool, mouse_tracking: bool, shift: bool) -> bool {
     !command_output && (shift || !mouse_tracking)
@@ -3249,35 +3182,6 @@ mod tests {
 
         buttons &= !mouse_button_bit(MouseButton::Left);
         assert!(!owns_pressed_button(buttons, Some(MouseButton::Left)));
-    }
-
-    #[test]
-    fn mouse_selection_needs_another_cell_unless_it_is_a_multi_click() {
-        let anchor = PointerCellEvent {
-            column: 4,
-            row: 2,
-            click_count: 1,
-            rectangle: false,
-        };
-        assert!(!selection_has_extent(anchor, anchor));
-        assert!(selection_has_extent(
-            anchor,
-            PointerCellEvent {
-                column: 5,
-                ..anchor
-            }
-        ));
-        assert!(selection_has_extent(
-            anchor,
-            PointerCellEvent { row: 3, ..anchor }
-        ));
-        assert!(selection_has_extent(
-            PointerCellEvent {
-                click_count: 2,
-                ..anchor
-            },
-            anchor
-        ));
     }
 
     #[test]

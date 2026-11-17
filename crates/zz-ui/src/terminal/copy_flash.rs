@@ -1,17 +1,19 @@
 use std::{
     collections::HashMap,
     sync::{Arc, LazyLock},
+    time::Duration,
 };
 
-use ala::{Bounds, CustomShader, Pixels};
+use ala::{Bounds, CustomShader, Pixels, Point, Size, Window};
 use naga::valid::{Capabilities, ValidationFlags, Validator};
+use web_time::Instant;
 use zz_terminal::{Color, TerminalAppearance};
 
 const PRELUDE: &str = include_str!("shaders/prelude.glsl");
 const MAIN: &str = "\nvoid main() { mainImage(zz_FragColor, zz_FragCoord); }\n";
 const MAX_COPY_RECTS: usize = 16;
-
-pub(crate) const COPY_FLASH_SECONDS: f32 = 0.55;
+const COPY_FLASH_SECONDS: f32 = 0.55;
+const SELECTION_GRACE: Duration = Duration::from_millis(500);
 
 static COPY_FLASH: LazyLock<Option<TerminalShader>> = LazyLock::new(|| {
     TerminalShader::compile(&format!(
@@ -22,11 +24,119 @@ static COPY_FLASH: LazyLock<Option<TerminalShader>> = LazyLock::new(|| {
     .ok()
 });
 
-pub(crate) fn copy_flash() -> Option<&'static TerminalShader> {
-    COPY_FLASH.as_ref()
+#[derive(Clone)]
+pub struct CopyFlash {
+    epoch: Instant,
+    started: Instant,
+    rects: Arc<[Bounds<Pixels>]>,
 }
 
-pub(crate) struct TerminalShader {
+pub struct CopyFlashTracker {
+    epoch: Instant,
+    painted: Vec<Bounds<Pixels>>,
+    cleared_at: Option<Instant>,
+    flash: Option<CopyFlash>,
+}
+
+impl Default for CopyFlashTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CopyFlashTracker {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            epoch: Instant::now(),
+            painted: Vec::new(),
+            cleared_at: None,
+            flash: None,
+        }
+    }
+
+    pub fn record(&mut self, selection: &[Bounds<Pixels>]) -> Option<CopyFlash> {
+        if selection.is_empty() {
+            if !self.painted.is_empty() && self.cleared_at.is_none() {
+                self.cleared_at = Some(Instant::now());
+            }
+        } else {
+            self.cleared_at = None;
+            if self.painted != selection {
+                self.painted = selection.to_vec();
+                if let Some(flash) = &mut self.flash {
+                    flash.rects = merge_rows(selection).into();
+                }
+            }
+        }
+        self.flash.clone()
+    }
+
+    pub fn start(&mut self) -> bool {
+        let now = Instant::now();
+        let recent = self
+            .cleared_at
+            .is_none_or(|cleared| now.duration_since(cleared) < SELECTION_GRACE);
+        if self.painted.is_empty() || !recent {
+            return false;
+        }
+        self.flash = Some(CopyFlash {
+            epoch: self.epoch,
+            started: now,
+            rects: merge_rows(&self.painted).into(),
+        });
+        true
+    }
+
+    pub fn live(&mut self) -> Option<CopyFlash> {
+        let flash = self.flash.as_ref()?;
+        if flash.started.elapsed().as_secs_f32() > COPY_FLASH_SECONDS {
+            self.flash = None;
+        }
+        self.flash.clone()
+    }
+}
+
+pub fn paint_copy_flash<R>(
+    flash: Option<(&CopyFlash, &TerminalAppearance)>,
+    bounds: Bounds<Pixels>,
+    cell: Size<Pixels>,
+    window: &mut Window,
+    content: impl FnOnce(&mut Window) -> R,
+) -> R {
+    let layer = flash.and_then(|(flash, appearance)| {
+        let shader = COPY_FLASH.as_ref()?;
+        let scale = window.scale_factor();
+        let mut uniforms = shader.uniforms();
+        uniforms
+            .float(
+                "iTime",
+                Instant::now().duration_since(flash.epoch).as_secs_f32(),
+            )
+            .float(
+                "iTimeCopy",
+                flash.started.duration_since(flash.epoch).as_secs_f32(),
+            )
+            .vector(
+                "iCellSize",
+                &[
+                    f32::from(cell.width) * scale,
+                    f32::from(cell.height) * scale,
+                ],
+            )
+            .appearance(appearance)
+            .copy_rects(&flash.rects, bounds.origin, scale);
+        Some((shader, uniforms.finish()))
+    });
+    let Some((shader, uniforms)) = layer else {
+        return content(window);
+    };
+    let painted = window.paint_shader_layer(bounds, &shader.shader, uniforms, content);
+    window.request_animation_frame();
+    painted
+}
+
+struct TerminalShader {
     shader: CustomShader,
     layout: Arc<UniformLayout>,
 }
@@ -37,7 +147,7 @@ struct UniformLayout {
 }
 
 impl TerminalShader {
-    pub(crate) fn compile(body: &str) -> Result<Self, String> {
+    fn compile(body: &str) -> Result<Self, String> {
         let source = format!("{PRELUDE}\n{body}{MAIN}");
         let module = naga::front::glsl::Frontend::default()
             .parse(
@@ -62,11 +172,7 @@ impl TerminalShader {
         })
     }
 
-    pub(crate) fn shader(&self) -> &CustomShader {
-        &self.shader
-    }
-
-    pub(crate) fn uniforms(&self) -> Uniforms {
+    fn uniforms(&self) -> Uniforms {
         Uniforms {
             layout: Arc::clone(&self.layout),
             bytes: vec![0; self.layout.size],
@@ -99,7 +205,7 @@ impl UniformLayout {
     }
 }
 
-pub(crate) struct Uniforms {
+struct Uniforms {
     layout: Arc<UniformLayout>,
     bytes: Vec<u8>,
 }
@@ -122,12 +228,12 @@ impl Uniforms {
         }
     }
 
-    pub(crate) fn float(&mut self, name: &str, value: f32) -> &mut Self {
+    fn float(&mut self, name: &str, value: f32) -> &mut Self {
         self.write(name, 0, &[value]);
         self
     }
 
-    pub(crate) fn int(&mut self, name: &str, value: i32) -> &mut Self {
+    fn int(&mut self, name: &str, value: i32) -> &mut Self {
         if let Some(&offset) = self.layout.offsets.get(name)
             && let Some(bytes) = self.bytes.get_mut(offset..offset + 4)
         {
@@ -136,17 +242,17 @@ impl Uniforms {
         self
     }
 
-    pub(crate) fn vector(&mut self, name: &str, values: &[f32]) -> &mut Self {
+    fn vector(&mut self, name: &str, values: &[f32]) -> &mut Self {
         self.write(name, 0, values);
         self
     }
 
-    pub(crate) fn element(&mut self, name: &str, index: usize, values: &[f32]) -> &mut Self {
+    fn element(&mut self, name: &str, index: usize, values: &[f32]) -> &mut Self {
         self.write(name, index, values);
         self
     }
 
-    pub(crate) fn appearance(&mut self, appearance: &TerminalAppearance) -> &mut Self {
+    fn appearance(&mut self, appearance: &TerminalAppearance) -> &mut Self {
         let selection = appearance.selection_background;
         self.vector("iBackgroundColor", &rgb(appearance.background))
             .vector("iForegroundColor", &rgb(appearance.foreground))
@@ -165,10 +271,10 @@ impl Uniforms {
         self
     }
 
-    pub(crate) fn copy_rects(
+    fn copy_rects(
         &mut self,
         rects: &[Bounds<Pixels>],
-        origin: ala::Point<Pixels>,
+        origin: Point<Pixels>,
         scale: f32,
     ) -> &mut Self {
         let count = rects.len().min(MAX_COPY_RECTS);
@@ -182,7 +288,7 @@ impl Uniforms {
         self.int("iCopyRectCount", count as i32)
     }
 
-    pub(crate) fn finish(self) -> Arc<[u8]> {
+    fn finish(self) -> Arc<[u8]> {
         self.bytes.into()
     }
 }
@@ -195,7 +301,7 @@ fn rgb(color: Color) -> [f32; 3] {
     ]
 }
 
-pub(crate) fn merge_rows(rows: &[Bounds<Pixels>]) -> Vec<Bounds<Pixels>> {
+fn merge_rows(rows: &[Bounds<Pixels>]) -> Vec<Bounds<Pixels>> {
     let mut merged: Vec<Bounds<Pixels>> = Vec::with_capacity(rows.len().min(MAX_COPY_RECTS));
     for row in rows {
         match merged.last_mut() {
@@ -232,7 +338,7 @@ mod tests {
 
     #[test]
     fn copy_flash_compiles_and_exposes_its_uniforms() {
-        let shader = copy_flash().expect("copy flash compiles");
+        let shader = COPY_FLASH.as_ref().expect("copy flash compiles");
         for name in [
             "iTime",
             "iTimeCopy",
@@ -263,7 +369,7 @@ mod tests {
 
     #[test]
     fn uniforms_land_at_the_translated_offsets() {
-        let shader = copy_flash().expect("copy flash compiles");
+        let shader = COPY_FLASH.as_ref().expect("copy flash compiles");
         let mut uniforms = shader.uniforms();
         uniforms.float("iTimeCopy", 1.5).copy_rects(
             &[row(10.0, 20.0, 30.0)],

@@ -168,16 +168,17 @@ While a copy shimmer runs, all eight go through one shader layer.
 
 `Window::paint_shader_layer` (a carried [ala patch](/references/ala.md)) draws what a
 closure paints into a texture and composites it through a WGSL fragment shader. zz writes its
-terminal shaders in Ghostty's Shadertoy dialect: `crates/zz/src/terminal/shaders/prelude.glsl` holds
+terminal shaders in Ghostty's Shadertoy dialect: `crates/zz-ui/src/terminal/shaders/prelude.glsl` holds
 Ghostty's uniform block (with `iChannelTime` as a `vec4`, since WGSL rejects float arrays in uniforms)
 plus zz fields `iCellSize`, `iTimeCopy`, `iCopyRectCount`, and `iCopyRects[16]`. naga translates
-GLSL to WGSL (`terminal/shader.rs`), and uniform bytes are written at the offsets naga reports for
+GLSL to WGSL (`zz-ui/src/terminal/copy_flash.rs`), and uniform bytes are written at the offsets naga reports for
 the translated block, so the Rust side never hand-computes std140. Coordinates are y-down, as in
 Ghostty on Metal; `iResolution` comes from the input texture's size. All 46 shaders in two community
 collections translated when this landed.
 
-The copy flash is the first user. `MuxClient` bumps `RetainedTerminalViewport::copy_generation` when
-a server-produced selection lands in the system clipboard (copy-mode yank, `Cmd-C`, and
+The copy flash is the first user. `MuxClient` on the desktop bumps
+`RetainedTerminalViewport::copy_generation`, and `ClientCore` in the thin client bumps a per-pane
+count that outlives the viewport (`ClientCore::copy_generation`), when a server-produced selection lands in the system clipboard (copy-mode yank, `Cmd-C`, and
 copy-on-select, which writes the clipboard on macOS unless `set-clipboard` is `off`; an application's
 OSC 52 never counts). The view flashes the selection it last painted if it is still visible or
 cleared under 500 ms ago, and keeps following the painted selection while the flash runs: the copy
@@ -187,7 +188,10 @@ the selection's bounds left to right over 0.55 s (`COPY_FLASH_SECONDS`, injected
 `FLASH_SECONDS`). Under the band, pixels that match neither the selection nor the terminal
 background are pushed away from it, so glyphs brighten on a dark selection and darken on a light
 one, and the background gets a soft sheen with a faint glow past the edge. Frames are requested only
-while it runs.
+while it runs. `CopyFlashTracker` and `paint_copy_flash` in zz-ui hold the timing and the layer, so
+the desktop and the thin client's wide layout (iPad, web) draw the same flash; the thin client skips
+it in the compact layout (phones, and iPad or web windows under 640pt) and under reduced motion, and a renderer that cannot build the shader paints the
+terminal without it.
 
 # Non-goals
 

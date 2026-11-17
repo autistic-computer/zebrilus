@@ -282,6 +282,7 @@ pub struct ClientCore {
     last_detach_reason: Option<CoreDetachReason>,
     viewports: PaneMap<RetainedTerminalViewport>,
     spare_cells: PaneMap<SpareCells>,
+    copy_generations: PaneMap<u64>,
     next_row_revision: u64,
     history_limit: usize,
     agent_states: HashMap<PaneId, AgentPaneWire>,
@@ -478,6 +479,27 @@ impl ClientCore {
     }
 
     #[must_use]
+    pub fn set_clipboard_writes(&self) -> bool {
+        self.mux_options
+            .get(zz_protocol::MuxOptionKey::SetClipboard)
+            .is_none_or(|option| option.value != "off")
+    }
+
+    #[must_use]
+    pub fn clipboard_write_lands(
+        &self,
+        producer: ClipboardProducer,
+        target: ClipboardTarget,
+    ) -> bool {
+        match target {
+            ClipboardTarget::Clipboard => true,
+            ClipboardTarget::Primary => {
+                producer == ClipboardProducer::Server && self.set_clipboard_writes()
+            }
+        }
+    }
+
+    #[must_use]
     pub const fn terminal_negotiation(&self) -> Option<&(Vec<String>, Vec<String>, Vec<String>)> {
         self.terminal_negotiation.as_ref()
     }
@@ -607,6 +629,14 @@ impl ClientCore {
     #[must_use]
     pub fn retained_viewport(&self, pane: PaneId) -> Option<&RetainedTerminalViewport> {
         self.viewports.get(&pane)
+    }
+
+    #[must_use]
+    pub fn copy_generation(&self, pane: PaneId) -> u64 {
+        self.copy_generations
+            .get(&pane)
+            .copied()
+            .unwrap_or_default()
     }
 
     pub fn retain_history(&mut self) {
@@ -1030,6 +1060,7 @@ impl ClientCore {
             EventPayload::PaneRemoved(pane) => {
                 self.viewports.remove(&pane);
                 self.spare_cells.remove(&pane);
+                self.copy_generations.remove(&pane);
                 self.agent_states.remove(&pane);
                 self.full_pending.remove(&pane);
                 if self
@@ -1109,6 +1140,13 @@ impl ClientCore {
                 text,
                 producer,
             } => {
+                if producer == ClipboardProducer::Server
+                    && !text.is_empty()
+                    && self.clipboard_write_lands(producer, target)
+                {
+                    let copies = self.copy_generations.entry(pane).or_default();
+                    *copies = copies.wrapping_add(1);
+                }
                 self.events.push_back(CoreEvent::Clipboard {
                     pane,
                     request_id,
@@ -1407,6 +1445,7 @@ impl ClientCore {
             .collect();
         self.viewports.retain(|pane, _| live.contains(pane));
         self.spare_cells.retain(|pane, _| live.contains(pane));
+        self.copy_generations.retain(|pane, _| live.contains(pane));
         self.agent_states.retain(|pane, _| live.contains(pane));
         self.full_pending.retain(|pane| live.contains(pane));
     }
@@ -1690,6 +1729,37 @@ mod tests {
         );
         assert!(core.last_detach_was_session_destroyed());
         assert!(!core.last_detach_was_server_stopping());
+    }
+
+    #[test]
+    fn copy_generation_survives_reattach() {
+        let session = SessionId(7);
+        let pane = PaneId(3);
+        let copy = || {
+            event(EventPayload::Clipboard {
+                pane,
+                request_id: 0,
+                target: ClipboardTarget::Clipboard,
+                text: "copied".to_owned(),
+                producer: ClipboardProducer::Server,
+            })
+        };
+        let attached = || ProtocolMessage::Attached {
+            session,
+            snapshot: snapshot_with(&[pane]),
+            read_only: false,
+            client_flags: String::new(),
+        };
+        let mut core = ClientCore::new();
+        core.handle_message(attached());
+        core.handle_message(copy());
+        assert_eq!(core.copy_generation(pane), 1);
+
+        core.handle_message(attached());
+        assert_eq!(core.copy_generation(pane), 1);
+
+        core.handle_message(copy());
+        assert_eq!(core.copy_generation(pane), 2);
     }
 
     #[test]

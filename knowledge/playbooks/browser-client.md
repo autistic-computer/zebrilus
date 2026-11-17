@@ -133,8 +133,12 @@ and falls back to WebGL2. The page fills the viewport and reacts to browser resi
 Terminal panes receive full frames and patches through `ClientCore`. Both clients use the
 `zz-ui` terminal painter, which caches shaped rows and resolves shared style and grapheme
 dictionaries. Scrollbars, selection autoscroll, cursor blinking, inactive cursor outlines, and
-Kitty image placement use the shared rendering rules. Keyboard input, text composition,
+Kitty image placement use the shared rendering rules; the cursor stops blinking after 10 seconds
+without input and while its pane is off screen. Keyboard input, text composition,
 selection, scrolling, search, and paste reach the daemon through its existing input messages.
+Ctrl-= and Ctrl-- step the saved Terminal font scale setting by 10%, so every terminal changes.
+A terminal bell, when the host's `bell-action` and `visual-bell` let it ring, flashes a `•` in
+front of the page title three times.
 Reconnects attach to the remembered session and replay focus and Agent transcript state.
 Agent replay includes submitted prompts when the provider emits `user_message_chunk` updates;
 the daemon does not journal a separate copy of submitted prompt text. Browser image transfers
@@ -143,10 +147,14 @@ Hovering a terminal `[Image #N]` marker fetches its preview from the daemon and 
 250 ms in the desktop-style popover. The browser limits pasted-image transfers and cached encoded
 bytes to 64 MiB and 512 entries, drops them on reconnect or session attachment, and releases
 retired image assets from ala. Missing previews do not trigger repeated fetches while cached.
-Clipboard paste accepts PNG, JPEG, GIF, and WebP images up to 6 MiB through ala's browser paste
-callback. The browser uploads their original bytes in ordered chunks; the daemon writes the image
-on its host and pastes its path into the terminal. The browser does not resize or transcode clipboard
-images. Popup terminals, command output, and search retain text paste behavior.
+Clipboard paste takes images through ala's browser paste callback and runs them through the
+desktop's step in `zz_ui::attachment::normalize`: PNG, JPEG, GIF, and WebP images of 5 MiB or less
+whose long edge is at most 1568 pixels go up as they are; anything larger, and BMP or TIFF, is
+scaled to that edge and re-encoded to PNG. The browser uploads the bytes in ordered chunks; the
+daemon writes the image on its host and pastes its path into the terminal. An image pasted into
+an agent composer goes through the same step before it is attached. The step adds about 190 KB
+gzipped to the release WASM. Popup terminals, command output, and search retain text paste
+behavior.
 Page blur and local dialogs cancel the daemon prefix; ordinary keys wait for the cancellation
 acknowledgement after the dialog closes or the page regains focus.
 
@@ -215,7 +223,8 @@ toolbar and offer an external tab for their URL. The browser client does not ena
 code editor. File paths in `save-buffer`, `load-buffer`, and `source-file` resolve on the daemon host;
 the daemon only asks command-line clients for their files. Browser
 screenshot commands return an error because the page has no Chromium pane runtime. Daemon
-`OpenUri` requests open HTTP, HTTPS, and mailto links; other schemes show a client error toast.
+`OpenUri` requests open HTTP, HTTPS, and mailto links in a browser tab, and a pasted image
+placeholder opens the image preview; other schemes show a client error toast.
 
 # Checks
 
@@ -274,7 +283,7 @@ lines, and run `target/debug/zz-web --socket /tmp/first.sock` with that environm
 - `libs/penna/src/blocks/picker/mod.rs`: shared history and path picker layout and rows.
 - `crates/zz-ui/src/agent/controls.rs`: shared composer actions, option menus, Git counts, and context usage.
 - `crates/zz-ui/src/agent/presentation.rs`: shared permission, error, and empty-state cards.
-- `clients/app/src/attachments.rs`: browser image selection and protocol limits.
+- `clients/app/src/attachments.rs`: agent composer images (scaled through `zz_ui::attachment::normalize`), browser image selection, and protocol limits.
 - `crates/zz-web/src/lib.rs`: `Gateway`, asset serving, `/hosts`, and the binary WebSocket bridge.
 - `crates/zz-daemon-client/src/route.rs`: `DaemonRoute`, the unattended route to any endpoint's daemon socket.
 - `scripts/build-web-wasm.sh`: build and static distribution assembly.

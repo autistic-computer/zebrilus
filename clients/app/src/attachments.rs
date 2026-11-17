@@ -1,4 +1,19 @@
+use std::{borrow::Cow, sync::Arc};
+
 use zz_protocol::{AgentImage, MAX_AGENT_PROMPT_BYTES, MAX_AGENT_PROMPT_IMAGES};
+
+pub fn agent_images(images: &[Arc<ala::Image>]) -> Result<Vec<AgentImage>, String> {
+    images
+        .iter()
+        .map(|image| {
+            let image = zz_ui::attachment::normalize(image).map_err(Cow::into_owned)?;
+            Ok(AgentImage {
+                format: image.format.mime_type().to_owned(),
+                data: image.bytes.clone(),
+            })
+        })
+        .collect()
+}
 
 pub fn validate_images(text: &str, images: &[AgentImage]) -> Result<(), String> {
     if images.len() > MAX_AGENT_PROMPT_IMAGES {
@@ -21,10 +36,13 @@ pub fn validate_images(text: &str, images: &[AgentImage]) -> Result<(), String> 
 }
 
 fn validate_format(format: &str) -> Result<(), String> {
-    if matches!(format, "image/png" | "image/jpeg" | "image/webp") {
+    if matches!(
+        format,
+        "image/png" | "image/jpeg" | "image/gif" | "image/webp"
+    ) {
         Ok(())
     } else {
-        Err("Choose a PNG, JPEG, or WebP image.".into())
+        Err("Choose a PNG, JPEG, GIF, or WebP image.".into())
     }
 }
 
@@ -64,7 +82,7 @@ mod browser {
                 .dyn_into::<HtmlInputElement>()
                 .map_err(|_| "Could not create the image picker.")?;
             input.set_type("file");
-            input.set_accept("image/png,image/jpeg,image/webp");
+            input.set_accept("image/png,image/jpeg,image/gif,image/webp");
             input.set_multiple(true);
             input.set_hidden(true);
             let (sender, receiver) = async_channel::bounded(1);
@@ -163,7 +181,7 @@ mod tests {
     #[test]
     fn accepts_supported_images_and_empty_selection() {
         assert!(validate_images("Hello", &[]).is_ok());
-        for format in ["image/png", "image/jpeg", "image/webp"] {
+        for format in ["image/png", "image/jpeg", "image/gif", "image/webp"] {
             assert!(validate_images("Hello", &[image(format, 1)]).is_ok());
         }
     }
@@ -185,6 +203,31 @@ mod tests {
             image("image/jpeg", MAX_AGENT_PROMPT_BYTES / 2 + 1),
         ];
         assert!(validate_images("", &images).is_err());
+    }
+
+    #[test]
+    fn a_pasted_tiff_screenshot_is_scaled_into_a_png_prompt_image() {
+        let mut tiff = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(3136, 1000)
+            .write_to(&mut tiff, image::ImageFormat::Tiff)
+            .expect("fixture should encode");
+        let pasted = Arc::new(ala::Image::from_bytes(
+            ala::ImageFormat::Tiff,
+            tiff.into_inner(),
+        ));
+
+        let images = agent_images(&[pasted]).expect("a TIFF should be attachable");
+
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].format, "image/png");
+        let size = image::ImageReader::with_format(
+            std::io::Cursor::new(&images[0].data),
+            image::ImageFormat::Png,
+        )
+        .into_dimensions()
+        .expect("the attachment should be a PNG");
+        assert_eq!(size, (1568, 500));
+        assert!(validate_images("", &images).is_ok());
     }
 
     #[test]

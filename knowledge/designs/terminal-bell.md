@@ -116,6 +116,9 @@ Two small pieces, no client-held bell state:
 * `crates/zz/src/mux/client.rs`: accept `EventPayload::Bell` from attached and background hosts and
   advance the shared bell revision; `AppView` turns a new revision into `request_attention()` and
   the macOS system beep.
+* `clients/app/src/bell.rs`: the thin client rings on `CoreEvent::Bell`, with the iOS system alert
+  sound at most once per 200 ms or, on the web, a `•` flashed three times in front of the page title
+  that later bells do not restart. Android stays silent.
 * `crates/zz/src/workspace/sidebar.rs` and `zz-mux/src/status.rs`: render from the snapshot flag.
   Sidebar dots bubble from panes through collapsed window, session, and host rows so hidden remote
   descendants still advertise attention.

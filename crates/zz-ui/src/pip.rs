@@ -599,9 +599,150 @@ impl RenderOnce for PipSurface {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FloatGripArea {
+    pub name: &'static str,
+    pub grip: FloatGrip,
+    pub bounds: Bounds<Pixels>,
+    pub cursor: Option<ala::CursorStyle>,
+}
+
+#[must_use]
+pub fn float_grip_areas(
+    frame: Size<Pixels>,
+    edge: Size<Pixels>,
+    near: Point<Pixels>,
+    pip: bool,
+) -> Vec<FloatGripArea> {
+    use ala::CursorStyle;
+    let far_x = (frame.width - edge.width - near.x).max(Pixels::ZERO);
+    let far_y = (frame.height - edge.height - near.y).max(Pixels::ZERO);
+    let inner_width = (frame.width - edge.width * 2.0 - near.x * 2.0).max(Pixels::ZERO);
+    let top = near.y + edge.height;
+    let side = ala::size(edge.width, (far_y - top).max(Pixels::ZERO));
+    let across = ala::size(inner_width, edge.height);
+    let edges = |left, top, right, bottom| FloatGrip {
+        left,
+        top,
+        right,
+        bottom,
+    };
+    [
+        (
+            "move",
+            FloatGrip::MOVE,
+            Bounds::new(point(near.x + edge.width, near.y), across),
+            None,
+        ),
+        (
+            "left",
+            edges(true, false, false, false),
+            Bounds::new(point(near.x, top), side),
+            Some(CursorStyle::ResizeLeftRight),
+        ),
+        (
+            "right",
+            edges(false, false, true, false),
+            Bounds::new(point(far_x, top), side),
+            Some(CursorStyle::ResizeLeftRight),
+        ),
+        (
+            "top",
+            edges(false, true, false, false),
+            Bounds::new(point(near.x + edge.width, near.y), across),
+            Some(CursorStyle::ResizeUpDown),
+        ),
+        (
+            "bottom",
+            edges(false, false, false, true),
+            Bounds::new(point(near.x + edge.width, far_y), across),
+            Some(CursorStyle::ResizeUpDown),
+        ),
+        (
+            "top-left",
+            edges(true, true, false, false),
+            Bounds::new(near, edge),
+            Some(CursorStyle::ResizeUpLeftDownRight),
+        ),
+        (
+            "top-right",
+            edges(false, true, true, false),
+            Bounds::new(point(far_x, near.y), edge),
+            Some(CursorStyle::ResizeUpRightDownLeft),
+        ),
+        (
+            "bottom-left",
+            edges(true, false, false, true),
+            Bounds::new(point(near.x, far_y), edge),
+            Some(CursorStyle::ResizeUpRightDownLeft),
+        ),
+        (
+            "bottom-right",
+            edges(false, false, true, true),
+            Bounds::new(point(far_x, far_y), edge),
+            Some(CursorStyle::ResizeUpLeftDownRight),
+        ),
+    ]
+    .into_iter()
+    .filter(|(name, ..)| *name != if pip { "move" } else { "top" })
+    .map(|(name, grip, bounds, cursor)| FloatGripArea {
+        name,
+        grip,
+        bounds,
+        cursor,
+    })
+    .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn float_grips_keep_pip_tops_for_the_header_and_modal_tops_for_moving() {
+        let frame = ala::size(px(200.0), px(120.0));
+        let area = |areas: &[FloatGripArea], name: &str| {
+            areas
+                .iter()
+                .find(|area| area.name == name)
+                .map(|area| area.bounds)
+        };
+        let rect = |x: f32, y: f32, width: f32, height: f32| {
+            Bounds::new(point(px(x), px(y)), ala::size(px(width), px(height)))
+        };
+        let pointer = float_grip_areas(
+            frame,
+            ala::size(px(8.0), px(8.0)),
+            point(px(-4.0), px(-4.0)),
+            true,
+        );
+        assert_eq!(area(&pointer, "move"), None);
+        assert_eq!(area(&pointer, "right"), Some(rect(196.0, 4.0, 8.0, 112.0)));
+        assert_eq!(area(&pointer, "top"), Some(rect(4.0, -4.0, 192.0, 8.0)));
+        let touch = float_grip_areas(
+            frame,
+            ala::size(px(44.0), px(44.0)),
+            point(px(-4.0), px(-4.0)),
+            true,
+        );
+        assert_eq!(
+            area(&touch, "bottom-left"),
+            Some(rect(-4.0, 80.0, 44.0, 44.0))
+        );
+        assert_eq!(
+            area(&touch, "bottom-right"),
+            Some(rect(160.0, 80.0, 44.0, 44.0))
+        );
+        let modal = float_grip_areas(
+            frame,
+            ala::size(px(8.0), px(16.0)),
+            point(Pixels::ZERO, Pixels::ZERO),
+            false,
+        );
+        assert_eq!(area(&modal, "top"), None);
+        assert_eq!(area(&modal, "move"), Some(rect(8.0, 0.0, 184.0, 16.0)));
+        assert_eq!(area(&modal, "left"), Some(rect(0.0, 16.0, 8.0, 88.0)));
+    }
 
     #[test]
     fn a_throw_is_measured_over_the_last_tenth_of_a_second() {
