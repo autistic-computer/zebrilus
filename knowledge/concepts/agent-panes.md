@@ -72,8 +72,9 @@ cannot `agent-send` to its parent. The brief of such a chat, and a chat caller's
 `agent-send` to a chat, carry a waiter (`Shared::chat_report_waiter`) that reports the turn into
 the caller as a prompt the daemon makes (`AgentRuntime::inject`): `[zz] %N (codex) finished:` with
 the final text (or the full text when the final part is empty, last 64 KiB), `stopped (reason):`
-(or `stopped (cancelled):` with no text), each followed by a blank line and `Follow up with: zz
-agent-send -t %N 'TEXT'`; `failed: message` followed by `Tell the user, or try again with: zz
+(or `stopped (cancelled):` with no text), each followed by a blank line and `If this answers the
+user, answer the user now and send nothing to %N. Only if something is missing: zz agent-send -t
+%N 'TEXT'`; `failed: message` followed by `Tell the user, or try again with: zz
 agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`
 `AgentReport::parse` strips those trailing lines, so a client gets only the reply text. While that turn waits on a permission
 or a question, the waiter's `asks` sink sends one `[zz] %N (codex) asks: kind title` message per
@@ -99,7 +100,12 @@ running turn; read its last reply with: zz capture-pane -p -t %N`.
 a message; end your turn now` for a chat caller with a brief or `; read its reply with: zz agent-send -t %N --wait ''`
 for any other caller with a brief. A plain `agent-send` prints the pane on stdout and on stderr
 either `agent-send: %N's reply comes back to you as a message; end your turn now` (chat caller) or `agent-send: read
-%N's reply with: zz agent-send -t %N --wait ''`. `--notify` from a chat is a plain send. A chat
+%N's reply with: zz agent-send -t %N --wait ''`. `--notify` from a chat is a plain send. A chat caller sends at most `MAX_SENDS_SINCE_USER` (8)
+prompts to one chat, a brief counting as the first, until it receives a prompt the daemon did not
+inject (from the user or any client); then the next send fails with `%N has had 8 messages from
+you since the user last wrote; answer the user now` and nothing is sent. The counts live in
+`AgentRuntime::sends`, keyed by caller and target, and a non-injected prompt to the caller clears
+the caller's counts. Sends from terminals are not counted. A chat
 whose queue already holds `MAX_AGENT_QUEUED_PROMPTS` prompts refuses a send at once
 (`refuse_full_chat`: `%N has 4 prompts waiting; wait for its turn with: ...`), and prompts the
 daemon queues for `agent-send` or a brief (`PromptSource::Command`) are never handed back to a

@@ -363,7 +363,9 @@ pub enum AgentReport {
 const CLOSED_TAIL: &str = "was closed before it replied. Tell the user; do not open it again.";
 
 fn follow_up(pane: PaneId) -> String {
-    format!("Follow up with: zz agent-send -t {pane} 'TEXT'")
+    format!(
+        "If this answers the user, answer the user now and send nothing to {pane}. Only if something is missing: zz agent-send -t {pane} 'TEXT'"
+    )
 }
 
 fn try_again(pane: PaneId) -> String {
@@ -738,7 +740,7 @@ mod tests {
                     provider: codex,
                     text: "all green\nno changes".to_owned(),
                 },
-                "[zz] %4 (codex) finished:\nall green\nno changes\n\nFollow up with: zz agent-send -t %4 'TEXT'",
+                "[zz] %4 (codex) finished:\nall green\nno changes\n\nIf this answers the user, answer the user now and send nothing to %4. Only if something is missing: zz agent-send -t %4 'TEXT'",
             ),
             (
                 AgentReport::Stopped {
@@ -747,7 +749,7 @@ mod tests {
                     reason: "max_tokens".to_owned(),
                     text: "half".to_owned(),
                 },
-                "[zz] %4 (claude) stopped (max_tokens):\nhalf\n\nFollow up with: zz agent-send -t %4 'TEXT'",
+                "[zz] %4 (claude) stopped (max_tokens):\nhalf\n\nIf this answers the user, answer the user now and send nothing to %4. Only if something is missing: zz agent-send -t %4 'TEXT'",
             ),
             (
                 AgentReport::Stopped {
@@ -756,7 +758,7 @@ mod tests {
                     reason: "cancelled".to_owned(),
                     text: String::new(),
                 },
-                "[zz] %4 (codex) stopped (cancelled):\n\nFollow up with: zz agent-send -t %4 'TEXT'",
+                "[zz] %4 (codex) stopped (cancelled):\n\nIf this answers the user, answer the user now and send nothing to %4. Only if something is missing: zz agent-send -t %4 'TEXT'",
             ),
             (
                 AgentReport::Failed {

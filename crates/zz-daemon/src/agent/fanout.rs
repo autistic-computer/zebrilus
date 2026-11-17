@@ -76,12 +76,15 @@ pub(crate) trait AgentPublisher: Send + Sync + 'static {
     fn send_agent_reply(&self, generation: u64, pane: PaneId, reply: AgentRequestReply);
 }
 
+pub(crate) const MAX_SENDS_SINCE_USER: u32 = 8;
+
 pub(crate) struct AgentRuntime {
     host: AgentHost,
     fanout: Arc<AgentFanout>,
     generation: AtomicU64,
     _publisher: Arc<dyn AgentPublisher>,
     lifecycle: Arc<Mutex<()>>,
+    sends: Mutex<BTreeMap<(PaneId, PaneId), u32>>,
 }
 
 impl AgentRuntime {
@@ -112,7 +115,20 @@ impl AgentRuntime {
             generation: AtomicU64::new(1),
             _publisher: Arc::clone(publisher),
             lifecycle,
+            sends: Mutex::new(BTreeMap::new()),
         }
+    }
+
+    pub(crate) fn sends_since_user(&self, caller: PaneId, target: PaneId) -> u32 {
+        self.sends
+            .lock()
+            .get(&(caller, target))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn count_send(&self, caller: PaneId, target: PaneId) {
+        *self.sends.lock().entry((caller, target)).or_insert(0) += 1;
     }
 
     pub(crate) fn open(&self, pane: PaneId, spec: AgentPaneSpec) -> bool {
@@ -232,6 +248,7 @@ impl AgentRuntime {
         note: Option<String>,
     ) -> bool {
         let _lifecycle = self.lifecycle.lock();
+        self.sends.lock().retain(|(caller, _), _| *caller != pane);
         let queued = QueuedPrompt {
             prompt,
             waiter,

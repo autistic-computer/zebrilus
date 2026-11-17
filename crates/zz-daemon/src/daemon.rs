@@ -17176,6 +17176,9 @@ impl Shared {
                 return self.wait_for_agent_turn(client, pane, None, &parsed, caller.is_some());
             }
             self.refuse_full_chat(pane)?;
+            if let Some(caller) = caller {
+                self.count_chat_send(caller, pane)?;
+            }
             if parsed.notify && caller.is_none() {
                 let caller = self
                     .inner
@@ -33798,6 +33801,9 @@ impl Shared {
                 }
             }
         }
+        if queued && let (Some(caller), Some(runtime)) = (caller, self.open_agent_runtime()) {
+            runtime.count_send(caller, pane);
+        }
         let route = match (queued, caller) {
             (false, _) => None,
             (true, Some(_)) => Some(ReplyRoute::Back),
@@ -33850,6 +33856,21 @@ impl Shared {
         for pane in created {
             inner.engine.set_agent_parent(pane, caller);
         }
+    }
+
+    fn count_chat_send(self: &Arc<Self>, caller: PaneId, pane: PaneId) -> Result<(), DaemonError> {
+        let Some(runtime) = self.open_agent_runtime() else {
+            return Ok(());
+        };
+        let limit = crate::agent::fanout::MAX_SENDS_SINCE_USER;
+        if runtime.sends_since_user(caller, pane) >= limit {
+            return Err(ServerError::InvalidCommand(format!(
+                "{pane} has had {limit} messages from you since the user last wrote; answer the user now"
+            ))
+            .into());
+        }
+        runtime.count_send(caller, pane);
+        Ok(())
     }
 
     fn refuse_full_chat(self: &Arc<Self>, pane: PaneId) -> Result<(), DaemonError> {
@@ -52858,7 +52879,7 @@ Claude Code and Codex run two ways in a pane, and a pane flips between them on t
 
 Open a new chat as a float. `split-window` and `new-window` take the same `--kind agent` words and give the chat a split beside the target or a window of its own. `--model`, `--effort`, `--account` and `--resume` go before the provider or right after it. The words after them are the brief, sent as the chat's first prompt once its session is up, with the same checks and 1 MiB cap as `agent-send` TEXT; no brief opens an empty chat. Without `-c` the chat starts in the folder a terminal made the same way would. `-P -F '#{pane_id}'` prints the new pane, which takes `agent-send` at once: `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'review the diff in this folder'`. A missing or unknown provider, or a bad flag value, exits 2. Every create prints one line on stderr, `new-pane: opened %N (codex)` (with the verb's own name); with a brief it goes on `; its reply comes back to you as a message; end your turn now` when run from a chat, and `; read its reply with: zz agent-send -t %N --wait ''` when run from anywhere else.
 
-Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends, and each permission it asks for during that turn comes to you with the `agent-respond` lines that answer it. Do not wait or poll. The chat you open gets a note with its brief, kept out of its transcript, saying which chat opened it and that its final message is its reply. It cannot open chats of its own (it is told to do the work itself or say what it needs), and closing your pane closes it and every pane it opened. A message reads `[zz] %N (codex) finished:` or `stopped (REASON):`, then the reply and `Follow up with: zz agent-send -t %N 'TEXT'`; `failed: MESSAGE` and `Tell the user, or try again with: zz agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it, one `--option ID  # LABEL` line per choice of a question and `--answer 'TEXT'` for one that wants typed text.
+Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends, and each permission it asks for during that turn comes to you with the `agent-respond` lines that answer it. Do not wait or poll. The chat you open gets a note with its brief, kept out of its transcript, saying which chat opened it and that its final message is its reply. It cannot open chats of its own (it is told to do the work itself or say what it needs), and closing your pane closes it and every pane it opened. A message reads `[zz] %N (codex) finished:` or `stopped (REASON):`, then the reply and `If this answers the user, answer the user now and send nothing to %N. Only if something is missing: zz agent-send -t %N 'TEXT'`; `failed: MESSAGE` and `Tell the user, or try again with: zz agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it, one `--option ID  # LABEL` line per choice of a question and `--answer 'TEXT'` for one that wants typed text.
 
 A prompt that names an agent with `@+claude`, `@+codex` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a note, kept out of the transcript, that tells you to hand the task over with the exact command (`zz new-pane -d --kind agent codex 'BRIEF'`, or `zz agent-send -t %N 'TEXT'` for a chat) and end your turn.
 
@@ -52882,7 +52903,7 @@ Send TEXT as a prompt to an agent pane (a chat), or to another agent in a termin
 
 Turn facts: `final_text` contains message text after the last tool call or tool update. `tool_calls` counts the turn's tool calls; permission counters count the chat's requests. Each buffer keeps its tail when capped: 1 MiB for the transcript and 256 KiB for final text. The JSON object has `pane`, `stop_reason`, `duration_ms`, `tool_calls`, `permissions` (`requested`, `allowed`, `denied`), `truncated`, `final_text`, and `transcript`. A blocked reply also has a nested `permission` object. Exit 0 means `end_turn`; other stop reasons exit 1 with the reply still printed, except cancellation, which keeps its existing error output. A blocked wait exits 3 and a timeout exits 124. Stderr carries the pane ID and on-block audit lines. `--progress` requires `--wait` and an explicit `-t %N`. It prints tool calls, state changes, and a heartbeat after 60 seconds without a line to stderr. Titles in progress lines stop at 120 characters.
 
-A send without `--wait` prints the pane ID. From a chat, the reply comes back to you as a message when that turn ends, the chat's permission asks come to you as they open, and stderr says `agent-send: %N's reply comes back to you as a message; end your turn now`; from anywhere else stderr says `agent-send: read %N's reply with: zz agent-send -t %N --wait ''`. A chat that already has 4 prompts waiting refuses a send with exit 1 and `%N has 4 prompts waiting; wait for its turn with: zz agent-send -t %N --wait ''`. With `--wait` from a chat, `--on-block` defaults to `fail`, and a blocked wait ends its output with the `agent-respond` and `agent-send --wait ''` lines to run next. A chat cannot send to the chat that opened it: its reply reaches that chat when its turn ends. `--wait ''` on a chat waits for the turn that is running and prints its reply; with no turn running it exits 1 with `%N has no running turn; read its last reply with: zz capture-pane -p -t %N`.
+A send without `--wait` prints the pane ID. From a chat, the reply comes back to you as a message when that turn ends, the chat's permission asks come to you as they open, and stderr says `agent-send: %N's reply comes back to you as a message; end your turn now`; from anywhere else stderr says `agent-send: read %N's reply with: zz agent-send -t %N --wait ''`. A chat that already has 4 prompts waiting refuses a send with exit 1 and `%N has 4 prompts waiting; wait for its turn with: zz agent-send -t %N --wait ''`. With `--wait` from a chat, `--on-block` defaults to `fail`, and a blocked wait ends its output with the `agent-respond` and `agent-send --wait ''` lines to run next. A chat cannot send to the chat that opened it: its reply reaches that chat when its turn ends. A chat sends at most 8 messages to one chat (a brief counts as the first) between two prompts the user gives it; the next fails with `%N has had 8 messages from you since the user last wrote; answer the user now`. `--wait ''` on a chat waits for the turn that is running and prints its reply; with no turn running it exits 1 with `%N has no running turn; read its last reply with: zz capture-pane -p -t %N`.
 
 ### `zz agent-respond [-t %N] (--allow | --deny | --option ID | --answer TEXT) [REQUEST_ID]`
 
@@ -124397,6 +124418,41 @@ bind - split-window -v -c "#{pane_current_path}"
         }
 
         #[test]
+        fn a_chat_sends_eight_messages_to_a_chat_until_the_user_writes_again() {
+            let workspace = workspace(Behavior::Chunk);
+            let host = workspace.agent;
+            run_as(
+                &workspace,
+                ClientId(97),
+                None,
+                "new-pane",
+                &["-d", "-t", "%1", "--kind", "agent", "codex"],
+            )
+            .expect("a chat with no parent");
+            let send = || {
+                run_as(
+                    &workspace,
+                    ClientId(99),
+                    Some(host),
+                    "agent-send",
+                    &["-t", "%2", "--wait", "thanks"],
+                )
+            };
+            for turn in 0..8 {
+                assert_eq!(send(), Ok(format!("turn {turn}")));
+            }
+            assert_eq!(
+                send(),
+                Err(
+                    "%2 has had 8 messages from you since the user last wrote; answer the user now"
+                        .to_owned()
+                )
+            );
+            workspace.prompt("one more, please").expect("user prompt");
+            assert_eq!(send(), Ok("turn 8".to_owned()));
+        }
+
+        #[test]
         fn chat_verbs_say_what_to_run_next() {
             let workspace = workspace_with(&[Behavior::Hang, Behavior::Chunk]);
             let terminal = ClientId(97);
@@ -124563,7 +124619,9 @@ bind - split-window -v -c "#{pane_current_path}"
             });
             assert_eq!(
                 received(&workspace, host),
-                ["[zz] %2 (codex) finished:\nturn 0\n\nFollow up with: zz agent-send -t %2 'TEXT'"]
+                [
+                    "[zz] %2 (codex) finished:\nturn 0\n\nIf this answers the user, answer the user now and send nothing to %2. Only if something is missing: zz agent-send -t %2 'TEXT'"
+                ]
             );
             assert_eq!(
                 run_as(
@@ -124672,7 +124730,7 @@ bind - split-window -v -c "#{pane_current_path}"
                 received(&workspace, host),
                 [
                     "[zz] %2 (codex) asks: run it\nzz agent-respond -t %2 --allow\nzz agent-respond -t %2 --deny",
-                    "[zz] %2 (codex) finished:\nturn 0\n\nFollow up with: zz agent-send -t %2 'TEXT'",
+                    "[zz] %2 (codex) finished:\nturn 0\n\nIf this answers the user, answer the user now and send nothing to %2. Only if something is missing: zz agent-send -t %2 'TEXT'",
                 ]
             );
 

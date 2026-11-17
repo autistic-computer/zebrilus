@@ -12,7 +12,8 @@ def load(path):
     return cell
 
 
-a, b = load(sys.argv[1]), load(sys.argv[2])
+batches = [load(p) for p in sys.argv[1:]]
+keys = sorted(batches[-1]) if len(batches) > 2 else sorted(set().union(*batches))
 
 
 def stats(rs):
@@ -22,9 +23,9 @@ def stats(rs):
     return f"{sum(int(r[3]) for r in rs)}/{len(rs)}", med(6), med(7)
 
 
-print("| scenario | host | pass before | pass after | calls before | calls after | failed before | failed after |")
-print("|---|---|---|---|---|---|---|---|")
-for k in sorted(set(a) | set(b)):
-    pa, ca, fa = stats(a.get(k, []))
-    pb, cb, fb = stats(b.get(k, []))
-    print(f"| {k[0]} | {k[1]} | {pa} | {pb} | {ca} | {cb} | {fa} | {fb} |")
+n = len(batches)
+print("| scenario | host | pass | median calls | median failed |")
+print("|---|---|---|---|---|")
+for k in keys:
+    cols = [stats(b.get(k, [])) for b in batches]
+    print(f"| {k[0]} | {k[1]} | " + " | ".join(" → ".join(c[i] for c in cols) for i in range(3)) + " |")
