@@ -15,6 +15,8 @@ enum Step {
         ctrl: bool,
         alt: bool,
         meta: bool,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        raw: bool,
     },
 }
 
@@ -63,12 +65,6 @@ fn input_step(input: &KeyInput) -> Option<Step> {
         return None;
     }
     let modifiers = input.modifiers;
-    let plain = !modifiers.control() && !modifiers.alt() && !modifiers.platform();
-    if plain && let Some(text) = input.text.as_deref().filter(|text| !text.is_empty()) {
-        return Some(Step::Text {
-            text: text.to_owned(),
-        });
-    }
     let key = match input.key {
         KeyCode::Character(character) => character.to_string(),
         KeyCode::Backspace => "Backspace".to_owned(),
@@ -88,15 +84,14 @@ fn input_step(input: &KeyInput) -> Option<Step> {
         KeyCode::Function(number) => format!("F{number}"),
         KeyCode::Unidentified | KeyCode::User(_) => return None,
     };
-    Some(key_step(
+    Some(Step::Key {
         key,
-        [
-            modifiers.shift(),
-            modifiers.control(),
-            modifiers.alt(),
-            modifiers.platform(),
-        ],
-    ))
+        shift: modifiers.shift(),
+        ctrl: modifiers.control(),
+        alt: modifiers.alt(),
+        meta: modifiers.platform(),
+        raw: true,
+    })
 }
 
 fn key_step(key: String, [shift, ctrl, alt, meta]: [bool; 4]) -> Step {
@@ -106,6 +101,7 @@ fn key_step(key: String, [shift, ctrl, alt, meta]: [bool; 4]) -> Step {
         ctrl,
         alt,
         meta,
+        raw: false,
     }
 }
 
@@ -171,6 +167,7 @@ const PAGE_KEYS_SCRIPT: &str = r"((steps, count) => {
       Home: ['backward', 'lineboundary'], End: ['forward', 'lineboundary'] }[step.key];
     if (!moves) return;
     if (el.isContentEditable) return selection.modify(how, ...moves);
+    if (el.selectionStart === null) return;
     const length = el.value.length;
     const end = el.selectionDirection === 'backward' ? el.selectionStart : el.selectionEnd;
     const to = { ArrowLeft: end - 1, ArrowRight: end + 1, Home: 0, End: length, ArrowUp: 0, ArrowDown: length }[step.key];
@@ -184,6 +181,7 @@ const PAGE_KEYS_SCRIPT: &str = r"((steps, count) => {
     if ((step.ctrl || step.meta) && step.key.toLowerCase() === 'a') return document.execCommand('selectAll');
     if (step.ctrl || step.alt || step.meta) return;
     if ([...step.key].length === 1) {
+      if (step.raw) return;
       if (field) document.execCommand('insertText', false, step.key);
       else if (step.key === ' ') scroll(' ', step.shift);
       return;
@@ -250,6 +248,20 @@ mod tests {
         assert_eq!(
             super::script(&BrowserCommand::SendKeys(vec![KeyToken::Raw(3)])),
             None
+        );
+        let typed = super::script(&BrowserCommand::Key(KeyInput {
+            action: KeyAction::Press,
+            key: KeyCode::Character('a'),
+            modifiers: zz_terminal::Modifiers::default(),
+            text: Some("a".into()),
+            unshifted_codepoint: Some('a'),
+        }))
+        .expect("a key press produces a script");
+        assert_eq!(
+            typed.strip_prefix(PAGE_KEYS_SCRIPT),
+            Some(
+                r#"([{"key":"a","shift":false,"ctrl":false,"alt":false,"meta":false,"raw":true}], 1);"#
+            )
         );
     }
 }
