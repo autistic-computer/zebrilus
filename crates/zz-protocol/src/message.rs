@@ -114,6 +114,8 @@ pub(crate) const MAX_MUX_OPTION_VALUE_BYTES: usize = 64 * 1024;
 
 pub const DEFAULT_AGENT_COMMAND: &str = "codex";
 pub const DEFAULT_AGENT_CLAUDE_CODE_COMMAND: &str = "claude";
+pub const AGENT_FLOAT_WIDTH: &str = "46%";
+pub const AGENT_FLOAT_HEIGHT: &str = "72%";
 pub const DEFAULT_AGENT_AUTO_APPROVE: AgentAutoApprove = AgentAutoApprove::Reads;
 pub const MAX_AGENT_COMMAND_BYTES: usize = 4 * 1024;
 

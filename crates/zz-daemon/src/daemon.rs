@@ -93,7 +93,7 @@ use zz_mux::{
     MuxEffect, MuxEngine, PaneKind, PaneModeRequest, PaneRuntimeFacts, PanesMode, ParsedConfig,
     ParsedConfigBytes, PromptOutcome, RetainedJobEnvironment, SourceStream, StatusHooks,
     SwitchAction, TmuxColour, TmuxSort, TmuxSortOrder, WindowSize, canonical_command,
-    command_block_body, copy_mode_action_is_read_only_safe, customize_menu_feed,
+    check_plain_text, command_block_body, copy_mode_action_is_read_only_safe, customize_menu_feed,
     expand_format_bytes, expand_format_values, expand_status, format_command, format_true,
     hook_format_variables, if_shell_truthy, legacy_layouts_in, parse_tmux_colour,
     sanitize_client_output, send_keys_is_read_only_safe, send_keys_target_client, utf8_sanitize,
@@ -9591,6 +9591,7 @@ impl Shared {
         let mut pane_stream_inputs: Vec<(PaneId, RawText)> = Vec::new();
         let mut removed_panes = Vec::new();
         let mut agent_panes_opened: Vec<(PaneId, Option<Arc<TerminalSession>>)> = Vec::new();
+        let mut agent_briefs: Vec<(PaneId, String)> = Vec::new();
         #[cfg(feature = "agent")]
         let mut agent_panes_closed = Vec::new();
         let mut relocated_terminal_views = Vec::new();
@@ -10450,6 +10451,9 @@ impl Shared {
                         inner.agent_forks.insert(*pane, at.clone());
                         #[cfg(not(feature = "agent"))]
                         let _ = (pane, at);
+                    }
+                    MuxEffect::AgentBrief { pane, text } => {
+                        agent_briefs.push((*pane, text.clone()));
                     }
                     MuxEffect::PaneCreated {
                         kind:
@@ -12283,9 +12287,10 @@ impl Shared {
                 self.open_agent_pane(pane, replaced);
                 self.request_pane_location(pane);
             }
+            self.queue_agent_briefs(agent_briefs);
         }
         #[cfg(not(feature = "agent"))]
-        let _ = agent_panes_opened;
+        let _ = (agent_panes_opened, agent_briefs);
         for pane in removed_panes {
             self.cancel_pane_files(pane);
             self.publish(EventPayload::PaneRemoved(pane));
@@ -33460,6 +33465,24 @@ impl Shared {
         }
     }
 
+    fn queue_agent_briefs(self: &Arc<Self>, briefs: Vec<(PaneId, String)>) {
+        let Some(runtime) = self.agent_runtime().filter(|_| !briefs.is_empty()) else {
+            return;
+        };
+        for (pane, text) in briefs {
+            if !runtime.prompt(
+                pane,
+                AgentPrompt {
+                    owner: ClientInstanceId(u64::MAX),
+                    text,
+                    images: Vec::new(),
+                },
+            ) {
+                log::warn!(target: "zz::agent", "{pane} handed back its brief");
+            }
+        }
+    }
+
     fn fork_agent_session(&self, pane: PaneId, at: Option<&str>) {
         let source = match &self
             .inner
@@ -51115,29 +51138,6 @@ fn expand_command_format(
     }
 }
 
-fn check_plain_text(command: &str, text: &str) -> Result<(), ServerError> {
-    if text.trim().is_empty() {
-        return Err(ServerError::InvalidCommand(format!(
-            "{command} needs text on the command line or on standard input"
-        )));
-    }
-    if text.len() > MAX_AGENT_SEND_BYTES {
-        return Err(ServerError::InvalidCommand(format!(
-            "{command} payload is {} bytes; the limit is {MAX_AGENT_SEND_BYTES}",
-            text.len()
-        )));
-    }
-    if text
-        .chars()
-        .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
-    {
-        return Err(ServerError::InvalidCommand(format!(
-            "{command} payload contains control characters; pipe plain text"
-        )));
-    }
-    Ok(())
-}
-
 fn collapse_whitespace(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -52249,6 +52249,10 @@ Commands that set an explicit exit code keep that code.
     WORKSPACE_TOOLS_AGENT = r#"## Agents
 
 Claude Code and Codex run two ways in a pane, and a pane flips between them on the same session. In a terminal pane the CLI runs as its own TUI, started like any program (`zz split-window -h claude`). In an agent pane the daemon runs the CLI headless and the clients draw the conversation as a chat: `zz select-pane-kind -t %N [-c DIR] [--resume ID] [--model M] [--effort E] [--account ID] agent claude|codex` turns a picker or a terminal into one.
+
+### `zz new-pane [-d] [-P -F FORMAT] [-c DIR] [-t TARGET] --kind agent claude|codex [--model M] [--effort E] [--account ID] [--resume ID] [BRIEF]`
+
+Open a new chat as a float. `split-window` and `new-window` take the same `--kind agent` words and give the chat a split beside the target or a window of its own. `--model`, `--effort`, `--account` and `--resume` go before the provider or right after it. The words after them are the brief, sent as the chat's first prompt once its session is up, with the same checks and 1 MiB cap as `agent-send` TEXT; no brief opens an empty chat. Without `-c` the chat starts in the folder a terminal made the same way would. `-P -F '#{pane_id}'` prints the new pane, which takes `agent-send` at once: `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'review the diff in this folder'`. A missing or unknown provider, or a bad flag value, exits 2.
 
 A chat answers the same reads as a terminal. `#{pane_current_command}` is `claude` or `codex`. `#{agent_state}` is `starting`, `idle`, `working`, `needs-approval`, `needs-input` or `failed`, and `#{agent_pending_permission}` is the pending request ID or empty, in `list-panes -F`, `display-message -p` and `inspect`. Typing into a chat fails and names the verb to use: `send-keys`, `send-text`, `paste-buffer` and `run-pane` fail with `%N is an agent chat; send with: zz agent-send -t %N TEXT`.
 
@@ -85007,7 +85011,7 @@ set-option -g @alias-mixed-next yes
         }
         assert_eq!(spellings, 166);
         assert_eq!(diagnostic_cases, 664);
-        assert_eq!(required_cases, 480);
+        assert_eq!(required_cases, 504);
 
         let mut prefix_cases = 0;
         for spec in &specs {
@@ -123621,6 +123625,52 @@ bind - split-window -v -c "#{pane_current_path}"
                 )
                 .expect("agent-send --wait returns once the turn ends");
             assert_eq!(execution.output, "turn 0");
+        }
+
+        #[test]
+        fn new_pane_kind_agent_opens_a_chat_that_runs_its_brief_first() {
+            let workspace = workspace(Behavior::Chunk);
+            let mut context = ExecutionContext::for_pane(
+                &workspace.shared.inner.lock().engine.state,
+                workspace.agent,
+            )
+            .expect("chat context");
+            let mut run = |verb: &str, args: &[&str]| {
+                workspace
+                    .shared
+                    .execute(
+                        ClientId(99),
+                        ClientKind::Command,
+                        &mut context,
+                        &CommandInvocation::new(verb, args.iter().copied()),
+                    )
+                    .map(|execution| execution.output.to_string())
+            };
+            let created = run(
+                "new-pane",
+                &[
+                    "-d",
+                    "-P",
+                    "-F",
+                    "#{pane_id}",
+                    "--kind",
+                    "agent",
+                    "codex",
+                    "hi",
+                ],
+            )
+            .expect("new-pane --kind agent");
+            assert_eq!(created, "%2\n");
+            let created = created.trim_end();
+            let pane = created.parse::<PaneId>().expect("pane id");
+            assert!(matches!(
+                workspace.shared.inner.lock().engine.state.pane(pane).map(|pane| &pane.kind),
+                Some(PaneKind::Agent(agent)) if agent.provider == AgentProvider::Codex
+            ));
+            assert_eq!(
+                run("agent-send", &["-t", created, "--wait", "again"]).expect("agent-send"),
+                "turn 1"
+            );
         }
 
         #[test]

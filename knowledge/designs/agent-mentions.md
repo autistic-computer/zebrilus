@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Agent mentions . the composer's @ hands work to another agent
-description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat in a PiP with one tmux-shaped command. The child's permission asks and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Proposed; step 1 (chat facts and input errors) built."
-status: Proposed (2026-11-17; step 1 built)
+description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat in a PiP with one tmux-shaped command. The child's permission asks and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Proposed; steps 1 and 2 (chat facts, input errors, --kind agent on the create verbs) built."
+status: Proposed (2026-11-17; steps 1 and 2 built)
 resource: crates/zz-ui/src/target.rs
 tags:
 - agent
@@ -20,7 +20,7 @@ and files. Picking one puts a mention in the prompt. The agent you are talking t
 a brief and opens the other agent as a chat in a [PiP](/designs/pip-panes.md). The child's
 permission asks and its final reply come back into the host chat.
 
-Status 2026-11-17: proposed, step 1 of the [build order](#build-order) built. The rulings below
+Status 2026-11-17: proposed, steps 1 and 2 of the [build order](#build-order) built. The rulings below
 are the owner's. Everything under
 [Proposed commands](#proposed-commands) and after is proposed unless it says ruled, and
 [Open](#open) lists what is not decided.
@@ -129,7 +129,8 @@ reaches the daemon through the wrapper on `PATH` but is not approved.
 - `AgentSteer`, `AgentStopTask`, `AgentSetMode` and `AgentAuthenticate` have no sender.
   `zz-daemon-client` has `agent_set_mode` and `agent_authenticate`, but nothing calls them.
 - `agent-catalog` (the model catalog for GUI pickers) has no client.
-- `bench/agents/fresh/run-one.sh` still runs `split-window --kind agent --provider`.
+- `bench/agents/fresh/run-one.sh` still runs `split-window --kind agent --provider`. (Fixed by
+  step 2.)
 - The `--wait` timeout message tells you to run `agent-send -t %N --wait ''`, which a chat refuses
   ("is a chat; --wait needs text to send").
 - `AGENT_PANE_CONTEXT` says this pane approves `zz` commands without asking, which is false at
@@ -329,10 +330,30 @@ Each step lands alone.
      reaches the send-keys path (`send-prefix`).
    - A `synchronize-panes` send from a terminal whose window holds a chat still fails with "pane has
      exited", as before.
-2. **`--kind agent` on the create verbs, with the brief.** Fix `bench/agents/fresh/run-one.sh`.
+2. **`--kind agent` on the create verbs, with the brief.** Built 2026-11-17. Fix
+   `bench/agents/fresh/run-one.sh`.
    - `zz new-pane -d -P -F '#{pane_id}' --kind agent codex hi` prints a pane id, and an immediate
      `zz agent-send -t <that id> again` exits 0.
    - `rg -- '--provider' bench/agents/fresh/run-one.sh` finds nothing.
+
+   Choices made while building it:
+   - `--model`, `--effort`, `--account` and `--resume` are flags of the three verbs (native, so
+     they exit 2 without `--kind agent`) and are also read right after the provider, before the
+     brief; the same flag in both places exits 2. `--fork` and `--at` are not taken: a fork opens
+     its runtime on a thread after copying the session, so the brief could not be queued in the
+     command.
+   - Every parse failure of the agent words (no provider, unknown provider, a flag with no value
+     or a bad value, a bad `-c`) exits 2 with the cause and a usage line. A brief that fails the
+     `agent-send` text checks exits 1 with `agent-send`'s message, under the verb's name.
+     `check_plain_text` moved to zz-mux so the check runs before the pane exists.
+   - `-c` is format-expanded like a terminal's and must then be absolute. Without `-c` the folder
+     comes from the donor a terminal would use (for `new-window`, the caller's pane or the
+     destination's active pane).
+   - The brief reaches the daemon as `MuxEffect::AgentBrief` (daemon-internal, no wire change) and
+     is queued with `AgentRuntime::prompt`, owner `ClientInstanceId(u64::MAX)`, as `agent-send`
+     does, right after the runtime opens. A handed-back brief is logged, not returned as an error.
+   - The fork float's size moved to `zz_protocol::AGENT_FLOAT_WIDTH`/`AGENT_FLOAT_HEIGHT`, shared
+     by `fork_chat_command` and `new-pane --kind agent`.
 3. **Parent link, replies and asks into chats, close cascade.** Also `--wait ''` on a chat.
    - Run from chat `%1`, `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'reply with ok'`
      prints `%2`; `zz display-message -p -t %2 '#{agent_parent}'` prints `%1`; the next prompt `%1`

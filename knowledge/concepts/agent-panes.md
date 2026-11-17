@@ -46,6 +46,21 @@ starts once it has exited (`AGENT_CLI_EXIT_GRACE`, 5 s). `select-pane-kind [-c d
 [command ...]` turns an agent pane back into a terminal (the mux emits `PaneRespawned`), closing
 its driver. Both conversions are `MuxState::convert_pane`; a pinned title survives them.
 
+**Creating one.** `new-pane|split-window|new-window [-d] [-P -F fmt] [-c dir] [-t target] --kind
+agent <claude|codex> [--model m] [--effort e] [--account id] [--resume id] [BRIEF ...]` makes the
+pane an agent pane from the start (`agent_spawn` in `crates/zz-mux/src/command.rs`), so the
+daemon opens its runtime inside the same command (the `PaneCreated` arm, then
+`Shared::open_agent_pane`) with no exit grace, and `-P` prints a pane that already takes
+`agent-send`. The four flags may sit before the provider or right after it; `--fork` and `--at`
+are not taken here. The words after them are the brief: joined with single spaces, checked like
+`agent-send` TEXT (`zz_mux::check_plain_text`, 1 MiB), carried to the daemon as
+`MuxEffect::AgentBrief` and queued with `AgentRuntime::prompt` once the runtime is open, so the
+driver sends it when its session is ready. Without `-c` the folder comes from the same donor a
+terminal would use (`spawn_cwd_source`, `MuxState::cwd_donor`; a chat target gives its own
+folder). `new-pane` without `-x`/`-y` floats at `AGENT_FLOAT_WIDTH` by `AGENT_FLOAT_HEIGHT`
+(46% by 72%), the size the fork float below uses. A missing or unknown provider, a bad flag value,
+or an agent flag without `--kind agent` exits 2.
+
 **Running it.** The daemon opens the pane's runtime (`Shared::open_agent_pane`, `agent_pane_spec`)
 with the descriptor's provider, folder, session, model and effort and the pane's workspace
 environment (`ZZ_PANE`, `TMUX`, `TMUX_PANE`). A resumed Claude session replays its transcript

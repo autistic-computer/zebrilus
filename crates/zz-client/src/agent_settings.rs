@@ -324,8 +324,8 @@ fn plan_name(plan: &str) -> String {
     })
 }
 
-const FORK_WIDTH: &str = "46%";
-const FORK_HEIGHT: &str = "72%";
+const FORK_WIDTH: &str = zz_protocol::AGENT_FLOAT_WIDTH;
+const FORK_HEIGHT: &str = zz_protocol::AGENT_FLOAT_HEIGHT;
 
 fn command_line(words: &[&str]) -> String {
     words

@@ -22,17 +22,17 @@ use std::{
 
 use parking_lot::Mutex;
 use zz_protocol::{
-    AgentAutoApprove, AgentDescriptor, AgentProvider, Axis, BrowserDescriptor, ChooseTreeKind,
-    ChooserPreviewSize, ClientEnvironmentBlob, ClientId, CommandInvocation, CommandPromptMode,
-    CommandPromptType, CommandResolution, CommandSpec, DEFAULT_AGENT_AUTO_APPROVE,
-    DEFAULT_AGENT_CLAUDE_CODE_COMMAND, DEFAULT_AGENT_COMMAND, DEFAULT_BROWSER_PROFILE,
-    EditorDescriptor, KeyToken, MAX_AGENT_COMMAND_BYTES, MAX_AGENT_OPTION_BYTES,
-    MAX_AGENT_SESSION_ID_BYTES, MAX_GUI_TEXT_BYTES, MuxOptionKey, NATIVE_COMMAND_NAMES,
-    PaneBorderIndicators, PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot,
-    PopupBorderLines, RawText, ServerError, SessionId, SourceSpan, TerminalUiCommand, ViewContent,
-    ViewDescriptor, WindowId, catalog_command_spec, command_specs, normalize_browser_profile_name,
-    parse_tmux_command_options, parse_tmux_options, resolve_command,
-    unimplemented_tmux_command_spec,
+    AGENT_FLOAT_HEIGHT, AGENT_FLOAT_WIDTH, AgentAutoApprove, AgentDescriptor, AgentProvider, Axis,
+    BrowserDescriptor, ChooseTreeKind, ChooserPreviewSize, ClientEnvironmentBlob, ClientId,
+    CommandInvocation, CommandPromptMode, CommandPromptType, CommandResolution, CommandSpec,
+    DEFAULT_AGENT_AUTO_APPROVE, DEFAULT_AGENT_CLAUDE_CODE_COMMAND, DEFAULT_AGENT_COMMAND,
+    DEFAULT_BROWSER_PROFILE, EditorDescriptor, KeyToken, MAX_AGENT_COMMAND_BYTES,
+    MAX_AGENT_OPTION_BYTES, MAX_AGENT_SEND_BYTES, MAX_AGENT_SESSION_ID_BYTES, MAX_GUI_TEXT_BYTES,
+    MuxOptionKey, NATIVE_COMMAND_NAMES, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus,
+    PaneId, PaneKindSnapshot, PopupBorderLines, RawText, ServerError, SessionId, SourceSpan,
+    TerminalUiCommand, ViewContent, ViewDescriptor, WindowId, catalog_command_spec, command_specs,
+    normalize_browser_profile_name, parse_tmux_command_options, parse_tmux_options,
+    resolve_command, unimplemented_tmux_command_spec,
 };
 use zz_terminal::{
     CopyJump, CopyJumpDirection, CopyModeAction, CopyModeCopy, CopyModeCountPolicy, CopyModeSearch,
@@ -1353,6 +1353,10 @@ pub enum MuxEffect {
     AgentForked {
         pane: PaneId,
         at: Option<String>,
+    },
+    AgentBrief {
+        pane: PaneId,
+        text: String,
     },
     PaneFormatOutput {
         pane: PaneId,
@@ -6863,11 +6867,15 @@ impl MuxEngine {
         hooks: &mut impl StatusHooks,
     ) -> Result<Execution, ServerError> {
         let (options, positional) = parse_command_options("new-window", args)?;
-        let kind = self.spawn_pane_kind("new-window", context, &options, &positional, hooks)?;
+        let (kind, brief) =
+            self.spawn_pane_kind("new-window", context, &options, &positional, hooks)?;
         let command = matches!(kind, PaneKind::Terminal)
             .then(|| shell_command_positional(&positional))
             .flatten();
-        self.new_window_with_options(context, &options, kind, command, hooks)
+        let mut execution =
+            self.new_window_with_options(context, &options, kind, command, hooks)?;
+        queue_agent_brief(&mut execution, brief);
+        Ok(execution)
     }
 
     fn new_window_with_options(
@@ -7624,7 +7632,8 @@ impl MuxEngine {
     ) -> Result<Execution, ServerError> {
         let (options, positional) = parse_command_options("split-window", args)?;
         self.resolve_pane(options.value("-t"), context.window, context.pane)?;
-        let kind = self.spawn_pane_kind("split-window", context, &options, &positional, hooks)?;
+        let (kind, brief) =
+            self.spawn_pane_kind("split-window", context, &options, &positional, hooks)?;
         let command = matches!(kind, PaneKind::Terminal)
             .then(|| shell_command_positional(&positional))
             .flatten();
@@ -7660,6 +7669,7 @@ impl MuxEngine {
                 bytes: bytes.clone(),
             });
         }
+        queue_agent_brief(&mut execution, brief);
         Ok(execution)
     }
 
@@ -7696,7 +7706,15 @@ impl MuxEngine {
         if options.has("-M") && floating && drag_mouse.is_none() {
             return Ok(Execution::default());
         }
-        let kind = self.spawn_pane_kind("new-pane", context, &options, &positional, hooks)?;
+        let (kind, brief) =
+            self.spawn_pane_kind("new-pane", context, &options, &positional, hooks)?;
+        if floating && matches!(kind, PaneKind::Agent(_)) {
+            for (flag, size) in [("-x", AGENT_FLOAT_WIDTH), ("-y", AGENT_FLOAT_HEIGHT)] {
+                if options.value(flag).is_none() {
+                    options.values.push((flag.to_owned(), size.to_owned()));
+                }
+            }
+        }
         let command = matches!(kind, PaneKind::Terminal)
             .then(|| shell_command_positional(&positional))
             .flatten();
@@ -7775,6 +7793,7 @@ impl MuxEngine {
                 bytes: bytes.clone(),
             });
         }
+        queue_agent_brief(&mut execution, brief);
         Ok(execution)
     }
 
@@ -7941,9 +7960,26 @@ impl MuxEngine {
         options: &Options,
         positional: &[RawText],
         hooks: &mut impl StatusHooks,
-    ) -> Result<PaneKind, ServerError> {
+    ) -> Result<(PaneKind, Option<String>), ServerError> {
         let kind = validate_spawn_kind(command, options, positional)?;
-        match kind {
+        if kind == "agent" {
+            let origin = if command == "new-window" {
+                context.pane
+            } else {
+                Some(self.resolve_pane(options.value("-t"), context.window, context.pane)?)
+            };
+            let (_, cwd) = spawn_cwd_source(
+                self,
+                options,
+                origin,
+                &PaneKind::Terminal,
+                context.format_client(),
+                hooks,
+            );
+            let (agent, brief) = agent_spawn(command, options, positional, cwd.as_deref())?;
+            return Ok((PaneKind::Agent(agent), brief));
+        }
+        let kind = match kind {
             "terminal" => Ok(PaneKind::Terminal),
             "browser" => browser_from_args(options, positional).map(PaneKind::Browser),
             "picker" => {
@@ -7960,7 +7996,8 @@ impl MuxEngine {
                 Ok(PaneKind::Picker { inherit_cwd_from })
             }
             _ => unreachable!(),
-        }
+        };
+        kind.map(|kind| (kind, None))
     }
 
     fn select_pane_kind(
@@ -8017,7 +8054,8 @@ impl MuxEngine {
             selection.as_str(),
         ) {
             (Some(PaneKind::Terminal), "agent") => {
-                let agent = agent_selection(&options, command)?;
+                let agent =
+                    agent_selection("select-pane-kind", &options, command, options.value("-c"))?;
                 self.state
                     .convert_pane(pane, PaneKind::Agent(agent.clone()))?;
                 self.refresh_automatic_window_name_for_pane(pane, hooks);
@@ -8048,7 +8086,8 @@ impl MuxEngine {
         let kind = match selection.as_str() {
             "terminal" => PaneKind::Terminal,
             "agent" => {
-                let agent = agent_selection(&options, command)?;
+                let agent =
+                    agent_selection("select-pane-kind", &options, command, options.value("-c"))?;
                 command = &[];
                 PaneKind::Agent(agent)
             }
@@ -18746,7 +18785,7 @@ fn parse_mouse_key(value: &str) -> Option<String> {
     None
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct Options {
     flags: Vec<String>,
     values: Vec<(String, String)>,
@@ -19423,6 +19462,16 @@ fn pane_kind_snapshot(kind: &PaneKind) -> PaneKindSnapshot {
     }
 }
 
+fn queue_agent_brief(execution: &mut Execution, brief: Option<String>) {
+    let pane = execution.effects.iter().find_map(|effect| match effect {
+        MuxEffect::PaneCreated { pane, .. } => Some(*pane),
+        _ => None,
+    });
+    if let (Some(pane), Some(text)) = (pane, brief) {
+        execution.effects.push(MuxEffect::AgentBrief { pane, text });
+    }
+}
+
 fn agent_opened(opened: MuxEffect, fork: Option<MuxEffect>) -> Execution {
     let mut effects = vec![opened];
     effects.extend(fork);
@@ -19432,7 +19481,12 @@ fn agent_opened(opened: MuxEffect, fork: Option<MuxEffect>) -> Execution {
     }
 }
 
-fn agent_selection(options: &Options, args: &[RawText]) -> Result<AgentDescriptor, ServerError> {
+fn agent_selection(
+    command: &str,
+    options: &Options,
+    args: &[RawText],
+    cwd: Option<&str>,
+) -> Result<AgentDescriptor, ServerError> {
     let usage = || {
         ServerError::CommandParse(
             "usage: select-pane-kind [-t pane] [-c start-directory] agent claude|codex \
@@ -19474,7 +19528,7 @@ fn agent_selection(options: &Options, args: &[RawText]) -> Result<AgentDescripto
                         .any(|character| character.is_control() || character.is_whitespace())
                 {
                     Err(ServerError::InvalidCommand(format!(
-                        "select-pane-kind: {option} takes one word"
+                        "{command}: {option} takes one word"
                     )))
                 } else {
                     Ok(value.to_owned())
@@ -19490,10 +19544,9 @@ fn agent_selection(options: &Options, args: &[RawText]) -> Result<AgentDescripto
         .as_deref()
         .is_some_and(|account| !zz_protocol::valid_agent_account(account))
     {
-        return Err(ServerError::InvalidCommand(
-            "select-pane-kind: --account takes an account id (a-z, 0-9, - and _, starting with a letter or digit, at most 32 bytes) or default"
-                .to_owned(),
-        ));
+        return Err(ServerError::InvalidCommand(format!(
+            "{command}: --account takes an account id (a-z, 0-9, - and _, starting with a letter or digit, at most 32 bytes) or default"
+        )));
     }
     if options.has("--fork") && session_id.is_none() {
         return Err(ServerError::CommandParse(
@@ -19511,9 +19564,7 @@ fn agent_selection(options: &Options, args: &[RawText]) -> Result<AgentDescripto
             "select-pane-kind: --at takes a message id".to_owned(),
         ));
     }
-    let cwd = options
-        .value("-c")
-        .map(|cwd| PathBuf::from(expand_home(cwd)));
+    let cwd = cwd.map(|cwd| PathBuf::from(expand_home(cwd)));
     if cwd.as_ref().is_some_and(|cwd| {
         !cwd.is_absolute() || cwd.as_os_str().as_encoded_bytes().len() > MAX_GUI_TEXT_BYTES
     }) {
@@ -19529,6 +19580,79 @@ fn agent_selection(options: &Options, args: &[RawText]) -> Result<AgentDescripto
         effort,
         account,
     })
+}
+
+const AGENT_SPAWN_FLAGS: [&str; 4] = ["--model", "--effort", "--account", "--resume"];
+
+fn agent_spawn(
+    command: &str,
+    options: &Options,
+    words: &[RawText],
+    cwd: Option<&str>,
+) -> Result<(AgentDescriptor, Option<String>), ServerError> {
+    let usage = |cause: &str| {
+        ServerError::NativeCommandParse(format!(
+            "{cause}\nusage: {command} [-d] [-P -F format] [-c start-directory] [-t target] \
+             --kind agent claude|codex [--model M] [--effort E] [--account A] [--resume ID] \
+             [BRIEF]"
+        ))
+    };
+    let Some((provider, mut rest)) = words.split_first() else {
+        return Err(usage(&format!(
+            "{command}: --kind agent needs claude or codex"
+        )));
+    };
+    let mut options = options.clone();
+    while let Some(flag) = rest.first().and_then(|word| {
+        AGENT_SPAWN_FLAGS
+            .into_iter()
+            .find(|flag| word.as_str() == *flag)
+    }) {
+        let Some(value) = rest.get(1) else {
+            return Err(usage(&format!("{command}: {flag} needs a value")));
+        };
+        if options.value(flag).is_some() {
+            return Err(usage(&format!("{command}: {flag} is given twice")));
+        }
+        options.values.push((flag.to_owned(), value.to_string()));
+        rest = &rest[2..];
+    }
+    let agent = agent_selection(command, &options, std::slice::from_ref(provider), cwd)
+        .map_err(|error| usage(&error.tmux_message()))?;
+    if rest.is_empty() {
+        return Ok((agent, None));
+    }
+    let brief = rest
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let brief = brief.trim_end_matches(['\n', '\r']);
+    check_plain_text(command, brief)?;
+    Ok((agent, Some(brief.to_owned())))
+}
+
+pub fn check_plain_text(command: &str, text: &str) -> Result<(), ServerError> {
+    if text.trim().is_empty() {
+        return Err(ServerError::InvalidCommand(format!(
+            "{command} needs text on the command line or on standard input"
+        )));
+    }
+    if text.len() > MAX_AGENT_SEND_BYTES {
+        return Err(ServerError::InvalidCommand(format!(
+            "{command} payload is {} bytes; the limit is {MAX_AGENT_SEND_BYTES}",
+            text.len()
+        )));
+    }
+    if text
+        .chars()
+        .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
+    {
+        return Err(ServerError::InvalidCommand(format!(
+            "{command} payload contains control characters; pipe plain text"
+        )));
+    }
+    Ok(())
 }
 
 struct WindowDestination {
@@ -19611,7 +19735,7 @@ fn spawn_cwd_source(
     format_client: FormatClient,
     hooks: &mut impl StatusHooks,
 ) -> (Option<PaneId>, Option<String>) {
-    if !matches!(kind, PaneKind::Terminal) {
+    if !matches!(kind, PaneKind::Terminal | PaneKind::Agent(_)) {
         return (None, None);
     }
     let inherit_cwd_from = origin.and_then(|origin| engine.state.cwd_donor(origin));
@@ -19650,7 +19774,8 @@ fn validate_spawn_kind<'a>(
 ) -> Result<&'a str, ServerError> {
     let kind = options.value("--kind").unwrap_or("terminal");
     if !(matches!(kind, "terminal" | "browser")
-        || matches!(command, "split-window" | "new-pane" | "new-window") && kind == "picker")
+        || matches!(command, "split-window" | "new-pane" | "new-window")
+            && matches!(kind, "picker" | "agent"))
     {
         return Err(ServerError::NativeCommandParse(format!(
             "{command}: invalid pane kind {kind:?}"
@@ -19660,6 +19785,15 @@ fn validate_spawn_kind<'a>(
         return Err(ServerError::NativeCommandParse(
             "--profile requires --kind browser".to_owned(),
         ));
+    }
+    if kind != "agent"
+        && let Some(flag) = AGENT_SPAWN_FLAGS
+            .into_iter()
+            .find(|flag| options.value(flag).is_some())
+    {
+        return Err(ServerError::NativeCommandParse(format!(
+            "{flag} requires --kind agent"
+        )));
     }
     if kind != "terminal" {
         for flag in ["-e", "-I", "-k"] {
@@ -28366,6 +28500,14 @@ mod tests {
             ("split-window", vec!["--kind", "browser", "one", "two"]),
             ("new-window", vec!["--kind", "picker", "-e", "A=B"]),
             ("new-window", vec!["--kind", "agent"]),
+            ("new-pane", vec!["--kind", "agent"]),
+            ("new-pane", vec!["--kind", "agent", "gemini", "hi"]),
+            ("new-pane", vec!["--kind", "agent", "codex", "--model"]),
+            (
+                "new-pane",
+                vec!["--kind", "agent", "--model", "a b", "codex"],
+            ),
+            ("split-window", vec!["--model", "m"]),
             ("new-window", vec!["--profile", "work"]),
             ("new-window", vec!["--kind", "browser", "-e", "A=B"]),
         ] {
@@ -28387,6 +28529,49 @@ mod tests {
             )
             .unwrap_err();
         assert_eq!(error.exit_code(), 2);
+    }
+
+    #[test]
+    fn agent_kind_reads_flags_on_either_side_of_the_provider_and_queues_the_brief() {
+        let mut engine = MuxEngine::default();
+        let mut context = ExecutionContext::default();
+        engine
+            .execute(&mut context, &command("new-session", &["-s", "work"]))
+            .unwrap();
+        let created = engine
+            .execute(
+                &mut context,
+                &command(
+                    "new-pane",
+                    &[
+                        "-d", "--kind", "agent", "--effort", "high", "codex", "--model", "m1",
+                        "fix", "the", "build",
+                    ],
+                ),
+            )
+            .unwrap();
+        let [
+            MuxEffect::PaneCreated { pane, .. },
+            MuxEffect::AgentBrief {
+                pane: briefed,
+                text,
+            },
+            ..,
+        ] = created.effects.as_slice()
+        else {
+            panic!("{:?}", created.effects);
+        };
+        assert_eq!(briefed, pane);
+        assert_eq!(text, "fix the build");
+        assert_eq!(
+            engine.state.pane(*pane).map(|pane| &pane.kind),
+            Some(&PaneKind::Agent(AgentDescriptor {
+                provider: AgentProvider::Codex,
+                model: Some("m1".to_owned()),
+                effort: Some("high".to_owned()),
+                ..AgentDescriptor::default()
+            }))
+        );
     }
 
     #[test]
