@@ -145,6 +145,12 @@ const STORY: Story = Story {
             build: child::child_cards,
         },
         Section {
+            id: "child-transcript",
+            name: "Child card from a transcript",
+            summary: "A host chat folded the way the apps fold it: the call that opened codex stays, its card follows it, and the ask, the host's allow and the finished report that came back as messages are absorbed into the card. A report for a pane this chat never opened stays a message. A second agent-send to the same pane starts a new card, which is asking; the first card keeps its own reply. Agent mentions in the prompts read @codex and @codex/MODEL.",
+            build: child::child_transcript,
+        },
+        Section {
             id: "background",
             name: "After the turn",
             summary: "A background agent outlives its turn and keeps its approval: the finished turn stays open around it until it is answered.",

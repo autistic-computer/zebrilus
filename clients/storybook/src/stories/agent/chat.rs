@@ -551,7 +551,7 @@ impl Render for Views {
     }
 }
 
-fn threads(cases: Vec<(&str, Thread)>, window: &mut Window, cx: &mut App) -> AnyView {
+pub(super) fn threads(cases: Vec<(&str, Thread)>, window: &mut Window, cx: &mut App) -> AnyView {
     let views = cases
         .into_iter()
         .map(|(label, thread)| {

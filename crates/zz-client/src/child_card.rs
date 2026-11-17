@@ -1,6 +1,7 @@
 use zz_protocol::{
     AgentProvider, PaneId,
-    chat::{ChatView, ItemKind, ItemStatus},
+    agent_mention::{AgentAsk, AgentDecision, AskAnswers},
+    chat::{ChatView, ItemId, ItemKind, ItemStatus},
 };
 
 use crate::{
@@ -12,9 +13,10 @@ pub const PEEK_LINES: usize = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChildCard {
+    pub anchor: ItemId,
     pub pane: PaneId,
     pub agent: AgentProvider,
-    pub host: AgentProvider,
+    pub latest: bool,
     pub state: ChildState,
     pub started_at: u64,
     pub ended_at: Option<u64>,
@@ -36,10 +38,63 @@ pub struct ChildAsk {
     pub title: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+impl ChildAsk {
+    #[must_use]
+    pub fn of(ask: &AgentAsk) -> Self {
+        let (word, rest) = ask.what.split_once(' ').unwrap_or((&ask.what, ""));
+        let kind = match word {
+            "read" => Some(ItemKind::Read),
+            "edit" | "delete" | "move" => Some(ItemKind::Edit),
+            "search" => Some(ItemKind::Search),
+            "execute" => Some(ItemKind::Execute),
+            "fetch" => Some(ItemKind::Fetch),
+            "think" | "switch_mode" | "other" => Some(ItemKind::Tool),
+            _ => None,
+        };
+        match kind {
+            Some(kind) if !rest.trim().is_empty() => Self {
+                kind,
+                title: rest.trim().to_owned(),
+            },
+            _ => Self {
+                kind: ItemKind::Tool,
+                title: ask.what.clone(),
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Verdict {
     Allowed,
     Denied,
+    Picked(String),
+    Answered,
+}
+
+impl Verdict {
+    #[must_use]
+    pub fn of(decision: &AgentDecision, ask: Option<&AgentAsk>) -> Self {
+        if *decision == AgentDecision::Allow {
+            return Self::Allowed;
+        }
+        if *decision == AgentDecision::Deny {
+            return Self::Denied;
+        }
+        if let AgentDecision::Option(id) = decision {
+            let label = ask
+                .and_then(|ask| match &ask.answers {
+                    AskAnswers::Options(options) => options
+                        .iter()
+                        .find(|option| option.id == *id && !option.label.is_empty())
+                        .map(|option| option.label.clone()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| id.clone());
+            return Self::Picked(label);
+        }
+        Self::Answered
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -83,11 +138,6 @@ impl ChildCard {
     }
 
     #[must_use]
-    pub const fn host_name(&self) -> &'static str {
-        agent_program(self.host)
-    }
-
-    #[must_use]
     pub const fn word(&self) -> &'static str {
         match self.state {
             ChildState::Working => "working",
@@ -125,43 +175,41 @@ impl ChildCard {
             .iter()
             .rev()
             .find(|decision| decision.title == title)
-            .map(|decision| decision.verdict)
+            .map(|decision| decision.verdict.clone())
     }
 
     #[must_use]
-    pub fn peek(&self, chat: &ChatView) -> Vec<PeekLine> {
+    pub fn corrected(&self, chat: Option<&ChatView>, alive: Option<bool>) -> Self {
+        let mut card = self.clone();
+        if !self.latest || !matches!(self.state, ChildState::Working | ChildState::Asking(_)) {
+            return card;
+        }
+        if alive == Some(false) {
+            card.state = ChildState::Closed;
+        } else if matches!(self.state, ChildState::Asking(_))
+            && chat.is_some_and(|chat| chat.open_requests().next().is_none())
+        {
+            card.state = ChildState::Working;
+        }
+        card
+    }
+
+    #[must_use]
+    pub fn peek(&self, chat: Option<&ChatView>) -> Vec<PeekLine> {
         if matches!(self.state, ChildState::Done { .. } | ChildState::Closed) {
             return Vec::new();
         }
-        let Some(turn) = chat.turns.last() else {
-            return Vec::new();
-        };
-        let tools = turn
-            .items
-            .iter()
-            .filter_map(|id| chat.item(id))
-            .filter(|item| item.kind.is_tool())
-            .collect::<Vec<_>>();
-        let running = tools.last().is_some_and(|item| item.status.is_open());
-        let mut lines = tools
-            .into_iter()
-            .map(|item| {
-                let step = step_label(chat, item);
-                let mark = match &item.status {
-                    ItemStatus::Running => PeekMark::Running,
-                    ItemStatus::Failed { .. } => PeekMark::Failed(item.kind),
-                    ItemStatus::Declined => PeekMark::Declined(item.kind),
-                    _ => PeekMark::Step(item.kind),
-                };
-                PeekLine {
-                    mark,
-                    verdict: self.verdict(&step.label),
-                    code: item.kind == ItemKind::Execute,
-                    label: step.label,
-                    detail: step.detail,
-                }
-            })
-            .collect::<Vec<_>>();
+        let turn = chat
+            .filter(|_| self.latest)
+            .and_then(|chat| Some((chat, chat.turns.last()?)));
+        let mut lines = turn.map_or_else(Vec::new, |(chat, turn)| self.steps(chat, turn));
+        let running = turn.is_some_and(|(chat, turn)| {
+            turn.items
+                .iter()
+                .filter_map(|id| chat.item(id))
+                .rfind(|item| item.kind.is_tool())
+                .is_some_and(|item| item.status.is_open())
+        });
         match &self.state {
             ChildState::Asking(ask) => {
                 if lines.last().is_some_and(|line| line.label == ask.title) {
@@ -182,8 +230,11 @@ impl ChildCard {
                 code: false,
                 verdict: None,
             }),
-            ChildState::Working if !running && turn.is_open() => {
-                if let Some(live) = live_line(chat, turn) {
+            ChildState::Working => {
+                if let Some(live) = turn
+                    .filter(|(_, turn)| !running && turn.is_open())
+                    .and_then(|(chat, turn)| live_line(chat, turn))
+                {
                     lines.push(PeekLine {
                         mark: PeekMark::Live,
                         label: live,
@@ -193,10 +244,34 @@ impl ChildCard {
                     });
                 }
             }
-            _ => {}
+            ChildState::Done { .. } | ChildState::Closed => {}
         }
         let skip = lines.len().saturating_sub(PEEK_LINES);
         lines.split_off(skip)
+    }
+
+    fn steps(&self, chat: &ChatView, turn: &zz_protocol::chat::TurnView) -> Vec<PeekLine> {
+        turn.items
+            .iter()
+            .filter_map(|id| chat.item(id))
+            .filter(|item| item.kind.is_tool())
+            .map(|item| {
+                let step = step_label(chat, item);
+                let mark = match &item.status {
+                    ItemStatus::Running => PeekMark::Running,
+                    ItemStatus::Failed { .. } => PeekMark::Failed(item.kind),
+                    ItemStatus::Declined => PeekMark::Declined(item.kind),
+                    _ => PeekMark::Step(item.kind),
+                };
+                PeekLine {
+                    mark,
+                    verdict: self.verdict(&step.label),
+                    code: item.kind == ItemKind::Execute,
+                    label: step.label,
+                    detail: step.detail,
+                }
+            })
+            .collect()
     }
 }
 
@@ -208,9 +283,10 @@ mod tests {
 
     fn card(state: ChildState) -> ChildCard {
         ChildCard {
+            anchor: ItemId::new("open"),
             pane: PaneId(4),
             agent: AgentProvider::Codex,
-            host: AgentProvider::ClaudeCode,
+            latest: true,
             state,
             started_at: 10_000,
             ended_at: None,
@@ -297,7 +373,7 @@ mod tests {
             }
         }
         let shown = |card: &ChildCard| {
-            card.peek(&chat)
+            card.peek(Some(&chat))
                 .into_iter()
                 .map(|line| (line.mark, line.label, line.verdict))
                 .collect::<Vec<_>>()

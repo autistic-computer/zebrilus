@@ -20,7 +20,7 @@ use penna::{
     },
 };
 use zz_client::{
-    chat_rows::{self, AgentState, Fold, RunLabel, Unit},
+    chat_rows::{self, AgentState, ChildFold, Fold, RunLabel, Unit},
     child_card::{ChildCard, ChildState, PEEK_LINES, PeekLine, PeekMark, Verdict},
     program::Program,
     window_summary::{Attention, provider_program},
@@ -232,7 +232,7 @@ enum RowKey {
     Turn(TurnId),
     Item(ItemId),
     Request(RequestId),
-    Child(PaneId),
+    Child(ItemId),
     Empty,
 }
 
@@ -257,7 +257,7 @@ impl Row {
                     .first()
                     .map_or(RowKey::Empty, |id| RowKey::Item(id.clone())),
                 Unit::Ask(request) | Unit::Record(request) => RowKey::Request(*request),
-                Unit::Child(card) => RowKey::Child(card.pane),
+                Unit::Child(card) => RowKey::Child(card.anchor.clone()),
             },
         }
     }
@@ -276,8 +276,10 @@ fn holds(unit: &Unit, id: &ItemId) -> bool {
     }
 }
 
-fn thread_rows(view: &ChatView) -> Vec<Row> {
-    let mut pending = chat_rows::background_rows(view).into_iter().peekable();
+fn thread_rows(view: &ChatView, fold: &ChildFold) -> Vec<Row> {
+    let mut pending = chat_rows::background_rows(view, fold)
+        .into_iter()
+        .peekable();
     let mut rows = Vec::new();
     for (index, turn) in view.turns.iter().enumerate() {
         while let Some(unit) = pending
@@ -335,6 +337,7 @@ pub struct ChatPane {
     shown: Rc<RefCell<HashSet<u64>>>,
     markdown: Option<Rc<ChatMarkdown>>,
     listed: bool,
+    fold: ChildFold,
 }
 
 impl Default for ChatPane {
@@ -356,6 +359,7 @@ impl Default for ChatPane {
             shown: Rc::default(),
             markdown: None,
             listed: false,
+            fold: ChildFold::default(),
         }
     }
 }
@@ -521,7 +525,8 @@ impl ChatPane {
     }
 
     fn sync_rows(&mut self, view: &ChatView) {
-        let rows = thread_rows(view);
+        self.fold = chat_rows::child_fold(view);
+        let rows = thread_rows(view, &self.fold);
         let keys = rows.iter().map(|row| row.key(view)).collect::<Vec<_>>();
         let kept = self
             .keys
@@ -629,7 +634,7 @@ impl ChatPane {
         if let Some(Row::Turn(index)) = self.rows.get(index)
             && let Some(turn) = view.turns.get(*index)
         {
-            let rows = chat_rows::turn_rows(view, turn, chat_rows::now_ms());
+            let rows = chat_rows::turn_rows(view, turn, chat_rows::now_ms(), &self.fold);
             if rows.folded.iter().any(|unit| holds(unit, &root))
                 && !self.open.turns.contains(&turn.id)
             {
@@ -678,6 +683,7 @@ impl ChatPane {
             open: &self.open,
             phase: self.frame.phase,
             hooks,
+            fold: &self.fold,
             cx,
         }
     }
@@ -1017,19 +1023,21 @@ pub fn chat_thread(
     hooks: &ChatHooks<'_>,
     cx: &App,
 ) -> Div {
+    let fold = chat_rows::child_fold(view);
     let draw = Draw {
         view,
         now,
         open,
         phase,
         hooks,
+        fold: &fold,
         cx,
     };
     let live = chat_rows::background_live(view);
     v_flex()
         .w_full()
         .gap_3()
-        .children(thread_rows(view).iter().filter_map(|row| match row {
+        .children(thread_rows(view, &fold).iter().filter_map(|row| match row {
             Row::Turn(index) => view.turns.get(*index).map(|turn| draw.turn(turn)),
             Row::Background(unit) => Some(draw.unit(unit, live)),
         }))
@@ -1041,12 +1049,13 @@ struct Draw<'a, 'h> {
     open: &'a ChatOpen,
     phase: f32,
     hooks: &'a ChatHooks<'h>,
+    fold: &'a ChildFold,
     cx: &'a App,
 }
 
 impl Draw<'_, '_> {
     fn turn(&self, turn: &TurnView) -> AnyElement {
-        let rows = chat_rows::turn_rows(self.view, turn, self.now);
+        let rows = chat_rows::turn_rows(self.view, turn, self.now, self.fold);
         let live = turn.is_open();
         let lead = rows
             .shown
@@ -1169,18 +1178,30 @@ impl Draw<'_, '_> {
             Unit::Subagent(id) => self.agents(std::slice::from_ref(id)),
             Unit::Agents(ids) => self.agents(ids),
             Unit::Plan(id) => plan_card(self.view, id, cx),
-            Unit::Child(card) => chat_child_card(
-                card,
-                self.hooks
+            Unit::Child(card) => {
+                let chat = self
+                    .hooks
                     .children
                     .as_ref()
-                    .and_then(|children| children(card.pane, cx)),
-                crate::pip::pip_in_view(card.pane, cx),
-                self.now,
-                self.phase,
-                self.hooks,
-                cx,
-            ),
+                    .and_then(|children| children(card.pane, cx));
+                let alive = self.hooks.refs().map(|refs| {
+                    refs.hosts.iter().filter(|host| host.here).any(|host| {
+                        host.sessions
+                            .iter()
+                            .flat_map(|session| &session.windows)
+                            .any(|window| window.panes.iter().any(|pane| pane.id == card.pane))
+                    })
+                });
+                chat_child_card(
+                    &card.corrected(chat, alive),
+                    chat,
+                    crate::pip::pip_in_view(card.pane, cx),
+                    self.now,
+                    self.phase,
+                    self.hooks,
+                    cx,
+                )
+            }
             Unit::Notice(id) => notice_row(self.view, id, self.hooks.touch, cx),
             Unit::Ask(request) => self.view.request(*request).map_or_else(
                 || div().into_any_element(),
@@ -1706,6 +1727,7 @@ pub fn chat_child_card(
 ) -> AnyElement {
     let theme = cx.theme();
     let header = card.header(now);
+    let host = hooks.vendor.map_or("the host", |program| program.id);
     let closed = card.state == ChildState::Closed;
     let pane = hooks.ground.unwrap_or_else(|| theme.ground());
     let ground = theme.ground_of(penna::Surface::from(CardLook::Activity).on(pane));
@@ -1791,7 +1813,7 @@ pub fn chat_child_card(
         .when(!closed, |head| head.child(mark));
     let collapsed = in_view || closed;
     let body = match &card.state {
-        ChildState::Done { reply } if !collapsed => Some(
+        ChildState::Done { reply } if !collapsed && !reply.trim().is_empty() => Some(
             div()
                 .flex()
                 .flex_row()
@@ -1816,14 +1838,14 @@ pub fn chat_child_card(
                 .into_any_element(),
         ),
         _ if collapsed => None,
-        _ => chat.and_then(|chat| child_peek(card, chat, now, phase, ground, cx)),
+        _ => child_peek(card, chat, host, now, phase, ground, cx),
     };
     let label = format!("{} {}", header.name, header.word);
     let open = hooks
         .refs()
         .map(|refs| (Arc::clone(&refs.open), child_target(card, refs)));
     Card::new(
-        SharedString::from(format!("chat-child-{}", card.pane.0)),
+        SharedString::from(format!("chat-child-{}", card.anchor.as_str())),
         CardLook::Activity,
     )
     .on(pane)
@@ -1847,7 +1869,8 @@ pub fn chat_child_card(
 
 fn child_peek(
     card: &ChildCard,
-    chat: &ChatView,
+    chat: Option<&ChatView>,
+    host: &str,
     now: u64,
     phase: f32,
     ground: penna::Ground,
@@ -1858,14 +1881,13 @@ fn child_peek(
         return None;
     }
     let live = chat
-        .turns
-        .last()
+        .and_then(|chat| chat.turns.last())
         .map(|turn| chat_rows::duration(now.saturating_sub(turn.started_at)));
     let full = lines.len() == PEEK_LINES;
     let rows = v_flex().ml(px(PEEK_INDENT)).mb(px(8.0)).children(
         lines
             .iter()
-            .map(|line| peek_line(line, card.host_name(), live.as_deref(), phase, ground, cx)),
+            .map(|line| peek_line(line, host, live.as_deref(), phase, ground, cx)),
     );
     Some(
         FoldFade {
@@ -1920,12 +1942,14 @@ fn peek_line(
         })
         .when(line.code, |text| text.type_style_mono(TextStyle::Small, cx))
         .child(line.label.clone());
-    let verdict = line.verdict.map(|verdict| {
-        let (word, tone) = match verdict {
-            Verdict::Allowed => ("allowed", Tone::Success),
-            Verdict::Denied => ("denied", Tone::Warning),
+    let verdict = line.verdict.as_ref().map(|verdict| {
+        let (said, tone) = match verdict {
+            Verdict::Allowed => ("allowed".to_owned(), Tone::Success),
+            Verdict::Denied => ("denied".to_owned(), Tone::Warning),
+            Verdict::Picked(label) => (format!("{label} picked"), Tone::Neutral),
+            Verdict::Answered => ("answered".to_owned(), Tone::Neutral),
         };
-        Badge::new(format!("{word} by {host}"))
+        Badge::new(format!("{said} by {host}"))
             .tone(tone)
             .small()
             .on(ground)
@@ -1984,12 +2008,14 @@ pub fn chat_agent_body(
     cx: &App,
 ) -> Option<(SharedString, Div)> {
     let item = view.item(id)?;
+    let fold = ChildFold::default();
     let draw = Draw {
         view,
         now,
         open,
         phase,
         hooks,
+        fold: &fold,
         cx,
     };
     let state = chat_rows::agent_state(view, id);
@@ -2011,12 +2037,14 @@ pub fn chat_agent_pip(
 ) -> Option<AnyElement> {
     let id = open.agent.as_ref()?;
     let item = view.item(id)?;
+    let fold = ChildFold::default();
     let draw = Draw {
         view,
         now,
         open,
         phase,
         hooks,
+        fold: &fold,
         cx,
     };
     let state = chat_rows::agent_state(view, id);

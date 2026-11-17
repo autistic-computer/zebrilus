@@ -4,9 +4,11 @@ use ala::{
 use penna::blocks::chat::CHAT_CONTENT_MAX_WIDTH;
 use std::sync::Arc;
 use zz_client::child_card::{ChildAsk, ChildCard, ChildState, Decision, Verdict};
+use zz_client::program::Program;
 use zz_protocol::{
     AgentProvider, PaneId,
-    chat::{ChatView, ItemKind},
+    agent_mention::{AgentAsk, AgentDecision, AgentReport, AgentRespond, AskAnswers, ReplyNotice},
+    chat::{ChatView, ItemBody, ItemId, ItemKind},
 };
 
 use zz_ui::agent::{
@@ -15,8 +17,8 @@ use zz_ui::agent::{
 };
 
 use super::{
-    chat::pane_fill,
-    fixtures::{Script, story_hosts},
+    chat::{Thread, pane_fill, threads},
+    fixtures::{Script, completed, story_hosts},
 };
 use crate::story::states;
 
@@ -69,9 +71,10 @@ fn ran() -> ChatView {
 pub fn child_cards(_: &mut Window, cx: &mut App) -> AnyView {
     let now = working().turns.last().map_or(0, |turn| turn.started_at) + 42_000;
     let card = |state, took: u64, allowed: bool| ChildCard {
+        anchor: ItemId::new("open"),
         pane: PaneId(4),
         agent: AgentProvider::Codex,
-        host: AgentProvider::ClaudeCode,
+        latest: true,
         state,
         started_at: now - took,
         ended_at: None,
@@ -168,6 +171,7 @@ impl Render for ChildCards {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let hooks = ChatHooks {
             markdown: Some(&self.markdown),
+            vendor: Program::by_id("claude"),
             ..ChatHooks::default()
         };
         let mut shown = states().columns(2);
@@ -193,4 +197,131 @@ impl Render for ChildCards {
         }
         shown
     }
+}
+
+fn child_hosts() -> Vec<zz_ui::target::TargetHost> {
+    let mut hosts = story_hosts();
+    hosts[0].sessions[0].windows[0]
+        .panes
+        .push(zz_ui::target::TargetPane {
+            id: PaneId(4),
+            title: String::new(),
+            program: Some("codex".into()),
+            icon: zz_ui::OPENAI_ICON,
+            chat: Some(zz_ui::target::TargetChat {
+                title: "codex".into(),
+                icon: zz_ui::OPENAI_ICON,
+            }),
+        });
+    hosts
+}
+
+fn tool(script: &mut Script, id: &str, command: String, output: String) {
+    script
+        .start(
+            id,
+            None,
+            ItemKind::Execute,
+            ItemBody {
+                target: Some(command),
+                text: output,
+                ..ItemBody::default()
+            },
+        )
+        .done(id);
+}
+
+pub fn child_transcript(window: &mut Window, cx: &mut App) -> AnyView {
+    let pane = PaneId(4);
+    let codex = AgentProvider::Codex;
+    let ask = |what: &str| {
+        AgentAsk {
+            pane,
+            provider: codex,
+            what: what.to_owned(),
+            answers: AskAnswers::AllowDeny,
+        }
+        .to_string()
+    };
+    let mut script = Script::new();
+    script
+        .turn("@+codex can the retry loop in turn.rs send twice?")
+        .reply("a1", "I'll have codex read turn.rs and answer that.");
+    tool(
+        &mut script,
+        "open",
+        format!("zz new-pane -d --kind agent codex '{BRIEF}'"),
+        ReplyNotice::Opened {
+            verb: "new-pane".to_owned(),
+            pane,
+            provider: codex,
+        }
+        .to_string(),
+    );
+    script.finish(completed());
+    script.turn(&ask(&format!("execute {COMMAND}")));
+    tool(
+        &mut script,
+        "allow",
+        AgentRespond {
+            pane,
+            decision: AgentDecision::Allow,
+            request: None,
+        }
+        .to_string(),
+        String::new(),
+    );
+    script
+        .reply("a2", "Allowed: it only runs the daemon's tests.")
+        .finish(completed());
+    script
+        .turn(
+            &AgentReport::Finished {
+                pane,
+                provider: codex,
+                text: REPLY.to_owned(),
+            }
+            .to_string(),
+        )
+        .reply(
+            "a3",
+            "Codex confirms it. I'll guard the resend on the turn id in turn.rs.",
+        )
+        .finish(completed());
+    script
+        .turn(
+            &AgentReport::Closed {
+                pane: PaneId(9),
+                provider: codex,
+            }
+            .to_string(),
+        )
+        .reply("a4", "That chat is not one I opened.")
+        .finish(completed());
+    script.turn("@+codex/gpt-6.1-sol does the guard cover resumed sessions too?");
+    tool(
+        &mut script,
+        "send",
+        "zz agent-send -t %4 'Does the guard cover resumed sessions too?'".to_owned(),
+        ReplyNotice::Sent { pane }.to_string(),
+    );
+    script.reply("a5", "Asked codex again.").finish(completed());
+    script
+        .turn(&ask("execute cargo test -p zz-daemon resume"))
+        .reply("a6", "Waiting on you for that one.")
+        .finish(completed());
+    let refs = ChatRefs {
+        hosts: child_hosts(),
+        cwd: None,
+        open: Arc::new(|_, _, _| {}),
+        view: None,
+    };
+    threads(
+        vec![(
+            "open, ask, allow, finish, a message for a pane it never opened, then a second send that asks",
+            Thread::new(script).vendor("claude").refs(refs),
+        )],
+        window,
+        cx,
+    )
 }

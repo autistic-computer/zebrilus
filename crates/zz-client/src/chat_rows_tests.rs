@@ -5,9 +5,9 @@ use zz_protocol::chat::{
 };
 
 use crate::chat_rows::{
-    AgentState, Fold, RunLabel, StepLabel, Unit, agent_ms, agent_prompt, agent_rows, agent_state,
-    answered, background_live, background_rows, duration, live_line, reasoning_body, run_shows,
-    run_summary, step_label, turn_rows, unit_at,
+    AgentState, ChildFold, Fold, RunLabel, StepLabel, Unit, agent_ms, agent_prompt, agent_rows,
+    agent_state, answered, background_live, background_rows, duration, live_line, reasoning_body,
+    run_shows, run_summary, step_label, turn_rows, unit_at,
 };
 
 struct Thread {
@@ -84,7 +84,12 @@ impl Thread {
     }
 
     fn rows(&self) -> crate::chat_rows::TurnRows {
-        turn_rows(&self.view, &self.view.turns[0], self.at)
+        turn_rows(
+            &self.view,
+            &self.view.turns[0],
+            self.at,
+            &ChildFold::default(),
+        )
     }
 
     fn background(&mut self, id: &str, kind: ItemKind) {
@@ -751,13 +756,13 @@ fn a_finished_background_run_rests_and_a_live_one_thinks() {
     }
     assert!(!background_live(&thread.view));
     assert!(matches!(
-        &background_rows(&thread.view)[..],
+        &background_rows(&thread.view, &ChildFold::default())[..],
         [Unit::Run(run)] if run.label == RunLabel::Done { summary: "Read 2 files".to_owned() }
     ));
     thread.background("h3", ItemKind::Reasoning);
     assert!(background_live(&thread.view));
     assert!(matches!(
-        &background_rows(&thread.view)[..],
+        &background_rows(&thread.view, &ChildFold::default())[..],
         [Unit::Run(run)] if run.label == RunLabel::Thinking { heading: None }
     ));
 }
@@ -1168,8 +1173,8 @@ fn a_summary_that_lands_after_its_rows_names_their_run_by_tool_id() {
         replayed.apply(event).expect("replayed event");
     }
     assert_eq!(
-        turn_rows(&replayed, &replayed.turns[0], 0).shown,
-        turn_rows(&live.view, &live.view.turns[0], 0).shown
+        turn_rows(&replayed, &replayed.turns[0], 0, &ChildFold::default()).shown,
+        turn_rows(&live.view, &live.view.turns[0], 0, &ChildFold::default()).shown
     );
     assert_eq!(live.labels(), ["Checked the build"]);
 }
@@ -1388,6 +1393,220 @@ fn a_failed_step_says_why() {
                 "exit 101 · error: could not find `Cargo.toml` in `/private/tmp/zz`"
             ),
             step("cargo build", "exit 1"),
+        ]
+    );
+}
+
+#[test]
+fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
+    use crate::chat_rows::child_fold;
+    use crate::child_card::{ChildCard, ChildState, Decision, Verdict};
+    use zz_protocol::{
+        AgentProvider, PaneId,
+        agent_mention::{
+            AgentAsk, AgentDecision, AgentReport, AgentRespond, AskAnswers, ReplyNotice,
+        },
+    };
+
+    let pane = PaneId(4);
+    let codex = AgentProvider::Codex;
+    let mut view = ChatView::default();
+    let mut at = 0;
+    let apply = |view: &mut ChatView, event: ChatEvent| {
+        view.apply(&event).expect("valid event");
+    };
+    apply(
+        &mut view,
+        ChatEvent::SessionReady {
+            session: "s".to_owned(),
+        },
+    );
+    let finished = |text: &str| {
+        AgentReport::Finished {
+            pane,
+            provider: codex,
+            text: text.to_owned(),
+        }
+        .to_string()
+    };
+    let turns: [(&str, String, Option<(&str, String, String)>); 6] = [
+        (
+            "u1",
+            "@+codex can the retry loop send twice?".to_owned(),
+            Some((
+                "open",
+                "zz new-pane -d --kind agent codex 'read turn.rs'".to_owned(),
+                ReplyNotice::Opened {
+                    verb: "new-pane".to_owned(),
+                    pane,
+                    provider: codex,
+                }
+                .to_string(),
+            )),
+        ),
+        (
+            "u2",
+            AgentAsk {
+                pane,
+                provider: codex,
+                what: "execute cargo test".to_owned(),
+                answers: AskAnswers::AllowDeny,
+            }
+            .to_string(),
+            Some((
+                "allow",
+                AgentRespond {
+                    pane,
+                    decision: AgentDecision::Allow,
+                    request: None,
+                }
+                .to_string(),
+                String::new(),
+            )),
+        ),
+        ("u3", finished("all green"), None),
+        (
+            "u4",
+            "ask it again".to_owned(),
+            Some((
+                "send",
+                "zz agent-send -t %4 'again'".to_owned(),
+                ReplyNotice::Sent { pane }.to_string(),
+            )),
+        ),
+        ("u5", finished("still green"), None),
+        (
+            "u6",
+            AgentReport::Closed {
+                pane: PaneId(9),
+                provider: codex,
+            }
+            .to_string(),
+            None,
+        ),
+    ];
+    for (index, (user, prompt, tool)) in turns.iter().enumerate() {
+        let turn = TurnId(index as u64 + 1);
+        let mut item = |view: &mut ChatView, id: &str, kind, body| {
+            at += 1000;
+            apply(
+                view,
+                ChatEvent::ItemStarted {
+                    item: ItemId::new(id),
+                    turn: Some(turn),
+                    parent: None,
+                    kind,
+                    body,
+                    at,
+                },
+            );
+            apply(
+                view,
+                ChatEvent::ItemEnded {
+                    item: ItemId::new(id),
+                    status: ItemStatus::Completed,
+                    at,
+                },
+            );
+        };
+        apply(
+            &mut view,
+            ChatEvent::TurnStarted {
+                turn,
+                by: TurnBy::User {
+                    prompt: index as u64 + 1,
+                },
+                at: 0,
+            },
+        );
+        item(
+            &mut view,
+            user,
+            ItemKind::User,
+            ItemBody::text(prompt.clone()),
+        );
+        if let Some((id, command, output)) = tool {
+            let body = ItemBody {
+                target: Some(command.clone()),
+                text: output.clone(),
+                ..ItemBody::default()
+            };
+            item(&mut view, id, ItemKind::Execute, body);
+        }
+        item(
+            &mut view,
+            &format!("a{}", index + 1),
+            ItemKind::Agent,
+            ItemBody::text("ok"),
+        );
+        apply(
+            &mut view,
+            ChatEvent::TurnEnded {
+                turn,
+                outcome: completed(),
+                at: 0,
+            },
+        );
+    }
+    let fold = child_fold(&view);
+    let shown = view
+        .turns
+        .iter()
+        .map(|turn| turn_rows(&view, turn, 0, &fold).shown)
+        .collect::<Vec<_>>();
+    let run = |id: &str| {
+        Unit::Run(crate::chat_rows::Run {
+            items: ids(&[id]),
+            label: RunLabel::Done {
+                summary: run_summary(&view, &ids(&[id])),
+            },
+        })
+    };
+    let card = |anchor: &str, latest, reply: &str, started_at, ended_at, decisions| {
+        Unit::Child(Box::new(ChildCard {
+            anchor: ItemId::new(anchor),
+            pane,
+            agent: codex,
+            latest,
+            state: ChildState::Done {
+                reply: reply.to_owned(),
+            },
+            started_at,
+            ended_at: Some(ended_at),
+            decisions,
+        }))
+    };
+    let text = |id: &str| Unit::Text(ItemId::new(id));
+    let user = |id: &str| Unit::User(ItemId::new(id));
+    assert_eq!(
+        shown,
+        [
+            vec![
+                user("u1"),
+                run("open"),
+                card(
+                    "open",
+                    false,
+                    "all green",
+                    2000,
+                    7000,
+                    vec![Decision {
+                        verdict: Verdict::Allowed,
+                        title: "cargo test".to_owned(),
+                    }],
+                ),
+                text("a1"),
+            ],
+            vec![text("a2")],
+            vec![text("a3")],
+            vec![
+                user("u4"),
+                run("send"),
+                card("send", true, "still green", 10_000, 12_000, Vec::new()),
+                text("a4")
+            ],
+            vec![text("a5")],
+            vec![user("u6"), text("a6")],
         ]
     );
 }
