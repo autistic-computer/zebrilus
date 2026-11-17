@@ -26,10 +26,12 @@ use raw_window_handle::RawWindowHandle;
 use zz_protocol::PaneId;
 use zz_ui::agent::{AgentHtmlLive, HtmlLiveBlock, html_overlay_clip};
 
-use crate::ios_preview::clear_web_view;
+use crate::{
+    ios_browser::{REPLY_HANDLER, add_reply},
+    ios_preview::clear_web_view,
+};
 
-const REPLY_HANDLER: &str = "zzReply";
-const REPLY_SCRIPT: &str = "Object.defineProperty(window, 'zz', { value: Object.freeze({ reply: (text) => { window.webkit.messageHandlers.zzReply.postMessage(String(text)); return Promise.resolve(); } }) });";
+const PAGE_SCHEME: &str = "about";
 
 enum Event {
     Ready(u64),
@@ -46,6 +48,7 @@ struct Page {
     generation: u64,
     view: id,
     host: id,
+    pan: id,
     delegate: id,
     ready: bool,
     shown: bool,
@@ -96,6 +99,7 @@ impl Drop for Page {
             let _: () = msg_send![self.host, removeFromSuperview];
             let _: () = msg_send![self.view, release];
             let _: () = msg_send![self.host, release];
+            let _: () = msg_send![self.pan, release];
             let _: () = msg_send![self.delegate, release];
         }
     }
@@ -264,17 +268,14 @@ impl Live {
             let delegate: id = msg_send![delegate_class(), new];
             (*delegate).set_ivar("generation", generation as usize);
             let controller: id = msg_send![configuration, userContentController];
-            let _: () = msg_send![controller, addScriptMessageHandler: delegate name: ns_string(REPLY_HANDLER)];
-            let script: id = msg_send![class!(WKUserScript), alloc];
-            let script: id = msg_send![script, initWithSource: ns_string(REPLY_SCRIPT) injectionTime: 0isize forMainFrameOnly: YES];
-            let _: () = msg_send![controller, addUserScript: script];
-            let _: () = msg_send![script, release];
+            add_reply(controller, delegate, &format!("{PAGE_SCHEME}:"));
             let view: id = msg_send![class!(WKWebView), alloc];
             let view: id = msg_send![view, initWithFrame: frame configuration: configuration];
             let _: () = msg_send![configuration, release];
             clear_web_view(view);
             let scroll: id = msg_send![view, scrollView];
             let _: () = msg_send![scroll, setBounces: NO];
+            let _: () = msg_send![scroll, setScrollEnabled: NO];
             let _: () = msg_send![view, setNavigationDelegate: delegate];
             let _: () = msg_send![view, setPageZoom: f64::from(block.zoom) * scale];
             let host: id = msg_send![class!(UIView), new];
@@ -282,6 +283,10 @@ impl Live {
             let _: () = msg_send![host, setHidden: YES];
             let _: () = msg_send![host, setFrame: frame];
             let _: () = msg_send![host, addSubview: view];
+            let pan: id = msg_send![class!(UIPanGestureRecognizer), alloc];
+            let pan: id = msg_send![pan, initWithTarget: parent action: sel!(alaScroll:)];
+            let _: () = msg_send![pan, setDelegate: delegate];
+            let _: () = msg_send![host, addGestureRecognizer: pan];
             let _: () = msg_send![parent, addSubview: host];
             let _: id = msg_send![view, loadHTMLString: ns_string(&block.html) baseURL: nil];
             self.page.replace(Some(Page {
@@ -290,6 +295,7 @@ impl Live {
                 generation,
                 view,
                 host,
+                pan,
                 delegate,
                 ready: false,
                 shown: false,
@@ -324,6 +330,8 @@ impl Live {
         unsafe {
             let previous: id = msg_send![page.host, superview];
             if previous != parent {
+                let _: () = msg_send![page.pan, removeTarget: nil action: sel!(alaScroll:)];
+                let _: () = msg_send![page.pan, addTarget: parent action: sel!(alaScroll:)];
                 let _: () = msg_send![parent, addSubview: page.host];
                 page.placed = None;
             }
@@ -361,7 +369,11 @@ fn delegate_class() -> &'static Class {
     CLASS.get_or_init(|| unsafe {
         let mut decl = ClassDecl::new("ZZLiveVisualDelegate", class!(NSObject)).unwrap();
         decl.add_ivar::<usize>("generation");
-        for name in ["WKNavigationDelegate", "WKScriptMessageHandler"] {
+        for name in [
+            "WKNavigationDelegate",
+            "WKScriptMessageHandler",
+            "UIGestureRecognizerDelegate",
+        ] {
             if let Some(protocol) = Protocol::get(name) {
                 decl.add_protocol(protocol);
             }
@@ -373,6 +385,10 @@ fn delegate_class() -> &'static Class {
         decl.add_method(
             sel!(webView:didFinishNavigation:),
             finished as extern "C" fn(&Object, Sel, id, id),
+        );
+        decl.add_method(
+            sel!(gestureRecognizerShouldBegin:),
+            vertical as extern "C" fn(&Object, Sel, id) -> BOOL,
         );
         decl.register()
     })
@@ -396,13 +412,31 @@ extern "C" fn finished(this: &Object, _: Sel, _: id, _: id) {
     }
 }
 
+extern "C" fn vertical(_: &Object, _: Sel, recognizer: id) -> BOOL {
+    unsafe {
+        let view: id = msg_send![recognizer, view];
+        let velocity: CGPoint = msg_send![recognizer, velocityInView: view];
+        if velocity.y.abs() > velocity.x.abs() {
+            YES
+        } else {
+            NO
+        }
+    }
+}
+
 extern "C" fn replied(this: &Object, _: Sel, _: id, message: id) {
     unsafe {
         let frame: id = msg_send![message, frameInfo];
         let main: BOOL = msg_send![frame, isMainFrame];
+        let request: id = msg_send![frame, request];
+        let url: id = msg_send![request, URL];
+        let scheme: id = msg_send![url, scheme];
         let body: id = msg_send![message, body];
         let is_string: BOOL = msg_send![body, isKindOfClass: class!(NSString)];
-        if main != YES || is_string != YES {
+        if main != YES
+            || is_string != YES
+            || nsstring_to_string(scheme).as_deref() != Some(PAGE_SCHEME)
+        {
             return;
         }
         if let Some(text) = nsstring_to_string(body) {

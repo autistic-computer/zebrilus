@@ -1847,12 +1847,7 @@ impl AgentView {
         self.attachments.extend(images);
         if let Some(pending) = pending {
             self.input.update(cx, |input, cx| {
-                let current = input.value().to_string();
-                let value = if current.trim().is_empty() {
-                    pending
-                } else {
-                    format!("{}\n{pending}", current.trim_end_matches('\n'))
-                };
+                let value = zz_ui::agent::merged_draft(&input.value(), pending);
                 input.set_value(value, window, cx);
             });
         }

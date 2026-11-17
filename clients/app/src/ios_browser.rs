@@ -77,8 +77,7 @@ use ala_cef::element_picker::{
 };
 const PICKER_HANDLER: &str = "zzElementPicker";
 const PAGE_SCHEME: &str = "zz";
-const REPLY_HANDLER: &str = "zzReply";
-const REPLY_SCRIPT: &str = "if (location.protocol === 'zz:') { window.zz = { reply: (text) => { window.webkit.messageHandlers.zzReply.postMessage(String(text)); return Promise.resolve(); } }; }";
+pub(crate) const REPLY_HANDLER: &str = "zzReply";
 const FILE_MISSING: isize = -1100;
 const MAX_REPLY_BYTES: usize = 64 * 1024;
 
@@ -239,6 +238,18 @@ extern "C" fn stop_page(_: &Object, _: Sel, _: id, task: id) {
             let _: () = msg_send![fetch.task, release];
         }
     }
+}
+
+pub(crate) unsafe fn add_reply(controller: id, handler: id, protocol: &str) {
+    let source = format!(
+        "if (location.protocol === '{protocol}') {{ window.zz = {{ reply: (text) => {{ window.webkit.messageHandlers.{REPLY_HANDLER}.postMessage(String(text)); return Promise.resolve(); }} }}; }}"
+    );
+    let _: () =
+        msg_send![controller, addScriptMessageHandler: handler name: ns_string(REPLY_HANDLER)];
+    let script: id = msg_send![class!(WKUserScript), alloc];
+    let script: id = msg_send![script, initWithSource: ns_string(&source) injectionTime: 0isize forMainFrameOnly: YES];
+    let _: () = msg_send![controller, addUserScript: script];
+    let _: () = msg_send![script, release];
 }
 
 unsafe fn page_reply(state: &DelegateState, message: id, text: &str) {
@@ -489,11 +500,7 @@ impl BrowserView {
             let configuration: id = msg_send![view, configuration];
             let controller: id = msg_send![configuration, userContentController];
             let _: () = msg_send![controller, addScriptMessageHandler: delegate name: ns_string(PICKER_HANDLER)];
-            let _: () = msg_send![controller, addScriptMessageHandler: delegate name: ns_string(REPLY_HANDLER)];
-            let script: id = msg_send![class!(WKUserScript), alloc];
-            let script: id = msg_send![script, initWithSource: ns_string(REPLY_SCRIPT) injectionTime: 0isize forMainFrameOnly: YES];
-            let _: () = msg_send![controller, addUserScript: script];
-            let _: () = msg_send![script, release];
+            add_reply(controller, delegate, "zz:");
             for key in OBSERVED {
                 let _: () = msg_send![view, addObserver: delegate forKeyPath: ns_string(key) options: 0usize context: std::ptr::null_mut::<std::ffi::c_void>()];
             }

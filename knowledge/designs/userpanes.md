@@ -463,15 +463,19 @@ up in the numbers.
 
   On iPad a visual, and an `html` block's preview, goes live on a tap since 2026-11-16, as a click
   does on the desktop (`clients/app/src/ios_live.rs`, which sets `AgentHtmlLive` with `overlay`
-  on; iPhone does not set it and keeps the pictures and the Open as a page tap). One `WKWebView`
-  with a store never written to disk loads the page at the picture's size and zoom, inside a
-  clipping view added over the app's view; once it has loaded, the tap is replayed on the page
-  where it landed. It follows the block every paint, clipped like the web's frames
-  (`html_overlay_clip`), and hides while its chat is covered or its pane is not shown. A tap
-  anywhere else in the app, or a paint without the block, closes it and the picture comes back.
-  While it is live it covers the visual's corner controls. A user script gives the page
-  `zz.reply`, whose text reaches `draft_page_reply` and is drafted into the chat's composer, one
-  reply per second at most and none over 64 KiB, as the desktop drafts a live block's reply.
+  on; iPhone does not set it, and the phone layout on iPad ignores it, so both keep the pictures
+  and the Open as a page tap). One `WKWebView` with a store never written to disk loads the page
+  at the picture's size and zoom, inside a clipping view added over the app's view; once a
+  visual's page has loaded, the tap is replayed where it landed (an `html` block's preview, as on
+  the desktop, takes the next tap). It follows the block every paint, clipped like the web's
+  frames (`html_overlay_clip`), and hides while its chat is covered or its pane is not shown. The
+  web view does not scroll itself: a drag that is more up or down than sideways goes to the app as
+  a scroll, so the chat moves under the finger. A tap anywhere else in the app, or a paint without
+  the block, closes it and the picture comes back. While it is live it covers the visual's corner
+  controls. A user script gives the page `zz.reply`, whose text reaches `draft_page_reply` and is
+  drafted into the chat's composer, one reply per second at most and none over 64 KiB, as the
+  desktop drafts a live block's reply. Only the page itself replies: a site it navigates to is
+  shown, but its replies are dropped, as on the desktop.
 * **Android** has the same shape as iOS, but its snapshot copies pixels from the window, so the web
   view has to be on screen; a hidden picture-maker needs another capture path. Not started.
 * **Web** draws visuals, page frames and an `html` block's preview in its chats since
@@ -500,9 +504,10 @@ up in the numbers.
   waits before drawing a picture. A visual's Show code and Copy sit in a row above it, always
   shown, since the pointer over a frame never reaches the canvas. A visual's or `html` block's
   frame in a chat also gets `zz.reply`: a script put first in the page posts `{zz: "reply",
-  text}` to the app, which takes it only from that frame, only while the frame takes input and
-  has the focus (the user clicked into it), and drafts the text into the chat's composer with
-  iPad's limits. Frames are single documents: relative assets have no origin
+  token, text}` to the app, which takes it only from that frame, only with the random token that
+  page was written with (a site the frame navigates to never has it), only while the frame takes
+  input and has the focus (the user clicked into it), and drafts the text into the chat's
+  composer with iPad's limits. Frames are single documents: relative assets have no origin
   to resolve against, and the page inherits the app's cross-origin isolation, so a resource from
   another site loads only if that site sends a cross-origin resource policy. There is no Open as
   a page: the web's browser panes are placeholders.

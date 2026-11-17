@@ -233,6 +233,35 @@ pub struct HtmlLiveBlock {
 
 impl Global for AgentHtmlLive {}
 
+pub(crate) fn html_live(cx: &App) -> Option<&AgentHtmlLive> {
+    cx.try_global::<AgentHtmlLive>()
+        .filter(|live| !(live.overlay && crate::touch::CoarsePointer::get(cx)))
+}
+
+pub fn queue_draft(
+    drafts: &mut std::collections::BTreeMap<zz_protocol::PaneId, String>,
+    pane: zz_protocol::PaneId,
+    text: &str,
+) -> bool {
+    if text.trim().is_empty() {
+        return false;
+    }
+    let pending = drafts.entry(pane).or_default();
+    if !pending.is_empty() {
+        pending.push('\n');
+    }
+    pending.push_str(text);
+    true
+}
+
+pub fn merged_draft(current: &str, pending: String) -> String {
+    if current.trim().is_empty() {
+        pending
+    } else {
+        format!("{}\n{pending}", current.trim_end_matches('\n'))
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct HtmlFrame {
     pub block: u64,
@@ -635,9 +664,7 @@ fn agent_code_block_body(
                 px(size.width.0 as f32 / scale),
                 px(size.height.0 as f32 / scale),
             );
-            let live = cx
-                .try_global::<AgentHtmlLive>()
-                .map(|live| (Rc::clone(&live.live), Rc::clone(&live.activate)));
+            let live = html_live(cx).map(|live| (Rc::clone(&live.live), Rc::clone(&live.activate)));
             let opener = html_opener(pages, cx);
             let page = code.clone();
             let head = head.clone();

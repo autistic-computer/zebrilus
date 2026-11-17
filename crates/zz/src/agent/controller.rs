@@ -543,15 +543,7 @@ impl AgentController {
     }
 
     fn queue_composer_text(&mut self, pane: PaneId, text: &str) -> bool {
-        if text.trim().is_empty() {
-            return false;
-        }
-        let pending = self.pending_composer.entry(pane).or_default();
-        if !pending.is_empty() {
-            pending.push('\n');
-        }
-        pending.push_str(text);
-        true
+        zz_ui::agent::queue_draft(&mut self.pending_composer, pane, text)
     }
 
     pub(crate) fn draft(&mut self, pane: PaneId, text: &str, cx: &mut Context<Self>) {

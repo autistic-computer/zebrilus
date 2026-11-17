@@ -98,11 +98,7 @@ pub(crate) fn draft_page_reply(pane: PaneId, text: &str, cx: &mut App) {
     }
     let replies = cx.default_global::<PageReplies>();
     replies.last.insert(pane, now);
-    let pending = replies.pending.entry(pane).or_default();
-    if !pending.is_empty() {
-        pending.push('\n');
-    }
-    pending.push_str(text);
+    zz_ui::agent::queue_draft(&mut replies.pending, pane, text);
 }
 
 pub(super) enum LaunchChange {
@@ -656,12 +652,7 @@ impl AgentPane {
         let Some(reply) = cx.global_mut::<PageReplies>().pending.remove(&self.pane) else {
             return;
         };
-        let current = self.input.read(cx).value().to_string();
-        let draft = if current.trim().is_empty() {
-            reply
-        } else {
-            format!("{}\n{reply}", current.trim_end_matches('\n'))
-        };
+        let draft = zz_ui::agent::merged_draft(&self.input.read(cx).value(), reply);
         self.input
             .update(cx, |input, cx| input.set_value(draft, window, cx));
         self.draft_error = None;

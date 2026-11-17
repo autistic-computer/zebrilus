@@ -19,8 +19,8 @@ use zz_protocol::ViewContent;
 use super::{
     AgentHtmlFrames, AgentHtmlLive, HtmlLiveBlock, HtmlPreviewResult, HtmlPreviewSize,
     HtmlPreviewState, HtmlPreviewToggles, MermaidThemeColors, VISUAL_PAGE_SCRIPT,
-    agent_markdown_style, css_color, html_frame, html_opener, html_preview_width, is_html_document,
-    mermaid_font_family, mermaid_theme_key,
+    agent_markdown_style, css_color, html_frame, html_live, html_opener, html_preview_width,
+    is_html_document, mermaid_font_family, mermaid_theme_key,
     preview::{ViewOpener, ViewRequest},
 };
 use crate::{
@@ -519,9 +519,8 @@ fn render_visual(
                     px(size.width.0 as f32 / scale),
                     px(size.height.0 as f32 / scale),
                 );
-                let live = cx
-                    .try_global::<AgentHtmlLive>()
-                    .map(|live| (Rc::clone(&live.live), Rc::clone(&live.activate)));
+                let live =
+                    html_live(cx).map(|live| (Rc::clone(&live.live), Rc::clone(&live.activate)));
                 if let Some(element) = live.as_ref().and_then(|(live, _)| live(block, cx)) {
                     div()
                         .debug_selector(|| "agent-visual-live".to_owned())

@@ -16,7 +16,8 @@ const MIN_HEIGHT: f64 = 8.0;
 const MAX_HEIGHT: f64 = 800.0;
 const KEEP_HIDDEN: Duration = Duration::from_secs(30);
 const SANDBOX: &str = "allow-scripts";
-const REPLY_SCRIPT: &str = r#"<script>Object.defineProperty(window,"zz",{value:Object.freeze({reply:(text)=>{parent.postMessage({zz:"reply",text:String(text)},"*");return Promise.resolve()}})});</script>"#;
+const REPLY_SCRIPT_HEAD: &str = r#"<script>(()=>{const token=""#;
+const REPLY_SCRIPT_TAIL: &str = r#"";Object.defineProperty(window,"zz",{value:Object.freeze({reply:(text)=>{parent.postMessage({zz:"reply",token,text:String(text)},"*");return Promise.resolve()}})})})();</script>"#;
 
 const FRAME_SCRIPT_HEAD: &str = r#"<script>(()=>{const post=(message)=>parent.postMessage(message,"*");
 let last=-1;const send=()=>{const height="#;
@@ -52,6 +53,7 @@ struct Frame {
     page: SharedString,
     key: u64,
     owner: Option<u64>,
+    token: String,
     height: Option<f64>,
     pending: Option<(SharedString, Instant)>,
     placement: Option<Placement>,
@@ -198,7 +200,7 @@ fn listen(frames: Weak<Frames>) {
     listener.forget();
 }
 
-fn with_reply(page: &str) -> String {
+fn with_reply(page: &str, token: &str) -> String {
     let lower = page.to_ascii_lowercase();
     let after = |tag: &str| {
         lower.match_indices(tag).find_map(|(start, _)| {
@@ -210,7 +212,11 @@ fn with_reply(page: &str) -> String {
         })
     };
     let at = after("<head").or_else(|| after("<!doctype")).unwrap_or(0);
-    format!("{}{REPLY_SCRIPT}{}", &page[..at], &page[at..])
+    format!(
+        "{}{REPLY_SCRIPT_HEAD}{token}{REPLY_SCRIPT_TAIL}{}",
+        &page[..at],
+        &page[at..]
+    )
 }
 
 fn number(data: &JsValue, name: &str) -> Option<f64> {
@@ -253,6 +259,7 @@ impl Frames {
                     page: SharedString::default(),
                     key: frame.key,
                     owner: frame.owner,
+                    token: String::new(),
                     height: None,
                     pending: None,
                     placement: None,
@@ -281,8 +288,13 @@ impl Frames {
                 entry.key = frame.key;
                 entry.page = frame.page.clone();
                 entry.pending = None;
+                entry.token = format!(
+                    "{:x}{:x}",
+                    js_sys::Math::random().to_bits(),
+                    js_sys::Math::random().to_bits()
+                );
                 let page = if frame.owner.is_some() {
-                    with_reply(&frame.page)
+                    with_reply(&frame.page, &entry.token)
                 } else {
                     frame.page.to_string()
                 };
@@ -455,16 +467,21 @@ impl Frames {
                 }
             }
             "reply" => {
-                let text = js_sys::Reflect::get(&data, &JsValue::from_str("text"))
-                    .ok()
-                    .and_then(|text| text.as_string());
+                let field = |name: &str| {
+                    js_sys::Reflect::get(&data, &JsValue::from_str(name))
+                        .ok()
+                        .and_then(|value| value.as_string())
+                };
+                let text = field("text");
+                let ours = field("token").is_some_and(|token| token == frame.token);
                 let used = self
                     .document
                     .active_element()
                     .is_some_and(|active| js_sys::Object::is(&active, &frame.element));
-                if let (Some(text), Some(owner), true, true) = (
+                if let (Some(text), Some(owner), true, true, true) = (
                     text,
                     frame.owner,
+                    ours,
                     used,
                     frame.placement.is_some_and(|placement| placement.live),
                 ) {
