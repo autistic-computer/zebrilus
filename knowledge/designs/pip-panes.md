@@ -23,7 +23,7 @@ timestamp: 2026-11-10T00:00:00-03:00
    grows. zz keeps no anchor.
 5. A PiP can be thrown. Its release speed carries it, and it glides to the place it was headed for.
 6. (later the same day) No slots while dragging. The nine zones split the window in thirds, so they
-   never overlap whatever the PiP's size. The title row has no fill, like a pane header. No accent
+   never overlap whatever the PiP's size. The title row has no fill, like a stacked pane header. No accent
    edge: a PiP stands off the panes by its float shadow, which the theme sets. The Float button
    opens a smaller PiP than tmux's default.
 7. (evening) A PiP uses the same header as a tiled pane, with tile back and zoom where the splits

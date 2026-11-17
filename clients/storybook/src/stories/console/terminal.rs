@@ -271,7 +271,7 @@ impl Screen {
         }
     }
 
-    fn fill(&mut self, row: u16, from: u16, to: u16, style: u16) {
+    pub(super) fn fill(&mut self, row: u16, from: u16, to: u16, style: u16) {
         for column in from..to {
             self.set(
                 row,
@@ -398,7 +398,7 @@ impl SampleView {
     }
 }
 
-fn cell_metrics(
+pub(super) fn cell_metrics(
     appearance: &TerminalAppearance,
     window: &mut Window,
     cx: &App,
@@ -439,7 +439,7 @@ fn cell_metrics(
     clippy::disallowed_methods,
     reason = "the preview draws terminal cells in the terminal's own font and size"
 )]
-fn terminal_text(text: ala::Div, font: ala::Font, size: Pixels) -> ala::Div {
+pub(super) fn terminal_text(text: ala::Div, font: ala::Font, size: Pixels) -> ala::Div {
     text.font(font).text_size(size)
 }
 
@@ -516,6 +516,7 @@ impl Render for SampleView {
                                         marked_text: marked,
                                         rows_above: None,
                                         rows_below: None,
+                                        header: None,
                                     },
                                     bounds,
                                     window,

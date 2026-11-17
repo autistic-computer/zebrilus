@@ -258,6 +258,7 @@ pub(crate) struct AgentView {
     last_input: String,
     last_cursor: usize,
     window_corners: WindowCorners,
+    header: Option<zz_ui::pane::HeaderBand>,
     floats: bool,
     active: bool,
     chat: zz_ui::agent::chat::ChatPane,
@@ -450,6 +451,7 @@ impl AgentView {
             last_input: String::new(),
             last_cursor: 0,
             window_corners: WindowCorners::NONE,
+            header: None,
             floats,
             active,
             chat: zz_ui::agent::chat::ChatPane::default(),
@@ -526,6 +528,25 @@ impl AgentView {
             self.window_corners = corners;
             Self::notify_after_draw(cx);
         }
+    }
+
+    pub(crate) fn set_header_band(
+        &mut self,
+        header: Option<zz_ui::pane::HeaderBand>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.header != header {
+            self.header = header;
+            Self::notify_after_draw(cx);
+        }
+    }
+
+    fn header_band(&self) -> Option<zz_ui::pane::HeaderBand> {
+        self.header.filter(|_| !self.floats)
+    }
+
+    pub(super) fn header_inset(&self) -> Pixels {
+        self.header_band().map_or(Pixels::ZERO, |band| band.height)
     }
 
     pub(crate) fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
@@ -831,6 +852,7 @@ impl AgentView {
             open,
             search: &self.search,
             scroll: &self.resume_scroll,
+            inset_top: self.header_inset(),
         }
         .render(
             move |which, open, window, cx| {
@@ -1215,13 +1237,11 @@ impl AgentView {
         if self.floats {
             return cx.theme().ground();
         }
-        if !crate::config::pane_gaps(cx) {
-            return cx.theme().content_ground();
-        }
-        zz_ui::pane_look::PaneLook::global(cx).ground(
-            cx.theme(),
+        zz_ui::pane::tiled_pane_ground(
             crate::theme::chrome_background(cx),
+            crate::config::pane_gaps(cx),
             self.active,
+            cx,
         )
     }
 
@@ -1926,7 +1946,7 @@ impl Render for AgentView {
                     .when_some(resume, ParentElement::child)
                     .when(!use_chat && !listing, |this| {
                         this.child(
-                            div().size_full().px_3().child(
+                            div().size_full().px_3().pt(self.header_inset()).child(
                                 div()
                                     .size_full()
                                     .max_w(px(CHAT_CONTENT_MAX_WIDTH))
@@ -1936,14 +1956,16 @@ impl Render for AgentView {
                         )
                     }),
             )
-            .child(self.render_composer(&state, &view, cx));
+            .child(self.render_composer(&state, &view, cx))
+            .children(self.header_band().map(zz_ui::pane::header_scrim));
         let radii = if floats {
             ala::Corners::default()
         } else {
             pane_content_radii(cx, self.window_corners)
         };
-        round_div_radii(root, radii)
-            .when(!floats, |root| root.rounded_tl(px(0.0)).rounded_tr(px(0.0)))
+        round_div_radii(root, radii).when(!floats && self.header.is_none(), |root| {
+            root.rounded_tl(px(0.0)).rounded_tr(px(0.0))
+        })
     }
 }
 
@@ -2211,6 +2233,7 @@ mod completion_tests {
                 last_input: "/".to_owned(),
                 last_cursor: 1,
                 window_corners: WindowCorners::NONE,
+                header: None,
                 floats: false,
                 active: false,
                 chat: zz_ui::agent::chat::ChatPane::default(),

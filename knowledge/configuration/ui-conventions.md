@@ -4,7 +4,7 @@ title: UI design conventions
 description: The component, palette, and styling rules that keep zz application chrome consistent and theme-aware.
 resource: crates/zz-ui/src/command/palette_view.rs
 tags: [ui, ala, zz-ui, theme, chrome, clippy]
-timestamp: 2026-11-14T00:00:00Z
+timestamp: 2026-11-17T00:00:00Z
 ---
 
 # Overview
@@ -196,6 +196,23 @@ tiles use cached favicons with a globe fallback.
 The settings sample allows hover while selection actions remain inert.
 Automatically named window pills use the active browser pane's title. Browser labels fall
 back to the active URL and then “browser”; explicitly renamed windows keep their chosen names.
+
+Tiled terminal and agent panes put their header over the content instead of above it
+(`pane::HeaderPlace::Over`, picked by `HeaderPlace::of` at the two mount sites: the desktop's
+`render_layout` and the thin client's tiled panes; `pane::headed_pane` lays out both kinds). The
+content runs the pane's full height and the header row blocks the pointer for what is under it,
+except the wheel. A terminal's grid gets a top inset of the header's height (`pane::HeaderBand`), so
+its rows and columns are the ones it had under a stacked header and its live screen starts below
+the header with nothing behind the title. Scrolled back, history rows paint up to the pane's top
+edge and the header scrim covers them: the pane's surface colour at 100% at the top edge, 88% at
+the header's bottom edge and clear 20px below it (`pane::paint_header_scrim`, one builder for both
+clients and both kinds). On a translucent surface it paints as two backdrop fades, so it replaces
+what is under it instead of stacking a darker bar. A program on the alternate screen has no
+scrollback and never gets the scrim. An agent pane always draws it: the chat list starts
+`inset_top` below the header and scrolls under it, and the empty screen pads its column by the
+header's height while its sky runs to the pane's top edge. The scrim takes no pointer events. View
+and editor panes, floating panes, PiPs, the browser header and the phone layouts keep the header
+stacked above the content.
 
 Every pane header puts its controls 22px tall (`PANE_HEADER_CONTROL_HEIGHT`), 6px (`CHROME_GAP`)
 in from the pane's top and sides, so a terminal header is 34px; the sidebar's

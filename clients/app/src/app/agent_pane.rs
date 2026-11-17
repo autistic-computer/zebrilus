@@ -424,6 +424,7 @@ pub(super) struct AgentPane {
     transcript_dirty: bool,
     corner_radii: Corners<Pixels>,
     ground: Ground,
+    header: Option<zz_ui::pane::HeaderBand>,
     chat: ChatPane,
     float_rows: Option<Rc<dyn Fn(&App) -> Option<u16>>>,
     phone: Option<PhoneDock>,
@@ -604,6 +605,7 @@ impl AgentPane {
             transcript_dirty: false,
             corner_radii: Corners::default(),
             ground: cx.theme().ground(),
+            header: None,
             chat: ChatPane::default(),
             float_rows: None,
             phone: None,
@@ -673,6 +675,21 @@ impl AgentPane {
             self.corner_radii = radii;
             cx.notify();
         }
+    }
+
+    pub(super) fn set_header_band(
+        &mut self,
+        header: Option<zz_ui::pane::HeaderBand>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.header != header {
+            self.header = header;
+            cx.notify();
+        }
+    }
+
+    pub(super) fn header_inset(&self) -> Pixels {
+        self.header.map_or(Pixels::ZERO, |band| band.height)
     }
 
     pub(super) fn set_ground(&mut self, ground: Ground, cx: &mut Context<Self>) {
@@ -1916,8 +1933,14 @@ impl Render for AgentPane {
                 AgentEmpty::Welcome(provider) if writable && !watch_only => {
                     self.render_empty_chat(provider, cx)
                 }
-                AgentEmpty::Welcome(provider) => agent_welcome(provider, cx),
-                AgentEmpty::Message { text, busy } => empty_state(text, busy, cx.entity_id(), cx),
+                AgentEmpty::Welcome(provider) => div()
+                    .size_full()
+                    .pt(self.header_inset())
+                    .child(agent_welcome(provider, cx)),
+                AgentEmpty::Message { text, busy } => div()
+                    .size_full()
+                    .pt(self.header_inset())
+                    .child(empty_state(text, busy, cx.entity_id(), cx)),
             }
         });
         div()
@@ -1941,6 +1964,7 @@ impl Render for AgentPane {
                     .children(chat),
             )
             .child(composer)
+            .children(self.header.map(zz_ui::pane::header_scrim))
             .capture_action(cx.listener(Self::move_ask_left))
             .capture_action(cx.listener(Self::move_ask_right))
             .capture_action(cx.listener(Self::complete))
@@ -1991,7 +2015,7 @@ impl AgentPane {
                 .and_then(zz_client::window_summary::provider_program),
             ground: Some(self.ground),
             touch: self.phone.is_some(),
-            inset_top: self.chat_insets().0,
+            inset_top: self.chat_insets().0 + self.header_inset(),
             inset_bottom: self.chat_insets().1,
         };
         chat_surface(self, look, window, cx)

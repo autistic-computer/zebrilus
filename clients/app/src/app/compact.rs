@@ -834,6 +834,7 @@ impl AppShell {
                 agent.update(cx, |agent, cx| {
                     agent.set_phone(dock, cx);
                     agent.set_ground(ground, cx);
+                    agent.set_header_band(None, cx);
                     agent.set_corner_radii(
                         Corners {
                             top_left: px(0.0),
@@ -870,6 +871,7 @@ impl AppShell {
                         },
                         cx,
                     );
+                    terminal.set_header_band(None, cx);
                     terminal.set_rows_above(true, cx);
                     terminal.set_rows_below(true, cx);
                 });

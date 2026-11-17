@@ -2,6 +2,7 @@ use crate::story::Story;
 
 pub(super) mod chooser;
 mod dialogs;
+mod floating_header;
 mod menus;
 pub(super) mod palette;
 mod path_picker;
@@ -21,5 +22,6 @@ pub const STORIES: &[Story] = &[
     dialogs::STORY,
     tmux_styles::STORY,
     terminal::STORY,
+    floating_header::STORY,
     phone::STORY,
 ];

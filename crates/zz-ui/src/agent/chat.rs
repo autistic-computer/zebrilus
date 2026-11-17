@@ -919,7 +919,8 @@ pub fn chat_surface<T: ChatHost>(
                     }),
             )
         });
-    let pip = pip.map(|pip| chat_pip_frame(pip, docked));
+    let pip_top = if touch { px(0.0) } else { look.inset_top };
+    let pip = pip.map(|pip| chat_pip_frame(pip, docked, pip_top));
     h_flex()
         .id(("agent-chat", look.pane))
         .relative()
@@ -968,7 +969,7 @@ pub fn chat_column(body: impl IntoElement) -> Div {
     )
 }
 
-pub fn chat_pip_frame(pip: AnyElement, docked: bool) -> AnyElement {
+pub fn chat_pip_frame(pip: AnyElement, docked: bool, top: Pixels) -> AnyElement {
     if docked {
         div()
             .flex_none()
@@ -976,7 +977,7 @@ pub fn chat_pip_frame(pip: AnyElement, docked: bool) -> AnyElement {
             .w(relative(0.45))
             .min_w(px(PIP_MIN_WIDTH))
             .max_w(px(PIP_MAX_WIDTH))
-            .pt(px(PIP_GAP))
+            .pt(top + px(PIP_GAP))
             .pr(px(PIP_GAP))
             .pb(px(COMPOSER_OUTER_PADDING))
             .child(pip)
@@ -986,6 +987,7 @@ pub fn chat_pip_frame(pip: AnyElement, docked: bool) -> AnyElement {
             .absolute()
             .inset_0()
             .p(px(PIP_GAP))
+            .pt(top + px(PIP_GAP))
             .child(pip)
             .into_any_element()
     }
@@ -3243,5 +3245,66 @@ mod tests {
         pane.reveal(&view, &ItemId::new("step"));
         assert_eq!(pane.open.turns, [TurnId(1)]);
         assert_eq!(pane.open.agent, Some(ItemId::new("a")));
+    }
+
+    struct InsetHost {
+        pane: ChatPane,
+        view: ChatView,
+    }
+
+    impl super::ChatHost for InsetHost {
+        fn chat_pane(&mut self) -> &mut ChatPane {
+            &mut self.pane
+        }
+
+        fn chat_parts<'a>(
+            &'a mut self,
+            _: &'a ala::App,
+        ) -> (&'a mut ChatPane, Option<&'a ChatView>) {
+            (&mut self.pane, Some(&self.view))
+        }
+
+        fn chat_read<'a>(&'a self, _: &'a ala::App) -> (&'a ChatPane, Option<&'a ChatView>) {
+            (&self.pane, Some(&self.view))
+        }
+
+        fn chat_fork(&mut self, _: &ItemId, _: &mut Context<Self>) {}
+    }
+
+    impl Render for InsetHost {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            self.pane.sync(&self.view);
+            let look = super::ChatLook {
+                pane: 0,
+                fork: false,
+                refs: None,
+                vendor: None,
+                ground: None,
+                touch: false,
+                inset_top: px(34.0),
+                inset_bottom: px(0.0),
+            };
+            div()
+                .w(px(420.0))
+                .h(px(600.0))
+                .child(super::chat_surface(self, look, window, cx))
+        }
+    }
+
+    #[ala::test]
+    fn the_first_chat_row_rests_below_the_floating_header(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (host, cx) = cx.add_window_view(|_, _| InsetHost {
+            pane: ChatPane::default(),
+            view: ready("s1"),
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let top = host.read_with(cx, |host, _| {
+            host.pane.list.bounds_for_item(0).map(|bounds| bounds.top())
+        });
+        assert_eq!(top, Some(px(46.0)));
     }
 }
