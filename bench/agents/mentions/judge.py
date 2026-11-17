@@ -248,6 +248,24 @@ for c in hc:
     if c["verb"] == "agent-send" and c["rc"] == 0:
         break
 
+answer_mark = {"m1": meta["token"], "m8": meta["token"], "m8b": meta["token"], "m3": meta["secret"], "m4": stamp or None, "m4c": "stamp: ", "m4b": "stamp: "}.get(sc)
+sends_after_answer = []
+answered = False
+in_report = False
+for l in host_tx.splitlines():
+    if l.startswith("> "):
+        in_report = l.startswith("> [zz] ") and "finished:" in l
+        continue
+    if in_report and l.startswith("  "):
+        if answer_mark and answer_mark in l:
+            answered = True
+        continue
+    in_report = False
+    if answered and l.startswith("execute ") and re.search(r"\bagent-send\b", l):
+        sends_after_answer.append(l[8:200])
+sends_host = [c for c in hc if c["verb"] == "agent-send" and "--help" not in c["args"]]
+sends_child = [c for c in calls if c["role"] in ("child", "open") and c["verb"] == "agent-send" and "--help" not in c["args"]]
+limit_hits = [c for c in calls if "messages from you since the user last wrote" in c["err"]]
 res = {
     "id": meta["id"],
     "host": meta["host"],
@@ -262,6 +280,10 @@ res = {
     "host_work": host_work,
     "ran_stamp": ran_stamp,
     "left_after_close": left_after_close,
+    "sends_host": len(sends_host),
+    "sends_child": len(sends_child),
+    "sends_after_answer": sends_after_answer,
+    "limit_hits": len(limit_hits),
     "polling": polling,
     "host_polling": host_poll,
     "panes_created": len(created),
