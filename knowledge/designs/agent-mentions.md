@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Agent mentions . the composer's @ hands work to another agent
-description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat in a PiP with one tmux-shaped command. The child's permission asks and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Proposed; steps 1 to 3 (chat facts, input errors, --kind agent on the create verbs, parent link, replies and asks, close cascade) built."
-status: Proposed (2026-11-17; steps 1 to 3 built)
+description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat in a PiP with one tmux-shaped command. The child's permission asks and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Proposed; steps 1 to 3 and the daemon half of step 4 (the mention note) built."
+status: Proposed (2026-11-17; steps 1 to 3 and the mention note built)
 resource: crates/zz-ui/src/target.rs
 tags:
 - agent
@@ -20,7 +20,8 @@ and files. Picking one puts a mention in the prompt. The agent you are talking t
 a brief and opens the other agent as a chat in a [PiP](/designs/pip-panes.md). The child's
 permission asks and its final reply come back into the host chat.
 
-Status 2026-11-17: proposed, steps 1 to 3 of the [build order](#build-order) built. The rulings below
+Status 2026-11-17: proposed, steps 1 to 3 of the [build order](#build-order) built, and the
+mention note of step 4; the picker rows are being built in another lane. The rulings below
 are the owner's. Everything under
 [Proposed commands](#proposed-commands) and after is proposed unless it says ruled, and
 [Open](#open) lists what is not decided.
@@ -287,11 +288,11 @@ cycle limit, and whether a child may create children is [open](#open).
   shadowed in mentions and stays reachable by its `$N` id.
 - **Chats.** A Chats pick already exists and keeps its raw token, `@<host>:%N`.
 - **Teaching.** The agent has to be told what the two tokens mean. Where it goes is open: a few
-  lines in the standing context, or a short note added only to a prompt that has a mention. The
-  text fits either (286 bytes):
+  lines in the standing context, or a short note added only to a prompt that has a mention. Built
+  as the note (`MENTION_NOTE`, 293 bytes):
 
 ```
-@+claude or @+codex[/MODEL] asks you to delegate: write a brief that stands on its own and run zz new-pane -d --kind agent codex [--model MODEL] 'BRIEF'. @host:%N is a running chat: zz agent-send -t %N TEXT. Replies and permission asks come back to you as messages; do not wait or poll.
+@+claude or @+codex[/MODEL] asks you to delegate: write a brief that stands on its own and run zz new-pane -d --kind agent claude|codex [--model MODEL] 'BRIEF'. @host:%N is a running chat: zz agent-send -t %N TEXT. Replies and permission asks come back to you as messages; do not wait or poll.
 ```
 
 # Host chat
@@ -299,6 +300,26 @@ cycle limit, and whether a child may create children is [open](#open).
 One row per child in the host transcript: agent, state (working, asking, done, failed, closed),
 elapsed time, and what the host allowed or denied. Clicking it focuses the PiP. The reply shows as
 a quoted block. The UI gets boarded in `design/mockups` before any app code.
+
+# How the host card reads the transcript
+
+The host chat's card is drawn from the host's own transcript, with no new wire data. Every string
+it reads has one definition, `zz_protocol::agent_mention`, which the daemon formats with and a
+client parses with:
+
+- The tool call that opened or messaged a child: an execute item whose command runs
+  `new-pane|split-window|new-window ... --kind agent` or `agent-send`. Its output holds the stderr
+  line `ReplyNotice` parses: `new-pane: opened %N (codex); its reply comes back to you as a
+  message` or `agent-send: %N's reply comes back to you as a message`, which names the child.
+- The injected prompts: a user message that `AgentReport::parse` reads as finished, stopped,
+  failed or closed, or that `AgentAsk::parse` reads as an ask with its answers.
+- The host's own answers: an execute item whose command `AgentRespond::parse` reads as
+  `zz agent-respond -t %N --allow|--deny|--option ID`, with or without the leading `zz` and
+  inside a shell wrapper.
+
+For both drivers the command text is the tool call's `rawInput.command` (in a chat item,
+`ItemBody.target` unless the driver set its own target), and the output, stdout and stderr
+together, is the tool call update's `content` text (`ItemBody.text`).
 
 # Build order
 
@@ -371,13 +392,15 @@ Each step lands alone.
      A chat with a parent cannot open a chat (exit 1), so there is one level of children.
    - Reports and asks are queued with `AgentRuntime::inject`: such a prompt goes through the
      pane's inbox, is not counted against the 4 queued prompts, keeps the byte cap (over it, it is
-     logged and dropped, never handed back to a composer), and is delivered on a short-lived
-     thread, so an ask and a reply that land close together may arrive in either order.
+     logged and dropped), and is never handed back to a composer when a queue is reclaimed.
+     Deliveries to one caller leave one queue in order, drained by one thread at a time
+     (`Shared::deliver_to_chat`); an ask whose request is answered before its turn is dropped.
    - A caller flipped to a terminal gets the message through the existing terminal delivery
      (`deliver_to_terminal_pane`), as `--notify` does. A caller that is gone or is neither a chat
      nor a terminal is logged and dropped.
    - Message cases the shapes did not cover: a cancelled turn reports `[zz] %N (NAME) stopped
-     (cancelled).`, a prompt handed back before its turn reports `failed: the message was handed
+     (cancelled):` (the stopped shape with no text; it read `stopped (cancelled).` until the
+     formats moved into `zz_protocol::agent_mention`), a prompt handed back before its turn reports `failed: the message was handed
      back before its turn ran`, and a reply that never comes (the chat closed) reports `was
      closed.`. An ask whose tool call has no kind leaves the kind out: `asks: <title>`.
    - Asks ride the waiter as an `asks` sink beside `AgentBlockPolicy::Wait` (the waiter keeps
@@ -391,7 +414,26 @@ Each step lands alone.
      takes `--on-block wait` or `fail`.
    - The cascade kills the children on a thread right after the command that removed the parent,
      so `kill-pane` returns before they are gone.
-4. **Agents rows in the picker and the teaching text.**
+4. **Agents rows in the picker and the teaching text.** The teaching text (the mention note) is
+   built; the picker rows are built in the UI lane.
+
+   Choices made while building the note:
+   - The note goes with any prompt that holds an agent token or a chat token, from any client or
+     `agent-send`, as a separate block or item, never inside the user's text. Claude Code gets it
+     wrapped in `<system-reminder>`, Codex as a second `input` text item, ACP agents as a second
+     prompt block; replay drops that exact block, so the user's bubble shows only what they typed.
+   - Detection is by token shape alone (`zz_protocol::agent_mention::mentions`, the same grammar
+     the composer writes): `@+claude` and `@+codex` with an optional `/MODEL` (`\` escapes), and
+     `@HOST:%N` with nothing between the host and the pane, which only the Chats rows write. The
+     daemon does not check that `%N` is a chat, since the host may be another machine.
+   - The note reads: `@+claude or @+codex[/MODEL] asks you to delegate: write a brief that stands
+     on its own and run zz new-pane -d --kind agent claude|codex [--model MODEL] 'BRIEF'.
+     @host:%N is a running chat: zz agent-send -t %N TEXT. Replies and permission asks come back
+     to you as messages; do not wait or poll.` (293 bytes; `claude|codex` replaces the design's
+     `codex` so the provider the token names is the one opened.)
+   - `REVISION` is 6: clients can rely on a daemon at 6 or later to add the note, report child
+     turns and keep the message formats. No floor moved.
+
    - Picking the codex row in a composer holding `fix it` after the mention, `TargetPicker::raw_text`
      returns `@+codex fix it`.
    - The teaching text is at most 300 bytes.

@@ -71,17 +71,32 @@ cannot `agent-send` to its parent. The brief of such a chat, and a chat caller's
 `agent-send` to a chat, carry a waiter (`Shared::chat_report_waiter`) that reports the turn into
 the caller as a prompt the daemon makes (`AgentRuntime::inject`): `[zz] %N (codex) finished:` with
 the final text (or the full text when the final part is empty, last 64 KiB), `stopped (reason):`,
-`failed: message`, `stopped (cancelled).` or `was closed.`. While that turn waits on a permission
+`failed: message`, `stopped (cancelled):` or `was closed.`. While that turn waits on a permission
 or a question, the waiter's `asks` sink sends one `[zz] %N (codex) asks: kind title` message per
-request id with the `zz agent-respond` lines that answer it. These prompts are `injected`: they
-travel the pane's inbox rather than its 4-slot prompt channel, do not count against
-`MAX_AGENT_QUEUED_PROMPTS`, keep the byte cap (a prompt over it is logged and dropped), and are
+request id with the `zz agent-respond` lines that answer it. Every string here, the stderr lines
+included, is built and parsed by `zz_protocol::agent_mention` (`AgentReport`, `AgentAsk`,
+`ReplyNotice`, `AgentRespond`), so clients read them with the same code. Deliveries to one caller
+go out in the order they were made, from one queue per caller (`Shared::deliver_to_chat`), and an
+ask whose request is answered by the time its turn comes is dropped. These prompts are
+`injected`: they travel the pane's inbox rather than its 4-slot prompt channel, do not count
+against `MAX_AGENT_QUEUED_PROMPTS`, keep the byte cap (a prompt over it is logged and dropped), are
+never handed back to a composer when a queue is reclaimed (`/clear`, unqueue, close), and are
 dropped with a log line when the caller is gone. A caller flipped to a terminal gets them typed
 into its terminal the way `--notify` does. When a pane goes away, the chats it opened are killed
 right after the command that removed it, on a thread (`close_orphaned_chats`); flipping a parent
 to a terminal closes nothing. From a chat caller `agent-send --wait` defaults to `--on-block fail`,
 and `--wait ''` on a chat joins the running turn (`HostCommand::Join`) or fails with `%N has no
 running turn`.
+
+**The mention note.** A prompt whose text holds an agent token (`@+claude`, `@+codex`, either with
+`/MODEL`) or a chat token (`@HOST:%N`, the shape only the composer's Chats rows write) reaches the
+agent with `MENTION_NOTE` (`zz_protocol::agent_mention`, under 300 bytes) beside it, found by
+`mention_note` with the composer's token grammar. The note never joins the user's text: Claude
+Code gets it as a second content block wrapped in `<system-reminder>`, Codex as a second text item
+in `turn/start`'s `input`, and other ACP agents as a second text block in the prompt request. The
+stream's own echo of the prompt has only the user's text, and the transcript readers drop the
+note block when they replay a session (`claude::translate::message_text`, `codex::translate::user_text`).
+Daemons from `REVISION` 6 on do this.
 
 **Running it.** The daemon opens the pane's runtime (`Shared::open_agent_pane`, `agent_pane_spec`)
 with the descriptor's provider, folder, session, model and effort and the pane's workspace

@@ -856,13 +856,19 @@ fn without_paste_tags(text: &str) -> String {
     out.trim().to_owned()
 }
 
+pub(crate) fn note_block(note: &str) -> String {
+    format!("<system-reminder>\n{note}\n</system-reminder>")
+}
+
 fn message_text(frame: &Value) -> String {
+    let note = note_block(zz_protocol::agent_mention::MENTION_NOTE);
     match &frame["message"]["content"] {
         Value::String(text) => text.clone(),
         Value::Array(blocks) => blocks
             .iter()
             .filter(|block| block["type"] == "text")
             .filter_map(|block| block["text"].as_str())
+            .filter(|text| *text != note)
             .collect::<Vec<_>>()
             .join("\n"),
         _ => String::new(),

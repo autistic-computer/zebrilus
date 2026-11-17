@@ -642,6 +642,7 @@ fn user_text(item: &Value, cwd: &Path) -> Option<(String, Vec<(String, String)>)
         .iter()
         .filter(|part| part["type"] == "text")
         .filter_map(|part| part["text"].as_str())
+        .filter(|text| *text != zz_protocol::agent_mention::MENTION_NOTE)
         .collect::<Vec<_>>()
         .join("\n");
     let images = parts
@@ -1235,6 +1236,31 @@ fn display_path(path: &str, cwd: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use agent_client_protocol::v1::schema::SessionUpdate;
+
+    #[test]
+    fn a_mention_sends_the_note_as_its_own_input_the_transcript_leaves_out() {
+        let prompt = |text: &str| crate::agent::stream::AgentPrompt {
+            text: text.to_owned(),
+            ..Default::default()
+        };
+        let input = crate::agent::codex::turn_input(&prompt("@+codex fix it"));
+        assert_eq!(
+            input,
+            json!([
+                { "type": "text", "text": "@+codex fix it", "text_elements": [] },
+                { "type": "text", "text": zz_protocol::agent_mention::MENTION_NOTE, "text_elements": [] },
+            ])
+        );
+        let item = json!({ "type": "userMessage", "id": "m1", "content": input });
+        assert_eq!(
+            user_text(&item, Path::new("/")),
+            Some(("@+codex fix it".to_owned(), Vec::new()))
+        );
+        assert_eq!(
+            crate::agent::codex::turn_input(&prompt("fix it")),
+            json!([{ "type": "text", "text": "fix it", "text_elements": [] }])
+        );
+    }
 
     use super::*;
 

@@ -205,6 +205,15 @@ impl AgentRuntime {
         self.host.command(pane, HostCommand::Prompt(queued)).is_ok()
     }
 
+    pub(crate) fn has_pending_permission(&self, pane: PaneId, request: u64) -> bool {
+        self.host.snapshot_state(pane).is_some_and(|state| {
+            state
+                .pending_permissions
+                .iter()
+                .any(|pending| pending.request_id == request)
+        })
+    }
+
     pub(crate) fn join(&self, pane: PaneId, waiter: AgentTurnWaiter) -> bool {
         let _lifecycle = self.lifecycle.lock();
         self.host.command(pane, HostCommand::Join(waiter)).is_ok()

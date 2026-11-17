@@ -2846,6 +2846,9 @@ pub(crate) fn turn_input(prompt: &AgentPrompt) -> Value {
     if !prompt.text.is_empty() {
         input.push(json!({ "type": "text", "text": prompt.text, "text_elements": [] }));
     }
+    if let Some(note) = zz_protocol::agent_mention::mention_note(&prompt.text) {
+        input.push(json!({ "type": "text", "text": note, "text_elements": [] }));
+    }
     for image in &prompt.images {
         input.push(json!({
             "type": "image",

@@ -1361,6 +1361,7 @@ pub(crate) async fn run_agent_connection(
                             continue;
                         };
                         let prompt_events = event_tx.clone();
+                        let note = zz_protocol::agent_mention::mention_note(&prompt.text);
                         let blocks = prompt_blocks(prompt);
                         let (cancel_tx, cancel_rx) = async_channel::bounded::<()>(1);
                         let (done_tx, done_rx) = async_channel::bounded::<()>(1);
@@ -1407,6 +1408,8 @@ pub(crate) async fn run_agent_connection(
                             send_payload(&event_tx, payload).await?;
                         }
                         routing.lock().user_echo_turn = Some((session_id.0.to_string(), turn_id));
+                        let mut blocks = blocks;
+                        blocks.extend(note.map(|note| ContentBlock::Text(TextContent::new(note))));
                         let request = connection.send_request(PromptRequest::new(session_id, blocks));
                         let task_prompts = Arc::clone(&prompt_controls);
                         let task_routing = Arc::clone(&routing);

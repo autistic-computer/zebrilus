@@ -2470,6 +2470,9 @@ fn prompt_content(prompt: &crate::agent::stream::AgentPrompt) -> Value {
     if !prompt.text.is_empty() {
         content.push(json!({ "type": "text", "text": prompt.text }));
     }
+    if let Some(note) = zz_protocol::agent_mention::mention_note(&prompt.text) {
+        content.push(json!({ "type": "text", "text": translate::note_block(note) }));
+    }
     for image in &prompt.images {
         content.push(json!({
             "type": "image",
@@ -2485,6 +2488,31 @@ mod replay_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mention_sends_the_note_as_a_reminder_the_transcript_leaves_out() {
+        let prompt = |text: &str| crate::agent::stream::AgentPrompt {
+            text: text.to_owned(),
+            ..Default::default()
+        };
+        let content = prompt_content(&prompt("@+codex fix it"));
+        assert_eq!(
+            content,
+            json!([
+                { "type": "text", "text": "@+codex fix it" },
+                { "type": "text", "text": format!("<system-reminder>\n{}\n</system-reminder>", zz_protocol::agent_mention::MENTION_NOTE) },
+            ])
+        );
+        let frame = json!({ "type": "user", "message": { "role": "user", "content": content } });
+        assert_eq!(
+            translate::user_prompt(&frame),
+            Some(("@+codex fix it".to_owned(), Vec::new()))
+        );
+        assert_eq!(
+            prompt_content(&prompt("fix it")),
+            json!([{ "type": "text", "text": "fix it" }])
+        );
+    }
 
     #[test]
     fn only_a_claude_binary_selects_the_native_driver() {

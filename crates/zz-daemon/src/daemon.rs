@@ -4903,6 +4903,8 @@ struct SharedServer {
     #[cfg(feature = "agent")]
     agent_effects: Mutex<()>,
     #[cfg(feature = "agent")]
+    chat_deliveries: Mutex<BTreeMap<PaneId, VecDeque<ChatDelivery>>>,
+    #[cfg(feature = "agent")]
     agent_catalog_pending: Mutex<BTreeSet<(ClientId, PaneId, AgentProvider)>>,
     providers: Mutex<providers::Providers>,
     #[cfg(all(feature = "agent", unix))]
@@ -5873,6 +5875,8 @@ impl Shared {
             agent: Mutex::new(None),
             #[cfg(feature = "agent")]
             agent_effects: Mutex::new(()),
+            #[cfg(feature = "agent")]
+            chat_deliveries: Mutex::default(),
             #[cfg(feature = "agent")]
             agent_catalog_pending: Mutex::new(BTreeSet::new()),
             providers: Mutex::new(providers::Providers::default()),
@@ -17173,7 +17177,7 @@ impl Shared {
             if caller.is_some() {
                 self.record_command_stderr(
                     client,
-                    &format!("agent-send: {pane}'s reply comes back to you as a message"),
+                    &zz_protocol::agent_mention::ReplyNotice::Sent { pane }.to_string(),
                 );
             }
             return Ok(Execution {
@@ -33530,7 +33534,7 @@ impl Shared {
         (Some(origin) != target && is_agent_chat(&inner, origin)).then_some(origin)
     }
 
-    fn agent_command_name(&self, pane: PaneId) -> &'static str {
+    fn agent_provider_of(&self, pane: PaneId) -> AgentProvider {
         match self
             .inner
             .lock()
@@ -33539,8 +33543,8 @@ impl Shared {
             .pane(pane)
             .map(|pane| &pane.kind)
         {
-            Some(PaneKind::Agent(agent)) => agent.provider.command_name(),
-            _ => "agent",
+            Some(PaneKind::Agent(agent)) => agent.provider,
+            _ => AgentProvider::default(),
         }
     }
 
@@ -33549,14 +33553,21 @@ impl Shared {
         caller: PaneId,
         pane: PaneId,
     ) -> crate::agent::host::AgentTurnWaiter {
-        let name = self.agent_command_name(pane);
+        let provider = self.agent_provider_of(pane);
         let shared = Arc::downgrade(&self.server_owner());
         let asking = shared.clone();
         let asked = Arc::new(Mutex::new(BTreeSet::new()));
         crate::agent::host::AgentTurnWaiter {
             reply: crate::daemon::cmdq::Reply::new(move |result| {
                 if let Some(shared) = shared.upgrade() {
-                    shared.report_to_chat(caller, pane, agent_report_message(pane, name, result));
+                    shared.deliver_to_chat(
+                        caller,
+                        ChatDelivery {
+                            from: pane,
+                            request: None,
+                            text: agent_report(pane, provider, result).to_string(),
+                        },
+                    );
                 }
             }),
             on_block: AgentBlockPolicy::Wait,
@@ -33565,62 +33576,113 @@ impl Shared {
                 if asked.lock().insert(permission.request_id)
                     && let Some(shared) = asking.upgrade()
                 {
-                    shared.report_to_chat(caller, pane, agent_ask_message(pane, name, permission));
+                    shared.deliver_to_chat(
+                        caller,
+                        ChatDelivery {
+                            from: pane,
+                            request: Some(permission.request_id),
+                            text: agent_ask(pane, provider, permission).to_string(),
+                        },
+                    );
                 }
             }))),
         }
     }
 
-    fn report_to_chat(self: &Arc<Self>, caller: PaneId, from: PaneId, message: String) {
+    fn deliver_to_chat(self: &Arc<Self>, caller: PaneId, delivery: ChatDelivery) {
+        {
+            let mut queues = self.chat_deliveries.lock();
+            let queue = queues.entry(caller).or_default();
+            queue.push_back(delivery);
+            if queue.len() > 1 {
+                return;
+            }
+        }
         let shared = Arc::clone(self);
         let spawned = std::thread::Builder::new()
             .name("zz-agent-report".to_owned())
             .spawn(move || {
-                let chat = match shared
-                    .inner
-                    .lock()
-                    .engine
-                    .state
-                    .pane(caller)
-                    .map(|pane| &pane.kind)
-                {
-                    None => {
-                        log::info!(target: "zz::agent", "{caller} is gone; dropped {from}'s report");
+                loop {
+                    let Some(delivery) = shared
+                        .chat_deliveries
+                        .lock()
+                        .get(&caller)
+                        .and_then(|queue| queue.front().cloned())
+                    else {
                         return;
+                    };
+                    shared.deliver_one(caller, delivery);
+                    let mut queues = shared.chat_deliveries.lock();
+                    if let Some(queue) = queues.get_mut(&caller) {
+                        queue.pop_front();
+                        if queue.is_empty() {
+                            queues.remove(&caller);
+                        }
                     }
-                    Some(PaneKind::Agent(_)) => true,
-                    Some(PaneKind::Terminal) => false,
-                    Some(_) => {
-                        log::info!(target: "zz::agent", "{caller} is no chat; dropped {from}'s report");
-                        return;
-                    }
-                };
-                if chat {
-                    let injected = shared.agent_runtime().is_some_and(|runtime| {
-                        runtime.inject(
-                            caller,
-                            AgentPrompt {
-                                owner: ClientInstanceId(u64::MAX),
-                                text: message,
-                                images: Vec::new(),
-                            },
-                        )
-                    });
-                    if !injected {
-                        log::warn!(target: "zz::agent", "{caller} did not take {from}'s report");
-                    }
-                    return;
-                }
-                #[cfg(unix)]
-                let delivered = shared.deliver_to_terminal_pane(caller, &message);
-                #[cfg(not(unix))]
-                let delivered = shared.paste_and_submit(caller, &message, SEND_TEXT_TIMEOUT, true);
-                if let Err(error) = delivered {
-                    log::warn!(target: "zz::agent", "could not tell {caller} about {from}: {error}");
                 }
             });
         if let Err(error) = spawned {
-            log::warn!(target: "zz::agent", "could not report {from} back to {caller}: {error}");
+            self.chat_deliveries.lock().remove(&caller);
+            log::warn!(target: "zz::agent", "could not report back to {caller}: {error}");
+        }
+    }
+
+    fn deliver_one(self: &Arc<Self>, caller: PaneId, delivery: ChatDelivery) {
+        let ChatDelivery {
+            from,
+            request,
+            text,
+        } = delivery;
+        let runtime = self.agent_runtime();
+        if let Some(request) = request
+            && !runtime
+                .as_ref()
+                .is_some_and(|runtime| runtime.has_pending_permission(from, request))
+        {
+            log::info!(target: "zz::agent", "{from}'s request {request} was answered; dropped its ask to {caller}");
+            return;
+        }
+        let chat = match self
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(caller)
+            .map(|pane| &pane.kind)
+        {
+            None => {
+                log::info!(target: "zz::agent", "{caller} is gone; dropped {from}'s report");
+                return;
+            }
+            Some(PaneKind::Agent(_)) => true,
+            Some(PaneKind::Terminal) => false,
+            Some(_) => {
+                log::info!(target: "zz::agent", "{caller} is no chat; dropped {from}'s report");
+                return;
+            }
+        };
+        if chat {
+            let injected = runtime.is_some_and(|runtime| {
+                runtime.inject(
+                    caller,
+                    AgentPrompt {
+                        owner: ClientInstanceId(u64::MAX),
+                        text,
+                        images: Vec::new(),
+                    },
+                )
+            });
+            if !injected {
+                log::warn!(target: "zz::agent", "{caller} did not take {from}'s report");
+            }
+            return;
+        }
+        #[cfg(unix)]
+        let delivered = self.deliver_to_terminal_pane(caller, &text);
+        #[cfg(not(unix))]
+        let delivered = self.paste_and_submit(caller, &text, SEND_TEXT_TIMEOUT, true);
+        if let Err(error) = delivered {
+            log::warn!(target: "zz::agent", "could not tell {caller} about {from}: {error}");
         }
     }
 
@@ -33652,13 +33714,12 @@ impl Shared {
             ) {
                 log::warn!(target: "zz::agent", "{pane} handed back its brief");
             } else if caller.is_some() {
-                let name = self.agent_command_name(pane);
-                self.record_command_stderr(
-                    client,
-                    &format!(
-                        "{verb}: opened {pane} ({name}); its reply comes back to you as a message"
-                    ),
-                );
+                let notice = zz_protocol::agent_mention::ReplyNotice::Opened {
+                    verb: verb.to_owned(),
+                    pane,
+                    provider: self.agent_provider_of(pane),
+                };
+                self.record_command_stderr(client, &notice.to_string());
             }
         }
     }
@@ -52036,38 +52097,63 @@ fn agent_reply_tail(reply: &crate::agent::host::AgentTurnReply) -> String {
 }
 
 #[cfg(feature = "agent")]
-fn agent_report_message(
-    pane: PaneId,
-    name: &str,
-    result: Option<crate::agent::host::AgentTurnResult>,
-) -> String {
-    use crate::agent::host::AgentTurnFailure;
+#[derive(Clone, Debug)]
+struct ChatDelivery {
+    from: PaneId,
+    request: Option<u64>,
+    text: String,
+}
 
-    let head = format!("[zz] {pane} ({name})");
+#[cfg(feature = "agent")]
+fn agent_report(
+    pane: PaneId,
+    provider: AgentProvider,
+    result: Option<crate::agent::host::AgentTurnResult>,
+) -> zz_protocol::agent_mention::AgentReport {
+    use crate::agent::host::AgentTurnFailure;
+    use zz_protocol::agent_mention::AgentReport;
+
+    let failed = |message: &str| AgentReport::Failed {
+        pane,
+        provider,
+        message: message.to_owned(),
+    };
     match result {
-        Some(Ok(done)) => format!("{head} finished:\n{}", agent_reply_tail(&done)),
-        Some(Err(AgentTurnFailure::Stopped { reason, reply })) => {
-            format!("{head} stopped ({reason}):\n{}", agent_reply_tail(&reply))
-        }
-        Some(Err(AgentTurnFailure::Failed(message))) => format!("{head} failed: {message}"),
-        Some(Err(AgentTurnFailure::Cancelled)) => format!("{head} stopped (cancelled)."),
+        Some(Ok(done)) => AgentReport::Finished {
+            pane,
+            provider,
+            text: agent_reply_tail(&done),
+        },
+        Some(Err(AgentTurnFailure::Stopped { reason, reply })) => AgentReport::Stopped {
+            pane,
+            provider,
+            reason,
+            text: agent_reply_tail(&reply),
+        },
+        Some(Err(AgentTurnFailure::Cancelled)) => AgentReport::Stopped {
+            pane,
+            provider,
+            reason: "cancelled".to_owned(),
+            text: String::new(),
+        },
+        Some(Err(AgentTurnFailure::Failed(message))) => failed(&message),
         Some(Err(AgentTurnFailure::Reclaimed)) => {
-            format!("{head} failed: the message was handed back before its turn ran")
+            failed("the message was handed back before its turn ran")
         }
-        Some(Err(AgentTurnFailure::Blocked { .. })) => {
-            format!("{head} failed: the turn stopped on a permission")
-        }
-        Some(Err(AgentTurnFailure::NoTurn)) => format!("{head} failed: no turn ran"),
-        Some(Err(AgentTurnFailure::Closed)) | None => format!("{head} was closed."),
+        Some(Err(AgentTurnFailure::Blocked { .. })) => failed("the turn stopped on a permission"),
+        Some(Err(AgentTurnFailure::NoTurn)) => failed("no turn ran"),
+        Some(Err(AgentTurnFailure::Closed)) | None => AgentReport::Closed { pane, provider },
     }
 }
 
 #[cfg(feature = "agent")]
-fn agent_ask_message(
+fn agent_ask(
     pane: PaneId,
-    name: &str,
+    provider: AgentProvider,
     permission: &crate::agent::host::AgentPendingPermission,
-) -> String {
+) -> zz_protocol::agent_mention::AgentAsk {
+    use zz_protocol::agent_mention::{AgentAsk, AskAnswers, AskOption};
+
     let text = |key: &str| {
         permission
             .tool_call
@@ -52089,30 +52175,36 @@ fn agent_ask_message(
                 Some("allow_once" | "allow_always" | "reject_once" | "reject_always")
             )
         });
-    let deny = format!("zz agent-respond -t {pane} --deny");
-    let mut lines = vec![format!("[zz] {pane} ({name}) asks: {what}")];
-    if plain {
-        lines.push(format!("zz agent-respond -t {pane} --allow"));
-        lines.push(deny);
+    let answers = if plain {
+        AskAnswers::AllowDeny
     } else if options.is_empty() {
-        lines.push(format!("answer it in the pane, or dismiss it: {deny}"));
+        AskAnswers::FreeText
     } else {
-        lines.extend(options.iter().map(|option| {
-            let field = |key: &str| {
-                option
-                    .get(key)
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or_default()
-            };
-            format!(
-                "zz agent-respond -t {pane} --option {}  {}",
-                field("optionId"),
-                field("name")
-            )
-        }));
-        lines.push(deny);
+        AskAnswers::Options(
+            options
+                .iter()
+                .map(|option| {
+                    let field = |key: &str| {
+                        option
+                            .get(key)
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or_default()
+                            .to_owned()
+                    };
+                    AskOption {
+                        id: field("optionId"),
+                        label: field("name"),
+                    }
+                })
+                .collect(),
+        )
+    };
+    AgentAsk {
+        pane,
+        provider,
+        what,
+        answers,
     }
-    lines.join("\n")
 }
 
 #[cfg(feature = "agent")]
@@ -52608,7 +52700,9 @@ Claude Code and Codex run two ways in a pane, and a pane flips between them on t
 
 Open a new chat as a float. `split-window` and `new-window` take the same `--kind agent` words and give the chat a split beside the target or a window of its own. `--model`, `--effort`, `--account` and `--resume` go before the provider or right after it. The words after them are the brief, sent as the chat's first prompt once its session is up, with the same checks and 1 MiB cap as `agent-send` TEXT; no brief opens an empty chat. Without `-c` the chat starts in the folder a terminal made the same way would. `-P -F '#{pane_id}'` prints the new pane, which takes `agent-send` at once: `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'review the diff in this folder'`. A missing or unknown provider, or a bad flag value, exits 2.
 
-Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends (stderr says so), and each permission it asks for during that turn comes to you with the `agent-respond` lines that answer it. Do not wait or poll. A chat you open cannot open chats of its own, and closing your pane closes it.
+Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends (stderr says so), and each permission it asks for during that turn comes to you with the `agent-respond` lines that answer it. Do not wait or poll. A chat you open cannot open chats of its own, and closing your pane closes it. A message reads `[zz] %N (codex) finished:` and the reply, `stopped (REASON):`, `failed: MESSAGE` or `was closed.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it.
+
+A prompt that names an agent with `@+claude`, `@+codex` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a short note that says what those tokens ask of you.
 
 A chat answers the same reads as a terminal. `#{pane_current_command}` is `claude` or `codex`. `#{agent_state}` is `starting`, `idle`, `working`, `needs-approval`, `needs-input` or `failed`, and `#{agent_pending_permission}` is the pending request ID or empty, in `list-panes -F`, `display-message -p` and `inspect`. Typing into a chat fails and names the verb to use: `send-keys`, `send-text`, `paste-buffer` and `run-pane` fail with `%N is an agent chat; send with: zz agent-send -t %N TEXT`.
 

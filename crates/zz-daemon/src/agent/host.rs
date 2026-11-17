@@ -859,16 +859,12 @@ impl PanePump {
         inbox: &Receiver<PaneInput>,
     ) {
         while let Ok(queued) = prompts.try_recv() {
-            self.emit(AgentStreamPayload::PromptsReclaimed {
-                prompts: vec![queued.into_reclaimed(AgentTurnFailure::Closed)],
-            });
+            self.reclaim_prompts(vec![queued], &AgentTurnFailure::Closed);
         }
         while let Ok(input) = inbox.try_recv() {
             match input {
                 PaneInput::Command(HostCommand::Prompt(queued)) => {
-                    self.emit(AgentStreamPayload::PromptsReclaimed {
-                        prompts: vec![queued.into_reclaimed(AgentTurnFailure::Closed)],
-                    });
+                    self.reclaim_prompts(vec![queued], &AgentTurnFailure::Closed);
                 }
                 PaneInput::Command(HostCommand::Steer(prompt)) => {
                     self.emit(AgentStreamPayload::PromptsReclaimed {
@@ -1163,9 +1159,7 @@ impl PanePump {
                     let Ok(queued) = self.prompts.try_recv() else {
                         break;
                     };
-                    self.emit(AgentStreamPayload::PromptsReclaimed {
-                        prompts: vec![queued.into_reclaimed(AgentTurnFailure::Reclaimed)],
-                    });
+                    self.reclaim_prompts(vec![queued], &AgentTurnFailure::Reclaimed);
                 }
                 self.reclaim_queue();
             }
@@ -1441,9 +1435,7 @@ impl PanePump {
         }
         let user_prompts = self.queue.iter().filter(|queued| !queued.injected).count();
         if !queued.injected && (user_prompts >= MAX_AGENT_QUEUED_PROMPTS || over_bytes) {
-            self.emit(AgentStreamPayload::PromptsReclaimed {
-                prompts: vec![queued.into_reclaimed(AgentTurnFailure::Reclaimed)],
-            });
+            self.reclaim_prompts(vec![queued], &AgentTurnFailure::Reclaimed);
             return;
         }
         self.queue.push_back(queued);
@@ -1500,7 +1492,7 @@ impl PanePump {
             .try_send(RuntimeCommand::Prompt { turn_id, prompt })
         {
             Ok(()) => {
-                self.dispatched_prompt = Some((turn_id, retained));
+                self.dispatched_prompt = (!injected).then_some((turn_id, retained));
                 self.emit(AgentStreamPayload::TurnStarted { turn_id });
             }
             Err(error) => {
@@ -1535,13 +1527,23 @@ impl PanePump {
         if self.queue.is_empty() {
             return;
         }
-        let prompts = self
-            .queue
-            .drain(..)
-            .map(|queued| queued.into_reclaimed(AgentTurnFailure::Reclaimed))
-            .collect::<Vec<_>>();
+        let queued = self.queue.drain(..).collect::<Vec<_>>();
         self.publish_queue_depth();
-        self.emit(AgentStreamPayload::PromptsReclaimed { prompts });
+        self.reclaim_prompts(queued, &AgentTurnFailure::Reclaimed);
+    }
+
+    fn reclaim_prompts(&mut self, queued: Vec<QueuedPrompt>, failure: &AgentTurnFailure) {
+        let prompts = queued
+            .into_iter()
+            .filter_map(|queued| {
+                let injected = queued.injected;
+                let prompt = queued.into_reclaimed(failure.clone());
+                (!injected).then_some(prompt)
+            })
+            .collect::<Vec<_>>();
+        if !prompts.is_empty() {
+            self.emit(AgentStreamPayload::PromptsReclaimed { prompts });
+        }
     }
 
     fn settle_active_turn(&mut self, result: AgentTurnResult) {
@@ -3133,6 +3135,50 @@ mod tests {
             select_permission(&pending, Some(99), &PermissionChoice::Allow),
             Err("unknown permission request: 99".to_owned())
         );
+    }
+
+    #[test]
+    fn reclaiming_a_queue_drops_injected_prompts_and_hands_back_the_rest() {
+        let fixture = Fixture::open(Behavior::Hang, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        let queued = |text: &str, injected| {
+            HostCommand::Prompt(QueuedPrompt {
+                prompt: AgentPrompt {
+                    owner: ClientInstanceId::default(),
+                    text: text.to_owned(),
+                    images: Vec::new(),
+                },
+                waiter: None,
+                injected,
+            })
+        };
+        fixture.prompt("busy");
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().phase != AgentConnectionPhase::Running {
+            assert!(Instant::now() < deadline, "the first turn never ran");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        fixture.command(queued("[zz] %2 (codex) finished:\nok", true));
+        fixture.command(queued("mine", false));
+        while fixture.state().queued_prompts != 2 {
+            assert!(Instant::now() < deadline, "the prompts never queued");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        fixture.command(HostCommand::Unqueue);
+        let reclaimed = fixture
+            .recorder
+            .wait("the reclaimed prompt", |payload| {
+                matches!(payload, AgentStreamPayload::PromptsReclaimed { .. })
+            })
+            .into_iter()
+            .filter_map(|payload| match payload {
+                AgentStreamPayload::PromptsReclaimed { prompts } => Some(prompts),
+                _ => None,
+            })
+            .flatten()
+            .map(|prompt| prompt.text)
+            .collect::<Vec<_>>();
+        assert_eq!(reclaimed, ["mine"]);
     }
 
     #[test]
