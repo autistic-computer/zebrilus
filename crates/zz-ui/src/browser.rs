@@ -1770,6 +1770,19 @@ mod tests {
         cx.simulate_click(first.center(), Modifiers::none());
         assert_eq!(*activated.lock().unwrap(), [1]);
         assert_eq!(*closed.lock().unwrap(), [3]);
+
+        cx.update(|window, cx| {
+            crate::touch::TouchScreen::set(true, cx);
+            window.refresh();
+            _ = window.draw(cx);
+        });
+        let second = cx.debug_bounds("browser-tab-2").unwrap();
+        cx.simulate_click(
+            point(second.right() - px(2.0), second.center().y),
+            Modifiers::none(),
+        );
+        assert_eq!(*activated.lock().unwrap(), [1, 2]);
+        assert_eq!(*closed.lock().unwrap(), [3]);
     }
 
     #[ala::test]

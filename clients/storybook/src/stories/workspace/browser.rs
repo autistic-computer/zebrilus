@@ -463,7 +463,7 @@ fn strip(id: &'static str, width: f32, count: usize, active: usize) -> AnyElemen
         .w(px(width))
         .h(px(40.0))
         .items_center()
-        .child(BrowserTabStrip::new(tab_infos(count), active))
+        .child(BrowserTabStrip::new(tab_infos(count), active).on_move(|_, _, _, _| {}))
         .into_any_element()
 }
 

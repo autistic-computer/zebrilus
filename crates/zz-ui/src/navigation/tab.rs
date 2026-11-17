@@ -163,6 +163,7 @@ impl Render for TabDragPreview {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let ground = cx.theme().ground_of(ChipLook::Drag);
         div()
+            .font_family(cx.theme().font_family.clone())
             .pl(self.grab.x + px(12.0))
             .pt(self.grab.y + px(12.0))
             .child(
@@ -196,7 +197,9 @@ fn compact_face(
     cx: &mut App,
 ) -> AnyElement {
     let face = match close.filter(|_| state.active) {
-        Some(close) => close_button(close, look, on, state, cx).into_any_element(),
+        Some(close) => {
+            close_button(close, look, on, state, INSIDE_GAP.as_f32(), cx).into_any_element()
+        }
         None => icon(window, cx),
     };
     div()
@@ -225,7 +228,7 @@ fn full_face(
             .flex_none()
             .invisible()
             .group_hover(group, ala::Styled::visible)
-            .child(close_button(close, look, on, state, cx))
+            .child(close_button(close, look, on, state, CLOSE_SLOP, cx))
     });
     div()
         .size_full()
@@ -244,6 +247,7 @@ fn close_button(
     look: TabLook,
     on: Ground,
     state: WorkspaceStatusWindowState,
+    slop: f32,
     cx: &App,
 ) -> Button {
     let TabClose {
@@ -263,7 +267,7 @@ fn close_button(
         Button::new(ElementId::Name(id))
             .icon(IconName::Xmark)
             .inside(surface, workspace_status_tab_height(state.alone))
-            .hit_slop(CLOSE_SLOP, CLOSE_SLOP)
+            .hit_slop(slop, slop)
             .tooltip(tooltip),
         ground,
         disabled,

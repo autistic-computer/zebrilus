@@ -1,8 +1,10 @@
+use std::rc::Rc;
+
 use ala::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
     prelude::*, px,
 };
-use penna::{ActiveTheme as _, Colorize as _, h_flex};
+use penna::{ActiveTheme as _, Colorize as _, TabLook, h_flex};
 use zz_protocol::PaneKindSnapshot;
 use zz_ui::{
     navigation::{
@@ -11,6 +13,7 @@ use zz_ui::{
             StatusPaneEntry, StatusWindowActions, StatusWindowEntry, status_pane_deck,
             status_window, status_window_overflow,
         },
+        tab::{TabReorder, TabStripId},
     },
     shell::{WorkspaceStatusSlots, workspace_status_bar},
 };
@@ -100,12 +103,12 @@ fn window_panes(index: usize) -> Vec<StatusPaneEntry> {
     }
 }
 
-fn actions(closable: bool) -> StatusWindowActions {
+fn actions(closable: bool, reorder: Option<TabReorder>) -> StatusWindowActions {
     StatusWindowActions {
         select: noop(),
         close: closable.then(noop),
         rename: closable.then(|| (SharedString::from("Rename window…"), noop())),
-        reorder: None,
+        reorder,
     }
 }
 
@@ -114,6 +117,7 @@ fn window(
     name: &'static str,
     state: WorkspaceStatusWindowState,
     panes: Vec<StatusPaneEntry>,
+    reorder: Option<TabReorder>,
     cx: &App,
 ) -> AnyElement {
     status_window(
@@ -121,7 +125,7 @@ fn window(
         name.into(),
         state,
         panes,
-        actions(state.connected),
+        actions(state.connected, reorder),
         cx,
     )
 }
@@ -131,6 +135,7 @@ pub struct Bar {
     pub gaps: bool,
     pub connected: bool,
     pub windows: usize,
+    pub strip: Option<TabStripId>,
 }
 
 impl Bar {
@@ -138,6 +143,7 @@ impl Bar {
         gaps: false,
         connected: true,
         windows: 3,
+        strip: None,
     };
 }
 
@@ -152,11 +158,18 @@ pub fn titlebar(config: &Bar, cx: &App) -> ala::Stateful<ala::Div> {
     };
     let mut windows = (0..config.windows.min(5))
         .map(|index| {
+            let reorder = config.strip.map(|strip| TabReorder {
+                strip,
+                id: index as u64,
+                index,
+                on_move: Rc::new(|_, _, _, _| {}),
+            });
             window(
                 index,
                 WINDOWS[index].0,
                 state(index),
                 window_panes(index),
+                reorder,
                 cx,
             )
         })
@@ -202,7 +215,7 @@ fn bar(id: &'static str, config: &Bar, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn narrow_bar(id: &'static str, width: f32, cx: &App) -> AnyElement {
+fn narrow_bar(id: &'static str, width: f32, strip: Option<TabStripId>, cx: &App) -> AnyElement {
     div()
         .id(id)
         .w(px(width))
@@ -213,6 +226,7 @@ fn narrow_bar(id: &'static str, width: f32, cx: &App) -> AnyElement {
         .child(titlebar(
             &Bar {
                 windows: 5,
+                strip,
                 ..Bar::FULL
             },
             cx,
@@ -220,8 +234,9 @@ fn narrow_bar(id: &'static str, width: f32, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
-    let full = Bar::FULL;
+fn bars(window: &mut Window, cx: &mut App) -> AnyElement {
+    let strip = Some(TabStripId::new(window.current_view(), TabLook::Window));
+    let full = Bar { strip, ..Bar::FULL };
     states()
         .state("no gaps: a rule under the bar", bar("bar-flush", &full, cx))
         .state("gaps", bar("bar-gaps", &Bar { gaps: true, ..full }, cx))
@@ -235,15 +250,15 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
         )
         .state(
             "five windows with room for short names",
-            narrow_bar("bar-mid", 600.0, cx),
+            narrow_bar("bar-mid", 600.0, strip, cx),
         )
         .state(
             "five windows too narrow for names: one pane each, the active one its close",
-            narrow_bar("bar-compact", 380.0, cx),
+            narrow_bar("bar-compact", 380.0, strip, cx),
         )
         .state(
             "five windows as squares",
-            narrow_bar("bar-squares", 204.0, cx),
+            narrow_bar("bar-squares", 204.0, strip, cx),
         )
         .state(
             "disconnected",
@@ -277,20 +292,21 @@ fn windows(_: &mut Window, cx: &mut App) -> AnyElement {
                     ..connected
                 },
                 window_panes(0),
+                None,
                 cx,
             ),
         )
         .state(
             "two panes",
-            window(1, "agents", connected, window_panes(1), cx),
+            window(1, "agents", connected, window_panes(1), None, cx),
         )
         .state(
             "one pane",
-            window(2, "logs", connected, window_panes(2), cx),
+            window(2, "logs", connected, window_panes(2), None, cx),
         )
         .state(
             "no panes yet",
-            window(3, "server", connected, Vec::new(), cx),
+            window(3, "server", connected, Vec::new(), None, cx),
         )
         .state(
             "disconnected",
@@ -299,6 +315,7 @@ fn windows(_: &mut Window, cx: &mut App) -> AnyElement {
                 "scratch",
                 WorkspaceStatusWindowState::default(),
                 window_panes(3),
+                None,
                 cx,
             ),
         )
@@ -309,6 +326,7 @@ fn windows(_: &mut Window, cx: &mut App) -> AnyElement {
                 "release-candidate-integration",
                 connected,
                 window_panes(4),
+                None,
                 cx,
             ),
         )
