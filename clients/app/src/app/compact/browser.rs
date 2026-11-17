@@ -71,8 +71,8 @@ impl AppShell {
                 return true;
             };
             match id {
-                BACK => browser.read(cx).go_back(),
-                FORWARD => browser.read(cx).go_forward(),
+                BACK => browser.read(cx).go_back(cx),
+                FORWARD => browser.read(cx).go_forward(cx),
                 RELOAD => browser.update(cx, BrowserPane::reload_page),
                 STOP => browser.update(cx, BrowserPane::stop_page),
                 ADDRESS => browser.update(cx, |browser, cx| browser.open_address(window, cx)),

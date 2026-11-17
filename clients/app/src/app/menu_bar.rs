@@ -1,7 +1,7 @@
 use ala::{Context, Menu, MenuItem, SharedString, Window};
 use ala_platform::ios::MenuCommand;
 use zz_client::{
-    ChromeAction, UI_TABLE,
+    ChromeAction, TERMINAL_TABLE, UI_TABLE,
     navigation::{RenameTarget, kill_session_prompt_command, rename_prompt_command},
 };
 use zz_protocol::{CommandInvocation, SessionId};
@@ -32,6 +32,19 @@ fn command(title: impl Into<SharedString>, id: impl Into<SharedString>) -> MenuI
     )
 }
 
+fn shortcut(
+    bindings: &[(String, String, ChromeAction)],
+    table: &str,
+    action: ChromeAction,
+) -> Option<SharedString> {
+    bindings
+        .iter()
+        .filter(|(bound_table, _, bound)| bound_table == table && *bound == action)
+        .map(|(_, key, _)| key)
+        .min_by_key(|key| !key.starts_with("D-"))
+        .map(|key| key.clone().into())
+}
+
 fn tmux(title: &'static str, command_line: &'static str) -> MenuItem {
     command(title, format!("{TMUX}{command_line}"))
 }
@@ -56,6 +69,11 @@ impl AppShell {
         }
     }
 
+    pub(super) fn rebuild_menus(&mut self, cx: &mut Context<Self>) {
+        self.menu_sessions = None;
+        self.sync_menus(cx);
+    }
+
     fn menus(&self) -> Vec<Menu> {
         let bindings = self.chrome.bindings();
         let chrome = |title: &'static str, action: ChromeAction| {
@@ -63,10 +81,7 @@ impl AppShell {
                 title,
                 MenuCommand {
                     id: action.name().into(),
-                    shortcut: bindings
-                        .iter()
-                        .find(|(table, _, bound)| table == UI_TABLE && *bound == action)
-                        .map(|(_, key, _)| key.clone().into())
+                    shortcut: shortcut(&bindings, UI_TABLE, action)
                         .or_else(|| (action == ChromeAction::ClosePane).then(|| "D-w".into())),
                 },
             )
@@ -83,9 +98,9 @@ impl AppShell {
                 MenuItem::separator(),
                 MenuItem::submenu(
                     Menu::new("Switch Session").items(
-                        sessions
-                            .iter()
-                            .map(|(name, id)| command(name.clone(), format!("{SESSION}{id}"))),
+                        sessions.iter().map(|(name, id)| {
+                            command(name.clone(), format!("{SESSION}{id}:{name}"))
+                        }),
                     ),
                 ),
                 command("Rename Session…", RENAME_SESSION),
@@ -98,7 +113,13 @@ impl AppShell {
                 chrome("Detach", ChromeAction::Detach),
             ]),
             Menu::new("Edit").items([
-                command("Find…", FIND),
+                MenuItem::action(
+                    "Find…",
+                    MenuCommand {
+                        id: FIND.into(),
+                        shortcut: shortcut(&bindings, TERMINAL_TABLE, ChromeAction::TerminalSearch),
+                    },
+                ),
                 tmux("Copy Mode", "copy-mode"),
                 command("Clear Scrollback", CLEAR_SCROLLBACK),
             ]),
@@ -145,14 +166,32 @@ impl AppShell {
         } else if let Some(url) = id.strip_prefix(URL) {
             cx.open_url(url);
         } else if let Some(session) = id.strip_prefix(SESSION) {
-            if let Ok(session) = session.parse::<SessionId>() {
-                self.connection
-                    .update(cx, |connection, cx| connection.attach(session, cx));
-            }
+            self.menu_attach(session, cx);
         } else if let Some(action) = ChromeAction::from_name(id) {
             self.chrome_command(action, window, cx);
         } else {
             self.pane_menu_command(id, window, cx);
+        }
+    }
+
+    fn menu_attach(&self, target: &str, cx: &mut Context<Self>) {
+        let Some((id, name)) = target.split_once(':') else {
+            return;
+        };
+        let Ok(id) = id.parse::<SessionId>() else {
+            return;
+        };
+        let listed = self
+            .connection
+            .read(cx)
+            .core
+            .snapshot()
+            .sessions
+            .iter()
+            .any(|session| session.id == id && session.name == name);
+        if listed {
+            self.connection
+                .update(cx, |connection, cx| connection.attach(id, cx));
         }
     }
 
@@ -179,8 +218,8 @@ impl AppShell {
             }
         } else if let Some(browser) = self.browsers.get(&pane).cloned() {
             match id {
-                BACK => browser.read(cx).go_back(),
-                FORWARD => browser.read(cx).go_forward(),
+                BACK => browser.read(cx).go_back(cx),
+                FORWARD => browser.read(cx).go_forward(cx),
                 RELOAD => browser.update(cx, super::browser_pane::BrowserPane::reload_page),
                 _ => {}
             }

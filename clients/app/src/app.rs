@@ -413,6 +413,10 @@ impl AppShell {
             if !active {
                 this.hide_window_shortcuts(cx);
             }
+            #[cfg(target_os = "ios")]
+            if active {
+                this.rebuild_menus(cx);
+            }
         });
         let settings_controls = settings::Controls::new(&preferences, window, cx);
         let roster = cx.new(|_| Roster::default());

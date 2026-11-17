@@ -188,6 +188,8 @@ impl AppShell {
             self.command("select-window", vec!["-t".into(), target.clone()], cx);
             self.command("select-pane", vec!["-Z".into(), "-t".into(), target], cx);
         }
+        #[cfg(target_os = "ios")]
+        self.rebuild_menus(cx);
         cx.notify();
     }
 
