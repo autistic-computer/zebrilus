@@ -52,7 +52,7 @@ pub const STORY: Story = Story {
         Section {
             id: "tabs",
             name: "Tab strip",
-            summary: "BrowserTabStrip, drawn with the title bar's window tab strip: one track holding up to five tabs, 240px each and shrinking evenly, the rest in the overflow menu. A title too long for its tab fades out before the close button, which appears on hover when there is more than one tab.",
+            summary: "BrowserTabStrip, drawn with the title bar's window tab strip: one track holding up to five tabs, 240px each and shrinking evenly down to 28px squares, the rest in the overflow menu. A title too long for its tab fades out before the close button, which appears on hover when there is more than one tab. A tab too narrow for its icon, a bit of title and the close button shows only its icon, centred, and the active one shows its close button instead.",
             build: |_, cx| stateless(tabs, cx),
         },
         Section {
@@ -477,6 +477,19 @@ fn tabs(_: &mut Window, _: &mut App) -> AnyElement {
         .state(
             "five tabs squeezed into 520px",
             strip("tabs-squeezed", 520.0, 5, 0),
+        )
+        .state(
+            "five tabs just wide enough for a label",
+            strip("tabs-roomy", 474.0, 5, 0),
+        )
+        .state(
+            "five tabs too narrow for a label: one icon each, the active one its close",
+            strip("tabs-compact", 294.0, 5, 1),
+        )
+        .state("five squares", strip("tabs-squares", 184.0, 5, 2))
+        .state(
+            "one narrow tab keeps its icon",
+            strip("tabs-one-narrow", 80.0, 1, 0),
         )
         .state(
             "nine tabs, the eighth active, the rest in the overflow menu",

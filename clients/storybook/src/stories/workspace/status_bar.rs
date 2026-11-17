@@ -26,7 +26,7 @@ pub const STORY: Story = Story {
     id: "status-bar",
     name: "Status bar",
     group: "Workspace",
-    summary: "The titlebar that replaces the sidebar when it is hidden: the sidebar toggle and window pills with their pane decks. Settings lives at the bottom of the sidebar.",
+    summary: "The titlebar that replaces the sidebar when it is hidden: the sidebar toggle and window pills with their pane decks. Pills shrink evenly down to 28px squares; one too narrow for its deck, a bit of name and the close button shows only its focused pane, and the active one its close button. Settings lives at the bottom of the sidebar.",
     sections: &[
         Section {
             id: "bar",
@@ -201,6 +201,24 @@ fn bar(id: &'static str, config: &Bar, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
+fn narrow_bar(id: &'static str, width: f32, cx: &App) -> AnyElement {
+    div()
+        .id(id)
+        .w(px(width))
+        .overflow_hidden()
+        .rounded(cx.theme().radius)
+        .framed(cx)
+        .bg(cx.theme().background.opaque())
+        .child(titlebar(
+            &Bar {
+                windows: 5,
+                ..Bar::FULL
+            },
+            cx,
+        ))
+        .into_any_element()
+}
+
 fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
     let full = Bar::FULL;
     states()
@@ -213,6 +231,18 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "eight windows: five around the active one, the rest in the overflow menu",
             bar("bar-overflow", &Bar { windows: 8, ..full }, cx),
+        )
+        .state(
+            "five windows with room for short names",
+            narrow_bar("bar-mid", 600.0, cx),
+        )
+        .state(
+            "five windows too narrow for names: one pane each, the active one its close",
+            narrow_bar("bar-compact", 380.0, cx),
+        )
+        .state(
+            "five windows as squares",
+            narrow_bar("bar-squares", 204.0, cx),
         )
         .state(
             "disconnected",

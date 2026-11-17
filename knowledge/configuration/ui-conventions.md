@@ -204,9 +204,15 @@ its 28px tabs, as tall as the URL field, keep the 6px inset: the title, the tabs
 after the last tab, then the split buttons at the row's end; under it the navigation row, then 6px
 (`crates/zz-ui/src/browser.rs`, `BrowserHeader`). The page tabs are drawn by the same builders as
 the title bar's window tabs (`navigation::workspace_tab_strip`, `workspace_tab`,
-`status::with_tab_close`, `status::tab_overflow`): one `tab.strip` track 2px around 28px tabs, each
-up to 240px and shrinking evenly, its title fading before an X that shows on hover, at most five
-tabs with the rest in an overflow menu, and a lone tab filling the strip with no track and no X.
+`tab::tab_faces`, `status::tab_overflow`): one `tab.strip` track 2px around 28px tabs, each
+up to 240px and shrinking evenly down to a 28px square, its title fading before an X that shows on
+hover, at most five tabs with the rest in an overflow menu, and a lone tab filling the strip with no
+track and no X. A tab picks what it shows from the width it got (`pane::by_width`): its icon (a
+window pill's pane deck), a title and the X while the title keeps at least its 28px fade
+(`tab::compact_below`: 85px for a page tab, 101px for a window pill, whose deck can be 30px wide),
+and below that one element centred in the tab: its icon (a window pill's focused pane as a single
+tile), or the X on the active tab, which is shown without hover and closes it. Clicking another
+tab makes it active and shows its X. A tab with no X, such as a lone page tab, keeps its icon.
 Every header's title is the drag handle: `pane::PaneTitle`, a 22px button
 (a `Tab` in `TabLook::Title`, `button.title`) holding the kind icon, the title and the pane's
 folder (`navigation::pane_folder`, home as `~`, one ink step under the title). It is as wide as
@@ -247,8 +253,11 @@ The URL field is a neutral ghost field: no resting background, the ghost hover f
 border in the focus color while focused. Active tabs take the neutral soft fill and the shared
 control highlight; inactive tabs are ghost with muted text. Both reserve the border width so state
 changes preserve layout.
-A tab's label is the page title; one too long for its tab fades out the same way under the tab's
-X, which overlays the tab's right end. Tab labels and URL text use 13px type with a 16px line height. Tab icons have 12px leading padding and a 6px gap before the label.
+A tab's label is the page title; one too long for its tab fades out the same way before the tab's
+X, which takes its own 20px at the tab's right end, 4px from the edge, whether or not it is shown.
+Its tooltip is the page title or URL, or the label when there is neither, which matters on a tab
+that shows only its icon. Tab labels and URL text use 13px type with a 16px line height. Tab icons
+have 9px leading padding and a 5px gap before the label.
 Omnibox suggestions use 32px single-line rows with title and muted URL text. Their rounded
 hover and selection fills sit inside the dropdown's 4px padding. Tabs and history rows use
 stored page favicons, with a globe fallback.
