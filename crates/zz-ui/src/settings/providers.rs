@@ -24,12 +24,16 @@ use zz_client::providers::{
 
 type ProviderAction = Rc<dyn Fn(AgentProvider, &mut Window, &mut App)>;
 
-pub fn agent_setup_notification(result: Result<String, String>) -> Notification {
-    match result {
-        Ok(report) => Notification::success(report).title("Agents set up"),
-        Err(report) => Notification::error(report).title("Agent setup failed"),
-    }
-    .autohide(false)
+pub fn agent_setup_notification(
+    result: Result<String, String>,
+    host: Option<&str>,
+) -> Notification {
+    let (notification, title) = match result {
+        Ok(report) => (Notification::success(report), "Agents set up"),
+        Err(report) => (Notification::error(report), "Agent setup failed"),
+    };
+    let title = host.map_or_else(|| title.to_owned(), |host| format!("{title} on {host}"));
+    notification.title(title).autohide(false)
 }
 
 pub enum ProvidersHost {

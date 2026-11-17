@@ -40,10 +40,10 @@ impl AppShell {
                 },
             ))
         });
-        let phone = super::settings::phone();
+        let wide = title.is_some();
         let setup_rows = online
             .iter()
-            .filter(|(_, connection)| !phone && connection.read(cx).sets_up_agents())
+            .filter(|(_, connection)| wide && connection.read(cx).sets_up_agents())
             .map(|(index, connection)| {
                 let target = (*connection).clone();
                 SettingEntry::new(self.connection_title(connection.read(cx)))
@@ -114,14 +114,28 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.agent_setup = Some(cx.subscribe_in(
-            connection,
-            window,
-            |_, _, event: &AgentsSetUp, window, cx| {
-                use penna::WindowExt as _;
-                window.push_notification(agent_setup_notification(event.0.clone()), cx);
-            },
-        ));
+        self.agent_setup
+            .retain(|(watched, _)| watched.upgrade().is_some());
+        if !self
+            .agent_setup
+            .iter()
+            .any(|(watched, _)| watched.entity_id() == connection.entity_id())
+        {
+            let subscription = cx.subscribe_in(
+                connection,
+                window,
+                |this, connection, event: &AgentsSetUp, window, cx| {
+                    use penna::WindowExt as _;
+                    let host = this.connection_title(connection.read(cx));
+                    window.push_notification(
+                        agent_setup_notification(event.0.clone(), Some(&host)),
+                        cx,
+                    );
+                },
+            );
+            self.agent_setup
+                .push((connection.downgrade(), subscription));
+        }
         connection.update(cx, Connection::set_up_agents);
     }
 

@@ -166,9 +166,9 @@ toolbar above it. Settings › Hosts shows the same list. On iPhone each host is
 it opens a sheet with the full address, the last error, and Open, Connect, Disconnect or Remove
 host. Add host opens the same sheet as the Hosts page's tile: the destination field, Connect, and
 Copy SSH key. Settings › Agents lists each connected host's agents and gathers the rest under Not
-connected. On iPad, Coding agents above them has a Set up row per connected host that installs
-the Claude Code and Codex startup hook on that host, like `zz tools --install-hooks` there, and shows
-what it changed in a toast. Hosts are saved in `Library/Application Support/ala/hosts.json`; a
+connected. On iPad at 640 points wide or more, Coding agents above them has a Set up row per
+connected host that installs the Claude Code and Codex startup hook on that host, like
+`zz tools --install-hooks` there, and shows what it changed in a toast named after the host. Hosts are saved in `Library/Application Support/ala/hosts.json`; a
 successful connection moves its host to the top. `ZZ_ALA_ENDPOINT` (or `ZZ_SOCKET`) connects
 for that launch only, and opening a `zz://attach/<session>` link connects to the most recent host.
 A `zz://host/<machine>:<port>` link (the QR code in desktop Settings › Hosts) adds that tailnet

@@ -22,13 +22,12 @@ use zz_ui::{
     pane::PaneKindButton,
 };
 
-use crate::connection::Connection;
+use crate::connection::{CONNECTION_LOST, Connection};
 
 pub(crate) const EDITOR_OPEN: &str = "editor-open";
 pub(crate) const EDITOR_SAVE: &str = "editor-save";
 const EDITOR_KEY_CONTEXT: &str = "Editor";
 const EDITOR_FONT_SIZE: f32 = 13.0;
-const CONNECTION_LOST: &str = "The connection to the host dropped before it answered";
 
 ala::actions!(thin_editor, [OpenFile, SaveFile]);
 

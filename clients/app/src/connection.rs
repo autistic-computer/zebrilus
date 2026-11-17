@@ -130,6 +130,8 @@ pub struct TerminalThemesListed;
 
 pub struct AgentsSetUp(pub Result<String, String>);
 
+pub const CONNECTION_LOST: &str = "The connection to the host dropped before it answered";
+
 impl EventEmitter<AgentsSetUp> for Connection {}
 
 impl EventEmitter<TerminalThemesListed> for Connection {}
@@ -676,6 +678,7 @@ impl Connection {
     }
 
     pub fn reconnect(&mut self, cx: &mut Context<Self>) {
+        self.drop_agent_setup(cx);
         self.color_scheme = None;
         self.terminal_themes = TerminalThemes::Unasked;
         self.connected = false;
@@ -899,6 +902,12 @@ impl Connection {
         if self.connected && self.sets_up_agents() {
             self.agent_setup =
                 Some(self.invoke(CommandInvocation::new("tools", ["--install-hooks"]), cx));
+        }
+    }
+
+    fn drop_agent_setup(&mut self, cx: &mut Context<Self>) {
+        if self.agent_setup.take().is_some() {
+            cx.emit(AgentsSetUp(Err(CONNECTION_LOST.to_owned())));
         }
     }
 
@@ -1551,6 +1560,7 @@ impl Connection {
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fn disconnect_native(&mut self, status: String, cx: &mut Context<Self>) {
+        self.drop_agent_setup(cx);
         self.connected = false;
         self.client = None;
         self.native = None;
@@ -1710,6 +1720,7 @@ impl Connection {
 
     #[cfg(target_family = "wasm")]
     fn closed(&mut self, code: Option<u16>, reason: String, cx: &mut Context<Self>) {
+        self.drop_agent_setup(cx);
         self.connected = false;
         self.epoch = self.epoch.wrapping_add(1);
         self.prefix_cancel_pending = None;

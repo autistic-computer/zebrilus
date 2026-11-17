@@ -9,7 +9,7 @@ pub(crate) fn set_up_agents(window: &mut Window, cx: &mut App) {
             let result = task.await;
             let _ = window.update(|_, cx| {
                 crate::window::toast::push(
-                    zz_ui::settings::providers::agent_setup_notification(result),
+                    zz_ui::settings::providers::agent_setup_notification(result, None),
                     cx,
                 );
             });
