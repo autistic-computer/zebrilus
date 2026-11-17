@@ -2,7 +2,9 @@ use std::rc::Rc;
 
 use ala::{AnyElement, App, Context, Entity, IntoElement, px};
 use penna::ActiveTheme as _;
-use zz_client::StatusBarModel;
+use zz_client::{StatusBarModel, StatusBarPane};
+#[cfg(any(target_os = "ios", target_os = "android"))]
+use zz_protocol::PaneKindSnapshot;
 use zz_ui::{
     navigation::{
         WorkspaceStatusWindowState,
@@ -26,6 +28,7 @@ pub(super) fn render(
     let core = &connection.core;
     let connected = connection.connected;
     let writable = connected && !core.attached_read_only();
+    let host = connection.endpoint().unwrap_or_default().to_owned();
     let model = StatusBarModel::from_snapshot(core.snapshot(), core.attached_session());
     let active = model
         .windows
@@ -65,7 +68,7 @@ pub(super) fn render(
                     .map(|pane| {
                         let connection = view.connection.clone();
                         let target = pane.id.to_string();
-                        StatusPaneEntry::from_pane(
+                        let mut entry = StatusPaneEntry::from_pane(
                             pane,
                             Rc::new(move |_, cx| {
                                 connection.update(cx, |connection, cx| {
@@ -81,7 +84,11 @@ pub(super) fn render(
                                     );
                                 });
                             }),
-                        )
+                        );
+                        if let Some(title) = browser_title(&host, pane, cx) {
+                            entry.label = title.into();
+                        }
+                        entry
                     })
                     .collect(),
                 StatusWindowActions {
@@ -125,6 +132,19 @@ pub(super) fn render(
         cx,
     )
     .into_any_element()
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+fn browser_title(host: &str, pane: &StatusBarPane, cx: &mut App) -> Option<String> {
+    let PaneKindSnapshot::Browser(browser) = &pane.kind else {
+        return None;
+    };
+    super::browser_pane::page_title(host, &browser.profile, browser.url(), cx)
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+fn browser_title(_: &str, _: &StatusBarPane, _: &mut App) -> Option<String> {
+    None
 }
 
 fn command_action(

@@ -13,6 +13,7 @@ pub mod ios_preview;
 use android_browser as native_browser;
 #[cfg(target_os = "ios")]
 use ios_browser as native_browser;
+pub mod page_keys;
 pub mod preferences;
 mod roster;
 pub mod terminal;

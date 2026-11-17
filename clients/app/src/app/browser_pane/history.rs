@@ -30,6 +30,10 @@ pub(super) fn recent(host: &str, profile: &str, limit: usize, cx: &mut App) -> V
     zz_client::recent_pages::dedupe_recents(pages(host, cx).recent(profile, limit * 8), limit)
 }
 
+pub(super) fn title(host: &str, profile: &str, url: &str, cx: &mut App) -> Option<String> {
+    pages(host, cx).title(profile, url).map(str::to_owned)
+}
+
 pub(super) fn suggestions(
     host: &str,
     profile: &str,

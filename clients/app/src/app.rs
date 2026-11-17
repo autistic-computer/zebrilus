@@ -1616,6 +1616,10 @@ impl AppShell {
                             this.show_pill_notice(pane, text, kind, cx);
                         });
                     });
+                    let history_view = view.clone();
+                    browser.set_history_handler(move |cx| {
+                        let _ = history_view.update(cx, |_, cx| cx.notify());
+                    });
                     let rows_view = view.clone();
                     browser.set_float_rows_handler(move |cx| {
                         rows_view

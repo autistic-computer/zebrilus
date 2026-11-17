@@ -105,6 +105,7 @@ pub(super) struct BrowserPane {
     float_rows_handler: Option<Rc<dyn Fn(&App) -> Option<u16>>>,
     header_touch_drag_handler: Option<Rc<dyn Fn(&ala::TouchDragEvent, &mut Window, &mut App)>>,
     notice_handler: Option<Rc<dyn Fn(&'static str, PillNotice, &mut Window, &mut App)>>,
+    history_handler: Option<Rc<dyn Fn(&mut App)>>,
     _subscriptions: Vec<Subscription>,
     _backdrop_tick: ala::Task<()>,
 }
@@ -212,7 +213,11 @@ impl BrowserPane {
                         BrowserCommand::Reload => this.reload(cx),
                         BrowserCommand::Back => this.go_back(),
                         BrowserCommand::Forward => this.go_forward(),
-                        _ => {}
+                        command => {
+                            if let Some(script) = crate::page_keys::script(command) {
+                                this.tabs[this.active].view.evaluate(&script);
+                            }
+                        }
                     }
                 }
             },
@@ -251,6 +256,7 @@ impl BrowserPane {
             float_rows_handler: None,
             header_touch_drag_handler: None,
             notice_handler: None,
+            history_handler: None,
             _subscriptions: vec![submit, commands],
             _backdrop_tick: cx.spawn(async move |this, cx| {
                 loop {
@@ -297,6 +303,10 @@ impl BrowserPane {
         handler: impl Fn(&ala::TouchDragEvent, &mut Window, &mut App) + 'static,
     ) {
         self.header_touch_drag_handler = Some(Rc::new(handler));
+    }
+
+    pub(super) fn set_history_handler(&mut self, handler: impl Fn(&mut App) + 'static) {
+        self.history_handler = Some(Rc::new(handler));
     }
 
     pub(super) fn set_notice_handler(
@@ -817,7 +827,7 @@ impl BrowserPane {
         } else {
             None
         };
-        history::update(&host, cx, |pages| {
+        let changed = history::update(&host, cx, |pages| {
             let mut changed = visit && pages.record_visit(&profile, url);
             if let Some(history_use) = history_use {
                 changed |= pages.record_omnibox_use(
@@ -829,6 +839,9 @@ impl BrowserPane {
             }
             pages.record_title(&profile, url, title) || changed
         });
+        if changed && let Some(handler) = self.history_handler.clone() {
+            handler(cx);
+        }
     }
 
     fn update_omnibox(&mut self, value: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -2086,6 +2099,10 @@ fn http_origin(url: &str) -> bool {
 )]
 fn zoom_percent(factor: f64) -> u16 {
     (factor * 100.0).round() as u16
+}
+
+pub(super) fn page_title(host: &str, profile: &str, url: &str, cx: &mut App) -> Option<String> {
+    history::title(host, profile, url, cx)
 }
 
 fn sound_script(muted: bool) -> String {

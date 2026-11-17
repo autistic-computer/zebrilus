@@ -213,7 +213,15 @@ the native transport, key translation, and UIKit backend.
   shows matching pages under it, completes the address of a page you have typed
   before, and learns which result you pick for a prefix. Up and Down move through the
   results, Escape steps back out, and Shift-Delete removes the selected page from
-  the history. Rows show a globe, not the site's icon.
+  the history. Rows show a globe, not the site's icon. The status bar's pane list
+  names a browser pane by its page title from that history.
+- `send-keys` to a browser pane, from an agent or the command line, types into the
+  page: text goes into the focused field, Enter submits a form or breaks a line,
+  Backspace and Delete edit, Tab moves focus, the arrows and Home and End move the
+  caret in a field and scroll the page elsewhere, and C-a selects all. WebKit gives
+  the app no way to send real key events, so the page gets untrusted ones: handlers
+  that check `isTrusted`, browser shortcuts, input methods and frames from other
+  sites do not see them.
 - With a hardware keyboard, a focused browser pane takes the desktop browser keys:
   Command-L for the address, Command-T for a new tab, Command-R to reload, Command-[
   and Command-] for back and forward, Command-Shift-[ and Command-Shift-] to change

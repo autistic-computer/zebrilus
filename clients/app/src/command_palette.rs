@@ -135,6 +135,7 @@ impl PaletteBackend for ConnectionPalette {
     fn tree(&self, cx: &App) -> PaletteTree {
         let here = self.here(cx);
         let hosts = self.hosts(cx);
+        let availability = self.availability(cx);
         let mut chats = hosts
             .iter()
             .filter_map(|page| Some((page.id, page.connection.as_ref()?.read(cx))))
@@ -150,7 +151,7 @@ impl PaletteBackend for ConnectionPalette {
             attached: here,
             hosts: hosts
                 .iter()
-                .map(|page| tree_host(page, page.id == here, cx))
+                .map(|page| tree_host(page, page.id == here, availability, cx))
                 .collect(),
         }
     }
@@ -440,7 +441,12 @@ fn place(
     })
 }
 
-fn tree_host(page: &HostPage, here: bool, cx: &App) -> PaletteTreeHost {
+fn tree_host(
+    page: &HostPage,
+    here: bool,
+    availability: PaneKindAvailability,
+    cx: &App,
+) -> PaletteTreeHost {
     let connection = page
         .connection
         .as_ref()
@@ -471,7 +477,7 @@ fn tree_host(page: &HostPage, here: bool, cx: &App) -> PaletteTreeHost {
                             active_pane: window.active_pane,
                             panes: ordered_panes(window)
                                 .into_iter()
-                                .map(|pane| tree_pane(window, pane, core))
+                                .map(|pane| tree_pane(window, pane, availability, core))
                                 .collect(),
                         })
                         .collect(),
@@ -538,6 +544,7 @@ fn listing_update(message: &ProtocolMessage) -> Option<(u64, ListingUpdate)> {
 fn tree_pane(
     window: &zz_protocol::WindowSnapshot,
     pane: &zz_protocol::PaneSnapshot,
+    availability: PaneKindAvailability,
     core: &ClientCore,
 ) -> PaletteTreePane {
     let attention = matches!(pane.kind, PaneKindSnapshot::Terminal)
@@ -556,7 +563,9 @@ fn tree_pane(
                 Some(AgentAttentionStatus::Failed) => "Agent · failed",
                 None => "Terminal",
             },
+            PaneKindSnapshot::Browser(_) if availability.browser => "Browser",
             PaneKindSnapshot::Browser(_) => "Browser · unavailable",
+            PaneKindSnapshot::Editor(_) if availability.editor => "Editor",
             PaneKindSnapshot::Editor(_) => "Editor · unavailable",
             PaneKindSnapshot::Picker => "New pane",
             PaneKindSnapshot::Agent(_) => "Agent",
