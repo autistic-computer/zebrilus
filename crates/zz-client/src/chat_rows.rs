@@ -570,6 +570,7 @@ struct Exchange {
     known: bool,
     ask: Option<AgentAsk>,
     ended: bool,
+    failed: Vec<(ItemId, String)>,
 }
 
 fn command_of(item: &ItemView) -> &str {
@@ -642,14 +643,22 @@ pub fn child_fold(view: &ChatView) -> ChildFold {
             let Some(exchange) = open.get(&respond.pane).map(|at| &mut exchanges[*at]) else {
                 continue;
             };
+            let command = command_of(item);
             let failed = matches!(item.status, ItemStatus::Failed { .. })
                 || item.body.exit_code.is_some_and(|code| code != 0);
             if failed {
+                exchange.failed.push((item.id.clone(), command.to_owned()));
                 continue;
             }
             hidden.insert(item.id.clone());
             if item.status.is_open() {
                 continue;
+            }
+            for (twin, _) in exchange
+                .failed
+                .extract_if(.., |(_, tried)| tried == command)
+            {
+                hidden.insert(twin);
             }
             let ask = exchange.ask.take();
             let asked = ask.as_ref().map(ChildAsk::of);
@@ -702,6 +711,7 @@ pub fn child_fold(view: &ChatView) -> ChildFold {
             known: provider.is_some(),
             ask: None,
             ended: false,
+            failed: Vec::new(),
         });
     }
     ChildFold {

@@ -385,6 +385,25 @@ mod tests {
             parts(card(ChildState::Closed).header(68_000)),
             ("codex", "closed", None, None)
         );
+        let asked = AgentAsk::parse(
+            &AgentAsk {
+                pane: PaneId(4),
+                provider: AgentProvider::Codex,
+                what: "Which color?".to_owned(),
+                answers: AskAnswers::Options(vec![zz_protocol::agent_mention::AskOption {
+                    id: "answer-1".to_owned(),
+                    label: "Dark red".to_owned(),
+                }]),
+            }
+            .to_string(),
+        );
+        assert_eq!(
+            Verdict::of(
+                &AgentDecision::Option("answer-1".to_owned()),
+                asked.as_ref()
+            ),
+            Verdict::Picked("Dark red".to_owned())
+        );
     }
 
     #[test]

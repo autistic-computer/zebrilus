@@ -1429,11 +1429,19 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
         }
         .to_string()
     };
-    let turns: [(&str, String, Option<(&str, String, String)>); 6] = [
+    let respond = |decision| {
+        AgentRespond {
+            pane,
+            decision,
+            request: None,
+        }
+        .to_string()
+    };
+    let turns: [(&str, String, Vec<(&str, String, String, bool)>); 6] = [
         (
             "u1",
             "@+codex can the retry loop send twice?".to_owned(),
-            Some((
+            vec![(
                 "open",
                 "zz new-pane -d --kind agent codex 'read turn.rs'".to_owned(),
                 ReplyNotice::Opened {
@@ -1443,7 +1451,8 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
                     route: Some(ReplyRoute::Back),
                 }
                 .to_string(),
-            )),
+                true,
+            )],
         ),
         (
             "u2",
@@ -1454,22 +1463,22 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
                 answers: AskAnswers::AllowDeny,
             }
             .to_string(),
-            Some((
-                "allow",
-                AgentRespond {
-                    pane,
-                    decision: AgentDecision::Allow,
-                    request: None,
-                }
-                .to_string(),
-                String::new(),
-            )),
+            vec![
+                ("deny-1", respond(AgentDecision::Deny), String::new(), false),
+                (
+                    "allow-1",
+                    respond(AgentDecision::Allow),
+                    String::new(),
+                    false,
+                ),
+                ("allow", respond(AgentDecision::Allow), String::new(), true),
+            ],
         ),
-        ("u3", finished("all green"), None),
+        ("u3", finished("all green"), Vec::new()),
         (
             "u4",
             "ask it again".to_owned(),
-            Some((
+            vec![(
                 "send",
                 "zz agent-send -t %4 'again'".to_owned(),
                 ReplyNotice::Sent {
@@ -1477,9 +1486,10 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
                     route: ReplyRoute::Back,
                 }
                 .to_string(),
-            )),
+                true,
+            )],
         ),
-        ("u5", finished("still green"), None),
+        ("u5", finished("still green"), Vec::new()),
         (
             "u6",
             AgentReport::Closed {
@@ -1487,12 +1497,12 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
                 provider: codex,
             }
             .to_string(),
-            None,
+            Vec::new(),
         ),
     ];
-    for (index, (user, prompt, tool)) in turns.iter().enumerate() {
+    for (index, (user, prompt, tools)) in turns.iter().enumerate() {
         let turn = TurnId(index as u64 + 1);
-        let mut item = |view: &mut ChatView, id: &str, kind, body| {
+        let mut item = |view: &mut ChatView, id: &str, kind, body, status| {
             at += 1000;
             apply(
                 view,
@@ -1509,7 +1519,7 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
                 view,
                 ChatEvent::ItemEnded {
                     item: ItemId::new(id),
-                    status: ItemStatus::Completed,
+                    status,
                     at,
                 },
             );
@@ -1529,20 +1539,27 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
             user,
             ItemKind::User,
             ItemBody::text(prompt.clone()),
+            ItemStatus::Completed,
         );
-        if let Some((id, command, output)) = tool {
+        for (id, command, output, ok) in tools {
             let body = ItemBody {
                 target: Some(command.clone()),
                 text: output.clone(),
                 ..ItemBody::default()
             };
-            item(&mut view, id, ItemKind::Execute, body);
+            let status = if *ok {
+                ItemStatus::Completed
+            } else {
+                ItemStatus::Failed { message: None }
+            };
+            item(&mut view, id, ItemKind::Execute, body, status);
         }
         item(
             &mut view,
             &format!("a{}", index + 1),
             ItemKind::Agent,
             ItemBody::text("ok"),
+            ItemStatus::Completed,
         );
         apply(
             &mut view,
@@ -1594,7 +1611,7 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
                     false,
                     "all green",
                     2000,
-                    7000,
+                    9000,
                     vec![Decision {
                         verdict: Verdict::Allowed,
                         kind: ItemKind::Execute,
@@ -1608,11 +1625,16 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
             vec![
                 user("u4"),
                 run("send"),
-                card("send", true, "still green", 10_000, 12_000, Vec::new()),
+                card("send", true, "still green", 12_000, 14_000, Vec::new()),
                 text("a4")
             ],
             vec![text("a5")],
             vec![user("u6"), text("a6")],
         ]
+    );
+    assert_eq!(
+        ["deny-1", "allow-1", "allow"].map(|id| fold.hides(&ItemId::new(id))),
+        [false, true, true],
+        "a failed answer stays unless the same command then worked"
     );
 }
