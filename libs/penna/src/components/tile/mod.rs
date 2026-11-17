@@ -3,7 +3,7 @@ use crate::{
     components::plate::{Plate, plate_element},
     foundation::roles,
 };
-use ala::{App, ElementId, IntoElement, Pixels, RenderOnce, Role, Window};
+use ala::{App, ElementId, Hsla, IntoElement, Pixels, RenderOnce, Role, Window};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum TileVariant {
@@ -37,6 +37,7 @@ pub struct Tile {
     plate: Plate,
     variant: TileVariant,
     edge: Option<Pixels>,
+    ring: Option<(Pixels, Hsla)>,
 }
 
 impl Tile {
@@ -46,6 +47,7 @@ impl Tile {
             plate: Plate::new(id, TileVariant::Card.role()),
             variant: TileVariant::Card,
             edge: None,
+            ring: None,
         }
     }
 
@@ -79,6 +81,12 @@ impl Tile {
         self.edge = Some(width);
         self
     }
+
+    #[must_use]
+    pub fn ring(mut self, width: Pixels, color: Hsla) -> Self {
+        self.ring = Some((width, color));
+        self
+    }
 }
 
 plate_element!(Tile);
@@ -95,6 +103,7 @@ impl RenderOnce for Tile {
             };
             plate.role = plate.role.or(Some(role));
             let edge = self.edge;
+            let ring = self.ring;
             let mini = self.variant == TileVariant::Mini;
             let lifted = (plate.state == PaintState::Hover && self.variant != TileVariant::Drop)
                 .then(|| {
@@ -115,6 +124,10 @@ impl RenderOnce for Tile {
             return plate.paint_with(window, cx, move |layer| {
                 if let Some(width) = edge.filter(|_| layer.border_width > Pixels::ZERO) {
                     layer.border_width = width;
+                }
+                if let Some((width, color)) = ring {
+                    layer.border_width = width;
+                    layer.border = color;
                 }
                 if mini {
                     layer.glass = None;

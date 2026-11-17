@@ -9,10 +9,10 @@ mod tile;
 pub use bar::{
     COMPACT_PILL_HEIGHT, PILL_TILE, PillGlass, PillLabel, PillPlacement, compact_bar_button,
     compact_disc_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
-    compact_pill_label, pill_backdrop_reach, pill_glass_over, pill_tile_radius,
+    compact_pill_label, pill_backdrop_reach, pill_glass_over, pill_tile_radius, pill_up_disc,
 };
 pub use bento::{BENTO_COLUMNS, BENTO_GAP, BENTO_INSET, BentoSpan, bento_grid, bento_pack};
-pub use card::{ZoomCard, zoom_card_ground};
+pub use card::{ZoomCard, backdrop_blur, lifted_card, zoom_card_ground};
 pub use header::{
     COMPACT_TITLE_BAR_HEIGHT, TopRowEnd, edge_blur, folding_title_bar, scrolled, top_row_button,
 };

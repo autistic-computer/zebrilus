@@ -895,6 +895,7 @@ impl Phone {
                 word: ala::SharedString::default(),
                 meta: "work · build".into(),
                 tone: penna::Tone::Neutral,
+                up: false,
             },
             page_dots(&groups(), cx),
             &placement,

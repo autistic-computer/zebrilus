@@ -20,11 +20,15 @@ window; an agent waiting on a permission turns the icon and that line yellow. Ov
 as Safari's bar does, and deepens its glass instead when the page under it is light. Tapping the
 pill opens the pane menu as a stack of chips: New chat, New terminal and New browser under
 "New in" and the pane's session, nearest the thumb, then Rename and Close for the pane (Close
-asks first in a sheet, Rename opens a sheet with the name), then Overview, and All bindings in a
-terminal. The overview is three levels you zoom through, the way Calendar goes from
-year to month to day. Overview in the menu, or dragging the pill up (past a third of the way or
-with a flick), zooms the pane out into its host's page: the
-pane shrinks into its own preview in its window's tile while the page grows around it. A machine's
+asks first in a sheet, Rename opens a sheet with the name), and All bindings in a
+terminal. The pill ends in an up disc: tap it to go up one level. The overview is three levels you
+zoom through, the way Calendar goes from year to month to day. The up disc, or dragging the pill up
+(past a third of the way or with a flick), sends the pane home to its host's page: the pane comes
+loose as a card that follows the finger, up and sideways, shrinking as it climbs, while the page
+fades in behind it and stands still. The pane's preview in its window's tile is hollow while the
+card is out. The pill swaps to the machine's, dim until the drag will open, when its disc inverts
+with a tick. Letting go flies the card into its preview, which rings once; letting go short of a
+third springs it back to full screen. A machine's
 page opens with a close control in the top row and the machine's name as a large title, which folds into a frosted bar
 as the page scrolls, then every session under its name with its windows as a bento grid, each
 window drawn the way it splits its panes. Tap a window and it zooms into that pane; hold it for
@@ -169,7 +173,7 @@ The app does not connect on launch. Until it connects, the workspace shows the c
 saved hosts (most recent first) with Connect and Remove, a destination field (`user@host` or
 `user@host:port`), and the app's SSH key. On iPhone it fills the screen under the status bar, with no
 toolbar above it. Settings › Hosts shows the same list. On iPhone each host is one row: its name
-(a socket's file name, or Local socket for the default one), a short address, and its state; tapping
+(a socket's file name, or Local socket for the default one) and its state; tapping
 it opens a sheet with the full address, the last error, and Open, Connect, Disconnect or Remove
 host. Add host opens the same sheet as the Hosts page's tile: the destination field, Connect, and
 Copy SSH key. Settings › Agents lists each connected host's agents and gathers the rest under Not

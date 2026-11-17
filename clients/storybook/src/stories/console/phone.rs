@@ -37,7 +37,7 @@ pub const STORY: Story = Story {
         Section {
             id: "pill-menu",
             name: "Pill menu",
-            summary: "What tapping the pill opens, as a stack menu. Inside a machine: Settings apart at the top, All machines, New session, then New in and the session in view over New browser, New terminal and New chat, New chat nearest the thumb; a machine with no sessions says In a new session and leaves New session out. Inside a pane: All bindings in a terminal, Overview, then Find in a terminal, Rename and Close for the pane, Close in danger ink, then the same New group for the pane's session.",
+            summary: "What tapping the pill opens, as a stack menu. Inside a machine: Settings apart at the top, All machines, New session, then New in and the session in view over New browser, New terminal and New chat, New chat nearest the thumb; a machine with no sessions says In a new session and leaves New session out. Inside a pane: All bindings in a terminal, then Find in a terminal, Rename and Close for the pane, Close in danger ink, then the same New group for the pane's session.",
             build: |_, cx| cx.new(Menus::new).into(),
         },
         Section {
@@ -160,6 +160,7 @@ pub(crate) fn host_bar(
             word: ala::SharedString::default(),
             meta: meta.to_owned().into(),
             tone: penna::Tone::Neutral,
+            up: false,
         },
         page_dots(
             &[(0..3).map(|index| dot(index == page, false)).collect()],
@@ -703,6 +704,7 @@ impl Render for Menus {
             word: ala::SharedString::default(),
             meta: meta.to_owned().into(),
             tone: penna::Tone::Neutral,
+            up: false,
         };
         states()
             .columns(2)
@@ -730,7 +732,7 @@ impl Render for Menus {
                 ),
             )
             .state(
-                "inside a terminal: All bindings, Overview, Find, Rename, Close, New in zz",
+                "inside a terminal: All bindings, Find, Rename, Close, New in zz",
                 menu_screen(
                     "menu-pane-pill",
                     PillLabel {
@@ -740,6 +742,7 @@ impl Render for Menus {
                         word: ala::SharedString::default(),
                         meta: "zebrilus · main".into(),
                         tone: penna::Tone::Neutral,
+                        up: false,
                     },
                     &self.pane,
                     screen_lines(cx).into_any_element(),
@@ -984,6 +987,7 @@ impl Render for Screen {
                 word: ala::SharedString::default(),
                 meta: "zz · editor".into(),
                 tone: penna::Tone::Neutral,
+                up: false,
             },
             page_dots(&groups(), cx),
             &placement,

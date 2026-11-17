@@ -30,7 +30,7 @@ pub use key_row::{
     KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, KeyRowKey,
     key_pill_layer,
 };
-pub use lift::{Lift, LiftEvent, LiftResponse};
+pub use lift::{Lift, LiftEvent, LiftResponse, Pull};
 pub use mark::{MARK_DOT, MARK_SPINNER, StatusMark};
 pub use pager::{Pager, PagerEvent, PagerLayout, PagerResponse};
 pub(crate) use press::over_hover;

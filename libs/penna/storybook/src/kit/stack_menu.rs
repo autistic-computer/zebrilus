@@ -139,6 +139,7 @@ fn phone(id: &'static str, menu: &Entity<StackMenu>, cx: &App) -> impl IntoEleme
             word: ala::SharedString::default(),
             meta: "zebrilus · stack-menu".into(),
             tone: penna::Tone::Neutral,
+            up: false,
         },
         div(),
         &placement,

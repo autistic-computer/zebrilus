@@ -96,6 +96,7 @@ fn label(meta: &str) -> PillLabel {
         word: SharedString::default(),
         meta: SharedString::from(meta.to_owned()),
         tone: Tone::Neutral,
+        up: false,
     }
 }
 
@@ -347,7 +348,7 @@ impl Render for BrowserStates {
                 self.stack_frame("browser-held", &self.held, cx),
             )
             .state(
-                "More picked: Overview, Rename, Close and New in zz",
+                "More picked: Rename, Close and New in zz",
                 self.stack_frame("browser-more", &self.more, cx),
             )
             .state(

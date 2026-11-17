@@ -8,7 +8,6 @@ pub const NEW_BROWSER: &str = "new-browser";
 pub const NEW_SESSION: &str = "new-session";
 pub const ALL_MACHINES: &str = "all-machines";
 pub const SETTINGS: &str = "settings";
-pub const OVERVIEW: &str = "overview";
 pub const RENAME_PANE: &str = "rename-pane";
 pub const CLOSE_PANE: &str = "close-pane";
 pub const ALL_BINDINGS: &str = "all-bindings";
@@ -97,15 +96,7 @@ pub fn pane_menu(menu: PaneMenu) -> Vec<StackGroup> {
     if menu.terminal {
         this_pane.push(StackChip::new(FIND, "Find", IconName::Search));
     }
-    let mut groups = vec![
-        new_group(Some(menu.session)),
-        StackGroup::new(this_pane),
-        alone(StackChip::new(
-            OVERVIEW,
-            "Overview",
-            IconName::LayoutDashboard,
-        )),
-    ];
+    let mut groups = vec![new_group(Some(menu.session)), StackGroup::new(this_pane)];
     if menu.terminal {
         groups.push(alone(
             StackChip::new(ALL_BINDINGS, "All bindings", IconName::Keyboard).look(StackLook::Quiet),
@@ -241,7 +232,6 @@ mod tests {
                 vec![TABS, PICK_ELEMENT, OPEN_ON_PHONE],
                 vec![NEW_CHAT, NEW_TERMINAL, NEW_BROWSER],
                 vec![CLOSE_PANE, RENAME_PANE],
-                vec![OVERVIEW],
             ]
         );
         let off = |groups: &[StackGroup]| -> Vec<String> {
@@ -295,7 +285,6 @@ mod tests {
             [
                 vec![NEW_CHAT, NEW_TERMINAL, NEW_BROWSER],
                 vec![CLOSE_PANE, RENAME_PANE, FIND],
-                vec![OVERVIEW],
                 vec![ALL_BINDINGS],
             ]
         );
@@ -308,7 +297,6 @@ mod tests {
             [
                 vec![NEW_CHAT, NEW_TERMINAL, NEW_BROWSER],
                 vec![CLOSE_PANE, RENAME_PANE],
-                vec![OVERVIEW],
             ]
         );
     }

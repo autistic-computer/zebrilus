@@ -106,6 +106,7 @@ fn pill(
             word: word.into(),
             meta: meta.into(),
             tone,
+            up: false,
         },
         page_dots(&groups(), cx),
         &placement,

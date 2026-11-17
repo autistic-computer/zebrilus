@@ -21,6 +21,8 @@ const PILL_GAP: Space = Space::GAP_RELATED;
 const PILL_INSET: f32 = 8.0;
 const PILL_INSET_MIN: f32 = 16.0;
 const PILL_INSET_MAX: f32 = 20.0;
+const UP_REACH: f32 = 4.0;
+const UP_GLYPH: f32 = 18.0;
 const INK_CONTRAST: f32 = 4.5;
 const TINT_MAX: f32 = 0.95;
 
@@ -266,6 +268,50 @@ pub struct PillLabel {
     pub word: SharedString,
     pub meta: SharedString,
     pub tone: Tone,
+    pub up: bool,
+}
+
+pub fn pill_up_disc(
+    id: impl Into<ElementId>,
+    armed: bool,
+    placement: &PillPlacement,
+    cx: &App,
+) -> Stateful<Div> {
+    let pill = floating_layer(placement, cx);
+    let backing = cx.theme().layer(
+        Surface::new(roles::PHONE_PILL_ICON).on(pill.ground),
+        PaintState::Rest,
+    );
+    let radius = pill_tile_corner(pill.radius, backing.radius, cx);
+    let disc = div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .size(rems_from_px(PILL_TILE));
+    let disc = if armed {
+        disc.rounded(radius)
+            .bg(pill.text)
+            .text_color(cx.theme().background)
+    } else {
+        disc.layer(&Layer { radius, ..backing })
+            .text_color(pill.text)
+    };
+    div()
+        .id(id)
+        .debug_selector(|| "compact-bar-pill-up".to_owned())
+        .click_cursor()
+        .absolute()
+        .top_0()
+        .bottom_0()
+        .right_0()
+        .w(px(PILL_TILE + TILE_INSET.design_px() + UP_REACH))
+        .flex()
+        .items_center()
+        .justify_end()
+        .pr(TILE_INSET)
+        .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+        .child(disc.child(Icon::new(IconName::ChevronUp).size(rems_from_px(UP_GLYPH))))
 }
 
 pub fn compact_floating_pill(
@@ -320,6 +366,7 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
         word,
         meta,
         tone,
+        up,
     } = label;
     let theme = cx.theme();
     let toned = tone != Tone::Neutral;
@@ -358,7 +405,11 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
         .items_center()
         .min_w_0()
         .pl(TILE_INSET)
-        .pr(Space::S12)
+        .pr(if up {
+            px(TILE_INSET.design_px() + PILL_TILE + Space::S10.design_px())
+        } else {
+            px(Space::S12.design_px())
+        })
         .gap(Space::S10)
         .child(face.unwrap_or_else(|| {
             div()

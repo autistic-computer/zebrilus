@@ -17,7 +17,7 @@ use penna::{
     blocks::compact::{
         BENTO_INSET, PILL_TILE, PillLabel, PillPlacement, PillSpring, compact_floating_bar,
         compact_hud, compact_pill_at, compact_pill_label, compact_pill_morph, edge_blur, over_pill,
-        pill_bounds, pill_corner, pill_glass_over, pill_tile_radius,
+        pill_bounds, pill_corner, pill_glass_over, pill_tile_radius, pill_up_disc,
     },
     blocks::sheet::{bottom_sheet, close_sheet},
     blocks::touch::{
@@ -38,8 +38,8 @@ use zz_ui::{
     command::tmux_keystroke,
     compact::{
         ALL_BINDINGS, ALL_MACHINES, CLOSE_PANE, FIND, NEW_BROWSER, NEW_CHAT, NEW_SESSION,
-        NEW_TERMINAL, OVERVIEW, PaneMenu, RENAME_PANE, SETTINGS, ToolKeys, close_pane_detail,
-        machine_menu, pane_menu, pill_face,
+        NEW_TERMINAL, PaneMenu, RENAME_PANE, SETTINGS, ToolKeys, close_pane_detail, machine_menu,
+        pane_menu, pill_face,
     },
 };
 
@@ -58,9 +58,12 @@ const SCALE_HUD_LINGER: Duration = Duration::from_secs(1);
 #[cfg(any(target_os = "ios", target_os = "android"))]
 const NOTICE_LINGER: Duration = Duration::from_secs(2);
 const LANDING_WAIT: Duration = Duration::from_secs(1);
-const BAR_DROP: f32 = 15.0;
 const TOUCH_TARGET: f32 = penna::blocks::touch::TOUCH_TARGET;
-const BAR_FADE: f32 = 2.2;
+const BAR_SWAP: f32 = 8.0;
+const BAR_DIM: f32 = 0.55;
+const LAND_RING: Duration = Duration::from_millis(350);
+const HOME_SPRING: ala::SpringConfig = ala::SpringConfig::new(200.0, 28.5, 1.0);
+const HOME_LANDED: f32 = 0.99;
 const LIFT_FALLBACK_TOP: f32 = 140.0;
 const LIFT_FALLBACK_HEIGHT: f32 = 272.0;
 
@@ -97,6 +100,10 @@ pub(super) struct CompactState {
     hosts: Lift,
     morph: PillSpring,
     landing: Option<(PaneId, Instant)>,
+    grab: ala::Point<Pixels>,
+    hollow: Option<(PaneId, f32)>,
+    flying: bool,
+    landed: Option<(PaneId, Instant)>,
     cards: Rc<RefCell<BTreeMap<PaneId, Bounds<Pixels>>>>,
     text: Option<TerminalText>,
     page_background: Option<ala::Hsla>,
@@ -108,6 +115,13 @@ pub(super) struct CompactState {
 }
 
 impl CompactState {
+    pub(super) fn new() -> Self {
+        Self {
+            lift: Lift::with_spring(HOME_SPRING),
+            ..Self::default()
+        }
+    }
+
     #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
     pub(super) fn forget_panes(&mut self) {
         self.notice = None;
@@ -641,10 +655,6 @@ impl AppShell {
         match id {
             ALL_MACHINES => self.open_hosts(cx),
             SETTINGS => self.open_settings(cx),
-            OVERVIEW => {
-                window.dismiss_virtual_keyboard();
-                self.open_overview(cx);
-            }
             ALL_BINDINGS => {
                 self.compact.bindings = true;
                 cx.notify();
@@ -720,6 +730,9 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.compact.lift.is_dragging() {
+            return;
+        }
         let delta_x = match event.delta {
             ScrollDelta::Pixels(delta) => f32::from(delta.x),
             ScrollDelta::Lines(delta) => delta.x * 20.0,
@@ -1038,6 +1051,7 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) {
         let delta = event.delta.pixel_delta(window.line_height());
+        let armed = self.compact.lift.will_open();
         let response =
             self.compact
                 .lift
@@ -1049,6 +1063,15 @@ impl AppShell {
         if response.started {
             self.compact.landing = None;
             self.compact.overview_reveal = true;
+            self.compact.grab = event.position;
+        }
+        if let Some(finger) = window.touch_position() {
+            self.compact
+                .lift
+                .slide(f32::from(finger.x - self.compact.grab.x));
+        }
+        if !armed && self.compact.lift.will_open() {
+            cx.haptic(ala::Haptic::Selection);
         }
         if let Some(event) = response.event {
             window.end_touch_momentum();
@@ -1393,7 +1416,23 @@ impl AppShell {
             word,
             meta,
             tone,
+            up: false,
         };
+        if lifting {
+            self.compact.flying = true;
+        } else {
+            self.compact.hollow = None;
+            if std::mem::take(&mut self.compact.flying) && open {
+                self.compact.landed = current_pane.map(|pane| (pane, now));
+            }
+        }
+        if let Some((_, since)) = self.compact.landed {
+            if open && now.saturating_duration_since(since) < LAND_RING {
+                window.request_animation_frame();
+            } else {
+                self.compact.landed = None;
+            }
+        }
         let dots = page_dots_in(&dot_groups(&pages, shown), cx.theme().foreground, cx);
         let find = shown_terminal
             .as_ref()
@@ -1479,20 +1518,29 @@ impl AppShell {
                 ))
                 .into_any_element()
         } else {
+            let label = PillLabel {
+                up: !picking,
+                ..label
+            };
             let label = compact_pill_label(label, dots, &pill_placement, cx);
-            let drop = if lifting { progress } else { 0.0 };
-            let lowered = Bounds::new(
-                point(
-                    pill_shown.origin.x,
-                    pill_shown.origin.y + (zone + px(BAR_DROP)) * drop,
-                ),
-                pill_shown.size,
-            );
-            let fade = (1.0 - drop.min(1.0) * BAR_FADE).max(0.0);
-            let pill = compact_pill_at("compact-pill", label, lowered, &pill_placement, cx)
+            let fade = if lifting {
+                (1.0 - progress * BAR_SWAP).max(0.0)
+            } else {
+                1.0
+            };
+            let pill = compact_pill_at("compact-pill", label, pill_shown, &pill_placement, cx)
                 .opacity(fade * (1.0 - menu_progress))
                 .when(!picking, |pill| {
-                    pill.child(StackMenu::pill_anchor(&stack, cx))
+                    pill.child(StackMenu::pill_anchor(&stack, cx)).child(
+                        pill_up_disc("compact-pill-up", false, &pill_placement, cx).on_click(
+                            cx.listener(|this, _, window, cx| {
+                                cx.stop_propagation();
+                                cx.haptic(ala::Haptic::Light);
+                                window.dismiss_virtual_keyboard();
+                                this.open_overview(cx);
+                            }),
+                        ),
+                    )
                 })
                 .on_click(cx.listener(move |this, _, window, cx| {
                     if picking {
@@ -1510,7 +1558,7 @@ impl AppShell {
                     .as_ref()
                     .is_some_and(|terminal| terminal.read(cx).scrolled_back(cx)))
             .then(|| {
-                let at = over_pill(lowered, px(TOUCH_TARGET));
+                let at = over_pill(pill_shown, px(TOUCH_TARGET));
                 let terminal = shown_terminal.clone();
                 div()
                     .absolute()
@@ -1610,7 +1658,6 @@ impl AppShell {
                 .child(bars)
                 .into_any_element()
         } else if lifting {
-            let (overview, bars) = self.overview_layers(&model, top_inset, &placement, window, cx);
             let target = self
                 .compact
                 .landing
@@ -1618,7 +1665,7 @@ impl AppShell {
                 .or(current_pane)
                 .and_then(|pane| pages.iter().find(|page| page.pane == pane).cloned());
             let stage = window.viewport_size();
-            let card = target
+            let slot = target
                 .as_ref()
                 .and_then(|page| self.compact.cards.borrow().get(&page.pane).copied())
                 .unwrap_or_else(|| {
@@ -1630,6 +1677,32 @@ impl AppShell {
                         ),
                     )
                 });
+            let flight = overview::Flight::at(&overview::Throw {
+                pull: self.compact.lift.pull(),
+                dragging: self.compact.lift.is_dragging(),
+                opening: self.compact.overview,
+                flight: self.compact.lift.flight().unwrap_or(1.0),
+                progress,
+                grab: self.compact.grab,
+                stage,
+                slot: overview::Card {
+                    bounds: slot,
+                    corner: penna::blocks::compact::mini_radius(cx),
+                },
+                corner: screen_radius(window).unwrap_or_else(|| cx.theme().phone_radius()),
+            });
+            self.compact.hollow = target.as_ref().map(|page| (page.pane, flight.landed()));
+            if self.compact.lift.is_dragging() {
+                let gap = slot.center() - flight.card.bounds.center();
+                self.compact
+                    .lift
+                    .aim(f32::from(gap.x).hypot(f32::from(gap.y)));
+            } else if self.compact.overview && flight.land >= HOME_LANDED {
+                self.compact.lift.snap(true);
+            }
+            let (overview, bars) = self.overview_layers(&model, top_inset, &placement, window, cx);
+            let swap = (progress * BAR_SWAP).min(1.0);
+            let lit = self.compact.overview || self.compact.lift.will_open();
             let child = target.map_or_else(
                 || div().into_any_element(),
                 |page| self.compact_page(&page, false, 0.0, top_inset, zone, None, window, cx),
@@ -1637,22 +1710,20 @@ impl AppShell {
             div()
                 .relative()
                 .size_full()
-                .child(overview::zoom_layers(
+                .child(overview::flight_layers(
                     overview,
                     child,
-                    &overview::Zoom {
-                        tile: card,
-                        stage,
-                        progress,
-                        ground: page_background,
-                        corner: penna::blocks::compact::mini_radius(cx),
-                    },
+                    &flight,
+                    stage,
+                    progress,
+                    page_background,
+                    cx,
                 ))
                 .child(
                     div()
                         .absolute()
                         .inset_0()
-                        .opacity(progress.clamp(0.0, 1.0))
+                        .opacity(if lit { swap } else { swap * BAR_DIM })
                         .child(bars),
                 )
                 .child(
@@ -2007,6 +2078,71 @@ mod tests {
         assert_eq!(pinch_font_scale(2.5, 2.0), 3.0);
         assert_eq!(pinch_font_scale(0.6, 0.1), 0.5);
         assert_eq!(pinch_font_scale(1.1, f32::NAN), 1.1);
+    }
+
+    #[test]
+    fn a_lifted_pane_keeps_its_grabbed_point_under_the_finger_then_flies_to_its_slot() {
+        use penna::blocks::touch::Pull;
+        let slot = overview::Card {
+            bounds: Bounds::new(point(px(28.0), px(248.0)), ala::size(px(77.0), px(125.0))),
+            corner: px(10.0),
+        };
+        let throw = overview::Throw {
+            pull: Some(Pull {
+                side: 31.0,
+                reach: 320.0,
+            }),
+            dragging: true,
+            opening: false,
+            flight: 0.0,
+            progress: 0.5,
+            grab: point(px(201.0), px(826.0)),
+            stage: ala::size(px(402.0), px(874.0)),
+            slot,
+            corner: px(62.0),
+        };
+        let held = overview::Card {
+            bounds: Bounds::new(point(px(131.5), px(93.0)), ala::size(px(201.0), px(437.0))),
+            corner: px(31.0),
+        };
+        assert_eq!(
+            overview::Flight::at(&throw),
+            overview::Flight {
+                card: held,
+                land: 0.0
+            }
+        );
+        let thrown = overview::Flight::at(&overview::Throw {
+            dragging: false,
+            opening: true,
+            flight: 0.5,
+            ..throw
+        });
+        assert_eq!(thrown.land, 0.5);
+        assert_eq!(
+            thrown.card,
+            overview::Card {
+                bounds: Bounds::new(point(px(79.75), px(170.5)), ala::size(px(139.0), px(281.0))),
+                corner: px(20.5),
+            }
+        );
+        let back = overview::Flight::at(&overview::Throw {
+            dragging: false,
+            flight: 1.0,
+            ..throw
+        });
+        assert_eq!(
+            back.card.bounds,
+            Bounds::new(point(px(0.0), px(0.0)), throw.stage)
+        );
+        let tapped = overview::Flight::at(&overview::Throw {
+            pull: None,
+            dragging: false,
+            opening: true,
+            progress: 1.0,
+            ..throw
+        });
+        assert_eq!((tapped.card, tapped.landed()), (slot, 1.0));
     }
 
     #[test]

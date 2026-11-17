@@ -2,22 +2,22 @@ use std::{cell::RefCell, ops::Range, rc::Rc};
 
 use ala::{
     AnyElement, App, Bounds, Context, Entity, Font, Hsla, PaintScaleExt as _, ParentElement as _,
-    Pixels, ScrollDelta, ScrollWheelEvent, Size, StyledText, TextRun, Window, canvas, div, font,
-    linear_color_stop, linear_gradient, point, prelude::*, px, size,
+    Pixels, Point, ScrollDelta, ScrollWheelEvent, Size, StyledText, TextRun, Window, canvas, div,
+    font, linear_color_stop, linear_gradient, point, prelude::*, px, size,
 };
 use penna::{
     ActiveTheme as _, Colorize as _, IconName, Sizable as _, Space,
     blocks::compact::{
         BENTO_INSET, BentoSpan, COMPACT_TITLE_BAR_HEIGHT, MiniPane, PhoneTile, PillLabel,
-        PillPlacement, TopRowEnd, bento_grid, compact_disc_button, compact_floating_bar,
-        compact_floating_pill, folding_title_bar, scrolled, top_row_button, window_span,
-        zoom_card_ground,
+        PillPlacement, TopRowEnd, backdrop_blur, bento_grid, compact_disc_button,
+        compact_floating_bar, compact_floating_pill, folding_title_bar, lifted_card, pill_up_disc,
+        scrolled, top_row_button, window_span, zoom_card_ground,
     },
     blocks::settings::large_title,
     blocks::touch::StatusMark,
     blocks::touch::{
-        ACTION_BAR_KEYBOARD, PageDot, PagerEvent, PhoneEmpty, StackMenu, TouchHeader, action_bar,
-        page_dots,
+        ACTION_BAR_KEYBOARD, PageDot, PagerEvent, PhoneEmpty, Pull, StackMenu, TouchHeader,
+        action_bar, page_dots,
     },
     components::button::{Button, ButtonVariants as _},
 };
@@ -54,6 +54,16 @@ const PREVIEW_COLUMNS: usize = 56;
 const HOST_GAP: f32 = 12.0;
 const ZOOM_FADE_START: f32 = 0.3;
 const ZOOM_FADE_SPAN: f32 = 0.4;
+const FLIGHT_SHRINK: f32 = 640.0;
+const FLIGHT_SMALLEST: f32 = 0.3;
+const FLIGHT_PAGE_REST: f32 = 0.92;
+const FLIGHT_PAGE_SPAN: f32 = 1.0 / 3.0;
+const FLIGHT_LAND: f32 = 2.0 / 3.0;
+const FLIGHT_EDGE: f32 = 12.0;
+const FLIGHT_BLUR: f32 = 14.0;
+const FLIGHT_BLUR_FLOOR: f32 = 4.0;
+const FLIGHT_BLUR_FADE: f32 = 0.3;
+const FLIGHT_DIM: f32 = 0.25;
 const TILE_FALLBACK_TOP: f32 = 160.0;
 const TILE_FALLBACK_HEIGHT: f32 = 178.0;
 const CARD_EMPTY_TOP: f32 = 96.0;
@@ -142,6 +152,168 @@ pub(super) struct Zoom {
     pub progress: f32,
     pub ground: Hsla,
     pub corner: Pixels,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Card {
+    pub bounds: Bounds<Pixels>,
+    pub corner: Pixels,
+}
+
+impl Card {
+    fn toward(self, to: Self, at: f32) -> Self {
+        let mix = |from: Pixels, to: Pixels| from + (to - from) * at;
+        Self {
+            bounds: Bounds::new(
+                point(
+                    mix(self.bounds.origin.x, to.bounds.origin.x),
+                    mix(self.bounds.origin.y, to.bounds.origin.y),
+                ),
+                size(
+                    mix(self.bounds.size.width, to.bounds.size.width),
+                    mix(self.bounds.size.height, to.bounds.size.height),
+                ),
+            ),
+            corner: mix(self.corner, to.corner),
+        }
+    }
+}
+
+pub(super) struct Throw {
+    pub pull: Option<Pull>,
+    pub dragging: bool,
+    pub opening: bool,
+    pub flight: f32,
+    pub progress: f32,
+    pub grab: Point<Pixels>,
+    pub stage: Size<Pixels>,
+    pub slot: Card,
+    pub corner: Pixels,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Flight {
+    pub card: Card,
+    pub land: f32,
+}
+
+impl Flight {
+    pub(super) fn at(throw: &Throw) -> Self {
+        let full = Card {
+            bounds: Bounds::new(point(px(0.0), px(0.0)), throw.stage),
+            corner: throw.corner,
+        };
+        let progress = throw.progress.clamp(0.0, 1.0);
+        let Some(pull) = throw.pull else {
+            return Self {
+                card: full.toward(throw.slot, progress),
+                land: progress,
+            };
+        };
+        let scale = (1.0 - pull.reach / FLIGHT_SHRINK).max(FLIGHT_SMALLEST);
+        let held = Card {
+            bounds: Bounds::new(
+                point(
+                    throw.grab.x + px(pull.side) - throw.grab.x * scale,
+                    throw.grab.y - px(pull.reach) - throw.grab.y * scale,
+                ),
+                size(throw.stage.width * scale, throw.stage.height * scale),
+            ),
+            corner: throw.corner * scale,
+        };
+        if throw.dragging {
+            return Self {
+                card: held,
+                land: 0.0,
+            };
+        }
+        let flight = throw.flight.clamp(0.0, 1.0);
+        if throw.opening {
+            return Self {
+                card: held.toward(throw.slot, flight),
+                land: flight,
+            };
+        }
+        Self {
+            card: held.toward(full, flight),
+            land: 0.0,
+        }
+    }
+
+    pub(super) fn landed(&self) -> f32 {
+        let at = ((self.land - FLIGHT_LAND) / (1.0 - FLIGHT_LAND)).clamp(0.0, 1.0);
+        at * at * (3.0 - 2.0 * at)
+    }
+}
+
+pub(super) fn flight_layers(
+    parent: AnyElement,
+    child: AnyElement,
+    flight: &Flight,
+    stage: Size<Pixels>,
+    progress: f32,
+    ground: Hsla,
+    cx: &App,
+) -> ala::Div {
+    let width = stage.width;
+    let height = stage.height;
+    let card = flight.card.bounds;
+    let scale = (f32::from(card.size.width) / f32::from(width).max(1.0)).clamp(0.05, 1.0);
+    let band = (card.size.height / scale).min(height);
+    let corner = flight.card.corner / scale;
+    let reveal = (progress / FLIGHT_PAGE_SPAN).clamp(0.0, 1.0);
+    let page = FLIGHT_PAGE_REST + (1.0 - FLIGHT_PAGE_REST) * reveal;
+    let parent_layer = div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .w(width)
+        .h(height)
+        .opacity(reveal)
+        .child(parent)
+        .paint_scale(
+            page,
+            point(width * ((1.0 - page) / 2.0), height * ((1.0 - page) / 2.0)),
+        );
+    let child_layer = lifted_card(
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .w(width)
+            .h(height)
+            .child(child),
+        ground,
+        corner,
+        ((1.0 - scale) * FLIGHT_EDGE).min(1.0),
+        cx,
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .w(width)
+    .h(band.max(px(0.0)))
+    .opacity(1.0 - flight.landed())
+    .paint_scale(scale, card.origin);
+    let away = 1.0 - flight.land;
+    let blur = (away > 0.0).then(|| {
+        let shown = (away / FLIGHT_BLUR_FADE).min(1.0);
+        div()
+            .absolute()
+            .inset_0()
+            .opacity(shown * shown * (3.0 - 2.0 * shown))
+            .child(backdrop_blur(
+                px(FLIGHT_BLUR_FLOOR + (FLIGHT_BLUR - FLIGHT_BLUR_FLOOR) * away),
+                FLIGHT_DIM * reveal,
+                cx,
+            ))
+    });
+    div()
+        .absolute()
+        .inset_0()
+        .child(parent_layer)
+        .children(blur)
+        .child(child_layer)
 }
 
 fn zoom_fade(at: f32) -> f32 {
@@ -1013,6 +1185,7 @@ impl AppShell {
                 word: ala::SharedString::default(),
                 meta: meta.into(),
                 tone: penna::Tone::Neutral,
+                up: true,
             },
             div().children(dots),
             placement,
@@ -1020,6 +1193,19 @@ impl AppShell {
         )
         .opacity(1.0 - menu)
         .children(stack.map(|stack| StackMenu::pill_anchor(&stack, cx)))
+        .child(
+            pill_up_disc(
+                "overview-host-up",
+                self.compact.lift.will_open(),
+                placement,
+                cx,
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                cx.stop_propagation();
+                cx.haptic(ala::Haptic::Light);
+                this.open_hosts(cx);
+            })),
+        )
         .on_click(cx.listener(|this, _, _, cx| this.open_pill_menu(cx)))
         .on_scroll_wheel(cx.listener(Self::host_pill_scroll));
         compact_floating_bar(pill, placement, cx).into_any_element()
@@ -1347,6 +1533,22 @@ impl AppShell {
                 drawn_panes.push(page.pane);
                 let mini = self.mini_preview(page, connection, here, cx);
                 let pane_id = page.pane;
+                let filled = self
+                    .compact
+                    .hollow
+                    .filter(|(pane, _)| here && *pane == pane_id)
+                    .map_or(1.0, |(_, filled)| filled);
+                let ring = self
+                    .compact
+                    .landed
+                    .filter(|(pane, _)| here && *pane == pane_id)
+                    .map_or(0.0, |(_, since)| {
+                        1.0 - Instant::now()
+                            .saturating_duration_since(since)
+                            .as_secs_f32()
+                            / super::LAND_RING.as_secs_f32()
+                    });
+                let mini = mini.filled(filled).ring(ring);
                 let cards = Rc::clone(&self.compact.cards);
                 let mini = if here {
                     mini.child(

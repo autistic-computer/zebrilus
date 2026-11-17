@@ -27,6 +27,12 @@ pub struct LiftResponse {
     pub event: Option<LiftEvent>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Pull {
+    pub side: f32,
+    pub reach: f32,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Motion {
     Idle,
@@ -34,8 +40,9 @@ enum Motion {
         raw: f32,
     },
     Settle {
+        from: f32,
         target: f32,
-        velocity: f32,
+        state: SpringState,
         at: Instant,
         tapped: bool,
     },
@@ -47,6 +54,9 @@ pub struct Lift {
     motion: Motion,
     momentum: bool,
     armed: bool,
+    pull: Option<Pull>,
+    spring: Option<SpringConfig>,
+    throw: Option<f32>,
     samples: VecDeque<(Instant, f32)>,
 }
 
@@ -63,7 +73,17 @@ impl Lift {
             motion: Motion::Idle,
             momentum: false,
             armed: false,
+            pull: None,
+            spring: None,
+            throw: None,
             samples: VecDeque::new(),
+        }
+    }
+
+    pub fn with_spring(spring: SpringConfig) -> Self {
+        Self {
+            spring: Some(spring),
+            ..Self::new()
         }
     }
 
@@ -107,6 +127,8 @@ impl Lift {
 
     fn begin(&mut self, delta_y: f32, now: Instant, response: &mut LiftResponse) {
         self.samples.clear();
+        self.pull = Some(Pull::default());
+        self.throw = None;
         self.motion = Motion::Drag { raw: 0.0 };
         self.drag(delta_y, now);
         response.consumed = true;
@@ -115,33 +137,31 @@ impl Lift {
 
     pub fn tick(&mut self, now: Instant) -> bool {
         let Motion::Settle {
+            from,
             target,
-            velocity,
+            state,
             at,
             tapped,
         } = self.motion
         else {
             return false;
         };
-        let spring = if tapped { TAP_SPRING } else { SPRING };
+        let spring = self
+            .spring
+            .unwrap_or(if tapped { TAP_SPRING } else { SPRING });
         let elapsed = now.saturating_duration_since(at).as_secs_f32();
-        let state = spring.step(
-            SpringState {
-                position: self.progress,
-                velocity,
-            },
-            target,
-            elapsed,
-        );
-        if spring.is_settled(state, target, SETTLE_EPSILON) {
+        let state = spring.step(state, 1.0, elapsed);
+        if spring.is_settled(state, 1.0, SETTLE_EPSILON) {
             self.progress = target;
             self.motion = Motion::Idle;
+            self.pull = None;
             return false;
         }
-        self.progress = state.position.clamp(0.0, LIMIT);
+        self.progress = (from + (target - from) * state.position).clamp(0.0, LIMIT);
         self.motion = Motion::Settle {
+            from,
             target,
-            velocity: state.velocity,
+            state,
             at: now,
             tapped,
         };
@@ -150,17 +170,28 @@ impl Lift {
 
     pub fn animate(&mut self, open: bool, now: Instant) {
         let target = if open { 1.0 } else { 0.0 };
-        let velocity = match self.motion {
-            Motion::Settle { velocity, .. } => velocity,
+        let carried = match self.motion {
+            Motion::Settle {
+                from,
+                target,
+                state,
+                ..
+            } => state.velocity * (target - from),
             _ => 0.0,
         };
+        let span = target - self.progress;
         self.samples.clear();
-        self.motion = if self.progress == target {
+        self.pull = None;
+        self.motion = if span == 0.0 {
             Motion::Idle
         } else {
             Motion::Settle {
+                from: self.progress,
                 target,
-                velocity,
+                state: SpringState {
+                    position: 0.0,
+                    velocity: carried / span,
+                },
                 at: now,
                 tapped: true,
             }
@@ -169,13 +200,21 @@ impl Lift {
 
     pub fn finish(&mut self) {
         if let Motion::Settle {
-            target, at, tapped, ..
+            from,
+            target,
+            at,
+            tapped,
+            ..
         } = self.motion
         {
             self.progress = target;
             self.motion = Motion::Settle {
+                from,
                 target,
-                velocity: 0.0,
+                state: SpringState {
+                    position: 1.0,
+                    velocity: 0.0,
+                },
                 at,
                 tapped,
             };
@@ -185,7 +224,35 @@ impl Lift {
     pub fn snap(&mut self, open: bool) {
         self.progress = if open { 1.0 } else { 0.0 };
         self.motion = Motion::Idle;
+        self.pull = None;
         self.samples.clear();
+    }
+
+    pub fn slide(&mut self, side: f32) {
+        if let (Motion::Drag { .. }, Some(pull)) = (self.motion, &mut self.pull) {
+            pull.side = side;
+        }
+    }
+
+    pub fn pull(&self) -> Option<Pull> {
+        self.pull
+    }
+
+    pub fn aim(&mut self, throw: f32) {
+        if self.is_dragging() {
+            self.throw = Some(throw);
+        }
+    }
+
+    pub fn flight(&self) -> Option<f32> {
+        match self.motion {
+            Motion::Settle { state, .. } => Some(state.position),
+            _ => None,
+        }
+    }
+
+    pub fn will_open(&self) -> bool {
+        self.is_dragging() && self.progress > COMMIT
     }
 
     pub fn progress(&self) -> f32 {
@@ -211,6 +278,9 @@ impl Lift {
             raw.max(0.0)
         };
         self.motion = Motion::Drag { raw };
+        if let Some(pull) = &mut self.pull {
+            pull.reach = raw.max(0.0) * DISTANCE;
+        }
         self.samples.push_back((now, -delta_y));
         while self
             .samples
@@ -248,18 +318,21 @@ impl Lift {
             && velocity > -FLING_VELOCITY
             && (self.progress > COMMIT || velocity >= FLING_VELOCITY);
         let target = if open { 1.0 } else { 0.0 };
-        let (frequency, _) = SPRING.canonical();
-        let limit = frequency * (target - self.progress).abs();
-        let velocity = velocity / DISTANCE;
-        let velocity = if (target - self.progress) * velocity > 0.0 {
-            velocity.clamp(-limit, limit)
-        } else {
-            0.0
+        let (frequency, _) = self.spring.unwrap_or(SPRING).canonical();
+        let span = target - self.progress;
+        let toward = match self.throw.filter(|throw| open && *throw > 0.0) {
+            Some(throw) => velocity / throw,
+            None if span != 0.0 => velocity / DISTANCE / span,
+            None => 0.0,
         };
         self.samples.clear();
         self.motion = Motion::Settle {
+            from: self.progress,
             target,
-            velocity,
+            state: SpringState {
+                position: 0.0,
+                velocity: toward.clamp(0.0, frequency),
+            },
             at: now,
             tapped: false,
         };
@@ -319,6 +392,56 @@ mod tests {
         assert_eq!(lift.progress(), LIMIT);
         lift.scroll(6000.0, TouchPhase::Moved, clock.at(48));
         assert_eq!(lift.progress(), 0.0);
+    }
+
+    #[test]
+    fn the_pull_keeps_the_finger_offset_until_the_lift_rests() {
+        let clock = Clock(Instant::now());
+        let mut lift = Lift::new();
+        assert_eq!(lift.pull(), None);
+        lift.scroll(-90.0, TouchPhase::Started, clock.at(0));
+        lift.slide(12.0);
+        assert!(!lift.will_open());
+        lift.scroll(-360.0, TouchPhase::Moved, clock.at(150));
+        lift.slide(-40.0);
+        let held = Pull {
+            side: -40.0,
+            reach: 450.0,
+        };
+        assert_eq!(lift.pull(), Some(held));
+        assert!(lift.will_open());
+        lift.scroll(0.0, TouchPhase::Ended, clock.at(400));
+        lift.slide(99.0);
+        assert_eq!(lift.pull(), Some(held));
+        settle(&mut lift, &clock, 400);
+        assert_eq!(lift.pull(), None);
+    }
+
+    #[test]
+    fn a_release_flies_from_nought_to_one_at_the_fingers_speed() {
+        let clock = Clock(Instant::now());
+        let spring = SpringConfig::new(200.0, 28.5, 1.0);
+        let flown = |lift: &Lift| lift.flight().expect("a released lift is in flight");
+
+        let mut thrown = Lift::with_spring(spring);
+        thrown.scroll(-80.0, TouchPhase::Started, clock.at(0));
+        thrown.scroll(-80.0, TouchPhase::Moved, clock.at(16));
+        thrown.scroll(-80.0, TouchPhase::Moved, clock.at(32));
+        thrown.aim(240.0);
+        thrown.scroll(0.0, TouchPhase::Ended, clock.at(48));
+        assert_eq!(flown(&thrown), 0.0);
+        thrown.tick(clock.at(148));
+        assert!((flown(&thrown) - 0.757).abs() < 0.01, "{}", flown(&thrown));
+
+        let mut rested = Lift::with_spring(spring);
+        let release = slow_drag(&mut rested, &clock, &[-200.0, -200.0]);
+        rested.aim(240.0);
+        rested.scroll(0.0, TouchPhase::Ended, clock.at(release));
+        assert_eq!(rested.progress(), 1.0 + (100.0 / DISTANCE) * OVERDRAG);
+        rested.tick(clock.at(release + 100));
+        assert!((flown(&rested) - 0.413).abs() < 0.01, "{}", flown(&rested));
+        settle(&mut rested, &clock, release + 100);
+        assert_eq!((rested.progress(), rested.flight()), (1.0, None));
     }
 
     #[test]

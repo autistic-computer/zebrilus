@@ -181,6 +181,7 @@ fn label(word: &str, meta: &str, tone: Tone) -> PillLabel {
         word: SharedString::from(word.to_owned()),
         meta: SharedString::from(meta.to_owned()),
         tone,
+        up: false,
     }
 }
 
