@@ -119,19 +119,20 @@ no pending request (already answered, or none was asked)`.
 **Reopening a child.** A child chat is its session, not its pane. For every chat a chat opens,
 the daemon keeps a `ChildRecord` under the opener's provider and session
 (`AgentRuntime::update_child`): the child's original pane id, provider, session id once its
-session starts (`note_child_session`), folder, model, effort, account, and the pane that holds it
-now. The records are saved next to the opener's journal as `<key>.children.json`, so they outlive
-a daemon restart and the opener being resumed in another pane; they go when the opener's session is
-deleted (`AgentJournal::remove_for`), not when its pane closes. `select-child-chat [-t HOST] %N`
-(internal, for the card a host draws) selects the child's window and pane and prints the pane: the
-recorded pane while it still runs that session, else any live chat on that session, else a new
-float in the host's window resumed on the session with the same provider, folder, model, effort
-and account, no brief, and the host as parent. A child closed before its session started fails
-with `%N was closed before its session started; it cannot be opened again`, and a pane the host
-did not open with `%N is not a chat %H opened`. `agent-send -t %N` from the host to the original
-id reaches the pane that holds the child now (`Shared::moved_child`) and counts toward the same 8
-messages (`child_key`); with no pane holding it, it fails with `%N was closed; open a new chat
-with: zz new-pane -d --kind agent NAME 'BRIEF'`.
+session starts (`note_child_session`), folder, model, effort, account, the pane that holds it
+now, and every pane it was reopened in (`reopened`). The records are saved next to the opener's
+journal as `<key>.children.json`, so they outlive a daemon restart and the opener being resumed in
+another pane; they go when the opener's session is deleted (`AgentJournal::remove_for`), not when
+its pane closes. `select-child-chat [-t HOST] %N` (internal, for the card a host draws) takes any
+id the child has had, selects the child's window and pane and prints the pane: the recorded pane
+while it still runs that session, else any live chat on that session, else a new float in the
+host's window resumed on the session with the same provider, folder, model, effort and account,
+no brief, and the host as parent. A child closed before its session started fails with `%N was
+closed before its session started; it cannot be opened again`, and a pane the host did not open
+with `%N is not a chat %H opened`. `agent-send -t %N` from the host to any id the child has had
+reaches the pane that holds the child now (`Shared::moved_child`) and counts toward one set of 8
+messages per child (`child_key`); with no pane holding it, it fails with `%N was closed; open a new
+chat with: zz new-pane -d --kind agent NAME 'BRIEF'`.
 
 **The mention note.** A prompt whose text holds an agent token (`@+claude`, `@+codex`, either with
 `/MODEL`) or a chat token (`@HOST:%N`, the shape only the composer's Chats rows write) reaches the

@@ -33920,7 +33920,7 @@ impl Shared {
         self.open_agent_runtime()?
             .child_records(provider, &session)
             .into_iter()
-            .find(|record| record.pane == child.0)
+            .find(|record| record.answers_to(child.0))
     }
 
     fn child_pane_now(&self, record: &crate::agent::journal::ChildRecord) -> Option<PaneId> {
@@ -33983,8 +33983,11 @@ impl Shared {
         if let Some((provider, session)) = self.host_key(host)
             && let Some(runtime) = self.open_agent_runtime()
         {
-            runtime.update_child(provider, &session, child, |record| {
+            runtime.update_child(provider, &session, PaneId(record.pane), |record| {
                 record.current = Some(pane.0);
+                if !record.answers_to(pane.0) {
+                    record.reopened.push(pane.0);
+                }
             });
         }
         let target = pane.to_string();
@@ -34123,7 +34126,7 @@ impl Shared {
                 runtime
                     .child_records(provider, &session)
                     .into_iter()
-                    .find(|record| record.current == Some(pane.0))
+                    .find(|record| record.current == Some(pane.0) || record.answers_to(pane.0))
             })
             .map_or(pane, |record| PaneId(record.pane))
     }
@@ -124797,6 +124800,35 @@ bind - split-window -v -c "#{pane_current_path}"
                 ),
                 Ok("turn 0".to_owned())
             );
+            let select = |child: &str| {
+                run_as(
+                    &workspace,
+                    ClientId(97),
+                    None,
+                    "select-child-chat",
+                    &["-t", "%1", child],
+                )
+            };
+            run_as(&workspace, ClientId(97), None, "kill-pane", &["-t", "%3"]).expect("kill");
+            assert_eq!(select("%3"), Ok("%4".to_owned()));
+            assert!(matches!(
+                workspace.shared.inner.lock().engine.state.pane(PaneId(4)).map(|pane| &pane.kind),
+                Some(PaneKind::Agent(agent))
+                    if agent.session_id.as_deref() == Some("fixture-session")
+            ));
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(99),
+                    Some(host),
+                    "agent-send",
+                    &["-t", "%3", "--wait", "and again"],
+                ),
+                Ok("turn 0".to_owned())
+            );
+            run_as(&workspace, ClientId(97), None, "kill-pane", &["-t", "%4"]).expect("kill");
+            assert_eq!(select("%2"), Ok("%5".to_owned()));
+            assert_eq!(select("%3"), Ok("%5".to_owned()));
             workspace.runtime.update_child(
                 AgentProvider::Codex,
                 "fixture-session",

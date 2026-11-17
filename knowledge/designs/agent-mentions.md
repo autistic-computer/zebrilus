@@ -688,9 +688,12 @@ float in the host's window resumed on its session with the same provider, folder
 account, parented to the host. The daemon keeps one record per child under the host's session, next
 to the host's journal, so this works after a restart and after the host is resumed in another pane,
 and the records go when the host's session is deleted. A child closed before its session started
-cannot come back: `%N was closed before its session started; it cannot be opened again`. The host
-keeps using the original id: `agent-send -t %N` reaches the reopened pane and counts toward the same
-8 messages, and while the child is closed the send fails with `%N was closed; open a new chat
+cannot come back: `%N was closed before its session started; it cannot be opened again`. Once
+reopened, notices and reports name the new pane, so the host's transcript gets a card for each id
+the child has had. The record keeps every one of them (the original and each reopened pane), and
+`select-child-chat` and the host's `agent-send -t %N` accept any of them: the send reaches the pane
+that holds the child now and counts toward one set of 8 messages per child, and while the child is
+closed it fails with `%N was closed; open a new chat
 with: zz new-pane -d --kind agent NAME 'BRIEF'`. See
 [Agent panes](/concepts/agent-panes.md#agent-panes) for the record and lookup order.
 

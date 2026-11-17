@@ -320,6 +320,14 @@ pub(crate) struct ChildRecord {
     pub(crate) effort: Option<String>,
     pub(crate) account: Option<String>,
     pub(crate) current: Option<u64>,
+    #[serde(default)]
+    pub(crate) reopened: Vec<u64>,
+}
+
+impl ChildRecord {
+    pub(crate) fn answers_to(&self, pane: u64) -> bool {
+        self.pane == pane || self.reopened.contains(&pane)
+    }
 }
 
 pub(crate) struct AgentJournal {
