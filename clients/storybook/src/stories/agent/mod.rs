@@ -2,6 +2,7 @@ use crate::story::{Section, Story};
 
 pub(super) mod cards;
 pub(super) mod chat;
+mod child;
 mod chrome;
 pub(super) mod composer;
 pub(super) mod fixtures;
@@ -136,6 +137,18 @@ const STORY: Story = Story {
             name: "Subagents",
             summary: "Each subagent is its own flat row that washes deeper on hover: the CLI's tile in its program colors with a status dot (working, needs you, done, failed) that says the same in its tooltip and to screen readers, its name, and on hover how long it took and the PiP mark. Clicking a row opens its chat in a PiP docked beside the thread: its prompt, its own rows, its answer and a footer; the PiP's close button or a second click closes it. An approval waits right under its agent, or in its PiP while that is open.",
             build: chat::subagents,
+        },
+        Section {
+            id: "child-card",
+            name: "Child card",
+            summary: "When a chat opens another agent as a chat in a PiP, its transcript shows one card for that child: the child's tile with its status dot, its name, the state word, and at the right the allowed count once it is done, the time and the PiP mark. While it works the card peeks at the child's last three rows, the oldest fading; while it asks, the request and who it waits for; a decision shows on its line; done shows the whole reply as a quote and failed the error. While the child's PiP is in view the card is its header line only, and a closed child is the header with no time and keeps the PiP mark, since it can be reopened. Clicking the card runs select-child-chat: the child's stashed PiP slides in, or a closed child comes back in a new PiP on its session.",
+            build: child::child_cards,
+        },
+        Section {
+            id: "child-transcript",
+            name: "Child card from a transcript",
+            summary: "A host chat folded the way the apps fold it: the call that opened codex stays, its card follows it, and the ask, the host's allow and the finished report that came back as messages are absorbed into the card. A report for a pane this chat never opened stays a message. A second agent-send to the same pane starts a new card, which is asking; the first card keeps its own reply. Agent mentions in the prompts read @codex and @codex/MODEL.",
+            build: child::child_transcript,
         },
         Section {
             id: "background",

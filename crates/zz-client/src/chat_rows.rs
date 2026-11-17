@@ -1,10 +1,15 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::path::Path;
 
-use zz_protocol::chat::{
-    Answer, Ask, ChatView, ItemId, ItemKind, ItemStatus, ItemView, RequestClose, RequestId,
-    RequestView, TurnId, TurnOutcome, TurnView,
+use crate::child_card::{ChildAsk, ChildCard, ChildState, Decision, Verdict};
+use zz_protocol::{
+    PaneId,
+    agent_mention::{AgentAsk, AgentReport, AgentRespond, ReplyNotice},
+    chat::{
+        Answer, Ask, ChatView, ItemId, ItemKind, ItemStatus, ItemView, RequestClose, RequestId,
+        RequestView, TurnId, TurnOutcome, TurnView,
+    },
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -18,6 +23,7 @@ pub enum Unit {
     Notice(ItemId),
     Ask(RequestId),
     Record(RequestId),
+    Child(Box<ChildCard>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -85,10 +91,10 @@ pub fn now_ms() -> u64 {
         })
 }
 
-pub fn turn_rows(view: &ChatView, turn: &TurnView, now: u64) -> TurnRows {
+pub fn turn_rows(view: &ChatView, turn: &TurnView, now: u64, fold: &ChildFold) -> TurnRows {
     let live = turn.is_open();
     let standalone = unattached(view, Some(turn.id));
-    let units = units(view, &turn.items, &standalone, live);
+    let units = units(view, &turn.items, &standalone, live, fold);
     let activity = live.then(|| live_line(view, turn)).flatten();
     let elapsed = turn.ended_at.unwrap_or(now).saturating_sub(turn.started_at);
     let fold = match &turn.outcome {
@@ -124,8 +130,14 @@ pub fn turn_rows(view: &ChatView, turn: &TurnView, now: u64) -> TurnRows {
         };
     };
     let (mut folded, mut shown) = (Vec::new(), Vec::new());
+    let anchors = units
+        .iter()
+        .map(|unit| matches!(unit, Unit::Child(_)))
+        .skip(1)
+        .chain([false])
+        .collect::<Vec<_>>();
     for (index, unit) in units.into_iter().enumerate() {
-        let keep = index >= answer || still_running(view, &unit);
+        let keep = index >= answer || anchors[index] || still_running(view, &unit);
         if keep {
             shown.push(unit);
         } else {
@@ -196,7 +208,7 @@ fn still_running(view: &ChatView, unit: &Unit) -> bool {
                 .any(|request| request.item.as_ref().is_some_and(|id| subtree.contains(id)))
     };
     match unit {
-        Unit::User(_) | Unit::Record(_) => true,
+        Unit::User(_) | Unit::Record(_) | Unit::Child(_) => true,
         Unit::Ask(request) => view.request(*request).is_some_and(RequestView::is_open),
         Unit::Subagent(id) => alive(id),
         Unit::Agents(ids) => ids.iter().any(alive),
@@ -205,12 +217,13 @@ fn still_running(view: &ChatView, unit: &Unit) -> bool {
     }
 }
 
-pub fn background_rows(view: &ChatView) -> Vec<Unit> {
+pub fn background_rows(view: &ChatView, fold: &ChildFold) -> Vec<Unit> {
     units(
         view,
         &view.background,
         &unattached(view, None),
         background_live(view),
+        fold,
     )
 }
 
@@ -234,6 +247,7 @@ pub fn unit_at(view: &ChatView, unit: &Unit) -> Option<u64> {
         Unit::Ask(request) | Unit::Record(request) => {
             return view.request(*request).map(|request| request.opened_at);
         }
+        Unit::Child(card) => return Some(card.started_at),
     };
     view.item(item).map(|item| item.started_at)
 }
@@ -255,7 +269,13 @@ pub fn agent_rows(view: &ChatView, agent: &ItemId) -> Vec<Unit> {
     let Some(item) = view.item(agent) else {
         return Vec::new();
     };
-    units(view, &item.children, &[], item.status.is_open())
+    units(
+        view,
+        &item.children,
+        &[],
+        item.status.is_open(),
+        &ChildFold::default(),
+    )
 }
 
 pub fn agent_state(view: &ChatView, agent: &ItemId) -> Option<AgentState> {
@@ -454,9 +474,16 @@ fn short(target: &str) -> String {
         .map_or_else(|| target.to_owned(), str::to_owned)
 }
 
-fn units(view: &ChatView, ids: &[ItemId], standalone: &[&RequestView], live: bool) -> Vec<Unit> {
+fn units(
+    view: &ChatView,
+    ids: &[ItemId],
+    standalone: &[&RequestView],
+    live: bool,
+    fold: &ChildFold,
+) -> Vec<Unit> {
     let mut entries = ids
         .iter()
+        .filter(|id| !fold.hidden.contains(*id))
         .filter_map(|id| view.item(id))
         .map(|item| (item.started_at, Entry::Item(item)))
         .collect::<Vec<_>>();
@@ -514,11 +541,195 @@ fn units(view: &ChatView, ids: &[ItemId], standalone: &[&RequestView], live: boo
                     flush(view, &mut run, &mut out, false);
                     out.extend(attached);
                 }
+                if let Some(card) = fold.cards.get(&item.id) {
+                    flush(view, &mut run, &mut out, false);
+                    out.push(Unit::Child(Box::new(card.clone())));
+                }
             }
         }
     }
     flush(view, &mut run, &mut out, live);
     group(out)
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ChildFold {
+    cards: HashMap<ItemId, ChildCard>,
+    hidden: HashSet<ItemId>,
+}
+
+impl ChildFold {
+    #[must_use]
+    pub fn hides(&self, id: &ItemId) -> bool {
+        self.hidden.contains(id)
+    }
+}
+
+struct Exchange {
+    card: ChildCard,
+    known: bool,
+    ask: Option<AgentAsk>,
+    ended: bool,
+    failed: Vec<(ItemId, String)>,
+}
+
+fn command_of(item: &ItemView) -> &str {
+    item.body
+        .target
+        .as_deref()
+        .filter(|target| !target.trim().is_empty())
+        .unwrap_or(&item.body.title)
+}
+
+fn report_state(report: AgentReport) -> ChildState {
+    match report {
+        AgentReport::Finished { text, .. } => ChildState::Done { reply: text },
+        AgentReport::Stopped { reason, .. } => ChildState::Failed {
+            error: format!("stopped ({reason})"),
+        },
+        AgentReport::Failed { message, .. } => ChildState::Failed { error: message },
+        AgentReport::Closed { .. } => ChildState::Closed,
+    }
+}
+
+#[must_use]
+pub fn child_fold(view: &ChatView) -> ChildFold {
+    let mut exchanges: Vec<Exchange> = Vec::new();
+    let mut open: HashMap<PaneId, usize> = HashMap::new();
+    let mut hidden = HashSet::new();
+    let items = view
+        .turns
+        .iter()
+        .flat_map(|turn| &turn.items)
+        .filter_map(|id| view.item(id));
+    for item in items {
+        if item.kind == ItemKind::User {
+            let text = &item.body.text;
+            if let Some(report) = AgentReport::parse(text) {
+                let Some(exchange) = open.get(&report.pane()).map(|at| &mut exchanges[*at]) else {
+                    continue;
+                };
+                hidden.insert(item.id.clone());
+                if !exchange.known {
+                    exchange.known = true;
+                    exchange.card.agent = report_provider(&report);
+                }
+                if !exchange.ended {
+                    exchange.ended = true;
+                    exchange.ask = None;
+                    exchange.card.ended_at = Some(item.started_at);
+                    exchange.card.state = report_state(report);
+                }
+            } else if let Some(ask) = AgentAsk::parse(text) {
+                let Some(exchange) = open.get(&ask.pane).map(|at| &mut exchanges[*at]) else {
+                    continue;
+                };
+                hidden.insert(item.id.clone());
+                if !exchange.known {
+                    exchange.known = true;
+                    exchange.card.agent = ask.provider;
+                }
+                if !exchange.ended {
+                    exchange.card.state = ChildState::Asking(ChildAsk::of(&ask));
+                }
+                exchange.ask = Some(ask);
+            }
+            continue;
+        }
+        if item.kind != ItemKind::Execute {
+            continue;
+        }
+        if let Some(respond) = AgentRespond::parse(command_of(item)) {
+            let Some(exchange) = open.get(&respond.pane).map(|at| &mut exchanges[*at]) else {
+                continue;
+            };
+            let command = command_of(item);
+            let failed = matches!(item.status, ItemStatus::Failed { .. })
+                || item.body.exit_code.is_some_and(|code| code != 0);
+            if failed {
+                exchange.failed.push((item.id.clone(), command.to_owned()));
+                continue;
+            }
+            hidden.insert(item.id.clone());
+            if item.status.is_open() {
+                continue;
+            }
+            for (twin, _) in exchange
+                .failed
+                .extract_if(.., |(_, tried)| tried == command)
+            {
+                hidden.insert(twin);
+            }
+            let ask = exchange.ask.take();
+            let asked = ask.as_ref().map(ChildAsk::of);
+            exchange.card.decisions.push(Decision {
+                verdict: Verdict::of(&respond.decision, ask.as_ref()),
+                kind: asked.as_ref().map_or(ItemKind::Tool, |asked| asked.kind),
+                title: asked.map(|asked| asked.title).unwrap_or_default(),
+            });
+            if matches!(exchange.card.state, ChildState::Asking(_)) {
+                exchange.card.state = ChildState::Working;
+            }
+            continue;
+        }
+        let Some(notice) = ReplyNotice::find(&item.body.text) else {
+            continue;
+        };
+        let (pane, provider) = match notice {
+            ReplyNotice::Opened { pane, provider, .. } => (pane, Some(provider)),
+            ReplyNotice::Sent { pane, .. } => (pane, None),
+        };
+        let earlier = open.get(&pane).map(|at| &mut exchanges[*at]);
+        let provider = provider.or_else(|| {
+            earlier
+                .as_ref()
+                .filter(|exchange| exchange.known)
+                .map(|exchange| exchange.card.agent)
+        });
+        if let Some(earlier) = earlier {
+            earlier.card.latest = false;
+            if !earlier.ended {
+                earlier.ended = true;
+                earlier.card.ended_at = Some(item.started_at);
+                earlier.card.state = ChildState::Done {
+                    reply: String::new(),
+                };
+            }
+        }
+        open.insert(pane, exchanges.len());
+        exchanges.push(Exchange {
+            card: ChildCard {
+                anchor: item.id.clone(),
+                pane,
+                agent: provider.unwrap_or_default(),
+                latest: true,
+                state: ChildState::Working,
+                started_at: item.started_at,
+                ended_at: None,
+                decisions: Vec::new(),
+            },
+            known: provider.is_some(),
+            ask: None,
+            ended: false,
+            failed: Vec::new(),
+        });
+    }
+    ChildFold {
+        cards: exchanges
+            .into_iter()
+            .map(|exchange| (exchange.card.anchor.clone(), exchange.card))
+            .collect(),
+        hidden,
+    }
+}
+
+const fn report_provider(report: &AgentReport) -> zz_protocol::AgentProvider {
+    match report {
+        AgentReport::Finished { provider, .. }
+        | AgentReport::Stopped { provider, .. }
+        | AgentReport::Failed { provider, .. }
+        | AgentReport::Closed { provider, .. } => *provider,
+    }
 }
 
 fn group(units: Vec<Unit>) -> Vec<Unit> {

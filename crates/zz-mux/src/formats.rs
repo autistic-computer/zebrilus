@@ -3359,8 +3359,17 @@ impl MuxEngine {
                 .pane_start_path
                 .clone_from(&context.pane_current_path);
         }
-        if context.pane_current_command.is_empty() && matches!(pane.kind, PaneKind::Terminal) {
-            context.pane_current_command = self.pane_command_fallback(pane.id);
+        match &pane.kind {
+            PaneKind::Agent(agent) => {
+                agent
+                    .provider
+                    .command_name()
+                    .clone_into(&mut context.pane_current_command);
+            }
+            PaneKind::Terminal if context.pane_current_command.is_empty() => {
+                context.pane_current_command = self.pane_command_fallback(pane.id);
+            }
+            _ => {}
         }
         let border_status = self.pane_border_status(window.id);
         if let Some(cell) = window
@@ -3490,10 +3499,11 @@ pub fn delegated_format_variable_names() -> impl Iterator<Item = &'static str> {
     })
 }
 
-const PANE_HOOK_FORMAT_VARIABLES: [&str; 16] = [
+const PANE_HOOK_FORMAT_VARIABLES: [&str; 17] = [
     "pane_kind",
     "agent_state",
     "agent_pending_permission",
+    "agent_parent",
     "browser_url",
     "pane_pb_state",
     "pane_pb_progress",

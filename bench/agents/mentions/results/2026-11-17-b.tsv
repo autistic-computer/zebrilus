@@ -1,0 +1,60 @@
+codex	m1	1	1	done	15.3	1	0	0	1	0	2	1	GVTfuR	ok	52205	149	47485	104
+claude	m1	1	1	done	17.3	1	0	0	1	0	2	1	6fgqde	ok	90302	498	31621	57
+claude	m3	1	1	done	7.2	1	0	0	0	0	2	1	MfGfKL	ok	93490	522	31352	15
+codex	m3	1	1	done	7.2	1	0	0	0	0	2	1	uKeGYx	ok	61442	59	47370	103
+claude	m4	1	0	done	18.4	1	0	0	1	0	2	0	t0AnIR	answer lacks token; stamp.sh never ran; no ask reached the host	91548	882	31767	143
+codex	m4	1	1	done	21.4	2	0	0	1	1	3	1	uhDyj7	ok	48712	341	83546	348
+claude	m4b	1	1	done	21.4	1	0	0	1	0	2	0	DEFMit	ok	90766	905	31886	239
+codex	m4b	1	1	done	20.4	1	0	0	1	0	2	0	DSUqBY	ok	55193	1076	51425	167
+claude	m5	1	0	done	16.6	2	0	0	2	0	3	0	DoiZ9w	host opened 2 chats	156190	830	63260	114
+codex	m5	1	0	done	20.2	2	0	0	2	0	3	0	nteWxO	host opened 2 chats	99988	331	83504	391
+claude	m6	1	1	done	28.6	4	1	2	0	0	2	1	htmdGw	ok	141630	716	31356	14
+codex	m6	1	1	done	17.4	4	0	1	0	0	1	1	DHRXUL	ok	49968	204	86465	377
+claude	m7	1	1	done	6.1	0	0	0	0	0	1	1	kqprLh	ok	49266	140	0	0
+codex	m7	1	1	done	7.1	0	0	0	0	0	1	1	ku7r7r	ok	0	0	31377	43
+claude	m8	1	1	done	18.4	1	0	0	1	0	2	1	3kasxF	ok	84214	441	31589	42
+codex	m8	1	1	done	14.3	1	0	0	1	0	2	1	DM4cjM	ok	52054	251	47491	102
+claude	m1	2	1	done	17.4	1	0	0	1	0	2	1	TWCcf2	ok	86691	472	31633	60
+codex	m1	2	1	done	14.3	1	0	0	1	0	2	1	LpJbHq	ok	51379	143	47509	107
+claude	m3	2	1	done	7.2	1	0	0	0	0	2	1	4Sz1rh	ok	93441	488	31348	13
+codex	m3	2	1	done	7.2	1	0	0	0	0	2	1	VVOst9	ok	61583	161	47350	108
+codex	m4	2	1	done	29.8	3	0	0	1	1	3	1	3YXE4f	ok	48850	392	112262	857
+claude	m4	2	1	done	41.0	2	0	0	1	1	3	1	LSamGJ	ok	159762	1175	48698	1074
+codex	m4b	2	1	done	18.4	1	0	0	1	0	2	0	1o9Iay	ok	52569	740	51298	204
+claude	m4b	2	1	done	21.4	1	0	0	1	0	2	0	dvV0VV	ok	92396	991	31990	188
+claude	m5	2	0	done	16.5	2	0	0	2	0	3	0	0OdYqN	host opened 2 chats	156007	854	63220	118
+codex	m5	2	0	done	18.9	2	0	0	2	0	3	0	n0RhHA	host opened 2 chats	108556	288	83534	296
+codex	m6	2	1	done	16.3	3	1	0	0	0	2	1	2XQiAp	ok	59167	12	79823	434
+claude	m6	2	1	done	31.6	5	1	3	0	0	2	1	SMdOhi	ok	188103	833	31360	14
+claude	m7	2	1	done	6.2	0	0	0	0	0	1	1	9NZ8iR	ok	61574	113	0	0
+codex	m7	2	1	done	9.2	0	0	0	0	0	1	1	nxGXRP	ok	0	0	31400	44
+claude	m8	2	1	done	15.3	1	0	0	1	0	2	1	F0t3M7	ok	94102	558	31598	45
+codex	m8	2	1	done	15.3	1	0	0	1	0	2	1	QnMZ3p	ok	83434	273	47511	108
+claude	m1	3	1	done	19.4	1	0	0	1	0	2	1	iHalT9	ok	93942	490	31703	108
+codex	m1	3	1	done	17.4	1	0	0	1	0	2	1	jh0y5C	ok	52747	188	47498	101
+claude	m3	3	1	done	7.2	1	0	0	0	0	2	1	PjyMhY	ok	93406	472	31342	13
+codex	m3	3	1	done	7.2	1	0	0	0	0	2	1	lcjIlm	ok	56016	96	47486	135
+codex	m4	3	1	done	20.4	2	0	0	1	1	3	1	AAT1DW	ok	52831	213	83334	312
+claude	m4	3	0	done	21.4	1	0	0	1	0	2	0	Nu0uBX	answer lacks token; stamp.sh never ran; no ask reached the host	94435	929	31782	130
+claude	m4b	3	1	done	20.4	1	0	0	1	0	2	0	5jm4OC	ok	91927	925	31956	199
+codex	m4b	3	1	done	22.5	1	0	0	1	0	2	0	Q1p0Uo	ok	49601	1175	51489	232
+claude	m5	3	1	done	12.8	2	1	0	1	0	2	0	dgN7ov	ok	123422	719	31620	56
+codex	m5	3	1	done	16.7	1	0	0	1	0	2	0	sDHE6m	ok	55648	84	47492	317
+claude	m6	3	1	done	8.2	3	1	0	0	0	2	1	P3pWrq	ok	156024	595	31358	13
+claude	m7	3	1	done	6.2	0	0	0	0	0	1	1	9oNjTL	ok	57838	116	0	0
+codex	m6	3	1	done	18.4	3	0	0	0	0	2	1	aFmH86	ok	61472	12	92580	391
+codex	m7	3	1	done	8.2	0	0	0	0	0	1	1	eJQD7c	ok	0	0	31399	37
+claude	m8	3	1	done	20.4	1	0	0	1	0	2	1	Tk2hNJ	ok	89758	196	31612	65
+codex	m8	3	1	done	14.3	1	0	0	1	0	2	1	LEcgou	ok	52313	246	47489	106
+claude	m4c	1	0	done	31.7	3	0	0	1	1	3	0	od1OEm	stamp.sh ran (write blocked by the sandbox)	222666	2274	47612	215
+codex	m4c	1	0	done	39.8	3	0	0	2	1	4	0	oS2VG0	host opened 2 chats	108507	1697	124637	902
+codex	m8b	1	0	done	21.4	3	1	0	1	0	2	0	zPIl0a	answer lacks token	89909	948	47548	229
+claude	m8b	1	0	done	33.8	4	1	0	1	0	2	0	pJKFR5	answer lacks token	126338	1319	56284	518
+claude	m4c	2	0	done	22.5	1	0	0	1	0	2	0	Yk6KOf	stamp.sh ran (write blocked by the sandbox)	127466	1690	31587	95
+codex	m4c	2	0	done	35.8	3	0	0	2	1	4	0	BTbAPz	host opened 2 chats	100739	1294	117361	883
+claude	m8b	2	1	done	41.9	5	2	0	1	0	3	1	XQaw0j	ok	192135	1300	105838	875
+codex	m8b	2	1	done	68.6	8	2	0	2	1	3	1	vn5jjV	ok	229859	2597	132548	876
+claude	m4c	3	0	done	29.7	3	0	0	1	1	3	0	z6kmvV	stamp.sh ran (write blocked by the sandbox)	192968	2278	47580	190
+codex	m4c	3	1	done	20.4	2	0	0	1	1	3	0	ZQa0Sp	ok	51934	457	83536	333
+claude	m8b	3	0	done	28.6	2	0	0	2	0	3	1	4WPnQd	host opened 2 chats	155404	1043	53409	556
+codex	m8b	3	1	done	26.5	2	0	0	1	1	3	1	lP6BOF	ok	116473	982	90736	457

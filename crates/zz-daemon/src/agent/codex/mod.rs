@@ -700,7 +700,11 @@ impl Runtime {
                 })
                 .await
             }
-            RuntimeCommand::Prompt { turn_id, prompt } => self.prompt(turn_id, prompt).await,
+            RuntimeCommand::Prompt {
+                turn_id,
+                prompt,
+                note,
+            } => self.prompt(turn_id, prompt, note.as_deref()).await,
             RuntimeCommand::Verb { prompt } => self.verb(&prompt.text).await,
             RuntimeCommand::Authenticate { .. } => {
                 self.emit(AgentStreamPayload::AuthenticationFailed {
@@ -850,6 +854,12 @@ impl Runtime {
             .as_ref()
             .map(|account| accounts::prepare(AgentProvider::Codex, account))
             .transpose()?;
+        if !cfg!(test)
+            && let Some(home) = account.clone().or_else(codex_home)
+            && let Err(error) = crate::agent_hooks::ensure_codex_rule(&home)
+        {
+            log::warn!(target: "zz::agent", "could not write the zz rule under {}: {error}", home.display());
+        }
         self.generation += 1;
         #[cfg(unix)]
         let managed = managed_daemon(&program, &self.command, account.as_deref());
@@ -1276,7 +1286,12 @@ impl Runtime {
         )
     }
 
-    async fn prompt(&mut self, turn_id: u64, prompt: AgentPrompt) -> Result<(), String> {
+    async fn prompt(
+        &mut self,
+        turn_id: u64,
+        prompt: AgentPrompt,
+        note: Option<&str>,
+    ) -> Result<(), String> {
         self.last_turn = self.last_turn.max(turn_id);
         if self.deferred_cancels.remove(&turn_id) {
             self.emit(AgentStreamPayload::PromptAccepted { turn_id })
@@ -1292,7 +1307,7 @@ impl Runtime {
         };
         let echo = format!("zz-prompt-{turn_id}-{:016x}", random_u64());
         let text = prompt.text.clone();
-        let input = turn_input(&prompt);
+        let input = turn_input(&prompt, note);
         let fact = Fact::Prompt {
             turn: turn_id,
             command: (text.trim() == "/compact").then(|| compact_command(turn_id)),
@@ -2841,10 +2856,13 @@ fn compact_command(turn_id: u64) -> String {
     format!("zz-compact-{turn_id}")
 }
 
-pub(crate) fn turn_input(prompt: &AgentPrompt) -> Value {
+pub(crate) fn turn_input(prompt: &AgentPrompt, note: Option<&str>) -> Value {
     let mut input = Vec::new();
     if !prompt.text.is_empty() {
         input.push(json!({ "type": "text", "text": prompt.text, "text_elements": [] }));
+    }
+    if let Some(note) = zz_protocol::agent_mention::hidden_note(&prompt.text, note) {
+        input.push(json!({ "type": "text", "text": note, "text_elements": [] }));
     }
     for image in &prompt.images {
         input.push(json!({
@@ -3117,6 +3135,7 @@ done
             commands
                 .send(RuntimeCommand::Prompt {
                     turn_id: 1,
+                    note: None,
                     prompt: AgentPrompt {
                         text: "start a server".to_owned(),
                         ..Default::default()
@@ -3245,6 +3264,7 @@ done
             commands
                 .send(RuntimeCommand::Prompt {
                     turn_id: 1,
+                    note: None,
                     prompt: AgentPrompt {
                         text: "ask me".to_owned(),
                         ..Default::default()
@@ -3436,6 +3456,7 @@ done
         );
         let prompt = |turn_id, text: &str| RuntimeCommand::Prompt {
             turn_id,
+            note: None,
             prompt: AgentPrompt {
                 text: text.to_owned(),
                 ..Default::default()

@@ -93,7 +93,7 @@ use zz_mux::{
     MuxEffect, MuxEngine, PaneKind, PaneModeRequest, PaneRuntimeFacts, PanesMode, ParsedConfig,
     ParsedConfigBytes, PromptOutcome, RetainedJobEnvironment, SourceStream, StatusHooks,
     SwitchAction, TmuxColour, TmuxSort, TmuxSortOrder, WindowSize, canonical_command,
-    command_block_body, copy_mode_action_is_read_only_safe, customize_menu_feed,
+    check_plain_text, command_block_body, copy_mode_action_is_read_only_safe, customize_menu_feed,
     expand_format_bytes, expand_format_values, expand_status, format_command, format_true,
     hook_format_variables, if_shell_truthy, legacy_layouts_in, parse_tmux_colour,
     sanitize_client_output, send_keys_is_read_only_safe, send_keys_target_client, utf8_sanitize,
@@ -4667,6 +4667,10 @@ const INSPECT_FIELDS: &[&str] = &[
     "pane_status_reported",
     "agent_state",
     "agent_pending_permission",
+    "agent_provider",
+    "agent_model",
+    "agent_session_id",
+    "agent_parent",
     "permission",
     "browser_url",
     "verbs",
@@ -4709,6 +4713,7 @@ const INSPECT_VERBS: &[(&str, &[&str])] = &[
         "agent",
         &[
             "agent-send",
+            "capture-pane",
             "flip-agent",
             "agent-account",
             "resize-pane",
@@ -4744,6 +4749,7 @@ enum DaemonCommandDispatch {
     IfShell,
     AgentSend,
     AgentRespond,
+    SelectChildChat,
     FlipAgent,
     AgentAccount,
     AgentAccounts,
@@ -4784,6 +4790,7 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("if", DaemonCommandDispatch::IfShell),
     ("agent-send", DaemonCommandDispatch::AgentSend),
     ("agent-respond", DaemonCommandDispatch::AgentRespond),
+    ("select-child-chat", DaemonCommandDispatch::SelectChildChat),
     ("flip-agent", DaemonCommandDispatch::FlipAgent),
     ("agent-account", DaemonCommandDispatch::AgentAccount),
     ("agent-accounts", DaemonCommandDispatch::AgentAccounts),
@@ -4898,6 +4905,8 @@ struct SharedServer {
     agent: Mutex<Option<Arc<crate::agent::fanout::AgentRuntime>>>,
     #[cfg(feature = "agent")]
     agent_effects: Mutex<()>,
+    #[cfg(feature = "agent")]
+    chat_deliveries: Mutex<BTreeMap<PaneId, VecDeque<ChatDelivery>>>,
     #[cfg(feature = "agent")]
     agent_catalog_pending: Mutex<BTreeSet<(ClientId, PaneId, AgentProvider)>>,
     providers: Mutex<providers::Providers>,
@@ -5869,6 +5878,8 @@ impl Shared {
             agent: Mutex::new(None),
             #[cfg(feature = "agent")]
             agent_effects: Mutex::new(()),
+            #[cfg(feature = "agent")]
+            chat_deliveries: Mutex::default(),
             #[cfg(feature = "agent")]
             agent_catalog_pending: Mutex::new(BTreeSet::new()),
             providers: Mutex::new(providers::Providers::default()),
@@ -8641,6 +8652,16 @@ impl Shared {
                     DaemonCommandDispatch::AgentRespond => {
                         self.agent_respond(kind, context, &command.args)
                     }
+                    DaemonCommandDispatch::SelectChildChat => {
+                        #[cfg(feature = "agent")]
+                        let selected = self.select_child_chat(client, kind, context, &command.args);
+                        #[cfg(not(feature = "agent"))]
+                        let selected = Err(ServerError::InvalidCommand(
+                            "select-child-chat needs a zz built with agent support".to_owned(),
+                        )
+                        .into());
+                        selected
+                    }
                     DaemonCommandDispatch::FlipAgent => self.flip_agent(context, &command.args),
                     DaemonCommandDispatch::AgentAccount => {
                         self.agent_account(context, &command.args)
@@ -9576,6 +9597,10 @@ impl Shared {
         if command_name == "command-prompt" {
             self.ensure_prompt_history();
         }
+        #[cfg(feature = "agent")]
+        if matches!(command_name, "new-pane" | "split-window" | "new-window") {
+            self.refuse_grandchild_chat(client, context, command_name, &command.args)?;
+        }
         let read_only = hook_events::command_is_read_only(command_name, &command.args);
         let split_caller_stream = matches!(command_name, "split-window" | "new-pane")
             && command_stdin_sink(command_name, &command.args) == Some(CommandStdinSink::PaneInput);
@@ -9588,6 +9613,7 @@ impl Shared {
         let mut pane_stream_inputs: Vec<(PaneId, RawText)> = Vec::new();
         let mut removed_panes = Vec::new();
         let mut agent_panes_opened: Vec<(PaneId, Option<Arc<TerminalSession>>)> = Vec::new();
+        let mut agent_briefs: Vec<(PaneId, String)> = Vec::new();
         #[cfg(feature = "agent")]
         let mut agent_panes_closed = Vec::new();
         let mut relocated_terminal_views = Vec::new();
@@ -10448,6 +10474,9 @@ impl Shared {
                         #[cfg(not(feature = "agent"))]
                         let _ = (pane, at);
                     }
+                    MuxEffect::AgentBrief { pane, text } => {
+                        agent_briefs.push((*pane, text.clone()));
+                    }
                     MuxEffect::PaneCreated {
                         kind:
                             PaneKindSnapshot::Browser(_)
@@ -10631,6 +10660,9 @@ impl Shared {
                         }
                     }
                     MuxEffect::SendKeys { pane, keys, repeat } => {
+                        if is_agent_chat(&inner, *pane) {
+                            return Err(agent_chat_refusal(command_name, *pane).into());
+                        }
                         if inner.pane_modes.contains_key(pane) {
                             let target = if command_name == "send-keys" {
                                 send_keys_target_client(&command.args)?
@@ -10697,6 +10729,9 @@ impl Shared {
                         }
                     }
                     MuxEffect::ResetPane { pane } => {
+                        if is_agent_chat(&inner, *pane) {
+                            return Err(agent_chat_refusal(command_name, *pane).into());
+                        }
                         let mut terminals = Vec::new();
                         for sink in resolve_input_sinks(&inner, *pane)? {
                             if let PaneSink::Terminal(terminal) = sink {
@@ -12274,9 +12309,22 @@ impl Shared {
                 self.open_agent_pane(pane, replaced);
                 self.request_pane_location(pane);
             }
+            if matches!(command_name, "new-pane" | "split-window" | "new-window") {
+                let created = execution.effects.iter().find_map(|effect| match effect {
+                    MuxEffect::PaneCreated {
+                        pane,
+                        kind: PaneKindSnapshot::Agent(_),
+                        ..
+                    } => Some(*pane),
+                    _ => None,
+                });
+                self.open_created_chat(client, context, command_name, created, agent_briefs);
+            }
+            self.adopt_child_chat_panes(client, context, &execution.effects);
+            self.close_orphaned_chats(&removed_panes);
         }
         #[cfg(not(feature = "agent"))]
-        let _ = agent_panes_opened;
+        let _ = (agent_panes_opened, agent_briefs);
         for pane in removed_panes {
             self.cancel_pane_files(pane);
             self.publish(EventPayload::PaneRemoved(pane));
@@ -13091,6 +13139,42 @@ impl Shared {
         args: &[RawText],
     ) -> Result<Execution, DaemonError> {
         let mut parsed = parse_capture_pane_args(args)?;
+        let chat = {
+            let inner = self.inner.lock();
+            let pane = inner.engine.resolve_pane(
+                parsed.target.as_deref(),
+                context.window,
+                context.pane,
+            )?;
+            is_agent_chat(&inner, pane).then_some(pane)
+        };
+        if let Some(pane) = chat {
+            #[cfg(feature = "agent")]
+            let text = match self.open_agent_runtime() {
+                Some(runtime) => {
+                    if runtime.wire_state(pane).is_some_and(|state| {
+                        matches!(
+                            state.phase,
+                            zz_protocol::AgentConnectionPhase::Running
+                                | zz_protocol::AgentConnectionPhase::AwaitingPermission
+                        )
+                    }) {
+                        self.record_command_stderr(
+                            client,
+                            &format!("capture-pane: {pane}'s turn is still running"),
+                        );
+                    }
+                    runtime.chat_text(pane, parsed.start.is_some())
+                }
+                None => String::new(),
+            };
+            #[cfg(not(feature = "agent"))]
+            let text = String::new();
+            if parsed.print && text.is_empty() {
+                return Ok(Execution::default());
+            }
+            return self.finish_capture_pane(pane, &parsed, context.no_hooks, Ok(text));
+        }
         let (pane, terminal, mut start, mut end) = {
             let mut inner = self.inner.lock();
             let pane = inner.engine.resolve_pane(
@@ -13532,6 +13616,9 @@ impl Shared {
                 return Err(
                     ServerError::InvalidCommand("target pane has exited".to_owned()).into(),
                 );
+            }
+            if is_agent_chat(&inner, pane) {
+                return Err(agent_chat_refusal("pipe-pane", pane).into());
             }
             let terminal = inner
                 .terminals
@@ -17057,13 +17144,20 @@ impl Shared {
             )
             .into());
         }
+        #[cfg(feature = "agent")]
+        let moved = self.moved_child(client, context, parsed.target.as_deref())?;
+        #[cfg(not(feature = "agent"))]
+        let moved = None;
         let (pane, agent_pane) = {
             let inner = self.inner.lock();
-            let pane = inner.engine.resolve_pane(
-                parsed.target.as_deref(),
-                context.window,
-                context.pane,
-            )?;
+            let pane = match moved {
+                Some(pane) => pane,
+                None => inner.engine.resolve_pane(
+                    parsed.target.as_deref(),
+                    context.window,
+                    context.pane,
+                )?,
+            };
             let agent_pane = matches!(
                 inner.engine.state.pane(pane).map(|pane| &pane.kind),
                 Some(PaneKind::Agent(_))
@@ -17071,14 +17165,40 @@ impl Shared {
             (pane, agent_pane)
         };
         #[cfg(feature = "agent")]
+        let caller = self.chat_caller(client, context, Some(pane));
+        #[cfg(feature = "agent")]
+        if let Some(caller) = caller
+            && self.inner.lock().engine.agent_parent(caller) == Some(pane)
+        {
+            return Err(ServerError::InvalidCommand(format!(
+                "{pane} opened this chat; your reply reaches it when your turn ends"
+            ))
+            .into());
+        }
+        #[cfg(feature = "agent")]
+        let parsed = {
+            let mut parsed = parsed;
+            if caller.is_some() && !parsed.on_block_set {
+                parsed.on_block = AgentBlockPolicy::Fail;
+            }
+            parsed
+        };
+        #[cfg(feature = "agent")]
         if agent_pane {
             if parsed.wait_only() {
-                return Err(ServerError::NativeCommandParse(format!(
-                    "agent-send: {pane} is a chat; --wait needs text to send"
-                ))
-                .into());
+                if !matches!(kind, ClientKind::Command | ClientKind::Control) {
+                    return Err(ServerError::InvalidCommand(
+                        "agent-send --wait needs a command client".to_owned(),
+                    )
+                    .into());
+                }
+                return self.wait_for_agent_turn(client, pane, None, &parsed, caller.is_some());
             }
-            if parsed.notify {
+            self.refuse_full_chat(pane)?;
+            if let Some(caller) = caller {
+                self.count_chat_send(caller, pane)?;
+            }
+            if parsed.notify && caller.is_none() {
                 let caller = self
                     .inner
                     .lock()
@@ -17087,26 +17207,44 @@ impl Shared {
                     .or(context.pane.filter(|_| kind == ClientKind::Interactive));
                 return self.submit_agent_prompt_and_notify(caller, pane, payload, kind);
             }
-            if parsed.wait || chat_only {
+            if parsed.wait || (chat_only && !parsed.notify) {
                 if !matches!(kind, ClientKind::Command | ClientKind::Control) {
                     return Err(ServerError::InvalidCommand(
                         "agent-send --wait needs a command client".to_owned(),
                     )
                     .into());
                 }
-                return self.submit_agent_prompt_and_wait(client, pane, payload, &parsed);
+                return self.wait_for_agent_turn(
+                    client,
+                    pane,
+                    Some(payload),
+                    &parsed,
+                    caller.is_some(),
+                );
             }
             let runtime = self.agent_runtime().ok_or(ServerError::PaneExited(pane))?;
-            if !runtime.prompt(
+            let waiter = caller.map(|caller| self.chat_report_waiter(caller, pane));
+            if !runtime.command_prompt(
                 pane,
                 AgentPrompt {
                     owner: ClientInstanceId(u64::MAX),
                     text: payload,
                     images: Vec::new(),
                 },
+                waiter,
+                None,
             ) {
-                return Err(ServerError::PaneExited(pane).into());
+                return Err(self.untaken_prompt(pane).into());
             }
+            let route = if caller.is_some() {
+                zz_protocol::agent_mention::ReplyRoute::Back
+            } else {
+                zz_protocol::agent_mention::ReplyRoute::Read
+            };
+            self.record_command_stderr(
+                client,
+                &zz_protocol::agent_mention::ReplyNotice::Sent { pane, route }.to_string(),
+            );
             return Ok(Execution {
                 output: if kind == ClientKind::Interactive {
                     RawText::default()
@@ -17474,11 +17612,22 @@ impl Shared {
             let session_values = status.scoped_format_values("session", &mut hooks);
             let window_values = status.scoped_format_values("window", &mut hooks);
             let pane_values = status.scoped_format_values("pane", &mut hooks);
+            let agent = match inner.engine.state.pane(pane).map(|pane| &pane.kind) {
+                Some(PaneKind::Agent(agent)) => Some(agent),
+                _ => None,
+            };
             let mut values = serde_json::Map::new();
             for &key in INSPECT_FIELDS {
                 let value = match key {
                     "permission" | "verbs" | "events" => continue,
                     "window_size" => inner.engine.window_size(window).as_str(),
+                    "agent_provider" => agent.map_or("", |agent| agent.provider.command_name()),
+                    "agent_model" => agent
+                        .and_then(|agent| agent.model.as_deref())
+                        .unwrap_or_default(),
+                    "agent_session_id" => agent
+                        .and_then(|agent| agent.session_id.as_deref())
+                        .unwrap_or_default(),
                     _ => {
                         let scope = if key.starts_with("session_") {
                             &session_values
@@ -17589,9 +17738,30 @@ impl Shared {
             .into());
         }
         let pane = self.resolve_agent_permission_pane(context, parsed.target.as_deref())?;
+        let none_pending = move || {
+            ServerError::InvalidCommand(format!(
+                "{pane} has no pending request (already answered, or none was asked)"
+            ))
+        };
         #[cfg(feature = "agent")]
         {
             use crate::agent::host::PermissionChoice;
+            if let Some(text) = &parsed.answer {
+                let runtime = self.open_agent_runtime().ok_or_else(none_pending)?;
+                let request = runtime
+                    .answer_question(pane, parsed.request_id, text)
+                    .map_err(|error| {
+                        if error == "no pending permission" {
+                            none_pending()
+                        } else {
+                            ServerError::InvalidCommand(format!("{pane}: {error}"))
+                        }
+                    })?;
+                return Ok(Execution {
+                    output: format!("answered request {request}").into(),
+                    effects: Vec::new(),
+                });
+            }
             let choice = if parsed.allow {
                 PermissionChoice::Allow
             } else if parsed.deny {
@@ -17599,15 +17769,17 @@ impl Shared {
             } else {
                 PermissionChoice::Option(parsed.option.expect("validated permission choice"))
             };
-            let runtime = self.open_agent_runtime().ok_or_else(|| {
-                ServerError::InvalidCommand(format!("no pending permission: {pane}"))
-            })?;
+            let runtime = self.open_agent_runtime().ok_or_else(none_pending)?;
             let (wait, reply) =
                 agent_waits::reply::<Result<String, String>>(self, None, move |_, outcome| {
                     let option = match outcome {
                         terminal_requests::ReplyOutcome::Ready(result) => {
                             result.map_err(|error| {
-                                ServerError::InvalidCommand(format!("{error}: {pane}"))
+                                if error == "no pending permission" {
+                                    none_pending()
+                                } else {
+                                    ServerError::InvalidCommand(format!("{error}: {pane}"))
+                                }
                             })?
                         }
                         _ => return Err(ServerError::PaneExited(pane).into()),
@@ -17633,7 +17805,7 @@ impl Shared {
             wait.finish(self, Execution::default())
         }
         #[cfg(not(feature = "agent"))]
-        Err(ServerError::InvalidCommand(format!("no pending permission: {pane}")).into())
+        Err(none_pending().into())
     }
 
     fn send_last_output(
@@ -17792,13 +17964,16 @@ impl Shared {
         let pane = inner
             .engine
             .resolve_pane(target, context.window, context.pane)?;
-        if !matches!(
-            inner.engine.state.pane(pane).map(|pane| &pane.kind),
-            Some(PaneKind::Terminal)
-        ) {
-            return Err(
-                ServerError::InvalidTarget(format!("{pane} is not a terminal pane")).into(),
-            );
+        match inner.engine.state.pane(pane).map(|pane| &pane.kind) {
+            Some(PaneKind::Terminal) => {}
+            Some(PaneKind::Agent(_)) if matches!(verb, "send-text" | "run-pane" | "wait-pane") => {
+                return Err(agent_chat_refusal(verb, pane).into());
+            }
+            _ => {
+                return Err(
+                    ServerError::InvalidTarget(format!("{pane} is not a terminal pane")).into(),
+                );
+            }
         }
         let terminal = inner
             .terminals
@@ -17889,6 +18064,9 @@ impl Shared {
                 inner
                     .engine
                     .resolve_pane(target.as_deref(), context.window, context.pane)?;
+            if is_agent_chat(&inner, pane) {
+                return Err(agent_chat_refusal(verb, pane).into());
+            }
             if !matches!(
                 inner.engine.state.pane(pane).map(|pane| &pane.kind),
                 Some(PaneKind::Terminal)
@@ -20152,11 +20330,18 @@ impl Shared {
                 let parsed =
                     parse_buffer_command_args(name, args, &['b', 's', 't'], &['d', 'p', 'r', 'S'])?;
                 require_no_positionals(name, &parsed)?;
-                let pane = self.inner.lock().engine.resolve_pane(
-                    parsed.value('t'),
-                    context.window,
-                    context.pane,
-                )?;
+                let pane = {
+                    let inner = self.inner.lock();
+                    let pane = inner.engine.resolve_pane(
+                        parsed.value('t'),
+                        context.window,
+                        context.pane,
+                    )?;
+                    if is_agent_chat(&inner, pane) {
+                        return Err(agent_chat_refusal("paste-buffer", pane).into());
+                    }
+                    pane
+                };
                 let separator = parsed.value('s').map_or_else(
                     || {
                         if parsed.has('r') {
@@ -33427,6 +33612,618 @@ impl Shared {
         }
     }
 
+    fn chat_caller(
+        &self,
+        client: ClientId,
+        context: &ExecutionContext,
+        target: Option<PaneId>,
+    ) -> Option<PaneId> {
+        let inner = self.inner.lock();
+        let origin = inner
+            .client(context.replay_client().unwrap_or(client))
+            .and_then(|client| client.origin)?;
+        (Some(origin) != target && is_agent_chat(&inner, origin)).then_some(origin)
+    }
+
+    fn agent_provider_of(&self, pane: PaneId) -> AgentProvider {
+        match self
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(pane)
+            .map(|pane| &pane.kind)
+        {
+            Some(PaneKind::Agent(agent)) => agent.provider,
+            _ => AgentProvider::default(),
+        }
+    }
+
+    fn chat_report_waiter(
+        self: &Arc<Self>,
+        caller: PaneId,
+        pane: PaneId,
+    ) -> crate::agent::host::AgentTurnWaiter {
+        let provider = self.agent_provider_of(pane);
+        let shared = Arc::downgrade(&self.server_owner());
+        let asking = shared.clone();
+        let asked = Arc::new(Mutex::new(BTreeSet::new()));
+        crate::agent::host::AgentTurnWaiter {
+            reply: crate::daemon::cmdq::Reply::new(move |result| {
+                if let Some(shared) = shared.upgrade() {
+                    shared.deliver_to_chat(
+                        caller,
+                        ChatDelivery {
+                            from: pane,
+                            request: None,
+                            text: agent_report(pane, provider, result).to_string(),
+                        },
+                    );
+                }
+            }),
+            on_block: AgentBlockPolicy::Wait,
+            audit: Arc::default(),
+            asks: Some(crate::agent::host::AgentAsks(Arc::new(move |permission| {
+                if asked.lock().insert(permission.request_id)
+                    && let Some(shared) = asking.upgrade()
+                {
+                    shared.deliver_to_chat(
+                        caller,
+                        ChatDelivery {
+                            from: pane,
+                            request: Some(permission.request_id),
+                            text: agent_ask(pane, provider, permission).to_string(),
+                        },
+                    );
+                }
+            }))),
+        }
+    }
+
+    fn deliver_to_chat(self: &Arc<Self>, caller: PaneId, delivery: ChatDelivery) {
+        {
+            let mut queues = self.chat_deliveries.lock();
+            let queue = queues.entry(caller).or_default();
+            queue.push_back(delivery);
+            if queue.len() > 1 {
+                return;
+            }
+        }
+        let shared = Arc::clone(self);
+        let spawned = std::thread::Builder::new()
+            .name("zz-agent-report".to_owned())
+            .spawn(move || {
+                loop {
+                    let Some(delivery) = shared
+                        .chat_deliveries
+                        .lock()
+                        .get(&caller)
+                        .and_then(|queue| queue.front().cloned())
+                    else {
+                        return;
+                    };
+                    shared.deliver_one(caller, delivery);
+                    let mut queues = shared.chat_deliveries.lock();
+                    if let Some(queue) = queues.get_mut(&caller) {
+                        queue.pop_front();
+                        if queue.is_empty() {
+                            queues.remove(&caller);
+                        }
+                    }
+                }
+            });
+        if let Err(error) = spawned {
+            self.chat_deliveries.lock().remove(&caller);
+            log::warn!(target: "zz::agent", "could not report back to {caller}: {error}");
+        }
+    }
+
+    fn deliver_one(self: &Arc<Self>, caller: PaneId, delivery: ChatDelivery) {
+        let ChatDelivery {
+            from,
+            request,
+            text,
+        } = delivery;
+        let runtime = self.agent_runtime();
+        if let Some(request) = request
+            && !runtime
+                .as_ref()
+                .is_some_and(|runtime| runtime.has_pending_permission(from, request))
+        {
+            log::info!(target: "zz::agent", "{from}'s request {request} was answered; dropped its ask to {caller}");
+            return;
+        }
+        let chat = match self
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(caller)
+            .map(|pane| &pane.kind)
+        {
+            None => {
+                log::info!(target: "zz::agent", "{caller} is gone; dropped {from}'s report");
+                return;
+            }
+            Some(PaneKind::Agent(_)) => true,
+            Some(PaneKind::Terminal) => false,
+            Some(_) => {
+                log::info!(target: "zz::agent", "{caller} is no chat; dropped {from}'s report");
+                return;
+            }
+        };
+        if chat {
+            let injected = runtime.is_some_and(|runtime| {
+                runtime.inject(
+                    caller,
+                    AgentPrompt {
+                        owner: ClientInstanceId(u64::MAX),
+                        text,
+                        images: Vec::new(),
+                    },
+                )
+            });
+            if !injected {
+                log::warn!(target: "zz::agent", "{caller} did not take {from}'s report");
+            }
+            return;
+        }
+        #[cfg(unix)]
+        let delivered = self.deliver_to_terminal_pane(caller, &text);
+        #[cfg(not(unix))]
+        let delivered = self.paste_and_submit(caller, &text, SEND_TEXT_TIMEOUT, true);
+        if let Err(error) = delivered {
+            log::warn!(target: "zz::agent", "could not tell {caller} about {from}: {error}");
+        }
+    }
+
+    fn open_created_chat(
+        self: &Arc<Self>,
+        client: ClientId,
+        context: &ExecutionContext,
+        verb: &str,
+        created: Option<PaneId>,
+        briefs: Vec<(PaneId, String)>,
+    ) {
+        use zz_protocol::agent_mention::{ReplyNotice, ReplyRoute};
+
+        let Some(pane) = created else {
+            return;
+        };
+        let caller = self.chat_caller(client, context, Some(pane));
+        if let Some(caller) = caller {
+            self.inner.lock().engine.set_agent_parent(pane, caller);
+        }
+        let mut queued = false;
+        if let Some(runtime) = self.agent_runtime() {
+            for (pane, text) in briefs {
+                let waiter = caller.map(|caller| self.chat_report_waiter(caller, pane));
+                let note = caller.map(|caller| {
+                    zz_protocol::agent_mention::child_note(
+                        caller,
+                        self.agent_provider_of(caller),
+                        self.agent_provider_of(pane),
+                    )
+                });
+                queued |= runtime.command_prompt(
+                    pane,
+                    AgentPrompt {
+                        owner: ClientInstanceId(u64::MAX),
+                        text,
+                        images: Vec::new(),
+                    },
+                    waiter,
+                    note,
+                );
+                if !queued {
+                    log::warn!(target: "zz::agent", "{pane} did not take its brief");
+                }
+            }
+        }
+        if queued && let (Some(caller), Some(runtime)) = (caller, self.open_agent_runtime()) {
+            runtime.count_send(caller, pane);
+        }
+        if let Some(caller) = caller {
+            self.remember_child(caller, pane);
+        }
+        let route = match (queued, caller) {
+            (false, _) => None,
+            (true, Some(_)) => Some(ReplyRoute::Back),
+            (true, None) => Some(ReplyRoute::Read),
+        };
+        let notice = ReplyNotice::Opened {
+            verb: verb.to_owned(),
+            pane,
+            provider: self.agent_provider_of(pane),
+            route,
+        };
+        self.record_command_stderr(client, &notice.to_string());
+    }
+
+    fn untaken_prompt(&self, pane: PaneId) -> ServerError {
+        let state = self
+            .inner
+            .lock()
+            .engine
+            .agent_chat(pane)
+            .map_or("starting", |chat| chat.state);
+        ServerError::InvalidCommand(format!(
+            "{pane}'s agent is not running (agent_state {state}); the prompt was not sent"
+        ))
+    }
+
+    fn chat_descriptor(&self, pane: PaneId) -> Option<zz_protocol::AgentDescriptor> {
+        match self
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(pane)
+            .map(|pane| &pane.kind)
+        {
+            Some(PaneKind::Agent(agent)) => Some(agent.clone()),
+            _ => None,
+        }
+    }
+
+    fn host_key(&self, host: PaneId) -> Option<(AgentProvider, String)> {
+        let agent = self.chat_descriptor(host)?;
+        Some((agent.provider, agent.session_id?))
+    }
+
+    fn remember_child(self: &Arc<Self>, host: PaneId, pane: PaneId) {
+        let (Some((provider, session)), Some(agent), Some(runtime)) = (
+            self.host_key(host),
+            self.chat_descriptor(pane),
+            self.open_agent_runtime(),
+        ) else {
+            return;
+        };
+        runtime.update_child(provider, &session, pane, |record| {
+            record.provider = agent.provider;
+            record.session = agent.session_id;
+            record.cwd = agent.cwd;
+            record.model = agent.model;
+            record.effort = agent.effort;
+            record.account = agent.account;
+            record.current = Some(pane.0);
+        });
+    }
+
+    fn note_child_session(self: &Arc<Self>, pane: PaneId, session: &str) {
+        let Some(host) = self.inner.lock().engine.agent_parent(pane) else {
+            return;
+        };
+        let (Some((provider, host_session)), Some(runtime)) =
+            (self.host_key(host), self.open_agent_runtime())
+        else {
+            return;
+        };
+        let Some(record) = runtime
+            .child_records(provider, &host_session)
+            .into_iter()
+            .find(|record| record.current == Some(pane.0))
+        else {
+            return;
+        };
+        runtime.update_child(provider, &host_session, PaneId(record.pane), |record| {
+            record.session = Some(session.to_owned());
+        });
+    }
+
+    fn child_record(
+        self: &Arc<Self>,
+        host: PaneId,
+        child: PaneId,
+    ) -> Option<crate::agent::journal::ChildRecord> {
+        let (provider, session) = self.host_key(host)?;
+        self.open_agent_runtime()?
+            .child_records(provider, &session)
+            .into_iter()
+            .find(|record| record.answers_to(child.0))
+    }
+
+    fn child_pane_now(&self, record: &crate::agent::journal::ChildRecord) -> Option<PaneId> {
+        let inner = self.inner.lock();
+        let holds = |pane: PaneId| match inner.engine.state.pane(pane).map(|pane| &pane.kind) {
+            Some(PaneKind::Agent(agent)) => {
+                agent.provider == record.provider
+                    && (record.session.is_none() || agent.session_id == record.session)
+            }
+            _ => false,
+        };
+        let recorded = record
+            .current
+            .into_iter()
+            .chain(std::iter::once(record.pane))
+            .map(PaneId)
+            .find(|pane| holds(*pane));
+        recorded.or_else(|| {
+            record.session.as_ref()?;
+            inner.agent_panes.iter().copied().find(|pane| holds(*pane))
+        })
+    }
+
+    fn select_child_chat(
+        self: &Arc<Self>,
+        client: ClientId,
+        kind: ClientKind,
+        context: &ExecutionContext,
+        args: &[RawText],
+    ) -> Result<Execution, DaemonError> {
+        let spec = zz_protocol::catalog_command_spec("select-child-chat").expect("spec");
+        let options = zz_protocol::parse_tmux_options(spec, args)?;
+        let mut target = None;
+        for option in options.options {
+            if let zz_protocol::TmuxOption::Value("-t", value) = option {
+                target = Some(value);
+            }
+        }
+        let [child] = options.positionals else {
+            return Err(ServerError::NativeCommandParse(
+                "usage: select-child-chat [-t host-pane] child-pane".to_owned(),
+            )
+            .into());
+        };
+        let child = child.parse::<PaneId>().map_err(|_| {
+            ServerError::NativeCommandParse(format!("select-child-chat: {child} is not a pane id"))
+        })?;
+        let host = self
+            .inner
+            .lock()
+            .engine
+            .resolve_pane(target, context.window, context.pane)?;
+        let record = self.child_record(host, child).ok_or_else(|| {
+            ServerError::InvalidCommand(format!("{child} is not a chat {host} opened"))
+        })?;
+        let pane = match self.child_pane_now(&record) {
+            Some(pane) => pane,
+            None => self.reopen_child(host, &record)?,
+        };
+        if let Some((provider, session)) = self.host_key(host)
+            && let Some(runtime) = self.open_agent_runtime()
+        {
+            runtime.update_child(provider, &session, PaneId(record.pane), |record| {
+                record.current = Some(pane.0);
+                if !record.answers_to(pane.0) {
+                    record.reopened.push(pane.0);
+                }
+            });
+        }
+        let target = pane.to_string();
+        for verb in ["select-window", "select-pane"] {
+            let mut selection = context.clone();
+            self.execute(
+                client,
+                kind,
+                &mut selection,
+                &CommandInvocation::new(verb, ["-t", target.as_str()]),
+            )?;
+        }
+        Ok(Execution {
+            output: target.into(),
+            effects: Vec::new(),
+        })
+    }
+
+    fn reopen_child(
+        self: &Arc<Self>,
+        host: PaneId,
+        record: &crate::agent::journal::ChildRecord,
+    ) -> Result<PaneId, DaemonError> {
+        let child = PaneId(record.pane);
+        let Some(session) = record.session.clone() else {
+            return Err(ServerError::InvalidCommand(format!(
+                "{child} was closed before its session started; it cannot be opened again"
+            ))
+            .into());
+        };
+        let mut args = vec![
+            "-d".to_owned(),
+            "-P".to_owned(),
+            "-F".to_owned(),
+            "#{pane_id}".to_owned(),
+            "-t".to_owned(),
+            host.to_string(),
+            "-x".to_owned(),
+            zz_protocol::AGENT_FLOAT_WIDTH.to_owned(),
+            "-y".to_owned(),
+            zz_protocol::AGENT_FLOAT_HEIGHT.to_owned(),
+        ];
+        if let Some(cwd) = &record.cwd {
+            args.extend(["-c".to_owned(), cwd.display().to_string()]);
+        }
+        args.extend(["--kind".to_owned(), "agent".to_owned()]);
+        for (flag, value) in [
+            ("--resume", Some(&session)),
+            ("--model", record.model.as_ref()),
+            ("--effort", record.effort.as_ref()),
+            ("--account", record.account.as_ref()),
+        ] {
+            if let Some(value) = value {
+                args.extend([flag.to_owned(), value.clone()]);
+            }
+        }
+        args.push(record.provider.command_name().to_owned());
+        let created = self.execute(
+            ClientId(u64::MAX),
+            ClientKind::Command,
+            &mut ExecutionContext::default(),
+            &CommandInvocation::new("new-pane", args),
+        )?;
+        let pane = created
+            .output
+            .to_string()
+            .trim()
+            .parse::<PaneId>()
+            .map_err(|_| ServerError::Internal(format!("could not reopen {child}")))?;
+        self.inner.lock().engine.set_agent_parent(pane, host);
+        Ok(pane)
+    }
+
+    fn adopt_child_chat_panes(
+        &self,
+        client: ClientId,
+        context: &ExecutionContext,
+        effects: &[MuxEffect],
+    ) {
+        let created = effects
+            .iter()
+            .filter_map(|effect| match effect {
+                MuxEffect::PaneCreated { pane, .. } => Some(*pane),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if created.is_empty() {
+            return;
+        }
+        let Some(caller) = self.chat_caller(client, context, None) else {
+            return;
+        };
+        let mut inner = self.inner.lock();
+        if inner.engine.agent_parent(caller).is_none() {
+            return;
+        }
+        for pane in created {
+            inner.engine.set_agent_parent(pane, caller);
+        }
+    }
+
+    fn moved_child(
+        self: &Arc<Self>,
+        client: ClientId,
+        context: &ExecutionContext,
+        target: Option<&str>,
+    ) -> Result<Option<PaneId>, DaemonError> {
+        let Some(child) = target.and_then(|target| target.parse::<PaneId>().ok()) else {
+            return Ok(None);
+        };
+        if self.inner.lock().engine.state.pane(child).is_some() {
+            return Ok(None);
+        }
+        let Some(host) = self.chat_caller(client, context, None) else {
+            return Ok(None);
+        };
+        let Some(record) = self.child_record(host, child) else {
+            return Ok(None);
+        };
+        match self.child_pane_now(&record) {
+            Some(pane) => Ok(Some(pane)),
+            None => Err(ServerError::InvalidCommand(format!(
+                "{child} was closed; open a new chat with: zz new-pane -d --kind agent {} 'BRIEF'",
+                record.provider.command_name()
+            ))
+            .into()),
+        }
+    }
+
+    fn child_key(self: &Arc<Self>, host: PaneId, pane: PaneId) -> PaneId {
+        let Some((provider, session)) = self.host_key(host) else {
+            return pane;
+        };
+        self.open_agent_runtime()
+            .and_then(|runtime| {
+                runtime
+                    .child_records(provider, &session)
+                    .into_iter()
+                    .find(|record| record.current == Some(pane.0) || record.answers_to(pane.0))
+            })
+            .map_or(pane, |record| PaneId(record.pane))
+    }
+
+    fn count_chat_send(self: &Arc<Self>, caller: PaneId, pane: PaneId) -> Result<(), DaemonError> {
+        let Some(runtime) = self.open_agent_runtime() else {
+            return Ok(());
+        };
+        let pane = self.child_key(caller, pane);
+        let limit = crate::agent::fanout::MAX_SENDS_SINCE_USER;
+        if runtime.sends_since_user(caller, pane) >= limit {
+            return Err(ServerError::InvalidCommand(format!(
+                "{pane} has had {limit} messages from you since the user last wrote; answer the user now"
+            ))
+            .into());
+        }
+        runtime.count_send(caller, pane);
+        Ok(())
+    }
+
+    fn refuse_full_chat(self: &Arc<Self>, pane: PaneId) -> Result<(), DaemonError> {
+        let waiting = self
+            .open_agent_runtime()
+            .map_or(0, |runtime| runtime.waiting_prompts(pane));
+        let limit = zz_protocol::MAX_AGENT_QUEUED_PROMPTS;
+        if waiting < limit {
+            return Ok(());
+        }
+        Err(ServerError::InvalidCommand(format!(
+            "{pane} has {limit} prompts waiting; wait for its turn with: {}",
+            zz_protocol::agent_mention::wait_command(pane)
+        ))
+        .into())
+    }
+
+    fn refuse_grandchild_chat(
+        &self,
+        client: ClientId,
+        context: &ExecutionContext,
+        verb: &str,
+        args: &[RawText],
+    ) -> Result<(), DaemonError> {
+        let spawns_chat = zz_protocol::catalog_command_spec(verb)
+            .and_then(|spec| zz_protocol::parse_tmux_options(spec, args).ok())
+            .is_some_and(|options| {
+                options.options.iter().any(|option| {
+                    matches!(option, zz_protocol::TmuxOption::Value("--kind", "agent"))
+                })
+            });
+        if !spawns_chat {
+            return Ok(());
+        }
+        let Some(caller) = self.chat_caller(client, context, None) else {
+            return Ok(());
+        };
+        let Some(parent) = self.inner.lock().engine.agent_parent(caller) else {
+            return Ok(());
+        };
+        Err(ServerError::InvalidCommand(format!(
+            "{caller} was opened by {parent}; a chat opened by another chat cannot open one. Do the work yourself, or say in your reply what you need"
+        ))
+        .into())
+    }
+
+    fn close_orphaned_chats(self: &Arc<Self>, removed: &[PaneId]) {
+        let orphans = {
+            let inner = self.inner.lock();
+            removed
+                .iter()
+                .flat_map(|parent| inner.engine.agent_children(*parent))
+                .filter(|child| inner.engine.state.pane(*child).is_some())
+                .collect::<Vec<_>>()
+        };
+        if orphans.is_empty() {
+            return;
+        }
+        let shared = Arc::clone(self);
+        let spawned = std::thread::Builder::new()
+            .name("zz-agent-cascade".to_owned())
+            .spawn(move || {
+                for child in orphans {
+                    let target = child.to_string();
+                    if let Err(error) = shared.execute(
+                        ClientId(u64::MAX),
+                        ClientKind::Command,
+                        &mut ExecutionContext::default(),
+                        &CommandInvocation::new("kill-pane", ["-t", target.as_str()]),
+                    ) {
+                        log::warn!(target: "zz::agent", "could not close {child}: {error}");
+                    }
+                }
+            });
+        if let Err(error) = spawned {
+            log::warn!(target: "zz::agent", "could not close the chats opened by {removed:?}: {error}");
+        }
+    }
+
     fn fork_agent_session(&self, pane: PaneId, at: Option<&str>) {
         let source = match &self
             .inner
@@ -33523,6 +34320,7 @@ impl Shared {
         let mut inner = self.inner.lock();
         for pane in panes {
             inner.agent_panes.remove(pane);
+            inner.engine.set_agent_chat(*pane, None);
         }
         for client in inner.clients.values_mut() {
             for pane in panes {
@@ -33770,8 +34568,9 @@ impl Shared {
             }),
             on_block: AgentBlockPolicy::Wait,
             audit: Arc::default(),
+            asks: None,
         };
-        if !runtime.prompt_with_waiter(
+        if !runtime.command_prompt(
             pane,
             AgentPrompt {
                 owner: ClientInstanceId(u64::MAX),
@@ -33779,6 +34578,7 @@ impl Shared {
                 images: Vec::new(),
             },
             Some(waiter),
+            None,
         ) {
             return Err(ServerError::PaneExited(pane).into());
         }
@@ -33793,12 +34593,13 @@ impl Shared {
     }
 
     #[cfg(feature = "agent")]
-    fn submit_agent_prompt_and_wait(
+    fn wait_for_agent_turn(
         self: &Arc<Self>,
         client: ClientId,
         pane: PaneId,
-        text: String,
+        text: Option<String>,
         parsed: &ParsedAgentSend,
+        chat_caller: bool,
     ) -> Result<Execution, DaemonError> {
         let runtime = self.agent_runtime().ok_or(ServerError::PaneExited(pane))?;
         let audit = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -33843,6 +34644,12 @@ impl Shared {
                                         &parsed,
                                         Some(&permission),
                                     )
+                                } else if chat_caller {
+                                    format!(
+                                        "{permission}\nzz agent-respond -t {pane} --allow\n\
+                                         zz agent-respond -t {pane} --deny\n\
+                                         zz agent-send -t {pane} --wait ''"
+                                    )
                                 } else {
                                     permission.to_string()
                                 }
@@ -33881,6 +34688,12 @@ impl Shared {
                         Err(AgentTurnFailure::Closed) => {
                             return Err(ServerError::PaneExited(pane).into());
                         }
+                        Err(AgentTurnFailure::NoTurn) => {
+                            return Err(ServerError::InvalidCommand(format!(
+                                "{pane} has no running turn; read its last reply with: zz capture-pane -p -t {pane}"
+                            ))
+                            .into());
+                        }
                     };
                     Ok(Execution {
                         output: output.into(),
@@ -33901,20 +34714,27 @@ impl Shared {
                 result
             },
         );
-        if !runtime.prompt_with_waiter(
-            pane,
-            AgentPrompt {
-                owner: ClientInstanceId(u64::MAX),
-                text,
-                images: Vec::new(),
-            },
-            Some(crate::agent::host::AgentTurnWaiter {
-                reply: waiter,
-                on_block,
-                audit,
-            }),
-        ) {
-            return Err(ServerError::PaneExited(pane).into());
+        let waiter = crate::agent::host::AgentTurnWaiter {
+            reply: waiter,
+            on_block,
+            audit,
+            asks: None,
+        };
+        let submitted = match text {
+            Some(text) => runtime.command_prompt(
+                pane,
+                AgentPrompt {
+                    owner: ClientInstanceId(u64::MAX),
+                    text,
+                    images: Vec::new(),
+                },
+                Some(waiter),
+                None,
+            ),
+            None => runtime.join(pane, waiter),
+        };
+        if !submitted {
+            return Err(self.untaken_prompt(pane).into());
         }
         self.report_command_queue_park();
         wait.finish(self, Execution::default())
@@ -34070,7 +34890,36 @@ impl Shared {
         }
     }
 
-    fn apply_agent_state(self: &Arc<Self>, pane: PaneId, state: AgentPaneWire) {
+    fn apply_agent_state(
+        self: &Arc<Self>,
+        pane: PaneId,
+        state: AgentPaneWire,
+    ) -> Option<PendingHookEvent> {
+        let facts = agent_chat_facts(&state);
+        let event = {
+            let mut inner = self.inner.lock();
+            inner
+                .engine
+                .set_agent_chat(pane, Some(facts.clone()))
+                .then(|| {
+                    PendingHookEvent::live_pane("agent-state-changed", pane, &inner.engine).map(
+                        |mut event| {
+                            event.variables.extend([
+                                ("agent_state".to_owned(), facts.state.to_owned()),
+                                (
+                                    "agent_pending_permission".to_owned(),
+                                    facts
+                                        .pending_permission
+                                        .map(|id| id.to_string())
+                                        .unwrap_or_default(),
+                                ),
+                            ]);
+                            event
+                        },
+                    )
+                })
+                .flatten()
+        };
         let adopted = state.session_id.clone().is_some_and(|session_id| {
             self.inner
                 .lock()
@@ -34081,6 +34930,9 @@ impl Shared {
         });
         if adopted {
             self.publish_snapshot_state();
+            if let Some(session) = state.session_id.as_deref() {
+                self.note_child_session(pane, session);
+            }
         }
         self.apply_agent_title(pane, state.title.as_deref());
         let subscribers = {
@@ -34104,6 +34956,7 @@ impl Shared {
         for subscriber in subscribers {
             Self::send_event(&subscriber, payload.clone());
         }
+        event
     }
 
     fn apply_agent_folder(self: &Arc<Self>, pane: PaneId, cwd: PathBuf) {
@@ -34175,6 +35028,28 @@ impl Shared {
         if let Some(subscriber) = subscriber {
             Self::send_event(&subscriber, payload);
         }
+    }
+}
+
+#[cfg(feature = "agent")]
+fn agent_chat_facts(state: &AgentPaneWire) -> zz_mux::AgentChatFacts {
+    let pending = state.pending_permission.as_ref();
+    let asks = pending.is_some_and(|permission| {
+        serde_json::from_str::<serde_json::Value>(&permission.payload)
+            .is_ok_and(|payload| payload.get("questions").is_some())
+    });
+    let word = match state.phase {
+        zz_protocol::AgentConnectionPhase::Failed { .. } => "failed",
+        zz_protocol::AgentConnectionPhase::Starting => "starting",
+        _ if asks => "needs-input",
+        zz_protocol::AgentConnectionPhase::AwaitingPermission => "needs-approval",
+        _ if pending.is_some() => "needs-approval",
+        zz_protocol::AgentConnectionPhase::Running => "working",
+        zz_protocol::AgentConnectionPhase::Ready => "idle",
+    };
+    zz_mux::AgentChatFacts {
+        state: word,
+        pending_permission: pending.map(|permission| permission.request_id),
     }
 }
 
@@ -45861,6 +46736,26 @@ fn repeat_until_rejected(mut repeat: u32, mut send: impl FnMut() -> bool) {
     }
 }
 
+fn is_agent_chat(inner: &ServerState, pane: PaneId) -> bool {
+    matches!(
+        inner.engine.state.pane(pane).map(|pane| &pane.kind),
+        Some(PaneKind::Agent(_))
+    )
+}
+
+fn agent_chat_refusal(verb: &str, pane: PaneId) -> ServerError {
+    ServerError::InvalidCommand(match verb {
+        "pipe-pane" | "show-last-output" | "send-last-output" => {
+            format!("{pane} is an agent chat; read it with: zz capture-pane -p -t {pane}")
+        }
+        "wait-pane" => format!(
+            "{pane} is an agent chat; wait for its turn with: {}",
+            zz_protocol::agent_mention::wait_command(pane)
+        ),
+        _ => format!("{pane} is an agent chat; send with: zz agent-send -t {pane} TEXT"),
+    })
+}
+
 fn resolve_input_sinks(inner: &ServerState, source: PaneId) -> Result<Vec<PaneSink>, ServerError> {
     if inner.engine.pane_input_off(source)? {
         return Ok(Vec::new());
@@ -48135,7 +49030,11 @@ impl StatusFactSelection {
                     selection.full = true;
                     return selection;
                 }
-                "pane_kind" | "browser_url" | "agent_state" | "agent_pending_permission" => {
+                "pane_kind"
+                | "browser_url"
+                | "agent_state"
+                | "agent_pending_permission"
+                | "agent_parent" => {
                     selection.mux = true;
                 }
                 "pane_search_string"
@@ -50486,6 +51385,7 @@ struct ParsedAgentRespond {
     allow: bool,
     deny: bool,
     option: Option<String>,
+    answer: Option<String>,
     request_id: Option<u64>,
 }
 
@@ -50519,6 +51419,12 @@ fn parse_agent_respond_args(args: &[RawText]) -> Result<ParsedAgentRespond, Serv
                 index += value.consumed;
                 continue;
             }
+            if let Some(value) = option_value("agent-respond", args, index, &["--answer"])? {
+                parsed.answer = Some(value.value);
+                choices += 1;
+                index += value.consumed;
+                continue;
+            }
         }
         if parsed.request_id.is_some() {
             return Err(ServerError::CommandParse(
@@ -50532,7 +51438,8 @@ fn parse_agent_respond_args(args: &[RawText]) -> Result<ParsedAgentRespond, Serv
     }
     if choices != 1 {
         return Err(ServerError::CommandParse(
-            "agent-respond needs exactly one of --allow, --deny, or --option ID".to_owned(),
+            "agent-respond needs exactly one of --allow, --deny, --option ID or --answer TEXT"
+                .to_owned(),
         ));
     }
     Ok(parsed)
@@ -50550,6 +51457,7 @@ pub(crate) enum AgentBlockPolicy {
 #[derive(Clone, Debug, Default)]
 struct ParsedAgentSend {
     on_block: AgentBlockPolicy,
+    on_block_set: bool,
     json: bool,
     final_only: bool,
     target: Option<String>,
@@ -51012,29 +51920,6 @@ fn expand_command_format(
             .engine
             .expand_pane_format(value, target, active_session, format_client, &mut hooks)
     }
-}
-
-fn check_plain_text(command: &str, text: &str) -> Result<(), ServerError> {
-    if text.trim().is_empty() {
-        return Err(ServerError::InvalidCommand(format!(
-            "{command} needs text on the command line or on standard input"
-        )));
-    }
-    if text.len() > MAX_AGENT_SEND_BYTES {
-        return Err(ServerError::InvalidCommand(format!(
-            "{command} payload is {} bytes; the limit is {MAX_AGENT_SEND_BYTES}",
-            text.len()
-        )));
-    }
-    if text
-        .chars()
-        .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
-    {
-        return Err(ServerError::InvalidCommand(format!(
-            "{command} payload contains control characters; pipe plain text"
-        )));
-    }
-    Ok(())
 }
 
 fn collapse_whitespace(text: &str) -> String {
@@ -51654,24 +52539,138 @@ pub fn agent_send_reads_stdin(args: &[RawText]) -> bool {
 const MAX_AGENT_NOTIFY_BYTES: usize = 64 * 1024;
 
 #[cfg(feature = "agent")]
+fn agent_reply_tail(reply: &crate::agent::host::AgentTurnReply) -> String {
+    let text = if reply.final_text.trim().is_empty() {
+        &reply.text
+    } else {
+        &reply.final_text
+    };
+    let mut start = text.len().saturating_sub(MAX_AGENT_NOTIFY_BYTES);
+    while !text.is_char_boundary(start) {
+        start += 1;
+    }
+    text[start..].trim().to_owned()
+}
+
+#[cfg(feature = "agent")]
+#[derive(Clone, Debug)]
+struct ChatDelivery {
+    from: PaneId,
+    request: Option<u64>,
+    text: String,
+}
+
+#[cfg(feature = "agent")]
+fn agent_report(
+    pane: PaneId,
+    provider: AgentProvider,
+    result: Option<crate::agent::host::AgentTurnResult>,
+) -> zz_protocol::agent_mention::AgentReport {
+    use crate::agent::host::AgentTurnFailure;
+    use zz_protocol::agent_mention::AgentReport;
+
+    let failed = |message: &str| AgentReport::Failed {
+        pane,
+        provider,
+        message: message.to_owned(),
+    };
+    match result {
+        Some(Ok(done)) => AgentReport::Finished {
+            pane,
+            provider,
+            text: agent_reply_tail(&done),
+        },
+        Some(Err(AgentTurnFailure::Stopped { reason, reply })) => AgentReport::Stopped {
+            pane,
+            provider,
+            reason,
+            text: agent_reply_tail(&reply),
+        },
+        Some(Err(AgentTurnFailure::Cancelled)) => AgentReport::Stopped {
+            pane,
+            provider,
+            reason: "cancelled".to_owned(),
+            text: String::new(),
+        },
+        Some(Err(AgentTurnFailure::Failed(message))) => failed(&message),
+        Some(Err(AgentTurnFailure::Reclaimed)) => {
+            failed("the message was handed back before its turn ran")
+        }
+        Some(Err(AgentTurnFailure::Blocked { .. })) => failed("the turn stopped on a permission"),
+        Some(Err(AgentTurnFailure::NoTurn)) => failed("no turn ran"),
+        Some(Err(AgentTurnFailure::Closed)) | None => AgentReport::Closed { pane, provider },
+    }
+}
+
+#[cfg(feature = "agent")]
+fn agent_ask(
+    pane: PaneId,
+    provider: AgentProvider,
+    permission: &crate::agent::host::AgentPendingPermission,
+) -> zz_protocol::agent_mention::AgentAsk {
+    use zz_protocol::agent_mention::{AgentAsk, AskAnswers, AskOption};
+
+    let text = |key: &str| {
+        permission
+            .tool_call
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+    };
+    let title = text("title").or_else(|| text("toolCallId")).unwrap_or("?");
+    let what = text("kind").map_or_else(|| title.to_owned(), |kind| format!("{kind} {title}"));
+    let options = permission
+        .options
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let plain = permission.questions.is_empty()
+        && !options.is_empty()
+        && options.iter().all(|option| {
+            matches!(
+                option.get("kind").and_then(serde_json::Value::as_str),
+                Some("allow_once" | "allow_always" | "reject_once" | "reject_always")
+            )
+        });
+    let answers = if plain {
+        AskAnswers::AllowDeny
+    } else if options.is_empty() {
+        AskAnswers::FreeText
+    } else {
+        AskAnswers::Options(
+            options
+                .iter()
+                .map(|option| {
+                    let field = |key: &str| {
+                        option
+                            .get(key)
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or_default()
+                            .to_owned()
+                    };
+                    AskOption {
+                        id: field("optionId"),
+                        label: field("name"),
+                    }
+                })
+                .collect(),
+        )
+    };
+    AgentAsk {
+        pane,
+        provider,
+        what,
+        answers,
+    }
+}
+
+#[cfg(feature = "agent")]
 fn agent_notify_message(
     pane: PaneId,
     result: Option<crate::agent::host::AgentTurnResult>,
 ) -> String {
     use crate::agent::host::AgentTurnFailure;
 
-    let reply = |reply: &crate::agent::host::AgentTurnReply| {
-        let text = if reply.final_text.trim().is_empty() {
-            &reply.text
-        } else {
-            &reply.final_text
-        };
-        let mut start = text.len().saturating_sub(MAX_AGENT_NOTIFY_BYTES);
-        while !text.is_char_boundary(start) {
-            start += 1;
-        }
-        text[start..].trim().to_owned()
-    };
+    let reply = agent_reply_tail;
     match result {
         Some(Ok(done)) => format!("[zz] Agent {pane} finished:\n\n{}", reply(&done)),
         Some(Err(AgentTurnFailure::Stopped {
@@ -51685,7 +52684,10 @@ fn agent_notify_message(
             format!("[zz] Agent {pane} failed: {message}")
         }
         Some(Err(AgentTurnFailure::Cancelled)) => format!("[zz] Agent {pane} was stopped."),
-        Some(Err(AgentTurnFailure::Reclaimed | AgentTurnFailure::Closed)) | None => {
+        Some(Err(
+            AgentTurnFailure::Reclaimed | AgentTurnFailure::Closed | AgentTurnFailure::NoTurn,
+        ))
+        | None => {
             format!("[zz] Agent {pane} did not take the message.")
         }
     }
@@ -51802,6 +52804,7 @@ fn parse_agent_send_args(args: &[RawText]) -> Result<ParsedAgentSend, ServerErro
             "agent-send: --progress requires --wait and an explicit -t %N".to_owned(),
         ));
     }
+    parsed.on_block_set = on_block_set;
     if on_block_set && !parsed.wait {
         return Err(ServerError::CommandParse(
             "agent-send --on-block needs --wait".to_owned(),
@@ -52014,7 +53017,7 @@ This is an Agent pane, and it draws HTML you put in a reply.
 - To show a page you are building (a site, a screen of the user's product), put the whole document, starting with `<!doctype html>`, in a plain ```html block. It keeps its own styles and is drawn in a frame at desktop size; a click opens it beside the chat.
 - For a page with files of its own, write it to disk and run `zz html PATH`.
 
-This pane approves `zz` commands without asking, alone or piped into `head`, `tail`, `grep`, `rg`, `wc` or `jq`, with no redirect but `2>&1` or `>/dev/null`.
+Unless auto-approve is off, this pane approves `zz` commands without asking, alone or piped into `head`, `tail`, `grep`, `rg`, `wc`, `jq`, `cut` or `tr`, with no redirect but `2>&1` or `>/dev/null`.
 ";
 
 pub const WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE: &str = "ZZ_AGENT_CONTEXT";
@@ -52121,7 +53124,7 @@ Add `--json` to `list-sessions`, `list-windows`, `list-panes`, `list-clients`, o
 `list-hosts` for one JSON object per row in the same order as text output. Keys are the format
 variable names for that entity; values are strings with the same expansion as
 `#{name}`, including empty strings for unavailable values. Pane rows include
-`pane_kind`, `agent_state`, `agent_pending_permission`, `browser_url`,
+`pane_kind`, `agent_state`, `agent_pending_permission`, `agent_parent`, `browser_url`,
 `pane_pb_state`, `pane_pb_progress`, and the `pane_status*` program status
 variables. Use `show-options --json` for one object
 mapping option names to value strings in the selected scope. Combining `-F` and
@@ -52149,6 +53152,16 @@ Commands that set an explicit exit code keep that code.
 
 Claude Code and Codex run two ways in a pane, and a pane flips between them on the same session. In a terminal pane the CLI runs as its own TUI, started like any program (`zz split-window -h claude`). In an agent pane the daemon runs the CLI headless and the clients draw the conversation as a chat: `zz select-pane-kind -t %N [-c DIR] [--resume ID] [--model M] [--effort E] [--account ID] agent claude|codex` turns a picker or a terminal into one.
 
+### `zz new-pane [-d] [-P -F FORMAT] [-c DIR] [-t TARGET] --kind agent claude|codex [--model M] [--effort E] [--account ID] [--resume ID] [BRIEF]`
+
+Open a new chat as a float. `split-window` and `new-window` take the same `--kind agent` words and give the chat a split beside the target or a window of its own. `--model`, `--effort`, `--account` and `--resume` go before the provider or right after it. The words after them are the brief, sent as the chat's first prompt once its session is up, with the same checks and 1 MiB cap as `agent-send` TEXT; no brief opens an empty chat. Without `-c` the chat starts in the folder a terminal made the same way would. `-P -F '#{pane_id}'` prints the new pane, which takes `agent-send` at once: `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'review the diff in this folder'`. A missing or unknown provider, or a bad flag value, exits 2. Every create prints one line on stderr, `new-pane: opened %N (codex)` (with the verb's own name); with a brief it goes on `; its reply comes back to you as a message; end your turn now` when run from a chat, and `; read its reply with: zz agent-send -t %N --wait ''` when run from anywhere else.
+
+Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends, and each permission it asks for during that turn comes to you with the `agent-respond` lines that answer it. Do not wait or poll. The chat you open gets a note with its brief, kept out of its transcript, saying which chat opened it and that its final message is its reply. It cannot open chats of its own (it is told to do the work itself or say what it needs), and closing your pane closes it and every pane it opened. If the user closes it and opens it again, `zz agent-send -t %N` still reaches it by the id you were given; while it stays closed, the send fails with `%N was closed; open a new chat with: zz new-pane -d --kind agent codex 'BRIEF'`. A message reads `[zz] %N (codex) finished:` or `stopped (REASON):`, then the reply and `If this answers the user, answer the user now and send nothing to %N. Only if something is missing: zz agent-send -t %N 'TEXT'`; `failed: MESSAGE` and `Tell the user, or try again with: zz agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it, one `--option ID  # LABEL` line per choice of a question and `--answer 'TEXT'` for one that wants typed text.
+
+A prompt that names an agent with `@+claude`, `@+codex` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a note, kept out of the transcript, that tells you to hand the task over with the exact command (`zz new-pane -d --kind agent codex 'BRIEF'`, or `zz agent-send -t %N 'TEXT'` for a chat) and end your turn.
+
+A chat answers the same reads as a terminal. `#{pane_current_command}` is `claude` or `codex`. `#{agent_state}` is `starting`, `idle`, `working`, `needs-approval`, `needs-input` or `failed`, and `#{agent_pending_permission}` is the pending request ID or empty, in `list-panes -F`, `display-message -p` and `inspect`. `capture-pane -p -t %N` prints the chat's last turn as text: `> ` and the prompt, one line per tool call (its kind and title), then the reply; `-S -` prints the whole chat, and an empty chat prints nothing. While a turn runs, stderr says `capture-pane: %N's turn is still running`. `wait-pane` on a chat fails with `%N is an agent chat; wait for its turn with: zz agent-send -t %N --wait ''`, and `show-last-output` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`. Typing into a chat fails and names the verb to use: `send-keys`, `send-text`, `paste-buffer` and `run-pane` fail with `%N is an agent chat; send with: zz agent-send -t %N TEXT`, and `pipe-pane` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`.
+
 ### `zz flip-agent [-t %N] [--now | --when-idle | --cancel]`
 
 Flip a terminal running Claude Code or Codex into a chat on the same session, or a chat into a terminal running the CLI with that session resumed, through the user's interactive shell. The pane keeps its id and place. When something runs (a turn, background shells or subagents, queued prompts) the flip fails with an error that starts with `busy:` and says what runs; `--now` flips anyway and stops it, `--when-idle` flips once nothing runs, and `--cancel` drops a waiting flip. Codex on its shared app server never refuses: the turn lives in the server and the other side picks it up.
@@ -52163,14 +53176,16 @@ Move a chat to another account and resume the same session there. An account is 
 
 Send TEXT as a prompt to an agent pane (a chat), or to another agent in a terminal pane, typed into its input with Enter only when `--submit` is given. A terminal running Claude Code or Codex refuses it: flip the pane to chat first. Read stdin when TEXT is omitted: `git diff | zz agent-send -t %3`. `--context` adds a file/line header and fences the payload; text is capped at 1 MiB.
 
-`--submit` sends now and prints the chosen pane. `--wait`, `--notify`, `--final`, `--json` and `--on-block` follow the chat's turn. `--notify` runs from inside another terminal pane and, when the target's turn ends, posts its reply back into the calling pane. `--wait` waits for the turn and prints its reply on stdout (pane ID on stderr). A terminal pane falls back to waiting on `@agent_state`, and `--notify`, `--final` and `--on-block allow|deny` exit 2 there. Failure, cancellation, hand-back, or timeout exits non-zero. The timeout defaults to 600 seconds; `0` waits forever. A timeout leaves the turn running. `--json` prints one object with turn facts, `final_text`, and `transcript`. `--final` prints only the text after the last tool call or tool update. Both require `--wait`; combining them is a usage error. `--on-block wait` waits for permission. `--on-block fail` prints the pending permission JSON and exits 3 while the turn continues. `--on-block allow` approves the pending permission and `--on-block deny` rejects it.
+`--submit` sends now and prints the chosen pane. `--wait`, `--notify`, `--final`, `--json` and `--on-block` follow the chat's turn. `--notify` runs from inside another terminal pane and, when the target's turn ends, posts its reply back into the calling pane; from a chat it is a plain send, since the reply comes back anyway. `--wait` waits for the turn and prints its reply on stdout (pane ID on stderr). A terminal pane falls back to waiting on `@agent_state`, and `--notify`, `--final` and `--on-block allow|deny` exit 2 there. Failure, cancellation, hand-back, or timeout exits non-zero. The timeout defaults to 600 seconds; `0` waits forever. A timeout leaves the turn running. `--json` prints one object with turn facts, `final_text`, and `transcript`. `--final` prints only the text after the last tool call or tool update. Both require `--wait`; combining them is a usage error. `--on-block wait` waits for permission. `--on-block fail` prints the pending permission JSON and exits 3 while the turn continues. `--on-block allow` approves the pending permission and `--on-block deny` rejects it.
 
 Turn facts: `final_text` contains message text after the last tool call or tool update. `tool_calls` counts the turn's tool calls; permission counters count the chat's requests. Each buffer keeps its tail when capped: 1 MiB for the transcript and 256 KiB for final text. The JSON object has `pane`, `stop_reason`, `duration_ms`, `tool_calls`, `permissions` (`requested`, `allowed`, `denied`), `truncated`, `final_text`, and `transcript`. A blocked reply also has a nested `permission` object. Exit 0 means `end_turn`; other stop reasons exit 1 with the reply still printed, except cancellation, which keeps its existing error output. A blocked wait exits 3 and a timeout exits 124. Stderr carries the pane ID and on-block audit lines. `--progress` requires `--wait` and an explicit `-t %N`. It prints tool calls, state changes, and a heartbeat after 60 seconds without a line to stderr. Titles in progress lines stop at 120 characters.
 
-### `zz agent-respond [-t %N] (--allow | --deny | --option ID) [REQUEST_ID]`
+A send without `--wait` prints the pane ID. From a chat, the reply comes back to you as a message when that turn ends, the chat's permission asks come to you as they open, and stderr says `agent-send: %N's reply comes back to you as a message; end your turn now`; from anywhere else stderr says `agent-send: read %N's reply with: zz agent-send -t %N --wait ''`. A chat that already has 4 prompts waiting refuses a send with exit 1 and `%N has 4 prompts waiting; wait for its turn with: zz agent-send -t %N --wait ''`. With `--wait` from a chat, `--on-block` defaults to `fail`, and a blocked wait ends its output with the `agent-respond` and `agent-send --wait ''` lines to run next. A chat cannot send to the chat that opened it: its reply reaches that chat when its turn ends. A chat sends at most 8 messages to one chat (a brief counts as the first) between two prompts the user gives it; the next fails with `%N has had 8 messages from you since the user last wrote; answer the user now`. `--wait ''` on a chat waits for the turn that is running and prints its reply; with no turn running it exits 1 with `%N has no running turn; read its last reply with: zz capture-pane -p -t %N`.
+
+### `zz agent-respond [-t %N] (--allow | --deny | --option ID | --answer TEXT) [REQUEST_ID]`
 
 Answer the named or oldest pending permission in an agent pane. Read the pending request with `zz inspect -t %N --json | jq .permission`.
-Print the chosen option ID. `--allow` approves once and `--deny` rejects. Other panes exit 1 with `is not an agent chat`.
+Print the chosen option ID. `--allow` approves once and `--deny` rejects. `--answer TEXT` types the answer to a request that asks one question and prints `answered request ID`. Other panes exit 1 with `is not an agent chat`, and a chat with nothing pending exits 1 with `%N has no pending request (already answered, or none was asked)`.
 
 ### Permissions
 
@@ -52179,20 +53194,20 @@ Terminal agents keep their own permission settings: Codex `approval_policy`, Cla
 ### `zz inspect [-a | -t %N] [--json]`
 
 Describe a pane's kind, process, geometry, exit status, progress, agent facts, and browser URL.
-Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `verbs` lists what applies to this pane's kind; agent panes list `agent-send`, `flip-agent`, `agent-account` and `agent-respond`, a terminal running Claude Code or Codex lists `flip-agent`, and another terminal with a nonempty `agent_state` lists `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
+Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `agent_provider` (`claude` or `codex`), `agent_model` (the model the chat was started with, empty for the default) and `agent_session_id` are set for agent panes, and `agent_parent` names the chat that opened this one. `verbs` lists what applies to this pane's kind; agent panes list `agent-send`, `capture-pane`, `flip-agent`, `agent-account` and `agent-respond`, a terminal running Claude Code or Codex lists `flip-agent`, and another terminal with a nonempty `agent_state` lists `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
 
 ```sh
 zz inspect -a --json | jq -c 'select(.agent_state!="") | {pane_id,agent_state}'
 ```
 
-The keys, in text output order, are `session_id`, `session_name`, `window_id`, `window_index`, `window_name`, `window_width`, `window_height`, `window_size`, `pane_id`, `pane_index`, `pane_active`, `pane_kind`, `pane_pid`, `pane_current_command`, `pane_current_path`, `pane_title`, `pane_width`, `pane_height`, `pane_dead`, `pane_dead_status`, `pane_dead_signal`, `pane_last_command_status`, `pane_pb_state`, `pane_pb_progress`, `pane_status`, `pane_status_kind`, `pane_status_progress`, `pane_status_app`, `pane_status_title`, `pane_status_message`, `pane_status_raw_title`, `pane_status_raw_message`, `pane_status_reported`, `agent_state`, `agent_pending_permission`, `permission`, `browser_url`, `verbs`, `events`.
+The keys, in text output order, are `session_id`, `session_name`, `window_id`, `window_index`, `window_name`, `window_width`, `window_height`, `window_size`, `pane_id`, `pane_index`, `pane_active`, `pane_kind`, `pane_pid`, `pane_current_command`, `pane_current_path`, `pane_title`, `pane_width`, `pane_height`, `pane_dead`, `pane_dead_status`, `pane_dead_signal`, `pane_last_command_status`, `pane_pb_state`, `pane_pb_progress`, `pane_status`, `pane_status_kind`, `pane_status_progress`, `pane_status_app`, `pane_status_title`, `pane_status_message`, `pane_status_raw_title`, `pane_status_raw_message`, `pane_status_reported`, `agent_state`, `agent_pending_permission`, `agent_provider`, `agent_model`, `agent_session_id`, `agent_parent`, `permission`, `browser_url`, `verbs`, `events`.
 
 `permission` is a nested `{"request_id":7,"tool_call":{...},"options":[...]}` object or `null` in JSON output; text output prints compact JSON on the `permission:` line, or an empty value.
 
 ### `zz events [-t %N]`
 
 Stream hook events.
-Print JSON lines, flushed per line: `{"seq":1,"event":"agent-state-changed","time":1750000000000,"hook_pane":"%3","agent_state":"working",...}`. Each line includes the hook's string variables. `time` is Unix milliseconds. Wait for the first line, `{"seq":0,"event":"ready","time":...}`, before starting work. On subscriber overflow, `gap` consumes the next sequence number; the client reconnects and continues counting without another `ready` line. Use `-t %N` for a pane, `-t @N` for a window, `-t '$N'` for a session ID, or `-t name` for a session name. Filters match exact hook fields, and a session filter also passes the events of that session's windows and panes; `ready` and `gap` always print. Omit `-t` to stream without filtering. `agent-state-changed` carries `agent_state` for every pane kind and `agent_pending_permission` with the permission ID or an empty string. Agent panes also emit `agent-tool-call` for new calls and completed or failed status changes. Each event carries `tool_call_id`, `tool_title`, `tool_kind`, and `tool_status`; titles collapse whitespace and stop at 200 characters: `{"seq":2,"event":"agent-tool-call","time":1750000000000,"hook_pane":"%3","tool_call_id":"call-1","tool_title":"cargo test","tool_kind":"execute","tool_status":"in_progress"}`. These agent events are stream-only; `set-hook` cannot bind them. Other `@option-changed` firings are not streamed; use a hook for those. Invalid arguments exit 2. Connection and daemon errors, or any disconnect other than overflow, exit 1, including server shutdown.
+Print JSON lines, flushed per line: `{"seq":1,"event":"agent-state-changed","time":1750000000000,"hook_pane":"%3","agent_state":"working",...}`. Each line includes the hook's string variables. `time` is Unix milliseconds. Wait for the first line, `{"seq":0,"event":"ready","time":...}`, before starting work. On subscriber overflow, `gap` consumes the next sequence number; the client reconnects and continues counting without another `ready` line. Use `-t %N` for a pane, `-t @N` for a window, `-t '$N'` for a session ID, or `-t name` for a session name. Filters match exact hook fields, and a session filter also passes the events of that session's windows and panes; `ready` and `gap` always print. Omit `-t` to stream without filtering. `agent-state-changed` fires when a terminal's `@agent_state` is written and when a chat's state or pending permission changes, and carries `agent_state` and `agent_pending_permission` (the permission ID or an empty string). Agent panes also emit `agent-tool-call` for new calls and completed or failed status changes. Each event carries `tool_call_id`, `tool_title`, `tool_kind`, and `tool_status`; titles collapse whitespace and stop at 200 characters: `{"seq":2,"event":"agent-tool-call","time":1750000000000,"hook_pane":"%3","tool_call_id":"call-1","tool_title":"cargo test","tool_kind":"execute","tool_status":"in_progress"}`. These agent events are stream-only; `set-hook` cannot bind them. Other `@option-changed` firings are not streamed; use a hook for those. Invalid arguments exit 2. Connection and daemon errors, or any disconnect other than overflow, exit 1, including server shutdown.
 
 "#;
     WORKSPACE_TOOLS_TERMINAL = r#"## Terminal panes
@@ -84120,6 +85135,10 @@ set-option -g @alias-mixed-next yes
                 "pane_status_reported",
                 "agent_state",
                 "agent_pending_permission",
+                "agent_provider",
+                "agent_model",
+                "agent_session_id",
+                "agent_parent",
                 "permission",
                 "browser_url",
                 "verbs",
@@ -84901,7 +85920,7 @@ set-option -g @alias-mixed-next yes
         }
         assert_eq!(spellings, 166);
         assert_eq!(diagnostic_cases, 664);
-        assert_eq!(required_cases, 480);
+        assert_eq!(required_cases, 504);
 
         let mut prefix_cases = 0;
         for spec in &specs {
@@ -123010,6 +124029,12 @@ bind - split-window -v -c "#{pane_current_path}"
         }
 
         fn workspace(behavior: Behavior) -> Workspace {
+            workspace_with(&[behavior])
+        }
+
+        fn workspace_with(behaviors: &[Behavior]) -> Workspace {
+            let behaviors = behaviors.to_vec();
+            let opened = Arc::new(std::sync::atomic::AtomicUsize::new(0));
             let shared = Arc::new(Shared::new(1));
             let mailbox = OutboundMailbox::new();
             let (client, _) = shared.register_subscribed(
@@ -123024,9 +124049,10 @@ bind - split-window -v -c "#{pane_current_path}"
                 .build_agent_runtime(Some(journal))
                 .expect("agent runtime");
             runtime.set_runner_factory(Box::new(move |_| {
+                let index = opened.fetch_add(1, Ordering::Relaxed);
                 fixture_runner(
                     AgentProvider::Codex,
-                    behavior,
+                    behaviors[index.min(behaviors.len() - 1)],
                     zz_protocol::AgentAutoApprove::Off,
                     true,
                 )
@@ -123518,6 +124544,698 @@ bind - split-window -v -c "#{pane_current_path}"
         }
 
         #[test]
+        fn new_pane_kind_agent_opens_a_chat_that_runs_its_brief_first() {
+            let workspace = workspace(Behavior::Chunk);
+            let mut context = ExecutionContext::for_pane(
+                &workspace.shared.inner.lock().engine.state,
+                workspace.agent,
+            )
+            .expect("chat context");
+            let mut run = |verb: &str, args: &[&str]| {
+                workspace
+                    .shared
+                    .execute(
+                        ClientId(99),
+                        ClientKind::Command,
+                        &mut context,
+                        &CommandInvocation::new(verb, args.iter().copied()),
+                    )
+                    .map(|execution| execution.output.to_string())
+            };
+            let created = run(
+                "new-pane",
+                &[
+                    "-d",
+                    "-P",
+                    "-F",
+                    "#{pane_id}",
+                    "--kind",
+                    "agent",
+                    "codex",
+                    "hi",
+                ],
+            )
+            .expect("new-pane --kind agent");
+            assert_eq!(created, "%2\n");
+            let created = created.trim_end();
+            let pane = created.parse::<PaneId>().expect("pane id");
+            assert!(matches!(
+                workspace.shared.inner.lock().engine.state.pane(pane).map(|pane| &pane.kind),
+                Some(PaneKind::Agent(agent)) if agent.provider == AgentProvider::Codex
+            ));
+            assert_eq!(
+                run("agent-send", &["-t", created, "--wait", "again"]).expect("agent-send"),
+                "turn 1"
+            );
+        }
+
+        fn received(workspace: &Workspace, pane: PaneId) -> Vec<String> {
+            workspace
+                .runtime
+                .retained_items(pane)
+                .iter()
+                .filter(|item| {
+                    matches!(&item.payload, AgentStreamPayload::Update { update }
+                        if update["sessionUpdate"] == "user_message_chunk")
+                })
+                .filter_map(chunk_text)
+                .map(str::to_owned)
+                .collect()
+        }
+
+        #[track_caller]
+        fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
+            let deadline = Instant::now() + DEADLINE;
+            while !done() {
+                assert!(Instant::now() < deadline, "timed out waiting for {what}");
+                thread::sleep(Duration::from_millis(5));
+            }
+        }
+
+        fn run_as(
+            workspace: &Workspace,
+            client: ClientId,
+            origin: Option<PaneId>,
+            verb: &str,
+            args: &[&str],
+        ) -> Result<String, String> {
+            let mut context = {
+                let mut inner = workspace.shared.inner.lock();
+                let entry = inner.client_entry(client);
+                entry.origin = origin;
+                entry.command_streams.get_or_insert_default();
+                origin
+                    .and_then(|pane| ExecutionContext::for_pane(&inner.engine.state, pane))
+                    .unwrap_or_default()
+            };
+            workspace
+                .shared
+                .execute(
+                    client,
+                    ClientKind::Command,
+                    &mut context,
+                    &CommandInvocation::new(verb, args.iter().copied()),
+                )
+                .map(|execution| execution.output.to_string())
+                .map_err(|error| match error {
+                    DaemonError::Server(error) => error.tmux_message(),
+                    error => error.to_string(),
+                })
+        }
+
+        fn take_stderr(workspace: &Workspace, client: ClientId) -> String {
+            std::mem::take(
+                &mut workspace
+                    .shared
+                    .inner
+                    .lock()
+                    .client_entry(client)
+                    .command_streams
+                    .get_or_insert_default()
+                    .stderr,
+            )
+        }
+
+        #[test]
+        fn a_question_ask_prints_option_lines_a_shell_hands_to_agent_respond() {
+            let permission = crate::agent::host::AgentPendingPermission {
+                request_id: 7,
+                tool_call: serde_json::json!({ "title": "Which color?" }),
+                options: serde_json::json!([
+                    { "optionId": "answer-0", "name": "Dark blue", "kind": "allow_once" },
+                    { "optionId": "answer-1", "name": "Red", "kind": "allow_once" },
+                ]),
+                questions: vec![zz_protocol::agent_stream::AgentQuestion {
+                    id: "q1".to_owned(),
+                    header: None,
+                    question: "Which color?".to_owned(),
+                    options: Vec::new(),
+                    multi_select: false,
+                    allow_other: false,
+                    secret: false,
+                }],
+            };
+            let ask = agent_ask(PaneId(2), AgentProvider::Codex, &permission).to_string();
+            assert_eq!(
+                ask,
+                "[zz] %2 (codex) asks: Which color?\nzz agent-respond -t %2 --option answer-0  # Dark blue\nzz agent-respond -t %2 --option answer-1  # Red\nzz agent-respond -t %2 --deny"
+            );
+            let line = ask.lines().nth(1).expect("option line");
+            let words = std::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg(format!("set -- {line}\nprintf '%s\\n' \"$@\""))
+                .output()
+                .expect("sh");
+            let words = String::from_utf8(words.stdout).expect("words");
+            let args = words.lines().skip(2).map(RawText::from).collect::<Vec<_>>();
+            let parsed = parse_agent_respond_args(&args).expect("agent-respond takes the line");
+            assert_eq!(parsed.target.as_deref(), Some("%2"));
+            assert_eq!(parsed.option.as_deref(), Some("answer-0"));
+            assert_eq!(parsed.request_id, None);
+        }
+
+        #[test]
+        fn a_chat_sends_eight_messages_to_a_chat_until_the_user_writes_again() {
+            let workspace = workspace(Behavior::Chunk);
+            let host = workspace.agent;
+            run_as(
+                &workspace,
+                ClientId(97),
+                None,
+                "new-pane",
+                &["-d", "-t", "%1", "--kind", "agent", "codex"],
+            )
+            .expect("a chat with no parent");
+            let send = || {
+                run_as(
+                    &workspace,
+                    ClientId(99),
+                    Some(host),
+                    "agent-send",
+                    &["-t", "%2", "--wait", "thanks"],
+                )
+            };
+            for turn in 0..8 {
+                assert_eq!(send(), Ok(format!("turn {turn}")));
+            }
+            assert_eq!(
+                send(),
+                Err(
+                    "%2 has had 8 messages from you since the user last wrote; answer the user now"
+                        .to_owned()
+                )
+            );
+            workspace.prompt("one more, please").expect("user prompt");
+            assert_eq!(send(), Ok("turn 8".to_owned()));
+        }
+
+        #[test]
+        fn a_closed_child_reopens_on_its_session_and_keeps_its_old_id() {
+            let workspace = workspace(Behavior::Chunk);
+            let host = workspace.agent;
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(99),
+                    Some(host),
+                    "new-pane",
+                    &[
+                        "-d",
+                        "-P",
+                        "-F",
+                        "#{pane_id}",
+                        "--kind",
+                        "agent",
+                        "claude",
+                        "reply with ok"
+                    ],
+                ),
+                Ok("%2\n".to_owned())
+            );
+            wait_until("the child's session in its record", || {
+                workspace
+                    .shared
+                    .child_record(host, PaneId(2))
+                    .is_some_and(|record| record.session.as_deref() == Some("fixture-session"))
+            });
+            run_as(&workspace, ClientId(97), None, "kill-pane", &["-t", "%2"]).expect("kill");
+            let reopen = || {
+                run_as(
+                    &workspace,
+                    ClientId(97),
+                    None,
+                    "select-child-chat",
+                    &["-t", "%1", "%2"],
+                )
+            };
+            assert_eq!(reopen(), Ok("%3".to_owned()));
+            {
+                let inner = workspace.shared.inner.lock();
+                assert!(matches!(
+                    inner.engine.state.pane(PaneId(3)).map(|pane| &pane.kind),
+                    Some(PaneKind::Agent(agent))
+                        if agent.provider == AgentProvider::ClaudeCode
+                            && agent.session_id.as_deref() == Some("fixture-session")
+                ));
+                assert_eq!(inner.engine.agent_parent(PaneId(3)), Some(host));
+            }
+            assert_eq!(reopen(), Ok("%3".to_owned()));
+            assert!(
+                workspace
+                    .shared
+                    .inner
+                    .lock()
+                    .engine
+                    .state
+                    .pane(PaneId(4))
+                    .is_none()
+            );
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(99),
+                    Some(host),
+                    "agent-send",
+                    &["-t", "%2", "--wait", "hi again"],
+                ),
+                Ok("turn 0".to_owned())
+            );
+            let select = |child: &str| {
+                run_as(
+                    &workspace,
+                    ClientId(97),
+                    None,
+                    "select-child-chat",
+                    &["-t", "%1", child],
+                )
+            };
+            run_as(&workspace, ClientId(97), None, "kill-pane", &["-t", "%3"]).expect("kill");
+            assert_eq!(select("%3"), Ok("%4".to_owned()));
+            assert!(matches!(
+                workspace.shared.inner.lock().engine.state.pane(PaneId(4)).map(|pane| &pane.kind),
+                Some(PaneKind::Agent(agent))
+                    if agent.session_id.as_deref() == Some("fixture-session")
+            ));
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(99),
+                    Some(host),
+                    "agent-send",
+                    &["-t", "%3", "--wait", "and again"],
+                ),
+                Ok("turn 0".to_owned())
+            );
+            run_as(&workspace, ClientId(97), None, "kill-pane", &["-t", "%4"]).expect("kill");
+            assert_eq!(select("%2"), Ok("%5".to_owned()));
+            assert_eq!(select("%3"), Ok("%5".to_owned()));
+            workspace.runtime.update_child(
+                AgentProvider::Codex,
+                "fixture-session",
+                PaneId(9),
+                |record| record.provider = AgentProvider::Codex,
+            );
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(97),
+                    None,
+                    "select-child-chat",
+                    &["-t", "%1", "%9"],
+                ),
+                Err(
+                    "%9 was closed before its session started; it cannot be opened again"
+                        .to_owned()
+                )
+            );
+        }
+
+        #[test]
+        fn chat_verbs_say_what_to_run_next() {
+            let workspace = workspace_with(&[Behavior::Hang, Behavior::Chunk]);
+            let terminal = ClientId(97);
+            let run = |verb: &str, args: &[&str]| run_as(&workspace, terminal, None, verb, args);
+            run(
+                "new-pane",
+                &["-d", "-t", "%1", "--kind", "agent", "codex", "hi"],
+            )
+            .expect("new-pane with a brief");
+            assert_eq!(
+                take_stderr(&workspace, terminal),
+                "new-pane: opened %2 (codex); read its reply with: zz agent-send -t %2 --wait ''\n"
+            );
+            run("new-pane", &["-d", "-t", "%1", "--kind", "agent", "codex"]).expect("new-pane");
+            assert_eq!(
+                take_stderr(&workspace, terminal),
+                "new-pane: opened %3 (codex)\n"
+            );
+            assert_eq!(
+                run("agent-send", &["-t", "%1", "busy"]),
+                Ok("%1".to_owned())
+            );
+            assert_eq!(
+                take_stderr(&workspace, terminal),
+                "agent-send: read %1's reply with: zz agent-send -t %1 --wait ''\n"
+            );
+            wait_until("the turn to run", || {
+                run("capture-pane", &["-p", "-t", "%1"]).is_ok()
+                    && take_stderr(&workspace, terminal)
+                        == "capture-pane: %1's turn is still running\n"
+            });
+            for queued in 1..=4 {
+                run("agent-send", &["-t", "%1", "more"]).expect("queued");
+                wait_until("the prompt to queue", || {
+                    workspace.runtime.waiting_prompts(workspace.agent) == queued
+                });
+            }
+            assert_eq!(
+                run("agent-send", &["-t", "%1", "one too many"]),
+                Err("%1 has 4 prompts waiting; wait for its turn with: zz agent-send -t %1 --wait ''".to_owned())
+            );
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(98),
+                    Some(PaneId(2)),
+                    "agent-send",
+                    &["--notify", "-t", "%3", "hi"]
+                ),
+                Ok("%3".to_owned())
+            );
+            assert_eq!(
+                take_stderr(&workspace, ClientId(98)),
+                "agent-send: %3's reply comes back to you as a message; end your turn now\n"
+            );
+            assert_eq!(
+                run("wait-pane", &["-t", "%1"]),
+                Err(
+                    "%1 is an agent chat; wait for its turn with: zz agent-send -t %1 --wait ''"
+                        .to_owned()
+                )
+            );
+            assert_eq!(
+                run("show-last-output", &["-t", "%1"]),
+                Err("%1 is an agent chat; read it with: zz capture-pane -p -t %1".to_owned())
+            );
+            assert_eq!(
+                run("agent-respond", &["-t", "%3", "--allow"]),
+                Err("%3 has no pending request (already answered, or none was asked)".to_owned())
+            );
+        }
+
+        #[test]
+        fn a_timed_out_wait_names_a_wait_that_joins_the_running_turn() {
+            let workspace = workspace(Behavior::Hang);
+            let timed_out = |args: &[&str]| {
+                let mut context = ExecutionContext::default();
+                match workspace.shared.execute(
+                    ClientId(97),
+                    ClientKind::Command,
+                    &mut context,
+                    &CommandInvocation::new("agent-send", args.iter().copied()),
+                ) {
+                    Err(DaemonError::CommandExit {
+                        output,
+                        exit_code: 124,
+                    }) => output.to_string(),
+                    other => panic!("{args:?}: {other:?}"),
+                }
+            };
+            let message = "%1: no reply within 1 seconds; the turn is still running. `agent-send -t %1 --wait ''` waits again without sending";
+            assert_eq!(
+                timed_out(&["-t", "%1", "--wait", "--timeout", "1", "go"]),
+                message
+            );
+            assert_eq!(
+                timed_out(&["-t", "%1", "--wait", "--timeout", "1", ""]),
+                message
+            );
+        }
+
+        #[test]
+        fn capture_pane_prints_a_chat_as_text() {
+            let workspace = workspace(Behavior::Chunk);
+            let capture = |args: &[&str]| {
+                run_as(&workspace, ClientId(97), None, "capture-pane", args).expect("capture-pane")
+            };
+            assert_eq!(capture(&["-p", "-t", "%1"]), "");
+            for (turn, text) in ["one", "two"].into_iter().enumerate() {
+                run_as(
+                    &workspace,
+                    ClientId(97),
+                    None,
+                    "agent-send",
+                    &["-t", "%1", "--wait", text],
+                )
+                .expect("turn");
+                wait_until("the reply in the chat state", || {
+                    capture(&["-p", "-t", "%1"]).ends_with(&format!("turn {turn}\n"))
+                });
+            }
+            assert_eq!(capture(&["-p", "-t", "%1"]), "> two\n\nturn 1\n");
+            assert_eq!(
+                capture(&["-p", "-J", "-t", "%1", "-S", "-"]),
+                "> one\n\nturn 0\n\n> two\n\nturn 1\n"
+            );
+        }
+
+        #[test]
+        fn a_chat_opened_by_a_chat_reports_back_and_closes_with_it() {
+            let workspace = workspace(Behavior::Chunk);
+            let host = workspace.agent;
+            let created = run_as(
+                &workspace,
+                ClientId(99),
+                Some(host),
+                "new-pane",
+                &[
+                    "-d",
+                    "-P",
+                    "-F",
+                    "#{pane_id}",
+                    "--kind",
+                    "agent",
+                    "codex",
+                    "reply with ok",
+                ],
+            )
+            .expect("new-pane from a chat");
+            assert_eq!(created, "%2\n");
+            let child = PaneId(2);
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(97),
+                    None,
+                    "display-message",
+                    &["-p", "-t", "%2", "#{agent_parent}"],
+                ),
+                Ok("%1".to_owned())
+            );
+            wait_until("the reply in the host", || {
+                !received(&workspace, host).is_empty()
+            });
+            assert_eq!(
+                received(&workspace, host),
+                [
+                    "[zz] %2 (codex) finished:\nturn 0\n\nIf this answers the user, answer the user now and send nothing to %2. Only if something is missing: zz agent-send -t %2 'TEXT'"
+                ]
+            );
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(97),
+                    None,
+                    "agent-send",
+                    &["-t", "%2", "--wait", ""]
+                ),
+                Err(
+                    "%2 has no running turn; read its last reply with: zz capture-pane -p -t %2"
+                        .to_owned()
+                )
+            );
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(98),
+                    Some(child),
+                    "agent-send",
+                    &["-t", "%1", "x"]
+                ),
+                Err("%1 opened this chat; your reply reaches it when your turn ends".to_owned())
+            );
+            let panes = workspace
+                .shared
+                .inner
+                .lock()
+                .engine
+                .state
+                .windows
+                .values()
+                .map(|window| window.panes.len())
+                .sum::<usize>();
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(98),
+                    Some(child),
+                    "new-pane",
+                    &["--kind", "agent", "codex", "x"],
+                ),
+                Err(
+                    "%2 was opened by %1; a chat opened by another chat cannot open one. Do the work yourself, or say in your reply what you need".to_owned()
+                )
+            );
+            assert_eq!(
+                workspace
+                    .shared
+                    .inner
+                    .lock()
+                    .engine
+                    .state
+                    .windows
+                    .values()
+                    .map(|window| window.panes.len())
+                    .sum::<usize>(),
+                panes
+            );
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(98),
+                    Some(child),
+                    "split-window",
+                    &["-d", "-P", "-F", "#{pane_id}"],
+                ),
+                Ok("%3\n".to_owned())
+            );
+            run_as(&workspace, ClientId(97), None, "kill-pane", &["-t", "%1"]).expect("kill-pane");
+            wait_until("the child and its terminal to close with its host", || {
+                let inner = workspace.shared.inner.lock();
+                [host, child, PaneId(3)]
+                    .iter()
+                    .all(|pane| inner.engine.state.pane(*pane).is_none())
+            });
+        }
+
+        #[test]
+        fn a_child_asks_its_host_once_and_queued_reports_are_never_handed_back() {
+            let workspace = workspace_with(&[Behavior::Chunk, Behavior::AskPermission]);
+            let host = workspace.agent;
+            run_as(
+                &workspace,
+                ClientId(99),
+                Some(host),
+                "new-pane",
+                &["-d", "--kind", "agent", "codex", "run it"],
+            )
+            .expect("new-pane from a chat");
+            wait_until("the ask in the host", || {
+                !received(&workspace, host).is_empty()
+            });
+            run_as(
+                &workspace,
+                ClientId(97),
+                None,
+                "agent-respond",
+                &["-t", "%2", "--allow"],
+            )
+            .expect("allow");
+            wait_until("the reply in the host", || {
+                received(&workspace, host).len() == 2
+            });
+            assert_eq!(
+                received(&workspace, host),
+                [
+                    "[zz] %2 (codex) asks: run it\nzz agent-respond -t %2 --allow\nzz agent-respond -t %2 --deny",
+                    "[zz] %2 (codex) finished:\nturn 0\n\nIf this answers the user, answer the user now and send nothing to %2. Only if something is missing: zz agent-send -t %2 'TEXT'",
+                ]
+            );
+
+            let workspace = workspace_with(&[Behavior::Hang, Behavior::Chunk]);
+            let host = workspace.agent;
+            workspace.prompt("stay busy").expect("busy prompt");
+            for _ in 0..5 {
+                run_as(
+                    &workspace,
+                    ClientId(99),
+                    Some(host),
+                    "new-pane",
+                    &["-d", "--kind", "agent", "codex", "go"],
+                )
+                .expect("new-pane from a chat");
+            }
+            wait_until("five queued reports", || {
+                workspace
+                    .runtime
+                    .wire_state(host)
+                    .is_some_and(|state| state.queued_prompts == 5)
+            });
+        }
+
+        #[test]
+        fn an_idle_chat_lists_as_its_agent_and_refuses_typed_input() {
+            let workspace = workspace(Behavior::Chunk);
+            let agent = workspace.agent.to_string();
+            let run = |verb: &str, args: &[&str]| {
+                workspace.shared.execute(
+                    ClientId(99),
+                    ClientKind::Command,
+                    &mut ExecutionContext::default(),
+                    &CommandInvocation::new(verb, args.iter().copied()),
+                )
+            };
+            let filter = format!("#{{==:#{{pane_id}},{agent}}}");
+            let listed = run(
+                "list-panes",
+                &[
+                    "-a",
+                    "-F",
+                    "#{pane_id} #{pane_current_command} #{agent_state}",
+                    "-f",
+                    &filter,
+                ],
+            )
+            .expect("list-panes")
+            .output;
+            assert_eq!(listed, format!("{agent} codex idle"));
+            let events = OutboundMailbox::new();
+            let (control, _) = workspace.shared.register_subscribed(
+                ClientKind::Control,
+                None,
+                None,
+                Arc::clone(&events),
+            );
+            workspace
+                .shared
+                .attach(control, workspace.session)
+                .expect("attach");
+            take_reliable_messages(&events);
+            workspace.prompt("go").expect("prompt");
+            let deadline = Instant::now() + DEADLINE;
+            let mut states = Vec::new();
+            while states.last().is_none_or(|state| state != "idle") {
+                assert!(Instant::now() < deadline, "states so far: {states:?}");
+                states.extend(
+                    take_reliable_messages(&events).into_iter().filter_map(
+                        |message| match message {
+                            ProtocolMessage::Event(Event {
+                                payload: EventPayload::HookEvent { name, variables },
+                                ..
+                            }) if name == "agent-state-changed"
+                                && variables["hook_pane"] == agent =>
+                            {
+                                Some(variables["agent_state"].clone())
+                            }
+                            _ => None,
+                        },
+                    ),
+                );
+                thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(states, ["working", "idle"]);
+            for (verb, args, refusal) in [
+                (
+                    "send-keys",
+                    vec!["-t", agent.as_str(), "x"],
+                    format!("{agent} is an agent chat; send with: zz agent-send -t {agent} TEXT"),
+                ),
+                (
+                    "pipe-pane",
+                    vec!["-t", agent.as_str(), "cat"],
+                    format!(
+                        "{agent} is an agent chat; read it with: zz capture-pane -p -t {agent}"
+                    ),
+                ),
+            ] {
+                let Err(DaemonError::Server(error)) = run(verb, &args) else {
+                    panic!("{verb} to a chat must fail");
+                };
+                assert_eq!(error.tmux_message(), refusal, "{verb}");
+            }
+        }
+
+        #[test]
         fn agent_reply_command_formats_and_permission_policies() {
             for policy in ["wait", "allow", "deny", "fail"] {
                 let workspace = workspace(if policy == "wait" {
@@ -123835,7 +125553,7 @@ bind - split-window -v -c "#{pane_current_path}"
                     &run(&["agent-respond", "-t", &target, "--allow"])
                         .expect_err("no pending request")
                 ),
-                format!("no pending permission: {target}")
+                format!("{target} has no pending request (already answered, or none was asked)")
             );
             let inspected = run(&["inspect", "-t", &target, "--json"])
                 .expect("no pending request")

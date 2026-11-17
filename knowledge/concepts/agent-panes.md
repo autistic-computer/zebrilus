@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
+description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, reopening a chat another chat opened on its session (select-child-chat), what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
 timestamp: 2026-11-16T00:00:00-03:00
@@ -45,6 +45,124 @@ into an agent pane. A terminal keeps its pane id and place: its process is stopp
 starts once it has exited (`AGENT_CLI_EXIT_GRACE`, 5 s). `select-pane-kind [-c dir] terminal
 [command ...]` turns an agent pane back into a terminal (the mux emits `PaneRespawned`), closing
 its driver. Both conversions are `MuxState::convert_pane`; a pinned title survives them.
+
+**Creating one.** `new-pane|split-window|new-window [-d] [-P -F fmt] [-c dir] [-t target] --kind
+agent <claude|codex> [--model m] [--effort e] [--account id] [--resume id] [BRIEF ...]` makes the
+pane an agent pane from the start (`agent_spawn` in `crates/zz-mux/src/command.rs`), so the
+daemon opens its runtime inside the same command (the `PaneCreated` arm, then
+`Shared::open_agent_pane`) with no exit grace, and `-P` prints a pane that already takes
+`agent-send`. The four flags may sit before the provider or right after it; `--fork` and `--at`
+are not taken here. The words after them are the brief: joined with single spaces, checked like
+`agent-send` TEXT (`zz_mux::check_plain_text`, 1 MiB), carried to the daemon as
+`MuxEffect::AgentBrief` and queued with `AgentRuntime::prompt` once the runtime is open, so the
+driver sends it when its session is ready. Without `-c` the folder comes from the same donor a
+terminal would use (`spawn_cwd_source`, `MuxState::cwd_donor`; a chat target gives its own
+folder). `new-pane` without `-x`/`-y` floats at `AGENT_FLOAT_WIDTH` by `AGENT_FLOAT_HEIGHT`
+(46% by 72%), the size the fork float below uses. A missing or unknown provider, a bad flag value,
+or an agent flag without `--kind agent` exits 2.
+
+**Chats that open chats.** A caller is a chat caller when its client's origin pane
+(`ClientHello.origin`, from `ZZ_PANE`) is a chat other than the target (`Shared::chat_caller`).
+A chat a chat caller creates gets that chat as its parent, kept daemon-side on the engine
+(`MuxEngine::set_agent_parent`, no wire field) and read as `#{agent_parent}` and `inspect`'s
+`agent_parent`. A chat with a parent cannot open one (`refuse_grandchild_chat`: `%C was opened by
+%P; a chat opened by another chat cannot open one. Do the work yourself, or say in your reply what
+you need`, exit 1, checked before the mux runs) and
+cannot `agent-send` to its parent. The brief of such a chat, and a chat caller's plain
+`agent-send` to a chat, carry a waiter (`Shared::chat_report_waiter`) that reports the turn into
+the caller as a prompt the daemon makes (`AgentRuntime::inject`): `[zz] %N (codex) finished:` with
+the final text (or the full text when the final part is empty, last 64 KiB), `stopped (reason):`
+(or `stopped (cancelled):` with no text), each followed by a blank line and `If this answers the
+user, answer the user now and send nothing to %N. Only if something is missing: zz agent-send -t
+%N 'TEXT'`; `failed: message` followed by `Tell the user, or try again with: zz
+agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`
+`AgentReport::parse` strips those trailing lines, so a client gets only the reply text. While that turn waits on a permission
+or a question, the waiter's `asks` sink sends one `[zz] %N (codex) asks: kind title` message per
+request id with the `zz agent-respond` lines that answer it. Every string here, the stderr lines
+included, is built and parsed by `zz_protocol::agent_mention` (`AgentReport`, `AgentAsk`,
+`ReplyNotice`, `AgentRespond`), so clients read them with the same code. Deliveries to one caller
+go out in the order they were made, from one queue per caller (`Shared::deliver_to_chat`), and an
+ask whose request is answered by the time its turn comes is dropped. These prompts are
+`injected`: they travel the pane's inbox rather than its 4-slot prompt channel, do not count
+against `MAX_AGENT_QUEUED_PROMPTS`, keep the byte cap (a prompt over it is logged and dropped), are
+never handed back to a composer when a queue is reclaimed (`/clear`, unqueue, close), and are
+dropped with a log line when the caller is gone. A caller flipped to a terminal gets them typed
+into its terminal the way `--notify` does. Every pane a chat with a parent creates, a terminal from
+`split-window` included, gets that chat as its parent too (`adopt_child_chat_panes`). When a pane
+goes away, the chats and panes it opened are killed
+right after the command that removed it, on a thread (`close_orphaned_chats`); flipping a parent
+to a terminal closes nothing. From a chat caller `agent-send --wait` defaults to `--on-block fail`,
+and `--wait ''` on a chat joins the running turn (`HostCommand::Join`) or fails with `%N has no
+running turn; read its last reply with: zz capture-pane -p -t %N`.
+
+**What the verbs tell an agent.** Every create with `--kind agent` prints one stderr line
+(`ReplyNotice::Opened`): `<verb>: opened %N (NAME)`, followed by `; its reply comes back to you as
+a message; end your turn now` for a chat caller with a brief or `; read its reply with: zz agent-send -t %N --wait ''`
+for any other caller with a brief. A plain `agent-send` prints the pane on stdout and on stderr
+either `agent-send: %N's reply comes back to you as a message; end your turn now` (chat caller) or `agent-send: read
+%N's reply with: zz agent-send -t %N --wait ''`. `--notify` from a chat is a plain send. A chat caller sends at most `MAX_SENDS_SINCE_USER` (8)
+prompts to one chat, a brief counting as the first, until it receives a prompt the daemon did not
+inject (from the user or any client); then the next send fails with `%N has had 8 messages from
+you since the user last wrote; answer the user now` and nothing is sent. The counts live in
+`AgentRuntime::sends`, keyed by caller and target, and a non-injected prompt to the caller clears
+the caller's counts. Sends from terminals are not counted. A chat
+whose queue already holds `MAX_AGENT_QUEUED_PROMPTS` prompts refuses a send at once
+(`refuse_full_chat`: `%N has 4 prompts waiting; wait for its turn with: ...`), and prompts the
+daemon queues for `agent-send` or a brief (`PromptSource::Command`) are never handed back to a
+composer if a queue is reclaimed; one the host cannot take at all fails with `%N's agent is not
+running (agent_state STATE); the prompt was not sent`. `wait-pane` and `show-last-output` on a chat name
+`agent-send --wait ''` and `capture-pane -p`; `capture-pane` adds `capture-pane: %N's turn is
+still running` on stderr during a turn. `agent-respond --answer TEXT` answers a request that asks
+one question with typed text (`AgentAnswerQuestion`'s host path), and nothing pending reads `%N has
+no pending request (already answered, or none was asked)`.
+
+**Reopening a child.** A child chat is its session, not its pane. For every chat a chat opens,
+the daemon keeps a `ChildRecord` under the opener's provider and session
+(`AgentRuntime::update_child`): the child's original pane id, provider, session id once its
+session starts (`note_child_session`), folder, model, effort, account, the pane that holds it
+now, and every pane it was reopened in (`reopened`). The records are saved next to the opener's
+journal as `<key>.children.json`, so they outlive a daemon restart and the opener being resumed in
+another pane; they go when the opener's session is deleted (`AgentJournal::remove_for`), not when
+its pane closes. `select-child-chat [-t HOST] %N` (internal, for the card a host draws) takes any
+id the child has had, selects the child's window and pane and prints the pane: the recorded pane
+while it still runs that session, else any live chat on that session, else a new float in the
+host's window resumed on the session with the same provider, folder, model, effort and account,
+no brief, and the host as parent. A child closed before its session started fails with `%N was
+closed before its session started; it cannot be opened again`, and a pane the host did not open
+with `%N is not a chat %H opened`. `agent-send -t %N` from the host to any id the child has had
+reaches the pane that holds the child now (`Shared::moved_child`) and counts toward one set of 8
+messages per child (`child_key`); with no pane holding it, it fails with `%N was closed; open a new
+chat with: zz new-pane -d --kind agent NAME 'BRIEF'`.
+
+**The mention note.** A prompt whose text holds an agent token (`@+claude`, `@+codex`, either with
+`/MODEL`) or a chat token (`@HOST:%N`, the shape only the composer's Chats rows write) reaches the
+agent with an instruction built from those tokens (`zz_protocol::agent_mention::mention_note`,
+one sentence per distinct token): for `@+codex`, `The user tagged codex: codex does this task, not
+you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end
+your turn. Do not do the task yourself. Its reply and any permission asks come back to you as
+messages.` (with `--model MODEL` when the token names one), and for `@macbook:%2`, `@macbook:%2 is
+another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to
+you as a message.` A chat opened by a chat gets a second note with its brief
+(`child_note`): `%P (NAME) opened this chat. Your final message is sent to it as your reply, so
+finish with the answer. You cannot open other agents or message %P; if you need something, say so
+in your reply.`, and for a Codex child `If a command fails with "Operation not permitted", rerun it
+with escalated permissions even if your brief says to stop on failure; %P is asked to approve it.` The daemon carries that note on the queued
+prompt (`QueuedPrompt::note`, `RuntimeCommand::Prompt`'s `note`), never in the text.
+`hidden_note` joins the two. Neither note joins the user's text: Claude
+Code gets it as a second content block wrapped in `<system-reminder>`, Codex as a second text item
+in `turn/start`'s `input`, and other ACP agents as a second text block in the prompt request. The
+stream's own echo of the prompt has only the user's text, and the transcript readers drop the
+note block when they replay a session (`claude::translate::message_text`, `codex::translate::user_text`),
+recognising it with `is_hidden_note`.
+
+**Codex chats run `zz` outside the sandbox.** Before it starts Codex for a chat, the driver writes
+`rules/zz.rules` (`prefix_rule(pattern = ["zz"], decision = "allow")`, the file `zz tools
+--install-hooks` writes) into the Codex home the chat runs on, the account's or `$CODEX_HOME`,
+when that file is missing (`agent_hooks::ensure_codex_rule`); an existing file, edited or not, is
+left alone. Codex then runs a command made only of `zz` segments outside its sandbox without asking,
+so the first `zz` reaches the daemon socket. Codex reads rules when it starts, so a shared app
+server that was already running picks the rule up on its next start.
+Daemons from `REVISION` 6 on do this.
 
 **Running it.** The daemon opens the pane's runtime (`Shared::open_agent_pane`, `agent_pane_spec`)
 with the descriptor's provider, folder, session, model and effort and the pane's workspace
@@ -519,6 +637,33 @@ end no turn.
   peer socket. `--wait ''` still waits on such a terminal's `@agent_state`.
 - `agent-respond` answers a pending permission in an agent pane.
 - `flip-agent` and `select-pane-kind ... agent` as above.
+- Formats read a chat like a terminal. `#{pane_current_command}` is the provider's command name
+  (`claude`, `codex`, `AgentProvider::command_name`). `#{agent_state}` maps the chat's published
+  phase (`agent_chat_facts`, `crates/zz-daemon/src/daemon.rs`): `starting`, `idle`, `working`,
+  `needs-approval` for a pending permission, `needs-input` for a pending question, `failed`.
+  `#{agent_pending_permission}` is the pending request id. The daemon keeps both on the engine
+  (`MuxEngine::set_agent_chat`) when the runtime publishes a state, so `list-panes -F`,
+  `display-message -p` and `inspect` read the same values, and fires `agent-state-changed` with
+  both when either changes. `inspect` adds `agent_provider`, `agent_model` (the model the chat was
+  started with) and `agent_session_id`.
+- `send-keys`, `send-text`, `paste-buffer` and `run-pane` on a chat fail with
+  `%N is an agent chat; send with: zz agent-send -t %N TEXT`, and `pipe-pane` with
+  `%N is an agent chat; read it with: zz capture-pane -p -t %N`. A `synchronize-panes` send
+  whose window holds a chat fails with "pane has exited".
+- `capture-pane -p -t %N` on a chat prints its last turn as text, and `-S` (any value, so the
+  context's `-S -`) the whole chat, capped at the last 64 KiB (`agent::capture`). A prompt prints
+  as `> ` and its text, later lines indented two spaces; a tool call as its kind word and title
+  on one line (`execute cargo test`); a reply as its text; a blank line follows the prompt and
+  separates turns. Reasoning, plans, notices, errors and subagent steps are left out, and so is
+  the mention note, which never joins the user's text. An injected `[zz] ...` prompt prints like
+  any prompt. An empty chat prints nothing. The text comes from the chat state the daemon keeps
+  per pane for every client (`PaneLane::chat`, the `ChatLog` a client's replay recovers from):
+  the Claude Code and Codex drivers fill it, it is complete rather than byte-capped, and a
+  restored chat refills it when the driver replays its session, so it needs no client. A chat
+  on another ACP agent has no chat state, so it is read from the pane's retained stream
+  instead, which holds only the recent part. Without `-p` the text goes into a paste buffer, as
+  for a terminal; `-J`, `-e`, `-N`, `-T`, `-a`, `-q`, `-C`, `-E` and the value of `-S` change
+  nothing.
 
 # What the clients draw
 

@@ -4250,7 +4250,9 @@ impl AppView {
             .collect::<Vec<_>>();
         let placed = self
             .pip_stage
-            .arrange(&cards, canvas, cx.theme().pane_header_height())
+            .arrange(&cards, canvas, cx.theme().pane_header_height());
+        zz_ui::pip::show_pips(cx.entity_id(), &placed, cx);
+        let placed = placed
             .into_iter()
             .map(|placed| (placed.pane, placed))
             .collect::<BTreeMap<_, _>>();
@@ -4850,6 +4852,9 @@ impl Render for AppView {
                 let canvas = self.pane_canvas_bounds.get().size;
                 self.floating_layer(active_window, cell, canvas, cx)
             });
+        if floating_layer.is_none() {
+            zz_ui::pip::show_pips(cx.entity_id(), &[], cx);
+        }
 
         if let Some(active_window) = active_window {
             self.pane_arrivals.observe(

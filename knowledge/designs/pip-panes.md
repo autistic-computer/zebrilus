@@ -146,7 +146,10 @@ somewhere else without telling tmux.
 - **Stashing.** When the window's active pane changes to a tiled pane, every PiP it had slides past
   the nearer side edge until 60 px of it show, content and all; a pile keeps its fan. Clicking that
   strip, or focusing the PiP any other way, brings it back. A new PiP, closing the focused pane, and
-  switching windows stash nothing, so a PiP opened beside the pane you type in stays in view.
+  switching windows stash nothing, so a PiP opened beside the pane you type in stays in view. One
+  exception: an agent chat opened without focus (`new-pane -d --kind agent`, the way a host chat
+  opens a child) starts stashed, so a child does not cover the chat that opened it; focusing it
+  brings it out like any stashed PiP (`crates/zz-ui/src/pip.rs`).
 
 `PipStage` only places the targets; `PaneMotion` springs every change, and a held PiP follows the
 pointer. The stash lives in each client, so a reload or another client shows the PiPs in place.

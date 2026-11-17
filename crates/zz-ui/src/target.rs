@@ -1,4 +1,12 @@
-use std::{cmp::Reverse, ops::Range, rc::Rc, sync::Arc};
+use std::{
+    cmp::Reverse,
+    ops::Range,
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
 use ala::{
     Action, AnyElement, App, ClickEvent, ClipboardItem, Context, ElementId, Entity, Focusable as _,
@@ -7,11 +15,16 @@ use ala::{
     uniform_list,
 };
 use zz_client::{
+    agent_settings::{Choice, LensSettings},
+    new_chat::AGENT_CHOICES,
     path_rank,
     pick::{self, Candidate as PickCandidate, Closeness, Kind as PickKind, Prior, Query},
     recents::{MAX_BOOST, RecentKey, Recents, now_secs},
 };
-use zz_protocol::{GitMark, PaneId, PathEntry, PathKind, PathListRoot, SessionId, WindowId};
+use zz_protocol::{
+    AgentProvider, GitMark, PaneId, PathEntry, PathKind, PathListRoot, SessionId, WindowId,
+    agent_stream::AgentCatalogResult,
+};
 
 use penna::{
     Ground, Panel, PanelLook, TextStyle,
@@ -59,6 +72,45 @@ pub trait TargetBackend {
     fn folder(&self, _pane: PaneId, _cx: &App) -> Option<String> {
         None
     }
+    fn agents(&self, _cx: &App) -> Vec<TargetAgent> {
+        Vec::new()
+    }
+    fn catalog(
+        &self,
+        _provider: AgentProvider,
+        _pane: Option<PaneId>,
+        _request: u64,
+        _cx: &mut App,
+    ) -> bool {
+        false
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TargetAgent {
+    pub provider: AgentProvider,
+    pub name: SharedString,
+    pub icon: IconName,
+    pub model: String,
+}
+
+#[derive(Clone, Debug)]
+enum Catalog {
+    Loading(u64),
+    Ready {
+        models: Vec<Choice>,
+        current: String,
+    },
+    Failed(SharedString),
+}
+
+static NEXT_CATALOG: AtomicU64 = AtomicU64::new(1);
+
+fn agent_named(name: &str) -> Option<AgentProvider> {
+    AGENT_CHOICES
+        .iter()
+        .find(|choice| choice.program == name)
+        .map(|choice| choice.provider())
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -109,6 +161,8 @@ pub enum TargetKind {
     Chat,
     Dir,
     File,
+    Agent,
+    Model,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -174,6 +228,10 @@ pub enum TargetLevel {
         host: String,
         dir: String,
     },
+    Agents,
+    Models {
+        agent: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -194,6 +252,9 @@ pub fn parse_target(body: &str, hosts: &[TargetHost]) -> TargetQuery {
         filter: filter.to_owned(),
         written,
     };
+    if let Some(query) = agent_query(body) {
+        return query;
+    }
     if body.starts_with(['/', '~']) {
         return files(here, body, false);
     }
@@ -244,6 +305,28 @@ pub fn parse_target(body: &str, hosts: &[TargetHost]) -> TargetQuery {
     }
 }
 
+fn agent_query(body: &str) -> Option<TargetQuery> {
+    let (marked, bare) = body
+        .strip_prefix('+')
+        .map_or((false, body), |rest| (true, rest));
+    if let Some((agent, filter)) = bare.split_once('/')
+        && agent_named(agent).is_some()
+    {
+        return Some(TargetQuery {
+            level: TargetLevel::Models {
+                agent: agent.to_owned(),
+            },
+            filter: unescape(filter),
+            written: false,
+        });
+    }
+    marked.then(|| TargetQuery {
+        level: TargetLevel::Agents,
+        filter: unescape(bare),
+        written: false,
+    })
+}
+
 fn files(host: String, path: &str, written: bool) -> TargetQuery {
     let (dir, filter) = path
         .rfind('/')
@@ -282,6 +365,17 @@ pub(crate) fn unescape(text: &str) -> String {
         });
     }
     plain
+}
+
+fn escape_model(model: &str) -> String {
+    let mut escaped = String::with_capacity(model.len());
+    for character in model.chars() {
+        if character == '\\' || character.is_whitespace() || "`)]}<>\"',".contains(character) {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
 }
 
 #[must_use]
@@ -364,9 +458,12 @@ impl TargetItem {
             TargetKind::File => PickKind::File,
             TargetKind::Dir => PickKind::Dir,
             TargetKind::Chat => PickKind::Chat,
-            TargetKind::Host | TargetKind::Session | TargetKind::Window | TargetKind::Pane => {
-                PickKind::Place
-            }
+            TargetKind::Host
+            | TargetKind::Session
+            | TargetKind::Window
+            | TargetKind::Pane
+            | TargetKind::Agent
+            | TargetKind::Model => PickKind::Place,
         }
     }
 
@@ -409,7 +506,11 @@ impl TargetItem {
     pub const fn drills(&self) -> bool {
         matches!(
             self.kind,
-            TargetKind::Host | TargetKind::Session | TargetKind::Window | TargetKind::Dir
+            TargetKind::Host
+                | TargetKind::Session
+                | TargetKind::Window
+                | TargetKind::Dir
+                | TargetKind::Agent
         )
     }
 
@@ -419,7 +520,12 @@ impl TargetItem {
             TargetKind::Host | TargetKind::Session => ":",
             TargetKind::Window => ".",
             TargetKind::Dir if !self.typed.ends_with('/') => "/",
-            TargetKind::Dir | TargetKind::Pane | TargetKind::Chat | TargetKind::File => "",
+            TargetKind::Agent => "/",
+            TargetKind::Dir
+            | TargetKind::Pane
+            | TargetKind::Chat
+            | TargetKind::File
+            | TargetKind::Model => "",
         };
         format!("{}{next}", self.typed)
     }
@@ -580,7 +686,7 @@ pub(crate) fn count(value: usize, noun: &str) -> String {
 
 pub(crate) fn session_ref(session: &TargetSession) -> String {
     let plain = !session.name.is_empty()
-        && !session.name.starts_with(['$', '@', '%', '~', '/'])
+        && !session.name.starts_with(['$', '@', '%', '~', '/', '+'])
         && !session
             .name
             .contains(|character: char| character.is_whitespace() || ":.\\".contains(character));
@@ -637,7 +743,14 @@ pub enum RefTarget {
     Session(SessionId),
     Window(WindowId),
     Pane(PaneId),
-    Path { path: String, line: Option<u32> },
+    Path {
+        path: String,
+        line: Option<u32>,
+    },
+    Agent {
+        provider: AgentProvider,
+        model: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -653,6 +766,9 @@ pub struct ResolvedTarget {
 #[must_use]
 pub fn resolve_target(body: &str, hosts: &[TargetHost]) -> Option<ResolvedTarget> {
     let body = unescape(body);
+    if let Some(agent) = body.strip_prefix('+') {
+        return agent_ref(agent, hosts);
+    }
     let (host, rest) = match body.split_once(':') {
         Some((first, rest)) => match hosts.iter().find(|host| host.name == first) {
             Some(host) => (host, rest),
@@ -760,6 +876,30 @@ pub fn resolve_target(body: &str, hosts: &[TargetHost]) -> Option<ResolvedTarget
     pane_ref(session, window, pane, resolved)
 }
 
+fn agent_ref(body: &str, hosts: &[TargetHost]) -> Option<ResolvedTarget> {
+    let (name, model) = match body.split_once('/') {
+        Some((name, model)) if !model.is_empty() => (name, Some(model.to_owned())),
+        Some(_) => return None,
+        None => (body, None),
+    };
+    let provider = agent_named(name)?;
+    Some(ResolvedTarget {
+        kind: if model.is_some() {
+            TargetKind::Model
+        } else {
+            TargetKind::Agent
+        },
+        host: hosts
+            .iter()
+            .find(|host| host.here)
+            .map_or_else(PaletteHostId::default, |host| host.id),
+        here: true,
+        label: body.to_owned(),
+        icon: crate::pane::agent_provider_icon(provider),
+        target: RefTarget::Agent { provider, model },
+    })
+}
+
 fn pane_ref(
     session: &TargetSession,
     window: &TargetWindow,
@@ -817,6 +957,7 @@ fn host_icon(host: &TargetHost) -> IconName {
 #[derive(Clone, Default)]
 pub(crate) struct Around {
     pub(crate) own: Option<PaneId>,
+    pub(crate) agents: Vec<TargetAgent>,
     pub(crate) folder: Option<String>,
     pub(crate) recents: Recents,
     pub(crate) now: u64,
@@ -1064,6 +1205,87 @@ fn chat_items(hosts: &[TargetHost], query: &Query, near: &Near) -> Vec<TargetIte
     items
 }
 
+fn loose_item(
+    kind: TargetKind,
+    label: impl Into<SharedString>,
+    icon: IconName,
+    typed: String,
+    token: String,
+) -> TargetItem {
+    TargetItem {
+        kind,
+        label: label.into(),
+        matches: Vec::new(),
+        detail: SharedString::default(),
+        status: None,
+        mark: None,
+        icon,
+        host: String::new(),
+        host_id: PaletteHostId::default(),
+        target: None,
+        entry: None,
+        typed,
+        token,
+        shown: None,
+        meta: SharedString::default(),
+        score: 0,
+        recent: None,
+    }
+}
+
+fn agent_items(agents: &[TargetAgent], query: &Query) -> Vec<TargetItem> {
+    let prior = Prior {
+        closeness: Closeness::Window,
+        recent: 0.0,
+        depth: 0,
+        changed: false,
+    };
+    agents
+        .iter()
+        .filter_map(|agent| {
+            let mut item = loose_item(
+                TargetKind::Agent,
+                agent.name.clone(),
+                agent.icon.clone(),
+                agent.name.to_string(),
+                format!("+{}", agent.name),
+            )
+            .near(prior, None);
+            item.meta = if agent.model.is_empty() {
+                "default".into()
+            } else {
+                agent.model.clone().into()
+            };
+            item.scored(query, "")
+        })
+        .collect()
+}
+
+fn model_items(agent: &str, models: &[Choice], first: &str, query: &Query) -> Vec<TargetItem> {
+    let mut models = models.iter().collect::<Vec<_>>();
+    if let Some(at) = models.iter().position(|choice| choice.value == first) {
+        let picked = models.remove(at);
+        models.insert(0, picked);
+    }
+    models
+        .into_iter()
+        .filter_map(|choice| {
+            let value = escape_model(&choice.value);
+            let mut item = loose_item(
+                TargetKind::Model,
+                choice.value.clone(),
+                IconName::Sparkle,
+                format!("{agent}/{value}"),
+                format!("+{agent}/{value}"),
+            );
+            if !choice.name.is_empty() && choice.name != choice.value {
+                item.detail = choice.name.clone().into();
+            }
+            item.scored(query, "")
+        })
+        .collect()
+}
+
 fn home_item(place: &Place, near: &Near) -> TargetItem {
     TargetItem::new(
         TargetKind::Dir,
@@ -1175,14 +1397,18 @@ pub(crate) type Sections = Vec<(&'static str, Vec<TargetItem>)>;
 
 fn root_sections(hosts: &[TargetHost], around: &Around, changed: Vec<TargetItem>) -> Sections {
     let near = around.near(hosts);
+    let everything = Query::new("");
+    let agents = agent_items(&around.agents, &everything);
     let Some(here) = hosts.iter().find(|host| host.here) else {
-        return vec![("", fleet_items(hosts, &Query::new(""), &near))];
+        return vec![
+            ("Agents", agents),
+            ("", fleet_items(hosts, &everything, &near)),
+        ];
     };
     let place = Place {
         host: here,
         written: false,
     };
-    let everything = Query::new("");
     let window = spots(here).find(|spot| Some(spot.window.id) == near.window);
     let panes = window.as_ref().map_or_else(Vec::new, |spot| {
         spot.window
@@ -1223,6 +1449,7 @@ fn root_sections(hosts: &[TargetHost], around: &Around, changed: Vec<TargetItem>
         .chain(std::iter::once(home_item(&place, &near)))
         .collect();
     vec![
+        ("Agents", agents),
         ("Here", panes),
         ("Changed", changed),
         ("Chats", chat_items(hosts, &everything, &near)),
@@ -1240,7 +1467,9 @@ fn target_items(query: &TargetQuery, hosts: &[TargetHost], around: &Around) -> V
     let items: Vec<TargetItem> = match &query.level {
         TargetLevel::Top => {
             let Some(here) = hosts.iter().find(|host| host.here) else {
-                return ranked(fleet_items(hosts, &matcher, &near), typed);
+                let mut items = agent_items(&around.agents, &matcher);
+                items.extend(fleet_items(hosts, &matcher, &near));
+                return ranked(items, typed);
             };
             let place = Place {
                 host: here,
@@ -1254,7 +1483,8 @@ fn target_items(query: &TargetQuery, hosts: &[TargetHost], around: &Around) -> V
                     .flat_map(|(_, items)| items)
                     .collect();
             } else {
-                let mut items = fleet_items(hosts, &matcher, &near);
+                let mut items = agent_items(&around.agents, &matcher);
+                items.extend(fleet_items(hosts, &matcher, &near));
                 items.extend(chat_items(hosts, &matcher, &near));
                 items.extend(home_item(&place, &near).scored(&matcher, ""));
                 if let Some(folder) = &around.folder {
@@ -1348,7 +1578,8 @@ fn target_items(query: &TargetQuery, hosts: &[TargetHost], around: &Around) -> V
                 })
                 .collect()
         }
-        TargetLevel::Files { .. } => return Vec::new(),
+        TargetLevel::Agents => agent_items(&around.agents, &matcher),
+        TargetLevel::Files { .. } | TargetLevel::Models { .. } => return Vec::new(),
     };
     let own = around.own.map(PaletteTarget::Pane);
     let mine = |item: &TargetItem| {
@@ -1366,7 +1597,8 @@ fn target_items(query: &TargetQuery, hosts: &[TargetHost], around: &Around) -> V
 
 fn breadcrumb(query: &TargetQuery, root: Option<&PathListRoot>) -> String {
     let parts: Vec<String> = match &query.level {
-        TargetLevel::Top => Vec::new(),
+        TargetLevel::Top | TargetLevel::Agents => Vec::new(),
+        TargetLevel::Models { agent } => vec![agent.clone()],
         TargetLevel::Sessions { host } => vec![host.clone()],
         TargetLevel::Windows { host, session } => vec![host.clone(), session.clone()],
         TargetLevel::Panes {
@@ -1429,6 +1661,8 @@ pub struct TargetPicker {
     raw_before: Option<String>,
     room: Option<Pixels>,
     pending: Option<String>,
+    agents: Vec<TargetAgent>,
+    catalogs: Vec<(AgentProvider, Catalog)>,
     presence: Presence,
     last: Option<Shown>,
     subscriptions: Vec<Subscription>,
@@ -1486,6 +1720,8 @@ impl TargetPicker {
             raw_before: None,
             room: None,
             pending: None,
+            agents: Vec::new(),
+            catalogs: Vec::new(),
             presence: Presence::default(),
             last: None,
             subscriptions: Vec::new(),
@@ -1621,11 +1857,21 @@ impl TargetPicker {
             self.items = Rc::from([]);
             self.headers = Rc::from([]);
             self.top_files = None;
+            self.catalogs
+                .retain(|(_, catalog)| matches!(catalog, Catalog::Ready { .. }));
             cx.notify();
             return;
         };
+        if self.query.is_none() {
+            self.agents = self.backend.agents(cx);
+        }
         let hosts = self.backend.hosts(cx);
         let query = parse_target(body, &hosts);
+        if let TargetLevel::Models { agent } = &query.level
+            && let Some(provider) = agent_named(agent)
+        {
+            self.ask_catalog(provider, cx);
+        }
         let wanted = match &query.level {
             TargetLevel::Files { host, dir } => Some((host.clone(), unescape(dir))),
             TargetLevel::Top => self.folder(cx).and_then(|folder| {
@@ -1663,9 +1909,88 @@ impl TargetPicker {
         self.backend.folder(self.own?, cx)
     }
 
+    fn ask_catalog(&mut self, provider: AgentProvider, cx: &mut App) {
+        if self.catalog(provider).is_some() {
+            return;
+        }
+        let request = NEXT_CATALOG.fetch_add(1, Ordering::Relaxed);
+        let catalog = if self.backend.catalog(provider, self.own, request, cx) {
+            Catalog::Loading(request)
+        } else {
+            Catalog::Failed("Models are not listed here".into())
+        };
+        self.catalogs.push((provider, catalog));
+    }
+
+    fn catalog(&self, provider: AgentProvider) -> Option<&Catalog> {
+        self.catalogs
+            .iter()
+            .find(|(candidate, _)| *candidate == provider)
+            .map(|(_, catalog)| catalog)
+    }
+
+    pub fn apply_catalog(&mut self, reply: &str, cx: &mut Context<Self>) -> bool {
+        let Ok(result) = serde_json::from_str::<AgentCatalogResult>(reply) else {
+            return false;
+        };
+        let Some((_, catalog)) = self.catalogs.iter_mut().find(|(provider, catalog)| {
+            *provider == result.catalog_provider
+                && matches!(catalog, Catalog::Loading(id) if *id == result.request_id)
+        }) else {
+            return false;
+        };
+        let settings = result.config_options.as_ref().and_then(LensSettings::parse);
+        *catalog = match (result.error, settings) {
+            (Some(error), _) => Catalog::Failed(error.into()),
+            (None, Some(settings)) => Catalog::Ready {
+                current: settings.shown_model().to_owned(),
+                models: settings.models,
+            },
+            (None, None) => Catalog::Failed("No models listed".into()),
+        };
+        self.relist(cx);
+        true
+    }
+
+    fn shown_agents(&self) -> Vec<TargetAgent> {
+        self.agents
+            .iter()
+            .map(|agent| {
+                let mut agent = agent.clone();
+                if agent.model.is_empty()
+                    && let Some(Catalog::Ready { current, .. }) = self.catalog(agent.provider)
+                {
+                    agent.model.clone_from(current);
+                }
+                agent
+            })
+            .collect()
+    }
+
+    fn model_rows(&self, agent: &str, filter: &str) -> Vec<TargetItem> {
+        let Some(provider) = agent_named(agent) else {
+            return Vec::new();
+        };
+        let Some(Catalog::Ready { models, current }) = self.catalog(provider) else {
+            return Vec::new();
+        };
+        let picked = self
+            .agents
+            .iter()
+            .find(|candidate| candidate.provider == provider)
+            .map(|candidate| candidate.model.as_str())
+            .filter(|model| models.iter().any(|choice| choice.value == *model))
+            .unwrap_or(current);
+        ranked(
+            model_items(agent, models, picked, &Query::new(filter)),
+            !filter.is_empty(),
+        )
+    }
+
     fn around(&self, cx: &App) -> Around {
         Around {
             own: self.own,
+            agents: self.shown_agents(),
             folder: self.folder(cx),
             recents: palette_recents(cx),
             now: now_secs(),
@@ -1699,6 +2024,10 @@ impl TargetPicker {
                 if self.ranking.is_none() {
                     self.rank(file_query, keep, cx);
                 }
+            }
+            TargetLevel::Models { agent } => {
+                let items = self.model_rows(agent, &query.filter);
+                self.land(keep, items, cx);
             }
             TargetLevel::Top if query.filter.is_empty() => {
                 let changed = self
@@ -2260,6 +2589,13 @@ impl TargetPicker {
     }
 
     fn empty_message(&self) -> SharedString {
+        if let Some(TargetLevel::Models { agent }) = self.query.as_ref().map(|query| &query.level) {
+            return match agent_named(agent).and_then(|provider| self.catalog(provider)) {
+                Some(Catalog::Loading(_)) | None => "Listing…".into(),
+                Some(Catalog::Failed(error)) => error.clone(),
+                Some(Catalog::Ready { .. }) => "No matches".into(),
+            };
+        }
         if self.files_pending() {
             return "Listing…".into();
         }

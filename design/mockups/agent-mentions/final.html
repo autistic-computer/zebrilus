@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent mentions: the child card</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/badge/badge.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/kbd/kbd.css">
+<link rel="stylesheet" href="/penna-src/components/row/row.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/components/well/well.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="mentions.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="mentions.js"></script>
+<style>
+  .zf-section { display: grid; gap: 14px; }
+  .zf-states { display: grid; grid-template-columns: repeat(4, 680px); gap: 24px 32px; align-items: start; }
+  .zf-state { display: grid; gap: 8px; }
+  .zf-state > span { font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zf-state > span > b { margin-right: 6px; color: var(--penna-fg); font-weight: 600; }
+  .zf-ground { padding: 16px 0; border-radius: 14px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-border); }
+
+  .zf-card[data-penna="card.activity"] { position: relative; display: flex; flex-direction: column; width: 100%; padding: 0 8px; overflow: hidden; color: var(--penna-fg-muted); cursor: var(--penna-click-cursor); }
+  .zf-card[data-off] { cursor: default; }
+  .zf-head { display: flex; flex: none; align-items: center; gap: 8px; height: 36px; font-size: var(--penna-text-body-size); line-height: 16px; white-space: nowrap; }
+  .zf-tile[data-penna="tile.stack"] { position: relative; display: grid; flex: none; place-items: center; width: 22px; height: 22px; padding: 0; box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--penna-fg) 16%, transparent); --penna-icon-size: 13px; }
+  .zf-tile[data-program="codex"] { background: #f8f8f8; color: #000; }
+  .zf-tile[data-program="claude"] { background: #e6683d; color: #fff; }
+  .zf-dot { position: absolute; right: -2.5px; bottom: -2.5px; display: grid; place-items: center; width: 10px; height: 10px; border-radius: 50%; background: linear-gradient(var(--penna-fill), var(--penna-fill)), var(--penna-bg); }
+  .zf-dot::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--zz-tone); }
+  .zf-name { flex: none; font-weight: 500; color: var(--penna-fg); }
+  .zf-card[data-off] .zf-name { color: var(--penna-fg-muted); }
+  .zf-sep { flex: none; color: var(--penna-fg-faint); }
+  .zf-word { flex: none; font-size: var(--penna-text-small-size); color: var(--penna-fg-muted); }
+  .zf-word[data-tone="warning"] { color: var(--penna-warning); }
+  .zf-word[data-tone="danger"] { color: var(--penna-danger); }
+  .zf-word[data-tone="normal"] { color: var(--penna-fg); }
+  .zf-time { flex: none; font-size: var(--penna-text-caption-size); font-variant-numeric: tabular-nums; color: var(--penna-fg-faint); }
+  .zf-mark { flex: none; color: var(--penna-fg-faint); --penna-icon-size: 13px; }
+  .zf-card[data-state~="hover"] .zf-time, .zf-card[data-state~="hover"] .zf-mark { color: var(--penna-fg-muted); }
+
+  .zf-peek { display: flex; flex-direction: column; justify-content: flex-end; height: 66px; margin: 0 0 8px 30px; overflow: hidden; -webkit-mask-image: linear-gradient(transparent, #000 22px); mask-image: linear-gradient(transparent, #000 22px); }
+  .zf-line { display: flex; flex: none; align-items: center; gap: 8px; height: 22px; min-width: 0; font-size: var(--penna-text-small-size); line-height: 16px; white-space: nowrap; color: var(--penna-fg-muted); --penna-icon-size: 12px; }
+  .zf-line > [data-icon], .zf-line > .penna-spinner { flex: none; }
+  .zf-line > [data-tint="warning"] { color: var(--penna-warning); }
+  .zf-line > [data-tint="danger"] { color: var(--penna-danger); }
+  .zf-line > .zf-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--penna-fg); }
+  .zf-line > .zf-text[data-muted] { color: var(--penna-fg-muted); }
+  .zf-line > .zf-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--penna-fg-muted); }
+  .zf-line > .zf-push { margin-left: auto; }
+  .zf-line .penna-spinner { color: var(--penna-fg-muted); --penna-icon-size: 12px; }
+  .zf-code { font-family: var(--penna-mono); font-size: 12px; }
+  .zf-wait { display: flex; flex: none; align-items: center; gap: 6px; margin-left: auto; }
+  .zf-quote { margin: 0 0 10px 30px; padding: 0 0 0 12px; border-left: 4px solid var(--penna-divider); font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); color: var(--penna-fg-muted); white-space: normal; }
+
+  .zf-frames { display: grid; grid-template-columns: repeat(4, 860px); gap: 28px; }
+  .zf-frames > figure { display: grid; gap: 10px; margin: 0; }
+  .zf-frames figcaption { font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zf-frames figcaption b { margin-right: 6px; font-size: 15px; color: var(--penna-fg); font-weight: 600; }
+  .zf-win.penna-window { grid-template-columns: 1fr; grid-template-rows: 40px 1fr; height: 620px; }
+  .zf-win > [data-penna="titlebar"] { padding-left: 82px; gap: 2px; }
+  .zf-win [data-penna="tab.window"] { width: 180px; }
+  .zf-host[data-penna="pane"] { position: relative; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .zf-host [data-penna="button.title"], .zf-pip [data-penna="button.title"] { max-width: none; color: var(--penna-fg); }
+  .zf-host [data-penna="button.title"] [data-icon], .zf-pip [data-penna="button.title"] [data-icon] { --penna-icon-size: 14px; }
+  .zf-col { display: flex; flex: 1; flex-direction: column; gap: 10px; width: 100%; max-width: 680px; min-height: 0; margin: 0 auto; padding: 8px 0 0; overflow: hidden; font-size: var(--penna-text-read-body-size); line-height: var(--penna-text-read-body-line); }
+  .zf-col > p { margin: 0; }
+  .zf-col > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 85%; }
+  .zf-dock { flex: none; width: 100%; max-width: 704px; margin: 0 auto; }
+  .zf-pip[data-penna="floating.pip"] { position: absolute; z-index: 3; bottom: 12px; display: flex; flex-direction: column; width: 380px; height: 420px; overflow: hidden; }
+  .zf-pip[data-stash] { right: -320px; }
+  .zf-pip[data-open] { right: 12px; }
+  .zf-pip > [data-penna="bar.pane"] { flex: none; }
+  .zf-pip-tx { display: flex; flex: 1; flex-direction: column; gap: 8px; min-height: 0; padding: 4px 14px 0; overflow: hidden; font-size: var(--penna-text-read-body-size); line-height: var(--penna-text-read-body-line); }
+  .zf-pip-tx > p { margin: 0; }
+  .zf-pip-tx > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 92%; }
+  .zf-pip-tx .zz-steps { flex: none; }
+  .zf-pip .penna-chat-frame-top { padding: 8px 8px 0; }
+  .zf-pip .penna-chat-frame-foot { margin: 6px 8px 8px; }
+  .zf-caret { display: inline-block; width: 1px; height: 15px; margin-left: 1px; vertical-align: -3px; background: var(--penna-fg); }
+
+  .zf-tables { display: grid; grid-template-columns: repeat(2, 900px); gap: 32px 48px; align-items: start; }
+  .zf-tables h3 { margin: 0 0 6px; font-size: var(--penna-text-body-size); font-weight: 600; }
+  .zf-tables table { width: 100%; border-collapse: collapse; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zf-tables th, .zf-tables td { padding: 6px 14px 6px 0; border-bottom: 1px solid var(--penna-divider); text-align: left; vertical-align: top; }
+  .zf-tables th { font-weight: 600; color: var(--penna-fg); }
+  .zf-tables td { color: var(--penna-fg-muted); }
+  .zf-tables td:first-child { width: 22%; color: var(--penna-fg); }
+  .zf-tables td:last-child { width: 34%; font-family: var(--penna-mono); font-size: 11px; }
+  .zf-new { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 4px; background: color-mix(in srgb, var(--penna-accent) 18%, transparent); color: var(--penna-accent-ink); font-family: var(--penna-font); font-size: 10px; font-weight: 600; line-height: 15px; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Agent mentions: the child card</h1>
+    <p>Take 3, for the build. The child is a full chat pane in a PiP that opens stashed: a 60 px strip at the window edge, and the card is how you watch it. A click on the card brings the child in with focus; while it is in view the card is its header line only. <b>new</b> marks a number the kit and <code>zz.css</code> do not have yet.</p>
+  </div>
+
+  <section class="zf-section">
+    <h2>1. The card</h2>
+    <div class="zf-states" data-states></div>
+  </section>
+
+  <section class="zf-section">
+    <h2>2. In the window</h2>
+    <div class="zf-frames" data-frames></div>
+  </section>
+
+  <section class="zf-section">
+    <h2>3. Numbers</h2>
+    <div class="zf-tables" data-numbers></div>
+  </section>
+</main>
+<script>
+(() => {
+  const { esc, ic, spin, you, step, live, pointer, badge, composer, ring, PROMPT, REPLY, COMMAND } = window.zzm;
+  const ERROR = "stream disconnected before completion";
+  const S = {
+    working: { tone: "accent", word: "working", time: "42s" },
+    asking: { tone: "warning", word: "asking", wordTone: "warning", time: "1m 5s" },
+    allowed: { tone: "accent", word: "working", time: "1m 18s" },
+    done: { tone: "success", word: "done", wordTone: "normal", time: "2m 31s", extra: badge("1 allowed", "success") },
+    failed: { tone: "danger", word: "failed", wordTone: "danger", time: "1m 12s" },
+    closed: { word: "closed", time: "58s", off: true },
+  };
+  const tile = (tone) => `<span class="zf-tile" data-penna="tile.stack" data-program="codex">${ic("zz-openai")}${tone ? `<span class="zf-dot" data-tone="${tone}"></span>` : ""}</span>`;
+  const line = (glyph, text, { detail = "", tint, muted, end = "", code } = {}) =>
+    `<div class="zf-line">${glyph === "spin" ? spin() : glyph ? ic(glyph, tint ? ` data-tint="${tint}"` : "") : ""}<span class="zf-text${code ? " zf-code" : ""}"${muted ? " data-muted" : ""}>${text}</span>${detail ? `<span class="zf-detail">${detail}</span>` : ""}${end}</div>`;
+  const wait = `<span class="zf-wait">${spin()}<span>waiting for claude</span></span>`;
+  const PEEK = {
+    working: [
+      line("file", "Read turn.rs"),
+      line("search", "Searched for ack_turn", { detail: "crates/zz-daemon" }),
+      line(null, "Reading the retry loop", { muted: true, end: `<span class="zf-time">42s</span>` }),
+    ],
+    asking: [
+      line("file", "Read turn.rs"),
+      line("search", "Searched for ack_turn", { detail: "crates/zz-daemon" }),
+      line("square-terminal", COMMAND, { tint: "warning", code: true, end: wait }),
+    ],
+    allowed: [
+      line("file", "Read turn.rs"),
+      line("search", "Searched for ack_turn", { detail: "crates/zz-daemon" }),
+      line("spin", COMMAND, { code: true, end: `<span class="zf-push">${badge("allowed by claude", "success")}</span>` }),
+    ],
+    failed: [
+      line("search", "Searched for ack_turn", { detail: "crates/zz-daemon" }),
+      line("square-terminal", COMMAND, { code: true }),
+      line("triangle-alert", ERROR, { tint: "danger" }),
+    ],
+  };
+  const card = (key, { hover = false, collapsed = false } = {}) => {
+    const s = S[key];
+    const head = `<div class="zf-head">${tile(s.tone)}<span class="zf-name">codex</span><span class="zf-sep">·</span><span class="zf-word"${s.wordTone ? ` data-tone="${s.wordTone}"` : ""}>${s.word}</span><span class="zz-grow"></span>${s.extra ?? ""}<span class="zf-time">${s.time}</span>${s.off ? "" : `<i class="zf-mark" data-icon="picture-in-picture"></i>`}</div>`;
+    let body = "";
+    if (!collapsed && PEEK[key]) body = `<div class="zf-peek">${PEEK[key].join("")}</div>`;
+    if (!collapsed && key === "done") body = `<div class="zf-quote">${esc(REPLY)}</div>`;
+    return `<div class="zf-card penna-card" data-penna="card.activity" role="button"${s.off ? " data-off" : ""}${hover ? ` data-state="hover"` : ""}>${head}${body}${hover ? pointer(420, 50) : ""}</div>`;
+  };
+
+  const STATES = [
+    ["Working", "The last three lines, the oldest fading", card("working")],
+    ["Pointer on it", "", card("working", { hover: true })],
+    ["Asking", "", card("asking")],
+    ["Allowed", "", card("allowed")],
+    ["Done", "", card("done")],
+    ["Failed", "", card("failed")],
+    ["Closed", "", card("closed")],
+    ["PiP in view", "Header line only", card("allowed", { collapsed: true })],
+  ];
+  document.querySelector("[data-states]").innerHTML = STATES.map(([name, note, html]) => `<div class="zf-state"><span><b>${name}</b>${note}</span><div class="zf-ground">${html}</div></div>`).join("");
+
+  const BRIEF = "In crates/zz-daemon/src/agent/turn.rs, can the retry loop send the same prompt twice? Check what happens when a retry is scheduled before the first send's ack arrives. Answer yes or no, with the line that decides it.";
+  const hostFoot = `<div class="penna-chat-frame-foot"><div></div><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small"><i class="zz-dim" data-icon="hand"></i><span class="penna-label">Opus 5.5</span><span class="zz-dim">High</span>${ic("chevron-down")}</button></div>`;
+  const childFoot = `<div class="penna-chat-frame-foot"><div></div><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small"><i class="zz-dim" data-icon="hand"></i><span class="penna-label">gpt-6.1-sol</span><span class="zz-dim">High</span>${ic("chevron-down")}</button></div>`;
+  const askSheet = `<div class="penna-chat-composer"><span class="input-underlay" data-penna="field.composer"></span><div class="penna-chat-field input-chrome" data-penna="field.composer" data-asking><div class="penna-chat-ask"><div class="penna-chat-ask-header">${ic("square-terminal")}<span class="penna-chat-ask-title">Run this command?</span></div><div class="penna-chat-ask-body"><div class="penna-well penna-chat-ask-inset" data-penna="well"><span>${COMMAND}</span></div></div><div class="penna-chat-ask-options"><div class="penna-row penna-chat-ask-option" data-penna="menu-item" data-state="selected"><div class="penna-chat-ask-text"><span class="penna-chat-ask-label">Allow once</span></div><kbd class="penna-kbd" data-penna="keycap" data-size="small"><span>1</span></kbd></div><div class="penna-row penna-chat-ask-option" data-penna="menu-item"><div class="penna-chat-ask-text"><span class="penna-chat-ask-label">Deny</span></div><kbd class="penna-kbd" data-penna="keycap" data-size="small"><span>2</span></kbd></div></div></div></div></div>`;
+  const childTx = {
+    working: [you(BRIEF), `<div class="zz-steps">${step("file", "Read turn.rs")}${step("search", "Searched for ack_turn", "crates/zz-daemon")}${live("Reading the retry loop", "42s")}</div>`],
+    asking: [you(BRIEF), `<div class="zz-steps">${step("file", "Read turn.rs")}${step("search", "Searched for ack_turn", "crates/zz-daemon")}</div>`],
+    allowed: [you(BRIEF), `<div class="zz-steps">${step("file", "Read turn.rs")}${step("search", "Searched for ack_turn", "crates/zz-daemon")}${step("spin", COMMAND, "", { strong: true })}</div>`],
+    done: [you(BRIEF), `<div class="zz-steps">${step("file", "Read turn.rs")}${step("search", "Searched for ack_turn", "crates/zz-daemon")}${step("square-terminal", COMMAND, "41 passed")}</div>`, `<p>${esc(REPLY)}</p>`],
+  };
+  const childComposer = (key, focused) => key === "asking"
+    ? `<div class="penna-chat-frame"><div class="penna-chat-frame-top">${askSheet}</div></div>`
+    : `<div class="penna-chat-frame"><div class="penna-chat-frame-top">${composer({ text: focused ? `<span class="zf-caret"></span>` : "", hint: "Message Codex…" })}</div>${childFoot}</div>`;
+  const pip = (key, place) => `<div class="zf-pip" data-penna="floating.pip" ${place}>
+    <div data-penna="bar.pane"><span data-penna="button.title">${ic("zz-openai")}<span>codex</span><span class="zz-dim">~/dev/zebrilus</span></span><span class="zz-grow"></span><button data-penna="icon-button.bar" aria-label="Tile back">${ic("app-window")}</button><button data-penna="icon-button.bar" aria-label="Close">${ic("xmark")}</button></div>
+    <div class="zf-pip-tx">${childTx[key].join("")}</div>
+    ${childComposer(key, place === "data-open")}
+  </div>`;
+  const hostTail = { done: `<p>Codex confirms it. I'll guard the resend on the turn id in turn.rs.</p>` };
+  const frame = ({ key, cardKey = key, collapsed = false, place }) => `<div class="penna-window zf-win" data-penna="window">
+    <div class="penna-lights"><i></i><i></i><i></i></div>
+    <header data-penna="titlebar"><div data-penna="tab.strip"><div data-penna="tab.window" aria-selected="true">${ic("zz-claude")}<span>zebrilus</span></div><div data-penna="tab.window">${ic("terminal")}<span>cargo</span></div></div></header>
+    <section class="zf-host" data-penna="pane">
+      <div data-penna="bar.pane"><span data-penna="button.title">${ic("zz-claude")}<span>Claude Code</span><span class="zz-dim">~/dev/zebrilus</span></span></div>
+      <div class="zf-col">${you(PROMPT)}<p>I'll have codex read turn.rs and answer that.</p><div class="zz-steps">${step("square-terminal", "zz new-pane -d --kind agent codex")}</div>${card(cardKey, { collapsed })}${hostTail[key] ?? ""}</div>
+      <div class="zf-dock"><div class="penna-chat-frame"><div class="penna-chat-frame-top">${composer({ text: place === "data-open" ? "" : `<span class="zf-caret"></span>` })}</div>${hostFoot}</div></div>
+      ${pip(key, place)}
+    </section>
+  </div>`;
+  const FRAMES = [
+    ["a", "Just opened: the card peeks, the child is stashed", { key: "working", place: "data-stash" }],
+    ["b", "Asking: the strip shows the child's own ask sheet edge, no mark", { key: "asking", place: "data-stash" }],
+    ["c", "Clicked: the child slides in with focus, the card is its header line", { key: "allowed", collapsed: true, place: "data-open" }],
+    ["d", "Done: stashed again, the reply in the card", { key: "done", place: "data-stash" }],
+  ];
+  document.querySelector("[data-frames]").innerHTML = FRAMES.map(([name, note, opts]) => `<figure><figcaption><b>${name}</b>${note}</figcaption>${frame(opts)}</figure>`).join("");
+
+  const NEW = `<span class="zf-new">new</span>`;
+  const table = (title, rows) => `<div><h3>${title}</h3><table><thead><tr><th>Part</th><th>Value</th><th>From</th></tr></thead><tbody>${rows.map(([part, value, from, fresh]) => `<tr><td>${part}</td><td>${fresh ? NEW : ""}${value}</td><td>${from}</td></tr>`).join("")}</tbody></table></div>`;
+  document.querySelector("[data-numbers]").innerHTML = [
+    table("Card and header", [
+      ["Card", "card.activity look: fill, edge, hover and pressed fills from the role; full chat column width", "CardLook::Activity, CHAT_CONTENT_MAX_WIDTH 680"],
+      ["Corner radius", "the role's radius, 12 in macos", "radius_of(CardLook::Activity)"],
+      ["Padding", "0 top and bottom, 8 left and right", "agent row: p_0().px(8)"],
+      ["Gap between cards", "6", "agents(): gap_1p5"],
+      ["Header height", "36", "agent row: h(36)"],
+      ["Header gap", "8 between every part", "agent row: gap_2"],
+      ["Avatar", "program tile 22, glyph 13, radius of tile.stack (round in macos), brand colors", "VENDOR_TILE, program_tile, catalog Look::Mark"],
+      ["Status dot", "7 (round(22 × 0.3)), ring 1.5 in the card's ground, offset −2.5 right and bottom; accent working, warning asking, success done, danger failed, none closed", "status_dot, DOT_SHARE, DOT_RING, DOT_OVERHANG, attention_tone"],
+      ["Name", "Body 13, line 16, weight 500, foreground", "today regular in foreground.muted", true],
+      ["Separator", "· in foreground.faint", "", true],
+      ["State word", "Small 12; working and closed foreground.muted, asking warning, done foreground, failed danger", "tones from Theme::tone", true],
+      ["Time", "Caption 11, tabular, foreground.faint; foreground.muted on hover", "agent row duration label, chat_rows::duration"],
+      ["Time and PiP mark at rest", "always shown; hidden only on closed", "today only on hover", true],
+      ["PiP mark", "picture-in-picture 13, foreground.faint", "agent row IconName::PictureInPicture"],
+      ["Allowed badge", "Badge small, Tone::Success, after the state word's spacer, before the time: \"1 allowed\" in the header, \"allowed by claude\" on the peek line", "penna Badge", true],
+      ["Collapsed", "header only, 36 high, while the child's PiP is in view and on closed", "", true],
+    ]),
+    table("Peek and reply", [
+      ["Peek lines", "3, newest at the bottom", "", true],
+      ["Peek line height", "22", "", true],
+      ["Peek height", "66, then 8 bottom padding", "", true],
+      ["Peek indent", "30 from the card's padding, so lines start under the name (8 + 22 + 8 = 38 from the card edge)", "", true],
+      ["Peek text", "Small 12, line 16; label foreground, target foreground.muted; the live line foreground.muted with its time", "TextStyle::Small; ink as chat step rows", true],
+      ["Peek glyph", "12, gap 8; failed and asking tints danger and warning", "ACTIVITY_DISCLOSURE_SIZE 12; tints as ActivityMark.tint", true],
+      ["Command", "mono 12", "--penna-mono", true],
+      ["Fade", "top 22, transparent to opaque: the oldest line fades out", "", true],
+      ["Asking line", "square-terminal glyph in warning, the command, then a 12 spinner and \"waiting for claude\" in foreground.muted, right aligned", "penna Spinner small", true],
+      ["Reply block", "rule 4 in the divider color, 12 between rule and text, text Body 13 line 18 foreground.muted, 30 indent, 10 below; whole reply, no fade", "markdown Blockquote: border_l S4, divider_color, foreground.muted (its padding is 16)", true],
+      ["Click", "focuses the child; its PiP slides in from the stash", "PipStage stash, PaneMotion"],
+      ["Child PiP", "opens stashed: 60 of it showing at the nearer side edge, content and all", "pip-panes stash"],
+    ]),
+  ].join("");
+
+  window.zzm.round();
+})();
+</script>
+</body>
+</html>

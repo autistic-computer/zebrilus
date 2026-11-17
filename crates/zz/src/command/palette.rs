@@ -3,14 +3,15 @@ use std::{rc::Rc, sync::Arc};
 use ala::{App, Entity, KeyDownEvent, SharedString, Subscription};
 use penna::IconName;
 use zz_client::{
-    completion::PaneKindAvailability, gui_actions::GuiOffer, place::ActionKind, recents::Recents,
+    agent_launch::AgentLaunches, completion::PaneKindAvailability, gui_actions::GuiOffer,
+    place::ActionKind, recents::Recents,
 };
 use zz_protocol::{
     CommandInvocation, InputMessage, MuxSnapshot, PaneId, PaneStatusState, PathEntry, PathListRoot,
 };
 use zz_ui::{
     command::{
-        GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteHostState,
+        CatalogSink, GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteHostState,
         PaletteSettings, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
         PaletteTreeSession, PaletteTreeWindow, palette_chats,
     },
@@ -22,7 +23,7 @@ pub(crate) use zz_ui::command::{CommandPaletteEvent, CommandPaletteView, GuiEven
 
 use crate::{
     mux::{
-        client::{HostPathListUpdate, MuxClient, PathPickerUpdate},
+        client::{AgentCatalogReply, HostPathListUpdate, MuxClient, PathPickerUpdate},
         hosts::{HostId, HostState},
         nav::{MuxTreeHost, MuxTreeModel, MuxTreePane, MuxTreePaneKind, TreeNode, TreeTarget},
         prefix::terminal_key_input,
@@ -351,6 +352,18 @@ impl PaletteBackend for MuxPalette {
                     }
                     PathPickerUpdate::Open { .. } | PathPickerUpdate::Close => {}
                 });
+            }),
+        )
+    }
+
+    fn agent_launches(&self, _: &App) -> Option<AgentLaunches> {
+        Some(crate::agent::launch::load())
+    }
+
+    fn feed_catalogs(&self, sink: CatalogSink, cx: &mut App) -> Option<Subscription> {
+        Some(
+            cx.subscribe(&self.mux, move |_, event: &AgentCatalogReply, cx| {
+                sink(&event.0, cx);
             }),
         )
     }

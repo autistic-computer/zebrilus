@@ -4,8 +4,11 @@ use ala::{
     AnyElement, App, HighlightStyle, InteractiveText, IntoElement, SharedString, StyledText, Window,
 };
 
-use zz_client::agent_launch::interactive_shell;
-use zz_protocol::{CommandInvocation, PaneId};
+use zz_client::{agent_launch::interactive_shell, agent_settings::agent_program};
+use zz_protocol::{
+    CommandInvocation, PaneId,
+    agent_mention::{Mention, mention_spans},
+};
 
 use crate::{
     mention::{ref_end, ref_highlight, ref_spans},
@@ -28,6 +31,7 @@ pub struct ChatRefs {
 impl ChatRefs {
     fn resolve(&self, token: &str) -> Option<ResolvedTarget> {
         resolve_target(token, &self.hosts)
+            .filter(|target| !matches!(target.target, RefTarget::Agent { .. }))
     }
 
     fn resolve_code(&self, code: &str) -> Option<ResolvedTarget> {
@@ -220,9 +224,30 @@ pub fn ref_text(
 ) -> Option<AnyElement> {
     let mut shown = String::with_capacity(text.len());
     let mut ranges = Vec::new();
+    let mut plain = Vec::new();
     let mut targets = Vec::new();
     let mut last = 0;
+    let agents = mention_spans(text);
     for span in ref_spans(text) {
+        let agent = agents
+            .contains(&span)
+            .then(|| Mention::parse(&text[span.clone()]))
+            .flatten()
+            .and_then(|mention| match mention {
+                Mention::Agent { provider, model } => Some(match model {
+                    Some(model) => format!("@{}/{model}", agent_program(provider)),
+                    None => format!("@{}", agent_program(provider)),
+                }),
+                Mention::Chat { .. } => None,
+            });
+        if let Some(agent) = agent {
+            shown.push_str(&text[last..span.start]);
+            let start = shown.len();
+            shown.push_str(&agent);
+            plain.push(start..shown.len());
+            last = span.end;
+            continue;
+        }
         let Some(target) = refs.resolve(&text[span.start + 1..span.end]) else {
             continue;
         };
@@ -233,15 +258,17 @@ pub fn ref_text(
         targets.push(target);
         last = span.end;
     }
-    if targets.is_empty() {
+    if targets.is_empty() && plain.is_empty() {
         return None;
     }
     shown.push_str(&text[last..]);
     let style = ref_highlight(cx);
-    let highlights = ranges
+    let mut highlights = ranges
         .iter()
+        .chain(&plain)
         .map(|range| (range.clone(), style))
         .collect::<Vec<_>>();
+    highlights.sort_by_key(|(range, _)| range.start);
     let open = Arc::clone(&refs.open);
     Some(
         InteractiveText::new(

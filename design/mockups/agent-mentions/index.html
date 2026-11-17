@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent mentions: the child row</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/badge/badge.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="mentions.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="mentions.js"></script>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Agent mentions: the child row</h1>
+    <p>How a child chat shows in the host chat. Claude is the host; it opened codex in a PiP. Rows are states, columns are takes. A click on the row focuses the PiP. Also: <a href="menu.html">the @ menu</a>, <a href="window.html">the window</a>.</p>
+  </div>
+  <div class="zz-board" data-board></div>
+</main>
+<script>
+(() => {
+  const { you, takes, PROMPT } = window.zzm;
+  const TAKES = [
+    ["Take 1", "Today's subagent card, with the state in words and a row under it for each ask, decision and failure"],
+    ["Take 2", "One step row like a tool call; it grows a line only to ask or to fold in the reply"],
+    ["Take 3", "A card holding a live peek at the PiP's last lines, so you see what the child is doing without opening it"],
+  ];
+  const STATES = [
+    ["working", "Working"],
+    ["working", "Pointer on it", true],
+    ["asking", "Asking"],
+    ["allowed", "Allowed"],
+    ["done", "Done"],
+    ["failed", "Failed"],
+    ["closed", "Closed"],
+  ];
+  const cells = [`<div></div>`, ...TAKES.map(([name, line]) => `<div class="zz-col"><b>${name}</b><span>${line}</span></div>`)];
+  cells.push(`<div class="zz-state">Sent</div>`, `<div class="zz-chat zz-span">${you(PROMPT)}<p>I'll have codex read turn.rs and answer that.</p></div>`);
+  for (const [key, label, hover] of STATES) {
+    cells.push(`<div class="zz-state">${label}</div>`);
+    for (const take of takes) cells.push(`<div class="zz-chat">${take(key, hover)}</div>`);
+  }
+  document.querySelector("[data-board]").innerHTML = cells.join("");
+  window.zzm.round();
+})();
+</script>
+</body>
+</html>

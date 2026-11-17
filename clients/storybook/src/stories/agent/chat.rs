@@ -465,6 +465,7 @@ impl Render for Thread {
                     touch: self.touch,
                     inset_top: self.inset_top,
                     inset_bottom: px(0.0),
+                    children: None,
                 };
                 fill.map(|fill| match height {
                     Some(height) => fill.h(px(height)),
@@ -508,6 +509,7 @@ impl Render for Thread {
                     owner: None,
                     ground: None,
                     touch: self.touch,
+                    children: None,
                 };
                 let view = &self.script.view;
                 let now = self.script.at;
@@ -556,7 +558,7 @@ impl Render for Views {
     }
 }
 
-fn threads(cases: Vec<(&str, Thread)>, window: &mut Window, cx: &mut App) -> AnyView {
+pub(super) fn threads(cases: Vec<(&str, Thread)>, window: &mut Window, cx: &mut App) -> AnyView {
     let views = cases
         .into_iter()
         .map(|(label, thread)| {

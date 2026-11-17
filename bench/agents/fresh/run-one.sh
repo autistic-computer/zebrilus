@@ -13,7 +13,7 @@ H=$RUN/h WS=$RUN/ws SOCK=/tmp/fus-${RUN##*/}.sock
 mkdir -p "$H/Library" "$H/.claude" "$H/.codex" "$H/.config/zz" "$WS" "$RUN/bin" "$RUN/fx"
 ln -s "$HOME/Library/Keychains" "$H/Library/Keychains"
 ln -s "$HOME/.codex/auth.json" "$H/.codex/auth.json"
-case $MODEL in claude-*) PROVIDER=claude-code ;; *) PROVIDER=codex ;; esac
+case $MODEL in claude-*) PROVIDER=claude ;; *) PROVIDER=codex ;; esac
 printf '{\n  "model": "%s"\n}\n' "${CLAUDE_MODEL:-claude-haiku-5-5}" > "$H/.claude/settings.json"
 printf 'model = "%s"\n' "${CODEX_MODEL:-gpt-6-luna}" > "$H/.codex/config.toml"
 rg '^host-' "$HOME/.config/zz/config" > "$H/.config/zz/config" 2>/dev/null
@@ -76,7 +76,7 @@ printf '%s\n' "$PROMPT" > "$RUN/prompt.txt"
 if [ "$ARM" = pane ]; then
   PX=$(Z new-session -d -P -F '#{pane_id}' -s work -n main -x 200 -y 50 -c "$WS") || { echo "daemon start failed" >&2; exit 2; }
   Z set-option -g agent-auto-approve "$AUTO"
-  ME=$(Z split-window --kind agent --provider "$PROVIDER" -d -P -F '#{pane_id}' -t "$PX" -c "$WS")
+  ME=$(Z split-window -d -P -F '#{pane_id}' -t "$PX" -c "$WS" --kind agent "$PROVIDER")
   P1=$(Z split-window -h -d -P -F '#{pane_id}' -t "$ME" -c "$WS")
   Z kill-pane -t "$PX"
 else

@@ -44,6 +44,7 @@ pub(crate) type AgentStreamSink =
 #[derive(Debug)]
 pub(crate) enum HostCommand {
     Prompt(QueuedPrompt),
+    Join(AgentTurnWaiter),
     Steer(AgentPrompt),
     Cancel,
     Unqueue,
@@ -117,6 +118,7 @@ pub(crate) enum AgentTurnFailure {
     Cancelled,
     Reclaimed,
     Closed,
+    NoTurn,
 }
 
 #[derive(Debug)]
@@ -191,18 +193,70 @@ fn select_permission(
     Ok((permission.request_id, id.to_owned()))
 }
 
+pub(crate) fn typed_answer(
+    pending: &[AgentPendingPermission],
+    request: Option<u64>,
+    text: &str,
+) -> Result<(u64, Vec<AgentQuestionAnswer>), String> {
+    let permission = match request {
+        Some(id) => pending.iter().find(|pending| pending.request_id == id),
+        None => pending.first(),
+    }
+    .ok_or_else(|| "no pending permission".to_owned())?;
+    let [question] = permission.questions.as_slice() else {
+        return Err(format!(
+            "request {} asks {} questions; --answer answers one",
+            permission.request_id,
+            permission.questions.len()
+        ));
+    };
+    Ok((
+        permission.request_id,
+        vec![AgentQuestionAnswer {
+            id: question.id.clone(),
+            answers: vec![text.to_owned()],
+        }],
+    ))
+}
+
 pub(crate) type AgentTurnResult = Result<AgentTurnReply, AgentTurnFailure>;
 #[derive(Debug)]
 pub(crate) struct AgentTurnWaiter {
     pub(crate) reply: crate::daemon::cmdq::Reply<AgentTurnResult>,
     pub(crate) on_block: AgentBlockPolicy,
     pub(crate) audit: Arc<Mutex<Vec<String>>>,
+    pub(crate) asks: Option<AgentAsks>,
+}
+
+#[derive(Clone)]
+pub(crate) struct AgentAsks(pub(crate) Arc<dyn Fn(&AgentPendingPermission) + Send + Sync>);
+
+impl std::fmt::Debug for AgentAsks {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("AgentAsks")
+    }
 }
 
 #[derive(Debug)]
 pub(crate) struct QueuedPrompt {
     pub(crate) prompt: AgentPrompt,
     pub(crate) waiter: Option<AgentTurnWaiter>,
+    pub(crate) source: PromptSource,
+    pub(crate) note: Option<String>,
+}
+
+fn waiting_prompts(queue: &VecDeque<QueuedPrompt>) -> usize {
+    queue
+        .iter()
+        .filter(|queued| queued.source != PromptSource::Injected)
+        .count()
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PromptSource {
+    Composer,
+    Command,
+    Injected,
 }
 
 impl QueuedPrompt {
@@ -223,6 +277,8 @@ impl From<AgentPrompt> for QueuedPrompt {
         Self {
             prompt,
             waiter: None,
+            source: PromptSource::Composer,
+            note: None,
         }
     }
 }
@@ -283,6 +339,7 @@ pub(crate) struct AgentPaneState {
     pub(crate) session_id: Option<String>,
     pub(crate) cwd: PathBuf,
     pub(crate) queued_prompts: usize,
+    pub(crate) waiting_prompts: usize,
     pub(crate) pending_permissions: Vec<AgentPendingPermission>,
     pub(crate) error: Option<String>,
     pub(crate) last_seq: u64,
@@ -303,6 +360,7 @@ impl AgentPaneState {
             session_id: spec.resume_session.clone(),
             cwd: spec.cwd.clone(),
             queued_prompts: 0,
+            waiting_prompts: 0,
             pending_permissions: Vec::new(),
             error: None,
             last_seq: 0,
@@ -557,12 +615,15 @@ impl AgentHost {
         let Some(handle) = panes.get(&pane) else {
             return Err(command);
         };
-        if let HostCommand::Prompt(prompt) = command {
-            return handle
-                .prompts
-                .try_send(prompt)
-                .map_err(|error| HostCommand::Prompt(error.into_inner()));
-        }
+        let command = match command {
+            HostCommand::Prompt(prompt) if prompt.source != PromptSource::Injected => {
+                return handle
+                    .prompts
+                    .try_send(prompt)
+                    .map_err(|error| HostCommand::Prompt(error.into_inner()));
+            }
+            command => command,
+        };
         if matches!(
             &command,
             HostCommand::Cancel
@@ -689,6 +750,7 @@ async fn run_pane(
         active_turn: None,
         dispatched_prompt: None,
         active_waiter: None,
+        joined_waiters: Vec::new(),
         session_waiter: None,
         new_session_pending: false,
         turn_reply: AgentTurnReply::default(),
@@ -721,6 +783,7 @@ struct PanePump {
     active_turn: Option<u64>,
     dispatched_prompt: Option<(u64, AgentPrompt)>,
     active_waiter: Option<AgentTurnWaiter>,
+    joined_waiters: Vec<AgentTurnWaiter>,
     session_waiter: Option<crate::daemon::cmdq::Reply<Result<(), String>>>,
     new_session_pending: bool,
     turn_reply: AgentTurnReply,
@@ -840,16 +903,12 @@ impl PanePump {
         inbox: &Receiver<PaneInput>,
     ) {
         while let Ok(queued) = prompts.try_recv() {
-            self.emit(AgentStreamPayload::PromptsReclaimed {
-                prompts: vec![queued.into_reclaimed(AgentTurnFailure::Closed)],
-            });
+            self.reclaim_prompts(vec![queued], &AgentTurnFailure::Closed);
         }
         while let Ok(input) = inbox.try_recv() {
             match input {
                 PaneInput::Command(HostCommand::Prompt(queued)) => {
-                    self.emit(AgentStreamPayload::PromptsReclaimed {
-                        prompts: vec![queued.into_reclaimed(AgentTurnFailure::Closed)],
-                    });
+                    self.reclaim_prompts(vec![queued], &AgentTurnFailure::Closed);
                 }
                 PaneInput::Command(HostCommand::Steer(prompt)) => {
                     self.emit(AgentStreamPayload::PromptsReclaimed {
@@ -904,6 +963,13 @@ impl PanePump {
     fn command(&mut self, command: HostCommand) {
         match command {
             HostCommand::Prompt(prompt) => self.prompt(prompt),
+            HostCommand::Join(waiter) => {
+                if self.active_turn.is_some() {
+                    self.joined_waiters.push(waiter);
+                } else {
+                    waiter.reply.try_send(Err(AgentTurnFailure::NoTurn));
+                }
+            }
             HostCommand::Steer(prompt) => self.steer(prompt),
             HostCommand::Cancel => self.cancel(),
             HostCommand::Unqueue => self.reclaim_queue(),
@@ -1137,9 +1203,7 @@ impl PanePump {
                     let Ok(queued) = self.prompts.try_recv() else {
                         break;
                     };
-                    self.emit(AgentStreamPayload::PromptsReclaimed {
-                        prompts: vec![queued.into_reclaimed(AgentTurnFailure::Reclaimed)],
-                    });
+                    self.reclaim_prompts(vec![queued], &AgentTurnFailure::Reclaimed);
                 }
                 self.reclaim_queue();
             }
@@ -1402,12 +1466,21 @@ impl PanePump {
         let queued_bytes = self.queue.iter().fold(0usize, |total, queued| {
             total.saturating_add(queued.prompt.byte_len())
         });
-        if self.queue.len() >= MAX_AGENT_QUEUED_PROMPTS
-            || queued_bytes.saturating_add(queued.prompt.byte_len()) > MAX_AGENT_PROMPT_BYTES
-        {
-            self.emit(AgentStreamPayload::PromptsReclaimed {
-                prompts: vec![queued.into_reclaimed(AgentTurnFailure::Reclaimed)],
-            });
+        let over_bytes =
+            queued_bytes.saturating_add(queued.prompt.byte_len()) > MAX_AGENT_PROMPT_BYTES;
+        let injected = queued.source == PromptSource::Injected;
+        if injected && over_bytes {
+            log::warn!(
+                target: "zz::agent",
+                "{} dropped a {} byte message because its queue is full",
+                self.pane,
+                queued.prompt.byte_len()
+            );
+            return;
+        }
+        let waiting = waiting_prompts(&self.queue);
+        if !injected && (waiting >= MAX_AGENT_QUEUED_PROMPTS || over_bytes) {
+            self.reclaim_prompts(vec![queued], &AgentTurnFailure::Reclaimed);
             return;
         }
         self.queue.push_back(queued);
@@ -1445,6 +1518,8 @@ impl PanePump {
     }
 
     fn dispatch(&mut self, queued: QueuedPrompt) {
+        let source = queued.source;
+        let note = queued.note.clone();
         self.next_turn_id = self.next_turn_id.saturating_add(1).max(1);
         let turn_id = self.next_turn_id;
         self.active_turn = Some(turn_id);
@@ -1458,12 +1533,14 @@ impl PanePump {
         }
         let prompt = queued.prompt;
         let retained = prompt.clone();
-        match self
-            .commands
-            .try_send(RuntimeCommand::Prompt { turn_id, prompt })
-        {
+        match self.commands.try_send(RuntimeCommand::Prompt {
+            turn_id,
+            prompt,
+            note,
+        }) {
             Ok(()) => {
-                self.dispatched_prompt = Some((turn_id, retained));
+                self.dispatched_prompt =
+                    (source == PromptSource::Composer).then_some((turn_id, retained));
                 self.emit(AgentStreamPayload::TurnStarted { turn_id });
             }
             Err(error) => {
@@ -1473,12 +1550,14 @@ impl PanePump {
                     state.phase = AgentConnectionPhase::Ready;
                     settle_turn(&mut state);
                 }
-                let RuntimeCommand::Prompt { prompt, .. } = error.into_inner() else {
+                let RuntimeCommand::Prompt { prompt, note, .. } = error.into_inner() else {
                     return;
                 };
                 self.queue.push_front(QueuedPrompt {
                     prompt,
                     waiter: self.active_waiter.take(),
+                    source,
+                    note,
                 });
                 self.reclaim_queue();
             }
@@ -1497,36 +1576,70 @@ impl PanePump {
         if self.queue.is_empty() {
             return;
         }
-        let prompts = self
-            .queue
-            .drain(..)
-            .map(|queued| queued.into_reclaimed(AgentTurnFailure::Reclaimed))
-            .collect::<Vec<_>>();
+        let queued = self.queue.drain(..).collect::<Vec<_>>();
         self.publish_queue_depth();
-        self.emit(AgentStreamPayload::PromptsReclaimed { prompts });
+        self.reclaim_prompts(queued, &AgentTurnFailure::Reclaimed);
+    }
+
+    fn reclaim_prompts(&mut self, queued: Vec<QueuedPrompt>, failure: &AgentTurnFailure) {
+        let prompts = queued
+            .into_iter()
+            .filter_map(|queued| {
+                let returned = queued.source == PromptSource::Composer;
+                let prompt = queued.into_reclaimed(failure.clone());
+                returned.then_some(prompt)
+            })
+            .collect::<Vec<_>>();
+        if !prompts.is_empty() {
+            self.emit(AgentStreamPayload::PromptsReclaimed { prompts });
+        }
     }
 
     fn settle_active_turn(&mut self, result: AgentTurnResult) {
+        for waiter in self.joined_waiters.drain(..) {
+            waiter.reply.try_send(result.clone());
+        }
         if let Some(waiter) = self.active_waiter.take() {
             waiter.reply.try_send(result);
         }
     }
 
     fn handle_waited_permission(&mut self, permission: &AgentPendingPermission) {
+        let blocked = || {
+            zz_protocol::AgentPermissionWire {
+            request_id: permission.request_id,
+            payload: serde_json::json!({ "toolCall": permission.tool_call, "options": permission.options }).to_string(),
+        }
+        };
+        let (failing, waiting): (Vec<_>, Vec<_>) = self
+            .joined_waiters
+            .drain(..)
+            .partition(|waiter| waiter.on_block == AgentBlockPolicy::Fail);
+        self.joined_waiters = waiting;
+        for waiter in failing {
+            let mut reply = self.turn_reply.clone();
+            "blocked".clone_into(&mut reply.stop_reason);
+            waiter.reply.try_send(Err(AgentTurnFailure::Blocked {
+                permission: blocked(),
+                reply: Box::new(reply),
+            }));
+        }
         let Some(waiter) = &self.active_waiter else {
             return;
         };
+        if let Some(asks) = &waiter.asks {
+            (asks.0)(permission);
+        }
         let policy = waiter.on_block;
         if policy == AgentBlockPolicy::Fail {
             "blocked".clone_into(&mut self.turn_reply.stop_reason);
             let reply = Box::new(std::mem::take(&mut self.turn_reply));
-            self.settle_active_turn(Err(AgentTurnFailure::Blocked {
-                permission: zz_protocol::AgentPermissionWire {
-                    request_id: permission.request_id,
-                    payload: serde_json::json!({ "toolCall": permission.tool_call, "options": permission.options }).to_string(),
-                },
-                reply,
-            }));
+            if let Some(waiter) = self.active_waiter.take() {
+                waiter.reply.try_send(Err(AgentTurnFailure::Blocked {
+                    permission: blocked(),
+                    reply,
+                }));
+            }
             return;
         }
         let question = serde_json::from_value(permission.options.clone()).map_or(
@@ -1573,9 +1686,6 @@ impl PanePump {
     }
 
     fn record_reply_chunk(&mut self, update: &Value) {
-        if self.active_waiter.is_none() {
-            return;
-        }
         match update.get("sessionUpdate").and_then(Value::as_str) {
             Some("tool_call" | "tool_call_update") => {
                 self.turn_reply.final_text.clear();
@@ -1811,6 +1921,7 @@ impl PanePump {
         let state = {
             let mut state = self.state.lock();
             state.queued_prompts = self.queue.len();
+            state.waiting_prompts = waiting_prompts(&self.queue);
             state.clone()
         };
         (self.sink)(self.pane, self.generation, state, None);
@@ -2116,7 +2227,10 @@ mod tests {
                     reply: waiter.into(),
                     on_block,
                     audit,
+                    asks: None,
                 }),
+                source: PromptSource::Composer,
+                note: None,
             }));
             reply
         }
@@ -2179,7 +2293,9 @@ mod tests {
                     .map_err(|error| error.to_string())?;
                 while let Ok(command) = channels.commands.recv().await {
                     match command {
-                        RuntimeCommand::Prompt { turn_id, prompt } => {
+                        RuntimeCommand::Prompt {
+                            turn_id, prompt, ..
+                        } => {
                             send(AgentStreamPayload::Update {
                                 update: serde_json::json!({
                                     "sessionUpdate": "agent_message_chunk",
@@ -2266,7 +2382,9 @@ mod tests {
                                 .await
                                 .map_err(|error| error.to_string())?;
                         }
-                        RuntimeCommand::Prompt { turn_id, prompt } => {
+                        RuntimeCommand::Prompt {
+                            turn_id, prompt, ..
+                        } => {
                             send(format!("prompt {}", prompt.text))
                                 .await
                                 .map_err(|error| error.to_string())?;
@@ -2338,7 +2456,9 @@ mod tests {
                 let mut running = None;
                 while let Ok(command) = channels.commands.recv().await {
                     let payloads = match command {
-                        RuntimeCommand::Prompt { turn_id, prompt } => {
+                        RuntimeCommand::Prompt {
+                            turn_id, prompt, ..
+                        } => {
                             running = Some(turn_id);
                             vec![text(format!("prompt {}", prompt.text))]
                         }
@@ -3075,6 +3195,96 @@ mod tests {
     }
 
     #[test]
+    fn a_typed_answer_fills_the_one_question_of_a_request() {
+        let question = |id: &str| AgentQuestion {
+            id: id.to_owned(),
+            header: None,
+            question: "Which color?".to_owned(),
+            options: Vec::new(),
+            multi_select: false,
+            allow_other: true,
+            secret: false,
+        };
+        let pending = |questions| AgentPendingPermission {
+            request_id: 7,
+            tool_call: Value::Null,
+            options: Value::Array(Vec::new()),
+            questions,
+        };
+        assert_eq!(
+            typed_answer(&[pending(vec![question("q1")])], None, "blue"),
+            Ok((
+                7,
+                vec![AgentQuestionAnswer {
+                    id: "q1".to_owned(),
+                    answers: vec!["blue".to_owned()],
+                }]
+            ))
+        );
+        assert_eq!(
+            typed_answer(
+                &[pending(vec![question("q1"), question("q2")])],
+                Some(7),
+                "blue"
+            ),
+            Err("request 7 asks 2 questions; --answer answers one".to_owned())
+        );
+        assert_eq!(
+            typed_answer(&[], None, "blue"),
+            Err("no pending permission".to_owned())
+        );
+    }
+
+    #[test]
+    fn reclaiming_a_queue_drops_injected_prompts_and_hands_back_the_rest() {
+        let fixture = Fixture::open(Behavior::Hang, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        let queued = |text: &str, source| {
+            HostCommand::Prompt(QueuedPrompt {
+                prompt: AgentPrompt {
+                    owner: ClientInstanceId::default(),
+                    text: text.to_owned(),
+                    images: Vec::new(),
+                },
+                waiter: None,
+                source,
+                note: None,
+            })
+        };
+        fixture.prompt("busy");
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().phase != AgentConnectionPhase::Running {
+            assert!(Instant::now() < deadline, "the first turn never ran");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        fixture.command(queued(
+            "[zz] %2 (codex) finished:\nok",
+            PromptSource::Injected,
+        ));
+        fixture.command(queued("sent by a command", PromptSource::Command));
+        fixture.command(queued("mine", PromptSource::Composer));
+        while fixture.state().queued_prompts != 3 {
+            assert!(Instant::now() < deadline, "the prompts never queued");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        fixture.command(HostCommand::Unqueue);
+        let reclaimed = fixture
+            .recorder
+            .wait("the reclaimed prompt", |payload| {
+                matches!(payload, AgentStreamPayload::PromptsReclaimed { .. })
+            })
+            .into_iter()
+            .filter_map(|payload| match payload {
+                AgentStreamPayload::PromptsReclaimed { prompts } => Some(prompts),
+                _ => None,
+            })
+            .flatten()
+            .map(|prompt| prompt.text)
+            .collect::<Vec<_>>();
+        assert_eq!(reclaimed, ["mine"]);
+    }
+
+    #[test]
     fn blocked_waiter_returns_without_settling_the_turn() {
         let fixture = Fixture::open(Behavior::AskPermission, AgentAutoApprove::Off);
         fixture.wait_for_session();
@@ -3089,7 +3299,10 @@ mod tests {
                 reply: reply.into(),
                 on_block: AgentBlockPolicy::Fail,
                 audit: Arc::default(),
+                asks: None,
             }),
+            source: PromptSource::Composer,
+            note: None,
         }));
         let Err(AgentTurnFailure::Blocked { permission, reply }) =
             result.recv_timeout(DEADLINE).expect("blocked waiter")
@@ -3386,6 +3599,7 @@ mod tests {
             active_turn: None,
             dispatched_prompt: None,
             active_waiter: None,
+            joined_waiters: Vec::new(),
             session_waiter: None,
             new_session_pending: true,
             turn_reply: AgentTurnReply::default(),
@@ -3404,7 +3618,10 @@ mod tests {
                     reply: reply.into(),
                     on_block: AgentBlockPolicy::Wait,
                     audit: Arc::new(Mutex::new(Vec::new())),
+                    asks: None,
                 }),
+                source: PromptSource::Composer,
+                note: None,
             })
             .unwrap();
         pump.observe(AgentStreamPayload::SessionReset { restoring: true });

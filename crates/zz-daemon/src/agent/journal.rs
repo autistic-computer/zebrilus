@@ -310,6 +310,26 @@ struct JournalTail {
     needs_newline: bool,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub(crate) struct ChildRecord {
+    pub(crate) pane: u64,
+    pub(crate) provider: AgentProvider,
+    pub(crate) session: Option<String>,
+    pub(crate) cwd: Option<PathBuf>,
+    pub(crate) model: Option<String>,
+    pub(crate) effort: Option<String>,
+    pub(crate) account: Option<String>,
+    pub(crate) current: Option<u64>,
+    #[serde(default)]
+    pub(crate) reopened: Vec<u64>,
+}
+
+impl ChildRecord {
+    pub(crate) fn answers_to(&self, pane: u64) -> bool {
+        self.pane == pane || self.reopened.contains(&pane)
+    }
+}
+
 pub(crate) struct AgentJournal {
     directory: PathBuf,
     handles: Mutex<HashMap<String, OpenJournal>>,
@@ -441,11 +461,47 @@ impl AgentJournal {
             journal.discard_pending();
         }
         self.incomplete.lock().remove(&key);
+        match fs::remove_file(self.children_path(&key)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
         match fs::remove_file(self.directory.join(journal_file_name(&key))) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.into()),
         }
+    }
+
+    fn children_path(&self, key: &str) -> PathBuf {
+        self.directory
+            .join(format!("{}.children.json", file_stem(key)))
+    }
+
+    pub(crate) fn children_for(
+        &self,
+        provider: AgentProvider,
+        session_id: &str,
+    ) -> Result<Vec<ChildRecord>, JournalError> {
+        match fs::read(self.children_path(&journal_key(provider, session_id))) {
+            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub(crate) fn save_children_for(
+        &self,
+        provider: AgentProvider,
+        session_id: &str,
+        children: &[ChildRecord],
+    ) -> Result<(), JournalError> {
+        let path = self.children_path(&journal_key(provider, session_id));
+        let staged = path.with_extension("json.new");
+        fs::write(&staged, serde_json::to_vec(children)?)?;
+        restrict_to_current_user(&staged)?;
+        fs::rename(&staged, &path)?;
+        Ok(())
     }
 
     #[cfg(test)]

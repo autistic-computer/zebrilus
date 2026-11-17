@@ -6,20 +6,23 @@ use ala::{
     Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use zz_client::{
+    agent_launch::AgentLaunches,
     completion::{
         CompletionKind, CompletionSuggestion, PaneKindAvailability, apply_completion,
         complete_command, completion_insertion,
     },
     gui_actions::GuiAction,
+    new_chat::AGENT_CHOICES,
     palette::has_command_arguments,
     place::{ActionKind, parse},
     recents::now_secs,
     verbs::{self, Verb},
 };
 use zz_protocol::{
-    ChooseTreeAction, ChooseTreeState, ChooseTreeTarget, CommandInvocation, CommandPromptAction,
-    CommandPromptKind, CommandPromptMode, CommandPromptState, CommandPromptType, InputMessage,
-    MAX_COMMAND_PROMPT_BYTES, MuxSnapshot, PaneId, PathEntry, PathListRoot,
+    AgentProvider, ChooseTreeAction, ChooseTreeState, ChooseTreeTarget, CommandInvocation,
+    CommandPromptAction, CommandPromptKind, CommandPromptMode, CommandPromptState,
+    CommandPromptType, InputMessage, MAX_COMMAND_PROMPT_BYTES, MuxSnapshot, PaneId, PathEntry,
+    PathListRoot,
 };
 
 use super::{
@@ -39,10 +42,12 @@ use crate::{
     },
     notification::Notification,
     target::{
-        TargetBackend, TargetChat, TargetHost, TargetPane, TargetPicker, TargetSession,
-        TargetWindow,
+        TargetAgent, TargetBackend, TargetChat, TargetHost, TargetPane, TargetPicker,
+        TargetSession, TargetWindow,
     },
 };
+
+pub type CatalogSink = Box<dyn Fn(&str, &mut App)>;
 use penna::blocks::palette::{
     PaletteHint, PaletteRow, PaletteSurface, PaletteVim, PaletteVimMode, Twin, VimCommand,
     palette_badged_row, palette_chord, palette_empty, palette_input, palette_kind_badge,
@@ -88,6 +93,12 @@ pub trait PaletteBackend {
         verbs::verbs(self.availability(cx), &[], true, "")
     }
     fn feed_targets(&self, _picker: &Entity<TargetPicker>, _cx: &mut App) -> Option<Subscription> {
+        None
+    }
+    fn agent_launches(&self, _cx: &App) -> Option<AgentLaunches> {
+        None
+    }
+    fn feed_catalogs(&self, _sink: CatalogSink, _cx: &mut App) -> Option<Subscription> {
         None
     }
     fn insert_path(
@@ -218,6 +229,53 @@ impl TargetBackend for PaletteTargets {
         let home = self.0.home_dir(tree.attached, cx);
         Some(start_dir(Some(&cwd), home.as_deref()))
     }
+
+    fn agents(&self, cx: &App) -> Vec<TargetAgent> {
+        let Some(launches) = self.0.agent_launches(cx) else {
+            return Vec::new();
+        };
+        AGENT_CHOICES
+            .iter()
+            .map(|choice| {
+                let provider = choice.provider();
+                TargetAgent {
+                    provider,
+                    name: choice.program.into(),
+                    icon: crate::pane::agent_provider_icon(provider),
+                    model: launches.get(provider).model.clone(),
+                }
+            })
+            .collect()
+    }
+
+    fn catalog(
+        &self,
+        provider: AgentProvider,
+        pane: Option<PaneId>,
+        request: u64,
+        cx: &mut App,
+    ) -> bool {
+        let (Some(pane), Some(choice)) = (
+            pane,
+            AGENT_CHOICES
+                .iter()
+                .find(|choice| choice.provider() == provider),
+        ) else {
+            return false;
+        };
+        let command = CommandInvocation::new(
+            "agent-catalog",
+            [
+                "-t".to_owned(),
+                pane.to_string(),
+                choice.program.to_owned(),
+                request.to_string(),
+            ],
+        );
+        let host = self.0.tree(cx).attached;
+        self.0.execute(host, command, cx);
+        true
+    }
 }
 
 pub fn mention_picker(
@@ -250,6 +308,18 @@ pub fn mention_picker(
     });
     if let Some(feed) = feed {
         picker.update(cx, |picker, _| picker.keep(feed));
+    }
+    let answered = picker.downgrade();
+    let catalogs = backend.feed_catalogs(
+        Box::new(move |reply, cx| {
+            answered
+                .update(cx, |picker, cx| picker.apply_catalog(reply, cx))
+                .ok();
+        }),
+        cx,
+    );
+    if let Some(catalogs) = catalogs {
+        picker.update(cx, |picker, _| picker.keep(catalogs));
     }
     picker
 }

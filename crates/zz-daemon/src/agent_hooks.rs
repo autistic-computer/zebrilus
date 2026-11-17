@@ -19,6 +19,18 @@ const RULES_MARKER: &str = "zz tools --install-hooks";
 const CODEX_HOOK_REVIEW: &str =
     "approve the new hook with /hooks in Codex; until then Codex skips it";
 
+#[cfg(feature = "agent")]
+pub(crate) fn ensure_codex_rule(codex_home: &Path) -> io::Result<bool> {
+    let rules = codex_home.join("rules");
+    let path = rules.join("zz.rules");
+    if path.exists() {
+        return Ok(false);
+    }
+    fs::create_dir_all(&rules)?;
+    fs::write(&path, CODEX_RULES)?;
+    Ok(true)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AgentHookChange {
     Install,
@@ -411,6 +423,28 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "agent")]
+    #[test]
+    fn a_codex_home_gets_the_zz_rule_once_and_keeps_an_edited_one() {
+        let home = tempfile::tempdir().expect("codex home");
+        assert_eq!(ensure_codex_rule(home.path()).ok(), Some(true));
+        let rules = home.path().join("rules/zz.rules");
+        assert_eq!(
+            fs::read_to_string(&rules).ok().as_deref(),
+            Some(CODEX_RULES)
+        );
+        fs::write(
+            &rules,
+            "prefix_rule(pattern = [\"zz\"], decision = \"prompt\")\n",
+        )
+        .expect("edit");
+        assert_eq!(ensure_codex_rule(home.path()).ok(), Some(false));
+        assert_eq!(
+            fs::read_to_string(&rules).ok().as_deref(),
+            Some("prefix_rule(pattern = [\"zz\"], decision = \"prompt\")\n")
+        );
+    }
 
     fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> + use<> {
         let pairs = pairs

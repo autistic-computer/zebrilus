@@ -842,7 +842,11 @@ impl Runtime {
                 })
                 .await
             }
-            RuntimeCommand::Prompt { turn_id, prompt } => {
+            RuntimeCommand::Prompt {
+                turn_id,
+                prompt,
+                note,
+            } => {
                 self.last_turn = self.last_turn.max(turn_id);
                 if let Some(name) = self.refused_command(&prompt.text) {
                     self.emit(AgentStreamPayload::PromptAccepted { turn_id })
@@ -870,7 +874,7 @@ impl Runtime {
                         })
                         .await;
                 }
-                let content = prompt_content(&prompt);
+                let content = prompt_content(&prompt, note.as_deref());
                 let text = prompt.text.clone();
                 let uuid = new_uuid();
                 let fact = Fact::Prompt {
@@ -2465,10 +2469,13 @@ fn result_error(frame: &Value) -> String {
         })
 }
 
-fn prompt_content(prompt: &crate::agent::stream::AgentPrompt) -> Value {
+fn prompt_content(prompt: &crate::agent::stream::AgentPrompt, note: Option<&str>) -> Value {
     let mut content = Vec::new();
     if !prompt.text.is_empty() {
         content.push(json!({ "type": "text", "text": prompt.text }));
+    }
+    if let Some(note) = zz_protocol::agent_mention::hidden_note(&prompt.text, note) {
+        content.push(json!({ "type": "text", "text": translate::note_block(&note) }));
     }
     for image in &prompt.images {
         content.push(json!({
@@ -2485,6 +2492,31 @@ mod replay_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mention_sends_the_note_as_a_reminder_the_transcript_leaves_out() {
+        let prompt = |text: &str| crate::agent::stream::AgentPrompt {
+            text: text.to_owned(),
+            ..Default::default()
+        };
+        let content = prompt_content(&prompt("@+codex fix it"), None);
+        assert_eq!(
+            content,
+            json!([
+                { "type": "text", "text": "@+codex fix it" },
+                { "type": "text", "text": format!("<system-reminder>\n{}\n</system-reminder>", zz_protocol::agent_mention::mention_note("@+codex fix it").expect("note")) },
+            ])
+        );
+        let frame = json!({ "type": "user", "message": { "role": "user", "content": content } });
+        assert_eq!(
+            translate::user_prompt(&frame),
+            Some(("@+codex fix it".to_owned(), Vec::new()))
+        );
+        assert_eq!(
+            prompt_content(&prompt("fix it"), None),
+            json!([{ "type": "text", "text": "fix it" }])
+        );
+    }
 
     #[test]
     fn only_a_claude_binary_selects_the_native_driver() {
@@ -2773,6 +2805,7 @@ while read -r line; do :; done
             commands
                 .send(RuntimeCommand::Prompt {
                     turn_id: 1,
+                    note: None,
                     prompt: crate::agent::stream::AgentPrompt {
                         text: "hello".to_owned(),
                         ..Default::default()
@@ -3178,6 +3211,7 @@ while read -r line; do :; done
             commands
                 .send(RuntimeCommand::Prompt {
                     turn_id: 1,
+                    note: None,
                     prompt: crate::agent::stream::AgentPrompt {
                         text: "ask me".to_owned(),
                         ..Default::default()
@@ -3320,6 +3354,7 @@ while read -r line; do :; done
             commands
                 .send(RuntimeCommand::Prompt {
                     turn_id: 1,
+                    note: None,
                     prompt: crate::agent::stream::AgentPrompt {
                         text: "ask me".to_owned(),
                         ..Default::default()

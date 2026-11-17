@@ -2,7 +2,12 @@ use penna::blocks::chat::{
     CHAT_CONTENT_MAX_WIDTH, ChatComposer, Composer, composer_ground, empty_state, queue_chip,
     suggestion_list, suggestion_list_height, suggestion_row,
 };
-use std::{cell::Cell, collections::BTreeSet, rc::Rc, sync::Arc};
+use std::{
+    cell::Cell,
+    collections::{BTreeSet, HashMap},
+    rc::Rc,
+    sync::Arc,
+};
 use zz_ui::agent::ask::{
     Approval, ApprovalAction, AskChoice, AskParts, AskSubject, PromptRow, approval_subject, rejects,
 };
@@ -274,6 +279,7 @@ pub(crate) struct AgentView {
     open_usage: Cell<bool>,
     resume_scroll: ScrollHandle,
     focus_search: bool,
+    child_requests: HashMap<u64, PaneId>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -390,6 +396,17 @@ impl AgentView {
             }
             (account, accounts.map(<[_]>::to_vec), quotas.to_vec())
         };
+        let printed = cx.subscribe(
+            &mux,
+            |view, _, event: &crate::mux::client::CommandPrinted, cx| {
+                if let Some(child) = view.child_requests.remove(&event.request_id)
+                    && let Ok(pane) = event.output.trim().parse::<PaneId>()
+                {
+                    view.chat.open.children.insert(child, pane);
+                    cx.notify();
+                }
+            },
+        );
         let mux_observer = cx.observe(&mux, |view, mux, cx| {
             view.observe_login(&mux, cx);
             let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), view.pane);
@@ -467,7 +484,9 @@ impl AgentView {
             open_usage: Cell::new(false),
             resume_scroll: ScrollHandle::new(),
             focus_search: false,
+            child_requests: HashMap::new(),
             _subscriptions: vec![
+                printed,
                 input_observer,
                 input_subscription,
                 reply_subscription,
@@ -2249,6 +2268,7 @@ mod completion_tests {
                 open_usage: Cell::new(false),
                 resume_scroll: ScrollHandle::new(),
                 focus_search: false,
+                child_requests: HashMap::new(),
                 _subscriptions: Vec::new(),
             });
             view.read(cx).focus(cx).focus(window, cx);

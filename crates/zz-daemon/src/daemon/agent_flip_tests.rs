@@ -132,6 +132,12 @@ fn a_terminal_running_the_cli_flips_into_a_chat_once_the_cli_exits() {
     std::fs::set_permissions(&cli, std::os::unix::fs::PermissionsExt::from_mode(0o755))
         .expect("executable");
     let (shared, client, pane) = fixture_running("flip-to-chat", &cli.display().to_string());
+    shared
+        .build_agent_runtime(None)
+        .expect("agent runtime")
+        .set_runner_factory(Box::new(|_| {
+            Box::new(|_| Box::pin(std::future::pending::<Result<(), String>>()))
+        }));
     wait_for("the CLI's pid", || {
         shared
             .inner
@@ -163,15 +169,12 @@ fn a_terminal_running_the_cli_flips_into_a_chat_once_the_cli_exits() {
             .is_none_or(|facts| facts.pid.is_none() && facts.current_command.is_empty()),
         "the CLI's process facts leave with it"
     );
-    assert!(
-        run(
-            &shared,
-            client,
-            &["agent-send", "-t", &pane.to_string(), "hi"]
-        )
-        .is_ok(),
-        "a chat takes agent-send"
+    let sent = run(
+        &shared,
+        client,
+        &["agent-send", "-t", &pane.to_string(), "hi"],
     );
+    assert!(sent.is_ok(), "a chat takes agent-send: {sent:?}");
     shared.request_shutdown();
 }
 

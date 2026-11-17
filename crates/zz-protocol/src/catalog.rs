@@ -663,6 +663,7 @@ pub static DAEMON_COMMAND_NAMES: &[&str] = &[
     "if",
     "agent-send",
     "agent-respond",
+    "select-child-chat",
     "flip-agent",
     "agent-account",
     "agent-accounts",
@@ -804,6 +805,7 @@ pub static INTERNAL_COMMAND_NAMES: &[&str] = &[
     "agent-catalog",
     "providers",
     "agent-accounts",
+    "select-child-chat",
 ];
 
 pub static NATIVE_COMMAND_NAMES: &[&str] = &[
@@ -828,6 +830,7 @@ pub static NATIVE_COMMAND_NAMES: &[&str] = &[
     "providers",
     "reload-config",
     "run-pane",
+    "select-child-chat",
     "select-pane-kind",
     "send-last-output",
     "send-text",
@@ -1013,14 +1016,28 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "agent-respond",
         aliases: &[],
-        description: "Answer a pending permission and print the selected option ID",
-        usage: "[-t target-pane] [--allow] [--deny] [--option option-id] [request-id]",
+        description: "Answer a pending permission or question and print what was chosen",
+        usage: "[-t target-pane] [--allow] [--deny] [--option option-id] [--answer text] [request-id]",
         options: &[
             CommandOptionSpec::value("-t", Pane, "agent pane"),
             CommandOptionSpec::flag("--allow", "allow, preferring allow-once"),
             CommandOptionSpec::flag("--deny", "reject the request"),
             CommandOptionSpec::value("--option", FreeForm, "exact permission option ID"),
+            CommandOptionSpec::value(
+                "--answer",
+                FreeForm,
+                "typed answer to a one-question request",
+            ),
         ],
+        positionals: &[FreeForm],
+        variadic: None,
+    },
+    CommandSpec {
+        name: "select-child-chat",
+        aliases: &[],
+        description: "Bring a chat a host chat opened into view, reopening it on its session in a new float when its pane is gone; print the pane",
+        usage: "[-t host-pane] child-pane",
+        options: &[CommandOptionSpec::value("-t", Pane, "the host chat")],
         positionals: &[FreeForm],
         variadic: None,
     },
@@ -1692,10 +1709,19 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "new-window",
         aliases: &["neww"],
         description: "Create a window",
-        usage: "[-abdEkPS] [-c start-directory] [-e environment] [-F format] [-n window-name] [-t target-window] [--kind terminal|browser|picker] [--profile NAME] [shell-command [argument ...]]",
+        usage: "[-abdEkPS] [-c start-directory] [-e environment] [-F format] [-n window-name] [-t target-window] [--kind terminal|browser|picker|agent] [--profile NAME] [--model M] [--effort E] [--account A] [--resume ID] [shell-command [argument ...] | claude|codex [BRIEF ...]]",
         options: &[
             CommandOptionSpec::value("--kind", PaneKind, "pane kind").native(),
             CommandOptionSpec::value("--profile", FreeForm, "browser profile").native(),
+            CommandOptionSpec::value("--model", FreeForm, "model the agent starts with").native(),
+            CommandOptionSpec::value("--effort", FreeForm, "effort the agent starts with").native(),
+            CommandOptionSpec::value(
+                "--account",
+                FreeForm,
+                "account the agent runs on, or default for the CLI's own login",
+            )
+            .native(),
+            CommandOptionSpec::value("--resume", FreeForm, "agent session to resume").native(),
             CommandOptionSpec::value("-t", Window, "destination session or window index"),
             CommandOptionSpec::value("-n", FreeForm, "window name"),
             CommandOptionSpec::value("-c", FreeForm, "start in the current pane path"),
@@ -1850,10 +1876,19 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "split-window",
         aliases: &["splitw"],
         description: "Split a pane",
-        usage: "[-bdEfhIkPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-t target-pane] [--kind terminal|browser|picker] [--profile NAME] [shell-command [argument ...]]",
+        usage: "[-bdEfhIkPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-t target-pane] [--kind terminal|browser|picker|agent] [--profile NAME] [--model M] [--effort E] [--account A] [--resume ID] [shell-command [argument ...] | claude|codex [BRIEF ...]]",
         options: &[
             CommandOptionSpec::value("--kind", PaneKind, "pane kind").native(),
             CommandOptionSpec::value("--profile", FreeForm, "browser profile").native(),
+            CommandOptionSpec::value("--model", FreeForm, "model the agent starts with").native(),
+            CommandOptionSpec::value("--effort", FreeForm, "effort the agent starts with").native(),
+            CommandOptionSpec::value(
+                "--account",
+                FreeForm,
+                "account the agent runs on, or default for the CLI's own login",
+            )
+            .native(),
+            CommandOptionSpec::value("--resume", FreeForm, "agent session to resume").native(),
             CommandOptionSpec::value("-t", Pane, "target pane"),
             CommandOptionSpec::value("-l", FreeForm, "new pane size in cells or percent"),
             CommandOptionSpec::value("-p", FreeForm, "split percentage"),
@@ -1888,10 +1923,19 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "new-pane",
         aliases: &["newp"],
         description: "Create a floating pane",
-        usage: "[-AbCDdEfhIkKLMOPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-x width] [-y height] [-X x-position] [-Y y-position] [-t target-pane] [--kind terminal|browser|picker] [--profile NAME] [--existing path] [shell-command [argument ...]]",
+        usage: "[-AbCDdEfhIkKLMOPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-x width] [-y height] [-X x-position] [-Y y-position] [-t target-pane] [--kind terminal|browser|picker|agent] [--profile NAME] [--model M] [--effort E] [--account A] [--resume ID] [--existing path] [shell-command [argument ...] | claude|codex [BRIEF ...]]",
         options: &[
             CommandOptionSpec::value("--kind", PaneKind, "pane kind").native(),
             CommandOptionSpec::value("--profile", FreeForm, "browser profile").native(),
+            CommandOptionSpec::value("--model", FreeForm, "model the agent starts with").native(),
+            CommandOptionSpec::value("--effort", FreeForm, "effort the agent starts with").native(),
+            CommandOptionSpec::value(
+                "--account",
+                FreeForm,
+                "account the agent runs on, or default for the CLI's own login",
+            )
+            .native(),
+            CommandOptionSpec::value("--resume", FreeForm, "agent session to resume").native(),
             CommandOptionSpec::value("--existing", FreeForm, "open only while this path exists")
                 .native(),
             CommandOptionSpec::value("-t", Pane, "target pane"),

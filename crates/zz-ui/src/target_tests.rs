@@ -435,13 +435,16 @@ fn the_header_names_the_level() {
 enum Call {
     List(String, String, u64),
     Cancel(String, u64),
+    Catalog(AgentProvider, Option<PaneId>, u64),
 }
 
+#[derive(Default)]
 struct FakeBackend {
     calls: Rc<RefCell<Vec<Call>>>,
     next: Cell<u64>,
     hosts: Vec<TargetHost>,
     folder: Option<String>,
+    agents: Vec<TargetAgent>,
 }
 
 impl TargetBackend for FakeBackend {
@@ -472,6 +475,23 @@ impl TargetBackend for FakeBackend {
         self.calls
             .borrow_mut()
             .push(Call::Cancel(host.to_owned(), request_id));
+    }
+
+    fn agents(&self, _: &App) -> Vec<TargetAgent> {
+        self.agents.clone()
+    }
+
+    fn catalog(
+        &self,
+        provider: AgentProvider,
+        pane: Option<PaneId>,
+        request: u64,
+        _: &mut App,
+    ) -> bool {
+        self.calls
+            .borrow_mut()
+            .push(Call::Catalog(provider, pane, request));
+        true
     }
 }
 
@@ -507,7 +527,7 @@ fn the_picker_follows_the_composer_and_owns_its_keys(cx: &mut TestAppContext) {
         calls: Rc::clone(&calls),
         next: Cell::new(0),
         hosts: hosts(),
-        folder: None,
+        ..FakeBackend::default()
     });
     let keys = Rc::new(RefCell::new(Vec::new()));
     let seen = Rc::clone(&keys);
@@ -615,10 +635,8 @@ fn the_picker_follows_the_composer_and_owns_its_keys(cx: &mut TestAppContext) {
 fn the_plus_button_toggles_one_mention_and_takes_back_its_own_at(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let backend: Rc<dyn TargetBackend> = Rc::new(FakeBackend {
-        calls: Rc::default(),
-        next: Cell::new(0),
         hosts: hosts(),
-        folder: None,
+        ..FakeBackend::default()
     });
     let slot = Rc::new(RefCell::new(None));
     let captured = Rc::clone(&slot);
@@ -770,13 +788,19 @@ fn composer_with<'a>(
     hosts: Vec<TargetHost>,
     folder: Option<&str>,
 ) -> Mounted<'a> {
+    mount(
+        cx,
+        FakeBackend {
+            hosts,
+            folder: folder.map(str::to_owned),
+            ..FakeBackend::default()
+        },
+    )
+}
+
+fn mount(cx: &mut TestAppContext, backend: FakeBackend) -> Mounted<'_> {
     cx.update(crate::init);
-    let backend: Rc<dyn TargetBackend> = Rc::new(FakeBackend {
-        calls: Rc::default(),
-        next: Cell::new(0),
-        hosts,
-        folder: folder.map(str::to_owned),
-    });
+    let backend: Rc<dyn TargetBackend> = Rc::new(backend);
     let modes = Rc::new(Cell::new(0));
     let switched = Rc::clone(&modes);
     let slot = Rc::new(RefCell::new(None));
@@ -1118,4 +1142,147 @@ fn rows_still_coming_show_the_pending_line_then_land_and_keystrokes_keep_them(
     assert_eq!(listed(&picker, cx), ["macbook:~/dev/zz/qqa.txt"]);
     cx.run_until_parked();
     assert_eq!(listed(&picker, cx), ["macbook:~/dev/zz/qqa.txt"]);
+}
+
+fn agents() -> Vec<TargetAgent> {
+    [
+        (AgentProvider::ClaudeCode, "claude"),
+        (AgentProvider::Codex, "codex"),
+    ]
+    .into_iter()
+    .map(|(provider, name)| TargetAgent {
+        provider,
+        name: name.into(),
+        icon: IconName::Sparkle,
+        model: String::new(),
+    })
+    .collect()
+}
+
+#[ala::test]
+fn an_agent_mention_leaves_as_a_plus_token_with_its_model(cx: &mut TestAppContext) {
+    let calls = Rc::new(RefCell::new(Vec::new()));
+    let (input, picker, _, cx) = mount(
+        cx,
+        FakeBackend {
+            calls: Rc::clone(&calls),
+            hosts: hosts(),
+            agents: agents(),
+            ..FakeBackend::default()
+        },
+    );
+    picker.update(cx, |picker, _| picker.set_own_chat(Some(PaneId(5))));
+    let value =
+        |cx: &mut VisualTestContext| input.read_with(cx, |input, _| input.value().to_string());
+    let first = |cx: &mut VisualTestContext| {
+        picker.read_with(cx, |picker, _| {
+            picker.selected_item().map(|item| item.token.clone())
+        })
+    };
+
+    cx.simulate_input("@");
+    assert_eq!(first(cx).as_deref(), Some("+claude"));
+    cx.simulate_input("co");
+    assert_eq!(first(cx).as_deref(), Some("+codex"));
+    cx.simulate_keystrokes("enter");
+    cx.simulate_input("fix it");
+    assert_eq!(value(cx), "@codex fix it");
+    assert_eq!(
+        picker.update(cx, |picker, _| picker.raw_text("@codex fix it")),
+        "@+codex fix it"
+    );
+
+    cx.update(|window, cx| input.update(cx, |input, cx| input.set_value("", window, cx)));
+    cx.simulate_input("@co");
+    cx.simulate_keystrokes("tab");
+    assert_eq!(value(cx), "@codex/");
+    let request = match calls.borrow().as_slice() {
+        [Call::Catalog(AgentProvider::Codex, Some(PaneId(5)), request)] => *request,
+        other => panic!("one codex catalog request, got {other:?}"),
+    };
+    let reply = serde_json::to_string(&AgentCatalogResult {
+        catalog_provider: AgentProvider::Codex,
+        cwd: "/".into(),
+        request_id: request,
+        config_options: Some(serde_json::json!([{
+            "id": "model",
+            "currentValue": "gpt-6.1-sol",
+            "options": [
+                { "value": "gpt-6-luna", "name": "GPT-6 Luna" },
+                { "value": "gpt-6.1-sol", "name": "gpt-6.1-sol" },
+            ],
+        }])),
+        error: None,
+    })
+    .expect("catalog json");
+    assert!(picker.update(cx, |picker, cx| picker.apply_catalog(&reply, cx)));
+    assert_eq!(
+        picker.read_with(cx, |picker, _| breadcrumb(
+            picker.query().expect("open"),
+            None
+        )),
+        "@ codex"
+    );
+    assert_eq!(first(cx).as_deref(), Some("+codex/gpt-6.1-sol"));
+    cx.simulate_keystrokes("shift-tab");
+    assert_eq!(
+        (value(cx), first(cx)),
+        ("@".to_owned(), Some("+codex".to_owned()))
+    );
+    cx.simulate_keystrokes("tab enter");
+    cx.simulate_input("fix it");
+    let shown = value(cx);
+    assert_eq!(shown, "@codex/gpt-6.1-sol fix it");
+    assert_eq!(
+        picker.update(cx, |picker, _| picker.raw_text(&shown)),
+        "@+codex/gpt-6.1-sol fix it"
+    );
+    assert_eq!(calls.borrow().len(), 1);
+}
+
+#[test]
+fn a_session_named_like_an_agent_is_reached_by_its_id() {
+    let mut hosts = hosts();
+    hosts[0].sessions.push(TargetSession {
+        id: SessionId(6),
+        name: "+codex".to_owned(),
+        windows: Vec::new(),
+    });
+    let around = Around {
+        agents: agents(),
+        ..Around::default()
+    };
+    let tokens = |body: &str| {
+        target_items(&parse_target(body, &hosts), &hosts, &around)
+            .into_iter()
+            .map(|item| item.token)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(tokens("+codex"), ["+codex"]);
+    assert_eq!(
+        tokens(""),
+        [
+            "+claude",
+            "+codex",
+            "macbook:main",
+            "macbook:$6",
+            "ubuntu",
+            "xps",
+            "macbook:~/"
+        ]
+    );
+    assert_eq!(
+        resolve_target("+codex", &hosts).map(|target| (target.label, target.target)),
+        Some((
+            "codex".to_owned(),
+            RefTarget::Agent {
+                provider: AgentProvider::Codex,
+                model: None
+            }
+        ))
+    );
+    assert_eq!(
+        resolve_target("macbook:$6", &hosts).map(|target| target.target),
+        Some(RefTarget::Session(SessionId(6)))
+    );
 }

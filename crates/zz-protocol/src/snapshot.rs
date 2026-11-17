@@ -10,7 +10,10 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use thiserror::Error;
 
-use crate::{PaneId, SessionId, SplitId, TmuxColour, WindowId, message::deserialize_bounded_text};
+use crate::{
+    DEFAULT_AGENT_CLAUDE_CODE_COMMAND, DEFAULT_AGENT_COMMAND, PaneId, SessionId, SplitId,
+    TmuxColour, WindowId, message::deserialize_bounded_text,
+};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -241,6 +244,14 @@ impl AgentProvider {
         match self {
             Self::Codex => "codex",
             Self::ClaudeCode => "claude-code",
+        }
+    }
+
+    #[must_use]
+    pub const fn command_name(self) -> &'static str {
+        match self {
+            Self::Codex => DEFAULT_AGENT_COMMAND,
+            Self::ClaudeCode => DEFAULT_AGENT_CLAUDE_CODE_COMMAND,
         }
     }
 

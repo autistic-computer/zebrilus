@@ -1,5 +1,8 @@
 use ala::{AnyElement, App, Context, Window};
-use zz_protocol::chat::{ChatView, ItemId};
+use zz_protocol::{
+    PaneId,
+    chat::{ChatView, ItemId},
+};
 use zz_ui::agent::chat::{ChatHost, ChatLook, ChatPane, chat_surface};
 
 use super::AgentView;
@@ -23,6 +26,13 @@ impl ChatHost for AgentView {
     fn chat_fork(&mut self, item: &ItemId, cx: &mut Context<Self>) {
         self.fork_from(item.as_str(), cx);
     }
+
+    fn chat_open_child(&mut self, child: PaneId, cx: &mut Context<Self>) {
+        let command = zz_client::child_card::reopen_command(self.pane, child);
+        if let Some(request) = self.mux.read(cx).execute_printed(command) {
+            self.child_requests.insert(request, child);
+        }
+    }
 }
 
 impl AgentView {
@@ -41,6 +51,10 @@ impl AgentView {
             touch: false,
             inset_top: self.header_inset(),
             inset_bottom: ala::px(0.0),
+            children: Some({
+                let controller = self.controller.clone();
+                zz_ui::agent::chat::child_chats(move |pane, cx| controller.read(cx).pane_chat(pane))
+            }),
         };
         chat_surface(self, look, window, cx)
     }

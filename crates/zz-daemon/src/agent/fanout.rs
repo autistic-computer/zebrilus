@@ -22,9 +22,9 @@ use zz_protocol::{
 use crate::agent::{
     host::{
         AgentConnectionPhase, AgentHost, AgentPaneSpec, AgentPaneState, AgentTurnFailure,
-        AgentTurnWaiter, HostCommand, QueuedPrompt,
+        AgentTurnWaiter, HostCommand, PromptSource, QueuedPrompt,
     },
-    journal::{AgentJournal, JournalEntry},
+    journal::{AgentJournal, ChildRecord, JournalEntry},
     runtime::AgentSpawnConfig,
     stream::{AgentPrompt, AgentStreamItem, AgentStreamPayload},
 };
@@ -76,12 +76,17 @@ pub(crate) trait AgentPublisher: Send + Sync + 'static {
     fn send_agent_reply(&self, generation: u64, pane: PaneId, reply: AgentRequestReply);
 }
 
+pub(crate) const MAX_SENDS_SINCE_USER: u32 = 8;
+
 pub(crate) struct AgentRuntime {
     host: AgentHost,
     fanout: Arc<AgentFanout>,
     generation: AtomicU64,
     _publisher: Arc<dyn AgentPublisher>,
     lifecycle: Arc<Mutex<()>>,
+    sends: Mutex<BTreeMap<(PaneId, PaneId), u32>>,
+    journal: Option<Arc<AgentJournal>>,
+    children: Mutex<BTreeMap<(AgentProvider, String), Vec<ChildRecord>>>,
 }
 
 impl AgentRuntime {
@@ -91,6 +96,7 @@ impl AgentRuntime {
         journal: Option<Arc<AgentJournal>>,
     ) -> Self {
         let lifecycle = Arc::new(Mutex::new(()));
+        let journal_handle = journal.clone();
         let fanout = Arc::new(AgentFanout::new(
             publisher,
             journal.clone(),
@@ -112,7 +118,77 @@ impl AgentRuntime {
             generation: AtomicU64::new(1),
             _publisher: Arc::clone(publisher),
             lifecycle,
+            sends: Mutex::new(BTreeMap::new()),
+            journal: journal_handle,
+            children: Mutex::new(BTreeMap::new()),
         }
+    }
+
+    pub(crate) fn child_records(&self, provider: AgentProvider, session: &str) -> Vec<ChildRecord> {
+        let children = self.children.lock();
+        self.read_children(&children, provider, session)
+    }
+
+    pub(crate) fn update_child(
+        &self,
+        provider: AgentProvider,
+        session: &str,
+        pane: PaneId,
+        update: impl FnOnce(&mut ChildRecord),
+    ) {
+        let mut children = self.children.lock();
+        let mut records = self.read_children(&children, provider, session);
+        let index = records
+            .iter()
+            .position(|record| record.pane == pane.0)
+            .unwrap_or_else(|| {
+                records.push(ChildRecord {
+                    pane: pane.0,
+                    ..ChildRecord::default()
+                });
+                records.len() - 1
+            });
+        update(&mut records[index]);
+        match &self.journal {
+            Some(journal) => {
+                if let Err(error) = journal.save_children_for(provider, session, &records) {
+                    log::warn!(target: "zz::agent", "could not save the chats {session} opened: {error}");
+                }
+            }
+            None => {
+                children.insert((provider, session.to_owned()), records);
+            }
+        }
+    }
+
+    fn read_children(
+        &self,
+        children: &BTreeMap<(AgentProvider, String), Vec<ChildRecord>>,
+        provider: AgentProvider,
+        session: &str,
+    ) -> Vec<ChildRecord> {
+        match &self.journal {
+            Some(journal) => journal.children_for(provider, session).unwrap_or_else(|error| {
+                log::warn!(target: "zz::agent", "could not read the chats {session} opened: {error}");
+                Vec::new()
+            }),
+            None => children
+                .get(&(provider, session.to_owned()))
+                .cloned()
+                .unwrap_or_default(),
+        }
+    }
+
+    pub(crate) fn sends_since_user(&self, caller: PaneId, target: PaneId) -> u32 {
+        self.sends
+            .lock()
+            .get(&(caller, target))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn count_send(&self, caller: PaneId, target: PaneId) {
+        *self.sends.lock().entry((caller, target)).or_insert(0) += 1;
     }
 
     pub(crate) fn open(&self, pane: PaneId, spec: AgentPaneSpec) -> bool {
@@ -179,16 +255,120 @@ impl AgentRuntime {
         prompt: AgentPrompt,
         waiter: Option<AgentTurnWaiter>,
     ) -> bool {
+        self.prompt_from(pane, prompt, waiter, PromptSource::Composer, None)
+    }
+
+    pub(crate) fn command_prompt(
+        &self,
+        pane: PaneId,
+        prompt: AgentPrompt,
+        waiter: Option<AgentTurnWaiter>,
+        note: Option<String>,
+    ) -> bool {
+        self.prompt_from(pane, prompt, waiter, PromptSource::Command, note)
+    }
+
+    pub(crate) fn answer_question(
+        &self,
+        pane: PaneId,
+        request: Option<u64>,
+        text: &str,
+    ) -> Result<u64, String> {
+        let pending = self
+            .host
+            .snapshot_state(pane)
+            .map(|state| state.pending_permissions)
+            .unwrap_or_default();
+        let (request_id, answers) = crate::agent::host::typed_answer(&pending, request, text)?;
+        if self.command(
+            pane,
+            HostCommand::AnswerQuestion {
+                request_id,
+                answers,
+            },
+        ) {
+            Ok(request_id)
+        } else {
+            Err("the chat is closed".to_owned())
+        }
+    }
+
+    pub(crate) fn waiting_prompts(&self, pane: PaneId) -> usize {
+        self.host
+            .snapshot_state(pane)
+            .map_or(0, |state| state.waiting_prompts)
+    }
+
+    fn prompt_from(
+        &self,
+        pane: PaneId,
+        prompt: AgentPrompt,
+        waiter: Option<AgentTurnWaiter>,
+        source: PromptSource,
+        note: Option<String>,
+    ) -> bool {
         let _lifecycle = self.lifecycle.lock();
-        let queued = QueuedPrompt { prompt, waiter };
+        self.sends.lock().retain(|(caller, _), _| *caller != pane);
+        let queued = QueuedPrompt {
+            prompt,
+            waiter,
+            source,
+            note,
+        };
         match self.host.command(pane, HostCommand::Prompt(queued)) {
             Ok(()) => true,
             Err(HostCommand::Prompt(mut queued)) => {
                 queued.settle(Err(AgentTurnFailure::Reclaimed));
-                self.fanout.reclaim_prompt(pane, queued.prompt)
+                source == PromptSource::Composer && self.fanout.reclaim_prompt(pane, queued.prompt)
             }
             Err(_) => unreachable!(),
         }
+    }
+
+    pub(crate) fn inject(&self, pane: PaneId, prompt: AgentPrompt) -> bool {
+        let _lifecycle = self.lifecycle.lock();
+        let queued = QueuedPrompt {
+            prompt,
+            waiter: None,
+            source: PromptSource::Injected,
+            note: None,
+        };
+        self.host.command(pane, HostCommand::Prompt(queued)).is_ok()
+    }
+
+    pub(crate) fn chat_text(&self, pane: PaneId, whole: bool) -> String {
+        let lanes = self.fanout.lanes.lock();
+        let Some(lane) = lanes.get(&pane) else {
+            return String::new();
+        };
+        if !lane.chat.is_empty() {
+            return crate::agent::capture::chat_text(lane.chat.events(), whole);
+        }
+        let updates = lane
+            .ring
+            .iter()
+            .filter_map(|(_, encoded)| serde_json::from_slice::<AgentStreamItem>(encoded).ok())
+            .filter_map(|item| match item.payload {
+                AgentStreamPayload::Update { update } => Some(update),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let events = crate::agent::capture::stream_events(updates.iter());
+        crate::agent::capture::chat_text(events.iter(), whole)
+    }
+
+    pub(crate) fn has_pending_permission(&self, pane: PaneId, request: u64) -> bool {
+        self.host.snapshot_state(pane).is_some_and(|state| {
+            state
+                .pending_permissions
+                .iter()
+                .any(|pending| pending.request_id == request)
+        })
+    }
+
+    pub(crate) fn join(&self, pane: PaneId, waiter: AgentTurnWaiter) -> bool {
+        let _lifecycle = self.lifecycle.lock();
+        self.host.command(pane, HostCommand::Join(waiter)).is_ok()
     }
 
     pub(crate) fn prewarm(&self) {
@@ -576,7 +756,12 @@ impl AgentFanout {
             },
             HostCommand::AnswerQuestion { .. }
             | HostCommand::StopTask { .. }
+            | HostCommand::Join(_)
             | HostCommand::RefreshGit => return false,
+            HostCommand::Prompt(mut queued) if queued.source != PromptSource::Composer => {
+                queued.settle(Err(AgentTurnFailure::Reclaimed));
+                return false;
+            }
             HostCommand::Prompt(mut queued) => {
                 queued.settle(Err(AgentTurnFailure::Reclaimed));
                 return self.reclaim_prompt(pane, queued.prompt);

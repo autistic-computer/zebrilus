@@ -856,6 +856,16 @@ fn without_paste_tags(text: &str) -> String {
     out.trim().to_owned()
 }
 
+pub(crate) fn note_block(note: &str) -> String {
+    format!("<system-reminder>\n{note}\n</system-reminder>")
+}
+
+fn hidden_block(text: &str) -> bool {
+    text.strip_prefix("<system-reminder>\n")
+        .and_then(|text| text.strip_suffix("\n</system-reminder>"))
+        .is_some_and(zz_protocol::agent_mention::is_hidden_note)
+}
+
 fn message_text(frame: &Value) -> String {
     match &frame["message"]["content"] {
         Value::String(text) => text.clone(),
@@ -863,6 +873,7 @@ fn message_text(frame: &Value) -> String {
             .iter()
             .filter(|block| block["type"] == "text")
             .filter_map(|block| block["text"].as_str())
+            .filter(|text| !hidden_block(text))
             .collect::<Vec<_>>()
             .join("\n"),
         _ => String::new(),

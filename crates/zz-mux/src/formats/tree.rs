@@ -451,6 +451,9 @@ impl FormatTree<'_> {
                     .unwrap_or_default(),
             ),
             FormatBacking::PaneCurrentCommand => {
+                if let Some(PaneKind::Agent(agent)) = pane.map(|pane| &pane.kind) {
+                    return Cow::Borrowed(agent.provider.command_name());
+                }
                 let live = self
                     .pane
                     .and_then(|pane| engine.pane_runtime_facts(pane))

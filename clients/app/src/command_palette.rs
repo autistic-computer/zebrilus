@@ -12,8 +12,8 @@ use penna::{ActiveTheme as _, IconName};
 use zz_client::completion::PaneKindAvailability;
 use zz_client::navigation::{ordered_panes, pane_index, pane_label, session_label};
 use zz_client::{
-    AgentAttentionStatus, ClientCore, CoreEvent, agent_attention_status, gui_actions::GuiOffer,
-    place::ActionKind, sidebar::SidebarTarget,
+    AgentAttentionStatus, ClientCore, CoreEvent, agent_attention_status,
+    agent_launch::AgentLaunches, gui_actions::GuiOffer, place::ActionKind, sidebar::SidebarTarget,
 };
 use zz_protocol::{
     CommandInvocation, InputMessage, MuxOptionKey, MuxSnapshot, PaneId, PaneKindSnapshot,
@@ -22,7 +22,7 @@ use zz_protocol::{
 use zz_terminal::TerminalViewAction;
 use zz_ui::{
     command::{
-        GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteHostState,
+        CatalogSink, GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteHostState,
         PaletteSettings, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
         PaletteTreeSession, PaletteTreeWindow, palette_chats,
     },
@@ -319,6 +319,24 @@ impl PaletteBackend for ConnectionPalette {
                 connection.send(ProtocolMessage::PathListCancel { request_id }, cx);
             });
         }
+    }
+
+    fn agent_launches(&self, cx: &App) -> Option<AgentLaunches> {
+        Some(
+            cx.try_global::<crate::preferences::AgentPicks>()
+                .map(|picks| picks.0.clone())
+                .unwrap_or_default(),
+        )
+    }
+
+    fn feed_catalogs(&self, sink: CatalogSink, cx: &mut App) -> Option<Subscription> {
+        Some(
+            cx.subscribe(&self.connection, move |_, event: &CoreEvent, cx| {
+                if let CoreEvent::AgentSessions { result, .. } = event {
+                    sink(result, cx);
+                }
+            }),
+        )
     }
 
     fn feed_listings(&self, sink: ListingSink, cx: &mut App) -> Option<Subscription> {

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent mentions: the @ menu</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/badge/badge.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/kbd/kbd.css">
+<link rel="stylesheet" href="/penna-src/components/list/list.css">
+<link rel="stylesheet" href="/penna-src/components/panel/panel.css">
+<link rel="stylesheet" href="/penna-src/blocks/palette/palette.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="mentions.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/penna-src/components/kbd/kbd.js" defer></script>
+<script src="mentions.js"></script>
+<style>
+  .zz-figs { display: grid; grid-template-columns: repeat(2, 600px); gap: 28px 32px; }
+  .zz-figs > figure { display: grid; gap: 10px; margin: 0; }
+  .zz-figs figcaption { font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-figs figcaption b { margin-right: 6px; color: var(--penna-fg); font-weight: 600; }
+  .zz-stage { display: flex; flex-direction: column; justify-content: flex-end; height: 420px; padding: 0 0 4px; border: 1px solid var(--penna-border); border-radius: 14px; background: var(--penna-bg); }
+  .zz-stage .penna-chat-composer { position: relative; }
+  .zz-menu.penna-palette-surface[data-penna] { position: absolute; right: 0; bottom: calc(100% + 8px); left: 0; z-index: 4; width: auto; max-width: none; }
+  .zz-crumb { display: flex; flex: none; align-items: center; height: 28px; padding: 0 14px; font-family: var(--penna-mono); font-size: var(--penna-text-caption-size); line-height: 16px; color: var(--penna-fg-muted); }
+  .zz-menu .penna-palette-rows { max-height: calc(8 * 28px); padding-bottom: 6px; overflow: hidden; }
+  .zz-menu .penna-palette-section { flex: none; }
+  .zz-menu .penna-palette-icon[data-icon^="zz-"] { --penna-icon-size: 12px; }
+  .zz-inside { display: flex; flex: none; justify-content: flex-end; width: 12px; color: var(--penna-muted); --penna-icon-size: 12px; }
+  .zz-git { width: 10px; text-align: center; font-family: var(--penna-mono); font-weight: 600; color: var(--penna-warning); }
+  .zz-caret { display: inline-block; width: 1px; height: 15px; margin-left: 1px; vertical-align: -3px; background: var(--penna-fg); }
+  .zz-stage .penna-chat-input { white-space: pre; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Agent mentions: the @ menu</h1>
+    <p>Agents come first, then the groups the menu has today. Tab on an agent opens its models, the way Tab opens a host or a folder today. Back to <a href="index.html">the child row</a>.</p>
+  </div>
+  <div class="zz-figs" data-figs></div>
+</main>
+<script>
+(() => {
+  const { esc, ic, ref, frame, composer, foot } = window.zzm;
+  const caret = `<span class="zz-caret"></span>`;
+  const marked = (text, hits = []) => [...text].map((ch, at) => (hits.includes(at) ? `<span class="penna-palette-match">${esc(ch)}</span>` : esc(ch))).join("");
+  const row = ({ icon, name, hits, detail, right, git, inside, selected }) =>
+    `<div class="penna-list-item penna-palette-row" data-penna="menu-item" role="option"${detail ? " data-detail" : ""}${selected ? ` data-state="selected" aria-selected="true"` : ""}><div class="penna-palette-content"><i class="penna-palette-icon" data-icon="${icon}"></i><span class="penna-palette-label">${marked(name, hits)}</span>${detail ? `<span class="penna-palette-detail">${esc(detail)}</span>` : ""}${git ? `<span class="penna-palette-right zz-git">${git}</span>` : ""}${right ? `<span class="penna-palette-right">${esc(right)}</span>` : ""}<span class="zz-inside">${inside ? ic("chevron-right") : ""}</span></div></div>`;
+  const section = (label) => `<div class="penna-palette-section"><span>${label}</span></div>`;
+  const hint = (keys, label, on = true) => `<span class="penna-palette-hint"${on ? "" : ` data-state="disabled"`}><span class="penna-palette-keys"><span class="penna-palette-glyphs" data-kbd="${keys}"></span></span><span>${label}</span></span>`;
+  const menu = (crumb, rows, { inside = true, back = false } = {}) =>
+    `<div class="penna-panel penna-palette-surface zz-menu" data-penna="popover" role="group"><div class="zz-crumb">${esc(crumb)}</div><div class="penna-palette-rows" role="listbox">${rows.join("")}</div><div class="penna-palette-footer"><div class="penna-palette-rule" data-penna="rule.bar"></div>${hint("enter", "mention")}${hint("alt-enter", "copy")}${hint("tab", "into", inside)}${hint("shift-tab", "back", back)}</div></div>`;
+  const agents = (selected) => [
+    row({ icon: "zz-claude", name: "claude", right: "opus-5.5", inside: true, selected: selected === "claude" }),
+    row({ icon: "zz-openai", name: "codex", right: "gpt-6.1-sol", inside: true, selected: selected === "codex" }),
+  ];
+  const stage = (text, over = "", send = false) => `<div class="zz-stage"><div class="penna-chat-frame"><div class="penna-chat-frame-top">${composer({ text, over, send })}</div>${foot}</div></div>`;
+  const fig = (name, note, body) => `<figure><div>${body}</div><figcaption><b>${name}</b>${note}</figcaption></figure>`;
+
+  const open = menu("@", [
+    section("Agents"),
+    ...agents("claude"),
+    section("Here"),
+    row({ icon: "terminal", name: "cargo watch", detail: "zz:1" }),
+    section("Changed"),
+    row({ icon: "file", name: "turn.rs", detail: "crates/zz-daemon/src/agent", git: "M" }),
+    section("Chats"),
+    row({ icon: "chat", name: "fix the atlas tests", detail: "zz:2" }),
+    section("Places"),
+    row({ icon: "laptop", name: "zz", detail: "macbook" }),
+  ]);
+  const typed = menu("@", [
+    row({ icon: "zz-openai", name: "codex", hits: [0, 1], right: "gpt-6.1-sol", inside: true, selected: true }),
+    row({ icon: "chat", name: "commit the release notes", hits: [0, 1], detail: "zz:3" }),
+    row({ icon: "terminal", name: "cargo watch", hits: [0, 9], detail: "zz:1" }),
+    row({ icon: "file", name: "compose.rs", hits: [0, 1], detail: "crates/zz-ui/src/agent" }),
+    row({ icon: "file", name: "config.toml", hits: [0, 1], detail: "crates/zz-daemon" }),
+  ]);
+  const models = menu("@ codex", [
+    row({ icon: "sparkle", name: "gpt-6.1-sol", selected: true }),
+    row({ icon: "sparkle", name: "gpt-6-luna" }),
+  ], { inside: false, back: true });
+
+  document.querySelector("[data-figs]").innerHTML = [
+    fig("@", "The menu as it opens. Agents first; the list scrolls past eight rows.", stage(`@${caret}`, open)),
+    fig("@co", "Typing ranks one flat list, as today. codex is on top.", stage(`@co${caret}`, typed)),
+    fig("Tab on codex", "Its models, the default first. Enter picks one, Shift-Tab goes back.", stage(`@codex/${caret}`, models)),
+    fig("Picked", "The mention is tinted text in the prompt.", stage(`${ref("@codex")} can the retry loop in turn.rs send twice?${caret}`, "", true)),
+  ].join("");
+  window.zzm.round();
+})();
+</script>
+</body>
+</html>
