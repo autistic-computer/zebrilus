@@ -582,8 +582,22 @@ end no turn.
   started with) and `agent_session_id`.
 - `send-keys`, `send-text`, `paste-buffer` and `run-pane` on a chat fail with
   `%N is an agent chat; send with: zz agent-send -t %N TEXT`, and `pipe-pane` with
-  `%N is an agent chat; read it with: zz capture-pane -p -t %N`. `capture-pane` still fails with
-  "pane has exited", and a `synchronize-panes` send whose window holds a chat fails the same way.
+  `%N is an agent chat; read it with: zz capture-pane -p -t %N`. A `synchronize-panes` send
+  whose window holds a chat fails with "pane has exited".
+- `capture-pane -p -t %N` on a chat prints its last turn as text, and `-S` (any value, so the
+  context's `-S -`) the whole chat, capped at the last 64 KiB (`agent::capture`). A prompt prints
+  as `> ` and its text, later lines indented two spaces; a tool call as its kind word and title
+  on one line (`execute cargo test`); a reply as its text; a blank line follows the prompt and
+  separates turns. Reasoning, plans, notices, errors and subagent steps are left out, and so is
+  the mention note, which never joins the user's text. An injected `[zz] ...` prompt prints like
+  any prompt. An empty chat prints nothing. The text comes from the chat state the daemon keeps
+  per pane for every client (`PaneLane::chat`, the `ChatLog` a client's replay recovers from):
+  the Claude Code and Codex drivers fill it, it is complete rather than byte-capped, and a
+  restored chat refills it when the driver replays its session, so it needs no client. A chat
+  on another ACP agent has no chat state, so it is read from the pane's retained stream
+  instead, which holds only the recent part. Without `-p` the text goes into a paste buffer, as
+  for a terminal; `-J`, `-e`, `-N`, `-T`, `-a`, `-q`, `-C`, `-E` and the value of `-S` change
+  nothing.
 
 # What the clients draw
 

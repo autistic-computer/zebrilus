@@ -4713,6 +4713,7 @@ const INSPECT_VERBS: &[(&str, &[&str])] = &[
         "agent",
         &[
             "agent-send",
+            "capture-pane",
             "flip-agent",
             "agent-account",
             "resize-pane",
@@ -13125,6 +13126,28 @@ impl Shared {
         args: &[RawText],
     ) -> Result<Execution, DaemonError> {
         let mut parsed = parse_capture_pane_args(args)?;
+        let chat = {
+            let inner = self.inner.lock();
+            let pane = inner.engine.resolve_pane(
+                parsed.target.as_deref(),
+                context.window,
+                context.pane,
+            )?;
+            is_agent_chat(&inner, pane).then_some(pane)
+        };
+        if let Some(pane) = chat {
+            #[cfg(feature = "agent")]
+            let text = self
+                .open_agent_runtime()
+                .map(|runtime| runtime.chat_text(pane, parsed.start.is_some()))
+                .unwrap_or_default();
+            #[cfg(not(feature = "agent"))]
+            let text = String::new();
+            if parsed.print && text.is_empty() {
+                return Ok(Execution::default());
+            }
+            return self.finish_capture_pane(pane, &parsed, context.no_hooks, Ok(text));
+        }
         let (pane, terminal, mut start, mut end) = {
             let mut inner = self.inner.lock();
             let pane = inner.engine.resolve_pane(
@@ -52561,7 +52584,7 @@ This is an Agent pane, and it draws HTML you put in a reply.
 - To show a page you are building (a site, a screen of the user's product), put the whole document, starting with `<!doctype html>`, in a plain ```html block. It keeps its own styles and is drawn in a frame at desktop size; a click opens it beside the chat.
 - For a page with files of its own, write it to disk and run `zz html PATH`.
 
-This pane approves `zz` commands without asking, alone or piped into `head`, `tail`, `grep`, `rg`, `wc` or `jq`, with no redirect but `2>&1` or `>/dev/null`.
+Unless auto-approve is off, this pane approves `zz` commands without asking, alone or piped into `head`, `tail`, `grep`, `rg`, `wc`, `jq`, `cut` or `tr`, with no redirect but `2>&1` or `>/dev/null`.
 ";
 
 pub const WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE: &str = "ZZ_AGENT_CONTEXT";
@@ -52704,7 +52727,7 @@ Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its r
 
 A prompt that names an agent with `@+claude`, `@+codex` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a short note that says what those tokens ask of you.
 
-A chat answers the same reads as a terminal. `#{pane_current_command}` is `claude` or `codex`. `#{agent_state}` is `starting`, `idle`, `working`, `needs-approval`, `needs-input` or `failed`, and `#{agent_pending_permission}` is the pending request ID or empty, in `list-panes -F`, `display-message -p` and `inspect`. Typing into a chat fails and names the verb to use: `send-keys`, `send-text`, `paste-buffer` and `run-pane` fail with `%N is an agent chat; send with: zz agent-send -t %N TEXT`.
+A chat answers the same reads as a terminal. `#{pane_current_command}` is `claude` or `codex`. `#{agent_state}` is `starting`, `idle`, `working`, `needs-approval`, `needs-input` or `failed`, and `#{agent_pending_permission}` is the pending request ID or empty, in `list-panes -F`, `display-message -p` and `inspect`. `capture-pane -p -t %N` prints the chat's last turn as text: `> ` and the prompt, one line per tool call (its kind and title), then the reply; `-S -` prints the whole chat, and an empty chat prints nothing. Typing into a chat fails and names the verb to use: `send-keys`, `send-text`, `paste-buffer` and `run-pane` fail with `%N is an agent chat; send with: zz agent-send -t %N TEXT`, and `pipe-pane` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`.
 
 ### `zz flip-agent [-t %N] [--now | --when-idle | --cancel]`
 
@@ -52738,7 +52761,7 @@ Terminal agents keep their own permission settings: Codex `approval_policy`, Cla
 ### `zz inspect [-a | -t %N] [--json]`
 
 Describe a pane's kind, process, geometry, exit status, progress, agent facts, and browser URL.
-Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `agent_provider` (`claude` or `codex`), `agent_model` (the model the chat was started with, empty for the default) and `agent_session_id` are set for agent panes, and `agent_parent` names the chat that opened this one. `verbs` lists what applies to this pane's kind; agent panes list `agent-send`, `flip-agent`, `agent-account` and `agent-respond`, a terminal running Claude Code or Codex lists `flip-agent`, and another terminal with a nonempty `agent_state` lists `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
+Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `agent_provider` (`claude` or `codex`), `agent_model` (the model the chat was started with, empty for the default) and `agent_session_id` are set for agent panes, and `agent_parent` names the chat that opened this one. `verbs` lists what applies to this pane's kind; agent panes list `agent-send`, `capture-pane`, `flip-agent`, `agent-account` and `agent-respond`, a terminal running Claude Code or Codex lists `flip-agent`, and another terminal with a nonempty `agent_state` lists `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
 
 ```sh
 zz inspect -a --json | jq -c 'select(.agent_state!="") | {pane_id,agent_state}'
@@ -52751,7 +52774,7 @@ The keys, in text output order, are `session_id`, `session_name`, `window_id`, `
 ### `zz events [-t %N]`
 
 Stream hook events.
-Print JSON lines, flushed per line: `{"seq":1,"event":"agent-state-changed","time":1750000000000,"hook_pane":"%3","agent_state":"working",...}`. Each line includes the hook's string variables. `time` is Unix milliseconds. Wait for the first line, `{"seq":0,"event":"ready","time":...}`, before starting work. On subscriber overflow, `gap` consumes the next sequence number; the client reconnects and continues counting without another `ready` line. Use `-t %N` for a pane, `-t @N` for a window, `-t '$N'` for a session ID, or `-t name` for a session name. Filters match exact hook fields, and a session filter also passes the events of that session's windows and panes; `ready` and `gap` always print. Omit `-t` to stream without filtering. `agent-state-changed` carries `agent_state` for every pane kind and `agent_pending_permission` with the permission ID or an empty string; a chat sends it when either changes. Agent panes also emit `agent-tool-call` for new calls and completed or failed status changes. Each event carries `tool_call_id`, `tool_title`, `tool_kind`, and `tool_status`; titles collapse whitespace and stop at 200 characters: `{"seq":2,"event":"agent-tool-call","time":1750000000000,"hook_pane":"%3","tool_call_id":"call-1","tool_title":"cargo test","tool_kind":"execute","tool_status":"in_progress"}`. These agent events are stream-only; `set-hook` cannot bind them. Other `@option-changed` firings are not streamed; use a hook for those. Invalid arguments exit 2. Connection and daemon errors, or any disconnect other than overflow, exit 1, including server shutdown.
+Print JSON lines, flushed per line: `{"seq":1,"event":"agent-state-changed","time":1750000000000,"hook_pane":"%3","agent_state":"working",...}`. Each line includes the hook's string variables. `time` is Unix milliseconds. Wait for the first line, `{"seq":0,"event":"ready","time":...}`, before starting work. On subscriber overflow, `gap` consumes the next sequence number; the client reconnects and continues counting without another `ready` line. Use `-t %N` for a pane, `-t @N` for a window, `-t '$N'` for a session ID, or `-t name` for a session name. Filters match exact hook fields, and a session filter also passes the events of that session's windows and panes; `ready` and `gap` always print. Omit `-t` to stream without filtering. `agent-state-changed` fires when a terminal's `@agent_state` is written and when a chat's state or pending permission changes, and carries `agent_state` and `agent_pending_permission` (the permission ID or an empty string). Agent panes also emit `agent-tool-call` for new calls and completed or failed status changes. Each event carries `tool_call_id`, `tool_title`, `tool_kind`, and `tool_status`; titles collapse whitespace and stop at 200 characters: `{"seq":2,"event":"agent-tool-call","time":1750000000000,"hook_pane":"%3","tool_call_id":"call-1","tool_title":"cargo test","tool_kind":"execute","tool_status":"in_progress"}`. These agent events are stream-only; `set-hook` cannot bind them. Other `@option-changed` firings are not streamed; use a hook for those. Invalid arguments exit 2. Connection and daemon errors, or any disconnect other than overflow, exit 1, including server shutdown.
 
 "#;
     WORKSPACE_TOOLS_TERMINAL = r#"## Terminal panes
@@ -124185,6 +124208,62 @@ bind - split-window -v -c "#{pane_current_path}"
                     DaemonError::Server(error) => error.tmux_message(),
                     error => error.to_string(),
                 })
+        }
+
+        #[test]
+        fn a_timed_out_wait_names_a_wait_that_joins_the_running_turn() {
+            let workspace = workspace(Behavior::Hang);
+            let timed_out = |args: &[&str]| {
+                let mut context = ExecutionContext::default();
+                match workspace.shared.execute(
+                    ClientId(97),
+                    ClientKind::Command,
+                    &mut context,
+                    &CommandInvocation::new("agent-send", args.iter().copied()),
+                ) {
+                    Err(DaemonError::CommandExit {
+                        output,
+                        exit_code: 124,
+                    }) => output.to_string(),
+                    other => panic!("{args:?}: {other:?}"),
+                }
+            };
+            let message = "%1: no reply within 1 seconds; the turn is still running. `agent-send -t %1 --wait ''` waits again without sending";
+            assert_eq!(
+                timed_out(&["-t", "%1", "--wait", "--timeout", "1", "go"]),
+                message
+            );
+            assert_eq!(
+                timed_out(&["-t", "%1", "--wait", "--timeout", "1", ""]),
+                message
+            );
+        }
+
+        #[test]
+        fn capture_pane_prints_a_chat_as_text() {
+            let workspace = workspace(Behavior::Chunk);
+            let capture = |args: &[&str]| {
+                run_as(&workspace, ClientId(97), None, "capture-pane", args).expect("capture-pane")
+            };
+            assert_eq!(capture(&["-p", "-t", "%1"]), "");
+            for (turn, text) in ["one", "two"].into_iter().enumerate() {
+                run_as(
+                    &workspace,
+                    ClientId(97),
+                    None,
+                    "agent-send",
+                    &["-t", "%1", "--wait", text],
+                )
+                .expect("turn");
+                wait_until("the reply in the chat state", || {
+                    capture(&["-p", "-t", "%1"]).ends_with(&format!("turn {turn}\n"))
+                });
+            }
+            assert_eq!(capture(&["-p", "-t", "%1"]), "> two\n\nturn 1\n");
+            assert_eq!(
+                capture(&["-p", "-J", "-t", "%1", "-S", "-"]),
+                "> one\n\nturn 0\n\n> two\n\nturn 1\n"
+            );
         }
 
         #[test]
