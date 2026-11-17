@@ -56,7 +56,7 @@ Every scenario with a mention also fails when the host reads the fixture file in
 After the follow the rig closes the host and lists the panes left (`after-close.txt`; a server
 with no panes left exits, which reads as an error line). `close-check.sh` checks the same close
 cascade without a model: a host chat, a child chat, a terminal the child splits, then the host
-closed. `compare.py A.tsv B.tsv` prints a before and after table.
+closed. `compare.py A.tsv B.tsv [C.tsv ...]` compares batches per scenario and host, oldest first; with three or more it keeps the scenarios of the last.
 
 Each run keeps `out/runs/ID/`: `calls.txt` (every zz and tmux call in order with its output, then
 each chat's shell commands with their output), `transcripts/` (`capture-pane -p -S -` of every

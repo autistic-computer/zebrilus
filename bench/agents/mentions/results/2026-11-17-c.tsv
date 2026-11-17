@@ -1,0 +1,26 @@
+claude	m5	1	1	done	11.7	1	0	0	1	0	2	0	EjI9pX	ok	81029	581	31663	61
+codex	m5	1	1	done	14.0	1	0	0	1	0	2	0	FY9bmF	ok	55106	151	47501	113
+claude	m4	1	0	done	22.5	1	0	0	1	0	2	0	8h6F68	answer lacks token; stamp.sh never ran; no ask reached the host	94151	1023	31773	121
+codex	m4	1	1	done	21.5	2	0	0	1	1	3	1	xlN4Uf	ok	52875	273	79960	418
+claude	m4c	1	0	done	43.8	3	0	0	1	1	4	0	ZATsfD	stamp.sh ran (write blocked by the sandbox)	226724	2232	87370	828
+codex	m4c	1	1	done	49.9	6	0	0	1	1	7	0	m9tQ0T	ok	193567	1192	258103	1202
+claude	m8b	1	1	done	27.6	2	0	0	1	0	3	1	ztSatc	ok	159012	1088	48097	394
+codex	m8b	1	1	done	31.8	6	1	0	1	0	3	1	sdO1gY	ok	247200	1788	90900	321
+claude	m5	2	1	done	11.8	1	0	0	1	0	2	0	fO0K42	ok	90275	559	31653	77
+codex	m5	2	1	done	12.2	1	0	0	1	0	2	0	eZFzPF	ok	51940	146	47460	98
+claude	m4	2	0	done	20.7	1	0	0	1	0	2	0	03h7aX	answer lacks token; stamp.sh never ran; no ask reached the host	94229	800	31765	119
+codex	m4	2	1	done	21.4	2	0	0	1	1	3	1	lrzMQn	ok	48734	269	83421	317
+claude	m4c	2	0	done	32.8	3	0	0	1	1	4	0	tL5ifv	stamp.sh ran (write blocked by the sandbox)	221334	2328	67474	368
+claude	m8b	2	0	done	45.2	6	1	0	1	0	4	0	DBl16d	answer lacks token	219413	1855	154734	876
+codex	m8b	2	1	done	30.6	4	1	0	1	0	3	1	ZsVuc0	ok	181897	1447	90861	373
+codex	m4c	2	1	done	139.2	26	0	0	1	1	27	0	88Nd2E	ok	928402	1802	1177040	3190
+claude	m5	3	1	done	11.1	1	0	0	1	0	2	0	Rb1K7U	ok	93913	505	31670	63
+codex	m5	3	1	done	12.8	1	0	0	1	0	2	0	0ih7ay	ok	52747	139	47505	115
+claude	m4	3	0	done	20.5	1	0	0	1	0	2	0	DW37c7	answer lacks token; stamp.sh never ran; no ask reached the host	94266	1113	31846	150
+codex	m4	3	1	done	20.5	2	0	0	1	1	3	1	VMSNGz	ok	55768	284	83619	365
+codex	m4c	3	1	done	27.6	3	0	0	1	1	4	0	cbkLSm	ok	105542	965	116543	489
+claude	m4c	3	0	done	36.7	3	0	0	1	1	4	0	a9qAHH	stamp.sh ran (write blocked by the sandbox)	228265	2559	87519	571
+claude	m8b	3	1	done	26.6	2	0	0	1	0	3	1	MeeYGM	ok	156202	880	47896	261
+codex	m8b	3	1	done	26.6	3	0	0	1	0	3	1	kuTM4g	ok	223622	1658	90403	253
+codex	m1	1	1	done	13.3	1	0	0	1	0	2	1	Yg8Zig	ok	51949	152	47534	117
+claude	m1	1	1	done	16.5	1	0	0	1	0	2	1	MdUd0q	ok	93906	451	31689	80
