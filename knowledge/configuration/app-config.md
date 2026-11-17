@@ -812,7 +812,8 @@ The iPad and web clients have a Multiplexer page with the same Options rows, fro
 `zz_ui::settings::multiplexer::MUX_SETTINGS` table. They show the host daemon's live values
 (`ClientCore::mux_options`) and change them with `set-option -g`, so a change lasts for that
 daemon's lifetime and never reaches the host's `zz/mux.conf`. Prefix is a text field taking the
-tmux spelling, since a touch screen has no key to record. The rows are off while the host is
+tmux spelling, since a touch screen has no key to record. Mouse shows the attached session's
+effective value, so it is set with `set-option -t` on that session. The rows are off while the host is
 disconnected or attached read-only. The iPhone has no Multiplexer page.
 
 Terminal's Appearance rows read the saved parsed `zz/config` entries. Scalars replace the last

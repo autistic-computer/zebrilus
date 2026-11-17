@@ -368,8 +368,8 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
   remain visible as host-owned settings.
 - **Multiplexer:** on iPad and the web, the host daemon's Prefix (typed as tmux spells it, such
   as `C-a`), Mode keys, Mouse, History limit, Clipboard and Escape time. Each change runs
-  `set-option -g` on the host and lasts until its daemon restarts; the host's `zz/mux.conf` is
-  not written. Changes made elsewhere show as they happen, and a value the host refuses shows its
+  `set-option -g` on the host, or for Mouse `set-option -t` on the attached session, and lasts
+  until its daemon restarts; the host's `zz/mux.conf` is not written. Changes made elsewhere show as they happen, and a value the host refuses shows its
   error and the field goes back to the host's value.
 - **Hosts:** the configured endpoint, connection status, and reconnect.
 - **Advanced:** command palette layout (tree or flat), host prefix, and command shortcuts

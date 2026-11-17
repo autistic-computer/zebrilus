@@ -7,7 +7,7 @@ use penna::components::{
     select::{SelectEvent, SelectState},
     switch::Switch,
 };
-use zz_protocol::CommandInvocation;
+use zz_protocol::{CommandInvocation, MuxOptionKey};
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
     multiplexer::{MUX_SETTINGS, MuxControl, MuxSetting},
@@ -123,10 +123,14 @@ impl AppShell {
         {
             return;
         }
-        let command = CommandInvocation::new(
-            "set-option",
-            ["-g", row.setting.key.as_str(), value.as_str()],
-        );
+        let mut args = match connection.read(cx).core.attached_session() {
+            Some(session) if row.setting.key == MuxOptionKey::Mouse => {
+                vec!["-t".to_owned(), session.to_string()]
+            }
+            _ => vec!["-g".to_owned()],
+        };
+        args.extend([row.setting.key.as_str().to_owned(), value.clone()]);
+        let command = CommandInvocation::new("set-option", args);
         let request = connection.update(cx, |connection, cx| connection.invoke(command, cx));
         row.sent = Some((request, value));
     }
@@ -170,8 +174,15 @@ impl AppShell {
             }
             match &row.field {
                 Field::Text(input) => {
-                    if input.read(cx).focus_handle(cx).is_focused(window) {
-                        continue;
+                    let state = input.read(cx);
+                    if state.focus_handle(cx).is_focused(window) {
+                        let text = state.value();
+                        let text = text.trim();
+                        let untouched = row.shown.as_deref() == Some(text)
+                            || (settled && row.sent.as_ref().is_some_and(|(_, sent)| sent == text));
+                        if !untouched {
+                            continue;
+                        }
                     }
                     input.update(cx, |input, cx| input.set_value(value.clone(), window, cx));
                 }
