@@ -441,10 +441,11 @@ impl AppShell {
             self.release_pip(cx);
         }
         if let Some(grab) = self.pip.grab {
-            if !active
-                .floating
-                .iter()
-                .any(|float| float.pane == grab.pane && float.visible)
+            if !self.can_move_floats(cx)
+                || !active
+                    .floating
+                    .iter()
+                    .any(|float| float.pane == grab.pane && float.visible)
             {
                 self.pip.grab = None;
                 self.hold_terminal_resizes();
@@ -642,32 +643,43 @@ impl AppShell {
         cx.stop_propagation();
     }
 
+    fn can_move_floats(&self, cx: &App) -> bool {
+        let connection = self.connection.read(cx);
+        connection.connected && !connection.core.attached_read_only()
+    }
+
     fn float_grips(
         &self,
         pane: PaneId,
         frame: ala::Size<Pixels>,
         cell: (f32, f32),
         pip: bool,
+        touch: bool,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let band = px(if cfg!(any(target_os = "ios", target_os = "android")) {
-            TOUCH_GRIP
-        } else {
-            POINTER_GRIP
-        });
+        let pointer = px(POINTER_GRIP);
+        let reach = if touch { px(TOUCH_GRIP) } else { pointer };
         let cell = size(px(cell.0), px(cell.1));
         let (edge, near) = if pip {
-            let inside = px(POINTER_GRIP / 2.0);
-            (size(band, band), point(inside - band, inside - band))
+            let outside = px(-POINTER_GRIP / 2.0);
+            (size(reach, reach), point(outside, outside))
         } else {
-            let edge = size(band.max(cell.width), band.max(cell.height));
+            let border = size(pointer.max(cell.width), pointer.max(cell.height));
             (
-                edge,
-                point(cell.width - edge.width, cell.height - edge.height),
+                size(reach.max(cell.width), border.height),
+                point(cell.width - border.width, cell.height - border.height),
             )
         };
         float_grip_areas(frame, edge, near, pip)
             .into_iter()
+            .filter(|area| {
+                !touch
+                    || if pip {
+                        matches!(area.name, "bottom-left" | "bottom-right")
+                    } else {
+                        !matches!(area.name, "left" | "right")
+                    }
+            })
             .map(|area| {
                 let drag = FloatGripDrag {
                     pane,
@@ -778,8 +790,12 @@ impl AppShell {
         active: &zz_protocol::WindowSnapshot,
         floats: &[zz_protocol::FloatingPaneSnapshot],
         panes: &mut std::collections::HashMap<zz_protocol::PaneId, AnyElement>,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
+        let touch =
+            cfg!(any(target_os = "ios", target_os = "android")) || window.last_input_was_touch();
+        let movable = self.can_move_floats(cx);
         let cell = self.cell_size(active, cx);
         let canvas = self.float_canvas_bounds.get().size;
         let header = cx.theme().pane_header_height();
@@ -902,8 +918,9 @@ impl AppShell {
                     .launches()
                     .into_any_element()
             };
-            let grips = if bordered && !stashed && self.pip.thrown(float.pane).is_none() {
-                self.float_grips(float.pane, frame.size, cell, !modal, cx)
+            let grips = if movable && bordered && !stashed && self.pip.thrown(float.pane).is_none()
+            {
+                self.float_grips(float.pane, frame.size, cell, !modal, touch, cx)
             } else {
                 Vec::new()
             };

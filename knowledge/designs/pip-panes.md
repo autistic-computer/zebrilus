@@ -84,10 +84,13 @@ travel between. `resize-pane` from the CLI can still make a float larger; the la
 left so its header shows.
 
 The web and iPad clients draw the same grips from `zz_ui::pip::float_grip_areas`, the geometry the
-desktop uses (`clients/app/src/app/floating.rs`). On iOS and Android each grip is 44 pt, 40 pt of it
-outside the card and 4 pt inside, so a finger reaches it without covering the content or more of the
-header than the desktop does; the web keeps the desktop's 8 px. Mouse drags and touch drags preview
-the frame locally, hold terminal resizes until release, and send the desktop's commands.
+desktop uses (`clients/app/src/app/floating.rs`). On touch (iOS, Android, and the web once the last
+input was a touch) a PiP keeps only its two bottom corners, each 44 pt, 4 pt outside the card like the
+pointer grips and 40 pt inside. A touch claims a grip the moment it lands, so nothing reaches above the
+card, where a pile's back cards show their headers, or further beside it, where the tile underneath
+takes taps and swipes; the header moves the card. A read-only or disconnected client draws no grips
+and drops a grab in progress. Mouse drags and touch drags preview the frame locally, hold terminal
+resizes until release, and send the desktop's commands.
 
 # Throw
 

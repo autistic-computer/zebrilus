@@ -722,13 +722,16 @@ mod tests {
         let touch = float_grip_areas(
             frame,
             ala::size(px(44.0), px(44.0)),
-            point(px(-40.0), px(-40.0)),
+            point(px(-4.0), px(-4.0)),
             true,
         );
-        assert_eq!(area(&touch, "top"), Some(rect(4.0, -40.0, 192.0, 44.0)));
+        assert_eq!(
+            area(&touch, "bottom-left"),
+            Some(rect(-4.0, 80.0, 44.0, 44.0))
+        );
         assert_eq!(
             area(&touch, "bottom-right"),
-            Some(rect(196.0, 116.0, 44.0, 44.0))
+            Some(rect(160.0, 80.0, 44.0, 44.0))
         );
         let modal = float_grip_areas(
             frame,

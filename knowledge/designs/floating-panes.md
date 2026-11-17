@@ -263,7 +263,9 @@ Since 2026-10-18 every non-modal float draws as a PiP instead, moved by a hover 
 window whose only pane is a float shows it at its cell); the modal and visible over-zoom floats draw
 over the page. Native browser views under a visible float hide, as under popups today (`:2853`).
 A modal float gets the desktop's grips: its top border moves it and its other edges and corners
-resize it, each grip the border cell, widened to 44 pt outward on iOS and Android.
+resize it, each grip the border cell. On touch (iOS, Android, and the web once the last input was a
+touch) only the top and bottom border rows carry grips, the corners widened to 44 pt along the row,
+so no grip takes a tap from the content or the scrim. A read-only or disconnected client draws none.
 
 **Raw TUI** (`crates/zz-tui/src`). `recompute_layout` (`state.rs:1088`) appends float rects (border
 and content, clipped) after the tiled ones, and `Empty` yields no tiled rect; `paint_workspace`
