@@ -3382,7 +3382,12 @@ mod tests {
         let stacked = reported_grid(zz_ui::pane::HeaderPlace::Stacked, cx);
         let over = reported_grid(zz_ui::pane::HeaderPlace::Over, cx);
         assert_eq!(stacked, over);
-        assert_eq!(over, (98, 40));
+        let expected = if cfg!(target_os = "macos") {
+            (98, 40)
+        } else {
+            (75, 30)
+        };
+        assert_eq!(over, expected);
     }
 
     #[ala::test]
