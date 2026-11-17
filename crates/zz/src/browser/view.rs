@@ -1,13 +1,6 @@
 use std::{
-    cell::Cell,
-    collections::{HashMap, HashSet},
-    fs::File,
-    io::Read as _,
-    ops::Range,
-    path::Path,
-    rc::Rc,
-    sync::Arc,
-    time::Duration,
+    cell::Cell, collections::HashMap, fs::File, io::Read as _, ops::Range, path::Path, rc::Rc,
+    sync::Arc, time::Duration,
 };
 use zz_ui::pane_look::pane_color;
 use zz_ui::shell::window_drag_handle;
@@ -52,10 +45,10 @@ use zz_protocol::{
 use zz_terminal::{KeyAction as TerminalKeyAction, KeyInput as TerminalKeyInput};
 use zz_ui::browser::{
     BrowserActionMenuState, BrowserEmptyHint, BrowserErrorPanel, BrowserHeader, BrowserMenuActions,
-    BrowserMenuProfile, BrowserPickStatus, BrowserProfileDiscoveryState, BrowserSiteMenuState,
-    BrowserTabInfo, BrowserTabStrip, BrowserToolbar, browser_action_menu, browser_address,
-    browser_omnibox_panel, browser_omnibox_row, browser_recent_row, browser_site_controls_button,
-    browser_site_menu, browser_start_surface, browser_toolbar_button,
+    BrowserMenuEngine, BrowserMenuProfile, BrowserPickStatus, BrowserProfileDiscoveryState,
+    BrowserSiteMenuState, BrowserTabInfo, BrowserTabStrip, BrowserToolbar, browser_action_menu,
+    browser_address, browser_omnibox_panel, browser_omnibox_row, browser_recent_row,
+    browser_site_controls_button, browser_site_menu, browser_start_surface, browser_toolbar_button,
 };
 use zz_ui::dialogs::browser_clear_site_data_alert;
 use zz_ui::pane::{PaneDrag, PaneDragSource, pane_header_icon_button};
@@ -65,7 +58,7 @@ use crate::browser::macos_surface::MacBrowserSurfaceCache;
 #[cfg(target_os = "macos")]
 use crate::browser::underlay::PaneUnderlay;
 
-use super::recent_pages::{self, HistorySuggestion, RecentPage};
+use super::recent_pages::{self, RecentPage};
 use crate::{
     browser::controller::{
         BrowserController, BrowserPaneFrameContent, BrowserSessionRequest, ControllerEvent,
@@ -80,6 +73,7 @@ use crate::{
     window::corners::{WindowCorners, round_div_radii},
     workspace::ClosePane,
 };
+use zz_client::recent_pages::{Omnibox, dedupe_recents};
 
 const DEFAULT_URL: &str = "about:blank";
 const TAB_ID: TabId = TabId(0);
@@ -230,37 +224,6 @@ fn is_blank_url(url: &str) -> bool {
     url == "about:blank"
 }
 
-fn differs_by_one_character_edit(previous: &str, next: &str) -> bool {
-    let previous = previous.chars().collect::<Vec<_>>();
-    let next = next.chars().collect::<Vec<_>>();
-    match previous.len().cmp(&next.len()) {
-        std::cmp::Ordering::Equal => {
-            previous
-                .iter()
-                .zip(&next)
-                .filter(|(left, right)| left != right)
-                .count()
-                == 1
-        }
-        std::cmp::Ordering::Less if previous.len() + 1 == next.len() => {
-            one_character_inserted(&previous, &next)
-        }
-        std::cmp::Ordering::Greater if next.len() + 1 == previous.len() => {
-            one_character_inserted(&next, &previous)
-        }
-        std::cmp::Ordering::Less | std::cmp::Ordering::Greater => false,
-    }
-}
-
-fn one_character_inserted(shorter: &[char], longer: &[char]) -> bool {
-    let mismatch = shorter
-        .iter()
-        .zip(longer)
-        .position(|(left, right)| left != right)
-        .unwrap_or(shorter.len());
-    shorter[mismatch..] == longer[mismatch + 1..]
-}
-
 fn tab_host_label(url: &str) -> SharedString {
     if url.is_empty() || is_blank_url(url) {
         return "New Tab".into();
@@ -281,31 +244,6 @@ struct PendingHistoryUse {
     input: String,
     selected: bool,
     started: bool,
-}
-
-#[derive(Default)]
-struct OmniboxState {
-    query: String,
-    suggestions: Vec<HistorySuggestion>,
-    selected: Option<usize>,
-    previous_value: String,
-    incremental_input: bool,
-}
-
-impl OmniboxState {
-    fn begin(&mut self, value: &str) {
-        self.reset();
-        value.clone_into(&mut self.previous_value);
-        self.incremental_input = true;
-    }
-
-    fn reset(&mut self) {
-        self.query.clear();
-        self.suggestions.clear();
-        self.selected = None;
-        self.previous_value.clear();
-        self.incremental_input = false;
-    }
 }
 
 #[allow(
@@ -418,7 +356,7 @@ pub(crate) struct BrowserView {
     address: Entity<InputState>,
     chrome: Entity<BrowserChromeView>,
     address_editing: bool,
-    omnibox: OmniboxState,
+    omnibox: Omnibox,
     focus_handle: FocusHandle,
     chrome_opacity: f32,
     header_trailing_inset: Pixels,
@@ -779,7 +717,7 @@ impl BrowserView {
             address,
             chrome,
             address_editing: false,
-            omnibox: OmniboxState::default(),
+            omnibox: Omnibox::default(),
             focus_handle,
             chrome_opacity: 1.0,
             header_trailing_inset: px(0.0),
@@ -927,11 +865,7 @@ impl BrowserView {
             self.address_editing = editing;
             changed = true;
         }
-        if !editing
-            && (!self.omnibox.query.is_empty()
-                || !self.omnibox.suggestions.is_empty()
-                || self.omnibox.selected.is_some())
-        {
+        if !editing && !self.omnibox.is_clear() {
             self.omnibox.reset();
             changed = true;
         }
@@ -1187,51 +1121,19 @@ impl BrowserView {
             self.omnibox.begin(previous_value);
             self.address_editing = true;
         }
-        let previous = self.omnibox.query.clone();
-        let typed_one = value.starts_with(&previous)
-            && value.chars().count() == previous.chars().count().saturating_add(1);
-        self.omnibox.incremental_input &=
-            typed_one || differs_by_one_character_edit(&self.omnibox.previous_value, value);
-        value.clone_into(&mut self.omnibox.previous_value);
-        value.clone_into(&mut self.omnibox.query);
-        self.omnibox.suggestions =
+        let suggestions =
             recent_pages::suggestions(&self.profile, value, OMNIBOX_SUGGESTION_LIMIT, cx);
-        self.omnibox.selected = None;
-        let completion = typed_one
-            .then(|| {
-                self.omnibox
-                    .suggestions
-                    .first()
-                    .and_then(|suggestion| suggestion.inline_completion.clone())
-            })
-            .flatten();
-        if completion.is_some() {
-            self.omnibox.selected = Some(0);
-        }
+        let completion = self.omnibox.update(value, suggestions);
         cx.notify();
         completion
     }
 
     fn accept_omnibox(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let selected = self
-            .omnibox
-            .selected
-            .and_then(|index| self.omnibox.suggestions.get(index))
-            .cloned();
-        let value = selected.as_ref().map_or_else(
-            || self.address.read(cx).value().to_string(),
-            |suggestion| suggestion.url.clone(),
-        );
-        let input = if self.omnibox.query.is_empty() {
-            value.clone()
-        } else {
-            self.omnibox.query.clone()
-        };
-        let selected = selected.is_some();
-        let history_use = (selected || self.omnibox.incremental_input).then(|| PendingHistoryUse {
+        let (value, history_use) = self.omnibox.accept(&self.address.read(cx).value());
+        let history_use = history_use.map(|history_use| PendingHistoryUse {
             profile: self.profile.clone(),
-            input,
-            selected,
+            input: history_use.input,
+            selected: history_use.selected,
             started: false,
         });
         self.navigate_address(&value, history_use, cx);
@@ -2179,24 +2081,14 @@ impl BrowserView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.address_editing || self.omnibox.suggestions.is_empty() {
+        let Some(preview) = self
+            .address_editing
+            .then(|| self.omnibox.step(direction))
+            .flatten()
+        else {
             cx.propagate();
             return;
-        }
-        let count = i64::try_from(self.omnibox.suggestions.len()).unwrap_or(i64::MAX);
-        let next = self.omnibox.selected.map_or_else(
-            || if direction < 0 { count - 1 } else { 0 },
-            |selected| (i64::try_from(selected).unwrap_or_default() + direction).rem_euclid(count),
-        );
-        self.omnibox.selected = usize::try_from(next).ok();
-        let preview = self
-            .omnibox
-            .selected
-            .and_then(|selected| self.omnibox.suggestions.get(selected))
-            .map_or_else(
-                || self.omnibox.query.clone(),
-                |suggestion| suggestion.url.clone(),
-            );
+        };
         self.address.update(cx, |address, cx| {
             if address.value().as_ref() != preview {
                 address.set_value(preview.clone(), window, cx);
@@ -3129,6 +3021,7 @@ impl BrowserView {
                     suggestion.display_url.clone(),
                     self.omnibox.selected == Some(index),
                     recent_pages::favicon(&self.profile, &suggestion.url, cx),
+                    px(32.0),
                     cx,
                 )
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -3197,6 +3090,7 @@ impl BrowserView {
             ("browser-recent", index),
             display_url(&page.url),
             page.favicon(),
+            penna::blocks::picker::list_row_height(cx),
             cx,
         )
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -3462,6 +3356,7 @@ impl Render for BrowserChromeView {
                     chrome_import::profiles::DetectedChromeProfile::menu_label,
                 );
             let state = BrowserActionMenuState {
+                engine: BrowserMenuEngine::Chromium,
                 current_profile_label: current_profile_label.into(),
                 selected_profile: menu_profile.clone().into(),
                 default_profile: ala_cef::DEFAULT_BROWSER_PROFILE.into(),
@@ -4078,15 +3973,6 @@ fn display_url(url: &str) -> String {
     diagnostic_url(url)
 }
 
-fn dedupe_recents(pages: Vec<RecentPage>, limit: usize) -> Vec<RecentPage> {
-    let mut seen = HashSet::new();
-    pages
-        .into_iter()
-        .filter(|page| seen.insert(display_url(&page.url)))
-        .take(limit)
-        .collect()
-}
-
 fn has_http_origin(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
@@ -4344,47 +4230,6 @@ mod tests {
 
         theme.float_shadow.strength = 0.0;
         assert_eq!(element_picker_appearance(&theme, 1.0).shadow, None);
-    }
-
-    #[test]
-    fn recognizes_incremental_text_edits_without_treating_bulk_replacements_as_typing() {
-        assert!(differs_by_one_character_edit("exa", "exam"));
-        assert!(differs_by_one_character_edit("exam", "exa"));
-        assert!(differs_by_one_character_edit("exam", "exXm"));
-        assert!(differs_by_one_character_edit("café", "cafés"));
-        assert!(!differs_by_one_character_edit("", "example.com"));
-        assert!(!differs_by_one_character_edit("example", "github"));
-        assert!(!differs_by_one_character_edit("same", "same"));
-    }
-
-    #[test]
-    fn dedupes_recent_pages_by_display_url_before_applying_the_limit() {
-        let recent = |url: &str, title: &str, visited_at| {
-            RecentPage::imported(
-                ala_cef::DEFAULT_BROWSER_PROFILE,
-                url.to_owned(),
-                title.to_owned(),
-                visited_at,
-                1,
-                0,
-            )
-        };
-        let pages = vec![
-            recent("http://localhost:3000/insights?a=1", "Newest insights", 4),
-            recent("http://localhost:3000/insights?b=2", "Older insights", 3),
-            recent("http://localhost:3000/settings#profile", "Settings", 2),
-            recent("http://localhost:3000/help", "Help", 1),
-        ];
-
-        let deduped = dedupe_recents(pages, 2);
-
-        assert_eq!(
-            deduped,
-            vec![
-                recent("http://localhost:3000/insights?a=1", "Newest insights", 4,),
-                recent("http://localhost:3000/settings#profile", "Settings", 2),
-            ]
-        );
     }
 
     fn bindings_for_contexts(

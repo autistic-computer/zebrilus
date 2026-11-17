@@ -36,6 +36,7 @@ futures.workspace = true
 objc = "0.2"
 percent-encoding = "2.3.2"
 raw-window-handle.workspace = true
+url.workspace = true
 ala-platform.workspace = true
 zz-daemon-client.workspace = true
 

@@ -226,7 +226,7 @@ egress host.
 | `libs/ala-cef/src/chrome_import/profiles.rs` | Background Chrome profile discovery, safe platform paths, and the bounded sanitized label cache. |
 | `libs/ala-cef/src/chrome_import/cookie.rs` | Site-scoped and profile-wide queries, cookie-identity deduplication, bounded SQLite snapshot, platform key lookup, Chrome decryption, and chunked CEF-neutral normalization. |
 | `libs/ala-cef/src/chrome_import/history.rs` | Bounded read-only Chrome history snapshot, Chromium timestamp conversion, and newest-5,000 HTTP(S) extraction. |
-| `crates/zz/src/browser/recent_pages.rs` | Bounded profile-scoped history, legacy migration, Chrome merge, recent-page queries, and omnibox scoring. |
+| `crates/zz-client/src/recent_pages.rs` | Bounded profile-scoped history, legacy migration, Chrome merge, recent-page queries, and omnibox scoring. |
 
 # Related
 

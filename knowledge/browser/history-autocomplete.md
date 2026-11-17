@@ -2,14 +2,14 @@
 type: Concept
 title: Browser history & omnibox autocomplete
 description: Profile-scoped browser history, recent-use ranking, learned selections, and Chrome-like URL-bar autocomplete.
-resource: crates/zz/src/browser/recent_pages/store.rs
+resource: crates/zz-client/src/recent_pages.rs
 tags:
 - browser
 - history
 - omnibox
 - autocomplete
 - profiles
-timestamp: 2026-09-22T00:00:00Z
+timestamp: 2026-11-16T00:00:00Z
 ---
 
 # Overview
@@ -131,6 +131,18 @@ For non-empty input:
 Suggestions use single-line title and muted URL text, with ellipsis for overflow.
 Hover and keyboard selection share a rounded highlight, inset 4px from the dropdown edge.
 
+The thin clients' wide layout (iPad, Android tablets) runs the same store and
+omnibox state with its own history per host and profile, kept on the device and
+never sent to the host. Its rows show a globe: the native web views report no
+favicon, so nothing is stored for them. The native page is cut out where the result
+panel covers it.
+
+On those clients a page counts as visited once its load commits, or when its address
+changes with no load running. An address-bar submission is credited to the page it lands on
+after the load commits and finishes without an error. A load that fails before it
+commits records nothing, and reload, stop, back and forward drop a pending
+submission.
+
 CEF's favicon URL callback downloads the page icon through the browser session and converts
 it to a PNG at up to 32px. Each completion carries the page URL captured before the download,
 so navigating elsewhere does not attach the icon to the new page. The history store keeps
@@ -155,9 +167,12 @@ without weakening locally learned use.
 
 | File | Role |
 | --- | --- |
-| `crates/zz/src/browser/recent_pages/store.rs` | Bounded storage, migration, matching, scoring, learning, deletion, and tests. |
+| `crates/zz-client/src/recent_pages.rs` | Bounded storage, migration, matching, scoring, learning, deletion, the shared omnibox state (typing, preview, accept), and tests. |
+| `crates/zz/src/browser/recent_pages/store.rs` | The desktop history file: size guard, load, atomic owner-only save. |
 | `crates/zz/src/browser/recent_pages.rs` | Lazy desktop history loading, revision notifications, batched background saves, and shutdown flush. |
 | `crates/zz/src/browser/view.rs` | Input events, successful-use credit, keyboard selection, Escape stages, and result actions. |
+| `clients/app/src/app/browser_pane.rs` | The iPad and Android tablet address field and blank tab on the same store and omnibox state. |
+| `clients/app/src/app/browser_pane/history.rs` | Thin-client history, one file per host on the device, loaded on first use and saved half a second after a change. |
 | `crates/zz-ui/src/browser.rs` | Native result panel and title/URL rows under the compact toolbar. |
 | `libs/ala-cef/src/chrome_import/history.rs` | Read-only extraction of Chrome timestamps and use counts. |
 

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize, de::value::MapDeserializer};
 use zz_client::{
     ChromeKeymap, ChromeProfile,
     chrome_override::{ChromeOverride, parse_bind, parse_unbind},
+    url_input::SearchProvider,
 };
 use zz_ui::interface_theme::{
     self, Appearance, AppearanceChange, InterfaceTheme, ThemeModeSetting, ThemeOverrides,
@@ -32,6 +33,7 @@ pub struct Preferences {
     pub system_text_size: bool,
     pub which_key_delay: f32,
     pub chrome_keys: Vec<ChromeKeyOverride>,
+    pub search_engine: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,6 +105,7 @@ impl Default for Preferences {
             system_text_size: true,
             which_key_delay: zz_client::prefix_keys::DEFAULT_WHICH_KEY_DELAY,
             chrome_keys: Vec::new(),
+            search_engine: SearchProvider::default().as_str().into(),
         }
     }
 }
@@ -155,6 +158,7 @@ impl Preferences {
             *value = bounded(*value, min, max, fallback);
         }
         self.appearance.mode = Some(self.theme_mode().as_str().into());
+        self.search_engine = self.search_provider().as_str().into();
         self.terminal_font_family = self
             .terminal_font_family
             .map(|family| family.trim().to_owned())
@@ -177,6 +181,11 @@ impl Preferences {
             })
             .collect::<Vec<_>>();
         ChromeKeymaps::new(&overrides)
+    }
+
+    #[must_use]
+    pub fn search_provider(&self) -> SearchProvider {
+        SearchProvider::parse(&self.search_engine).unwrap_or_default()
     }
 
     #[must_use]
@@ -319,6 +328,10 @@ impl Preferences {
         "zz-web-preferences"
     };
 }
+
+pub struct BrowserSearch(pub SearchProvider);
+
+impl ala::Global for BrowserSearch {}
 
 fn bounded(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
     if value.is_finite() {

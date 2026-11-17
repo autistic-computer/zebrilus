@@ -1295,6 +1295,14 @@ impl PopupMenu {
                 menu,
                 disabled,
             } => this
+                .when(!disabled, |this| {
+                    this.on_click(cx.listener(move |this, _, window, cx| {
+                        cx.stop_propagation();
+                        window.prevent_default();
+                        this.selected_index = Some(ix);
+                        cx.notify();
+                    }))
+                })
                 .selected(selected)
                 .submenu_open(selected)
                 .disabled(*disabled)

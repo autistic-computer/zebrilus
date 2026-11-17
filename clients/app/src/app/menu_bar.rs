@@ -1,14 +1,14 @@
 use ala::{Context, Menu, MenuItem, SharedString, Window};
 use ala_platform::ios::MenuCommand;
 use zz_client::{
-    ChromeAction, TERMINAL_TABLE, UI_TABLE,
+    BROWSER_TABLE, ChromeAction, TERMINAL_TABLE, UI_TABLE,
     navigation::{RenameTarget, kill_session_prompt_command, rename_prompt_command},
 };
 use zz_protocol::{CommandInvocation, SessionId};
 use zz_terminal::TerminalViewAction;
 use zz_ui::settings::about::{DOCS_URL, ISSUES_URL, RELEASES_URL};
 
-use super::AppShell;
+use super::{AppShell, BrowserMenus};
 
 const SESSION: &str = "session:";
 const TMUX: &str = "tmux:";
@@ -41,7 +41,12 @@ fn shortcut(
         .iter()
         .filter(|(bound_table, _, bound)| bound_table == table && *bound == action)
         .map(|(_, key, _)| key)
-        .min_by_key(|key| !key.starts_with("D-"))
+        .min_by_key(|key| {
+            (
+                !key.starts_with("D-"),
+                key.rsplit('-').next().is_some_and(|key| key.len() > 1),
+            )
+        })
         .map(|key| key.clone().into())
 }
 
@@ -65,7 +70,7 @@ impl AppShell {
         sessions.sort();
         if self.menu_sessions.as_ref() != Some(&sessions) {
             self.menu_sessions = Some(sessions);
-            cx.set_menus(self.menus());
+            cx.set_menus(self.menus(BrowserMenus::shown(cx)));
         }
     }
 
@@ -74,7 +79,7 @@ impl AppShell {
         self.sync_menus(cx);
     }
 
-    fn menus(&self) -> Vec<Menu> {
+    fn menus(&self, browser_menus: bool) -> Vec<Menu> {
         let bindings = self.chrome.native.bindings();
         let chrome = |title: &'static str, action: ChromeAction| {
             MenuItem::action(
@@ -86,6 +91,62 @@ impl AppShell {
                 },
             )
         };
+        let browser = |title: &'static str, action: ChromeAction| {
+            MenuItem::action(
+                title,
+                MenuCommand {
+                    id: action.name().into(),
+                    shortcut: shortcut(&bindings, BROWSER_TABLE, action),
+                },
+            )
+        };
+        let zoom = if browser_menus {
+            [
+                browser("Zoom In", ChromeAction::BrowserZoomIn),
+                browser("Zoom Out", ChromeAction::BrowserZoomOut),
+                browser("Reset Zoom", ChromeAction::BrowserZoomReset),
+            ]
+        } else {
+            [
+                chrome("Zoom In", ChromeAction::UiZoomIn),
+                chrome("Zoom Out", ChromeAction::UiZoomOut),
+                chrome("Reset Zoom", ChromeAction::UiZoomReset),
+            ]
+        };
+        let history = if browser_menus {
+            [
+                browser("Back", ChromeAction::BrowserBack),
+                browser("Forward", ChromeAction::BrowserForward),
+                browser("Reload", ChromeAction::BrowserReload),
+            ]
+        } else {
+            [
+                command("Back", BACK),
+                command("Forward", FORWARD),
+                command("Reload", RELOAD),
+            ]
+        };
+        let tabs = [
+            "Tab 1", "Tab 2", "Tab 3", "Tab 4", "Tab 5", "Tab 6", "Tab 7", "Tab 8",
+        ]
+        .into_iter()
+        .zip(0..)
+        .map(|(title, index)| browser(title, ChromeAction::BrowserSelectTab(index)))
+        .chain([browser("Last Tab", ChromeAction::BrowserSelectLastTab)]);
+        let browser_items = browser_menus
+            .then(|| {
+                [
+                    browser("Open Location…", ChromeAction::BrowserFocusAddress),
+                    browser("Pick Element", ChromeAction::BrowserElementSelector),
+                    MenuItem::separator(),
+                    browser("New Tab", ChromeAction::BrowserNewTab),
+                    browser("Next Tab", ChromeAction::BrowserNextTab),
+                    browser("Previous Tab", ChromeAction::BrowserPreviousTab),
+                    MenuItem::submenu(Menu::new("Select Tab").items(tabs)),
+                ]
+            })
+            .into_iter()
+            .flatten();
         let sessions = self.menu_sessions.as_deref().unwrap_or_default();
         vec![
             Menu::new("zz").items([chrome("Settings…", ChromeAction::OpenSettings)]),
@@ -123,27 +184,27 @@ impl AppShell {
                 tmux("Copy Mode", "copy-mode"),
                 command("Clear Scrollback", CLEAR_SCROLLBACK),
             ]),
-            Menu::new("View").items([
-                chrome("Command Palette…", ChromeAction::OpenCommandPalette),
-                tmux("Choose Window…", "choose-tree -w"),
-                chrome("Toggle Sidebar", ChromeAction::ToggleSidebar),
-                MenuItem::separator(),
-                tmux("Zoom Pane", "resize-pane -Z"),
-                MenuItem::submenu(Menu::new("Select Pane").items([
-                    tmux("Up", "select-pane -U"),
-                    tmux("Down", "select-pane -D"),
-                    tmux("Left", "select-pane -L"),
-                    tmux("Right", "select-pane -R"),
-                ])),
-                MenuItem::separator(),
-                chrome("Zoom In", ChromeAction::UiZoomIn),
-                chrome("Zoom Out", ChromeAction::UiZoomOut),
-                chrome("Reset Zoom", ChromeAction::UiZoomReset),
-                MenuItem::separator(),
-                command("Back", BACK),
-                command("Forward", FORWARD),
-                command("Reload", RELOAD),
-            ]),
+            Menu::new("View").items(
+                [
+                    chrome("Command Palette…", ChromeAction::OpenCommandPalette),
+                    tmux("Choose Window…", "choose-tree -w"),
+                    chrome("Toggle Sidebar", ChromeAction::ToggleSidebar),
+                    MenuItem::separator(),
+                    tmux("Zoom Pane", "resize-pane -Z"),
+                    MenuItem::submenu(Menu::new("Select Pane").items([
+                        tmux("Up", "select-pane -U"),
+                        tmux("Down", "select-pane -D"),
+                        tmux("Left", "select-pane -L"),
+                        tmux("Right", "select-pane -R"),
+                    ])),
+                    MenuItem::separator(),
+                ]
+                .into_iter()
+                .chain(zoom)
+                .chain([MenuItem::separator()])
+                .chain(history)
+                .chain(browser_items),
+            ),
             Menu::new("Help").items([
                 link("zz Documentation", DOCS_URL),
                 link("Keyboard Shortcuts", DOCS_URL),
@@ -168,7 +229,9 @@ impl AppShell {
         } else if let Some(session) = id.strip_prefix(SESSION) {
             self.menu_attach(session, cx);
         } else if let Some(action) = ChromeAction::from_name(id) {
-            self.chrome_command(action, window, cx);
+            if !self.browser_command(action, window, cx) {
+                self.chrome_command(action, window, cx);
+            }
         } else {
             self.pane_menu_command(id, window, cx);
         }
@@ -218,8 +281,8 @@ impl AppShell {
             }
         } else if let Some(browser) = self.browsers.get(&pane).cloned() {
             match id {
-                BACK => browser.read(cx).go_back(cx),
-                FORWARD => browser.read(cx).go_forward(cx),
+                BACK => browser.update(cx, |browser, cx| browser.go_back(cx)),
+                FORWARD => browser.update(cx, |browser, cx| browser.go_forward(cx)),
                 RELOAD => browser.update(cx, super::browser_pane::BrowserPane::reload_page),
                 _ => {}
             }

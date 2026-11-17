@@ -116,6 +116,19 @@ pub fn session_from_url(url: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.into_owned())
 }
 
+#[cfg(target_os = "ios")]
+struct BrowserMenus(bool);
+
+#[cfg(target_os = "ios")]
+impl ala::Global for BrowserMenus {}
+
+#[cfg(target_os = "ios")]
+impl BrowserMenus {
+    fn shown(cx: &App) -> bool {
+        cx.try_global::<Self>().is_some_and(|menus| menus.0)
+    }
+}
+
 pub struct AppShell {
     connection: Entity<Connection>,
     _connection_subscriptions: [Subscription; 5],
@@ -850,6 +863,17 @@ impl AppShell {
             cx.stop_propagation();
             return;
         }
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        if let Some(action) = self
+            .chrome
+            .native
+            .resolve(zz_client::BROWSER_TABLE, &input)
+            .or_else(|| self.chrome.apple.resolve(zz_client::BROWSER_TABLE, &input))
+            && self.browser_command(action, window, cx)
+        {
+            cx.stop_propagation();
+            return;
+        }
         let action = self.chrome.native.resolve(UI_TABLE, &input).or_else(|| {
             self.chrome
                 .apple
@@ -1001,6 +1025,38 @@ impl AppShell {
             ChromeAction::SplitDown => self.tmux_command("split-window -v", cx),
             _ => {}
         }
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn browser_command(
+        &mut self,
+        action: ChromeAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(browser) = self.focused_browser(window, cx) else {
+            return false;
+        };
+        if browser.update(cx, |browser, cx| browser.chrome_action(action, window, cx)) {
+            return true;
+        }
+        if action == ChromeAction::ClosePane {
+            self.chrome_command(action, window, cx);
+            return true;
+        }
+        false
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn focused_browser(
+        &self,
+        window: &Window,
+        cx: &App,
+    ) -> Option<Entity<browser_pane::BrowserPane>> {
+        self.browsers
+            .values()
+            .find(|browser| browser.focus_handle(cx).contains_focused(window, cx))
+            .cloned()
     }
 
     fn tmux_command(&mut self, command: &str, cx: &mut Context<Self>) {
@@ -1647,6 +1703,10 @@ impl AppShell {
                         let _ = notice_view.update(cx, |this, cx| {
                             this.show_pill_notice(pane, text, kind, cx);
                         });
+                    });
+                    let history_view = view.clone();
+                    browser.set_history_handler(move |cx| {
+                        let _ = history_view.update(cx, |_, cx| cx.notify());
                     });
                     let rows_view = view.clone();
                     browser.set_float_rows_handler(move |cx| {
@@ -2398,7 +2458,10 @@ impl AppShell {
                         && pane_id == active_window.active_pane
                         && self.focused_pane != Some(pane_id)
                     {
-                        browser.read(cx).focus_handle(cx).focus(window, cx);
+                        let focus = browser.read(cx).focus_handle(cx);
+                        if !focus.contains_focused(window, cx) {
+                            focus.focus(window, cx);
+                        }
                         self.focused_pane = Some(pane_id);
                     }
                     browser.into_any_element()
@@ -3408,6 +3471,14 @@ impl Render for AppShell {
             let host = self.connection.read(cx).endpoint().unwrap_or_default();
             self.browsers
                 .retain(|_, browser| browser.read(cx).belongs_to_host(host));
+        }
+        #[cfg(target_os = "ios")]
+        if cx.active_window() == Some(window.window_handle()) {
+            let browser_menus = self.focused_browser(window, cx).is_some();
+            if BrowserMenus::shown(cx) != browser_menus {
+                cx.set_global(BrowserMenus(browser_menus));
+                self.rebuild_menus(cx);
+            }
         }
         let dialog = window
             .root::<Root>()

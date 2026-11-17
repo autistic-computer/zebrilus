@@ -1,30 +1,47 @@
-use std::{collections::VecDeque, rc::Rc, sync::Arc, time::Duration};
+mod history;
+
+use std::{cell::Cell, collections::VecDeque, rc::Rc, sync::Arc, time::Duration};
 
 use crate::native_browser::{
     BrowserEvent, BrowserMount, BrowserProfile, BrowserView, ElementPickerAppearance,
 };
 use ala::{
-    AnyElement, App, Bounds, ClipboardEntry, ClipboardItem, ClipboardString, Context, Corners,
-    Entity, FocusHandle, Focusable, Hsla, Image, ImageFormat, Pixels, Render, RenderImage, Rgba,
-    Subscription, TextInputMode, TouchDragEvent, TouchPhase, Window, canvas, div, point,
-    prelude::*, px, size,
+    Anchor, AnyElement, App, Bounds, ClipboardEntry, ClipboardItem, ClipboardString, Context,
+    Corners, Entity, FocusHandle, Focusable, Hsla, Image, ImageFormat, KeyBinding, MouseButton,
+    Pixels, Render, RenderImage, Rgba, Subscription, TextInputMode, TouchDragEvent, TouchPhase,
+    Window, canvas, div, point, prelude::*, px, size,
 };
 use futures::StreamExt as _;
 use penna::{
-    ActiveTheme as _, Colorize as _, ElementExt as _, Elevation, Icon, IconName, Label, TextStyle,
+    ActiveTheme as _, Colorize as _, ElementExt as _, Elevation, IconName, Label, PaintState,
+    PanelLook, TextStyle, WindowExt as _,
     blocks::compact::pill_backdrop_reach,
     blocks::sheet::{floating_sheet, sheet_inset},
+    blocks::touch::TOUCH_TARGET,
     components::button::{Button, ButtonVariants as _},
     components::input::{InputEvent, InputState, SelectAll},
+    components::menu::DropdownMenu as _,
     components::progress::Progress,
 };
-use zz_protocol::{BrowserCommand, BrowserDescriptor, PaneId};
+use zz_client::{
+    ChromeAction,
+    recent_pages::{Omnibox, OmniboxUse},
+    url_input::diagnostic_url,
+};
+use zz_protocol::{
+    BrowserCommand, BrowserDescriptor, DEFAULT_BROWSER_PROFILE, PaneId, PaneKindSnapshot,
+};
 use zz_ui::{
     browser::{
-        BrowserEmptyHint, BrowserErrorPanel, BrowserHeader, BrowserTabInfo, BrowserTabStrip,
-        BrowserToolbar, browser_address, browser_start_surface, browser_toolbar_button,
+        BrowserActionMenuState, BrowserEmptyHint, BrowserErrorPanel, BrowserHeader,
+        BrowserMenuActions, BrowserMenuEngine, BrowserMenuProfile, BrowserProfileDiscoveryState,
+        BrowserSiteMenuState, BrowserTabInfo, BrowserTabStrip, BrowserToolbar, browser_action_menu,
+        browser_address, browser_omnibox_panel, browser_omnibox_row, browser_recent_row,
+        browser_site_controls_button, browser_site_menu, browser_start_surface,
+        browser_toolbar_button,
     },
     compact::{TabRow, failed_page, tabs_sheet},
+    dialogs::browser_clear_site_data_alert,
     pane::{PaneDrag, PaneDragSource, pane_header_icon_button},
     pane_look::PaneLook,
 };
@@ -47,6 +64,11 @@ struct Tab {
     picking: bool,
     held: bool,
     pick_status: Option<String>,
+    page_zoom: f64,
+    muted: bool,
+    visited: String,
+    history_use: Option<OmniboxUse>,
+    history_started: bool,
     _events: ala::Task<()>,
 }
 
@@ -68,6 +90,9 @@ pub(super) struct BrowserPane {
     compact: bool,
     tabs_sheet: bool,
     address_open: bool,
+    editing: bool,
+    omnibox: Omnibox,
+    suggestions_hole: Rc<Cell<Option<(Bounds<Pixels>, Pixels)>>>,
     holding_pick: bool,
     pick_reached_page: bool,
     covered_bottom: Pixels,
@@ -80,12 +105,34 @@ pub(super) struct BrowserPane {
     float_rows_handler: Option<Rc<dyn Fn(&App) -> Option<u16>>>,
     header_touch_drag_handler: Option<Rc<dyn Fn(&ala::TouchDragEvent, &mut Window, &mut App)>>,
     notice_handler: Option<Rc<dyn Fn(&'static str, PillNotice, &mut Window, &mut App)>>,
+    history_handler: Option<Rc<dyn Fn(&mut App)>>,
     _subscriptions: Vec<Subscription>,
     _backdrop_tick: ala::Task<()>,
 }
 
 const BACKDROP_TICK: Duration = Duration::from_secs(1);
 const LOAD_LINE: f32 = 2.0;
+const SUGGESTION_LIMIT: usize = 8;
+const RECENT_LIMIT: usize = 8;
+const OMNIBOX_INPUT: &str = "BrowserOmnibox > PennaInput";
+
+ala::actions!(
+    browser,
+    [OmniboxNext, OmniboxPrevious, OmniboxDelete, OmniboxEscape]
+);
+
+fn init(cx: &mut App) {
+    if cx.has_global::<history::BrowserHistory>() {
+        return;
+    }
+    cx.set_global(history::BrowserHistory::default());
+    cx.bind_keys([
+        KeyBinding::new("down", OmniboxNext, Some(OMNIBOX_INPUT)),
+        KeyBinding::new("up", OmniboxPrevious, Some(OMNIBOX_INPUT)),
+        KeyBinding::new("shift-delete", OmniboxDelete, Some(OMNIBOX_INPUT)),
+        KeyBinding::new("escape", OmniboxEscape, Some(OMNIBOX_INPUT)),
+    ]);
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct PhoneBrowser {
@@ -106,6 +153,7 @@ impl BrowserPane {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        init(cx);
         let host = connection
             .read(cx)
             .endpoint()
@@ -125,7 +173,11 @@ impl BrowserPane {
                 InputEvent::PressEnter { .. } => {
                     let value = input.read(cx).value().to_string();
                     let open = this.address_open;
-                    this.navigate(&value, window, cx);
+                    if this.compact {
+                        this.navigate(&value, window, cx);
+                    } else {
+                        this.accept_omnibox(&value, window, cx);
+                    }
                     if open {
                         this.address_open = false;
                         window.dismiss_virtual_keyboard();
@@ -133,6 +185,16 @@ impl BrowserPane {
                     }
                 }
                 InputEvent::Change if this.address_open => cx.notify(),
+                InputEvent::Change if !this.compact => {
+                    let value = input.read(cx).value().to_string();
+                    this.update_omnibox(&value, window, cx);
+                }
+                InputEvent::Focus if !this.compact => {
+                    this.omnibox.begin(&input.read(cx).value());
+                    this.editing = true;
+                    cx.notify();
+                }
+                InputEvent::Blur => this.stop_editing(cx),
                 _ => {}
             },
         );
@@ -145,11 +207,17 @@ impl BrowserPane {
                         return;
                     }
                     match command {
-                        BrowserCommand::Navigate(url) => this.navigate(url, window, cx),
+                        BrowserCommand::Navigate(url) => {
+                            this.navigate(url, window, cx);
+                        }
                         BrowserCommand::Reload => this.reload(cx),
-                        BrowserCommand::Back => this.tabs[this.active].view.back(),
-                        BrowserCommand::Forward => this.tabs[this.active].view.forward(),
-                        _ => {}
+                        BrowserCommand::Back => this.go_back(cx),
+                        BrowserCommand::Forward => this.go_forward(cx),
+                        command => {
+                            if let Some(script) = crate::page_keys::script(command) {
+                                this.tabs[this.active].view.evaluate(&script);
+                            }
+                        }
                     }
                 }
             },
@@ -173,6 +241,9 @@ impl BrowserPane {
             compact: false,
             tabs_sheet: false,
             address_open: false,
+            editing: false,
+            omnibox: Omnibox::default(),
+            suggestions_hole: Rc::default(),
             holding_pick: false,
             pick_reached_page: false,
             covered_bottom: px(0.0),
@@ -185,6 +256,7 @@ impl BrowserPane {
             float_rows_handler: None,
             header_touch_drag_handler: None,
             notice_handler: None,
+            history_handler: None,
             _subscriptions: vec![submit, commands],
             _backdrop_tick: cx.spawn(async move |this, cx| {
                 loop {
@@ -231,6 +303,10 @@ impl BrowserPane {
         handler: impl Fn(&ala::TouchDragEvent, &mut Window, &mut App) + 'static,
     ) {
         self.header_touch_drag_handler = Some(Rc::new(handler));
+    }
+
+    pub(super) fn set_history_handler(&mut self, handler: impl Fn(&mut App) + 'static) {
+        self.history_handler = Some(Rc::new(handler));
     }
 
     pub(super) fn set_notice_handler(
@@ -294,7 +370,13 @@ impl BrowserPane {
     }
 
     fn toggle_element_pick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.writable(cx) || !self.visible {
+        if self.visible {
+            self.switch_element_pick(window, cx);
+        }
+    }
+
+    fn switch_element_pick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.writable(cx) {
             return;
         }
         let tab = &mut self.tabs[self.active];
@@ -399,7 +481,11 @@ impl BrowserPane {
                 .then(|| penna::to_hex(theme.shadow_color)),
             radius: f32::from(theme.radius),
             font_family: theme.mono_font_family.to_string(),
-            page_zoom: 1.0,
+            page_zoom: if cfg!(target_os = "ios") {
+                tab.page_zoom
+            } else {
+                1.0
+            },
         };
         match tab.view.start_element_pick(&appearance) {
             Ok(()) => tab.picking = true,
@@ -438,6 +524,11 @@ impl BrowserPane {
             picking: false,
             held: false,
             pick_status: None,
+            page_zoom: 1.0,
+            muted: false,
+            visited: String::new(),
+            history_use: None,
+            history_started: false,
             _events: task,
         }
     }
@@ -456,11 +547,15 @@ impl BrowserPane {
                 committed,
                 progress,
             } => {
+                self.record_history(index, url.as_deref(), &title, loading, committed, cx);
                 let tab = &mut self.tabs[index];
                 tab.progress = progress;
                 if committed {
                     tab.navigating = false;
                     tab.error = None;
+                    if tab.muted {
+                        tab.view.evaluate(&sound_script(true));
+                    }
                 }
                 if !tab.pending_load
                     && !tab.navigating
@@ -475,7 +570,10 @@ impl BrowserPane {
                 self.update_address(window, cx);
                 self.publish(cx);
             }
-            BrowserEvent::Error(error) => self.tabs[index].error = Some(error),
+            BrowserEvent::Error(error) => {
+                self.tabs[index].error = Some(error);
+                self.tabs[index].history_use = None;
+            }
             BrowserEvent::ElementPicked { text, screenshot } => {
                 self.tabs[index].picking = false;
                 if index != self.active || !self.visible || !self.writable(cx) {
@@ -497,6 +595,13 @@ impl BrowserPane {
                 self.pick_notice(status, PillNotice::Done, window, cx);
             }
             BrowserEvent::ElementPickCancelled => self.tabs[index].picking = false,
+            #[cfg(target_os = "ios")]
+            BrowserEvent::SiteDataCleared => {
+                self.tabs[index].view.reload();
+                if index == self.active {
+                    self.pick_notice("Site data cleared", PillNotice::Done, window, cx);
+                }
+            }
             BrowserEvent::ElementPickFailed => {
                 self.tabs[index].picking = false;
                 if index == self.active {
@@ -673,18 +778,19 @@ impl BrowserPane {
         }
     }
 
-    fn navigate(&mut self, value: &str, window: &mut Window, cx: &mut Context<Self>) {
+    fn navigate(&mut self, value: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if !self.writable(cx) {
-            return;
+            return false;
         }
-        let Ok(url) = zz_client::url_input::resolve_address(
-            value,
-            zz_client::url_input::SearchProvider::default(),
-        ) else {
-            return;
+        let search = cx
+            .try_global::<crate::preferences::BrowserSearch>()
+            .map_or_else(Default::default, |search| search.0);
+        let Ok(url) = zz_client::url_input::resolve_address(value, search) else {
+            return false;
         };
         self.focus.focus(window, cx);
         self.load_url(url, window, cx);
+        true
     }
 
     pub(super) fn load_url(&mut self, url: String, window: &mut Window, cx: &mut Context<Self>) {
@@ -696,10 +802,257 @@ impl BrowserPane {
         tab.pick_status = None;
         tab.pending_load = true;
         tab.error = None;
+        tab.history_use = None;
         self.resume();
         self.update_address(window, cx);
         self.publish(cx);
         cx.notify();
+    }
+
+    fn record_history(
+        &mut self,
+        index: usize,
+        url: Option<&str>,
+        title: &str,
+        loading: bool,
+        committed: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let (host, profile) = (self.host.clone(), self.profile_name.clone());
+        let tab = &mut self.tabs[index];
+        tab.history_started |= loading && tab.history_use.is_some();
+        let Some(url) = url else {
+            return;
+        };
+        let settled = (committed || !loading) && tab.error.is_none();
+        let visit = settled && tab.visited != url;
+        if visit {
+            url.clone_into(&mut tab.visited);
+        }
+        let history_use = if settled && committed && !loading && tab.history_started {
+            tab.history_use.take()
+        } else {
+            None
+        };
+        let changed = history::update(&host, cx, |pages| {
+            let mut changed = visit && pages.record_visit(&profile, url);
+            if let Some(history_use) = history_use {
+                changed |= pages.record_omnibox_use(
+                    &profile,
+                    &history_use.input,
+                    url,
+                    history_use.selected,
+                );
+            }
+            pages.record_title(&profile, url, title) || changed
+        });
+        if changed && let Some(handler) = self.history_handler.clone() {
+            handler(cx);
+        }
+    }
+
+    fn update_omnibox(&mut self, value: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.editing {
+            let url = &self.tabs[self.active].url;
+            self.omnibox
+                .begin(if url == "about:blank" { "" } else { url });
+            self.editing = true;
+        }
+        let suggestions =
+            history::suggestions(&self.host, &self.profile_name, value, SUGGESTION_LIMIT, cx);
+        if let Some(completion) = self.omnibox.update(value, suggestions) {
+            let query = self.omnibox.query.clone();
+            let address = self.address.clone();
+            cx.defer_in(window, move |this, window, cx| {
+                if !this.editing || this.omnibox.query != query || this.omnibox.selected != Some(0)
+                {
+                    return;
+                }
+                address.update(cx, |address, cx| {
+                    address.set_value(completion.clone(), window, cx);
+                    address.set_selected_range(query.len()..completion.len(), cx);
+                });
+            });
+        }
+        cx.notify();
+    }
+
+    fn accept_omnibox(&mut self, typed: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let (value, history_use) = self.omnibox.accept(typed);
+        if self.navigate(&value, window, cx) {
+            let tab = &mut self.tabs[self.active];
+            tab.history_use = history_use;
+            tab.history_started = false;
+        }
+    }
+
+    fn accept_suggestion(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if index < self.omnibox.suggestions.len() {
+            self.omnibox.selected = Some(index);
+            let typed = self.address.read(cx).value().to_string();
+            self.accept_omnibox(&typed, window, cx);
+        }
+    }
+
+    fn stop_editing(&mut self, cx: &mut Context<Self>) {
+        if self.editing || !self.omnibox.is_clear() {
+            self.editing = false;
+            self.omnibox.reset();
+            cx.notify();
+        }
+    }
+
+    fn show_in_address(&self, value: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.address.update(cx, |address, cx| {
+            if address.value().as_ref() != value {
+                address.set_value(value.to_owned(), window, cx);
+            }
+            address.set_selected_range(value.len()..value.len(), cx);
+        });
+    }
+
+    fn step_suggestion(&mut self, direction: i64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(preview) = (self.editing && !self.compact)
+            .then(|| self.omnibox.step(direction))
+            .flatten()
+        else {
+            cx.propagate();
+            return;
+        };
+        self.show_in_address(&preview, window, cx);
+        cx.notify();
+    }
+
+    fn delete_suggestion(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(url) = self
+            .omnibox
+            .selected
+            .and_then(|index| self.omnibox.suggestions.get(index))
+            .map(|suggestion| suggestion.url.clone())
+        else {
+            cx.propagate();
+            return;
+        };
+        let (host, profile) = (self.host.clone(), self.profile_name.clone());
+        history::update(&host, cx, |pages| pages.remove(&profile, &url));
+        let query = self.omnibox.query.clone();
+        self.omnibox.suggestions =
+            history::suggestions(&host, &profile, &query, SUGGESTION_LIMIT, cx);
+        self.omnibox.selected = None;
+        self.show_in_address(&query, window, cx);
+        cx.notify();
+    }
+
+    fn escape_omnibox(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.omnibox.selected.take().is_some() {
+            let query = self.omnibox.query.clone();
+            self.show_in_address(&query, window, cx);
+        } else if !self.omnibox.suggestions.is_empty() {
+            self.omnibox.suggestions.clear();
+        } else {
+            cx.propagate();
+            return;
+        }
+        cx.notify();
+    }
+
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the page is cut out to the popover's own border box"
+    )]
+    fn suggestions_panel(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.editing || self.compact || self.omnibox.suggestions.is_empty() {
+            self.suggestions_hole.set(None);
+            return None;
+        }
+        let pane = cx.weak_entity();
+        let mut rows: Vec<AnyElement> = self
+            .omnibox
+            .suggestions
+            .iter()
+            .enumerate()
+            .map(|(index, suggestion)| {
+                let pane = pane.clone();
+                browser_omnibox_row(
+                    index,
+                    suggestion.title.clone(),
+                    suggestion.display_url.clone(),
+                    self.omnibox.selected == Some(index),
+                    None,
+                    px(TOUCH_TARGET),
+                    cx,
+                )
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    let _ = pane.update(cx, |this, cx| this.accept_suggestion(index, window, cx));
+                    cx.stop_propagation();
+                })
+                .into_any_element()
+            })
+            .collect();
+        let layer = cx.theme().layer(PanelLook::Popover, PaintState::Rest);
+        let (edge, radius) = (layer.border_width, layer.radius);
+        let hole = self.suggestions_hole.clone();
+        rows.push(
+            canvas(
+                move |bounds, window, _| {
+                    let next = Some((bounds, radius));
+                    if hole.replace(next) != next {
+                        window.on_next_frame(move |_, cx| {
+                            let _ = pane.update(cx, |_, cx| cx.notify());
+                        });
+                    }
+                },
+                |_, (), _, _| {},
+            )
+            .absolute()
+            .top(-edge)
+            .left(-edge)
+            .right(-edge)
+            .bottom(-edge)
+            .into_any_element(),
+        );
+        Some(browser_omnibox_panel(rows, cx).into_any_element())
+    }
+
+    fn start_page(&self, cx: &mut Context<Self>) -> AnyElement {
+        let recents = history::recent(&self.host, &self.profile_name, RECENT_LIMIT, cx);
+        let content = if recents.is_empty() {
+            BrowserEmptyHint.into_any_element()
+        } else {
+            div()
+                .flex()
+                .flex_col()
+                .w_full()
+                .max_w(px(360.0))
+                .gap(px(4.0))
+                .children(recents.into_iter().enumerate().map(|(index, page)| {
+                    browser_recent_row(
+                        ("ios-browser-recent", index),
+                        diagnostic_url(&page.url),
+                        None,
+                        px(TOUCH_TARGET),
+                        cx,
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _, window, cx| {
+                            this.navigate(&page.url, window, cx);
+                            cx.stop_propagation();
+                        }),
+                    )
+                }))
+                .into_any_element()
+        };
+        browser_start_surface(content)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    if this.writable(cx) {
+                        this.focus_address(window, cx);
+                    }
+                }),
+            )
+            .into_any_element()
     }
 
     fn reload(&mut self, cx: &mut Context<Self>) {
@@ -707,6 +1060,7 @@ impl BrowserPane {
             return;
         }
         let tab = &mut self.tabs[self.active];
+        tab.history_use = None;
         if tab.error.take().is_some() {
             tab.pending_load = true;
         }
@@ -775,9 +1129,15 @@ impl BrowserPane {
         if blank && self.compact {
             self.open_address(window, cx);
         } else if blank {
-            self.address.read(cx).focus_handle(cx).focus(window, cx);
+            self.focus_address(window, cx);
         }
         cx.notify();
+    }
+
+    fn focus_address(&self, window: &mut Window, cx: &mut App) {
+        self.address.read(cx).focus_handle(cx).focus(window, cx);
+        #[cfg(target_os = "ios")]
+        crate::native_browser::take_keyboard(window);
     }
 
     fn close_tab(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
@@ -817,15 +1177,19 @@ impl BrowserPane {
         }
     }
 
-    pub(super) fn go_back(&self, cx: &App) {
+    pub(super) fn go_back(&mut self, cx: &App) {
         if self.writable(cx) {
-            self.tabs[self.active].view.back();
+            let tab = &mut self.tabs[self.active];
+            tab.history_use = None;
+            tab.view.back();
         }
     }
 
-    pub(super) fn go_forward(&self, cx: &App) {
+    pub(super) fn go_forward(&mut self, cx: &App) {
         if self.writable(cx) {
-            self.tabs[self.active].view.forward();
+            let tab = &mut self.tabs[self.active];
+            tab.history_use = None;
+            tab.view.forward();
         }
     }
 
@@ -839,6 +1203,290 @@ impl BrowserPane {
         if self.tabs[self.active].loading {
             self.reload(cx);
         }
+    }
+
+    pub(super) fn chrome_action(
+        &mut self,
+        action: ChromeAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let count = self.tabs.len();
+        let tab = &self.tabs[self.active];
+        let writable = self.writable(cx);
+        match action {
+            ChromeAction::BrowserZoomIn => self.zoom(Some(1), cx),
+            ChromeAction::BrowserZoomOut => self.zoom(Some(-1), cx),
+            ChromeAction::BrowserZoomReset => self.zoom(None, cx),
+            ChromeAction::ClosePane if count > 1 => self.close_tab(tab.id, window, cx),
+            ChromeAction::BrowserNextTab => {
+                self.select_index((self.active + 1) % count, window, cx);
+            }
+            ChromeAction::BrowserPreviousTab => {
+                self.select_index((self.active + count - 1) % count, window, cx);
+            }
+            ChromeAction::BrowserSelectTab(index) => {
+                self.select_index(usize::from(index), window, cx);
+            }
+            ChromeAction::BrowserSelectLastTab => self.select_index(count - 1, window, cx),
+            ChromeAction::BrowserNewTab => self.add_tab("about:blank".into(), window, cx),
+            ChromeAction::BrowserBack if writable => self.go_back(cx),
+            ChromeAction::BrowserForward if writable => self.go_forward(cx),
+            ChromeAction::BrowserReload if writable && tab.loading => tab.view.reload(),
+            ChromeAction::BrowserReload => self.reload(cx),
+            ChromeAction::BrowserFocusAddress if self.compact => self.open_address(window, cx),
+            ChromeAction::BrowserFocusAddress if writable => {
+                self.focus_address(window, cx);
+                cx.on_next_frame(window, |_, window, cx| {
+                    window.dispatch_action(Box::new(SelectAll), cx);
+                });
+            }
+            ChromeAction::BrowserElementSelector if !tab.loading || tab.picking => {
+                self.toggle_element_pick(window, cx);
+            }
+            ChromeAction::BrowserBack
+            | ChromeAction::BrowserForward
+            | ChromeAction::BrowserFocusAddress
+            | ChromeAction::BrowserElementSelector => {}
+            _ => return false,
+        }
+        true
+    }
+
+    fn profiles(&self, cx: &App) -> Vec<String> {
+        let mut profiles: Vec<String> = self
+            .connection
+            .read(cx)
+            .core
+            .snapshot()
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .flat_map(|window| window.panes.values())
+            .filter_map(|pane| match &pane.kind {
+                PaneKindSnapshot::Browser(descriptor) => Some(descriptor.profile.clone()),
+                _ => None,
+            })
+            .chain(std::iter::once(self.profile_name.clone()))
+            .filter(|profile| profile != DEFAULT_BROWSER_PROFILE)
+            .collect();
+        profiles.sort();
+        profiles.dedup();
+        profiles
+    }
+
+    fn switch_profile(&mut self, profile: &str, cx: &mut Context<Self>) {
+        if profile == self.profile_name || !self.writable(cx) {
+            return;
+        }
+        let args = vec!["-t".into(), self.pane.to_string(), profile.to_owned()];
+        self.connection.update(cx, |connection, cx| {
+            connection.command("set-browser-profile", args, cx);
+        });
+    }
+
+    fn toggle_sound(&mut self, cx: &mut Context<Self>) {
+        let tab = &mut self.tabs[self.active];
+        tab.muted = !tab.muted;
+        tab.view.evaluate(&sound_script(tab.muted));
+        cx.notify();
+    }
+
+    fn can_clear_site_data(&self) -> bool {
+        cfg!(target_os = "ios") && http_origin(&self.tabs[self.active].url)
+    }
+
+    fn confirm_clear_site_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.writable(cx) || !self.can_clear_site_data() {
+            return;
+        }
+        let pane = cx.weak_entity();
+        let id = self.tabs[self.active].id;
+        window.open_alert_dialog(cx, move |alert, _, cx| {
+            let pane = pane.clone();
+            browser_clear_site_data_alert(alert, cx).on_ok(move |_, _, cx| {
+                let _ = pane.update(cx, |this, _| this.clear_site_data(id));
+                true
+            })
+        });
+    }
+
+    fn clear_site_data(&self, id: u64) {
+        let Some(tab) = self.tabs.iter().find(|tab| tab.id == id) else {
+            return;
+        };
+        let Some(site) = site_host(&tab.url) else {
+            return;
+        };
+        #[cfg(target_os = "ios")]
+        tab.view.clear_site_data(&site);
+        #[cfg(not(target_os = "ios"))]
+        let _ = site;
+    }
+
+    fn connection_secure(tab: &Tab) -> Option<bool> {
+        if tab.url.starts_with("http://") {
+            return Some(false);
+        }
+        if !tab.url.starts_with("https://") {
+            return None;
+        }
+        #[cfg(target_os = "ios")]
+        return Some(tab.view.secure_content());
+        #[cfg(not(target_os = "ios"))]
+        None
+    }
+
+    fn site_controls(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let pane = cx.weak_entity();
+        browser_site_controls_button(cx).dropdown_menu(move |menu, _, cx| {
+            let Some(browser) = pane.upgrade() else {
+                return menu;
+            };
+            let state = {
+                let this = browser.read(cx);
+                let tab = &this.tabs[this.active];
+                BrowserSiteMenuState {
+                    site: site_host(&tab.url)
+                        .unwrap_or_else(|| "This page".to_owned())
+                        .into(),
+                    connection_secure: Self::connection_secure(tab),
+                    audio_muted: Some(tab.muted),
+                    can_clear_site_data: this.can_clear_site_data() && this.writable(cx),
+                }
+            };
+            let sound = browser.downgrade();
+            let clear = browser.downgrade();
+            browser_site_menu(
+                menu,
+                state,
+                move |_, cx| {
+                    let _ = sound.update(cx, Self::toggle_sound);
+                },
+                move |window, cx| {
+                    let _ = clear.update(cx, |this, cx| this.confirm_clear_site_data(window, cx));
+                },
+            )
+        })
+    }
+
+    fn more_menu(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let pane = cx.weak_entity();
+        browser_toolbar_button(
+            cx,
+            "ios-browser-more",
+            IconName::EllipsisVertical,
+            "More browser actions",
+            false,
+            false,
+        )
+        .dropdown_menu(move |menu, window, cx| {
+            let Some(browser) = pane.upgrade() else {
+                return menu;
+            };
+            let (state, url, picking) = {
+                let this = browser.read(cx);
+                let tab = &this.tabs[this.active];
+                let label = |profile: &str| {
+                    if profile == DEFAULT_BROWSER_PROFILE {
+                        "Default zz profile".to_owned()
+                    } else {
+                        profile.to_owned()
+                    }
+                };
+                (
+                    BrowserActionMenuState {
+                        engine: BrowserMenuEngine::WebView,
+                        current_profile_label: label(&this.profile_name).into(),
+                        selected_profile: this.profile_name.clone().into(),
+                        default_profile: DEFAULT_BROWSER_PROFILE.into(),
+                        profiles: this
+                            .profiles(cx)
+                            .into_iter()
+                            .map(|profile| BrowserMenuProfile::new(profile.clone(), profile))
+                            .collect(),
+                        profile_discovery: BrowserProfileDiscoveryState::Ready,
+                        zoom_percent: zoom_percent(tab.page_zoom),
+                        can_import_chrome_data: false,
+                        can_clear_site_data: this.can_clear_site_data() && this.writable(cx),
+                        picker_active: tab.picking,
+                    },
+                    tab.url.clone(),
+                    tab.picking,
+                )
+            };
+            let open_url = url.clone();
+            let weak = browser.downgrade();
+            let (switch, zoom_in, zoom_out, reset, read_zoom, clear, reload, picker) = (
+                weak.clone(),
+                weak.clone(),
+                weak.clone(),
+                weak.clone(),
+                weak.clone(),
+                weak.clone(),
+                weak.clone(),
+                weak,
+            );
+            let actions = BrowserMenuActions::new()
+                .open_url(move |_, cx| cx.open_url(&open_url))
+                .copy_url(move |_, cx| {
+                    cx.write_to_clipboard(ala::ClipboardItem::new_string(url.clone()));
+                })
+                .switch_profile(move |profile, _, cx| {
+                    let _ = switch.update(cx, |this, cx| this.switch_profile(&profile, cx));
+                })
+                .zoom_percent(move |cx| {
+                    read_zoom.upgrade().map_or(100, |browser| {
+                        let this = browser.read(cx);
+                        zoom_percent(this.tabs[this.active].page_zoom)
+                    })
+                })
+                .zoom_in(move |_, cx| {
+                    let _ = zoom_in.update(cx, |this, cx| this.zoom(Some(1), cx));
+                })
+                .zoom_out(move |_, cx| {
+                    let _ = zoom_out.update(cx, |this, cx| this.zoom(Some(-1), cx));
+                })
+                .reset_zoom(move |_, cx| {
+                    let _ = reset.update(cx, |this, cx| this.zoom(None, cx));
+                })
+                .clear_site_data(move |window, cx| {
+                    let _ = clear.update(cx, |this, cx| this.confirm_clear_site_data(window, cx));
+                })
+                .reload(move |_, cx| {
+                    let _ = reload.update(cx, Self::reload);
+                })
+                .toggle_picker(move |window, cx| {
+                    let _ = picker.update(cx, |this, cx| {
+                        if this.tabs[this.active].picking == picking {
+                            this.switch_element_pick(window, cx);
+                        }
+                    });
+                });
+            browser_action_menu(menu, window, cx, state, actions)
+        })
+        .anchor(Anchor::TopRight)
+    }
+
+    fn select_index(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if index == self.active {
+            return;
+        }
+        if let Some(id) = self.tabs.get(index).map(|tab| tab.id) {
+            self.select(id, window, cx);
+        }
+    }
+
+    fn zoom(&mut self, direction: Option<i8>, cx: &mut Context<Self>) {
+        let tab = &mut self.tabs[self.active];
+        tab.page_zoom = direction.map_or(1.0, |direction| {
+            ala_cef::next_page_zoom_factor(tab.page_zoom, direction)
+        });
+        tab.view.set_page_zoom(tab.page_zoom);
+        if std::mem::take(&mut tab.picking) && !self.start_element_pick(cx) {
+            self.tabs[self.active].view.cancel_element_pick();
+        }
+        cx.notify();
     }
 
     pub(super) fn tabs_open(&self) -> bool {
@@ -1076,7 +1724,7 @@ impl Render for BrowserPane {
         let pane = self.pane;
         let tab = &self.tabs[self.active];
         let header = (!self.compact).then(|| {
-            let address = browser_address(&self.address, Icon::new(IconName::Globe), window, cx);
+            let address = browser_address(&self.address, self.site_controls(cx), window, cx);
             let picker = div()
                 .relative()
                 .flex_none()
@@ -1117,7 +1765,7 @@ impl Render for BrowserPane {
                     !writable || !tab.back,
                     false,
                 )
-                .on_click(cx.listener(|this, _, _, _| this.tabs[this.active].view.back())),
+                .on_click(cx.listener(|this, _, _, cx| this.go_back(cx))),
                 browser_toolbar_button(
                     cx,
                     "ios-browser-forward",
@@ -1126,7 +1774,7 @@ impl Render for BrowserPane {
                     !writable || !tab.forward,
                     false,
                 )
-                .on_click(cx.listener(|this, _, _, _| this.tabs[this.active].view.forward())),
+                .on_click(cx.listener(|this, _, _, cx| this.go_forward(cx))),
                 browser_toolbar_button(
                     cx,
                     "ios-browser-reload",
@@ -1142,7 +1790,7 @@ impl Render for BrowserPane {
                 .on_click(cx.listener(|this, _, _, cx| this.reload(cx))),
                 address,
                 picker,
-                div(),
+                self.more_menu(cx),
             );
             let (strip, actions) = self.tab_row(writable, cx);
             BrowserHeader::new(self.active_pane, strip, actions, toolbar)
@@ -1184,6 +1832,10 @@ impl Render for BrowserPane {
                 })
                 .on_click(cx.listener(|this, _, _, cx| this.reload(cx)))
         });
+        let start_page = (blank && !compact).then(|| self.start_page(cx));
+        let suggestions = self.suggestions_panel(cx);
+        let suggestions_hole = self.suggestions_hole.clone();
+        let tab = &self.tabs[self.active];
         let picking = tab.picking && !tab.held;
         let pick_status = if compact {
             None
@@ -1195,6 +1847,19 @@ impl Render for BrowserPane {
         div()
             .id(("ios-browser", pane.0))
             .track_focus(&self.focus)
+            .on_action(cx.listener(|this, _: &OmniboxNext, window, cx| {
+                this.step_suggestion(1, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &OmniboxPrevious, window, cx| {
+                this.step_suggestion(-1, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &OmniboxDelete, window, cx| {
+                this.delete_suggestion(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &OmniboxEscape, window, cx| {
+                this.escape_omnibox(window, cx);
+            }))
+            .relative()
             .flex()
             .flex_col()
             .size_full()
@@ -1265,7 +1930,11 @@ impl Render for BrowserPane {
                                 bounds,
                                 radius,
                                 covered_bottom,
-                                holes: hole.into_iter().chain(strip).collect(),
+                                holes: hole
+                                    .into_iter()
+                                    .chain(strip)
+                                    .chain(suggestions_hole.get())
+                                    .collect(),
                                 backdrop,
                             },
                             window,
@@ -1336,9 +2005,7 @@ impl Render for BrowserPane {
                             .size_full(),
                         )
                     })
-                    .when(blank && !compact, |page| {
-                        page.child(browser_start_surface(BrowserEmptyHint))
-                    })
+                    .children(start_page)
                     .when_some(error, |page, error| {
                         if compact {
                             return page.child(
@@ -1366,6 +2033,7 @@ impl Render for BrowserPane {
                     }),
             )
             .children(tab_drawer)
+            .children(suggestions)
     }
 }
 
@@ -1424,6 +2092,100 @@ pub(super) fn host(url: &str) -> &str {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
     rest.split(['/', '?', '#']).next().unwrap_or(rest)
 }
+
+fn site_host(url: &str) -> Option<String> {
+    url::Url::parse(url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+}
+
+fn http_origin(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "page zoom stays on the 25% to 500% ladder"
+)]
+fn zoom_percent(factor: f64) -> u16 {
+    (factor * 100.0).round() as u16
+}
+
+pub(super) fn page_title(host: &str, profile: &str, url: &str, cx: &mut App) -> Option<String> {
+    history::title(host, profile, url, cx)
+}
+
+fn sound_script(muted: bool) -> String {
+    format!("{SOUND_SCRIPT}({muted});")
+}
+
+const SOUND_SCRIPT: &str = r"(muted => {
+  const sound = globalThis.__zzSound ??= (() => {
+    const state = { muted: false, held: new Set() };
+    state.hush = media => {
+      if (state.muted && media instanceof HTMLMediaElement && !media.muted) {
+        state.held.add(media);
+        media.muted = true;
+      }
+    };
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function (...args) {
+      state.hush(this);
+      return play.apply(this, args);
+    };
+    for (const type of ['play', 'playing', 'volumechange']) {
+      document.addEventListener(type, event => state.hush(event.target), true);
+    }
+    state.contexts = new Set();
+    state.quiet = context => {
+      if (state.muted && context.state !== 'closed') {
+        state.held.add(context);
+        context.suspend();
+      }
+    };
+    const Audio = globalThis.AudioContext;
+    if (Audio) {
+      const resume = Audio.prototype.resume;
+      Audio.prototype.resume = function (...args) {
+        if (state.muted) {
+          state.held.add(this);
+          return Promise.resolve();
+        }
+        return resume.apply(this, args);
+      };
+      globalThis.AudioContext = new Proxy(Audio, {
+        construct(target, args, newTarget) {
+          const context = Reflect.construct(target, args, newTarget);
+          state.contexts.add(context);
+          state.quiet(context);
+          return context;
+        },
+      });
+    }
+    return state;
+  })();
+  sound.muted = muted;
+  if (muted) {
+    document.querySelectorAll('audio, video').forEach(sound.hush);
+    sound.contexts.forEach(context => {
+      if (context.state === 'closed') {
+        sound.contexts.delete(context);
+      } else if (context.state === 'running') {
+        sound.quiet(context);
+      }
+    });
+  } else {
+    sound.held.forEach(held => {
+      if (held instanceof HTMLMediaElement) {
+        held.muted = false;
+      } else if (held.state !== 'closed') {
+        held.resume();
+      }
+    });
+    sound.held.clear();
+  }
+})";
 
 fn normalized(descriptor: &BrowserDescriptor) -> BrowserDescriptor {
     let mut descriptor = descriptor.clone();

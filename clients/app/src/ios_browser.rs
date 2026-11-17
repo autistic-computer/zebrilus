@@ -92,6 +92,18 @@ thread_local! {
     static PAGE_FETCHES: RefCell<HashMap<u64, PageFetch>> = RefCell::new(HashMap::new());
 }
 
+pub fn take_keyboard(window: &Window) {
+    let Ok(handle) = raw_window_handle::HasWindowHandle::window_handle(window) else {
+        return;
+    };
+    let RawWindowHandle::UiKit(handle) = handle.as_raw() else {
+        return;
+    };
+    unsafe {
+        let _: BOOL = msg_send![handle.ui_view.as_ptr() as id, becomeFirstResponder];
+    }
+}
+
 pub fn artifact_message(message: &ProtocolMessage) {
     let request = match message {
         ProtocolMessage::ArtifactBegin {
@@ -277,6 +289,7 @@ pub enum BrowserEvent {
     },
     ElementPickCancelled,
     ElementPickFailed,
+    SiteDataCleared,
     Refresh,
     Backdrop {
         bounds: Bounds<Pixels>,
@@ -571,6 +584,59 @@ impl BrowserView {
         }
     }
 
+    pub fn set_page_zoom(&self, factor: f64) {
+        unsafe {
+            let _: () = msg_send![self.view, setPageZoom: factor];
+        }
+    }
+
+    pub fn evaluate(&self, script: &str) {
+        unsafe {
+            let _: () =
+                msg_send![self.view, evaluateJavaScript: ns_string(script) completionHandler: nil];
+        }
+    }
+
+    pub fn secure_content(&self) -> bool {
+        unsafe {
+            let secure: BOOL = msg_send![self.view, hasOnlySecureContent];
+            secure == YES
+        }
+    }
+
+    pub fn clear_site_data(&self, site: &str) {
+        let site = site.trim_end_matches('.').to_ascii_lowercase();
+        let state = self._state.clone();
+        let fetched = block2::RcBlock::new(move |records: *mut std::ffi::c_void| unsafe {
+            let records = records as id;
+            let count: usize = if records.is_null() {
+                0
+            } else {
+                msg_send![records, count]
+            };
+            let matched: Vec<id> = (0..count)
+                .map(|index| -> id { msg_send![records, objectAtIndex: index] })
+                .filter(|record| {
+                    let name: id = msg_send![*record, displayName];
+                    nsstring_to_string(name).is_some_and(|name| {
+                        let name = name.to_ascii_lowercase();
+                        site == name || site.ends_with(&format!(".{name}"))
+                    })
+                })
+                .collect();
+            let done = state.clone();
+            let removed = block2::RcBlock::new(move || {
+                let _ = done.events.unbounded_send(BrowserEvent::SiteDataCleared);
+            });
+            let types: id = msg_send![class!(WKWebsiteDataStore), allWebsiteDataTypes];
+            let _: () = msg_send![state.profile.store, removeDataOfTypes: types forDataRecords: ns_array(&matched) completionHandler: &*removed];
+        });
+        unsafe {
+            let types: id = msg_send![class!(WKWebsiteDataStore), allWebsiteDataTypes];
+            let _: () = msg_send![self._state.profile.store, fetchDataRecordsOfTypes: types completionHandler: &*fetched];
+        }
+    }
+
     pub fn set_visible(&self, visible: bool) {
         unsafe {
             if shown(self.host) != visible {
@@ -597,7 +663,9 @@ impl BrowserView {
     }
 
     pub fn start_element_pick(&self, appearance: &ElementPickerAppearance) -> Result<(), String> {
-        self.cancel_element_pick();
+        unsafe {
+            stop_picker(&self._state, self.view);
+        }
         let token = self
             ._state
             .picker
@@ -855,16 +923,22 @@ unsafe fn state(this: &Object) -> Rc<DelegateState> {
     Rc::from_raw(pointer)
 }
 
-unsafe fn cancel_picker(state: &DelegateState, view: id) {
+unsafe fn stop_picker(state: &DelegateState, view: id) -> bool {
     if !state.picking.replace(false) {
-        return;
+        return false;
     }
     state.generation.set(state.generation.get().wrapping_add(1));
     state.picker.cancel();
     let _: () = msg_send![view, evaluateJavaScript: ns_string(&format!("globalThis.{PICKER_API}?.cancel();")) completionHandler: nil];
-    let _ = state
-        .events
-        .unbounded_send(BrowserEvent::ElementPickCancelled);
+    true
+}
+
+unsafe fn cancel_picker(state: &DelegateState, view: id) {
+    if stop_picker(state, view) {
+        let _ = state
+            .events
+            .unbounded_send(BrowserEvent::ElementPickCancelled);
+    }
 }
 
 extern "C" fn navigation_started(this: &Object, _: Sel, view: id, _: id) {

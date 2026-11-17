@@ -210,6 +210,42 @@ the native transport, key translation, and UIKit backend.
   share the desktop browser's login or live page state.
   The element picker copies context and a cropped screenshot for pasting into an
   agent. Tap the picker, then tap a page element; Cancel exits without copying.
+  The toolbar's more button opens the page in the default browser, copies its URL,
+  switches the pane's browser profile (Default or any profile the host's browser panes
+  use), zooms the page, clears site data, reloads and starts the picker. The button at
+  the start of the address field opens the site menu: whether the connection is secure,
+  Sound (mutes the page's audio and video elements and suspends its Web Audio, kept
+  across navigations; frames from other sites keep playing) and Clear
+  cookies and site data, which asks first, clears everything WebKit keeps for the site's
+  domain in this profile and reloads. Addresses that are not URLs go to the search
+  engine picked in Settings › Advanced › Browser, a setting kept on the iPad.
+- The iPad keeps its own browser history for each host and browser profile, in
+  `Library/Application Support/ala/browser-history/`, ranked the same way as on
+  desktop. A new tab lists the recently visited pages; typing in the address field
+  shows matching pages under it, completes the address of a page you have typed
+  before, and learns which result you pick for a prefix. Up and Down move through the
+  results, Escape steps back out, and Shift-Delete removes the selected page from
+  the history. Rows show a globe, not the site's icon. The status bar's pane list
+  names a browser pane by its page title from that history.
+- `send-keys` to a browser pane, from an agent or the command line, types into the
+  page: text goes into the focused field, Enter submits a form or breaks a line,
+  Backspace and Delete edit, Tab moves focus, the arrows and Home and End move the
+  caret in a field (not in email or number fields, which keep the caret position
+  from pages) and scroll the page elsewhere, and C-a selects all. Keys mirrored
+  from another client typing into the same page fire their key events without
+  adding the character twice; the text follows on its own. WebKit gives the app
+  no way to send real key events, so the page gets untrusted ones: handlers
+  that check `isTrusted`, browser shortcuts, input methods and frames from other
+  sites do not see them.
+- With a hardware keyboard, a focused browser pane takes the desktop browser keys:
+  Command-L for the address, Command-T for a new tab, Command-R to reload, Command-[
+  and Command-] for back and forward, Command-Shift-[ and Command-Shift-] to change
+  tabs, Command-1 to Command-8 for a tab and Command-9 for the last, and Command-Shift-C
+  for the element picker. Command-plus, Command-minus and Command-0 zoom the page
+  instead of the interface; each tab keeps its own zoom, stepped from 25% to 500% as on
+  desktop. These keys are View menu commands while a browser pane is focused, because a
+  focused page gets every other key before zz does. Control-Tab and
+  Command-Option-arrows also change tabs, but only while the address field has focus.
 - Existing Editor panes explain that file contents are not yet shared by the daemon.
   Editor does not appear in the new-pane picker.
 
@@ -289,7 +325,10 @@ being composed, hardware keys go to the input method first.
   Session (asks first), Detach, Find, Copy Mode and Clear Scrollback in the active terminal,
   Command Palette, Choose Window, Toggle Sidebar, Zoom Pane, Select Pane, UI zoom, Back,
   Forward and Reload in the active browser pane, and links to the docs, release notes and a
-  new issue. Detach leaves the session running and shows the
+  new issue. While a browser pane is focused in the active window, Back, Forward and Reload
+  take the browser's Command shortcuts, View adds Open Location, Pick Element, New Tab, Next
+  Tab, Previous Tab, and Select Tab, its zoom items zoom the page, and Close Pane closes the
+  tab when more than one is open. Detach leaves the session running and shows the
   empty workspace: Attach to session (New session when the host has none, Return or a tap),
   Settings, and the prefix keys a session unlocks (`c`, `%`, `"`, `s`, `?`, or the keys the
   host binds to those commands).

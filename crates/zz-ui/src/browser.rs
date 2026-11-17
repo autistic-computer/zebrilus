@@ -645,10 +645,10 @@ pub fn browser_recent_row(
     id: impl Into<ala::ElementId>,
     url: impl Into<SharedString>,
     favicon: Option<Arc<[u8]>>,
+    height: Pixels,
     cx: &App,
 ) -> Row {
     let url = url.into();
-    let height = crate::picker::list_row_height(cx);
     Row::new(id, RowLook::MenuTint)
         .row_height(height)
         .flex()
@@ -695,6 +695,7 @@ pub fn browser_omnibox_row(
     url: impl Into<SharedString>,
     selected: bool,
     favicon: Option<Arc<[u8]>>,
+    height: Pixels,
     cx: &App,
 ) -> ala::Stateful<ala::Div> {
     let title = title.into();
@@ -712,7 +713,7 @@ pub fn browser_omnibox_row(
     );
     crate::list_row(
         ("browser-omnibox-suggestion", index),
-        px(32.0),
+        height,
         selected,
         true,
         cx,
@@ -787,8 +788,16 @@ pub enum BrowserProfileDiscoveryState {
     Failed,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BrowserMenuEngine {
+    #[default]
+    Chromium,
+    WebView,
+}
+
 #[derive(Clone)]
 pub struct BrowserActionMenuState {
+    pub engine: BrowserMenuEngine,
     pub current_profile_label: SharedString,
     pub selected_profile: SharedString,
     pub default_profile: SharedString,
@@ -950,6 +959,7 @@ pub fn browser_action_menu(
         )
         .separator();
 
+    let chromium = state.engine == BrowserMenuEngine::Chromium;
     let selected_profile = state.selected_profile.clone();
     let default_profile = state.default_profile.clone();
     let profiles = state.profiles.clone();
@@ -964,25 +974,27 @@ pub fn browser_action_menu(
         move |profile_menu, _, _| {
             let default_action = Rc::clone(&profile_action);
             let default_id = default_profile.clone();
-            let mut profile_menu = profile_menu
-                .min_w(px(310.0))
-                .item(
-                    PopupMenuItem::new("Default zz profile")
-                        .checked(selected_profile == default_profile)
-                        .disabled(selected_profile == default_profile)
-                        .on_click(move |_, window, cx| {
-                            default_action(default_id.clone(), window, cx);
-                        }),
-                )
-                .separator()
-                .item(PopupMenuItem::label(
+            let mut profile_menu = profile_menu.min_w(px(310.0)).item(
+                PopupMenuItem::new("Default zz profile")
+                    .checked(selected_profile == default_profile)
+                    .disabled(selected_profile == default_profile)
+                    .on_click(move |_, window, cx| {
+                        default_action(default_id.clone(), window, cx);
+                    }),
+            );
+            if chromium {
+                profile_menu = profile_menu.separator().item(PopupMenuItem::label(
                     "Chrome profiles · isolated zz storage",
                 ));
+            } else if !profiles.is_empty() {
+                profile_menu = profile_menu.separator();
+            }
 
-            if profile_discovery == BrowserProfileDiscoveryState::Loading {
+            if chromium && profile_discovery == BrowserProfileDiscoveryState::Loading {
                 profile_menu = profile_menu
                     .item(PopupMenuItem::new("Finding Chrome profiles…").disabled(true));
-            } else if profiles.is_empty()
+            } else if chromium
+                && profiles.is_empty()
                 && profile_discovery == BrowserProfileDiscoveryState::Ready
             {
                 profile_menu = profile_menu
@@ -1001,7 +1013,7 @@ pub fn browser_action_menu(
                     );
                 }
             }
-            if profile_discovery == BrowserProfileDiscoveryState::Failed {
+            if chromium && profile_discovery == BrowserProfileDiscoveryState::Failed {
                 let refresh_profiles = Rc::clone(&refresh_profiles);
                 profile_menu = profile_menu.separator().item(
                     PopupMenuItem::new("Retry Chrome profile discovery")
@@ -1016,34 +1028,81 @@ pub fn browser_action_menu(
     let zoom_in = Rc::clone(&actions.zoom_in);
     let zoom_out = Rc::clone(&actions.zoom_out);
     let reset_zoom = Rc::clone(&actions.reset_zoom);
-    let import_chrome_data = Rc::clone(&actions.import_chrome_data);
-    let import_cookies = Rc::clone(&actions.import_cookies);
     let clear_site_data = Rc::clone(&actions.clear_site_data);
     let reload = Rc::clone(&actions.reload);
     let toggle_picker = Rc::clone(&actions.toggle_picker);
     let dev_tools = Rc::clone(&actions.dev_tools);
     let zoom_percent = actions.zoom_percent.clone();
-    let menu = menu.item(PopupMenuItem::stepper(
-        "Page zoom",
-        move |cx| {
-            format!(
-                "{}%",
-                zoom_percent
-                    .as_ref()
-                    .map_or(state.zoom_percent, |read| read(cx))
-            )
-            .into()
-        },
-        move |window, cx| zoom_out(window, cx),
-        move |window, cx| reset_zoom(window, cx),
-        move |window, cx| zoom_in(window, cx),
-    ));
+    let menu = menu
+        .item(PopupMenuItem::stepper(
+            "Page zoom",
+            move |cx| {
+                format!(
+                    "{}%",
+                    zoom_percent
+                        .as_ref()
+                        .map_or(state.zoom_percent, |read| read(cx))
+                )
+                .into()
+            },
+            move |window, cx| zoom_out(window, cx),
+            move |window, cx| reset_zoom(window, cx),
+            move |window, cx| zoom_in(window, cx),
+        ))
+        .separator();
 
+    let menu = if chromium {
+        chrome_import_items(menu, &state, &actions, window, cx)
+    } else {
+        menu
+    };
+
+    let menu = menu
+        .item(
+            PopupMenuItem::new("Clear site data…")
+                .icon(IconName::Xmark)
+                .disabled(!state.can_clear_site_data)
+                .on_click(move |_, window, cx| clear_site_data(window, cx)),
+        )
+        .separator()
+        .item(
+            PopupMenuItem::new("Reload")
+                .icon(IconName::Redo2)
+                .on_click(move |_, window, cx| reload(window, cx)),
+        )
+        .item(
+            PopupMenuItem::new(if state.picker_active {
+                "Cancel element picker"
+            } else {
+                "Pick an element"
+            })
+            .icon(IconName::Inspector)
+            .on_click(move |_, window, cx| toggle_picker(window, cx)),
+        );
+    if !chromium {
+        return menu;
+    }
+    menu.item(
+        PopupMenuItem::new("Developer tools")
+            .icon(IconName::SquareTerminal)
+            .on_click(move |_, window, cx| dev_tools(window, cx)),
+    )
+}
+
+fn chrome_import_items(
+    menu: PopupMenu,
+    state: &BrowserActionMenuState,
+    actions: &BrowserMenuActions,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let import_chrome_data = Rc::clone(&actions.import_chrome_data);
+    let import_cookies = Rc::clone(&actions.import_cookies);
     let import_profiles = state.profiles.clone();
     let import_profile_discovery = state.profile_discovery;
     let can_import_chrome_data = state.can_import_chrome_data;
     let refresh_profiles = Rc::clone(&actions.refresh_profiles);
-    let menu = menu.separator().submenu_with_icon(
+    menu.submenu_with_icon(
         Some(Icon::new(IconName::Globe)),
         "Import Chrome data",
         window,
@@ -1085,38 +1144,11 @@ pub fn browser_action_menu(
             }
             import_menu
         },
-    );
-
-    menu.item(
+    )
+    .item(
         PopupMenuItem::new("Import cookie file…")
             .icon(IconName::File)
             .on_click(move |_, window, cx| import_cookies(window, cx)),
-    )
-    .item(
-        PopupMenuItem::new("Clear site data…")
-            .icon(IconName::Xmark)
-            .disabled(!state.can_clear_site_data)
-            .on_click(move |_, window, cx| clear_site_data(window, cx)),
-    )
-    .separator()
-    .item(
-        PopupMenuItem::new("Reload")
-            .icon(IconName::Redo2)
-            .on_click(move |_, window, cx| reload(window, cx)),
-    )
-    .item(
-        PopupMenuItem::new(if state.picker_active {
-            "Cancel element picker"
-        } else {
-            "Pick an element"
-        })
-        .icon(IconName::Inspector)
-        .on_click(move |_, window, cx| toggle_picker(window, cx)),
-    )
-    .item(
-        PopupMenuItem::new("Developer tools")
-            .icon(IconName::SquareTerminal)
-            .on_click(move |_, window, cx| dev_tools(window, cx)),
     )
 }
 
@@ -1430,7 +1462,7 @@ mod tests {
             .enumerate()
             .map(|(index, (title, url, selected))| {
                 let accepted = Arc::clone(&self.accepted);
-                browser_omnibox_row(index, title, url, selected, None, cx)
+                browser_omnibox_row(index, title, url, selected, None, px(32.0), cx)
                     .on_mouse_down(MouseButton::Left, move |_, _, cx| {
                         accepted.lock().unwrap().push(index);
                         cx.stop_propagation();

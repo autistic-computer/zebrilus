@@ -18,7 +18,6 @@ mod lifecycle;
     reason = "libmalloc takes a zone of raw function pointers and calls them from any thread"
 )]
 mod malloc_zone;
-#[cfg(any(feature = "cef-runtime", test))]
 mod page_zoom;
 #[cfg(any(feature = "cef-runtime", all(test, feature = "host")))]
 mod popup;
@@ -76,6 +75,7 @@ pub use input::{
 pub use lifecycle::{RuntimePhase, SessionPhase};
 #[cfg(target_os = "macos")]
 pub use malloc_zone::install_early_malloc_zone;
+pub use page_zoom::next_page_zoom_factor;
 
 #[cfg(not(target_os = "macos"))]
 pub fn install_early_malloc_zone() {}
