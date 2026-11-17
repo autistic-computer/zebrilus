@@ -14,7 +14,7 @@ use zz_ui::{
     agent::resume::EmptyChat,
     pane::{
         HeaderBand, HeaderPlace, PaneActionKeys, PaneDragSource, PaneState, headed_pane,
-        header_scrim, pane_header, pane_header_frame, pane_surface, tiled_pane_ground,
+        header_scrim, pane_header, pane_header_frame, pane_surface, tiled_pane_surface,
     },
     terminal::{
         RowRenderCache, TerminalHistoryRow, TerminalHistorySource, TerminalRenderInput,
@@ -316,7 +316,7 @@ fn header(id: u64, icon: IconName, title: &'static str, active: bool, cx: &App) 
 fn band(active: bool, gaps: bool, cx: &App) -> HeaderBand {
     HeaderPlace::Over
         .band(
-            tiled_pane_ground(cx.theme().background, gaps, active, cx),
+            tiled_pane_surface(cx.theme().background, None, gaps, active, cx),
             cx,
         )
         .expect("a floating header has a band")

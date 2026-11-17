@@ -2518,7 +2518,16 @@ impl AppShell {
                 pane_id == active_window.active_pane,
                 cx,
             );
-            let header_band = header_place.band(tiled_ground, cx);
+            let header_band = header_place.band(
+                zz_ui::pane::tiled_pane_surface(
+                    cx.theme().background,
+                    zz_ui::shell::shell_frame(cx.theme().background, self.preferences.gaps, cx),
+                    frame.framed,
+                    pane_id == active_window.active_pane,
+                    cx,
+                ),
+                cx,
+            );
             let content_radii = if header_band.is_some() {
                 radii
             } else {

@@ -1,5 +1,5 @@
 use ala::{
-    AnyElement, App, Bounds, Div, Hsla, IntoElement, ParentElement as _, Pixels, Styled as _,
+    AnyElement, App, Bounds, Div, Hsla, IntoElement, ParentElement as _, Pixels, Rgba, Styled as _,
     Window, canvas, div, fill, linear_color_stop, linear_gradient, point, prelude::*, px, size,
 };
 use penna::Ground;
@@ -27,12 +27,12 @@ impl HeaderPlace {
     }
 
     #[must_use]
-    pub fn band(self, ground: Ground, cx: &App) -> Option<HeaderBand> {
+    pub fn band(self, surface: Hsla, cx: &App) -> Option<HeaderBand> {
         match self {
             Self::Stacked => None,
             Self::Over => Some(HeaderBand {
                 height: cx.theme().pane_header_height(),
-                ground: ground.fill,
+                ground: surface,
             }),
         }
     }
@@ -58,6 +58,44 @@ impl HeaderBand {
 pub struct HeaderScrim {
     pub band: Bounds<Pixels>,
     pub ground: Hsla,
+}
+
+#[must_use]
+pub fn stacked_surface(layers: impl IntoIterator<Item = Option<Hsla>>) -> Hsla {
+    let under = layers
+        .into_iter()
+        .flatten()
+        .fold(Rgba::default(), |under, layer| {
+            let top = Rgba::from(layer);
+            let alpha = top.a + under.a * (1.0 - top.a);
+            if alpha <= 0.0 {
+                return Rgba::default();
+            }
+            let mix =
+                |over: f32, below: f32| (over * top.a + below * under.a * (1.0 - top.a)) / alpha;
+            Rgba {
+                r: mix(top.r, under.r),
+                g: mix(top.g, under.g),
+                b: mix(top.b, under.b),
+                a: alpha,
+            }
+        });
+    Hsla::from(under)
+}
+
+#[must_use]
+pub fn tiled_pane_surface(
+    window: Hsla,
+    shell: Option<Hsla>,
+    framed: bool,
+    active: bool,
+    cx: &App,
+) -> Hsla {
+    stacked_surface([
+        Some(window),
+        shell,
+        framed.then(|| PaneLook::global(cx).frame(cx.theme(), window, active).tint),
+    ])
 }
 
 #[must_use]
@@ -155,5 +193,27 @@ pub fn headed_pane(
                     .block_mouse_except_scroll()
                     .child(header),
             ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ala::{Hsla, Rgba};
+
+    use super::stacked_surface;
+
+    #[test]
+    fn the_scrim_colour_is_the_layers_composited_like_the_renderer() {
+        let layer = |level: f32| {
+            Some(Hsla::from(Rgba {
+                r: level,
+                g: level,
+                b: level,
+                a: 0.5,
+            }))
+        };
+        let surface = Rgba::from(stacked_surface([layer(0.0), None, layer(1.0)]));
+        assert!((surface.a - 0.75).abs() < 1e-4, "alpha {}", surface.a);
+        assert!((surface.r - 2.0 / 3.0).abs() < 1e-4, "red {}", surface.r);
     }
 }

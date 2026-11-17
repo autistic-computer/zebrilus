@@ -3361,7 +3361,7 @@ mod tests {
             captured.replace(Some(mux.update(cx, |mux, _| mux.record_input_for_test())));
             let terminal = cx
                 .new(|cx| TerminalView::new(PaneId(0), mux, Rc::new(Cell::new(false)), window, cx));
-            let band = place.band(cx.theme().ground(), cx);
+            let band = place.band(cx.theme().ground().fill, cx);
             terminal.update(cx, |terminal, cx| terminal.set_header_band(band, cx));
             HeadedTerminal { place, terminal }
         });

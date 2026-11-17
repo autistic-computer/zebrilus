@@ -206,8 +206,11 @@ its rows and columns are the ones it had under a stacked header and its live scr
 the header with nothing behind the title. Scrolled back, history rows paint up to the pane's top
 edge and the header scrim covers them: the pane's surface colour at 100% at the top edge, 88% at
 the header's bottom edge and clear 20px below it (`pane::paint_header_scrim`, one builder for both
-clients and both kinds). On a translucent surface it paints as two backdrop fades, so it replaces
-what is under it instead of stacking a darker bar. A program on the alternate screen has no
+clients and both kinds). The surface colour is every layer painted under the pane composited the
+way the renderer does it: the window fill, the shell frame and the pane frame's tint
+(`pane::tiled_pane_surface`), not the pane's ground, which leaves the shell frame out. On a
+translucent surface the scrim paints as two backdrop fades, so it replaces what is under it instead
+of stacking a darker bar. A program on the alternate screen has no
 scrollback and never gets the scrim. An agent pane always draws it: the chat list starts
 `inset_top` below the header and scrolls under it, and the empty screen pads its column by the
 header's height while its sky runs to the pane's top edge. The scrim takes no pointer events. View

@@ -3787,8 +3787,9 @@ impl AppView {
                         HeaderPlace::of(&held.kind, floats)
                     });
                 let header_band = header_place.band(
-                    zz_ui::pane::tiled_pane_ground(
+                    zz_ui::pane::tiled_pane_surface(
                         crate::theme::chrome_background(cx),
+                        crate::theme::shell_frame(cx),
                         config::pane_gaps(cx),
                         active,
                         cx,
