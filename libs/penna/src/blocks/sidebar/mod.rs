@@ -15,8 +15,8 @@ pub const SIDEBAR_DEFAULT_WIDTH: f32 = 256.0;
 pub const SIDEBAR_CONTENT_INSET: f32 = Space::S8.design_px();
 pub const SIDEBAR_SCROLLBAR_GUTTER: Pixels = px(8.0);
 pub const SIDEBAR_ROW_ACTION_CENTER: Pixels = px(19.0);
-pub const CHROME_BUTTON_SIZE: Pixels = px(32.0);
-const CHROME_ICON_SIZE: Pixels = px(17.0);
+pub const CHROME_BUTTON_SIZE: Pixels = px(28.0);
+const CHROME_ICON_SIZE: Pixels = px(16.0);
 const SIDEBAR_RESIZE_HANDLE_WIDTH: f32 = 8.0;
 pub const STATUS_DOT_SIZE: f32 = 6.0;
 
