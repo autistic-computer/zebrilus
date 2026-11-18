@@ -12,8 +12,10 @@ use serde_json::Value;
 
 use super::catalog::{self as spec, Align, Dynamic, Justify, Kind, Scalar, Words};
 use super::document::{Document, Message, absolute};
+use crate::blocks::touch::CoarsePointer;
 use crate::components::badge::Badge;
 use crate::components::button::{Button, ButtonVariants as _};
+use crate::components::chart::{Chart, ChartKind, Series};
 use crate::components::field::Field;
 use crate::components::input::{Input, InputEvent, InputState};
 use crate::components::progress::Progress;
@@ -22,14 +24,14 @@ use crate::components::select::{Select, SelectEvent, SelectItem, SelectState};
 use crate::components::separator::Separator;
 use crate::components::slider::Slider;
 use crate::{
-    ActiveTheme as _, Card, CardLook, Disableable as _, IconName, IndexPath, Label, Space,
-    StyledExt as _, TextStyle, Tone, h_flex, rems_from_px, v_flex,
+    ActiveTheme as _, Card, CardLook, Disableable as _, IconName, IndexPath, Label, Sizable as _,
+    Size, Space, StyledExt as _, TextStyle, Tone, h_flex, rems_from_px, v_flex,
 };
 
 const MAX_DEPTH: usize = 32;
 const FIELD_WIDTH: f32 = 320.0;
-const STAT_SIZE: f32 = 22.0;
-const STAT_LINE: f32 = 28.0;
+const TOUCH_BUTTON_WIDTH: f32 = 120.0;
+const TOUCH_COLUMNS: u16 = 2;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Action {
@@ -105,6 +107,7 @@ pub struct A2uiSurface {
     id: SharedString,
     document: Rc<Document>,
     mode: Mode,
+    touch: bool,
     locals: HashMap<String, Value>,
     inputs: HashMap<String, Entity<InputState>>,
     selects: HashMap<String, Entity<SelectState<Vec<spec::Choice>>>>,
@@ -119,6 +122,7 @@ impl A2uiSurface {
             id: id.into(),
             document: Rc::default(),
             mode: Mode::Live,
+            touch: false,
             locals: HashMap::new(),
             inputs: HashMap::new(),
             selects: HashMap::new(),
@@ -134,6 +138,21 @@ impl A2uiSurface {
         if self.mode != mode {
             self.mode = mode;
             cx.notify();
+        }
+    }
+
+    pub fn set_touch(&mut self, touch: bool, cx: &mut Context<Self>) {
+        if self.touch != touch {
+            self.touch = touch;
+            cx.notify();
+        }
+    }
+
+    fn text(&self, style: TextStyle) -> TextStyle {
+        match (self.touch, style) {
+            (true, TextStyle::Body) => TextStyle::TouchBody,
+            (true, TextStyle::Small | TextStyle::Mono) => TextStyle::TouchSmall,
+            (_, style) => style,
         }
     }
 
@@ -359,13 +378,17 @@ impl A2uiSurface {
         match &component.kind {
             Kind::Column(flex) => {
                 let children = self.children(document, &flex.children, place, window, cx);
-                let gap = if place.dense { Space::S6 } else { Space::S12 };
+                let gap = if place.dense {
+                    Space::GAP_RELATED
+                } else {
+                    Space::S12
+                };
                 arrange(v_flex().gap(gap), flex, Align::Stretch, children)
             }
             Kind::Row(flex) => {
                 let children = self.children(document, &flex.children, place, window, cx);
                 arrange(
-                    h_flex().flex_wrap().gap(Space::S8),
+                    h_flex().flex_wrap().gap(Space::GAP_RELATED),
                     flex,
                     Align::Center,
                     children,
@@ -373,10 +396,15 @@ impl A2uiSurface {
             }
             Kind::Grid(grid) => {
                 let children = self.children(document, &grid.children, place, window, cx);
+                let columns = if self.touch {
+                    grid.columns.min(TOUCH_COLUMNS)
+                } else {
+                    grid.columns
+                };
                 div()
                     .grid()
-                    .grid_cols(grid.columns.max(1))
-                    .gap(Space::S8)
+                    .grid_cols(columns.max(1))
+                    .gap(Space::GAP_RELATED)
                     .children(children)
                     .into_any_element()
             }
@@ -393,11 +421,18 @@ impl A2uiSurface {
             Kind::Text(text) => {
                 let content = self.read(&text.text, base);
                 let label = match text.variant {
-                    spec::TextVariant::Body => Label::new(TextStyle::Body, content),
-                    spec::TextVariant::Caption => Label::new(TextStyle::Small, content).muted(),
-                    spec::TextVariant::Heading => Label::new(TextStyle::Heading, content).strong(),
-                    spec::TextVariant::Title => Label::new(TextStyle::Title, content).strong(),
-                    spec::TextVariant::Mono => Label::new(TextStyle::Mono, content).mono(),
+                    spec::TextVariant::Body => Label::new(self.text(TextStyle::Body), content),
+                    spec::TextVariant::Caption => {
+                        Label::new(self.text(TextStyle::Small), content).muted()
+                    }
+                    spec::TextVariant::Heading if self.touch => {
+                        Label::new(TextStyle::TouchBody, content).font_weight(FontWeight::SEMIBOLD)
+                    }
+                    spec::TextVariant::Heading => Label::new(TextStyle::Heading, content),
+                    spec::TextVariant::Title => Label::new(TextStyle::Title, content),
+                    spec::TextVariant::Mono => {
+                        Label::new(self.text(TextStyle::Mono), content).mono()
+                    }
                 };
                 match text.tone {
                     Some(tone) => label.tone(Tone::from(tone)).into_any_element(),
@@ -405,14 +440,14 @@ impl A2uiSurface {
                 }
             }
             Kind::Stat(stat) => v_flex()
-                .child(Label::new(TextStyle::Small, self.read(&stat.label, base)).muted())
+                .gap(Space::GAP_TIGHT)
+                .child(
+                    Label::new(self.text(TextStyle::Small), self.read(&stat.label, base)).muted(),
+                )
                 .child(
                     div()
-                        .text_size(rems_from_px(STAT_SIZE))
-                        .line_height(rems_from_px(STAT_LINE))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .font_features(FontFeatures(Arc::new(vec![("tnum".into(), 1)])))
-                        .child(self.read(&stat.value, base)),
+                        .font_features(tabular())
+                        .child(Label::new(TextStyle::Title, self.read(&stat.value, base))),
                 )
                 .into_any_element(),
             Kind::Badge(badge) => h_flex()
@@ -430,6 +465,11 @@ impl A2uiSurface {
                 let control = Button::new(element_id)
                     .label(self.read(&button.label, base))
                     .disabled(held);
+                let control = if self.touch {
+                    control.with_size(Size::Touch).w_full()
+                } else {
+                    control
+                };
                 let control = match button.variant {
                     spec::ButtonVariant::Default => control,
                     spec::ButtonVariant::Primary => control.primary(),
@@ -444,7 +484,16 @@ impl A2uiSurface {
                 } else {
                     control
                 };
-                h_flex().child(control.on_click(pressed)).into_any_element()
+                let control = control.on_click(pressed);
+                if self.touch {
+                    div()
+                        .flex_1()
+                        .min_w(rems_from_px(TOUCH_BUTTON_WIDTH))
+                        .child(control)
+                        .into_any_element()
+                } else {
+                    h_flex().child(control).into_any_element()
+                }
             }
             Kind::TextField(field) => {
                 let slot = Slot::of(&field.value, &key, base);
@@ -454,7 +503,13 @@ impl A2uiSurface {
                     state.update(cx, |state, cx| state.set_value(wanted, window, cx));
                 }
                 let label = field.label.as_ref().map(|label| self.read(label, base));
-                labelled(label, Input::new(&state).disabled(held).into_any_element())
+                let control = Input::new(&state).disabled(held);
+                if self.touch {
+                    let control = control.with_size(Size::TouchLarge);
+                    labelled(label, control.into_any_element(), true)
+                } else {
+                    labelled(label, control.into_any_element(), false)
+                }
             }
             Kind::Select(select) => {
                 let slot = Slot::of(&select.value, &key, base);
@@ -469,13 +524,18 @@ impl A2uiSurface {
                         state.set_selected_index(picked.map(IndexPath::new), window, cx);
                     });
                 }
-                let control = Select::new(&state).disabled(held);
+                let control = Select::new(&state).disabled(held).w_full();
+                let control = if self.touch {
+                    control.with_size(Size::TouchLarge)
+                } else {
+                    control
+                };
                 let control = match &select.placeholder {
                     Some(placeholder) => control.placeholder(placeholder.clone()),
                     None => control,
                 };
                 let label = select.label.as_ref().map(|label| self.read(label, base));
-                labelled(label, control.into_any_element())
+                labelled(label, control.into_any_element(), self.touch)
             }
             Kind::Segmented(segmented) => {
                 let slot = Slot::of(&segmented.value, &key, base);
@@ -501,14 +561,18 @@ impl A2uiSurface {
                     .options
                     .iter()
                     .map(|option| SharedString::from(option.label().to_owned()));
-                h_flex()
-                    .child(
-                        SegmentedControl::new(element_id, labels)
-                            .selected(selected)
-                            .disabled(held)
-                            .on_select(move |index, window, cx| picked(&index, window, cx)),
-                    )
-                    .into_any_element()
+                let control = SegmentedControl::new(element_id, labels)
+                    .selected(selected)
+                    .disabled(held)
+                    .on_select(move |index, window, cx| picked(&index, window, cx));
+                if self.touch {
+                    control
+                        .with_size(Size::Touch)
+                        .full_width()
+                        .into_any_element()
+                } else {
+                    h_flex().child(control).into_any_element()
+                }
             }
             Kind::Slider(slider) => {
                 let slot = Slot::of(&slider.value, &key, base);
@@ -529,17 +593,47 @@ impl A2uiSurface {
                     None => control,
                 }
                 .disabled(held);
-                labelled(label, control.into_any_element())
+                let control = if self.touch || CoarsePointer::get(cx) {
+                    div().w_full().child(control).into_any_element()
+                } else {
+                    let shown = control.shown();
+                    h_flex()
+                        .w_full()
+                        .gap(Space::GAP_RELATED)
+                        .child(div().flex_1().min_w_0().child(control))
+                        .child(
+                            div()
+                                .flex_none()
+                                .font_features(tabular())
+                                .child(Label::new(TextStyle::Small, shown).muted()),
+                        )
+                        .into_any_element()
+                };
+                labelled(label, control, self.touch)
             }
             Kind::Progress(progress) => {
                 let slot = Slot::of(&progress.value, &key, base);
-                let bar = Progress::new(element_id, self.number(&progress.value, &slot) as f32);
+                let value = self.number(&progress.value, &slot).clamp(0.0, 1.0);
+                let bar = Progress::new(element_id, value as f32);
                 match &progress.label {
                     Some(label) => {
                         let label = self.read(label, base);
+                        let style = self.text(TextStyle::Small);
+                        let percent = format!("{:.0}%", value * 100.0);
                         v_flex()
-                            .gap(Space::S4)
-                            .child(Label::new(TextStyle::Small, label.clone()).muted())
+                            .gap(Space::GAP_TIGHT)
+                            .child(
+                                h_flex()
+                                    .justify_between()
+                                    .gap(Space::GAP_RELATED)
+                                    .child(Label::new(style, label.clone()).muted())
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .font_features(tabular())
+                                            .child(Label::new(style, percent).muted()),
+                                    ),
+                            )
                             .child(bar.label(label))
                             .into_any_element()
                     }
@@ -552,23 +646,59 @@ impl A2uiSurface {
                     .value(&rows)
                     .and_then(Value::as_array)
                     .map_or(0, Vec::len);
+                let cell = |index: usize, column: &spec::TableColumn| {
+                    document.value(&absolute(&format!("{rows}/{index}"), &column.path))
+                };
+                let numeric: Vec<bool> = table
+                    .columns
+                    .iter()
+                    .map(|column| {
+                        count > 0
+                            && (0..count)
+                                .all(|index| cell(index, column).is_some_and(Value::is_number))
+                    })
+                    .collect();
+                let small = self.text(TextStyle::Small);
+                let body = self.text(TextStyle::Body);
                 let header = table
                     .columns
                     .iter()
-                    .map(|column| Label::new(TextStyle::Small, column.title.clone()).muted());
-                let mut lines = v_flex().child(line(header));
+                    .map(|column| Label::new(small, column.title.clone()).muted());
+                let mut lines = v_flex().child(line(header, &numeric));
                 for index in 0..count {
-                    let row = format!("{rows}/{index}");
                     let cells = table.columns.iter().map(|column| {
-                        let cell = document
-                            .value(&absolute(&row, &column.path))
-                            .map(shown)
-                            .unwrap_or_default();
-                        Label::new(TextStyle::Body, cell)
+                        Label::new(body, cell(index, column).map(shown).unwrap_or_default())
                     });
-                    lines = lines.child(Separator::horizontal()).child(line(cells));
+                    lines = lines
+                        .child(Separator::horizontal())
+                        .child(line(cells, &numeric));
                 }
                 lines.into_any_element()
+            }
+            Kind::Chart(chart) => {
+                let rows = absolute(base, &chart.rows);
+                let items = document
+                    .value(&rows)
+                    .and_then(Value::as_array)
+                    .map_or(&[][..], Vec::as_slice);
+                let labels = items
+                    .iter()
+                    .map(|item| item.get(&chart.x).map(shown).unwrap_or_default());
+                let series = chart.series.iter().map(|one| {
+                    let values = items.iter().map(|item| {
+                        item.get(one.path())
+                            .and_then(Value::as_f64)
+                            .unwrap_or(f64::NAN)
+                    });
+                    Series::new(one.title().to_owned(), values)
+                });
+                let kind = match chart.kind {
+                    spec::ChartKind::Bar => ChartKind::Bar,
+                    spec::ChartKind::Line => ChartKind::Line,
+                };
+                Chart::new(element_id, kind, labels, series)
+                    .touch(self.touch)
+                    .into_any_element()
             }
         }
     }
@@ -580,7 +710,7 @@ impl Render for A2uiSurface {
         let problems = document
             .problems()
             .into_iter()
-            .map(|problem| Label::new(TextStyle::Small, problem).tone(Tone::Danger));
+            .map(|problem| Field::new().error(problem));
         let place = Place {
             base: "",
             depth: 0,
@@ -589,8 +719,8 @@ impl Render for A2uiSurface {
         let root = self.build(&document, document.root(), place, window, cx);
         v_flex()
             .w_full()
-            .gap(Space::S8)
-            .type_style(TextStyle::Body, cx)
+            .gap(Space::GAP_RELATED)
+            .type_style(self.text(TextStyle::Body), cx)
             .font_family(cx.theme().font_family.clone())
             .text_color(cx.theme().foreground)
             .children(problems)
@@ -620,28 +750,43 @@ fn arrange(
     container.children(children).into_any_element()
 }
 
-fn labelled(label: Option<SharedString>, control: AnyElement) -> AnyElement {
-    let width = rems_from_px(FIELD_WIDTH);
-    match label {
-        Some(label) => Field::new()
-            .label(label)
+fn labelled(label: Option<SharedString>, control: AnyElement, touch: bool) -> AnyElement {
+    let field = match label {
+        Some(label) => Field::new().label(label),
+        None => Field::new(),
+    };
+    if touch {
+        field
+            .with_size(Size::TouchLarge)
             .w_full()
-            .max_w(width)
             .child(control)
-            .into_any_element(),
-        None => div()
+            .into_any_element()
+    } else {
+        field
             .w_full()
-            .max_w(width)
+            .max_w(rems_from_px(FIELD_WIDTH))
+            .items_stretch()
             .child(control)
-            .into_any_element(),
+            .into_any_element()
     }
 }
 
-fn line(cells: impl Iterator<Item = Label>) -> ala::Div {
+fn line(cells: impl Iterator<Item = Label>, numeric: &[bool]) -> ala::Div {
     h_flex()
-        .gap(Space::S16)
+        .gap(Space::GAP_GROUP)
         .py(Space::S4)
-        .children(cells.map(|cell| div().flex_1().min_w_0().child(cell)))
+        .children(cells.zip(numeric).map(|(cell, numeric)| {
+            let cell = h_flex().flex_1().min_w_0().child(cell);
+            if *numeric {
+                cell.justify_end().font_features(tabular())
+            } else {
+                cell
+            }
+        }))
+}
+
+fn tabular() -> FontFeatures {
+    FontFeatures(Arc::new(vec![("tnum".into(), 1)]))
 }
 
 fn shown(value: &Value) -> SharedString {

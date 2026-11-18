@@ -1,0 +1,6 @@
+root = Column([title, Grid([Card(Stat("Errors", $/total)), Card(Stat("p99", "210 ms"))], 2), volume, speed])
+title = Text("This week", "heading")
+volume = Chart($/days, "day", [{title: "Errors", path: "errors"}, {title: "Warnings", path: "warnings"}])
+speed = Chart($/days, "day", [{title: "p99 ms", path: "p99"}], "line")
+$/total = 221
+$/days = [{day: "Mon", errors: 12, warnings: 40, p99: 120}, {day: "Tue", errors: 30, warnings: 52, p99: 96}, {day: "Wed", errors: 18, warnings: 31, p99: 140}, {day: "Thu", errors: 44, warnings: 60, p99: 210}, {day: "Fri", errors: 87, warnings: 71, p99: 180}, {day: "Sat", errors: 21, warnings: 38, p99: 110}, {day: "Sun", errors: 9, warnings: 22, p99: 104}]

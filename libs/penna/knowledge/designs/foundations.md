@@ -715,6 +715,50 @@ HTML: `.penna-card` with `data-penna` set to `card.bubble`, `card.code`, `card.f
 
 Status: matches.
 
+### Chart
+
+A chart compares numbers across one list of labels: errors per day, latency per release, builds per branch. Bars when each label is a thing of its own (days, services), lines when the labels run in order and the shape matters more than any one value. For one number, a stat (UI block); for how far one task has come, a progress bar; for exact values people will read one by one, a table.
+
+Kinds (`ChartKind`, `Chart::new(id, kind, labels, series)`):
+
+| Kind | Draws | Use |
+|---|---|---|
+| Bar | one bar per series in each label's band, from the zero rule to the value | amounts to compare |
+| Line | each series as one line through the middle of its bands | a value over time |
+
+A chart takes one to four series (`MAX_SERIES`); a fifth is never drawn. More than four things to compare is a table.
+
+Anatomy, top to bottom:
+
+- Plot: 160 tall, as wide as its container less the gutter. Layout geometry, in design pixels.
+- Axis: one, on the left, always through zero. It ends on a round value: the span is cut into about four steps of 1, 2, 2.5 or 5 times a power of ten, and the top (and the bottom, under zero) is the next step past the data. Never a second axis: two measures on different scales are two charts.
+- Rules: a `divider` hairline at each step, across the plot. The zero rule is one of them.
+- Gutter: 40 wide, the step values in `caption`, `fg-muted`, tabular figures, right-aligned `space-8` from the plot, each centered on its rule. Values shorten past a thousand (`1.5k`, `2M`).
+- Bands: the plot split evenly, one band per label, `space-4` of inset at each side. Bars sit side by side in the band, 2 apart, each at most 24 wide, in the order of the series. A bar's end is rounded by 4 and its foot on the zero rule is square; under zero it hangs from the rule and its lower end is the round one.
+- Line: 2 thick, straight from point to point. A missing value breaks it; a value with no neighbor is an 8 dot.
+- Labels: under the plot, `gap-tight` 4 below it, one per band, centered, `caption` in `fg-muted`, cut with an ellipsis. At most twelve are written; past that every second or third.
+- Legend: only with two series or more, `space-8` under the labels, starting where the plot starts: an 8 swatch rounded by 2, `gap-tight` 4, then the series' name in `small` in the ink. Entries sit `space-12` apart and wrap. One series has no legend: the text above the chart names it.
+
+Color: a series takes its color by its place in the list, never by its value: blue, pink, yellow, purple, the named accents' values for the mode (Look). The order is fixed so neighbors stay apart for people who don't tell red from green, on `bg` in light and in dark, and it doesn't follow the tint: these are data colors, as status colors are status colors. Text never takes a series' color; the swatch beside it carries it. The status colors are never series colors.
+
+States:
+
+| State | Look | Notes |
+|---|---|---|
+| rest | as above | |
+| hover | the band under the pointer takes the ghost paint's hover wash, rounded by 4 | not under a coarse pointer |
+| no data | the rules and labels, an axis from 0 to 1, no marks | |
+
+Behavior: a band's tooltip reads its values: "Fri: 87" for one series, "Fri · Errors 87 · Warnings 71" for more, a missing value as "none". Nothing takes a click or focus.
+
+Content: series names are nouns in sentence case, with their unit when it isn't plain ("p99 ms"). Labels are short: a day, a version, a name.
+
+Placement: in the flow of content, as wide as its column. A heading or a line of text above it says what it shows.
+
+Phone: `.touch(true)`. Step values and labels are `body`, since nothing on a phone is under 13, the legend `touch-small`, and at most six labels are written.
+
+Status: built natively (`src/components/chart/mod.rs`, the `charts` story). Not built: an HTML twin, a docs page, a keyboard path to the values.
+
 ### Checkbox and radio
 
 A checkbox turns one option on or off by itself; a radio picks one option of a set, all in view. Both take effect when the form or dialog they sit in is confirmed. For a setting that applies at once, use a switch; for one of two to five modes that applies at once, a segmented control; for one of many, a select.
@@ -2432,6 +2476,57 @@ HTML: the glyph row and chips are the stack menu's (Stack menu). The address fie
 
 Status: built: the web view over the pane with its own scrolling and keyboard (`ios_browser.rs`, `ZzBrowser.java`), pull to refresh with the platform's spinner, the iOS edge swipe and new windows as new tabs. On the phone the pane has no header: the page runs from the status area to the bottom with the pill over it (`browser_pane.rs`). The pill's title is the page's title over its host, and "Picking an element" while the picker waits; a tap on the pill then ends it. Its stack is `zz_ui::compact::browser_menu`: the glyph row (Back and Forward off with nowhere to go, Reload turning to Stop while the page loads), the Address chip cut in the middle, Tabs with its count, Pick element (off while loading) and Open on this phone (iOS and Android, an http or https page), then the pane menu behind More. Address opens the address field in the pill's place (`PhoneFind` with `on_clear`), the address selected; Go loads it and the pill comes back, close puts the address back, and a tap on the page closes it. The progress line is `Progress::line` along the page's top edge, filling to `estimatedProgress` on iOS and `onProgressChanged` on Android, cut out of the web view so it shows over the page. The tabs sheet is `zz_ui::compact::tabs_sheet`: two-line touch rows with the check in the glyph slot (`TouchRow::checked`, `TouchRow::slot`), a 44 quiet close on each when there is more than one (`TouchRow::end`), and New tab as the main action, which opens a blank tab with the address field up. A failed page is `zz_ui::compact::failed_page`, Try again 8 above the pill. A blank tab draws nothing but the page's ground. When a field on the page has the keyboard the pill hides. Not built: suggestions (the desktop's come from its own history, `recent_pages`, which neither the daemon nor the phone holds); Android's back gesture does not close the tabs sheet or the address field; before the host connects, a line still says "Waiting for the host connection…".
 
+### UI block
+
+A UI block draws a small piece of interface from a spec someone else wrote: a flat list of components by id, a data model they bind to, and named actions. An agent writes one in a chat when a reply is better shown than told: a few numbers, a comparison, a short form, a choice. The block owns the layout, so whatever the spec says, the result keeps this file's rules; the spec picks components and their order, never a size, a gap or a color.
+
+Parts (`penna::blocks::a2ui`):
+
+| Part | Call | Use |
+|---|---|---|
+| Surface | `A2uiSurface::new(id)`, `.apply(message, cx)` | draws a document and keeps what people enter |
+| Spec | `compile_express(text)`, `parse_messages(json)` | the compact form agents write, and the JSON it compiles to |
+| Action | `A2uiEvent::Action` | a button's name and its values, in the order the spec listed them |
+| Mode | `.set_mode(Mode::Held { pressed }, cx)` | the block after it was answered |
+| Phone | `.set_touch(true, cx)` | the same spec for a thumb |
+
+Layout:
+
+- Text is `body`, in the UI face: a block is interface, not reading text, whatever it sits in.
+- Column: its children stacked `space-12` apart, the reading rhythm of the message around it; inside a card they work together and sit `gap-related` 8 apart.
+- Row: side by side, `gap-related` 8 apart, centered on each other, wrapping onto more lines.
+- Grid: equal columns `gap-related` 8 apart, three unless the spec says.
+- Card: `card.activity`, `inset-card` 12.
+- A labelled control is a Field: as wide as its column, at most 320. A select and a slider fill the field, as an input does.
+
+Components the block draws itself:
+
+- Stat: a label in `small`, `fg-muted`, `gap-tight` 4 over a value in `title` with tabular figures. One number a person should see first; a card around it when several sit in a grid.
+- Table: a header row in `small`, `fg-muted`, then one row per item in `body`, a `divider` rule above each, rows padded `space-4` above and below, columns equal and `gap-group` 16 apart. A column whose every value is a number is right-aligned in tabular figures, header included.
+- Slider: its value after it in `small`, `fg-muted`, tabular figures, `gap-related` 8 from the rail. Under a coarse pointer the slider shows its own value (Slider).
+- Progress with a label: the label and the percentage on one line in `small`, `fg-muted`, the label at the start and the percentage at the end, `gap-tight` 4 over the bar.
+- Problems: a spec that can't be drawn whole lists what is wrong above whatever still draws, each as a field's error line: the `circle-x` icon and the words in `danger`.
+
+Everything else is the kit's component at its default size: Text (a label: `body`, `small` muted for a caption, `heading`, `title`, `mono`), Badge, Button (default, primary, ghost), Input, Select, Segmented control, Progress and Chart.
+
+States:
+
+| State | Look | Notes |
+|---|---|---|
+| live | every control works; inputs write to the data model | |
+| held | every control is disabled and keeps its value; the pressed button carries a `check` at its rung's icon size | set by the app once the block was answered; a block with no button is never held |
+| problems | the error lines, then what still draws | |
+
+Behavior: a button sends its action once: its name and its values with their bindings read at that moment. Nothing else leaves the block; typing, picking and dragging stay inside it until a button is pressed. The app decides what an action does and when the block is held.
+
+Content: button labels are verbs ("Deploy", "Create branch"). A block says nothing its message already said, and has at most one primary button (Principles 3).
+
+Placement: in a chat, inside a `card.figure` with no inset, as wide as the reply. A press inside the block never starts a text selection in the reply around it.
+
+Phone (`set_touch`, Phone rules 2 and 6): text is `touch-body`, captions, table headers and mono `touch-small`, a heading `touch-body` at 600. Buttons are `control-touch` 44 and share their row's width, none narrower than 120, so two sit side by side and a third wraps. Inputs and selects are `control-touch-lg` 56 and as wide as the block. A segmented control is `control-touch` and full width. A grid has at most two columns. A stat's value stays `title`.
+
+Status: built natively, with the `ui-blocks` story (every component, held, chart, phone, list template, compact form, problems). zz draws it in agent chats on the desktop and the thin clients. Not built: an HTML twin and a docs page; tone bound to data; checks on a field's value.
+
 ## Work order
 
 | Step | What | Visible change | Status |
@@ -2459,5 +2554,6 @@ Status: built: the web view over the pane with its own scrolling and keyboard (`
 | 21 | Phone components: the `control-touch-lg` rung, phone buttons and fields on the touch rungs, touch rows outside sheets, phone tile states and window content, press and hold, the action bar, the zoom card, a 44 sheet close and the phone empty state | phone buttons grow from about 32 to 44 and 56, tiles lose their buttons, text in tiles grows to 17 and 15 | in progress: the 56 rung, the 56 button and field, touch rows, the row group, the section header and the phone container corner built in penna; the rest, and zz's screens on them, not built |
 | 22 | Inside a pane: the pill's tile words and pane menu, the keyboard rule, the confirm and rename modals, the chat on a phone (composer row, plus sheet, ask card, queued row, touch transcript rows, hold a message), the 44 key row with pinned ends, the stack menu for the pill and the key row with hold, slide and release, and the browser's pill stack, address field, progress line and tabs sheet | the phone chat loses its chips, key caps and 24 buttons; terminal keys grow to 44 and the arrow pad stays in view; the pill menu's chips grow to 52, the chord card turns into chips, and holding the pill opens its menu; the phone browser loses its top bar | built, but for address suggestions |
 | 23 | Glass looks: Glass stays on or off, with one look for light and one for dark that holds the three legibility rules over black and white backdrops; Frost goes | the Frost slider goes; light glass turns much lighter and calmer, dark glass dims and caps the backdrop | built |
+| 24 | UI blocks: a surface that draws a spec with kit components and owns its layout, a held state, a phone look, and a chart component with fixed series colors | agents' replies can hold stats, forms and charts; nothing else moves | built natively; HTML twins and docs pages not built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

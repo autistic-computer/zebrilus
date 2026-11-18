@@ -26,6 +26,7 @@ Display
 - `Badge(label, tone?)`
 - `Progress(value, label?)` value from 0 to 1.
 - `Table(columns, rows)` columns is `[{title: "Name", path: "name"}]`, rows is the path of a list such as `$/services`.
+- `Chart(rows, x, series, kind?)` rows is the path of a list, x the field with each item's label, series the number fields to plot, at most 4: `Chart($/days, "day", [{title: "Errors", path: "errors"}], "line")`. kind: bar, line.
 - tone: neutral, primary, danger, warning, success, accent.
 
 Input

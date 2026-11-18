@@ -11,7 +11,7 @@ pub const CATALOG: &str = include_str!("catalog.md");
 
 pub const EXPRESS: &str = include_str!("express.md");
 
-pub(super) const NAMES: &str = "Column, Row, Grid, Card, Text, Stat, Badge, Button, TextField, Select, Segmented, Slider, Progress, Table";
+pub(super) const NAMES: &str = "Column, Row, Grid, Card, Text, Stat, Badge, Button, TextField, Select, Segmented, Slider, Progress, Table, Chart";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Param {
@@ -50,6 +50,12 @@ pub(super) fn signature(component: &str) -> Option<&'static [(&'static str, Para
         ],
         "Progress" => &[("value", Plain), ("label", Plain)],
         "Table" => &[("columns", Columns), ("rows", Rows)],
+        "Chart" => &[
+            ("rows", Rows),
+            ("x", Rows),
+            ("series", Columns),
+            ("kind", Plain),
+        ],
         _ => return None,
     })
 }
@@ -96,6 +102,7 @@ pub(super) enum Kind {
     Slider(Slider),
     Progress(Progress),
     Table(Table),
+    Chart(Chart),
 }
 
 impl Component {
@@ -127,6 +134,7 @@ impl Component {
             "Slider" => Kind::Slider(props(&id, &name, fields)?),
             "Progress" => Kind::Progress(props(&id, &name, fields)?),
             "Table" => Kind::Table(props(&id, &name, fields)?),
+            "Chart" => Kind::Chart(props(&id, &name, fields)?),
             _ => {
                 return Err(SpecError::new(format!(
                     "component `{id}` uses `{name}`, which is not in the catalog ({NAMES})"
@@ -403,4 +411,51 @@ pub(super) struct Table {
 pub(super) struct TableColumn {
     pub(super) title: String,
     pub(super) path: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum ChartKind {
+    #[default]
+    Bar,
+    Line,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Chart {
+    pub(super) rows: String,
+    pub(super) x: String,
+    pub(super) series: Vec<ChartSeries>,
+    #[serde(default)]
+    pub(super) kind: ChartKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub(super) enum ChartSeries {
+    Plain(String),
+    Bound {
+        #[serde(rename = "@path")]
+        path: String,
+    },
+    Titled {
+        title: String,
+        path: String,
+    },
+}
+
+impl ChartSeries {
+    pub(super) fn title(&self) -> &str {
+        match self {
+            Self::Plain(path) | Self::Bound { path } => path,
+            Self::Titled { title, .. } => title,
+        }
+    }
+
+    pub(super) fn path(&self) -> &str {
+        match self {
+            Self::Plain(path) | Self::Bound { path } | Self::Titled { path, .. } => path,
+        }
+    }
 }

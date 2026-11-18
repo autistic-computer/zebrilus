@@ -2,6 +2,7 @@ pub mod badge;
 pub mod bar;
 pub mod button;
 pub mod card;
+pub mod chart;
 pub mod check;
 pub mod chip;
 pub mod field;

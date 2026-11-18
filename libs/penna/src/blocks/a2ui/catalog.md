@@ -16,6 +16,7 @@ Display
 - `Badge {label*, tone?}`
 - `Progress {value*, label?*}` value from 0 to 1.
 - `Table {columns:[{title, path}], rows}` `rows` is the path of a list; each column's `path` is read from the row.
+- `Chart {rows, x, series:[{title, path}], kind?}` `rows` is the path of a list, `x` the field with each item's label, `series` the number fields to plot, at most 4. kind: bar, line.
 - `tone`: neutral, primary, danger, warning, success, accent.
 
 Input

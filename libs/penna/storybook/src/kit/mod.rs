@@ -4,6 +4,7 @@ mod a2ui;
 mod appearance;
 mod buttons;
 mod canvas;
+mod charts;
 mod chat;
 mod checks;
 #[cfg(feature = "editor")]
@@ -73,5 +74,6 @@ pub const STORIES: &[Story] = &[
     compact::STORY,
     chat::STORY,
     a2ui::STORY,
+    charts::STORY,
     docs::STORY,
 ];

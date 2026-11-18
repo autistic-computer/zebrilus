@@ -29,7 +29,7 @@ and rule (space, type, sizes, color, layout) and the order of work bringing penn
 - `blocks/<name>/`: a piece of UI that owns the layout and state of several components.
   When a piece owns a layout of other penna components, put it here. Appearance is a block.
 
-Components: badge, bar, button, card, check, chip, field, icon, input, kbd, label, list, menu,
+Components: badge, bar, button, card, chart, check, chip, field, icon, input, kbd, label, list, menu,
 panel, plate (crate-private), popover, progress, row, scroll, segmented, select, separator, slider,
 spinner, switch, tab, text, tile, tooltip, tree, well.
 

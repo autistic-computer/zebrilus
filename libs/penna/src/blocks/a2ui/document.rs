@@ -4,6 +4,7 @@ use std::fmt;
 use serde_json::{Map, Value};
 
 use super::catalog::{Component, Dynamic, Kind, Scalar};
+use crate::components::chart::MAX_SERIES;
 
 const ROOT: &str = "root";
 const BARE_SURFACE: &str = "main";
@@ -203,6 +204,14 @@ impl Document {
                     problems.push(format!("`{id}` refers to `{child}`, which does not exist"));
                 }
             }
+            if let Kind::Chart(chart) = &self.components[id].kind
+                && !(1..=MAX_SERIES).contains(&chart.series.len())
+            {
+                problems.push(format!(
+                    "chart `{id}` has {} series, a chart takes 1 to {MAX_SERIES}",
+                    chart.series.len()
+                ));
+            }
         }
         let mut trail = Vec::new();
         if let Some(repeated) = self.cycle(ROOT, &mut trail) {
@@ -383,7 +392,7 @@ mod tests {
                 .expect_err("Carousel is not in the catalog");
         assert_eq!(
             unknown_component.to_string(),
-            "component `root` uses `Carousel`, which is not in the catalog (Column, Row, Grid, Card, Text, Stat, Badge, Button, TextField, Select, Segmented, Slider, Progress, Table)"
+            "component `root` uses `Carousel`, which is not in the catalog (Column, Row, Grid, Card, Text, Stat, Badge, Button, TextField, Select, Segmented, Slider, Progress, Table, Chart)"
         );
 
         let mut document = Document::default();

@@ -562,6 +562,29 @@ $/panes = [{state: "idle"}]
     }
 
     #[test]
+    fn a_chart_reads_its_series_as_names_or_titled_paths_and_takes_four_at_most() {
+        let compact = r#"
+root = Column([Chart($/days, "day", ["errors", {title: "p99 ms", path: "p99"}], "line"), wide])
+wide = Chart($/days, "day", ["a", "b", "c", "d", "e"])
+"#;
+        let json = r##"{"components":[
+            {"id":"root","component":"Column","children":["#1","wide"]},
+            {"id":"#1","component":"Chart","rows":"/days","x":"day","kind":"line",
+             "series":["errors",{"title":"p99 ms","path":"p99"}]},
+            {"id":"wide","component":"Chart","rows":"/days","x":"day","series":["a","b","c","d","e"]}
+        ]}"##;
+        let compiled = document([compile_express(compact).expect("the compact form compiles")]);
+        assert_eq!(
+            compiled,
+            document(parse_messages(json).expect("the json parses"))
+        );
+        assert_eq!(
+            compiled.problems(),
+            ["chart `wide` has 5 series, a chart takes 1 to 4"]
+        );
+    }
+
+    #[test]
     fn a_bad_compact_block_says_what_to_fix() {
         let error = |text| {
             compile_express(text)
