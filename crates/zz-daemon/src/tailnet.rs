@@ -50,6 +50,31 @@ pub(crate) fn command(arguments: &[String]) -> Result<String, String> {
     }
 }
 
+pub(crate) fn identity_proof(nonce: &[u8; 32]) -> Option<zz_protocol::ProtocolMessage> {
+    static SEED: std::sync::OnceLock<Option<[u8; 32]>> = std::sync::OnceLock::new();
+    let seed = SEED
+        .get_or_init(|| {
+            let path = zz_daemon_client::user_data::platform_data_dir()?
+                .join(zz_protocol::app_identity::DIRECTORY)
+                .join("tailnet")
+                .join("identity");
+            zz_daemon_client::identity::seed(&path)
+                .map_err(|error| {
+                    log::warn!(
+                        "this daemon cannot prove its identity: {}: {error}",
+                        path.display()
+                    );
+                })
+                .ok()
+        })
+        .as_ref()?;
+    let proof = zz_daemon_client::identity::prove(seed, nonce);
+    Some(zz_protocol::ProtocolMessage::IdentityProof {
+        key: proof.key,
+        signature: proof.signature,
+    })
+}
+
 fn offers_output() -> Result<String, String> {
     if read_settings().mode == Mode::Own {
         return Err(

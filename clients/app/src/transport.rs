@@ -34,6 +34,70 @@ pub enum Event {
     Installed(Result<RemoteInstall, String>),
 }
 
+const HELD_BEFORE_PROOF: usize = 256;
+
+fn confirm_identity(
+    client: &InteractiveClient,
+    endpoint: &str,
+) -> Result<Vec<ProtocolMessage>, HostFailure> {
+    use zz_daemon_client::identity::{self, Refusal};
+
+    let refuse = |reason: String| HostFailure::Unreachable { reason };
+    let nonce = identity::nonce().map_err(|error| refuse(error.to_string()))?;
+    let mut held = Vec::new();
+    let offered = client
+        .server_hello()
+        .capabilities
+        .iter()
+        .any(|capability| capability == zz_protocol::DAEMON_IDENTITY_CAPABILITY);
+    let proof = if offered {
+        client
+            .send(&ProtocolMessage::IdentityChallenge { nonce })
+            .map_err(|error| refuse(error.to_string()))?;
+        loop {
+            let message = client.recv().map_err(|error| refuse(error.to_string()))?;
+            let batched = match &message {
+                ProtocolMessage::Batch(batch) => batch.messages().unwrap_or_default(),
+                _ => Vec::new(),
+            };
+            let found =
+                std::iter::once(&message)
+                    .chain(&batched)
+                    .find_map(|message| match message {
+                        ProtocolMessage::IdentityProof { key, signature } => {
+                            Some((*key, signature.clone()))
+                        }
+                        _ => None,
+                    });
+            if !matches!(message, ProtocolMessage::IdentityProof { .. }) {
+                if held.len() == HELD_BEFORE_PROOF {
+                    return Err(refuse(Refusal::Silent.to_string()));
+                }
+                held.push(message);
+            }
+            if found.is_some() {
+                break found;
+            }
+        }
+    } else {
+        None
+    };
+    let proof = proof
+        .as_ref()
+        .map(|(key, signature)| (key, signature.as_slice()));
+    let pinned = crate::daemon_keys::pinned(endpoint);
+    match identity::judge(pinned.as_deref(), &nonce, proof) {
+        Ok(Some(key)) => {
+            if let Err(error) = crate::daemon_keys::pin(endpoint, &key) {
+                log::warn!("could not save the zz identity of {endpoint}: {error}");
+            }
+        }
+        Ok(None) => {}
+        Err(refusal) => return Err(refuse(refusal.to_string())),
+    }
+    Ok(held)
+}
+
 pub struct Connection {
     pub events: Receiver<Event>,
     pub ready: Option<futures::channel::mpsc::UnboundedReceiver<()>>,
@@ -56,8 +120,9 @@ impl Connection {
         let cancel = cancelled.clone();
         std::thread::spawn(move || {
             let run = || -> Result<(), HostFailure> {
+                let saved_as = endpoint;
                 let endpoint =
-                    Endpoint::parse(&endpoint).map_err(|error| HostFailure::Unreachable {
+                    Endpoint::parse(&saved_as).map_err(|error| HostFailure::Unreachable {
                         reason: error.to_string(),
                     })?;
                 let prompts = prompts(&tx, &cancel);
@@ -83,8 +148,18 @@ impl Connection {
                     }
                     *slot = Some(connected.clone());
                 }
+                let held = if matches!(endpoint, Endpoint::Tailnet(_)) {
+                    confirm_identity(&connected, &saved_as)?
+                } else {
+                    Vec::new()
+                };
                 if tx.send(Event::Connected(connected.clone())).is_err() {
                     return Ok(());
+                }
+                for message in held {
+                    if tx.send(Event::Message(Box::new(message))).is_err() {
+                        return Ok(());
+                    }
                 }
                 while !cancel.load(Ordering::Acquire) {
                     let message = connected.recv().map_err(|error| HostFailure::Unreachable {

@@ -85,6 +85,29 @@ computer other people log in to, keep `tailnet = off` and use ssh, which authent
 The self-address rule below keeps other OS users of the target machine out; nothing in zz can tell
 OS users apart on the calling machine.
 
+## What a client checks about the host
+
+Admission protects the daemon. Two rules protect the machine that connects.
+
+A phone dials `tailnet://` with the OS network stack, so with the Tailscale app off the name or
+address can be answered by whatever network the phone is on. Every daemon therefore holds an Ed25519
+key (`<data dir>/<zz or zz-dev>/tailnet/identity`, a 32-byte seed, `0600`) and signs a nonce the
+client sends (`IdentityChallenge` and `IdentityProof`, capability `daemon-identity-v1`,
+`crates/zz-daemon-client/src/identity.rs`). The phone app asks on every `tailnet://` connection
+before it shows or sends anything (`clients/app/src/transport.rs`), saves the key on the first
+connection (`daemon-keys.json` in its support directory) and refuses a host whose key differs,
+that cannot prove it, or that stops offering the proof. Removing a machine forgets its key. An
+impostor that cannot reach the real daemon cannot answer; one the real daemon admits is already
+trusted. Desktop clients do not ask yet: they resolve the name through the peer list.
+
+A `zz://host/` link to a machine that is not saved asks before connecting and shows the full
+name and port (`clients/app/src/app/fleet.rs`).
+
+Over `--host`, the CLI answers the daemon's file requests only for the path a `load-buffer` or
+`save-buffer` on that command line names, read for one and write for the other, and opens the
+path as typed here instead of the path the daemon sent (`file_grants` in
+`crates/zz-daemon-client/src/client.rs`). A local daemon is answered as before.
+
 # Using the running Tailscale
 
 This mode adds no dependency (`crates/zz-daemon-client/src/tailnet.rs`). zz talks to the Tailscale

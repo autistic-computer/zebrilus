@@ -21,6 +21,7 @@ pub const TERMINAL_THEMES_CAPABILITY: &str = "terminal-themes-v1";
 pub const BROWSER_SCREENSHOT_CAPABILITY: &str = "browser-screenshot-v1";
 pub const FILE_EDIT_CAPABILITY: &str = "file-edit-v1";
 pub const AGENT_SETUP_CAPABILITY: &str = "agent-setup-v1";
+pub const DAEMON_IDENTITY_CAPABILITY: &str = "daemon-identity-v1";
 pub const MAX_BATCH_FRAMES: usize = 4096;
 
 pub const CAPABILITY_NAMES: &[&str] = &[
@@ -62,12 +63,14 @@ pub const CAPABILITY_NAMES: &[&str] = &[
     BROWSER_SCREENSHOT_CAPABILITY,
     FILE_EDIT_CAPABILITY,
     AGENT_SETUP_CAPABILITY,
+    DAEMON_IDENTITY_CAPABILITY,
 ];
 
 pub const CLIENT_CAPABILITY_NAMES: &[&str] = &[
     AGENT_QUOTAS_CAPABILITY,
     TERMINAL_THEMES_CAPABILITY,
     FILE_EDIT_CAPABILITY,
+    DAEMON_IDENTITY_CAPABILITY,
 ];
 
 pub const OPT_IN_CLIENT_CAPABILITY_NAMES: &[&str] = &[AGENT_LOGIN_CAPABILITY];

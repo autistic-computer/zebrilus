@@ -67,6 +67,8 @@ impl SavedHosts {
     pub(super) fn remove(&mut self, endpoint: &str) {
         self.endpoints.retain(|saved| saved != endpoint);
         self.mark_disconnected(endpoint);
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        crate::daemon_keys::forget(endpoint);
     }
 }
 

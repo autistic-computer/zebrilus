@@ -6,6 +6,8 @@ mod bell;
 mod chime;
 pub mod command_palette;
 pub mod connection;
+#[cfg(any(target_os = "ios", target_os = "android"))]
+mod daemon_keys;
 pub mod input;
 #[cfg(target_os = "ios")]
 pub mod ios_browser;

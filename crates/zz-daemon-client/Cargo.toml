@@ -8,6 +8,7 @@ description = "The client half of the zz daemon: endpoints, ssh tunnels, and the
 publish = false
 
 [dependencies]
+ed25519-dalek.workspace = true
 getrandom.workspace = true
 interprocess.workspace = true
 libc.workspace = true

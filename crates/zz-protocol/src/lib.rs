@@ -48,10 +48,11 @@ pub use catalog::{
 pub use control::{
     AGENT_LOGIN_CAPABILITY, AGENT_QUOTAS_CAPABILITY, AGENT_SETUP_CAPABILITY, AttachOperation,
     BROWSER_SCREENSHOT_CAPABILITY, Batch, CAPABILITY_NAMES, CLIENT_CAPABILITY_NAMES,
-    CONTROL_CAPABILITY, CONTROL_STDIO_CAPABILITY, ClientView, ClientViewport, FILE_EDIT_CAPABILITY,
-    FLOW_WINDOW_CAPABILITY, Hello, HostPlatform, KeySubscription, LinuxDistro, MAX_BATCH_FRAMES,
-    MouseBindings, OPT_IN_CLIENT_CAPABILITY_NAMES, Subscriptions, TERMINAL_THEMES_CAPABILITY,
-    TTY_INPUT_CAPABILITY, TreeSubscription, Welcome, key_tables_hash,
+    CONTROL_CAPABILITY, CONTROL_STDIO_CAPABILITY, ClientView, ClientViewport,
+    DAEMON_IDENTITY_CAPABILITY, FILE_EDIT_CAPABILITY, FLOW_WINDOW_CAPABILITY, Hello, HostPlatform,
+    KeySubscription, LinuxDistro, MAX_BATCH_FRAMES, MouseBindings, OPT_IN_CLIENT_CAPABILITY_NAMES,
+    Subscriptions, TERMINAL_THEMES_CAPABILITY, TTY_INPUT_CAPABILITY, TreeSubscription, Welcome,
+    key_tables_hash,
 };
 pub use terminal_theme::{MAX_TERMINAL_THEME_NAME_BYTES, MAX_TERMINAL_THEMES, TerminalTheme};
 pub const UNZOOMED_LAYOUT_VARIABLE: &str = "unzoomed_layout";

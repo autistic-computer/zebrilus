@@ -11933,6 +11933,7 @@ name = "zz-daemon-client"
 version = "0.26.0"
 dependencies = [
  "core-foundation",
+ "ed25519-dalek",
  "getrandom 0.4.3",
  "interprocess",
  "libc",

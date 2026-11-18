@@ -3945,6 +3945,17 @@ pub enum ProtocolMessage {
         #[serde(deserialize_with = "deserialize_file_write_result")]
         result: Result<(), String>,
     },
+    IdentityChallenge {
+        nonce: [u8; 32],
+    },
+    IdentityProof {
+        key: [u8; 32],
+        #[serde(
+            serialize_with = "serde_bytes::serialize",
+            deserialize_with = "deserialize_identity_signature"
+        )]
+        signature: Vec<u8>,
+    },
 }
 
 impl ProtocolMessage {
@@ -4036,8 +4047,27 @@ impl ProtocolMessage {
             | Self::FileReadResponse { .. }
             | Self::FileWriteRequest { .. }
             | Self::FileWriteResponse { .. } => Some(crate::FILE_EDIT_CAPABILITY),
+            Self::IdentityChallenge { .. } | Self::IdentityProof { .. } => {
+                Some(crate::DAEMON_IDENTITY_CAPABILITY)
+            }
         }
     }
+}
+
+pub const IDENTITY_SIGNATURE_BYTES: usize = 64;
+
+fn deserialize_identity_signature<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let bytes: Vec<u8> = serde_bytes::deserialize(deserializer)?;
+    if bytes.len() != IDENTITY_SIGNATURE_BYTES {
+        return Err(D::Error::invalid_length(
+            bytes.len(),
+            &"a 64-byte identity signature",
+        ));
+    }
+    Ok(bytes)
 }
 
 fn deserialize_file_edit_path<'de, D>(deserializer: D) -> Result<String, D::Error>

@@ -602,6 +602,7 @@ fn a_server_hello_lists_the_daemon_capabilities_without_the_control_plane() {
         "browser-screenshot-v1",
         "file-edit-v1",
         "agent-setup-v1",
+        "daemon-identity-v1",
     ];
     let (_, hello) =
         shared.register_subscribed(ClientKind::Command, None, None, OutboundMailbox::new());

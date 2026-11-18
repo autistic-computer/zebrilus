@@ -35,6 +35,7 @@ mod host_failure;
 #[cfg(any(unix, windows))]
 #[cfg_attr(any(target_os = "ios", target_os = "android"), allow(dead_code))]
 mod host_probe;
+pub mod identity;
 #[cfg(target_os = "ios")]
 mod ios_keychain;
 #[cfg_attr(any(target_os = "ios", target_os = "android"), allow(dead_code))]

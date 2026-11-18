@@ -53965,6 +53965,11 @@ fn handle_connection_message<S: TransportStream>(
             ProtocolMessage::ClientFileResponse(response) => {
                 shared.complete_client_file(client, response);
             }
+            ProtocolMessage::IdentityChallenge { nonce } => {
+                if let Some(proof) = crate::tailnet::identity_proof(&nonce) {
+                    let _ = outbound.enqueue_reliable(&proof);
+                }
+            }
             ProtocolMessage::HomeDirectoryRequest { request_id, users } => {
                 let homes = shared.resolve_home_directories(&users);
                 let _ = outbound.enqueue_reliable(&ProtocolMessage::HomeDirectoryResponse {
