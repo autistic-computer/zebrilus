@@ -96,6 +96,36 @@ The desktop clients ship no fonts; they render with the system text stack.
 | [Devicon](https://devicon.dev) | The language marks on code cards in the agent chat: the 32 files in `crates/zz-ui/assets/programs` that `zz_client::program::language_marks` names (`javascript.svgz`, `kotlin.svgz`, `cplusplus.svgz` and the rest), taken from Devicon 2.18.0's plain variants (line or original where it has no plain one), with their inline styles removed and their size set to 64. | MIT, © 2015 konpa. Retained as `LICENSE-DEVICON` beside them. |
 | [Simple Icons](https://simpleicons.org) | The vendor brand marks `crates/zz-ui/assets/icons/openai.svg` and `claude.svg`, and the host marks `macos.svg`, `windows.svg`, `linux.svg`, `ubuntu.svg`, `debian.svg`, `arch.svg` and `fedora.svg` beside them, the host marks scaled into the icon set's 20-unit live area (Arch's trademark sign dropped). | CC0-1.0 |
 
+## Sounds
+
+The agent chimes in [`crates/zz-client/assets/sounds/`](crates/zz-client/assets/sounds/)
+are the default `ready.wav` and `attention.wav` from [Cuelume](https://github.com/danielwh2/cuelume)
+at [`2a1ba4fc`](https://github.com/danielwh2/cuelume/tree/2a1ba4fc1b67e8371c9f37e37a51e61353166335/claude-code/sounds/default).
+
+```text
+MIT License
+
+Copyright (c) 2026 Daniel Belyi
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Interface themes
 
 The `macos` and `yaru` interface themes in `libs/penna/themes` are named for the platforms whose

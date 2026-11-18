@@ -13,10 +13,6 @@ use crate::{
 
 const MIN_BANNER_GAP: Duration = Duration::from_secs(2);
 const MIN_CHIME_GAP: Duration = Duration::from_secs(2);
-const SAMPLE_RATE: u32 = 44_100;
-const BITS_PER_SAMPLE: u16 = 16;
-const CHANNELS: u16 = 1;
-const WAV_HEADER_LEN: usize = 44;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum AgentPaneStatus {
@@ -356,52 +352,12 @@ pub fn chime_due(last: &mut Option<Instant>, now: Instant) -> bool {
     true
 }
 
-const fn segments(chime: Chime) -> &'static [(f32, u32)] {
-    match chime {
-        Chime::Request => &[(1318.0, 70), (0.0, 60), (1318.0, 70)],
-        Chime::Done => &[(880.0, 110), (1174.0, 190)],
-    }
-}
-
 #[must_use]
-pub fn chime_wav(chime: Chime) -> Vec<u8> {
-    let mut samples = Vec::new();
-    for &(hz, ms) in segments(chime) {
-        let count = (SAMPLE_RATE as f32 * ms as f32 / 1000.0) as usize;
-        let fade = (count / 4).clamp(1, SAMPLE_RATE as usize / 125);
-        for index in 0..count {
-            if hz == 0.0 {
-                samples.push(0);
-                continue;
-            }
-            let phase = std::f32::consts::TAU * hz * index as f32 / SAMPLE_RATE as f32;
-            let envelope = (index.min(count - index - 1) as f32 / fade as f32).min(1.0);
-            samples.push((phase.sin() * envelope * 0.3 * f32::from(i16::MAX)) as i16);
-        }
+pub const fn chime_wav(chime: Chime) -> &'static [u8] {
+    match chime {
+        Chime::Request => include_bytes!("../assets/sounds/attention.wav"),
+        Chime::Done => include_bytes!("../assets/sounds/ready.wav"),
     }
-    encode(&samples)
-}
-
-fn encode(samples: &[i16]) -> Vec<u8> {
-    let data_len = u32::try_from(samples.len() * 2).unwrap_or(u32::MAX);
-    let block_align = CHANNELS * BITS_PER_SAMPLE / 8;
-    let mut out = Vec::with_capacity(WAV_HEADER_LEN + data_len as usize);
-    out.extend_from_slice(b"RIFF");
-    out.extend_from_slice(&(data_len + 36).to_le_bytes());
-    out.extend_from_slice(b"WAVEfmt ");
-    out.extend_from_slice(&16u32.to_le_bytes());
-    out.extend_from_slice(&1u16.to_le_bytes());
-    out.extend_from_slice(&CHANNELS.to_le_bytes());
-    out.extend_from_slice(&SAMPLE_RATE.to_le_bytes());
-    out.extend_from_slice(&(SAMPLE_RATE * u32::from(block_align)).to_le_bytes());
-    out.extend_from_slice(&block_align.to_le_bytes());
-    out.extend_from_slice(&BITS_PER_SAMPLE.to_le_bytes());
-    out.extend_from_slice(b"data");
-    out.extend_from_slice(&data_len.to_le_bytes());
-    for sample in samples {
-        out.extend_from_slice(&sample.to_le_bytes());
-    }
-    out
 }
 
 #[cfg(test)]
@@ -455,23 +411,23 @@ mod tests {
     }
 
     #[test]
-    fn synthesized_chimes_carry_a_canonical_pcm_header() {
+    fn bundled_chimes_are_stereo_48khz_pcm_wavs() {
         for chime in [Chime::Request, Chime::Done] {
             let data = chime_wav(chime);
             assert_eq!(&data[..4], b"RIFF");
-            assert_eq!(u32_at(&data, 4) as usize, data.len() - 8);
+            assert_eq!(u32_at(data, 4) as usize, data.len() - 8);
             assert_eq!(&data[8..12], b"WAVE");
             assert_eq!(&data[12..16], b"fmt ");
-            assert_eq!(u32_at(&data, 16), 16);
-            assert_eq!(u16_at(&data, 20), 1);
-            assert_eq!(u16_at(&data, 22), CHANNELS);
-            assert_eq!(u32_at(&data, 24), SAMPLE_RATE);
-            assert_eq!(u32_at(&data, 28), SAMPLE_RATE * 2);
-            assert_eq!(u16_at(&data, 32), 2);
-            assert_eq!(u16_at(&data, 34), BITS_PER_SAMPLE);
+            assert_eq!(u32_at(data, 16), 16);
+            assert_eq!(u16_at(data, 20), 1);
+            assert_eq!(u16_at(data, 22), 2);
+            assert_eq!(u32_at(data, 24), 48_000);
+            assert_eq!(u32_at(data, 28), 192_000);
+            assert_eq!(u16_at(data, 32), 4);
+            assert_eq!(u16_at(data, 34), 16);
             assert_eq!(&data[36..40], b"data");
-            assert_eq!(u32_at(&data, 40) as usize, data.len() - WAV_HEADER_LEN);
-            assert_eq!((data.len() - WAV_HEADER_LEN) % 2, 0);
+            assert_eq!(u32_at(data, 40) as usize, data.len() - 44);
+            assert_eq!((data.len() - 44) % 4, 0);
         }
     }
 
@@ -480,9 +436,8 @@ mod tests {
         let request = chime_wav(Chime::Request);
         let done = chime_wav(Chime::Done);
         assert_ne!(request, done);
-        for data in [&request, &done] {
-            assert!(data.len() > SAMPLE_RATE as usize / 10);
-            assert!(data[WAV_HEADER_LEN..].iter().any(|&byte| byte != 0));
+        for data in [request, done] {
+            assert!(data[44..].iter().any(|&byte| byte != 0));
         }
     }
 
