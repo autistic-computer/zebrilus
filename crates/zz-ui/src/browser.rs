@@ -1487,7 +1487,7 @@ mod tests {
         let first = cx.debug_bounds("browser-tab-0").unwrap();
         let last = cx.debug_bounds("browser-tab-4").unwrap();
         assert_eq!(first.size.width, last.size.width);
-        assert_eq!(first.size.width, px(76.0));
+        assert_eq!(first.size.width, px(74.0));
         assert!(last.right() <= strip.right());
         cx.simulate_mouse_down(title.center(), MouseButton::Left, Modifiers::none());
         let target = title.center() + point(px(40.0), px(0.0));
@@ -1606,7 +1606,7 @@ mod tests {
         );
         assert_eq!(inactive_tab.size.height, px(BROWSER_CONTROL_HEIGHT));
         assert_eq!(strip.size.height, px(BROWSER_CONTROL_HEIGHT));
-        assert_eq!(inactive_tab.origin.x, active_tab.right());
+        assert_eq!(inactive_tab.origin.x - active_tab.right(), px(2.0));
         assert_eq!(strip.right(), inactive_tab.right());
         assert_eq!(
             cx.debug_bounds("browser-new-tab").unwrap().origin.x,
@@ -1697,7 +1697,7 @@ mod tests {
         let second = cx.debug_bounds("browser-tab-2").unwrap();
         let strip = cx.debug_bounds("browser-tabs").unwrap();
         assert_eq!(first.size.width, second.size.width);
-        assert_eq!(first.size.width, px(134.0));
+        assert_eq!(first.size.width, px(133.0));
         assert!(first.origin.x >= strip.origin.x && second.right() <= strip.right());
         cx.simulate_mouse_move(second.center(), None, Modifiers::none());
         cx.update(|window, cx| {
@@ -1723,7 +1723,7 @@ mod tests {
         let second = cx.debug_bounds("browser-tab-2").unwrap();
         let strip = cx.debug_bounds("browser-tabs").unwrap();
         assert_eq!(first.size.width, second.size.width);
-        assert_eq!(first.size.width, px(44.0));
+        assert_eq!(first.size.width, px(43.0));
         assert!(first.origin.x >= strip.origin.x && second.right() <= strip.right());
     }
 

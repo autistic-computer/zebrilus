@@ -5,7 +5,7 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Ground, Layer, PaintState, Sizable, Size, StyledExt as _, Surface,
+    ActiveTheme as _, Ground, Layer, PaintState, Sizable, Size, Space, StyledExt as _, Surface,
     SurfaceRole,
     components::plate::{Plate, plate_element},
     foundation::{author_name, roles, row_radius},
@@ -183,6 +183,7 @@ impl RenderOnce for TabStrip {
             .accessibility_id(author_name(&self.id))
             .flex()
             .items_center()
+            .gap(Space::S2)
             .h(height)
             .when(track, |strip| {
                 strip.layer(&Layer {
