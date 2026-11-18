@@ -46,10 +46,37 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        use penna::{WindowExt as _, blocks::dialog::DialogButtonProps};
+
         if self.is_attached_host(&endpoint, cx) {
             return;
         }
-        self.connect_host(endpoint, window, cx);
+        if self.hosts.saved.endpoints().contains(&endpoint) {
+            self.connect_host(endpoint, window, cx);
+            return;
+        }
+        let shell = cx.weak_entity();
+        let title = format!("Connect to {}?", super::hosts::host_title(&endpoint));
+        let location = super::hosts::host_location(&endpoint);
+        window.open_alert_dialog(cx, move |alert, _, _| {
+            let shell = shell.clone();
+            let endpoint = endpoint.clone();
+            alert
+                .title(title.clone())
+                .description(location.clone())
+                .button_props(
+                    DialogButtonProps::default()
+                        .ok_text("Connect")
+                        .cancel_text("Cancel")
+                        .show_cancel(true),
+                )
+                .on_ok(move |_, window, cx| {
+                    let _ = shell.update(cx, |this, cx| {
+                        this.connect_host(endpoint.clone(), window, cx);
+                    });
+                    true
+                })
+        });
     }
 
     pub(super) fn host_connection(
