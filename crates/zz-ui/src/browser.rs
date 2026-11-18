@@ -1487,7 +1487,7 @@ mod tests {
         let first = cx.debug_bounds("browser-tab-0").unwrap();
         let last = cx.debug_bounds("browser-tab-4").unwrap();
         assert_eq!(first.size.width, last.size.width);
-        assert_eq!(first.size.width, px(73.0));
+        assert_eq!(first.size.width, px(76.0));
         assert!(last.right() <= strip.right());
         cx.simulate_mouse_down(title.center(), MouseButton::Left, Modifiers::none());
         let target = title.center() + point(px(40.0), px(0.0));
@@ -1605,9 +1605,9 @@ mod tests {
             WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH
         );
         assert_eq!(inactive_tab.size.height, px(BROWSER_CONTROL_HEIGHT));
-        assert_eq!(strip.size.height, px(BROWSER_CONTROL_HEIGHT + 4.0));
-        assert_eq!(inactive_tab.origin.x - active_tab.right(), px(2.0));
-        assert_eq!(strip.right(), inactive_tab.right() + px(2.0));
+        assert_eq!(strip.size.height, px(BROWSER_CONTROL_HEIGHT));
+        assert_eq!(inactive_tab.origin.x, active_tab.right());
+        assert_eq!(strip.right(), inactive_tab.right());
         assert_eq!(
             cx.debug_bounds("browser-new-tab").unwrap().origin.x,
             strip.right() + px(BROWSER_TAB_GAP)
@@ -1697,7 +1697,7 @@ mod tests {
         let second = cx.debug_bounds("browser-tab-2").unwrap();
         let strip = cx.debug_bounds("browser-tabs").unwrap();
         assert_eq!(first.size.width, second.size.width);
-        assert_eq!(first.size.width, px(131.0));
+        assert_eq!(first.size.width, px(134.0));
         assert!(first.origin.x >= strip.origin.x && second.right() <= strip.right());
         cx.simulate_mouse_move(second.center(), None, Modifiers::none());
         cx.update(|window, cx| {
@@ -1723,14 +1723,14 @@ mod tests {
         let second = cx.debug_bounds("browser-tab-2").unwrap();
         let strip = cx.debug_bounds("browser-tabs").unwrap();
         assert_eq!(first.size.width, second.size.width);
-        assert_eq!(first.size.width, px(41.0));
+        assert_eq!(first.size.width, px(44.0));
         assert!(first.origin.x >= strip.origin.x && second.right() <= strip.right());
     }
 
     #[ala::test]
     fn narrow_tabs_turn_into_squares_and_the_active_one_shows_its_close(cx: &mut TestAppContext) {
         cx.update(crate::init);
-        let test = BrowserTabStripTest::new(184.0, 5, 2);
+        let test = BrowserTabStripTest::new(172.0, 5, 2);
         let activated = Arc::clone(&test.activated);
         let closed = Arc::clone(&test.closed);
         let (_, cx) = cx.add_window_view(move |_, _| test);

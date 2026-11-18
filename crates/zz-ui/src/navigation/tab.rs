@@ -13,7 +13,7 @@ use crate::{
 
 use super::{
     WORKSPACE_STATUS_TAB_HEIGHT, WorkspaceStatusWindowState, status::StatusAction,
-    workspace_row_action, workspace_status_tab_ground, workspace_status_tab_height,
+    workspace_row_action, workspace_status_tab_ground,
 };
 
 pub const TAB_INSET: Pixels = px(9.0);
@@ -266,7 +266,7 @@ fn close_button(
     workspace_row_action(
         Button::new(ElementId::Name(id))
             .icon(IconName::Xmark)
-            .inside(surface, workspace_status_tab_height(state.alone))
+            .inside(surface, WORKSPACE_STATUS_TAB_HEIGHT)
             .hit_slop(slop, slop)
             .tooltip(tooltip),
         ground,

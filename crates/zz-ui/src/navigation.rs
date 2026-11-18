@@ -36,19 +36,10 @@ const WORKSPACE_TREE_FILL_VERTICAL_INSET: f32 = 1.0;
 const WORKSPACE_CHROME_CONTROL_GAP: f32 = 4.0;
 const WORKSPACE_SIDEBAR_ACTIONS_GAP: f32 = 8.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
-pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(32.0);
+pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = WORKSPACE_STATUS_TAB_HEIGHT;
 pub const WORKSPACE_STATUS_TAB_HEIGHT: Pixels = px(28.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(18.0);
 pub(crate) const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
-
-#[must_use]
-pub fn workspace_status_tab_height(alone: bool) -> Pixels {
-    if alone {
-        WORKSPACE_STATUS_TAB_HEIGHT + px(Space::S2.design_px() * 2.0)
-    } else {
-        WORKSPACE_STATUS_TAB_HEIGHT
-    }
-}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WorkspaceStatusWindowState {
@@ -318,13 +309,7 @@ pub fn workspace_tab(
         .w(WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH)
         .min_w(WORKSPACE_STATUS_TAB_HEIGHT)
         .max_w(WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH)
-        .map(|item| {
-            if state.alone {
-                item.h_full()
-            } else {
-                item.h(WORKSPACE_STATUS_TAB_HEIGHT)
-            }
-        })
+        .h(WORKSPACE_STATUS_TAB_HEIGHT)
         .items_center()
         .overflow_hidden()
         .when(!state.active, |item| item.text_color(foreground.muted()))
