@@ -1,0 +1,16 @@
+{"components":[
+ {"id":"root","component":"Column","children":["title","panes"]},
+ {"id":"title","component":"Text","variant":"heading","text":"Panes"},
+ {"id":"panes","component":"Column","children":{"componentId":"pane","path":"/panes"}},
+ {"id":"pane","component":"Card","child":"paneRow"},
+ {"id":"paneRow","component":"Row","justify":"spaceBetween","children":["paneName","paneRight"]},
+ {"id":"paneName","component":"Column","children":["paneTitle","paneDir"]},
+ {"id":"paneTitle","component":"Text","text":{"@path":"title"}},
+ {"id":"paneDir","component":"Text","variant":"mono","text":{"@path":"dir"}},
+ {"id":"paneRight","component":"Row","children":["paneState","paneOpen"]},
+ {"id":"paneState","component":"Badge","label":{"@path":"state"},"tone":"accent"},
+ {"id":"paneOpen","component":"Button","label":"Open","variant":"ghost","action":{"event":{"name":"open","context":{"pane":{"@path":"id"}}}}}
+],"dataModel":{"panes":[
+ {"id":"%0","title":"bash","dir":"~/dev/zebrilus","state":"idle"},
+ {"id":"%3","title":"agent","dir":"~/dev/penna","state":"working"},
+ {"id":"%5","title":"tests","dir":"~/dev/ala","state":"idle"}]}}

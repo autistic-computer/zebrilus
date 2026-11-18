@@ -1,0 +1,4 @@
+{"components":[
+ {"id":"top","component":"Column","children":["title","missing"]},
+ {"id":"title","component":"Text","text":"A spec with two mistakes"}
+]}

@@ -33,7 +33,7 @@ Components: badge, bar, button, card, check, chip, field, icon, input, kbd, labe
 panel, plate (crate-private), popover, progress, row, scroll, segmented, select, separator, slider,
 spinner, switch, tab, text, tile, tooltip, tree, well.
 
-Blocks: appearance, chat, code_editor (editor feature), color_picker, compact, dialog, dock,
+Blocks: a2ui, appearance, chat, code_editor (editor feature), color_picker, compact, dialog, dock,
 docs, feedback, inspector, notice, notification, palette, picker, settings, sheet, shell, sidebar,
 steps, title_bar, touch, tray (tray feature), which_key.
 

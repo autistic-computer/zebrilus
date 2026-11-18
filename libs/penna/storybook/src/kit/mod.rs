@@ -1,5 +1,6 @@
 use crate::story::Story;
 
+mod a2ui;
 mod appearance;
 mod buttons;
 mod canvas;
@@ -71,5 +72,6 @@ pub const STORIES: &[Story] = &[
     which_key::STORY,
     compact::STORY,
     chat::STORY,
+    a2ui::STORY,
     docs::STORY,
 ];

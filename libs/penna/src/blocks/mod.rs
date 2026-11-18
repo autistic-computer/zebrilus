@@ -1,3 +1,4 @@
+pub mod a2ui;
 pub mod appearance;
 pub mod chat;
 #[cfg(feature = "editor")]

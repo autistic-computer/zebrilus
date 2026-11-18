@@ -1,0 +1,7 @@
+root = Card(Column([title, size, density, apply]))
+title = Text("Terminal settings", "heading")
+size = Slider($/form/size, 24, 10, 1, "Font size")
+density = Segmented(["compact", "normal", "roomy"], $/form/density)
+apply = Button("Apply", Event("apply", {size: $/form/size, density: $/form/density}), "primary")
+$/form/size = 14
+$/form/density = "normal"
