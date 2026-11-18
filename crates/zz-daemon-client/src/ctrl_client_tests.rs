@@ -283,6 +283,7 @@ fn legacy_command_attach_reconnects_with_the_original_route() {
     let command = super::CommandClient {
         stdin_enabled: false,
         stdin_spent: false,
+        file_grants: None,
         stderr_handler: None,
         stdout_handler: None,
         link: super::CommandLink::Legacy {

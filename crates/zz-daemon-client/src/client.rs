@@ -210,6 +210,7 @@ pub enum ExecChainEnd {
 pub struct CommandClient {
     stdin_enabled: bool,
     stdin_spent: bool,
+    file_grants: Option<Vec<FileGrant>>,
     stderr_handler: Option<fn(&str)>,
     stdout_handler: Option<fn(&RawText)>,
     link: CommandLink,
@@ -541,6 +542,7 @@ impl CommandClient {
         Self {
             stdin_enabled: false,
             stdin_spent: false,
+            file_grants: None,
             stderr_handler: None,
             stdout_handler: None,
             link,
@@ -671,6 +673,7 @@ impl CommandClient {
         command: CommandInvocation,
     ) -> Result<CommandOutcome, DaemonError> {
         if matches!(self.link, CommandLink::Legacy { .. }) {
+            self.grant_files(std::slice::from_ref(&command));
             return self.execute_streams_with_prepared(command, false);
         }
         self.run_single(ExecChain::new(vec![command]))?
@@ -684,6 +687,7 @@ impl CommandClient {
         command: CommandInvocation,
     ) -> Result<CommandOutcome, DaemonError> {
         if matches!(self.link, CommandLink::Legacy { .. }) {
+            self.grant_files(std::slice::from_ref(&command));
             return self.execute_streams_with_prepared(command, true);
         }
         let mut chain = ExecChain::new(vec![command]);
@@ -691,6 +695,10 @@ impl CommandClient {
         self.run_single(chain)?.ok_or_else(|| {
             DaemonError::Server(ServerError::Internal("daemon ran no command".to_owned()))
         })
+    }
+
+    fn grant_files(&mut self, commands: &[CommandInvocation]) {
+        self.file_grants = self.route.facts.is_remote().then(|| file_grants(commands));
     }
 
     fn unanswered(&self, error: DaemonError) -> DaemonError {
@@ -724,6 +732,7 @@ impl CommandClient {
         chain: ExecChain<'_>,
         mut emit: impl FnMut(&CommandOutcome) -> u8,
     ) -> Result<ExecChainEnd, DaemonError> {
+        self.grant_files(&chain.commands);
         if matches!(self.link, CommandLink::Legacy { .. }) {
             return self.legacy_exec_chain(chain, emit);
         }
@@ -909,8 +918,12 @@ impl CommandClient {
                     client_exit = true;
                 }
                 ProtocolMessage::ClientFileRequest(request) => {
-                    let response =
-                        answer_command_file(&request, self.stdin_enabled, &mut self.stdin_spent);
+                    let response = answer_command_file(
+                        &request,
+                        self.file_grants.as_deref(),
+                        self.stdin_enabled,
+                        &mut self.stdin_spent,
+                    );
                     if let Err(error) = writer.send(&ProtocolMessage::ClientFileResponse(response))
                     {
                         unanswered.get_or_insert(error);
@@ -1092,6 +1105,7 @@ impl CommandClient {
         let stderr_handler = self.stderr_handler;
         let stdout_handler = self.stdout_handler;
         let mut stdin_spent = self.stdin_spent;
+        let file_grants = self.file_grants.clone();
         let (reader, writer) = self.legacy_link();
         let result = (|| {
             writer.send(&ProtocolMessage::CommandRequest(CommandRequest {
@@ -1154,8 +1168,12 @@ impl CommandClient {
                         client_exit = true;
                     }
                     ProtocolMessage::ClientFileRequest(request) => {
-                        let response =
-                            answer_command_file(&request, stdin_enabled, &mut stdin_spent);
+                        let response = answer_command_file(
+                            &request,
+                            file_grants.as_deref(),
+                            stdin_enabled,
+                            &mut stdin_spent,
+                        );
                         writer.send(&ProtocolMessage::ClientFileResponse(response))?;
                     }
                     _ => {}
@@ -1217,8 +1235,46 @@ impl CommandClient {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FileGrant {
+    Read(PathBuf),
+    Write(PathBuf),
+}
+
+fn file_grants(commands: &[CommandInvocation]) -> Vec<FileGrant> {
+    commands
+        .iter()
+        .filter_map(|command| {
+            let path = PathBuf::from(command.args.last()?.to_os_string());
+            match zz_protocol::canonical_command(&command.name) {
+                "load-buffer" => Some(FileGrant::Read(path)),
+                "save-buffer" => Some(FileGrant::Write(path)),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+fn granted<'a>(grants: &'a [FileGrant], request: &ClientFileRequest) -> Option<&'a Path> {
+    let asked = Path::new(&request.path);
+    grants.iter().find_map(|grant| {
+        let ((FileGrant::Read(path), ClientFileOperation::Read)
+        | (FileGrant::Write(path), ClientFileOperation::Write { .. })) =
+            (grant, &request.operation)
+        else {
+            return None;
+        };
+        let named = path.strip_prefix(".").unwrap_or(path);
+        (!named.as_os_str().is_empty() && asked.ends_with(named)).then_some(path.as_path())
+    })
+}
+
+const FILE_NOT_GRANTED: &str =
+    "a remote host may only use the file load-buffer or save-buffer names on this command line";
+
 fn answer_command_file(
     request: &ClientFileRequest,
+    grants: Option<&[FileGrant]>,
     stdin_enabled: bool,
     stdin_spent: &mut bool,
 ) -> ClientFileResponse {
@@ -1233,7 +1289,19 @@ fn answer_command_file(
             *stdin_spent = !matches!(&chunk, Ok(chunk) if !chunk.is_empty());
             chunk
         }
-        _ => return answer_client_file(request),
+        _ => {
+            return match grants {
+                None => answer_client_file(request, Path::new(&request.path)),
+                Some(grants) => match granted(grants, request) {
+                    Some(path) => answer_client_file(request, path),
+                    None => ClientFileResponse {
+                        request_id: request.request_id,
+                        data: Vec::new(),
+                        error: Some(FILE_NOT_GRANTED.to_owned()),
+                    },
+                },
+            };
+        }
     };
     ClientFileResponse {
         request_id: request.request_id,
@@ -3613,18 +3681,17 @@ impl Drop for StdinReadSignal {
     }
 }
 
-fn answer_client_file(request: &ClientFileRequest) -> ClientFileResponse {
-    let path = PathBuf::from(&request.path);
+fn answer_client_file(request: &ClientFileRequest, path: &Path) -> ClientFileResponse {
     let (data, error) = match &request.operation {
         ClientFileOperation::ReadStdin { .. } | ClientFileOperation::ReadStdinChunk => {
             (Vec::new(), Some(errno_text(9)))
         }
-        ClientFileOperation::Read => match read_client_file(&path) {
+        ClientFileOperation::Read => match read_client_file(path) {
             Ok(data) => (data, None),
             Err(error) => (Vec::new(), Some(error)),
         },
         ClientFileOperation::Write { append, data } => {
-            (Vec::new(), write_client_file(&path, data, *append).err())
+            (Vec::new(), write_client_file(path, data, *append).err())
         }
     };
     ClientFileResponse {
@@ -3707,6 +3774,65 @@ fn start_tailnet_forward(
 #[cfg(test)]
 mod tests {
     use std::{ffi::OsString, path::PathBuf};
+
+    #[test]
+    fn a_remote_host_gets_only_the_file_a_buffer_command_names() {
+        use std::path::Path;
+
+        use zz_protocol::{ClientFileOperation, ClientFileRequest, CommandInvocation};
+
+        use super::{FILE_NOT_GRANTED, FileGrant, answer_command_file, file_grants, granted};
+
+        let grants = file_grants(&[
+            CommandInvocation::new("list-sessions", ["/etc/hosts"]),
+            CommandInvocation::new("loadb", ["-b", "notes", "./notes.txt"]),
+            CommandInvocation::new("save-buffer", ["/tmp/out"]),
+        ]);
+        assert_eq!(
+            grants,
+            [
+                FileGrant::Read(PathBuf::from("./notes.txt")),
+                FileGrant::Write(PathBuf::from("/tmp/out")),
+            ]
+        );
+        let ask = |path: &str, operation| {
+            let request = ClientFileRequest {
+                request_id: 7,
+                path: path.to_owned(),
+                operation,
+            };
+            granted(&grants, &request).map(Path::to_path_buf)
+        };
+        let write = || ClientFileOperation::Write {
+            append: false,
+            data: Vec::new(),
+        };
+        assert_eq!(
+            ask("/srv/home/notes.txt", ClientFileOperation::Read),
+            Some(PathBuf::from("./notes.txt"))
+        );
+        assert_eq!(ask("/tmp/out", write()), Some(PathBuf::from("/tmp/out")));
+        assert_eq!(
+            ask("/home/me/.ssh/id_ed25519", ClientFileOperation::Read),
+            None
+        );
+        assert_eq!(ask("/etc/hosts", ClientFileOperation::Read), None);
+        assert_eq!(ask("/srv/home/notes.txt", write()), None);
+        assert_eq!(ask("/tmp/out", ClientFileOperation::Read), None);
+        assert_eq!(ask("/home/me/.zshrc/tmp/out", write()), None);
+        let refused = answer_command_file(
+            &ClientFileRequest {
+                request_id: 7,
+                path: "/home/me/.ssh/id_ed25519".to_owned(),
+                operation: ClientFileOperation::Read,
+            },
+            Some(&grants),
+            false,
+            &mut false,
+        );
+        assert_eq!(refused.data, Vec::<u8>::new());
+        assert_eq!(refused.error.as_deref(), Some(FILE_NOT_GRANTED));
+    }
 
     use zz_protocol::{
         ClientHello, ClientKind, ClientPath, ExecFlags, MAX_CLIENT_ENVIRONMENT_BYTES,
