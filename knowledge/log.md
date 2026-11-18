@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-11-18
+* **Update**: The first launch shows a three-step onboarding where the import dialog used to open ([app config](/configuration/app-config.md)). It fills the window before the first shell, text at the bottom left over the dithered sky the empty agent chat draws: what zz is, an import step with a switch for each tmux and Ghostty config it found and a file picker for one it did not, and the agent CLIs the daemon found with a switch that installs the startup hook. The sky moved from `zz_ui::agent::sky` to `zz_ui::sky`, which the agent module still exports. Board in `design/mockups/onboarding`.
+
 ## 2026-11-17
 * **Creation**: Added the [agent mentions](/designs/agent-mentions.md) design: `@` lists Claude Code and Codex next to chats and files, the host agent writes a brief and opens the other agent as a chat in a PiP, and the child's asks and final reply come back into the host chat. The owner's rulings, what the tree has today, the proposed commands (`--kind agent` back on `new-pane`, `split-window` and `new-window` with a brief, chat facts in formats and `agent-state-changed`, `capture-pane` on a chat, replies to a calling chat with no flag, a parent link and close cascade), the messages into the host, the `@+codex` token, a build order with acceptance checks, and what is open. Proposed, nothing built.
 

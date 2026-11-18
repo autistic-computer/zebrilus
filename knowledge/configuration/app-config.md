@@ -9,7 +9,7 @@ tags:
 - window
 - appearance
 - mux
-timestamp: 2026-11-13T00:00:00Z
+timestamp: 2026-11-18T00:00:00Z
 ---
 
 # Overview
@@ -76,7 +76,7 @@ after `reload-config` and color-scheme changes (the effective light/dark mode, p
 `zz/mux.conf` load so a reload cannot revert a GUI choice.
 
 The daemon loads only `zz/mux.conf`, or explicit `-f` files that replace it in argument order.
-Reload repeats that selection. It never reads tmux donors implicitly. The first-run offer imports
+Reload repeats that selection. It never reads tmux donors implicitly. Onboarding's import step copies
 Ghostty appearance into `zz/config` and tmux commands into a marked `zz/mux.conf` block.
 Settings imports from any file the system picker returns and edits the same files through structured rows.
 
@@ -838,10 +838,23 @@ window comes back to the front. It is keyed, so a new one replaces the one showi
 no confirmation: tmux through `import-tmux-config`, Ghostty through
 `config::import::import_ghostty_config_from`. tmux import requires a local connection.
 
-The first-run prompt (`crates/zz/src/config/import_prompt.rs`) uses marker
-`<data-dir>/zz/import-prompted-v2`. It names every discovered donor and explains that zz does not
-read those files on its own. Accepting imports the found donors; Cancel imports nothing. Settings
-accepts other paths. Existing installs receive this offer once more after the ownership change.
+The first launch shows onboarding in place of the workspace (`crates/zz/src/onboarding.rs`, drawn by
+`zz_ui::onboarding` over `zz_ui::sky`) until the marker `<data-dir>/zz/import-prompted-v2`
+(`crates/zz/src/config/import_prompt.rs`) exists. It has three steps:
+
+1. What zz is. Next goes on.
+2. Import. One row each for tmux and Ghostty. A donor zz found (`discover_tmux_config`,
+   `discover_ghostty_config`) shows its path and a switch that starts on; one it did not find shows
+   Choose…, which opens the system file picker, and a picked file becomes a found row. Import copies
+   the switched-on donors (`import_prompt::run_tmux_import`, `settings::run_import_from`) and Skip
+   copies nothing. With nothing switched on the button reads Next and Skip is gone.
+3. Agents. One row per CLI the local daemon found, with its version, and an Install hook switch that
+   starts on. Start runs `config::agent_setup::set_up_agents` when the switch is on and a CLI was
+   found, writes the marker and shows the workspace. With no CLI found there are no rows.
+
+Return presses the step's main button. The workspace is not drawn while onboarding shows, so nothing
+behind it takes keys. An install that already has the marker never sees onboarding; Settings imports
+from any path.
 
 The desktop and the thin clients build the Interface page from the same item list
 (`zz_ui::settings::appearance::appearance_page_items`: penna's list with zz's Sidebar group, App

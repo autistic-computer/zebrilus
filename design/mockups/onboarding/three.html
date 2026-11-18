@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onboarding in three steps</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-page { max-width: none; width: max-content; margin: 0; padding: 24px; }
+  .zz-board { display: grid; grid-template-columns: max-content repeat(3, max-content); gap: 20px 24px; align-items: center; }
+  .zz-take { display: grid; gap: 2px; width: 130px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
+  .zz-take > b { font-size: 15px; line-height: 20px; font-weight: 600; color: var(--penna-fg); }
+  .zz-colhead { font-size: 12px; font-weight: 600; color: var(--penna-muted); }
+
+  .zz-ob { position: relative; display: flex; flex-direction: column; width: 680px; height: 460px; overflow: hidden; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--penna-fg) 14%, transparent); color: var(--penna-fg); }
+  .zz-ob > canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+  .zz-in { position: relative; flex: 1; display: flex; flex-direction: column; }
+  .zz-ob h1 { margin: 0; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.015em; }
+  .zz-lines { display: grid; gap: 6px; font-size: 15px; line-height: 21px; }
+  .zz-lines > span { color: var(--penna-muted); }
+  .zz-lines > span > b { font-weight: 500; color: var(--penna-fg); }
+  .zz-rows { display: grid; gap: 4px; width: 240px; }
+  .zz-row { display: flex; align-items: center; gap: 12px; min-height: 34px; font-size: 15px; line-height: 20px; text-align: left; }
+  .zz-row > span:first-child { flex: 1; min-width: 0; white-space: nowrap; }
+  .zz-row > span:first-child > i { font-style: normal; margin-left: 8px; font-size: 13px; color: var(--penna-muted); }
+  .zz-row > em { font-style: normal; font-size: 13px; color: var(--penna-muted); }
+  .zz-nav { display: flex; align-items: center; gap: 8px; }
+  .zz-step { font: 12px/16px var(--penna-mono); color: var(--penna-muted); }
+  .penna-button[data-solid="primary"] { color: var(--penna-on-primary); }
+
+  .zz-ob[data-lay="center"] .zz-in { align-items: center; justify-content: center; gap: 22px; padding: 0 40px; text-align: center; }
+  .zz-ob[data-lay="center"] .zz-lines { justify-items: center; }
+  .zz-ob[data-lay="center"] .zz-nav { margin-top: 6px; }
+  .zz-ob[data-lay="center"] .zz-step { position: absolute; left: 0; right: 0; bottom: 18px; }
+
+  .zz-ob[data-lay="low"] .zz-in { justify-content: flex-end; gap: 18px; padding: 0 40px 28px; }
+  .zz-ob[data-lay="low"] .zz-lines { justify-items: start; }
+  .zz-ob[data-lay="low"] .zz-nav { margin-top: 10px; }
+  .zz-ob[data-lay="low"] .zz-step { margin-right: auto; }
+</style>
+</head>
+<body>
+<div class="zz-page"><div class="zz-board" data-board></div></div>
+<script>
+(() => {
+  const btn = (label, kind) => kind === "primary"
+    ? `<button class="penna-button" data-penna="button" data-emphasis="solid" data-solid="primary" data-zone><span class="penna-label">${label}</span></button>`
+    : `<button class="penna-button" data-penna="${kind === "quiet" ? "button.quiet" : "button"}" data-size="small"><span class="penna-label">${label}</span></button>`;
+  const sw = (on) => `<span class="penna-switch"${on ? " data-on" : ""}></span>`;
+  const row = (name, sub, tail) => `<div class="zz-row" data-zone><span>${name}<i>${sub}</i></span>${tail}</div>`;
+  const lines = (list) => `<div class="zz-lines">${list.map(([lead, rest]) => `<span data-zone data-text><b>${lead}</b> ${rest}</span>`).join("")}</div>`;
+
+  const STEPS = [
+    { h: "Lorem ipsum dolor.", next: "Next", body: `<div class="zz-lines"><span data-zone data-text>Sit amet consectetur adipiscing.</span></div>` },
+    { h: "Lorem ipsum.", next: "Import", skip: true, body: `<div class="zz-rows">${
+      row("tmux", "", sw(true)) +
+      row("Ghostty", "", sw(true)) +
+      row("Chrome", "", sw(false))}</div>` },
+    { h: "Dolor sit amet.", next: "Start", body: `<div class="zz-rows">${
+      row("Claude Code", "", "<em>Signed in</em>") +
+      row("Codex", "", btn("Sign in")) +
+      row("Lorem ipsum", "", sw(true))}</div>` },
+  ];
+  const frame = (lay, s, i) => `<div class="zz-ob" data-sky data-lay="${lay}"><canvas></canvas><div class="zz-in"><h1 data-zone data-text>${s.h}</h1>${s.body}<div class="zz-nav"><span class="zz-step" data-zone data-text>${i + 1} / 3</span>${s.skip ? btn("Skip", "quiet") : ""}${btn(s.next, "primary")}</div></div></div>`;
+
+  const TAKES = [
+    ["A. Centered", "Text in the middle, sky all around it.", "center"],
+    ["B. Low left", "Text at the bottom, the sky gets the top.", "low"],
+  ];
+  const head = `<span></span>` + ["1. How it works", "2. Import", "3. Agents"].map((t) => `<span class="zz-colhead">${t}</span>`).join("");
+  document.querySelector("[data-board]").innerHTML = head + TAKES.map(([n, d, lay]) => `<div class="zz-take"><b>${n}</b><span>${d}</span></div>${STEPS.map((s, i) => frame(lay, s, i)).join("")}`).join("");
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+<script src="sky.js"></script>
+</body>
+</html>

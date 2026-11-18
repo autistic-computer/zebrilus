@@ -804,6 +804,7 @@ pub struct AppView {
     focused_overlay: Option<OverlayKind>,
     sidebar_focus_owed: bool,
     pane_focus_owed: bool,
+    pane_focus_held: bool,
     sidebar_focus_revision: u64,
     bell_revision: u64,
     empty_workspace_visible: bool,
@@ -1227,6 +1228,7 @@ impl AppView {
             focused_overlay: None,
             sidebar_focus_owed: false,
             pane_focus_owed: false,
+            pane_focus_held: false,
             sidebar_focus_revision: 0,
             bell_revision: 0,
             empty_workspace_visible: false,
@@ -1928,8 +1930,19 @@ impl AppView {
         );
     }
 
+    pub(crate) const fn hold_pane_focus(&mut self) {
+        self.pane_focus_held = true;
+    }
+
+    pub(crate) fn release_pane_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.pane_focus_held = false;
+        self.synchronized_signature = None;
+        self.synchronize_panes(window, cx);
+        cx.notify();
+    }
+
     fn focus_active_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.sidebar.read(cx).route() == WorkspaceRoute::Settings {
+        if self.pane_focus_held || self.sidebar.read(cx).route() == WorkspaceRoute::Settings {
             return;
         }
         if self.empty_workspace_visible {
@@ -2583,7 +2596,9 @@ impl AppView {
             .as_ref()
             .is_some_and(|(kind, _)| self.focused_overlay != Some(*kind));
         self.focused_overlay = overlay.as_ref().map(|(kind, _)| *kind);
-        if floating_input {
+        if self.pane_focus_held {
+            self.focused_pane = None;
+        } else if floating_input {
             if let Some((_, focus)) = overlay
                 && overlay_needs_focus
             {

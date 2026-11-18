@@ -23,6 +23,7 @@ mod keymap;
 mod macos_app;
 mod menus;
 mod mux;
+mod onboarding;
 mod pane;
 mod profile;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -426,9 +427,7 @@ fn run_app(
                             cx,
                             |mux, _: &mux::client::InitialConnectionFinished, window, cx| {
                                 window.defer(cx, move |window, cx| {
-                                    if !workspace::maybe_prompt_stale_daemon(&mux, window, cx) {
-                                        config::import_prompt::maybe_prompt(window, cx);
-                                    }
+                                    workspace::maybe_prompt_stale_daemon(&mux, window, cx);
                                 });
                             },
                         )

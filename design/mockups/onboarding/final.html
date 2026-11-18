@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onboarding, final</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-page { max-width: none; width: max-content; margin: 0; padding: 24px; display: grid; gap: 28px; }
+  .zz-board { display: grid; grid-template-columns: repeat(3, max-content); gap: 10px 24px; }
+  .zz-board > .zz-colhead:nth-child(n+7) { margin-top: 18px; }
+  .zz-colhead { font-size: 12px; font-weight: 600; color: var(--penna-muted); }
+
+  .zz-ob { position: relative; display: flex; flex-direction: column; width: 680px; height: 460px; overflow: hidden; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--penna-fg) 14%, transparent); color: var(--penna-fg); }
+  .zz-ob > canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+  .zz-in { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 18px; padding: 0 40px 28px; }
+  .zz-ob h1 { margin: 0; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.015em; }
+  .zz-head { display: grid; gap: 8px; }
+  .zz-line { font-size: 15px; line-height: 21px; color: var(--penna-muted); }
+  .zz-rows { display: grid; gap: 4px; width: 320px; }
+  .zz-row { display: flex; align-items: center; gap: 12px; min-height: 34px; font-size: 15px; line-height: 20px; }
+  .zz-row > span:first-child { flex: 1; min-width: 0; white-space: nowrap; }
+  .zz-row > span:first-child > i { font-style: normal; margin-left: 8px; font-size: 13px; color: var(--penna-muted); }
+  .zz-nav { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .zz-dots { display: flex; gap: 6px; margin-right: auto; }
+  .zz-dots > i { width: 6px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--penna-fg) 22%, transparent); }
+  .zz-dots > i[data-on] { background: var(--penna-fg); }
+  .penna-button[data-solid="primary"] { color: var(--penna-on-primary); }
+
+  .zz-numbers { border-collapse: collapse; font-size: 13px; line-height: 18px; color: var(--penna-fg); }
+  .zz-numbers td { padding: 5px 28px 5px 0; vertical-align: top; border-top: 1px solid color-mix(in srgb, var(--penna-fg) 10%, transparent); }
+  .zz-numbers td:first-child { font-weight: 600; }
+  .zz-numbers td:nth-child(2) { color: var(--penna-muted); }
+</style>
+</head>
+<body>
+<div class="zz-page">
+  <div class="zz-board" data-board></div>
+  <table class="zz-numbers">
+    <tr><td>Sky</td><td>Element</td><td><code>zz_ui::agent::sky</code>, behind everything, as the empty agent chat draws it</td></tr>
+    <tr><td>Sky</td><td>Zones</td><td>title, description, each row, dots, primary button (7 at most, limit is 8)</td></tr>
+    <tr><td>Content</td><td>Anchor</td><td>bottom left, 40 px from the sides, 28 px from the bottom</td></tr>
+    <tr><td>Content</td><td>Gap between blocks</td><td>8 px from title to description, 18 px between blocks, 28 px above the bottom bar</td></tr>
+    <tr><td>Heading</td><td>Text</td><td>penna Display, 26 / 32 px, strong (drawn here at 28 / 34)</td></tr>
+    <tr><td>Line</td><td>Text</td><td>penna Lead, 14 / 20 px, muted (drawn here at 15 / 21)</td></tr>
+    <tr><td>Rows</td><td>Size</td><td>320 px wide, 34 px tall, 4 px apart, 12 px between name and control</td></tr>
+    <tr><td>Rows</td><td>Text</td><td>penna Lead, 14 / 20 px; path or version penna Small, 12 px muted, 8 px after the name; no row fill</td></tr>
+    <tr><td>Dots</td><td>Size</td><td>penna page dots at the left end of the bottom bar; the current one is a 12 px pill</td></tr>
+    <tr><td>Dots</td><td>Color</td><td>current is the text color, the rest its faint tone</td></tr>
+    <tr><td>Buttons</td><td>Primary</td><td>solid primary, default size, right end of the bottom bar</td></tr>
+    <tr><td>Buttons</td><td>Skip, Choose…</td><td>Skip is quiet and small, 8 px left of the primary, step 2 only; Choose… is a small plain button</td></tr>
+    <tr><td>Step 2</td><td>Found</td><td>name, path, switch on; Import copies the switched-on ones</td></tr>
+    <tr><td>Step 2</td><td>Not found</td><td>name and Choose…, which opens the system file picker; a picked file turns the row into the found one</td></tr>
+    <tr><td>Step 3</td><td>Agents</td><td>one row per CLI found, name and version, no control; a CLI that is missing has no row</td></tr>
+    <tr><td>Step 3</td><td>Hook</td><td>one switch, on, applied by Start; no agent found means no rows and no switch</td></tr>
+  </table>
+</div>
+<script>
+(() => {
+  const btn = (label, kind) => kind === "primary"
+    ? `<button class="penna-button" data-penna="button" data-emphasis="solid" data-solid="primary" data-zone><span class="penna-label">${label}</span></button>`
+    : `<button class="penna-button" data-penna="${kind === "quiet" ? "button.quiet" : "button"}" data-size="small"><span class="penna-label">${label}</span></button>`;
+  const sw = (on) => `<span class="penna-switch"${on ? " data-on" : ""}></span>`;
+  const row = (name, sub, tail = "") => `<div class="zz-row" data-zone><span>${name}${sub ? `<i>${sub}</i>` : ""}</span>${tail}</div>`;
+  const dots = (at) => `<div class="zz-dots" data-zone>${[0, 1, 2].map((i) => `<i${i === at ? " data-on" : ""}></i>`).join("")}</div>`;
+  const rows = (...list) => `<div class="zz-rows">${list.join("")}</div>`;
+  const line = (t) => `<div class="zz-line"><span data-zone data-text>${t}</span></div>`;
+  const frame = (at, body, next, skip) => `<div class="zz-ob" data-sky><canvas></canvas><div class="zz-in"><div class="zz-head"><h1 data-zone data-text>${COPY[at][0]}</h1>${line(COPY[at][1])}</div>${body}<div class="zz-nav">${dots(at)}${skip ? btn("Skip", "quiet") : ""}${btn(next, "primary")}</div></div></div>`;
+
+  const COPY = [
+    ["Zebrilus is simply tmux in a graphical interface.", "Faster, modern, and not limited by a pty"],
+    ["Bring your configs.", "In fact, you might want to 'alias tmux=zz' too"],
+    ["Not here to fight your harness.", "Nothing to import, just install a hook."],
+  ];
+  const tmux = row("tmux", "~/.tmux.conf", sw(true));
+  const ghostty = row("Ghostty", "~/.config/ghostty/config", sw(true));
+  const claude = row("Claude Code", "2.1.40");
+  const codex = row("Codex", "0.167");
+  const hook = row("Install hook", "", sw(true));
+
+  const CELLS = [
+    ["1. How it works", frame(0, "", "Next")],
+    ["2. Import, both found", frame(1, rows(tmux, ghostty), "Import", true)],
+    ["3. Agents, both found", frame(2, rows(claude, codex, hook), "Start")],
+    ["2. Ghostty not found", frame(1, rows(tmux, row("Ghostty", "", btn("Choose…"))), "Import", true)],
+    ["3. One agent found", frame(2, rows(claude, hook), "Start")],
+    ["3. No agent found", frame(2, "", "Start")],
+  ];
+  const board = document.querySelector("[data-board]");
+  board.innerHTML = [0, 3].map((at) => CELLS.slice(at, at + 3)).map((three) => three.map(([t]) => `<span class="zz-colhead">${t}</span>`).join("") + three.map(([, f]) => f).join("")).join("");
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+<script src="sky.js"></script>
+</body>
+</html>

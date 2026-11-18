@@ -2308,8 +2308,9 @@ fn import_color_scheme(cx: &App) -> TerminalColorScheme {
     })
 }
 
-pub(crate) fn run_import(cx: &mut App) {
-    match crate::config::import::import_ghostty_config(import_color_scheme(cx)) {
+pub(crate) fn run_import_from(path: &std::path::Path, cx: &mut App) {
+    let result = crate::config::import::import_ghostty_config_from(path, import_color_scheme(cx));
+    match result {
         Ok(report) if report.imported_anything() => {
             log::info!(
                 target: "zz::config",

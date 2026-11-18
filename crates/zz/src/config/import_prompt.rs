@@ -15,7 +15,7 @@ fn marker_path() -> Option<PathBuf> {
     })
 }
 
-fn mark_prompted() {
+pub(crate) fn mark_prompted() {
     let Some(path) = marker_path() else {
         return;
     };
@@ -71,7 +71,7 @@ pub(crate) fn choose_tmux_config(window: &mut Window, cx: &mut App) {
         .detach();
 }
 
-fn run_tmux_import(path: PathBuf, window: &mut Window, cx: &mut App) {
+pub(crate) fn run_tmux_import(path: PathBuf, window: &mut Window, cx: &mut App) {
     let task = cx
         .background_executor()
         .spawn(async move { config::import_tmux_config(&path) });
@@ -96,50 +96,6 @@ fn run_tmux_import(path: PathBuf, window: &mut Window, cx: &mut App) {
         .detach();
 }
 
-pub(crate) fn maybe_prompt(window: &mut Window, cx: &mut App) {
-    if marker_path().as_deref().is_some_and(Path::exists) {
-        return;
-    }
-    let ghostty = zz_terminal::discover_ghostty_config();
-    let tmux = zz_daemon_client::discover_tmux_config();
-    if ghostty.is_none() && tmux.is_none() {
-        mark_prompted();
-        return;
-    }
-    let donors = ghostty
-        .iter()
-        .chain(tmux.iter())
-        .map(|path| path.display().to_string())
-        .collect::<Vec<_>>()
-        .join(" and ");
-    let title = match (ghostty.is_some(), tmux.is_some()) {
-        (true, true) => "Import from Ghostty and tmux?",
-        (true, false) => "Import from Ghostty?",
-        _ => "Import from tmux?",
-    };
-    let targets = match (ghostty.is_some(), tmux.is_some()) {
-        (true, true) => "zz/config and zz/mux.conf",
-        (true, false) => "zz/config",
-        _ => "zz/mux.conf",
-    };
-    window.open_alert_dialog(cx, move |alert, _, _| {
-        let tmux = tmux.clone();
-        let has_ghostty = ghostty.is_some();
-        import_configuration_file_alert(
-            alert, title,
-            format!("Found {donors}. zz does not read these files on its own. Import them into {targets}? Use Settings to choose other paths. Cancel imports nothing; you can import later from Settings."),
-        )
-        .on_ok(move |_, window, cx| {
-            if has_ghostty { crate::config::settings::run_import(cx); }
-            if let Some(path) = tmux.clone() {
-                run_tmux_import(path, window, cx);
-            }
-            mark_prompted();
-            true
-        })
-        .on_cancel(|_, _, _| {
-            mark_prompted();
-            true
-        })
-    });
+pub(crate) fn pending() -> bool {
+    !marker_path().as_deref().is_some_and(Path::exists)
 }

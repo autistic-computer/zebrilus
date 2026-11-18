@@ -18,6 +18,7 @@ use crate::{
     browser::controller::BrowserController,
     config::{frame_content_corner_radius, settings::OpenSettings},
     mux::client::MuxClient,
+    onboarding::{Finished, Onboarding},
     request_window_close,
     status_bar::render_gui_status_bar,
     window::corners::WindowCorners,
@@ -46,6 +47,8 @@ pub struct AppShell {
     mux: Entity<MuxClient>,
     browser_history_appearance: BrowserHistoryAppearance,
     terminal_resizes_held: bool,
+    onboarding: Option<Entity<Onboarding>>,
+    onboarding_ended: bool,
 }
 
 impl AppShell {
@@ -108,6 +111,17 @@ impl AppShell {
             }
         })
         .detach();
+        let onboarding = crate::config::import_prompt::pending().then(|| {
+            let onboarding = cx.new(|cx| Onboarding::new(mux.clone(), cx));
+            workspace.update(cx, |workspace, _| workspace.hold_pane_focus());
+            cx.subscribe(&onboarding, |shell, _, _: &Finished, cx| {
+                shell.onboarding = None;
+                shell.onboarding_ended = true;
+                cx.notify();
+            })
+            .detach();
+            onboarding
+        });
         Self {
             workspace,
             controller,
@@ -116,6 +130,8 @@ impl AppShell {
             mux,
             browser_history_appearance: Vec::new(),
             terminal_resizes_held: false,
+            onboarding,
+            onboarding_ended: false,
         }
     }
 
@@ -338,7 +354,14 @@ impl Render for AppShell {
         let over_panes = |titlebar: AnyElement, shown: f32| {
             titlebar_over_panes(titlebar, gap * shown).into_any_element()
         };
+        if std::mem::take(&mut self.onboarding_ended) {
+            self.workspace.update(cx, |workspace, cx| {
+                workspace.release_pane_focus(window, cx);
+            });
+        }
+        let onboarding = self.onboarding.clone();
         let (sidebar, titlebar) = match (route, mode) {
+            _ if onboarding.is_some() => (div().into_any_element(), None),
             (WorkspaceRoute::Settings, _) => (self.sidebar.clone().into_any_element(), None),
             (WorkspaceRoute::App, ChromeMode::Sidebar) => (
                 self.docked_sidebar(sidebar_width, slide),
@@ -361,16 +384,19 @@ impl Render for AppShell {
                 }),
             ),
         };
-        let status_bar_shown =
-            route == WorkspaceRoute::App && (mode == ChromeMode::Titlebar || sliding);
+        let status_bar_shown = onboarding.is_none()
+            && route == WorkspaceRoute::App
+            && (mode == ChromeMode::Titlebar || sliding);
         let floating_window_controls = (!status_bar_shown)
             .then(|| self.render_floating_window_controls(window, cx))
             .flatten();
         let dialog_layer = Root::render_dialog_layer(window, cx);
         let notification_layer = Root::render_notification_layer(window, cx);
 
-        let slideover = (route == WorkspaceRoute::App && self.sidebar.read(cx).slideover_open())
-            .then(|| self.render_slideover(cx));
+        let slideover = (onboarding.is_none()
+            && route == WorkspaceRoute::App
+            && self.sidebar.read(cx).slideover_open())
+        .then(|| self.render_slideover(cx));
         let overlays = slideover
             .into_iter()
             .chain(floating_window_controls)
@@ -397,7 +423,10 @@ impl Render for AppShell {
             crate::theme::shell_frame(cx),
             sidebar,
             titlebar,
-            self.workspace.clone(),
+            onboarding.map_or_else(
+                || self.workspace.clone().into_any_element(),
+                IntoElement::into_any_element,
+            ),
             overlays,
         )
         .map(|shell| {
