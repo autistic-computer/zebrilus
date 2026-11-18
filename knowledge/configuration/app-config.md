@@ -849,10 +849,12 @@ The first launch shows onboarding in place of the workspace (`crates/zz/src/onbo
    the switched-on donors (`import_prompt::run_tmux_import`, `settings::run_import_from`) and Skip
    copies nothing. With nothing switched on the button reads Next and Skip is gone.
 3. Agents. One row per CLI the local daemon found, with its version, and an Install hook switch that
-   starts on. Start runs `config::agent_setup::set_up_agents` when the switch is on and a CLI was
-   found, writes the marker and shows the workspace. With no CLI found there are no rows.
+   starts on. Start runs `config::agent_setup::set_up_agents` when the switch is on, unless the
+   daemon has answered that no CLI is installed, then writes the marker and shows the workspace. With
+   no CLI found there are no rows.
 
-Return presses the step's main button. The workspace is not drawn while onboarding shows, so nothing
+Return presses the step's main button; a held key does not repeat it. The page paints the pane
+color, opaque, whatever the window's opacity. The workspace is not drawn while onboarding shows, so nothing
 behind it takes keys. An install that already has the marker never sees onboarding; Settings imports
 from any path.
 

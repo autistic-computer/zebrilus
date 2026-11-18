@@ -5,7 +5,8 @@ use penna::{
 };
 
 use crate::{
-    h_flex,
+    ActiveTheme as _, h_flex,
+    pane_look::pane_color,
     sky::{SkyZones, sky},
     v_flex,
 };
@@ -110,9 +111,11 @@ pub fn onboarding_page(step: Step, rows: Vec<Div>, buttons: Vec<AnyElement>, cx:
         .justify_between()
         .child(dots)
         .child(h_flex().flex_none().gap(px(BUTTON_GAP)).children(buttons));
+    let theme = cx.theme();
     div()
         .relative()
         .size_full()
+        .bg(pane_color(theme, theme.background))
         .child(sky("onboarding-sky", &zones))
         .child(
             v_flex()

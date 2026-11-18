@@ -1,6 +1,8 @@
 # Update Log
 
 ## 2026-11-18
+* **Update**: Toasts are short ([UI conventions](/configuration/ui-conventions.md)). penna shows three lines of a toast's message, ends the third with an ellipsis and opens the rest on a click. The agent setup toast is one line naming the CLIs the hook went to, plus a line for what is left to do or what failed, and closes on its own when there is nothing to do; the tmux import toast gives the count and the file. The full reports go to the log.
+* **Fix**: Onboarding installs the hook when Start is pressed before the daemon has listed the agent CLIs, ignores a held Return, and paints an opaque ground so a translucent window does not wash out its text.
 * **Update**: The first launch shows a three-step onboarding where the import dialog used to open ([app config](/configuration/app-config.md)). It fills the window before the first shell, text at the bottom left over the dithered sky the empty agent chat draws: what zz is, an import step with a switch for each tmux and Ghostty config it found and a file picker for one it did not, and the agent CLIs the daemon found with a switch that installs the startup hook. The sky moved from `zz_ui::agent::sky` to `zz_ui::sky`, which the agent module still exports. Board in `design/mockups/onboarding`.
 
 ## 2026-11-17

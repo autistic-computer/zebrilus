@@ -79,10 +79,15 @@ pub(crate) fn run_tmux_import(path: PathBuf, window: &mut Window, cx: &mut App) 
         .spawn(cx, async move |window| {
             let result = task.await;
             let _ = window.update(|window, cx| match result {
-                Ok(output) => crate::window::toast::push(
-                    penna::blocks::notification::Notification::success(output),
-                    cx,
-                ),
+                Ok(output) => {
+                    log::info!(target: "zz::config", "imported tmux configuration: {output}");
+                    crate::window::toast::push(
+                        penna::blocks::notification::Notification::success(
+                            zz_client::toast::tmux_import(&output),
+                        ),
+                        cx,
+                    );
+                }
                 Err(error) => {
                     crate::window::toast::push(
                         penna::blocks::notification::Notification::info(error),

@@ -392,6 +392,14 @@ interrupt a window . the modal it must answer and the toast it may ignore . spea
 icon is a flex child aligned to the first line, not an absolutely positioned glyph the copy column
 pads around.
 
+**A toast says one thing in one line.** The kit shows three lines of a message and ends the third
+with an ellipsis; a click on the message opens the rest and keeps the toast up. A report with a
+line per file belongs in the log, and its toast is a summary: `zz_client::toast::agent_setup` turns
+the hook report into `Hook installed for Claude Code and Codex` plus a line only for what is left
+to do or what failed, and `zz_client::toast::tmux_import` turns the import output into
+`Imported 38 commands from ~/.tmux.conf`. Both log the full text. A toast stays until closed only
+when it asks for something or reports a failure.
+
 **Every toast stacks at the top center of the workspace window**, whichever view raised it. The
 close button sits in the toast's flex row, vertically centered beside its content. Settings is a route in
 that window, and `AppShell` mounts both the dialog and notification layers for either route.

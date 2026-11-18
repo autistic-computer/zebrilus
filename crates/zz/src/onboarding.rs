@@ -102,22 +102,24 @@ impl Onboarding {
         self.tmux.chosen().is_some() || self.ghostty.chosen().is_some()
     }
 
-    fn agents(&self, cx: &Context<Self>) -> Vec<(&'static str, Option<SharedString>)> {
+    fn agents(&self, cx: &Context<Self>) -> Option<Vec<(&'static str, Option<SharedString>)>> {
         let mux = self.mux.read(cx);
-        let Some(report) = mux.host_providers(HostId::LOCAL) else {
-            return Vec::new();
-        };
-        PROVIDERS
-            .into_iter()
-            .filter_map(|provider| report.provider(provider))
-            .filter(|status| status.installed())
-            .map(|status| {
-                (
-                    status.provider.label(),
-                    status.version.clone().map(SharedString::from),
-                )
-            })
-            .collect()
+        let report = mux
+            .host_providers(HostId::LOCAL)
+            .filter(|report| !(report.checking && report.providers.is_empty()))?;
+        Some(
+            PROVIDERS
+                .into_iter()
+                .filter_map(|provider| report.provider(provider))
+                .filter(|status| status.installed())
+                .map(|status| {
+                    (
+                        status.provider.label(),
+                        status.version.clone().map(SharedString::from),
+                    )
+                })
+                .collect(),
+        )
     }
 
     fn choose(&mut self, donor: Donor, window: &mut Window, cx: &mut Context<Self>) {
@@ -160,7 +162,7 @@ impl Onboarding {
             cx.notify();
             return;
         }
-        if self.hook && !self.agents(cx).is_empty() {
+        if self.hook && self.agents(cx).is_none_or(|agents| !agents.is_empty()) {
             agent_setup::set_up_agents(window, cx);
         }
         import_prompt::mark_prompted();
@@ -205,6 +207,7 @@ impl Onboarding {
                 }
                 let mut rows = self
                     .agents(cx)
+                    .unwrap_or_default()
                     .into_iter()
                     .map(|(name, version)| onboarding_row(name, version, None))
                     .collect::<Vec<_>>();
@@ -275,7 +278,7 @@ impl Render for Onboarding {
             .relative()
             .size_full()
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                if event.keystroke.key == "enter" {
+                if event.keystroke.key == "enter" && !event.is_held {
                     this.advance(window, cx);
                     cx.stop_propagation();
                 }

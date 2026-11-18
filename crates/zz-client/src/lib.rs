@@ -51,6 +51,7 @@ mod status_bar;
 pub mod terminal_color;
 pub mod terminal_view;
 pub mod tmux_style;
+pub mod toast;
 pub mod verbs;
 pub mod which_key;
 pub mod window_summary;

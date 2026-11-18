@@ -127,10 +127,7 @@ impl AppShell {
                 |this, connection, event: &AgentsSetUp, window, cx| {
                     use penna::WindowExt as _;
                     let host = this.connection_title(connection.read(cx));
-                    window.push_notification(
-                        agent_setup_notification(event.0.clone(), Some(&host)),
-                        cx,
-                    );
+                    window.push_notification(agent_setup_notification(&event.0, Some(&host)), cx);
                 },
             );
             self.agent_setup

@@ -25,15 +25,28 @@ use zz_client::providers::{
 type ProviderAction = Rc<dyn Fn(AgentProvider, &mut Window, &mut App)>;
 
 pub fn agent_setup_notification(
-    result: Result<String, String>,
+    result: &Result<String, String>,
     host: Option<&str>,
 ) -> Notification {
+    let (Ok(report) | Err(report)) = result;
+    log::info!(target: "zz::agents", "agent setup host={host:?} report={report:?}");
+    let brief = zz_client::toast::agent_setup(report);
+    let lasting = result.is_err() || brief.contains('\n');
     let (notification, title) = match result {
-        Ok(report) => (Notification::success(report), "Agents set up"),
-        Err(report) => (Notification::error(report), "Agent setup failed"),
+        Ok(_) => (Notification::success(brief), host.map(ToOwned::to_owned)),
+        Err(_) => (
+            Notification::error(brief),
+            Some(host.map_or_else(
+                || "Agent setup failed".to_owned(),
+                |host| format!("Agent setup failed on {host}"),
+            )),
+        ),
     };
-    let title = host.map_or_else(|| title.to_owned(), |host| format!("{title} on {host}"));
-    notification.title(title).autohide(false)
+    let notification = notification.autohide(!lasting);
+    match title {
+        Some(title) => notification.title(title),
+        None => notification,
+    }
 }
 
 pub enum ProvidersHost {

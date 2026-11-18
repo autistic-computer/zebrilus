@@ -809,7 +809,11 @@ impl SettingsView {
                     this.reload_config_editor(kind, cx);
                     match result {
                         Ok(output) if !output.trim().is_empty() => {
-                            toast::push(Notification::success(output), cx);
+                            log::info!(target: "zz::config", "file command output: {output}");
+                            toast::push(
+                                Notification::success(zz_client::toast::tmux_import(&output)),
+                                cx,
+                            );
                         }
                         Ok(_) => {}
                         Err(error) => toast::push(Notification::error(error), cx),
