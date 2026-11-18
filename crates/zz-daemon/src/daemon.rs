@@ -53010,15 +53010,22 @@ Run a command in another pane with `zz run-pane -t %N -- CMD` (prints its output
 Other machines: `zz list-hosts` names them and `zz --host NAME VERB -t %N` runs a verb there; pane IDs are per host. Run `zz tools --skill` for the full guide.
 "#;
 
-const AGENT_PANE_CONTEXT: &str = r"
-This is an Agent pane, and it draws HTML you put in a reply.
+const AGENT_PANE_CONTEXT: &str = concat!(
+    r"
+This is an Agent pane, and it draws UI blocks and HTML you put in a reply.
 
-- To show something in the chat (a chart, diagram, comparison, stats, a small control), open a fenced block with ```html preview and write a fragment. It is drawn on the chat's ground in the user's theme, so set no background, font or colors of your own. Styled for you: `.btn` (`.btn-primary`), `.card`, `.nav-pills` of `.nav-link`s (`.active` is the chosen one), `.form-control`, `.form-select`, `.form-range`, `.progress` holding a `.progress-bar`, `.viz-badge` (`data-tone` success, warning or danger), `.viz-stat-value`, `.viz-grid`, `.viz-row`, `.text-muted`, `.text-small` and `table`. Colors: `var(--foreground)`, `var(--border)`, `var(--primary)`, and `var(--viz-series-1)` to `6` for data. Scripts may load from CDNs. A click makes it live, and `zz.reply(text)` then puts text in the user's composer.
+- To show a comparison, stats, a form or a small control, open a fenced block with ```ui and write it as described under UI blocks below. It is drawn with the app's own components in the user's theme. A button press reaches you as the user's next message, on one line: `ui action NAME {...}` with the values that action listed. `ui problems [...]` means the block could not be drawn: answer with a corrected block.
+- To show a chart, a diagram or anything a UI block cannot draw, open a fenced block with ```html preview and write a fragment. It is drawn on the chat's ground in the user's theme, so set no background, font or colors of your own. Styled for you: `.btn` (`.btn-primary`), `.card`, `.nav-pills` of `.nav-link`s (`.active` is the chosen one), `.form-control`, `.form-select`, `.form-range`, `.progress` holding a `.progress-bar`, `.viz-badge` (`data-tone` success, warning or danger), `.viz-stat-value`, `.viz-grid`, `.viz-row`, `.text-muted`, `.text-small` and `table`. Colors: `var(--foreground)`, `var(--border)`, `var(--primary)`, and `var(--viz-series-1)` to `6` for data. Scripts may load from CDNs. A click makes it live, and `zz.reply(text)` then puts text in the user's composer.
 - To show a page you are building (a site, a screen of the user's product), put the whole document, starting with `<!doctype html>`, in a plain ```html block. It keeps its own styles and is drawn in a frame at desktop size; a click opens it beside the chat.
 - For a page with files of its own, write it to disk and run `zz html PATH`.
 
 Unless auto-approve is off, this pane approves `zz` commands without asking, alone or piped into `head`, `tail`, `grep`, `rg`, `wc`, `jq`, `cut` or `tr`, with no redirect but `2>&1` or `>/dev/null`.
-";
+
+UI blocks
+
+",
+    include_str!("../../../libs/penna/src/blocks/a2ui/express.md")
+);
 
 pub const WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE: &str = "ZZ_AGENT_CONTEXT";
 
@@ -85641,9 +85648,13 @@ set-option -g @alias-mixed-next yes
         assert!(text.len() < 1600, "context grew to {} bytes", text.len());
         let agent = workspace_context("%4", "work", true);
         assert!(agent.starts_with(&text) && agent.contains("```html preview"));
+        assert!(!text.contains("```ui") && agent.contains("```ui"));
+        assert!(
+            agent.ends_with("options is a list of strings or of `{label: \"A\", value: \"a\"}`.\n")
+        );
         assert!(agent.contains("starting with `<!doctype html>`, in a plain ```html block"));
         assert!(
-            agent.len() < 3000,
+            agent.len() < 5600,
             "agent context grew to {} bytes",
             agent.len()
         );

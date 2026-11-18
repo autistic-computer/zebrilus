@@ -4,7 +4,7 @@ title: Agent panes and the flip
 description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, reopening a chat another chat opened on its session (select-child-chat), what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
-timestamp: 2026-11-16T00:00:00-03:00
+timestamp: 2026-11-18T00:00:00-03:00
 ---
 
 # Overview
@@ -1048,6 +1048,22 @@ calls:
   mermaid types pele does not draw stay inline. On the desktop, iOS and the web an `html preview` block is a visual
   drawn bare on the chat's ground with penna's HTML kit, and an `html` block holding a whole
   document is a page frame ([artifacts](/designs/userpanes.md#inline-previews-in-the-agent-pane)). Clicking a card opens it in the view pane.
+- **UI blocks.** On the desktop a fenced `ui` block in a reply is drawn in the chat's own window
+  with penna components, with no page and no browser process (`agent::ui`, on penna's
+  `blocks::a2ui`). The block holds the compact lines penna's `express.md` describes, which the
+  daemon appends to the agent pane context, or the same thing as A2UI JSON. It sits bare on the
+  chat's ground like a visual, with no controls of its own. A button
+  sends at once as the user's message, one line: `ui action NAME {...}` with the values the action
+  listed, through `controller.prompt`, so a press mid-turn queues like a typed message. The bubble
+  shows the button's label and those values instead of the line. A block is live until the user
+  sends anything after it; from then on its controls are disabled and the pressed button keeps a
+  check. That is read from the order of the chat (`ChatPane::sync_ui`), so nothing is stored and a
+  resumed chat draws old blocks held. A block with no button is never held. While the fence is
+  still open in a streaming reply the block is the visual's wash. A block that does not compile
+  shows the first problem with Ask for a fix, which sends `ui problems [...]`; zz sends nothing on
+  its own. A press inside a block keeps the chat's text selection from starting, so its fields
+  take focus. A client with no `AgentUiSender` (the thin clients today) shows the
+  fence as code.
 - **Diagrams.** Without a view opener, or inside a markdown view, a mermaid or SVG block sits in a
   `CardLook::Figure` card (`card.figure`), which has no fill and no header: Copy source and Open
   full diagram sit over its top right corner while the pointer is on it (always on touch). pele

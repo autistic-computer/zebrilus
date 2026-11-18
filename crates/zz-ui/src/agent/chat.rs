@@ -36,6 +36,7 @@ use zz_protocol::{
 
 use super::preview::{ViewOpener, ViewRequest};
 use super::refs::{ChatRefs, RefLinks, ref_links, ref_text};
+use super::ui::{UiLook, UiPlugin, UiSent};
 use super::{
     agent_chat_text_view, agent_jump_to_bottom_button, agent_text_view,
     assistant_markdown_extensions, attachment_tile,
@@ -73,6 +74,8 @@ pub struct ChatOpen {
     pub tall: HashSet<ItemId>,
     pub unfolded: HashSet<ItemId>,
     pub children: HashMap<PaneId, PaneId>,
+    pub ui: HashMap<ItemId, UiLook>,
+    pub sent: HashMap<ItemId, UiSent>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -140,29 +143,79 @@ pub struct ChatHooks<'a> {
 pub struct ChatMarkdown {
     refs: Arc<ChatRefs>,
     html: Option<crate::agent::HtmlBlocks>,
+    ui: Option<u64>,
     extensions: crate::text::MarkdownExtensions,
+    blocks: RefCell<HashMap<ItemId, (UiLook, crate::text::MarkdownExtensions)>>,
+}
+
+fn markdown_extensions(
+    refs: &Arc<ChatRefs>,
+    html: Option<crate::agent::HtmlBlocks>,
+    ui: Option<UiPlugin>,
+) -> crate::text::MarkdownExtensions {
+    let links = Arc::clone(refs);
+    crate::agent::chat_markdown_extensions(refs.view.clone(), html, ui)
+        .inline_links(move |text, source| ref_links(&links, text, source))
 }
 
 impl ChatMarkdown {
     #[must_use]
     pub fn new(refs: ChatRefs) -> Self {
-        Self::showing(refs, None)
+        Self::showing(refs, None, None)
     }
 
-    fn showing(refs: ChatRefs, html: Option<crate::agent::HtmlBlocks>) -> Self {
+    fn showing(refs: ChatRefs, html: Option<crate::agent::HtmlBlocks>, ui: Option<u64>) -> Self {
         let refs = Arc::new(refs);
-        let links = Arc::clone(&refs);
-        let extensions = crate::agent::chat_markdown_extensions(refs.view.clone(), html);
         Self {
-            extensions: extensions
-                .inline_links(move |text, source| ref_links(&links, text, source)),
+            extensions: markdown_extensions(&refs, html, None),
             html,
+            ui,
             refs,
+            blocks: RefCell::default(),
         }
     }
 
-    fn reads(&self, refs: &ChatRefs, html: Option<crate::agent::HtmlBlocks>) -> bool {
-        self.refs.hosts == refs.hosts && self.refs.cwd == refs.cwd && self.html == html
+    fn reads(
+        &self,
+        refs: &ChatRefs,
+        html: Option<crate::agent::HtmlBlocks>,
+        ui: Option<u64>,
+    ) -> bool {
+        self.refs.hosts == refs.hosts
+            && self.refs.cwd == refs.cwd
+            && self.html == html
+            && self.ui == ui
+    }
+
+    fn show(&self, looks: &HashMap<ItemId, UiLook>) {
+        let Some(owner) = self.ui else {
+            return;
+        };
+        let mut blocks = self.blocks.borrow_mut();
+        blocks.retain(|id, _| looks.contains_key(id));
+        for (id, look) in looks {
+            if blocks.get(id).is_some_and(|(shown, _)| shown == look) {
+                continue;
+            }
+            let plugin = UiPlugin {
+                owner,
+                look: look.clone(),
+            };
+            blocks.insert(
+                id.clone(),
+                (
+                    look.clone(),
+                    markdown_extensions(&self.refs, self.html, Some(plugin)),
+                ),
+            );
+        }
+    }
+
+    fn extensions(&self, id: &ItemId) -> crate::text::MarkdownExtensions {
+        self.blocks.borrow().get(id).map_or_else(
+            || self.extensions.clone(),
+            |(_, extensions)| extensions.clone(),
+        )
     }
 }
 
@@ -372,18 +425,19 @@ impl Global for ShownImages {}
 
 impl ChatPane {
     pub fn markdown(&mut self, refs: ChatRefs) -> Rc<ChatMarkdown> {
-        self.markdown_showing(refs, None)
+        self.markdown_showing(refs, None, None)
     }
 
     fn markdown_showing(
         &mut self,
         refs: ChatRefs,
         html: Option<crate::agent::HtmlBlocks>,
+        ui: Option<u64>,
     ) -> Rc<ChatMarkdown> {
         match &self.markdown {
-            Some(markdown) if markdown.reads(&refs, html) => Rc::clone(markdown),
+            Some(markdown) if markdown.reads(&refs, html, ui) => Rc::clone(markdown),
             _ => {
-                let markdown = Rc::new(ChatMarkdown::showing(refs, html));
+                let markdown = Rc::new(ChatMarkdown::showing(refs, html, ui));
                 self.markdown = Some(Rc::clone(&markdown));
                 markdown
             }
@@ -492,6 +546,7 @@ impl ChatPane {
             .arrivals
             .retain(|_, at| now.saturating_sub(*at) < REVEAL_MAX_MS);
         self.sync_texts(view);
+        self.sync_ui(view);
         self.sync_rows(view);
     }
 
@@ -499,8 +554,11 @@ impl ChatPane {
         let texts = &mut self.open.texts;
         let previews = &mut self.open.previews;
         let expanded = &mut self.open.expanded;
+        let ui = &mut self.open.ui;
         texts.retain(|id, _| view.item(id).is_some());
         previews.retain(|id, _| texts.contains_key(id));
+        ui.retain(|id, _| texts.contains_key(id));
+        self.open.sent.retain(|id, _| texts.contains_key(id));
         for item in view.items.values() {
             if !matches!(item.kind, ItemKind::User | ItemKind::Agent) {
                 continue;
@@ -513,6 +571,14 @@ impl ChatPane {
                 continue;
             }
             texts.insert(item.id.clone(), item.body.text.clone().into());
+            if item.kind == ItemKind::Agent
+                && item.parent.is_none()
+                && crate::agent::ui::has_block(&item.body.text)
+            {
+                ui.entry(item.id.clone()).or_default();
+            } else {
+                ui.remove(&item.id);
+            }
             match preview(&item.body.text).filter(|_| item.kind == ItemKind::Agent) {
                 Some(cut) => {
                     previews.insert(item.id.clone(), cut.into());
@@ -523,6 +589,49 @@ impl ChatPane {
             }
         }
         expanded.retain(|id| previews.contains_key(id));
+    }
+
+    fn sync_ui(&mut self, view: &ChatView) {
+        let open = &mut self.open;
+        if open.ui.is_empty() {
+            return;
+        }
+        let mut order = Vec::new();
+        let mut reply = None;
+        for item in view
+            .turns
+            .iter()
+            .flat_map(|turn| &turn.items)
+            .filter_map(|id| view.item(id))
+        {
+            if item.kind == ItemKind::User {
+                if !open.sent.contains_key(&item.id)
+                    && let Some(sent) = crate::agent::ui::sent(&item.body.text)
+                {
+                    open.sent.insert(item.id.clone(), UiSent::new(&sent, reply));
+                }
+                order.push(item);
+            } else if open.ui.contains_key(&item.id) {
+                reply = Some(item.body.text.as_str());
+                order.push(item);
+            }
+        }
+        let queued = view.queue.first().map(|prompt| prompt.text.as_str());
+        let mut after = queued.map(crate::agent::ui::pressed);
+        for item in order.into_iter().rev() {
+            if item.kind == ItemKind::User {
+                after = Some(open.sent.get(&item.id).and_then(|sent| sent.event.clone()));
+                continue;
+            }
+            let look = UiLook {
+                held: after.is_some(),
+                pressed: after.clone().flatten(),
+                open: item.status.is_open() && crate::agent::ui::tail_open(&item.body.text),
+            };
+            if open.ui.get(&item.id) != Some(&look) {
+                open.ui.insert(item.id.clone(), look);
+            }
+        }
     }
 
     fn sync_rows(&mut self, view: &ChatView) {
@@ -801,8 +910,12 @@ pub fn chat_surface<T: ChatHost>(
         owner: look.pane,
         touch: look.touch,
     });
+    let ui = crate::agent::ui::draws_ui(cx).then_some(look.pane);
     let pane = host.chat_pane();
-    let markdown = look.refs.map(|refs| pane.markdown_showing(refs, html));
+    let markdown = look.refs.map(|refs| pane.markdown_showing(refs, html, ui));
+    if let Some(markdown) = &markdown {
+        markdown.show(&pane.open.ui);
+    }
     pane.frame = ChatFrame {
         now,
         phase,
@@ -1174,6 +1287,7 @@ impl Draw<'_, '_> {
                     Bubble {
                         touch: self.hooks.touch,
                         hold,
+                        sent: self.open.sent.get(id).cloned(),
                     },
                     cx,
                 )
@@ -1594,6 +1708,7 @@ impl Draw<'_, '_> {
                     Bubble {
                         touch: self.hooks.touch,
                         hold: None,
+                        sent: None,
                     },
                     cx,
                 ))
@@ -2253,6 +2368,7 @@ struct UserFold {
 struct Bubble {
     touch: bool,
     hold: Option<AnyElement>,
+    sent: Option<UiSent>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2269,16 +2385,19 @@ fn user_bubble(
 ) -> AnyElement {
     let key = id.as_str().to_owned();
     let ground = cx.theme().ground_of(CardLook::Bubble);
-    let body = refs
-        .and_then(|refs| {
-            ref_text(
-                SharedString::from(format!("chat-user-text-{key}")),
-                text,
-                refs,
-                cx,
-            )
-        })
-        .unwrap_or_else(|| text.clone().into_any_element());
+    let body = match &bubble.sent {
+        Some(sent) => crate::agent::ui::sent_row(sent, bubble.touch, cx),
+        None => refs
+            .and_then(|refs| {
+                ref_text(
+                    SharedString::from(format!("chat-user-text-{key}")),
+                    text,
+                    refs,
+                    cx,
+                )
+            })
+            .unwrap_or_else(|| text.clone().into_any_element()),
+    };
     let actions = (!bubble.touch).then(|| {
         message_actions(
             &format!("user-{key}"),
@@ -2731,16 +2850,17 @@ fn markdown(
     hooks: &ChatHooks<'_>,
     cx: &App,
 ) -> AnyElement {
+    let extensions = hooks.markdown.map(|markdown| markdown.extensions(id));
     let id = SharedString::from(format!("chat-text-{}", id.as_str()));
     let scope = block_scope(hooks.owner, &id);
     let view = TextView::markdown(id, text);
-    let (view, extensions, pages) = match hooks.markdown {
-        Some(markdown) => (
+    let (view, extensions, pages) = match (hooks.markdown, extensions) {
+        (Some(markdown), Some(extensions)) => (
             view.links(RefLinks::new(Arc::clone(&markdown.refs))),
-            markdown.extensions.clone(),
+            extensions,
             markdown.refs.view.clone(),
         ),
-        None => (view, assistant_markdown_extensions(), None),
+        _ => (view, assistant_markdown_extensions(), None),
     };
     let column = if hooks.touch {
         touch_transcript_text(div().w_full(), cx)
@@ -3024,6 +3144,8 @@ mod tests {
         VisualTestContext, Window, div, prelude::*, px,
     };
     use zz_protocol::agent_stream::{AgentImage, AgentQuestion};
+
+    use crate::agent::ui::{UiLook, UiSent};
     use zz_protocol::chat::{
         Answer, Ask, ChatEvent, ItemBody, ItemId, ItemKind, ItemStatus, QuestionAnswer,
         RequestClose, RequestId, TurnBy, TurnId,
@@ -3589,6 +3711,77 @@ mod tests {
             at,
         })
         .expect("end");
+    }
+
+    fn said(view: &mut ChatView, id: &str, kind: ItemKind, text: &str, ended: bool) {
+        view.apply(&ChatEvent::ItemStarted {
+            item: ItemId::new(id),
+            turn: Some(TurnId(1)),
+            parent: None,
+            kind,
+            body: ItemBody::text(text),
+            at: 3,
+        })
+        .expect("start");
+        if ended {
+            view.apply(&ChatEvent::ItemEnded {
+                item: ItemId::new(id),
+                status: ItemStatus::Completed,
+                at: 3,
+            })
+            .expect("end");
+        }
+    }
+
+    #[test]
+    fn a_ui_block_is_held_by_what_the_user_sends_after_it() {
+        let mut view = ready("s1");
+        let block = "Name it.\n\n```ui\nroot = Button(\"Create\", Event(\"create\", {name: $/name}))\n$/name = \"fix\"\n```\n";
+        said(&mut view, "reply", ItemKind::Agent, block, true);
+        let mut pane = ChatPane::default();
+        pane.sync(&view);
+        assert_eq!(pane.open.ui[&ItemId::new("reply")], UiLook::default());
+        assert!(pane.open.sent.is_empty());
+
+        said(
+            &mut view,
+            "press",
+            ItemKind::User,
+            "ui action create {\"name\":\"fix\"}",
+            true,
+        );
+        said(
+            &mut view,
+            "next",
+            ItemKind::Agent,
+            "Again:\n\n```ui\nroot = Te",
+            false,
+        );
+        pane.sync(&view);
+        assert_eq!(
+            pane.open.ui[&ItemId::new("reply")],
+            UiLook {
+                held: true,
+                pressed: Some("create".to_owned()),
+                open: false,
+            }
+        );
+        assert_eq!(
+            pane.open.ui[&ItemId::new("next")],
+            UiLook {
+                held: false,
+                pressed: None,
+                open: true,
+            }
+        );
+        assert_eq!(
+            pane.open.sent[&ItemId::new("press")],
+            UiSent {
+                label: "Create".into(),
+                values: vec!["fix".into()],
+                event: Some("create".to_owned()),
+            }
+        );
     }
 
     #[test]

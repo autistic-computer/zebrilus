@@ -9,6 +9,7 @@ pub mod question;
 pub mod refs;
 pub mod resume;
 pub mod tasks;
+pub mod ui;
 pub mod view;
 pub mod visual;
 
@@ -900,8 +901,13 @@ pub(crate) struct HtmlBlocks {
 pub(crate) fn chat_markdown_extensions(
     open: Option<preview::ViewOpener>,
     html: Option<HtmlBlocks>,
+    ui: Option<ui::UiPlugin>,
 ) -> MarkdownExtensions {
     let mut extensions = MarkdownExtensions::default();
+    let plain = html.is_none() && ui.is_none();
+    if let Some(ui) = ui {
+        extensions = extensions.plugin(ui);
+    }
     if let Some(html) = html {
         extensions = extensions
             .plugin(visual::VisualPlugin {
@@ -916,7 +922,7 @@ pub(crate) fn chat_markdown_extensions(
             open,
             pages: html.is_some(),
         })),
-        None if html.is_none() => assistant_markdown_extensions(),
+        None if plain => assistant_markdown_extensions(),
         None => assistant_plugins(extensions),
     }
 }

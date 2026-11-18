@@ -1131,6 +1131,18 @@ impl AppView {
                 ));
             },
         )));
+        let senders = cx.weak_entity();
+        cx.set_global(zz_ui::agent::ui::AgentUiSender(Rc::new(
+            move |pane, text, _, cx| {
+                senders
+                    .update(cx, |view, cx| {
+                        view.agents.get(&PaneId(pane)).is_some_and(|agent| {
+                            agent.update(cx, |agent, cx| agent.send_text(&text, cx))
+                        })
+                    })
+                    .unwrap_or(false)
+            },
+        )));
         let replies = mux.clone();
         let inline = inline_browser.clone();
         let drafts = agent_controller.clone();

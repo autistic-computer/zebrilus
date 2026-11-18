@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UI blocks in the agent pane: final</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/badge/badge.css">
+<link rel="stylesheet" href="/penna-src/components/field/field.css">
+<link rel="stylesheet" href="/penna-src/components/input/input.css">
+<link rel="stylesheet" href="/penna-src/components/progress/progress.css">
+<link rel="stylesheet" href="/penna-src/components/segmented/segmented.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  [hidden] { display: none !important; }
+  .zz-page { display: grid; gap: 56px; max-width: 2000px; margin: 0 auto; padding: 40px 32px 96px; }
+  .zz-page > section { display: grid; gap: 14px; min-width: 0; }
+  .zz-page h1 { margin: 0; font-size: var(--penna-text-title-size, 22px); line-height: var(--penna-text-title-line, 28px); font-weight: 600; }
+  .zz-page h2 { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+  .zz-intro { display: grid; gap: 6px; }
+  .zz-variants.penna-variants { padding: 0; --penna-variant-width: 540px; }
+  .zz-variants > figure { min-width: 0; }
+
+  .zz-chat { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 20px 24px; border: 1px solid var(--penna-border); border-radius: 14px; background: var(--penna-bg); font-size: var(--penna-text-read-body-size, 14px); line-height: var(--penna-text-read-body-line, 22px); }
+  .zz-chat > p { margin: 0; }
+  .zz-chat .penna-chat-bubble { width: fit-content; }
+  .zz-chat .penna-chat-message { margin-bottom: 4px; }
+  .zz-chat .penna-chat-composer { margin-top: 8px; }
+
+  .ub { position: relative; display: grid; gap: 12px; min-width: 0; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); }
+  .ub > .penna-card { min-width: 0; overflow: hidden; }
+  .ub-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .ub .penna-field { max-width: 320px; }
+  .ub[data-held] { pointer-events: none; }
+  .ub-check { --penna-icon-size: 13px; }
+  .ub-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .ub-tile.penna-card[data-penna] { display: grid; gap: 6px; min-width: 0; padding: 12px; }
+  .ub-tile-head { display: flex; align-items: center; gap: 6px; min-height: 20px; color: var(--penna-muted); font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .ub-stat { font-size: 22px; line-height: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .ub-sent { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+  .ub-sent > b { font-weight: 600; }
+  .ub-sent > span { opacity: 0.72; }
+  .ub-working { display: flex; align-items: center; gap: 8px; color: var(--penna-fg-muted); font-size: var(--penna-text-body-size); }
+
+  .ub-wash { display: grid; place-items: center; height: 148px; border-radius: 12px; background: color-mix(in srgb, var(--penna-fg) 4%, transparent); }
+  .ub-fail { display: grid; gap: 4px; }
+  .ub-fail > div { display: flex; align-items: center; gap: 8px; color: var(--penna-fg-muted); --penna-icon-size: 14px; }
+  .ub-fail > div > span { flex: 1; }
+  .ub-fail > small { padding-left: 22px; font-family: var(--penna-mono); font-size: var(--penna-text-micro-size); color: var(--penna-muted); }
+
+  .zn { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px 48px; align-items: start; max-width: 1900px; }
+  .zn h3 { margin: 0 0 6px; font-size: var(--penna-text-body-size); font-weight: 600; }
+  .zn table { border-collapse: collapse; width: 100%; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); }
+  .zn td { padding: 6px 16px 6px 0; border-bottom: 1px solid var(--penna-divider); vertical-align: top; }
+  .zn td:first-child { width: 30%; color: var(--penna-fg-muted); }
+  .zn code { font-family: var(--penna-mono); font-size: var(--penna-text-mono-size); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>UI blocks in the agent pane: final</h1>
+  </div>
+
+  <section data-shot="flow">
+    <h2>A click sends, and the block is held</h2>
+    <div class="penna-variants zz-variants" data-flow></div>
+  </section>
+
+  <section data-shot="states">
+    <h2>A block's states</h2>
+    <div class="penna-variants zz-variants" data-states></div>
+  </section>
+
+  <section data-shot="numbers">
+    <h2>Numbers</h2>
+    <div class="zn" data-numbers></div>
+  </section>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const btn = (label, extra = "", lead = "") => `<button class="penna-button" data-penna="button" ${extra}>${lead}<span class="penna-label" data-penna-text>${label}</span></button>`;
+  const badge = (label, tone) => `<span class="penna-badge" data-penna="badge"${tone ? ` data-tone="${tone}"` : ""}><span class="badge-text" data-penna-text>${label}</span></span>`;
+  const progress = (value) => `<div class="penna-progress" data-size="small" style="--penna-value: ${value}%"><div class="penna-progress-fill"></div></div>`;
+  const segmented = (labels, on, off) => `<div class="penna-segmented" data-penna="field" data-size="small" data-still data-value="${on}"${off ? ` data-state="disabled"` : ""} role="radiogroup"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span>${labels
+    .map((label, index) => `<span class="penna-segment" role="button" aria-selected="${index === on}"><span class="penna-label" data-penna-text>${label}</span></span>`)
+    .join("")}</div></div>`;
+  const field = (label, value, off) => `<div class="penna-field"><span class="penna-field-label" data-penna-text>${label}</span><label class="penna-input" data-penna="field"${off ? ` data-state="disabled"` : ""}><input value="${value}"${off ? " disabled" : ""} /></label></div>`;
+
+  const form = (mode = "live", extra = "") => {
+    const held = mode !== "live";
+    const create = mode === "picked"
+      ? btn("Create", `data-tone="primary" data-prominent data-state="disabled"`, `<span class="ub-check">${ic("check")}</span>`)
+      : btn("Create", `data-tone="primary" data-prominent${held ? ` data-state="disabled"` : ""}`);
+    const cancel = btn("Cancel", held ? `data-state="disabled"` : "");
+    return `<div class="ub"${held ? " data-held" : ""}>${extra}${field("Branch name", "fix-tab-strip-gap", held)}<div class="ub-row">${segmented(["main", "develop", "release"], 0, held)}</div><div class="ub-row">${create}${cancel}</div></div>`;
+  };
+  const stores = [["Uptime", "99.98%", "", ""], ["Errors", "12", "up 3", "danger"], ["Latency", "41 ms", "ok", "success"]];
+  const stats = `<div class="ub"><div class="ub-tiles">${stores
+    .map(([name, value, note, tone]) => `<div class="penna-card ub-tile" data-penna="card.activity"><div class="ub-tile-head">${name}${note ? badge(note, tone) : ""}</div><div class="ub-stat">${value}</div></div>`)
+    .join("")}</div>${progress(62)}</div>`;
+
+  const bubble = (inner) => `<div class="penna-chat-message"><div class="penna-card penna-chat-bubble" data-penna="card.bubble">${inner}</div></div>`;
+  const said = (text) => bubble(`<span data-penna-text>${text}</span>`);
+  const sent = `<span class="ub-sent"><b>Create</b><span>fix-tab-strip-gap</span><span>main</span></span>`;
+  const composer = `<div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer"><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Mention">${ic("plus")}</button><span class="penna-chat-input" role="textbox" data-placeholder="Reply to Claude"></span><button class="penna-button" data-penna="button.send" data-shape="icon" disabled aria-label="Send">${ic("arrow-up")}</button></div></div>`;
+  const working = `<div class="ub-working"><span class="penna-spinner" data-color="muted">${ic("loader")}</span>Working</div>`;
+  const ask = said("Start a branch for the tab strip fix.");
+  const lead = `<p>Name it and pick a base.</p>`;
+  const chat = (body) => `<div class="zz-chat">${body}</div>`;
+  const figure = (name, note, body) => `<figure>${body}<figcaption><b>${name}</b>${note}</figcaption></figure>`;
+
+  document.querySelector("[data-flow]").innerHTML = [
+    figure("Live", "In the latest reply, every control works", chat(ask + lead + form() + composer)),
+    figure("After a click", "The click sent it. The pressed button keeps a check and the rest goes quiet", chat(ask + lead + form("picked") + bubble(sent) + working + composer)),
+    figure("You wrote something else", "Anything you send holds the block, with no check", chat(ask + lead + form("held") + said("Use the branch I already have.") + working + composer)),
+    figure("Nothing to press", "A block with no button is never held", chat(said("How did last night's deploy go?") + `<p>One regression, in errors.</p>` + stats + composer)),
+  ].join("");
+
+  document.querySelector("[data-states]").innerHTML = [
+    figure("While it streams", "", chat(`<div class="ub-wash"><span class="penna-spinner" data-color="muted">${ic("loader")}</span></div>`)),
+    figure("Could not draw", "Ask for a fix sends the problem. Nothing is sent without that click", chat(`<div class="ub-fail"><div>${ic("triangle-alert")}<span>Couldn't draw this</span>${btn("Ask for a fix")}</div><small>\`base\` is used but never assigned</small></div>`)),
+  ].join("");
+
+  const table = (title, rows) => `<div><h3>${title}</h3><table>${rows.map(([name, value]) => `<tr><td>${name}</td><td>${value}</td></tr>`).join("")}</table></div>`;
+  document.querySelector("[data-numbers]").innerHTML = [
+    table("A UI block", [
+      ["Counts as one", "a fenced <code>ui</code> block holding the compact lines; JSON is accepted too"],
+      ["Place", "the reply's text column, full width, spaced like a figure; no fill, edge or padding, as a page visual"],
+      ["Type", "the app's UI font, body 13 / 18"],
+      ["Drawn by", "penna components, in the chat's own window. No page, no browser process"],
+      ["Live", "from the moment the block closes, in the latest reply. Any number at once"],
+      ["Controls", "none of its own: no code view and no copy"],
+      ["While it streams", "a wash at fg 4%, radius 12, 148 px tall, with a 14 px muted spinner, until the fence closes"],
+      ["Failure", "14 px warning glyph and Couldn't draw this in muted ink; the first problem under it in mono micro; Ask for a fix"],
+    ]),
+    table("A click", [
+      ["A button", "sends at once, as your message. No draft, no second key"],
+      ["Your bubble", "the button's label in semibold, then the values it carried at 72% ink, 6 apart, in the order the agent listed them; a value past 48 characters is cut with an ellipsis"],
+      ["The agent receives", "one line: <code>ui action create {\"name\":\"fix-tab-strip-gap\",\"base\":\"main\"}</code>"],
+      ["Fields, sliders, choices", "change the block only. Nothing leaves until a button is pressed"],
+      ["While the agent works", "the click follows the composer's rule for a message sent mid-turn"],
+      ["Ask for a fix", "sends the problems the same way; zz never sends them without that click"],
+    ]),
+    table("Held", [
+      ["When", "as soon as you send anything after the block: its own click, or a message you typed"],
+      ["Look", "every control in its disabled state; the pressed button keeps a 13 px check before its label; no pointer"],
+      ["Kept from", "the order of the chat alone, so a resumed chat draws old blocks held with nothing stored"],
+      ["No button", "a block with nothing to press is never held"],
+    ]),
+    table("Layout the agent's names get", [
+      ["<code>Column</code>", "parts 12 apart; 6 apart inside a <code>Card</code>"],
+      ["<code>Row</code>", "8 apart, wrapping, centered on the cross axis"],
+      ["<code>Grid</code>", "equal columns 8 apart, 3 unless it says"],
+      ["<code>Card</code>", "<code>card.activity</code>, 12 padding"],
+      ["<code>Stat</code>", "small 12 / 16 muted label over 22 / 28 semibold, tabular"],
+      ["<code>TextField</code>, <code>Select</code>, <code>Slider</code>", "label 13 medium above, 4 apart; at most 320 wide"],
+      ["<code>Segmented</code>, <code>Badge</code>, <code>Progress</code>", "segmented small; badge with its tone; progress small, full width"],
+      ["<code>Table</code>", "rows ruled with the divider; header small and muted; cells 4 above and below, 16 between"],
+      ["<code>Button</code>", "medium; primary is the prominent one, ghost has no fill"],
+    ]),
+    table("What the agent is told", [
+      ["First choice", "for a comparison, stats, a form or a small control: a <code>ui</code> block, with the catalog text (2.3 KB)"],
+      ["Charts and diagrams", "<code>svg</code> and <code>mermaid</code> blocks, as today"],
+      ["<code>html preview</code>", "stays as it is until the chart component lands"],
+      ["Clients", "desktop first. The phone and web clients share the chat code and follow once checked at their widths"],
+    ]),
+  ].join("");
+
+  const place = () => {
+    for (const group of document.querySelectorAll(".penna-segmented")) {
+      const segments = group.querySelectorAll(".penna-segment");
+      const on = segments[Number(group.dataset.value) || 0];
+      const pill = group.querySelector(".penna-segment-pill");
+      if (!on || !pill) continue;
+      pill.style.setProperty("--pill-x", `${on.offsetLeft}px`);
+      pill.style.setProperty("--pill-w", `${on.offsetWidth}px`);
+      pill.style.setProperty("--penna-pill-r", `${on.offsetHeight / 2}px`);
+    }
+  };
+  const only = new URLSearchParams(location.search).get("shot");
+  if (only) {
+    for (const section of document.querySelectorAll("[data-shot]")) section.hidden = section.dataset.shot !== only;
+    document.querySelector(".zz-intro").hidden = only !== "flow";
+  }
+  window.pennaKit?.roundAll?.();
+  place();
+  addEventListener("load", () => { window.pennaKit?.roundAll?.(); place(); });
+})();
+</script>
+</body>
+</html>

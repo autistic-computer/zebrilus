@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UI blocks in the agent pane</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/badge/badge.css">
+<link rel="stylesheet" href="/penna-src/components/field/field.css">
+<link rel="stylesheet" href="/penna-src/components/input/input.css">
+<link rel="stylesheet" href="/penna-src/components/segmented/segmented.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  [hidden] { display: none !important; }
+  .zz-page { display: grid; gap: 56px; max-width: 2000px; margin: 0 auto; padding: 40px 32px 96px; }
+  .zz-page > section { display: grid; gap: 14px; min-width: 0; }
+  .zz-page h1 { margin: 0; font-size: var(--penna-text-title-size, 22px); line-height: var(--penna-text-title-line, 28px); font-weight: 600; }
+  .zz-page h2 { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+  .zz-page p.zz-lede { margin: 0; max-width: 96ch; color: var(--penna-fg-muted); }
+  .zz-intro { display: grid; gap: 6px; }
+  .zz-pick { margin-left: 6px; color: var(--penna-accent); font-weight: 600; }
+  .zz-variants.penna-variants { padding: 0; --penna-variant-width: 520px; }
+  .zz-variants > figure { min-width: 0; }
+  .zz-small.penna-variants { --penna-variant-width: 400px; }
+
+  .zz-states.penna-variants { --penna-variant-width: 540px; }
+  .zz-stage { display: grid; gap: 10px; }
+  .zz-when { font-family: var(--penna-mono); font-size: var(--penna-text-micro-size); letter-spacing: 0.04em; color: var(--penna-muted); }
+  .zz-chat { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 20px 24px; border: 1px solid var(--penna-border); border-radius: 14px; background: var(--penna-bg); font-size: var(--penna-text-read-body-size, 14px); line-height: var(--penna-text-read-body-line, 22px); }
+  .zz-chat > p { margin: 0; }
+  .zz-chat .penna-chat-bubble { width: fit-content; }
+  .zz-chat .penna-chat-message { margin-bottom: 4px; }
+  .zz-chat .penna-chat-composer { margin-top: 8px; }
+
+  .ub { position: relative; display: grid; gap: 12px; min-width: 0; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); }
+  .ub > .penna-card { min-width: 0; overflow: hidden; }
+  .ub-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .ub .penna-field { max-width: 320px; }
+  .ub[data-used] { pointer-events: none; }
+  .ub-check { --penna-icon-size: 13px; }
+  .ub-tools[data-penna="popover"] { position: absolute; top: -8px; right: -8px; z-index: 1; display: flex; flex-direction: row; gap: 2px; width: auto; min-width: 0; padding: 2px; }
+  .ub-tools > [data-penna] { width: 24px; height: 24px; --penna-icon-size: 13px; }
+  .ub-line { display: flex; align-items: center; gap: 6px; color: var(--penna-fg-muted); --penna-icon-size: 13px; }
+  .ub-line > b { font-weight: 500; color: var(--penna-fg); }
+
+  .ub-sent { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+  .ub-sent > b { font-weight: 600; }
+  .ub-sent > span { opacity: 0.72; }
+  .ub-working { display: flex; align-items: center; gap: 8px; color: var(--penna-fg-muted); font-size: var(--penna-text-body-size); }
+
+  .ub-code { margin: 0; overflow: hidden; font-family: var(--penna-mono); font-size: var(--penna-text-mono-size); line-height: var(--penna-text-mono-line); white-space: pre; color: var(--penna-fg); }
+  .ub-code i { font-style: normal; color: var(--penna-syntax-function, var(--penna-accent)); }
+  .ub-code s { text-decoration: none; color: var(--penna-syntax-string, var(--penna-success)); }
+  .ub-code u { text-decoration: none; color: var(--penna-syntax-property, var(--penna-warning)); }
+  .ub-wash { display: grid; place-items: center; height: 148px; border-radius: 12px; background: color-mix(in srgb, var(--penna-fg) 4%, transparent); }
+  .ub-fail { display: grid; gap: 4px; }
+  .ub-fail > div { display: flex; align-items: center; gap: 8px; color: var(--penna-fg-muted); --penna-icon-size: 14px; }
+  .ub-fail > div > span { flex: 1; }
+  .ub-fail > small { padding-left: 22px; font-family: var(--penna-mono); font-size: var(--penna-text-micro-size); color: var(--penna-muted); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>UI blocks in the agent pane</h1>
+    <p class="zz-lede">A UI block is drawn by zz from a few lines the agent writes, with no page behind it. Its place, spacing and controls stay as the chat visuals board settled. This board is about what is new.</p>
+  </div>
+
+  <section data-shot="click">
+    <h2>1. What a click does</h2>
+    <div class="penna-variants zz-variants" data-click></div>
+  </section>
+
+  <section data-shot="used">
+    <h2>2. The block after it is used</h2>
+    <div class="penna-variants zz-variants zz-small" data-used-takes></div>
+  </section>
+
+  <section data-shot="states">
+    <h2>3. States that change from a page visual</h2>
+    <div class="penna-variants zz-variants zz-states" data-states></div>
+  </section>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const btn = (label, extra = "", lead = "") => `<button class="penna-button" data-penna="button" ${extra}>${lead}<span class="penna-label" data-penna-text>${label}</span></button>`;
+  const iconButton = (name) => `<button data-penna="icon-button">${ic(name)}</button>`;
+  const badge = (label, tone) => `<span class="penna-badge" data-penna="badge"${tone ? ` data-tone="${tone}"` : ""}><span class="badge-text" data-penna-text>${label}</span></span>`;
+  const segmented = (labels, on, off) => `<div class="penna-segmented" data-penna="field" data-size="small" data-still data-value="${on}"${off ? ` data-state="disabled"` : ""} role="radiogroup"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span>${labels
+    .map((label, index) => `<span class="penna-segment" role="button" aria-selected="${index === on}"><span class="penna-label" data-penna-text>${label}</span></span>`)
+    .join("")}</div></div>`;
+  const field = (label, value, off) => `<div class="penna-field"><span class="penna-field-label" data-penna-text>${label}</span><label class="penna-input" data-penna="field"${off ? ` data-state="disabled"` : ""}><input value="${value}"${off ? " disabled" : ""} /></label></div>`;
+  const tools = (first = "braces") => `<div class="ub-tools" data-penna="popover">${iconButton(first)}${iconButton("copy")}</div>`;
+
+  const form = (mode = "live", extra = "") => {
+    const used = mode !== "live";
+    const create = mode === "picked"
+      ? btn("Create", `data-tone="primary" data-prominent data-state="disabled"`, `<span class="ub-check">${ic("check")}</span>`)
+      : btn("Create", `data-tone="primary" data-prominent${mode === "pressed" ? ` data-state="selected"` : ""}`);
+    const cancel = btn("Cancel", mode === "picked" ? `data-state="disabled"` : "");
+    return `<div class="ub"${mode === "picked" ? " data-used" : ""}>${extra}${field("Branch name", "fix-tab-strip-gap", mode === "picked")}<div class="ub-row">${segmented(["main", "develop", "release"], 0, mode === "picked")}</div><div class="ub-row">${create}${cancel}</div></div>`;
+  };
+
+  const bubble = (inner) => `<div class="penna-chat-message"><div class="penna-card penna-chat-bubble" data-penna="card.bubble">${inner}</div></div>`;
+  const said = (text) => bubble(`<span data-penna-text>${text}</span>`);
+  const sent = `<span class="ub-sent"><b>Create</b><span>fix-tab-strip-gap</span><span>main</span></span>`;
+  const composer = (inner, ready) => `<div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer"><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Mention">${ic("plus")}</button><span class="penna-chat-input" role="textbox"${inner ? "" : ` data-placeholder="Reply to Claude"`}>${inner}</span><button class="penna-button" data-penna="button.send" data-shape="icon"${ready ? ` data-emphasis="solid" data-solid="primary"` : " disabled"} aria-label="Send">${ic("arrow-up")}</button></div></div>`;
+  const working = `<div class="ub-working"><span class="penna-spinner" data-color="muted">${ic("loader")}</span>Working</div>`;
+  const ask = said("Start a branch for the tab strip fix.");
+  const lead = `<p>Name it and pick a base.</p>`;
+  const stage = (when, body) => `<div class="zz-stage"><span class="zz-when">${when}</span><div class="zz-chat">${body}</div></div>`;
+  const figure = (name, note, body, pick) => `<figure><div class="zz-stage" style="gap: 18px">${body}</div><figcaption><b>${name}</b>${note}${pick ? `<span class="zz-pick">my pick</span>` : ""}</figcaption></figure>`;
+
+  document.querySelector("[data-click]").innerHTML = [
+    figure("A. Draft", "The click writes a sentence into the composer. Enter sends it. This is what a page visual does today",
+      stage("AFTER THE CLICK", ask + lead + form() + composer("Create the branch fix-tab-strip-gap from main.", true)) +
+      stage("AFTER ENTER", ask + lead + form() + said("Create the branch fix-tab-strip-gap from main.") + working + composer("", false))),
+    figure("B. Chip", "The click puts a chip in the composer. You can add words, and Enter sends both",
+      stage("AFTER THE CLICK", ask + lead + form("pressed") + composer(`${badge("Create · fix-tab-strip-gap · main", "accent")}&nbsp;`, true)) +
+      stage("AFTER ENTER", ask + lead + form("picked") + bubble(sent) + working + composer("", false))),
+    figure("C. Send", "The click is the send. Your side of the chat shows what went out",
+      stage("AFTER THE CLICK", ask + lead + form("picked") + bubble(sent) + working + composer("", false)), true),
+  ].join("");
+
+  const collapsed = `<div class="ub"><div class="ub-line">${ic("check")}<b>Create</b><span>fix-tab-strip-gap from main</span><span style="flex: 1"></span>${ic("chevron-right")}</div></div>`;
+  const one = (body) => `<div class="zz-chat">${lead}${body}</div>`;
+  document.querySelector("[data-used-takes]").innerHTML = [
+    figure("A. Stays live", "Nothing changes. It can be used again", one(form())),
+    figure("B. Held", "Controls go quiet and the button you pressed keeps a check", one(form("picked")), true),
+    figure("C. Folded", "It folds to one line with what you chose. A click opens it again", one(collapsed)),
+  ].join("");
+
+  const code = `<pre class="ub-code">root = <i>Column</i>([name, base, <i>Row</i>([create, cancel])])
+name = <i>TextField</i>(<u>$/name</u>, <s>"Branch name"</s>)
+base = <i>Segmented</i>([<s>"main"</s>, <s>"develop"</s>, <s>"release"</s>], <u>$/base</u>)
+create = <i>Button</i>(<s>"Create"</s>, send, <s>"primary"</s>)
+send = <i>Event</i>(<s>"create"</s>, {name: <u>$/name</u>, base: <u>$/base</u>})
+cancel = <i>Button</i>(<s>"Cancel"</s>, <i>Event</i>(<s>"cancel"</s>))</pre>`;
+  const bare = (body) => `<div class="zz-chat">${body}</div>`;
+  document.querySelector("[data-states]").innerHTML = [
+    figure("Resting", "Live from the start. No picture first, and no first click to wake it", bare(form())),
+    figure("Pointer over it", "Show the code, copy. There is no page to open", bare(form("live", tools()))),
+    figure("Showing its code", "The lines the agent wrote", bare(`<div class="ub">${tools("eye")}<div class="penna-card" data-penna="card.code">${code}</div></div>`)),
+    figure("While it streams", "The same wash as a page visual, until the block closes", bare(`<div class="ub-wash"><span class="penna-spinner" data-color="muted">${ic("loader")}</span></div>`)),
+    figure("Could not draw", "What is wrong, in one line. The agent is told too and can send a fix", bare(`<div class="ub-fail"><div>${ic("triangle-alert")}<span>Couldn't draw this</span>${btn("Show the code")}</div><small>\`base\` is used but never assigned</small></div>`)),
+  ].join("");
+
+  const place = () => {
+    for (const group of document.querySelectorAll(".penna-segmented")) {
+      const segments = group.querySelectorAll(".penna-segment");
+      const on = segments[Number(group.dataset.value) || 0];
+      const pill = group.querySelector(".penna-segment-pill");
+      if (!on || !pill) continue;
+      pill.style.setProperty("--pill-x", `${on.offsetLeft}px`);
+      pill.style.setProperty("--pill-w", `${on.offsetWidth}px`);
+      pill.style.setProperty("--penna-pill-r", `${on.offsetHeight / 2}px`);
+    }
+  };
+  const only = new URLSearchParams(location.search).get("shot");
+  if (only) {
+    for (const section of document.querySelectorAll("[data-shot]")) section.hidden = section.dataset.shot !== only;
+    document.querySelector(".zz-intro").hidden = only !== "click";
+  }
+  window.pennaKit?.roundAll?.();
+  place();
+  addEventListener("load", () => { window.pennaKit?.roundAll?.(); place(); });
+})();
+</script>
+</body>
+</html>

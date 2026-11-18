@@ -1212,6 +1212,23 @@ impl AgentView {
         cx.notify();
     }
 
+    pub(crate) fn send_text(&mut self, text: &str, cx: &mut Context<Self>) -> bool {
+        let pane = self.pane;
+        let result = self.controller.update(cx, |controller, cx| {
+            controller.prompt(pane, text, Vec::new(), cx)
+        });
+        let sent = result.is_ok();
+        match result {
+            Ok(()) => {
+                self.submission_error = None;
+                self.chat.follow();
+            }
+            Err(error) => self.submission_error = Some(error),
+        }
+        cx.notify();
+        sent
+    }
+
     fn set_from_composer(
         &mut self,
         picked: ComposerSetter<'_>,

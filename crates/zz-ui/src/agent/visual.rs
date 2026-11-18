@@ -40,7 +40,7 @@ const MAX_SOURCE_BYTES: usize = 1024 * 1024;
 const PAGE_WIDTH: f32 = 1280.0;
 const PAGE_HEIGHT: f32 = 720.0;
 const STRIP_HEIGHT: f32 = 32.0;
-const DRAWING_HEIGHT: f32 = 148.0;
+pub(super) const DRAWING_HEIGHT: f32 = 148.0;
 const FAILED_HEIGHT: f32 = 96.0;
 const VISUAL_GROUP: &str = "agent-visual";
 
@@ -393,7 +393,7 @@ fn measure(state: &ala::Entity<HtmlPreviewState>) -> impl IntoElement + use<> {
     .size_full()
 }
 
-fn drawing(id: (&'static str, usize), height: Pixels, cx: &App) -> AnyElement {
+pub(super) fn drawing(id: (&'static str, usize), height: Pixels, cx: &App) -> AnyElement {
     Card::new(id, CardLook::Activity)
         .p_0()
         .flex()
@@ -409,7 +409,7 @@ fn drawing(id: (&'static str, usize), height: Pixels, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn failure(error: &SharedString, cx: &App) -> ala::Div {
+pub(super) fn failure(error: &SharedString, cx: &App) -> ala::Div {
     h_flex()
         .min_w_0()
         .gap_2()
@@ -900,6 +900,7 @@ mod tests {
                         owner: 7,
                         touch: false,
                     }),
+                    None,
                 ),
             });
             penna::Root::new(view, window, cx)
@@ -983,6 +984,7 @@ mod tests {
                         owner: 7,
                         touch: false,
                     }),
+                    None,
                 ),
             });
             penna::Root::new(view, window, cx)
