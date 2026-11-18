@@ -20,6 +20,8 @@ use crate::{
 };
 
 const AUTOHIDE_DELAY: Duration = Duration::from_secs(5);
+const MESSAGE_LINES: usize = 3;
+const MESSAGE_ROWS: f32 = 3.0;
 const DISMISS_ANIMATION: Duration = Duration::from_millis(150);
 const SLIDE_ANIMATION: Duration = Duration::from_millis(250);
 const SLIDE_DISTANCE: f32 = 45.;
@@ -65,6 +67,7 @@ pub struct Notification {
     width: Pixels,
     closable: bool,
     closing: bool,
+    expanded: bool,
 }
 
 impl Notification {
@@ -80,6 +83,7 @@ impl Notification {
             width: DEFAULT_WIDTH,
             closable: true,
             closing: false,
+            expanded: false,
         }
     }
 
@@ -217,6 +221,7 @@ impl Render for Notification {
             TextStyle::Small
         };
         let closing = self.closing;
+        let expanded = self.expanded;
         let placement = cx.theme().notification.placement;
 
         h_flex()
@@ -263,9 +268,25 @@ impl Render for Notification {
                             .when_some(self.message.clone(), |this, message| {
                                 this.child(
                                     div()
+                                        .id("message")
                                         .type_style(TextStyle::Small, cx)
+                                        .when(!expanded, |this| {
+                                            this.max_h(
+                                                TextStyle::Small.line_height() * MESSAGE_ROWS,
+                                            )
+                                            .line_clamp(MESSAGE_LINES)
+                                            .text_ellipsis()
+                                        })
                                         .debug_selector(|| "notification-message".to_owned())
-                                        .child(message),
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.expanded = !this.expanded;
+                                            cx.notify();
+                                        }))
+                                        .child(if expanded {
+                                            message
+                                        } else {
+                                            first_lines(&message)
+                                        }),
                                 )
                             })
                             .when_some(content, |this, content| this.child(content)),
@@ -301,6 +322,15 @@ impl Render for Notification {
                 move |this, delta| slide(this, placement, closing, delta),
             )
     }
+}
+
+fn first_lines(message: &SharedString) -> SharedString {
+    let mut lines = message.lines();
+    let shown = lines.by_ref().take(MESSAGE_LINES).collect::<Vec<_>>();
+    if lines.next().is_none() {
+        return message.clone();
+    }
+    format!("{}…", shown.join("\n")).into()
 }
 
 fn slide<E: Styled + IntoElement>(this: E, placement: Anchor, closing: bool, delta: f32) -> E {
@@ -459,7 +489,11 @@ fn autohide(
     let view = view.clone();
     Some(cx.spawn_in(window, async move |_, cx| {
         cx.background_executor().timer(delay).await;
-        let _ = view.update_in(cx, |note, window, cx| note.dismiss(window, cx));
+        let _ = view.update_in(cx, |note, window, cx| {
+            if !note.expanded {
+                note.dismiss(window, cx);
+            }
+        });
     }))
 }
 
@@ -528,6 +562,44 @@ mod tests {
             cx.debug_bounds(first_line)
                 .unwrap_or_else(|| panic!("the toast draws its {first_line}")),
         )
+    }
+
+    #[ala::test]
+    fn a_long_message_shows_three_lines_until_clicked(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let lines = |count: usize| vec!["line"; count].join("\n");
+        let height = |text: String, cx: &mut TestAppContext| {
+            let (_, cx) = cx.add_window_view(|_, _| Notification::info(text));
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+            cx.debug_bounds("notification-message")
+                .expect("the toast draws its message")
+                .size
+                .height
+        };
+        let one = height(lines(1), cx);
+        assert_eq!(height(lines(3), cx), one * 3.0);
+        assert_eq!(height(lines(9), cx), one * 3.0);
+        assert_eq!(height("word ".repeat(400), cx), one * 3.0);
+
+        let (_, cx) = cx.add_window_view(|_, _| Notification::info(lines(9)));
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let message = cx
+            .debug_bounds("notification-message")
+            .expect("the toast draws its message");
+        cx.simulate_click(message.center(), ala::Modifiers::none());
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let expanded = cx
+            .debug_bounds("notification-message")
+            .expect("the toast draws its message");
+        assert_eq!(expanded.size.height, one * 9.0);
     }
 
     #[ala::test]

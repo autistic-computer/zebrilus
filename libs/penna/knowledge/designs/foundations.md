@@ -1176,6 +1176,8 @@ Looks (`PanelLook`, `Panel::new(id, look)`):
 
 The four floating looks paint the same; each is its own recipe.
 
+A toast's message shows three lines. A longer one ends its third line with an ellipsis; a click on the message shows all of it, and an opened toast stays until it is closed.
+
 Anatomy:
 
 - Container: the look's fill, one step above its ground, with no outline or shadow. Radius the `radius` knob (12 by default, 8 in Yaru); square for Plain.
