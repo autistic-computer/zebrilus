@@ -481,6 +481,17 @@ impl AppShell {
             preferences.agent_launches.clone(),
         ));
         crate::preferences::install_palette_recents(cx);
+        let chats: Rc<RefCell<HashMap<PaneId, ala::WeakEntity<AgentPane>>>> = Rc::default();
+        let senders = Rc::clone(&chats);
+        cx.set_global(zz_ui::agent::ui::AgentUiSender(Rc::new(
+            move |pane, text, _, cx| {
+                let chat = senders
+                    .borrow()
+                    .get(&PaneId(pane))
+                    .and_then(ala::WeakEntity::upgrade);
+                chat.is_some_and(|chat| chat.update(cx, |chat, cx| chat.send_text(&text, cx)))
+            },
+        )));
         let appearance_view = cx.weak_entity();
         let appearance_observer = window.observe_window_appearance(move |window, cx| {
             let _ = appearance_view.update(cx, |this, cx| {
@@ -529,7 +540,7 @@ impl AppShell {
             terminals: HashMap::new(),
             waiting_panes: BTreeSet::new(),
             agents: HashMap::new(),
-            chats: Rc::default(),
+            chats,
             views: HashMap::new(),
             editors: HashMap::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]

@@ -37,7 +37,7 @@
   .ub-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .ub .penna-field { max-width: 320px; }
   .ub[data-held] { pointer-events: none; }
-  .ub-check { --penna-icon-size: 13px; }
+  .ub-check { --penna-icon-size: 14px; }
   .ub-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .ub-tile.penna-card[data-penna] { display: grid; gap: 6px; min-width: 0; padding: 12px; }
   .ub-tile-head { display: flex; align-items: center; gap: 6px; min-height: 20px; color: var(--penna-muted); font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
@@ -45,7 +45,7 @@
 
   .ub-sent { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
   .ub-sent > b { font-weight: 600; }
-  .ub-sent > span { opacity: 0.72; }
+  .ub-sent > span { color: var(--penna-fg-muted); }
   .ub-working { display: flex; align-items: center; gap: 8px; color: var(--penna-fg-muted); font-size: var(--penna-text-body-size); }
 
   .ub-wash { display: grid; place-items: center; height: 148px; border-radius: 12px; background: color-mix(in srgb, var(--penna-fg) 4%, transparent); }
@@ -143,7 +143,7 @@
     ]),
     table("A click", [
       ["A button", "sends at once, as your message. No draft, no second key"],
-      ["Your bubble", "the button's label in semibold, then the values it carried at 72% ink, 6 apart, in the order the agent listed them; a value past 48 characters is cut with an ellipsis"],
+      ["Your bubble", "the button's label in semibold, then the values it carried in the muted ink of the bubble's ground, 8 apart, in the order the agent listed them; a value past 48 characters is cut with an ellipsis"],
       ["The agent receives", "one line: <code>ui action create {\"name\":\"fix-tab-strip-gap\",\"base\":\"main\"}</code>"],
       ["Fields, sliders, choices", "change the block only. Nothing leaves until a button is pressed"],
       ["While the agent works", "the click follows the composer's rule for a message sent mid-turn"],
@@ -151,12 +151,12 @@
     ]),
     table("Held", [
       ["When", "as soon as you send anything after the block: its own click, or a message you typed"],
-      ["Look", "every control in its disabled state; the pressed button keeps a 13 px check before its label; no pointer"],
+      ["Look", "every control in its disabled state; the pressed button keeps a 14 check before its label; no pointer"],
       ["Kept from", "the order of the chat alone, so a resumed chat draws old blocks held with nothing stored"],
       ["No button", "a block with nothing to press is never held"],
     ]),
     table("Layout the agent's names get", [
-      ["<code>Column</code>", "parts 12 apart; 6 apart inside a <code>Card</code>"],
+      ["<code>Column</code>", "parts 12 apart; 8 apart inside a <code>Card</code>"],
       ["<code>Row</code>", "8 apart, wrapping, centered on the cross axis"],
       ["<code>Grid</code>", "equal columns 8 apart, 3 unless it says"],
       ["<code>Card</code>", "<code>card.activity</code>, 12 padding"],
@@ -169,7 +169,7 @@
     table("What the agent is told", [
       ["First choice", "for a comparison, stats, a form or a small control: a <code>ui</code> block, with the catalog text (2.3 KB)"],
       ["Charts and diagrams", "<code>svg</code> and <code>mermaid</code> blocks, as today"],
-      ["<code>html preview</code>", "stays as it is until the chart component lands"],
+      ["<code>html preview</code>", "still drawn when an agent writes one; the agent context no longer describes it now that <code>Chart</code> is in the block"],
       ["Clients", "desktop first. The phone and web clients share the chat code and follow once checked at their widths"],
     ]),
   ].join("");

@@ -1032,6 +1032,17 @@ impl AgentPane {
         true
     }
 
+    pub(super) fn send_text(&mut self, text: &str, cx: &mut Context<Self>) -> bool {
+        if !self.send_prompt(text, &[], cx) {
+            return false;
+        }
+        cx.haptic(ala::Haptic::Light);
+        self.draft_error = None;
+        self.chat.follow();
+        cx.notify();
+        true
+    }
+
     fn set_from_composer(
         &mut self,
         picked: ComposerSetter<'_>,

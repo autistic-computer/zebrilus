@@ -36,7 +36,7 @@ use zz_protocol::{
 
 use super::preview::{ViewOpener, ViewRequest};
 use super::refs::{ChatRefs, RefLinks, ref_links, ref_text};
-use super::ui::{UiLook, UiPlugin, UiSent};
+use super::ui::{UiBlocks, UiLook, UiPlugin, UiSent};
 use super::{
     agent_chat_text_view, agent_jump_to_bottom_button, agent_text_view,
     assistant_markdown_extensions, attachment_tile,
@@ -143,7 +143,7 @@ pub struct ChatHooks<'a> {
 pub struct ChatMarkdown {
     refs: Arc<ChatRefs>,
     html: Option<crate::agent::HtmlBlocks>,
-    ui: Option<u64>,
+    ui: Option<UiBlocks>,
     extensions: crate::text::MarkdownExtensions,
     blocks: RefCell<HashMap<ItemId, (UiLook, crate::text::MarkdownExtensions)>>,
 }
@@ -164,7 +164,11 @@ impl ChatMarkdown {
         Self::showing(refs, None, None)
     }
 
-    fn showing(refs: ChatRefs, html: Option<crate::agent::HtmlBlocks>, ui: Option<u64>) -> Self {
+    fn showing(
+        refs: ChatRefs,
+        html: Option<crate::agent::HtmlBlocks>,
+        ui: Option<UiBlocks>,
+    ) -> Self {
         let refs = Arc::new(refs);
         Self {
             extensions: markdown_extensions(&refs, html, None),
@@ -179,7 +183,7 @@ impl ChatMarkdown {
         &self,
         refs: &ChatRefs,
         html: Option<crate::agent::HtmlBlocks>,
-        ui: Option<u64>,
+        ui: Option<UiBlocks>,
     ) -> bool {
         self.refs.hosts == refs.hosts
             && self.refs.cwd == refs.cwd
@@ -188,7 +192,7 @@ impl ChatMarkdown {
     }
 
     fn show(&self, looks: &HashMap<ItemId, UiLook>) {
-        let Some(owner) = self.ui else {
+        let Some(drawn) = self.ui else {
             return;
         };
         let mut blocks = self.blocks.borrow_mut();
@@ -198,7 +202,7 @@ impl ChatMarkdown {
                 continue;
             }
             let plugin = UiPlugin {
-                owner,
+                blocks: drawn,
                 look: look.clone(),
             };
             blocks.insert(
@@ -432,7 +436,7 @@ impl ChatPane {
         &mut self,
         refs: ChatRefs,
         html: Option<crate::agent::HtmlBlocks>,
-        ui: Option<u64>,
+        ui: Option<UiBlocks>,
     ) -> Rc<ChatMarkdown> {
         match &self.markdown {
             Some(markdown) if markdown.reads(&refs, html, ui) => Rc::clone(markdown),
@@ -910,7 +914,10 @@ pub fn chat_surface<T: ChatHost>(
         owner: look.pane,
         touch: look.touch,
     });
-    let ui = crate::agent::ui::draws_ui(cx).then_some(look.pane);
+    let ui = crate::agent::ui::draws_ui(cx).then_some(UiBlocks {
+        owner: look.pane,
+        touch: look.touch,
+    });
     let pane = host.chat_pane();
     let markdown = look.refs.map(|refs| pane.markdown_showing(refs, html, ui));
     if let Some(markdown) = &markdown {
@@ -2386,7 +2393,7 @@ fn user_bubble(
     let key = id.as_str().to_owned();
     let ground = cx.theme().ground_of(CardLook::Bubble);
     let body = match &bubble.sent {
-        Some(sent) => crate::agent::ui::sent_row(sent, bubble.touch, cx),
+        Some(sent) => crate::agent::ui::sent_row(sent, bubble.touch, ground),
         None => refs
             .and_then(|refs| {
                 ref_text(

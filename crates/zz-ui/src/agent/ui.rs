@@ -10,7 +10,7 @@ use ala::{
     WeakEntity, Window, div, prelude::*, px,
 };
 use penna::{
-    Card, CardLook, TextStyle,
+    Card, CardLook, Ground, Label, Space, TextStyle,
     blocks::a2ui::{
         A2uiEvent, A2uiSurface, Action, Document, Message, Mode, compile_express, parse_messages,
     },
@@ -35,7 +35,6 @@ const ACTION_PREFIX: &str = "ui action ";
 const PROBLEMS_PREFIX: &str = "ui problems ";
 const FIX_LABEL: &str = "Ask for a fix";
 const SENT_VALUE_CHARS: usize = 48;
-const SENT_VALUE_INK: f32 = 0.72;
 const PRESS_HOLD: Duration = Duration::from_secs(2);
 
 pub struct AgentUiSender(pub Rc<dyn Fn(u64, String, &mut Window, &mut App) -> bool>);
@@ -50,6 +49,12 @@ fn send(owner: u64, text: String, window: &mut Window, cx: &mut App) -> bool {
     cx.try_global::<AgentUiSender>()
         .map(|sender| Rc::clone(&sender.0))
         .is_some_and(|sender| sender(owner, text, window, cx))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UiBlocks {
+    pub owner: u64,
+    pub touch: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -286,7 +291,7 @@ impl UiSent {
     }
 }
 
-pub(crate) fn sent_row(sent: &UiSent, touch: bool, cx: &App) -> AnyElement {
+pub(crate) fn sent_row(sent: &UiSent, touch: bool, ground: Ground) -> AnyElement {
     let style = if touch {
         TextStyle::TouchBody
     } else {
@@ -295,13 +300,13 @@ pub(crate) fn sent_row(sent: &UiSent, touch: bool, cx: &App) -> AnyElement {
     h_flex()
         .flex_wrap()
         .items_baseline()
-        .gap(px(6.0))
+        .gap(Space::GAP_RELATED)
         .debug_selector(|| "agent-ui-sent".to_owned())
-        .child(div().type_style_strong(style, cx).child(sent.label.clone()))
+        .child(Label::new(style, sent.label.clone()).strong().on(ground))
         .children(
             sent.values
                 .iter()
-                .map(|value| div().opacity(SENT_VALUE_INK).child(value.clone())),
+                .map(|value| Label::new(style, value.clone()).muted().on(ground)),
         )
         .into_any_element()
 }
@@ -396,7 +401,7 @@ struct UiSource {
 }
 
 pub(crate) struct UiPlugin {
-    pub(crate) owner: u64,
+    pub(crate) blocks: UiBlocks,
     pub(crate) look: UiLook,
 }
 
@@ -440,7 +445,7 @@ impl MarkdownPlugin for UiPlugin {
 
     fn render(&self, node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let source = node.data::<UiSource>().expect("ui node data");
-        render_ui(source, self.owner, &self.look, window, cx)
+        render_ui(source, self.blocks, &self.look, window, cx)
     }
 }
 
@@ -482,11 +487,12 @@ fn failed(
 
 fn render_ui(
     source: &UiSource,
-    owner: u64,
+    blocks: UiBlocks,
     look: &UiLook,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
+    let UiBlocks { owner, touch } = blocks;
     let offset = source.offset;
     if source.open {
         return drawing(("agent-ui-drawing", offset), px(DRAWING_HEIGHT), cx);
@@ -516,7 +522,10 @@ fn render_ui(
         } else {
             Mode::Live
         };
-        surface.update(cx, |surface, cx| surface.set_mode(mode, cx));
+        surface.update(cx, |surface, cx| {
+            surface.set_mode(mode, cx);
+            surface.set_touch(touch, cx);
+        });
         surface.into_any_element()
     } else {
         failed(&problems, owner, look.held, offset, cx)
@@ -587,7 +596,17 @@ mod tests {
         let (_, cx) = cx.add_window_view(|window, cx| {
             let view = cx.new(|_| Answer {
                 text,
-                extensions: chat_markdown_extensions(None, None, Some(UiPlugin { owner: 7, look })),
+                extensions: chat_markdown_extensions(
+                    None,
+                    None,
+                    Some(UiPlugin {
+                        blocks: UiBlocks {
+                            owner: 7,
+                            touch: false,
+                        },
+                        look,
+                    }),
+                ),
             });
             penna::Root::new(view, window, cx)
         });

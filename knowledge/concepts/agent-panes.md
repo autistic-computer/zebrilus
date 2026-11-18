@@ -1062,8 +1062,15 @@ calls:
   still open in a streaming reply the block is the visual's wash. A block that does not compile
   shows the first problem with Ask for a fix, which sends `ui problems [...]`; zz sends nothing on
   its own. A press inside a block keeps the chat's text selection from starting, so its fields
-  take focus. A client with no `AgentUiSender` (the thin clients today) shows the
-  fence as code.
+  take focus. The desktop and the thin clients both set `AgentUiSender`: the thin client sends the
+  line as `ProtocolMessage::AgentPrompt` through `AgentPane::send_text`, which echoes it locally
+  and counts it as queued mid-turn, like a typed message. On a phone (`ChatLook::touch`) a block
+  is drawn for a thumb (`A2uiSurface::set_touch`): 44 buttons sharing their row, 56 fields as
+  wide as the block, text on the touch ladder. A `Chart` in a block draws bars or lines for up to
+  four series (penna's `components::chart`), so the context no longer points agents at
+  `html preview` fragments; a fragment an agent writes anyway is still drawn. The bubble's values
+  are in the muted ink of the bubble's ground. A client with no `AgentUiSender` (the HTML client)
+  shows the fence as code.
 - **Diagrams.** Without a view opener, or inside a markdown view, a mermaid or SVG block sits in a
   `CardLook::Figure` card (`card.figure`), which has no fill and no header: Copy source and Open
   full diagram sit over its top right corner while the pointer is on it (always on touch). pele
