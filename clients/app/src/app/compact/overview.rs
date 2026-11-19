@@ -9,9 +9,9 @@ use penna::{
     ActiveTheme as _, Colorize as _, IconName, Sizable as _, Space,
     blocks::compact::{
         BENTO_GAP, BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, COMPACT_TITLE_BAR_HEIGHT,
-        MACHINE_TILE_HEIGHT, MachineTile, MiniPane, PhoneTile, PillPlacement, StripMachine,
+        MACHINE_TILE_HEIGHT, MachineTile, PhoneTile, PillPlacement, StripItem, StripMark,
         TAIL_LINES, WindowCard, WindowTail, bento_grid, compact_bar_disc, compact_floating_bar,
-        folding_title_bar, machine_strip, phone_card_ground, pill_handle, pill_handle_bounds,
+        folding_title_bar, phone_card_ground, pill_handle, pill_handle_bounds, pill_strip,
         scrolled, split_pill_bounds, zoom_card_ground,
     },
     blocks::settings::{large_title, large_title_lead},
@@ -54,7 +54,6 @@ use super::{
 };
 use crate::{connection::Connection, terminal::phone_colors};
 
-const PREVIEW_ROWS: u16 = 40;
 const PREVIEW_COLUMNS: usize = 56;
 const HOST_GAP: f32 = 12.0;
 const ZOOM_FADE_START: f32 = 0.3;
@@ -65,14 +64,6 @@ const TILE_FALLBACK_TOP: f32 = 160.0;
 const TILE_FALLBACK_HEIGHT: f32 = 178.0;
 const CARD_EMPTY_TOP: f32 = 96.0;
 pub(super) const MACHINE_SHEET: &str = "machine-sheet";
-
-fn page_host(url: &str) -> &str {
-    if url == "about:blank" {
-        return "";
-    }
-    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
-    rest.split(['/', '?', '#']).next().unwrap_or(rest)
-}
 
 fn host_palette(core: &zz_client::ClientCore) -> TerminalPalette {
     core.appearance().map_or_else(
@@ -1105,18 +1096,16 @@ impl AppShell {
             Some(HostState::Connecting) => "Connecting".to_owned(),
             _ => "Not connected".to_owned(),
         };
-        let machines: Vec<StripMachine> = hosts
+        let machines: Vec<StripItem> = hosts
             .iter()
             .enumerate()
-            .map(|(page, host)| StripMachine {
-                mark: host.mark(cx),
-                name: host.title.clone().into(),
-                line: if page == index {
+            .map(|(page, host)| {
+                let line = if page == index {
                     shown_line.clone()
                 } else {
                     host.strip_line(cx)
-                }
-                .into(),
+                };
+                StripItem::new(StripMark::Glyph(host.mark(cx)), host.title.clone(), line)
             })
             .collect();
         let stack = self.compact.menu.as_ref().map(|(menu, _)| menu.clone());
@@ -1141,9 +1130,9 @@ impl AppShell {
         .size
         .width;
         let view = cx.entity().downgrade();
-        let pill = machine_strip(
+        let pill = pill_strip(
             "overview-host",
-            &machines,
+            machines,
             self.compact.host_pager.position(),
             width,
             placement,
@@ -1563,50 +1552,6 @@ impl AppShell {
             this.close_overview(cx);
         }))
         .into_any_element()
-    }
-
-    pub(super) fn mini_preview(
-        &self,
-        page: &Page,
-        connection: &Entity<Connection>,
-        here: bool,
-        cx: &App,
-    ) -> MiniPane {
-        let id = ("mini-pane", page.pane.0);
-        let core = &connection.read(cx).core;
-        match &page.kind {
-            PaneKindSnapshot::Terminal => core.viewport(page.pane).map_or_else(
-                || MiniPane::terminal(id, format!("$ {}", page.title)),
-                |viewport| {
-                    MiniPane::terminal(
-                        id,
-                        terminal_preview(
-                            viewport,
-                            phone_colors(viewport, &host_palette(core), cx),
-                            &font(cx.theme().mono_font_family.clone()),
-                            0..viewport.rows.min(PREVIEW_ROWS),
-                            PREVIEW_COLUMNS,
-                        ),
-                    )
-                },
-            ),
-            PaneKindSnapshot::Browser(descriptor) => {
-                let host = here
-                    .then(|| self.browser_page(page, cx))
-                    .flatten()
-                    .map(|(_, host)| host)
-                    .or_else(|| {
-                        descriptor
-                            .tabs
-                            .get(descriptor.active_tab)
-                            .map(|url| page_host(url).to_owned())
-                    })
-                    .unwrap_or_default();
-                MiniPane::browser(id, host)
-            }
-            PaneKindSnapshot::Agent(_) => MiniPane::chat(id),
-            _ => MiniPane::blank(id),
-        }
     }
 
     fn unreached_host(

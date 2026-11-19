@@ -35,10 +35,7 @@ use penna::{
     blocks::sidebar::{
         chrome_button, sidebar_footer, sidebar_heading, sidebar_panel, sidebar_titlebar,
     },
-    blocks::touch::{
-        ArrowDirection, ArrowPad, KeyRow, KeyRowKey, PageDot, WhichKeyList, arrow_pad_bubble,
-        page_dots,
-    },
+    blocks::touch::{ArrowPad, KeyRow, KeyRowKey, PageDot, WhichKeyList, page_dots},
     blocks::which_key::{WhichKeyCap, WhichKeyHeader, WhichKeyRow, WhichKeyView},
     components::badge::Badge,
     components::button::{Button, ButtonVariants as _},
@@ -928,8 +925,7 @@ impl Phone {
                     .py(px(8.0))
                     .items_start()
                     .justify_end()
-                    .type_style_mono(TextStyle::Small, cx)
-                    .child(arrow_pad_bubble(Some(ArrowDirection::Up), cx)),
+                    .type_style_mono(TextStyle::Small, cx),
             )
             .child(
                 div()

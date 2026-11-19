@@ -94,6 +94,28 @@ pub fn pill_face(
 }
 
 #[must_use]
+pub fn strip_face(
+    program: Option<&'static Program>,
+    glyph: IconName,
+    dot: Option<Hsla>,
+    ground: Ground,
+    cx: &App,
+) -> Div {
+    let size = penna::blocks::compact::STRIP_FACE;
+    pane_face(
+        program,
+        glyph,
+        px(size),
+        px(size * GLYPH_SCALE),
+        stack_radius(px(size), cx),
+        ground,
+        cx,
+    )
+    .relative()
+    .children(dot.map(|color| ringed_dot(color, px(FACE_DOT), ground.fill)))
+}
+
+#[must_use]
 pub fn window_faces(windows: &[(PaneTile, Attention)], ground: Ground, cx: &App) -> Div {
     let muted = penna::muted_on(ground, cx);
     let size = WINDOW_FACE;

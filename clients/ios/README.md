@@ -15,15 +15,16 @@ down, with no header: the status bar is transparent over it, and its text turns 
 to match. Landing on a pane zooms it (`resize-pane -Z`), so the daemon sizes
 the window to that pane; terminal previews keep the neighbouring pane live while it
 slides in, and a browser pane slides in with its page showing. The bar at the bottom is two
-pieces: the pill, with a short handle on its top edge, and the plus disc. The pill shows the pane's icon, its name, and under
-it a strip with a cell per pane grouped by window; an agent waiting on a permission turns the icon
-and that line yellow. Over a web page the pill keeps its text color,
+pieces: the pill, with a short handle on its top edge, and the plus disc. The pill holds every pane of the
+session as its program's face, the one on screen stretched into a capsule with its name over what
+it is doing; a pane waiting off screen has a yellow dot on its face, and the capsule says
+"Needs approval" in yellow. Swipe the pill sideways to page, the capsule moving with the finger,
+or tap another face to go to that pane. Over a web page the pill keeps its text color,
 as Safari's bar does, and deepens its glass instead when the page under it is light. Tapping the
-pill opens the pane menu as a stack of chips: Rename and Close for the pane (Close asks first in a
+capsule opens the pane menu as a stack of chips: Rename and Close for the pane (Close asks first in a
 sheet, Rename opens a sheet with the name), Find and All bindings in a terminal. Tapping plus opens
 Chat, Terminal and Browser under "New in" and the pane's session, nearest the thumb,
-with New session above. Holding the pill raises every pane as a card over the bar; sliding picks
-one, a pane per step, and letting go jumps to it. A tap on the pill's handle goes up one level. The overview is three levels you
+with New session above. A tap on the pill's handle goes up one level. The overview is three levels you
 zoom through, the way Calendar goes from year to month to day. The handle, or dragging the pill up
 (past a third of the way or with a flick), zooms out to its host's page: the pane shrinks toward
 the middle of the screen while the page comes in behind it, and the bar swaps to the machine's. A drag
@@ -46,14 +47,16 @@ tile with something waiting is tinted yellow and counts it. Then Add machine and
 machine, into its connecting card while it connects, or to reconnect a failed one, and hold it for its sheet. With nothing attached the app opens on Machines. Entering a host, or paging to it with the pill, puts it on screen, since the
 daemon streams previews only to the client attached to it. The phone has no session tree: the sidebar toggle and `focus-sidebar` open the
 overview instead. The keyboard opens only from that button or a tap on the terminal.
-While it is up, a key row replaces the bar: the prefix key in a pill of its own, then ctrl,
-alt, tab, esc, `/`, `@`, an arrow pad, and hide in a row that scrolls sideways when they do
-not fit, from any key but the arrow pad. A fade and a chevron mark the side with more keys;
-tapping them scrolls there. Prefix opens the pane menu, rising from the key, and its All
-bindings sheet sends any prefix binding through the daemon's key table. Ctrl and alt share one
-gesture: tap for the key's own job, hold or slide up for a card, slide sideways to scroll the
-row, and release on an item to pick it. A tap latches ctrl or alt for the next key; holding
-them offers common chords (^C, ^D, ^Z, ^R, M-b, M-f). The arrow pad repeats while held.
+While it is up, a key row replaces the bar, shaped like it: a pill holding prefix, ctrl, alt,
+⌘ and …, then the arrow pad and Done as discs. A pressed, latched or open key shows the same
+muted wash as the pill's capsule. Prefix opens the pane menu, rising from the key, and its All
+bindings sheet sends any prefix binding through the daemon's key table. Ctrl, alt and ⌘ share one
+gesture: tap to latch the modifier for the next key, hold or slide up for its chords, and release
+on one to send it (Interrupt, End input, Suspend, Word back and the rest; Paste, Copy, Find
+and Select all for ⌘). The chips name what a chord does, not its keys. A
+key sent with ⌘ runs zz's own binding. … opens Escape, Tab, / and @. The arrow pad is a
+thumbstick: hold it and lean toward a direction, and it repeats faster the further the finger
+goes, with a tick per arrow. Done lowers the keyboard.
 
 Both sheets follow the finger when dragged down by the grabber or the header, or by their
 content once it is scrolled to the top. Dragged past about half their height, or flicked down,
@@ -308,14 +311,14 @@ On iPhone the pill opens the pane menu, plus opens the New menu, and dragging th
 
 Without a hardware keyboard, tapping a terminal, the agent composer, or any text
 field raises the on-screen keyboard. For a terminal the app draws the phone's key row
-across the bottom of the window, above the keys: the prefix key, then esc, tab, ctrl,
-alt, `/`, `@`, the arrow pad, and hide. In the wide layout (640 points and up) the
+across the bottom of the window, above the keys: a pill of the prefix key, ctrl, alt, ⌘
+and … (Escape, Tab, `/`, `@`), then the arrow pad and Done as discs. In the wide layout (640 points and up) the
 prefix key sends the prefix (⌃B unless the host rebinds it, `prefix2` when `prefix` is
 `None`, and no key when both are) instead of opening the pane menu. Settings fields,
 prompts, the palette, and host forms get the plain keyboard. The terminal example keeps the
 backend's own row (Escape, Tab, Control, Option, the arrows, and hide), which it shows
 only for an input whose Return inserts a line break.
-Ctrl and alt latch for the next key, so ctrl then C sends Ctrl-C. The
+Ctrl, alt and ⌘ latch for the next key, so ctrl then C sends Ctrl-C. The
 workspace shrinks to the space above the docked keyboard, and a focused settings
 field scrolls back into view above it; a focused row of a long settings page keeps
 painting while it is off screen, so the keyboard stays up. A floating keyboard

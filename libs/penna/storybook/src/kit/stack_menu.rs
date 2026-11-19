@@ -1,6 +1,6 @@
 use ala::{
-    App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, ScrollHandle,
-    Styled as _, Window, div, px,
+    App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
+    Window, div, px,
 };
 use penna::{
     ActiveTheme as _, IconName, StyledExt as _, TextStyle,
@@ -35,13 +35,13 @@ pub const STORY: Story = Story {
         Section {
             id: "ctrl",
             name: "Chords in two columns",
-            summary: "Holding ctrl opens its ten chords as a stack over the key, two columns filled a row at a time from the key out, ^C and ^D nearest. The chips share one width so the chords line up; the key stays inverted and is its own close.",
+            summary: "Holding ctrl opens its ten chords as a stack over the key, two columns filled a row at a time from the key out, Interrupt and End input nearest. Each chip is its name alone, all one width; the key keeps its wash and is its own close.",
             build: |_, cx| cx.new(|cx| Chords::new(StickyModifier::Control, cx)).into(),
         },
         Section {
             id: "alt",
             name: "Chords in one column",
-            summary: "alt's four chords in one column, M-b Word back nearest the key.",
+            summary: "alt's four chords in one column, Word back nearest the key.",
             build: |_, cx| cx.new(|cx| Chords::new(StickyModifier::Alt, cx)).into(),
         },
     ],
@@ -233,55 +233,59 @@ struct Chords {
     key: Entity<StackKey>,
     other: Entity<StackKey>,
     arrows: Entity<ArrowPad>,
-    scroll: ScrollHandle,
     modifier: StickyModifier,
 }
 
 fn chord_chips(modifier: StickyModifier) -> Vec<StackChip> {
-    let chords: &[(&str, &str, &str)] = match modifier {
+    let chords: &[(&str, &str)] = match modifier {
         StickyModifier::Control => &[
-            ("ctrl-c", "^C", "Interrupt"),
-            ("ctrl-d", "^D", "End input"),
-            ("ctrl-z", "^Z", "Suspend"),
-            ("ctrl-l", "^L", "Clear"),
-            ("ctrl-r", "^R", "History"),
-            ("ctrl-u", "^U", "Kill line"),
-            ("ctrl-w", "^W", "Kill word"),
-            ("ctrl-k", "^K", "Kill to end"),
-            ("ctrl-a", "^A", "Line start"),
-            ("ctrl-e", "^E", "Line end"),
+            ("ctrl-c", "Interrupt"),
+            ("ctrl-d", "End input"),
+            ("ctrl-z", "Suspend"),
+            ("ctrl-l", "Clear"),
+            ("ctrl-r", "History"),
+            ("ctrl-u", "Kill line"),
+            ("ctrl-w", "Kill word"),
+            ("ctrl-k", "Kill to end"),
+            ("ctrl-a", "Line start"),
+            ("ctrl-e", "Line end"),
         ],
         StickyModifier::Alt => &[
-            ("alt-b", "M-b", "Word back"),
-            ("alt-f", "M-f", "Word ahead"),
-            ("alt-d", "M-d", "Kill word"),
-            ("alt-.", "M-.", "Last arg"),
+            ("alt-b", "Word back"),
+            ("alt-f", "Word ahead"),
+            ("alt-d", "Kill word"),
+            ("alt-.", "Last arg"),
+        ],
+        StickyModifier::Command => &[
+            ("cmd-v", "Paste"),
+            ("cmd-c", "Copy"),
+            ("cmd-f", "Find"),
+            ("cmd-a", "Select all"),
         ],
     };
     chords
         .iter()
-        .map(|(id, chord, label)| StackChip::chord(*id, *chord, *label))
+        .map(|(id, label)| StackChip::text(*id, *label))
         .collect()
 }
 
 impl Chords {
     fn new(modifier: StickyModifier, cx: &mut Context<Self>) -> Self {
-        let scroll = ScrollHandle::new();
         let latch = |modifier: StickyModifier, cx: &mut Context<Self>| {
             let label = match modifier {
                 StickyModifier::Control => "ctrl",
                 StickyModifier::Alt => "alt",
+                StickyModifier::Command => "cmd",
             };
             cx.new(|cx| {
                 StackKey::new(label, StackKeyTap::Latch(modifier), cx)
                     .icon(modifier.icon())
-                    .scrolls(scroll.clone())
                     .groups(vec![StackGroup::new(chord_chips(modifier))], cx)
             })
         };
         let other = match modifier {
             StickyModifier::Control => StickyModifier::Alt,
-            StickyModifier::Alt => StickyModifier::Control,
+            StickyModifier::Alt | StickyModifier::Command => StickyModifier::Control,
         };
         let key = latch(modifier, cx);
         let other = latch(other, cx);
@@ -292,30 +296,28 @@ impl Chords {
             key,
             other,
             arrows: cx.new(ArrowPad::new),
-            scroll,
             modifier,
         }
     }
 
     fn row(&self) -> KeyRow {
-        let (control, alt) = match self.modifier {
+        let (control, other) = match self.modifier {
             StickyModifier::Control => (&self.key, &self.other),
-            StickyModifier::Alt => (&self.other, &self.key),
+            StickyModifier::Alt | StickyModifier::Command => (&self.other, &self.key),
         };
         KeyRow::new(vec![
             KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
-            KeyRowKey::tab(),
             KeyRowKey::Stack(control.clone()),
-            KeyRowKey::Stack(alt.clone()),
+            KeyRowKey::Stack(other.clone()),
+            KeyRowKey::tab(),
             KeyRowKey::text("/"),
         ])
-        .trail(vec![
+        .discs(vec![
             KeyRowKey::Arrows(self.arrows.clone()),
-            KeyRowKey::Hide,
+            KeyRowKey::Done,
         ])
-        .track_scroll(&self.scroll)
         .on_key(|_, _, _| {})
-        .on_hide(|_, _| {})
+        .on_done(|_, _| {})
     }
 }
 

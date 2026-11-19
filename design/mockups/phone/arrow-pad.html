@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arrow pad</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-row { display: grid; grid-template-columns: repeat(3, 390px); gap: 18px 16px; }
+  .zz-row .zz-cell, .zz-live .zz-cell { zoom: 1.3; }
+  .zz-row figure { margin: 0; }
+  .zz-row figcaption, .zz-live figcaption { margin: 6px 0 0 2px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-row figcaption > b, .zz-live figcaption > b { color: var(--penna-fg); font-weight: 600; margin-right: 6px; }
+  .zz-cell { position: relative; width: 300px; height: 210px; overflow: hidden; border-radius: 20px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-border); color: var(--penna-fg); }
+  .zz-tty { position: absolute; left: 14px; top: 16px; margin: 0; font: 13px/18px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; }
+  .zz-tty b { font-weight: 400; color: var(--penna-fg); }
+  .zz-caret { display: inline-block; width: 8px; height: 15px; vertical-align: -3px; background: var(--penna-fg); }
+  .zz-sent { position: absolute; left: 14px; top: 56px; font: 12px/16px var(--penna-mono); color: var(--penna-fg-muted); }
+  .zz-krow[data-penna] { position: absolute; left: 12px; bottom: 16px; width: 150px; height: 56px; --penna-r: 9999px; --penna-k: 1; }
+  .zz-krow > .zz-k { position: absolute; top: 4px; display: grid; place-items: center; width: 46px; height: 48px; font-size: var(--penna-text-touch-small-size); --penna-icon-size: 20px; color: var(--penna-fg); }
+  .zz-disc[data-penna] { position: absolute; bottom: 16px; width: 56px; height: 56px; --penna-r: 9999px; --penna-k: 1; }
+  .zz-disc[data-pad] { left: 170px; z-index: 3; }
+  .zz-disc[data-done] { left: 234px; }
+  .zz-disc > .zz-in { position: absolute; inset: 4px; display: grid; place-items: center; border-radius: 50%; --penna-icon-size: 22px; color: var(--penna-fg); }
+  .zz-fill[data-penna] { position: absolute; inset: 0; --penna-r: 9999px; --penna-k: 1; }
+  .zz-in > :not(.zz-fill) { position: relative; }
+  .zz-compass { position: relative; width: 48px; height: 48px; }
+  .zz-compass > i { position: absolute; --penna-icon-size: 14px; width: 14px; height: 14px; color: var(--penna-muted); transition: none; }
+  .zz-compass > i[data-on] { color: var(--penna-fg); --penna-icon-size: 18px; width: 18px; height: 18px; }
+  .zz-compass > s { position: absolute; left: 22px; top: 22px; width: 4px; height: 4px; border-radius: 2px; background: var(--penna-muted); }
+  .zz-knob { position: absolute; left: 4px; top: 4px; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; color: var(--penna-fg); --penna-icon-size: 22px; }
+  .zz-knob > i { position: relative; }
+  .zz-bloom > .zz-in { position: absolute; inset: 4px; display: grid; place-items: center; --penna-icon-size: 22px; color: var(--penna-fg); }
+  .zz-trail { position: absolute; top: 50%; height: 2px; margin-top: -1px; border-radius: 1px; background: color-mix(in srgb, var(--penna-fg) 30%, transparent); }
+  .zz-ticks { position: absolute; left: 14px; bottom: 82px; display: flex; gap: 3px; }
+  .zz-ticks > i { width: 4px; height: 10px; border-radius: 2px; background: var(--penna-fg); opacity: 0.7; }
+  .zz-finger { position: absolute; z-index: 9; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; box-shadow: 0 0 0 1.5px rgb(150 150 150 / 0.55); pointer-events: none; }
+  .zz-bloom[data-penna] { position: absolute; display: grid; place-items: center; --penna-r: 9999px; --penna-k: 1; z-index: 4; }
+  .zz-live { display: grid; grid-template-columns: 390px 1fr; gap: 20px; align-items: start; }
+  .zz-live .zz-cell { cursor: var(--penna-click-cursor); user-select: none; touch-action: none; }
+  .zz-table { display: grid; max-width: 1100px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-table > * { padding: 10px 16px 10px 0; box-shadow: inset 0 1px var(--penna-divider); }
+  .zz-table > b { font-weight: 600; }
+  .zz-table > span { color: var(--penna-fg-muted); }
+  .zz-table > [data-head] { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--penna-fg-muted); box-shadow: none; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Arrow pad</h1>
+    <p>Today holding the arrow disc pops a 152 bubble with a 3 by 3 grid over the row; dragging picks a cell and holding it repeats. Four takes that keep everything in the disc. All of them tick on each arrow sent (<code>selection_haptic</code>), pick a direction once the finger has moved 10, and stop the moment the finger lifts. The live strip on each take takes a mouse drag on the disc and moves the caret in the line above.</p>
+  </div>
+
+  <section data-take="a1">
+    <h2>A1. Ticks only</h2>
+    <p>No popup and nothing moves. While held, the disc's glyph turns into four small chevrons around a dot; the one the finger points at grows and takes the ink. Holding repeats after 300ms, then every 80ms, a tick per arrow. The least to draw, the least to see.</p>
+    <div class="zz-row" data-film="a1"></div>
+    <div class="zz-live" data-live="a1"></div>
+  </section>
+
+  <section data-take="a2">
+    <h2>A2. Thumbstick</h2>
+    <p>The disc's inner 48 knob follows the finger, held to 10 from the middle, like a thumbstick; the knob lights the wash and its chevron points where it leans. Repeat speeds up the further you lean: at 10 it is 300ms then 80ms, and it eases back to the middle on release with the touch spring.</p>
+    <div class="zz-row" data-film="a2"></div>
+    <div class="zz-live" data-live="a2"></div>
+  </section>
+
+  <section data-take="a3">
+    <h2>A3. Trackpad</h2>
+    <p>No timer: every 14 of travel sends one arrow, so the caret moves as fast as the finger does, and reversing goes back. A faint trail grows from the disc along the drag and the glyph's chevron lights. Precise for walking a cursor through a command line; a long jump means a long drag.</p>
+    <div class="zz-row" data-film="a3"></div>
+    <div class="zz-live" data-live="a3"></div>
+  </section>
+
+  <section data-take="a4">
+    <h2>A4. Bloom</h2>
+    <p>The disc grows in place to 96, centred on itself, the four arrows on its rim and the finger's one in the wash; it is the old bubble shrunk into the button instead of floating above the row. Repeat as today.</p>
+    <div class="zz-row" data-film="a4"></div>
+    <div class="zz-live" data-live="a4"></div>
+  </section>
+
+  <section data-take="compare">
+    <h2>Side by side</h2>
+    <div class="zz-table" style="grid-template-columns: max-content repeat(4, minmax(0, 1fr))">
+      <span data-head></span><span data-head>A1. Ticks only</span><span data-head>A2. Thumbstick</span><span data-head>A3. Trackpad</span><span data-head>A4. Bloom</span>
+      <b>Leaves the disc</b><span>No</span><span>No</span><span>A faint trail</span><span>Grows to 96 in place</span>
+      <b>Sends</b><span>Repeat on a timer</span><span>Repeat, faster when leaning further</span><span>One per 14 of travel</span><span>Repeat on a timer</span>
+      <b>Shows the direction</b><span>The chevron lights</span><span>The knob leans</span><span>Trail and chevron</span><span>The rim arrow fills</span>
+      <b>Good at</b><span>Quiet</span><span>Feel, long runs</span><span>Precision</span><span>Familiar</span>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const txt = (t) => `<span class="penna-text" data-penna-text>${t}</span>`;
+  const fill = `<span class="zz-fill" data-penna="phone.pill.icon"></span>`;
+  const LINE = "git commit -m 'pill strip'";
+  const tty = (caret) => {
+    const before = LINE.slice(0, caret), at = LINE[caret] ?? " ", after = LINE.slice(caret + 1);
+    return `<pre class="zz-tty"><b>~/dev/zebrilus main</b>\n❯ ${before}<span style="background: var(--penna-fg); color: var(--penna-bg)">${at}</span>${after}</pre>`;
+  };
+  const row = `<div class="zz-krow" data-penna="floating"><span class="zz-k" style="left: 4px">${txt("^B")}</span><span class="zz-k" style="left: 52px">${ic("key-control")}</span><span class="zz-k" style="left: 100px">${ic("ellipsis")}</span></div>`;
+  const done = `<div class="zz-disc" data-penna="floating" data-done><span class="zz-in">${ic("check")}</span></div>`;
+  const DIRS = { up: [0, -1, "chevron-up"], down: [0, 1, "chevron-down"], left: [-1, 0, "chevron-left"], right: [1, 0, "chevron-right"] };
+  const compass = (on) => `<span class="zz-compass">${Object.entries(DIRS).map(([name, [dx, dy, icon]]) => {
+    const s = name === on ? 18 : 14;
+    return `<i data-icon="${icon}" style="left: ${24 + dx * 15 - s / 2}px; top: ${24 + dy * 15 - s / 2}px"${name === on ? " data-on" : ""}></i>`;
+  }).join("")}<s></s></span>`;
+  const PAD_X = 170 + 28, PAD_Y = 210 - 16 - 28;
+
+  const pad = (take, st) => {
+    const held = st.held, dir = st.dir;
+    if (take === "a1") {
+      return `<div class="zz-disc" data-penna="floating" data-pad><span class="zz-in">${held ? fill + compass(dir) : ic("arrows-move")}</span></div>`;
+    }
+    if (take === "a2") {
+      const [dx, dy] = st.lean ?? [0, 0];
+      const inner = held ? fill + (dir ? ic(DIRS[dir][2]) : ic("arrows-move")) : ic("arrows-move");
+      return `<div class="zz-disc" data-penna="floating" data-pad><span class="zz-knob" style="transform: translate(${dx}px, ${dy}px)">${inner}</span></div>`;
+    }
+    if (take === "a3") {
+      const trail = held && st.travel ? (() => {
+        const [dx, dy] = DIRS[dir];
+        const len = Math.min(110, Math.abs(st.travel));
+        const sign = Math.sign(st.travel) || 1;
+        return dx ? `<span class="zz-trail" style="left: ${sign > 0 ? 28 : 28 - len}px; width: ${len}px; top: 28px"></span>` : `<span class="zz-trail" style="left: 27px; width: 2px; height: ${len}px; top: ${sign > 0 ? 28 : 28 - len}px; margin-top: 0"></span>`;
+      })() : "";
+      return `<div class="zz-disc" data-penna="floating" data-pad>${trail}<span class="zz-in">${held ? fill + compass(dir) : ic("arrows-move")}</span></div>`;
+    }
+    const size = held ? 96 : 56;
+    const off = (size - 56) / 2;
+    const rim = held ? Object.entries(DIRS).map(([name, [dx, dy, icon]]) => {
+      const on = name === dir;
+      return `<span style="position: absolute; left: ${size / 2 + dx * 30 - 16}px; top: ${size / 2 + dy * 30 - 16}px; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; --penna-icon-size: 18px">${on ? fill : ""}<i data-icon="${icon}" style="position: relative"></i></span>`;
+    }).join("") + `<span style="position: absolute; left: ${size / 2 - 2}px; top: ${size / 2 - 2}px; width: 4px; height: 4px; border-radius: 2px; background: var(--penna-muted)"></span>` : `<span class="zz-in">${ic("arrows-move")}</span>`;
+    return `<div class="zz-bloom" data-penna="floating" style="left: ${170 - off}px; bottom: ${16 - off}px; width: ${size}px; height: ${size}px">${rim}</div>`;
+  };
+  const scene = (take, st) => `<div class="zz-cell">${tty(st.caret)}${row}${pad(take, st)}${take === "a4" && st.held ? "" : done}${st.ticks ? `<div class="zz-ticks">${"<i></i>".repeat(st.ticks)}</div>` : ""}${st.finger ? `<span class="zz-finger" style="left: ${st.finger[0]}px; top: ${st.finger[1]}px"></span>` : ""}</div>`;
+
+  const FILMS = {
+    a1: [["Rest", { caret: 26 }, "The arrows glyph."], ["Held, leaning left", { held: true, dir: "left", caret: 24, ticks: 2, finger: [PAD_X - 14, PAD_Y] }, "Left grows and takes the ink; two ticks so far."], ["Held, up", { held: true, dir: "up", caret: 24, ticks: 1, finger: [PAD_X, PAD_Y - 14] }, "Up sends history back in the shell."]],
+    a2: [["Rest", { caret: 26 }, "The knob sits in the middle."], ["Leaning left", { held: true, dir: "left", lean: [-10, 0], caret: 23, ticks: 3, finger: [PAD_X - 22, PAD_Y] }, "The knob leans 10, its chevron points left."], ["Leaning up", { held: true, dir: "up", lean: [0, -10], caret: 23, ticks: 1, finger: [PAD_X, PAD_Y - 22] }, "Same lean upward."]],
+    a3: [["Rest", { caret: 26 }, "The arrows glyph."], ["Dragged 56 left", { held: true, dir: "left", travel: -56, caret: 22, ticks: 4, finger: [PAD_X - 56, PAD_Y] }, "Four arrows for 56 of travel; the trail shows it."], ["Back 28 right", { held: true, dir: "right", travel: 28, caret: 24, ticks: 2, finger: [PAD_X - 28, PAD_Y] }, "Reversing walks the caret back."]],
+    a4: [["Rest", { caret: 26 }, "The disc as today."], ["Held, leaning left", { held: true, dir: "left", caret: 24, ticks: 2, finger: [PAD_X - 24, PAD_Y] }, "The disc blooms to 96 over its own spot."], ["Held, up", { held: true, dir: "up", caret: 24, ticks: 1, finger: [PAD_X, PAD_Y - 24] }, "The rim arrow under the finger fills."]],
+  };
+  for (const box of document.querySelectorAll("[data-film]")) {
+    const take = box.dataset.film;
+    box.innerHTML = FILMS[take].map(([title, st, note]) => `<figure>${scene(take, st)}<figcaption><b>${title}</b>${note}</figcaption></figure>`).join("");
+  }
+
+  for (const live of document.querySelectorAll("[data-live]")) {
+    const take = live.dataset.live;
+    const state = { caret: 26 };
+    live.innerHTML = `<figure style="margin: 0"><div data-stage></div><figcaption><b>Live</b>Press the arrow disc and drag.</figcaption></figure><div></div>`;
+    const stage = live.querySelector("[data-stage]");
+    const draw = () => { stage.innerHTML = scene(take, state); };
+    draw();
+    let origin = null, timer = null, last = 0, sent = 0;
+    const move = (dir) => {
+      const d = DIRS[dir][0];
+      if (d) state.caret = Math.max(0, Math.min(LINE.length, state.caret + d));
+      state.ticks = Math.min(16, (state.ticks ?? 0) + 1);
+    };
+    const pick = (dx, dy) => (Math.hypot(dx, dy) < 10 ? null : Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
+    const repeat = (delay) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (state.dir) { move(state.dir); draw(); } repeat(take === "a2" ? Math.max(40, 80 * 10 / Math.max(10, Math.hypot(...(state.lean ?? [10, 0])))) : 80); }, delay);
+    };
+    stage.addEventListener("pointerdown", (event) => {
+      const rect = stage.getBoundingClientRect();
+      const x = event.clientX - rect.left, y = event.clientY - rect.top;
+      if (Math.hypot(x - PAD_X, y - PAD_Y) > 34) return;
+      origin = [x, y]; last = 0; sent = 0;
+      Object.assign(state, { held: true, dir: null, ticks: 0, lean: [0, 0], travel: 0, finger: [x, y] });
+      stage.setPointerCapture(event.pointerId);
+      draw();
+    });
+    stage.addEventListener("pointermove", (event) => {
+      if (!origin) return;
+      const rect = stage.getBoundingClientRect();
+      const x = event.clientX - rect.left, y = event.clientY - rect.top;
+      const dx = x - origin[0], dy = y - origin[1];
+      state.finger = [x, y];
+      const dir = pick(dx, dy);
+      if (take === "a3") {
+        if (dir) {
+          const axis = dir === "left" || dir === "right" ? dx : dy;
+          const steps = Math.trunc(axis / 14);
+          state.dir = (dir === "left" || dir === "right") ? (steps - last >= 0 ? "right" : "left") : (steps - last >= 0 ? "down" : "up");
+          while (last < steps) { last += 1; move(dir === "left" || dir === "right" ? "right" : "down"); }
+          while (last > steps) { last -= 1; move(dir === "left" || dir === "right" ? "left" : "up"); }
+          state.dir = dir; state.travel = axis;
+        }
+      } else {
+        if (take === "a2") { const r = Math.hypot(dx, dy) || 1; const k = Math.min(1, 10 / r); state.lean = [dx * k, dy * k]; }
+        if (dir !== state.dir) {
+          state.dir = dir;
+          if (dir) { move(dir); repeat(300); } else clearTimeout(timer);
+        }
+      }
+      draw();
+    });
+    const end = () => { if (!origin) return; origin = null; clearTimeout(timer); Object.assign(state, { held: false, dir: null, lean: [0, 0], travel: 0, finger: null, ticks: 0 }); draw(); };
+    stage.addEventListener("pointerup", end);
+    stage.addEventListener("pointercancel", end);
+  }
+
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.querySelector(".zz-intro").style.display = "none";
+    for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+  }
+})();
+</script>
+</body>
+</html>

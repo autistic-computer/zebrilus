@@ -1,7 +1,7 @@
 use ala::{
-    App, Bounds, Div, ElementId, FULL_CORNER_RADIUS, InteractiveElement as _, MouseButton,
-    ParentElement as _, Pixels, Point, SpringConfig, SpringState, Stateful, Styled as _, div,
-    point, px, size,
+    App, Bounds, Div, ElementId, FULL_CORNER_RADIUS, InteractiveElement as _, IntoElement,
+    MouseButton, ParentElement as _, Pixels, Point, SpringConfig, SpringState, Stateful,
+    Styled as _, div, point, px, size,
 };
 use web_time::Instant;
 
@@ -92,7 +92,7 @@ impl PillSpring {
 
 pub fn compact_pill_morph(
     keys: KeyRow,
-    label: Div,
+    label: impl IntoElement,
     progress: f32,
     pill_top: Pixels,
     floor: Pixels,
@@ -111,10 +111,63 @@ pub fn compact_pill_morph(
     )
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PillMorphFrame {
+    pub top: Pixels,
+    pub height: Pixels,
+    pub left: Pixels,
+    pub right: Pixels,
+}
+
+impl PillMorphFrame {
+    #[must_use]
+    pub fn bounds(&self, width: Pixels) -> Bounds<Pixels> {
+        Bounds::new(
+            point(self.left, self.top),
+            size((width - self.left - self.right).max(px(0.0)), self.height),
+        )
+    }
+}
+
+fn eased(at: f32) -> f32 {
+    let at = at.clamp(0.0, 1.0);
+    at * at * (3.0 - 2.0 * at)
+}
+
+#[must_use]
+pub fn morph_keys_ink(progress: f32) -> f32 {
+    1.0 - eased(progress.clamp(0.0, 1.0) / FADE)
+}
+
+#[must_use]
+pub fn morph_bar_ink(progress: f32) -> f32 {
+    eased((progress.clamp(0.0, 1.0) - (1.0 - FADE)) / FADE)
+}
+
+#[must_use]
+pub fn pill_morph_frame(
+    keys_end: f32,
+    progress: f32,
+    pill_top: Pixels,
+    floor: Pixels,
+    ends: (Pixels, Pixels),
+    placement: &PillPlacement,
+) -> PillMorphFrame {
+    let progress = progress.clamp(0.0, 1.0);
+    let between = |from: Pixels, to: Pixels| from + (to - from) * progress;
+    let height = between(px(KEY_PILL_HEIGHT), px(COMPACT_PILL_HEIGHT));
+    PillMorphFrame {
+        top: between(px(KEY_ROW_MARGIN_Y), pill_top).min(floor - px(KEY_ROW_MARGIN_Y) - height),
+        height,
+        left: between(px(KEY_ROW_MARGIN_X), placement.inset + ends.0),
+        right: between(px(KEY_ROW_MARGIN_X + keys_end), placement.inset + ends.1),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn compact_pill_morph_between(
     keys: KeyRow,
-    label: Div,
+    label: impl IntoElement,
     progress: f32,
     pill_top: Pixels,
     floor: Pixels,
@@ -123,27 +176,17 @@ pub fn compact_pill_morph_between(
     cx: &App,
 ) -> Div {
     let progress = progress.clamp(0.0, 1.0);
-    let between = |from: Pixels, to: Pixels| from + (to - from) * progress;
-    let height = between(px(KEY_PILL_HEIGHT), px(COMPACT_PILL_HEIGHT));
-    let top = between(px(KEY_ROW_MARGIN_Y), pill_top).min(floor - px(KEY_ROW_MARGIN_Y) - height);
-    let middle = top + height / 2.0;
-    let left = between(px(KEY_ROW_MARGIN_X), placement.inset + ends.0);
-    let right = between(px(KEY_ROW_MARGIN_X), placement.inset + ends.1);
+    let frame = pill_morph_frame(keys.pill_end(), progress, pill_top, floor, ends, placement);
+    let middle = frame.top + frame.height / 2.0;
     let pill = floating_layer(placement, cx);
     let keys_layer = key_pill_layer(cx.theme());
     let half = |layer: &Layer, height: f32| layer.radius.min(px(height / 2.0));
-    let radius = between(
-        half(&keys_layer, KEY_PILL_HEIGHT),
-        half(&pill, COMPACT_PILL_HEIGHT),
-    );
-    let radius = if radius * 2.0 >= height - px(0.01) {
+    let from = half(&keys_layer, KEY_PILL_HEIGHT);
+    let radius = from + (half(&pill, COMPACT_PILL_HEIGHT) - from) * progress;
+    let radius = if radius * 2.0 >= frame.height - px(0.01) {
         FULL_CORNER_RADIUS
     } else {
         radius
-    };
-    let fade = |at: f32| {
-        let at = at.clamp(0.0, 1.0);
-        at * at * (3.0 - 2.0 * at)
     };
     div()
         .relative()
@@ -152,10 +195,10 @@ pub fn compact_pill_morph_between(
         .child(
             div()
                 .absolute()
-                .top(top)
-                .left(left)
-                .right(right)
-                .h(height)
+                .top(frame.top)
+                .left(frame.left)
+                .right(frame.right)
+                .h(frame.height)
                 .layer(&Layer { radius, ..pill }),
         )
         .child(
@@ -164,7 +207,7 @@ pub fn compact_pill_morph_between(
                 .top(middle - px(KEY_ROW_HEIGHT / 2.0))
                 .left_0()
                 .right_0()
-                .opacity(1.0 - fade(progress / FADE))
+                .opacity(morph_keys_ink(progress))
                 .child(keys.bare()),
         )
         .child(
@@ -174,7 +217,7 @@ pub fn compact_pill_morph_between(
                 .left(placement.inset + ends.0)
                 .right(placement.inset + ends.1)
                 .flex()
-                .opacity(fade((progress - (1.0 - FADE)) / FADE))
+                .opacity(morph_bar_ink(progress))
                 .child(label),
         )
 }

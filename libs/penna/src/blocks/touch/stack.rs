@@ -27,7 +27,6 @@ pub const STACK_CHIP_HEIGHT: f32 = 52.0;
 pub const STACK_HOLD: Duration = Duration::from_millis(STACK_HOLD_MS);
 const GLYPH: f32 = 20.0;
 const LABEL_HEIGHT: f32 = 28.0;
-const CAP_WIDTH: f32 = 32.0;
 const CLOSE_SIZE: f32 = 56.0;
 const CLOSE_ICON: f32 = 22.0;
 const LEAD: f32 = 16.0;
@@ -58,7 +57,6 @@ pub struct StackChip {
     pub id: SharedString,
     pub label: SharedString,
     pub icon: Option<IconName>,
-    pub chord: Option<SharedString>,
     pub value: Option<SharedString>,
     pub look: StackLook,
     pub disabled: bool,
@@ -75,7 +73,6 @@ impl StackChip {
             id: id.into(),
             label: label.into(),
             icon: Some(icon),
-            chord: None,
             value: None,
             look: StackLook::Rest,
             disabled: false,
@@ -83,13 +80,8 @@ impl StackChip {
         }
     }
 
-    pub fn chord(
-        id: impl Into<SharedString>,
-        chord: impl Into<SharedString>,
-        label: impl Into<SharedString>,
-    ) -> Self {
+    pub fn text(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
         Self {
-            chord: Some(chord.into()),
             icon: None,
             ..Self::new(id, label, IconName::Keyboard)
         }
@@ -167,8 +159,8 @@ impl StackGroup {
         &self.chips
     }
 
-    fn chords(&self) -> bool {
-        !self.chips.is_empty() && self.chips.iter().all(|chip| chip.chord.is_some())
+    fn bare(&self) -> bool {
+        !self.chips.is_empty() && self.chips.iter().all(|chip| chip.icon.is_none())
     }
 
     fn columns(&self) -> usize {
@@ -824,7 +816,6 @@ struct Motion {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Form {
     Plain,
-    Chord,
     Glyph,
 }
 
@@ -1114,31 +1105,11 @@ impl StackMenu {
                 .w(px(height))
                 .justify_center()
                 .children(chip.icon.clone().map(glyph)),
-            Form::Plain | Form::Chord => face
+            Form::Plain => face
                 .pl(px(LEAD * scale))
                 .pr(px(TRAIL * scale))
                 .gap(px(Space::S10.design_px() * scale))
-                .when(form == Form::Plain, |face| {
-                    face.children(chip.icon.clone().map(glyph))
-                })
-                .when_some(
-                    chip.chord.clone().filter(|_| form == Form::Chord),
-                    |face, chord| {
-                        face.child(
-                            sized(
-                                div()
-                                    .flex_none()
-                                    .min_w(px(CAP_WIDTH * scale))
-                                    .font_family(theme.mono_font_family.clone())
-                                    .font_weight(TextStyle::TouchSmall.weight())
-                                    .text_color(muted),
-                                TextStyle::TouchSmall,
-                                scale,
-                            )
-                            .child(chord),
-                        )
-                    },
-                )
+                .children(chip.icon.clone().map(glyph))
                 .child(div().min_w_0().overflow_hidden().child(label))
                 .when_some(chip.value.clone(), |face, value| {
                     face.child(
@@ -1376,14 +1347,13 @@ impl Render for StackMenu {
         for group in &groups {
             let first = target;
             target += group.chips.len();
-            let chords = group.chords();
+            let bare = group.bare();
             let columns = group.columns();
             let form = match group.shape {
                 Shape::Row => Form::Glyph,
-                Shape::Column if chords => Form::Chord,
                 Shape::Column => Form::Plain,
             };
-            let stretch = chords || columns > 1 && group.shape == Shape::Column;
+            let stretch = bare || columns > 1 && group.shape == Shape::Column;
             let mut chips: Vec<(usize, AnyElement)> = group
                 .chips
                 .iter()
@@ -1421,7 +1391,7 @@ impl Render for StackMenu {
                         .flex_col()
                         .gap(Space::GAP_RELATED)
                         .children(chips.into_iter().map(|(_, chip)| chip));
-                    if chords {
+                    if bare {
                         column.items_stretch()
                     } else {
                         aligned(column)

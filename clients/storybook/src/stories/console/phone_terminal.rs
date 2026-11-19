@@ -250,7 +250,6 @@ pub(super) fn terminal_states(window: &mut Window, cx: &mut App) -> AnyView {
     latched
         .control
         .update(cx, |key, cx| key.show_latched(true, cx));
-    latched.scroll.set_offset(ala::point(px(-1000.0), px(0.0)));
     let view = TerminalStates {
         session: sample(SESSION, None, cx),
         tests: sample(TESTS, None, cx),

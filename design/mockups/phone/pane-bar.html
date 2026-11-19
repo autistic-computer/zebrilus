@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pane bar</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-under { position: absolute; inset: 0; padding: 8px 12px 0; display: flex; flex-direction: column; gap: 8px; }
+  .zz-under > div { flex: none; height: 64px; border-radius: var(--penna-phone-radius); background: color-mix(in oklab, var(--penna-fg) 6%, var(--penna-bg)); }
+  .zz-bar2 { position: absolute; left: 16px; right: 16px; bottom: 20px; display: flex; gap: 8px; align-items: center; }
+  .zz-disc[data-penna] { position: relative; display: grid; flex: none; place-items: center; width: 56px; height: 56px; margin: 0; padding: 0; color: var(--penna-fg); --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 22px; }
+  .zz-pill2[data-penna] { position: relative; flex: 1; min-width: 0; height: 56px; --penna-r: 9999px; --penna-k: 1; }
+  .zz-fill[data-penna] { position: absolute; inset: 0; --penna-r: 9999px; --penna-k: 1; }
+  .zz-mstrip { position: absolute; inset: 4px; overflow: hidden; }
+  .zz-mstrip > div { position: absolute; top: 0; height: 48px; }
+  .zz-mstrip .zz-mark { position: absolute; top: 14px; left: 14px; width: 20px; height: 20px; --penna-icon-size: 20px; }
+  .zz-mstrip .zz-mark > i { display: block; }
+  .zz-mstrip .zz-mark[data-face] { top: 12px; left: 12px; width: 24px; height: 24px; }
+  .zz-mdot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 0 2px var(--penna-fill); }
+  .zz-mdot[data-tone="warning"] { background: var(--penna-warning); }
+  .zz-mdot[data-tone="danger"] { background: var(--penna-danger); }
+  .zz-mfade { position: absolute; top: 0; width: 28px; height: 48px; }
+  .zz-lab2 { position: absolute; top: 0; bottom: 0; left: 44px; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+  .zz-lab2 > b { font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); font-weight: 500; white-space: nowrap; }
+  .zz-lab2 > span { font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); white-space: nowrap; }
+  .zz-lab2 > span > em { font-style: normal; }
+  .zz-lab2 > span > em[data-tone="warning"] { color: var(--penna-warning-ink); }
+  .zz-lab2 > span > em[data-tone="danger"] { color: var(--penna-danger-ink); }
+  .zz-handle { position: absolute; z-index: 3; top: -2px; left: 50%; width: 28px; height: 4px; margin-left: -14px; border-radius: 3px; background: color-mix(in srgb, var(--penna-fg) 34%, transparent); }
+  .zz-bstrip { position: relative; width: 402px; height: 120px; overflow: hidden; border-radius: 20px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-border); color: var(--penna-fg); }
+  .zz-ups { display: grid; grid-template-columns: 402px 402px; gap: 18px 24px; }
+  .zz-ups figure, .zz-crops figure { margin: 0; }
+  .zz-ups figcaption, .zz-crops figcaption { margin: 6px 0 0 2px; max-width: 402px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-ups figcaption > b, .zz-crops figcaption > b { color: var(--penna-fg); font-weight: 600; margin-right: 6px; }
+
+  .zz-face[data-penna] { position: relative; display: grid; flex: none; place-items: center; width: var(--s); height: var(--s); padding: 0; border: 0; color: var(--penna-fg); background: linear-gradient(color-mix(in srgb, var(--penna-fg) 6%, var(--penna-fill)), var(--penna-fill)); box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--penna-fg) 16%, transparent), var(--penna-shadow-contact); --penna-icon-size: calc(var(--s) * 0.625); }
+  .zz-face[data-penna][data-brand] { color: var(--f); background: linear-gradient(color-mix(in oklab, var(--b) 84%, white), color-mix(in oklab, var(--b) 90%, black)); box-shadow: 0 calc(var(--s) / 56) calc(var(--s) * 3 / 56) rgb(0 0 0 / 0.2), 0 0 0 calc(var(--s) / 56) rgb(0 0 0 / 0.09), inset 0 calc(var(--s) / 28) 0 rgb(255 255 255 / 0.3); }
+  :root[data-penna-mode="dark"] .zz-face[data-penna][data-brand] { box-shadow: 0 calc(var(--s) / 56) calc(var(--s) * 3 / 56) rgb(0 0 0 / 0.4), 0 0 0 calc(var(--s) * 0.75 / 28) rgb(0 0 0 / 0.25), inset 0 calc(var(--s) / 28) 0 rgb(255 255 255 / 0.3), inset 0 0 0 calc(var(--s) * 0.75 / 28) rgb(255 255 255 / 0.12); }
+
+  .zz-crops { display: grid; grid-template-columns: 402px 402px; gap: 18px 24px; }
+  .zz-crop { position: relative; width: 402px; height: 640px; overflow: hidden; border-radius: 0 0 48px 48px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-border); color: var(--penna-fg); }
+  .zz-crop > .zz-kb { position: absolute; right: 0; bottom: 0; left: 0; }
+  .zz-tty { position: absolute; inset: 0 0 auto; margin: 0; padding: 12px 16px; font: 13px/18px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; }
+  .zz-tty b { font-weight: 400; color: var(--penna-fg); }
+  .zz-scrim { position: absolute; inset: 0 0 292px; background: color-mix(in srgb, var(--penna-bg) 55%, transparent); }
+  .zz-krow[data-penna] { position: absolute; left: 16px; right: 16px; bottom: 300px; height: 56px; --penna-r: 9999px; --penna-k: 1; }
+  .zz-krow[data-strip] { bottom: 8px; }
+  .zz-krow .penna-key, .zz-tray .penna-key { position: absolute; top: 6px; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
+  .zz-krow .penna-key[data-penna] { --penna-r: 22px; --penna-k: 1; }
+  .zz-chord { display: flex; align-items: center; gap: 1px; --penna-icon-size: 14px; }
+  .zz-more-hint { position: absolute; top: 7px; right: 7px; width: 5px; height: 5px; border-radius: 50%; background: color-mix(in srgb, currentColor 45%, transparent); }
+  .zz-tray[data-penna] { position: absolute; height: 56px; --penna-r: 9999px; --penna-k: 1; }
+  .zz-tray .penna-key[data-penna] { --penna-r: 22px; --penna-k: 1; }
+  .zz-kchip[data-penna] { position: absolute; display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 20px 0 16px; white-space: nowrap; font-size: var(--penna-text-touch-body-size); font-weight: 500; --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 20px; }
+  .zz-kchip > code { min-width: 20px; font: 500 15px/20px var(--penna-mono); text-align: center; }
+  .zz-kchip[data-pressed] { background: var(--penna-primary); color: var(--penna-on-primary); }
+  .zz-finger { position: absolute; z-index: 9; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: rgb(128 128 128 / 0.35); box-shadow: 0 0 0 1.5px rgb(128 128 128 / 0.8); }
+  .zz-kstrip { position: relative; width: 402px; height: 72px; overflow: hidden; border-radius: 20px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-border); color: var(--penna-fg); }
+
+  .zz-mstrip .zz-mark[data-face="32"] { top: 8px; left: 8px; width: 32px; height: 32px; }
+  .zz-mstrip .zz-lab2[data-face] { left: 50px; }
+  .zz-krow2[data-penna] { position: absolute; left: 16px; width: 242px; bottom: 300px; height: 56px; --penna-r: 9999px; --penna-k: 1; }
+  .zz-krow2[data-strip] { bottom: 8px; }
+  .zz-krow2 > .zz-k { position: absolute; top: 4px; display: grid; place-items: center; height: 48px; border-radius: 24px; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); --penna-icon-size: 20px; }
+  .zz-k > :not(.zz-fill) { position: relative; }
+  .zz-kdisc[data-penna] { position: absolute; bottom: 300px; width: 56px; height: 56px; --penna-r: 9999px; --penna-k: 1; }
+  .zz-kdisc[data-strip] { bottom: 8px; }
+  .zz-kdisc > .zz-k { position: absolute; inset: 4px; display: grid; place-items: center; border-radius: 50%; --penna-icon-size: 22px; }
+  .zz-table { display: grid; max-width: 1100px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-table > * { padding: 10px 16px 10px 0; box-shadow: inset 0 1px var(--penna-divider); }
+  .zz-table > b { font-weight: 600; }
+  .zz-table > span { color: var(--penna-fg-muted); }
+  .zz-table > [data-head] { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--penna-fg-muted); box-shadow: none; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Pane bar</h1>
+    <p>Inside a pane. <b>The pill</b> gets the machine pill's treatment: every pane of the session is its program's mark, the pane on screen is the capsule with its title over its line, a sideways swipe carries the capsule to the next mark, and a tap on a mark goes to that pane. Panes sit in session order, evenly, with nothing marking where a window ends. When the session has more panes than the row holds it scrolls the same way, cutting the next mark in half under the fade. The hold and its cards go, as the machine pill's hold did: the marks already show every pane and a tap reaches any of them. Three takes on what a mark is. <b>The key row</b> leads with prefix, ctrl and alt, and esc, tab, / and @ fold into one key that opens a menu. Three takes on that key.</p>
+  </div>
+
+  <section data-take="final">
+    <h2>Picked: P2 and K1, the key row as sketched</h2>
+    <p><b>The pill</b> is P2 with the faces at 32, the height of the two lines beside them: 8 in from the capsule's edge, the title 10 after. Off-screen panes keep their 32 face in a 48 tile. <b>The key row</b> is shaped like the bar: a pill holding prefix, ctrl, alt, cmd and the insert key, then the arrow pad and done as discs. The keys share the pill evenly, 4 in from its edge, and a key that is pressed, held, latched or armed shows the capsule's muted wash, 48 tall. ⌘ latches like ctrl and alt and its hold opens Paste, Copy, Find and Select all; the insert key opens K1's chips. Done lowers the keyboard.</p>
+    <div class="zz-ups" data-final-pills></div>
+    <div class="zz-ups" data-final-rows></div>
+    <div class="zz-crops" data-final-crops></div>
+    <div class="zz-table" style="grid-template-columns: max-content minmax(0, 1fr) max-content">
+      <span data-head>Part</span><span data-head>Value</span><span data-head>In code</span>
+      <b>Pane mark</b><span>The program face, 32, in a 48 tile, 8 in; a waiting or failed pane's face carries its 8 dot off screen</span><span><code>StripMark::Face</code></span>
+      <b>Capsule text</b><span>50 in (8 + 32 + 10), 16 from the end; 88 to 180 wide</span><span><code>FACE_TEXT_IN</code></span>
+      <b>Hold</b><span>Nothing; the scrub cards are gone</span><span></span>
+      <b>Key pill</b><span>56 tall, 16 from the start; ends 8 before the discs</span><span><code>KeyRow</code></span>
+      <b>Keys</b><span>Equal shares of the pill less 4 a side, 2 apart, 48 tall, the pill's corner less 4</span><span><code>KEY_SIZE</code>, <code>PILL_PADDING</code></span>
+      <b>On</b><span>The capsule's wash (<code>phone.pill.icon</code>) for pressed, held, open, latched and armed</span><span><code>KeyLook::On</code></span>
+      <b>Discs</b><span>56 floating circles, 8 apart, the last 16 from the end; a 48 key inside, 4 in</span><span><code>KeyRow::discs</code></span>
+      <b>Order</b><span>prefix, ctrl, alt, cmd (Apple only), insert; arrow pad, done</span><span><code>tool_keys.rs</code></span>
+      <b>Insert chips</b><span>Escape nearest, then Tab, / Slash, @ At</span><span></span>
+      <b>⌘ chords</b><span>⌘V Paste nearest, then ⌘C Copy, ⌘F Find, ⌘A Select all</span><span></span>
+    </div>
+  </section>
+
+  <section data-take="p1">
+    <h2>P1. Bare marks</h2>
+    <p>As on a machine: each pane is its program's glyph in muted ink, the one on screen in ink. Agents get their own marks (the asterisk, the knot), a terminal running nvim gets nvim's, a plain shell the terminal glyph, a browser the globe. A pane that waits for you has a dot.</p>
+    <div class="zz-ups" data-pills="bare"></div>
+  </section>
+
+  <section data-take="p2">
+    <h2>P2. Program faces</h2>
+    <p>Each mark is the 24 program face a window card shows, in the program's colors. Reads fastest and matches the machine page's cards, but brings color into the pill.</p>
+    <div class="zz-ups" data-pills="face"></div>
+  </section>
+
+  <section data-take="p3">
+    <h2>P3. Tinted marks</h2>
+    <p>P1's bare glyphs in the program's color: the asterisk orange, nvim blue, a shell and a browser in muted ink. Between the two: no tiles, still tells the agents apart at a glance.</p>
+    <div class="zz-ups" data-pills="tint"></div>
+  </section>
+
+  <section data-take="row">
+    <h2>The key row</h2>
+    <p>Prefix, ctrl and alt lead, then the insert key, then the arrow pad and hide at the end. Six keys fit any phone, so nothing scrolls and the row loses its fade.</p>
+    <div class="zz-ups" data-rows></div>
+  </section>
+
+  <section data-take="k1">
+    <h2>K1. Chips</h2>
+    <p>The insert key (…) opens a stack menu like ctrl's chords: one chip per key, esc nearest the thumb. Tap to open and tap a chip, or press, slide up and let go on a chip in one stroke. The menu closes after each key.</p>
+    <div class="zz-crops" data-k="k1"></div>
+  </section>
+
+  <section data-take="k2">
+    <h2>K2. Tray</h2>
+    <p>The insert key opens a tray: one floating row of four 44 keys over it, the key row's own look. Same tap or one-stroke slide as K1, but the keys sit side by side, so the slide is short and sideways.</p>
+    <div class="zz-crops" data-k="k2"></div>
+  </section>
+
+  <section data-take="k3">
+    <h2>K3. Last key</h2>
+    <p>K2's tray, but the insert key wears the last key you sent from it, esc at first, with a small dot for the tray behind it. A tap sends that key again, so esc esc is two taps; a hold or a slide up opens the tray.</p>
+    <div class="zz-crops" data-k="k3"></div>
+  </section>
+
+  <section data-take="compare">
+    <h2>Side by side</h2>
+    <div class="zz-table" style="grid-template-columns: max-content repeat(3, minmax(0, 1fr))">
+      <span data-head></span><span data-head>P1. Bare marks</span><span data-head>P2. Program faces</span><span data-head>P3. Tinted marks</span>
+      <b>Mark</b><span>20 glyph, muted; ink on screen</span><span>24 face in the program's colors</span><span>20 glyph in the program's color</span>
+      <b>Matches</b><span>The machine pill</span><span>Window cards</span><span>Neither exactly</span>
+      <b>Color in the pill</b><span>None</span><span>Most</span><span>Some</span>
+      <b>Waiting</b><span>An 8 dot on the mark in <code>warning</code>; the capsule's line says it in words</span><span>The same</span><span>The same</span>
+    </div>
+    <div class="zz-table" style="grid-template-columns: max-content repeat(3, minmax(0, 1fr)); margin-top: 24px">
+      <span data-head></span><span data-head>K1. Chips</span><span data-head>K2. Tray</span><span data-head>K3. Last key</span>
+      <b>Esc</b><span>2 taps</span><span>2 taps</span><span>1 tap after the first</span>
+      <b>Key's face</b><span>…, always</span><span>…, always</span><span>The last key sent</span>
+      <b>Menu</b><span>Column of chips, like ctrl's</span><span>Row of 4 keys</span><span>Row of 4 keys, on a hold or slide</span>
+      <b>Room for more</b><span>More chips up the column</span><span>A second row</span><span>A second row</span>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const MARKS = {"zz-neovim": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><defs><linearGradient id=\"a\" x1=\"50%\" x2=\"50%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#fff\" stop-opacity=\".8\"/><stop offset=\"100%\" stop-color=\"#fff\"/></linearGradient><linearGradient id=\"b\" x1=\"50%\" x2=\"50%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#fff\"/><stop offset=\"100%\" stop-color=\"#fff\" stop-opacity=\".8\"/></linearGradient></defs><g fill=\"none\" fill-rule=\"evenodd\"><path fill=\"url(#a)\" d=\"M0 5.16 5.11 0v23.99L0 18.89z\" transform=\"translate(2)\"/><path fill=\"url(#b)\" d=\"M14.6 5.21 19.78 0l-.1 23.99-5.11-5.1z\" transform=\"matrix(-1 0 0 1 36.35 0)\"/><path fill=\"#fff\" fill-opacity=\".9\" d=\"M7.11 0 20.4 20.28 16.68 24 3.38 3.77z\"/></g></svg>", "zz-claude": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><path fill=\"currentColor\" d=\"m19.6 66.5 19.7-11 .3-1-.3-.5h-1l-3.3-.2-11.2-.3L14 53l-9.5-.5-2.4-.5L0 49l.2-1.5 2-1.3 2.9.2 6.3.5 9.5.6 6.9.4L38 49.1h1.6l.2-.7-.5-.4-.4-.4L29 41l-10.6-7-5.6-4.1-3-2-1.5-2-.6-4.2 2.7-3 3.7.3.9.2 3.7 2.9 8 6.1L37 36l1.5 1.2.6-.4.1-.3-.7-1.1L33 25l-6-10.4-2.7-4.3-.7-2.6c-.3-1-.4-2-.4-3l3-4.2L28 0l4.2.6L33.8 2l2.6 6 4.1 9.3L47 29.9l2 3.8 1 3.4.3 1h.7v-.5l.5-7.2 1-8.7 1-11.2.3-3.2 1.6-3.8 3-2L61 2.6l2 2.9-.3 1.8-1.1 7.7L59 27.1l-1.5 8.2h.9l1-1.1 4.1-5.4 6.9-8.6 3-3.5L77 13l2.3-1.8h4.3l3.1 4.7-1.4 4.9-4.4 5.6-3.7 4.7-5.3 7.1-3.2 5.7.3.4h.7l12-2.6 6.4-1.1 7.6-1.3 3.5 1.6.4 1.6-1.4 3.4-8.2 2-9.6 2-14.3 3.3-.2.1.2.3 6.4.6 2.8.2h6.8l12.6 1 3.3 2 1.9 2.7-.3 2-5.1 2.6-6.8-1.6-16-3.8-5.4-1.3h-.8v.4l4.6 4.5 8.3 7.5L89 80.1l.5 2.4-1.3 2-1.4-.2-9.2-7-3.6-3-8-6.8h-.5v.7l1.8 2.7 9.8 14.7.5 4.5-.7 1.4-2.6 1-2.7-.6-5.8-8-6-9-4.7-8.2-.5.4-2.9 30.2-1.3 1.5-3 1.2-2.5-2-1.4-3 1.4-6.2 1.6-8 1.3-6.4 1.2-7.9.7-2.6v-.2H49L43 72l-9 12.3-7.2 7.6-1.7.7-3-1.5.3-2.8L24 86l10-12.8 6-7.9 4-4.6-.1-.5h-.3L17.2 77.4l-4.7.6-2-2 .2-3 1-1 8-5.5Z\"/></svg>", "zz-openai": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='currentColor' d='M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z'/></svg>"};
+  const marks = document.createElement("style");
+  marks.textContent = Object.entries(MARKS).map(([name, svg]) => `[data-icon="${name}"] { --penna-icon: url("data:image/svg+xml,${encodeURIComponent(svg)}"); }`).join("\n");
+  document.head.append(marks);
+
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
+  const PROGRAMS = {
+    claude: { mark: "zz-claude", b: "#E6683D", f: "#FFFFFF", tint: "#E6683D" },
+    codex: { mark: "zz-openai", b: "#FFFFFF", f: "#000000" },
+    nvim: { mark: "zz-neovim", b: "#00A3D7", f: "#FFFFFF", tint: "#1E9FD0" },
+    term: { glyph: "terminal" },
+    web: { glyph: "globe" },
+  };
+  const P = (program, title, line, window, tone, dot) => ({ program, title, line, window, tone, dot });
+  const PANES = [
+    P("claude", "Pill strip", "Running cargo test", 1),
+    P("term", "bash", "zebrilus · main", 2),
+    P("nvim", "tile.rs", "zebrilus · main", 2),
+    P("codex", "Review", "Needs approval", 3, "warning", "warning"),
+    P("web", "localhost:8090", "127.0.0.1", 4),
+  ];
+  const MORE = [
+    ...PANES,
+    P("term", "cargo watch", "Exit 1 · zebrilus", 5, "danger", "danger"),
+    P("claude", "Docs", "landing-page · main", 6),
+    P("term", "htop", "zebrilus", 7),
+  ];
+
+  const markOf = (pane, look, on) => {
+    const p = PROGRAMS[pane.program];
+    const name = p.mark ?? p.glyph;
+    const dot = pane.dot && on < 0.5 ? `<span class="zz-mdot" data-tone="${pane.dot}"></span>` : "";
+    if (look === "face" || look === "face32") {
+      const s = look === "face32" ? 32 : 24;
+      const style = p.mark ? ` data-brand style="--s: ${s}px; --b: ${p.b}; --f: ${p.f}"` : ` style="--s: ${s}px"`;
+      return `<span class="zz-mark" data-face="${s}"><span class="zz-face" data-penna="tile.stack"${style}>${ic(name)}</span>${dot}</span>`;
+    }
+    const ink = look === "tint" && p.tint ? p.tint : on > 0.5 ? "var(--penna-fg)" : "var(--penna-muted)";
+    return `<span class="zz-mark" style="color: ${ink}">${ic(name)}${dot}</span>`;
+  };
+
+  const TILE = 48, MIN = 88, MAX = 180;
+  const probe = document.createElement("div");
+  probe.className = "zz-lab2";
+  probe.style.cssText = "position: absolute; visibility: hidden; left: -9999px";
+  document.body.append(probe);
+  const hugOf = (p, look) => {
+    probe.innerHTML = `<b>${p.title}</b><span>${p.line}</span>`;
+    const text = Math.max(...[...probe.children].map((c) => c.scrollWidth)) + 2;
+    return clamp((look === "face32" ? 50 : 44) + text + 16, MIN, MAX);
+  };
+  const place = (inner, hug, active, gaps) => {
+    const n = hug.length;
+    const left = (l) => { let s = 0; for (let k = 1; k <= l; k++) s += TILE + gaps[active - k]; return s; };
+    const right = (r) => { let s = 0; for (let k = 1; k <= r; k++) s += gaps[active + k - 1] + TILE; return s; };
+    const x = new Array(n), w = hug.map(() => TILE);
+    const others = left(active) + right(n - 1 - active);
+    let start, cap, fs = 0, fe = 0;
+    if (hug[active] + others <= inner) {
+      cap = inner - others;
+      start = left(active);
+    } else {
+      const before = active, after = n - 1 - active;
+      const halfL = (l) => (before > l ? 24 + gaps[active - l - 1] : 0);
+      const halfR = (r) => (after > r ? gaps[active + r] + 24 : 0);
+      const need = (l, r) => hug[active] + left(l) + right(r) + halfL(l) + halfR(r);
+      let l = 0, r = 0;
+      for (;;) {
+        const gr = after > r && need(l, r + 1) <= inner; if (gr) r += 1;
+        const gl = before > l && need(l + 1, r) <= inner; if (gl) l += 1;
+        if (!gr && !gl) break;
+      }
+      cap = inner - (need(l, r) - hug[active]);
+      start = halfL(l) + left(l);
+      fs = before > l ? 1 : 0;
+      fe = after > r ? 1 : 0;
+    }
+    w[active] = cap;
+    x[active] = start;
+    for (let i = active - 1; i >= 0; i--) x[i] = x[i + 1] - gaps[i] - TILE;
+    for (let i = active + 1; i < n; i++) x[i] = x[i - 1] + w[i - 1] + gaps[i - 1];
+    return { x, w, fs, fe };
+  };
+  const gapsOf = (panes, grouped) => panes.slice(1).map((p, i) => (grouped && p.window !== panes[i].window ? 12 : 4));
+
+  const panePill = (panes, pos, width, look, grouped = false) => {
+    const inner = width - 8;
+    const hug = panes.map((pane) => hugOf(pane, look));
+    const gaps = gapsOf(panes, grouped);
+    const a = place(inner, hug, Math.floor(pos), gaps), b = place(inner, hug, Math.ceil(pos), gaps);
+    const t = pos - Math.floor(pos);
+    const mix = (p, q) => p + (q - p) * t;
+    const items = panes.map((p, i) => {
+      const on = Math.max(0, 1 - Math.abs(i - pos));
+      const x = mix(a.x[i], b.x[i]), w = mix(a.w[i], b.w[i]);
+      const text = clamp((on - 0.55) / 0.45);
+      const line = p.tone ? `<em data-tone="${p.tone}">${p.line}</em>` : p.line;
+      return `<div style="left: ${x}px; width: ${w}px; clip-path: inset(0 round 24px)"><span class="zz-fill" data-penna="phone.pill.icon" style="opacity: ${on.toFixed(3)}"></span>${markOf(p, look, on)}${text > 0 ? `<span class="zz-lab2"${look === "face32" ? " data-face" : ""} style="opacity: ${text.toFixed(3)}"><b>${p.title}</b><span>${line}</span></span>` : ""}</div>`;
+    }).join("");
+    const fs = mix(a.fs, b.fs), fe = mix(a.fe, b.fe);
+    const fade = (side, o) => `<span class="zz-mfade" style="${side}: 0; opacity: ${o}; background: linear-gradient(to ${side === "left" ? "right" : "left"}, var(--penna-fill), transparent)"></span>`;
+    return `<div class="zz-pill2" data-penna="floating"><div class="zz-mstrip">${items}${fs > 0 ? fade("left", fs) : ""}${fe > 0 ? fade("right", fe) : ""}</div></div>`;
+  };
+  const W = 402 - 32 - 56 - 8;
+  const under = `<div class="zz-under"><div></div></div>`;
+  const plusDisc = `<button class="zz-disc" data-penna="floating">${ic("plus")}</button>`;
+  const bar = (pill) => `<div class="zz-bar2"><div style="position: relative; flex: 1; min-width: 0; display: flex">${pill}<span class="zz-handle"></span></div>${plusDisc}</div>`;
+  const strip = (pill) => `<div class="zz-bstrip">${under}${bar(pill)}</div>`;
+
+  const STATES = [
+    ["Two panes", PANES.slice(1, 3), 0, "The capsule fills the row, as with two machines."],
+    ["Five panes, bash on screen", PANES, 1, "The marks beside the capsule stay whole; Review's is cut in half at the edge."],
+    ["Mid-swipe to tile.rs", PANES, 1.45, "The capsule moves to nvim's mark with the finger. Review waits for you, so its mark has a dot."],
+    ["Review on screen", PANES, 3, "Its line says what the dot said."],
+    ["Eight panes, the first on screen", MORE, 0, "Half a mark at the cut, under the fade."],
+    ["Eight panes, the sixth on screen", MORE, 5, "A failed command says Exit 1 in danger ink; off screen its mark has a danger dot."],
+  ];
+  for (const box of document.querySelectorAll("[data-pills]")) {
+    const look = box.dataset.pills;
+    box.innerHTML = STATES.map(([title, panes, pos, note]) => `<figure>${strip(panePill(panes, pos, W, look))}<figcaption><b>${title}</b>${note}</figcaption></figure>`).join("");
+  }
+  const txt = (t) => `<span class="penna-text" data-penna-text>${t}</span>`;
+  const keyAt = (x, inner, attrs = "") => `<button class="penna-key" data-penna="phone.key" data-size="touch" style="left: ${x}px"${attrs}>${inner}</button>`;
+  const prefixGlyph = `<span class="zz-chord">${ic("key-control")}${txt("b")}</span>`;
+  const XS = { prefix: 6, ctrl: 52, alt: 98, insert: 144, arrows: 274, hide: 320 };
+  const INSERT_CENTER = 16 + XS.insert + 22;
+  const GLYPH = { esc: ic("key-escape"), tab: ic("key-tab"), slash: txt("/"), at: txt("@") };
+  const newRow = ({ strip = false, latched = "", insert = ic("ellipsis"), held = false, hint = false } = {}) => {
+    const k = (name, inner) => keyAt(XS[name], inner, name === latched ? " data-latched" : "");
+    return `<div class="zz-krow" data-penna="floating"${strip ? " data-strip" : ""}>${k("prefix", prefixGlyph)}${k("ctrl", ic("key-control"))}${k("alt", ic("key-option"))}${keyAt(XS.insert, `${insert}${hint ? `<span class="zz-more-hint"></span>` : ""}`, held ? " data-pressed" : "")}${k("arrows", ic("arrows-move"))}${k("hide", ic("chevron-down"))}</div>`;
+  };
+  const todayRow = () => `<div class="zz-krow" data-penna="floating" data-strip>${keyAt(6, prefixGlyph)}<div style="position: absolute; inset: 0 104px 0 58px; overflow: hidden">${[ic("key-escape"), ic("key-tab"), ic("key-control"), ic("key-option"), txt("/")].map((g, i) => keyAt(i * 46, g)).join("")}<span class="zz-mfade" style="right: 0; top: 4px; width: 16px; background: linear-gradient(to left, var(--penna-fill), transparent)"></span></div>${keyAt(274, ic("arrows-move"))}${keyAt(320, ic("chevron-down"))}</div>`;
+
+  document.querySelector("[data-rows]").innerHTML = [
+    ["Today", todayRow(), "Prefix pinned, then esc, tab, ctrl, alt, / and @ scrolling under a fade."],
+    ["New", `<div class="zz-krow" data-penna="floating" data-strip>${newRow().replace(/^<div[^>]*>/, "")}`, "Prefix, ctrl, alt, the insert key; the arrow pad and hide stay at the end."],
+    ["ctrl latched", `<div class="zz-krow" data-penna="floating" data-strip>${newRow({ latched: "ctrl" }).replace(/^<div[^>]*>/, "")}`, "Latching works as today; the next key, from the row or the keyboard, takes it."],
+  ].map(([title, row, note]) => `<figure><div class="zz-kstrip">${row}</div><figcaption><b>${title}</b>${note}</figcaption></figure>`).join("");
+
+  const TTY = `<pre class="zz-tty"><b>~/dev/zebrilus main</b>
+<b>❯</b> cargo test -p zz-ui pill
+   Compiling zz-ui v0.1.0
+    Finished test in 4.12s
+     Running unittests src/lib.rs
+running 3 tests
+test compact::strip::fits ... ok
+test compact::strip::cuts ... ok
+test compact::strip::blends ... ok
+<b>❯</b> vim src/compact/tool_keys.rs</pre>`;
+  const kb = () => {
+    const keys = (s) => [...s].map((c) => `<i>${c}</i>`).join("");
+    return `<div class="zz-kb"><div class="zz-kb-row">${keys("qwertyuiop")}</div><div class="zz-kb-row">${keys("asdfghjkl")}</div><div class="zz-kb-row"><i data-w>⇧</i>${keys("zxcvbnm")}<i data-w>⌫</i></div><div class="zz-kb-row"><i data-w>123</i><i data-space>space</i><i data-ret>return</i></div></div>`;
+  };
+  const finger = (x, y) => `<span class="zz-finger" style="left: ${x}px; top: ${y}px"></span>`;
+  const ROW_TOP = 640 - 300 - 56;
+
+  const CHIPS = [["esc", ic("key-escape"), "Escape"], ["tab", ic("key-tab"), "Tab"], ["slash", "<code>/</code>", "Slash"], ["at", "<code>@</code>", "At"]];
+  const chipsMenu = (pressed = "") => CHIPS.map(([name, glyph, word], i) => {
+    const top = ROW_TOP - 8 - 52 - i * 60;
+    return `<span class="zz-kchip" data-penna="chip.floating" style="top: ${top}px; left: ${INSERT_CENTER - 60}px"${name === pressed ? " data-pressed" : ""}>${glyph}${word}</span>`;
+  }).join("");
+  const TRAY_W = 6 + 4 * 44 + 3 * 2 + 6;
+  const trayLeft = INSERT_CENTER - TRAY_W / 2;
+  const tray = (pressed = "") => `<div class="zz-tray" data-penna="floating" style="left: ${trayLeft}px; top: ${ROW_TOP - 8 - 56}px; width: ${TRAY_W}px">${["esc", "tab", "slash", "at"].map((name, i) => keyAt(6 + i * 46, GLYPH[name], name === pressed ? " data-pressed" : "")).join("")}</div>`;
+  const crop = (inner, row) => `<div class="zz-crop">${TTY}${inner.scrim ? `<div class="zz-scrim"></div>` : ""}${inner.menu ?? ""}${row}${kb()}${inner.finger ?? ""}</div>`;
+
+  const K = {
+    k1: [
+      ["Open", crop({ scrim: true, menu: chipsMenu() }, newRow({ held: true })), "A tap on … opens the chips over it; esc sits nearest."],
+      ["One stroke", crop({ scrim: true, menu: chipsMenu("slash"), finger: finger(INSERT_CENTER, ROW_TOP - 8 - 52 - 120 + 26) }, newRow({ held: true })), "Press …, slide up to Slash, let go: / goes in and the chips close."],
+    ],
+    k2: [
+      ["Open", crop({ scrim: true, menu: tray() }, newRow({ held: true })), "A tap on … opens the tray right over it."],
+      ["One stroke", crop({ scrim: true, menu: tray("at"), finger: finger(trayLeft + 6 + 3 * 46 + 22, ROW_TOP - 8 - 28) }, newRow({ held: true })), "Press …, slide up and across to @, let go."],
+    ],
+    k3: [
+      ["After sending tab", crop({}, newRow({ insert: GLYPH.tab, hint: true })), "The key wears tab now; a tap sends tab again. It starts as esc."],
+      ["Held", crop({ scrim: true, menu: tray("esc"), finger: finger(trayLeft + 6 + 22, ROW_TOP - 8 - 28) }, newRow({ insert: GLYPH.tab, hint: true, held: true })), "A hold or a slide up opens the tray; picking esc makes esc the key's face."],
+    ],
+  };
+  for (const box of document.querySelectorAll("[data-k]")) {
+    box.innerHTML = K[box.dataset.k].map(([title, html, note]) => `<figure>${html}<figcaption><b>${title}</b>${note}</figcaption></figure>`).join("");
+  }
+
+  const washEl = `<span class="zz-fill" data-penna="phone.pill.icon"></span>`;
+  const SLOT = (242 - 8 - 8) / 5;
+  const kAt = (i, inner, on) => `<span class="zz-k" style="left: ${4 + i * (SLOT + 2)}px; width: ${SLOT}px">${on ? washEl : ""}${inner}</span>`;
+  const finalRow = ({ strip = false, on = "" } = {}) => {
+    const keys = [["prefix", prefixGlyph], ["ctrl", ic("key-control")], ["alt", ic("key-option")], ["cmd", ic("key-command")], ["insert", ic("ellipsis")]];
+    const s = strip ? " data-strip" : "";
+    return `<div class="zz-krow2" data-penna="floating"${s}>${keys.map(([name, g], i) => kAt(i, g, name === on)).join("")}</div><div class="zz-kdisc" data-penna="floating"${s} style="left: 266px"><span class="zz-k">${on === "arrows" ? washEl : ""}${ic("arrows-move")}</span></div><div class="zz-kdisc" data-penna="floating"${s} style="left: 330px"><span class="zz-k">${ic("check")}</span></div>`;
+  };
+  document.querySelector("[data-final-pills]").innerHTML = STATES.slice(0, 4).map(([title, panes, pos, note]) => `<figure>${strip(panePill(panes, pos, W, "face32"))}<figcaption><b>${title}</b>${note}</figcaption></figure>`).join("");
+  document.querySelector("[data-final-rows]").innerHTML = [
+    ["Key row", finalRow({ strip: true }), "Prefix, ctrl, alt, cmd and insert share the pill; arrows and done are discs."],
+    ["ctrl latched", finalRow({ strip: true, on: "ctrl" }), "The capsule's wash, 4 in from the pill."],
+  ].map(([title, row, note]) => `<figure><div class="zz-kstrip">${row}</div><figcaption><b>${title}</b>${note}</figcaption></figure>`).join("");
+  const insertCenter = 16 + 4 + 4 * (SLOT + 2) + SLOT / 2;
+  const finalChips = CHIPS.map(([name, glyph, word], i) => `<span class="zz-kchip" data-penna="chip.floating" style="top: ${ROW_TOP - 8 - 52 - i * 60}px; left: ${insertCenter - 70}px">${glyph}${word}</span>`).join("");
+  const cmdCenter = 16 + 4 + 3 * (SLOT + 2) + SLOT / 2;
+  const CMD = [["⌘V", "Paste"], ["⌘C", "Copy"], ["⌘F", "Find"], ["⌘A", "Select all"]];
+  const cmdChips = CMD.map(([chord, word], i) => `<span class="zz-kchip" data-penna="chip.floating" style="top: ${ROW_TOP - 8 - 52 - i * 60}px; left: ${cmdCenter - 60}px"><code>${chord}</code>${word}</span>`).join("");
+  document.querySelector("[data-final-crops]").innerHTML = [
+    ["Insert", crop({ scrim: true, menu: finalChips }, finalRow({ on: "insert" })), "A tap on … opens the chips; Escape sits nearest."],
+    ["⌘ held", crop({ scrim: true, menu: cmdChips }, finalRow({ on: "cmd" })), "A tap latches ⌘ for the next key; a hold opens its four."],
+  ].map(([title, html, note]) => `<figure>${html}<figcaption><b>${title}</b>${note}</figcaption></figure>`).join("");
+
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.querySelector(".zz-intro").style.display = "none";
+    for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+  }
+})();
+</script>
+</body>
+</html>

@@ -7,6 +7,7 @@ use crate::IconName;
 pub enum StickyModifier {
     Control,
     Alt,
+    Command,
 }
 
 impl StickyModifier {
@@ -16,6 +17,7 @@ impl StickyModifier {
             (Self::Control, false) => IconName::KeyControlIso,
             (Self::Alt, true) => IconName::KeyOption,
             (Self::Alt, false) => IconName::KeyAltIso,
+            (Self::Command, _) => IconName::KeyCommand,
         }
     }
 }
@@ -24,6 +26,7 @@ impl StickyModifier {
 pub struct StickyModifiers {
     pub control: bool,
     pub alt: bool,
+    pub command: bool,
 }
 
 impl ala::Global for StickyModifiers {}
@@ -39,17 +42,19 @@ impl StickyModifiers {
         match modifier {
             StickyModifier::Control => latched.control = !latched.control,
             StickyModifier::Alt => latched.alt = !latched.alt,
+            StickyModifier::Command => latched.command = !latched.command,
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        !self.control && !self.alt
+        !self.control && !self.alt && !self.command
     }
 
     pub fn is_latched(&self, modifier: StickyModifier) -> bool {
         match modifier {
             StickyModifier::Control => self.control,
             StickyModifier::Alt => self.alt,
+            StickyModifier::Command => self.command,
         }
     }
 
@@ -69,6 +74,7 @@ impl StickyModifiers {
             modifiers: Modifiers {
                 control: keystroke.modifiers.control || latched.control,
                 alt: keystroke.modifiers.alt || latched.alt,
+                platform: keystroke.modifiers.platform || latched.command,
                 ..keystroke.modifiers
             },
             key: keystroke.key.clone(),
@@ -92,7 +98,7 @@ mod tests {
                 StickyModifiers::get(cx),
                 StickyModifiers {
                     control: true,
-                    alt: false
+                    ..StickyModifiers::default()
                 }
             );
             StickyModifiers::toggle(StickyModifier::Alt, cx);
@@ -100,8 +106,8 @@ mod tests {
             assert_eq!(
                 StickyModifiers::get(cx),
                 StickyModifiers {
-                    control: false,
-                    alt: true
+                    alt: true,
+                    ..StickyModifiers::default()
                 }
             );
         });
@@ -144,6 +150,12 @@ mod tests {
             let applied = StickyModifiers::apply(&shifted, cx);
             assert!(applied.modifiers.alt && applied.modifiers.shift);
             assert!(!applied.modifiers.control);
+
+            StickyModifiers::toggle(StickyModifier::Command, cx);
+            let applied = StickyModifiers::apply(&plain, cx);
+            assert!(
+                applied.modifiers.platform && !applied.modifiers.control && !applied.modifiers.alt
+            );
         });
     }
 }

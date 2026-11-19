@@ -16,7 +16,6 @@ mod pager;
 mod press;
 mod row;
 mod screen;
-mod scrub;
 mod stack;
 mod stack_gesture;
 mod stack_key;
@@ -24,12 +23,12 @@ mod sticky;
 mod swipe_back;
 mod which_key_list;
 
-pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, arrow_pad_bubble, resolve_direction};
+pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, resolve_direction};
 pub use dots::{PageDot, page_dots, page_dots_in, page_strip};
 pub use find::PhoneFind;
 pub use key_row::{
-    KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, KeyRowKey,
-    key_pill_layer,
+    KEY_DISC, KEY_DISC_GAP, KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y,
+    KeyRow, KeyRowKey, key_pill_layer,
 };
 pub use lift::{Lift, LiftEvent, LiftResponse};
 pub use mark::{MARK_DOT, MARK_SPINNER, StatusMark};
@@ -44,9 +43,6 @@ pub use row::{
     TouchInk, TouchRow, TouchTrailing, touch_card, touch_card_ground,
 };
 pub use screen::{ACTION_BAR_BOTTOM, ACTION_BAR_KEYBOARD, EMPTY_GLYPH, PhoneEmpty, action_bar};
-pub use scrub::{
-    PillScrub, SCRUB_HOLD, ScrubCard, ScrubEvent, scrub_cards, scrub_index, scrub_step,
-};
 pub use stack::{
     STACK_CHIP_HEIGHT, STACK_HOLD, StackChip, StackClose, StackGroup, StackLook, StackMenu,
     StackMenuEvent, middle_line,

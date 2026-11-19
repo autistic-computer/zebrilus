@@ -1,9 +1,10 @@
 use std::rc::Rc;
 
 use ala::{
-    App, Div, ElementId, Font, InteractiveElement as _, MouseButton, ParentElement as _, Pixels,
-    Role, SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, TextRun, Window,
-    div, font, linear_color_stop, linear_gradient, prelude::FluentBuilder as _, px,
+    AnyElement, App, Div, ElementId, Font, HighlightStyle, InteractiveElement as _, MouseButton,
+    ParentElement as _, Pixels, Role, SharedString, Stateful, StatefulInteractiveElement as _,
+    Styled as _, StyledText, TextRun, Window, div, font, linear_color_stop, linear_gradient,
+    prelude::FluentBuilder as _, px,
 };
 
 use crate::{
@@ -22,6 +23,9 @@ const STRIP_GAP: f32 = 4.0;
 const MARK: f32 = 20.0;
 const MARK_IN: f32 = 14.0;
 const TEXT_IN: f32 = 44.0;
+pub const STRIP_FACE: f32 = 32.0;
+const FACE_IN: f32 = 8.0;
+const FACE_TEXT_IN: f32 = 50.0;
 const TEXT_END: f32 = 16.0;
 const NAME_IN: f32 = 56.0;
 const NAME_END: f32 = 12.0;
@@ -31,12 +35,59 @@ const CAPSULE_MAX: f32 = 180.0;
 const TEXT_SLACK: f32 = 2.0;
 const TEXT_FADE: f32 = 0.45;
 const STRIP_FADE: f32 = 28.0;
+const FADE_BLEED: f32 = 1.0;
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct StripMachine {
-    pub mark: IconName,
+pub enum StripMark {
+    Glyph(IconName),
+    Face(AnyElement),
+}
+
+impl StripMark {
+    const fn text_in(&self) -> f32 {
+        match self {
+            Self::Glyph(_) => TEXT_IN,
+            Self::Face(_) => FACE_TEXT_IN,
+        }
+    }
+}
+
+pub struct StripItem {
+    pub mark: StripMark,
     pub name: SharedString,
+    pub word: SharedString,
     pub line: SharedString,
+    pub tone: Tone,
+}
+
+impl StripItem {
+    pub fn new(
+        mark: StripMark,
+        name: impl Into<SharedString>,
+        line: impl Into<SharedString>,
+    ) -> Self {
+        Self {
+            mark,
+            name: name.into(),
+            word: SharedString::default(),
+            line: line.into(),
+            tone: Tone::Neutral,
+        }
+    }
+
+    #[must_use]
+    pub fn word(mut self, word: impl Into<SharedString>, tone: Tone) -> Self {
+        self.word = word.into();
+        self.tone = tone;
+        self
+    }
+
+    fn second_line(&self) -> SharedString {
+        if self.word.is_empty() {
+            self.line.clone()
+        } else {
+            format!("{}{}", self.word, self.line).into()
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -209,16 +260,31 @@ fn text_width(
     )
 }
 
-fn fit(machine: &StripMachine, window: &Window, cx: &App) -> Fit {
-    let name = text_width(&machine.name, TextStyle::TouchSmall, true, window, cx) + TEXT_SLACK;
-    let line = text_width(&machine.line, TextStyle::Small, false, window, cx) + TEXT_SLACK;
+fn fit(item: &StripItem, window: &Window, cx: &App) -> Fit {
+    let name = text_width(&item.name, TextStyle::TouchSmall, true, window, cx) + TEXT_SLACK;
+    let line = text_width(&item.second_line(), TextStyle::Small, false, window, cx) + TEXT_SLACK;
     Fit {
-        capsule: (TEXT_IN + name.max(line) + TEXT_END).clamp(CAPSULE_MIN, CAPSULE_MAX),
+        capsule: (item.mark.text_in() + name.max(line) + TEXT_END).clamp(CAPSULE_MIN, CAPSULE_MAX),
         named: NAME_IN + name + NAME_END,
     }
 }
 
-fn lines(machine: &StripMachine, cx: &App) -> Div {
+fn second_line(item: &StripItem, ground: crate::Ground, cx: &App) -> StyledText {
+    let theme = cx.theme();
+    let toned = item.tone != Tone::Neutral && !item.word.is_empty();
+    let word = theme.paint_on(ground, item.tone, Emphasis::Soft).text;
+    StyledText::new(item.second_line()).with_highlights(toned.then(|| {
+        (
+            0..item.word.len(),
+            HighlightStyle {
+                color: Some(word),
+                ..HighlightStyle::default()
+            },
+        )
+    }))
+}
+
+fn lines(item: &StripItem, ground: crate::Ground, cx: &App) -> Div {
     div()
         .flex()
         .flex_col()
@@ -230,7 +296,7 @@ fn lines(machine: &StripMachine, cx: &App) -> Div {
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .type_style_strong(TextStyle::TouchSmall, cx)
-                .child(machine.name.clone()),
+                .child(item.name.clone()),
         )
         .child(
             div()
@@ -242,14 +308,14 @@ fn lines(machine: &StripMachine, cx: &App) -> Div {
                         .paint(Tone::Neutral, Emphasis::Ghost)
                         .muted_at(PaintState::Rest),
                 )
-                .child(machine.line.clone()),
+                .child(second_line(item, ground, cx)),
         )
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn machine_strip(
+pub fn pill_strip(
     id: impl Into<ElementId>,
-    machines: &[StripMachine],
+    items: Vec<StripItem>,
     position: f32,
     width: Pixels,
     placement: &PillPlacement,
@@ -290,8 +356,8 @@ pub fn machine_strip(
                 ..backing.clone()
             })
     };
-    let mark = |icon: IconName, color| {
-        div()
+    let mark = |mark: StripMark, color| match mark {
+        StripMark::Glyph(icon) => div()
             .absolute()
             .top(px(MARK_IN))
             .left(px(MARK_IN))
@@ -300,33 +366,42 @@ pub fn machine_strip(
             .items_center()
             .justify_center()
             .text_color(color)
-            .child(Icon::new(icon).size(rems_from_px(MARK)))
+            .child(Icon::new(icon).size(rems_from_px(MARK))),
+        StripMark::Face(face) => div()
+            .absolute()
+            .top(px(FACE_IN))
+            .left(px(FACE_IN))
+            .size(px(STRIP_FACE))
+            .child(face),
     };
-    let fits: Vec<Fit> = machines
-        .iter()
-        .map(|machine| fit(machine, window, cx))
-        .collect();
+    let fits: Vec<Fit> = items.iter().map(|item| fit(item, window, cx)).collect();
     let capsules: Vec<f32> = fits.iter().map(|fit| fit.capsule).collect();
     let named: Vec<f32> = fits.iter().map(|fit| fit.named).collect();
-    let roomy = machines.len() == 2
+    let roomy = items.len() == 2
         && capsules[0] + STRIP_GAP + named[1] <= inner
         && capsules[1] + STRIP_GAP + named[0] <= inner;
     let small = if roomy {
         named.clone()
     } else {
-        vec![STRIP_TILE; machines.len()]
+        vec![STRIP_TILE; items.len()]
     };
     let layout = strip_layout(inner, &capsules, &small, position);
-    let edge = |angle: f32, left: f32, shown: f32| {
+    let end = if pill.radius * 2.0 >= px(COMPACT_PILL_HEIGHT) {
+        px(STRIP_TILE / 2.0)
+    } else {
+        concentric(pill.radius, px(STRIP_INSET))
+    };
+    let edge = |start: bool, shown: f32| {
         div()
             .absolute()
             .top_0()
-            .left(px(left))
-            .w(px(STRIP_FADE))
-            .h(px(STRIP_TILE))
+            .w(px(STRIP_FADE + FADE_BLEED))
+            .h_full()
+            .when(start, ala::Styled::left_0)
+            .when(!start, ala::Styled::right_0)
             .opacity(shown)
             .bg(linear_gradient(
-                angle,
+                if start { 90.0 } else { 270.0 },
                 linear_color_stop(pill.fill, 0.0),
                 linear_color_stop(pill.fill.alpha(0.0), 1.0),
             ))
@@ -337,96 +412,108 @@ pub fn machine_strip(
         .left(px(STRIP_INSET))
         .w(px(inner))
         .h(px(STRIP_TILE))
+        .rounded(end)
         .overflow_hidden();
-    let track = if let [machine] = machines {
-        track.child(mark(machine.mark.clone(), ink)).child(
-            lines(machine, cx)
-                .absolute()
-                .top_0()
-                .bottom_0()
-                .left(px(SINGLE_IN))
-                .w(px(inner - SINGLE_IN - NAME_END)),
-        )
+    let ground = pill.ground;
+    let mut items = items;
+    let track = if items.len() == 1 {
+        let item = items.remove(0);
+        let text_in = match item.mark {
+            StripMark::Glyph(_) => SINGLE_IN,
+            StripMark::Face(_) => FACE_TEXT_IN,
+        };
+        let text = lines(&item, ground, cx)
+            .absolute()
+            .top_0()
+            .bottom_0()
+            .left(px(text_in))
+            .w(px(inner - text_in - NAME_END));
+        track.child(mark(item.mark, ink)).child(text)
     } else {
-        track
-            .children(
-                machines
-                    .iter()
-                    .zip(&layout.slots)
-                    .zip(&capsules)
-                    .enumerate()
-                    .map(|(index, ((machine, slot), capsule))| {
-                        let text = ((slot.on - (1.0 - TEXT_FADE)) / TEXT_FADE).clamp(0.0, 1.0);
-                        let name = ((TEXT_FADE - slot.on) / TEXT_FADE).clamp(0.0, 1.0);
-                        let fill = STRIP_TILE + (slot.width - STRIP_TILE) * slot.on;
-                        let label = if slot.on > 0.5 {
-                            SharedString::from(format!("{}, {}", machine.name, machine.line))
-                        } else {
-                            machine.name.clone()
-                        };
-                        let on_pick = Rc::clone(&on_pick);
-                        div()
-                            .id((id.clone(), format!("machine-{index}")))
+        track.children(
+            items
+                .into_iter()
+                .zip(&layout.slots)
+                .zip(&capsules)
+                .enumerate()
+                .map(|(index, ((item, slot), capsule))| {
+                    let text = ((slot.on - (1.0 - TEXT_FADE)) / TEXT_FADE).clamp(0.0, 1.0);
+                    let name = ((TEXT_FADE - slot.on) / TEXT_FADE).clamp(0.0, 1.0);
+                    let fill = STRIP_TILE + (slot.width - STRIP_TILE) * slot.on;
+                    let label = if slot.on > 0.5 {
+                        SharedString::from(format!("{}, {}", item.name, item.second_line()))
+                    } else {
+                        item.name.clone()
+                    };
+                    let text_in = item.mark.text_in();
+                    let copy = (text > 0.0).then(|| {
+                        lines(&item, ground, cx)
                             .absolute()
                             .top_0()
-                            .left(px(slot.x))
-                            .w(px(slot.width))
-                            .h(px(STRIP_TILE))
-                            .overflow_hidden()
-                            .click_cursor()
-                            .role(Role::Button)
-                            .aria_label(label)
-                            .child(circle(0.0, fill).opacity(slot.on))
-                            .child(
-                                press_highlight(
-                                    (id.clone(), format!("press-{index}")),
-                                    pressed,
-                                    radius,
-                                )
-                                .w(px(fill)),
+                            .bottom_0()
+                            .left(px(text_in))
+                            .w(px(capsule.max(slot.width) - text_in - TEXT_END))
+                            .text_color(ink)
+                            .opacity(text)
+                    });
+                    let other = (roomy && name > 0.0).then(|| {
+                        div()
+                            .absolute()
+                            .top_0()
+                            .bottom_0()
+                            .left(px(NAME_IN))
+                            .flex()
+                            .items_center()
+                            .whitespace_nowrap()
+                            .type_style_strong(TextStyle::TouchSmall, cx)
+                            .text_color(muted)
+                            .opacity(name)
+                            .child(item.name.clone())
+                    });
+                    let on_pick = Rc::clone(&on_pick);
+                    div()
+                        .id((id.clone(), format!("page-{index}")))
+                        .absolute()
+                        .top_0()
+                        .left(px(slot.x))
+                        .w(px(slot.width))
+                        .h(px(STRIP_TILE))
+                        .overflow_hidden()
+                        .click_cursor()
+                        .role(Role::Button)
+                        .aria_label(label)
+                        .child(circle(0.0, fill).opacity(slot.on))
+                        .child(
+                            press_highlight(
+                                (id.clone(), format!("press-{index}")),
+                                pressed,
+                                radius,
                             )
-                            .child(mark(
-                                machine.mark.clone(),
-                                if slot.on > 0.5 { ink } else { muted },
-                            ))
-                            .when(text > 0.0, |item| {
-                                item.child(
-                                    lines(machine, cx)
-                                        .absolute()
-                                        .top_0()
-                                        .bottom_0()
-                                        .left(px(TEXT_IN))
-                                        .w(px(capsule.max(slot.width) - TEXT_IN - TEXT_END))
-                                        .text_color(ink)
-                                        .opacity(text),
-                                )
-                            })
-                            .when(roomy && name > 0.0, |item| {
-                                item.child(
-                                    div()
-                                        .absolute()
-                                        .top_0()
-                                        .bottom_0()
-                                        .left(px(NAME_IN))
-                                        .flex()
-                                        .items_center()
-                                        .whitespace_nowrap()
-                                        .type_style_strong(TextStyle::TouchSmall, cx)
-                                        .text_color(muted)
-                                        .opacity(name)
-                                        .child(machine.name.clone()),
-                                )
-                            })
-                            .on_click(move |_, window, cx| on_pick(index, window, cx))
-                    }),
-            )
-            .when(layout.fade_start > 0.0, |track| {
-                track.child(edge(90.0, 0.0, layout.fade_start))
-            })
-            .when(layout.fade_end > 0.0, |track| {
-                track.child(edge(270.0, inner - STRIP_FADE, layout.fade_end))
-            })
+                            .w(px(fill)),
+                        )
+                        .child(mark(item.mark, if slot.on > 0.5 { ink } else { muted }))
+                        .children(copy)
+                        .children(other)
+                        .on_click(move |_, window, cx| on_pick(index, window, cx))
+                }),
+        )
     };
+    let fades = (layout.fade_start > 0.0 || layout.fade_end > 0.0).then(|| {
+        div()
+            .absolute()
+            .top(px(STRIP_INSET - FADE_BLEED))
+            .left(px(STRIP_INSET - FADE_BLEED))
+            .w(px(inner + 2.0 * FADE_BLEED))
+            .h(px(STRIP_TILE + 2.0 * FADE_BLEED))
+            .rounded(end + px(FADE_BLEED))
+            .overflow_hidden()
+            .when(layout.fade_start > 0.0, |fades| {
+                fades.child(edge(true, layout.fade_start))
+            })
+            .when(layout.fade_end > 0.0, |fades| {
+                fades.child(edge(false, layout.fade_end))
+            })
+    });
     div()
         .id(id.clone())
         .debug_selector(|| "compact-bar-pill".to_owned())
@@ -439,6 +526,7 @@ pub fn machine_strip(
         .layer(&pill)
         .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
         .child(track)
+        .children(fades)
 }
 
 #[cfg(test)]

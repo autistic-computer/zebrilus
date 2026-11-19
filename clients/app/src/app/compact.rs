@@ -7,7 +7,7 @@ use std::{
 };
 
 use ala::{
-    AnyElement, App, Bounds, Context, Corners, Entity, Focusable as _, IntoElement, Keystroke,
+    AnyElement, App, Bounds, Context, Corners, Div, Entity, Focusable as _, IntoElement, Keystroke,
     ParentElement as _, PinchEvent, Pixels, ScrollDelta, ScrollHandle, ScrollWheelEvent,
     SharedString, Stateful, Styled as _, Subscription, TouchPhase, Window, div, point, prelude::*,
     px,
@@ -15,16 +15,16 @@ use ala::{
 use penna::{
     ActiveTheme as _, IconName,
     blocks::compact::{
-        PILL_TILE, PillLabel, PillPlacement, PillSpring, bar_disc_bounds, bar_ends,
-        compact_bar_disc, compact_floating_bar, compact_hud, compact_pill_at, compact_pill_label,
-        compact_pill_morph_between, edge_blur, over_pill, pill_corner, pill_glass_over,
-        pill_handle, pill_handle_bounds, pill_tile_radius, split_pill_bounds,
+        PillPlacement, PillSpring, StripItem, StripMark, bar_disc_bounds, bar_ends,
+        compact_bar_disc, compact_floating_bar, compact_hud, compact_pill_morph_between, edge_blur,
+        morph_bar_ink, over_pill, pill_corner, pill_glass_over, pill_handle, pill_handle_bounds,
+        pill_morph_frame, pill_strip, split_pill_bounds,
     },
     blocks::sheet::{bottom_sheet, close_sheet},
     blocks::touch::{
         ArrowPadEvent, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, KeyRowKey, Lift,
-        LiftEvent, PageDot, Pager, PagerEvent, PhoneFind, PillScrub, ScrubCard, ScrubEvent,
-        StackClose, StackMenu, StackMenuEvent, WhichKeyList, page_strip, scrub_cards,
+        LiftEvent, Pager, PagerEvent, PhoneFind, StackClose, StackMenu, StackMenuEvent,
+        WhichKeyList,
     },
     blocks::which_key::WhichKeyRow,
     components::kbd::Kbd,
@@ -40,7 +40,7 @@ use zz_ui::{
     compact::{
         ALL_BINDINGS, ALL_MACHINES, CLOSE_PANE, FIND, MachineMenu, NEW_BROWSER, NEW_CHAT,
         NEW_SESSION, NEW_TERMINAL, RENAME_PANE, SETTINGS, ToolKeys, close_pane_detail,
-        machine_menu, new_menu, pane_menu, pill_face,
+        machine_menu, new_menu, pane_menu, strip_face,
     },
 };
 
@@ -69,7 +69,7 @@ const BINDINGS_SHEET: &str = "compact-bindings-sheet";
 pub(super) struct CompactState {
     pager: Pager,
     width: f32,
-    tool_keys: Option<(ToolKeys, [Subscription; 4])>,
+    tool_keys: Option<(ToolKeys, Vec<Subscription>)>,
     bindings: bool,
     preview: Option<bool>,
     zoom_intent: Option<PaneId>,
@@ -101,7 +101,6 @@ pub(super) struct CompactState {
     page_background: Option<ala::Hsla>,
     menu: Option<(Entity<StackMenu>, Subscription)>,
     new_menu: Option<(Entity<StackMenu>, Subscription)>,
-    scrub: Option<(Entity<PillScrub>, Subscription)>,
     sheet: Option<sheets::PhoneSheet>,
     next_sheet: Option<sheets::PhoneSheet>,
     rename: Option<(Entity<penna::components::input::InputState>, Subscription)>,
@@ -124,7 +123,6 @@ impl CompactState {
         self.bindings = std::env::var("ALA_BENCH").is_ok_and(|bench| bench.starts_with("sheet"));
         self.menu = None;
         self.new_menu = None;
-        self.scrub = None;
         self.tool_keys = None;
         self.close_sheets();
     }
@@ -212,24 +210,6 @@ pub(super) fn pinch_font_scale(start: f32, pinch: f32) -> f32 {
     }
 }
 
-pub(super) fn dot_groups(pages: &[Page], current: usize) -> Vec<Vec<PageDot>> {
-    let mut groups: Vec<Vec<PageDot>> = Vec::new();
-    let mut previous = None;
-    for (index, page) in pages.iter().enumerate() {
-        if previous != Some(page.window) {
-            groups.push(Vec::new());
-            previous = Some(page.window);
-        }
-        if let Some(group) = groups.last_mut() {
-            group.push(PageDot {
-                active: index == current,
-                attention: page.attention && index != current,
-            });
-        }
-    }
-    groups
-}
-
 pub(super) const fn kind_icon(kind: &PaneKindSnapshot) -> IconName {
     match kind {
         PaneKindSnapshot::Terminal => IconName::SquareTerminal,
@@ -256,18 +236,17 @@ fn send_chord(
     cx: &mut Context<AppShell>,
 ) {
     let StackMenuEvent::Pick(id) = event;
-    if let Ok(keystroke) = Keystroke::parse(id) {
+    if let Some(keystroke) = zz_ui::compact::chip_keystroke(id) {
         let keystroke = penna::blocks::touch::StickyModifiers::apply(&keystroke, cx);
         dispatch_key(keystroke, window, cx);
     }
 }
 
-fn key_row(keys: &ToolKeys) -> KeyRow {
-    KeyRow::new(keys.row())
-        .trail(keys.trail())
-        .track_scroll(&keys.scroll)
+fn key_row(keys: &ToolKeys, lead: Option<KeyRowKey>) -> KeyRow {
+    KeyRow::new(keys.row(lead))
+        .discs(keys.discs())
         .on_key(|keystroke, window, cx| dispatch_key(keystroke.clone(), window, cx))
-        .on_hide(|window, _| window.dismiss_virtual_keyboard())
+        .on_done(|window, _| window.dismiss_virtual_keyboard())
 }
 
 fn key_row_lift(zone: Pixels, overlap: Pixels) -> Pixels {
@@ -457,8 +436,9 @@ impl AppShell {
             return keys.clone();
         }
         let keys = ToolKeys::new(cx);
-        let [control, alt, prefix] = keys.menus(cx);
-        let subscriptions = [
+        let prefix = keys.prefix.read(cx).menu().clone();
+        let chords = keys.chord_menus(cx);
+        let mut subscriptions = vec![
             cx.subscribe_in(
                 &keys.arrows,
                 window,
@@ -471,10 +451,13 @@ impl AppShell {
                     }
                 },
             ),
-            cx.subscribe_in(&control, window, send_chord),
-            cx.subscribe_in(&alt, window, send_chord),
             cx.subscribe_in(&prefix, window, Self::stack_pick),
         ];
+        subscriptions.extend(
+            chords
+                .iter()
+                .map(|menu| cx.subscribe_in(menu, window, send_chord)),
+        );
         self.compact.tool_keys = Some((keys.clone(), subscriptions));
         keys
     }
@@ -505,42 +488,6 @@ impl AppShell {
         let subscription = cx.subscribe_in(&menu, window, Self::stack_pick);
         self.compact.new_menu = Some((menu.clone(), subscription));
         menu
-    }
-
-    fn pill_scrub(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<PillScrub> {
-        if let Some((scrub, _)) = &self.compact.scrub {
-            return scrub.clone();
-        }
-        let scrub = cx.new(PillScrub::new);
-        let subscription = cx.subscribe_in(&scrub, window, Self::scrub_event);
-        self.compact.scrub = Some((scrub.clone(), subscription));
-        scrub
-    }
-
-    fn scrub_event(
-        &mut self,
-        _: &Entity<PillScrub>,
-        event: &ScrubEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if let ScrubEvent::Began(_) = event {
-            window.end_touch_momentum();
-        }
-        if let ScrubEvent::Ended(index) = *event
-            && index != self.compact.pager.index()
-        {
-            self.compact.pager.go_to(index, Instant::now());
-            self.commit_page(Some(PagerEvent::Commit { index }), cx);
-        }
-        cx.notify();
-    }
-
-    fn scrubbing(&self, cx: &App) -> bool {
-        self.compact
-            .scrub
-            .as_ref()
-            .is_some_and(|(scrub, _)| scrub.read(cx).picked().is_some())
     }
 
     fn stacks(&self) -> impl Iterator<Item = &Entity<StackMenu>> {
@@ -779,7 +726,7 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.compact.lift.is_dragging() || self.scrubbing(cx) {
+        if self.compact.lift.is_dragging() {
             return;
         }
         let delta_x = match event.delta {
@@ -1099,9 +1046,6 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.scrubbing(cx) {
-            return;
-        }
         let delta = event.delta.pixel_delta(window.line_height());
         let response =
             self.compact
@@ -1271,10 +1215,6 @@ impl AppShell {
             && (progress > 0.0 || self.compact.lift.is_moving() || self.compact.landing.is_some());
         let shown = self.compact.pager.index();
         let shown_page = pages.get(shown);
-        let scrub = self.pill_scrub(window, cx);
-        scrub.update(cx, |scrub, _| scrub.set_pages(pages.len(), shown));
-        let scrubbing = scrub.read(cx).picked().filter(|_| !open && !lifting);
-        let scrub_page = scrubbing.and_then(|index| pages.get(index));
         let floating = !keyboard;
         let can_make = {
             let connection = self.connection.read(cx);
@@ -1444,34 +1384,7 @@ impl AppShell {
             .compact
             .page_background
             .unwrap_or(cx.theme().background);
-        let (mut title, mut word, mut meta, mut tone) = self.pill_text(&model, shown_page, cx);
-        if let Some(page) = scrub_page {
-            title = page.title.clone();
-            word = SharedString::default();
-            tone = penna::Tone::Neutral;
-        }
         let picking = self.browser_picking(cx);
-        if picking {
-            meta = "Picking an element".into();
-        }
-        let kind = scrub_page
-            .or(shown_page)
-            .map_or(IconName::SquareTerminal, |page| kind_icon(&page.kind));
-        let mut icon = kind.clone();
-        if let Some((pane, text, kind, until)) = self.compact.notice
-            && until > now
-            && shown_page.is_some_and(|page| page.pane == pane)
-        {
-            title = text.into();
-            tone = if kind == PillNotice::Failed {
-                penna::Tone::Warning
-            } else {
-                penna::Tone::Neutral
-            };
-            if kind == PillNotice::Done {
-                icon = IconName::Check;
-            }
-        }
         let floating = !keyboard && morph >= 1.0;
         let backdrop = shown_page
             .filter(|_| floating)
@@ -1481,34 +1394,6 @@ impl AppShell {
             glass: backdrop.and_then(|backdrop| pill_glass_over(backdrop, cx)),
             ..placement
         };
-        let program_face = shown_page
-            .filter(|_| icon == kind && scrub_page.is_none())
-            .and_then(|page| self.page_program(page, cx))
-            .map(|program| {
-                pill_face(
-                    program,
-                    PILL_TILE,
-                    pill_tile_radius(&pill_placement, cx),
-                    cx.theme().ground(),
-                    cx,
-                )
-                .into_any_element()
-            });
-        let label = PillLabel {
-            icon,
-            face: program_face,
-            title,
-            word,
-            meta,
-            tone,
-            up: false,
-        };
-        let dots = page_strip(
-            &dot_groups(&pages, scrubbing.unwrap_or(shown)),
-            scrubbing.is_some(),
-            cx.theme().foreground,
-            cx,
-        );
         let find = shown_terminal
             .as_ref()
             .and_then(|terminal| {
@@ -1565,9 +1450,29 @@ impl AppShell {
                 .bg(page_background);
             if morph > 0.0 {
                 let pill_top = height + overlap - zone + placement.pill_top();
-                let label = compact_pill_label(label, dots, &placement, cx);
+                let frame =
+                    pill_morph_frame(row.pill_end(), morph, pill_top, height, ends, &placement);
+                let label = self.pane_strip(
+                    &model,
+                    &pages,
+                    picking,
+                    pill_shown.size.width,
+                    &placement,
+                    now,
+                    window,
+                    cx,
+                );
                 area.child(compact_pill_morph_between(
                     row, label, morph, pill_top, height, ends, &placement, cx,
+                ))
+                .children(self.bar_discs(
+                    px(width),
+                    frame.bounds(px(width)),
+                    &placement,
+                    can_make,
+                    &new_stack,
+                    [morph_bar_ink(morph); 2],
+                    cx,
                 ))
             } else {
                 area.pb(lift).child(row)
@@ -1575,7 +1480,24 @@ impl AppShell {
             .into_any_element()
         } else if morph < 1.0 {
             let row = self.compact_key_row(window, cx);
-            let label = compact_pill_label(label, dots, &placement, cx);
+            let frame = pill_morph_frame(
+                row.pill_end(),
+                morph,
+                placement.pill_top(),
+                zone,
+                ends,
+                &placement,
+            );
+            let label = self.pane_strip(
+                &model,
+                &pages,
+                picking,
+                pill_shown.size.width,
+                &placement,
+                now,
+                window,
+                cx,
+            );
             div()
                 .absolute()
                 .left_0()
@@ -1594,38 +1516,44 @@ impl AppShell {
                 ))
                 .children(self.bar_discs(
                     px(width),
-                    pill_shown,
+                    frame.bounds(px(width)),
                     &placement,
                     can_make,
                     &new_stack,
-                    [morph * morph; 2],
+                    [morph_bar_ink(morph); 2],
                     cx,
                 ))
                 .into_any_element()
         } else {
-            let label = compact_pill_label(label, dots, &pill_placement, cx);
             let fade = if lifting {
                 (1.0 - progress * BAR_SWAP).max(0.0)
             } else {
                 1.0
             };
-            let pill = compact_pill_at("compact-pill", label, pill_shown, &pill_placement, cx)
-                .opacity(fade * (1.0 - menu_progress) * (1.0 - new_progress * MENU_DIM))
-                .when(!picking, |pill| {
-                    pill.child(stack.read(cx).track_anchor())
-                        .child(PillScrub::anchor(&scrub, cx))
-                })
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    if picking {
-                        this.end_browser_pick(window, cx);
-                    } else {
-                        cx.haptic(ala::Haptic::Light);
-                        this.open_pill_menu(cx);
-                    }
-                }))
+            let strip = self
+                .pane_strip(
+                    &model,
+                    &pages,
+                    picking,
+                    pill_shown.size.width,
+                    &pill_placement,
+                    now,
+                    window,
+                    cx,
+                )
+                .when(!picking, |pill| pill.child(stack.read(cx).track_anchor()))
                 .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
                     this.compact_scroll(event, window, cx);
                 }));
+            let pill = div()
+                .absolute()
+                .left(pill_shown.origin.x)
+                .top(pill_shown.origin.y)
+                .w(pill_shown.size.width)
+                .h(pill_shown.size.height)
+                .flex()
+                .opacity(fade * (1.0 - menu_progress) * (1.0 - new_progress * MENU_DIM))
+                .child(strip);
             let jump = (!lifting
                 && shown_terminal
                     .as_ref()
@@ -1794,15 +1722,12 @@ impl AppShell {
             .filter(|menu| menu.read(cx).is_shown())
             .cloned()
             .collect::<Vec<_>>();
-        let scrub_layer =
-            scrubbing.map(|picked| self.scrub_layer(&pages, shown, picked, zone, window, cx));
         div()
             .id("compact-shell")
             .relative()
             .size_full()
             .bg(cx.theme().background)
             .child(content)
-            .children(scrub_layer)
             .children(menus)
             .children(sheets)
             .child(penna::blocks::touch::touch_scale(
@@ -1828,6 +1753,9 @@ impl AppShell {
         ink: [f32; 2],
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
+        if ink.iter().all(|ink| *ink <= 0.0) {
+            return Vec::new();
+        }
         let handle_at = pill_handle_bounds(pill);
         let up = div()
             .absolute()
@@ -1850,7 +1778,7 @@ impl AppShell {
             div()
                 .absolute()
                 .left(plus_at.origin.x)
-                .top(plus_at.origin.y)
+                .top(pill.center().y - plus_at.size.height / 2.0)
                 .opacity(ink[1])
                 .child(
                     compact_bar_disc("compact-bar-new", IconName::Plus, "New", placement, cx)
@@ -1865,49 +1793,85 @@ impl AppShell {
         std::iter::once(up).chain(plus).collect()
     }
 
-    fn scrub_layer(
+    #[allow(clippy::too_many_arguments)]
+    fn pane_strip(
         &self,
+        model: &StatusBarModel,
         pages: &[Page],
-        shown: usize,
-        picked: usize,
-        zone: Pixels,
+        picking: bool,
+        width: Pixels,
+        placement: &PillPlacement,
+        now: Instant,
         window: &Window,
-        cx: &App,
-    ) -> AnyElement {
-        let windows: Vec<WindowId> = pages.iter().fold(Vec::new(), |mut windows, page| {
-            if windows.last() != Some(&page.window) {
-                windows.push(page.window);
-            }
-            windows
-        });
-        let heading = pages
-            .get(picked)
-            .filter(|page| {
-                pages
-                    .get(shown)
-                    .is_some_and(|here| here.window != page.window)
-            })
-            .and_then(|page| windows.iter().position(|window| *window == page.window))
-            .map(|at| SharedString::from(format!("Window {} of {}", at + 1, windows.len())));
-        let cards = pages
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let shown = self.compact.pager.index();
+        let ground = penna::blocks::touch::key_pill_layer(cx.theme()).ground;
+        let items = pages
             .iter()
-            .map(|page| ScrubCard {
-                icon: kind_icon(&page.kind),
-                title: page.title.clone(),
-                tone: if page.attention {
-                    penna::Tone::Warning
-                } else {
-                    penna::Tone::Neutral
-                },
-                preview: self
-                    .mini_preview(page, &self.connection, true, cx)
-                    .into_any_element(),
+            .enumerate()
+            .map(|(index, page)| {
+                let (mut title, word, mut meta, mut tone) = self.pill_text(model, Some(page), cx);
+                if index == shown {
+                    if picking {
+                        meta = "Picking an element".into();
+                    }
+                    if let Some((pane, text, kind, until)) = self.compact.notice
+                        && until > now
+                        && page.pane == pane
+                    {
+                        title = text.into();
+                        tone = if kind == PillNotice::Failed {
+                            penna::Tone::Warning
+                        } else {
+                            penna::Tone::Neutral
+                        };
+                    }
+                }
+                let dot = (index != shown && (tone != penna::Tone::Neutral || page.attention))
+                    .then(|| {
+                        cx.theme().tone(if tone == penna::Tone::Neutral {
+                            penna::Tone::Warning
+                        } else {
+                            tone
+                        })
+                    });
+                let face = strip_face(
+                    self.page_program(page, cx),
+                    kind_icon(&page.kind),
+                    dot,
+                    ground,
+                    cx,
+                );
+                StripItem::new(StripMark::Face(face.into_any_element()), title, meta)
+                    .word(word, tone)
             })
             .collect();
-        let under = window
-            .touch_position()
-            .map_or(window.viewport_size().width / 2.0, |finger| finger.x);
-        scrub_cards(cards, picked, under, zone, heading, window, cx).into_any_element()
+        let this = cx.entity().downgrade();
+        pill_strip(
+            "compact-pill",
+            items,
+            self.compact.pager.position(),
+            width,
+            placement,
+            move |index, window, cx| {
+                _ = this.update(cx, |this, cx| {
+                    if index != this.compact.pager.index() {
+                        cx.haptic(ala::Haptic::Selection);
+                        this.compact.pager.go_to(index, Instant::now());
+                        this.commit_page(Some(PagerEvent::Commit { index }), cx);
+                        cx.notify();
+                    } else if this.browser_picking(cx) {
+                        this.end_browser_pick(window, cx);
+                    } else {
+                        cx.haptic(ala::Haptic::Light);
+                        this.open_pill_menu(cx);
+                    }
+                });
+            },
+            window,
+            cx,
+        )
     }
 
     fn page_program(&self, page: &Page, cx: &App) -> Option<&'static Program> {
@@ -2032,7 +1996,7 @@ impl AppShell {
             key.set_armed(armed, cx);
             key.set_keystroke(prefix, cx);
         });
-        key_row(&keys).lead(keys.lead())
+        key_row(&keys, Some(keys.lead()))
     }
 
     pub(super) fn wide_key_row(
@@ -2050,16 +2014,14 @@ impl AppShell {
             return None;
         }
         let keys = self.tool_keys(window, cx);
-        let row = key_row(&keys);
-        let prefix = live_prefix(self.connection.read(cx).core.mux_options());
-        Some(match prefix {
-            Some(keystroke) => row.lead(KeyRowKey::Key {
+        let lead = live_prefix(self.connection.read(cx).core.mux_options()).map(|keystroke| {
+            KeyRowKey::Key {
                 label: Kbd::format(&keystroke).into(),
                 icon: None,
                 keystroke,
-            }),
-            None => row,
-        })
+            }
+        });
+        Some(key_row(&keys, lead))
     }
 
     fn wide_keys_wanted(&self, window: &Window, cx: &App) -> bool {
@@ -2257,28 +2219,5 @@ mod tests {
             MuxOptionSource::RuntimeCommand,
         );
         assert_eq!(live_prefix(&options), tmux_keystroke("C-a"));
-    }
-
-    #[test]
-    fn dots_group_by_window_and_flag_attention_off_page() {
-        let page = |pane: u32, window: u32, attention: bool| Page {
-            pane: PaneId(pane.into()),
-            window: WindowId(window.into()),
-            kind: PaneKindSnapshot::Terminal,
-            title: SharedString::default(),
-            attention,
-        };
-        let pages = [
-            page(0, 1, false),
-            page(1, 1, true),
-            page(2, 2, true),
-            page(3, 3, false),
-        ];
-        let groups = dot_groups(&pages, 2);
-        assert_eq!(groups.len(), 3);
-        assert_eq!(groups[0].len(), 2);
-        assert!(groups[0][1].attention);
-        assert!(groups[1][0].active);
-        assert!(!groups[1][0].attention);
     }
 }

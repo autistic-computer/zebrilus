@@ -891,19 +891,16 @@ pub(crate) fn tool_keys(cx: &mut App) -> ToolKeys {
 }
 
 pub(crate) fn key_row(keys: &ToolKeys) -> KeyRow {
-    KeyRow::new(keys.row())
-        .lead(keys.lead())
-        .trail(keys.trail())
-        .track_scroll(&keys.scroll)
+    KeyRow::new(keys.row(Some(keys.lead())))
+        .discs(keys.discs())
         .on_key(|_, _, _| {})
-        .on_hide(|_, _| {})
+        .on_done(|_, _| {})
 }
 
 struct KeyRows {
     rest: ToolKeys,
     armed: ToolKeys,
     narrow: ToolKeys,
-    end: ToolKeys,
 }
 
 const NARROW_WIDTH: f32 = 320.0;
@@ -913,13 +910,10 @@ impl KeyRows {
         let rest = tool_keys(cx);
         let armed = tool_keys(cx);
         armed.prefix.update(cx, |key, cx| key.set_armed(true, cx));
-        let end = tool_keys(cx);
-        end.scroll.set_offset(ala::point(px(-1000.0), px(0.0)));
         Self {
             rest,
             armed,
             narrow: tool_keys(cx),
-            end,
         }
     }
 }
@@ -937,13 +931,9 @@ impl Render for KeyRows {
                 phone(div().id("key-row-armed").child(key_row(&self.armed)), cx),
             )
             .state(
-                "narrow: more keys ahead",
+                "narrow",
                 phone(div().id("key-row-narrow").child(key_row(&self.narrow)), cx)
                     .w(px(NARROW_WIDTH)),
-            )
-            .state(
-                "narrow, scrolled to the end",
-                phone(div().id("key-row-end").child(key_row(&self.end)), cx).w(px(NARROW_WIDTH)),
             )
     }
 }

@@ -2,19 +2,20 @@ use std::sync::Arc;
 
 use ala::{
     AnyElement, App, AppContext as _, Context, Entity, Hsla, IntoElement, ParentElement as _,
-    Render, ScrollHandle, Styled as _, Window, div, prelude::*, px, white,
+    Render, Styled as _, Window, div, prelude::*, px, white,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Elevation, IconName, StyledExt as _, TextStyle,
+    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, StyledExt as _, TextStyle, Tone,
     blocks::compact::{
-        BENTO_INSET, BentoSpan, PhoneTile, PillLabel, PillPlacement, StripMachine, bento_grid,
-        compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
-        compact_hud, folding_title_bar, machine_strip, pill_glass_over, split_pill_bounds,
+        BENTO_INSET, BentoSpan, PhoneTile, PillLabel, PillPlacement, StripItem, StripMark,
+        bento_grid, compact_bar_button, compact_floating_bar, compact_floating_group,
+        compact_floating_pill, compact_hud, folding_title_bar, pill_glass_over, pill_strip,
+        split_pill_bounds,
     },
     blocks::settings::large_title,
     blocks::touch::{
         ArrowPad, KeyRow, KeyRowKey, PageDot, StackChip, StackClose, StackGroup, StackKey,
-        StackKeyTap, StackLook, StackMenu, WhichKeyList, page_dots,
+        StackKeyTap, StackLook, StackMenu, StickyModifier, WhichKeyList, page_dots,
     },
     blocks::which_key::WhichKeyRow,
     v_flex,
@@ -36,8 +37,8 @@ pub const STORY: Story = Story {
         },
         Section {
             id: "machine-strip",
-            name: "Machine strip",
-            summary: "machine_strip: a machine's pill holds every machine as its platform mark on a 48 circle, the one on screen stretched into a capsule with its name over its second line. Two short names keep the other's name; a row wider than the pill scrolls to keep the capsule in the middle and fades what the edge cuts. A position between two machines trades the capsule's width, its text gone by the middle.",
+            name: "Strip",
+            summary: "pill_strip: the pill holds every page it swipes through as a mark, the one on screen stretched into a capsule with its name over its second line. A machine's mark is a bare glyph; a pane's is a 32 face, and a word leading its line takes its tone. Two short names keep the other's name; a row wider than the pill cuts the next mark in half under a fade. A position between two pages trades the capsule's width, its text gone by the middle.",
             build: |_, cx| stateless(strips, cx),
         },
         Section {
@@ -67,7 +68,7 @@ pub const STORY: Story = Story {
         Section {
             id: "key-row",
             name: "Key row",
-            summary: "KeyRow over the soft keyboard: one 56 pill of 44 keys, 16 from the sides and 8 above the keyboard. The keys scroll sideways when they do not fit and fade out at an edge where more wait; the arrow pad and hide stay pinned at the end.",
+            summary: "KeyRow over the soft keyboard: a 56 pill whose 48 keys share it evenly, 4 in from its edge, then the arrow pad and done as 56 discs, 8 apart and 16 from the end. A latched key shows the strip capsule's wash.",
             build: |_, cx| cx.new(KeyRows::new).into(),
         },
         Section {
@@ -233,6 +234,58 @@ const MACHINES: [(IconName, &str, &str); 6] = [
     (IconName::Server, "nas", "Not connected"),
 ];
 
+const PANES: [(IconName, &str, &str, &str, Tone); 5] = [
+    (
+        IconName::Chat,
+        "Pill strip",
+        "",
+        "Running cargo test",
+        Tone::Neutral,
+    ),
+    (
+        IconName::Terminal,
+        "bash",
+        "",
+        "zebrilus · main",
+        Tone::Neutral,
+    ),
+    (
+        IconName::File,
+        "tile.rs",
+        "",
+        "zebrilus · main",
+        Tone::Neutral,
+    ),
+    (
+        IconName::Chat,
+        "Review",
+        "Needs approval",
+        "",
+        Tone::Warning,
+    ),
+    (
+        IconName::Globe,
+        "localhost:8090",
+        "",
+        "127.0.0.1",
+        Tone::Neutral,
+    ),
+];
+
+fn face(icon: IconName, cx: &App) -> AnyElement {
+    let theme = cx.theme();
+    div()
+        .size_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(9.0))
+        .bg(theme.surface(Elevation::Panel).fill)
+        .text_color(theme.foreground)
+        .child(Icon::new(icon).size(px(20.0)))
+        .into_any_element()
+}
+
 fn strip(
     id: &'static str,
     picks: &[usize],
@@ -240,24 +293,40 @@ fn strip(
     window: &Window,
     cx: &App,
 ) -> impl IntoElement {
-    let placement = placement();
-    let machines: Vec<StripMachine> = picks
+    let items = picks
         .iter()
         .map(|&index| {
             let (mark, name, line) = &MACHINES[index];
-            StripMachine {
-                mark: mark.clone(),
-                name: (*name).into(),
-                line: (*line).into(),
-            }
+            StripItem::new(StripMark::Glyph(mark.clone()), *name, *line)
         })
         .collect();
+    strip_of(id, items, position, window, cx)
+}
+
+fn pane_strip(id: &'static str, position: f32, window: &Window, cx: &App) -> impl IntoElement {
+    let items = PANES
+        .iter()
+        .map(|(icon, name, word, line, tone)| {
+            StripItem::new(StripMark::Face(face(icon.clone(), cx)), *name, *line).word(*word, *tone)
+        })
+        .collect();
+    strip_of(id, items, position, window, cx)
+}
+
+fn strip_of(
+    id: &'static str,
+    items: Vec<StripItem>,
+    position: f32,
+    window: &Window,
+    cx: &App,
+) -> impl IntoElement {
+    let placement = placement();
     let width = split_pill_bounds(px(PHONE_WIDTH), &placement, false, false)
         .size
         .width;
-    let pill = machine_strip(
+    let pill = pill_strip(
         id,
-        &machines,
+        items,
         position,
         width,
         &placement,
@@ -290,6 +359,8 @@ fn strips(window: &mut Window, cx: &mut App) -> AnyElement {
             "not connected",
             strip("strip-off", &[1, 5], 1.0, window, cx),
         )
+        .state("panes", pane_strip("strip-panes", 1.0, window, cx))
+        .state("a pane waiting", pane_strip("strip-wait", 3.0, window, cx))
         .into_any_element()
 }
 
@@ -457,11 +528,7 @@ impl Keys {
         let stacked = |cx: &mut Context<Self>, armed: bool| {
             let key = cx.new(|cx| {
                 StackKey::new("ctrl", StackKeyTap::Open, cx).groups(
-                    vec![StackGroup::new([StackChip::chord(
-                        "ctrl-c",
-                        "^C",
-                        "Interrupt",
-                    )])],
+                    vec![StackGroup::new([StackChip::text("ctrl-c", "Interrupt")])],
                     cx,
                 )
             });
@@ -482,6 +549,7 @@ impl Render for Keys {
         let slot = |id: &'static str, child: AnyElement| {
             div()
                 .id(id)
+                .w(px(64.0))
                 .p(px(8.0))
                 .rounded(cx.theme().radius)
                 .bg(cx.theme().surface(Elevation::Panel).fill)
@@ -509,29 +577,30 @@ impl Render for Keys {
 }
 
 struct KeyRows {
-    rows: [(Entity<ArrowPad>, ScrollHandle); 3],
+    rows: [Entity<ArrowPad>; 2],
 }
 
 impl KeyRows {
     fn new(cx: &mut Context<Self>) -> Self {
-        let rows = std::array::from_fn(|_| (cx.new(ArrowPad::new), ScrollHandle::new()));
-        rows[2].1.set_offset(ala::point(px(-1000.0), px(0.0)));
-        Self { rows }
+        Self {
+            rows: std::array::from_fn(|_| cx.new(ArrowPad::new)),
+        }
     }
 
     fn row(&self, index: usize) -> KeyRow {
-        let (arrows, scroll) = &self.rows[index];
         KeyRow::new(vec![
-            KeyRowKey::tab(),
             KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
-            KeyRowKey::text("/"),
-            KeyRowKey::text("-"),
-            KeyRowKey::text("~"),
+            KeyRowKey::Modifier(StickyModifier::Control),
+            KeyRowKey::Modifier(StickyModifier::Alt),
+            KeyRowKey::Modifier(StickyModifier::Command),
+            KeyRowKey::tab(),
         ])
-        .trail(vec![KeyRowKey::Arrows(arrows.clone()), KeyRowKey::Hide])
-        .track_scroll(scroll)
+        .discs(vec![
+            KeyRowKey::Arrows(self.rows[index].clone()),
+            KeyRowKey::Done,
+        ])
         .on_key(|_, _, _| {})
-        .on_hide(|_, _| {})
+        .on_done(|_, _| {})
     }
 }
 
@@ -544,12 +613,8 @@ impl Render for KeyRows {
                 phone(div().id("key-row-wide").child(self.row(0)), cx),
             )
             .state(
-                "narrow: more keys ahead",
+                "narrow",
                 phone(div().id("key-row-narrow").child(self.row(1)), cx).w(px(NARROW_WIDTH)),
-            )
-            .state(
-                "narrow, scrolled to the end",
-                phone(div().id("key-row-end").child(self.row(2)), cx).w(px(NARROW_WIDTH)),
             )
     }
 }

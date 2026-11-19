@@ -3,9 +3,9 @@ mod bento;
 mod card;
 mod header;
 mod hud;
-mod machine_strip;
 mod machine_tile;
 mod morph;
+mod strip;
 mod tile;
 mod window_card;
 
@@ -21,13 +21,15 @@ pub use header::{
     COMPACT_TITLE_BAR_HEIGHT, TopRowEnd, edge_blur, folding_title_bar, scrolled, top_row_button,
 };
 pub use hud::compact_hud;
-pub use machine_strip::{
-    STRIP_INSET, STRIP_TILE, StripLayout, StripMachine, StripSlot, machine_strip, strip_layout,
-};
 pub use machine_tile::{MACHINE_TILE_HEIGHT, MachineTile, phone_card_ground};
 pub use morph::{
-    PillSpring, bar_disc_bounds, bar_ends, compact_pill_at, compact_pill_morph,
-    compact_pill_morph_between, over_pill, pill_bounds, pill_corner, split_pill_bounds,
+    PillMorphFrame, PillSpring, bar_disc_bounds, bar_ends, compact_pill_at, compact_pill_morph,
+    compact_pill_morph_between, morph_bar_ink, morph_keys_ink, over_pill, pill_bounds, pill_corner,
+    pill_morph_frame, split_pill_bounds,
+};
+pub use strip::{
+    STRIP_FACE, STRIP_INSET, STRIP_TILE, StripItem, StripLayout, StripMark, StripSlot, pill_strip,
+    strip_layout,
 };
 pub(crate) use tile::HoldHandler;
 pub use tile::hold_listener;

@@ -2,20 +2,18 @@ use std::{cell::Cell, rc::Rc};
 
 use ala::{
     AnchoredPositionMode, App, AppContext as _, Bounds, Context, ElementId, Entity, IntoElement,
-    Keystroke, ParentElement as _, Pixels, Point, Render, ScrollHandle, SharedString, Styled as _,
-    Task, Window, anchored, canvas, deferred, div, point, prelude::*, px,
+    Keystroke, ParentElement as _, Pixels, Point, Render, SharedString, Styled as _, Task, Window,
+    anchored, canvas, deferred, div, prelude::*,
 };
 
 use super::{
     key_press::{Grip, Press, press_listeners},
-    key_row::{KEY_SIZE, KeyLook, key_glyph, key_look, key_surface, keystroke_glyph},
+    key_row::{KEY_SIZE, KeyLook, key_glyph, key_surface, keystroke_glyph},
     stack::{STACK_HOLD, StackClose, StackGroup, StackMenu},
-    stack_gesture::{STACK_SLOP, StackSlide, StackTouch},
+    stack_gesture::{StackSlide, StackTouch},
     sticky::{StickyModifier, StickyModifiers},
 };
-use crate::{ActiveTheme as _, Emphasis, IconName, PaintState, Tone, rems_from_px};
-
-const HINT: f32 = 3.0;
+use crate::{IconName, rems_from_px};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StackKeyTap {
@@ -25,11 +23,8 @@ pub enum StackKeyTap {
 
 #[derive(Clone, Copy, Debug)]
 struct Touch {
-    origin: Point<Pixels>,
     at: Point<Pixels>,
     grip: Grip,
-    decided: bool,
-    pan: Option<(Pixels, Pixels)>,
 }
 
 pub struct StackKey {
@@ -42,7 +37,6 @@ pub struct StackKey {
     menu: Entity<StackMenu>,
     touch: Option<Touch>,
     hold: Option<Task<()>>,
-    scroll: Option<ScrollHandle>,
     face: Rc<Cell<Bounds<Pixels>>>,
 }
 
@@ -60,7 +54,6 @@ impl StackKey {
             menu,
             touch: None,
             hold: None,
-            scroll: None,
             face: Rc::default(),
         }
     }
@@ -68,12 +61,6 @@ impl StackKey {
     #[must_use]
     pub fn icon(mut self, icon: IconName) -> Self {
         self.icon = Some(icon);
-        self
-    }
-
-    #[must_use]
-    pub fn scrolls(mut self, scroll: ScrollHandle) -> Self {
-        self.scroll = Some(scroll);
         self
     }
 
@@ -128,17 +115,7 @@ impl StackKey {
     }
 
     fn face(&self, look: KeyLook, cx: &mut Context<Self>) -> ala::Stateful<ala::Div> {
-        let theme = cx.theme();
-        let (surface, state) = key_look(look, theme);
-        let hint = theme
-            .paint_on(
-                theme.layer(surface, state).ground,
-                Tone::Neutral,
-                Emphasis::Ghost,
-            )
-            .faint_at(PaintState::Rest);
         let selector = format!("stack-key-{}", self.label);
-        let has_groups = self.has_groups(cx);
         key_surface(div().id(ElementId::Name(self.label.clone())), look, cx)
             .debug_selector(move || selector)
             .relative()
@@ -146,22 +123,12 @@ impl StackKey {
             .flex_none()
             .items_center()
             .justify_center()
-            .size(rems_from_px(KEY_SIZE))
+            .w_full()
+            .h(rems_from_px(KEY_SIZE))
             .whitespace_nowrap()
             .child(match &self.keystroke {
                 Some(keystroke) => keystroke_glyph(keystroke),
                 None => key_glyph(self.label.clone(), self.icon.clone()),
-            })
-            .when(has_groups, |key| {
-                key.child(
-                    div()
-                        .absolute()
-                        .top(rems_from_px(HINT))
-                        .right(rems_from_px(HINT))
-                        .size(rems_from_px(HINT))
-                        .rounded_full()
-                        .bg(hint),
-                )
             })
     }
 }
@@ -172,13 +139,7 @@ impl Press for StackKey {
     }
 
     fn grab(&mut self, at: Point<Pixels>, grip: Grip, cx: &mut Context<Self>) {
-        self.touch = Some(Touch {
-            origin: at,
-            at,
-            grip,
-            decided: false,
-            pan: None,
-        });
+        self.touch = Some(Touch { at, grip });
         let open = self.is_open(cx);
         self.menu.update(cx, |menu, cx| {
             menu.press(at, cx);
@@ -201,25 +162,6 @@ impl Press for StackKey {
             return;
         };
         touch.at = at;
-        if let (Some((from, offset)), Some(scroll)) = (touch.pan, &self.scroll) {
-            let x = (offset + at.x - from).clamp(-scroll.max_offset().x, px(0.0));
-            scroll.set_offset(point(x, scroll.offset().y));
-            return;
-        }
-        let moved = at - touch.origin;
-        if !touch.decided && moved.magnitude() >= f64::from(STACK_SLOP) {
-            touch.decided = true;
-            if !self.menu.read(cx).is_open()
-                && moved.x.abs() > moved.y.abs()
-                && let Some(scroll) = &self.scroll
-            {
-                touch.pan = Some((at.x, scroll.offset().x));
-                self.hold = None;
-                self.menu.update(cx, StackMenu::pass);
-                cx.notify();
-                return;
-            }
-        }
         let slide = if self.has_groups(cx) {
             StackSlide::UpOpens
         } else {
@@ -241,7 +183,7 @@ impl Press for StackKey {
             self.menu.update(cx, StackMenu::cancel);
         } else {
             let result = self.menu.update(cx, |menu, cx| menu.release(touch.at, cx));
-            if result == StackTouch::Tap && touch.pan.is_none() {
+            if result == StackTouch::Tap {
                 match self.tap {
                     StackKeyTap::Latch(modifier) => StickyModifiers::toggle(modifier, cx),
                     StackKeyTap::Open if self.has_groups(cx) => {
@@ -263,11 +205,9 @@ impl Render for StackKey {
                 StackKeyTap::Open => false,
             };
         let shown = self.menu.read(cx).is_shown();
-        let pressed = self.touch.is_some_and(|touch| touch.pan.is_none());
-        let look = if pressed || self.is_open(cx) || self.armed {
-            KeyLook::Inverted
-        } else if latched {
-            KeyLook::Latched
+        let pressed = self.touch.is_some();
+        let look = if pressed || self.is_open(cx) || self.armed || latched {
+            KeyLook::On
         } else {
             KeyLook::Rest
         };
@@ -290,6 +230,7 @@ impl Render for StackKey {
                 .absolute()
                 .left(bounds.left())
                 .top(bounds.top())
+                .w(bounds.size.width)
                 .child(
                     self.face(look, cx)
                         .child(press_listeners(cx.entity().downgrade())),

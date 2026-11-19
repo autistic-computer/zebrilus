@@ -1,26 +1,22 @@
 use ala::{
-    Anchor, AnyElement, App, Context, EventEmitter, IntoElement, ParentElement as _, Pixels, Point,
-    Render, Styled as _, Task, Window, anchored, deferred, div, point, prelude::*, px, relative,
+    Context, EventEmitter, IntoElement, ParentElement as _, Pixels, Point, Render, Styled as _,
+    Task, Window, div, prelude::*, px,
 };
-use web_time::Duration;
+use web_time::{Duration, Instant};
 
 use super::{
     key_press::{Grip, Press, press_listeners},
-    key_row::{KEY_ICON, KEY_SIZE, KeyLook, key_surface},
+    key_row::{DISC_ICON, KEY_SIZE, KeyLook, key_surface},
 };
-use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Kind, Layer, PaintState, Space,
-    StyledExt as _, Surface, Tone, rems_from_px,
-};
+use crate::{Icon, IconName, rems_from_px};
 
 const THRESHOLD: f32 = 10.0;
+const LEAN: f32 = 10.0;
+const FULL_LEAN: f32 = 40.0;
 const REPEAT_DELAY: Duration = Duration::from_millis(300);
-const REPEAT_INTERVAL: Duration = Duration::from_millis(80);
-const CELL: f32 = 44.0;
-const GLYPH: f32 = 20.0;
-const GROW: f32 = 0.04;
-const HUB: f32 = 6.0;
-const WINDOW_MARGIN: f32 = 8.0;
+const REPEAT_SLOW: Duration = Duration::from_millis(80);
+const REPEAT_FAST: Duration = Duration::from_millis(40);
+const SETTLE: Duration = Duration::from_millis(180);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArrowDirection {
@@ -42,10 +38,10 @@ impl ArrowDirection {
 
     fn icon(self) -> IconName {
         match self {
-            Self::Up => IconName::ArrowUp,
-            Self::Down => IconName::ArrowDown,
-            Self::Left => IconName::ArrowLeft,
-            Self::Right => IconName::ArrowRight,
+            Self::Up => IconName::ChevronUp,
+            Self::Down => IconName::ChevronDown,
+            Self::Left => IconName::ChevronLeft,
+            Self::Right => IconName::ChevronRight,
         }
     }
 }
@@ -67,6 +63,20 @@ pub fn resolve_direction(dx: f32, dy: f32, threshold: f32) -> Option<ArrowDirect
     })
 }
 
+fn lean(dx: f32, dy: f32) -> (f32, f32) {
+    let distance = dx.hypot(dy);
+    if distance <= LEAN {
+        return (dx, dy);
+    }
+    let scale = LEAN / distance;
+    (dx * scale, dy * scale)
+}
+
+fn repeat_interval(distance: f32) -> Duration {
+    let at = ((distance - THRESHOLD) / (FULL_LEAN - THRESHOLD)).clamp(0.0, 1.0);
+    REPEAT_SLOW.mul_f32(1.0 - at) + REPEAT_FAST.mul_f32(at)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArrowPadEvent {
     Arrow(ArrowDirection),
@@ -74,8 +84,10 @@ pub enum ArrowPadEvent {
 
 pub struct ArrowPad {
     press: Option<(Point<Pixels>, Grip)>,
+    reach: (f32, f32),
     direction: Option<ArrowDirection>,
     repeat: Option<Task<()>>,
+    settle: Option<((f32, f32), Instant)>,
 }
 
 impl EventEmitter<ArrowPadEvent> for ArrowPad {}
@@ -84,8 +96,10 @@ impl ArrowPad {
     pub fn new(_cx: &mut Context<Self>) -> Self {
         Self {
             press: None,
+            reach: (0.0, 0.0),
             direction: None,
             repeat: None,
+            settle: None,
         }
     }
 
@@ -97,122 +111,45 @@ impl ArrowPad {
         self.direction
     }
 
+    fn send(direction: ArrowDirection, cx: &mut Context<Self>) {
+        cx.haptic(ala::Haptic::Selection);
+        cx.emit(ArrowPadEvent::Arrow(direction));
+    }
+
     fn repeat(direction: ArrowDirection, cx: &mut Context<Self>) -> Task<()> {
         cx.spawn(async move |pad, cx| {
             let mut wait = REPEAT_DELAY;
             loop {
                 cx.background_executor().timer(wait).await;
-                let held = pad.update(cx, |pad, cx| {
-                    let held = pad.direction == Some(direction);
-                    if held {
-                        cx.emit(ArrowPadEvent::Arrow(direction));
-                    }
-                    held
+                let next = pad.update(cx, |pad, cx| {
+                    (pad.direction == Some(direction)).then(|| {
+                        Self::send(direction, cx);
+                        repeat_interval(pad.reach.0.hypot(pad.reach.1))
+                    })
                 });
-                if !matches!(held, Ok(true)) {
-                    break;
+                match next {
+                    Ok(Some(interval)) => wait = interval,
+                    _ => break,
                 }
-                wait = REPEAT_INTERVAL;
             }
         })
     }
 
-    fn bubble(&self, cx: &App) -> AnyElement {
-        arrow_pad_bubble(self.direction, cx)
+    fn knob(&self, now: Instant, reduced: bool) -> ((f32, f32), bool) {
+        if reduced {
+            return ((0.0, 0.0), false);
+        }
+        if self.press.is_some() {
+            return (lean(self.reach.0, self.reach.1), false);
+        }
+        let Some(((x, y), since)) = self.settle else {
+            return ((0.0, 0.0), false);
+        };
+        let at = (now.saturating_duration_since(since).as_secs_f32() / SETTLE.as_secs_f32())
+            .clamp(0.0, 1.0);
+        let left = (1.0 - at).powi(3);
+        ((x * left, y * left), at < 1.0)
     }
-}
-
-pub fn arrow_pad_bubble(direction: Option<ArrowDirection>, cx: &App) -> AnyElement {
-    let theme = cx.theme();
-    let cell_size = px(CELL);
-    let cell_corner = if theme.pill_controls() {
-        cell_size / 2.0
-    } else {
-        theme.control_corner(cell_size)
-    };
-    let inset = Space::S6;
-    let floating = theme.layer(Surface::new(Kind::Floating.role()), PaintState::Rest);
-    let layer = Layer {
-        radius: cell_corner + px(inset.design_px()),
-        share: None,
-        ..floating.clone()
-    };
-    let muted = theme
-        .paint_on(floating.ground, Tone::Neutral, Emphasis::Ghost)
-        .muted_at(PaintState::Rest);
-    let solid = theme.paint(Tone::Primary, Emphasis::Solid);
-    let reduced = cx.reduce_motion();
-    let cell = |slot: Option<ArrowDirection>, hub: bool| {
-        let active = slot.is_some() && slot == direction;
-        let grown = if active && !reduced { CELL * GROW } else { 0.0 };
-        div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .justify_center()
-            .size(px(CELL + grown))
-            .m(px(-grown / 2.0))
-            .rounded(cell_corner * (1.0 + grown / CELL))
-            .when_some(slot, |cell, direction| {
-                let selector = format!("arrow-pad-cell-{}", direction.key());
-                cell.debug_selector(move || selector)
-                    .map(|cell| {
-                        if active {
-                            cell.bg(solid.fill).text_color(solid.text)
-                        } else {
-                            cell.text_color(muted)
-                        }
-                    })
-                    .child(Icon::new(direction.icon()).size(px(GLYPH)))
-            })
-            .when(hub, |cell| {
-                cell.child(
-                    div()
-                        .size(px(HUB))
-                        .rounded_full()
-                        .bg(theme.foreground.muted()),
-                )
-            })
-    };
-    let line = |cells: [AnyElement; 3]| div().flex().gap(Space::S4).children(cells);
-    let blank = || cell(None, false).into_any_element();
-    div()
-        .debug_selector(|| "arrow-pad-bubble".to_owned())
-        .flex()
-        .flex_col()
-        .p(inset)
-        .gap(Space::S4)
-        .layer(&layer)
-        .child(line([
-            blank(),
-            cell(Some(ArrowDirection::Up), false).into_any_element(),
-            blank(),
-        ]))
-        .child(line([
-            cell(Some(ArrowDirection::Left), false).into_any_element(),
-            cell(None, true).into_any_element(),
-            cell(Some(ArrowDirection::Right), false).into_any_element(),
-        ]))
-        .child(line([
-            blank(),
-            cell(Some(ArrowDirection::Down), false).into_any_element(),
-            blank(),
-        ]))
-        .into_any_element()
-}
-
-fn popover_above(card: impl IntoElement, window: &Window) -> impl IntoElement {
-    let gap = Space::S8.rems().to_pixels(window.rem_size());
-    div().absolute().top_0().left(relative(0.5)).child(
-        deferred(
-            anchored()
-                .anchor(Anchor::BottomCenter)
-                .offset(point(px(0.0), -gap))
-                .snap_to_window_with_margin(px(WINDOW_MARGIN))
-                .child(card),
-        )
-        .with_priority(2),
-    )
 }
 
 impl Press for ArrowPad {
@@ -222,8 +159,10 @@ impl Press for ArrowPad {
 
     fn grab(&mut self, at: Point<Pixels>, grip: Grip, cx: &mut Context<Self>) {
         self.press = Some((at, grip));
+        self.reach = (0.0, 0.0);
         self.direction = None;
         self.repeat = None;
+        self.settle = None;
         cx.notify();
     }
 
@@ -231,25 +170,22 @@ impl Press for ArrowPad {
         let Some((origin, _)) = self.press else {
             return;
         };
-        let direction = resolve_direction(
-            f32::from(at.x - origin.x),
-            f32::from(at.y - origin.y),
-            THRESHOLD,
-        );
-        if direction == self.direction {
-            return;
+        self.reach = (f32::from(at.x - origin.x), f32::from(at.y - origin.y));
+        let direction = resolve_direction(self.reach.0, self.reach.1, THRESHOLD);
+        if direction != self.direction {
+            self.direction = direction;
+            self.repeat = direction.map(|direction| {
+                Self::send(direction, cx);
+                Self::repeat(direction, cx)
+            });
         }
-        self.direction = direction;
-        self.repeat = direction.map(|direction| {
-            cx.haptic(ala::Haptic::Selection);
-            cx.emit(ArrowPadEvent::Arrow(direction));
-            Self::repeat(direction, cx)
-        });
         cx.notify();
     }
 
     fn release(&mut self, _cancelled: bool, cx: &mut Context<Self>) {
         if self.press.take().is_some() {
+            self.settle = Some((lean(self.reach.0, self.reach.1), Instant::now()));
+            self.reach = (0.0, 0.0);
             self.direction = None;
             self.repeat = None;
             cx.notify();
@@ -260,24 +196,31 @@ impl Press for ArrowPad {
 impl Render for ArrowPad {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let held = self.held();
-        let look = if held {
-            KeyLook::Inverted
-        } else {
-            KeyLook::Rest
-        };
-        key_surface(div().id("arrow-pad"), look, cx)
-            .debug_selector(|| "arrow-pad".to_owned())
-            .relative()
-            .flex()
-            .flex_none()
-            .items_center()
-            .justify_center()
-            .size(rems_from_px(KEY_SIZE))
-            .child(Icon::new(IconName::ArrowsMove).size(rems_from_px(KEY_ICON)))
-            .child(press_listeners(cx.entity().downgrade()))
-            .when(held, |pad| {
-                pad.child(popover_above(self.bubble(cx), window))
-            })
+        let ((x, y), settling) = self.knob(Instant::now(), cx.reduce_motion());
+        if settling {
+            window.request_animation_frame();
+        } else if !held {
+            self.settle = None;
+        }
+        let look = if held { KeyLook::On } else { KeyLook::Rest };
+        let glyph = self
+            .direction
+            .map_or(IconName::ArrowsMove, ArrowDirection::icon);
+        div().relative().w_full().h(rems_from_px(KEY_SIZE)).child(
+            key_surface(div().id("arrow-pad"), look, cx)
+                .debug_selector(|| "arrow-pad".to_owned())
+                .absolute()
+                .left(px(x))
+                .top(px(y))
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .w_full()
+                .h(rems_from_px(KEY_SIZE))
+                .child(Icon::new(glyph).size(rems_from_px(DISC_ICON)))
+                .child(press_listeners(cx.entity().downgrade())),
+        )
     }
 }
 
@@ -379,60 +322,67 @@ mod tests {
     }
 
     #[ala::test]
-    fn a_touch_drag_emits_arrows_and_repeats_while_held(cx: &mut TestAppContext) {
+    fn the_knob_leans_and_repeats_faster_the_further_the_finger_goes(cx: &mut TestAppContext) {
         let (host, cx) = host(cx);
         let pad = host.read_with(cx, |host, _| host.pad.clone());
-        let center = cx.debug_bounds("arrow-pad").expect("pad").center();
+        let rest = cx.debug_bounds("arrow-pad").expect("pad");
+        let center = rest.center();
 
         touch(cx, TouchPhase::Started, center, center);
         assert!(pad.read_with(cx, |pad, _| pad.held()));
-        assert!(cx.debug_bounds("arrow-pad-bubble").is_some());
         assert!(arrows(&host, cx).is_empty());
-
-        let right = center + point(px(20.0), px(2.0));
-        touch(cx, TouchPhase::Moved, center, right);
-        assert_eq!(arrows(&host, cx), [ArrowDirection::Right]);
-        assert_eq!(
-            pad.read_with(cx, |pad, _| pad.direction()),
-            Some(ArrowDirection::Right)
-        );
-        let bubble = cx.debug_bounds("arrow-pad-bubble").expect("bubble");
-        let key = cx.debug_bounds("arrow-pad").expect("pad");
-        assert!(bubble.bottom() <= key.top());
 
         touch(
             cx,
             TouchPhase::Moved,
             center,
-            right + point(px(4.0), px(0.0)),
+            center + point(px(40.0), px(0.0)),
         );
-        assert_eq!(arrows(&host, cx).len(), 1);
+        assert_eq!(arrows(&host, cx), [ArrowDirection::Right]);
+        let leaning = cx.debug_bounds("arrow-pad").expect("pad");
+        assert_eq!(leaning.origin - rest.origin, point(px(10.0), px(0.0)));
 
         cx.executor()
             .advance_clock(REPEAT_DELAY.saturating_sub(Duration::from_millis(1)));
         assert_eq!(arrows(&host, cx).len(), 1);
         cx.executor().advance_clock(Duration::from_millis(1));
         assert_eq!(arrows(&host, cx).len(), 2);
-        cx.executor().advance_clock(REPEAT_INTERVAL);
+        cx.executor().advance_clock(REPEAT_FAST);
         assert_eq!(arrows(&host, cx).len(), 3);
-        cx.executor().advance_clock(REPEAT_INTERVAL * 2);
+
+        touch(
+            cx,
+            TouchPhase::Moved,
+            center,
+            center + point(px(10.0), px(0.0)),
+        );
+        assert_eq!(arrows(&host, cx).len(), 3);
+        cx.executor().advance_clock(REPEAT_FAST);
+        assert_eq!(arrows(&host, cx).len(), 4);
+        cx.executor()
+            .advance_clock(REPEAT_SLOW.saturating_sub(Duration::from_millis(1)));
+        assert_eq!(arrows(&host, cx).len(), 4);
+        cx.executor().advance_clock(Duration::from_millis(1));
         assert_eq!(arrows(&host, cx).len(), 5);
 
-        let up = center + point(px(0.0), px(-20.0));
-        touch(cx, TouchPhase::Moved, center, up);
+        touch(
+            cx,
+            TouchPhase::Moved,
+            center,
+            center + point(px(0.0), px(-20.0)),
+        );
         assert_eq!(arrows(&host, cx).last(), Some(&ArrowDirection::Up));
         assert_eq!(arrows(&host, cx).len(), 6);
-        cx.executor().advance_clock(REPEAT_INTERVAL);
-        assert_eq!(arrows(&host, cx).len(), 6);
-        cx.executor()
-            .advance_clock(REPEAT_DELAY.saturating_sub(REPEAT_INTERVAL));
-        assert_eq!(arrows(&host, cx).len(), 7);
 
-        touch(cx, TouchPhase::Ended, center, up);
+        touch(
+            cx,
+            TouchPhase::Ended,
+            center,
+            center + point(px(0.0), px(-20.0)),
+        );
         assert!(!pad.read_with(cx, |pad, _| pad.held()));
-        assert!(cx.debug_bounds("arrow-pad-bubble").is_none());
         cx.executor().advance_clock(Duration::from_secs(2));
-        assert_eq!(arrows(&host, cx).len(), 7);
+        assert_eq!(arrows(&host, cx).len(), 6);
     }
 
     #[ala::test]
