@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-11-19
+* **Update**: The agent pane context tells a chat how to ask the user ([agent panes](/concepts/agent-panes.md)). Asked to "ask me a question using the tool", a chat typed the question into a shell pane with `zz send-text`, which pressed Enter and ran it as a command. The context now says to use the agent's own question tool, which the pane shows as a card, that another pane is never the user, and that a terminal runs whatever is typed into it. About 160 bytes per chat session.
+
 ## 2026-11-18
 * **Update**: UI blocks draw charts, and the thin clients draw UI blocks ([agent panes](/concepts/agent-panes.md#what-the-clients-draw)). `Chart(rows, x, series, kind)` in a `ui` block draws bars or lines for up to four series with penna's new chart component. iOS, Android and the web set the block sender, so a press there sends `ui action NAME {...}` like the desktop; on a phone a block is drawn at touch sizes. The agent pane context now sends charts to `ui` blocks and no longer describes `html preview` fragments, which are still drawn when written. A slider in a block shows its value, a labelled progress bar its percentage, a number column is right-aligned, and the bubble's values take the muted ink of its ground.
 * **Update**: Agent chats on the desktop draw `ui` blocks ([agent panes](/concepts/agent-panes.md#what-the-clients-draw)). A fenced `ui` block in a reply is drawn with penna components in the chat's window, a button sends `ui action NAME {...}` as the user's message, and the block is held once anything is sent after it. The agent pane context tells agents to reach for a `ui` block for comparisons, stats, forms and small controls, and keeps `html preview` for charts and the rest.
