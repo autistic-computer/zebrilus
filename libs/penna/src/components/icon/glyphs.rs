@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::f32::consts::{FRAC_PI_2, TAU};
 use std::fmt::Write as _;
 use std::sync::LazyLock;
@@ -20,8 +22,29 @@ fn icons() -> &'static [Value] {
     SET["icons"].as_array().map_or(&[], Vec::as_slice)
 }
 
+static BY_NAME: LazyLock<HashMap<&'static str, &'static Value>> = LazyLock::new(|| {
+    let mut by_name = HashMap::new();
+    for icon in icons() {
+        if let Some(name) = icon["name"].as_str() {
+            by_name.entry(name).or_insert(icon);
+        }
+    }
+    by_name
+});
+
+#[derive(Default)]
+struct DrawnPaths {
+    radius: f32,
+    smoothing: f32,
+    paths: HashMap<&'static str, SharedString>,
+}
+
+thread_local! {
+    static DRAWN_PATHS: RefCell<DrawnPaths> = RefCell::default();
+}
+
 fn icon(name: &str) -> Option<&'static Value> {
-    icons().iter().find(|icon| icon["name"] == name)
+    BY_NAME.get(name).copied()
 }
 
 pub fn names() -> impl Iterator<Item = &'static str> {
@@ -47,8 +70,24 @@ pub fn catalog() -> impl Iterator<Item = Glyph> {
 
 pub fn path(icon_path: &str, radius: f32, smoothing: f32) -> Option<SharedString> {
     let name = icon_path.strip_prefix("icons/")?.strip_suffix(".svg")?;
-    icon(name)?;
-    Some(format!("icons/{radius:.2}-{smoothing:.2}/{name}.svg").into())
+    DRAWN_PATHS.with_borrow_mut(|drawn| {
+        if drawn.radius.to_bits() != radius.to_bits()
+            || drawn.smoothing.to_bits() != smoothing.to_bits()
+        {
+            *drawn = DrawnPaths {
+                radius,
+                smoothing,
+                paths: HashMap::new(),
+            };
+        }
+        if let Some(path) = drawn.paths.get(name) {
+            return Some(path.clone());
+        }
+        let (name, _) = BY_NAME.get_key_value(name)?;
+        let path = SharedString::from(format!("icons/{radius:.2}-{smoothing:.2}/{name}.svg"));
+        drawn.paths.insert(name, path.clone());
+        Some(path)
+    })
 }
 
 pub fn svg(name: &str, radius: f32, smoothing: f32) -> Option<String> {

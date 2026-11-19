@@ -450,31 +450,34 @@ fn palette_entry(
     let foreground = ground.ink;
     let secondary = muted_on(ground, cx);
     let strong = TextStyle::Small.strong_weight();
-    let highlights = row
-        .label
-        .char_indices()
-        .map(|(start, character)| {
-            let end = start + character.len_utf8();
-            let matched = row.matches.iter().any(|range| range.contains(&start));
-            let color = if matched {
-                Some(foreground)
-            } else {
-                (start < row.muted_prefix).then_some(secondary)
-            };
-            (
+    let mut highlights: Vec<(Range<usize>, HighlightStyle)> = Vec::new();
+    for (start, character) in row.label.char_indices() {
+        let end = start + character.len_utf8();
+        let matched = row.matches.iter().any(|range| range.contains(&start));
+        let color = if matched {
+            Some(foreground)
+        } else {
+            (start < row.muted_prefix).then_some(secondary)
+        };
+        let font_weight = Some(if matched {
+            FontWeight::SEMIBOLD
+        } else {
+            strong
+        });
+        match highlights.last_mut() {
+            Some((range, style)) if style.color == color && style.font_weight == font_weight => {
+                range.end = end;
+            }
+            _ => highlights.push((
                 start..end,
                 HighlightStyle {
                     color,
-                    font_weight: Some(if matched {
-                        FontWeight::SEMIBOLD
-                    } else {
-                        strong
-                    }),
+                    font_weight,
                     ..Default::default()
                 },
-            )
-        })
-        .collect::<Vec<_>>();
+            )),
+        }
+    }
 
     let height = px(if cx.theme().inset_rows() {
         palette_row_height() - 2.0

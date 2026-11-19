@@ -78,14 +78,10 @@ impl EditorLayout {
             return 0;
         }
 
-        let mut index = self.lines.len() - 1;
-        for (candidate, top) in self.line_tops.iter().enumerate() {
-            let height = self.lines[candidate].size(self.line_height).height;
-            if local.y < *top + height {
-                index = candidate;
-                break;
-            }
-        }
+        let index = self
+            .line_tops
+            .partition_point(|top| *top <= local.y)
+            .saturating_sub(1);
 
         let line = &self.lines[index];
         let height = line.size(self.line_height).height;
@@ -117,10 +113,8 @@ impl EditorLayout {
 
     fn line_index_for_offset(&self, offset: usize) -> usize {
         self.line_starts
-            .iter()
-            .enumerate()
-            .find_map(|(index, start)| (offset <= start + self.lines[index].len()).then_some(index))
-            .unwrap_or_else(|| self.lines.len().saturating_sub(1))
+            .partition_point(|start| *start <= offset)
+            .saturating_sub(1)
     }
 
     fn selection_quads(&self, selection: &Range<usize>) -> Vec<Bounds<Pixels>> {
@@ -129,12 +123,11 @@ impl EditorLayout {
             return quads;
         }
 
-        for (index, line) in self.lines.iter().enumerate() {
+        let first = self.line_index_for_offset(selection.start);
+        let last = self.line_index_for_offset(selection.end);
+        for (index, line) in self.lines.iter().enumerate().take(last + 1).skip(first) {
             let line_start = self.line_starts[index];
             let line_end = line_start + line.len();
-            if selection.end < line_start || selection.start > line_end {
-                continue;
-            }
 
             let from = selection.start.saturating_sub(line_start).min(line.len());
             let to = selection.end.saturating_sub(line_start).min(line.len());
@@ -632,8 +625,13 @@ impl Element for TextElement {
                         bounds: layout.text_bounds,
                     }),
                     |window| {
-                        for (line, top) in layout.lines.iter().zip(layout.line_tops.iter()) {
-                            let origin = layout.text_origin + point(Pixels::ZERO, *top);
+                        let visible = visible_lines(layout);
+                        let first = visible.start.saturating_sub(1);
+                        let last = (visible.end + 1).min(layout.lines.len());
+                        for index in first..last {
+                            let line = &layout.lines[index];
+                            let origin =
+                                layout.text_origin + point(Pixels::ZERO, layout.line_tops[index]);
                             if origin.y + line.size(layout.line_height).height
                                 < layout.viewport_bounds.origin.y
                                 || origin.y > layout.viewport_bounds.bottom()
@@ -712,18 +710,18 @@ impl SurfaceShape {
 fn visible_lines(layout: &EditorLayout) -> Range<usize> {
     let top = layout.viewport_bounds.origin.y - layout.text_origin.y;
     let bottom = layout.viewport_bounds.bottom() - layout.text_origin.y;
-    let mut first = 0;
-    let mut last = 0;
-    for (index, line_top) in layout.line_tops.iter().enumerate() {
-        if *line_top + layout.lines[index].size(layout.line_height).height < top {
-            first = index + 1;
-            continue;
+    let tops = layout.line_tops.as_slice();
+    let Some((last_top, _)) = tops.split_last() else {
+        return 0..0;
+    };
+    let mut first = tops[1..].partition_point(|next_top| *next_top < top);
+    if first + 1 == tops.len() {
+        let last_line = &layout.lines[first];
+        if *last_top + last_line.size(layout.line_height).height < top {
+            first += 1;
         }
-        if *line_top > bottom {
-            break;
-        }
-        last = index + 1;
     }
+    let last = tops.partition_point(|line_top| *line_top <= bottom);
     first..last.max(first)
 }
 

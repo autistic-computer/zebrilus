@@ -1354,11 +1354,11 @@ impl EntityInputHandler for CodeEditorState {
 
 impl CodeEditorState {
     fn offset_to_utf16(&self, offset: usize) -> usize {
-        utf16_offset(self.render_text.as_ref(), offset)
+        self.text.offset_to_offset_utf16(offset)
     }
 
     fn offset_from_utf16(&self, offset: usize) -> usize {
-        utf8_offset(self.render_text.as_ref(), offset)
+        self.text.offset_utf16_to_offset(offset)
     }
 
     fn range_to_utf16(&self, range: &Range<usize>) -> Range<usize> {
@@ -1368,12 +1368,6 @@ impl CodeEditorState {
     fn range_from_utf16(&self, range: &Range<usize>) -> Range<usize> {
         self.offset_from_utf16(range.start)..self.offset_from_utf16(range.end)
     }
-}
-
-fn utf16_offset(text: &str, byte_offset: usize) -> usize {
-    text[..floor_char_boundary(text, byte_offset.min(text.len()))]
-        .encode_utf16()
-        .count()
 }
 
 fn utf8_offset(text: &str, utf16_offset: usize) -> usize {
@@ -1386,13 +1380,6 @@ fn utf8_offset(text: &str, utf16_offset: usize) -> usize {
         units = next;
     }
     text.len()
-}
-
-fn floor_char_boundary(text: &str, mut offset: usize) -> usize {
-    while offset > 0 && !text.is_char_boundary(offset) {
-        offset -= 1;
-    }
-    offset
 }
 
 #[cfg(test)]
@@ -1605,6 +1592,30 @@ mod tests {
                 assert_eq!(editor.cursor(), 7);
                 editor.select_to_start(&SelectToStart, window, cx);
                 assert_eq!(editor.selected_range(), 0..7);
+            });
+        });
+    }
+
+    #[ala::test]
+    fn ime_ranges_count_utf16_units(cx: &mut ala::TestAppContext) {
+        let (editor, cx) = with_editor(cx);
+        cx.update(|window, cx| {
+            editor.update(cx, |editor, cx| {
+                editor.set_value("a\u{1F600}\u{e9}\nb", window, cx);
+                editor.set_selected_range(5..7, cx);
+                let selection = editor.selected_text_range(false, window, cx).unwrap();
+                assert_eq!(selection.range, 3..4);
+
+                let mut adjusted = None;
+                let text = editor.text_for_range(2..3, &mut adjusted, window, cx);
+                assert_eq!(text.as_deref(), Some("\u{1F600}"));
+                assert_eq!(adjusted, Some(1..3));
+
+                let mut adjusted = None;
+                let text = editor.text_for_range(4..9, &mut adjusted, window, cx);
+                assert_eq!(text.as_deref(), Some("\nb"));
+                assert_eq!(adjusted, Some(4..6));
+                assert_eq!(editor.text_length_utf16(window, cx), Some(6));
             });
         });
     }

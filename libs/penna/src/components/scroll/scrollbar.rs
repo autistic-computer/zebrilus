@@ -909,7 +909,7 @@ impl Element for Scrollbar {
                         let scroll_handle = self.scroll_handle.clone();
 
                         move |_event: &MouseUpEvent, phase, _, cx| {
-                            if phase.bubble() {
+                            if phase.bubble() && state.get().dragged_axis == Some(axis) {
                                 scroll_handle.end_drag();
                                 state.set(state.get().with_unset_drag_pos());
                                 cx.notify(view_id);
@@ -1079,6 +1079,73 @@ mod tests {
 
         cx.simulate_mouse_move(point(px(95.), px(80.)), None, Modifiers::default());
         assert!(notified.get(), "the uncovered track should take the hover");
+    }
+
+    #[ala::test]
+    fn only_a_dragged_bar_ends_its_drag_on_release(cx: &mut ala::TestAppContext) {
+        #[derive(Clone, Default)]
+        struct DragHandle {
+            offset: Rc<Cell<Point<Pixels>>>,
+            ended: Rc<Cell<usize>>,
+        }
+
+        impl ScrollbarHandle for DragHandle {
+            fn offset(&self) -> Point<Pixels> {
+                self.offset.get()
+            }
+
+            fn set_offset(&self, offset: Point<Pixels>) {
+                self.offset.set(offset);
+            }
+
+            fn content_size(&self) -> Size<Pixels> {
+                size(px(100.), px(600.))
+            }
+
+            fn end_drag(&self) {
+                self.ended.set(self.ended.get() + 1);
+            }
+        }
+
+        struct DragRoot(DragHandle);
+
+        impl Render for DragRoot {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div()
+                    .w(px(100.))
+                    .h(px(200.))
+                    .relative()
+                    .child(Scrollbar::vertical(&self.0).scrollbar_show(ScrollbarShow::Always))
+            }
+        }
+
+        cx.update(crate::init);
+        let handle = DragHandle::default();
+        let (root, cx) = cx.add_window_view(|_, _| DragRoot(handle.clone()));
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+
+        let notified = Rc::new(Cell::new(0));
+        let _subscription = cx.update(|_, cx| {
+            let notified = notified.clone();
+            cx.observe(&root, move |_, _| notified.set(notified.get() + 1))
+        });
+
+        let away = point(px(20.), px(20.));
+        cx.simulate_mouse_move(away, None, Modifiers::default());
+        cx.simulate_mouse_down(away, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_up(away, MouseButton::Left, Modifiers::default());
+        assert_eq!((handle.ended.get(), notified.get()), (0, 0));
+
+        let thumb = point(px(92.), px(20.));
+        cx.simulate_mouse_move(thumb, None, Modifiers::default());
+        let hovered = notified.get();
+        cx.simulate_mouse_down(thumb, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_up(thumb, MouseButton::Left, Modifiers::default());
+        assert_eq!(
+            (handle.ended.get(), notified.get() - hovered),
+            (1, 2),
+            "the press and the release each redraw the dragged bar"
+        );
     }
 
     #[ala::test]

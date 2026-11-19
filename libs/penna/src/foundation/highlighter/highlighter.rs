@@ -8,7 +8,7 @@ use anyhow::{Context, Result, anyhow};
 use ropey::{ChunkCursor, Rope};
 use std::sync::Arc;
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::HashMap,
     ops::{ControlFlow, Range},
 };
 use tree_sitter::{
@@ -234,80 +234,15 @@ fn markdown_inline_range_has_trigger(text: &Rope, range: Range<usize>) -> bool {
     })
 }
 
-#[derive(Debug, Default, Clone)]
-struct HighlightSummary {
-    count: usize,
-    start: usize,
-    end: usize,
-    min_start: usize,
-    max_end: usize,
-}
-
-#[derive(Debug, Default, Clone)]
-struct HighlightItem {
+struct Capture<'a> {
     range: Range<usize>,
-    name: SharedString,
+    query: &'a Query,
+    index: u32,
 }
 
-impl HighlightItem {
-    pub fn new(range: Range<usize>, name: impl Into<SharedString>) -> Self {
-        Self {
-            range,
-            name: name.into(),
-        }
-    }
-}
-
-impl ala::sum_tree::Item for HighlightItem {
-    type Summary = HighlightSummary;
-    fn summary(&self, _cx: &()) -> Self::Summary {
-        HighlightSummary {
-            count: 1,
-            start: self.range.start,
-            end: self.range.end,
-            min_start: self.range.start,
-            max_end: self.range.end,
-        }
-    }
-}
-
-impl ala::sum_tree::Summary for HighlightSummary {
-    type Context<'a> = &'a ();
-    fn zero(_: Self::Context<'_>) -> Self {
-        HighlightSummary {
-            count: 0,
-            start: usize::MIN,
-            end: usize::MAX,
-            min_start: usize::MAX,
-            max_end: usize::MIN,
-        }
-    }
-
-    fn add_summary(&mut self, other: &Self, _: Self::Context<'_>) {
-        self.min_start = self.min_start.min(other.min_start);
-        self.max_end = self.max_end.max(other.max_end);
-        self.start = other.start;
-        self.end = other.end;
-        self.count += other.count;
-    }
-}
-
-impl<'a> ala::sum_tree::Dimension<'a, HighlightSummary> for usize {
-    fn zero(_: &()) -> Self {
-        0
-    }
-
-    fn add_summary(&mut self, _: &'a HighlightSummary, _: &()) {}
-}
-
-impl<'a> ala::sum_tree::Dimension<'a, HighlightSummary> for Range<usize> {
-    fn zero(_: &()) -> Self {
-        Default::default()
-    }
-
-    fn add_summary(&mut self, summary: &'a HighlightSummary, _: &()) {
-        self.start = summary.start;
-        self.end = summary.end;
+impl<'a> Capture<'a> {
+    fn name(&self) -> &'a str {
+        self.query.capture_names()[self.index as usize]
     }
 }
 
@@ -797,8 +732,8 @@ impl SyntaxHighlighter {
         self.injection_layers = Self::compute_injection_layers(data, tree, &self.text);
     }
 
-    fn match_styles(&self, range: Range<usize>) -> Vec<HighlightItem> {
-        let mut highlights = vec![];
+    fn captures(&self, range: Range<usize>) -> Vec<Capture<'_>> {
+        let mut highlights: Vec<Capture<'_>> = vec![];
         let mut injection_highlights = vec![];
         let Some(tree) = &self.tree else {
             return highlights;
@@ -824,7 +759,7 @@ impl SyntaxHighlighter {
                 break;
             }
 
-            let query = &layer.highlight_query;
+            let query = layer.highlight_query.as_ref();
 
             let mut query_cursor = QueryCursor::new();
             query_cursor.set_byte_range(range.clone());
@@ -846,14 +781,15 @@ impl SyntaxHighlighter {
                         continue;
                     }
 
-                    if let Some(highlight_name) = query.capture_names().get(cap.index as usize) {
+                    if (cap.index as usize) < query.capture_names().len() {
                         if !allow_overlapping_captures {
                             last_end = node_range.end;
                         }
-                        injection_highlights.push(HighlightItem::new(
-                            node_range,
-                            SharedString::from(highlight_name.to_string()),
-                        ));
+                        injection_highlights.push(Capture {
+                            range: node_range,
+                            query,
+                            index: cap.index,
+                        });
                     }
                 }
             }
@@ -871,25 +807,20 @@ impl SyntaxHighlighter {
                 for cap in query_match.captures() {
                     let node = cap.node;
 
-                    let Some(highlight_name) = query.capture_names().get(cap.index as usize) else {
+                    if cap.index as usize >= query.capture_names().len() {
                         continue;
-                    };
+                    }
 
                     let node_range: Range<usize> = node.start_byte()..node.end_byte();
-                    let highlight_name = SharedString::from(highlight_name.to_string());
-
-                    let last_item = highlights.last();
-                    let last_range = last_item.map(|item| &item.range).unwrap_or(&(0..0));
-                    let last_highlight_name = last_item.map(|item| item.name.clone());
-
-                    if last_range == &node_range {
-                        highlights.push(HighlightItem::new(
-                            node_range,
-                            last_highlight_name.unwrap_or(highlight_name),
-                        ));
-                    } else {
-                        highlights.push(HighlightItem::new(node_range, highlight_name.clone()));
-                    }
+                    let index = match highlights.last() {
+                        Some(last) if last.range == node_range => last.index,
+                        _ => cap.index,
+                    };
+                    highlights.push(Capture {
+                        range: node_range,
+                        query,
+                        index,
+                    });
                 }
             }
         }
@@ -900,9 +831,12 @@ impl SyntaxHighlighter {
     }
 
     pub fn highlights(&self, range: Range<usize>) -> Vec<(Range<usize>, SharedString)> {
-        self.match_styles(range)
+        self.captures(range)
             .into_iter()
-            .map(|item| (item.range, item.name))
+            .map(|capture| {
+                let name = SharedString::from(capture.name().to_string());
+                (capture.range, name)
+            })
             .collect()
     }
 
@@ -913,12 +847,11 @@ impl SyntaxHighlighter {
     ) -> Vec<(Range<usize>, HighlightStyle)> {
         let mut styles = vec![];
         let start_offset = range.start;
+        let mut tables: Vec<(&Query, Vec<HighlightStyle>)> = Vec::new();
+        let mut table = 0;
 
-        let highlights = self.match_styles(range.clone());
-
-        for item in highlights {
-            let node_range = &item.range;
-            let name = &item.name;
+        for capture in self.captures(range.clone()) {
+            let node_range = &capture.range;
 
             let mut node_range = node_range.start.max(range.start)..node_range.end.min(range.end);
             if node_range.start > node_range.end {
@@ -928,7 +861,25 @@ impl SyntaxHighlighter {
                 continue;
             }
 
-            styles.push((node_range, theme.style(name.as_ref()).unwrap_or_default()));
+            if !tables
+                .get(table)
+                .is_some_and(|(query, _)| std::ptr::eq(*query, capture.query))
+            {
+                table = tables
+                    .iter()
+                    .position(|(query, _)| std::ptr::eq(*query, capture.query))
+                    .unwrap_or_else(|| {
+                        let names = capture.query.capture_names();
+                        let resolved = names
+                            .iter()
+                            .map(|name| theme.style(name).unwrap_or_default())
+                            .collect();
+                        tables.push((capture.query, resolved));
+                        tables.len() - 1
+                    });
+            }
+
+            styles.push((node_range, tables[table].1[capture.index as usize]));
         }
 
         if styles.len() == 0 {
@@ -965,10 +916,8 @@ pub(crate) fn unique_styles(
 
     intervals.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
 
-    let mut significant_intervals: BTreeSet<usize> = BTreeSet::new();
-    for (range, _) in &styles {
-        significant_intervals.insert(range.end);
-    }
+    let mut significant_intervals: Vec<usize> = styles.iter().map(|(range, _)| range.end).collect();
+    significant_intervals.sort_unstable();
 
     let mut result: Vec<(Range<usize>, HighlightStyle)> = Vec::new();
     let mut active_styles: Vec<usize> = Vec::new();
@@ -1007,7 +956,7 @@ pub(crate) fn unique_styles(
         if let Some((last_range, last_style)) = merged.last_mut() {
             if last_range.end == range.start
                 && *last_style == style
-                && !significant_intervals.contains(&range.start)
+                && significant_intervals.binary_search(&range.start).is_err()
             {
                 last_range.end = range.end;
                 continue;
