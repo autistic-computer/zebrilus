@@ -102,5 +102,5 @@ pub(crate) fn run_tmux_import(path: PathBuf, window: &mut Window, cx: &mut App) 
 }
 
 pub(crate) fn pending() -> bool {
-    !marker_path().as_deref().is_some_and(Path::exists)
+    !cfg!(test) && !marker_path().as_deref().is_some_and(Path::exists)
 }
