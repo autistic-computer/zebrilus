@@ -115,6 +115,53 @@ impl AppShell {
         None
     }
 
+    pub(super) fn browser_suggestions(&self, cx: &App) -> Option<ala::AnyElement> {
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        if let Some(browser) = self.shown_browser(cx) {
+            use ala::{IntoElement as _, ParentElement as _, Styled as _, canvas, div};
+            use penna::ActiveTheme as _;
+            let pane = browser.read(cx);
+            pane.address_field()?;
+            let pick = browser.downgrade();
+            let rows = zz_ui::compact::address_suggestions(
+                pane.phone_suggestions(),
+                move |url, window, cx| {
+                    let _ = pick.update(cx, |browser, cx| browser.pick_page(&url, window, cx));
+                },
+                cx.theme().ground(),
+                cx,
+            )?;
+            let hole = pane.suggestions_hole();
+            let notify = browser.downgrade();
+            let radius = cx.theme().phone_radius();
+            return Some(
+                div()
+                    .relative()
+                    .w_full()
+                    .child(rows)
+                    .child(
+                        canvas(
+                            move |bounds, window, _| {
+                                let next = Some((bounds, radius));
+                                if hole.replace(next) != next {
+                                    let notify = notify.clone();
+                                    window.on_next_frame(move |_, cx| {
+                                        let _ = notify.update(cx, |_, cx| cx.notify());
+                                    });
+                                }
+                            },
+                            |_, (), _, _| {},
+                        )
+                        .absolute()
+                        .inset_0(),
+                    )
+                    .into_any_element(),
+            );
+        }
+        let _ = cx;
+        None
+    }
+
     pub(super) fn browser_tabs_open(&self, cx: &App) -> bool {
         #[cfg(any(target_os = "ios", target_os = "android"))]
         if let Some(browser) = self.shown_browser(cx) {

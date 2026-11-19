@@ -1,18 +1,105 @@
 use std::{rc::Rc, sync::Arc};
 
 use ala::{
-    App, ElementId, Entity, Focusable as _, FontFeatures, IntoElement, ParentElement as _,
-    RenderOnce, SharedString, Styled as _, Window, div, prelude::*, px,
+    AnyElement, App, ClickEvent, Div, ElementId, Entity, Focusable as _, FontFeatures, IntoElement,
+    ParentElement as _, RenderOnce, SharedString, Stateful, Styled as _, Window, div, prelude::*,
+    px,
 };
 
 use crate::{
     ActiveTheme as _, Disableable as _, Ground, IconName, PaintState, Sizable as _, Size, Space,
     StyledExt as _, Surface, TextStyle,
     blocks::chat::{PHONE_COMPOSER_HEIGHT, PHONE_COMPOSER_INSET, phone_composer_corner},
+    blocks::touch::{Nest, TouchRow},
     components::button::{ButtonLook, ButtonVariants as _},
     components::input::{FieldLook, Input, InputState, field_chrome, field_underlay},
-    h_flex, muted_on,
+    h_flex, muted_on, v_flex,
 };
+
+const SUGGESTION_INSET: f32 = 4.0;
+const REST_GLYPH: f32 = 20.0;
+
+pub fn phone_suggestions(rows: Vec<TouchRow>, ground: Ground, cx: &App) -> Option<AnyElement> {
+    if rows.is_empty() {
+        return None;
+    }
+    let outer = cx.theme().phone_radius();
+    let inside = cx
+        .theme()
+        .ground_of(Surface::from(FieldLook::Composer).on(ground));
+    let nest = Nest {
+        outer,
+        inset: px(SUGGESTION_INSET),
+    };
+    Some(
+        field_chrome(
+            v_flex()
+                .debug_selector(|| "phone-suggestions".to_owned())
+                .w_full()
+                .p(px(SUGGESTION_INSET))
+                .gap(Space::S2),
+            FieldLook::Composer,
+            Some(ground),
+            PaintState::Rest,
+            cx,
+        )
+        .rounded(outer)
+        .corner_radius_mode(ala::CornerRadiusMode::Fixed)
+        .children(rows.into_iter().map(|row| row.nested(nest, inside)))
+        .into_any_element(),
+    )
+}
+
+pub fn phone_field_at_rest(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    placeholder: impl Into<SharedString>,
+    ground: Ground,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Stateful<Div> {
+    let inside = cx
+        .theme()
+        .ground_of(Surface::from(FieldLook::Composer).on(ground));
+    let muted = muted_on(inside, cx);
+    field_chrome(
+        h_flex()
+            .id(id)
+            .debug_selector(|| "phone-field-at-rest".to_owned())
+            .w_full()
+            .h(px(PHONE_COMPOSER_HEIGHT))
+            .items_center()
+            .gap(Space::S2)
+            .p(px(PHONE_COMPOSER_INSET)),
+        FieldLook::Composer,
+        Some(ground),
+        PaintState::Rest,
+        cx,
+    )
+    .rounded(phone_composer_corner(cx))
+    .corner_radius_mode(ala::CornerRadiusMode::Fixed)
+    .click_cursor()
+    .text_color(muted)
+    .child(
+        div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .size(px(crate::blocks::chat::PHONE_COMPOSER_BUTTON))
+            .child(crate::Icon::new(icon).size(px(REST_GLYPH))),
+    )
+    .child(
+        div()
+            .flex_1()
+            .min_w_0()
+            .pl(Space::S4)
+            .truncate()
+            .type_style(TextStyle::TouchBody, cx)
+            .child(placeholder.into()),
+    )
+    .on_click(on_click)
+}
 
 type Handler = Rc<dyn Fn(&mut Window, &mut App)>;
 

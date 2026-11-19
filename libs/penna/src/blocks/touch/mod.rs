@@ -25,7 +25,7 @@ mod which_key_list;
 
 pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, resolve_direction};
 pub use dots::{PageDot, page_dots, page_dots_in, page_strip};
-pub use find::PhoneFind;
+pub use find::{PhoneFind, phone_field_at_rest, phone_suggestions};
 pub use key_row::{
     KEY_DISC, KEY_DISC_GAP, KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y,
     KeyRow, KeyRowKey, key_pill_layer,

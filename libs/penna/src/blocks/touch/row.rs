@@ -182,7 +182,8 @@ impl TouchRow {
 
     #[must_use]
     pub fn detail(mut self, detail: impl Into<SharedString>) -> Self {
-        self.detail = Some(detail.into());
+        let detail = detail.into();
+        self.detail = (!detail.is_empty()).then_some(detail);
         self
     }
 

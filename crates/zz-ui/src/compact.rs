@@ -8,7 +8,10 @@ mod sheets;
 mod tool_keys;
 
 pub use bento::{host_mark, window_mark};
-pub use browser::{FAILED_TOP, TabRow, failed_page, tabs_sheet};
+pub use browser::{
+    FAILED_TOP, PageRow, RECENT_ROWS, SUGGESTED_ROWS, TabRow, address_suggestions, failed_page,
+    new_tab_page, tabs_sheet,
+};
 pub use faces::{
     LEAD_FACE, PILL_GLYPH, WINDOW_FACE, attention_dot, lead_face, machine_face, mark_dot,
     pill_face, strip_face, window_faces,

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone browser new tab</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-row4 { display: grid; grid-template-columns: repeat(4, 424px); gap: 0 16px; align-items: start; }
+  .zz-cap { display: grid; gap: 2px; margin: 4px 10px 0; max-width: 402px; }
+  .zz-cap b { font-weight: 600; }
+  .zz-cap span { color: var(--penna-fg-muted); }
+  .zz-shot { display: grid; align-content: start; }
+  .zz-q { display: grid; gap: 4px; }
+  .zz-q + .zz-q { margin-top: 48px; }
+  .zz-cmp { width: 100%; max-width: 1300px; border-collapse: collapse; }
+  .zz-cmp th, .zz-cmp td { padding: 9px 12px; text-align: left; vertical-align: top; box-shadow: inset 0 -1px 0 var(--penna-divider); }
+  .zz-cmp th { color: var(--penna-fg-muted); font-weight: 500; }
+  .zz-cmp td:first-child { width: 220px; font-weight: 600; }
+
+  .zz-page-in { position: absolute; inset: 54px 0 0; display: flex; flex-direction: column; justify-content: center; gap: 24px; padding: 0 16px 172px; }
+  .zz-page-in[data-top] { justify-content: flex-start; padding-top: 24px; }
+  .zz-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--penna-muted); --penna-icon-size: 44px; }
+  .zz-empty > b { color: var(--penna-fg); font-size: 20px; line-height: 26px; font-weight: 600; }
+  .zz-head { padding: 0 8px 6px; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); font-weight: 600; }
+  .penna-touch-row > .zz-site { display: grid; flex: none; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: color-mix(in srgb, var(--penna-fg) 14%, transparent); color: var(--penna-fg); font-size: 12px; line-height: 1; font-weight: 600; }
+  .penna-touch-row-lines > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .zz-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .zz-tile[data-penna] { display: flex; flex-direction: column; justify-content: space-between; height: 96px; padding: 12px; box-sizing: border-box; }
+  .zz-tile > .zz-site { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: color-mix(in srgb, var(--penna-fg) 14%, transparent); font-weight: 600; }
+  .zz-tile > span { display: flex; flex-direction: column; min-width: 0; }
+  .zz-tile > span > b, .zz-tile > span > i { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: normal; }
+  .zz-tile > span > b { font-weight: 500; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
+  .zz-tile > span > i { color: var(--penna-fg-muted); font-size: 13px; line-height: 16px; }
+
+  .zz-rest { position: absolute; z-index: 15; right: 16px; bottom: 84px; left: 16px; }
+  .zz-dock { position: absolute; z-index: 20; right: 16px; bottom: 300px; left: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .zz-phone > .zz-kb { position: absolute; z-index: 30; right: 0; bottom: 0; left: 0; }
+  .zz-kb-row > i[data-dot] { width: 33px; }
+  .zz-kb-row > i[data-com] { width: 60px; font-size: 15px; background: color-mix(in srgb, var(--penna-fg) 12%, var(--penna-bg)); }
+  .zz-kb-row > i[data-space][data-short] { width: 96px; }
+  .zz-ph { color: var(--penna-fg-muted); }
+  .zz-act { position: absolute; z-index: 15; right: 16px; bottom: 84px; left: 16px; display: flex; }
+  .zz-act > .penna-button { width: 100%; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro"><h1>A blank browser tab on the phone</h1></div>
+  <div data-board></div>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  const dots = (on, count = 3) => `<span class="penna-dots">${Array.from({ length: count }, (_, i) => `<span class="penna-dot"${i === on ? " data-active" : ""}></span>`).join("")}</span>`;
+  const pill = `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating"><span class="penna-pill-tile" data-penna="phone.pill.icon">${ic("globe")}</span><span class="penna-pill-copy"><span class="penna-pill-title">New tab</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">zebrilus · main</span>${dots(1)}</span></span></button></div>`;
+  const kb = () => {
+    const keys = (s) => [...s].map((k) => `<i>${k}</i>`).join("");
+    return `<div class="zz-kb"><div class="zz-kb-row">${keys("qwertyuiop")}</div><div class="zz-kb-row">${keys("asdfghjkl")}</div><div class="zz-kb-row"><i data-w>⇧</i>${keys("zxcvbnm")}<i data-w>⌫</i></div><div class="zz-kb-row"><i data-w>123</i><i data-dot>.</i><i data-dot>/</i><i data-com>.com</i><i data-space data-short>space</i><i data-ret>go</i></div></div>`;
+  };
+  const RECENT = [
+    { title: "Pull request #412 · autistic-computer/zebrilus", host: "github.com", mark: "G" },
+    { title: "penna docs", host: "127.0.0.1:8102", mark: "P" },
+    { title: "zz storybook", host: "localhost:8098", mark: "Z" },
+    { title: "std::path - Rust", host: "doc.rust-lang.org", mark: "R" },
+    { title: "Hacker News", host: "news.ycombinator.com", mark: "Y" },
+  ];
+  const row = (r, glyph) => `<div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button">${glyph ? ic(glyph) : `<span class="zz-site">${r.mark}</span>`}<span class="penna-touch-row-lines"><span>${r.title}</span><span>${r.host}</span></span></div>`;
+  const group = (rows, glyph) => `<div class="penna-touch-group" data-penna="settings.card" data-ground data-ruled>${rows.map((r) => row(r, glyph)).join("")}</div>`;
+  const empty = `<div class="zz-empty">${ic("globe")}<b>New tab</b></div>`;
+  const field = ({ text = "", focused = false } = {}) => `<div class="penna-address" data-penna="field.composer"><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="${focused ? "Close" : "Address"}">${ic(focused ? "xmark" : "globe")}</button><span class="penna-address-text${focused ? " zz-caret" : ""}">${text ? `<span>${text}</span>` : `<span class="zz-ph">Search or enter address</span>`}</span></div>`;
+  const phone = (inner) => `<div class="zz-phone">${status}${inner}<span class="zz-home"></span></div>`;
+  const shot = (inner, title, note) => `<div class="zz-shot">${phone(inner)}<div class="zz-cap"><b>${title}</b><span>${note}</span></div></div>`;
+
+  const opened = `<div class="zz-dock"><div class="penna-touch-group" data-penna="field.composer">${RECENT.slice(0, 4).reverse().map((r) => row(r, "history")).join("")}</div>${field({ focused: true })}</div>${kb()}`;
+  const takeA = `<div class="zz-page-in">${empty}<div><div class="zz-head">Recent</div>${group(RECENT)}</div></div><div class="zz-rest">${field()}</div>${pill}`;
+  const takeB = `<div class="zz-page-in">${empty}<div><div class="zz-head">Recent</div>${group(RECENT)}</div></div><div class="zz-act"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large"><span class="penna-label">Enter address</span></button></div>${pill}`;
+  const tiles = `<div class="zz-tiles">${RECENT.slice(0, 4).map((r) => `<div class="zz-tile" data-penna="settings.card" data-ground><span class="zz-site">${r.mark}</span><span><b>${r.title}</b><i>${r.host}</i></span></div>`).join("")}</div>`;
+  const takeC = `<div class="zz-page-in" data-top>${field()}<div><div class="zz-head">Recent</div>${tiles}</div></div>${pill}`;
+
+  const Q = [
+    {
+      name: "Opening a new tab, then its page at rest",
+      shots: [
+        shot(opened, "Opened", "Every new tab opens like this: the address field up with the keyboard, and the last four pages over it, nearest the thumb first."),
+        shot(takeA, "A · Field at rest", "Close the keyboard and the field stays where the composer sits, 8 above the pill. Recent pages under the empty state."),
+        shot(takeB, "B · Enter address", "The same page with a 56 Enter address in the field's place, as Try again sits on a failed page."),
+        shot(takeC, "C · Start page", "The field at the top of the page, then recent pages as two-across tiles."),
+      ],
+    },
+  ];
+  const CMP = [
+    ["", "A · Field at rest", "B · Enter address", "C · Start page"],
+    ["Type an address", "1 tap", "1 tap", "1 tap, far from the thumb"],
+    ["Open a recent page", "1 tap, 5 rows", "1 tap, 5 rows", "1 tap, 4 tiles"],
+    ["Matches", "Chat composer, find field", "Failed page's Try again", "Nothing on the phone yet"],
+  ];
+  document.querySelector("[data-board]").innerHTML = Q.map((q) => `<section class="zz-q"><h2>${q.name}</h2><div class="zz-row4">${q.shots.join("")}</div></section>`).join("")
+    + `<section class="zz-q"><h2>Side by side</h2><table class="zz-cmp"><thead><tr>${CMP[0].map((c) => `<th>${c}</th>`).join("")}</tr></thead><tbody>${CMP.slice(1).map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table></section>`;
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>

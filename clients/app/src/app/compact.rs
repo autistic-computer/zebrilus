@@ -1403,10 +1403,15 @@ impl AppShell {
                 Some(Self::phone_find_field(terminal, state, cx))
             })
             .or_else(|| self.browser_address_field(cx));
+        let suggestions = shown_terminal
+            .is_none()
+            .then(|| self.browser_suggestions(cx))
+            .flatten();
         let bottom = if let Some(find) = find {
             if keyboard {
                 let lift = key_row_lift(zone, overlap);
                 div()
+                    .relative()
                     .flex_none()
                     .w_full()
                     .h(px(KEY_ROW_HEIGHT) + lift)
@@ -1415,6 +1420,17 @@ impl AppShell {
                     .pb(px(KEY_ROW_MARGIN_Y) + lift)
                     .bg(page_background)
                     .child(find)
+                    .children(suggestions.map(|suggestions| {
+                        div()
+                            .absolute()
+                            .left(px(KEY_ROW_MARGIN_X))
+                            .right(px(KEY_ROW_MARGIN_X))
+                            .bottom(
+                                px(KEY_ROW_HEIGHT) + lift - px(KEY_ROW_MARGIN_Y)
+                                    + px(penna::Space::GAP_RELATED.design_px()),
+                            )
+                            .child(suggestions)
+                    }))
                     .into_any_element()
             } else {
                 div()

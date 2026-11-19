@@ -40,7 +40,9 @@ use zz_ui::{
         browser_site_controls_button, browser_site_menu, browser_start_surface,
         browser_toolbar_button,
     },
-    compact::{TabRow, failed_page, tabs_sheet},
+    compact::{
+        PageRow, RECENT_ROWS, SUGGESTED_ROWS, TabRow, failed_page, new_tab_page, tabs_sheet,
+    },
     dialogs::browser_clear_site_data_alert,
     pane::{PaneActions, PaneDrag, PaneDragSource},
     pane_look::PaneLook,
@@ -69,6 +71,7 @@ struct Tab {
     visited: String,
     history_use: Option<OmniboxUse>,
     history_started: bool,
+    auto_address: bool,
     _events: ala::Task<()>,
 }
 
@@ -90,6 +93,7 @@ pub(super) struct BrowserPane {
     compact: bool,
     tabs_sheet: bool,
     address_open: bool,
+    phone_rows: Vec<PageRow>,
     editing: bool,
     omnibox: Omnibox,
     suggestions_hole: Rc<Cell<Option<(Bounds<Pixels>, Pixels)>>>,
@@ -184,7 +188,10 @@ impl BrowserPane {
                         cx.notify();
                     }
                 }
-                InputEvent::Change if this.address_open => cx.notify(),
+                InputEvent::Change if this.address_open => {
+                    this.refresh_phone_rows(cx);
+                    cx.notify();
+                }
                 InputEvent::Change if !this.compact => {
                     let value = input.read(cx).value().to_string();
                     this.update_omnibox(&value, window, cx);
@@ -241,6 +248,7 @@ impl BrowserPane {
             compact: false,
             tabs_sheet: false,
             address_open: false,
+            phone_rows: Vec::new(),
             editing: false,
             omnibox: Omnibox::default(),
             suggestions_hole: Rc::default(),
@@ -517,6 +525,7 @@ impl BrowserPane {
         Tab {
             id,
             view,
+            auto_address: url == "about:blank",
             url,
             title: String::new(),
             loading: false,
@@ -738,9 +747,91 @@ impl BrowserPane {
             self.update_address(window, cx);
         }
         self.resume();
+        if compact
+            && active
+            && !self.address_open
+            && !self.tabs_sheet
+            && self.tabs[self.active].auto_address
+            && self.writable(cx)
+        {
+            self.open_address(window, cx);
+        }
         if changed {
             cx.notify();
         }
+    }
+
+    pub(super) fn phone_suggestions(&self) -> &[PageRow] {
+        &self.phone_rows
+    }
+
+    pub(super) fn suggestions_hole(&self) -> Rc<Cell<Option<(Bounds<Pixels>, Pixels)>>> {
+        self.suggestions_hole.clone()
+    }
+
+    pub(super) fn pick_page(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.navigate(url, window, cx) {
+            return;
+        }
+        if std::mem::take(&mut self.address_open) {
+            window.dismiss_virtual_keyboard();
+        }
+        self.phone_rows.clear();
+        self.suggestions_hole.set(None);
+        cx.notify();
+    }
+
+    fn refresh_phone_rows(&mut self, cx: &mut Context<Self>) {
+        let query = self.address.read(cx).value().trim().to_owned();
+        let url = &self.tabs[self.active].url;
+        self.phone_rows = if !self.address_open || query == *url {
+            Vec::new()
+        } else if query.is_empty() {
+            history::recent(&self.host, &self.profile_name, SUGGESTED_ROWS, cx)
+                .into_iter()
+                .map(|page| page_row(&page.title, &page.url))
+                .collect()
+        } else {
+            history::suggestions(&self.host, &self.profile_name, &query, SUGGESTED_ROWS, cx)
+                .into_iter()
+                .map(|suggestion| page_row(&suggestion.title, &suggestion.url))
+                .collect()
+        };
+        if self.phone_rows.is_empty() {
+            self.suggestions_hole.set(None);
+        }
+    }
+
+    fn phone_start_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let recents: Vec<PageRow> =
+            history::recent(&self.host, &self.profile_name, RECENT_ROWS, cx)
+                .into_iter()
+                .map(|page| page_row(&page.title, &page.url))
+                .collect();
+        let writable = self.writable(cx);
+        let resting = writable && !self.address_open;
+        let pick = cx.entity().downgrade();
+        let address = cx.entity().downgrade();
+        let page = new_tab_page(
+            &recents,
+            resting,
+            move |url, window, cx| {
+                let _ = pick.update(cx, |this, cx| this.pick_page(&url, window, cx));
+            },
+            move |window, cx| {
+                if writable {
+                    let _ = address.update(cx, |this, cx| this.open_address(window, cx));
+                }
+            },
+            cx.theme().ground(),
+            cx,
+        );
+        div()
+            .absolute()
+            .inset_0()
+            .pb(self.covered_bottom)
+            .child(page)
+            .into_any_element()
     }
 
     pub(super) fn shown_page(&self) -> (&str, &str) {
@@ -987,7 +1078,10 @@ impl BrowserPane {
         reason = "the page is cut out to the popover's own border box"
     )]
     fn suggestions_panel(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if !self.editing || self.compact || self.omnibox.suggestions.is_empty() {
+        if self.compact {
+            return None;
+        }
+        if !self.editing || self.omnibox.suggestions.is_empty() {
             self.suggestions_hole.set(None);
             return None;
         }
@@ -1569,6 +1663,7 @@ impl BrowserPane {
             return;
         }
         self.address_open = true;
+        self.tabs[self.active].auto_address = false;
         let url = &self.tabs[self.active].url;
         let value = if url == "about:blank" {
             String::new()
@@ -1580,11 +1675,13 @@ impl BrowserPane {
         let input = self.address.clone();
         cx.on_next_frame(window, move |_, window, cx| {
             input.update(cx, |input, cx| input.focus(window, cx));
+            window.request_virtual_keyboard();
             cx.on_next_frame(window, |_, window, cx| {
                 window.dispatch_action(Box::new(SelectAll), cx);
             });
         });
         window.request_virtual_keyboard();
+        self.refresh_phone_rows(cx);
         cx.notify();
     }
 
@@ -1592,6 +1689,8 @@ impl BrowserPane {
         if !std::mem::take(&mut self.address_open) {
             return;
         }
+        self.phone_rows.clear();
+        self.suggestions_hole.set(None);
         self.focus.focus(window, cx);
         window.dismiss_virtual_keyboard();
         self.update_address(window, cx);
@@ -1882,7 +1981,13 @@ impl Render for BrowserPane {
                 })
                 .on_click(cx.listener(|this, _, _, cx| this.reload(cx)))
         });
-        let start_page = (blank && !compact).then(|| self.start_page(cx));
+        let start_page = blank.then(|| {
+            if compact {
+                self.phone_start_page(cx)
+            } else {
+                self.start_page(cx)
+            }
+        });
         let suggestions = self.suggestions_panel(cx);
         let suggestions_hole = self.suggestions_hole.clone();
         let tab = &self.tabs[self.active];
@@ -2141,6 +2246,19 @@ pub(super) fn host(url: &str) -> &str {
     }
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
     rest.split(['/', '?', '#']).next().unwrap_or(rest)
+}
+
+fn page_row(title: &str, url: &str) -> PageRow {
+    let shown = diagnostic_url(url);
+    PageRow {
+        title: if title.trim().is_empty() {
+            shown.clone().into()
+        } else {
+            title.to_owned().into()
+        },
+        url: url.to_owned().into(),
+        host: host(&shown).to_owned().into(),
+    }
 }
 
 fn site_host(url: &str) -> Option<String> {
