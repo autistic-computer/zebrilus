@@ -1,10 +1,10 @@
 ---
 type: Protocol
-title: zz wire protocol (v123)
+title: zz wire protocol (v124)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-11-16T00:00:00-03:00
+timestamp: 2026-11-19T00:00:00-03:00
 ---
 
 # Overview
@@ -15,7 +15,7 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 123`** (`crates/zz-protocol/src/message.rs`). Each side also states its
+**`PROTOCOL_VERSION = 124`** (`crates/zz-protocol/src/message.rs`). Each side also states its
 build `REVISION` in the handshake and holds a floor for the other side's (see v123 below).
 
 `PROTOCOL_VERSION` is a wire epoch. It is checked for equality, never negotiated: a frame whose
@@ -1246,6 +1246,13 @@ is not signed in is left out, and a CLI that is not installed has no rows. Each 
 asks the CLIs again, and sends the whole list to every client that asked when it changes. The
 account work stays on v122.
 
+v124 appends `AgentProvider::Antigravity` after `Codex`, the provider of a chat over `agy`
+([agent panes](/concepts/agent-panes.md#antigravity)). The provider is a nested enum that travels in
+`AgentDescriptor`, the providers report, `AgentAccount`, `AgentQuota` and `AgentLogin`, and the
+providers report holds a row for every provider, so no capability can keep it from a v123 peer. The
+names gated inside v123 stay in their tables for now: every v124 peer has all of them, and folding
+them into the baseline is its own change.
+
 v123 is the setup epoch for [split updates](/designs/split-updates.md). `zz-protocol` gains
 `REVISION: u32`, a build revision bumped by hand when behavior the other side relies on changes, and
 two floors, `MIN_DAEMON_REVISION` and `MIN_CLIENT_REVISION`, both 1. `ClientHello`, `Welcome` and
@@ -1274,9 +1281,11 @@ to go idle ([agent panes](/concepts/agent-panes.md)).
 
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 123`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 124`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
+- v124 requires updated clients and daemon together, including the daemon on every ssh host.
+  v124 appends `AgentProvider::Antigravity`.
 - v123 requires updated clients and daemon together, including the daemon on every ssh host.
   v123 appends `ClientHello.revision`, `Welcome.revision`, `ServerHello.revision`,
   `ServerError::ClientTooOld` and `PaneKindSnapshot::Other`.

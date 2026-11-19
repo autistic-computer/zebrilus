@@ -23,7 +23,7 @@ use crate::{
     },
 };
 
-pub const PROTOCOL_VERSION: u16 = 123;
+pub const PROTOCOL_VERSION: u16 = 124;
 pub const REVISION: u32 = 6;
 pub const MIN_DAEMON_REVISION: u32 = 1;
 pub const MIN_CLIENT_REVISION: u32 = 1;
@@ -5764,7 +5764,7 @@ mod tests {
 
     #[test]
     fn detached_reason_holds_its_appended_wire_field() {
-        assert_eq!(super::PROTOCOL_VERSION, 123);
+        assert_eq!(super::PROTOCOL_VERSION, 124);
         for (reason, tag) in [
             (super::DetachReason::Requested, 0),
             (super::DetachReason::Evicted, 1),
