@@ -230,6 +230,10 @@ impl Pager {
         self.index
     }
 
+    pub fn position(&self) -> f32 {
+        self.index as f32 - self.shift
+    }
+
     pub fn count(&self) -> usize {
         self.count
     }

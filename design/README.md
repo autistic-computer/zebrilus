@@ -9,6 +9,10 @@ just design tokens         # rewrite zz's tokens while serving, after editing a 
 just design penna-tokens   # the same for penna's own page
 ```
 
+Pages only render through the server: open `http://127.0.0.1:8090/mockups/<folder>/<page>.html`. A page
+opened as a file loads none of the kit. `http://127.0.0.1:8090/mockups/` lists the folders. Agents
+follow `.claude/skills/design-board`.
+
 ## What is where
 
 | Path | What it is |

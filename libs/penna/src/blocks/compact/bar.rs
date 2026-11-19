@@ -1,7 +1,7 @@
 use ala::{
-    AnyElement, App, Div, ElementId, FULL_CORNER_RADIUS, GlassMaterial, HighlightStyle, Hsla,
-    IntoElement, MouseButton, ParentElement as _, Pixels, Rgba, SharedString, Stateful,
-    Styled as _, StyledText, div, prelude::*, px,
+    AnyElement, App, Bounds, Div, ElementId, FULL_CORNER_RADIUS, GlassMaterial, HighlightStyle,
+    Hsla, IntoElement, MouseButton, ParentElement as _, Pixels, Rgba, SharedString, Stateful,
+    Styled as _, StyledText, div, point, prelude::*, px, size,
 };
 
 use crate::{
@@ -24,6 +24,12 @@ const PILL_INSET_MAX: f32 = 20.0;
 const UP_REACH: f32 = 4.0;
 const UP_GLYPH: f32 = 18.0;
 const INK_CONTRAST: f32 = 4.5;
+const HANDLE_WIDTH: f32 = 28.0;
+const HANDLE_HEIGHT: f32 = 4.0;
+const HANDLE_INK: f32 = 0.34;
+const HANDLE_TARGET: f32 = 44.0;
+const HANDLE_TARGET_HEIGHT: f32 = 22.0;
+const HANDLE_REACH: f32 = 8.0;
 const TINT_MAX: f32 = 0.95;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -86,6 +92,40 @@ pub fn compact_floating_bar(pill: impl IntoElement, placement: &PillPlacement, c
         .font_family(theme.font_family.clone())
         .text_color(theme.foreground)
         .child(pill)
+}
+
+#[must_use]
+pub fn pill_handle_bounds(pill: Bounds<Pixels>) -> Bounds<Pixels> {
+    Bounds::new(
+        point(
+            pill.center().x - px(HANDLE_TARGET / 2.0),
+            pill.top() - px(HANDLE_REACH),
+        ),
+        size(px(HANDLE_TARGET), px(HANDLE_TARGET_HEIGHT)),
+    )
+}
+
+pub fn pill_handle(id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
+    div()
+        .id(id)
+        .debug_selector(|| "compact-bar-handle".to_owned())
+        .click_cursor()
+        .relative()
+        .w(px(HANDLE_TARGET))
+        .h(px(HANDLE_TARGET_HEIGHT))
+        .role(ala::Role::Button)
+        .aria_label(SharedString::new_static("Up"))
+        .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+        .child(
+            div()
+                .absolute()
+                .top(px(HANDLE_REACH - HANDLE_HEIGHT / 2.0))
+                .left(px((HANDLE_TARGET - HANDLE_WIDTH) / 2.0))
+                .w(px(HANDLE_WIDTH))
+                .h(px(HANDLE_HEIGHT))
+                .rounded(px(HANDLE_HEIGHT / 2.0))
+                .bg(cx.theme().foreground.opacity(HANDLE_INK)),
+        )
 }
 
 pub(super) fn floating_layer(placement: &PillPlacement, cx: &App) -> Layer {
@@ -239,6 +279,63 @@ pub fn compact_disc_button(
     cx: &App,
 ) -> Button {
     crate::blocks::sheet::disc_on(id, icon, label, cx.theme().ground(), cx)
+}
+
+pub const BAR_DISC: f32 = COMPACT_PILL_HEIGHT;
+pub const BAR_GAP: f32 = PILL_GAP.design_px();
+const DISC_GLYPH: f32 = 22.0;
+
+pub fn compact_bar_disc(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    label: &'static str,
+    placement: &PillPlacement,
+    cx: &App,
+) -> Stateful<Div> {
+    let theme = cx.theme();
+    let floating = floating_layer(placement, cx);
+    let (radius, share, smoothing) = if theme.pill_controls() {
+        (
+            FULL_CORNER_RADIUS,
+            None,
+            crate::Smoothing::CIRCLE.exponent(),
+        )
+    } else {
+        (
+            theme.control_corner(px(BAR_DISC)),
+            Some(theme.control_roundness()),
+            floating.smoothing,
+        )
+    };
+    let layer = Layer {
+        radius,
+        share,
+        smoothing,
+        ..floating
+    };
+    let pressed = theme
+        .layer(Surface::new(roles::PHONE_PILL), PaintState::Active)
+        .fill;
+    let id = id.into();
+    let press: ElementId = (id.clone(), "press").into();
+    let disc = div()
+        .id(id)
+        .click_cursor()
+        .relative()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .size(rems_from_px(BAR_DISC))
+        .role(ala::Role::Button)
+        .aria_label(SharedString::new_static(label))
+        .layer(&layer)
+        .text_color(floating.text);
+    disc.on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+        .child(crate::blocks::touch::press_highlight(
+            press, pressed, radius,
+        ))
+        .child(Icon::new(icon).size(rems_from_px(DISC_GLYPH)))
 }
 
 pub const PILL_TILE: f32 = COMPACT_PILL_HEIGHT - 2.0 * TILE_INSET.design_px();

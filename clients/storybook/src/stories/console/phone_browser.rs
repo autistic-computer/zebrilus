@@ -13,9 +13,7 @@ use penna::{
     components::progress::Progress,
     h_flex, v_flex,
 };
-use zz_ui::compact::{
-    BACK, BrowserMenu, PaneMenu, TabRow, browser_menu, failed_page, pane_menu, tabs_sheet,
-};
+use zz_ui::compact::{BACK, BrowserMenu, TabRow, browser_menu, failed_page, pane_menu, tabs_sheet};
 
 use super::phone::{groups, phone, placement};
 use crate::story::states;
@@ -192,13 +190,10 @@ pub(super) fn browser_states(window: &mut Window, cx: &mut App) -> AnyView {
     let address = cx.new(|cx| InputState::new(window, cx).default_value(URL));
     let typed = cx.new(|cx| InputState::new(window, cx).default_value(TYPED));
     cx.new(|cx| {
-        let (groups, fold) = browser_menu(browser(true, false, false), "zz");
-        let (first, _) = browser_menu(browser(false, false, false), "zz");
-        let (loading, _) = browser_menu(browser(true, false, true), "zz");
-        let more = pane_menu(PaneMenu {
-            session: "zz",
-            terminal: false,
-        });
+        let (groups, fold) = browser_menu(browser(true, false, false));
+        let (first, _) = browser_menu(browser(false, false, false));
+        let (loading, _) = browser_menu(browser(true, false, true));
+        let more = pane_menu(false);
         let held = cx.new(|cx| {
             let mut menu = StackMenu::new(StackClose::Disc, cx);
             menu.set_groups(groups.clone(), cx);

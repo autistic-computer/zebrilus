@@ -14,36 +14,39 @@ through every pane in window order. A sideways swipe on the pane itself stays wi
 down, with no header: the status bar is transparent over it, and its text turns light or dark
 to match. Landing on a pane zooms it (`resize-pane -Z`), so the daemon sizes
 the window to that pane; terminal previews keep the neighbouring pane live while it
-slides in, and a browser pane slides in with its page showing. The pill is the only control at
-the bottom. It shows the pane's icon, its name, and under it the window and page dots grouped by
-window; an agent waiting on a permission turns the icon and that line yellow. Over a web page the pill keeps its text color,
+slides in, and a browser pane slides in with its page showing. The bar at the bottom is two
+pieces: the pill, with a short handle on its top edge, and the plus disc. The pill shows the pane's icon, its name, and under
+it a strip with a cell per pane grouped by window; an agent waiting on a permission turns the icon
+and that line yellow. Over a web page the pill keeps its text color,
 as Safari's bar does, and deepens its glass instead when the page under it is light. Tapping the
-pill opens the pane menu as a stack of chips: New chat, New terminal and New browser under
-"New in" and the pane's session, nearest the thumb, then Rename and Close for the pane (Close
-asks first in a sheet, Rename opens a sheet with the name), and All bindings in a
-terminal. The pill ends in an up disc: tap it to go up one level. The overview is three levels you
-zoom through, the way Calendar goes from year to month to day. The up disc, or dragging the pill up
-(past a third of the way or with a flick), sends the pane home to its host's page: the pane comes
-loose as a card that follows the finger, up and sideways, shrinking as it climbs, while the page
-fades in behind it and stands still. The pane's preview in its window's tile is hollow while the
-card is out. The pill swaps to the machine's, dim until the drag will open, when its disc inverts
-with a tick. Letting go flies the card into its preview, which rings once; letting go short of a
-third springs it back to full screen. A machine's
-page opens with a close control in the top row and the machine's name as a large title, which folds into a frosted bar
-as the page scrolls, then every session under its name with its windows as a bento grid, each
-window drawn the way it splits its panes. Tap a window and it zooms into that pane; hold it for
+pill opens the pane menu as a stack of chips: Rename and Close for the pane (Close asks first in a
+sheet, Rename opens a sheet with the name), Find and All bindings in a terminal. Tapping plus opens
+Chat, Terminal and Browser under "New in" and the pane's session, nearest the thumb,
+with New session above. Holding the pill raises every pane as a card over the bar; sliding picks
+one, a pane per step, and letting go jumps to it. A tap on the pill's handle goes up one level. The overview is three levels you
+zoom through, the way Calendar goes from year to month to day. The handle, or dragging the pill up
+(past a third of the way or with a flick), zooms out to its host's page: the pane shrinks toward
+the middle of the screen while the page comes in behind it, and the bar swaps to the machine's. A drag
+follows the finger, and letting go short of a third springs it back to full screen. A machine's
+page has the machine's name as a large title, which folds into a frosted bar
+as the page scrolls, then every session under its name with its windows as cards: a window with a
+terminal shows each terminal's last four lines, up to two side by side, and any other window is one
+row saying what its pane says in the pill. Tap a window and it zooms into that pane; hold it for
 Rename and Close window, and hold a session's name for Rename session and Close session. The pill
-names the machine over the session in view, following the scroll: swipe it sideways to page
-machines, and tap it for the machine's menu, which stacks New chat, New terminal and New browser
-under "New in" and that session, then New session, All machines and Settings furthest; what it
-makes lands in that session. A machine with no sessions shows the New tile, which opens the same
-menu under "In a new session". A machine that is not connected shows why, with Connect, or
-Cancel while it connects, as its main action. All machines, the close control, or dragging the pill up, zooms out to Machines: every saved machine as a tile saying its state in words and a mark,
-then the add tile, with Settings in its bar; tap a machine to zoom into it, a connecting one to zoom into its connecting card,
-the add tile to zoom into the add card, and hold a tile for its sheet. With nothing attached the app opens on Machines. Entering a host, or paging to it with the pill, puts it on screen, since the
+holds every machine as its platform mark, the one on screen stretched into a capsule with its
+name over the session in view, following the scroll; with more machines than fit, the row
+scrolls to keep the capsule in the middle. Swipe it sideways to page machines, the capsule
+moving with the finger, tap another machine's mark to go there, and tap the capsule for All
+machines and Settings. Plus stacks Chat, Terminal and
+Browser under "New in" and that session, then New session; what it makes lands in that session. A
+machine with no sessions shows the New tile, which opens the same menu under "In a new session". A machine that is not connected shows why, with Connect, or
+Cancel while it connects, as its main action. All machines, the handle, or dragging the pill up, zooms out to Machines: every saved machine as a small tile, two to a row, waiting ones first:
+its mark, its name, and its windows as the desktop's program faces with their status dots, or its state in words; a
+tile with something waiting is tinted yellow and counts it. Then Add machine and Settings. Tap a tile to zoom into the
+machine, into its connecting card while it connects, or to reconnect a failed one, and hold it for its sheet. With nothing attached the app opens on Machines. Entering a host, or paging to it with the pill, puts it on screen, since the
 daemon streams previews only to the client attached to it. The phone has no session tree: the sidebar toggle and `focus-sidebar` open the
 overview instead. The keyboard opens only from that button or a tap on the terminal.
-While it is up, a key row replaces the pill: the prefix key in a pill of its own, then ctrl,
+While it is up, a key row replaces the bar: the prefix key in a pill of its own, then ctrl,
 alt, tab, esc, `/`, `@`, an arrow pad, and hide in a row that scrolls sideways when they do
 not fit, from any key but the arrow pad. A fade and a chevron mark the side with more keys;
 tapping them scrolls there. Prefix opens the pane menu, rising from the key, and its All
@@ -299,7 +302,7 @@ its pane's content, and display-panes labels keep their tmux styles and alignmen
 Notices preserve severity, duration, and explicit clearing; a failed command reports
 as `command: error`.
 
-On iPhone the pill opens the pane menu, and dragging it up opens navigation.
+On iPhone the pill opens the pane menu, plus opens the New menu, and dragging the pill up opens navigation.
 
 ## Keyboard
 

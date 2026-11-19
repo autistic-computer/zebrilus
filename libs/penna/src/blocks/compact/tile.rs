@@ -22,9 +22,6 @@ pub const MINI_GAP: f32 = 4.0;
 pub const MINI_TEXT: f32 = 5.0;
 pub const MINI_LINE: f32 = 6.0;
 const ADD_GLYPH: f32 = 20.0;
-const HOLLOW_INK: f32 = 0.3;
-const HOLLOW_LINE: f32 = 1.0;
-const RING_LINE: f32 = 2.0;
 const PAGE_BARS: [f32; 2] = [0.9, 0.7];
 const PAGE_HEAD: f32 = 0.45;
 const BUBBLE_BARS: [f32; 2] = [1.0, 0.55];
@@ -310,8 +307,6 @@ pub struct MiniPane {
     preview: MiniPreview,
     content: Option<AnyElement>,
     children: Vec<AnyElement>,
-    filled: f32,
-    ring: f32,
 }
 
 impl MiniPane {
@@ -322,21 +317,7 @@ impl MiniPane {
             preview: MiniPreview::Blank,
             content: None,
             children: Vec::new(),
-            filled: 1.0,
-            ring: 0.0,
         }
-    }
-
-    #[must_use]
-    pub fn filled(mut self, filled: f32) -> Self {
-        self.filled = filled.clamp(0.0, 1.0);
-        self
-    }
-
-    #[must_use]
-    pub fn ring(mut self, ring: f32) -> Self {
-        self.ring = ring.clamp(0.0, 1.0);
-        self
     }
 
     #[must_use]
@@ -473,17 +454,6 @@ impl RenderOnce for MiniPane {
                     .into_any_element(),
             ),
         };
-        let radius = mini_radius(cx);
-        let ring = if self.ring > 0.0 {
-            Some((px(RING_LINE), ink.opacity(self.ring)))
-        } else if self.filled < 1.0 {
-            Some((
-                px(HOLLOW_LINE),
-                ink.opacity(HOLLOW_INK * (1.0 - self.filled)),
-            ))
-        } else {
-            None
-        };
         Tile::new(self.id)
             .variant(TileVariant::Mini)
             .relative()
@@ -491,21 +461,11 @@ impl RenderOnce for MiniPane {
             .flex()
             .flex_col()
             .overflow_hidden()
-            .bg(theme.background.opacity(self.filled))
-            .rounded(radius)
+            .bg(theme.background)
+            .rounded(mini_radius(cx))
             .text_color(theme.foreground.muted())
-            .children(preview.map(|preview| {
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .m(-ring.map_or(px(0.0), |(width, _)| width))
-                    .opacity(self.filled)
-                    .child(preview)
-            }))
+            .children(preview)
             .children(self.children)
-            .when_some(ring, |tile, (width, color)| tile.ring(width, color))
     }
 }
 

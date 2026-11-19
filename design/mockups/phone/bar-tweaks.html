@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bar tweaks</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-os { width: 26px; height: 26px; background: currentColor; mask: var(--os) center / contain no-repeat; }
+  .zz-os[data-os="mac"] { --os: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12.131 7.193c-.79 0-2.013-.898-3.3-.867c-1.7.022-3.258.986-4.134 2.512c-1.764 3.062-.455 7.586 1.266 10.075c.844 1.212 1.84 2.575 3.16 2.533c1.267-.054 1.742-.823 3.279-.823c1.526 0 1.958.823 3.3.79c1.364-.022 2.23-1.233 3.063-2.457c.963-1.407 1.363-2.771 1.385-2.846c-.033-.011-2.652-1.018-2.683-4.048c-.022-2.533 2.067-3.745 2.164-3.799c-1.191-1.742-3.019-1.937-3.658-1.98c-1.667-.13-3.062.908-3.842.908zM14.946 4.638c.703-.843 1.167-2.022 1.038-3.192c-1.006.043-2.218.671-2.943 1.515c-.65.747-1.212 1.948-1.061 3.095c1.115.087 2.263-.573 2.966-1.418'/%3E%3C/svg%3E"); }
+  .zz-os[data-os="arch"] { --os: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.996C11.11 4.179 10.572 5.608 9.581 7.726c.608.644 1.355 1.395 2.566 2.242c-1.303-.536-2.191-1.075-2.855-1.633C8.023 10.983 6.035 14.755 2 22.004c3.171-1.831 5.629-2.959 7.92-3.391a5.803 5.803 0 0 1-.15-1.358l.003-.101c.051-2.032 1.107-3.595 2.359-3.488c1.252.105 2.225 1.84 2.176 3.871a5.724 5.724 0 0 1-.128 1.091c2.265.443 4.699 1.569 7.826 3.375c-.616-1.135-1.168-2.159-1.694-3.134c-.828-.641-1.691-1.477-3.453-2.382c1.212.315 2.078.678 2.754 1.083c-5.347-9.951-5.779-11.273-7.612-15.575z'/%3E%3C/svg%3E"); }
+  .zz-os[data-os="win"] { --os: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 2H11.481V11.477H2ZM12.519 2H22V11.477H12.519ZM2 12.519H11.481V22H2Zm10.519 0H22V22H12.519'/%3E%3C/svg%3E"); width: 22px; height: 22px; }
+  .zz-os[data-os="linux"] { --os: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12.42 2c-.129 0-.263.007-.4.018c-3.522.278-2.587 4.006-2.642 5.248c-.063.91-.25 1.628-.875 2.517c-.738.876-1.772 2.292-2.263 3.768c-.232.693-.342 1.403-.239 2.074a.353.353 0 0 0-.092.113c-.217.223-.375.5-.553.699c-.166.166-.404.223-.664.333c-.261.113-.548.224-.72.567c-.075.158-.113.328-.11.502c0 .166.022.333.046.447c.048.333.097.607.033.808c-.208.567-.233.954-.088 1.237c.145.278.446.392.783.501c.675.167 1.592.113 2.312.5c.772.388 1.555.558 2.18.392c.438-.097.808-.387 1.007-.788c.489-.003 1.025-.224 1.883-.278c.583-.048 1.312.223 2.147.167c.021.112.053.165.095.278l.003.003c.326.648.927.943 1.57.892c.643-.05 1.327-.447 1.881-1.088c.526-.638 1.403-.903 1.982-1.252c.29-.166.524-.391.541-.711c.019-.333-.167-.676-.595-1.147v-.081l-.003-.003c-.142-.167-.208-.446-.282-.772c-.071-.334-.152-.655-.41-.872h-.003c-.049-.045-.103-.056-.157-.113a.297.297 0 0 0-.158-.053c.359-1.065.22-2.125-.144-3.078c-.444-1.175-1.221-2.198-1.812-2.903c-.663-.837-1.313-1.631-1.3-2.807c.022-1.793.197-5.111-2.953-5.116zm.441 2.837h.011c.177 0 .33.052.487.165c.158.113.275.277.365.444c.087.216.132.383.138.603c0-.017.005-.033.005-.05v.087a.072.072 0 0 1-.003-.018l-.003-.02a1.506 1.506 0 0 1-.125.588a.794.794 0 0 1-.177.279a.592.592 0 0 0-.073-.035c-.087-.037-.165-.053-.237-.111a1.093 1.093 0 0 0-.183-.055c.042-.05.122-.111.152-.165c.044-.107.068-.22.073-.335v-.017a1.008 1.008 0 0 0-.051-.333c-.037-.112-.084-.167-.152-.278c-.07-.055-.139-.11-.223-.11h-.013c-.077 0-.147.025-.218.11a.667.667 0 0 0-.171.278a.983.983 0 0 0-.075.333v.016c.002.074.007.149.017.223c-.161-.056-.365-.113-.506-.168a1.363 1.363 0 0 1-.015-.167v-.017a1.477 1.477 0 0 1 .125-.64c.068-.183.193-.338.358-.444a.821.821 0 0 1 .495-.167zm-2.468.049h.03c.118 0 .225.04.333.113c.122.108.22.24.287.388c.075.166.117.333.128.556v.003c.006.112.005.167-.002.222v.067c-.025.006-.047.015-.069.02c-.127.046-.228.113-.328.167c.01-.075.011-.15.003-.223v-.013c-.01-.111-.033-.167-.068-.278a.511.511 0 0 0-.138-.223a.207.207 0 0 0-.152-.053h-.018c-.059.005-.108.033-.155.11a.46.46 0 0 0-.1.225a.787.787 0 0 0-.019.275v.013c.01.113.031.167.067.278c.038.112.082.167.138.223c.008.007.017.015.028.02c-.058.048-.098.058-.147.113a.253.253 0 0 1-.109.057a2.183 2.183 0 0 1-.229-.335a1.477 1.477 0 0 1-.129-.556a1.466 1.466 0 0 1 .067-.557a1.192 1.192 0 0 1 .236-.446c.107-.111.217-.167.348-.167zm1.142 1.422c.277 0 .611.054 1.013.333c.244.167.436.224.877.39h.003c.213.113.338.222.398.333v-.109a.476.476 0 0 1 .013.392c-.103.258-.43.536-.886.702v.002c-.223.113-.418.278-.646.388c-.23.113-.49.243-.843.223a.949.949 0 0 1-.373-.056a2.972 2.972 0 0 1-.268-.165c-.163-.113-.302-.277-.51-.388v-.004h-.004c-.333-.205-.513-.427-.572-.592c-.058-.223-.004-.392.161-.5c.187-.113.317-.226.403-.28c.087-.062.119-.085.147-.109h.002v-.003c.141-.168.363-.392.699-.501c.116-.03.245-.054.388-.054zm2.333 1.785c.298 1.181.997 2.896 1.446 3.728c.238.445.713 1.383.918 2.52c.13-.004.275.015.428.053c.538-1.393-.455-2.889-.907-3.305c-.183-.167-.193-.279-.103-.279c.492.445 1.137 1.31 1.372 2.298c.108.446.133.92.018 1.392c.056.023.113.05.171.056c.86.445 1.177.782 1.025 1.281v-.036c-.05-.003-.1 0-.15 0h-.013c.126-.389-.152-.688-.887-1.02c-.763-.333-1.372-.28-1.475.388c-.007.036-.011.055-.015.113c-.057.019-.116.044-.174.053c-.358.223-.552.558-.661.989c-.108.444-.142.963-.171 1.558v.003c-.017.278-.142.698-.266 1.125c-1.25.893-2.983 1.282-4.457.278a2.204 2.204 0 0 0-.335-.444a1.208 1.208 0 0 0-.229-.278c.152 0 .282-.025.388-.056a.513.513 0 0 0 .262-.278c.09-.223 0-.581-.287-.969c-.287-.389-.776-.829-1.49-1.268c-.525-.333-.822-.725-.958-1.163c-.138-.445-.119-.904-.013-1.371c.204-.892.728-1.758 1.062-2.303c.089-.054.031.113-.34.812c-.33.626-.95 2.081-.102 3.212a6.769 6.769 0 0 1 .539-2.397c.47-1.065 1.453-2.92 1.53-4.39c.04.03.181.113.241.168c.182.111.317.278.492.388c.175.168.398.279.73.279c.033.003.062.005.092.005c.343 0 .608-.112.831-.223c.242-.112.433-.278.617-.333h.004c.389-.113.696-.335.87-.583zm1.821 7.465c.031.5.286 1.038.735 1.147c.49.112 1.195-.278 1.492-.638l.176-.008c.263-.006.481.008.706.223l.003.003c.173.166.254.442.326.73c.071.333.128.65.341.888c.405.439.538.755.53.95l.003-.006v.015l-.003-.01c-.013.218-.154.33-.415.496c-.525.334-1.455.593-2.047 1.308c-.515.614-1.142.95-1.697.993c-.553.044-1.031-.167-1.312-.748l-.004-.003c-.175-.333-.1-.854.047-1.408c.147-.557.357-1.12.386-1.581c.031-.595.063-1.113.163-1.512c.1-.388.257-.664.534-.82l.037-.018zm-9.012.041h.008c.044 0 .087.004.131.012c.313.046.588.278.852.627l.758 1.387l.003.003c.203.444.628.887.991 1.364c.362.498.642.943.608 1.308v.005c-.048.62-.4.957-.938 1.078c-.538.113-1.267.002-1.996-.387c-.807-.447-1.765-.391-2.381-.502c-.307-.055-.508-.167-.603-.333c-.092-.167-.094-.502.103-1.025v-.003l.002-.003c.098-.278.025-.627-.022-.932c-.046-.334-.069-.592.036-.783c.133-.278.33-.333.575-.444c.245-.113.533-.168.763-.392h.002v-.002c.213-.223.371-.501.557-.698c.158-.168.317-.28.553-.28zm5.966-7.562c-.362.168-.787.446-1.24.446c-.452 0-.808-.223-1.067-.388c-.128-.112-.233-.223-.311-.279c-.137-.112-.12-.278-.062-.278c.091.013.108.112.166.167c.08.055.179.167.3.278c.243.167.567.389.973.389c.404 0 .877-.223 1.165-.388c.163-.113.371-.278.54-.389c.13-.113.124-.223.233-.223c.107.013.028.112-.122.277a6.747 6.747 0 0 1-.575.39zm-.902-1.319V6.7c-.005-.017.011-.035.024-.042c.062-.036.15-.022.217.003c.053 0 .133.056.125.113c-.005.041-.071.055-.113.055c-.046 0-.077-.036-.117-.057c-.043-.015-.122-.007-.136-.054zm-.459 0c-.017.048-.094.041-.138.055c-.039.021-.072.057-.117.057c-.042 0-.108-.017-.113-.057c-.008-.055.073-.111.125-.111c.067-.026.153-.039.216-.004c.016.007.03.025.025.042v.017h.003z'/%3E%3C/svg%3E"); }
+
+  .zz-os { flex: none; }
+  [data-icon="zz-arrow-up-left"] { --penna-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17V7h10'/%3E%3Cpath d='M17 17 7 7'/%3E%3C/svg%3E"); }
+
+  .zz-row2 { display: grid; grid-template-columns: 402px 1fr; gap: 24px; align-items: start; }
+  .zz-film { display: grid; grid-template-columns: repeat(2, 201px); gap: 10px 8px; }
+  .zz-film figure { margin: 0; }
+  .zz-film figcaption { margin-top: 4px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); font-variant-numeric: tabular-nums; }
+  .zz-crop { position: relative; width: 402px; height: 420px; overflow: hidden; border-radius: 0 0 48px 48px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-border); color: var(--penna-fg); font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-film .zz-crop { transform: scale(0.5); transform-origin: 0 0; }
+  .zz-film .zz-cell { width: 201px; height: 210px; overflow: hidden; border-radius: 0 0 24px 24px; }
+  .zz-live-label { margin: 6px 0 0 2px; font-size: var(--penna-text-small-size); color: var(--penna-fg-muted); }
+
+  .zz-under { position: absolute; inset: 0; padding: 20px 12px 0; display: flex; flex-direction: column; gap: 8px; }
+  .zz-under > div { flex: none; height: 64px; border-radius: var(--penna-phone-radius); background: color-mix(in oklab, var(--penna-fg) 6%, var(--penna-bg)); }
+  .zz-under > div[data-tall] { height: 96px; }
+  .zz-scrim { position: absolute; inset: 0; background: color-mix(in srgb, var(--penna-bg) 55%, transparent); }
+  .zz-chip[data-penna] { position: absolute; right: 16px; display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 20px 0 16px; white-space: nowrap; font-size: var(--penna-text-touch-body-size); font-weight: 500; transform-origin: center; --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 20px; }
+  .zz-glabel[data-penna] { position: absolute; right: 16px; display: flex; align-items: center; height: 28px; padding: 0 12px; font-size: var(--penna-text-small-size); color: var(--penna-muted); transform-origin: center; --penna-r: 9999px; --penna-k: 1; }
+
+  .zz-bar2 { position: absolute; left: 16px; right: 16px; bottom: 20px; display: flex; gap: 8px; align-items: center; }
+  .zz-disc[data-penna] { position: relative; display: grid; flex: none; place-items: center; width: 56px; height: 56px; margin: 0; padding: 0; color: var(--penna-fg); --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 22px; }
+  .zz-disc > i { grid-area: 1 / 1; }
+  .zz-xdisc { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; background: var(--penna-fg); color: var(--penna-bg); --penna-icon-size: 22px; }
+  .zz-pill2[data-penna] { position: relative; flex: 1; min-width: 0; height: 56px; --penna-r: 9999px; --penna-k: 1; }
+  .zz-pane { position: absolute; inset: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px 0 8px; }
+  .zz-pane .zz-tl[data-penna] { display: grid; flex: none; place-items: center; width: 40px; height: 40px; color: var(--penna-muted); --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 20px; }
+  .zz-pcopy { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+  .zz-pcopy > b { overflow: hidden; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-pcopy > span { display: flex; align-items: center; gap: 8px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
+  .zz-pcopy > span > em { flex: 1; min-width: 0; overflow: hidden; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-dots2 { display: flex; flex: none; gap: 3px; align-items: center; }
+  .zz-dots2 > i { width: 5px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--penna-fg) 30%, transparent); }
+  .zz-dots2 > i[data-on] { width: 14px; background: var(--penna-fg); }
+  .zz-dots2 > s { width: 4px; }
+  .zz-strip2 { position: absolute; inset: 4px; }
+  .zz-strip2 > div { position: absolute; top: 0; height: 48px; }
+  .zz-fill[data-penna] { position: absolute; inset: 0; --penna-r: 9999px; --penna-k: 1; }
+  .zz-strip2 .zz-os { position: absolute; top: 14px; left: 14px; width: 20px; height: 20px; }
+  .zz-lab2 { position: absolute; top: 0; bottom: 0; left: 44px; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+  .zz-lab2 > b { font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); font-weight: 500; white-space: nowrap; }
+  .zz-lab2 > span { font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); white-space: nowrap; }
+  .zz-handle { position: absolute; z-index: 3; left: 50%; border-radius: 3px; }
+  .zz-mstrip { position: absolute; inset: 4px; overflow: hidden; }
+  .zz-mstrip > div { position: absolute; top: 0; height: 48px; }
+  .zz-mstrip .zz-os { position: absolute; top: 14px; left: 14px; width: 20px; height: 20px; }
+  .zz-mfade { position: absolute; top: 0; width: 28px; height: 48px; }
+  .zz-lip[data-penna] { position: absolute; z-index: 2; top: -15px; left: 50%; display: grid; place-items: center; width: 52px; height: 17px; margin-left: -26px; padding-top: 2px; color: var(--penna-muted); border-bottom: 0; box-shadow: none; border-radius: 14px 14px 0 0; --penna-r: 14px; --penna-k: 1; --penna-icon-size: 16px; }
+  .zz-bstrip { position: relative; width: 402px; height: 120px; overflow: hidden; border-radius: 20px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-border); color: var(--penna-fg); }
+  .zz-ups { display: grid; grid-template-columns: 402px 402px; gap: 18px 24px; }
+  .zz-ups figure { margin: 0; }
+  .zz-ups figcaption { margin: 6px 0 0 2px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-ups figcaption > b { color: var(--penna-fg); font-weight: 600; margin-right: 6px; }
+
+  .zz-table { display: grid; max-width: 1100px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-table > * { padding: 10px 16px 10px 0; box-shadow: inset 0 1px var(--penna-divider); }
+  .zz-table > b { font-weight: 600; }
+  .zz-table > span { color: var(--penna-fg-muted); }
+  .zz-table > [data-head] { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--penna-fg-muted); box-shadow: none; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Bar tweaks</h1>
+    <p>Two questions about the bar. <b>Closing a menu</b>: today every chip slides toward the button it came from, shrinks to half and fades on a spring with a long tail, so for about 100ms a cluster of tiny faint chips sits over the button. The same close runs on every stack menu (the plus menu, the pill's menu, the browser's, a key's chords). Four replacements, each shown as frames from the tap on the close and, in the browser, as a replay. <b>Going up</b>: the up disc's chevron reads as "scroll up". One take keeps the disc with a diagonal arrow; two drop it and mark the pill as something you drag up, drawn on a pane's bar and a machine's.</p>
+  </div>
+
+  <section data-take="today">
+    <h2>Today: fold into the button</h2>
+    <p>Each chip moves toward the button's centre, shrinks to half and fades, all on one spring. The spring's tail is what leaves the ghost cluster.</p>
+    <div class="zz-row2"><div><div class="zz-crop" data-live="today"></div><div class="zz-live-label">Replay</div></div><div class="zz-film" data-film="today"></div></div>
+  </section>
+
+  <section data-take="m1">
+    <h2>M1. Fade</h2>
+    <p><b>Picked.</b> The chips, their labels and the scrim fade out together in 120ms, in place. Nothing moves; the close turns back into the plus in the same 120ms. The fastest that still reads as a close.</p>
+    <div class="zz-row2"><div><div class="zz-crop" data-live="m1"></div><div class="zz-live-label">Replay</div></div><div class="zz-film" data-film="m1"></div></div>
+  </section>
+
+  <section data-take="m2">
+    <h2>M2. Sink</h2>
+    <p>The whole stack drops 12 and fades in 150ms, all chips as one, easing in. It is the opening's rise played once, backwards, without the stagger.</p>
+    <div class="zz-row2"><div><div class="zz-crop" data-live="m2"></div><div class="zz-live-label">Replay</div></div><div class="zz-film" data-film="m2"></div></div>
+  </section>
+
+  <section data-take="m3">
+    <h2>M3. Reverse stagger</h2>
+    <p>The opening backwards: the farthest chip leaves first, each dropping 14 and fading in 120ms, 30ms after the one above it. The chip nearest the thumb goes last, 270ms in.</p>
+    <div class="zz-row2"><div><div class="zz-crop" data-live="m3"></div><div class="zz-live-label">Replay</div></div><div class="zz-film" data-film="m3"></div></div>
+  </section>
+
+  <section data-take="m4">
+    <h2>M4. None</h2>
+    <p>The chips and the scrim are gone on the next frame; only the close turning back into the plus animates, 100ms. A picked chip still flashes before it goes.</p>
+    <div class="zz-row2"><div><div class="zz-crop" data-live="m4"></div><div class="zz-live-label">Replay</div></div><div class="zz-film" data-film="m4"></div></div>
+  </section>
+
+  <section data-take="pill">
+    <h2>The pill, fixed</h2>
+    <p>Built. A machine that is not on screen is its mark alone, no circle under it. The capsule takes whatever the row leaves, so the row ends where the pill ends and there is no gap at the right. When the row needs more than the pill, the machines next to the capsule stay whole, the next one past each cut edge shows half its mark under a 28 fade from the pill's glass, and the capsule takes the slack so the cut always halves a mark. Drawn without the up disc, as U2 would leave it.</p>
+    <div class="zz-ups" data-pills></div>
+  </section>
+
+  <section data-take="handles">
+    <h2>U2, round two: the handle</h2>
+    <p><b>Picked: H3, on the edge.</b> The first handle was 36 by 5, 7 above the pill, at 38%. Three lighter ones, closer in. All drop the up disc; tap the handle (a 44 target) or drag the pill up to go back.</p>
+    <div class="zz-ups" data-handles></div>
+  </section>
+
+  <section data-take="compare">
+    <h2>Side by side</h2>
+    <div class="zz-table" style="grid-template-columns: max-content repeat(5, minmax(0, 1fr))">
+      <span data-head></span><span data-head>Today</span><span data-head>M1. Fade</span><span data-head>M2. Sink</span><span data-head>M3. Reverse</span><span data-head>M4. None</span>
+      <b>Gone by</b><span>~250ms, faint from 100</span><span>120ms</span><span>150ms</span><span>270ms</span><span>1 frame</span>
+      <b>Moves</b><span>Toward the button, shrinking</span><span>Nothing</span><span>Down 12</span><span>Down 14, one by one</span><span>Nothing</span>
+      <b>Matches the opening</b><span>No</span><span>Partly</span><span>Yes, without stagger</span><span>Yes</span><span>No</span>
+    </div>
+    <div class="zz-table" style="grid-template-columns: max-content repeat(4, minmax(0, 1fr)); margin-top: 24px">
+      <span data-head></span><span data-head>First handle</span><span data-head>H1. Slim</span><span data-head>H2. Tight</span><span data-head>H3. On the edge</span>
+      <b>Size</b><span>36 by 5</span><span>28 by 4</span><span>24 by 3</span><span>28 by 4</span>
+      <b>Above the pill</b><span>7</span><span>5</span><span>3</span><span>Centred on its top edge</span>
+      <b>Ink</b><span>38%</span><span>30%</span><span>30%</span><span>34%</span>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
+  const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+  const easeIn = (t) => t * t * t;
+  const CHIPS = [
+    { kind: "chip", icon: "layers-plus", text: "New session", top: 60, w: 160 },
+    { kind: "label", text: "New in phone", top: 128, w: 104 },
+    { kind: "chip", icon: "globe", text: "New browser", top: 164, w: 158 },
+    { kind: "chip", icon: "square-terminal", text: "New terminal", top: 224, w: 164 },
+    { kind: "chip", icon: "chat", text: "New chat", top: 284, w: 128 },
+  ];
+  const ANCHOR = { x: 358, y: 372 };
+
+  const closeMotion = (take, t, i) => {
+    const c = CHIPS[i];
+    const h = c.kind === "label" ? 28 : 52;
+    const cx = 386 - c.w / 2;
+    const cy = c.top + h / 2;
+    if (take === "today") {
+      const fold = 1 - Math.exp(-t / 42);
+      return { x: (ANCHOR.x - cx) * fold, y: (ANCHOR.y - cy) * fold, s: 1 - 0.5 * fold, o: 1 - fold };
+    }
+    if (take === "m1") { const p = easeOut(clamp(t / 120)); return { x: 0, y: 0, s: 1, o: 1 - p }; }
+    if (take === "m2") { const p = easeIn(clamp(t / 150)); return { x: 0, y: 12 * p, s: 1, o: 1 - p }; }
+    if (take === "m3") { const p = easeOut(clamp((t - i * 30) / 120)); return { x: 0, y: 14 * p, s: 1, o: 1 - p }; }
+    return { x: 0, y: 0, s: 1, o: t > 0 ? 0 : 1 };
+  };
+  const scrimAt = (take, t) => {
+    if (take === "today") return Math.exp(-t / 42);
+    if (take === "m1") return 1 - easeOut(clamp(t / 120));
+    if (take === "m2") return 1 - easeIn(clamp(t / 150));
+    if (take === "m3") return 1 - easeOut(clamp(t / 270));
+    return t > 0 ? 0 : 1;
+  };
+  const openMotion = (t, i) => {
+    const seq = CHIPS.length - 1 - i;
+    const p = easeOut(clamp((t - seq * 35) / 180));
+    return { x: 0, y: 14 * (1 - p), s: 1, o: p };
+  };
+
+  const pillPane = () => `<div class="zz-pill2" data-penna="floating"><div class="zz-pane"><span class="zz-tl" data-penna="phone.pill.icon">${ic("square-terminal")}</span><span class="zz-pcopy"><b>bash</b><span><em>zebrilus · main</em><span class="zz-dots2"><i></i><i data-on></i><s></s><i></i><i></i><s></s><i></i></span></span></span></div></div>`;
+  const pillMachine = (wide) => {
+    const cap = 166;
+    const extra = wide ? `<div style="left: ${cap + 4 + 52}px; width: 48px"><span class="zz-fill" data-penna="phone.pill.icon"></span><span class="zz-os" data-os="arch" style="color: var(--penna-muted)"></span></div>` : "";
+    return `<div class="zz-pill2" data-penna="floating"><div class="zz-strip2"><div style="left: 0; width: ${cap}px"><span class="zz-fill" data-penna="phone.pill.icon"></span><span class="zz-os" data-os="mac"></span><span class="zz-lab2"><b>zzios-zebrilus</b><span>phone</span></span></div><div style="left: ${cap + 4}px; width: 48px"><span class="zz-fill" data-penna="phone.pill.icon"></span><span class="zz-os" data-os="linux" style="color: var(--penna-muted)"></span></div>${extra}</div></div>`;
+  };
+  const plusDisc = (x) => `<button class="zz-disc" data-penna="floating">${ic("plus")}${x > 0 ? `<span class="zz-xdisc" style="opacity: ${x.toFixed(3)}"><i data-icon="xmark" style="transform: rotate(${(-45 * (1 - x)).toFixed(1)}deg)"></i></span>` : ""}</button>`;
+  const upDisc = (glyph = "chevron-up") => `<button class="zz-disc" data-penna="floating">${ic(glyph)}</button>`;
+
+  const scene = (motions, scrim, x) => {
+    const chips = CHIPS.map((c, i) => {
+      const m = motions[i];
+      const style = `top: ${c.top}px; width: ${c.w}px; opacity: ${clamp(m.o).toFixed(3)}; transform: translate(${m.x.toFixed(1)}px, ${m.y.toFixed(1)}px) scale(${m.s.toFixed(3)})`;
+      return c.kind === "label"
+        ? `<span class="zz-glabel" data-penna="chip.floating" style="${style}">${c.text}</span>`
+        : `<span class="zz-chip" data-penna="chip.floating" style="${style}">${ic(c.icon)}${c.text}</span>`;
+    }).join("");
+    return `<div class="zz-under"><div></div><div data-tall></div><div></div><div data-tall></div></div><div class="zz-scrim" style="opacity: ${clamp(scrim).toFixed(3)}"></div>${chips}<div class="zz-bar2">${upDisc()}${pillMachine(false)}${plusDisc(x)}</div>`;
+  };
+  const closing = (take, t) => scene(CHIPS.map((_, i) => closeMotion(take, t, i)), scrimAt(take, t), 1 - clamp(t / (take === "m1" ? 120 : 100)));
+  const opening = (t) => scene(CHIPS.map((_, i) => openMotion(t, i)), easeOut(clamp(t / 200)), clamp(t / 100));
+
+  const FRAMES = { today: [0, 40, 90, 150], m1: [0, 40, 80, 120], m2: [0, 50, 100, 150], m3: [0, 90, 180, 270], m4: [0, 16, 50, 100] };
+  for (const film of document.querySelectorAll("[data-film]")) {
+    const take = film.dataset.film;
+    film.innerHTML = FRAMES[take].map((t) => `<figure><div class="zz-cell"><div class="zz-crop">${closing(take, t)}</div></div><figcaption>${t} ms</figcaption></figure>`).join("");
+  }
+
+  const lives = [...document.querySelectorAll("[data-live]")];
+  for (const live of lives) live.innerHTML = closing(live.dataset.live, 0);
+  if (!new URLSearchParams(location.search).has("bare")) {
+    const OPEN = 450, HOLD = 900, CLOSE = 420, REST = 900;
+    const cycle = OPEN + HOLD + CLOSE + REST;
+    const start = performance.now();
+    const tick = (now) => {
+      const t = (now - start) % cycle;
+      for (const live of lives) {
+        const take = live.dataset.live;
+        live.innerHTML = t < OPEN ? opening(t) : t < OPEN + HOLD ? opening(OPEN) : t < OPEN + HOLD + CLOSE ? closing(take, t - OPEN - HOLD) : closing(take, 1000);
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  const under = `<div class="zz-under" style="padding-top: 8px"><div></div></div>`;
+  const HOSTS = [
+    { name: "zzios-zebrilus", os: "mac", meta: "phone" },
+    { name: "wsl-archlinux", os: "linux", meta: "Not connected" },
+    { name: "xps", os: "arch", meta: "zz" },
+    { name: "win-desktop", os: "win", meta: "games" },
+    { name: "alienware", os: "arch", meta: "nidus" },
+    { name: "macbook", os: "mac", meta: "zebrilus" },
+  ];
+  const TILE = 48, GAP = 4, UNIT = 52, HALF = 28;
+  const probe = document.createElement("div");
+  probe.className = "zz-lab2";
+  probe.style.cssText = "position: absolute; visibility: hidden; left: -9999px";
+  document.body.append(probe);
+  const hugOf = (h) => {
+    probe.innerHTML = `<b>${h.name}</b><span>${h.meta}</span>`;
+    const text = Math.max(...[...probe.children].map((c) => c.scrollWidth)) + 2;
+    return clamp(44 + text + 16, 88, 180);
+  };
+  const place = (inner, hug, active) => {
+    const n = hug.length;
+    const others = (n - 1) * UNIT;
+    if (hug[active] + others <= inner) {
+      const w = hug.map((_, i) => (i === active ? inner - others : TILE));
+      let at = 0;
+      return { x: w.map((wi) => { const x = at; at += wi + GAP; return x; }), w, fs: 0, fe: 0 };
+    }
+    const before = active, after = n - 1 - active;
+    const need = (l, r) => hug[active] + UNIT * (l + r) + (before > l ? HALF : 0) + (after > r ? HALF : 0);
+    let l = 0, r = 0;
+    for (;;) {
+      const gr = after > r && need(l, r + 1) <= inner; if (gr) r += 1;
+      const gl = before > l && need(l + 1, r) <= inner; if (gl) l += 1;
+      if (!gr && !gl) break;
+    }
+    const lead = before > l ? HALF : 0, trail = after > r ? HALF : 0;
+    const cap = inner - lead - trail - UNIT * (l + r);
+    const start = lead + UNIT * l, end = start + cap;
+    const x = hug.map((_, i) => (i < active ? start - UNIT * (active - i) : i === active ? start : end + GAP + UNIT * (i - active - 1)));
+    const w = hug.map((_, i) => (i === active ? cap : TILE));
+    return { x, w, fs: before > l ? 1 : 0, fe: after > r ? 1 : 0 };
+  };
+  const machinePill = (hosts, pos, width) => {
+    const inner = width - 8;
+    const hug = hosts.map(hugOf);
+    const a = place(inner, hug, Math.floor(pos)), b = place(inner, hug, Math.ceil(pos));
+    const t = pos - Math.floor(pos);
+    const mix = (p, q) => p + (q - p) * t;
+    const items = hosts.map((h, i) => {
+      const on = Math.max(0, 1 - Math.abs(i - pos));
+      const x = mix(a.x[i], b.x[i]), w = mix(a.w[i], b.w[i]);
+      const text = clamp((on - 0.55) / 0.45);
+      const ink = on > 0.5 ? "var(--penna-fg)" : "var(--penna-muted)";
+      return `<div style="left: ${x}px; width: ${w}px; clip-path: inset(0 round 24px)"><span class="zz-fill" data-penna="phone.pill.icon" style="opacity: ${on.toFixed(3)}"></span><span class="zz-os" data-os="${h.os}" style="color: ${ink}"></span>${text > 0 ? `<span class="zz-lab2" style="opacity: ${text.toFixed(3)}"><b>${h.name}</b><span>${h.meta}</span></span>` : ""}</div>`;
+    }).join("");
+    const fs = mix(a.fs, b.fs), fe = mix(a.fe, b.fe);
+    const fade = (side, o) => `<span class="zz-mfade" style="${side}: 0; opacity: ${o}; background: linear-gradient(to ${side === "left" ? "right" : "left"}, var(--zz-glass), transparent)"></span>`;
+    return `<div class="zz-pill2" data-penna="floating" style="--zz-glass: var(--penna-fill)"><div class="zz-mstrip">${items}${fs > 0 ? fade("left", fs) : ""}${fe > 0 ? fade("right", fe) : ""}</div></div>`;
+  };
+  const W_NO_UP = 402 - 32 - 56 - 8;
+  const barNoUp = (pill, handle = "") => `<div class="zz-bar2"><div style="position: relative; flex: 1; min-width: 0; display: flex">${pill}${handle}</div>${plusDisc(0)}</div>`;
+
+  const pillBox = document.querySelector("[data-pills]");
+  const PILLS = [
+    ["Two machines", HOSTS.slice(0, 2), 0, "The capsule fills the row; wsl-archlinux is its mark alone."],
+    ["Three machines", HOSTS.slice(0, 3), 0, "Still no gap at the right."],
+    ["Six, the first on screen", HOSTS, 0, "The next one shows half its mark under the fade."],
+    ["Six, the third on screen", HOSTS, 2, "The two before it fit whole; half a mark at the right."],
+    ["Six, mid-swipe", HOSTS, 2.45, "The row blends into the next one's."],
+    ["Six, the last on screen", HOSTS, 5, "The cut moves to the left edge."],
+  ];
+  pillBox.innerHTML = PILLS.map(([title, hosts, pos, note]) => `<figure><div class="zz-bstrip">${under}${barNoUp(machinePill(hosts, pos, W_NO_UP))}</div><figcaption><b>${title}</b>${note}</figcaption></figure>`).join("");
+
+  const HANDLES = {
+    h1: { w: 28, h: 4, top: -9, ink: 30, name: "H1. Slim", note: "28 by 4, 5 above the pill, 30%." },
+    h2: { w: 24, h: 3, top: -6, ink: 30, name: "H2. Tight", note: "24 by 3, 3 above the pill, 30%." },
+    h3: { w: 28, h: 4, top: -2, ink: 34, name: "H3. On the edge", note: "28 by 4, centred on the pill's top edge, 34%." },
+  };
+  const handle = (k) => { const v = HANDLES[k]; return `<span class="zz-handle" style="top: ${v.top}px; width: ${v.w}px; height: ${v.h}px; margin-left: ${-v.w / 2}px; background: color-mix(in srgb, var(--penna-fg) ${v.ink}%, transparent)"></span>`; };
+  const paneNoUp = () => pillPane();
+  document.querySelector("[data-handles]").innerHTML = Object.keys(HANDLES).map((k) => {
+    const v = HANDLES[k];
+    return `<figure><div class="zz-bstrip">${under}${barNoUp(paneNoUp(), handle(k))}</div><figcaption><b>${v.name}</b>Inside a pane. ${v.note}</figcaption></figure><figure><div class="zz-bstrip">${under}${barNoUp(machinePill(HOSTS.slice(0, 3), 0, W_NO_UP), handle(k))}</div><figcaption><b>${v.name}</b>On a machine.</figcaption></figure>`;
+  }).join("");
+
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.querySelector(".zz-intro").style.display = "none";
+    for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+  }
+})();
+</script>
+</body>
+</html>

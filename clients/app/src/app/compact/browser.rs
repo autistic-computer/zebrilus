@@ -20,7 +20,6 @@ impl AppShell {
     pub(super) fn browser_groups(
         &self,
         page: Option<&Page>,
-        session: &str,
         cx: &App,
     ) -> Option<(Vec<StackGroup>, usize)> {
         #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -35,9 +34,9 @@ impl AppShell {
                 open_on_phone: super::super::settings::phone()
                     && zz_client::terminal_view::openable_uri(&state.url),
             };
-            return Some(zz_ui::compact::browser_menu(menu, session));
+            return Some(zz_ui::compact::browser_menu(menu));
         }
-        let _ = (page, session, cx);
+        let _ = (page, cx);
         None
     }
 

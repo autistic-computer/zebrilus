@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Machine pill</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-os { width: 26px; height: 26px; background: currentColor; mask: var(--os) center / contain no-repeat; }
+  .zz-os[data-os="mac"] { --os: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12.131 7.193c-.79 0-2.013-.898-3.3-.867c-1.7.022-3.258.986-4.134 2.512c-1.764 3.062-.455 7.586 1.266 10.075c.844 1.212 1.84 2.575 3.16 2.533c1.267-.054 1.742-.823 3.279-.823c1.526 0 1.958.823 3.3.79c1.364-.022 2.23-1.233 3.063-2.457c.963-1.407 1.363-2.771 1.385-2.846c-.033-.011-2.652-1.018-2.683-4.048c-.022-2.533 2.067-3.745 2.164-3.799c-1.191-1.742-3.019-1.937-3.658-1.98c-1.667-.13-3.062.908-3.842.908zM14.946 4.638c.703-.843 1.167-2.022 1.038-3.192c-1.006.043-2.218.671-2.943 1.515c-.65.747-1.212 1.948-1.061 3.095c1.115.087 2.263-.573 2.966-1.418'/%3E%3C/svg%3E"); }
+  .zz-os[data-os="arch"] { --os: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.996C11.11 4.179 10.572 5.608 9.581 7.726c.608.644 1.355 1.395 2.566 2.242c-1.303-.536-2.191-1.075-2.855-1.633C8.023 10.983 6.035 14.755 2 22.004c3.171-1.831 5.629-2.959 7.92-3.391a5.803 5.803 0 0 1-.15-1.358l.003-.101c.051-2.032 1.107-3.595 2.359-3.488c1.252.105 2.225 1.84 2.176 3.871a5.724 5.724 0 0 1-.128 1.091c2.265.443 4.699 1.569 7.826 3.375c-.616-1.135-1.168-2.159-1.694-3.134c-.828-.641-1.691-1.477-3.453-2.382c1.212.315 2.078.678 2.754 1.083c-5.347-9.951-5.779-11.273-7.612-15.575z'/%3E%3C/svg%3E"); }
+  .zz-os[data-os="win"] { --os: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 2H11.481V11.477H2ZM12.519 2H22V11.477H12.519ZM2 12.519H11.481V22H2Zm10.519 0H22V22H12.519'/%3E%3C/svg%3E"); width: 22px; height: 22px; }
+  .zz-os[data-os="linux"] { --os: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12.42 2c-.129 0-.263.007-.4.018c-3.522.278-2.587 4.006-2.642 5.248c-.063.91-.25 1.628-.875 2.517c-.738.876-1.772 2.292-2.263 3.768c-.232.693-.342 1.403-.239 2.074a.353.353 0 0 0-.092.113c-.217.223-.375.5-.553.699c-.166.166-.404.223-.664.333c-.261.113-.548.224-.72.567c-.075.158-.113.328-.11.502c0 .166.022.333.046.447c.048.333.097.607.033.808c-.208.567-.233.954-.088 1.237c.145.278.446.392.783.501c.675.167 1.592.113 2.312.5c.772.388 1.555.558 2.18.392c.438-.097.808-.387 1.007-.788c.489-.003 1.025-.224 1.883-.278c.583-.048 1.312.223 2.147.167c.021.112.053.165.095.278l.003.003c.326.648.927.943 1.57.892c.643-.05 1.327-.447 1.881-1.088c.526-.638 1.403-.903 1.982-1.252c.29-.166.524-.391.541-.711c.019-.333-.167-.676-.595-1.147v-.081l-.003-.003c-.142-.167-.208-.446-.282-.772c-.071-.334-.152-.655-.41-.872h-.003c-.049-.045-.103-.056-.157-.113a.297.297 0 0 0-.158-.053c.359-1.065.22-2.125-.144-3.078c-.444-1.175-1.221-2.198-1.812-2.903c-.663-.837-1.313-1.631-1.3-2.807c.022-1.793.197-5.111-2.953-5.116zm.441 2.837h.011c.177 0 .33.052.487.165c.158.113.275.277.365.444c.087.216.132.383.138.603c0-.017.005-.033.005-.05v.087a.072.072 0 0 1-.003-.018l-.003-.02a1.506 1.506 0 0 1-.125.588a.794.794 0 0 1-.177.279a.592.592 0 0 0-.073-.035c-.087-.037-.165-.053-.237-.111a1.093 1.093 0 0 0-.183-.055c.042-.05.122-.111.152-.165c.044-.107.068-.22.073-.335v-.017a1.008 1.008 0 0 0-.051-.333c-.037-.112-.084-.167-.152-.278c-.07-.055-.139-.11-.223-.11h-.013c-.077 0-.147.025-.218.11a.667.667 0 0 0-.171.278a.983.983 0 0 0-.075.333v.016c.002.074.007.149.017.223c-.161-.056-.365-.113-.506-.168a1.363 1.363 0 0 1-.015-.167v-.017a1.477 1.477 0 0 1 .125-.64c.068-.183.193-.338.358-.444a.821.821 0 0 1 .495-.167zm-2.468.049h.03c.118 0 .225.04.333.113c.122.108.22.24.287.388c.075.166.117.333.128.556v.003c.006.112.005.167-.002.222v.067c-.025.006-.047.015-.069.02c-.127.046-.228.113-.328.167c.01-.075.011-.15.003-.223v-.013c-.01-.111-.033-.167-.068-.278a.511.511 0 0 0-.138-.223a.207.207 0 0 0-.152-.053h-.018c-.059.005-.108.033-.155.11a.46.46 0 0 0-.1.225a.787.787 0 0 0-.019.275v.013c.01.113.031.167.067.278c.038.112.082.167.138.223c.008.007.017.015.028.02c-.058.048-.098.058-.147.113a.253.253 0 0 1-.109.057a2.183 2.183 0 0 1-.229-.335a1.477 1.477 0 0 1-.129-.556a1.466 1.466 0 0 1 .067-.557a1.192 1.192 0 0 1 .236-.446c.107-.111.217-.167.348-.167zm1.142 1.422c.277 0 .611.054 1.013.333c.244.167.436.224.877.39h.003c.213.113.338.222.398.333v-.109a.476.476 0 0 1 .013.392c-.103.258-.43.536-.886.702v.002c-.223.113-.418.278-.646.388c-.23.113-.49.243-.843.223a.949.949 0 0 1-.373-.056a2.972 2.972 0 0 1-.268-.165c-.163-.113-.302-.277-.51-.388v-.004h-.004c-.333-.205-.513-.427-.572-.592c-.058-.223-.004-.392.161-.5c.187-.113.317-.226.403-.28c.087-.062.119-.085.147-.109h.002v-.003c.141-.168.363-.392.699-.501c.116-.03.245-.054.388-.054zm2.333 1.785c.298 1.181.997 2.896 1.446 3.728c.238.445.713 1.383.918 2.52c.13-.004.275.015.428.053c.538-1.393-.455-2.889-.907-3.305c-.183-.167-.193-.279-.103-.279c.492.445 1.137 1.31 1.372 2.298c.108.446.133.92.018 1.392c.056.023.113.05.171.056c.86.445 1.177.782 1.025 1.281v-.036c-.05-.003-.1 0-.15 0h-.013c.126-.389-.152-.688-.887-1.02c-.763-.333-1.372-.28-1.475.388c-.007.036-.011.055-.015.113c-.057.019-.116.044-.174.053c-.358.223-.552.558-.661.989c-.108.444-.142.963-.171 1.558v.003c-.017.278-.142.698-.266 1.125c-1.25.893-2.983 1.282-4.457.278a2.204 2.204 0 0 0-.335-.444a1.208 1.208 0 0 0-.229-.278c.152 0 .282-.025.388-.056a.513.513 0 0 0 .262-.278c.09-.223 0-.581-.287-.969c-.287-.389-.776-.829-1.49-1.268c-.525-.333-.822-.725-.958-1.163c-.138-.445-.119-.904-.013-1.371c.204-.892.728-1.758 1.062-2.303c.089-.054.031.113-.34.812c-.33.626-.95 2.081-.102 3.212a6.769 6.769 0 0 1 .539-2.397c.47-1.065 1.453-2.92 1.53-4.39c.04.03.181.113.241.168c.182.111.317.278.492.388c.175.168.398.279.73.279c.033.003.062.005.092.005c.343 0 .608-.112.831-.223c.242-.112.433-.278.617-.333h.004c.389-.113.696-.335.87-.583zm1.821 7.465c.031.5.286 1.038.735 1.147c.49.112 1.195-.278 1.492-.638l.176-.008c.263-.006.481.008.706.223l.003.003c.173.166.254.442.326.73c.071.333.128.65.341.888c.405.439.538.755.53.95l.003-.006v.015l-.003-.01c-.013.218-.154.33-.415.496c-.525.334-1.455.593-2.047 1.308c-.515.614-1.142.95-1.697.993c-.553.044-1.031-.167-1.312-.748l-.004-.003c-.175-.333-.1-.854.047-1.408c.147-.557.357-1.12.386-1.581c.031-.595.063-1.113.163-1.512c.1-.388.257-.664.534-.82l.037-.018zm-9.012.041h.008c.044 0 .087.004.131.012c.313.046.588.278.852.627l.758 1.387l.003.003c.203.444.628.887.991 1.364c.362.498.642.943.608 1.308v.005c-.048.62-.4.957-.938 1.078c-.538.113-1.267.002-1.996-.387c-.807-.447-1.765-.391-2.381-.502c-.307-.055-.508-.167-.603-.333c-.092-.167-.094-.502.103-1.025v-.003l.002-.003c.098-.278.025-.627-.022-.932c-.046-.334-.069-.592.036-.783c.133-.278.33-.333.575-.444c.245-.113.533-.168.763-.392h.002v-.002c.213-.223.371-.501.557-.698c.158-.168.317-.28.553-.28zm5.966-7.562c-.362.168-.787.446-1.24.446c-.452 0-.808-.223-1.067-.388c-.128-.112-.233-.223-.311-.279c-.137-.112-.12-.278-.062-.278c.091.013.108.112.166.167c.08.055.179.167.3.278c.243.167.567.389.973.389c.404 0 .877-.223 1.165-.388c.163-.113.371-.278.54-.389c.13-.113.124-.223.233-.223c.107.013.028.112-.122.277a6.747 6.747 0 0 1-.575.39zm-.902-1.319V6.7c-.005-.017.011-.035.024-.042c.062-.036.15-.022.217.003c.053 0 .133.056.125.113c-.005.041-.071.055-.113.055c-.046 0-.077-.036-.117-.057c-.043-.015-.122-.007-.136-.054zm-.459 0c-.017.048-.094.041-.138.055c-.039.021-.072.057-.117.057c-.042 0-.108-.017-.113-.057c-.008-.055.073-.111.125-.111c.067-.026.153-.039.216-.004c.016.007.03.025.025.042v.017h.003z'/%3E%3C/svg%3E"); }
+
+  .zz-os { flex: none; }
+  .zz-phone { --zz-card: color-mix(in oklab, var(--penna-fg) 6%, var(--penna-bg)); }
+  .zz-take { display: grid; grid-template-columns: 424px 424px; gap: 24px; align-items: start; }
+  .zz-take > figure { margin: 0; }
+  .zz-strips { display: grid; gap: 18px; padding-top: 10px; }
+  .zz-strips > figure { margin: 0; }
+  .zz-strips figcaption { margin: 6px 0 0 2px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-strips figcaption > b { color: var(--penna-fg); font-weight: 600; margin-right: 6px; }
+  .zz-strip { position: relative; width: 402px; height: 96px; overflow: hidden; border-radius: 20px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-border); }
+  .zz-strip > .zz-bar { bottom: 20px; }
+
+  .zz-screen { position: absolute; inset: 54px 0 0; display: flex; flex-direction: column; overflow: hidden; }
+  .zz-big { display: flex; flex: none; align-items: center; gap: 8px; padding: 44px 20px 0; font-size: var(--penna-text-touch-title-size); line-height: var(--penna-text-touch-title-line); font-weight: 700; }
+  .zz-big > .zz-os { width: 28px; height: 28px; }
+  .zz-col { display: flex; flex-direction: column; gap: 8px; padding: 8px 12px 0; }
+  .zz-sess { margin: 14px 0 -2px 16px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); font-weight: 600; color: var(--penna-fg-muted); }
+  .zz-card2 { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: var(--penna-phone-radius); background: var(--zz-card); }
+  .zz-card2 > b { font-weight: 600; }
+  .zz-card2 > pre { margin: 0; font: 13px/18px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; overflow: hidden; }
+  .zz-rowc { display: flex; align-items: center; min-height: 64px; padding: 0 12px; border-radius: var(--penna-phone-radius); background: var(--zz-card); }
+  .zz-rowc > span { display: flex; flex-direction: column; }
+  .zz-rowc > span > b { font-weight: 600; }
+  .zz-rowc > span > i { font-style: normal; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); color: var(--penna-muted); }
+  .zz-disc[data-penna] { position: relative; display: grid; flex: none; place-items: center; width: 56px; height: 56px; margin: 0; padding: 0; color: var(--penna-fg); --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 22px; }
+
+  .zz-hp.penna-compact-pill[data-penna] { padding: 0; gap: 0; overflow: hidden; }
+  .zz-track { position: absolute; inset: 4px; overflow: hidden; }
+  .zz-track[data-fade="start"] { mask-image: linear-gradient(to right, transparent, #000 20px); }
+  .zz-track[data-fade="end"] { mask-image: linear-gradient(to left, transparent, #000 20px); }
+  .zz-track[data-fade="both"] { mask-image: linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 20px), transparent); }
+  .zz-item { position: absolute; top: 0; height: 48px; clip-path: inset(0 round 24px); }
+  .zz-fill[data-penna] { position: absolute; top: 0; left: 0; height: 48px; --penna-r: 9999px; --penna-k: 1; }
+  .zz-item > .zz-os { position: absolute; top: 14px; left: 14px; width: 20px; height: 20px; }
+  .zz-item > .zz-os[data-os="win"] { top: 15.5px; left: 15.5px; width: 17px; height: 17px; }
+  .zz-lab { position: absolute; top: 0; bottom: 0; left: 44px; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; }
+  .zz-lab > b { overflow: hidden; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-lab > span { overflow: hidden; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); text-overflow: ellipsis; white-space: nowrap; }
+  .zz-lab[data-name] { left: 56px; }
+  .zz-lab[data-name] > b { color: var(--penna-muted); }
+  .zz-more { position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--penna-text-touch-small-size); font-weight: 600; color: var(--penna-muted); font-variant-numeric: tabular-nums; }
+
+  .zz-nums { display: grid; grid-template-columns: max-content minmax(0, 1fr); max-width: 980px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-nums > * { padding: 9px 16px 9px 0; box-shadow: inset 0 -1px var(--penna-divider); }
+  .zz-nums > b { font-weight: 600; }
+  .zz-nums > span { color: var(--penna-fg-muted); }
+  .zz-table { display: grid; grid-template-columns: max-content repeat(2, minmax(0, 1fr)); max-width: 980px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-table > * { padding: 10px 16px 10px 0; box-shadow: inset 0 1px var(--penna-divider); }
+  .zz-table > b { font-weight: 600; }
+  .zz-table > span { color: var(--penna-fg-muted); }
+  .zz-table > [data-head] { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--penna-fg-muted); box-shadow: none; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Machine pill</h1>
+    <p>Take A, reworked. The tiles and the capsule are 48 now, 4 from the pill's edge instead of 8, so the name and the session line sit 5 off the capsule's top and bottom instead of 1. Inside, the mark is centred on a 48 circle (14 in), the text starts 10 after it, and the capsule is as wide as its text needs plus 16, so names are not cut. Then what happens with more machines than fit: <b>A1</b> scrolls the row, <b>A2</b> folds the rest into a count. In the browser the phones play the swipe; the strips are still frames.</p>
+  </div>
+
+  <section data-take="a">
+    <h2>A. The tile grows</h2>
+    <p>The machine on screen stretches its tile into a capsule with its name over the session in view; the others are their marks on 48 tiles, 4 apart. When there is room, the other of two machines keeps its name beside its tile. Swiping, the capsule hands its width to the next tile as the finger moves; its text is gone by the middle of the swipe and the next one's comes in after it, so no name is ever cut short. A long name can push the third tile under the edge fade, as in A1.</p>
+    <div class="zz-take">
+      <figure><div class="zz-phone" data-phone="a" data-hosts="3"></div></figure>
+      <div class="zz-strips" data-strips="a"></div>
+    </div>
+  </section>
+
+  <section data-take="scroll">
+    <h2>A1. More machines: the tiles scroll</h2>
+    <p><b>Picked.</b> The capsule keeps its width and every tile its 48, so once the row is wider than the pill it scrolls to keep the capsule in the middle, clamped at the two ends, and a 20 fade marks the side where more machines are. A swipe scrolls the row as the capsule moves, so the next machine always shows.</p>
+    <div class="zz-take">
+      <figure><div class="zz-phone" data-phone="scroll" data-hosts="6"></div></figure>
+      <div class="zz-strips" data-strips="scroll"></div>
+    </div>
+  </section>
+
+  <section data-take="count">
+    <h2>A2. More machines: the rest fold into a count</h2>
+    <p>Not picked. From four machines the pill shows the one on screen, the next one, and a "+n" tile for the rest. A tap on the count opens Machines. A swipe trades the capsule with the next tile as in A; once it lands, the tile after it takes the free place and the count stays. The capsule gets what is left, 130, so a long name is cut.</p>
+    <div class="zz-take">
+      <figure><div class="zz-phone" data-phone="count" data-hosts="6"></div></figure>
+      <div class="zz-strips" data-strips="count"></div>
+    </div>
+  </section>
+
+  <section data-take="compare">
+    <h2>A1 or A2</h2>
+    <div class="zz-table">
+      <span data-head></span><span data-head>A1. Scroll</span><span data-head>A2. Count</span>
+      <b>Machines in view</b><span>The capsule and three or four tiles, cut at the edge</span><span>The capsule, the next one and the count</span>
+      <b>Tap a machine</b><span>Any tile in view</span><span>The next one; the count opens Machines</span>
+      <b>On a swipe</b><span>The row scrolls with the capsule</span><span>The capsule trades with the next tile, then a new one slides in</span>
+      <b>Says how many</b><span>No, only that there are more</span><span>Yes</span>
+      <b>Long names</b><span>Whole; the row scrolls sooner</span><span>Cut at 130</span>
+    </div>
+  </section>
+
+  <section data-take="numbers">
+    <h2>The numbers</h2>
+    <div class="zz-nums">
+      <b>Pill</b><span>The floating pill, 56 tall, between the up and plus discs (242 wide on a 402 phone); its parts inset 4</span>
+      <b>Tile</b><span>48 circle on the pill's icon surface (<code>phone.pill.icon</code>), the platform mark 20 at its centre in muted ink</span>
+      <b>Capsule</b><span>The tile stretched: 48 tall, the mark 14 in and in full ink, the name in <code>touch-small</code> 500 over the session in <code>small</code> muted, 2 apart, 5 from the top and bottom, starting 10 after the mark; as wide as the longer line plus 60, from 88 to 180</span>
+      <b>Widths</b><span>Tiles 4 apart. One machine: the tile and the text, no capsule. Two: the other machine's name after its tile when both fit. The row scrolls when it is wider than the pill, keeping the capsule in the middle, clamped at the ends; a tile cut by the pill's edge fades over 20</span>
+      <b>Swipe</b><span>One machine per page width; the capsule's width moves to the next tile with the finger. Its text fades out over the first 45% and the next one's in over the last 45%, clipped by the capsule, never ellipsized; the mark's ink switches at half. Release past half or with a flick commits, on the pager's spring</span>
+      <b>Gestures</b><span>No hold. Tap the capsule: Settings and All machines. Tap a tile: go to that machine. Drag up: Machines</span>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const HOSTS = [
+    { name: "zzios-zebrilus", os: "mac", meta: "phone" },
+    { name: "xps", os: "arch", meta: "zz" },
+    { name: "win-desktop", os: "win", meta: "games" },
+    { name: "alienware", os: "arch", meta: "nidus" },
+    { name: "macbook", os: "mac", meta: "zebrilus" },
+    { name: "pi", os: "linux", meta: "home" },
+    { name: "devbox", os: "linux", meta: "No sessions" },
+    { name: "nas", os: "linux", meta: "Not connected" },
+  ];
+  const W = 242;
+  const INNER = W - 8;
+  const TILE = 48;
+  const GAP = 4;
+  const CAP_MIN = 88;
+  const CAP_MAX = 180;
+  const probe = document.createElement("div");
+  probe.className = "zz-lab";
+  probe.style.cssText = "position: absolute; visibility: hidden; left: -9999px; width: auto";
+  document.body.append(probe);
+  const sizes = new Map();
+  const measure = (h) => {
+    if (!sizes.has(h.name)) {
+      probe.innerHTML = `<b>${h.name}</b><span>${h.meta}</span>`;
+      const text = Math.ceil(Math.max(...[...probe.children].map((c) => c.scrollWidth))) + 2;
+      probe.innerHTML = `<b>${h.name}</b>`;
+      sizes.set(h.name, { cap: clamp(44 + text + 16, CAP_MIN, CAP_MAX), named: 56 + Math.ceil(probe.firstChild.scrollWidth) + 2 + 12 });
+    }
+    return sizes.get(h.name);
+  };
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const near = (i, at) => Math.max(0, 1 - Math.abs(i - at));
+  const mark = (h, ink) => `<span class="zz-os" data-os="${h.os}" style="color: ${ink}"></span>`;
+  const wrap = (inner, fade) => `<div class="penna-compact-pill zz-hp" data-penna="floating"><div class="zz-track"${fade ? ` data-fade="${fade}"` : ""}>${inner}</div></div>`;
+
+  const item = (h, x, w, a, named, cap = measure(h).cap) => {
+    const fill = TILE + (w - TILE) * a;
+    const ink = a > 0.5 ? "var(--penna-fg)" : "var(--penna-muted)";
+    const shown = clamp((a - 0.55) / 0.45, 0, 1);
+    const gone = clamp((0.45 - a) / 0.45, 0, 1);
+    const label = shown > 0 ? `<span class="zz-lab" style="width: ${cap - 60}px; opacity: ${shown.toFixed(3)}"><b>${h.name}</b><span>${h.meta}</span></span>` : "";
+    const name = named && gone > 0 ? `<span class="zz-lab" data-name style="opacity: ${gone.toFixed(3)}"><b>${h.name}</b></span>` : "";
+    return `<div class="zz-item" style="left: ${x}px; width: ${w}px"><span class="zz-fill" data-penna="phone.pill.icon" style="width: ${fill}px"></span>${mark(h, ink)}${label}${name}</div>`;
+  };
+  const moreTile = (x, n) => `<div class="zz-item" style="left: ${x}px; width: ${TILE}px"><span class="zz-fill" data-penna="phone.pill.icon" style="width: ${TILE}px"></span><span class="zz-more">+${n}</span></div>`;
+
+  const single = (h) => `<div class="penna-compact-pill zz-hp" data-penna="floating"><div class="zz-track"><div class="zz-item" style="left: 0; width: ${INNER}px"><span class="zz-fill" data-penna="phone.pill.icon" style="width: ${TILE}px"></span>${mark(h, "var(--penna-fg)")}<span class="zz-lab" style="left: 58px; width: ${INNER - 70}px"><b>${h.name}</b><span>${h.meta}</span></span></div></div></div>`;
+
+  const row = (list, at, small, big) => {
+    let x = 0;
+    return list.map((h, i) => {
+      const a = near(i, at);
+      const w = small(h) + (big(h) - small(h)) * a;
+      const out = { h, x, w, a };
+      x += w + GAP;
+      return out;
+    });
+  };
+
+  const pillA = (hosts, at) => {
+    const n = hosts.length;
+    if (n === 1) return single(hosts[0]);
+    const roomy = n === 2 && hosts.every((h, i) => measure(h).cap + GAP + measure(hosts[1 - i]).named <= INNER);
+    const items = row(hosts, at, (h) => (roomy ? measure(h).named : TILE), (h) => measure(h).cap);
+    const total = items.at(-1).x + items.at(-1).w;
+    const centre = items.reduce((sum, it) => sum + it.a * (it.x + it.w / 2), 0);
+    const offset = clamp(centre - INNER / 2, 0, Math.max(0, total - INNER));
+    const fade = total > INNER + 0.5 ? (offset > 0.5 && offset < total - INNER - 0.5 ? "both" : offset > 0.5 ? "start" : "end") : null;
+    return wrap(items.map((it) => item(it.h, it.x - offset, it.w, it.a, roomy)).join(""), fade);
+  };
+
+  const pillCount = (hosts, at) => {
+    const n = hosts.length;
+    if (n <= 3) return pillA(hosts, at);
+    const first = clamp(Math.floor(at), 0, n - 2);
+    const shown = [hosts[first], hosts[first + 1]];
+    const room = INNER - 2 * (TILE + GAP);
+    const items = row(shown, at - first, () => TILE, (h) => Math.min(measure(h).cap, room));
+    const end = items.at(-1).x + items.at(-1).w + GAP;
+    return wrap(`${items.map((it) => item(it.h, it.x, it.w, it.a, false, Math.min(measure(it.h).cap, room))).join("")}${moreTile(end, n - 2)}`);
+  };
+
+  const PILLS = { a: pillA, scroll: pillA, count: pillCount };
+  const bar = (pill) => `<div class="zz-bar"><button class="zz-disc" data-penna="floating">${ic("chevron-up")}</button>${pill}<button class="zz-disc" data-penna="floating">${ic("plus")}</button></div>`;
+
+  const page = (h) => `<div class="zz-screen"><div class="zz-big"><span class="zz-os" data-os="${h.os}"></span>${h.name}</div><div class="zz-col">
+    <div class="zz-sess">${h.meta === "Not connected" || h.meta === "No sessions" ? "" : h.meta}</div>
+    <div class="zz-card2"><b>bash</b><pre>clippy.toml\ncompat\ncrates\n~/dev/zebrilus main $</pre></div>
+    <div class="zz-card2"><b>bash</b><pre>e2fd646 Shrink the titlebar buttons\n  to 28px with a 16px icon\n~/dev/zebrilus main $\n</pre></div>
+    <div class="zz-rowc"><span><b>Claude Code</b><i>zebrilus · main</i></span></div>
+    <div class="zz-rowc"><span><b>Codex</b><i>zebrilus · main</i></span></div>
+  </div></div>`;
+
+  const STRIPS = {
+    a: [
+      ["One machine", 1, 0, "The tile and the text, no capsule, no dots."],
+      ["Two machines", 2, 0, "zzios-zebrilus is too long to leave room for the other name."],
+      ["Two short names", [1, 4], 0, "xps on screen; macbook keeps its name beside its tile."],
+      ["Three machines", 3, 0, "zzios-zebrilus on screen."],
+      ["Mid-swipe", 3, 0.45, "zzios-zebrilus to xps, 45% of the way."],
+      ["Three machines", 3, 1, "xps on screen."],
+    ],
+    scroll: [
+      ["Four machines", 4, 0, "The first on screen: the fourth is cut under the fade."],
+      ["Six machines", 6, 2, "win-desktop on screen, in the middle, more on both sides."],
+      ["Eight machines", 8, 7, "The last on screen: the row is at its end."],
+      ["Mid-swipe", 8, 3.45, "alienware to macbook, 45% of the way; the row scrolls along."],
+      ["Eight machines", 8, 4, "macbook on screen."],
+    ],
+    count: [
+      ["Four machines", 4, 0, "The first on screen, the next, and +2."],
+      ["Six machines", 6, 2, "win-desktop on screen, alienware next, +4."],
+      ["Eight machines", 8, 7, "The last on screen: the one before it, then +6."],
+      ["Mid-swipe", 8, 3.45, "alienware to macbook, 45% of the way."],
+      ["Eight machines", 8, 4, "macbook on screen, pi next."],
+    ],
+  };
+  const draw = () => {
+  for (const box of document.querySelectorAll("[data-strips]")) {
+    const draw = PILLS[box.dataset.strips];
+    box.innerHTML = STRIPS[box.dataset.strips].map(([title, n, at, note]) => `<figure><div class="zz-strip">${bar(draw(Array.isArray(n) ? n.map((i) => HOSTS[i]) : HOSTS.slice(0, n), at))}</div><figcaption><b>${title}</b>${note}</figcaption></figure>`).join("");
+  }
+
+  const bare = new URLSearchParams(location.search).has("bare");
+  const phones = [...document.querySelectorAll("[data-phone]")];
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  const paint = (phone, at) => {
+    const hosts = HOSTS.slice(0, Number(phone.dataset.hosts));
+    const draw = PILLS[phone.dataset.phone];
+    const shown = hosts[Math.round(at)];
+    phone.querySelector(".zz-live").innerHTML = `<div style="position: absolute; inset: 0; transform: translateX(${(Math.round(at) - at) * 402}px)">${page(shown)}</div>${bar(draw(hosts, at))}`;
+  };
+  for (const phone of phones) {
+    phone.innerHTML = `${status}<div class="zz-live" style="position: absolute; inset: 0"></div><span class="zz-home"></span>`;
+    paint(phone, phone.dataset.phone === "a" ? 0 : 2);
+  }
+  if (!bare) {
+    const ease = (t) => 1 - Math.pow(1 - t, 3);
+    for (const phone of phones) {
+      const n = Number(phone.dataset.hosts);
+      const stops = [...Array(n).keys(), ...[...Array(n).keys()].reverse().slice(1, -1)];
+      let leg = phone.dataset.phone === "a" ? 0 : 2;
+      const run = () => {
+        const from = stops[leg % stops.length];
+        const to = stops[(leg + 1) % stops.length];
+        const start = performance.now();
+        const step = (now) => {
+          const t = Math.min(1, (now - start) / 520);
+          paint(phone, from + (to - from) * ease(t));
+          if (t < 1) requestAnimationFrame(step);
+          else { leg += 1; setTimeout(run, 1000); }
+        };
+        requestAnimationFrame(step);
+      };
+      setTimeout(run, 900);
+    }
+  }
+
+  };
+  document.fonts.ready.then(draw);
+
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.querySelector(".zz-intro").style.display = "none";
+    for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+  }
+})();
+</script>
+</body>
+</html>

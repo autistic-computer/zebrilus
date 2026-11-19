@@ -1,21 +1,26 @@
-use ala::{App, Div, Hsla, IntoElement as _, ParentElement as _, Pixels, Styled as _, div, px};
+use ala::{App, Div, Hsla, ParentElement as _, Pixels, Styled as _, div, px};
 use penna::{
     ActiveTheme as _, Ground, Icon, IconName, Space, StyledExt as _, TextStyle,
     blocks::touch::StatusMark,
 };
-use zz_client::{program::Program, window_summary::PaneTile};
+use zz_client::{
+    program::Program,
+    window_summary::{Attention, PaneTile},
+};
 
 use crate::navigation::{
     flat::pane_glyph,
-    pane_stack::{attention_tone, pane_face, ringed_dot, stack_radius},
+    pane_stack::{attention_tone, pane_face, ringed_dot, stack_radius, status_dot},
 };
 
 pub const LEAD_FACE: f32 = 24.0;
-pub const TRAIL_FACE: f32 = 16.0;
 pub const PILL_GLYPH: f32 = 20.0;
+pub const WINDOW_FACE: f32 = 24.0;
 const MACHINE_GLYPH: f32 = 20.0;
 const FACE_DOT: f32 = 8.0;
-const TRAILING: usize = 3;
+const WINDOW_FACES: usize = 5;
+const WINDOW_RING: f32 = 2.0;
+const WINDOW_STEP: f32 = 20.0;
 const GLYPH_SCALE: f32 = crate::program::PROGRAM_GLYPH_SCALE;
 
 fn face(tile: &PaneTile, size: f32, glyph: f32, radius: Pixels, ground: Ground, cx: &App) -> Div {
@@ -89,36 +94,42 @@ pub fn pill_face(
 }
 
 #[must_use]
-pub fn trailing_split(tiles: &[PaneTile]) -> (usize, usize) {
-    let alike = tiles.split_first().is_some_and(|(first, rest)| {
-        first.program.is_none()
-            && rest
-                .iter()
-                .all(|tile| tile.program.is_none() && tile.tag == first.tag)
-    });
-    if alike {
-        return (1, 0);
-    }
-    let shown = tiles.len().min(TRAILING);
-    (shown, tiles.len() - shown)
-}
-
-#[must_use]
-pub fn trailing_faces(tiles: &[PaneTile], ground: Ground, cx: &App) -> Div {
+pub fn window_faces(windows: &[(PaneTile, Attention)], ground: Ground, cx: &App) -> Div {
     let muted = penna::muted_on(ground, cx);
-    let (shown, more) = trailing_split(tiles);
-    let size = TRAIL_FACE;
+    let size = WINDOW_FACE;
+    let ringed = size + 2.0 * WINDOW_RING;
     let radius = stack_radius(px(size), cx);
+    let ring_radius = stack_radius(px(ringed), cx);
+    let shown = windows.len().min(WINDOW_FACES);
+    let more = windows.len() - shown;
+    let width = ringed + shown.saturating_sub(1) as f32 * WINDOW_STEP;
     div()
         .flex()
         .flex_none()
         .items_center()
-        .gap(Space::S4)
-        .children(
-            tiles
-                .iter()
-                .take(shown)
-                .map(|tile| face(tile, size, size * GLYPH_SCALE, radius, ground, cx)),
+        .gap(Space::S6)
+        .child(
+            div()
+                .relative()
+                .flex_none()
+                .w(px(width))
+                .h(px(ringed))
+                .children(windows.iter().take(shown).enumerate().rev().map(
+                    |(slot, (tile, attention))| {
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left(px(slot as f32 * WINDOW_STEP))
+                            .p(px(WINDOW_RING))
+                            .rounded(ring_radius)
+                            .bg(ground.fill)
+                            .child(
+                                face(tile, size, size * GLYPH_SCALE, radius, ground, cx)
+                                    .relative()
+                                    .children(status_dot(*attention, px(size), ground.fill, cx)),
+                            )
+                    },
+                )),
         )
         .children((more > 0).then(|| {
             div()
@@ -126,56 +137,5 @@ pub fn trailing_faces(tiles: &[PaneTile], ground: Ground, cx: &App) -> Div {
                 .type_style_strong(TextStyle::TouchSmall, cx)
                 .text_color(muted)
                 .child(format!("+{more}"))
-                .into_any_element()
         }))
-}
-
-#[cfg(test)]
-mod tests {
-    use zz_client::{
-        program::Program,
-        window_summary::{Attention, PaneTag, PaneTile},
-    };
-    use zz_protocol::PaneId;
-
-    use super::trailing_split;
-
-    fn tile(pane: u64, tag: PaneTag, program: Option<&str>) -> PaneTile {
-        PaneTile {
-            pane: PaneId(pane),
-            tag,
-            label: String::new(),
-            program: program.and_then(Program::by_id),
-            attention: Attention::None,
-        }
-    }
-
-    #[test]
-    fn a_window_shows_three_faces_then_counts_the_rest() {
-        let nvim = |pane| tile(pane, PaneTag::Terminal, Some("neovim"));
-        assert_eq!(trailing_split(&[nvim(1), nvim(2)]), (2, 0));
-        assert_eq!(trailing_split(&[nvim(1), nvim(2), nvim(3)]), (3, 0));
-        assert_eq!(
-            trailing_split(&(1..=5).map(nvim).collect::<Vec<_>>()),
-            (3, 2)
-        );
-    }
-
-    #[test]
-    fn panes_that_all_fall_back_to_one_glyph_show_one_face() {
-        let shell = |pane| tile(pane, PaneTag::Terminal, None);
-        assert_eq!(trailing_split(&[shell(1), shell(2)]), (1, 0));
-        assert_eq!(
-            trailing_split(&(1..=5).map(shell).collect::<Vec<_>>()),
-            (1, 0)
-        );
-        assert_eq!(
-            trailing_split(&[shell(1), tile(2, PaneTag::Browser, None)]),
-            (2, 0)
-        );
-        assert_eq!(
-            trailing_split(&[shell(1), tile(2, PaneTag::Terminal, Some("htop"))]),
-            (2, 0)
-        );
-    }
 }

@@ -3,6 +3,10 @@ use ala::{App, Div, Hsla, ParentElement as _, Styled as _, div, prelude::*};
 use crate::{ActiveTheme as _, Colorize as _, Space, rems_from_px};
 
 const ACTIVE_DOT: f32 = 12.0;
+const STRIP_CELL: f32 = 9.0;
+const STRIP_ACTIVE: f32 = 16.0;
+const STRIP_REST: f32 = 4.0;
+const STRIP_LIVE: f32 = 6.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PageDot {
@@ -39,6 +43,44 @@ pub fn page_dots_in(groups: &[Vec<PageDot>], ink: Hsla, cx: &App) -> Div {
                     crate::blocks::sidebar::status_dot(color)
                         .debug_selector(move || selector)
                         .when(dot.active, |dot| dot.w(rems_from_px(ACTIVE_DOT)))
+                }))
+        }))
+}
+
+pub fn page_strip(groups: &[Vec<PageDot>], live: bool, ink: Hsla, cx: &App) -> Div {
+    let theme = cx.theme();
+    let height = if live { STRIP_LIVE } else { STRIP_REST };
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(Space::S4)
+        .children(groups.iter().enumerate().map(|(group, cells)| {
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .gap(Space::S2)
+                .children(cells.iter().enumerate().map(|(index, cell)| {
+                    let selector = format!("page-strip-{group}-{index}");
+                    let color = if cell.active {
+                        ink
+                    } else if cell.attention {
+                        theme.warning
+                    } else {
+                        ink.faint()
+                    };
+                    div()
+                        .debug_selector(move || selector)
+                        .flex_none()
+                        .w(rems_from_px(if cell.active {
+                            STRIP_ACTIVE
+                        } else {
+                            STRIP_CELL
+                        }))
+                        .h(rems_from_px(height))
+                        .rounded(rems_from_px(height / 2.0))
+                        .bg(color)
                 }))
         }))
 }

@@ -7,9 +7,9 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, IconName, StyledExt as _, TextStyle,
     blocks::compact::{
-        BENTO_INSET, BentoSpan, PhoneTile, PillLabel, PillPlacement, bento_grid,
+        BENTO_INSET, BentoSpan, PhoneTile, PillLabel, PillPlacement, StripMachine, bento_grid,
         compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
-        compact_hud, folding_title_bar, pill_glass_over,
+        compact_hud, folding_title_bar, machine_strip, pill_glass_over, split_pill_bounds,
     },
     blocks::settings::large_title,
     blocks::touch::{
@@ -33,6 +33,12 @@ pub const STORY: Story = Story {
             name: "Pill",
             summary: "compact_floating_pill in compact_floating_bar: an icon, a title and a line under it, with page dots. It turns amber when the page needs attention, and over a light page pill_glass_over picks its glass.",
             build: |_, cx| stateless(pills, cx),
+        },
+        Section {
+            id: "machine-strip",
+            name: "Machine strip",
+            summary: "machine_strip: a machine's pill holds every machine as its platform mark on a 48 circle, the one on screen stretched into a capsule with its name over its second line. Two short names keep the other's name; a row wider than the pill scrolls to keep the capsule in the middle and fades what the edge cuts. A position between two machines trades the capsule's width, its text gone by the middle.",
+            build: |_, cx| stateless(strips, cx),
         },
         Section {
             id: "page-dots",
@@ -214,6 +220,75 @@ fn pills(_: &mut Window, cx: &mut App) -> AnyElement {
                 Some(white()),
                 cx,
             ),
+        )
+        .into_any_element()
+}
+
+const MACHINES: [(IconName, &str, &str); 6] = [
+    (IconName::Laptop, "zzios-zebrilus", "phone"),
+    (IconName::Cpu, "xps", "zz"),
+    (IconName::HardDrive, "win-desktop", "games"),
+    (IconName::Cpu, "alienware", "nidus"),
+    (IconName::Laptop, "macbook", "zebrilus"),
+    (IconName::Server, "nas", "Not connected"),
+];
+
+fn strip(
+    id: &'static str,
+    picks: &[usize],
+    position: f32,
+    window: &Window,
+    cx: &App,
+) -> impl IntoElement {
+    let placement = placement();
+    let machines: Vec<StripMachine> = picks
+        .iter()
+        .map(|&index| {
+            let (mark, name, line) = &MACHINES[index];
+            StripMachine {
+                mark: mark.clone(),
+                name: (*name).into(),
+                line: (*line).into(),
+            }
+        })
+        .collect();
+    let width = split_pill_bounds(px(PHONE_WIDTH), &placement, false, false)
+        .size
+        .width;
+    let pill = machine_strip(
+        id,
+        &machines,
+        position,
+        width,
+        &placement,
+        |_, _, _| {},
+        window,
+        cx,
+    );
+    phone(compact_floating_bar(pill, &placement, cx), cx)
+}
+
+fn strips(window: &mut Window, cx: &mut App) -> AnyElement {
+    let cx: &App = cx;
+    states()
+        .columns(2)
+        .state("one machine", strip("strip-one", &[0], 0.0, window, cx))
+        .state(
+            "two short names",
+            strip("strip-two", &[1, 4], 0.0, window, cx),
+        )
+        .state("three", strip("strip-three", &[0, 1, 2], 1.0, window, cx))
+        .state(
+            "six, scrolled",
+            strip("strip-six", &[0, 1, 2, 3, 4, 5], 3.0, window, cx),
+        )
+        .state(
+            "mid-swipe",
+            strip("strip-swipe", &[0, 1, 2, 3, 4, 5], 2.45, window, cx),
+        )
+        .state(
+            "not connected",
+            strip("strip-off", &[1, 5], 1.0, window, cx),
         )
         .into_any_element()
 }

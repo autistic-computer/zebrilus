@@ -2,49 +2,54 @@ use std::{cell::RefCell, ops::Range, rc::Rc};
 
 use ala::{
     AnyElement, App, Bounds, Context, Entity, Font, Hsla, PaintScaleExt as _, ParentElement as _,
-    Pixels, Point, ScrollDelta, ScrollWheelEvent, Size, StyledText, TextRun, Window, canvas, div,
-    font, linear_color_stop, linear_gradient, point, prelude::*, px, size,
+    Pixels, ScrollDelta, ScrollWheelEvent, Size, StyledText, TextRun, Window, canvas, div, font,
+    linear_color_stop, linear_gradient, point, prelude::*, px, size,
 };
 use penna::{
     ActiveTheme as _, Colorize as _, IconName, Sizable as _, Space,
     blocks::compact::{
-        BENTO_INSET, BentoSpan, COMPACT_TITLE_BAR_HEIGHT, MiniPane, PhoneTile, PillLabel,
-        PillPlacement, TopRowEnd, backdrop_blur, bento_grid, compact_disc_button,
-        compact_floating_bar, compact_floating_pill, folding_title_bar, lifted_card, pill_up_disc,
-        scrolled, top_row_button, window_span, zoom_card_ground,
+        BENTO_GAP, BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, COMPACT_TITLE_BAR_HEIGHT,
+        MACHINE_TILE_HEIGHT, MachineTile, MiniPane, PhoneTile, PillPlacement, StripMachine,
+        TAIL_LINES, WindowCard, WindowTail, bento_grid, compact_bar_disc, compact_floating_bar,
+        folding_title_bar, machine_strip, phone_card_ground, pill_handle, pill_handle_bounds,
+        scrolled, split_pill_bounds, zoom_card_ground,
     },
-    blocks::settings::large_title,
+    blocks::settings::{large_title, large_title_lead},
     blocks::touch::StatusMark,
     blocks::touch::{
-        ACTION_BAR_KEYBOARD, PageDot, PagerEvent, PhoneEmpty, Pull, StackMenu, TouchHeader,
-        action_bar, page_dots,
+        ACTION_BAR_KEYBOARD, PagerEvent, PhoneEmpty, StackMenu, TouchHeader, action_bar,
     },
     components::button::{Button, ButtonVariants as _},
+    v_flex,
 };
-use penna::{blocks::compact::ZoomCard, blocks::sheet::close_sheet, blocks::touch::TouchRow};
+use penna::{
+    blocks::compact::ZoomCard,
+    blocks::sheet::close_sheet,
+    blocks::touch::{TouchGroup, TouchRow},
+};
 use web_time::Instant;
 use zz_client::{
     AgentAttentionStatus, StatusBarModel, StatusBarWindow, agent_attention_status,
     navigation::session_label,
-    pane_rects,
-    window_summary::{PaneTile, summarize_window},
+    window_summary::{Attention, DetailPart, PaneTile, summarize_window},
 };
 use zz_protocol::{PaneId, PaneKindSnapshot, SessionId, WindowId};
-use zz_terminal::{Glyph, LocalColors, TerminalAppearance, TerminalPalette, TerminalViewport};
+use zz_terminal::{
+    Cursor, Glyph, LocalColors, TerminalAppearance, TerminalPalette, TerminalViewport,
+};
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use zz_ui::compact::found_machines;
 use zz_ui::{
     command::PaletteHostId,
     compact::{
         HostState, MachineMenu, close_many_detail, close_pane_detail, host_mark, host_state,
-        lead_face, machine_face, mark_dot, overview_count, session_in_view, session_tail,
-        trailing_faces, window_mark,
+        machine_face, mark_dot, session_in_view, window_faces, window_mark,
     },
     terminal::terminal_background,
 };
 
 use super::{
-    AppShell, Page, pages,
+    AppShell, MENU_DIM, Page, pages,
     sheets::{PhoneSheet, Target, Thing},
 };
 use crate::{connection::Connection, terminal::phone_colors};
@@ -54,16 +59,8 @@ const PREVIEW_COLUMNS: usize = 56;
 const HOST_GAP: f32 = 12.0;
 const ZOOM_FADE_START: f32 = 0.3;
 const ZOOM_FADE_SPAN: f32 = 0.4;
-const FLIGHT_SHRINK: f32 = 640.0;
-const FLIGHT_SMALLEST: f32 = 0.3;
-const FLIGHT_PAGE_REST: f32 = 0.92;
-const FLIGHT_PAGE_SPAN: f32 = 1.0 / 3.0;
-const FLIGHT_LAND: f32 = 2.0 / 3.0;
-const FLIGHT_EDGE: f32 = 12.0;
-const FLIGHT_BLUR: f32 = 14.0;
-const FLIGHT_BLUR_FLOOR: f32 = 4.0;
-const FLIGHT_BLUR_FADE: f32 = 0.3;
-const FLIGHT_DIM: f32 = 0.25;
+const PANE_ZOOM_REST: f32 = 0.88;
+const PANE_ZOOM_PUSH: f32 = 1.08;
 const TILE_FALLBACK_TOP: f32 = 160.0;
 const TILE_FALLBACK_HEIGHT: f32 = 178.0;
 const CARD_EMPTY_TOP: f32 = 96.0;
@@ -146,174 +143,28 @@ fn terminal_preview(
     StyledText::new(text).with_runs(runs)
 }
 
+fn tail_rows(viewport: &TerminalViewport) -> Range<u16> {
+    let written = |row: &u16| {
+        viewport.row(*row).is_some_and(|cells| {
+            cells.iter().any(|cell| match viewport.glyph(*cell) {
+                Glyph::Empty => false,
+                Glyph::Scalar(character) => !character.is_whitespace(),
+                Glyph::Grapheme(_) => true,
+            })
+        })
+    };
+    let text = (0..viewport.rows).rev().find(written);
+    let cursor = viewport.cursor.map(Cursor::row);
+    let end = text.max(cursor).map_or(0, |row| row + 1).min(viewport.rows);
+    end.saturating_sub(TAIL_LINES)..end
+}
+
 pub(super) struct Zoom {
     pub tile: Bounds<Pixels>,
     pub stage: Size<Pixels>,
     pub progress: f32,
     pub ground: Hsla,
     pub corner: Pixels,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct Card {
-    pub bounds: Bounds<Pixels>,
-    pub corner: Pixels,
-}
-
-impl Card {
-    fn toward(self, to: Self, at: f32) -> Self {
-        let mix = |from: Pixels, to: Pixels| from + (to - from) * at;
-        Self {
-            bounds: Bounds::new(
-                point(
-                    mix(self.bounds.origin.x, to.bounds.origin.x),
-                    mix(self.bounds.origin.y, to.bounds.origin.y),
-                ),
-                size(
-                    mix(self.bounds.size.width, to.bounds.size.width),
-                    mix(self.bounds.size.height, to.bounds.size.height),
-                ),
-            ),
-            corner: mix(self.corner, to.corner),
-        }
-    }
-}
-
-pub(super) struct Throw {
-    pub pull: Option<Pull>,
-    pub dragging: bool,
-    pub opening: bool,
-    pub flight: f32,
-    pub progress: f32,
-    pub grab: Point<Pixels>,
-    pub stage: Size<Pixels>,
-    pub slot: Card,
-    pub corner: Pixels,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct Flight {
-    pub card: Card,
-    pub land: f32,
-}
-
-impl Flight {
-    pub(super) fn at(throw: &Throw) -> Self {
-        let full = Card {
-            bounds: Bounds::new(point(px(0.0), px(0.0)), throw.stage),
-            corner: throw.corner,
-        };
-        let progress = throw.progress.clamp(0.0, 1.0);
-        let Some(pull) = throw.pull else {
-            return Self {
-                card: full.toward(throw.slot, progress),
-                land: progress,
-            };
-        };
-        let scale = (1.0 - pull.reach / FLIGHT_SHRINK).max(FLIGHT_SMALLEST);
-        let held = Card {
-            bounds: Bounds::new(
-                point(
-                    throw.grab.x + px(pull.side) - throw.grab.x * scale,
-                    throw.grab.y - px(pull.reach) - throw.grab.y * scale,
-                ),
-                size(throw.stage.width * scale, throw.stage.height * scale),
-            ),
-            corner: throw.corner * scale,
-        };
-        if throw.dragging {
-            return Self {
-                card: held,
-                land: 0.0,
-            };
-        }
-        let flight = throw.flight.clamp(0.0, 1.0);
-        if throw.opening {
-            return Self {
-                card: held.toward(throw.slot, flight),
-                land: flight,
-            };
-        }
-        Self {
-            card: held.toward(full, flight),
-            land: 0.0,
-        }
-    }
-
-    pub(super) fn landed(&self) -> f32 {
-        let at = ((self.land - FLIGHT_LAND) / (1.0 - FLIGHT_LAND)).clamp(0.0, 1.0);
-        at * at * (3.0 - 2.0 * at)
-    }
-}
-
-pub(super) fn flight_layers(
-    parent: AnyElement,
-    child: AnyElement,
-    flight: &Flight,
-    stage: Size<Pixels>,
-    progress: f32,
-    ground: Hsla,
-    cx: &App,
-) -> ala::Div {
-    let width = stage.width;
-    let height = stage.height;
-    let card = flight.card.bounds;
-    let scale = (f32::from(card.size.width) / f32::from(width).max(1.0)).clamp(0.05, 1.0);
-    let band = (card.size.height / scale).min(height);
-    let corner = flight.card.corner / scale;
-    let reveal = (progress / FLIGHT_PAGE_SPAN).clamp(0.0, 1.0);
-    let page = FLIGHT_PAGE_REST + (1.0 - FLIGHT_PAGE_REST) * reveal;
-    let parent_layer = div()
-        .absolute()
-        .top_0()
-        .left_0()
-        .w(width)
-        .h(height)
-        .opacity(reveal)
-        .child(parent)
-        .paint_scale(
-            page,
-            point(width * ((1.0 - page) / 2.0), height * ((1.0 - page) / 2.0)),
-        );
-    let child_layer = lifted_card(
-        div()
-            .absolute()
-            .top_0()
-            .left_0()
-            .w(width)
-            .h(height)
-            .child(child),
-        ground,
-        corner,
-        ((1.0 - scale) * FLIGHT_EDGE).min(1.0),
-        cx,
-    )
-    .absolute()
-    .top_0()
-    .left_0()
-    .w(width)
-    .h(band.max(px(0.0)))
-    .opacity(1.0 - flight.landed())
-    .paint_scale(scale, card.origin);
-    let away = 1.0 - flight.land;
-    let blur = (away > 0.0).then(|| {
-        let shown = (away / FLIGHT_BLUR_FADE).min(1.0);
-        div()
-            .absolute()
-            .inset_0()
-            .opacity(shown * shown * (3.0 - 2.0 * shown))
-            .child(backdrop_blur(
-                px(FLIGHT_BLUR_FLOOR + (FLIGHT_BLUR - FLIGHT_BLUR_FLOOR) * away),
-                FLIGHT_DIM * reveal,
-                cx,
-            ))
-    });
-    div()
-        .absolute()
-        .inset_0()
-        .child(parent_layer)
-        .children(blur)
-        .child(child_layer)
 }
 
 fn zoom_fade(at: f32) -> f32 {
@@ -374,6 +225,51 @@ pub(super) fn zoom_layers(parent: AnyElement, child: AnyElement, zoom: &Zoom) ->
         .child(child_layer)
 }
 
+pub(super) fn pane_zoom_layers(
+    parent: AnyElement,
+    child: AnyElement,
+    stage: Size<Pixels>,
+    progress: f32,
+    ground: Hsla,
+    corner: Pixels,
+) -> ala::Div {
+    let progress = progress.clamp(0.0, 1.0);
+    let centered = |scale: f32| {
+        point(
+            stage.width * ((1.0 - scale) / 2.0),
+            stage.height * ((1.0 - scale) / 2.0),
+        )
+    };
+    let parent_scale = PANE_ZOOM_PUSH + (1.0 - PANE_ZOOM_PUSH) * progress;
+    let child_scale = 1.0 + (PANE_ZOOM_REST - 1.0) * progress;
+    let layer = || {
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .w(stage.width)
+            .h(stage.height)
+    };
+    div()
+        .absolute()
+        .inset_0()
+        .child(
+            layer()
+                .opacity(zoom_fade(progress))
+                .child(parent)
+                .paint_scale(parent_scale, centered(parent_scale)),
+        )
+        .child(
+            layer()
+                .overflow_hidden()
+                .rounded(corner)
+                .bg(ground)
+                .opacity(zoom_fade(1.0 - progress))
+                .child(child)
+                .paint_scale(child_scale, centered(child_scale)),
+        )
+}
+
 #[derive(Default)]
 struct HostCounts {
     sessions: usize,
@@ -414,6 +310,7 @@ impl AppShell {
             self.compact.overview = true;
             self.compact.overview_reveal = true;
             self.compact.landing = None;
+            self.compact.entering = None;
             self.compact.lift.animate(true, Instant::now());
         }
         cx.notify();
@@ -423,6 +320,7 @@ impl AppShell {
         self.compact.overview = false;
         self.compact.close_sheets();
         self.compact.landing = None;
+        self.compact.entering = None;
         self.compact.lift.snap(false);
         self.compact.hosts.snap(false);
         self.focused_pane = None;
@@ -541,16 +439,13 @@ impl AppShell {
                 linear_color_stop(scrim.alpha(0.0), 0.0),
                 linear_color_stop(scrim, 0.55),
             )));
-        let unreached = !hosts.get(index).is_some_and(|host| host.connected(cx));
-        if unreached && progress <= 0.0 && !moving {
-            bars = div().id("overview-bars");
-        } else if progress < 1.0 || dragging {
+        if progress < 1.0 || dragging {
             bars = bars.child(
                 div()
                     .absolute()
                     .inset_0()
                     .opacity(1.0 - progress)
-                    .child(self.host_bar(&hosts, index, placement, cx)),
+                    .child(self.host_bar(&hosts, index, placement, window, cx)),
             );
         }
         if progress >= 1.0 && !moving && !dragging {
@@ -613,7 +508,6 @@ impl AppShell {
             line: top_inset + px(COMPACT_TITLE_BAR_HEIGHT),
             zone: placement.zone(),
             width: px(width),
-            height: window.viewport_size().height,
             bottom: self.card_bottom(placement),
         };
         self.compact.top_row = frame.line;
@@ -637,10 +531,6 @@ impl AppShell {
                     .into_any_element(),
             );
         }
-        self.compact
-            .cards
-            .borrow_mut()
-            .retain(|pane, _| panes.contains(pane));
         if self.compact.overview_reveal {
             self.compact.overview_reveal = false;
             if let Some((page, section)) = reveal
@@ -724,22 +614,12 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let hosts = self.host_pages(cx);
-        let width = window.viewport_size().width;
-        let grid = (width - px(BENTO_INSET * 2.0)).max(px(0.0));
-        #[cfg(any(target_os = "ios", target_os = "android"))]
-        let add = Some((BentoSpan::new(2, 2), self.add_tile(cx)));
-        #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        let add: Option<(BentoSpan, AnyElement)> = None;
         #[cfg(any(target_os = "ios", target_os = "android"))]
         let found = self.found_list(cx);
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let found: Option<AnyElement> = None;
-        let tiles: Vec<(BentoSpan, AnyElement)> = hosts
-            .iter()
-            .enumerate()
-            .map(|(index, host)| (BentoSpan::new(2, 2), self.host_bento_tile(index, host, cx)))
-            .chain(add)
-            .collect();
+        let tiles = self.machine_tiles(&hosts, window.viewport_size().width, cx);
+        let menu = self.machines_menu(cx);
         let theme = cx.theme();
         let scroll = self.compact.hosts_scroll.clone();
         div()
@@ -756,13 +636,9 @@ impl AppShell {
                     .pt(top_inset + px(COMPACT_TITLE_BAR_HEIGHT))
                     .pb(placement.zone() + px(16.0))
                     .child(large_title("Machines", cx))
-                    .child(
-                        div()
-                            .px(px(BENTO_INSET))
-                            .pt(px(16.0))
-                            .child(bento_grid(grid, tiles)),
-                    )
-                    .children(found),
+                    .children(tiles)
+                    .children(found)
+                    .child(menu),
             )
             .child(folding_title_bar(
                 "Machines",
@@ -770,27 +646,191 @@ impl AppShell {
                 top_inset,
                 cx,
             ))
-            .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .right_0()
-                    .h(top_inset + px(COMPACT_TITLE_BAR_HEIGHT))
-                    .child(top_row_button(
-                        TopRowEnd::End,
-                        px(BENTO_INSET),
-                        compact_disc_button("hosts-settings", IconName::Settings, "Settings", cx)
-                            .on_click(cx.listener(|this, _, _, cx| this.open_settings(cx))),
-                    )),
-            )
             .into_any_element()
     }
 
-    #[cfg(any(target_os = "ios", target_os = "android"))]
-    fn add_tile(&self, cx: &mut Context<Self>) -> AnyElement {
-        PhoneTile::add("hosts-add", "Add machine")
-            .on_click(cx.listener(|this, _, window, cx| this.open_add_machine(window, cx)))
+    fn machine_tiles(
+        &self,
+        hosts: &[HostPage],
+        width: Pixels,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        if hosts.is_empty() {
+            return None;
+        }
+        let mut items: Vec<(usize, HostState, Option<HostCounts>)> = hosts
+            .iter()
+            .enumerate()
+            .map(|(index, host)| {
+                let state = host.state(cx);
+                let counts = match (state, &host.connection) {
+                    (HostState::Connected, Some(connection)) => Some(host_counts(connection, cx)),
+                    _ => None,
+                };
+                (index, state, counts)
+            })
+            .collect();
+        items.sort_by_key(|(_, state, counts)| match state {
+            HostState::Connected if counts.as_ref().is_some_and(|counts| counts.waiting > 0) => 0,
+            HostState::Connected => 1,
+            HostState::Connecting => 2,
+            HostState::Offline | HostState::Failed => 3,
+        });
+        let grid = (width - px(BENTO_INSET * 2.0)).max(px(0.0));
+        let half = ((grid - px(BENTO_GAP)) / 2.0).max(px(0.0));
+        let tiles: Vec<AnyElement> = items
+            .iter()
+            .map(|(index, state, counts)| {
+                div()
+                    .w(half)
+                    .h(px(MACHINE_TILE_HEIGHT))
+                    .child(self.machine_tile(*index, &hosts[*index], *state, counts.as_ref(), cx))
+                    .into_any_element()
+            })
+            .collect();
+        Some(
+            div()
+                .flex()
+                .flex_wrap()
+                .gap(px(BENTO_GAP))
+                .px(px(BENTO_INSET))
+                .pt(Space::S16)
+                .children(tiles)
+                .into_any_element(),
+        )
+    }
+
+    fn machine_windows(
+        connection: &Entity<Connection>,
+        cx: &App,
+    ) -> Vec<(PaneTile, zz_client::window_summary::Attention)> {
+        connection
+            .read(cx)
+            .core
+            .snapshot()
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .filter_map(|window| {
+                let summary = summarize_window(window);
+                let tile = summary
+                    .tiles
+                    .iter()
+                    .find(|tile| tile.pane == summary.headline)
+                    .or_else(|| summary.tiles.first())?
+                    .clone();
+                Some((tile, summary.attention))
+            })
+            .collect()
+    }
+
+    fn machine_tile(
+        &self,
+        index: usize,
+        host: &HostPage,
+        state: HostState,
+        counts: Option<&HostCounts>,
+        cx: &mut Context<Self>,
+    ) -> MachineTile {
+        let waiting = counts.map_or(0, |counts| counts.waiting);
+        let (mark, word) = host_mark(state, waiting);
+        let ground = phone_card_ground(waiting > 0, cx);
+        let platform = host.platform(cx);
+        let spinning = mark == StatusMark::Spinner;
+        let face = machine_face(platform, mark_dot((!spinning).then_some(mark), cx), ground);
+        let tile = MachineTile::new(("hosts-tile", index), host.title.clone()).face(face);
+        let tile = if waiting > 0 {
+            tile.waiting(format!("{waiting} waiting"))
+        } else {
+            tile
+        };
+        let tile = match (state, &host.connection) {
+            (HostState::Connected, Some(connection)) => tile.faces(window_faces(
+                &Self::machine_windows(connection, cx),
+                ground,
+                cx,
+            )),
+            (HostState::Offline, _) => tile.state(mark, word).dimmed(),
+            (HostState::Connecting, _) => {
+                let location = host
+                    .endpoint
+                    .as_deref()
+                    .and_then(|key| self.hosts.location(key));
+                match location {
+                    Some(location) => tile.state(mark, format!("{word} \u{b7} {location}")),
+                    None => tile.state(mark, word),
+                }
+            }
+            _ => tile.state(mark, word),
+        };
+        let attached = host
+            .connection
+            .as_ref()
+            .is_some_and(|connection| *connection == self.connection);
+        let enterable = attached || state == HostState::Connected;
+        let endpoint = host.endpoint.clone();
+        let bounds = Rc::clone(&self.compact.host_tiles);
+        let tile = tile
+            .child(
+                canvas(
+                    move |area, _, _| {
+                        bounds.borrow_mut().insert(index, area);
+                    },
+                    |_, (), _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            )
+            .on_click(
+                cx.listener(move |this, _, window, cx| match (state, &endpoint) {
+                    (HostState::Connecting, Some(endpoint)) => {
+                        this.open_machine_card(
+                            MachineCard::Connecting(endpoint.clone()),
+                            window,
+                            cx,
+                        );
+                    }
+                    _ if enterable => this.enter_host(index, window, cx),
+                    (HostState::Offline | HostState::Failed, Some(endpoint)) => {
+                        this.connect_host(endpoint.clone(), window, cx);
+                    }
+                    _ => {}
+                }),
+            );
+        let Some(held) = host.endpoint.clone() else {
+            return tile;
+        };
+        let view = cx.entity().downgrade();
+        tile.on_hold(move |_, cx| {
+            let _ = view.update(cx, |this, cx| {
+                this.compact.held = Some(held.clone());
+                cx.notify();
+            });
+        })
+    }
+
+    fn machines_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let add = Some(
+            TouchRow::new("hosts-add", "Add machine")
+                .icon(IconName::Plus)
+                .more()
+                .on_click(cx.listener(|this, _, window, cx| this.open_add_machine(window, cx))),
+        );
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        let add: Option<TouchRow> = None;
+        let settings = TouchRow::new("hosts-settings", "Settings")
+            .icon(IconName::Settings)
+            .more()
+            .on_click(cx.listener(|this, _, _, cx| this.open_settings(cx)));
+        div()
+            .px(px(BENTO_INSET))
+            .pt(Space::S24)
+            .child(
+                TouchGroup::new()
+                    .ruled()
+                    .rows(add.into_iter().chain([settings])),
+            )
             .into_any_element()
     }
 
@@ -831,100 +871,6 @@ impl AppShell {
                 .child(list)
                 .into_any_element(),
         )
-    }
-
-    fn host_bento_tile(&self, index: usize, host: &HostPage, cx: &mut Context<Self>) -> AnyElement {
-        let state = host.state(cx);
-        let counts = match (state, &host.connection) {
-            (HostState::Connected, Some(connection)) => Some(host_counts(connection, cx)),
-            _ => None,
-        };
-        let waiting = counts.as_ref().map_or(0, |counts| counts.waiting);
-        let (mark, word) = host_mark(state, waiting);
-        let foot: Vec<String> = match (state, counts) {
-            (HostState::Connected, Some(counts)) => vec![
-                std::iter::once(overview_count(counts.sessions, "session"))
-                    .chain((counts.working > 0).then(|| format!("{} working", counts.working)))
-                    .collect::<Vec<_>>()
-                    .join(" · "),
-            ],
-            (HostState::Connecting, _) => host
-                .endpoint
-                .as_deref()
-                .and_then(|key| self.hosts.location(key))
-                .into_iter()
-                .collect(),
-            (HostState::Failed, _) => vec![host.status(cx)],
-            _ => Vec::new(),
-        };
-        let tiles = Rc::clone(&self.compact.host_tiles);
-        let attached = host
-            .connection
-            .as_ref()
-            .is_some_and(|connection| *connection == self.connection);
-        let enterable = attached || state == HostState::Connected;
-        let endpoint = host.endpoint.clone();
-        let held = host.endpoint.clone();
-        let platform = host
-            .connection
-            .as_ref()
-            .map_or(zz_protocol::HostPlatform::Unknown, |connection| {
-                connection.read(cx).core.host_platform()
-            });
-        let spinning = mark == StatusMark::Spinner;
-        let face = machine_face(
-            platform,
-            mark_dot((!spinning).then_some(mark), cx),
-            zoom_card_ground(cx),
-        );
-        let minis = match (state, &host.connection) {
-            (HostState::Connected, Some(connection)) => self.machine_minis(connection, cx),
-            _ => Vec::new(),
-        };
-        let quiet = state == HostState::Connected && waiting == 0;
-        let tile = PhoneTile::new(("hosts-tile", index), host.title.clone())
-            .mark(spinning.then_some(mark))
-            .lead(face)
-            .panes(minis);
-        let tile = if quiet { tile } else { tile.state(word) };
-        foot.into_iter()
-            .fold(tile, PhoneTile::foot)
-            .child(
-                canvas(
-                    move |bounds, _, _| {
-                        tiles.borrow_mut().insert(index, bounds);
-                    },
-                    |_, (), _, _| {},
-                )
-                .absolute()
-                .inset_0(),
-            )
-            .on_click(
-                cx.listener(move |this, _, window, cx| match (state, &endpoint) {
-                    (HostState::Connecting, Some(endpoint)) => {
-                        this.open_machine_card(
-                            MachineCard::Connecting(endpoint.clone()),
-                            window,
-                            cx,
-                        );
-                    }
-                    _ if enterable => this.enter_host(index, window, cx),
-                    (HostState::Offline | HostState::Failed, Some(endpoint)) => {
-                        this.connect_host(endpoint.clone(), window, cx);
-                    }
-                    _ => {}
-                }),
-            )
-            .when_some(held, |tile, endpoint| {
-                let view = cx.entity().downgrade();
-                tile.on_hold(move |_, cx| {
-                    let _ = view.update(cx, |this, cx| {
-                        this.compact.held = Some(endpoint.clone());
-                        cx.notify();
-                    });
-                })
-            })
-            .into_any_element()
     }
 
     fn open_machine_card(
@@ -1149,66 +1095,111 @@ impl AppShell {
         hosts: &[HostPage],
         index: usize,
         placement: &PillPlacement,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let host = hosts.get(index);
-        let meta = match host.map(|host| host.state(cx)) {
+        let shown_line = match hosts.get(index).map(|host| host.state(cx)) {
             Some(HostState::Connected) => self
                 .machine_session(cx)
                 .map_or_else(|| "No sessions".to_owned(), |(_, name)| name),
             Some(HostState::Connecting) => "Connecting".to_owned(),
             _ => "Not connected".to_owned(),
         };
-        let dots = (hosts.len() > 1).then(|| {
-            page_dots(
-                &[(0..hosts.len())
-                    .map(|page| PageDot {
-                        active: page == index,
-                        attention: false,
-                    })
-                    .collect()],
-                cx,
-            )
-        });
+        let machines: Vec<StripMachine> = hosts
+            .iter()
+            .enumerate()
+            .map(|(page, host)| StripMachine {
+                mark: host.mark(cx),
+                name: host.title.clone().into(),
+                line: if page == index {
+                    shown_line.clone()
+                } else {
+                    host.strip_line(cx)
+                }
+                .into(),
+            })
+            .collect();
         let stack = self.compact.menu.as_ref().map(|(menu, _)| menu.clone());
+        let new_stack = self
+            .compact
+            .new_menu
+            .as_ref()
+            .map(|(menu, _)| menu.clone())
+            .filter(|menu| menu.read(cx).has_groups());
         let menu = stack
             .as_ref()
             .map_or(0.0, |stack| stack.read(cx).close_shown());
-        let pill = compact_floating_pill(
-            "overview-host",
-            PillLabel {
-                icon: IconName::Server,
-                face: None,
-                title: host
-                    .map_or_else(String::new, |host| host.title.clone())
-                    .into(),
-                word: ala::SharedString::default(),
-                meta: meta.into(),
-                tone: penna::Tone::Neutral,
-                up: true,
-            },
-            div().children(dots),
+        let made = new_stack
+            .as_ref()
+            .map_or(0.0, |stack| stack.read(cx).close_shown());
+        let width = split_pill_bounds(
+            window.fully_visible_bounds().size.width,
             placement,
+            false,
+            new_stack.is_some(),
+        )
+        .size
+        .width;
+        let view = cx.entity().downgrade();
+        let pill = machine_strip(
+            "overview-host",
+            &machines,
+            self.compact.host_pager.position(),
+            width,
+            placement,
+            move |picked, window, cx| {
+                view.update(cx, |this, cx| this.pick_host(picked, window, cx))
+                    .ok();
+            },
+            window,
             cx,
         )
-        .opacity(1.0 - menu)
-        .children(stack.map(|stack| StackMenu::pill_anchor(&stack, cx)))
-        .child(
-            pill_up_disc(
-                "overview-host-up",
-                self.compact.lift.will_open(),
-                placement,
-                cx,
-            )
-            .on_click(cx.listener(|this, _, _, cx| {
-                cx.stop_propagation();
-                cx.haptic(ala::Haptic::Light);
-                this.open_hosts(cx);
-            })),
-        )
-        .on_click(cx.listener(|this, _, _, cx| this.open_pill_menu(cx)))
+        .opacity((1.0 - menu) * (1.0 - made * MENU_DIM))
+        .children(stack.map(|stack| stack.read(cx).track_anchor()))
+        .child({
+            let handle = pill_handle_bounds(Bounds::new(
+                point(px(0.0), px(0.0)),
+                size(width, px(COMPACT_PILL_HEIGHT)),
+            ));
+            div()
+                .absolute()
+                .left(handle.origin.x)
+                .top(handle.origin.y)
+                .child(
+                    pill_handle("overview-host-handle", cx)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            cx.stop_propagation();
+                            cx.haptic(ala::Haptic::Light);
+                            this.open_hosts(cx);
+                        }))
+                        .on_scroll_wheel(cx.listener(Self::host_pill_scroll)),
+                )
+        })
         .on_scroll_wheel(cx.listener(Self::host_pill_scroll));
-        compact_floating_bar(pill, placement, cx).into_any_element()
+        let plus = new_stack.map(|stack| {
+            compact_bar_disc("overview-host-new", IconName::Plus, "New", placement, cx)
+                .opacity((1.0 - made) * (1.0 - MENU_DIM * menu))
+                .child(StackMenu::pill_anchor(&stack, cx))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    cx.haptic(ala::Haptic::Light);
+                    this.open_new_menu(cx);
+                }))
+        });
+        compact_floating_bar(pill, placement, cx)
+            .children(plus)
+            .into_any_element()
+    }
+
+    fn pick_host(&mut self, picked: usize, window: &mut Window, cx: &mut Context<Self>) {
+        cx.haptic(ala::Haptic::Light);
+        if picked == self.compact.host_pager.index() {
+            self.open_pill_menu(cx);
+            return;
+        }
+        self.compact.close_sheets();
+        self.compact.host_pager.go_to(picked, Instant::now());
+        self.show_host(picked, window, cx);
+        cx.notify();
     }
 
     fn host_pill_scroll(
@@ -1297,8 +1288,6 @@ impl AppShell {
             host,
             &connection,
             attached.then_some(model),
-            grid,
-            frame,
             reveal,
             panes,
             cx,
@@ -1321,7 +1310,7 @@ impl AppShell {
                     .track_scroll(&scroll)
                     .pt(frame.line)
                     .pb(frame.zone + px(16.0))
-                    .child(large_title(host.title.clone(), cx))
+                    .child(large_title_lead(host.mark(cx), host.title.clone(), cx))
                     .children(body),
             )
             .child(folding_title_bar(
@@ -1330,34 +1319,12 @@ impl AppShell {
                 frame.top,
                 cx,
             ))
-            .child(self.machine_back(page, frame, cx))
-            .into_any_element()
-    }
-
-    fn machine_back(&self, page: usize, frame: &PageFrame, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .absolute()
-            .top_0()
-            .left_0()
-            .right_0()
-            .h(frame.line)
-            .child(top_row_button(
-                TopRowEnd::Start,
-                px(BENTO_INSET),
-                compact_disc_button(
-                    ("machine-back", page),
-                    IconName::ChevronLeft,
-                    "Machines",
-                    cx,
-                )
-                .on_click(cx.listener(|this, _, _, cx| this.open_hosts(cx))),
-            ))
             .into_any_element()
     }
 
     fn empty_machine(&self, page: usize, grid: Pixels, cx: &mut Context<Self>) -> AnyElement {
         let add = PhoneTile::add(("machine-new", page), "New")
-            .on_click(cx.listener(|this, _, _, cx| this.open_pill_menu(cx)));
+            .on_click(cx.listener(|this, _, _, cx| this.open_new_menu(cx)));
         div()
             .px(px(BENTO_INSET))
             .pt(Space::GAP_GROUP)
@@ -1375,8 +1342,6 @@ impl AppShell {
         host: &HostPage,
         connection: &Entity<Connection>,
         attached_model: Option<&StatusBarModel>,
-        grid: Pixels,
-        frame: &PageFrame,
         reveal: &mut Option<(usize, usize)>,
         drawn_panes: &mut Vec<PaneId>,
         cx: &mut Context<Self>,
@@ -1397,7 +1362,7 @@ impl AppShell {
                         .iter()
                         .map(|window| {
                             let summary = summarize_window(window);
-                            let (mark, state) = window_mark(&summary);
+                            let (mark, _) = window_mark(&summary);
                             let closing = match window.panes.values().next() {
                                 Some(only) if window.panes.len() == 1 => {
                                     close_pane_detail(&only.kind, &summary.title)
@@ -1409,14 +1374,8 @@ impl AppShell {
                                 closing,
                                 tiles: summary.tiles,
                                 title: summary.title,
+                                detail: summary.detail,
                                 mark,
-                                state,
-                                rects: pane_rects(&window.layout)
-                                    .into_iter()
-                                    .map(|(pane, rect)| {
-                                        (pane, [rect.x, rect.y, rect.width, rect.height])
-                                    })
-                                    .collect(),
                             }
                         })
                         .collect();
@@ -1427,13 +1386,6 @@ impl AppShell {
         if sessions.is_empty() {
             return Vec::new();
         }
-        let count = sessions.len();
-        let tail = px(session_tail(
-            f32::from(frame.height),
-            f32::from(frame.line),
-            f32::from(frame.zone) + 16.0,
-            count,
-        ));
         let mut sections = Vec::new();
         for (index, (session, name, model, shapes)) in sessions.into_iter().enumerate() {
             let live = attached_session == Some(session);
@@ -1460,22 +1412,19 @@ impl AppShell {
                         this.open_phone_sheet(PhoneSheet::Hold(held), window, cx);
                     });
                 });
-            let tiles = model
+            let cards: Vec<AnyElement> = model
                 .windows
                 .iter()
                 .map(|window| {
                     let shape = shapes.iter().find(|shape| shape.id == window.id);
-                    (
-                        window_span(window.panes.len()),
-                        self.window_bento_tile(
-                            window,
-                            shape,
-                            &pages,
-                            connection,
-                            target.clone(),
-                            drawn_panes,
-                            cx,
-                        ),
+                    self.window_card(
+                        window,
+                        shape,
+                        &pages,
+                        connection,
+                        target.clone(),
+                        drawn_panes,
+                        cx,
                     )
                 })
                 .collect();
@@ -1486,9 +1435,8 @@ impl AppShell {
                 div()
                     .px(px(BENTO_INSET))
                     .when(index > 0, |section| section.mt(Space::GAP_GROUP))
-                    .when(index + 1 == count, |section| section.min_h(tail))
                     .child(header)
-                    .child(bento_grid(grid, tiles))
+                    .child(v_flex().gap(px(BENTO_GAP)).children(cards))
                     .into_any_element(),
             );
         }
@@ -1496,7 +1444,7 @@ impl AppShell {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn window_bento_tile(
+    fn window_card(
         &self,
         window: &StatusBarWindow,
         shape: Option<&WindowShape>,
@@ -1506,91 +1454,78 @@ impl AppShell {
         drawn_panes: &mut Vec<PaneId>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let here = matches!(target, CardTarget::Here);
         let open = window
             .panes
             .iter()
             .find(|pane| pane.active)
             .or_else(|| window.panes.first())
             .map(|pane| pane.id);
-        let count = window.panes.len();
-        let rects: Vec<(PaneId, [f32; 4])> = shape
-            .map(|shape| shape.rects.clone())
-            .filter(|rects| !rects.is_empty())
-            .unwrap_or_else(|| {
-                let fraction = 1.0 / count.max(1) as f32;
-                window
-                    .panes
-                    .iter()
-                    .enumerate()
-                    .map(|(index, pane)| (pane.id, [0.0, fraction * index as f32, 1.0, fraction]))
-                    .collect()
-            });
-        let minis: Vec<([f32; 4], MiniPane)> = rects
+        let shown: Vec<&Page> = window
+            .panes
             .iter()
-            .filter_map(|(pane, rect)| {
-                let page = pages.iter().find(|page| page.pane == *pane)?;
-                drawn_panes.push(page.pane);
-                let mini = self.mini_preview(page, connection, here, cx);
-                let pane_id = page.pane;
-                let filled = self
-                    .compact
-                    .hollow
-                    .filter(|(pane, _)| here && *pane == pane_id)
-                    .map_or(1.0, |(_, filled)| filled);
-                let ring = self
-                    .compact
-                    .landed
-                    .filter(|(pane, _)| here && *pane == pane_id)
-                    .map_or(0.0, |(_, since)| {
-                        1.0 - Instant::now()
-                            .saturating_duration_since(since)
-                            .as_secs_f32()
-                            / super::LAND_RING.as_secs_f32()
-                    });
-                let mini = mini.filled(filled).ring(ring);
-                let cards = Rc::clone(&self.compact.cards);
-                let mini = if here {
-                    mini.child(
-                        canvas(
-                            move |bounds, _, _| {
-                                cards.borrow_mut().insert(pane_id, bounds);
-                            },
-                            |_, (), _, _| {},
-                        )
-                        .absolute()
-                        .inset_0(),
-                    )
-                } else {
-                    mini
-                };
-                Some((*rect, mini))
-            })
+            .filter_map(|pane| pages.iter().find(|page| page.pane == pane.id))
             .collect();
-        let unseen = pages
-            .iter()
-            .any(|page| page.window == window.id && page.attention);
-        let (mark, state) = shape.map_or((None, None), |shape| (shape.mark, shape.state.clone()));
-        let mark = mark.or_else(|| unseen.then_some(StatusMark::Ink));
+        drawn_panes.extend(shown.iter().map(|page| page.pane));
+        let unseen = shown.iter().any(|page| page.attention);
+        let mark = shape
+            .and_then(|shape| shape.mark)
+            .or_else(|| unseen.then_some(StatusMark::Ink));
+        let waiting = mark == Some(StatusMark::Warning);
+        let ground = phone_card_ground(waiting, cx);
         let name = shape.map_or_else(|| window.label.clone(), |shape| shape.title.clone());
+        let faces: Vec<(PaneTile, Attention)> = shape
+            .map(|shape| {
+                shape
+                    .tiles
+                    .iter()
+                    .map(|tile| (tile.clone(), tile.attention))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let (word, meta, tone) = shape.map_or_else(
+            || (String::new(), String::new(), penna::Tone::Neutral),
+            |shape| super::pill_words(&shape.detail),
+        );
+        let terminals: Vec<&Page> = shown
+            .iter()
+            .copied()
+            .filter(|page| matches!(page.kind, PaneKindSnapshot::Terminal))
+            .take(2)
+            .collect();
+        let tails: Vec<WindowTail> = {
+            let core = &connection.read(cx).core;
+            let base = font(cx.theme().mono_font_family.clone());
+            terminals
+                .iter()
+                .map(|page| {
+                    let text = core.viewport(page.pane).map_or_else(
+                        || StyledText::new(page.title.clone()),
+                        |viewport| {
+                            terminal_preview(
+                                viewport,
+                                phone_colors(viewport, &host_palette(core), cx),
+                                &base,
+                                tail_rows(viewport),
+                                PREVIEW_COLUMNS,
+                            )
+                        },
+                    );
+                    WindowTail::new(("window-tail", page.pane.0), text)
+                })
+                .collect()
+        };
+        let card = WindowCard::new(("overview-window", window.id.0), name)
+            .faces(window_faces(&faces, ground, cx))
+            .waiting(waiting)
+            .working(mark == Some(StatusMark::Spinner))
+            .line(meta);
+        let card = match tone {
+            penna::Tone::Warning => card.state(StatusMark::Warning, word),
+            penna::Tone::Danger => card.state(StatusMark::Danger, word),
+            _ => card,
+        };
+        let card = tails.into_iter().fold(card, WindowCard::tail);
         let opened = open.and_then(|open| pages.iter().find(|page| page.pane == open).cloned());
-        let ground = zoom_card_ground(cx);
-        let tiles = shape.map_or(&[][..], |shape| shape.tiles.as_slice());
-        let cell = PhoneTile::new(("overview-window", window.id.0), name).panes(minis);
-        let cell = match tiles {
-            [only] => {
-                let spinning = mark == Some(StatusMark::Spinner);
-                let dot = mark_dot(mark.filter(|_| !spinning), cx);
-                cell.mark(mark.filter(|_| spinning))
-                    .lead(lead_face(only, dot, ground, cx))
-            }
-            [] => cell.mark(mark),
-            many => cell.mark(mark).trail(trailing_faces(many, ground, cx)),
-        };
-        let cell = match state {
-            Some(state) => cell.state(state),
-            None => cell,
-        };
         let held = shape.map(|shape| Thing {
             connection: connection.clone(),
             target: Target::Window(shape.id),
@@ -1598,16 +1533,16 @@ impl AppShell {
             closing: shape.closing.clone(),
         });
         let view = cx.entity().downgrade();
-        let cell = match held {
-            Some(held) => cell.on_hold(move |window, cx| {
+        let card = match held {
+            Some(held) => card.on_hold(move |window, cx| {
                 let held = held.clone();
                 let _ = view.update(cx, |this, cx| {
                     this.open_phone_sheet(PhoneSheet::Hold(held), window, cx);
                 });
             }),
-            None => cell,
+            None => card,
         };
-        cell.on_click(cx.listener(move |this, _, window, cx| {
+        card.on_click(cx.listener(move |this, _, window, cx| {
             let Some(page) = &opened else {
                 return;
             };
@@ -1617,7 +1552,10 @@ impl AppShell {
                     this.land_overview(Some(page.pane), cx);
                     return;
                 }
-                CardTarget::Session(session) => this.open_pane(*session, page.pane, cx),
+                CardTarget::Session(session) => {
+                    this.enter_session(*session, page.pane, cx);
+                    return;
+                }
                 CardTarget::Host(endpoint, session) => {
                     this.switch_host(endpoint, Some(*session), Some(page.pane), window, cx);
                 }
@@ -1627,52 +1565,7 @@ impl AppShell {
         .into_any_element()
     }
 
-    fn machine_minis(
-        &self,
-        connection: &Entity<Connection>,
-        cx: &App,
-    ) -> Vec<([f32; 4], MiniPane)> {
-        let (model, rects) = {
-            let core = &connection.read(cx).core;
-            let snapshot = core.snapshot();
-            let attached = core.attached_session();
-            let Some(session) = snapshot
-                .sessions
-                .iter()
-                .find(|session| Some(session.id) == attached)
-                .or_else(|| snapshot.sessions.first())
-            else {
-                return Vec::new();
-            };
-            let Some(window) = session
-                .windows
-                .iter()
-                .find(|window| window.id == session.active_window)
-                .or_else(|| session.windows.first())
-            else {
-                return Vec::new();
-            };
-            let rects: Vec<(PaneId, [f32; 4])> = pane_rects(&window.layout)
-                .into_iter()
-                .map(|(pane, rect)| (pane, [rect.x, rect.y, rect.width, rect.height]))
-                .collect();
-            (
-                StatusBarModel::from_snapshot(snapshot, Some(session.id)),
-                rects,
-            )
-        };
-        let here = *connection == self.connection;
-        let (pages, _) = pages(&model, &self.unseen_agents);
-        rects
-            .into_iter()
-            .filter_map(|(pane, rect)| {
-                let page = pages.iter().find(|page| page.pane == pane)?;
-                Some((rect, self.mini_preview(page, connection, here, cx)))
-            })
-            .collect()
-    }
-
-    fn mini_preview(
+    pub(super) fn mini_preview(
         &self,
         page: &Page,
         connection: &Entity<Connection>,
@@ -1768,27 +1661,22 @@ impl AppShell {
             .flex_col()
             .bg(cx.theme().background)
             .pt(frame.line)
-            .child(large_title(host.title.clone(), cx))
+            .child(large_title_lead(host.mark(cx), host.title.clone(), cx))
             .child(div().mt(px(CARD_EMPTY_TOP)).child(empty))
             .child(div().flex_1())
             .child(
-                action_bar(frame.bottom).child(action.with_size(penna::Size::TouchLarge).w_full()),
+                action_bar(frame.bottom + px(COMPACT_PILL_HEIGHT + Space::GAP_RELATED.design_px()))
+                    .child(action.with_size(penna::Size::TouchLarge).w_full()),
             )
-            .child(self.machine_back(page, frame, cx))
             .into_any_element()
     }
 
-    pub(in super::super) fn open_pane(
-        &mut self,
-        session: SessionId,
-        pane: PaneId,
-        cx: &mut Context<Self>,
-    ) {
+    fn enter_session(&mut self, session: SessionId, pane: PaneId, cx: &mut Context<Self>) {
         self.connection
             .update(cx, |connection, cx| connection.attach(session, cx));
-        let target = pane.to_string();
-        self.command("select-window", vec!["-t".into(), target.clone()], cx);
-        self.command("select-pane", vec!["-Z".into(), "-t".into(), target], cx);
+        self.compact.close_sheets();
+        self.compact.entering = Some((pane, Instant::now()));
+        cx.notify();
     }
 
     pub(in super::super) fn host_pages(&self, cx: &App) -> Vec<HostPage> {
@@ -1907,7 +1795,9 @@ impl AppShell {
                 .map_while(|item| scroll.bounds_for_item(item))
                 .map(|bounds| f32::from(bounds.top() - top))
                 .collect();
-            session_in_view(&tops, f32::from(self.compact.top_row))
+            let end = scroll.max_offset().y;
+            let at_end = end > px(0.0) && -scroll.offset().y >= end - px(1.0);
+            session_in_view(&tops, f32::from(self.compact.top_row), at_end)
         });
         sessions.get(at).or(sessions.first()).cloned()
     }
@@ -1959,7 +1849,6 @@ struct PageFrame {
     line: Pixels,
     zone: Pixels,
     width: Pixels,
-    height: Pixels,
     bottom: Pixels,
 }
 
@@ -1975,8 +1864,7 @@ struct WindowShape {
     title: String,
     closing: Option<String>,
     mark: Option<StatusMark>,
-    state: Option<String>,
-    rects: Vec<(PaneId, [f32; 4])>,
+    detail: Vec<DetailPart>,
     tiles: Vec<PaneTile>,
 }
 
@@ -2019,6 +1907,38 @@ pub(crate) struct HostPage {
 }
 
 impl HostPage {
+    fn platform(&self, cx: &App) -> zz_protocol::HostPlatform {
+        self.connection
+            .as_ref()
+            .map_or(zz_protocol::HostPlatform::Unknown, |connection| {
+                connection.read(cx).core.host_platform()
+            })
+    }
+
+    fn mark(&self, cx: &App) -> IconName {
+        zz_ui::program::platform_icon(self.platform(cx)).unwrap_or(IconName::Server)
+    }
+
+    fn strip_line(&self, cx: &App) -> String {
+        match self.state(cx) {
+            HostState::Connected => self
+                .connection
+                .as_ref()
+                .and_then(|connection| {
+                    connection
+                        .read(cx)
+                        .core
+                        .snapshot()
+                        .sessions
+                        .first()
+                        .map(|session| session_label(session).text)
+                })
+                .unwrap_or_else(|| "No sessions".to_owned()),
+            HostState::Connecting => "Connecting".to_owned(),
+            _ => "Not connected".to_owned(),
+        }
+    }
+
     fn connected(&self, cx: &App) -> bool {
         self.connection
             .as_ref()

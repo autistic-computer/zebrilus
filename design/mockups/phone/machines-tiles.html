@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Machines tiles</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/row/row.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-phones.penna-variants { grid-template-columns: repeat(2, 424px); }
+  .zz-phone { --zz-card: color-mix(in oklab, var(--penna-fg) 6%, var(--penna-bg)); }
+
+  .zz-screen { position: absolute; inset: 54px 0 0; display: flex; flex-direction: column; overflow: hidden; }
+  .zz-big { flex: none; padding: 44px 20px 0; font-size: var(--penna-text-touch-title-size); line-height: var(--penna-text-touch-title-line); font-weight: 700; }
+  .zz-col { display: flex; flex-direction: column; gap: 24px; padding: 16px 16px 40px; }
+  .zz-col[data-tight] { gap: 12px; }
+  .zz-col > .zz-gap { height: 12px; }
+  .zz-group { flex: none; overflow: hidden; border-radius: var(--penna-phone-radius); background: var(--zz-card); }
+  .zz-glabel { margin: 4px 0 -16px 16px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); font-weight: 600; color: var(--penna-fg-muted); }
+  .zz-col[data-tight] > .zz-glabel { margin: 12px 0 -4px 16px; }
+
+  .zz-os { width: 26px; height: 26px; background: currentColor; mask: var(--os) center / contain no-repeat; }
+  .zz-os[data-os="mac"] { --os: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12.131 7.193c-.79 0-2.013-.898-3.3-.867c-1.7.022-3.258.986-4.134 2.512c-1.764 3.062-.455 7.586 1.266 10.075c.844 1.212 1.84 2.575 3.16 2.533c1.267-.054 1.742-.823 3.279-.823c1.526 0 1.958.823 3.3.79c1.364-.022 2.23-1.233 3.063-2.457c.963-1.407 1.363-2.771 1.385-2.846c-.033-.011-2.652-1.018-2.683-4.048c-.022-2.533 2.067-3.745 2.164-3.799c-1.191-1.742-3.019-1.937-3.658-1.98c-1.667-.13-3.062.908-3.842.908zM14.946 4.638c.703-.843 1.167-2.022 1.038-3.192c-1.006.043-2.218.671-2.943 1.515c-.65.747-1.212 1.948-1.061 3.095c1.115.087 2.263-.573 2.966-1.418'/%3E%3C/svg%3E"); }
+  .zz-os[data-os="arch"] { --os: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.996C11.11 4.179 10.572 5.608 9.581 7.726c.608.644 1.355 1.395 2.566 2.242c-1.303-.536-2.191-1.075-2.855-1.633C8.023 10.983 6.035 14.755 2 22.004c3.171-1.831 5.629-2.959 7.92-3.391a5.803 5.803 0 0 1-.15-1.358l.003-.101c.051-2.032 1.107-3.595 2.359-3.488c1.252.105 2.225 1.84 2.176 3.871a5.724 5.724 0 0 1-.128 1.091c2.265.443 4.699 1.569 7.826 3.375c-.616-1.135-1.168-2.159-1.694-3.134c-.828-.641-1.691-1.477-3.453-2.382c1.212.315 2.078.678 2.754 1.083c-5.347-9.951-5.779-11.273-7.612-15.575z'/%3E%3C/svg%3E"); }
+  .zz-os[data-os="win"] { --os: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 2H11.481V11.477H2ZM12.519 2H22V11.477H12.519ZM2 12.519H11.481V22H2Zm10.519 0H22V22H12.519'/%3E%3C/svg%3E"); width: 22px; height: 22px; }
+  .zz-os[data-os="linux"] { --os: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12.42 2c-.129 0-.263.007-.4.018c-3.522.278-2.587 4.006-2.642 5.248c-.063.91-.25 1.628-.875 2.517c-.738.876-1.772 2.292-2.263 3.768c-.232.693-.342 1.403-.239 2.074a.353.353 0 0 0-.092.113c-.217.223-.375.5-.553.699c-.166.166-.404.223-.664.333c-.261.113-.548.224-.72.567c-.075.158-.113.328-.11.502c0 .166.022.333.046.447c.048.333.097.607.033.808c-.208.567-.233.954-.088 1.237c.145.278.446.392.783.501c.675.167 1.592.113 2.312.5c.772.388 1.555.558 2.18.392c.438-.097.808-.387 1.007-.788c.489-.003 1.025-.224 1.883-.278c.583-.048 1.312.223 2.147.167c.021.112.053.165.095.278l.003.003c.326.648.927.943 1.57.892c.643-.05 1.327-.447 1.881-1.088c.526-.638 1.403-.903 1.982-1.252c.29-.166.524-.391.541-.711c.019-.333-.167-.676-.595-1.147v-.081l-.003-.003c-.142-.167-.208-.446-.282-.772c-.071-.334-.152-.655-.41-.872h-.003c-.049-.045-.103-.056-.157-.113a.297.297 0 0 0-.158-.053c.359-1.065.22-2.125-.144-3.078c-.444-1.175-1.221-2.198-1.812-2.903c-.663-.837-1.313-1.631-1.3-2.807c.022-1.793.197-5.111-2.953-5.116zm.441 2.837h.011c.177 0 .33.052.487.165c.158.113.275.277.365.444c.087.216.132.383.138.603c0-.017.005-.033.005-.05v.087a.072.072 0 0 1-.003-.018l-.003-.02a1.506 1.506 0 0 1-.125.588a.794.794 0 0 1-.177.279a.592.592 0 0 0-.073-.035c-.087-.037-.165-.053-.237-.111a1.093 1.093 0 0 0-.183-.055c.042-.05.122-.111.152-.165c.044-.107.068-.22.073-.335v-.017a1.008 1.008 0 0 0-.051-.333c-.037-.112-.084-.167-.152-.278c-.07-.055-.139-.11-.223-.11h-.013c-.077 0-.147.025-.218.11a.667.667 0 0 0-.171.278a.983.983 0 0 0-.075.333v.016c.002.074.007.149.017.223c-.161-.056-.365-.113-.506-.168a1.363 1.363 0 0 1-.015-.167v-.017a1.477 1.477 0 0 1 .125-.64c.068-.183.193-.338.358-.444a.821.821 0 0 1 .495-.167zm-2.468.049h.03c.118 0 .225.04.333.113c.122.108.22.24.287.388c.075.166.117.333.128.556v.003c.006.112.005.167-.002.222v.067c-.025.006-.047.015-.069.02c-.127.046-.228.113-.328.167c.01-.075.011-.15.003-.223v-.013c-.01-.111-.033-.167-.068-.278a.511.511 0 0 0-.138-.223a.207.207 0 0 0-.152-.053h-.018c-.059.005-.108.033-.155.11a.46.46 0 0 0-.1.225a.787.787 0 0 0-.019.275v.013c.01.113.031.167.067.278c.038.112.082.167.138.223c.008.007.017.015.028.02c-.058.048-.098.058-.147.113a.253.253 0 0 1-.109.057a2.183 2.183 0 0 1-.229-.335a1.477 1.477 0 0 1-.129-.556a1.466 1.466 0 0 1 .067-.557a1.192 1.192 0 0 1 .236-.446c.107-.111.217-.167.348-.167zm1.142 1.422c.277 0 .611.054 1.013.333c.244.167.436.224.877.39h.003c.213.113.338.222.398.333v-.109a.476.476 0 0 1 .013.392c-.103.258-.43.536-.886.702v.002c-.223.113-.418.278-.646.388c-.23.113-.49.243-.843.223a.949.949 0 0 1-.373-.056a2.972 2.972 0 0 1-.268-.165c-.163-.113-.302-.277-.51-.388v-.004h-.004c-.333-.205-.513-.427-.572-.592c-.058-.223-.004-.392.161-.5c.187-.113.317-.226.403-.28c.087-.062.119-.085.147-.109h.002v-.003c.141-.168.363-.392.699-.501c.116-.03.245-.054.388-.054zm2.333 1.785c.298 1.181.997 2.896 1.446 3.728c.238.445.713 1.383.918 2.52c.13-.004.275.015.428.053c.538-1.393-.455-2.889-.907-3.305c-.183-.167-.193-.279-.103-.279c.492.445 1.137 1.31 1.372 2.298c.108.446.133.92.018 1.392c.056.023.113.05.171.056c.86.445 1.177.782 1.025 1.281v-.036c-.05-.003-.1 0-.15 0h-.013c.126-.389-.152-.688-.887-1.02c-.763-.333-1.372-.28-1.475.388c-.007.036-.011.055-.015.113c-.057.019-.116.044-.174.053c-.358.223-.552.558-.661.989c-.108.444-.142.963-.171 1.558v.003c-.017.278-.142.698-.266 1.125c-1.25.893-2.983 1.282-4.457.278a2.204 2.204 0 0 0-.335-.444a1.208 1.208 0 0 0-.229-.278c.152 0 .282-.025.388-.056a.513.513 0 0 0 .262-.278c.09-.223 0-.581-.287-.969c-.287-.389-.776-.829-1.49-1.268c-.525-.333-.822-.725-.958-1.163c-.138-.445-.119-.904-.013-1.371c.204-.892.728-1.758 1.062-2.303c.089-.054.031.113-.34.812c-.33.626-.95 2.081-.102 3.212a6.769 6.769 0 0 1 .539-2.397c.47-1.065 1.453-2.92 1.53-4.39c.04.03.181.113.241.168c.182.111.317.278.492.388c.175.168.398.279.73.279c.033.003.062.005.092.005c.343 0 .608-.112.831-.223c.242-.112.433-.278.617-.333h.004c.389-.113.696-.335.87-.583zm1.821 7.465c.031.5.286 1.038.735 1.147c.49.112 1.195-.278 1.492-.638l.176-.008c.263-.006.481.008.706.223l.003.003c.173.166.254.442.326.73c.071.333.128.65.341.888c.405.439.538.755.53.95l.003-.006v.015l-.003-.01c-.013.218-.154.33-.415.496c-.525.334-1.455.593-2.047 1.308c-.515.614-1.142.95-1.697.993c-.553.044-1.031-.167-1.312-.748l-.004-.003c-.175-.333-.1-.854.047-1.408c.147-.557.357-1.12.386-1.581c.031-.595.063-1.113.163-1.512c.1-.388.257-.664.534-.82l.037-.018zm-9.012.041h.008c.044 0 .087.004.131.012c.313.046.588.278.852.627l.758 1.387l.003.003c.203.444.628.887.991 1.364c.362.498.642.943.608 1.308v.005c-.048.62-.4.957-.938 1.078c-.538.113-1.267.002-1.996-.387c-.807-.447-1.765-.391-2.381-.502c-.307-.055-.508-.167-.603-.333c-.092-.167-.094-.502.103-1.025v-.003l.002-.003c.098-.278.025-.627-.022-.932c-.046-.334-.069-.592.036-.783c.133-.278.33-.333.575-.444c.245-.113.533-.168.763-.392h.002v-.002c.213-.223.371-.501.557-.698c.158-.168.317-.28.553-.28zm5.966-7.562c-.362.168-.787.446-1.24.446c-.452 0-.808-.223-1.067-.388c-.128-.112-.233-.223-.311-.279c-.137-.112-.12-.278-.062-.278c.091.013.108.112.166.167c.08.055.179.167.3.278c.243.167.567.389.973.389c.404 0 .877-.223 1.165-.388c.163-.113.371-.278.54-.389c.13-.113.124-.223.233-.223c.107.013.028.112-.122.277a6.747 6.747 0 0 1-.575.39zm-.902-1.319V6.7c-.005-.017.011-.035.024-.042c.062-.036.15-.022.217.003c.053 0 .133.056.125.113c-.005.041-.071.055-.113.055c-.046 0-.077-.036-.117-.057c-.043-.015-.122-.007-.136-.054zm-.459 0c-.017.048-.094.041-.138.055c-.039.021-.072.057-.117.057c-.042 0-.108-.017-.113-.057c-.008-.055.073-.111.125-.111c.067-.026.153-.039.216-.004c.016.007.03.025.025.042v.017h.003z'/%3E%3C/svg%3E"); }
+  .zz-face { position: relative; display: grid; flex: none; place-items: center; width: 28px; height: 28px; color: var(--penna-fg); --penna-icon-size: 24px; }
+  .zz-face[data-small] { width: 18px; height: 18px; --penna-icon-size: 16px; }
+  .zz-face[data-small] > .zz-os { width: 16px; height: 16px; }
+  .zz-badge { position: absolute; right: -3px; bottom: -3px; width: 10px; height: 10px; border-radius: 50%; background: var(--penna-success); box-shadow: 0 0 0 2.5px var(--zz-ground, var(--zz-card)); }
+  .zz-badge[data-tone="warning"] { background: var(--penna-warning); }
+  .zz-badge[data-tone="danger"] { background: var(--penna-danger); }
+  .zz-badge[data-tone="off"] { background: var(--penna-muted); }
+
+  .zz-r { position: relative; display: flex; align-items: center; gap: 14px; min-height: 68px; padding: 10px 14px 10px 16px; }
+  .zz-r[data-one] { min-height: 56px; }
+  .zz-r + .zz-r::before { content: ""; position: absolute; top: 0; right: 0; left: 58px; height: 1px; background: var(--penna-divider); }
+  .zz-r > [data-icon] { flex: none; width: 28px; color: var(--penna-muted); --penna-icon-size: 22px; }
+  .zz-r > [data-icon="chevron-right"] { width: auto; opacity: 0.6; --penna-icon-size: 14px; }
+  .zz-copy2 { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+  .zz-copy2 > b { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-r[data-one] .zz-copy2 > b { font-weight: 400; }
+  .zz-copy2 > span { overflow: hidden; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); color: var(--penna-muted); text-overflow: ellipsis; white-space: nowrap; }
+  em { font-style: normal; }
+  em[data-tone="warning"] { color: var(--penna-warning-ink); }
+  em[data-tone="danger"] { color: var(--penna-danger-ink); }
+  [data-dim] > .zz-face, [data-dim] .zz-copy2 > b, [data-dim] .zz-tname { opacity: 0.55; }
+
+  .zz-shot { position: relative; overflow: hidden; background: var(--penna-bg); }
+  .zz-pv { position: absolute; top: 0; left: 0; width: calc(100% / var(--s)); height: calc(100% / var(--s)); transform: scale(var(--s)); transform-origin: 0 0; }
+  .zz-split { display: grid; grid-template-columns: 1fr 1fr; }
+  .zz-sub { position: relative; min-width: 0; overflow: hidden; }
+  .zz-sub + .zz-sub { box-shadow: inset 1px 0 var(--penna-divider); }
+  .zz-tm { position: absolute; right: 0; bottom: 12px; left: 16px; margin: 0; font: 13px/18px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; }
+  .zz-tm > b { font-weight: 400; color: var(--penna-fg); }
+  .zz-tm > [data-ink="success"] { color: var(--penna-success-ink); }
+  .zz-tm > [data-ink="accent"] { color: var(--penna-accent-ink); }
+  .zz-cursor { display: inline-block; width: 8px; height: 15px; vertical-align: -3px; background: var(--penna-fg); }
+  .zz-ct { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 14px; padding: 16px; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-ct > p { margin: 0; }
+  .zz-ct > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 85%; padding: 10px 14px; font-size: inherit; line-height: inherit; }
+  .zz-wb { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px; padding: 20px; }
+  .zz-wb > i { flex: none; height: 14px; border-radius: 7px; background: color-mix(in srgb, var(--penna-fg) 14%, transparent); }
+  .zz-wb > i[data-bar] { height: 28px; border-radius: 8px; }
+  .zz-wb > i[data-block] { height: 180px; border-radius: 16px; }
+
+  .zz-hero { display: flex; flex-direction: column; gap: 10px; padding: 12px 12px 12px; border-radius: var(--penna-phone-radius); background: var(--zz-card); }
+  .zz-hero[data-warn] { box-shadow: inset 0 0 0 2px var(--penna-warning); }
+  .zz-hero-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 2px 4px 0; --penna-icon-size: 18px; }
+  .zz-hero-head > [data-icon] { flex: none; color: var(--penna-muted); }
+  .zz-hero[data-warn] .zz-hero-head > [data-icon] { color: var(--penna-warning-ink); }
+  .zz-hero-head > b { flex: 1; min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-hero-head > span { display: flex; flex: none; align-items: center; gap: 6px; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); color: var(--penna-muted); }
+  .zz-hero .zz-shot { height: 232px; border-radius: calc(var(--penna-phone-radius) - 12px); }
+
+  .zz-mhead { display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 10px 14px 10px 16px; }
+  .zz-mhead > b { flex: 1; min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-mhead > [data-icon] { color: var(--penna-muted); opacity: 0.6; --penna-icon-size: 14px; }
+  .zz-srow { position: relative; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 16px 0 58px; }
+  .zz-srow::before { content: ""; position: absolute; top: 0; right: 0; left: 58px; height: 1px; background: var(--penna-divider); }
+  .zz-srow > b { flex: 1; min-width: 0; overflow: hidden; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-srow > em { display: flex; flex: none; align-items: center; gap: 4px; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); color: var(--penna-muted); --penna-icon-size: 14px; }
+  .zz-srow > em[data-tone="warning"] { color: var(--penna-warning-ink); }
+  .zz-srow[data-more] > b { color: var(--penna-muted); font-size: var(--penna-text-touch-small-size); }
+  .zz-glyphs { display: flex; flex: none; align-items: center; gap: 6px; color: var(--penna-muted); --penna-icon-size: 15px; }
+  .zz-glyphs > [data-warn] { color: var(--penna-warning-ink); }
+  .zz-glyphs > b { font-size: 12px; line-height: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .zz-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .zz-tile { --zz-ground: var(--zz-card); display: flex; flex-direction: column; justify-content: space-between; height: 112px; padding: 14px; border-radius: var(--penna-phone-radius); background: var(--zz-card); }
+  .zz-tile[data-warn] { --zz-ground: color-mix(in oklab, var(--penna-warning) 14%, var(--zz-card)); background: var(--zz-ground); }
+  .zz-tile-top { display: flex; align-items: flex-start; justify-content: space-between; }
+  .zz-tile-top > em { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--penna-warning-ink); font-variant-numeric: tabular-nums; }
+  .zz-tile-bottom { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .zz-tname { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-tile-bottom > span { font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); color: var(--penna-muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+  .zz-shelf { display: flex; flex-direction: column; gap: 10px; }
+  .zz-shelf-head { display: flex; align-items: center; gap: 10px; padding: 0 4px; --zz-ground: var(--penna-bg); }
+  .zz-shelf-head > b { flex: 1; min-width: 0; font-weight: 600; }
+  .zz-shelf-head > span { font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); color: var(--penna-muted); }
+  .zz-shelf-head > span > em[data-tone="warning"] { color: var(--penna-warning-ink); }
+  .zz-shelf-head > [data-icon] { color: var(--penna-muted); opacity: 0.6; --penna-icon-size: 14px; }
+  .zz-cards { display: flex; gap: 10px; margin-right: -16px; overflow: hidden; }
+  .zz-wc { display: flex; flex: none; flex-direction: column; gap: 6px; }
+  .zz-wc > .zz-shot { height: 156px; border-radius: 18px; box-shadow: 0 0 0 1px var(--penna-border); }
+  .zz-wc[data-warn] > .zz-shot { box-shadow: 0 0 0 2px var(--penna-warning); }
+  .zz-wc > span { display: flex; align-items: center; gap: 5px; min-width: 0; padding: 0 2px; font-size: 13px; line-height: 18px; color: var(--penna-muted); --penna-icon-size: 13px; }
+  .zz-wc > span > i { flex: none; }
+  .zz-wc > span > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-wc[data-warn] > span { color: var(--penna-warning-ink); }
+
+  .zz-table { display: grid; grid-template-columns: max-content repeat(5, minmax(0, 1fr)); margin-top: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-table > * { padding: 10px 16px 10px 0; box-shadow: inset 0 1px var(--penna-divider); }
+  .zz-table > b { font-weight: 600; }
+  .zz-table > span { color: var(--penna-fg-muted); }
+  .zz-table > [data-head] { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--penna-fg-muted); box-shadow: none; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Machines tiles</h1>
+    <p>Today each machine is a square tile holding two terminal minis too small to read, and a failed machine spends a whole tile on one cut-off error. Five takes, each drawn on two days. <b>Today</b> is what the simulator shows: zzios-zebrilus up, Local socket and wsl-archlinux failed. <b>Busy</b> has five machines: a chat on the macbook waits on you, alienware is building, win-desktop is off. A and D drop the previews. B and E keep them, but cropped to a size you can read, and tapping one takes you to that pane. C shows the sessions where the previews were.</p>
+  </div>
+
+  <section data-take="a">
+    <h2>A. Rows</h2>
+    <p>No previews. Each machine is one row, like Settings: the OS mark with the status dot, the name, one line under it. Needs you first, not connected last. Tap opens the machine; on a failed one it retries.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="a-today"></div><figcaption><b>Today</b>Three rows. The error reads in full width instead of a tile's half.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="a-busy"></div><figcaption><b>Busy</b>The waiting machine sorts to the top with its line in warning ink.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="b">
+    <h2>B. Pick up</h2>
+    <p>One preview, big enough to read: the pane you were last on, from any machine, or the one waiting on you. Tapping it goes straight into that pane. Every machine below it is a row, as in A.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="b-today"></div><figcaption><b>Today</b>The zsh you left on zzios-zebrilus, its last lines at 11pt.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="b-busy"></div><figcaption><b>Busy</b>The waiting chat takes the card, ringed in warning, with the question it asks. Tap to answer.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="c">
+    <h2>C. Sessions</h2>
+    <p>No previews; each connected machine lists its sessions, one line each: the name, a glyph per window, and waiting or working on the right. Tapping a session goes straight into it, skipping the machine page. Machines that are not connected collapse to rows at the bottom.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="c-today"></div><figcaption><b>Today</b>One card with its one session, then the two failed machines.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="c-busy"></div><figcaption><b>Busy</b>Past three sessions the card ends in a count row that opens the machine.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="d">
+    <h2>D. Small tiles</h2>
+    <p>Keeps the grid, drops the previews, so tiles shrink to about a third of today's height. Each holds the OS mark, the name and a glyph per window. A tile waiting on you is tinted; a failed one says Failed and keeps its error for the tap.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="d-today"></div><figcaption><b>Today</b>The whole page fits in the top half.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="d-busy"></div><figcaption><b>Busy</b>The waiting tile shows a count in the corner and its chat glyph in warning ink.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="e">
+    <h2>E. Window shelf</h2>
+    <p>Previews stay, one per window, and a tap goes to that window. They are crops, not shrinks: the bottom-left of the window at about 60%, where the prompt and the newest output are, so the text stays readable. A two-pane window gets a wider card. Each machine's row of windows scrolls sideways; not connected machines are rows at the bottom.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="e-today"></div><figcaption><b>Today</b>zzios-zebrilus has one window with two panes: one wide card.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="e-busy"></div><figcaption><b>Busy</b>The macbook's shelf runs off the edge; the waiting window is ringed.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="compare">
+    <h2>Side by side</h2>
+    <div class="zz-table">
+      <span data-head></span><span data-head>A. Rows</span><span data-head>B. Pick up</span><span data-head>C. Sessions</span><span data-head>D. Small tiles</span><span data-head>E. Window shelf</span>
+      <b>Shows</b><span>Status and one line</span><span>The last pane, readable; then A</span><span>Every session and its windows</span><span>Status and window glyphs</span><span>Every window, cropped</span>
+      <b>One tap reaches</b><span>A machine</span><span>The last pane, or a machine</span><span>A session, or a machine</span><span>A machine</span><span>A window, or a machine</span>
+      <b>Not connected</b><span>Same row, Failed in red</span><span>Same row</span><span>Rows at the bottom</span><span>Same tile, dimmed</span><span>Rows at the bottom</span>
+      <b>Five machines</b><span>Fits</span><span>Scrolls a little</span><span>Scrolls</span><span>Fits</span><span>Scrolls</span>
+      <b>New parts</b><span>None: TouchRow and the machine face</span><span>A pane card around mini_preview</span><span>A session row</span><span>A small tile</span><span>A sideways shelf, mini_preview cropped</span>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const chev = ic("chevron-right");
+
+  const face = (os, tone, small) => `<span class="zz-face"${small ? " data-small" : ""}>${os === "server" ? ic("server") : `<i class="zz-os" data-os="${os}"></i>`}${tone ? `<span class="zz-badge" data-tone="${tone}"></span>` : ""}</span>`;
+  const fail = (why) => `<em data-tone="danger">Failed</em> · ${why}`;
+
+  const W = (glyph, title, opts = {}) => ({ glyph, title, ...opts });
+  const MACHINES = {
+    mac: {
+      name: "macbook", os: "mac", tone: "warning", wait: 1,
+      line: `<em data-tone="warning">1 waiting for you</em> · 3 sessions`,
+      shelf: `<em data-tone="warning">1 waiting</em>`,
+      sessions: [
+        { name: "zebrilus", windows: [W("chat", "Make the pill menu offer New chat", { warn: true, shot: "split-wait" }), W("chat", "Fix pane stack hit testing", { shot: "stack" }), W("globe", "Phone machines", { shot: "web" }), W("square-terminal", "zsh", { shot: "zsh" })], state: `<em data-tone="warning">Waiting</em>` },
+        { name: "nidus", windows: [W("square-terminal", "nvim"), W("chat", "Clipboard over QUIC")], state: `<em>${ic("loader")}Working</em>` },
+        { name: ".files", windows: [W("square-terminal", "zsh")] },
+      ],
+    },
+    alien: {
+      name: "alienware", os: "linux", tone: "success",
+      line: "1 session · 1 working",
+      shelf: "1 working",
+      sessions: [{ name: "zebrilus", windows: [W("square-terminal", "just release dry-run", { shot: "build" })], state: `<em>${ic("loader")}Working</em>` }],
+    },
+    zzios: {
+      name: "zzios-zebrilus", os: "mac", tone: "success",
+      line: "1 session",
+      shelf: "",
+      sessions: [{ name: "zebrilus", windows: [W("square-terminal", "zsh", { shot: "split-ls" })] }],
+    },
+    sock: { name: "Local socket", os: "server", tone: "danger", down: "Failed", line: fail("daemon I/O error: No such file or directory") },
+    wsl: { name: "wsl-archlinux", os: "arch", tone: "danger", down: "Failed", line: fail("Could not reach tailnet") },
+    win: { name: "win-desktop", os: "win", tone: "off", down: "Not connected", line: "Not connected", dim: true },
+  };
+  const TODAY = ["zzios", "sock", "wsl"];
+  const BUSY = ["mac", "alien", "zzios", "win", "wsl"];
+  const up = (key) => !MACHINES[key].down;
+
+  const termLine = (line) => {
+    if (line.startsWith("✓")) return `<span data-ink="success">${esc(line.slice(1))}</span>`;
+    if (line.startsWith("~")) return `<span data-ink="accent">${esc(line)}</span>`;
+    if (line.startsWith("❯")) return `<b>${esc(line)}</b>`;
+    return esc(line);
+  };
+  const term = (lines, cursor = true) => `<pre class="zz-tm">${lines.map(termLine).join("\n")}${cursor ? `<span class="zz-cursor"></span>` : ""}</pre>`;
+  const LS = term(["~/dev/zebrilus main", "❯ ll", "bash: ll: command not found", "❯ ls", "AGENTS.md   CLAUDE.md   Cargo.lock", "Cargo.toml  Justfile    LICENSE-MIT", "NOTICE.md   README.md   SECURITY.md", "assets  bench  clients  crates", "❯ "]);
+  const LS2 = term(["~/dev/zebrilus main", "❯ "]);
+  const CARGO = term(["~/dev/zebrilus main", "❯ cargo test -p penna pill", "   Compiling penna v0.42.0", "running 14 tests", "test pill::menu_order ... ok", "test pill::new_chat ... ok", "✓test result: ok. 14 passed", "❯ "]);
+  const BUILD = term(["~/dev/zebrilus main", "❯ just release dry-run", "   Compiling zz-terminal v0.24.0", "   Compiling zz-daemon v0.24.0", "   Compiling zz-app v0.24.0", "    Building [=======>    ] 812/1204"], false);
+  const ZSH = term(["~/.files main", "❯ git status", "nothing to commit, working tree clean", "❯ "]);
+  const you = (text) => `<div class="penna-card penna-chat-bubble" data-penna="card.bubble" role="group"><span>${text}</span></div>`;
+  const prow = (label) => `<div class="penna-touch-row" data-penna="phone.row" role="button"><span class="penna-touch-row-lines"><span>${label}</span></span></div>`;
+  const ASK = `<div class="penna-chat-ask-card" data-penna="field.composer"><div class="penna-chat-ask-what" role="button"><div class="penna-chat-ask-what-head"><span class="penna-chat-ask-what-title">Run this command?</span></div><span class="penna-chat-ask-what-detail">cargo test -p penna pill_menu</span></div>${prow("Allow once")}${prow("Deny")}</div>`;
+  const WAIT = `<div class="zz-ct"><p>I'll put New chat last in the New group, nearest the thumb. I want to run the pill tests.</p>${ASK}</div>`;
+  const STACK = `<div class="zz-ct">${you("The pane stack eats taps on iPad when a PiP is open.")}<p>The PiP's hit box is the stack's, not its own. Moving the occlusion onto the card.</p></div>`;
+  const WEB = `<div class="zz-wb"><i data-bar style="width: 55%"></i><i></i><i style="width: 90%"></i><i data-block></i><i style="width: 84%"></i></div>`;
+  const SHOTS = {
+    "split-wait": [CARGO, WAIT],
+    "split-ls": [LS, LS2],
+    stack: [STACK],
+    web: [WEB],
+    zsh: [ZSH],
+    build: [BUILD],
+    ls: [LS],
+    wait: [WAIT],
+  };
+  const shot = (key, s, style = "") => {
+    const panes = SHOTS[key];
+    const inner = panes.length > 1 ? `<div class="zz-pv zz-split" style="--s: ${s}">${panes.map((p) => `<div class="zz-sub">${p}</div>`).join("")}</div>` : `<div class="zz-pv" style="--s: ${s}"><div class="zz-sub" style="height: 100%">${panes[0]}</div></div>`;
+    return `<div class="zz-shot"${style ? ` style="${style}"` : ""}>${inner}</div>`;
+  };
+
+  const screen = (body, tight) => `<div class="zz-screen"><div class="zz-big">Machines</div><div class="zz-col"${tight ? " data-tight" : ""}>${body}</div></div>`;
+  const menu = `<div class="zz-group"><div class="zz-r" data-one>${ic("plus")}<span class="zz-copy2"><b>Add machine</b></span>${chev}</div><div class="zz-r" data-one>${ic("settings")}<span class="zz-copy2"><b>Settings</b></span>${chev}</div></div>`;
+  const mrow = (key) => {
+    const m = MACHINES[key];
+    return `<div class="zz-r"${m.dim ? " data-dim" : ""}>${face(m.os, m.tone)}<span class="zz-copy2"><b>${m.name}</b><span>${m.line}</span></span>${chev}</div>`;
+  };
+  const rows = (keys) => `<div class="zz-group">${keys.map(mrow).join("")}</div>`;
+  const label = (text) => `<div class="zz-glabel">${text}</div>`;
+  const downs = (keys) => {
+    const off = keys.filter((k) => !up(k));
+    return off.length ? `${label("Not connected")}${rows(off)}` : "";
+  };
+
+  const windows = (m) => m.sessions.flatMap((s) => s.windows);
+  const glyphs = (list, cap = 5) => {
+    const shown = list.slice(0, cap);
+    const more = list.length - shown.length;
+    return `<span class="zz-glyphs">${shown.map((w) => `<i data-icon="${w.glyph}"${w.warn ? " data-warn" : ""}></i>`).join("")}${more > 0 ? `<b>+${more}</b>` : ""}</span>`;
+  };
+
+  const hero = ({ machine, glyph, title, shotKey, warn }) => {
+    const m = MACHINES[machine];
+    return `<div class="zz-hero"${warn ? " data-warn" : ""}><div class="zz-hero-head">${ic(glyph)}<b>${esc(title)}</b><span>${face(m.os, null, true)}${m.name}</span></div>${shot(shotKey, 0.85)}</div>`;
+  };
+
+  const card = (key, cap = 3) => {
+    const m = MACHINES[key];
+    const sessions = m.sessions.slice(0, cap);
+    const more = m.sessions.length - sessions.length;
+    return `<div class="zz-group"><div class="zz-mhead">${face(m.os, m.tone)}<b>${m.name}</b>${chev}</div>${sessions.map((s) => `<div class="zz-srow"><b>${s.name}</b>${glyphs(s.windows, 4)}${s.state ?? ""}</div>`).join("")}${more > 0 ? `<div class="zz-srow" data-more><b>${more} more</b></div>` : ""}</div>`;
+  };
+
+  const tile = (key) => {
+    const m = MACHINES[key];
+    const sub = m.down ? `<span>${m.tone === "danger" ? `<em data-tone="danger">${m.down}</em>` : m.down}</span>` : glyphs(windows(m));
+    return `<div class="zz-tile"${m.wait ? " data-warn" : ""}${m.dim ? " data-dim" : ""}><div class="zz-tile-top">${face(m.os, m.tone)}${m.wait ? `<em>${m.wait} waiting</em>` : ""}</div><div class="zz-tile-bottom"><b class="zz-tname">${m.name}</b>${sub}</div></div>`;
+  };
+
+  const wcard = (w) => {
+    const wide = SHOTS[w.shot].length > 1;
+    return `<div class="zz-wc"${w.warn ? " data-warn" : ""} style="width: ${wide ? 236 : 132}px">${shot(w.shot, 0.62)}<span>${ic(w.glyph)}<span>${esc(w.title)}</span></span></div>`;
+  };
+  const shelf = (key) => {
+    const m = MACHINES[key];
+    return `<div class="zz-shelf"><div class="zz-shelf-head">${face(m.os, m.tone)}<b>${m.name}</b><span>${m.shelf}</span>${chev}</div><div class="zz-cards">${windows(m).filter((w) => w.shot).map(wcard).join("")}</div></div>`;
+  };
+
+  const frames = {
+    "a-today": () => screen(`${rows(TODAY)}${menu}`),
+    "a-busy": () => screen(`${rows(BUSY)}${menu}`),
+    "b-today": () => screen(`${hero({ machine: "zzios", glyph: "square-terminal", title: "zsh", shotKey: "ls" })}${rows(TODAY)}${menu}`),
+    "b-busy": () => screen(`${hero({ machine: "mac", glyph: "chat", title: "Make the pill menu offer New chat", shotKey: "wait", warn: true })}${rows(BUSY)}${menu}`),
+    "c-today": () => screen(`${TODAY.filter(up).map((k) => card(k)).join("")}${downs(TODAY)}<div class="zz-gap"></div>${menu}`, true),
+    "c-busy": () => screen(`${card("mac", 2)}${card("alien")}${card("zzios")}${downs(BUSY)}<div class="zz-gap"></div>${menu}`, true),
+    "d-today": () => screen(`<div class="zz-tiles">${TODAY.map(tile).join("")}</div>${menu}`),
+    "d-busy": () => screen(`<div class="zz-tiles">${BUSY.map(tile).join("")}</div>${menu}`),
+    "e-today": () => screen(`${TODAY.filter(up).map(shelf).join("")}${downs(TODAY)}${menu}`),
+    "e-busy": () => screen(`${BUSY.filter(up).map(shelf).join("")}${downs(BUSY)}${menu}`),
+  };
+  for (const phone of document.querySelectorAll("[data-frame]")) phone.innerHTML = frames[phone.dataset.frame]();
+
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  for (const phone of document.querySelectorAll(".zz-phone")) {
+    phone.insertAdjacentHTML("afterbegin", status);
+    phone.insertAdjacentHTML("beforeend", `<span class="zz-home"></span>`);
+  }
+
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.querySelector(".zz-intro").style.display = "none";
+    for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+  }
+})();
+</script>
+</body>
+</html>

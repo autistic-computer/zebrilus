@@ -165,26 +165,45 @@ impl SettingsFold {
 }
 
 pub const LARGE_TITLE_HEIGHT: f32 = 52.0;
+const LARGE_TITLE_MARK: f32 = 28.0;
 const LARGE_TITLE_BEARING: f32 = 1.0;
 
 pub fn large_title(title: impl Into<SharedString>, cx: &App) -> ala::Div {
+    large_title_row(None, title.into(), cx)
+}
+
+pub fn large_title_lead(mark: IconName, title: impl Into<SharedString>, cx: &App) -> ala::Div {
+    large_title_row(Some(mark), title.into(), cx)
+}
+
+fn large_title_row(mark: Option<IconName>, title: SharedString, cx: &App) -> ala::Div {
+    let style = crate::TextStyle::TouchTitle;
     div()
         .debug_selector(|| "large-title".to_owned())
         .flex()
         .flex_none()
         .items_end()
+        .gap(Space::S8)
         .h(px(LARGE_TITLE_HEIGHT))
         .px(Space::S16)
         .pb(Space::S4)
-        .type_style(crate::TextStyle::TouchTitle, cx)
+        .type_style(style, cx)
         .text_color(cx.theme().foreground)
+        .children(mark.map(|mark| {
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .h(style.line_height())
+                .child(Icon::new(mark).size(px(LARGE_TITLE_MARK)))
+        }))
         .child(
             div()
                 .min_w_0()
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .child(title.into()),
+                .child(title),
         )
 }
 

@@ -3,8 +3,11 @@ use ala::{
     px,
 };
 use penna::{
-    ActiveTheme as _, Emphasis, IconName, Tone,
-    blocks::compact::{MiniPane, PhoneTile},
+    ActiveTheme as _, Emphasis, Icon, IconName, Space, Tone,
+    blocks::compact::{
+        MACHINE_TILE_HEIGHT, MachineTile, MiniPane, PhoneTile, WindowCard, WindowTail,
+        phone_card_ground,
+    },
     blocks::touch::{StatusMark, TouchGroup, TouchRow, TouchTrailing},
     v_flex,
 };
@@ -28,6 +31,18 @@ pub const STORY: Story = Story {
             name: "Rows with a mark",
             summary: "TouchTrailing::State: a mark and its word at a touch row's end, the word in the mark's ink.",
             build: |_, cx| stateless(mark_rows, cx),
+        },
+        Section {
+            id: "machine-tiles",
+            name: "Machine tiles",
+            summary: "MachineTile: the machine face, the waiting count, the name and the windows' program faces or the state; tinted while something waits, dimmed when not connected.",
+            build: |_, cx| stateless(machine_tiles, cx),
+        },
+        Section {
+            id: "window-cards",
+            name: "Window cards",
+            summary: "WindowCard: a row card with the pill's line for a chat or a page, and a tail card with a terminal's last four lines, two columns for two terminals; tinted while it waits.",
+            build: |_, cx| stateless(window_cards, cx),
         },
         Section {
             id: "machines",
@@ -213,6 +228,191 @@ fn mark_rows(_: &mut Window, _: &mut App) -> AnyElement {
                     StatusMark::Off,
                     "Not connected",
                 )),
+        )
+        .into_any_element()
+}
+
+fn machine_tiles(_: &mut Window, cx: &mut App) -> AnyElement {
+    let cx: &App = cx;
+    let theme = cx.theme();
+    let face = |icon: IconName, mark: StatusMark, waiting: bool| {
+        let ground = phone_card_ground(waiting, cx);
+        div()
+            .relative()
+            .size(px(24.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(Icon::new(icon).size(px(20.0)))
+            .child(
+                div()
+                    .absolute()
+                    .right(px(-3.0))
+                    .bottom(px(-3.0))
+                    .size(px(11.0))
+                    .rounded_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(ground.fill)
+                    .children(
+                        mark.dot(cx)
+                            .map(|dot| div().size(px(8.0)).rounded_full().bg(dot)),
+                    ),
+            )
+    };
+    let faces = |icons: &[IconName]| {
+        ala::div()
+            .flex()
+            .gap(Space::S6)
+            .children(icons.iter().map(|icon| {
+                div()
+                    .size(px(20.0))
+                    .rounded(px(6.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(theme.paint(Tone::Neutral, Emphasis::Soft).fill)
+                    .child(Icon::new(icon.clone()).size(px(12.0)))
+            }))
+    };
+    let cell = |tile: MachineTile| div().w(px(SQUARE)).h(px(MACHINE_TILE_HEIGHT)).child(tile);
+    states()
+        .columns(2)
+        .state(
+            "waiting",
+            cell(
+                MachineTile::new("machine-tile-waiting", "macbook")
+                    .face(face(IconName::Laptop, StatusMark::Warning, true))
+                    .waiting("1 waiting")
+                    .faces(faces(&[
+                        IconName::Chat,
+                        IconName::SquareTerminal,
+                        IconName::Globe,
+                    ])),
+            ),
+        )
+        .state(
+            "connected",
+            cell(
+                MachineTile::new("machine-tile-connected", "alienware")
+                    .face(face(IconName::Server, StatusMark::Success, false))
+                    .faces(faces(&[IconName::SquareTerminal])),
+            ),
+        )
+        .state(
+            "failed",
+            cell(
+                MachineTile::new("machine-tile-failed", "wsl-archlinux")
+                    .face(face(IconName::Server, StatusMark::Danger, false))
+                    .state(StatusMark::Danger, "Failed"),
+            ),
+        )
+        .state(
+            "offline",
+            cell(
+                MachineTile::new("machine-tile-offline", "win-desktop")
+                    .face(face(IconName::Server, StatusMark::Off, false))
+                    .state(StatusMark::Off, "Not connected")
+                    .dimmed(),
+            ),
+        )
+        .into_any_element()
+}
+
+fn window_cards(_: &mut Window, cx: &mut App) -> AnyElement {
+    let cx: &App = cx;
+    let theme = cx.theme();
+    let face = |icon: IconName| {
+        div()
+            .size(px(24.0))
+            .rounded(px(7.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme.paint(Tone::Neutral, Emphasis::Soft).fill)
+            .child(Icon::new(icon).size(px(15.0)))
+    };
+    let faces = |icons: &[IconName]| {
+        div()
+            .flex()
+            .gap(Space::S4)
+            .children(icons.iter().map(|icon| face(icon.clone())))
+    };
+    let tests = "running 14 tests\ntest pill::menu_order ... ok\ntest result: ok. 14 passed\n> ";
+    let ls = "> ls\nAGENTS.md  CLAUDE.md  Cargo.lock\nCargo.toml Justfile   clients\n> ";
+    let prompt = "~/dev/zebrilus main\n> ";
+    let cell = |card: WindowCard| div().w(px(WIDE)).child(card);
+    states()
+        .columns(2)
+        .state(
+            "row",
+            cell(
+                WindowCard::new("window-card-row", "Claude Code")
+                    .faces(faces(&[IconName::Chat]))
+                    .line("zebrilus · main"),
+            ),
+        )
+        .state(
+            "waiting",
+            cell(
+                WindowCard::new("window-card-waiting", "Make the pill menu offer New chat")
+                    .faces(faces(&[IconName::Chat]))
+                    .state(StatusMark::Warning, "Needs approval")
+                    .waiting(true),
+            ),
+        )
+        .state(
+            "working",
+            cell(
+                WindowCard::new("window-card-working", "Fix pane stack hit testing")
+                    .faces(faces(&[IconName::Chat]))
+                    .line("Moving the occlusion onto the card")
+                    .working(true),
+            ),
+        )
+        .state(
+            "page",
+            cell(
+                WindowCard::new("window-card-page", "Phone machines")
+                    .faces(faces(&[IconName::Globe]))
+                    .line("127.0.0.1:8090"),
+            ),
+        )
+        .state(
+            "tail",
+            cell(
+                WindowCard::new("window-card-tail", "cargo test")
+                    .faces(faces(&[IconName::SquareTerminal]))
+                    .tail(WindowTail::new(
+                        "window-tail-tests",
+                        SharedString::from(tests),
+                    )),
+            ),
+        )
+        .state(
+            "two tails",
+            cell(
+                WindowCard::new("window-card-split", "bash")
+                    .faces(faces(&[IconName::SquareTerminal, IconName::SquareTerminal]))
+                    .tail(WindowTail::new("window-tail-ls", SharedString::from(ls)))
+                    .tail(WindowTail::new(
+                        "window-tail-prompt",
+                        SharedString::from(prompt),
+                    )),
+            ),
+        )
+        .state(
+            "failed",
+            cell(
+                WindowCard::new("window-card-failed", "just release")
+                    .faces(faces(&[IconName::SquareTerminal]))
+                    .state(StatusMark::Danger, "Exit 1")
+                    .tail(WindowTail::new(
+                        "window-tail-failed",
+                        SharedString::from("error: could not compile `zz-app`\n> "),
+                    )),
+            ),
         )
         .into_any_element()
 }

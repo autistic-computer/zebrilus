@@ -597,7 +597,7 @@ impl AppShell {
             pane_bounds: Rc::default(),
             pane_arrivals: PaneArrivals::default(),
             rendered_drop_preview: Rc::default(),
-            compact: compact::CompactState::new(),
+            compact: compact::CompactState::default(),
             which_key: None,
             which_key_timer: None,
             #[cfg(target_os = "ios")]

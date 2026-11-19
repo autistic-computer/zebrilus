@@ -21,8 +21,8 @@ use penna::{
     v_flex,
 };
 use zz_ui::compact::{
-    Confirm, FoundMachine, HostState, MachineMenu, PaneMenu, Rename, ToolKeys, found_machines,
-    hold_sheet, host_mark, machine_menu, pane_menu,
+    Confirm, FoundMachine, HostState, MachineMenu, Rename, ToolKeys, found_machines, hold_sheet,
+    host_mark, new_menu, pane_menu,
 };
 
 use crate::story::Framed as _;
@@ -613,14 +613,11 @@ fn overview(_: &mut Window, cx: &mut App) -> AnyElement {
 const MENU_HEIGHT: f32 = 700.0;
 
 fn machine_groups() -> Vec<StackGroup> {
-    machine_menu(MachineMenu::Session("zz"))
+    new_menu(MachineMenu::Session("zz"))
 }
 
 fn terminal_groups() -> Vec<StackGroup> {
-    pane_menu(PaneMenu {
-        session: "zz",
-        terminal: true,
-    })
+    pane_menu(true)
 }
 
 fn screen_lines(cx: &App) -> impl IntoElement {
@@ -659,7 +656,7 @@ impl Menus {
     fn new(cx: &mut Context<Self>) -> Self {
         Self {
             machine: open_menu(machine_groups(), cx),
-            empty: open_menu(machine_menu(MachineMenu::Empty), cx),
+            empty: open_menu(new_menu(MachineMenu::Empty), cx),
             pane: open_menu(terminal_groups(), cx),
         }
     }

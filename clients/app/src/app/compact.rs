@@ -15,15 +15,16 @@ use ala::{
 use penna::{
     ActiveTheme as _, IconName,
     blocks::compact::{
-        BENTO_INSET, PILL_TILE, PillLabel, PillPlacement, PillSpring, compact_floating_bar,
-        compact_hud, compact_pill_at, compact_pill_label, compact_pill_morph, edge_blur, over_pill,
-        pill_bounds, pill_corner, pill_glass_over, pill_tile_radius, pill_up_disc,
+        PILL_TILE, PillLabel, PillPlacement, PillSpring, bar_disc_bounds, bar_ends,
+        compact_bar_disc, compact_floating_bar, compact_hud, compact_pill_at, compact_pill_label,
+        compact_pill_morph_between, edge_blur, over_pill, pill_corner, pill_glass_over,
+        pill_handle, pill_handle_bounds, pill_tile_radius, split_pill_bounds,
     },
     blocks::sheet::{bottom_sheet, close_sheet},
     blocks::touch::{
         ArrowPadEvent, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, KeyRowKey, Lift,
-        LiftEvent, PageDot, Pager, PagerEvent, PhoneFind, StackClose, StackMenu, StackMenuEvent,
-        WhichKeyList, page_dots_in,
+        LiftEvent, PageDot, Pager, PagerEvent, PhoneFind, PillScrub, ScrubCard, ScrubEvent,
+        StackClose, StackMenu, StackMenuEvent, WhichKeyList, page_strip, scrub_cards,
     },
     blocks::which_key::WhichKeyRow,
     components::kbd::Kbd,
@@ -37,9 +38,9 @@ use zz_terminal::KeyAction;
 use zz_ui::{
     command::tmux_keystroke,
     compact::{
-        ALL_BINDINGS, ALL_MACHINES, CLOSE_PANE, FIND, NEW_BROWSER, NEW_CHAT, NEW_SESSION,
-        NEW_TERMINAL, PaneMenu, RENAME_PANE, SETTINGS, ToolKeys, close_pane_detail, machine_menu,
-        pane_menu, pill_face,
+        ALL_BINDINGS, ALL_MACHINES, CLOSE_PANE, FIND, MachineMenu, NEW_BROWSER, NEW_CHAT,
+        NEW_SESSION, NEW_TERMINAL, RENAME_PANE, SETTINGS, ToolKeys, close_pane_detail,
+        machine_menu, new_menu, pane_menu, pill_face,
     },
 };
 
@@ -60,12 +61,7 @@ const NOTICE_LINGER: Duration = Duration::from_secs(2);
 const LANDING_WAIT: Duration = Duration::from_secs(1);
 const TOUCH_TARGET: f32 = penna::blocks::touch::TOUCH_TARGET;
 const BAR_SWAP: f32 = 8.0;
-const BAR_DIM: f32 = 0.55;
-const LAND_RING: Duration = Duration::from_millis(350);
-const HOME_SPRING: ala::SpringConfig = ala::SpringConfig::new(200.0, 28.5, 1.0);
-const HOME_LANDED: f32 = 0.99;
-const LIFT_FALLBACK_TOP: f32 = 140.0;
-const LIFT_FALLBACK_HEIGHT: f32 = 272.0;
+const MENU_DIM: f32 = 0.45;
 
 const BINDINGS_SHEET: &str = "compact-bindings-sheet";
 
@@ -100,14 +96,12 @@ pub(super) struct CompactState {
     hosts: Lift,
     morph: PillSpring,
     landing: Option<(PaneId, Instant)>,
-    grab: ala::Point<Pixels>,
-    hollow: Option<(PaneId, f32)>,
-    flying: bool,
-    landed: Option<(PaneId, Instant)>,
-    cards: Rc<RefCell<BTreeMap<PaneId, Bounds<Pixels>>>>,
+    entering: Option<(PaneId, Instant)>,
     text: Option<TerminalText>,
     page_background: Option<ala::Hsla>,
     menu: Option<(Entity<StackMenu>, Subscription)>,
+    new_menu: Option<(Entity<StackMenu>, Subscription)>,
+    scrub: Option<(Entity<PillScrub>, Subscription)>,
     sheet: Option<sheets::PhoneSheet>,
     next_sheet: Option<sheets::PhoneSheet>,
     rename: Option<(Entity<penna::components::input::InputState>, Subscription)>,
@@ -115,18 +109,11 @@ pub(super) struct CompactState {
 }
 
 impl CompactState {
-    pub(super) fn new() -> Self {
-        Self {
-            lift: Lift::with_spring(HOME_SPRING),
-            ..Self::default()
-        }
-    }
-
     #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
     pub(super) fn forget_panes(&mut self) {
         self.notice = None;
         self.landing = None;
-        self.cards.borrow_mut().clear();
+        self.entering = None;
         self.host_scrolls.clear();
     }
 
@@ -136,6 +123,8 @@ impl CompactState {
         self.last_current = None;
         self.bindings = std::env::var("ALA_BENCH").is_ok_and(|bench| bench.starts_with("sheet"));
         self.menu = None;
+        self.new_menu = None;
+        self.scrub = None;
         self.tool_keys = None;
         self.close_sheets();
     }
@@ -185,7 +174,9 @@ pub(super) fn pages(model: &StatusBarModel, unseen: &BTreeSet<PaneId>) -> (Vec<P
     (pages, current)
 }
 
-fn pill_words(parts: &[zz_client::window_summary::DetailPart]) -> (String, String, penna::Tone) {
+pub(super) fn pill_words(
+    parts: &[zz_client::window_summary::DetailPart],
+) -> (String, String, penna::Tone) {
     use zz_client::window_summary::Tone;
     let rest = |from: usize| {
         parts[from..]
@@ -502,13 +493,65 @@ impl AppShell {
         menu
     }
 
+    pub(super) fn new_stack(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<StackMenu> {
+        if let Some((menu, _)) = &self.compact.new_menu {
+            return menu.clone();
+        }
+        let menu = cx.new(|cx| StackMenu::new(StackClose::Disc, cx).scrim_apart());
+        let subscription = cx.subscribe_in(&menu, window, Self::stack_pick);
+        self.compact.new_menu = Some((menu.clone(), subscription));
+        menu
+    }
+
+    fn pill_scrub(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<PillScrub> {
+        if let Some((scrub, _)) = &self.compact.scrub {
+            return scrub.clone();
+        }
+        let scrub = cx.new(PillScrub::new);
+        let subscription = cx.subscribe_in(&scrub, window, Self::scrub_event);
+        self.compact.scrub = Some((scrub.clone(), subscription));
+        scrub
+    }
+
+    fn scrub_event(
+        &mut self,
+        _: &Entity<PillScrub>,
+        event: &ScrubEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let ScrubEvent::Began(_) = event {
+            window.end_touch_momentum();
+        }
+        if let ScrubEvent::Ended(index) = *event
+            && index != self.compact.pager.index()
+        {
+            self.compact.pager.go_to(index, Instant::now());
+            self.commit_page(Some(PagerEvent::Commit { index }), cx);
+        }
+        cx.notify();
+    }
+
+    fn scrubbing(&self, cx: &App) -> bool {
+        self.compact
+            .scrub
+            .as_ref()
+            .is_some_and(|(scrub, _)| scrub.read(cx).picked().is_some())
+    }
+
+    fn stacks(&self) -> impl Iterator<Item = &Entity<StackMenu>> {
+        [&self.compact.menu, &self.compact.new_menu]
+            .into_iter()
+            .filter_map(|menu| menu.as_ref().map(|(menu, _)| menu))
+    }
+
     #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
     pub(super) fn shown_stack(&self, cx: &App) -> Option<Entity<StackMenu>> {
-        self.compact
-            .menu
-            .as_ref()
-            .map(|(menu, _)| menu.clone())
-            .filter(|menu| menu.read(cx).is_shown())
+        self.stacks().find(|menu| menu.read(cx).is_shown()).cloned()
     }
 
     pub(super) fn open_pill_menu(&mut self, cx: &mut Context<Self>) {
@@ -517,9 +560,15 @@ impl AppShell {
         }
     }
 
+    pub(super) fn open_new_menu(&mut self, cx: &mut Context<Self>) {
+        if let Some((menu, _)) = &self.compact.new_menu {
+            menu.update(cx, StackMenu::open);
+        }
+    }
+
     #[cfg_attr(not(target_os = "android"), allow(dead_code))]
     fn close_pill_menu(&mut self, cx: &mut Context<Self>) {
-        if let Some((menu, _)) = &self.compact.menu {
+        for menu in self.stacks().cloned().collect::<Vec<_>>() {
             menu.update(cx, StackMenu::close);
         }
         if let Some((keys, _)) = &self.compact.tool_keys {
@@ -730,7 +779,7 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.compact.lift.is_dragging() {
+        if self.compact.lift.is_dragging() || self.scrubbing(cx) {
             return;
         }
         let delta_x = match event.delta {
@@ -1050,8 +1099,10 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.scrubbing(cx) {
+            return;
+        }
         let delta = event.delta.pixel_delta(window.line_height());
-        let armed = self.compact.lift.will_open();
         let response =
             self.compact
                 .lift
@@ -1063,15 +1114,6 @@ impl AppShell {
         if response.started {
             self.compact.landing = None;
             self.compact.overview_reveal = true;
-            self.compact.grab = event.position;
-        }
-        if let Some(finger) = window.touch_position() {
-            self.compact
-                .lift
-                .slide(f32::from(finger.x - self.compact.grab.x));
-        }
-        if !armed && self.compact.lift.will_open() {
-            cx.haptic(ala::Haptic::Selection);
         }
         if let Some(event) = response.event {
             window.end_touch_momentum();
@@ -1201,6 +1243,18 @@ impl AppShell {
             window.request_animation_frame();
         }
         let morph = self.compact.morph.progress();
+        if let Some((target, since)) = self.compact.entering {
+            if let Some(page) = pages.iter().find(|page| page.pane == target).cloned() {
+                self.compact.entering = None;
+                self.compact_select(&page, cx);
+                self.land_overview(Some(target), cx);
+            } else if now.saturating_duration_since(since) >= LANDING_WAIT {
+                self.compact.entering = None;
+                self.close_overview(cx);
+            } else {
+                window.request_animation_frame();
+            }
+        }
         if let Some((target, since)) = self.compact.landing
             && !self.compact.lift.is_moving()
         {
@@ -1217,8 +1271,17 @@ impl AppShell {
             && (progress > 0.0 || self.compact.lift.is_moving() || self.compact.landing.is_some());
         let shown = self.compact.pager.index();
         let shown_page = pages.get(shown);
+        let scrub = self.pill_scrub(window, cx);
+        scrub.update(cx, |scrub, _| scrub.set_pages(pages.len(), shown));
+        let scrubbing = scrub.read(cx).picked().filter(|_| !open && !lifting);
+        let scrub_page = scrubbing.and_then(|index| pages.get(index));
         let floating = !keyboard;
-        let pill_shown = pill_bounds(px(width), &placement);
+        let can_make = {
+            let connection = self.connection.read(cx);
+            connection.connected && !connection.core.attached_read_only()
+        };
+        let pill_shown = split_pill_bounds(px(width), &placement, false, can_make);
+        let ends = bar_ends(false, can_make);
         let zone_top = window.viewport_size().height - zone;
         let in_window = |bounds: Bounds<Pixels>| {
             Bounds::new(
@@ -1234,10 +1297,9 @@ impl AppShell {
         });
         let reserve = if floating { zone } else { px(0.0) };
         let veil = self
-            .compact
-            .menu
-            .as_ref()
-            .map_or(0.0, |(menu, _)| menu.read(cx).close_shown());
+            .stacks()
+            .map(|menu| menu.read(cx).close_shown())
+            .fold(0.0, f32::max);
         self.compact.chat_dock = Some(super::agent_pane::PhoneDock {
             bottom: placement.bottom,
             top: top_inset,
@@ -1311,35 +1373,45 @@ impl AppShell {
             keys.clone().close(cx);
         }
         let stack = self.pill_stack(window, cx);
-        let (groups, fold) = if open {
-            let menu = self.machine_menu_text(cx);
-            (machine_menu(menu.as_menu()), None)
+        let new_stack = self.new_stack(window, cx);
+        let session = self.attached_session_name(cx);
+        let made = if open {
+            new_menu(self.machine_menu_text(cx).as_menu())
+        } else if can_make {
+            new_menu(MachineMenu::Session(&session))
         } else {
-            let session = self.attached_session_name(cx);
-            match self.browser_groups(shown_page, &session, cx) {
+            Vec::new()
+        };
+        let (groups, fold) = if open {
+            (machine_menu(), None)
+        } else {
+            match self.browser_groups(shown_page, cx) {
                 Some((groups, fold)) => (groups, Some(fold)),
                 None => (
-                    pane_menu(PaneMenu {
-                        session: &session,
-                        terminal: shown_page
-                            .is_some_and(|page| page.kind == PaneKindSnapshot::Terminal),
-                    }),
+                    pane_menu(
+                        shown_page.is_some_and(|page| page.kind == PaneKindSnapshot::Terminal),
+                    ),
                     None,
                 ),
             }
         };
         if let Some((keys, _)) = &self.compact.tool_keys {
             let prefix = keys.prefix.read(cx).menu().clone();
-            let groups = groups.clone();
+            let groups: Vec<_> = made.iter().chain(&groups).cloned().collect();
             prefix.update(cx, |menu, cx| menu.set_groups(groups, cx));
         }
         stack.update(cx, |menu, cx| {
             menu.set_groups(groups, cx);
             menu.set_fold(fold, cx);
         });
+        new_stack.update(cx, |menu, cx| menu.set_groups(made, cx));
         let chat = shown_page.is_some_and(|page| matches!(page.kind, PaneKindSnapshot::Agent(_)));
-        if keyboard && !chat && stack.read(cx).is_shown() {
-            stack.update(cx, StackMenu::close);
+        if keyboard && !chat {
+            for menu in [&stack, &new_stack] {
+                if menu.read(cx).is_shown() {
+                    menu.update(cx, StackMenu::close);
+                }
+            }
         }
         #[cfg(any(target_os = "ios", target_os = "android"))]
         {
@@ -1349,7 +1421,10 @@ impl AppShell {
                 .as_ref()
                 .is_some_and(|(keys, _)| keys.prefix.read(cx).menu().read(cx).is_shown());
             let frozen = (!open
-                && (stack.read(cx).is_shown() || prefix_open || self.compact.sheet.is_some()))
+                && (stack.read(cx).is_shown()
+                    || new_stack.read(cx).is_shown()
+                    || prefix_open
+                    || self.compact.sheet.is_some()))
             .then_some(current_pane)
             .flatten();
             for (pane, browser) in &self.browsers {
@@ -1357,21 +1432,31 @@ impl AppShell {
                 browser.update(cx, |browser, cx| browser.set_frozen(still, window, cx));
             }
         }
-        let menu_progress = if open {
-            0.0
+        let (menu_progress, new_progress) = if open {
+            (0.0, 0.0)
         } else {
-            stack.read(cx).close_shown()
+            (
+                stack.read(cx).close_shown(),
+                new_stack.read(cx).close_shown(),
+            )
         };
         let page_background = self
             .compact
             .page_background
             .unwrap_or(cx.theme().background);
-        let (mut title, word, mut meta, mut tone) = self.pill_text(&model, shown_page, cx);
+        let (mut title, mut word, mut meta, mut tone) = self.pill_text(&model, shown_page, cx);
+        if let Some(page) = scrub_page {
+            title = page.title.clone();
+            word = SharedString::default();
+            tone = penna::Tone::Neutral;
+        }
         let picking = self.browser_picking(cx);
         if picking {
             meta = "Picking an element".into();
         }
-        let kind = shown_page.map_or(IconName::SquareTerminal, |page| kind_icon(&page.kind));
+        let kind = scrub_page
+            .or(shown_page)
+            .map_or(IconName::SquareTerminal, |page| kind_icon(&page.kind));
         let mut icon = kind.clone();
         if let Some((pane, text, kind, until)) = self.compact.notice
             && until > now
@@ -1397,7 +1482,7 @@ impl AppShell {
             ..placement
         };
         let program_face = shown_page
-            .filter(|_| icon == kind)
+            .filter(|_| icon == kind && scrub_page.is_none())
             .and_then(|page| self.page_program(page, cx))
             .map(|program| {
                 pill_face(
@@ -1418,22 +1503,12 @@ impl AppShell {
             tone,
             up: false,
         };
-        if lifting {
-            self.compact.flying = true;
-        } else {
-            self.compact.hollow = None;
-            if std::mem::take(&mut self.compact.flying) && open {
-                self.compact.landed = current_pane.map(|pane| (pane, now));
-            }
-        }
-        if let Some((_, since)) = self.compact.landed {
-            if open && now.saturating_duration_since(since) < LAND_RING {
-                window.request_animation_frame();
-            } else {
-                self.compact.landed = None;
-            }
-        }
-        let dots = page_dots_in(&dot_groups(&pages, shown), cx.theme().foreground, cx);
+        let dots = page_strip(
+            &dot_groups(&pages, scrubbing.unwrap_or(shown)),
+            scrubbing.is_some(),
+            cx.theme().foreground,
+            cx,
+        );
         let find = shown_terminal
             .as_ref()
             .and_then(|terminal| {
@@ -1491,8 +1566,8 @@ impl AppShell {
             if morph > 0.0 {
                 let pill_top = height + overlap - zone + placement.pill_top();
                 let label = compact_pill_label(label, dots, &placement, cx);
-                area.child(compact_pill_morph(
-                    row, label, morph, pill_top, height, &placement, cx,
+                area.child(compact_pill_morph_between(
+                    row, label, morph, pill_top, height, ends, &placement, cx,
                 ))
             } else {
                 area.pb(lift).child(row)
@@ -1507,21 +1582,27 @@ impl AppShell {
                 .right_0()
                 .bottom_0()
                 .h(zone)
-                .child(compact_pill_morph(
+                .child(compact_pill_morph_between(
                     row,
                     label,
                     morph,
                     placement.pill_top(),
                     zone,
+                    ends,
                     &placement,
+                    cx,
+                ))
+                .children(self.bar_discs(
+                    px(width),
+                    pill_shown,
+                    &placement,
+                    can_make,
+                    &new_stack,
+                    [morph * morph; 2],
                     cx,
                 ))
                 .into_any_element()
         } else {
-            let label = PillLabel {
-                up: !picking,
-                ..label
-            };
             let label = compact_pill_label(label, dots, &pill_placement, cx);
             let fade = if lifting {
                 (1.0 - progress * BAR_SWAP).max(0.0)
@@ -1529,18 +1610,10 @@ impl AppShell {
                 1.0
             };
             let pill = compact_pill_at("compact-pill", label, pill_shown, &pill_placement, cx)
-                .opacity(fade * (1.0 - menu_progress))
+                .opacity(fade * (1.0 - menu_progress) * (1.0 - new_progress * MENU_DIM))
                 .when(!picking, |pill| {
-                    pill.child(StackMenu::pill_anchor(&stack, cx)).child(
-                        pill_up_disc("compact-pill-up", false, &pill_placement, cx).on_click(
-                            cx.listener(|this, _, window, cx| {
-                                cx.stop_propagation();
-                                cx.haptic(ala::Haptic::Light);
-                                window.dismiss_virtual_keyboard();
-                                this.open_overview(cx);
-                            }),
-                        ),
-                    )
+                    pill.child(stack.read(cx).track_anchor())
+                        .child(PillScrub::anchor(&scrub, cx))
                 })
                 .on_click(cx.listener(move |this, _, window, cx| {
                     if picking {
@@ -1596,6 +1669,18 @@ impl AppShell {
                         .on_scroll_wheel(cx.listener(Self::compact_lift_scroll)),
                 )
                 .child(pill)
+                .children(self.bar_discs(
+                    px(width),
+                    pill_shown,
+                    &pill_placement,
+                    can_make,
+                    &new_stack,
+                    [
+                        fade * (1.0 - MENU_DIM * menu_progress.max(new_progress)),
+                        fade * (1.0 - new_progress) * (1.0 - MENU_DIM * menu_progress),
+                    ],
+                    cx,
+                ))
                 .into_any_element()
         };
         let mut sheets = Vec::new();
@@ -1613,7 +1698,15 @@ impl AppShell {
             sheets.extend(picker.update(cx, |picker, cx| picker.sheet(over_pill, cx)));
         }
         sheets.extend(self.phone_sheet(window, cx));
-        let scrim = (!open).then(|| StackMenu::scrim(&stack, window, cx));
+        let scrim = (!open)
+            .then(|| {
+                [
+                    StackMenu::scrim(&stack, window, cx).into_any_element(),
+                    StackMenu::scrim(&new_stack, window, cx).into_any_element(),
+                ]
+            })
+            .into_iter()
+            .flatten();
         let screen = div()
             .relative()
             .size_full()
@@ -1655,6 +1748,7 @@ impl AppShell {
                 .size_full()
                 .child(pages)
                 .child(StackMenu::scrim(&stack, window, cx))
+                .child(StackMenu::scrim(&new_stack, window, cx))
                 .child(bars)
                 .into_any_element()
         } else if lifting {
@@ -1665,44 +1759,8 @@ impl AppShell {
                 .or(current_pane)
                 .and_then(|pane| pages.iter().find(|page| page.pane == pane).cloned());
             let stage = window.viewport_size();
-            let slot = target
-                .as_ref()
-                .and_then(|page| self.compact.cards.borrow().get(&page.pane).copied())
-                .unwrap_or_else(|| {
-                    Bounds::new(
-                        point(px(BENTO_INSET), top_inset + px(LIFT_FALLBACK_TOP)),
-                        ala::size(
-                            stage.width - px(BENTO_INSET * 2.0),
-                            px(LIFT_FALLBACK_HEIGHT),
-                        ),
-                    )
-                });
-            let flight = overview::Flight::at(&overview::Throw {
-                pull: self.compact.lift.pull(),
-                dragging: self.compact.lift.is_dragging(),
-                opening: self.compact.overview,
-                flight: self.compact.lift.flight().unwrap_or(1.0),
-                progress,
-                grab: self.compact.grab,
-                stage,
-                slot: overview::Card {
-                    bounds: slot,
-                    corner: penna::blocks::compact::mini_radius(cx),
-                },
-                corner: screen_radius(window).unwrap_or_else(|| cx.theme().phone_radius()),
-            });
-            self.compact.hollow = target.as_ref().map(|page| (page.pane, flight.landed()));
-            if self.compact.lift.is_dragging() {
-                let gap = slot.center() - flight.card.bounds.center();
-                self.compact
-                    .lift
-                    .aim(f32::from(gap.x).hypot(f32::from(gap.y)));
-            } else if self.compact.overview && flight.land >= HOME_LANDED {
-                self.compact.lift.snap(true);
-            }
             let (overview, bars) = self.overview_layers(&model, top_inset, &placement, window, cx);
             let swap = (progress * BAR_SWAP).min(1.0);
-            let lit = self.compact.overview || self.compact.lift.will_open();
             let child = target.map_or_else(
                 || div().into_any_element(),
                 |page| self.compact_page(&page, false, 0.0, top_inset, zone, None, window, cx),
@@ -1710,22 +1768,15 @@ impl AppShell {
             div()
                 .relative()
                 .size_full()
-                .child(overview::flight_layers(
+                .child(overview::pane_zoom_layers(
                     overview,
                     child,
-                    &flight,
                     stage,
                     progress,
                     page_background,
-                    cx,
+                    screen_radius(window).unwrap_or_else(|| cx.theme().phone_radius()),
                 ))
-                .child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .opacity(if lit { swap } else { swap * BAR_DIM })
-                        .child(bars),
-                )
+                .child(div().absolute().inset_0().opacity(swap).child(bars))
                 .child(
                     div()
                         .id("overview-lift-block")
@@ -1738,14 +1789,21 @@ impl AppShell {
         } else {
             screen.into_any_element()
         };
-        let menu = stack.read(cx).is_shown().then(|| stack.clone());
+        let menus = [&stack, &new_stack]
+            .into_iter()
+            .filter(|menu| menu.read(cx).is_shown())
+            .cloned()
+            .collect::<Vec<_>>();
+        let scrub_layer =
+            scrubbing.map(|picked| self.scrub_layer(&pages, shown, picked, zone, window, cx));
         div()
             .id("compact-shell")
             .relative()
             .size_full()
             .bg(cx.theme().background)
             .child(content)
-            .children(menu)
+            .children(scrub_layer)
+            .children(menus)
             .children(sheets)
             .child(penna::blocks::touch::touch_scale(
                 div()
@@ -1757,6 +1815,99 @@ impl AppShell {
                     .children(overlays),
                 cx,
             ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn bar_discs(
+        &self,
+        width: Pixels,
+        pill: Bounds<Pixels>,
+        placement: &PillPlacement,
+        can_make: bool,
+        new_stack: &Entity<StackMenu>,
+        ink: [f32; 2],
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let handle_at = pill_handle_bounds(pill);
+        let up = div()
+            .absolute()
+            .left(handle_at.origin.x)
+            .top(handle_at.origin.y)
+            .opacity(ink[0])
+            .child(
+                pill_handle("compact-bar-handle", cx)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        cx.stop_propagation();
+                        cx.haptic(ala::Haptic::Light);
+                        window.dismiss_virtual_keyboard();
+                        this.open_overview(cx);
+                    }))
+                    .on_scroll_wheel(cx.listener(Self::compact_lift_scroll)),
+            )
+            .into_any_element();
+        let plus = can_make.then(|| {
+            let plus_at = bar_disc_bounds(width, placement, true);
+            div()
+                .absolute()
+                .left(plus_at.origin.x)
+                .top(plus_at.origin.y)
+                .opacity(ink[1])
+                .child(
+                    compact_bar_disc("compact-bar-new", IconName::Plus, "New", placement, cx)
+                        .child(StackMenu::pill_anchor(new_stack, cx))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            cx.haptic(ala::Haptic::Light);
+                            this.open_new_menu(cx);
+                        })),
+                )
+                .into_any_element()
+        });
+        std::iter::once(up).chain(plus).collect()
+    }
+
+    fn scrub_layer(
+        &self,
+        pages: &[Page],
+        shown: usize,
+        picked: usize,
+        zone: Pixels,
+        window: &Window,
+        cx: &App,
+    ) -> AnyElement {
+        let windows: Vec<WindowId> = pages.iter().fold(Vec::new(), |mut windows, page| {
+            if windows.last() != Some(&page.window) {
+                windows.push(page.window);
+            }
+            windows
+        });
+        let heading = pages
+            .get(picked)
+            .filter(|page| {
+                pages
+                    .get(shown)
+                    .is_some_and(|here| here.window != page.window)
+            })
+            .and_then(|page| windows.iter().position(|window| *window == page.window))
+            .map(|at| SharedString::from(format!("Window {} of {}", at + 1, windows.len())));
+        let cards = pages
+            .iter()
+            .map(|page| ScrubCard {
+                icon: kind_icon(&page.kind),
+                title: page.title.clone(),
+                tone: if page.attention {
+                    penna::Tone::Warning
+                } else {
+                    penna::Tone::Neutral
+                },
+                preview: self
+                    .mini_preview(page, &self.connection, true, cx)
+                    .into_any_element(),
+            })
+            .collect();
+        let under = window
+            .touch_position()
+            .map_or(window.viewport_size().width / 2.0, |finger| finger.x);
+        scrub_cards(cards, picked, under, zone, heading, window, cx).into_any_element()
     }
 
     fn page_program(&self, page: &Page, cx: &App) -> Option<&'static Program> {
@@ -2078,71 +2229,6 @@ mod tests {
         assert_eq!(pinch_font_scale(2.5, 2.0), 3.0);
         assert_eq!(pinch_font_scale(0.6, 0.1), 0.5);
         assert_eq!(pinch_font_scale(1.1, f32::NAN), 1.1);
-    }
-
-    #[test]
-    fn a_lifted_pane_keeps_its_grabbed_point_under_the_finger_then_flies_to_its_slot() {
-        use penna::blocks::touch::Pull;
-        let slot = overview::Card {
-            bounds: Bounds::new(point(px(28.0), px(248.0)), ala::size(px(77.0), px(125.0))),
-            corner: px(10.0),
-        };
-        let throw = overview::Throw {
-            pull: Some(Pull {
-                side: 31.0,
-                reach: 320.0,
-            }),
-            dragging: true,
-            opening: false,
-            flight: 0.0,
-            progress: 0.5,
-            grab: point(px(201.0), px(826.0)),
-            stage: ala::size(px(402.0), px(874.0)),
-            slot,
-            corner: px(62.0),
-        };
-        let held = overview::Card {
-            bounds: Bounds::new(point(px(131.5), px(93.0)), ala::size(px(201.0), px(437.0))),
-            corner: px(31.0),
-        };
-        assert_eq!(
-            overview::Flight::at(&throw),
-            overview::Flight {
-                card: held,
-                land: 0.0
-            }
-        );
-        let thrown = overview::Flight::at(&overview::Throw {
-            dragging: false,
-            opening: true,
-            flight: 0.5,
-            ..throw
-        });
-        assert_eq!(thrown.land, 0.5);
-        assert_eq!(
-            thrown.card,
-            overview::Card {
-                bounds: Bounds::new(point(px(79.75), px(170.5)), ala::size(px(139.0), px(281.0))),
-                corner: px(20.5),
-            }
-        );
-        let back = overview::Flight::at(&overview::Throw {
-            dragging: false,
-            flight: 1.0,
-            ..throw
-        });
-        assert_eq!(
-            back.card.bounds,
-            Bounds::new(point(px(0.0), px(0.0)), throw.stage)
-        );
-        let tapped = overview::Flight::at(&overview::Throw {
-            pull: None,
-            dragging: false,
-            opening: true,
-            progress: 1.0,
-            ..throw
-        });
-        assert_eq!((tapped.card, tapped.landed()), (slot, 1.0));
     }
 
     #[test]

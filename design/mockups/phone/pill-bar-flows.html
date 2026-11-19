@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone bar flows</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/kbd/kbd.css">
+<link rel="stylesheet" href="/penna-src/components/row/row.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-phone .penna-bento { --penna-bento-width: 370px; }
+  .zz-story > figure > figcaption > i { color: var(--penna-warning-ink); }
+  .zz-phones.penna-variants { grid-template-columns: repeat(4, 424px); }
+
+  .zz-term { position: absolute; inset: 54px 0 auto; margin: 0; padding: 8px 16px; font: 13px/18px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; overflow: hidden; }
+  .zz-term > b { font-weight: 400; color: var(--penna-fg); }
+  .zz-term > [data-ink="success"] { color: var(--penna-success-ink); }
+  .zz-term > .zz-hit { background: color-mix(in srgb, var(--penna-warning) 40%, transparent); color: var(--penna-fg); }
+  .zz-term > .zz-hit[data-current] { background: color-mix(in srgb, var(--penna-warning) 75%, transparent); }
+  .zz-cursor { display: inline-block; width: 8px; height: 15px; vertical-align: -3px; background: var(--penna-fg); }
+
+  .zz-web { position: absolute; inset: 54px 0 0; display: flex; flex-direction: column; gap: 14px; padding: 20px; }
+  .zz-web > i { height: 14px; border-radius: 7px; background: color-mix(in srgb, var(--penna-fg) 14%, transparent); }
+  .zz-web > i[data-bar] { height: 28px; border-radius: 8px; }
+  .zz-web > i[data-block] { height: 220px; border-radius: 16px; }
+
+  .zz-pane { position: absolute; inset: 0; --zz-dock: 300px; }
+  .zz-tx { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 16px; padding: 70px 16px var(--zz-dock); overflow: hidden; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-tx > p { margin: 0; }
+  .zz-tx > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 85%; padding: 10px 14px; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-fade { position: absolute; z-index: 5; top: 0; right: 0; left: 0; height: 70px; background: linear-gradient(var(--penna-bg) 54px, transparent); }
+  .zz-cdock { position: absolute; z-index: 15; right: 16px; bottom: 88px; left: 16px; display: flex; flex-direction: column; }
+
+  .zz-back { position: absolute; inset: 0; display: flex; flex-direction: column; gap: var(--penna-gap-group); padding: 110px 16px 0; }
+  .zz-back[data-far] { opacity: 0.5; }
+  .zz-back > .penna-zoom-title { padding: 0; }
+  .zz-sess { display: flex; flex-direction: column; }
+  .zz-lift { position: absolute; inset: 0; overflow: hidden; border-radius: 62px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-border), var(--penna-shadow-float); transform-origin: 50% 0; }
+  .zz-slide { position: absolute; inset: 0; overflow: hidden; background: var(--penna-bg); }
+
+  .zz-finger { position: absolute; z-index: 50; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: color-mix(in srgb, var(--penna-fg) 20%, transparent); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--penna-fg) 55%, transparent); pointer-events: none; }
+  .zz-trail { position: absolute; z-index: 49; width: 3px; margin-left: -1.5px; border-radius: 2px; background: linear-gradient(color-mix(in srgb, var(--penna-fg) 45%, transparent), transparent); pointer-events: none; }
+  .zz-htrail { position: absolute; z-index: 49; height: 3px; margin-top: -1.5px; border-radius: 2px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--penna-fg) 45%, transparent)); pointer-events: none; }
+
+  .zz-bar > .penna-compact-pill[data-up] { padding-right: var(--penna-space-8); }
+  .zz-up[data-penna] { display: grid; flex: none; place-items: center; width: 40px; height: 40px; color: var(--penna-fg); --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 18px; }
+  .zz-disc[data-penna] { position: relative; display: grid; flex: none; place-items: center; width: 56px; height: 56px; margin: 0; padding: 0; color: var(--penna-fg); --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 22px; }
+  .zz-disc[data-quiet] { color: var(--penna-muted); }
+  .zz-disc[data-tone="warning"] { color: var(--penna-warning-ink); }
+  .zz-disc[data-armed][data-penna] { background: var(--penna-fg); color: var(--penna-bg); }
+  .zz-disc[data-fade] { opacity: 0.4; }
+  .zz-count { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--penna-warning); color: var(--penna-on-warning); font-size: 12px; line-height: 20px; font-weight: 600; text-align: center; }
+  .zz-count[data-plain] { background: var(--penna-panel); color: var(--penna-fg); box-shadow: 0 0 0 1px var(--penna-border); }
+  .zz-addr { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .zz-addr > [data-icon] { flex: none; color: var(--penna-muted); --penna-icon-size: 14px; }
+  .zz-addr > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .penna-pill-title[data-dim], .penna-pill-tile[data-dim] { opacity: 0.55; }
+
+  .zz-phone .penna-stack { z-index: 25; }
+  .zz-phone .penna-sheet { z-index: 30; }
+  .zz-hole { flex: none; width: 56px; }
+  .zz-hole[data-pill] { flex: 1; width: auto; }
+  .zz-phone .penna-stack-column { bottom: 92px; }
+  .zz-phone .penna-stack-column[data-align="end"] { right: 16px; }
+  .zz-phone .penna-stack-column[data-align="start"] { left: 16px; }
+  .zz-phone .penna-stack-column[data-align="center"] { right: 0; left: 0; }
+  .zz-phone .penna-stack-close { bottom: 20px; }
+
+  .zz-scrim { position: absolute; z-index: 10; inset: 0; background: color-mix(in srgb, var(--penna-bg) 62%, transparent); }
+  .zz-answer { position: absolute; z-index: 15; right: 16px; bottom: 88px; left: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .zz-who { display: flex; align-items: center; gap: 8px; padding: 0 14px; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); font-weight: 500; --penna-icon-size: 18px; }
+  .zz-who > [data-icon] { color: var(--penna-warning-ink); }
+  .zz-who > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-inbox { position: absolute; z-index: 25; right: 16px; bottom: 88px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .zz-inbox > .penna-stack-chip { position: static; max-width: 340px; }
+  .zz-inbox > .penna-stack-chip > span:last-child { flex: none; margin-left: 4px; font-weight: 400; }
+  .zz-inbox [data-say="warning"] { color: var(--penna-warning-ink); }
+  .zz-inbox [data-say="danger"] { color: var(--penna-danger-ink); }
+  .zz-inbox [data-say="done"] { color: var(--penna-muted); }
+  .zz-inbox .zz-chip-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .zz-phone > .zz-kb { position: absolute; z-index: 30; right: 0; bottom: 0; left: 0; }
+  .zz-keys, .zz-find-dock { position: absolute; z-index: 20; right: 16px; bottom: 300px; left: 16px; }
+  .zz-chord { display: flex; align-items: center; gap: 1px; --penna-icon-size: 14px; }
+
+  .zz-table { display: grid; grid-template-columns: max-content minmax(0, 72ch); margin-top: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-table > * { padding: 10px 16px 10px 0; box-shadow: inset 0 1px var(--penna-divider); }
+  .zz-table > b { font-weight: 600; }
+  .zz-table > span { color: var(--penna-fg-muted); }
+  .zz-table > [data-head] { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--penna-fg-muted); box-shadow: none; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>The bar, worked through</h1>
+    <p>Takes 1 and 3 from <a href="pill-bar.html">The bar</a>, drawn at every level and through every gesture. Same moment as before: a terminal in zebrilus that just ran the tests, a Claude chat one pane over waiting to run a command, a browser pane on the board, and the machine page above them.</p>
+  </div>
+
+  <section data-take="split-levels">
+    <h2>1. Split bar, level by level</h2>
+    <p>The bar is the same three pieces everywhere below Machines: up on the left, the pill in the middle, plus on the right. Only what the pill names changes.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure>
+        <div class="zz-phone" data-frame="s-term"></div>
+        <figcaption><b>Terminal</b>Up goes to the machine page. Plus makes a chat, terminal or browser in zebrilus. The pill is cargo test.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="s-chat"></div>
+        <figcaption><b>Chat</b>The same bar under the chat's own composer, here showing the ask it is waiting on. The pill takes the warning tint since this pane is the one that waits.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="s-web"></div>
+        <figcaption><b>Browser</b>The pill names the page and its address. Back, Reload and Tabs stay in the pill's menu.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="s-machine"></div>
+        <figcaption><b>Machine page</b>Up goes to Machines. Plus makes things in the session under the top row, as the machine menu does today. Machines itself has no bar: nothing is above it, and Add machine and Settings are its rows.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section data-take="split-gestures">
+    <h2>1. Split bar, gesture by gesture</h2>
+    <p>Each piece does one job. Tap the pill for the pane, tap plus to make something, tap up to leave. The drag and swipe on the pill work as today.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure>
+        <div class="zz-phone" data-frame="s-menu"></div>
+        <figcaption><b>Tap the pill</b>The pane's own menu: Close, Rename, Find, and All bindings for a terminal. The New group moves to plus, so this menu is only about the pane. The close disc takes the pill's place.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="s-new"></div>
+        <figcaption><b>Tap plus</b>The New group, New chat nearest the thumb, labeled with the session it lands in. New session sits apart above it. The close disc takes plus's place.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="s-lift"></div>
+        <figcaption><b>Drag the pill up</b>The pane lifts as today and the pill turns into the machine. Past a third the up disc inverts and a tick fires, so the disc and the drag read as one thing. Tapping up plays the same flight from rest.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="s-swipe"></div>
+        <figcaption><b>Swipe the pill</b>Pages to the next pane, the chat. Up and plus hold still while the pages slide under them; only the pill's words change.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="s-wait"></div>
+        <figcaption><b>Something waits</b>A 56 attention disc slides in between the pill and plus with the waiting pane's glyph in warning ink. Tap it to go there. It leaves once you have seen it.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="s-answer"></div>
+        <figcaption><b>Hold the attention disc</b>The ask rises over the terminal with the chat's name above it: the same card and rows the chat shows. A tap answers and the card folds back; you never leave the terminal.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="s-inbox"></div>
+        <figcaption><b>More than one</b>The disc counts. A tap opens them as a stack, nearest first, each a pane's glyph, name and state. A failed build and a finished chat land here too and clear once seen.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="s-keys"></div>
+        <figcaption><b>Keyboard up</b>The key row takes the whole bar, all three pieces, as it takes the pill today. Hiding the keyboard brings them back.</figcaption>
+      </figure>
+    </div>
+    <div class="zz-table">
+      <span data-head>Part</span><span data-head>Numbers</span>
+      <b>Pieces</b><span>Up disc 56, pill, plus disc 56, 8 between, 16 from the screen's sides. The pill gets 242 at rest and 178 while the attention disc shows.</span>
+      <b>Up disc</b><span>Shown below Machines only. Inverts while a drag up is armed (past 100 of travel or a flick over 500 a second), same numbers as today.</span>
+      <b>Plus</b><span>Opens the New group for the session the pill names (on a machine page, the session under the top row). Hidden while the session is read only.</span>
+      <b>Pill menu</b><span>The pane's chips only: Close, Rename, Find, All bindings. No New group, no Settings, no All machines (up does that).</span>
+      <b>Attention disc</b><span>Shows while any pane on any connected machine waits on you or a run you watched ended. Tap goes to the newest; hold answers it in place; two or more add a count and the tap opens the stack.</span>
+    </div>
+  </section>
+
+  <section data-take="context-kinds">
+    <h2>3. Context bar, pane by pane</h2>
+    <p>The pill stays as today, up inside it. Beside it go at most two discs, picked by the pane on screen. The thing you do most sits furthest right, under the thumb.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure>
+        <div class="zz-phone" data-frame="c-term"></div>
+        <figcaption><b>Terminal</b>Find, then the keyboard under the thumb. The keyboard disc is how the keys come up without tapping the terminal and moving its cursor.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="c-chat"></div>
+        <figcaption><b>Chat</b>No discs. The composer and the ask above the bar are the chat's actions; a disc would only repeat them.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="c-web"></div>
+        <figcaption><b>Browser</b>Back on the left, the page and its address in the pill, Tabs with its count on the right. Two discs leave the pill 242, so long titles cut.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="c-machine"></div>
+        <figcaption><b>Machine page</b>One disc: plus, for the session under the top row. Machines has no bar, as in take 1.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section data-take="context-gestures">
+    <h2>3. Context bar, gesture by gesture</h2>
+    <p>The pill's gestures are today's. Each disc opens the thing it names, and the discs follow the pane as you page.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure>
+        <div class="zz-phone" data-frame="c-keys"></div>
+        <figcaption><b>Tap the keyboard</b>The keys come up and the key row takes the bar, pill and discs together. The key row's own hide key puts them back.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="c-find"></div>
+        <figcaption><b>Tap Find</b>The find field takes the bar with the keyboard up, as Find from the menu does today: close, the query, the count, previous and next.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="c-wait"></div>
+        <figcaption><b>Something waits</b>The attention disc takes the first disc's place, here Find, so the bar never holds more than the pill and two discs. Find is back in the menu until the wait clears. Hold and the stack work as in take 1.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="c-swipe"></div>
+        <figcaption><b>Paging changes the discs</b>Swiping from the terminal to the chat, Find and the keyboard fade with the page they belong to, and the chat's empty side fades in. Halfway they are half gone.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="c-tabs"></div>
+        <figcaption><b>Browser: tap Tabs</b>The tabs sheet that exists today, current tab checked, New tab at the end.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="c-history"></div>
+        <figcaption><b>Browser: hold Back</b>The pages behind this one as a stack above the disc, nearest first. Release on one to go there. A tap is a plain back.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="c-webmenu"></div>
+        <figcaption><b>Browser: tap the pill</b>What the discs leave out: Forward and Reload, the address, Pick element and Open on this phone, then the pane's own chips. The menu shrinks by the two things the discs took.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="c-new"></div>
+        <figcaption><b>Machine page: tap plus</b>The New group for the session under the top row, New session apart above it. The close disc takes plus's place.</figcaption>
+      </figure>
+    </div>
+    <div class="zz-table">
+      <span data-head>Part</span><span data-head>Numbers</span>
+      <b>Pieces</b><span>Pill with its 40 up disc inside, then up to two 56 discs, 8 between, 16 from the sides. The pill gets 306 with one disc and 242 with two.</span>
+      <b>Discs per kind</b><span>Terminal: Find, Keyboard. Browser: Back on the left, Tabs on the right. Machine page: Plus. Chat and editor: none.</span>
+      <b>Order</b><span>The main disc sits furthest right. A left-side disc (Back) is for going back, matching the system's edge swipe.</span>
+      <b>Attention</b><span>Takes the first right-side disc's place while it shows; the disc it pushed out goes back into the pill's menu.</span>
+      <b>Paging</b><span>Discs cross-fade with the page progress, never slide. The pill's width moves with them on the same curve.</span>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+  const GROUPS = [2, 1, 1, 1];
+  const dots = (on, warn = -1) => {
+    let n = 0;
+    return `<span class="penna-dots">${GROUPS.map((count) => `<span class="penna-dots-group">${Array.from({ length: count }, () => {
+      const i = n++;
+      return `<span class="penna-dot"${i === on ? " data-active" : ""}${i === warn ? " data-attention" : ""}></span>`;
+    }).join("")}</span>`).join("")}</span>`;
+  };
+  const machineDots = `<span class="penna-dots">${[0, 1, 2].map((i) => `<span class="penna-dot"${i === 0 ? " data-active" : ""}></span>`).join("")}</span>`;
+
+  const upIn = `<span class="zz-up" data-penna="phone.pill.icon">${ic("chevron-up")}</span>`;
+  const pill = ({ glyph = "square-terminal", title = "cargo test", meta = "zebrilus · main", trail = dots(0), up = false, tone, dim } = {}) => `<button class="penna-compact-pill" data-penna="floating"${up ? " data-up" : ""}><span class="penna-pill-tile" data-penna="phone.pill.icon"${tone ? ` data-tone="${tone}"` : ""}${dim ? " data-dim" : ""}>${ic(glyph)}</span><span class="penna-pill-copy"><span class="penna-pill-title"${dim ? " data-dim" : ""}>${title}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text"${tone ? ` data-tone="${tone}"` : ""}>${meta}</span>${trail}</span></span>${up ? upIn : ""}</button>`;
+  const disc = (glyph, { quiet, tone, count, plain, armed, fade } = {}) => `<button class="zz-disc" data-penna="floating"${quiet ? " data-quiet" : ""}${tone ? ` data-tone="${tone}"` : ""}${armed ? " data-armed" : ""}${fade ? " data-fade" : ""}>${ic(glyph)}${count ? `<span class="zz-count"${plain ? " data-plain" : ""}>${count}</span>` : ""}</button>`;
+  const attention = (count) => disc("chat", { tone: "warning", count });
+  const bar = (...parts) => `<div class="zz-bar">${parts.join("")}</div>`;
+  const HOLE = `<span class="zz-hole"></span>`;
+  const PILL_HOLE = `<span class="zz-hole" data-pill></span>`;
+  const close = (where) => `<button class="penna-stack-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close" style="${where}">${ic("xmark")}</button>`;
+  const CENTER = "left: 173px";
+  const RIGHT = "right: 16px";
+
+  const TERM = ["~/dev/zebrilus main", "❯ cargo test -p penna pill", "   Compiling penna v0.42.0", "running 14 tests", "test pill::menu_order ... ok", "test pill::new_chat ... ok", "test pill::label_chip ... ok", "✓test result: ok. 14 passed", "❯ "];
+  const termLine = (line, find) => {
+    if (line.startsWith("✓")) return `<span data-ink="success">${esc(line.slice(1))}</span>`;
+    if (line.startsWith("❯")) return `<b>${esc(line)}</b>`;
+    if (find && line.includes("pill")) return esc(line).replace("pill", `<span class="zz-hit"${line.includes("new_chat") ? " data-current" : ""}>pill</span>`);
+    return esc(line);
+  };
+  const term = (find) => `<pre class="zz-term">${TERM.map((l) => termLine(l, find)).join("\n")}<span class="zz-cursor"></span></pre>`;
+  const web = `<div class="zz-web"><i data-bar style="width: 55%"></i><i></i><i style="width: 90%"></i><i style="width: 72%"></i><i data-block></i><i style="width: 84%"></i><i style="width: 60%"></i></div>`;
+
+  const CHAT = "Make the pill menu offer New chat";
+  const you = (text) => `<div class="penna-card penna-chat-bubble" data-penna="card.bubble" role="group"><span>${text}</span></div>`;
+  const prow = (label) => `<div class="penna-touch-row" data-penna="phone.row" role="button"><span class="penna-touch-row-lines"><span>${label}</span></span></div>`;
+  const askCard = `<div class="penna-chat-ask-card" data-penna="field.composer"><div class="penna-chat-ask-what" role="button"><div class="penna-chat-ask-what-head"><span class="penna-chat-ask-what-title">Run this command?</span></div><span class="penna-chat-ask-what-detail">cargo test -p penna pill_menu --all-features</span></div>${prow("Allow once")}${prow("Always allow cargo test")}${prow("Deny")}</div>`;
+  const chat = `<div class="zz-pane"><div class="zz-tx">${you("Make the pill menu offer New chat, nearest the thumb.")}<p>The order lives in pill_menu.rs. I'll put New chat last in the New group, where it sits nearest the thumb.</p><p>I want to run the pill tests.</p></div><div class="zz-fade"></div><div class="zz-cdock">${askCard}</div></div>`;
+
+  const bars = (widths) => widths.map((w) => `<i style="--w: ${w}"></i>`).join("");
+  const P = {
+    term: { kind: "term", lines: TERM },
+    chat: { kind: "chat", you: [0.92, 0.5], reply: [1, 0.9, 0.96, 0.62] },
+    stack: { kind: "chat", you: [0.8, 0.42], reply: [1, 0.94, 0.7] },
+    web: { kind: "web", host: "127.0.0.1:8090", bars: [0.55, 1, 0.9, 0.72] },
+    zsh: { kind: "term", lines: ["~/.files main", "❯ git status", "nothing to commit", "❯ "] },
+  };
+  const at = (pane, x, y, w, h) => ({ ...pane, rect: [x, y, w, h] });
+  const one = (pane) => [at(pane, 0, 0, 1, 1)];
+  const sideBySide = (a, b) => [at(a, 0, 0, 0.5, 1), at(b, 0.5, 0, 0.5, 1)];
+  const preview = (p) => {
+    if (p.kind === "term") return `<pre class="penna-window-term">${p.lines.map((l) => termLine(l)).join("\n")}</pre>`;
+    if (p.kind === "web") return `<span class="penna-window-host">${p.host}</span><span class="penna-window-page"><i data-bar style="--w: ${p.bars[0]}"></i>${bars(p.bars.slice(1))}<i data-block></i></span>`;
+    return `<span class="penna-window-chat"><span class="penna-window-bubble">${bars(p.you)}</span><span class="penna-window-lines">${bars(p.reply)}</span></span>`;
+  };
+  const mark = (m) => (m === "spin" ? `<i class="penna-touch-spinner" data-icon="loader"></i>` : m ? `<span class="penna-tone-dot" data-tone="${m}"></span>` : "");
+  const tile = (w, column, row) => `<div class="penna-bento-tile penna-window-tile" data-penna="phone.card" style="--column: ${column}; --row: ${row}; --columns: 2; --span: 2"><span class="penna-machine-name">${mark(w.mark)}<span>${w.title}</span></span>${w.say ? `<span class="penna-machine-state" data-tone="${w.mark}">${w.say}</span>` : ""}<span class="penna-window-preview">${w.panes.map((p) => `<span class="penna-window-pane" data-penna="tile.mini" style="--x: ${p.rect[0]}; --y: ${p.rect[1]}; --w: ${p.rect[2]}; --h: ${p.rect[3]}">${preview(p)}</span>`).join("")}</span></div>`;
+  const WINDOWS = [
+    { title: "cargo test", mark: "warning", say: "Needs approval", panes: sideBySide(P.term, P.chat) },
+    { title: "Fix pane stack hit testing on iPad", mark: "spin", panes: one(P.stack) },
+    { title: "Phone machines", panes: one(P.web) },
+    { title: "zsh", panes: one(P.zsh) },
+  ];
+  const machinePage = (far) => `<div class="zz-back"${far ? " data-far" : ""}><div class="penna-zoom-title">macbook</div><div class="zz-sess"><div class="penna-touch-header"><span>zebrilus</span></div><div class="penna-bento" style="--rows: 4">${WINDOWS.map((w, i) => tile(w, (i % 2) * 2, Math.floor(i / 2) * 2)).join("")}</div></div></div>`;
+
+  const sChip = (glyph, label, extra = "") => `<button class="penna-stack-chip" data-penna="floating"${extra}>${ic(glyph)}<span>${label}</span></button>`;
+  const sLabel = (label) => `<span class="penna-stack-label" data-penna="floating">${label}</span>`;
+  const group = (chips, extra = "") => `<div class="penna-stack-group"${extra}>${chips}</div>`;
+  const stack = (align, groups, closeAt) => `<div class="penna-stack" data-open><div class="penna-stack-scrim"></div><div class="penna-stack-column" data-align="${align}">${groups.join("")}</div>${closeAt ? close(closeAt) : ""}</div>`;
+  const NEW = [group(sChip("layers-plus", "New session")), group(`${sLabel("New in zebrilus")}${sChip("globe", "New browser")}${sChip("square-terminal", "New terminal")}${sChip("chat-plus", "New chat")}`)];
+  const PANE = [group(sChip("keyboard", "All bindings", ` data-look="quiet"`)), group(`${sChip("search", "Find")}${sChip("pencil", "Rename")}${sChip("xmark", "Close", ` data-tone="danger"`)}`)];
+  const WEBMENU = [group(`${sChip("pencil", "Rename")}${sChip("xmark", "Close", ` data-tone="danger"`)}`), group(`${sChip("inspector", "Pick element")}${sChip("external-link", "Open on this phone")}`), group(sChip("globe", "127.0.0.1:8090/mockups/phone")), group(`${sChip("arrow-right", "Forward")}${sChip("redo-2", "Reload")}`, " data-row")];
+  const HISTORY = [group(`${sLabel("Back to")}${sChip("globe", "Pill board")}${sChip("globe", "Phone components")}${sChip("globe", "Machines board")}`)];
+
+  const inboxChip = (glyph, title, say, tone) => `<button class="penna-stack-chip" data-penna="floating">${ic(glyph)}<span class="zz-chip-title">${title}</span><span data-say="${tone}">${say}</span></button>`;
+  const inbox = `<div class="zz-scrim"></div><div class="zz-inbox">${inboxChip("square-terminal", "cargo build", "Exit 101", "danger")}${inboxChip("chat", "Fix pane stack hit testing", "Done", "done")}${inboxChip("chat", CHAT, "Needs approval", "warning")}</div>`;
+  const answer = `<div class="zz-scrim"></div><div class="zz-answer"><div class="zz-who">${ic("chat")}<span>${CHAT}</span></div>${askCard}</div>`;
+
+  const finger = (x, y, trail = 0) => `${trail ? `<span class="zz-trail" style="left: ${x}px; top: ${y}px; height: ${trail}px"></span>` : ""}<span class="zz-finger" style="left: ${x}px; top: ${y}px"></span>`;
+  const hfinger = (x, y, trail) => `<span class="zz-htrail" style="left: ${x}px; top: ${y}px; width: ${trail}px"></span><span class="zz-finger" style="left: ${x}px; top: ${y}px"></span>`;
+  const lift = `<div class="zz-lift" style="transform: translateY(96px) scale(0.74)">${term()}</div>`;
+  const swipe = `<div class="zz-slide" style="transform: translateX(-201px)">${term()}</div><div class="zz-slide" style="transform: translateX(201px)">${chat}</div>`;
+
+  const txt = (t) => `<span class="penna-text" data-penna-text>${t}</span>`;
+  const key = (inner, label, attrs = "") => `<span class="penna-key-row-slot"><button class="penna-key" data-penna="phone.key"${label ? ` aria-label="${label}"` : ""}${attrs}>${inner}</button></span>`;
+  const keyRow = () => {
+    const mid = [key(ic("key-escape"), "Escape"), key(ic("key-tab"), "Tab"), key(ic("key-control"), "Control"), key(ic("key-option"), "Alt"), key(txt("/"), ""), key(txt("@"), "")].join("");
+    const pad = `<span class="penna-key-row-slot"><button class="penna-key penna-arrow-pad-static" data-penna="phone.key" aria-label="Arrows">${ic("arrows-move")}</button></span>`;
+    return `<div class="zz-keys"><div class="penna-key-row" data-size="touch"><div class="penna-key-row-pill" data-penna="floating"></div><span class="penna-key-row-pin">${key(`<span class="zz-chord">${ic("key-control")}${txt("b")}</span>`, "Prefix")}</span><div class="penna-key-row-scroll">${mid}</div><span class="penna-key-row-pin">${pad}${key(ic("chevron-down"), "Hide keyboard")}</span><button class="penna-key-row-more" data-penna="phone.pill" data-side="back">${ic("chevron-left")}</button><button class="penna-key-row-more" data-penna="phone.pill" data-side="ahead">${ic("chevron-right")}</button></div></div>`;
+  };
+  const kb = () => {
+    const keys = (s) => [...s].map((k) => `<i>${k}</i>`).join("");
+    return `<div class="zz-kb"><div class="zz-kb-row">${keys("qwertyuiop")}</div><div class="zz-kb-row">${keys("asdfghjkl")}</div><div class="zz-kb-row"><i data-w>⇧</i>${keys("zxcvbnm")}<i data-w>⌫</i></div><div class="zz-kb-row"><i data-w>123</i><i data-space>space</i><i data-ret>return</i></div></div>`;
+  };
+  const findField = `<div class="zz-find-dock"><div class="penna-find" data-penna="field.composer"><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Close find">${ic("xmark")}</button><span class="penna-find-query zz-caret">pill</span><span class="penna-find-count">2 of 4</span><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Previous match">${ic("chevron-up")}</button><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Next match">${ic("chevron-down")}</button></div></div>`;
+
+  const trow = (label, { glyph, check, detail } = {}) => `<div class="penna-touch-row" data-penna="phone.row" role="button"${detail ? ` data-lines="2"` : ""}>${glyph ? ic(glyph) : ""}<span class="penna-touch-row-lines"><span>${label}</span>${detail ? `<span>${detail}</span>` : ""}</span>${check ? `<span class="penna-touch-row-state">${ic("check")}</span>` : ""}</div>`;
+  const tabsSheet = `<div class="penna-sheet" style="--penna-sheet-rest: 8px"><div class="penna-sheet-scrim"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header"><span class="penna-sheet-title">Tabs</span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close">${ic("xmark")}</button></div><div class="penna-sheet-list">${trow("Phone machines", { detail: "127.0.0.1:8090", check: true })}${trow("Pill board", { detail: "127.0.0.1:8090" })}${trow("penna docs", { detail: "127.0.0.1:8102" })}${trow("New tab", { glyph: "plus" })}</div></div></div></div>`;
+
+  const address = `<span class="zz-addr">${ic("globe")}<span>127.0.0.1:8090</span></span>`;
+  const webPill = (up) => pill({ glyph: "globe", title: "Phone machines", meta: address, trail: dots(3), up });
+  const chatPill = (up) => pill({ glyph: "chat", title: CHAT, meta: "Needs approval", tone: "warning", trail: dots(1), up });
+  const machinePill = (up, dim) => pill({ glyph: "laptop", title: "macbook", meta: "zebrilus", trail: machineDots, up, dim });
+
+  const frames = {
+    "s-term": () => `${term()}${bar(disc("chevron-up"), pill(), disc("plus"))}`,
+    "s-chat": () => `${chat}${bar(disc("chevron-up"), chatPill(false), disc("plus"))}`,
+    "s-web": () => `${web}${bar(disc("chevron-up"), webPill(false), disc("plus"))}`,
+    "s-machine": () => `${machinePage(false)}${bar(disc("chevron-up"), machinePill(false), disc("plus"))}`,
+    "s-menu": () => `${term()}${stack("center", PANE, CENTER)}${bar(disc("chevron-up"), PILL_HOLE, disc("plus"))}`,
+    "s-new": () => `${term()}${stack("end", NEW, RIGHT)}${bar(disc("chevron-up"), pill(), HOLE)}`,
+    "s-lift": () => `${machinePage(true)}${lift}${bar(disc("chevron-up", { armed: true }), machinePill(false), disc("plus"))}${finger(201, 560, 230)}`,
+    "s-swipe": () => `${swipe}${bar(disc("chevron-up"), pill({ title: "cargo test", trail: dots(0, 1) }), disc("plus"))}${hfinger(150, 826, 120)}`,
+    "s-wait": () => `${term()}${bar(disc("chevron-up"), pill({ trail: dots(0, 1) }), attention(), disc("plus"))}`,
+    "s-answer": () => `${term()}${answer}${bar(disc("chevron-up"), pill({ trail: dots(0, 1) }), attention(), disc("plus"))}${finger(297, 826)}`,
+    "s-inbox": () => `${term()}${inbox}${bar(disc("chevron-up"), pill({ trail: dots(0, 1) }), attention(3), disc("plus"))}`,
+    "s-keys": () => `${term()}${keyRow()}${kb()}`,
+    "c-term": () => `${term()}${bar(pill({ up: true }), disc("search", { quiet: true }), disc("keyboard"))}`,
+    "c-chat": () => `${chat}${bar(chatPill(true))}`,
+    "c-web": () => `${web}${bar(disc("arrow-left"), webPill(true), disc("layers", { count: 3, plain: true }))}`,
+    "c-machine": () => `${machinePage(false)}${bar(machinePill(true), disc("plus"))}`,
+    "c-keys": () => `${term()}${keyRow()}${kb()}`,
+    "c-find": () => `${term(true)}${findField}${kb()}`,
+    "c-wait": () => `${term()}${bar(pill({ up: true, trail: dots(0, 1) }), attention(), disc("keyboard"))}`,
+    "c-swipe": () => `${swipe}${bar(pill({ up: true, trail: dots(0, 1) }), disc("search", { quiet: true, fade: true }), disc("keyboard", { fade: true }))}${hfinger(150, 826, 120)}`,
+    "c-tabs": () => `${web}${bar(disc("arrow-left"), webPill(true), disc("layers", { count: 3, plain: true }))}${tabsSheet}`,
+    "c-history": () => `${web}${stack("start", HISTORY)}${bar(disc("arrow-left"), webPill(true), disc("layers", { count: 3, plain: true }))}${finger(44, 826)}`,
+    "c-webmenu": () => `${web}${stack("center", WEBMENU, CENTER)}${bar(disc("arrow-left"), PILL_HOLE, disc("layers", { count: 3, plain: true }))}`,
+    "c-new": () => `${machinePage(false)}${stack("end", NEW, RIGHT)}${bar(machinePill(true), HOLE)}`,
+  };
+  for (const phone of document.querySelectorAll("[data-frame]")) phone.innerHTML = frames[phone.dataset.frame]();
+
+  for (const phone of document.querySelectorAll('[data-frame="c-history"] .penna-stack-close, [data-frame="c-history"] .zz-bar')) phone.style.zIndex = 26;
+
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  for (const phone of document.querySelectorAll(".zz-phone")) {
+    phone.insertAdjacentHTML("afterbegin", status);
+    phone.insertAdjacentHTML("beforeend", `<span class="zz-home"></span>`);
+  }
+
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.querySelector(".zz-intro").style.display = "none";
+    for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+  }
+})();
+</script>
+</body>
+</html>

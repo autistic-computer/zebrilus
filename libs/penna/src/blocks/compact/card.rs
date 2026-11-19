@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, Bounds, ClickEvent, Div, ElementId, Hsla, InteractiveElement as _,
-    IntoElement, ParentElement, Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _,
-    Styled as _, Window, canvas, div, fill, prelude::FluentBuilder as _, px,
+    AnyElement, App, ClickEvent, ElementId, InteractiveElement as _, IntoElement, ParentElement,
+    Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled as _, Window,
+    prelude::FluentBuilder as _, px,
 };
 
 use crate::{
@@ -16,53 +16,11 @@ use crate::{
 
 use super::bar::compact_bar_button;
 
-const BLUR_DIM_MAX: f32 = 0.95;
-
 type ClickHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
 #[must_use]
 pub fn zoom_card_ground(cx: &App) -> Ground {
     cx.theme().ground_of(Surface::new(roles::PHONE_CARD))
-}
-
-#[must_use]
-pub fn lifted_card(
-    content: impl IntoElement,
-    ground: Hsla,
-    corner: Pixels,
-    edge: f32,
-    cx: &App,
-) -> Div {
-    div()
-        .overflow_hidden()
-        .rounded(corner)
-        .bg(ground)
-        .child(content)
-        .child(
-            div()
-                .absolute()
-                .inset_0()
-                .rounded(corner)
-                .border_1()
-                .border_color(cx.theme().border().opacity(edge.clamp(0.0, 1.0))),
-        )
-}
-
-#[must_use]
-pub fn backdrop_blur(blur: Pixels, dim: f32, cx: &App) -> Div {
-    let tint = cx.theme().background.opacity(dim.clamp(0.0, BLUR_DIM_MAX));
-    div().absolute().inset_0().child(
-        canvas(
-            |_, _, _| {},
-            move |bounds: Bounds<Pixels>, (), window, _| {
-                let above = bounds.top() - px(1.0);
-                if !window.paint_blur_fade(bounds, tint, blur, above - px(1.0), above) {
-                    window.paint_quad(fill(bounds, tint));
-                }
-            },
-        )
-        .size_full(),
-    )
 }
 
 #[derive(IntoElement)]

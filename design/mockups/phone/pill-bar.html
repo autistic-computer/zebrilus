@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone bar</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/row/row.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-phone .penna-bento { --penna-bento-width: 370px; }
+  .zz-story > figure > figcaption > i { color: var(--penna-warning-ink); }
+
+  .zz-term { position: absolute; inset: 54px 0 auto; margin: 0; padding: 8px 16px; font: 13px/18px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; overflow: hidden; }
+  .zz-term > b { font-weight: 400; color: var(--penna-fg); }
+  .zz-term > [data-ink="success"] { color: var(--penna-success-ink); }
+  .zz-cursor { display: inline-block; width: 8px; height: 15px; vertical-align: -3px; background: var(--penna-fg); }
+
+  .zz-web { position: absolute; inset: 54px 0 0; display: flex; flex-direction: column; gap: 14px; padding: 20px; }
+  .zz-web > i { height: 14px; border-radius: 7px; background: color-mix(in srgb, var(--penna-fg) 14%, transparent); }
+  .zz-web > i[data-bar] { height: 28px; border-radius: 8px; }
+  .zz-web > i[data-block] { height: 220px; border-radius: 16px; }
+
+  .zz-back { position: absolute; inset: 0; display: flex; flex-direction: column; gap: var(--penna-gap-group); padding: 110px 16px 0; }
+  .zz-back > .penna-zoom-title { padding: 0; }
+  .zz-sess { display: flex; flex-direction: column; }
+
+  .zz-bar > .penna-compact-pill[data-up] { padding-right: var(--penna-space-8); }
+  .zz-up[data-penna] { display: grid; flex: none; place-items: center; width: 40px; height: 40px; color: var(--penna-fg); --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 18px; }
+
+  .zz-disc[data-penna] { position: relative; display: grid; flex: none; place-items: center; width: 56px; height: 56px; margin: 0; padding: 0; color: var(--penna-fg); --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 22px; }
+  .zz-disc[data-quiet] { color: var(--penna-muted); }
+  .zz-disc[data-tone="warning"] { color: var(--penna-warning-ink); }
+  .zz-disc[data-close][data-penna] { background: var(--penna-primary); color: var(--penna-on-primary); }
+  .zz-count { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--penna-warning); color: var(--penna-on-warning); font-size: 12px; line-height: 20px; font-weight: 600; text-align: center; }
+  .zz-addr { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .zz-addr > [data-icon] { flex: none; color: var(--penna-muted); --penna-icon-size: 14px; }
+  .zz-addr > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .zz-dock[data-penna] { position: relative; display: flex; flex: 1; align-items: center; gap: 2px; min-width: 0; height: 56px; padding: 0 6px; overflow: hidden; --penna-r: 9999px; --penna-k: 1; }
+  .zz-dock > s { flex: none; width: 1px; height: 24px; margin: 0 2px; background: var(--penna-divider); }
+  .zz-chip[data-penna] { position: relative; display: grid; flex: none; place-items: center; width: 40px; height: 40px; color: var(--penna-muted); --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 20px; }
+  .zz-chip[data-penna]:not([data-on]) { background: transparent; box-shadow: none; }
+  .zz-chip[data-on][data-penna] { display: flex; gap: 8px; width: auto; max-width: 150px; padding: 0 14px; color: var(--penna-fg); font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); font-weight: 500; }
+  .zz-chip[data-on] > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-chip[data-tone="warning"][data-penna] { color: var(--penna-warning-ink); background: color-mix(in srgb, var(--penna-warning) 14%, transparent); }
+  .zz-chip > b { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--penna-warning); box-shadow: 0 0 0 2px var(--penna-bg); }
+  .zz-dock[data-more]::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 56px; border-radius: 0 28px 28px 0; background: linear-gradient(90deg, transparent, var(--penna-panel) 70%); pointer-events: none; }
+  .zz-dock > .zz-more { position: absolute; z-index: 1; right: 12px; color: var(--penna-muted); --penna-icon-size: 16px; }
+
+  .zz-phone .penna-stack { z-index: 25; }
+  .zz-phone .penna-stack-column { right: 16px; bottom: 92px; }
+
+  .zz-table { display: grid; grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); margin-top: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-table > * { padding: 10px 16px 10px 0; box-shadow: inset 0 1px var(--penna-divider); }
+  .zz-table > b { font-weight: 600; }
+  .zz-table > span { color: var(--penna-fg-muted); }
+  .zz-table > [data-head] { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--penna-fg-muted); box-shadow: none; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>The bar</h1>
+    <p>Today the bottom of the phone is one pill: it names the pane, pages on a swipe, goes up on its disc or a drag, and hides everything else behind a tap. Three takes on breaking it into pieces that each do one thing, all on the same moment: a terminal in zebrilus that just ran the tests, with a Claude chat one pane over waiting to run a command. Every take carries the same attention disc, which shows only while something waits on you.</p>
+  </div>
+
+  <section data-take="today">
+    <h2>Today</h2>
+    <div class="penna-variants zz-phones zz-story">
+      <figure>
+        <div class="zz-phone" data-frame="today"></div>
+        <figcaption><b>One pill</b>Glyph, name, session, page dots and the up disc. The chat that waits is the yellow dot. New chat, Rename, Find and the rest are one tap into the menu.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section data-take="a">
+    <h2>1. Split bar</h2>
+    <p>The same parts pulled apart. Up leaves the pill for a disc of its own on the left, and making something new gets a disc on the right, since it is what the menu is opened for most.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure>
+        <div class="zz-phone" data-frame="a1"></div>
+        <figcaption><b>1a. At rest</b>Up, the pill, plus: three 56 pieces, 8 apart. The pill keeps the name and the dots; a tap opens the pane's menu (Rename, Close, Find, All bindings) and a swipe pages. Dragging the pill up still goes up.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="a2"></div>
+        <figcaption><b>1b. Something waits</b>The attention disc slides in between the pill and plus, in warning ink with the waiting pane's glyph. A tap goes to it; holding it answers the ask in place. The pill gives up the width.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="a3"></div>
+        <figcaption><b>1c. Plus</b>Opens the New group straight away, New chat nearest the thumb, under the session it lands in. The plus turns into the close disc. One tap less than today for the most common pick.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section data-take="b">
+    <h2>2. Pane dock</h2>
+    <p>The dots become the panes. Every pane in the session is a glyph in the bar, grouped by window, and the one on screen widens to say its name. Jumping is a tap, not a count of swipes.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure>
+        <div class="zz-phone" data-frame="b1"></div>
+        <figcaption><b>2a. At rest</b>Up on the left, then the dock: the pane on screen as its name, cargo test, then the chat beside it, a rule, and the next windows' panes. Each glyph is a 40 chip with a 44 target. Tap one to go there; tap the wide one for the pane's menu. Sideways drag still pages.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="b2"></div>
+        <figcaption><b>2b. Something waits</b>The waiting chat's chip takes the warning tint and a dot, so you see which pane it is before you go. The attention disc joins only for waits in other sessions and machines, the ones the dock cannot show.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="b3"></div>
+        <figcaption><b>2c. Many panes</b>Past what fits, the dock scrolls sideways with a fade and a chevron at the end, the way the key row does. The wide chip stays in view. The session name is gone from the bar; the machine page has it.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section data-take="c">
+    <h2>3. Context bar</h2>
+    <p>The pill stays, and beside it go the one or two things you do most in that kind of pane. The discs change with the pane; the pill and its gestures do not.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure>
+        <div class="zz-phone" data-frame="c1"></div>
+        <figcaption><b>3a. Terminal</b>Find and the keyboard. Today the keyboard opens only from a tap on the terminal and Find is two taps away in the menu. Up stays inside the pill.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="c2"></div>
+        <figcaption><b>3b. Browser</b>Back on the left, the page's address in the pill, and Tabs with its count on the right. A tap on the pill still opens the menu, which keeps Forward, Reload and Pick element.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone" data-frame="c3"></div>
+        <figcaption><b>3c. A machine</b>The machine's pill and New beside it, which opens the New group for the session under the top row. The attention disc shows here too, for the chat that waits. A chat pane gets no discs: its composer is already there.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section data-take="compare">
+    <h2>Side by side</h2>
+    <div class="zz-table">
+      <span data-head></span><span data-head>1. Split bar</span><span data-head>2. Pane dock</span><span data-head>3. Context bar</span>
+      <b>Pieces at rest</b><span>Up, pill, plus</span><span>Up, dock</span><span>Pill and up to two discs</span>
+      <b>One tap to</b><span>Go up, the New group, the menu</span><span>Any pane in the session, go up</span><span>Keyboard, Find, Back, Tabs, New</span>
+      <b>Gives up</b><span>Pill width, 370 down to 242</span><span>The session name, the dots</span><span>The same bar on every pane</span>
+      <b>Build</b><span>Small: the same parts in new places</span><span>Medium: a new dock, scrolling, hit targets</span><span>Medium: a disc set per pane kind</span>
+      <b>Mixes with</b><span>2 (the dock as the pill) or 3</span><span>1's plus disc</span><span>1's up disc</span>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+  const GROUPS = [2, 1, 1, 1];
+  const dots = (on, warn = -1) => {
+    let n = 0;
+    return `<span class="penna-dots">${GROUPS.map((count) => `<span class="penna-dots-group">${Array.from({ length: count }, () => {
+      const i = n++;
+      return `<span class="penna-dot"${i === on ? " data-active" : ""}${i === warn ? " data-attention" : ""}></span>`;
+    }).join("")}</span>`).join("")}</span>`;
+  };
+  const machineDots = `<span class="penna-dots">${[0, 1, 2].map((i) => `<span class="penna-dot"${i === 0 ? " data-active" : ""}></span>`).join("")}</span>`;
+
+  const upDisc = `<span class="zz-up" data-penna="phone.pill.icon">${ic("chevron-up")}</span>`;
+  const pill = ({ glyph = "square-terminal", title = "cargo test", meta = "zebrilus · main", trail = dots(0), up = false } = {}) => `<button class="penna-compact-pill" data-penna="floating"${up ? " data-up" : ""}><span class="penna-pill-tile" data-penna="phone.pill.icon">${ic(glyph)}</span><span class="penna-pill-copy"><span class="penna-pill-title">${title}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">${meta}</span>${trail}</span></span>${up ? upDisc : ""}</button>`;
+  const disc = (glyph, { quiet, tone, count, close } = {}) => `<button class="zz-disc" data-penna="floating"${quiet ? " data-quiet" : ""}${tone ? ` data-tone="${tone}"` : ""}${close ? " data-close" : ""}>${ic(glyph)}${count ? `<span class="zz-count">${count}</span>` : ""}</button>`;
+  const attention = (count) => disc("chat", { tone: "warning", count });
+  const bar = (...parts) => `<div class="zz-bar">${parts.join("")}</div>`;
+
+  const TERM = ["~/dev/zebrilus main", "❯ cargo test -p penna pill", "   Compiling penna v0.42.0", "running 14 tests", "test pill::menu_order ... ok", "test pill::new_chat ... ok", "test pill::label_chip ... ok", "✓test result: ok. 14 passed", "❯ "];
+  const termLine = (line) => {
+    if (line.startsWith("✓")) return `<span data-ink="success">${esc(line.slice(1))}</span>`;
+    if (line.startsWith("❯")) return `<b>${esc(line)}</b>`;
+    return esc(line);
+  };
+  const term = `<pre class="zz-term">${TERM.map(termLine).join("\n")}<span class="zz-cursor"></span></pre>`;
+  const web = `<div class="zz-web"><i data-bar style="width: 55%"></i><i></i><i style="width: 90%"></i><i style="width: 72%"></i><i data-block></i><i style="width: 84%"></i><i style="width: 60%"></i></div>`;
+
+  const bars = (widths) => widths.map((w) => `<i style="--w: ${w}"></i>`).join("");
+  const P = {
+    term: { kind: "term", lines: TERM },
+    chat: { kind: "chat", you: [0.92, 0.5], reply: [1, 0.9, 0.96, 0.62] },
+    stack: { kind: "chat", you: [0.8, 0.42], reply: [1, 0.94, 0.7] },
+    web: { kind: "web", host: "127.0.0.1:8090", bars: [0.55, 1, 0.9, 0.72] },
+    zsh: { kind: "term", lines: ["~/.files main", "❯ git status", "nothing to commit", "❯ "] },
+  };
+  const at = (pane, x, y, w, h) => ({ ...pane, rect: [x, y, w, h] });
+  const one = (pane) => [at(pane, 0, 0, 1, 1)];
+  const sideBySide = (a, b) => [at(a, 0, 0, 0.5, 1), at(b, 0.5, 0, 0.5, 1)];
+  const preview = (p) => {
+    if (p.kind === "term") return `<pre class="penna-window-term">${p.lines.map(termLine).join("\n")}</pre>`;
+    if (p.kind === "web") return `<span class="penna-window-host">${p.host}</span><span class="penna-window-page"><i data-bar style="--w: ${p.bars[0]}"></i>${bars(p.bars.slice(1))}<i data-block></i></span>`;
+    return `<span class="penna-window-chat"><span class="penna-window-bubble">${bars(p.you)}</span><span class="penna-window-lines">${bars(p.reply)}</span></span>`;
+  };
+  const mark = (m) => (m === "spin" ? `<i class="penna-touch-spinner" data-icon="loader"></i>` : m ? `<span class="penna-tone-dot" data-tone="${m}"></span>` : "");
+  const tile = (w, column, row) => `<div class="penna-bento-tile penna-window-tile" data-penna="phone.card" style="--column: ${column}; --row: ${row}; --columns: 2; --span: 2"><span class="penna-machine-name">${mark(w.mark)}<span>${w.title}</span></span>${w.say ? `<span class="penna-machine-state" data-tone="${w.mark}">${w.say}</span>` : ""}<span class="penna-window-preview">${w.panes.map((p) => `<span class="penna-window-pane" data-penna="tile.mini" style="--x: ${p.rect[0]}; --y: ${p.rect[1]}; --w: ${p.rect[2]}; --h: ${p.rect[3]}">${preview(p)}</span>`).join("")}</span></div>`;
+  const WINDOWS = [
+    { title: "cargo test", mark: "warning", say: "Needs approval", panes: sideBySide(P.term, P.chat) },
+    { title: "Fix pane stack hit testing on iPad", mark: "spin", panes: one(P.stack) },
+    { title: "Phone machines", panes: one(P.web) },
+    { title: "zsh", panes: one(P.zsh) },
+  ];
+  const machinePage = `<div class="zz-back"><div class="penna-zoom-title">macbook</div><div class="zz-sess"><div class="penna-touch-header"><span>zebrilus</span></div><div class="penna-bento" style="--rows: 4">${WINDOWS.map((w, i) => tile(w, (i % 2) * 2, Math.floor(i / 2) * 2)).join("")}</div></div></div>`;
+
+  const chip = (glyph, { on, title, tone, dot } = {}) => `<span class="zz-chip" data-penna="phone.pill.icon"${on ? " data-on" : ""}${tone ? ` data-tone="${tone}"` : ""}>${on ? `<span>${title}</span>` : ic(glyph)}${dot ? "<b></b>" : ""}</span>`;
+  const dock = (wait, many) => {
+    const first = [chip("square-terminal", { on: true, title: "cargo test" }), chip("chat", wait ? { tone: "warning", dot: true } : {})];
+    const rest = many
+      ? [[chip("chat")], [chip("globe"), chip("square-terminal")], [chip("square-terminal")], [chip("chat"), chip("globe")]]
+      : [[chip("chat")], [chip("globe")], [chip("square-terminal")]];
+    const groups = [first, ...rest].map((g) => g.join("")).join("<s></s>");
+    return `<div class="zz-dock" data-penna="floating"${many ? " data-more" : ""}>${groups}${many ? `<span class="zz-more">${ic("chevron-right")}</span>` : ""}</div>`;
+  };
+
+  const stackChip = (glyph, label) => `<button class="penna-stack-chip" data-penna="floating">${ic(glyph)}<span>${label}</span></button>`;
+  const newStack = `<div class="penna-stack" data-open><div class="penna-stack-scrim"></div><div class="penna-stack-column" data-align="end"><div class="penna-stack-group"><span class="penna-stack-label" data-penna="floating">New in zebrilus</span>${stackChip("globe", "New browser")}${stackChip("square-terminal", "New terminal")}${stackChip("chat-plus", "New chat")}</div></div></div>`;
+
+  const address = `<span class="zz-addr">${ic("globe")}<span>127.0.0.1:8090</span></span>`;
+  const frames = {
+    today: () => `${term}${bar(pill({ trail: dots(0, 1), up: true }))}`,
+    a1: () => `${term}${bar(disc("chevron-up"), pill(), disc("plus"))}`,
+    a2: () => `${term}${bar(disc("chevron-up"), pill({ trail: dots(0, 1) }), attention(), disc("plus"))}`,
+    a3: () => `${term}${newStack}${bar(disc("chevron-up"), pill(), disc("xmark", { close: true }))}`,
+    b1: () => `${term}${bar(disc("chevron-up"), dock(false, false))}`,
+    b2: () => `${term}${bar(disc("chevron-up"), dock(true, false))}`,
+    b3: () => `${term}${bar(disc("chevron-up"), dock(true, true))}`,
+    c1: () => `${term}${bar(pill({ up: true }), disc("search", { quiet: true }), disc("keyboard"))}`,
+    c2: () => `${web}${bar(disc("arrow-left"), pill({ glyph: "globe", title: "Phone machines", meta: address, trail: dots(3), up: true }), disc("layers", { count: undefined }))}`,
+    c3: () => `${machinePage}${bar(pill({ glyph: "laptop", title: "macbook", meta: "zebrilus", trail: machineDots, up: true }), attention(), disc("plus"))}`,
+  };
+  for (const phone of document.querySelectorAll("[data-frame]")) phone.innerHTML = frames[phone.dataset.frame]();
+
+  for (const tabs of document.querySelectorAll('[data-frame="c2"] .zz-disc:last-child')) tabs.insertAdjacentHTML("beforeend", `<span class="zz-count" style="background: var(--penna-panel); color: var(--penna-fg); box-shadow: 0 0 0 1px var(--penna-border)">3</span>`);
+
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  for (const phone of document.querySelectorAll(".zz-phone")) {
+    phone.insertAdjacentHTML("afterbegin", status);
+    phone.insertAdjacentHTML("beforeend", `<span class="zz-home"></span>`);
+  }
+
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.querySelector(".zz-intro").style.display = "none";
+    for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+  }
+})();
+</script>
+</body>
+</html>

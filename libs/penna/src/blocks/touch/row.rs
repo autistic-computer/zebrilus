@@ -494,6 +494,7 @@ impl Styled for TouchGroup {
 impl RenderOnce for TouchGroup {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
+        let rem = theme.font_size;
         let card = Surface::new(roles::SETTINGS_CARD);
         let layer = theme.layer(card, PaintState::Rest);
         let outer = theme.phone_radius();
@@ -506,26 +507,32 @@ impl RenderOnce for TouchGroup {
             let ground = layer.ground;
             let corner = ruled_corner(cx);
             let last = self.rows.len().saturating_sub(1);
-            return v_flex()
+            return crate::blocks::touch::at_rem(
+                v_flex()
+                    .w_full()
+                    .items_stretch()
+                    .layer(&layer)
+                    .rounded(corner)
+                    .refine_style(&self.style)
+                    .children(self.rows.into_iter().enumerate().map(|(index, row)| {
+                        row.listed(StackPosition::at(index, last), corner, ground)
+                    })),
+                rem,
+            );
+        }
+        let ground = layer.ground;
+        crate::blocks::touch::at_rem(
+            v_flex()
                 .w_full()
                 .items_stretch()
                 .layer(&layer)
-                .rounded(corner)
+                .rounded(outer)
+                .p(GROUP_INSET)
+                .gap(Space::S2)
                 .refine_style(&self.style)
-                .children(self.rows.into_iter().enumerate().map(|(index, row)| {
-                    row.listed(StackPosition::at(index, last), corner, ground)
-                }));
-        }
-        let ground = layer.ground;
-        v_flex()
-            .w_full()
-            .items_stretch()
-            .layer(&layer)
-            .rounded(outer)
-            .p(GROUP_INSET)
-            .gap(Space::S2)
-            .refine_style(&self.style)
-            .children(self.rows.into_iter().map(|row| row.nested(nest, ground)))
+                .children(self.rows.into_iter().map(|row| row.nested(nest, ground))),
+            rem,
+        )
     }
 }
 

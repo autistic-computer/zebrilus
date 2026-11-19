@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Machine view</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/row/row.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-phones.penna-variants { grid-template-columns: repeat(2, 424px); }
+  .zz-phone { --zz-card: color-mix(in oklab, var(--penna-fg) 6%, var(--penna-bg)); --zz-ground: var(--zz-card); }
+
+  .zz-screen { position: absolute; inset: 54px 0 0; display: flex; flex-direction: column; overflow: hidden; }
+  .zz-big { flex: none; padding: 44px 20px 0; font-size: var(--penna-text-touch-title-size); line-height: var(--penna-text-touch-title-line); font-weight: 700; }
+  .zz-col { display: flex; flex-direction: column; gap: 10px; padding: 8px 16px 120px; }
+  .zz-sess { margin: 14px 0 -2px 16px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); font-weight: 600; color: var(--penna-fg-muted); }
+  .zz-col > .zz-sess:first-child { margin-top: 8px; }
+  .zz-group { flex: none; overflow: hidden; border-radius: var(--penna-phone-radius); background: var(--zz-card); }
+
+  .zz-face[data-penna] { position: relative; display: grid; flex: none; place-items: center; width: var(--s); height: var(--s); padding: 0; border: 0; color: var(--penna-fg); background: linear-gradient(color-mix(in srgb, var(--penna-fg) 6%, var(--penna-fill)), var(--penna-fill)); box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--penna-fg) 16%, transparent), var(--penna-shadow-contact); --penna-icon-size: calc(var(--s) * 0.625); }
+  .zz-face[data-penna][data-brand] { color: var(--f); background: linear-gradient(color-mix(in oklab, var(--b) 84%, white), color-mix(in oklab, var(--b) 90%, black)); box-shadow: 0 calc(var(--s) / 56) calc(var(--s) * 3 / 56) rgb(0 0 0 / 0.2), 0 0 0 calc(var(--s) / 56) rgb(0 0 0 / 0.09), inset 0 calc(var(--s) / 28) 0 rgb(255 255 255 / 0.3); }
+  :root[data-penna-mode="dark"] .zz-face[data-penna][data-brand] { box-shadow: 0 calc(var(--s) / 56) calc(var(--s) * 3 / 56) rgb(0 0 0 / 0.4), 0 0 0 calc(var(--s) * 0.75 / 28) rgb(0 0 0 / 0.25), inset 0 calc(var(--s) / 28) 0 rgb(255 255 255 / 0.3), inset 0 0 0 calc(var(--s) * 0.75 / 28) rgb(255 255 255 / 0.12); }
+  .zz-dot { position: absolute; right: -2.5px; bottom: -2.5px; display: grid; place-items: center; width: 11px; height: 11px; border-radius: 50%; background: var(--zz-ground); }
+  .zz-dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--zz-tone); }
+  .zz-dot[data-tone="warning"] { --zz-tone: var(--penna-warning); }
+  .zz-dot[data-tone="ink"] { --zz-tone: var(--penna-fg); }
+  .zz-fstack { position: relative; flex: none; }
+  .zz-fstack > span { position: absolute; top: 0; padding: 2px; border-radius: 9px; background: var(--zz-ground); }
+
+  em { font-style: normal; }
+  em[data-tone="warning"] { color: var(--penna-warning-ink); }
+  em[data-tone="success"] { color: var(--penna-success-ink); }
+  .zz-mono { font-family: var(--penna-mono); font-size: 13px; }
+  .zz-work { --penna-icon-size: 13px; }
+  .zz-work > [data-icon] { display: inline-block; margin-right: 5px; vertical-align: -2px; }
+
+  .zz-r { position: relative; display: flex; align-items: center; gap: 14px; min-height: 68px; padding: 10px 14px 10px 16px; }
+  .zz-r + .zz-r::before { content: ""; position: absolute; top: 0; right: 0; left: 86px; height: 1px; background: var(--penna-divider); }
+  .zz-r > .zz-lead { display: grid; flex: none; place-items: center start; width: 56px; }
+  .zz-r > [data-icon="chevron-right"] { flex: none; color: var(--penna-muted); opacity: 0.6; --penna-icon-size: 14px; }
+  .zz-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+  .zz-copy > b { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-copy > span { overflow: hidden; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); color: var(--penna-muted); text-overflow: ellipsis; white-space: nowrap; }
+  .zz-r[data-warn] { --zz-ground: color-mix(in oklab, var(--penna-warning) 14%, var(--zz-card)); background: var(--zz-ground); }
+
+  .zz-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .zz-tile { --zz-ground: var(--zz-card); display: flex; flex-direction: column; justify-content: space-between; min-width: 0; height: 112px; padding: 14px; border-radius: var(--penna-phone-radius); background: var(--zz-card); }
+  .zz-tile[data-warn] { --zz-ground: color-mix(in oklab, var(--penna-warning) 14%, var(--zz-card)); background: var(--zz-ground); }
+  .zz-tile-top { display: flex; align-items: flex-start; justify-content: space-between; height: 28px; }
+  .zz-tile-top > em { font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); font-weight: 600; color: var(--penna-muted); }
+  .zz-tile-top > em[data-tone="warning"] { color: var(--penna-warning-ink); }
+  .zz-tile-bottom { display: flex; flex-direction: column; min-width: 0; }
+  .zz-tile-bottom > b { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-tile-bottom > span { overflow: hidden; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); color: var(--penna-muted); text-overflow: ellipsis; white-space: nowrap; }
+
+  .zz-txt { --zz-ground: var(--zz-card); display: flex; flex-direction: column; gap: 10px; min-width: 0; height: 168px; padding: 12px 14px 14px; overflow: hidden; border-radius: var(--penna-phone-radius); background: var(--zz-card); }
+  .zz-txt[data-wide] { grid-column: span 2; }
+  .zz-txt[data-warn] { --zz-ground: color-mix(in oklab, var(--penna-warning) 14%, var(--zz-card)); background: var(--zz-ground); }
+  .zz-head { display: flex; flex: none; align-items: center; gap: 8px; min-width: 0; }
+  .zz-head > b { flex: 1; min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-head > span { flex: none; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); color: var(--penna-muted); }
+  .zz-head > em { flex: none; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); font-weight: 600; }
+  .zz-body2 { display: flex; flex: 1; gap: 12px; min-height: 0; }
+  .zz-body2 > .zz-tail { align-self: flex-end; }
+  .zz-body2 > * + * { padding-left: 12px; box-shadow: inset 1px 0 var(--penna-divider); }
+  .zz-tail { flex: 1; min-width: 0; margin: 0; overflow: hidden; font: 12px/16px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; }
+  .zz-tail > b { font-weight: 400; color: var(--penna-fg); }
+  .zz-tail > [data-ink="success"] { color: var(--penna-success-ink); }
+  .zz-say { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; overflow: hidden; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); color: var(--penna-fg-muted); }
+  .zz-say > p { display: -webkit-box; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
+  .zz-say > p + p { margin-top: 6px; }
+  .zz-say > [data-ask] { color: var(--penna-warning-ink); font-weight: 600; }
+  .zz-say > [data-mono] { font-family: var(--penna-mono); font-size: 12px; color: var(--penna-fg); }
+  .zz-say > [data-quiet] { color: var(--penna-muted); }
+
+  .zz-hero { --zz-ground: var(--zz-card); display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: var(--penna-phone-radius); background: var(--zz-card); }
+  .zz-hero[data-warn] { --zz-ground: color-mix(in oklab, var(--penna-warning) 14%, var(--zz-card)); background: var(--zz-ground); }
+  .zz-hero .zz-tail { flex: none; font-size: 13px; line-height: 18px; }
+  .zz-hero > p { margin: 0; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
+  .zz-cmd { padding: 10px 12px; border-radius: 12px; background: var(--penna-bg); font: 13px/18px var(--penna-mono); }
+  .zz-acts { display: flex; gap: 8px; }
+  .zz-acts > button[data-penna] { flex: 1; }
+
+  .zz-tc { --zz-ground: var(--zz-card); display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; border-radius: var(--penna-phone-radius); background: var(--zz-card); }
+  .zz-tc > .zz-tail { flex: none; font-size: 13px; line-height: 18px; }
+  .zz-tc[data-split] > .zz-body2 > .zz-tail { font-size: 12px; line-height: 16px; }
+  .zz-one { --zz-ground: var(--zz-card); display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 10px 14px; border-radius: var(--penna-phone-radius); background: var(--zz-card); }
+  .zz-one[data-warn] { --zz-ground: color-mix(in oklab, var(--penna-warning) 14%, var(--zz-card)); background: var(--zz-ground); }
+  .zz-one > .zz-lead { display: grid; flex: none; place-items: center start; width: 32px; }
+  .zz-one > [data-icon="chevron-right"] { flex: none; color: var(--penna-muted); opacity: 0.6; --penna-icon-size: 14px; }
+
+  .zz-bar { align-items: center; }
+  .zz-disc[data-penna] { position: relative; display: grid; flex: none; place-items: center; width: 56px; height: 56px; margin: 0; padding: 0; color: var(--penna-fg); --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 22px; }
+
+  .zz-nums { display: grid; grid-template-columns: max-content minmax(0, 2fr) minmax(0, 1fr); max-width: 1300px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-nums > * { padding: 9px 16px 9px 0; box-shadow: inset 0 -1px var(--penna-divider); }
+  .zz-nums > b { font-weight: 600; color: var(--penna-fg-muted); }
+  .zz-nums > span:nth-child(3n + 1) { font-weight: 600; }
+  .zz-nums > span { color: var(--penna-fg); }
+  .zz-nums code { font: 12px/16px var(--penna-mono); }
+  .zz-table { display: grid; grid-template-columns: max-content repeat(5, minmax(0, 1fr)); margin-top: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-table > * { padding: 10px 16px 10px 0; box-shadow: inset 0 1px var(--penna-divider); }
+  .zz-table > b { font-weight: 600; }
+  .zz-table > span { color: var(--penna-fg-muted); }
+  .zz-table > [data-head] { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--penna-fg-muted); box-shadow: none; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Machine view</h1>
+    <p>Today each window is a big tile holding shrunk panes: a chat or a browser shrinks to grey bars, and a terminal to 5pt text. Five takes, each drawn on two days, none with the back button: up is the disc at the bottom left. <b>Today</b> is what the simulator shows on zzios-zebrilus. <b>Busy</b> is a macbook with three sessions: a Claude chat asks to run a command, Codex is working, the tests just passed next to nvim, and a page is open. A and C drop the previews. B and E keep text you can read instead of pictures. D puts what needs you on top.</p>
+  </div>
+
+  <section data-take="a">
+    <h2>A. Rows</h2>
+    <p>One row per window under its session's name: the program face with its dot, the title, one line under it. The line is what a preview was for: the ask, the agent's last words, a terminal's last line, the page's host. Tap zooms into the window.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="a-today"></div><figcaption><b>Today</b>Five rows. A two-pane window shows both faces.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="a-busy"></div><figcaption><b>Busy</b>The waiting row is tinted and says what it wants to run.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="b">
+    <h2>B. Text tiles</h2>
+    <p>Keeps the two-up grid, but each tile shows text at a size you can read instead of a shrunk picture: a terminal's last lines at 12pt, an agent's last message, a page's title and host. A two-pane window spans the row, one column per pane.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="b-today"></div><figcaption><b>Today</b>The ls and the git log read; the empty chats say so.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="b-busy"></div><figcaption><b>Busy</b>The waiting tile carries the command it asks to run.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="c">
+    <h2>C. Small tiles</h2>
+    <p>The Machines tile one level down: 112 tall, two to a row, the window's faces stacked as on a machine tile, its title, and the same one line as A. Waiting tints the tile and puts the word in the corner.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="c-today"></div><figcaption><b>Today</b>The whole machine fits above the fold.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="c-busy"></div><figcaption><b>Busy</b>Three sessions, eight windows, still one screen.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="d">
+    <h2>D. Needs you on top</h2>
+    <p>One card above the rows of A for whatever waits on you, with its answer buttons, so you can allow a command without going in. With nothing waiting, the card is the pane you were last on, its last lines readable.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="d-today"></div><figcaption><b>Today</b>Nothing waits: the bash you left, then the rows.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="d-busy"></div><figcaption><b>Busy</b>Allow once or Deny right here; the chat's row drops out of the list below.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="e">
+    <h2>E. Terminal tails</h2>
+    <p><b>Picked.</b> Only terminals keep a preview, as their last four lines at 13pt across the full width, since a terminal's last lines are what you check from the phone: did it pass, is it done. Chats and pages shrink to one row each.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="e-today"></div><figcaption><b>Today</b>The chats are two rows; the three bash windows get their tails.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="e-busy"></div><figcaption><b>Busy</b>The test result reads at a glance; it scrolls past the first session.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="numbers">
+    <h2>E, the numbers</h2>
+    <p>Picked. What the build copies.</p>
+    <div class="zz-nums">
+      <b>Part</b><b>Value</b><b>Built as</b>
+      <span>Top row</span><span>No control: up is the bar's up disc. The large title still folds into the row.</span><span>machine view, no <code>machine_back</code></span>
+      <span>Window card</span><span><code>phone.card</code>, the phone corner (24), the body's width, <code>gap-related</code> 8 apart, <code>inset-card</code> 12 in</span><span><code>WindowCard</code></span>
+      <span>Shape</span><span>A tail card when the window has a terminal pane, else a row card</span><span><code>WindowCard::tail</code></span>
+      <span>Row card</span><span>64 tall: faces, then the title in strong <code>touch-body</code> over one <code>touch-small</code> line, <code>space-12</code> apart; a 20 chevron in muted ink at the end</span><span></span>
+      <span>Line</span><span>The pill's words for the pane: "Needs approval" in <code>warning</code>, the agent's working message after a 16 spinner, folder and branch, the page's host</span><span><code>pane_detail</code></span>
+      <span>Faces</span><span>One 24 program face per pane in a 2 ring of the card's fill, 20 apart, the first on top, each with its own dot; five, then +n</span><span><code>window_faces</code></span>
+      <span>Tail card header</span><span>24 tall: faces, the title <code>space-8</code> after, a waiting or failed word at the end in its ink</span><span></span>
+      <span>Tail</span><span><code>gap-related</code> 8 under the header: the pane's last 4 lines, <code>mono</code> 13 on 18, in the terminal's colors, clipped at the edge, no wrap</span><span><code>WindowTail</code></span>
+      <span>Two terminals</span><span>Two columns, a 1 divider between with <code>space-6</code> either side; never more than two</span><span></span>
+      <span>Waiting</span><span>The card's fill takes <code>warning</code> at 14% (oklab)</span><span><code>phone_card_ground</code></span>
+      <span>Zoom</span><span>A tail grows into its pane, a row card into the window's pane. While the pane is out its place is hollow (a 1 line at 30%); on landing it rings once (2 line, 350ms). A tail's box is 6 past its text, its corner the card's less 6.</span><span><code>filled</code>, <code>ring</code></span>
+    </div>
+  </section>
+
+  <section data-take="compare">
+    <h2>Side by side</h2>
+    <div class="zz-table">
+      <span data-head></span><span data-head>A. Rows</span><span data-head>B. Text tiles</span><span data-head>C. Small tiles</span><span data-head>D. Needs you on top</span><span data-head>E. Terminal tails</span>
+      <b>Previews</b><span>None, one line each</span><span>Text per pane, readable</span><span>None, one line each</span><span>One card</span><span>Terminals only</span>
+      <b>Busy fits one screen</b><span>Yes</span><span>No, three screens</span><span>Yes</span><span>Almost</span><span>No, two screens</span>
+      <b>Answer an ask</b><span>Tap in, answer</span><span>Tap in, answer</span><span>Tap in, answer</span><span>Here</span><span>Tap in, answer</span>
+      <b>Matches Machines</b><span>No, rows</span><span>Grid, taller</span><span>Same tile</span><span>No, rows</span><span>No</span>
+      <b>New parts</b><span>A window row</span><span>A text tile, a tail from the viewport</span><span>None: MachineTile and window_faces</span><span>A's row and an ask card</span><span>A tail card, A's row</span>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const MARKS = {"zz-neovim": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><defs><linearGradient id=\"a\" x1=\"50%\" x2=\"50%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#fff\" stop-opacity=\".8\"/><stop offset=\"100%\" stop-color=\"#fff\"/></linearGradient><linearGradient id=\"b\" x1=\"50%\" x2=\"50%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#fff\"/><stop offset=\"100%\" stop-color=\"#fff\" stop-opacity=\".8\"/></linearGradient></defs><g fill=\"none\" fill-rule=\"evenodd\"><path fill=\"url(#a)\" d=\"M0 5.16 5.11 0v23.99L0 18.89z\" transform=\"translate(2)\"/><path fill=\"url(#b)\" d=\"M14.6 5.21 19.78 0l-.1 23.99-5.11-5.1z\" transform=\"matrix(-1 0 0 1 36.35 0)\"/><path fill=\"#fff\" fill-opacity=\".9\" d=\"M7.11 0 20.4 20.28 16.68 24 3.38 3.77z\"/></g></svg>", "zz-claude": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><path fill=\"currentColor\" d=\"m19.6 66.5 19.7-11 .3-1-.3-.5h-1l-3.3-.2-11.2-.3L14 53l-9.5-.5-2.4-.5L0 49l.2-1.5 2-1.3 2.9.2 6.3.5 9.5.6 6.9.4L38 49.1h1.6l.2-.7-.5-.4-.4-.4L29 41l-10.6-7-5.6-4.1-3-2-1.5-2-.6-4.2 2.7-3 3.7.3.9.2 3.7 2.9 8 6.1L37 36l1.5 1.2.6-.4.1-.3-.7-1.1L33 25l-6-10.4-2.7-4.3-.7-2.6c-.3-1-.4-2-.4-3l3-4.2L28 0l4.2.6L33.8 2l2.6 6 4.1 9.3L47 29.9l2 3.8 1 3.4.3 1h.7v-.5l.5-7.2 1-8.7 1-11.2.3-3.2 1.6-3.8 3-2L61 2.6l2 2.9-.3 1.8-1.1 7.7L59 27.1l-1.5 8.2h.9l1-1.1 4.1-5.4 6.9-8.6 3-3.5L77 13l2.3-1.8h4.3l3.1 4.7-1.4 4.9-4.4 5.6-3.7 4.7-5.3 7.1-3.2 5.7.3.4h.7l12-2.6 6.4-1.1 7.6-1.3 3.5 1.6.4 1.6-1.4 3.4-8.2 2-9.6 2-14.3 3.3-.2.1.2.3 6.4.6 2.8.2h6.8l12.6 1 3.3 2 1.9 2.7-.3 2-5.1 2.6-6.8-1.6-16-3.8-5.4-1.3h-.8v.4l4.6 4.5 8.3 7.5L89 80.1l.5 2.4-1.3 2-1.4-.2-9.2-7-3.6-3-8-6.8h-.5v.7l1.8 2.7 9.8 14.7.5 4.5-.7 1.4-2.6 1-2.7-.6-5.8-8-6-9-4.7-8.2-.5.4-2.9 30.2-1.3 1.5-3 1.2-2.5-2-1.4-3 1.4-6.2 1.6-8 1.3-6.4 1.2-7.9.7-2.6v-.2H49L43 72l-9 12.3-7.2 7.6-1.7.7-3-1.5.3-2.8L24 86l10-12.8 6-7.9 4-4.6-.1-.5h-.3L17.2 77.4l-4.7.6-2-2 .2-3 1-1 8-5.5Z\"/></svg>", "zz-openai": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='currentColor' d='M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z'/></svg>"};
+  const marks = document.createElement("style");
+  marks.textContent = Object.entries(MARKS).map(([name, svg]) => `[data-icon="${name}"] { --penna-icon: url("data:image/svg+xml,${encodeURIComponent(svg)}"); }`).join("\n");
+  document.head.append(marks);
+
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const chev = ic("chevron-right");
+
+  const PROGRAMS = {
+    term: { glyph: "terminal" },
+    web: { glyph: "globe" },
+    claude: { mark: "zz-claude", b: "#E6683D", f: "#FFFFFF" },
+    codex: { mark: "zz-openai", b: "#FFFFFF", f: "#000000" },
+    nvim: { mark: "zz-neovim", b: "#00A3D7", f: "#FFFFFF" },
+  };
+  const face = (program, size, dot) => {
+    const p = PROGRAMS[program];
+    const look = p.mark ? ` data-brand style="--s: ${size}px; --b: ${p.b}; --f: ${p.f}"` : ` style="--s: ${size}px"`;
+    return `<span class="zz-face" data-penna="tile.stack"${look}>${ic(p.mark ?? p.glyph)}${dot ? `<span class="zz-dot" data-tone="${dot}"></span>` : ""}</span>`;
+  };
+  const dotOf = (w) => (w.state === "wait" ? "warning" : w.state === "new" ? "ink" : null);
+  const faces = (w, size = 28) => {
+    if (w.panes.length === 1) return face(w.panes[0], size, dotOf(w));
+    const step = size - 4;
+    const ring = size + 4;
+    const width = ring + (w.panes.length - 1) * step;
+    return `<span class="zz-fstack" style="width: ${width}px; height: ${ring}px">${w.panes.map((p, i) => `<span style="left: ${i * step}px; z-index: ${10 - i}">${face(p, size, i === 0 ? dotOf(w) : null)}</span>`).join("")}</span>`;
+  };
+
+  const termLine = (line) => {
+    if (line.startsWith("✓")) return `<span data-ink="success">${esc(line.slice(1))}</span>`;
+    if (line.startsWith("❯")) return `<b>${esc(line)}</b>`;
+    return esc(line);
+  };
+  const tail = (lines, n = 4) => `<pre class="zz-tail">${lines.slice(-n).map(termLine).join("\n")}</pre>`;
+  const working = (text) => `<span class="zz-work">${ic("loader")}${text}</span>`;
+
+  const W = (title, panes, more = {}) => ({ title, panes, ...more });
+  const LS = ["~/dev/zebrilus main", "❯ ll", "bash: ll: command not found", "❯ ls", "AGENTS.md  CLAUDE.md  Cargo.lock", "Cargo.toml Justfile   clients", "❯ "];
+  const PROMPT = ["~/dev/zebrilus main", "❯ "];
+  const GITLOG = ["❯ git log --oneline -4", "fd9a89d Draw UI blocks on the thin…", "5c97f1e Add a chart component", "a1703c2 Bundle new agent notif…", "❯ "];
+  const TESTS = ["❯ cargo test -p penna pill", "running 14 tests", "test pill::menu_order ... ok", "✓test result: ok. 14 passed", "❯ "];
+  const NVIM = ["  3 pub fn tile(cx: &App) {", "  4     let face = program", "  5         .face(24.0);", "  6     tile.child(face)", " NORMAL  tile.rs"];
+  const DOTFILES = ["~/.files main", "❯ git status", "nothing to commit, working tree clean", "❯ "];
+  const NIDUS = ["~/dev/nidus main", "❯ just bench clip", "paste 4 KiB   1.8 ms", "paste 1 MiB  41.0 ms", "❯ "];
+
+  const TODAY = {
+    machine: "zzios-zebrilus", session: "phone",
+    sessions: [{ name: "phone", windows: [
+      W("bash", ["term", "term"], { tails: [LS, PROMPT], line: `<span class="zz-mono">~/dev/zebrilus main</span>` }),
+      W("bash", ["term"], { tails: [GITLOG], line: `<span class="zz-mono">git log --oneline -4</span>` }),
+      W("Claude Code", ["claude"], { empty: true, line: "New chat" }),
+      W("Codex", ["codex"], { empty: true, line: "New chat" }),
+      W("bash", ["term"], { tails: [PROMPT], line: `<span class="zz-mono">~/dev/zebrilus main</span>` }),
+    ] }],
+  };
+  const ASKING = W("Make the pill menu offer New chat", ["claude"], { state: "wait", ask: "cargo test -p penna pill_menu", said: "I'll put New chat last in the New group, nearest the thumb.", line: `<em data-tone="warning">Wants to run cargo test</em>` });
+  const BUSY = {
+    machine: "macbook", session: "zebrilus",
+    sessions: [
+      { name: "zebrilus", windows: [
+        ASKING,
+        W("Fix pane stack hit testing", ["codex"], { state: "work", said: "The PiP's hit box is the stack's, not its own. Moving the occlusion onto the card.", line: working("Moving the occlusion onto the card") }),
+        W("cargo test", ["term", "nvim"], { tails: [TESTS, NVIM], line: `<em data-tone="success" class="zz-mono">test result: ok. 14 passed</em>` }),
+        W("Phone machines", ["web"], { host: "127.0.0.1:8090", line: "127.0.0.1:8090" }),
+      ] },
+      { name: "nidus", windows: [
+        W("Clipboard over QUIC", ["claude"], { state: "new", said: "Pushed the fix. Both boxes paste images now.", line: "Pushed the fix. Both boxes paste images now." }),
+        W("bash", ["term"], { tails: [NIDUS], line: `<span class="zz-mono">paste 1 MiB  41.0 ms</span>` }),
+      ] },
+      { name: ".files", windows: [
+        W("zsh", ["term"], { tails: [DOTFILES], line: `<span class="zz-mono">~/.files main</span>` }),
+      ] },
+    ],
+  };
+
+  const dots = (n, on = 0) => `<span class="penna-dots">${Array.from({ length: n }, (_, i) => `<span class="penna-dot"${i === on ? " data-active" : ""}></span>`).join("")}</span>`;
+  const bar = (day) => `<div class="zz-bar"><button class="zz-disc" data-penna="floating">${ic("chevron-up")}</button><button class="penna-compact-pill" data-penna="floating"><span class="penna-pill-tile" data-penna="phone.pill.icon">${ic("server")}</span><span class="penna-pill-copy"><span class="penna-pill-title">${day.machine}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">${day.session}</span>${dots(day.sessions.length)}</span></span></button><button class="zz-disc" data-penna="floating">${ic("plus")}</button></div>`;
+  const screen = (day, body) => `<div class="zz-screen"><div class="zz-big">${day.machine}</div><div class="zz-col">${body}</div></div>${bar(day)}`;
+  const sess = (s) => `<div class="zz-sess">${s.name}</div>`;
+  const each = (day, draw, skip) => day.sessions.map((s) => {
+    const shown = s.windows.filter((w) => w !== skip);
+    return shown.length ? `${sess(s)}${draw(shown)}` : "";
+  }).join("");
+
+  const row = (w) => `<div class="zz-r"${w.state === "wait" ? " data-warn" : ""}><span class="zz-lead">${faces(w)}</span><span class="zz-copy"><b>${esc(w.title)}</b><span>${w.line}</span></span>${chev}</div>`;
+  const rows = (ws) => `<div class="zz-group">${ws.map(row).join("")}</div>`;
+
+  const corner = (w) => (w.state === "wait" ? `<em data-tone="warning">Waiting</em>` : w.state === "work" ? `<em>${working("")}</em>` : "");
+  const small = (w) => `<div class="zz-tile"${w.state === "wait" ? " data-warn" : ""}><div class="zz-tile-top">${faces(w)}${corner(w)}</div><div class="zz-tile-bottom"><b>${esc(w.title)}</b><span>${w.line}</span></div></div>`;
+  const smalls = (ws) => `<div class="zz-tiles">${ws.map(small).join("")}</div>`;
+
+  const textBody = (w) => {
+    if (w.tails) return `<div class="zz-body2">${w.tails.map((t) => tail(t, w.tails.length > 1 ? 6 : 6)).join("")}</div>`;
+    if (w.host) return `<div class="zz-say"><p data-quiet>${w.host}</p><p>Machines tiles</p></div>`;
+    if (w.empty) return `<div class="zz-say"><p data-quiet>No messages yet</p></div>`;
+    if (w.state === "wait") return `<div class="zz-say"><p data-ask>Run this command?</p><p data-mono>${esc(w.ask)}</p></div>`;
+    return `<div class="zz-say"><p>${esc(w.said)}</p></div>`;
+  };
+  const headRight = (w) => (w.state === "wait" ? `<em data-tone="warning">Waiting</em>` : w.state === "work" ? `<span>${working("")}</span>` : "");
+  const text = (w) => `<div class="zz-txt"${w.panes.length > 1 ? " data-wide" : ""}${w.state === "wait" ? " data-warn" : ""}><div class="zz-head">${faces(w, 24)}<b>${esc(w.title)}</b>${headRight(w)}</div>${textBody(w)}</div>`;
+  const texts = (ws) => `<div class="zz-tiles">${ws.map(text).join("")}</div>`;
+
+  const askCard = (w) => `<div class="zz-hero" data-warn><div class="zz-head">${faces(w, 24)}<b>${esc(w.title)}</b><em data-tone="warning">Waiting</em></div><p>${esc(w.said)} I want to run the pill tests.</p><div class="zz-cmd">${esc(w.ask)}</div><div class="zz-acts"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-tap><span class="penna-label">Allow once</span></button><button class="penna-button" data-penna="button" data-size="touch-large" data-tap><span class="penna-label">Deny</span></button></div></div>`;
+  const lastCard = (w) => `<div class="zz-hero"><div class="zz-head">${faces(w, 24)}<b>${esc(w.title)}</b><span>Last open</span></div>${tail(w.tails[0], 6)}</div>`;
+
+  const tc = (w) => {
+    if (!w.tails) return `<div class="zz-one"${w.state === "wait" ? " data-warn" : ""}><span class="zz-lead">${faces(w)}</span><span class="zz-copy"><b>${esc(w.title)}</b><span>${w.line}</span></span>${chev}</div>`;
+    const split = w.tails.length > 1;
+    const body = split ? `<div class="zz-body2">${w.tails.map((t) => tail(t, 4)).join("")}</div>` : tail(w.tails[0], 4);
+    return `<div class="zz-tc"${split ? " data-split" : ""}><div class="zz-head">${faces(w, 24)}<b>${esc(w.title)}</b></div>${body}</div>`;
+  };
+  const tcs = (ws) => ws.map(tc).join("");
+
+  const frames = {
+    "a-today": () => screen(TODAY, each(TODAY, rows)),
+    "a-busy": () => screen(BUSY, each(BUSY, rows)),
+    "b-today": () => screen(TODAY, each(TODAY, texts)),
+    "b-busy": () => screen(BUSY, each(BUSY, texts)),
+    "c-today": () => screen(TODAY, each(TODAY, smalls)),
+    "c-busy": () => screen(BUSY, each(BUSY, smalls)),
+    "d-today": () => screen(TODAY, `${lastCard(TODAY.sessions[0].windows[0])}${each(TODAY, rows)}`),
+    "d-busy": () => screen(BUSY, `${askCard(ASKING)}${each(BUSY, rows, ASKING)}`),
+    "e-today": () => screen(TODAY, each(TODAY, tcs)),
+    "e-busy": () => screen(BUSY, each(BUSY, tcs)),
+  };
+  for (const phone of document.querySelectorAll("[data-frame]")) phone.innerHTML = frames[phone.dataset.frame]();
+
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  for (const phone of document.querySelectorAll(".zz-phone")) {
+    phone.insertAdjacentHTML("afterbegin", status);
+    phone.insertAdjacentHTML("beforeend", `<span class="zz-home"></span>`);
+  }
+
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.querySelector(".zz-intro").style.display = "none";
+    for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+  }
+})();
+</script>
+</body>
+</html>

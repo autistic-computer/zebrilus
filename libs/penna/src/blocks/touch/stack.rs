@@ -37,7 +37,7 @@ const EDGE: f32 = 16.0;
 const RISE: f32 = 14.0;
 const STAGGER: f32 = 0.06;
 const GROW: f32 = 0.04;
-const FOLD_SCALE: f32 = 0.5;
+const EXIT: Duration = Duration::from_millis(120);
 const ONE_COLUMN: usize = 6;
 const ROW_MAX: usize = 3;
 const FLASH: Duration = Duration::from_millis(120);
@@ -290,7 +290,7 @@ pub struct StackMenu {
     progress: f32,
     pinned: bool,
     picked: Option<(usize, Instant)>,
-    trail: PillSpring,
+    closing_from: f32,
     over_since: Option<Instant>,
     lifting: Option<SharedString>,
     anchor: Rc<Cell<Bounds<Pixels>>>,
@@ -318,7 +318,7 @@ impl StackMenu {
             progress: 0.0,
             pinned: false,
             picked: None,
-            trail: PillSpring::shut(),
+            closing_from: 0.0,
             over_since: None,
             lifting: None,
             anchor: Rc::default(),
@@ -518,7 +518,6 @@ impl StackMenu {
         self.over_since = None;
         self.since = Some(now);
         self.spring.aim(true, now);
-        self.trail = PillSpring::shut();
         cx.notify();
     }
 
@@ -529,7 +528,8 @@ impl StackMenu {
         let now = Instant::now();
         self.shown = false;
         self.since = Some(now);
-        self.spring.aim(false, now);
+        self.closing_from = self.progress.clamp(0.0, 1.0);
+        self.spring = PillSpring::shut();
         self.over_since = None;
         cx.notify();
     }
@@ -549,7 +549,6 @@ impl StackMenu {
                 self.gesture.close();
                 let now = Instant::now();
                 self.picked = Some((index, now));
-                self.trail = PillSpring::default();
                 self.disappear(cx);
                 cx.haptic(ala::Haptic::Light);
                 cx.emit(StackMenuEvent::Pick(id));
@@ -715,14 +714,12 @@ impl StackMenu {
         let now = Instant::now();
         let reduced = cx.reduce_motion();
         let mut moving = self.spring.tick(now);
-        if let Some((_, at)) = self.picked
-            && now.saturating_duration_since(at) >= FLASH
-        {
-            self.trail.aim(false, at + FLASH);
-            moving |= self.trail.tick(now) || self.trail.full();
-        } else if self.picked.is_some() {
-            moving = true;
-        }
+        let fade = |from: f32, since: Instant| {
+            let left = 1.0
+                - (now.saturating_duration_since(since).as_secs_f32() / EXIT.as_secs_f32())
+                    .clamp(0.0, 1.0);
+            from * left * left
+        };
         let progress = if reduced {
             let faded = self.since.map_or(1.0, |since| {
                 now.saturating_duration_since(since).as_secs_f32() / APPEAR.as_secs_f32()
@@ -730,13 +727,20 @@ impl StackMenu {
             moving |= faded < 1.0;
             let faded = faded.clamp(0.0, 1.0);
             if self.shown { faded } else { 1.0 - faded }
-        } else {
+        } else if self.shown {
             self.spring.progress()
-        };
-        let trail = if reduced {
-            progress
         } else {
-            self.trail.progress()
+            let left = fade(self.closing_from, self.since.unwrap_or(now));
+            moving |= left > 0.0;
+            left
+        };
+        let trail = match self.picked {
+            Some((_, at)) if !reduced => {
+                let left = fade(1.0, at + FLASH);
+                moving |= left > 0.0;
+                left
+            }
+            _ => progress,
         };
         if let Some(since) = self.over_since
             && now.saturating_duration_since(since) < APPEAR
@@ -775,7 +779,7 @@ struct Parts<'a> {
 }
 
 impl Parts<'_> {
-    fn motion(&self, seq: usize, bounds: Option<Bounds<Pixels>>, picked: bool) -> Motion {
+    fn motion(&self, seq: usize, picked: bool) -> Motion {
         let frame = self.frame;
         if self.shown {
             let shown = if frame.reduced {
@@ -795,23 +799,10 @@ impl Parts<'_> {
             };
         }
         let left = if picked { frame.trail } else { frame.progress };
-        if frame.reduced {
-            return Motion {
-                offset: Point::default(),
-                scale: 1.0,
-                opacity: left.clamp(0.0, 1.0),
-            };
-        }
-        let fold = (1.0 - left).clamp(0.0, 1.0);
-        let offset = bounds
-            .filter(|bounds| !bounds.is_empty())
-            .map_or_else(Point::default, |bounds| {
-                (frame.anchor.center() - bounds.center()) * fold
-            });
         Motion {
-            offset,
-            scale: 1.0 - FOLD_SCALE * fold,
-            opacity: 1.0 - fold,
+            offset: Point::default(),
+            scale: 1.0,
+            opacity: left.clamp(0.0, 1.0),
         }
     }
 
@@ -1034,7 +1025,7 @@ impl StackMenu {
         } else {
             Fill::Rest
         };
-        let mut motion = parts.motion(seq, Some(natural), picked);
+        let mut motion = parts.motion(seq, picked);
         if !parts.frame.reduced {
             motion.scale *= parts.grow(target);
         }
@@ -1207,7 +1198,7 @@ impl StackMenu {
     ) -> AnyElement {
         let theme = cx.theme();
         let natural = parts.labels.get(index).copied().unwrap_or_default();
-        let motion = parts.motion(seq, Some(natural), false);
+        let motion = parts.motion(seq, false);
         let layer = floating(LABEL_HEIGHT, theme);
         let muted = theme
             .paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost)

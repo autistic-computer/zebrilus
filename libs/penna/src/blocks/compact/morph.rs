@@ -5,7 +5,7 @@ use ala::{
 };
 use web_time::Instant;
 
-use super::bar::{COMPACT_PILL_HEIGHT, PillPlacement, floating_layer};
+use super::bar::{BAR_DISC, BAR_GAP, COMPACT_PILL_HEIGHT, PillPlacement, floating_layer};
 use crate::{
     ActiveTheme as _, Layer, PaintState, Space, StyledExt as _, Surface,
     blocks::touch::{
@@ -99,12 +99,36 @@ pub fn compact_pill_morph(
     placement: &PillPlacement,
     cx: &App,
 ) -> Div {
+    compact_pill_morph_between(
+        keys,
+        label,
+        progress,
+        pill_top,
+        floor,
+        (px(0.0), px(0.0)),
+        placement,
+        cx,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn compact_pill_morph_between(
+    keys: KeyRow,
+    label: Div,
+    progress: f32,
+    pill_top: Pixels,
+    floor: Pixels,
+    ends: (Pixels, Pixels),
+    placement: &PillPlacement,
+    cx: &App,
+) -> Div {
     let progress = progress.clamp(0.0, 1.0);
     let between = |from: Pixels, to: Pixels| from + (to - from) * progress;
     let height = between(px(KEY_PILL_HEIGHT), px(COMPACT_PILL_HEIGHT));
     let top = between(px(KEY_ROW_MARGIN_Y), pill_top).min(floor - px(KEY_ROW_MARGIN_Y) - height);
     let middle = top + height / 2.0;
-    let side = between(px(KEY_ROW_MARGIN_X), placement.inset);
+    let left = between(px(KEY_ROW_MARGIN_X), placement.inset + ends.0);
+    let right = between(px(KEY_ROW_MARGIN_X), placement.inset + ends.1);
     let pill = floating_layer(placement, cx);
     let keys_layer = key_pill_layer(cx.theme());
     let half = |layer: &Layer, height: f32| layer.radius.min(px(height / 2.0));
@@ -129,8 +153,8 @@ pub fn compact_pill_morph(
             div()
                 .absolute()
                 .top(top)
-                .left(side)
-                .right(side)
+                .left(left)
+                .right(right)
                 .h(height)
                 .layer(&Layer { radius, ..pill }),
         )
@@ -147,8 +171,8 @@ pub fn compact_pill_morph(
             div()
                 .absolute()
                 .top(middle - px(COMPACT_PILL_HEIGHT / 2.0))
-                .left(placement.inset)
-                .right(placement.inset)
+                .left(placement.inset + ends.0)
+                .right(placement.inset + ends.1)
                 .flex()
                 .opacity(fade((progress - (1.0 - FADE)) / FADE))
                 .child(label),
@@ -164,6 +188,41 @@ pub fn pill_bounds(width: Pixels, placement: &PillPlacement) -> Bounds<Pixels> {
         ),
         size(full, px(COMPACT_PILL_HEIGHT)),
     )
+}
+
+pub fn bar_ends(start: bool, end: bool) -> (Pixels, Pixels) {
+    let step = px(BAR_DISC + BAR_GAP);
+    (
+        if start { step } else { px(0.0) },
+        if end { step } else { px(0.0) },
+    )
+}
+
+pub fn split_pill_bounds(
+    width: Pixels,
+    placement: &PillPlacement,
+    start: bool,
+    end: bool,
+) -> Bounds<Pixels> {
+    let full = pill_bounds(width, placement);
+    let (left, right) = bar_ends(start, end);
+    Bounds::new(
+        point(full.origin.x + left, full.origin.y),
+        size(
+            (full.size.width - left - right).max(px(0.0)),
+            full.size.height,
+        ),
+    )
+}
+
+pub fn bar_disc_bounds(width: Pixels, placement: &PillPlacement, end: bool) -> Bounds<Pixels> {
+    let full = pill_bounds(width, placement);
+    let x = if end {
+        full.right() - px(BAR_DISC)
+    } else {
+        full.left()
+    };
+    Bounds::new(point(x, full.origin.y), size(px(BAR_DISC), px(BAR_DISC)))
 }
 
 #[must_use]

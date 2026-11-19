@@ -29,12 +29,6 @@ pub enum MachineMenu<'a> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PaneMenu<'a> {
-    pub session: &'a str,
-    pub terminal: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BrowserMenu<'a> {
     pub address: &'a str,
     pub back: bool,
@@ -50,9 +44,9 @@ fn new_group(session: Option<&str>) -> StackGroup {
         |name| format!("New in {name}"),
     );
     StackGroup::new([
-        StackChip::new(NEW_CHAT, "New chat", IconName::ChatPlus),
-        StackChip::new(NEW_TERMINAL, "New terminal", IconName::SquareTerminal),
-        StackChip::new(NEW_BROWSER, "New browser", IconName::Globe),
+        StackChip::new(NEW_CHAT, "Chat", IconName::ChatPlus),
+        StackChip::new(NEW_TERMINAL, "Terminal", IconName::SquareTerminal),
+        StackChip::new(NEW_BROWSER, "Browser", IconName::Globe),
     ])
     .label(label)
 }
@@ -62,8 +56,8 @@ fn alone(chip: StackChip) -> StackGroup {
 }
 
 #[must_use]
-pub fn machine_menu(state: MachineMenu) -> Vec<StackGroup> {
-    let new = match state {
+pub fn new_menu(state: MachineMenu) -> Vec<StackGroup> {
+    match state {
         MachineMenu::Unreached => Vec::new(),
         MachineMenu::Empty => vec![new_group(None)],
         MachineMenu::Session(name) => vec![
@@ -74,30 +68,32 @@ pub fn machine_menu(state: MachineMenu) -> Vec<StackGroup> {
                 IconName::LayersPlus,
             )),
         ],
-    };
-    new.into_iter()
-        .chain([
-            alone(StackChip::new(
-                ALL_MACHINES,
-                "All machines",
-                IconName::Server,
-            )),
-            alone(StackChip::new(SETTINGS, "Settings", IconName::Settings).look(StackLook::Quiet)),
-        ])
-        .collect()
+    }
 }
 
 #[must_use]
-pub fn pane_menu(menu: PaneMenu) -> Vec<StackGroup> {
+pub fn machine_menu() -> Vec<StackGroup> {
+    vec![
+        alone(StackChip::new(
+            ALL_MACHINES,
+            "All machines",
+            IconName::Server,
+        )),
+        alone(StackChip::new(SETTINGS, "Settings", IconName::Settings).look(StackLook::Quiet)),
+    ]
+}
+
+#[must_use]
+pub fn pane_menu(terminal: bool) -> Vec<StackGroup> {
     let mut this_pane = vec![
         StackChip::new(CLOSE_PANE, "Close", IconName::Xmark).look(StackLook::Danger),
         StackChip::new(RENAME_PANE, "Rename", IconName::Pencil),
     ];
-    if menu.terminal {
+    if terminal {
         this_pane.push(StackChip::new(FIND, "Find", IconName::Search));
     }
-    let mut groups = vec![new_group(Some(menu.session)), StackGroup::new(this_pane)];
-    if menu.terminal {
+    let mut groups = vec![StackGroup::new(this_pane)];
+    if terminal {
         groups.push(alone(
             StackChip::new(ALL_BINDINGS, "All bindings", IconName::Keyboard).look(StackLook::Quiet),
         ));
@@ -106,7 +102,7 @@ pub fn pane_menu(menu: PaneMenu) -> Vec<StackGroup> {
 }
 
 #[must_use]
-pub fn browser_menu(browser: BrowserMenu, session: &str) -> (Vec<StackGroup>, usize) {
+pub fn browser_menu(browser: BrowserMenu) -> (Vec<StackGroup>, usize) {
     let reload = if browser.loading {
         StackChip::new(STOP, "Stop", IconName::Stop)
     } else {
@@ -147,10 +143,7 @@ pub fn browser_menu(browser: BrowserMenu, session: &str) -> (Vec<StackGroup>, us
         StackGroup::new(page),
     ];
     let fold = own.len();
-    let rest = pane_menu(PaneMenu {
-        session,
-        terminal: false,
-    });
+    let rest = pane_menu(false);
     (own.into_iter().chain(rest).collect(), fold)
 }
 
@@ -179,37 +172,20 @@ mod tests {
     }
 
     #[test]
-    fn a_machine_menu_makes_things_in_the_session_in_view() {
-        let groups = machine_menu(MachineMenu::Session("dotfiles"));
+    fn the_plus_menu_makes_things_in_the_session_in_view() {
+        let groups = new_menu(MachineMenu::Session("dotfiles"));
         assert_eq!(
             ids(&groups),
-            [
-                vec![NEW_CHAT, NEW_TERMINAL, NEW_BROWSER],
-                vec![NEW_SESSION],
-                vec![ALL_MACHINES],
-                vec![SETTINGS],
-            ]
+            [vec![NEW_CHAT, NEW_TERMINAL, NEW_BROWSER], vec![NEW_SESSION]]
         );
-        assert_eq!(
-            labels(&groups),
-            [Some("New in dotfiles".to_owned()), None, None, None]
-        );
+        assert_eq!(labels(&groups), [Some("New in dotfiles".to_owned()), None]);
 
-        let empty = machine_menu(MachineMenu::Empty);
-        assert_eq!(
-            ids(&empty),
-            [
-                vec![NEW_CHAT, NEW_TERMINAL, NEW_BROWSER],
-                vec![ALL_MACHINES],
-                vec![SETTINGS],
-            ]
-        );
+        let empty = new_menu(MachineMenu::Empty);
+        assert_eq!(ids(&empty), [vec![NEW_CHAT, NEW_TERMINAL, NEW_BROWSER]]);
         assert_eq!(labels(&empty)[0].as_deref(), Some("In a new session"));
 
-        assert_eq!(
-            ids(&machine_menu(MachineMenu::Unreached)),
-            [vec![ALL_MACHINES], vec![SETTINGS]]
-        );
+        assert!(new_menu(MachineMenu::Unreached).is_empty());
+        assert_eq!(ids(&machine_menu()), [vec![ALL_MACHINES], vec![SETTINGS]]);
     }
 
     #[test]
@@ -222,7 +198,7 @@ mod tests {
             tabs: 3,
             open_on_phone: true,
         };
-        let (groups, fold) = browser_menu(at_rest, "zz");
+        let (groups, fold) = browser_menu(at_rest);
         assert_eq!(fold, 3);
         assert_eq!(
             ids(&groups),
@@ -230,7 +206,6 @@ mod tests {
                 vec![BACK, FORWARD, RELOAD],
                 vec![ADDRESS],
                 vec![TABS, PICK_ELEMENT, OPEN_ON_PHONE],
-                vec![NEW_CHAT, NEW_TERMINAL, NEW_BROWSER],
                 vec![CLOSE_PANE, RENAME_PANE],
             ]
         );
@@ -250,23 +225,20 @@ mod tests {
         assert!(groups[1].chips()[0].place);
         assert_eq!(groups[2].chips()[0].value.as_deref(), Some("3"));
 
-        let (loading, _) = browser_menu(
-            BrowserMenu {
-                address: "",
-                back: false,
-                loading: true,
-                tabs: 1,
-                open_on_phone: false,
-                ..at_rest
-            },
-            "zz",
-        );
+        let (loading, _) = browser_menu(BrowserMenu {
+            address: "",
+            back: false,
+            loading: true,
+            tabs: 1,
+            open_on_phone: false,
+            ..at_rest
+        });
         assert_eq!(ids(&loading)[0], [BACK, FORWARD, STOP]);
         assert_eq!(ids(&loading)[2], [TABS, PICK_ELEMENT]);
         assert_eq!(off(&loading), [BACK, FORWARD, PICK_ELEMENT]);
         assert_eq!(loading[1].chips()[0].label.as_ref(), "New tab");
         let label = |address| {
-            browser_menu(BrowserMenu { address, ..at_rest }, "zz").0[1].chips()[0]
+            browser_menu(BrowserMenu { address, ..at_rest }).0[1].chips()[0]
                 .label
                 .to_string()
         };
@@ -276,28 +248,11 @@ mod tests {
 
     #[test]
     fn a_pane_menu_keeps_find_and_bindings_for_terminals_only() {
-        let terminal = pane_menu(PaneMenu {
-            session: "zz",
-            terminal: true,
-        });
+        let terminal = pane_menu(true);
         assert_eq!(
             ids(&terminal),
-            [
-                vec![NEW_CHAT, NEW_TERMINAL, NEW_BROWSER],
-                vec![CLOSE_PANE, RENAME_PANE, FIND],
-                vec![ALL_BINDINGS],
-            ]
+            [vec![CLOSE_PANE, RENAME_PANE, FIND], vec![ALL_BINDINGS]]
         );
-        assert_eq!(labels(&terminal)[0].as_deref(), Some("New in zz"));
-        assert_eq!(
-            ids(&pane_menu(PaneMenu {
-                session: "zz",
-                terminal: false,
-            })),
-            [
-                vec![NEW_CHAT, NEW_TERMINAL, NEW_BROWSER],
-                vec![CLOSE_PANE, RENAME_PANE],
-            ]
-        );
+        assert_eq!(ids(&pane_menu(false)), [vec![CLOSE_PANE, RENAME_PANE]]);
     }
 }
