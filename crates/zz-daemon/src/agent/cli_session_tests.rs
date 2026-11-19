@@ -415,3 +415,35 @@ fn launch_facts_read_the_command_line_over_the_clis_config() {
     assert_eq!(codex.model.as_deref(), Some("gpt-5.5-codex"));
     assert_eq!(codex.cwd.as_deref(), Some("/repo"));
 }
+
+#[test]
+fn an_agy_tui_resumes_the_conversation_whose_database_it_holds() {
+    let held = "/home/me/.gemini/antigravity-cli/conversations/eb826699-f5f5-4e2b-aef2-da5f53e92157.db-shm";
+    assert_eq!(
+        agy_conversation(Path::new(held)).as_deref(),
+        Some("eb826699-f5f5-4e2b-aef2-da5f53e92157")
+    );
+    assert_eq!(
+        agy_conversation(Path::new(
+            "/home/me/.gemini/antigravity-cli/conversation_summaries.db"
+        )),
+        None
+    );
+    assert_eq!(
+        cli_command(
+            AgentProvider::Antigravity,
+            Some("eb826699-f5f5-4e2b-aef2-da5f53e92157"),
+            Some("gemini-3.8-flash"),
+            Some("low"),
+        ),
+        [
+            "agy",
+            "--conversation",
+            "eb826699-f5f5-4e2b-aef2-da5f53e92157",
+            "--model",
+            "gemini-3.8-flash",
+            "--effort",
+            "low",
+        ]
+    );
+}

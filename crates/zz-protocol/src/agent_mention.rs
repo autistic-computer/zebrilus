@@ -28,11 +28,7 @@ impl Mention {
                 ),
                 None => (agent, None),
             };
-            let provider = match name {
-                "claude" => AgentProvider::ClaudeCode,
-                "codex" => AgentProvider::Codex,
-                _ => return None,
-            };
+            let provider = provider(name)?;
             return Some(Self::Agent { provider, model });
         }
         let (host, pane) = body.split_once(':')?;
@@ -202,7 +198,7 @@ fn note_line(line: &str) -> bool {
     let (Ok(pane), Some(parent)) = (pane.parse(), name.strip_suffix(')').and_then(provider)) else {
         return false;
     };
-    [AgentProvider::ClaudeCode, AgentProvider::Codex]
+    AgentProvider::ALL
         .into_iter()
         .any(|child| child_note(pane, parent, child) == line)
 }
@@ -314,11 +310,9 @@ impl ReplyNotice {
 }
 
 fn provider(name: &str) -> Option<AgentProvider> {
-    match name {
-        "claude" => Some(AgentProvider::ClaudeCode),
-        "codex" => Some(AgentProvider::Codex),
-        _ => None,
-    }
+    AgentProvider::ALL
+        .into_iter()
+        .find(|provider| provider.command_name() == name)
 }
 
 fn header(line: &str) -> Option<(PaneId, AgentProvider, &str)> {

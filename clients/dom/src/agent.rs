@@ -360,6 +360,7 @@ fn provider_id(provider: AgentProvider) -> &'static str {
     match provider {
         AgentProvider::ClaudeCode => "claude",
         AgentProvider::Codex => "codex",
+        AgentProvider::Antigravity => "antigravity",
     }
 }
 

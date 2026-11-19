@@ -158,6 +158,7 @@ mod tests {
             match provider {
                 AgentProvider::ClaudeCode => "/usr/local/bin/claude",
                 AgentProvider::Codex => "/usr/local/bin/codex",
+                AgentProvider::Antigravity => "/usr/local/bin/agy",
             }
             .to_owned(),
         ];

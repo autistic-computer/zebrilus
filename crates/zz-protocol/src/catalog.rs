@@ -1709,7 +1709,7 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "new-window",
         aliases: &["neww"],
         description: "Create a window",
-        usage: "[-abdEkPS] [-c start-directory] [-e environment] [-F format] [-n window-name] [-t target-window] [--kind terminal|browser|picker|agent] [--profile NAME] [--model M] [--effort E] [--account A] [--resume ID] [shell-command [argument ...] | claude|codex [BRIEF ...]]",
+        usage: "[-abdEkPS] [-c start-directory] [-e environment] [-F format] [-n window-name] [-t target-window] [--kind terminal|browser|picker|agent] [--profile NAME] [--model M] [--effort E] [--account A] [--resume ID] [shell-command [argument ...] | claude|codex|agy [BRIEF ...]]",
         options: &[
             CommandOptionSpec::value("--kind", PaneKind, "pane kind").native(),
             CommandOptionSpec::value("--profile", FreeForm, "browser profile").native(),
@@ -1876,7 +1876,7 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "split-window",
         aliases: &["splitw"],
         description: "Split a pane",
-        usage: "[-bdEfhIkPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-t target-pane] [--kind terminal|browser|picker|agent] [--profile NAME] [--model M] [--effort E] [--account A] [--resume ID] [shell-command [argument ...] | claude|codex [BRIEF ...]]",
+        usage: "[-bdEfhIkPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-t target-pane] [--kind terminal|browser|picker|agent] [--profile NAME] [--model M] [--effort E] [--account A] [--resume ID] [shell-command [argument ...] | claude|codex|agy [BRIEF ...]]",
         options: &[
             CommandOptionSpec::value("--kind", PaneKind, "pane kind").native(),
             CommandOptionSpec::value("--profile", FreeForm, "browser profile").native(),
@@ -1923,7 +1923,7 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "new-pane",
         aliases: &["newp"],
         description: "Create a floating pane",
-        usage: "[-AbCDdEfhIkKLMOPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-x width] [-y height] [-X x-position] [-Y y-position] [-t target-pane] [--kind terminal|browser|picker|agent] [--profile NAME] [--model M] [--effort E] [--account A] [--resume ID] [--existing path] [shell-command [argument ...] | claude|codex [BRIEF ...]]",
+        usage: "[-AbCDdEfhIkKLMOPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-x width] [-y height] [-X x-position] [-Y y-position] [-t target-pane] [--kind terminal|browser|picker|agent] [--profile NAME] [--model M] [--effort E] [--account A] [--resume ID] [--existing path] [shell-command [argument ...] | claude|codex|agy [BRIEF ...]]",
         options: &[
             CommandOptionSpec::value("--kind", PaneKind, "pane kind").native(),
             CommandOptionSpec::value("--profile", FreeForm, "browser profile").native(),

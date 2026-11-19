@@ -470,6 +470,45 @@ pub(crate) fn arguments(pid: u32) -> Vec<String> {
         .unwrap_or_default()
 }
 
+pub(crate) fn agy_session(pid: u32, cwd: Option<PathBuf>) -> CliSession {
+    let args = arguments(pid);
+    let flag = |name: &str| {
+        args.iter()
+            .position(|argument| argument == name)
+            .and_then(|at| args.get(at + 1))
+            .filter(|value| launch_value(value))
+            .cloned()
+    };
+    CliSession {
+        pid: Some(pid),
+        session_id: open_files(pid)
+            .iter()
+            .find_map(|path| agy_conversation(path))
+            .or_else(|| flag("--conversation")),
+        cwd,
+        model: flag("--model"),
+        effort: flag("--effort"),
+        running: Vec::new(),
+    }
+}
+
+pub(crate) fn agy_conversation(path: &Path) -> Option<String> {
+    if path.parent()?.file_name()? != "conversations" {
+        return None;
+    }
+    let (id, _) = path.file_name()?.to_str()?.split_once(".db")?;
+    let dashes = [8, 13, 18, 23];
+    (id.len() == 36
+        && id.bytes().enumerate().all(|(at, byte)| {
+            if dashes.contains(&at) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit()
+            }
+        }))
+    .then(|| id.to_owned())
+}
+
 pub(crate) fn open_rollout(pid: u32) -> Option<PathBuf> {
     open_files(pid).into_iter().find(|path| {
         is_rollout(path) && RolloutMeta::read(path).is_some_and(|meta| meta.parent.is_none())
@@ -614,6 +653,18 @@ pub(crate) fn cli_command(
                 (None, None) => {}
             }
         }
+        AgentProvider::Antigravity => {
+            words.push("agy".to_owned());
+            if let Some(session) = session_id {
+                words.extend(["--conversation".to_owned(), session.to_owned()]);
+            }
+            if let Some(model) = model {
+                words.extend(["--model".to_owned(), model.to_owned()]);
+            }
+            if let Some(effort) = effort {
+                words.extend(["--effort".to_owned(), effort.to_owned()]);
+            }
+        }
     }
     words
 }
@@ -623,12 +674,12 @@ pub(crate) fn interactive_shell(
     words: &[String],
 ) -> Vec<String> {
     let command = account
-        .map(|(provider, home)| {
-            format!(
+        .and_then(|(provider, home)| {
+            Some(format!(
                 "{}={}",
-                accounts::variable(provider),
+                accounts::variable(provider)?,
                 shell_word(&home.to_string_lossy())
-            )
+            ))
         })
         .into_iter()
         .chain(words.iter().map(|word| shell_word(word)))

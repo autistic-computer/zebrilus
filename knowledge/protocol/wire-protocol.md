@@ -1267,7 +1267,7 @@ and from the CLI's own TUI. It appends `PaneKindSnapshot::Agent(AgentDescriptor)
 and `ChooseTreePaneKind::Agent` after `Editor`. `AgentDescriptor { provider, cwd, session_id,
 model, effort }` holds the provider, the absolute working directory, the vendor session to resume,
 and the model and effort to start with; every field but `provider` is optional.
-`select-pane-kind [-c dir] agent claude|codex [--resume session-id]` turns a picker or a terminal
+`select-pane-kind [-c dir] agent claude|codex|agy [--resume session-id]` turns a picker or a terminal
 into one, and `flip-agent [-t pane] [--now | --when-idle | --cancel]` joins the command catalog.
 v118 also appends `PaneSummary.flip_armed`, set while a `flip-agent --when-idle` waits for the pane
 to go idle ([agent panes](/concepts/agent-panes.md)).

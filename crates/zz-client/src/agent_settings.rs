@@ -165,7 +165,8 @@ pub fn mode_risk(provider: AgentProvider, mode: &str) -> ModeRisk {
     match (provider, mode) {
         (_, "plan" | "read-only") => ModeRisk::ReadOnly,
         (_, "bypassPermissions" | "full-access") => ModeRisk::Unguarded,
-        (AgentProvider::ClaudeCode, "acceptEdits" | "auto") => ModeRisk::Unasked,
+        (AgentProvider::ClaudeCode, "acceptEdits" | "auto")
+        | (AgentProvider::Antigravity, "accept-edits" | "auto") => ModeRisk::Unasked,
         _ => ModeRisk::Asks,
     }
 }
@@ -241,6 +242,7 @@ pub const fn agent_program(provider: AgentProvider) -> &'static str {
     match provider {
         AgentProvider::ClaudeCode => "claude",
         AgentProvider::Codex => "codex",
+        AgentProvider::Antigravity => "agy",
     }
 }
 

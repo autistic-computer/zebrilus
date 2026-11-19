@@ -284,6 +284,7 @@ fn build_with(
             .vendor(match scene.provider() {
                 AgentProvider::ClaudeCode => "claude",
                 AgentProvider::Codex => "codex",
+                AgentProvider::Antigravity => "antigravity",
             })
             .view(window, cx);
         let mut story = AgentPaneStory {
@@ -465,7 +466,7 @@ impl AgentPaneStory {
                 prefix,
                 mention: None,
                 settings: match self.scene.provider() {
-                    AgentProvider::Codex => codex_settings(),
+                    AgentProvider::Codex | AgentProvider::Antigravity => codex_settings(),
                     AgentProvider::ClaudeCode => claude_settings(),
                 },
             },

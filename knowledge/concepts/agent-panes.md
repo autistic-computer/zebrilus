@@ -1,15 +1,15 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, reopening a chat another chat opened on its session (select-child-chat), what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
+description: How a pane runs Claude Code, Codex or Antigravity as a chat (PaneKind::Agent over the vendor drivers, Antigravity over its own ACP server), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, reopening a chat another chat opened on its session (select-child-chat), what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
-tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
-timestamp: 2026-11-18T00:00:00-03:00
+tags: [agent, agent-pane, flip, chat, claude-code, codex, antigravity, driver, stream]
+timestamp: 2026-11-19T00:00:00-03:00
 ---
 
 # Overview
 
-A pane runs Claude Code or Codex one of two ways, and one button switches between them:
+A pane runs Claude Code, Codex or Antigravity one of two ways, and one button switches between them:
 
 - **The CLI.** An ordinary terminal pane running the vendor's own TUI. zz draws the terminal and
   types nothing into it.
@@ -33,7 +33,7 @@ over.
 
 | Field | Meaning |
 |---|---|
-| `provider` | `ClaudeCode` or `Codex` |
+| `provider` | `ClaudeCode`, `Codex` or `Antigravity` |
 | `cwd` | the folder the driver runs in; filled from `-c`, else the terminal or donor pane's folder, else the daemon's |
 | `session_id` | the vendor session to resume; the driver's session goes back into it, so a `/clear` or a fork shows here |
 | `model`, `effort` | what the driver is set to once its session is ready (`SetConfigOption` after `SessionReady`) |
@@ -583,6 +583,46 @@ CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
   started; two such rollouts refuse the flip and ask for `codex resume <id>`. Model and effort
   come from the rollout's `turn_context` and `thread_settings_applied` lines over `config.toml`
   and the arguments.
+- **Antigravity.** The conversation is the one whose `conversations/<uuid>.db` file the `agy`
+  process holds open, else the one `--conversation <id>` names (`cli_session::agy_session`). Model
+  and effort come from its `--model` and `--effort` arguments only.
+
+# Antigravity
+
+Antigravity (`AgentProvider::Antigravity`; `agent agy` or `agent antigravity`, `@+agy`, `(agy)` in
+reports) is the third provider. Its CLI has an ACP server, `agy acp`, so its driver
+(`crates/zz-daemon/src/agent/agy.rs`) is the generic ACP runtime (`runtime::run_acp_agent`) with
+four changes:
+
+- **Which agy.** The driver runs the first `agy` on the agent PATH whose `agy acp --help` names the
+  subcommand. An install from before the ACP server (1.1.x) prints the general usage there and is
+  skipped. When every `agy` found is that old the pane fails with `Antigravity at <path> is too old
+  for chats: it has no agy acp. Update it with agy update.`, and with none it fails with the not
+  installed line.
+- **Effort.** agy calls its effort option `thought_level`. The driver renames it to `effort` in
+  every option list it sends on (`SessionReady`, `SessionSwitched`, `ConfigOptionsChanged`,
+  `config_option_update`) and back on `SetConfigOption`, so the chat, `--effort` and the flip read
+  it as they do the other providers'.
+- **Title.** agy sends `session_info_update` with the conversation's title after the first prompt
+  and on load. The driver turns it into `TitleChanged`.
+- **Session list.** agy's `session/list` ignores the folder it is asked for, so the driver keeps
+  only that folder's sessions. A conversation with no recorded folder comes back under the folder
+  the server runs in.
+
+The modes are `default`, `accept-edits`, `auto` and `plan` (`agent_settings::mode_risk`: `plan` is
+read-only, `accept-edits` and `auto` act unasked).
+
+**The flip.** Chat to CLI runs `agy --conversation <id> --model <m> --effort <e>`. CLI to chat
+resumes the conversation found above, and a TUI with no conversation yet starts a new chat.
+Nothing on disk says an agy TUI is busy, so it never refuses the flip: a turn running in the TUI
+stops with it.
+
+**Not there.** Accounts: agy documents no variable for its home, so `--account`, `agent-account`
+and `agent-accounts --add agy` refuse, and agy has no rows in the account list or the limits. The
+sign-in the daemon drives: sign in by running `agy`. Forks: `--fork` logs and starts a new chat.
+The latest version: Settings shows the installed one, Update runs `agy update` and Install runs
+the vendor's install script. The command is not configurable: there is no
+`agent-antigravity-command`.
 
 # Codex on the shared app server
 
@@ -632,7 +672,7 @@ end no turn.
 
 - `agent-send [-t %N] TEXT` to an agent pane submits a prompt. `--wait`, `--json`, `--final`,
   `--on-block`, `--notify` and `--progress` work on its turn as they did for the old agent pane.
-- `agent-send` with text to a terminal running Claude Code or Codex fails with "runs Claude Code in
+- `agent-send` with text to a terminal running Claude Code, Codex or Antigravity fails with "runs Claude Code in
   its terminal; flip the pane to chat first". Nothing types prompts into a TUI or posts them to its
   peer socket. `--wait ''` still waits on such a terminal's `@agent_state`.
 - `agent-respond` answers a pending permission in an agent pane.

@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-11-19
+* **Update**: Antigravity is a third chat provider ([agent panes](/concepts/agent-panes.md#antigravity)). `agent agy` opens a chat on `agy acp` through the generic ACP runtime, with the effort option, the title and the session list translated by `agent/agy.rs`. The flip runs `agy --conversation <id>` and finds a TUI's conversation by the database file it holds open. No accounts, daemon-driven sign-in, forks or latest version check for it.
 * **Update**: The agent pane context tells a chat how to ask the user ([agent panes](/concepts/agent-panes.md)). Asked to "ask me a question using the tool", a chat typed the question into a shell pane with `zz send-text`, which pressed Enter and ran it as a command. The context now says to use the agent's own question tool, which the pane shows as a card, that another pane is never the user, and that a terminal runs whatever is typed into it. About 160 bytes per chat session.
 
 ## 2026-11-18

@@ -178,6 +178,7 @@ pub fn provider_program(provider: AgentProvider) -> Option<&'static Program> {
     Program::by_id(match provider {
         AgentProvider::ClaudeCode => "claude",
         AgentProvider::Codex => "codex",
+        AgentProvider::Antigravity => "antigravity",
     })
 }
 
@@ -214,6 +215,7 @@ pub fn pane_agent(pane: &PaneSnapshot) -> Option<AgentProvider> {
     match pane_program(pane)?.id {
         "claude" => Some(AgentProvider::ClaudeCode),
         "codex" => Some(AgentProvider::Codex),
+        "antigravity" => Some(AgentProvider::Antigravity),
         _ => None,
     }
 }

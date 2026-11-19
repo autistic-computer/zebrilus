@@ -116,6 +116,7 @@ pub(super) fn cli_provider(process: &[String]) -> Option<AgentProvider> {
         match name.to_ascii_lowercase().as_str() {
             "claude" => Some(AgentProvider::ClaudeCode),
             "codex" => Some(AgentProvider::Codex),
+            "agy" => Some(AgentProvider::Antigravity),
             _ => None,
         }
     })
@@ -299,7 +300,9 @@ impl Shared {
             }
             PaneKind::Terminal => {
                 let provider = self.terminal_agent(pane).ok_or_else(|| {
-                    ServerError::InvalidTarget(format!("{pane} runs neither Claude Code nor Codex"))
+                    ServerError::InvalidTarget(format!(
+                        "{pane} runs none of Claude Code, Codex or Antigravity"
+                    ))
                 })?;
                 let pane_pid = pane_pid.ok_or(ServerError::PaneExited(pane))?;
                 let session = match provider {
@@ -324,13 +327,20 @@ impl Shared {
                             })
                     }
                     AgentProvider::Codex => codex_cli_session(pane, pane_pid, cwd)?,
+                    AgentProvider::Antigravity => {
+                        let pid = cli_session::agent_pid(pane_pid, "agy").ok_or_else(|| {
+                            ServerError::InvalidTarget(format!("{pane} runs no agy process"))
+                        })?;
+                        let cwd = zz_daemon_client::process_info::working_directory(pid).or(cwd);
+                        cli_session::agy_session(pid, cwd)
+                    }
                 };
                 let account = session
                     .pid
                     .and_then(|pid| {
                         zz_daemon_client::process_info::environment(
                             pid,
-                            accounts::variable(provider),
+                            accounts::variable(provider)?,
                         )
                     })
                     .and_then(|home| accounts::account_of(provider, Path::new(&home)));
@@ -344,7 +354,7 @@ impl Shared {
                 })
             }
             _ => Err(ServerError::InvalidTarget(format!(
-                "{pane} is neither a chat nor a terminal running Claude Code or Codex"
+                "{pane} is neither a chat nor a terminal running Claude Code, Codex or Antigravity"
             ))),
         }
     }

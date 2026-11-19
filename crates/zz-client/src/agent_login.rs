@@ -152,6 +152,7 @@ pub const fn service(provider: AgentProvider) -> &'static str {
     match provider {
         AgentProvider::ClaudeCode => "Claude",
         AgentProvider::Codex => "ChatGPT",
+        AgentProvider::Antigravity => "Google",
     }
 }
 

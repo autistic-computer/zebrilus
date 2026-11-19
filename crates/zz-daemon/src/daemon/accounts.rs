@@ -64,11 +64,16 @@ pub(super) fn parse_agent_accounts_args(
     for option in parsed.options {
         match option {
             zz_protocol::TmuxOption::Value("--add", value) => {
-                provider = Some(
-                    value
-                        .parse::<AgentProvider>()
-                        .map_err(ServerError::CommandParse)?,
-                );
+                let added = value
+                    .parse::<AgentProvider>()
+                    .map_err(ServerError::CommandParse)?;
+                if added == AgentProvider::Antigravity {
+                    return Err(ServerError::InvalidCommand(
+                        "agent-accounts: sign in to Antigravity by running agy in a terminal"
+                            .to_owned(),
+                    ));
+                }
+                provider = Some(added);
             }
             zz_protocol::TmuxOption::Value("--account", zz_protocol::DEFAULT_AGENT_ACCOUNT) => {
                 account = AccountChoice::Default;
@@ -400,6 +405,7 @@ impl Shared {
         let login: &[&str] = match provider {
             AgentProvider::ClaudeCode => &["claude", "auth", "login"],
             AgentProvider::Codex => &["codex", "login"],
+            AgentProvider::Antigravity => return,
         };
         let login = login
             .iter()
@@ -571,6 +577,7 @@ pub(super) fn identify(
                 (signed_out(provider), None)
             }
         },
+        AgentProvider::Antigravity => (signed_out(provider), None),
     };
     (AgentAccount { id, ..account }, quota)
 }

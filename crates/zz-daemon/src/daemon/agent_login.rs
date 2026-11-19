@@ -457,6 +457,9 @@ impl Cli {
                 "--no-session-persistence",
             ]),
             AgentProvider::Codex => command.arg("app-server"),
+            AgentProvider::Antigravity => {
+                return Err("Sign in to Antigravity by running agy in a terminal.".to_owned());
+            }
         };
         command
             .stdin(Stdio::piped())
@@ -523,6 +526,7 @@ impl Cli {
                 "method": "initialize",
                 "params": { "clientInfo": { "name": "zz", "version": env!("CARGO_PKG_VERSION") } },
             }),
+            AgentProvider::Antigravity => Value::Null,
         };
         if let Err(error) = cli.send(&first) {
             cli.stop();
@@ -547,6 +551,7 @@ impl Cli {
         let fact = match self.provider {
             AgentProvider::ClaudeCode => self.read_claude(line),
             AgentProvider::Codex => self.read_codex(line),
+            AgentProvider::Antigravity => Ok(None),
         };
         match fact {
             Ok(fact) => fact,

@@ -71,10 +71,11 @@ impl Account {
 }
 
 #[must_use]
-pub(crate) const fn variable(provider: AgentProvider) -> &'static str {
+pub(crate) const fn variable(provider: AgentProvider) -> Option<&'static str> {
     match provider {
-        AgentProvider::ClaudeCode => "CLAUDE_CONFIG_DIR",
-        AgentProvider::Codex => "CODEX_HOME",
+        AgentProvider::ClaudeCode => Some("CLAUDE_CONFIG_DIR"),
+        AgentProvider::Codex => Some("CODEX_HOME"),
+        AgentProvider::Antigravity => None,
     }
 }
 
@@ -94,6 +95,7 @@ pub(crate) const fn login_overrides(provider: AgentProvider) -> &'static [&'stat
             "OPENAI_FEDERATION_RULE_ID",
             "OPENAI_IDENTITY_TOKEN_FILE",
         ],
+        AgentProvider::Antigravity => &[],
     }
 }
 
@@ -101,13 +103,16 @@ pub(crate) fn run_on(command: &mut Command, provider: AgentProvider, home: &Path
     for name in login_overrides(provider) {
         command.env_remove(name);
     }
-    command.env(variable(provider), home);
+    if let Some(variable) = variable(provider) {
+        command.env(variable, home);
+    }
 }
 
 const fn directory_name(provider: AgentProvider) -> &'static str {
     match provider {
         AgentProvider::ClaudeCode => "claude",
         AgentProvider::Codex => "codex",
+        AgentProvider::Antigravity => "antigravity",
     }
 }
 
@@ -116,6 +121,12 @@ pub(crate) fn root(provider: AgentProvider) -> io::Result<PathBuf> {
 }
 
 pub(crate) fn home(provider: AgentProvider, id: &str) -> io::Result<PathBuf> {
+    if variable(provider).is_none() {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            format!("{} runs on its own login only", provider.label()),
+        ));
+    }
     if !valid_agent_account(id) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -129,6 +140,7 @@ pub(crate) fn default_home(provider: AgentProvider) -> Option<PathBuf> {
     match provider {
         AgentProvider::ClaudeCode => crate::agent::claude::sessions::config_home(),
         AgentProvider::Codex => crate::agent::codex::codex_home(),
+        AgentProvider::Antigravity => None,
     }
 }
 
@@ -178,6 +190,11 @@ pub(crate) fn create(provider: AgentProvider, id: &str) -> io::Result<PathBuf> {
 pub(crate) fn existing(provider: AgentProvider, account: &Account) -> Result<PathBuf, String> {
     let label = provider.label();
     let id = &account.id;
+    if variable(provider).is_none() {
+        return Err(format!(
+            "{label} runs on its own login only; open it without --account"
+        ));
+    }
     let Some(home) = &account.home else {
         return Err(format!(
             "{label} account {id} has no directory: the application-data directory is unknown"
@@ -229,6 +246,7 @@ fn linked_names(provider: AgentProvider, default: &Path) -> Vec<OsString> {
                     .filter(|name| name.to_str().is_some_and(codex_database)),
             )
             .collect(),
+        AgentProvider::Antigravity => Vec::new(),
     }
 }
 

@@ -1,6 +1,10 @@
 use zz_protocol::{AgentProvider, ProviderStatus, ProviderTask, ProvidersReport};
 
-pub const PROVIDERS: [AgentProvider; 2] = [AgentProvider::ClaudeCode, AgentProvider::Codex];
+pub const PROVIDERS: [AgentProvider; 3] = [
+    AgentProvider::ClaudeCode,
+    AgentProvider::Codex,
+    AgentProvider::Antigravity,
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

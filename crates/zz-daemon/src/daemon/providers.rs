@@ -12,7 +12,11 @@ use zz_protocol::{
     ProvidersReport,
 };
 
-const PROVIDERS: [AgentProvider; 2] = [AgentProvider::ClaudeCode, AgentProvider::Codex];
+const PROVIDERS: [AgentProvider; 3] = [
+    AgentProvider::ClaudeCode,
+    AgentProvider::Codex,
+    AgentProvider::Antigravity,
+];
 const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 const LATEST_TIMEOUT: Duration = Duration::from_secs(15);
 const LATEST_FRESH: Duration = Duration::from_mins(10);
@@ -22,6 +26,7 @@ const OUTPUT_GRACE: Duration = Duration::from_millis(500);
 const FAILURE_LINES: usize = 3;
 const CLAUDE_INSTALL: &str = "curl -fsSL https://claude.ai/install.sh | bash";
 const CODEX_INSTALL: &str = "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
+const ANTIGRAVITY_INSTALL: &str = "curl -fsSL https://antigravity.google/cli/install.sh | bash";
 
 #[derive(Default)]
 pub(super) struct Providers {
@@ -278,6 +283,7 @@ pub(super) const fn program(provider: AgentProvider) -> &'static str {
     match provider {
         AgentProvider::ClaudeCode => "claude",
         AgentProvider::Codex => "codex",
+        AgentProvider::Antigravity => "agy",
     }
 }
 
@@ -385,8 +391,8 @@ fn owner(provider: AgentProvider, path: &Path, search: Option<&OsString>) -> Own
             }
         }
     }
-    if let Some(prefix) = npm_prefix(&real) {
-        return npm_owner(provider, &prefix);
+    if let (Some(prefix), Some(package)) = (npm_prefix(&real), npm_package(provider)) {
+        return npm_owner(package, &prefix);
     }
     if let Some(owner) = homebrew(&real) {
         return owner;
@@ -397,10 +403,11 @@ fn owner(provider: AgentProvider, path: &Path, search: Option<&OsString>) -> Own
     system_owner(provider, &real, search).unwrap_or(Owner::Updater)
 }
 
-fn npm_package(provider: AgentProvider) -> &'static str {
+const fn npm_package(provider: AgentProvider) -> Option<&'static str> {
     match provider {
-        AgentProvider::ClaudeCode => "@anthropic-ai/claude-code",
-        AgentProvider::Codex => "@openai/codex",
+        AgentProvider::ClaudeCode => Some("@anthropic-ai/claude-code"),
+        AgentProvider::Codex => Some("@openai/codex"),
+        AgentProvider::Antigravity => None,
     }
 }
 
@@ -410,7 +417,7 @@ fn npm_prefix(real: &Path) -> Option<PathBuf> {
     Some(PathBuf::from(prefix))
 }
 
-fn npm_owner(provider: AgentProvider, prefix: &Path) -> Owner {
+fn npm_owner(package: &str, prefix: &Path) -> Owner {
     let bin = prefix.join("bin");
     let npm = bin.join("npm");
     let npm = executable(&npm).then_some(npm);
@@ -422,10 +429,7 @@ fn npm_owner(provider: AgentProvider, prefix: &Path) -> Owner {
     let npm = npm.map_or_else(|| "npm".to_owned(), |npm| npm.display().to_string());
     Owner::Manual(ManualUpdate {
         owner: format!("npm under {}", prefix.display()),
-        command: Some(format!(
-            "sudo {npm} install -g {}@latest",
-            npm_package(provider)
-        )),
+        command: Some(format!("sudo {npm} install -g {package}@latest")),
     })
 }
 
@@ -607,6 +611,7 @@ fn fetch_latest(
             claude_channel(found)
         ),
         AgentProvider::Codex => "https://registry.npmjs.org/@openai%2fcodex/latest".to_owned(),
+        AgentProvider::Antigravity => return None,
     };
     let mut command = Command::new("curl");
     command.args(["-fsSL", "--max-time", "10", &url]);
@@ -620,6 +625,7 @@ fn fetch_latest(
             .get("version")?
             .as_str()?
             .to_owned(),
+        AgentProvider::Antigravity => return None,
     };
     parse_version(&version)
 }
@@ -641,6 +647,7 @@ fn task_command(
             command.arg("-c").arg(match provider {
                 AgentProvider::ClaudeCode => CLAUDE_INSTALL,
                 AgentProvider::Codex => CODEX_INSTALL,
+                AgentProvider::Antigravity => ANTIGRAVITY_INSTALL,
             });
             command
         }

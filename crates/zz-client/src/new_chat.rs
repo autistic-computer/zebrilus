@@ -31,6 +31,10 @@ pub const AGENT_CHOICES: &[AgentChoice] = &[
         program: "codex",
         shortcut: "x",
     },
+    AgentChoice {
+        program: "antigravity",
+        shortcut: "a",
+    },
 ];
 
 impl AgentChoice {
@@ -48,6 +52,7 @@ impl AgentChoice {
     pub fn provider(self) -> AgentProvider {
         match self.program {
             "codex" => AgentProvider::Codex,
+            "antigravity" => AgentProvider::Antigravity,
             _ => AgentProvider::ClaudeCode,
         }
     }

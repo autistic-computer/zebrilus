@@ -154,7 +154,9 @@ pub(crate) fn with_account(
     let Some(home) = home else {
         return agent;
     };
-    let name = crate::agent::accounts::variable(provider);
+    let Some(name) = crate::agent::accounts::variable(provider) else {
+        return agent;
+    };
     let config = agent.into_config();
     let config = if config.environment().contains_key(name) {
         config

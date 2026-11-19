@@ -51,6 +51,7 @@ pub struct AgentLaunch {
 pub struct AgentLaunches {
     pub claude: AgentLaunch,
     pub codex: AgentLaunch,
+    pub antigravity: AgentLaunch,
 }
 
 impl AgentLaunches {
@@ -59,6 +60,7 @@ impl AgentLaunches {
         match provider {
             AgentProvider::ClaudeCode => &self.claude,
             AgentProvider::Codex => &self.codex,
+            AgentProvider::Antigravity => &self.antigravity,
         }
     }
 
@@ -66,6 +68,7 @@ impl AgentLaunches {
         match provider {
             AgentProvider::ClaudeCode => &mut self.claude,
             AgentProvider::Codex => &mut self.codex,
+            AgentProvider::Antigravity => &mut self.antigravity,
         }
     }
 

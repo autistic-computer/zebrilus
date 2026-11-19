@@ -11,8 +11,8 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use thiserror::Error;
 
 use crate::{
-    DEFAULT_AGENT_CLAUDE_CODE_COMMAND, DEFAULT_AGENT_COMMAND, PaneId, SessionId, SplitId,
-    TmuxColour, WindowId, message::deserialize_bounded_text,
+    AGENT_ANTIGRAVITY_COMMAND, DEFAULT_AGENT_CLAUDE_CODE_COMMAND, DEFAULT_AGENT_COMMAND, PaneId,
+    SessionId, SplitId, TmuxColour, WindowId, message::deserialize_bounded_text,
 };
 
 #[repr(u8)]
@@ -234,16 +234,18 @@ pub enum AgentProvider {
     #[default]
     Codex,
     ClaudeCode,
+    Antigravity,
 }
 
 impl AgentProvider {
-    pub const ALL: [Self; 2] = [Self::Codex, Self::ClaudeCode];
+    pub const ALL: [Self; 3] = [Self::Codex, Self::ClaudeCode, Self::Antigravity];
 
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Codex => "codex",
             Self::ClaudeCode => "claude-code",
+            Self::Antigravity => "antigravity",
         }
     }
 
@@ -252,6 +254,7 @@ impl AgentProvider {
         match self {
             Self::Codex => DEFAULT_AGENT_COMMAND,
             Self::ClaudeCode => DEFAULT_AGENT_CLAUDE_CODE_COMMAND,
+            Self::Antigravity => AGENT_ANTIGRAVITY_COMMAND,
         }
     }
 
@@ -260,6 +263,7 @@ impl AgentProvider {
         match self {
             Self::Codex => "Codex",
             Self::ClaudeCode => "Claude Code",
+            Self::Antigravity => "Antigravity",
         }
     }
 }
@@ -277,8 +281,9 @@ impl FromStr for AgentProvider {
         match value {
             "codex" => Ok(Self::Codex),
             "claude" | "claude-code" | "claudecode" => Ok(Self::ClaudeCode),
+            "agy" | "antigravity" => Ok(Self::Antigravity),
             _ => Err(format!(
-                "unknown agent provider `{value}`; expected codex or claude-code"
+                "unknown agent provider `{value}`; expected codex, claude-code or antigravity"
             )),
         }
     }
