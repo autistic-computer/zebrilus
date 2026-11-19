@@ -146,6 +146,69 @@ impl Shared {
     }
 }
 
+impl Shared {
+    pub(super) fn save_attachment(
+        &self,
+        client: ClientId,
+        kind: ClientKind,
+        upload: (u64, PaneId, String, Vec<u8>),
+        outbound: &Arc<OutboundMailbox>,
+    ) {
+        let (request_id, pane, name, bytes) = upload;
+        if let Some(error) = self.file_edit_refusal(client, kind, pane, "/") {
+            let _ = outbound.enqueue_reliable(&ProtocolMessage::AgentFileAttached {
+                request_id,
+                result: Err(bounded_error(error)),
+            });
+            return;
+        }
+        let root = std::env::temp_dir().join(format!(
+            "{}-attachments",
+            zz_protocol::app_identity::DIRECTORY
+        ));
+        spawn_file_edit(outbound, move || ProtocolMessage::AgentFileAttached {
+            request_id,
+            result: write_attachment(&root, pane, request_id, &name, &bytes)
+                .map_err(|error| bounded_error(format!("Could not attach {name}: {error}"))),
+        });
+    }
+}
+
+fn write_attachment(
+    root: &Path,
+    pane: PaneId,
+    request_id: u64,
+    name: &str,
+    bytes: &[u8],
+) -> std::io::Result<String> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_millis());
+    let dir = root
+        .join(pane.0.to_string())
+        .join(format!("{stamp}-{request_id}"));
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(attachment_name(name));
+    std::fs::write(&path, bytes)?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+fn attachment_name(name: &str) -> String {
+    let base = name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or_default()
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect::<String>();
+    let base = base.trim();
+    if base.is_empty() || base.chars().all(|character| character == '.') {
+        "attachment".to_owned()
+    } else {
+        base.to_owned()
+    }
+}
+
 pub(super) struct FileWriteChunk {
     pub request_id: u64,
     pub pane: PaneId,
@@ -345,6 +408,82 @@ mod tests {
             }
         );
         assert_eq!(fs::read_to_string(&path).expect("unchanged"), "after\n");
+    }
+
+    #[test]
+    fn an_attached_client_saves_an_attachment_and_gets_its_path() {
+        let shared = Arc::new(Shared::new(1));
+        let mailbox = OutboundMailbox::new();
+        let (client, _) =
+            shared.register_subscribed(ClientKind::Interactive, None, None, Arc::clone(&mailbox));
+        let mut context = ExecutionContext::default();
+        shared
+            .execute(
+                client,
+                ClientKind::Interactive,
+                &mut context,
+                &CommandInvocation::new("new-session", ["-d", "-s", "attach"]),
+            )
+            .expect("session");
+        let pane = context.pane.expect("pane id");
+        let outbound = OutboundMailbox::new();
+        outbound.accept_client_capabilities(&[zz_protocol::AGENT_FILES_CAPABILITY.to_owned()]);
+        let upload = |request_id| {
+            (
+                request_id,
+                pane,
+                "../crash.log".to_owned(),
+                b"boom\n".to_vec(),
+            )
+        };
+
+        shared.save_attachment(client, ClientKind::Interactive, upload(1), &outbound);
+        assert_eq!(
+            answer(&outbound),
+            ProtocolMessage::AgentFileAttached {
+                request_id: 1,
+                result: Err(format!("{pane} is not in an attached session")),
+            }
+        );
+
+        shared
+            .attach(client, context.session.expect("session id"))
+            .expect("attach session");
+        shared.save_attachment(client, ClientKind::Interactive, upload(2), &outbound);
+        let ProtocolMessage::AgentFileAttached {
+            request_id: 2,
+            result: Ok(saved),
+        } = answer(&outbound)
+        else {
+            panic!("the attachment should be saved");
+        };
+        let saved = Path::new(&saved);
+        assert_eq!(saved.file_name(), Some("crash.log".as_ref()));
+        assert_eq!(fs::read(saved).expect("saved file"), b"boom\n");
+        let folder = saved.parent().expect("upload folder");
+        fs::remove_dir_all(folder).expect("clean up");
+        let _ = fs::remove_dir(folder.parent().expect("pane folder"));
+    }
+
+    #[test]
+    fn an_attachment_keeps_only_its_own_name() {
+        assert_eq!(
+            [
+                "../../etc/passwd",
+                "C:\\Users\\a\\report.pdf",
+                "..",
+                " \u{7}crash.log ",
+                "",
+            ]
+            .map(attachment_name),
+            [
+                "passwd",
+                "report.pdf",
+                "attachment",
+                "crash.log",
+                "attachment"
+            ]
+        );
     }
 
     #[test]

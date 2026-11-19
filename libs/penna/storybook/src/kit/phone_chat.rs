@@ -7,7 +7,7 @@ use penna::{
     blocks::chat::{
         ActivityEnd, ActivityMark, AskCard, ComposerAction, PhoneComposer, activity_row,
         composer_ground, phone_action_button, phone_close_button, phone_jump_button,
-        phone_plus_button, phone_queued_row,
+        phone_options_button, phone_queued_row,
     },
     blocks::touch::{TouchInk, TouchRow, TouchTrailing},
     components::input::InputState,
@@ -87,7 +87,7 @@ impl Render for Composers {
         let on = composer_ground(ground, cx);
         let row = |id: &'static str, input: &Entity<InputState>, action, enabled| PhoneComposer {
             input: input.clone(),
-            leading: phone_plus_button((id, 0usize), on).into_any_element(),
+            leading: phone_options_button((id, 0usize), on).into_any_element(),
             action: phone_action_button((id, 1usize), action, enabled, on).into_any_element(),
             thumbnails: Vec::new(),
             above: None,

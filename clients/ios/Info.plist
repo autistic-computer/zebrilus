@@ -16,6 +16,7 @@
     <key>UILaunchScreen</key><dict/>
     <key>UIApplicationSupportsIndirectInputEvents</key><true/>
     <key>CADisableMinimumFrameDurationOnPhone</key><true/>
+    <key>NSCameraUsageDescription</key><string>Take a photo to send in a chat.</string>
     <key>NSLocalNetworkUsageDescription</key><string>Connect to your zz host over SSH.</string>
     <key>NSAppTransportSecurity</key>
     <dict>

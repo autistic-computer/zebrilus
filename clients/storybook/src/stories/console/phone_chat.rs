@@ -7,7 +7,7 @@ use ala::{
 use penna::{
     ActiveTheme as _, Ground, IconName, Tone,
     blocks::chat::{
-        ComposerAction, PhoneComposer, phone_action_button, phone_close_button, phone_plus_button,
+        ComposerAction, PhoneComposer, phone_action_button, phone_close_button, phone_options_button,
         phone_queued_row, phone_thumbnail,
     },
     blocks::compact::{PillLabel, compact_floating_bar, compact_floating_pill},
@@ -24,7 +24,7 @@ use zz_ui::{
     agent::{
         ask::{AskChoice, AskSubject},
         chat::HeldMessage,
-        phone::{PhoneCard, PlusPage, PlusSheet, held_sheet},
+        phone::{AttachFrom, PhoneCard, PlusPage, PlusSheet, held_sheet},
         question::QuestionCardState,
     },
     command::mention_picker,
@@ -190,7 +190,7 @@ fn composer(
     let on = inside(cx);
     PhoneComposer {
         input: input.clone(),
-        leading: phone_plus_button((id, 0usize), on).into_any_element(),
+        leading: phone_options_button((id, 0usize), on).into_any_element(),
         action: phone_action_button((id, 1usize), action, enabled, on).into_any_element(),
         thumbnails,
         above: None,
@@ -553,7 +553,7 @@ impl Render for PlusStates {
                 login,
                 code: Some(&self.code),
                 git: None,
-                images: false,
+                attach: Vec::new(),
             }
             .sheet(
                 &login.map_or(PlusPage::Account, |_| PlusPage::SignIn),
@@ -588,7 +588,7 @@ impl Render for PlusStates {
                 login: None,
                 code: None,
                 git: Some(&git),
-                images: false,
+                attach: vec![AttachFrom::Photos, AttachFrom::Camera, AttachFrom::Files],
             }
             .sheet(&page, bottom, |_, _, _| {}, |_, _| {}, cx)
         };

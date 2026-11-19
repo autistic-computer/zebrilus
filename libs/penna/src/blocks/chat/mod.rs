@@ -50,8 +50,9 @@ pub(crate) use phone::phone_button;
 pub use phone::{
     AskCard, PHONE_COMPOSER_BUTTON, PHONE_COMPOSER_HEIGHT, PHONE_COMPOSER_INSET,
     PHONE_COMPOSER_ROWS, PHONE_QUEUED_HEIGHT, PHONE_THUMBNAIL, PhoneComposer, phone_action_button,
-    phone_close_button, phone_composer_corner, phone_jump_button, phone_plan_tray,
-    phone_plus_button, phone_queued_row, phone_thumbnail,
+    phone_attach_tile, phone_close_button, phone_composer_corner, phone_error_card,
+    phone_file_tile, phone_jump_button, phone_options_button, phone_plan_tray, phone_queued_row,
+    phone_thumbnail,
 };
 pub use suggestions::{suggestion_list, suggestion_list_height, suggestion_row};
 pub use tasks::{TrayPlan, plan_tray};

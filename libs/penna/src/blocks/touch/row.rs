@@ -554,6 +554,10 @@ pub fn touch_card(cx: &App) -> Div {
         .p(RULED_INSET)
 }
 
+pub(crate) fn touch_card_surface(cx: &App) -> (Surface, Pixels) {
+    (ruled_card(cx), ruled_corner(cx))
+}
+
 #[must_use]
 pub fn touch_card_ground(cx: &App) -> Ground {
     cx.theme().ground_of(ruled_card(cx))

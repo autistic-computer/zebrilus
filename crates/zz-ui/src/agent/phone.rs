@@ -7,7 +7,7 @@ use ala::{
 use penna::{
     ActiveTheme as _, Disableable as _, Emphasis, Ground, Icon, IconName, Sizable as _, Size,
     Space, StyledExt as _, TextStyle, Tone, WindowExt as _,
-    blocks::chat::AskCard,
+    blocks::chat::{AskCard, phone_attach_tile},
     blocks::notification::Notification,
     blocks::sheet::{
         BottomSheet, bottom_sheet, close_sheet, sheet_back, sheet_close, sheet_ground,
@@ -77,7 +77,24 @@ pub enum PlusAction {
     Login(LoginEvent),
     Mention(TargetItem),
     Drill(TargetItem),
-    Images,
+    Attach(AttachFrom),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AttachFrom {
+    Photos,
+    Camera,
+    Files,
+}
+
+impl AttachFrom {
+    const fn tile(self) -> (&'static str, IconName, &'static str) {
+        match self {
+            Self::Photos => ("chat-attach-photos", IconName::Image, "Photos"),
+            Self::Camera => ("chat-attach-camera", IconName::Camera, "Camera"),
+            Self::Files => ("chat-attach-files", IconName::File, "Files"),
+        }
+    }
 }
 
 pub struct PlusSheet<'a> {
@@ -98,7 +115,7 @@ pub struct PlusSheet<'a> {
     pub login: Option<&'a AgentLogin>,
     pub code: Option<&'a Entity<InputState>>,
     pub git: Option<&'a AgentGitSummary>,
-    pub images: bool,
+    pub attach: Vec<AttachFrom>,
 }
 
 type OnPlus = Rc<dyn Fn(PlusAction, &mut Window, &mut App)>;
@@ -228,14 +245,6 @@ impl PlusSheet<'_> {
                     PlusAction::Open(PlusPage::Mention(Vec::new())),
                 )),
         ];
-        if self.images {
-            rows.push(
-                TouchRow::new("chat-plus-images", "Images")
-                    .icon(IconName::Image)
-                    .disabled(!self.enabled)
-                    .on_click(act(on_action, PlusAction::Images)),
-            );
-        }
         if let Some(settings) = self.settings {
             let setting = |id: &'static str, title: &'static str, icon, value: String, option| {
                 valued(TouchRow::new(id, title).icon(icon), value)
@@ -525,6 +534,28 @@ impl PlusSheet<'_> {
         )
     }
 
+    fn attach_tiles(&self, on_action: &OnPlus, cx: &App) -> Option<AnyElement> {
+        if self.attach.is_empty() || !self.enabled {
+            return None;
+        }
+        Some(
+            h_flex()
+                .w_full()
+                .gap(Space::S8)
+                .children(self.attach.iter().map(|from| {
+                    let (id, icon, label) = from.tile();
+                    phone_attach_tile(
+                        id,
+                        icon,
+                        label,
+                        act(on_action, PlusAction::Attach(*from)),
+                        cx,
+                    )
+                }))
+                .into_any_element(),
+        )
+    }
+
     fn usage(&self, cx: &App) -> Option<AnyElement> {
         let provider = self.provider?;
         let quota = agent_settings::account_quota(self.quotas, provider, self.account, unix_now());
@@ -601,11 +632,14 @@ impl PlusSheet<'_> {
         let (search, groups): (Option<AnyElement>, Vec<AnyElement>) = match page {
             PlusPage::Root => {
                 let mut rows = self.root_rows(&on_action).into_iter();
-                let lead = if self.images { 2 } else { 1 };
-                let first = group(rows.by_ref().take(lead).collect());
+                let first = group(rows.by_ref().take(1).collect());
                 (
                     None,
-                    first.into_iter().chain(group(rows.collect())).collect(),
+                    self.attach_tiles(&on_action, cx)
+                        .into_iter()
+                        .chain(first)
+                        .chain(group(rows.collect()))
+                        .collect(),
                 )
             }
             PlusPage::Setting(option) => (

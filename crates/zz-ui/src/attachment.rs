@@ -53,6 +53,7 @@ const NATIVE_FORMATS: [ImageFormat; 4] = [
 const MAX_EDGE: u32 = 1568;
 
 const MAX_BYTES: usize = 5 * 1024 * 1024;
+const JPEG_QUALITY: u8 = 85;
 
 pub fn normalize(image: &Image) -> Result<Arc<Image>, Cow<'static, str>> {
     if image.format == ImageFormat::Svg {
@@ -76,18 +77,27 @@ pub fn normalize(image: &Image) -> Result<Arc<Image>, Cow<'static, str>> {
     } else {
         decoded
     };
-    let mut png = Cursor::new(Vec::new());
-    decoded
-        .write_to(&mut png, image::ImageFormat::Png)
-        .map_err(|error| Cow::from(format!("could not re-encode the pasted image: {error}")))?;
-    let png = png.into_inner();
-    if png.len() > MAX_BYTES {
+    let mut encoded = Cursor::new(Vec::new());
+    let written = if image.format == ImageFormat::Jpeg {
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, JPEG_QUALITY)
+            .encode_image(&decoded.to_rgb8())
+    } else {
+        decoded.write_to(&mut encoded, image::ImageFormat::Png)
+    };
+    written.map_err(|error| Cow::from(format!("could not re-encode the pasted image: {error}")))?;
+    let encoded = encoded.into_inner();
+    if encoded.len() > MAX_BYTES {
         return Err(Cow::from(format!(
             "image is too large to send ({} MB after scaling)",
-            png.len() / (1024 * 1024)
+            encoded.len() / (1024 * 1024)
         )));
     }
-    Ok(Arc::new(Image::from_bytes(ImageFormat::Png, png)))
+    let format = if image.format == ImageFormat::Jpeg {
+        ImageFormat::Jpeg
+    } else {
+        ImageFormat::Png
+    };
+    Ok(Arc::new(Image::from_bytes(format, encoded)))
 }
 
 const fn decoder_format(format: ImageFormat) -> Option<image::ImageFormat> {
@@ -165,6 +175,25 @@ mod tests {
             (MAX_EDGE, MAX_EDGE / 2),
             "the aspect ratio should survive"
         );
+    }
+
+    #[test]
+    fn an_oversized_photo_stays_a_jpeg_when_scaled() {
+        let mut jpeg = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(MAX_EDGE * 2, MAX_EDGE)
+            .write_to(&mut jpeg, image::ImageFormat::Jpeg)
+            .expect("fixture should encode");
+        let pasted = Image::from_bytes(ImageFormat::Jpeg, jpeg.into_inner());
+        let normalized = normalize(&pasted).expect("an oversized JPEG should scale");
+
+        assert_eq!(normalized.format, ImageFormat::Jpeg);
+        let decoded = image::ImageReader::with_format(
+            Cursor::new(&normalized.bytes),
+            image::ImageFormat::Jpeg,
+        )
+        .into_dimensions()
+        .expect("scaled JPEG should decode");
+        assert_eq!(decoded, (MAX_EDGE, MAX_EDGE / 2));
     }
 
     #[test]

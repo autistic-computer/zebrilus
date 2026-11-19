@@ -35,6 +35,68 @@ pub fn validate_images(text: &str, images: &[AgentImage]) -> Result<(), String> 
     Ok(())
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DraftFile {
+    pub name: String,
+    pub data: Vec<u8>,
+}
+
+pub fn validate_draft(
+    text: &str,
+    images: &[AgentImage],
+    files: &[DraftFile],
+) -> Result<(), String> {
+    validate_images(text, images)?;
+    let total = images
+        .iter()
+        .map(|image| image.data.len())
+        .chain(files.iter().map(|file| file.data.len()))
+        .fold(text.len(), usize::saturating_add);
+    if total > MAX_AGENT_PROMPT_BYTES {
+        return Err(size_error());
+    }
+    Ok(())
+}
+
+pub fn takes_image(mime: Option<&str>) -> bool {
+    mime.is_some_and(|mime| validate_format(mime).is_ok())
+}
+
+pub fn file_meta(name: &str, size: u64) -> String {
+    let kind = std::path::Path::new(name)
+        .extension()
+        .map(|extension| extension.to_string_lossy().to_uppercase())
+        .filter(|extension| !extension.is_empty())
+        .unwrap_or_else(|| "FILE".to_owned());
+    format!("{kind} \u{b7} {}", byte_size(size))
+}
+
+fn byte_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * KB;
+    if bytes < KB {
+        format!("{bytes} B")
+    } else if bytes < MB {
+        format!("{} KB", bytes.div_ceil(KB))
+    } else {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "a size shown to one decimal place"
+        )]
+        let megabytes = bytes as f64 / MB as f64;
+        format!("{megabytes:.1} MB")
+    }
+}
+
+pub fn with_paths(text: &str, paths: &[String]) -> String {
+    let list = paths.join("\n");
+    if text.trim().is_empty() {
+        list
+    } else {
+        format!("{}\n\n{list}", text.trim_end())
+    }
+}
+
 fn validate_format(format: &str) -> Result<(), String> {
     if matches!(
         format,
@@ -47,7 +109,7 @@ fn validate_format(format: &str) -> Result<(), String> {
 }
 
 fn size_error() -> String {
-    "The message and its images must total 6 MiB or less.".into()
+    "The message and its attachments must total 6 MiB or less.".into()
 }
 
 pub const PICKS_IMAGES: bool = cfg!(target_family = "wasm");
@@ -230,6 +292,24 @@ mod tests {
         .expect("the attachment should be a PNG");
         assert_eq!(size, (1568, 500));
         assert!(validate_images("", &images).is_ok());
+    }
+
+    #[test]
+    fn a_file_reads_as_its_kind_and_size_and_sends_as_a_path() {
+        assert_eq!(
+            [
+                file_meta("crash-report-ios.log", 84 * 1024),
+                file_meta("notes", 512),
+                file_meta("deck.pdf", 2_516_582),
+            ],
+            ["LOG \u{b7} 84 KB", "FILE \u{b7} 512 B", "PDF \u{b7} 2.4 MB"]
+        );
+        let paths = ["/tmp/zz-attachments/3/1-1/crash.log".to_owned()];
+        assert_eq!(
+            with_paths("Here is the log\n", &paths),
+            "Here is the log\n\n/tmp/zz-attachments/3/1-1/crash.log"
+        );
+        assert_eq!(with_paths("  ", &paths), paths[0]);
     }
 
     #[test]

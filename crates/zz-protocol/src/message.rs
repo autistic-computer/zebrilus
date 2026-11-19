@@ -3956,6 +3956,22 @@ pub enum ProtocolMessage {
         )]
         signature: Vec<u8>,
     },
+    AgentAttachFile {
+        request_id: u64,
+        pane: PaneId,
+        #[serde(deserialize_with = "deserialize_attachment_name")]
+        name: String,
+        #[serde(
+            serialize_with = "serde_bytes::serialize",
+            deserialize_with = "deserialize_attachment_bytes"
+        )]
+        bytes: Vec<u8>,
+    },
+    AgentFileAttached {
+        request_id: u64,
+        #[serde(deserialize_with = "deserialize_attachment_result")]
+        result: Result<String, String>,
+    },
 }
 
 impl ProtocolMessage {
@@ -4050,6 +4066,9 @@ impl ProtocolMessage {
             Self::IdentityChallenge { .. } | Self::IdentityProof { .. } => {
                 Some(crate::DAEMON_IDENTITY_CAPABILITY)
             }
+            Self::AgentAttachFile { .. } | Self::AgentFileAttached { .. } => {
+                Some(crate::AGENT_FILES_CAPABILITY)
+            }
         }
     }
 }
@@ -4110,6 +4129,46 @@ where
         Ok(text) if text.len() > MAX_FILE_EDIT_BYTES => Err(D::Error::invalid_length(
             text.len(),
             &"file contents within the wire byte limit",
+        )),
+        Ok(_) => Ok(result),
+        Err(error) => bounded_file_edit_error(error).map(|()| result),
+    }
+}
+
+pub const MAX_ATTACHMENT_NAME_BYTES: usize = 255;
+
+fn deserialize_attachment_name<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, MAX_ATTACHMENT_NAME_BYTES)
+}
+
+fn deserialize_attachment_bytes<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let bytes: Vec<u8> = serde_bytes::deserialize(deserializer)?;
+    if bytes.len() > MAX_AGENT_PROMPT_BYTES {
+        return Err(D::Error::invalid_length(
+            bytes.len(),
+            &"an attachment within the prompt byte limit",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn deserialize_attachment_result<'de, D>(
+    deserializer: D,
+) -> Result<Result<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let result = Result::<String, String>::deserialize(deserializer)?;
+    match &result {
+        Ok(path) if path.len() > MAX_FILE_EDIT_ERROR_BYTES => Err(D::Error::invalid_length(
+            path.len(),
+            &"an attachment path within the wire byte limit",
         )),
         Ok(_) => Ok(result),
         Err(error) => bounded_file_edit_error(error).map(|()| result),

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone chat attach</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/input/input.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-row4 { display: grid; grid-template-columns: repeat(4, 424px); gap: 0 16px; align-items: start; }
+  .zz-cap { display: grid; gap: 2px; margin: 4px 10px 0; max-width: 402px; }
+  .zz-cap b { font-weight: 600; }
+  .zz-cap span { color: var(--penna-fg-muted); }
+  .zz-shot { display: grid; align-content: start; }
+  .zz-q { display: grid; gap: 4px; }
+  .zz-q + .zz-q { margin-top: 48px; }
+  .zz-q > p { margin: 0 0 8px; color: var(--penna-fg-muted); }
+
+  .zz-cmp { width: 100%; max-width: 1300px; border-collapse: collapse; }
+  .zz-cmp th, .zz-cmp td { padding: 9px 12px; text-align: left; vertical-align: top; box-shadow: inset 0 -1px 0 var(--penna-divider); }
+  .zz-cmp th { color: var(--penna-fg-muted); font-weight: 500; }
+  .zz-cmp td:first-child { width: 220px; font-weight: 600; }
+
+  .zz-pane { position: absolute; inset: 0; --zz-dock: 156px; }
+  .zz-tx { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 16px; padding: 70px 16px var(--zz-dock); overflow: hidden; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-pane[data-tall] { --zz-dock: 270px; }
+  .zz-pane[data-tall="rows"] { --zz-dock: 320px; }
+  .zz-tx > p { margin: 0; }
+  .zz-tx > .penna-chat-bubble[data-penna] { align-self: flex-end; max-width: 85%; padding: 10px 14px; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-fade { position: absolute; z-index: 5; top: 0; right: 0; left: 0; height: 70px; background: linear-gradient(var(--penna-bg) 54px, transparent); }
+  .zz-dock { position: absolute; z-index: 15; right: 16px; bottom: 84px; left: 16px; display: flex; flex-direction: column; }
+  .zz-phone > .penna-sheet { z-index: 35; }
+  .zz-phone .penna-sheet-panel { padding-bottom: 20px; }
+
+  .zz-g { width: var(--penna-icon-size, 20px); height: var(--penna-icon-size, 20px); flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .penna-button > .zz-g { --penna-icon-size: 20px; }
+
+  .zz-face { display: grid; flex: none; place-items: center; width: var(--s, 24px); height: var(--s, 24px); border-radius: 50%; color: #fff; background: linear-gradient(color-mix(in oklab, var(--b) 84%, white), color-mix(in oklab, var(--b) 90%, black)); box-shadow: 0 1px 3px rgb(0 0 0 / 0.3), inset 0 1px 0 rgb(255 255 255 / 0.3); --b: #d97757; --penna-icon-size: calc(var(--s, 24px) * 0.62); }
+
+  .zz-sgroups { display: flex; flex-direction: column; gap: 12px; padding: 0 8px; overflow: hidden; }
+  .zz-sgroups > * { flex: none; }
+  .zz-row-chev { flex: none; color: var(--penna-muted); opacity: 0.6; --penna-icon-size: 14px; }
+  .penna-touch-row > .zz-g { color: var(--penna-muted); }
+
+  .zz-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .zz-tile[data-penna][data-penna] { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 84px; padding: 0; border: 0; color: var(--penna-fg); font: inherit; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); --penna-icon-size: 24px; }
+  .zz-tile > [data-icon], .zz-tile > .zz-g { color: var(--penna-fg); }
+
+  .zz-pop { position: absolute; z-index: 36; left: 16px; bottom: 158px; display: flex; flex-direction: column; width: 230px; padding: 6px; border-radius: 26px; }
+  .zz-pop > div { display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 14px; border-radius: 20px; --penna-icon-size: 20px; }
+  .zz-pop > div:first-child { background: var(--penna-wash, rgb(from var(--penna-fg) r g b / 0.08)); }
+  .zz-scrim { position: absolute; z-index: 34; inset: 0; background: rgb(0 0 0 / 0.18); }
+
+  .zz-file { display: flex; flex-direction: column; justify-content: space-between; padding: 10px; box-sizing: border-box; color: var(--penna-fg); }
+  .zz-file > [data-icon] { color: var(--penna-muted); --penna-icon-size: 22px; }
+  .zz-file > b { display: -webkit-box; overflow: hidden; font-size: 12px; line-height: 15px; font-weight: 500; overflow-wrap: anywhere; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .zz-file > span { color: var(--penna-fg-muted); font-size: 11px; line-height: 13px; }
+  .zz-frows { display: flex; flex: 1 0 100%; flex-direction: column; gap: 4px; }
+  .zz-frow { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 4px 0 12px; border-radius: calc(var(--penna-control-share) * var(--penna-control-touch)); background: rgb(from var(--penna-fg) r g b / 0.08); }
+  .zz-frow > [data-icon] { color: var(--penna-muted); --penna-icon-size: 20px; }
+  .zz-frow > b { flex: 1; min-width: 0; overflow: hidden; font-size: var(--penna-text-touch-small-size); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-frow > span { color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size); }
+  .zz-frow > button { display: grid; place-items: center; width: 44px; height: 44px; margin: 0; padding: 0; border: 0; background: none; }
+  .zz-frow .penna-chat-thumb-disc[data-penna] { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; --penna-icon-size: 12px; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro"><h1>Attach from the phone, and the composer's leading button</h1></div>
+  <div data-board></div>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const G = {
+    sliders: `<path d="M3 7h9M18 7h3M3 17h3M12 17h9"/><circle cx="15" cy="7" r="3"/><circle cx="9" cy="17" r="3"/>`,
+    paperclip: `<path d="M16.5 7.5v8.25a4.5 4.5 0 0 1-9 0V6a3 3 0 0 1 6 0v9.5a1.5 1.5 0 0 1-3 0V8"/>`,
+    camera: `<path d="M2.5 10.5A2.5 2.5 0 0 1 5 8h2l1.6-2.4a1.5 1.5 0 0 1 1.25-.6h4.3a1.5 1.5 0 0 1 1.25.6L17 8h2a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 19 20H5a2.5 2.5 0 0 1-2.5-2.5z"/><circle cx="12" cy="13.75" r="3.25"/>`,
+  };
+  const g = (name) => G[name] ? `<svg class="zz-g" viewBox="0 0 24 24">${G[name]}</svg>` : ic(name);
+  const face = (glyph = "asterisk", s = 24) => `<span class="zz-face" style="--s: ${s}px">${ic(glyph)}</span>`;
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  const dots = (on, count = 4) => `<span class="penna-dots">${Array.from({ length: count }, (_, i) => `<span class="penna-dot"${i === on ? " data-active" : ""}></span>`).join("")}</span>`;
+  const pill = (title, meta) => `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating"><span class="penna-pill-tile" data-penna="phone.pill.icon">${ic("asterisk")}</span><span class="penna-pill-copy"><span class="penna-pill-title">${title}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">${meta}</span>${dots(1)}</span></span></button></div>`;
+
+  const btn = (glyph, label, extra = "") => `<button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="${label}"${extra}>${g(glyph)}</button>`;
+  const composer = ({ lead = "sliders", trail = null, typed = null, attach = "" } = {}) => {
+    const on = typed != null;
+    const send = `<button class="penna-button" data-penna="button.send" data-shape="icon"${on ? ` data-solid="primary"` : " disabled"} aria-label="Send">${ic("arrow-up")}</button>`;
+    return `<div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer" data-size="touch">${attach}${btn(lead, "Leading")}<span class="penna-chat-input" role="textbox"${on ? "" : ` data-placeholder="Message Claude Code…"`}>${on ? typed : ""}</span>${trail ? btn(trail, "Chat options") : ""}${send}</div></div>`;
+  };
+  const you = (text) => `<div class="penna-card penna-chat-bubble" data-penna="card.bubble" role="group"><span>${text}</span></div>`;
+  const tx = [you("Why does the pill clip its faces at the ends?"), `<p>The track had no rounded clip, so a half face ran past the curve. It now clips to the pill and fades inside it.</p>`].join("");
+  const chatPane = (opts, attrs = "") => `<div class="zz-pane"${attrs}><div class="zz-tx">${tx}</div><div class="zz-fade"></div><div class="zz-dock">${composer(opts)}</div>${pill("Claude Code", "zebrilus")}</div>`;
+
+  const row = ({ label, glyph, value, chev }) => `<div class="penna-touch-row" data-penna="phone.row" role="button">${glyph ? g(glyph) : ""}<span class="penna-touch-row-lines"><span>${label}</span></span>${value ? `<span class="penna-touch-row-value"><span>${value}</span></span>` : ""}${chev ? `<i class="zz-row-chev" data-icon="chevron-right"></i>` : ""}</div>`;
+  const group = (rows) => `<div class="penna-touch-group" data-penna="settings.card" data-ground data-ruled>${rows.map(row).join("")}</div>`;
+  const tile = (glyph, label) => `<button class="zz-tile" data-penna="settings.card" data-ground>${g(glyph)}<span>${label}</span></button>`;
+  const disc = (glyph) => `<button class="penna-sheet-disc" aria-label="${glyph}"><span class="penna-button" data-penna="button" data-size="touch">${ic(glyph)}</span></button>`;
+  const sheet = (title, body) => `<div class="penna-sheet" style="--penna-sheet-rest: 34px"><div class="penna-sheet-scrim"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header"><span class="penna-sheet-title">${title}</span>${disc("xmark")}</div>${body}</div></div></div>`;
+  const phone = (inner) => `<div class="zz-phone">${status}${inner}<span class="zz-home"></span></div>`;
+  const shot = (inner, title, note) => `<div class="zz-shot">${phone(inner)}<div class="zz-cap"><b>${title}</b><span>${note}</span></div></div>`;
+
+  const SETTINGS = group([
+    { label: "Model", glyph: "sparkle", value: "Opus 5.5", chev: true },
+    { label: "Effort", glyph: "cpu", value: "Medium", chev: true },
+    { label: "Permissions", glyph: "hand", value: "Ask", chev: true },
+    { label: "Account", glyph: "user", value: "fabrico", chev: true },
+  ]);
+  const MENTION = group([{ label: "Mention", glyph: "list-tree", chev: true }]);
+  const sheetTiles = sheet("Claude Code", `<div class="zz-sgroups"><div class="zz-tiles">${tile("image", "Photos")}${tile("camera", "Camera")}${tile("file", "Files")}</div>${MENTION}${SETTINGS}</div>`);
+  const sheetRows = sheet("Claude Code", `<div class="zz-sgroups">${group([
+    { label: "Photo library", glyph: "image" },
+    { label: "Take a photo", glyph: "camera" },
+    { label: "Choose a file", glyph: "file" },
+    { label: "Mention", glyph: "list-tree", chev: true },
+  ])}${SETTINGS}</div>`);
+  const sheetSplit = sheet("Claude Code", `<div class="zz-sgroups">${MENTION}${SETTINGS}</div>`);
+  const pop = `<div class="zz-scrim"></div><div class="zz-pop" data-penna="floating"><div>${g("image")}Photo library</div><div>${g("camera")}Take a photo</div><div>${g("file")}Choose a file</div></div>`;
+
+  const thumb = `<span class="penna-chat-thumb" style="background-image: linear-gradient(160deg, color-mix(in srgb, var(--penna-accent) 40%, transparent), transparent 60%), repeating-linear-gradient(0deg, color-mix(in srgb, var(--penna-fg) 18%, transparent) 0 6px, transparent 6px 14px)"><button class="penna-chat-thumb-remove" aria-label="Remove"><span class="penna-chat-thumb-disc" data-penna="floating">${ic("xmark")}</span></button></span>`;
+  const fileTile = `<span class="penna-chat-thumb zz-file">${ic("file")}<b>crash-report-ios.log</b><span>LOG · 84 KB</span><button class="penna-chat-thumb-remove" aria-label="Remove"><span class="penna-chat-thumb-disc" data-penna="floating">${ic("xmark")}</span></button></span>`;
+  const attachTiles = `<div class="penna-chat-attach">${thumb}${fileTile}</div>`;
+  const frow = (name, size) => `<div class="zz-frow">${ic("file")}<b>${name}</b><span>${size}</span><button aria-label="Remove"><span class="penna-chat-thumb-disc" data-penna="floating">${ic("xmark")}</span></button></div>`;
+  const attachRows = `<div class="penna-chat-attach">${thumb}</div><div class="zz-frows">${frow("crash-report-ios.log", "84 KB")}</div>`;
+  const typed = "Here’s the screen and the log from the crash";
+
+  const Q = [
+    {
+      name: "1. The leading button and where Attach lives",
+      shots: [
+        shot(chatPane({ lead: "sliders" }), "A · Sliders", "One button. Sliders says settings, and Attach sits in the sheet with them."),
+        shot(`${chatPane({ lead: "sliders" })}${sheetTiles}`, "A · Attach as tiles", "Photos, Camera and Files as three tiles on top. Then Mention and the chat settings."),
+        shot(`${chatPane({ lead: "sliders" })}${sheetRows}`, "B · Attach as rows", "Same button. Attach is three plain rows in the first group, with Mention."),
+        shot(`${chatPane({ lead: "paperclip", trail: "sliders" })}${pop}`, "C · Paperclip and sliders", "Two buttons. The paperclip opens a small menu. Sliders opens the sheet with Mention and the settings, no Attach."),
+      ],
+    },
+    {
+      name: "2. What an attached file looks like before sending",
+      shots: [
+        shot(chatPane({ lead: "sliders", typed, attach: attachTiles }, " data-tall"), "D · Files as tiles", "A file sits with the images as an 88 tile: glyph, name, kind and size."),
+        shot(chatPane({ lead: "sliders", typed, attach: attachRows }, ' data-tall="rows"'), "E · Files as rows", "Images stay tiles. Each file is a 48 row under them with its name and size."),
+      ],
+    },
+  ];
+
+  const CMP = [
+    ["", "A · Tiles", "B · Rows", "C · Paperclip and sliders"],
+    ["Attach a photo", "2 taps", "2 taps", "2 taps"],
+    ["Change the model", "2 taps", "2 taps", "2 taps"],
+    ["Buttons in the composer", "2 (sliders, send)", "2 (sliders, send)", "3 (paperclip, sliders, send)"],
+    ["Room for text", "Same as today", "Same as today", "44 narrower"],
+    ["Sheet height", "+84 for the tiles", "+156 for three rows", "Shorter: no Attach"],
+  ];
+
+  const html = Q.map((q) => `<section class="zz-q"><h2>${q.name}</h2><div class="zz-row4">${q.shots.join("")}</div></section>`).join("")
+    + `<section class="zz-q"><h2>Side by side</h2><table class="zz-cmp"><thead><tr>${CMP[0].map((c) => `<th>${c}</th>`).join("")}</tr></thead><tbody>${CMP.slice(1).map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table></section>`;
+  document.querySelector("[data-board]").innerHTML = html;
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>

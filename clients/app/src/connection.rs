@@ -1210,6 +1210,36 @@ impl Connection {
             .any(|capability| capability == zz_protocol::FILE_EDIT_CAPABILITY)
     }
 
+    pub fn attaches_files(&self) -> bool {
+        self.core
+            .capabilities()
+            .iter()
+            .any(|capability| capability == zz_protocol::AGENT_FILES_CAPABILITY)
+    }
+
+    pub fn attach_file(
+        &mut self,
+        pane: PaneId,
+        name: String,
+        bytes: Vec<u8>,
+        cx: &mut Context<Self>,
+    ) -> Option<u64> {
+        if !self.connected || !self.attaches_files() {
+            return None;
+        }
+        let request_id = self.next_request_id();
+        self.send(
+            ProtocolMessage::AgentAttachFile {
+                request_id,
+                pane,
+                name,
+                bytes,
+            },
+            cx,
+        );
+        Some(request_id)
+    }
+
     pub const fn epoch(&self) -> u64 {
         self.epoch
     }

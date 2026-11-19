@@ -25,6 +25,20 @@ pub fn agent_resume_welcome(provider: zz_protocol::AgentProvider, cx: &App) -> D
     .pb(px(18.0))
 }
 
+pub fn phone_error_card(
+    error: &str,
+    stopped: bool,
+    ground: penna::Ground,
+    cx: &App,
+) -> ala::AnyElement {
+    penna::blocks::chat::phone_error_card(
+        stopped.then(|| "The agent stopped".into()),
+        rendered_error(error),
+        ground,
+        cx,
+    )
+}
+
 pub fn error_card(error: &str, stopped: bool, cx: &App) -> Div {
     inline_alert(
         stopped.then(|| "The agent stopped".into()),

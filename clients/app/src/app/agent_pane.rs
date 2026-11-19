@@ -398,6 +398,16 @@ impl AgentPane {
     }
 }
 
+const FILES_REFUSED: &str = "Update zz on this machine to send files.";
+const UPLOAD_LOST: &str = "The connection dropped before the files were sent.";
+
+struct Upload {
+    text: String,
+    images: Vec<AgentImage>,
+    requests: Vec<u64>,
+    paths: Vec<Option<String>>,
+}
+
 pub(super) struct AgentPane {
     pane: PaneId,
     connection: Entity<Connection>,
@@ -418,6 +428,8 @@ pub(super) struct AgentPane {
     queued_seen: u32,
     queued_since: usize,
     attachments: Vec<AgentImage>,
+    files: Vec<crate::attachments::DraftFile>,
+    upload: Option<Upload>,
     mention: Entity<TargetPicker>,
     draft_error: Option<String>,
     permission_request_id: Option<u64>,
@@ -503,7 +515,15 @@ impl AgentPane {
                     this.usage = None;
                     this.last_sequence = 0;
                     this.resume_for = None;
+                    if this.upload.take().is_some() {
+                        this.draft_error = Some(UPLOAD_LOST.to_owned());
+                    }
                     cx.notify();
+                } else if let zz_client::CoreEvent::Message(message) = event
+                    && let ProtocolMessage::AgentFileAttached { request_id, result } =
+                        message.as_ref()
+                {
+                    this.file_attached(*request_id, result.clone(), window, cx);
                 } else if let zz_client::CoreEvent::AgentSessions {
                     pane: changed,
                     result,
@@ -616,6 +636,8 @@ impl AgentPane {
             queued_seen: 0,
             queued_since: 0,
             attachments: Vec::new(),
+            files: Vec::new(),
+            upload: None,
             mention,
             draft_error: None,
             permission_request_id: None,
@@ -1084,21 +1106,100 @@ impl AgentPane {
             .agent_state(self.pane)
             .and_then(|state| self.lens_settings(state));
         if self.attachments.is_empty()
+            && self.files.is_empty()
             && let Some(picked) = composer_setter(&text, settings.as_ref())
         {
             self.set_from_composer(picked, window, cx);
+            return;
+        }
+        if !self.files.is_empty() {
+            self.upload_files(text, cx);
             return;
         }
         let attachments = self.attachments.clone();
         if !self.send_prompt(&text, &attachments, cx) {
             return;
         }
+        self.sent(window, cx);
+    }
+
+    fn sent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         cx.haptic(ala::Haptic::Light);
         self.attachments.clear();
+        self.files.clear();
         self.draft_error = None;
         self.input
             .update(cx, |input, cx| input.set_value("", window, cx));
         self.chat.follow();
+        cx.notify();
+    }
+
+    fn upload_files(&mut self, text: String, cx: &mut Context<Self>) {
+        if self.upload.is_some() {
+            return;
+        }
+        if let Err(error) =
+            crate::attachments::validate_draft(&text, &self.attachments, &self.files)
+        {
+            self.draft_error = Some(error);
+            cx.notify();
+            return;
+        }
+        let pane = self.pane;
+        let files = &self.files;
+        let requests: Option<Vec<u64>> = self.connection.update(cx, |connection, cx| {
+            files
+                .iter()
+                .map(|file| connection.attach_file(pane, file.name.clone(), file.data.clone(), cx))
+                .collect()
+        });
+        let Some(requests) = requests else {
+            self.draft_error = Some(FILES_REFUSED.to_owned());
+            cx.notify();
+            return;
+        };
+        self.upload = Some(Upload {
+            text,
+            images: self.attachments.clone(),
+            paths: vec![None; requests.len()],
+            requests,
+        });
+        cx.notify();
+    }
+
+    fn file_attached(
+        &mut self,
+        request_id: u64,
+        result: Result<String, String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(upload) = self.upload.as_mut() else {
+            return;
+        };
+        let Some(index) = upload.requests.iter().position(|id| *id == request_id) else {
+            return;
+        };
+        match result {
+            Ok(path) => upload.paths[index] = Some(path),
+            Err(error) => {
+                self.upload = None;
+                self.draft_error = Some(error);
+                cx.notify();
+                return;
+            }
+        }
+        if upload.paths.iter().any(Option::is_none) {
+            return;
+        }
+        let Some(upload) = self.upload.take() else {
+            return;
+        };
+        let paths: Vec<String> = upload.paths.into_iter().flatten().collect();
+        let text = crate::attachments::with_paths(&upload.text, &paths);
+        if self.send_prompt(&text, &upload.images, cx) {
+            self.sent(window, cx);
+        }
         cx.notify();
     }
 
@@ -1697,7 +1798,7 @@ impl AgentPane {
         true
     }
 
-    fn render_error(&self, state: &zz_protocol::AgentPaneWire, cx: &App) -> Option<AnyElement> {
+    fn shown_error<'a>(&'a self, state: &'a zz_protocol::AgentPaneWire) -> Option<(&'a str, bool)> {
         let error = state
             .error
             .as_deref()
@@ -1706,7 +1807,14 @@ impl AgentPane {
                 _ => None,
             })
             .or(self.draft_error.as_deref())?;
-        let failed = matches!(state.phase, AgentConnectionPhase::Failed { .. });
+        Some((
+            error,
+            matches!(state.phase, AgentConnectionPhase::Failed { .. }),
+        ))
+    }
+
+    fn render_error(&self, state: &zz_protocol::AgentPaneWire, cx: &App) -> Option<AnyElement> {
+        let (error, failed) = self.shown_error(state)?;
         Some(error_card(error, failed, cx).into_any_element())
     }
 }

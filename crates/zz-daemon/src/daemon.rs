@@ -54017,6 +54017,19 @@ fn handle_connection_message<S: TransportStream>(
                     &outbound,
                 );
             }
+            ProtocolMessage::AgentAttachFile {
+                request_id,
+                pane,
+                name,
+                bytes,
+            } => {
+                shared.save_attachment(
+                    client,
+                    hello.kind,
+                    (request_id, pane, name, bytes),
+                    &outbound,
+                );
+            }
             ProtocolMessage::PathListRequest {
                 request_id,
                 pane,

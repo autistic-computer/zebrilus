@@ -8,7 +8,8 @@ use penna::{
     ActiveTheme as _, Disableable as _,
     blocks::chat::{
         ComposerAction as Action, PhoneComposer, composer_ground, phone_action_button,
-        phone_close_button, phone_plus_button, phone_queued_row, phone_thumbnail,
+        phone_close_button, phone_file_tile, phone_options_button, phone_queued_row,
+        phone_thumbnail,
     },
     blocks::compact::edge_blur,
     blocks::sheet::{PageTurn, bottom_sheet, close_sheet, floating_sheet, sheet_close},
@@ -27,12 +28,13 @@ use zz_ui::agent::{
     chat::{HeldMessage, shows_chat},
     controls::{AccountAction, ContextUsage, composer_action},
     phone::{
-        CHAT_SHEET, PhoneAsk, PhoneCard, PlusAction, PlusPage, PlusSheet, held_sheet, resume_sheet,
-        start_rows,
+        AttachFrom, CHAT_SHEET, PhoneAsk, PhoneCard, PlusAction, PlusPage, PlusSheet, held_sheet,
+        resume_sheet, start_rows,
     },
     question::QuestionCardAction,
     tasks::phone_plan_tray,
 };
+use zz_ui::sky::{SkyZones, sky};
 use zz_ui::target::{TargetItem, TargetPicker};
 
 use super::{AgentPane, preview_image};
@@ -46,7 +48,6 @@ const DOCK_GAP: f32 = 8.0;
 const VIEW_SHEET_TOP: f32 = 8.0;
 const VIEW_SHEET_BOTTOM: f32 = 16.0;
 const BOTTOM_FADE: f32 = 32.0;
-const EMPTY_TOP: f32 = 96.0;
 const START_GAP: f32 = 24.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -356,9 +357,9 @@ impl AgentPane {
                 close_sheet(CHAT_SHEET, cx);
                 None
             }
-            PlusAction::Images => {
+            PlusAction::Attach(from) => {
                 close_sheet(CHAT_SHEET, cx);
-                self.pick_images(cx);
+                self.attach_from(from, cx);
                 None
             }
             PlusAction::Drill(item) => {
@@ -546,7 +547,7 @@ impl AgentPane {
                         .core
                         .agent_state(self.pane)
                         .and_then(|state| state.git.as_ref()),
-                    images: self.picks_images(cx),
+                    attach: self.attach_sources(cx),
                 };
                 let act = entity.downgrade();
                 let sheet = plus.sheet(
@@ -707,7 +708,9 @@ impl AgentPane {
                 cx,
             ));
         }
-        prefix.extend(self.render_error(state, cx));
+        prefix.extend(self.shown_error(state).map(|(error, failed)| {
+            zz_ui::agent::presentation::phone_error_card(error, failed, self.ground, cx)
+        }));
         let prompting = other.is_none() && card.is_none();
         if prompting {
             prefix.extend(self.render_completions(cx));
@@ -781,18 +784,28 @@ impl AgentPane {
         }
         let folder = folder_name(&self.cwd(cx));
         let open = cx.entity().downgrade();
+        let zones = SkyZones::default();
+        let sky = start.then(|| sky(("phone-agent-sky", self.pane.0), &zones));
         let empty = empty.map(|(empty, _)| {
-            div()
-                .w_full()
-                .pt(dock.top + px(EMPTY_TOP))
-                .child(empty)
-                .when(start, |column| {
-                    column.child(div().w_full().px(px(DOCK_INSET)).pt(px(START_GAP)).child(
-                        start_rows(&folder, writable, move |menu, window, cx| {
-                            let _ = open.update(cx, |this, cx| this.open_resume(menu, window, cx));
-                        }),
-                    ))
-                })
+            zones.mark(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .flex_col()
+                    .justify_center()
+                    .pt(dock.top)
+                    .pb(dock.reserve + self.dock_height.get())
+                    .child(empty)
+                    .when(start, |column| {
+                        column.child(div().w_full().px(px(DOCK_INSET)).pt(px(START_GAP)).child(
+                            start_rows(&folder, writable, move |menu, window, cx| {
+                                let _ =
+                                    open.update(cx, |this, cx| this.open_resume(menu, window, cx));
+                            }),
+                        ))
+                    }),
+            )
         });
         let sheet = self.phone_sheet(dock, window, cx);
         let fade = use_chat.then(|| {
@@ -813,6 +826,7 @@ impl AgentPane {
                     .absolute()
                     .inset_0()
                     .overflow_hidden()
+                    .children(sky)
                     .children(empty)
                     .children(chat),
             )
@@ -849,7 +863,7 @@ impl AgentPane {
                     }))
                     .into_any_element()
             } else {
-                phone_plus_button(("phone-agent-plus", pane), inside)
+                phone_options_button(("phone-agent-options", pane), inside)
                     .disabled(!writable)
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.open_sheet(ChatSheet::Plus(PlusPage::Root), window, cx);
@@ -877,8 +891,9 @@ impl AgentPane {
             }
             .into_any_element();
         }
-        let has_content =
-            !self.input.read(cx).value().trim().is_empty() || !self.attachments.is_empty();
+        let has_content = !self.input.read(cx).value().trim().is_empty()
+            || !self.attachments.is_empty()
+            || !self.files.is_empty();
         let kind = match composer_action(running, has_content) {
             zz_ui::agent::controls::ComposerAction::Send => Action::Send,
             zz_ui::agent::controls::ComposerAction::Queue => Action::Queue,
@@ -886,7 +901,9 @@ impl AgentPane {
         };
         let enabled = match kind {
             Action::Stop | Action::Queue => writable,
-            Action::Send => ready && state.pending_permission.is_none() && has_content,
+            Action::Send => {
+                ready && state.pending_permission.is_none() && has_content && self.upload.is_none()
+            }
         };
         let action = phone_action_button(("phone-agent-action", pane), kind, enabled, inside);
         let action = if kind == Action::Stop {
@@ -916,11 +933,29 @@ impl AgentPane {
                     cx,
                 ))
             })
+            .chain(self.files.iter().enumerate().map(|(index, file)| {
+                let view = cx.entity().downgrade();
+                phone_file_tile(
+                    ("phone-agent-file", index),
+                    file.name.clone(),
+                    crate::attachments::file_meta(&file.name, file.data.len() as u64),
+                    move |_, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            if index < this.files.len() {
+                                this.files.remove(index);
+                            }
+                            this.draft_error = None;
+                            cx.notify();
+                        });
+                    },
+                    cx,
+                )
+            }))
             .collect();
         let _ = window;
         PhoneComposer {
             input: self.input.clone(),
-            leading: phone_plus_button(("phone-agent-plus", pane), inside)
+            leading: phone_options_button(("phone-agent-options", pane), inside)
                 .disabled(!writable)
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.open_sheet(ChatSheet::Plus(PlusPage::Root), window, cx);
@@ -932,5 +967,120 @@ impl AgentPane {
             ground: self.ground,
         }
         .into_any_element()
+    }
+
+    fn attach_sources(&self, cx: &App) -> Vec<AttachFrom> {
+        let connection = self.connection.read(cx);
+        let images = connection.agent_images_supported(self.pane);
+        let files = connection.attaches_files();
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        {
+            use ala_platform::mobile::{PickSource, can_pick};
+            [
+                (AttachFrom::Photos, PickSource::Photos, images || files),
+                (AttachFrom::Camera, PickSource::Camera, images || files),
+                (AttachFrom::Files, PickSource::Files, files),
+            ]
+            .into_iter()
+            .filter(|(_, source, allowed)| *allowed && can_pick(*source))
+            .map(|(from, ..)| from)
+            .collect()
+        }
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        {
+            let _ = (images, files);
+            if self.picks_images(cx) {
+                vec![AttachFrom::Photos]
+            } else {
+                Vec::new()
+            }
+        }
+    }
+
+    fn attach_from(&mut self, from: AttachFrom, cx: &mut Context<Self>) {
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        {
+            use ala_platform::mobile::{PickSource, pick};
+            let source = match from {
+                AttachFrom::Photos => PickSource::Photos,
+                AttachFrom::Camera => PickSource::Camera,
+                AttachFrom::Files => PickSource::Files,
+            };
+            let (sender, receiver) = async_channel::bounded(1);
+            pick(
+                source,
+                zz_protocol::MAX_AGENT_PROMPT_BYTES as u64,
+                move |files| {
+                    let _ = sender.try_send(files);
+                },
+            );
+            cx.spawn(async move |this, cx| {
+                if let Ok(files) = receiver.recv().await {
+                    this.update(cx, |this, cx| this.add_picked(files, cx)).ok();
+                }
+            })
+            .detach();
+        }
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        if from == AttachFrom::Photos {
+            self.pick_images(cx);
+        }
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn add_picked(
+        &mut self,
+        picked: Vec<ala_platform::mobile::PickedFile>,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::attachments::{DraftFile, agent_images, takes_image, validate_draft};
+        let images = self.connection.read(cx).agent_images_supported(self.pane);
+        let files = self.connection.read(cx).attaches_files();
+        let text = self.input.read(cx).value().to_string();
+        let mut error = None;
+        for file in picked {
+            let Some(data) = file.data else {
+                error = Some(format!("{} is larger than 6 MiB.", file.name));
+                continue;
+            };
+            let format = file
+                .mime
+                .as_deref()
+                .filter(|mime| images && takes_image(Some(mime)))
+                .and_then(ala::ImageFormat::from_mime_type);
+            if let Some(format) = format {
+                let image = std::sync::Arc::new(ala::Image::from_bytes(format, data));
+                match agent_images(&[image]) {
+                    Ok(added) => {
+                        let mut combined = self.attachments.clone();
+                        combined.extend(added);
+                        match validate_draft(&text, &combined, &self.files) {
+                            Ok(()) => self.attachments = combined,
+                            Err(refused) => error = Some(refused),
+                        }
+                    }
+                    Err(refused) => error = Some(refused),
+                }
+                continue;
+            }
+            if !files {
+                error = Some(super::FILES_REFUSED.to_owned());
+                continue;
+            }
+            let mut combined = self.files.clone();
+            combined.push(DraftFile {
+                name: file.name,
+                data,
+            });
+            match validate_draft(&text, &self.attachments, &combined) {
+                Ok(()) => self.files = combined,
+                Err(refused) => error = Some(refused),
+            }
+        }
+        if error.is_none() {
+            cx.haptic(ala::Haptic::Selection);
+        }
+        self.draft_error = error;
+        cx.notify();
     }
 }

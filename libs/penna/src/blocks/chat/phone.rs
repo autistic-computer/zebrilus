@@ -1,18 +1,21 @@
 use std::{rc::Rc, sync::Arc};
 
 use ala::{
-    AnyElement, App, ClickEvent, ElementId, Entity, Focusable as _, Image, ImageSource,
-    IntoElement, ObjectFit, Pixels, RenderOnce, Role, SharedString, Window, div, img, prelude::*,
-    px,
+    AnyElement, App, ClickEvent, Div, ElementId, Entity, Focusable as _, Image, ImageSource,
+    IntoElement, ObjectFit, Pixels, RenderOnce, Role, SharedString, Stateful, Window, div, img,
+    prelude::*, px,
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Ground, Icon, IconName, Kind, Layer,
-    PaintState, Sizable as _, Size, Space, StyledExt as _, Surface, TextStyle,
-    blocks::touch::{Nest, TOUCH_TARGET, TouchRow, concentric, touch_row_frame},
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, Icon, IconName, Kind,
+    Layer, PaintState, Sizable as _, Size, Space, StyledExt as _, Surface, TextStyle, Tone,
+    blocks::touch::{
+        Nest, PressCorners, TOUCH_TARGET, TouchRow, concentric, instant_press_highlight,
+        over_hover, touch_card_surface, touch_row_frame,
+    },
     components::button::{Button, ButtonLook, ButtonVariants},
     components::input::{FieldLook, Input, InputState, field_chrome, field_underlay},
-    foundation::{roles, row_radius},
+    foundation::{InteractiveSurfaceExt as _, roles, row_radius},
     h_flex, muted_on, rems_from_px, v_flex,
 };
 
@@ -27,6 +30,16 @@ pub const PHONE_COMPOSER_INSET: f32 = 6.0;
 pub const PHONE_COMPOSER_HEIGHT: f32 = PHONE_COMPOSER_BUTTON + 2.0 * PHONE_COMPOSER_INSET;
 pub const PHONE_COMPOSER_ROWS: usize = 5;
 pub const PHONE_THUMBNAIL: f32 = 88.0;
+pub const PHONE_ATTACH_TILE: f32 = 84.0;
+const TILE_GLYPH: f32 = 24.0;
+const TILE_GAP: f32 = 6.0;
+const FILE_INSET: f32 = 10.0;
+const FILE_GLYPH: f32 = 22.0;
+const FILE_FILL: f32 = 0.08;
+const FILE_NAME: f32 = 12.0;
+const FILE_NAME_LINE: f32 = 15.0;
+const FILE_META: f32 = 11.0;
+const FILE_META_LINE: f32 = 13.0;
 pub const PHONE_QUEUED_HEIGHT: f32 = TOUCH_TARGET;
 const PLAN_LINE: f32 = 24.0;
 const PLAN_LIST_CORNER: f32 = 16.0;
@@ -35,6 +48,8 @@ const BADGE: f32 = 24.0;
 const BADGE_GLYPH: f32 = 12.0;
 const BADGE_INSET: f32 = 4.0;
 const CARD_INSET: f32 = 4.0;
+const ERROR_INSET: f32 = 16.0;
+const ERROR_PADDING: f32 = 14.0;
 const WHAT_INSET: f32 = 12.0;
 const WHAT_TOP: f32 = 12.0;
 const WHAT_BOTTOM: f32 = 8.0;
@@ -62,8 +77,54 @@ pub(crate) fn phone_button(id: impl Into<ElementId>, icon: IconName) -> Button {
         .child(Icon::new(icon).size(rems_from_px(GLYPH)))
 }
 
-pub fn phone_plus_button(id: impl Into<ElementId>, on: Ground) -> Button {
-    phone_button(id, IconName::Plus).secondary().on(on)
+pub fn phone_options_button(id: impl Into<ElementId>, on: Ground) -> Button {
+    phone_button(id, IconName::Sliders).secondary().on(on)
+}
+
+pub fn phone_attach_tile(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    label: impl Into<SharedString>,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Stateful<Div> {
+    let id = id.into();
+    let label = label.into();
+    let theme = cx.theme();
+    let (surface, corner) = touch_card_surface(cx);
+    let layer = theme.layer(surface, PaintState::Rest);
+    v_flex()
+        .id(id.clone())
+        .role(Role::Button)
+        .aria_label(label.clone())
+        .relative()
+        .flex_1()
+        .min_w_0()
+        .h(px(PHONE_ATTACH_TILE))
+        .items_center()
+        .justify_center()
+        .gap(px(TILE_GAP))
+        .layer(&layer)
+        .rounded(corner)
+        .text_color(layer.text)
+        .surface_hover(surface, PaintState::Rest, cx)
+        .click_cursor()
+        .child(instant_press_highlight(
+            id,
+            over_hover(
+                theme.layer(surface, PaintState::Hover).fill,
+                theme.layer(surface, PaintState::Active).fill,
+            ),
+            PressCorners::Row(corner, layer.smoothing),
+        ))
+        .child(Icon::new(icon).size(px(TILE_GLYPH)))
+        .child(
+            div()
+                .type_style(TextStyle::TouchSmall, cx)
+                .truncate()
+                .child(label),
+        )
+        .on_click(on_click)
 }
 
 pub fn phone_close_button(id: impl Into<ElementId>, on: Ground) -> Button {
@@ -189,14 +250,7 @@ pub fn phone_thumbnail(
     cx: &App,
 ) -> AnyElement {
     let id = id.into();
-    let theme = cx.theme();
     let corner = concentric(phone_composer_corner(cx), px(PHONE_COMPOSER_INSET));
-    let disc = Layer {
-        radius: theme.control_corner(px(BADGE)),
-        share: None,
-        ..theme.layer(Surface::new(Kind::Floating.role()), PaintState::Rest)
-    };
-    let reach = BADGE_INSET + (BADGE - TOUCH_TARGET) / 2.0;
     div()
         .id(id.clone())
         .relative()
@@ -209,35 +263,106 @@ pub fn phone_thumbnail(
                     .object_fit(ObjectFit::Cover),
             ),
         )
+        .child(remove_badge(&id, "Remove the image", on_remove, cx))
+        .into_any_element()
+}
+
+pub fn phone_file_tile(
+    id: impl Into<ElementId>,
+    name: impl Into<SharedString>,
+    meta: impl Into<SharedString>,
+    on_remove: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> AnyElement {
+    let id = id.into();
+    let theme = cx.theme();
+    let corner = concentric(phone_composer_corner(cx), px(PHONE_COMPOSER_INSET));
+    let muted = theme.foreground.muted();
+    div()
+        .id(id.clone())
+        .relative()
+        .flex_none()
+        .size(px(PHONE_THUMBNAIL))
+        .child(
+            v_flex()
+                .size_full()
+                .justify_between()
+                .p(px(FILE_INSET))
+                .rounded(corner)
+                .bg(theme.foreground.opacity(FILE_FILL))
+                .child(
+                    Icon::new(IconName::File)
+                        .size(px(FILE_GLYPH))
+                        .text_color(muted),
+                )
+                .child(
+                    v_flex()
+                        .w_full()
+                        .min_w_0()
+                        .child(
+                            div()
+                                .w_full()
+                                .text_size(px(FILE_NAME))
+                                .line_height(px(FILE_NAME_LINE))
+                                .font_weight(ala::FontWeight::MEDIUM)
+                                .text_color(theme.foreground)
+                                .line_clamp(2)
+                                .text_ellipsis()
+                                .child(name.into()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(FILE_META))
+                                .line_height(px(FILE_META_LINE))
+                                .text_color(muted)
+                                .truncate()
+                                .child(meta.into()),
+                        ),
+                ),
+        )
+        .child(remove_badge(&id, "Remove the file", on_remove, cx))
+        .into_any_element()
+}
+
+fn remove_badge(
+    id: &ElementId,
+    label: &'static str,
+    on_remove: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Stateful<Div> {
+    let theme = cx.theme();
+    let disc = Layer {
+        radius: theme.control_corner(px(BADGE)),
+        share: None,
+        ..theme.layer(Surface::new(Kind::Floating.role()), PaintState::Rest)
+    };
+    let reach = BADGE_INSET + (BADGE - TOUCH_TARGET) / 2.0;
+    div()
+        .id(SharedString::from(format!("{id}-remove")))
+        .role(Role::Button)
+        .aria_label(label)
+        .absolute()
+        .top(px(reach))
+        .right(px(reach))
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(px(TOUCH_TARGET))
+        .click_cursor()
+        .on_click(move |_, window, cx| {
+            on_remove(window, cx);
+            cx.stop_propagation();
+        })
         .child(
             div()
-                .id(SharedString::from(format!("{id}-remove")))
-                .role(Role::Button)
-                .aria_label("Remove the image")
-                .absolute()
-                .top(px(reach))
-                .right(px(reach))
                 .flex()
                 .items_center()
                 .justify_center()
-                .size(px(TOUCH_TARGET))
-                .click_cursor()
-                .on_click(move |_, window, cx| {
-                    on_remove(window, cx);
-                    cx.stop_propagation();
-                })
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .size(px(BADGE))
-                        .layer(&disc)
-                        .text_color(disc.text)
-                        .child(Icon::new(IconName::Xmark).size(px(BADGE_GLYPH))),
-                ),
+                .size(px(BADGE))
+                .layer(&disc)
+                .text_color(disc.text)
+                .child(Icon::new(IconName::Xmark).size(px(BADGE_GLYPH))),
         )
-        .into_any_element()
 }
 
 type WhatHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
@@ -391,6 +516,54 @@ impl RenderOnce for AskCard {
         .child(what)
         .child(rows)
     }
+}
+
+pub fn phone_error_card(
+    title: Option<SharedString>,
+    message: impl Into<SharedString>,
+    ground: Ground,
+    cx: &App,
+) -> AnyElement {
+    let theme = cx.theme();
+    let inside = composer_ground(ground, cx);
+    let danger = theme.paint_on(inside, Tone::Danger, Emphasis::Ghost).text;
+    let line = px(TextStyle::TouchSmall.line_height_px());
+    field_chrome(
+        h_flex()
+            .debug_selector(|| "chat-error-card".to_owned())
+            .w_full()
+            .items_start()
+            .gap(Space::S12)
+            .px(px(ERROR_INSET))
+            .py(px(ERROR_PADDING)),
+        FieldLook::Composer,
+        Some(ground),
+        PaintState::Rest,
+        cx,
+    )
+    .rounded(theme.phone_radius())
+    .corner_radius_mode(ala::CornerRadiusMode::Fixed)
+    .type_style(TextStyle::TouchSmall, cx)
+    .text_color(theme.foreground)
+    .child(
+        div().flex().flex_none().items_center().h(line).child(
+            Icon::new(IconName::TriangleAlert)
+                .size(px(GLYPH))
+                .text_color(danger),
+        ),
+    )
+    .child(
+        v_flex()
+            .flex_1()
+            .min_w_0()
+            .children(title.map(|title| {
+                div()
+                    .type_style_strong(TextStyle::TouchSmall, cx)
+                    .child(title)
+            }))
+            .child(div().child(message.into())),
+    )
+    .into_any_element()
 }
 
 pub fn phone_queued_row(

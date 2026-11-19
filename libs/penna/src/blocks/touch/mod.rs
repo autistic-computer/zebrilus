@@ -37,6 +37,7 @@ pub(crate) use press::over_hover;
 pub use press::{
     PressCorners, PressFeedback, instant_press_highlight, press_feedback, press_highlight,
 };
+pub(crate) use row::touch_card_surface;
 pub(crate) use row::{Nest, touch_row_frame};
 pub use row::{
     TOUCH_DETAIL_ROW_HEIGHT, TOUCH_HEADER_HEIGHT, TOUCH_ROW_HEIGHT, TouchGroup, TouchHeader,
