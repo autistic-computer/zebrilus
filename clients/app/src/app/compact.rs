@@ -835,6 +835,7 @@ impl AppShell {
         let dead = zz_client::terminal_view::dead_label(pane.dead, pane.dead_status);
         let mut background = cx.theme().background;
         let mut rows_above = false;
+        let mut rows_below = false;
         let content = match &pane.kind {
             PaneKindSnapshot::Agent(_) => {
                 let agent = self.agent_entity(pane_id, window, cx);
@@ -886,6 +887,7 @@ impl AppShell {
                 });
                 background = terminal.read(cx).fill(cx);
                 rows_above = terminal.read(cx).rows_above_shown(cx);
+                rows_below = terminal.read(cx).rows_below_shown(cx);
                 if current
                     && !self.compact.pager.is_moving()
                     && let Some(text) = terminal.read(cx).text()
@@ -984,7 +986,7 @@ impl AppShell {
             .when(rows_above && top_inset > px(0.0), |page| {
                 page.child(edge_blur(penna::Edge::Top, top_inset, background))
             })
-            .when(rows_above && reserve > px(0.0), |page| {
+            .when(rows_below && reserve > px(0.0), |page| {
                 page.child(edge_blur(penna::Edge::Bottom, reserve, background))
             })
             .into_any_element()
@@ -1565,6 +1567,7 @@ impl AppShell {
                     .absolute()
                     .left(at.x)
                     .top(at.y)
+                    .occlude()
                     .opacity(fade * (1.0 - menu_progress))
                     .child(
                         penna::blocks::chat::phone_jump_button(

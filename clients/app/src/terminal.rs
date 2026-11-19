@@ -619,14 +619,22 @@ impl TerminalPane {
         }
     }
 
+    fn scroll_moving(&self) -> bool {
+        self.overscroll.is_stretched()
+            || self.scroll.target().is_some()
+            || self.scroll.sub_row() > 0.0
+    }
+
     pub(crate) fn rows_above_shown(&self, cx: &App) -> bool {
         self.rows_above
-            && (self.overscroll.is_stretched()
-                || self.scroll.target().is_some()
-                || self.scroll.sub_row() > 0.0
+            && (self.scroll_moving()
                 || self
                     .viewport(&self.connection.read(cx).core)
                     .is_some_and(|viewport| viewport.scrollbar.offset > 0))
+    }
+
+    pub(crate) fn rows_below_shown(&self, cx: &App) -> bool {
+        self.rows_below && (self.scroll_moving() || self.scrolled_back(cx))
     }
 
     pub fn set_extra_height(&mut self, height: Pixels, cx: &mut Context<Self>) {
