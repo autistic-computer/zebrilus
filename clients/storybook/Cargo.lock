@@ -7312,7 +7312,7 @@ dependencies = [
 
 [[package]]
 name = "zz-client"
-version = "0.27.0"
+version = "0.28.0"
 dependencies = [
  "agent-client-protocol-schema",
  "base64",
@@ -7331,7 +7331,7 @@ dependencies = [
 
 [[package]]
 name = "zz-protocol"
-version = "0.27.0"
+version = "0.28.0"
 dependencies = [
  "base64",
  "foldhash",
@@ -7362,7 +7362,7 @@ dependencies = [
 
 [[package]]
 name = "zz-terminal"
-version = "0.27.0"
+version = "0.28.0"
 dependencies = [
  "csscolorparser",
  "serde",
@@ -7372,7 +7372,7 @@ dependencies = [
 
 [[package]]
 name = "zz-ui"
-version = "0.27.0"
+version = "0.28.0"
 dependencies = [
  "ala",
  "chrono",
