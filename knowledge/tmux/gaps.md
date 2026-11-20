@@ -17,17 +17,17 @@ below.
 
 Pinned tmux commit: `7f2a35ad3321f9ba57a1062ca73b1f3ff26aca53`.
 
-Tracked gap groups: **48**. Classified items: **352**.
+Tracked gap groups: **48**. Classified items: **357**.
 
 - Status: open: 2, accepted: 46.
 - Decision: adopt: 2, native: 38, never: 8.
 - Priority: now: 1, later: 1, none: 46.
 - Closed history entries: 226.
-- Surface: command: 2, flag: 8, extension-flag: 24, native-command: 34, option: 16, format: 44, hook: 2, key: 19, binding: 37, native-key: 93, semantic: 64, presentation: 8, protocol: 1.
+- Surface: command: 2, flag: 8, extension-flag: 24, native-command: 39, option: 16, format: 44, hook: 2, key: 19, binding: 37, native-key: 93, semantic: 64, presentation: 8, protocol: 1.
 
 ## Measured surface
 
-The pinned oracle contains 92 commands, 78 aliases, 593 command-flag shapes (332 valueless, 253 required-value, 8 optional-value), positional minimum and maximum bounds, 183 options, 214 global formats, 204 scoped literal context pairs across 37 source producers, 5 derived context families, 37 format modifiers, 89 hooks, and 308 default bindings across 5 tables. zz has catalog entries for 90 of those commands. The registry classifies 8 catalogued-unsupported upstream flag pairs, 0 implemented flag-arity mismatches, 0 positional-minimum mismatches, 0 positional-maximum mismatches, 14 callback-bearing commands across 6 effective `args_parse` rules, 0 implemented commands without verified callback behavior, 24 zz-only flags on tmux command names, 34 native command names, 16 options absent from `BEHAVES`, 44 known limited formats, 0 scoped context-format gaps, 0 accepted-native context-format names, 0 option scope mismatches, 0 option default mismatches, 2 currently documented hook-producer gaps, 0 zz-only hook names, 19 omitted default keys, 37 divergent shared default bindings, 93 zz-only default keys.
+The pinned oracle contains 92 commands, 78 aliases, 593 command-flag shapes (332 valueless, 253 required-value, 8 optional-value), positional minimum and maximum bounds, 183 options, 214 global formats, 204 scoped literal context pairs across 37 source producers, 5 derived context families, 37 format modifiers, 89 hooks, and 308 default bindings across 5 tables. zz has catalog entries for 90 of those commands. The registry classifies 8 catalogued-unsupported upstream flag pairs, 0 implemented flag-arity mismatches, 0 positional-minimum mismatches, 0 positional-maximum mismatches, 14 callback-bearing commands across 6 effective `args_parse` rules, 0 implemented commands without verified callback behavior, 24 zz-only flags on tmux command names, 39 native command names, 16 options absent from `BEHAVES`, 44 known limited formats, 0 scoped context-format gaps, 0 accepted-native context-format names, 0 option scope mismatches, 0 option default mismatches, 2 currently documented hook-producer gaps, 0 zz-only hook names, 19 omitted default keys, 37 divergent shared default bindings, 93 zz-only default keys.
 
 ## Enforcement boundary
 
