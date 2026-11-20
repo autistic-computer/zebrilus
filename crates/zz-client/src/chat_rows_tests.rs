@@ -1677,3 +1677,37 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
         "a failed answer stays unless the same command then worked"
     );
 }
+
+#[test]
+fn a_finished_turn_keeps_a_row_for_each_page_it_edited() {
+    let mut thread = Thread::new();
+    thread.tool("r1", ItemKind::Read, "site/landing.html");
+    thread.done("r1");
+    thread.tool("e1", ItemKind::Edit, "site/landing.html");
+    thread.done("e1");
+    thread.tool("e2", ItemKind::Edit, "site/server.rs");
+    thread.done("e2");
+    thread.tool("e3", ItemKind::Edit, "site/Logo.SVG");
+    thread.end("e3", ItemStatus::Failed { message: None });
+    thread.tool("e4", ItemKind::Edit, "site/pricing.htm");
+    thread.done("e4");
+    thread.tool("e5", ItemKind::Edit, "site/landing.html");
+    thread.done("e5");
+    let live = thread.rows();
+    assert!(!live.shown.iter().any(|unit| matches!(unit, Unit::Page(_))));
+    thread.start("a1", None, ItemKind::Agent, ItemBody::default());
+    thread.done("a1");
+    thread.finish(TurnOutcome::Completed {
+        stop_reason: "end_turn".to_owned(),
+    });
+    let rows = thread.rows();
+    assert_eq!(
+        rows.shown,
+        [
+            Unit::Page(ItemId::new("e5")),
+            Unit::Page(ItemId::new("e4")),
+            Unit::Text(ItemId::new("a1")),
+        ]
+    );
+    assert_eq!(rows.folded.len(), 1);
+}

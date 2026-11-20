@@ -268,6 +268,7 @@ pub fn flight(window: &mut Window, cx: &mut App) -> AnyView {
                     .update(cx, |stage, cx| stage.open(request, window, cx))
                     .ok();
             })),
+            page: None,
         };
         let script = script();
         let thread = Thread::new(script)

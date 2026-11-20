@@ -53216,7 +53216,7 @@ To ask the user something, use your own question tool: it shows here as a card. 
 
 - To show a comparison, stats, a chart, a form or a small control, open a fenced block with ```ui and write it as described under UI blocks below. It is drawn with the app's own components in the user's theme. A button press reaches you as the user's next message, on one line: `ui action NAME {...}` with the values that action listed. `ui problems [...]` means the block could not be drawn: answer with a corrected block.
 - To show a page you are building (a site, a screen of the user's product), put the whole document, starting with `<!doctype html>`, in a plain ```html block. It keeps its own styles and is drawn in a frame at desktop size; a click opens it beside the chat.
-- For a page with files of its own, write it to disk and run `zz html PATH`.
+- For a page with files of its own, or one you will keep changing, write it to disk and run `zz html PATH` once. It opens beside this chat and redraws when its files change.
 
 Unless auto-approve is off, this pane approves `zz` commands without asking, alone or piped into `head`, `tail`, `grep`, `rg`, `wc`, `jq`, `cut` or `tr`, with no redirect but `2>&1` or `>/dev/null`.
 
@@ -53549,7 +53549,8 @@ Show a page you wrote beside your pane: a file, a directory with `index.html`, o
 HTML from stdin. The pane reloads each time a file the page loaded changes, so rewrite the file
 and look again. A file serves only itself; a directory also serves the files under it, except
 names that start with `.`. Pages can load scripts from CDNs. `--float` opens a floating pane.
-`-t %N` reloads that pane if `zz html` opened it, otherwise opens the page beside it. With
+A pane keeps one page pane: your next `zz html` shows its page there instead of splitting again.
+`-t %N` shows the page in that pane if `zz html` opened it, otherwise beside it. With
 `--reply` the page can call `zz.reply(text)`, which sends the text to your pane. Print the page
 URL and the new pane. Over `--host`, PATH
 is read on that host; send a local page with `zz --host NAME html -t %N - < page.html`.

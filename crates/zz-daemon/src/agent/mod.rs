@@ -33,6 +33,7 @@ pub(crate) mod journal;
 pub(crate) mod login;
 pub(crate) mod paths;
 pub(crate) mod runtime;
+pub(crate) mod session_files;
 pub(crate) mod stream;
 pub(crate) mod turn;
 pub(crate) mod visualize;

@@ -61,6 +61,7 @@ pub(crate) fn fixture_runner(
             channels.commands,
             channels.controls,
             channels.events,
+            None,
         ))
     })
 }

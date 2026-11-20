@@ -5,11 +5,11 @@ use serde_json::Value;
 use zz_protocol::{AGENT_GROK_COMMAND, AgentProvider, QuotaWindow, QuotaWindows};
 
 use crate::agent::{
-    cli_session,
     dialect::{self, Dialect, Quota},
     environment::agent_path,
     host::RuntimeChannels,
     runtime::AgentSpawnConfig,
+    session_files,
 };
 
 const DIALECT: Dialect = Dialect {
@@ -23,6 +23,7 @@ const DIALECT: Dialect = Dialect {
         method: "_x.ai/billing",
         read: credit_usage,
     }),
+    rules: Some("rules"),
 };
 
 pub(crate) async fn run_grok_runtime(
@@ -61,7 +62,7 @@ fn credit_usage(billing: &Value) -> Option<QuotaWindows> {
 }
 
 fn stored_title(session: &str) -> Option<String> {
-    let summary = cli_session::grok_summary(&home()?, session)?;
+    let summary = session_files::grok_summary(&home()?, session)?;
     ["generated_title", "session_summary"]
         .into_iter()
         .filter_map(|key| summary[key].as_str())

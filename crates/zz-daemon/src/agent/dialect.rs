@@ -31,6 +31,7 @@ pub(crate) struct Dialect {
     pub(crate) model_name: Option<fn(&str) -> Option<String>>,
     pub(crate) unguarded: Option<Unguarded>,
     pub(crate) quota: Option<Quota>,
+    pub(crate) rules: Option<&'static str>,
 }
 
 #[derive(Clone, Copy)]
@@ -101,6 +102,14 @@ pub(crate) async fn run(
     let (command_tx, command_rx) = async_channel::bounded(1);
     let (control_tx, control_rx) = async_channel::bounded(1);
     let (event_tx, event_rx) = async_channel::bounded(1);
+    let session_meta = dialect
+        .rules
+        .zip(config.workspace.pane.as_deref())
+        .map(|(key, pane)| {
+            let session = config.workspace.session.as_deref().unwrap_or_default();
+            let rules = crate::workspace_context(pane, session, true);
+            serde_json::Map::from_iter([(key.to_owned(), Value::String(rules))])
+        });
     let transcript = Mutex::new(Transcript::default());
     let sign_in = Mutex::new(SignIn::default());
     let held_commands = command_tx.downgrade();
@@ -270,6 +279,7 @@ pub(crate) async fn run(
                 command_rx,
                 control_rx,
                 event_tx,
+                session_meta,
             ),
             outbound,
         ),
@@ -553,6 +563,7 @@ mod tests {
         model_name: None,
         unguarded: None,
         quota: None,
+        rules: None,
     };
     const GROK: Dialect = Dialect {
         effort_option: "reasoning_effort",
@@ -562,6 +573,7 @@ mod tests {
         model_name: None,
         unguarded: None,
         quota: None,
+        rules: None,
     };
 
     #[test]

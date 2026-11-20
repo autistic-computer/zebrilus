@@ -40,6 +40,7 @@ pub(crate) struct AgentToolCall {
     pub(crate) title: String,
     pub(crate) kind: String,
     pub(crate) status: String,
+    pub(crate) page: Option<String>,
 }
 
 pub(crate) enum AgentRequestReply {
@@ -488,6 +489,19 @@ struct ReclaimedPrompt {
     prompt: AgentPrompt,
 }
 
+fn user_facing_page(update: &Value) -> Option<String> {
+    let input = update.get("rawInput")?;
+    if input.pointer("/ArtifactMetadata/UserFacing")?.as_bool()? {
+        let path = input
+            .get("Path")
+            .or_else(|| update.pointer("/locations/0/path"))?
+            .as_str()?;
+        zz_protocol::chat::is_page_file(path).then(|| path.to_owned())
+    } else {
+        None
+    }
+}
+
 impl PaneLane {
     fn tool_call(&mut self, payload: &AgentStreamPayload) -> Option<AgentToolCall> {
         let AgentStreamPayload::Update { update } = payload else {
@@ -531,6 +545,12 @@ impl PaneLane {
         }
         if let Some(status) = update.get("status").and_then(Value::as_str) {
             status.clone_into(&mut call.status);
+        }
+        if self.provider == AgentProvider::Antigravity
+            && self.turn_id.is_some()
+            && let Some(page) = user_facing_page(update)
+        {
+            call.page = Some(page);
         }
         (update_kind == "tool_call"
             || (call.status != previous_status
@@ -1457,6 +1477,41 @@ mod tests {
         fixture::{Behavior, fixture_runner},
         stream::{AgentImage, AgentPromptOutcome, AgentSessionCapabilities, AgentSessionSummary},
     };
+
+    #[test]
+    fn only_a_page_marked_user_facing_counts_as_an_agents_page() {
+        let write = |user_facing: bool, path: &str| {
+            json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "call_1",
+                "status": "completed",
+                "kind": "edit",
+                "locations": [{ "path": path }],
+                "rawInput": {
+                    "ArtifactMetadata": { "RequestFeedback": false, "UserFacing": user_facing },
+                    "Overwrite": true,
+                    "Path": path,
+                },
+            })
+        };
+        let page = "/home/me/.gemini/antigravity-cli/brain/s1/button-comparison.html";
+        assert_eq!(user_facing_page(&write(true, page)).as_deref(), Some(page));
+        assert_eq!(user_facing_page(&write(false, page)), None);
+        assert_eq!(
+            user_facing_page(&write(true, "/home/me/brain/s1/plan.md")),
+            None
+        );
+        assert_eq!(
+            user_facing_page(&json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "call_2",
+                "kind": "edit",
+                "locations": [{ "path": "/work/site/index.html" }],
+                "rawInput": { "Path": "/work/site/index.html" },
+            })),
+            None
+        );
+    }
 
     const DEADLINE: Duration = Duration::from_secs(5);
 

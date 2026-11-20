@@ -2,7 +2,7 @@
 type: Design Plan
 title: Artifacts . agent-written HTML in browser panes and inline
 description: "Proposed plan for showing HTML an agent writes. zz html <path> registers the page with the daemon that ran the caller, browser panes load it from a zz://<token>/ scheme whose bytes the daemon sends over the client's existing connection (so it works on ssh hosts), the daemon reloads the pane when a file the page loaded changes, pages get no bridge by default, and --reply grants one call that sends text to the pane that opened the page. In the Agent pane, svg blocks render inline through the mermaid path, and html blocks show code with a Preview toggle that one hidden browser renders as cached images; a click makes that block a live page in place, and Open opens it as a pane. A block opened with html preview shows the picture first and wraps a fragment in a page with the theme colors, which is also what Codex's visualize references become. Replaces the 2026-07-28 userpanes plan."
-status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; previews live in the agent chat since 2026-11-01 and were checked live end to end on 2026-11-15; since then html preview blocks draw bare with penna's HTML kit and whole documents draw as page frames; iOS draws both as pictures and loads zz:// pages; web and Android not started)
+status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; previews live in the agent chat since 2026-11-01 and were checked live end to end on 2026-11-15; since then html preview blocks draw bare with penna's HTML kit and whole documents draw as page frames; iOS draws both as pictures and loads zz:// pages; web and Android not started; since 2026-11-20 a pane keeps one page pane, a finished turn keeps a row for each page it edited, Antigravity's user-facing page writes open the pane, and Grok gets the agent context as session rules, desktop only)
 resource: libs/ala-cef/src/cef_runtime.rs
 tags:
 - browser
@@ -13,7 +13,7 @@ tags:
 - agent-pane
 - artifacts
 - design-plan
-timestamp: 2026-11-15T00:00:00-03:00
+timestamp: 2026-11-20T00:00:00-03:00
 ---
 
 # Overview
@@ -102,6 +102,9 @@ zz html [--float] [--reply] [-t %N] [--] <path | ->
   `ZZ_PANE` (`ExecRequest.origin`, `crates/zz-daemon-client/src/client.rs:362`). A relative path
   resolves against the client's working directory through `buffer_file_path`, because daemon
   verbs run before `ExecutionContext` gets one. `--reply` without a calling pane fails.
+* A pane keeps one page pane. The pane a page opens beside (`-t`, else the opener, else the
+  active pane) owns the pane that call created, and its next `zz html` shows the new page there
+  instead of splitting again (`Artifacts::pages`). `-t` naming a page pane still wins.
 * It prints the URL and the pane: `zz://3f9c…/report.html %12`.
 * New panes open in a browser profile named `artifacts`, so pages share no cookies or storage with
   the user's browsing.
@@ -230,6 +233,35 @@ That gives the agent a form to ask with:
 ```html
 <button onclick="zz.reply('picked: option B')">B</button>
 ```
+
+# Pages a chat keeps changing
+
+Boarded in `design/mockups/artifacts/` (`final.html` carries the numbers). The page is a file the
+agent keeps rewriting, the pane follows the file through the reload above, and the path is the
+page's identity, so zz stores nothing about it.
+
+* **Who opens the pane.** Any agent that runs `zz html`. Antigravity without being told: its ACP
+  `tool_call` for a page it wants shown carries `rawInput.ArtifactMetadata.UserFacing: true` and
+  the file's `Path`. The fan-out keeps that path on the tool call when it ends in `.html`, `.htm`
+  or `.svg` and a turn is live (`user_facing_page`, `crates/zz-daemon/src/agent/fanout.rs`), and
+  the agent inbox runs `html -t <chat> -- <path>` once the call completes
+  (`Shared::show_agent_page`). A session being restored opens nothing.
+* **A pane you closed stays closed.** `show_agent_page` does nothing when the chat's page pane is
+  gone. A row click or the agent's own `zz html` opens one again, and from then on the agent's
+  writes reach it.
+* **The row.** `zz_client::chat_rows::turn_rows` keeps a `Unit::Page` outside a finished turn's
+  fold for each page file the turn edited, in the order the files were first touched, each
+  pointing at its last completed edit. zz-ui draws it as the kit's activity row with
+  `ActivityEnd::Open` (`page_row`, `crates/zz-ui/src/agent/chat.rs`): Edited, the file name, the
+  open mark. Step rows of page edits inside an opened run carry the same mark. A click runs
+  `html -t <chat> -- <path>` through `ChatRefs::page`; a relative target resolves against the
+  chat's folder (`ChatRefs::page_path`). A client that sets no `page` opener draws no row, which
+  is every thin client today.
+* **Context.** The agent context tells an agent to run `zz html PATH` once for a page it will keep
+  changing. Grok gets that context as `_meta.rules` on `session/new` (`Dialect::rules`). Cursor's
+  ACP server documents no way to pass instructions, so it gets none.
+* **Codex.** Its visualize references stay inline pictures: the skill writes fragments meant to
+  sit in the reply.
 
 # Inline previews in the Agent pane
 
@@ -610,4 +642,10 @@ chart's axis is cut off at the bottom; the live page in a browser pane shows it 
 * **MCP Apps**: showing the `ui://` resources a tool returns. Needs the drivers to pass the tool's
   `_meta` through; unverified.
 * Hiding the URL bar on `zz://` pages.
+* Markdown, mermaid and image files as pages a chat keeps changing (Antigravity's plans and
+  walkthroughs). They would draw natively; where that pane sits is undecided.
+* A list or tabs of a chat's pages. Older pages reopen from their rows.
+* Page rows on the thin clients, and the agent context for Cursor.
+* Claude Code's own `Artifact` tool: it is not offered in the `-p` stream-json mode zz runs it in
+  (checked on 2.1.329, 2026-11-20), so Claude pages go through `zz html` and the rows.
 * iOS and web, as above.

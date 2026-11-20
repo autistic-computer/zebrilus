@@ -331,6 +331,9 @@ and `/fork`.
 | Claude Code | 2.1.293 (Agent SDK types 0.3.293), live tests on Haiku 5.5 | 2026-10-07 |
 | Codex | 0.159.0 (`multi_agent` on by default), live tests on GPT-6-Luna | 2026-10-07 |
 
+These are the versions the drivers were built against. The versions checked since, what breaks
+quietly when a CLI changes, and how to recheck live in [agent CLI contracts](/references/agent-cli-contracts.md).
+
 Older CLIs may lack frames or methods the drivers use: `side_question`, `stop_task`,
 `--resume-session-at`, `session_state_changed`, and `background_tasks_changed` on Claude Code;
 `beforeTurnId`, `clientUserMessageId`, `subAgentActivity`, and `thread/backgroundTerminals/*` on

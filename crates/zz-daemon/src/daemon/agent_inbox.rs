@@ -33,6 +33,7 @@ impl AgentInbox {
     }
 
     pub(super) fn apply(&mut self, shared: &Arc<Shared>, message: Message) {
+        let mut written = None;
         let event = {
             let _effects = shared.agent_effects.lock();
             if shared.agent_stopped.load(Ordering::Acquire)
@@ -77,13 +78,21 @@ impl AgentInbox {
                     shared.apply_agent_quota(pane, quota);
                     None
                 }
-                Payload::ToolCall(call) => shared.agent_tool_call_event(pane, call),
+                Payload::ToolCall(call) => {
+                    if call.status == "completed" {
+                        written = call.page.clone().map(|path| (pane, path));
+                    }
+                    shared.agent_tool_call_event(pane, call)
+                }
                 Payload::Reply(reply) => {
                     shared.send_agent_reply(pane, reply);
                     None
                 }
             }
         };
+        if let Some((pane, path)) = written {
+            shared.show_agent_page(pane, &path);
+        }
         if let Some(event) = event {
             self.hooks.push_back(event);
         }

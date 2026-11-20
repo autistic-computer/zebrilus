@@ -127,6 +127,13 @@ A few `zz-daemon` tests are timing-sensitive and only fail under full-workspace 
 - A bump ends every running session for every user on update: the new client cannot talk to the old daemon until it restarts, and the restart kills every pane it holds.
 </important>
 
+<important if="you are changing an agent driver, or an agent CLI (claude, codex, agy, grok, cursor-agent) updated">
+
+- The agent CLIs' vendors never promised to keep the interfaces zz drives, and some changes break a chat with no error. `knowledge/references/agent-cli-contracts.md` lists what zz relies on, the version each CLI was last checked at, and the commands that recheck it.
+- When a CLI's `--version` differs from that page's table, run its cheap checks before trusting the driver, then update the table.
+- When a change makes zz rely on a new vendor flag, frame, field, file, env var or string, add it to that page in the same change.
+</important>
+
 <important if="you are building or styling UI chrome or widgets">
 
 - UI conventions: `knowledge/configuration/ui-conventions.md` (chrome colors come from the theme; clippy rejects raw `rgb`/`hsla`).

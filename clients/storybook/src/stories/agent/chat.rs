@@ -1539,6 +1539,7 @@ fn view_refs() -> ChatRefs {
             );
         }),
         view: Some(Arc::new(open_story_view)),
+        page: None,
     }
 }
 
@@ -1606,6 +1607,7 @@ pub fn references(window: &mut Window, cx: &mut App) -> AnyView {
             );
         }),
         view: None,
+        page: None,
     };
     threads(
         vec![(

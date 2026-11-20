@@ -20,15 +20,31 @@ pub const REF_SCHEME: &str = "zzref:";
 
 pub type RefOpener = Arc<dyn Fn(&ResolvedTarget, &mut Window, &mut App) + Send + Sync>;
 
+pub type PageOpener = Arc<dyn Fn(&str, &mut Window, &mut App) + Send + Sync>;
+
 #[derive(Clone)]
 pub struct ChatRefs {
     pub hosts: Vec<TargetHost>,
     pub cwd: Option<String>,
     pub open: RefOpener,
     pub view: Option<super::preview::ViewOpener>,
+    pub page: Option<PageOpener>,
 }
 
 impl ChatRefs {
+    #[must_use]
+    pub fn page_path(&self, target: &str) -> Option<String> {
+        if !zz_protocol::chat::is_page_file(target) {
+            return None;
+        }
+        if target.starts_with('/') || target.as_bytes().get(1) == Some(&b':') {
+            return Some(target.to_owned());
+        }
+        let cwd = self.cwd.as_deref()?.trim_end_matches('/');
+        let relative = target.strip_prefix("./").unwrap_or(target);
+        Some(format!("{cwd}/{relative}"))
+    }
+
     fn resolve(&self, token: &str) -> Option<ResolvedTarget> {
         resolve_target(token, &self.hosts)
             .filter(|target| !matches!(target.target, RefTarget::Agent { .. }))
@@ -284,6 +300,19 @@ pub fn ref_text(
     )
 }
 
+#[must_use]
+pub fn page_command(chat: PaneId, path: &str) -> CommandInvocation {
+    CommandInvocation::new(
+        "html",
+        [
+            "-t".to_owned(),
+            chat.to_string(),
+            "--".to_owned(),
+            path.to_owned(),
+        ],
+    )
+}
+
 const FLOAT_WIDTH: &str = "80%";
 const FLOAT_HEIGHT: &str = "75%";
 
@@ -379,6 +408,7 @@ mod tests {
             cwd: Some("/repo".to_owned()),
             open: Arc::new(|_, _, _| {}),
             view: None,
+            page: None,
         }
     }
 
