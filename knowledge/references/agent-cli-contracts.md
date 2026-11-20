@@ -180,7 +180,7 @@ Driver: `agent/agy.rs` on the shared ACP runtime (`dialect.rs`, `runtime.rs`).
 | Config option id `thought_level` is effort | `agy.rs` | No effort picker; flip drops `--effort` | Test uses its own copy |
 | Option id `model` | `dialect.rs`, `zz-client/src/agent_settings.rs` | No model and mode lens at all | None |
 | `session_info_update.title` | `dialect.rs` | Untitled chats (agy has no stored title zz reads) | Grok-shaped test |
-| A user-facing page write: `tool_call` with `rawInput.ArtifactMetadata.UserFacing: true` and `rawInput.Path` (else `locations[0].path`). On the `artifacts` branch until it merges | `fanout.rs` | The page pane no longer opens by itself; the chat row still works | Test |
+| A user-facing page write: `tool_call` with `rawInput.ArtifactMetadata.UserFacing: true` and `rawInput.Path` (else `locations[0].path`). | `fanout.rs` | The page pane no longer opens by itself; the chat row still works | Test |
 | Mode ids `default`, `accept-edits`, `auto`, `plan` | `agent_settings.rs` | Wrong risk badge on the mode | None |
 | The TUI keeps `…/conversations/<uuid>.db` open | `cli_session.rs` | Flip from the TUI opens a fresh chat | Test |
 | The signed-out error starts with `Authentication required` | `dialect.rs` | The raw error shows instead of the sign-in hint. Not confirmed that agy sends this text | Grok-shaped test |
@@ -191,7 +191,7 @@ Driver: `agent/grok.rs` on the shared ACP runtime.
 
 | What zz relies on | Where | If it changes | Pinned |
 |---|---|---|---|
-| `session/new` `_meta.rules` is appended to the system prompt; zz puts its workspace context there. On the `artifacts` branch until it merges | `grok.rs`, `dialect.rs` | Grok no longer knows `zz html` or the rest of the context | None; ask a new chat what its rules say |
+| `session/new` `_meta.rules` is appended to the system prompt; zz puts its workspace context there. | `grok.rs`, `dialect.rs` | Grok no longer knows `zz html` or the rest of the context | None; ask a new chat what its rules say |
 | Config option id `reasoning_effort` is effort | `grok.rs` | No effort picker | Test uses its own copy |
 | `_x.ai/billing` answers `config.creditUsagePercent`, `config.currentPeriod.{type,end}` | `grok.rs` | No quota; if Grok stops answering, each turn's command loop waits 30 s | Shape tested, method name not |
 | `$GROK_HOME/sessions/*/<uuid>/summary.json` keys `generated_title`, `session_summary`, `current_model_id`, `reasoning_effort` | `grok.rs`, `cli_session.rs` | Untitled resumed chats; flip opens on the wrong model | None |
