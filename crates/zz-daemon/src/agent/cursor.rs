@@ -5,11 +5,11 @@ use serde_json::Value;
 use zz_protocol::{AGENT_CURSOR_COMMAND, AgentProvider};
 
 use crate::agent::{
-    cli_session,
     dialect::{self, Dialect, Unguarded},
     environment::agent_path,
     host::RuntimeChannels,
     runtime::AgentSpawnConfig,
+    session_files,
 };
 
 const SHORT_COMMAND: &str = "agent";
@@ -49,7 +49,7 @@ fn home() -> Option<PathBuf> {
 
 fn never_asks() -> bool {
     home()
-        .and_then(|home| cli_session::read_small(&home.join("cli-config.json")))
+        .and_then(|home| session_files::read_small(&home.join("cli-config.json")))
         .and_then(|config| serde_json::from_str::<Value>(&config).ok())
         .is_some_and(|config| config["approvalMode"] == "unrestricted")
 }
@@ -113,7 +113,7 @@ fn stored_title(session: &str) -> Option<String> {
         return None;
     }
     let meta = home()?.join("acp-sessions").join(session).join("meta.json");
-    let meta = serde_json::from_str::<Value>(&cli_session::read_small(&meta)?).ok()?;
+    let meta = serde_json::from_str::<Value>(&session_files::read_small(&meta)?).ok()?;
     meta["title"]
         .as_str()
         .map(str::trim)
