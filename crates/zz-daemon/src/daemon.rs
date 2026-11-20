@@ -85732,6 +85732,8 @@ set-option -g @alias-mixed-next yes
             "wait-pane",
             "run-pane",
             "capture-browser",
+            "capture-simulator",
+            "tap-simulator",
             "html",
             "debug-marker",
             "tools",
