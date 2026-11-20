@@ -87,6 +87,7 @@ pub(super) struct CompactState {
     card_zoom: Lift,
     held: Option<String>,
     host_pager: Pager,
+    shown_host: Option<(usize, zz_ui::command::PaletteHostId)>,
     host_scrolls: BTreeMap<usize, ScrollHandle>,
     hosts_scroll: ScrollHandle,
     host_tiles: Rc<RefCell<BTreeMap<usize, Bounds<Pixels>>>>,

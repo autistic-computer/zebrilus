@@ -19,7 +19,7 @@ use penna::{
     blocks::touch::{
         ACTION_BAR_KEYBOARD, PagerEvent, PhoneEmpty, StackMenu, TouchHeader, action_bar,
     },
-    components::button::{Button, ButtonVariants as _},
+    components::button::Button,
     v_flex,
 };
 use penna::{
@@ -289,15 +289,16 @@ fn host_counts(connection: &Entity<Connection>, cx: &App) -> HostCounts {
 impl AppShell {
     pub(in super::super) fn open_overview(&mut self, cx: &mut Context<Self>) {
         if !self.compact.overview {
-            let hosts = self.host_pages(cx);
+            let hosts = self.machine_pages(cx);
             let attached = hosts
                 .iter()
-                .position(|host| host.connection.as_ref() == Some(&self.connection))
-                .unwrap_or(0);
-            self.compact.host_pager.sync(attached, hosts.len());
-            self.compact.host_pager.go_to(attached, Instant::now());
+                .position(|host| host.connection.as_ref() == Some(&self.connection));
+            let at = attached.unwrap_or(0);
+            self.compact.host_pager.sync(at, hosts.len());
+            self.compact.host_pager.go_to(at, Instant::now());
             self.compact.host_pager.finish();
-            self.compact.hosts.snap(false);
+            self.compact.shown_host = None;
+            self.compact.hosts.snap(attached.is_none());
             self.compact.overview = true;
             self.compact.overview_reveal = true;
             self.compact.landing = None;
@@ -337,10 +338,11 @@ impl AppShell {
 
     fn enter_host(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         self.show_host(index, window, cx);
-        let count = self.host_pages(cx).len();
+        let count = self.machine_pages(cx).len();
         self.compact.host_pager.sync(index, count);
         self.compact.host_pager.go_to(index, Instant::now());
         self.compact.host_pager.finish();
+        self.compact.shown_host = None;
         self.compact.overview_reveal = true;
         self.compact.hosts.animate(false, Instant::now());
         cx.notify();
@@ -348,7 +350,7 @@ impl AppShell {
 
     fn show_host(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(endpoint) = self
-            .host_pages(cx)
+            .machine_pages(cx)
             .get(index)
             .filter(|host| host.connected(cx))
             .and_then(|host| host.endpoint.clone())
@@ -415,7 +417,7 @@ impl AppShell {
             (None, Some(host)) => host,
             (None, None) => div().into_any_element(),
         };
-        let hosts = self.host_pages(cx);
+        let hosts = self.machine_pages(cx);
         let scrim = cx.theme().background.opaque();
         let mut bars = div()
             .id("overview-bars")
@@ -477,10 +479,27 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let hosts = self.host_pages(cx);
+        let hosts = self.machine_pages(cx);
         let width = f32::from(window.viewport_size().width);
-        let shown = self.compact.host_pager.index();
+        let mut shown = self.compact.host_pager.index();
+        if let Some((at, id)) = self.compact.shown_host
+            && at == shown
+            && hosts.get(at).map(|host| host.id) != Some(id)
+        {
+            match hosts.iter().position(|host| host.id == id) {
+                Some(moved) => {
+                    shown = moved;
+                    self.compact.host_pager.sync(moved, hosts.len());
+                    self.compact.host_pager.go_to(moved, Instant::now());
+                    self.compact.host_pager.finish();
+                }
+                None => self.compact.hosts.animate(true, Instant::now()),
+            }
+        }
         self.compact.host_pager.sync(shown, hosts.len());
+        self.compact.shown_host = hosts
+            .get(self.compact.host_pager.index())
+            .map(|host| (self.compact.host_pager.index(), host.id));
         if cx.reduce_motion() {
             self.compact.host_pager.finish();
         }
@@ -604,7 +623,7 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let hosts = self.host_pages(cx);
+        let hosts = self.fleet_pages(cx);
         #[cfg(any(target_os = "ios", target_os = "android"))]
         let found = self.found_list(cx);
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
@@ -754,11 +773,7 @@ impl AppShell {
             }
             _ => tile.state(mark, word),
         };
-        let attached = host
-            .connection
-            .as_ref()
-            .is_some_and(|connection| *connection == self.connection);
-        let enterable = attached || state == HostState::Connected;
+        let enterable = state == HostState::Connected;
         let endpoint = host.endpoint.clone();
         let bounds = Rc::clone(&self.compact.host_tiles);
         let tile = tile
@@ -897,7 +912,7 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) -> bool {
         let MachineCard::Connecting(endpoint) = card;
-        let hosts = self.host_pages(cx);
+        let hosts = self.fleet_pages(cx);
         let Some((index, host)) = hosts
             .iter()
             .enumerate()
@@ -912,10 +927,11 @@ impl AppShell {
                 self.compact.card_zoom.snap(false);
                 cx.defer_in(window, move |this, window, cx| {
                     this.show_host(index, window, cx);
-                    let count = this.host_pages(cx).len();
+                    let count = this.machine_pages(cx).len();
                     this.compact.host_pager.sync(index, count);
                     this.compact.host_pager.go_to(index, Instant::now());
                     this.compact.host_pager.finish();
+                    this.compact.shown_host = None;
                     this.compact.overview_reveal = true;
                     this.compact.hosts.snap(false);
                     cx.notify();
@@ -934,7 +950,7 @@ impl AppShell {
         match card {
             MachineCard::Connecting(endpoint) => {
                 let index = self
-                    .host_pages(cx)
+                    .fleet_pages(cx)
                     .iter()
                     .position(|host| host.endpoint.as_ref() == Some(endpoint))?;
                 self.compact.host_tiles.borrow().get(&index).copied()
@@ -1265,7 +1281,7 @@ impl AppShell {
             .as_ref()
             .is_some_and(|connection| *connection == self.connection);
         if !host.connected(cx) {
-            return self.unreached_host(page, host, frame, cx);
+            return self.connecting_host(page, host, frame, cx);
         }
         let connection = host
             .connection
@@ -1554,51 +1570,27 @@ impl AppShell {
         .into_any_element()
     }
 
-    fn unreached_host(
+    fn connecting_host(
         &self,
         page: usize,
         host: &HostPage,
         frame: &PageFrame,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let state = host.state(cx);
         let endpoint = host.endpoint.clone();
-        let (empty, action) = if state == HostState::Connecting {
-            (
-                PhoneEmpty::spinner("Connecting").line(
-                    host.endpoint
-                        .as_deref()
-                        .map(|key| self.hosts.waiting(key))
-                        .unwrap_or_default(),
-                ),
-                Button::new(("machine-cancel", page))
-                    .label("Cancel")
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        if let Some(endpoint) = &endpoint {
-                            this.disconnect_host(endpoint, window, cx);
-                        }
-                    })),
-            )
-        } else {
-            let status = host.status(cx);
-            let empty = PhoneEmpty::new(IconName::Server, "Not connected");
-            let empty = if state == HostState::Failed && !status.is_empty() {
-                empty.line(status)
-            } else {
-                empty
-            };
-            (
-                empty,
-                Button::new(("machine-connect", page))
-                    .primary()
-                    .label("Connect")
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        if let Some(endpoint) = &endpoint {
-                            this.connect_host(endpoint.clone(), window, cx);
-                        }
-                    })),
-            )
-        };
+        let empty = PhoneEmpty::spinner("Connecting").line(
+            host.endpoint
+                .as_deref()
+                .map(|key| self.hosts.waiting(key))
+                .unwrap_or_default(),
+        );
+        let action = Button::new(("machine-cancel", page))
+            .label("Cancel")
+            .on_click(cx.listener(move |this, _, window, cx| {
+                if let Some(endpoint) = &endpoint {
+                    this.disconnect_host(endpoint, window, cx);
+                }
+            }));
         div()
             .relative()
             .size_full()
@@ -1650,6 +1642,22 @@ impl AppShell {
                     .cloned(),
             }
         }));
+        pages
+    }
+
+    fn machine_pages(&self, cx: &App) -> Vec<HostPage> {
+        self.host_pages(cx)
+            .into_iter()
+            .filter(|host| host.live(cx))
+            .collect()
+    }
+
+    fn fleet_pages(&self, cx: &App) -> Vec<HostPage> {
+        let (mut pages, rest): (Vec<_>, Vec<_>) = self
+            .host_pages(cx)
+            .into_iter()
+            .partition(|host| host.live(cx));
+        pages.extend(rest);
         pages
     }
 
@@ -1708,7 +1716,7 @@ impl AppShell {
     ) -> bool {
         if self.compact.overview
             && let Some(endpoint) = self
-                .host_pages(cx)
+                .machine_pages(cx)
                 .get(self.compact.host_pager.index())
                 .and_then(|host| host.endpoint.clone())
             && !self.is_attached_host(&endpoint, cx)
@@ -1721,7 +1729,7 @@ impl AppShell {
 
     pub(in super::super) fn machine_session(&self, cx: &App) -> Option<(SessionId, String)> {
         let index = self.compact.host_pager.index();
-        let host = self.host_pages(cx).into_iter().nth(index)?;
+        let host = self.machine_pages(cx).into_iter().nth(index)?;
         if !host.connected(cx) {
             return None;
         }
@@ -1749,7 +1757,7 @@ impl AppShell {
 
     pub(in super::super) fn machine_menu_text(&self, cx: &App) -> MachineMenuText {
         let connected = self
-            .host_pages(cx)
+            .machine_pages(cx)
             .get(self.compact.host_pager.index())
             .is_some_and(|host| host.connected(cx));
         match self.machine_session(cx) {
@@ -1884,6 +1892,10 @@ impl HostPage {
         }
     }
 
+    fn live(&self, cx: &App) -> bool {
+        matches!(self.state(cx), HostState::Connected | HostState::Connecting)
+    }
+
     fn connected(&self, cx: &App) -> bool {
         self.connection
             .as_ref()
@@ -1901,12 +1913,5 @@ impl HostPage {
                     &connection.status,
                 )
             })
-    }
-
-    fn status(&self, cx: &App) -> String {
-        self.connection
-            .as_ref()
-            .map(|connection| connection.read(cx).status.clone())
-            .unwrap_or_default()
     }
 }

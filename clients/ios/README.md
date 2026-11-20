@@ -34,14 +34,14 @@ as the page scrolls, then every session under its name with its windows as cards
 terminal shows each terminal's last four lines, up to two side by side, and any other window is one
 row saying what its pane says in the pill. Tap a window and it zooms into that pane; hold it for
 Rename and Close window, and hold a session's name for Rename session and Close session. The pill
-holds every machine as its platform mark, the one on screen stretched into a capsule with its
+holds every connected machine as its platform mark, the one on screen stretched into a capsule with its
 name over the session in view, following the scroll; with more machines than fit, the row
 scrolls to keep the capsule in the middle. Swipe it sideways to page machines, the capsule
 moving with the finger, tap another machine's mark to go there, and tap the capsule for All
 machines and Settings. Plus stacks Chat, Terminal and
 Browser under "New in" and that session, then New session; what it makes lands in that session. A
-machine with no sessions shows the New tile, which opens the same menu under "In a new session". A machine that is not connected shows why, with Connect, or
-Cancel while it connects, as its main action. All machines, the handle, or dragging the pill up, zooms out to Machines: every saved machine as a small tile, two to a row, waiting ones first:
+machine with no sessions shows the New tile, which opens the same menu under "In a new session". A machine that is not connected has no page here; one
+that is connecting shows Cancel as its main action, and leaves for Machines if it fails. All machines, the handle, or dragging the pill up, zooms out to Machines: every saved machine as a small tile, two to a row, waiting ones first:
 its mark, its name, and its windows as the desktop's program faces with their status dots, or its state in words; a
 tile with something waiting is tinted yellow and counts it. Then Add machine and Settings. Tap a tile to zoom into the
 machine, into its connecting card while it connects, or to reconnect a failed one, and hold it for its sheet. With nothing attached the app opens on Machines. Entering a host, or paging to it with the pill, puts it on screen, since the
