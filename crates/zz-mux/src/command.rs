@@ -252,7 +252,7 @@ pub const TMUX_OPTION_CONSUMERS: &[&str] = &[
 
 const MAX_COPY_COMMAND_BYTES: usize = 8 * 1024;
 const SIMULATOR_FLOAT_WIDTH: u16 = 35;
-const SIMULATOR_FLOAT_HEIGHT: u16 = 38;
+const SIMULATOR_FLOAT_HEIGHT: u16 = 36;
 const SIMULATOR_FLOAT_PLACE: &str = "centre-right";
 const MAX_COMMAND_PROMPT_LABEL_BYTES: usize = 1024;
 const MAX_COMMAND_PROMPT_TEMPLATE_BYTES: usize = 8 * 1024;
@@ -29518,9 +29518,9 @@ mod tests {
             layout.pane_geometry(pane),
             Some(CellGeometry {
                 sx: 33,
-                sy: 36,
+                sy: 34,
                 xoff: 166,
-                yoff: 12
+                yoff: 13
             })
         );
         assert_eq!(

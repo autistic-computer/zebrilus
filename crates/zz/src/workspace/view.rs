@@ -789,6 +789,7 @@ pub struct AppView {
     #[cfg(feature = "agent-pane")]
     views: BTreeMap<PaneId, Entity<crate::view_pane::ViewPaneView>>,
     simulators: BTreeMap<PaneId, Entity<crate::simulator::SimulatorView>>,
+    simulator_devices: BTreeMap<PaneId, zz_protocol::SimulatorDescriptor>,
     command_output: Option<(PaneId, Entity<TerminalView>)>,
     menu: Option<Entity<MenuView>>,
     confirm: Option<Entity<ConfirmView>>,
@@ -870,6 +871,9 @@ impl AppView {
         cx.observe_in(&mux, window, move |view, mux, window, cx| {
             view.drain_gui_requests(cx);
             view.drain_flip_answers(cx);
+            for pane in view.simulators.keys().copied().collect::<Vec<_>>() {
+                view.ensure_simulator(pane, window, cx);
+            }
             let snapshot = mux.read(cx).snapshot();
             let snapshot_arrived = !Arc::ptr_eq(&snapshot, &observed_snapshot);
             if snapshot_arrived {
@@ -1226,6 +1230,7 @@ impl AppView {
             #[cfg(feature = "agent-pane")]
             views: BTreeMap::new(),
             simulators: BTreeMap::new(),
+            simulator_devices: BTreeMap::new(),
             command_output: None,
             menu: None,
             confirm: None,
@@ -2487,6 +2492,8 @@ impl AppView {
                 || wanted_simulators.contains(pane)
         });
         self.simulators
+            .retain(|pane, _| wanted_simulators.contains(pane));
+        self.simulator_devices
             .retain(|pane, _| wanted_simulators.contains(pane));
         #[cfg(feature = "agent-pane")]
         for pane in self
@@ -3758,25 +3765,24 @@ impl AppView {
     }
 
     fn ensure_simulator(&mut self, pane: PaneId, window: &Window, cx: &mut Context<Self>) {
-        let descriptor =
-            self.mux
-                .read(cx)
-                .simulator(pane)
-                .unwrap_or_else(|| zz_protocol::SimulatorDescriptor {
-                    device: String::new(),
-                });
-        if let Some(simulator) = self.simulators.get(&pane) {
-            if simulator.update(cx, |simulator, cx| {
-                simulator.synchronize_descriptor(&descriptor, cx)
-            }) {
-                self.pane_motion.relink(pane, window, cx);
-            }
+        let descriptor = self.mux.read(cx).simulator(pane).unwrap_or_default();
+        let Some(simulator) = self.simulators.get(&pane) else {
+            let mux = self.mux.clone();
+            let simulator =
+                cx.new(|cx| crate::simulator::SimulatorView::new(pane, &descriptor, mux, cx));
+            self.simulators.insert(pane, simulator);
+            self.simulator_devices.insert(pane, descriptor);
+            return;
+        };
+        if self.simulator_devices.get(&pane) == Some(&descriptor) {
             return;
         }
-        let mux = self.mux.clone();
-        let simulator =
-            cx.new(|cx| crate::simulator::SimulatorView::new(pane, &descriptor, mux, cx));
-        self.simulators.insert(pane, simulator);
+        if simulator.update(cx, |simulator, cx| {
+            simulator.synchronize_descriptor(&descriptor, cx)
+        }) {
+            self.pane_motion.relink(pane, window, cx);
+        }
+        self.simulator_devices.insert(pane, descriptor);
     }
 
     fn pane_flip(&self, snapshot: &zz_protocol::PaneSnapshot) -> Option<PaneFlip> {
@@ -4662,13 +4668,18 @@ impl AppView {
         let program =
             snapshot.and_then(|pane| zz_client::window_summary::pane_heading(pane).program);
         if let Some(header_view) = self.terminal_headers.get(&pane) {
+            let simulator = self.simulators.get(&pane).map(|view| view.read(cx).title());
             let state = TerminalHeaderState {
-                icon: snapshot.map_or(penna::IconName::SquareTerminal, |pane| {
-                    zz_ui::pane::pane_kind_icon(&pane.kind)
-                }),
+                icon: if simulator.is_some() {
+                    penna::IconName::Asset("icons/smartphone.svg")
+                } else {
+                    snapshot.map_or(penna::IconName::SquareTerminal, |pane| {
+                        zz_ui::pane::pane_kind_icon(&pane.kind)
+                    })
+                },
                 program,
                 active,
-                title: label,
+                title: simulator.map_or(label, Into::into),
                 can_drag: connected,
                 place: zz_ui::pane::PaneState {
                     floats: true,

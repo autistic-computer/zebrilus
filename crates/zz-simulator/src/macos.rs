@@ -608,22 +608,23 @@ fn identifier(device: &NSObject) -> String {
     identifier.UUIDString().to_string()
 }
 
+fn text(receiver: &AnyObject, selector: Sel) -> String {
+    object(receiver, selector).map_or_else(String::new, |value| {
+        let value: &NSString = unsafe { &*Retained::as_ptr(&value).cast() };
+        value.to_string()
+    })
+}
+
 fn state(device: &NSObject) -> String {
-    let state: Retained<NSString> = unsafe { msg_send![device, stateString] };
-    state.to_string()
+    text(device, sel!(stateString))
 }
 
 fn name(device: &NSObject) -> String {
-    let name: Retained<NSString> = unsafe { msg_send![device, name] };
-    name.to_string()
+    text(device, sel!(name))
 }
 
 fn system(device: &NSObject) -> String {
-    let runtime: Option<Retained<NSObject>> = unsafe { msg_send![device, runtime] };
-    runtime.map_or_else(String::new, |runtime| {
-        let name: Retained<NSString> = unsafe { msg_send![&*runtime, name] };
-        name.to_string()
-    })
+    object(device, sel!(runtime)).map_or_else(String::new, |runtime| text(&runtime, sel!(name)))
 }
 
 fn find(udid: &str) -> Result<Retained<NSObject>, Error> {
@@ -636,16 +637,13 @@ fn find(udid: &str) -> Result<Retained<NSObject>, Error> {
 pub fn devices() -> Result<Vec<Device>, Error> {
     let mut devices: Vec<Device> = device_list()?
         .iter()
-        .filter(|device| {
-            let available: bool = unsafe { msg_send![&**device, isAvailable] };
-            available
-        })
         .map(|device| Device {
             udid: identifier(&device),
             name: name(&device),
             system: system(&device),
             booted: state(&device) == BOOTED,
         })
+        .filter(|device| !device.system.is_empty())
         .collect();
     devices.sort_by(|a, b| b.booted.cmp(&a.booted).then_with(|| a.name.cmp(&b.name)));
     Ok(devices)
@@ -655,6 +653,9 @@ pub fn boot(udid: &str) -> Result<(), Error> {
     let device = find(udid)?;
     if state(&device) == BOOTED {
         return Ok(());
+    }
+    if !responds(&device, sel!(bootWithOptions:error:)) {
+        return Err(Error::MissingSymbol("bootWithOptions:error:"));
     }
     let booted: Result<(), Retained<NSError>> =
         unsafe { msg_send![&*device, bootWithOptions: None::<&NSObject>, error: _] };
