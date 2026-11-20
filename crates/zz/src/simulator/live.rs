@@ -247,6 +247,9 @@ impl SimulatorView {
 
     pub(crate) fn command(&mut self, command: SimulatorCommand, cx: &mut Context<Self>) {
         let request_id = command.request_id();
+        if let State::Live(live) = &mut self.state {
+            live.turns = live.screen.turns();
+        }
         let State::Live(live) = &self.state else {
             self.answer(
                 request_id,
