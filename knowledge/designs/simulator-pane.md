@@ -100,4 +100,6 @@ them through the Objective-C runtime. Nothing is linked.
 # Not built
 
 - A `#{simulator_device}` format variable.
+- Resizing the float when the screen turns: a PiP keeps its portrait card, so a landscape screen
+  fits its width and draws small.
 - Two-finger touch, a remote client, Android.
