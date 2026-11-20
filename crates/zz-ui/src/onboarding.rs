@@ -1,4 +1,4 @@
-use ala::{AnyElement, App, Div, SharedString, div, prelude::*, px};
+use ala::{AnyElement, App, Div, Pixels, SharedString, div, prelude::*, px};
 use penna::{
     Label, TextStyle,
     blocks::touch::{PageDot, page_dots},
@@ -24,6 +24,51 @@ const ROW_GAP: f32 = 4.0;
 const CONTROL_GAP: f32 = 12.0;
 const DETAIL_GAP: f32 = 8.0;
 const BUTTON_GAP: f32 = 8.0;
+const PHONE_SIDE: f32 = 20.0;
+const PHONE_WIDTH: f32 = 440.0;
+const PHONE_ABOVE: f32 = 8.0;
+const PHONE_ROW: f32 = 52.0;
+const PHONE_DOTS_GAP: f32 = 14.0;
+
+pub const PHONE_STEPS: [PhoneStep; 3] =
+    [PhoneStep::Welcome, PhoneStep::Machine, PhoneStep::Tailnet];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PhoneStep {
+    Welcome,
+    Machine,
+    Tailnet,
+}
+
+impl PhoneStep {
+    #[must_use]
+    pub fn title(self, machine: &str) -> SharedString {
+        match self {
+            Self::Welcome => Step::Welcome.title().into(),
+            Self::Machine => "Point it at your machine.".into(),
+            Self::Tailnet => format!("{machine} brought friends.").into(),
+        }
+    }
+
+    #[must_use]
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::Welcome => Step::Welcome.description(),
+            Self::Machine => "Type its address, or scan the code from zz on your computer.",
+            Self::Tailnet => "Found on your tailnet.",
+        }
+    }
+}
+
+pub struct PhonePage {
+    pub step: PhoneStep,
+    pub title: SharedString,
+    pub body: Option<Div>,
+    pub button: AnyElement,
+    pub skip: Option<AnyElement>,
+    pub top: Pixels,
+    pub bottom: Pixels,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Step {
@@ -140,4 +185,84 @@ pub fn onboarding_page(step: Step, rows: Vec<Div>, buttons: Vec<AnyElement>, cx:
                 })
                 .child(zones.mark(bar)),
         )
+}
+
+#[must_use]
+pub fn phone_onboarding_row(
+    name: impl Into<SharedString>,
+    detail: impl Into<SharedString>,
+    control: Option<AnyElement>,
+) -> Div {
+    h_flex()
+        .flex_none()
+        .w_full()
+        .h(px(PHONE_ROW))
+        .gap(px(CONTROL_GAP))
+        .child(
+            h_flex()
+                .flex_1()
+                .min_w_0()
+                .items_baseline()
+                .gap(px(DETAIL_GAP))
+                .child(Label::new(TextStyle::TouchBody, name).flex_none())
+                .child(Label::new(TextStyle::TouchSmall, detail).muted().truncate()),
+        )
+        .children(control)
+}
+
+#[must_use]
+pub fn phone_onboarding_page(page: PhonePage, cx: &App) -> Div {
+    let zones = SkyZones::default();
+    let dots = page_dots(
+        &[PHONE_STEPS
+            .map(|at| PageDot {
+                active: at == page.step,
+                attention: false,
+            })
+            .to_vec()],
+        cx,
+    );
+    let head = v_flex()
+        .flex_none()
+        .items_start()
+        .gap(px(HEAD_GAP))
+        .child(Label::new(TextStyle::Display, page.title).strong())
+        .child(Label::new(TextStyle::TouchBody, page.step.description()).muted());
+    let foot = v_flex()
+        .flex_none()
+        .w_full()
+        .gap(px(PHONE_DOTS_GAP))
+        .child(zones.mark(h_flex().flex_none().justify_center().child(dots)))
+        .child(zones.mark(div().w_full().child(page.button)));
+    let theme = cx.theme();
+    div()
+        .relative()
+        .size_full()
+        .bg(pane_color(theme, theme.background))
+        .child(sky("phone-onboarding-sky", &zones))
+        .child(
+            v_flex()
+                .absolute()
+                .inset_0()
+                .items_start()
+                .justify_end()
+                .px(px(PHONE_SIDE))
+                .pb(page.bottom + px(PHONE_ABOVE))
+                .child(
+                    v_flex()
+                        .w_full()
+                        .max_w(px(PHONE_WIDTH))
+                        .gap(px(BLOCK_GAP))
+                        .child(zones.mark(head))
+                        .children(page.body.map(|body| zones.mark(body.w_full())))
+                        .child(foot),
+                ),
+        )
+        .children(page.skip.map(|skip| {
+            div()
+                .absolute()
+                .top(page.top)
+                .right(px(PHONE_SIDE - CONTROL_GAP))
+                .child(skip)
+        }))
 }

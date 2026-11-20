@@ -858,6 +858,23 @@ color, opaque, whatever the window's opacity. The workspace is not drawn while o
 behind it takes keys. An install that already has the marker never sees onboarding; Settings imports
 from any path.
 
+The iOS and Android app has its own onboarding (`clients/app/src/app/onboarding.rs`, drawn by
+`zz_ui::onboarding::phone_onboarding_page` over the same sky). It shows on a launch with no saved
+machine and no launch endpoint until `onboarded` is set in the app's `preferences.json`; Skip, in the
+top corner of every step, sets it too and leaves to Machines. Three steps:
+
+1. What zz is, the desktop's first step. Next goes on and focuses the field.
+2. The first machine. The Add machine field and its input: `user@host` for ssh, a bare name ending in
+   `.ts.net` for the tailnet, or a socket path. Connect stays off until the address parses; Return
+   connects. The button spins while it connects, and the usual ssh sheet asks for a password. A
+   failure puts the connection's status under the field and drops the machine from the saved list.
+3. Your tailnet. Once the first machine connects, the step waits up to 4 s for its `tailnet hosts`
+   answer and the phone's probes, then lists each machine found that is not saved, with a switch
+   that starts on; one without zz says so and has no switch. Add saves and connects the ones switched
+   on. With nothing found the step is skipped.
+
+Finishing opens the first machine's page.
+
 The desktop and the thin clients build the Interface page from the same item list
 (`zz_ui::settings::appearance::appearance_page_items`: penna's list with zz's Sidebar group, App
 Icon row and window rows added as `ZzRow`s), laid out by

@@ -447,7 +447,7 @@ impl Hosts {
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
-fn parsed_endpoint(input: &str) -> Result<String, String> {
+pub(super) fn parsed_endpoint(input: &str) -> Result<String, String> {
     destination_endpoint(input).and_then(|endpoint| {
         zz_daemon_client::Endpoint::parse(&endpoint)
             .map(|endpoint| endpoint.to_string())
@@ -464,8 +464,16 @@ pub(super) fn destination_endpoint(input: &str) -> Result<String, String> {
     if destination.chars().any(char::is_whitespace) {
         return Err("A host must not contain spaces.".into());
     }
+    let tailnet = !destination.contains('@')
+        && destination
+            .rsplit_once(':')
+            .map_or(destination, |(host, _)| host)
+            .trim_end_matches('.')
+            .ends_with(".ts.net");
     let endpoint = if destination.contains("://") || destination.starts_with('/') {
         destination.to_owned()
+    } else if tailnet {
+        format!("tailnet://{destination}")
     } else {
         format!("ssh://{destination}")
     };
@@ -567,6 +575,9 @@ impl Hosts {
             &destination,
             window,
             |this: &mut AppShell, _, event: &InputEvent, window, cx| match event {
+                InputEvent::PressEnter { .. } if this.onboarding_open() => {
+                    this.onboarding_connect(window, cx);
+                }
                 InputEvent::PressEnter { .. } if this.add_host(window, cx) => {
                     close_sheet(ADD_HOST_SHEET, cx);
                 }
@@ -1409,6 +1420,14 @@ mod tests {
         assert_eq!(
             destination_endpoint("ssh://box:2222"),
             Err("Add a user, like user@box.".to_owned())
+        );
+        assert_eq!(
+            destination_endpoint("macbook.tail1234.ts.net").unwrap(),
+            "tailnet://macbook.tail1234.ts.net"
+        );
+        assert_eq!(
+            destination_endpoint("me@macbook.tail1234.ts.net").unwrap(),
+            "ssh://me@macbook.tail1234.ts.net"
         );
     }
 

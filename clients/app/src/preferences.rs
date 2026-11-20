@@ -51,6 +51,7 @@ pub struct Preferences {
     pub terminal_padding_x: Option<f32>,
     pub terminal_padding_y: Option<f32>,
     pub agent_launches: AgentLaunches,
+    pub onboarded: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,6 +134,7 @@ impl Default for Preferences {
             terminal_padding_x: None,
             terminal_padding_y: None,
             agent_launches: AgentLaunches::default(),
+            onboarded: false,
         }
     }
 }

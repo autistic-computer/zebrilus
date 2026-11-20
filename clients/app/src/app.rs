@@ -13,6 +13,8 @@ mod hosts;
 mod keys;
 #[cfg(target_os = "ios")]
 mod menu_bar;
+#[cfg(any(target_os = "ios", target_os = "android"))]
+mod onboarding;
 mod picker;
 mod providers;
 mod settings;
@@ -147,6 +149,8 @@ pub struct AppShell {
     idle_guard: Option<ala::Task<()>>,
     auth_prompt_id: Option<(ala::EntityId, u64)>,
     phone_auth: Option<authentication::PhoneAuth>,
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    onboarding: Option<onboarding::PhoneOnboarding>,
     hosts: hosts::Hosts,
     terminals: HashMap<PaneId, Entity<TerminalPane>>,
     waiting_panes: BTreeSet<PaneId>,
@@ -536,6 +540,8 @@ impl AppShell {
             idle_guard: None,
             auth_prompt_id: None,
             phone_auth: None,
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            onboarding: None,
             hosts,
             terminals: HashMap::new(),
             waiting_panes: BTreeSet::new(),
@@ -612,6 +618,8 @@ impl AppShell {
         this.connection.update(cx, Connection::start);
         #[cfg(not(target_family = "wasm"))]
         this.reconnect_saved_hosts(window, cx);
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        this.start_onboarding(cx);
         #[cfg(target_family = "wasm")]
         Self::load_gateway_hosts(window, cx);
         this.preferences.apply(&this.connection, window, cx);
@@ -3742,6 +3750,10 @@ impl Render for AppShell {
         }
         overlays.extend(self.overlay(window, cx));
         let auth_modal = self.phone_auth_modal(window, cx);
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let onboarding = self.onboarding_layer(window, cx);
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        let onboarding: Option<AnyElement> = None;
         overlays.extend(Root::render_dialog_layer(window, cx).map(IntoElement::into_any_element));
         overlays
             .extend(Root::render_notification_layer(window, cx).map(IntoElement::into_any_element));
@@ -3924,6 +3936,7 @@ impl Render for AppShell {
             .relative()
             .child(penna::foundation::dismissal::coast_guard())
             .child(shell)
+            .children(onboarding)
             .children(auth_modal.map(|modal| div().absolute().inset_0().child(modal)))
     }
 }

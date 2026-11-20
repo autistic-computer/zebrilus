@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-11-20
+* **Update**: The iOS and Android app has a first-launch onboarding ([app config](/configuration/app-config.md)). With no saved machine and no launch endpoint, three steps over the sky come before Machines: what zz is, the first machine (an address, a `.ts.net` name or the code desktop Settings › Hosts shows), and the machines that one found on the tailnet, a switch each. The phone cannot read a tailnet itself, so the third step waits for the first machine's `tailnet hosts` answer. A failed first machine is not saved. `onboarded` in the app's preferences keeps it from showing again; Skip sets it too. A bare address ending in `.ts.net` in any Add machine field is now a `tailnet://` endpoint instead of ssh. Board in `design/mockups/onboarding/phone.html`.
+
 ## 2026-11-19
 * **Update**: The wire epoch is 124 ([wire protocol](/protocol/wire-protocol.md#wire-epochs)). `AgentProvider::Antigravity` is a nested enum variant a v123 peer cannot decode, so the daemon restarts on this update. The names gated inside v123 stay in their tables.
 * **Update**: Antigravity is a third chat provider ([agent panes](/concepts/agent-panes.md#antigravity)). `agent agy` opens a chat on `agy acp` through the generic ACP runtime, with the effort option, the title and the session list translated by `agent/agy.rs`. The flip runs `agy --conversation <id>` and finds a TUI's conversation by the database file it holds open. No accounts, daemon-driven sign-in, forks or latest version check for it.

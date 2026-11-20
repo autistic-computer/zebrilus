@@ -335,9 +335,13 @@ impl AppShell {
             && !connection.attaching()
             && self.active_window(cx).is_none()
         {
-            self.place_overview(cx);
-            self.compact.lift.snap(true);
+            self.show_overview(cx);
         }
+    }
+
+    pub(super) fn show_overview(&mut self, cx: &App) {
+        self.place_overview(cx);
+        self.compact.lift.snap(true);
     }
 
     pub(super) fn compact_active(&self, window: &Window, cx: &App) -> bool {

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone onboarding</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/input/input.css">
+<link rel="stylesheet" href="/penna-src/components/field/field.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="../phone/phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-phones.zz-story { grid-template-columns: repeat(auto-fill, 424px); justify-content: start; gap: 0 16px; }
+  .zz-ob > canvas { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+  .zz-ob > .zz-status { z-index: 30; }
+  .zz-in { position: absolute; z-index: 2; right: 20px; bottom: 42px; left: 20px; display: flex; flex-direction: column; gap: 18px; }
+  .zz-ob[data-kb] .zz-in { bottom: 304px; }
+  .zz-ob[data-sheet] .zz-in { opacity: 0.35; }
+  .zz-head { display: grid; gap: 8px; }
+  .zz-ob h3 { margin: 0; font-size: var(--penna-text-display-size); line-height: var(--penna-text-display-line); font-weight: 700; letter-spacing: -0.015em; }
+  .zz-line { font-size: 17px; line-height: 22px; color: var(--penna-fg-muted); }
+  .zz-dots { display: flex; justify-content: center; gap: 6px; }
+  .zz-dots > i { width: 6px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--penna-fg) 22%, transparent); }
+  .zz-dots > i[data-on] { width: 12px; background: var(--penna-fg); }
+  .zz-foot { display: grid; gap: 14px; }
+  .zz-go { width: 100%; }
+  .zz-go[data-penna] { --penna-r: 28px; height: 56px; }
+  .zz-go .zz-spin { display: inline-block; width: 18px; height: 18px; margin-right: 10px; border-radius: 9px; vertical-align: -3px; box-shadow: inset 0 0 0 2px color-mix(in srgb, currentColor 30%, transparent); border-top: 2px solid currentColor; box-sizing: border-box; }
+  .zz-field[data-penna] { --penna-r: 18px; height: 56px; font-size: 17px; }
+  .zz-field > .zz-ph { color: var(--penna-fg-muted); }
+  .zz-field > b { font-weight: inherit; }
+  .zz-caret { display: inline-block; width: 2px; height: 22px; margin-left: 1px; vertical-align: -5px; border-radius: 1px; background: var(--penna-accent); }
+  .zz-err { margin-top: -8px; font-size: 15px; line-height: 20px; color: var(--penna-danger-ink); }
+  .zz-rows { display: grid; }
+  .zz-row { display: flex; align-items: center; gap: 12px; min-height: 52px; font-size: 17px; line-height: 22px; }
+  .zz-row > span:first-child { flex: 1; min-width: 0; }
+  .zz-row > span:first-child > i { margin-left: 8px; font-style: normal; font-size: 15px; color: var(--penna-fg-muted); }
+  .zz-skip { position: absolute; z-index: 31; top: 58px; right: 12px; height: 44px; padding: 0 12px; border: 0; background: none; color: var(--penna-fg-muted); font: inherit; font-size: 17px; }
+  .zz-ob > .zz-kb { position: absolute; z-index: 36; right: 0; bottom: 0; left: 0; }
+
+  .zz-ob > .penna-sheet { z-index: 35; }
+  .zz-ob .penna-sheet-panel { padding-bottom: 20px; }
+  .zz-sgroups { display: flex; flex-direction: column; gap: 16px; padding: 0 8px; }
+  .zz-sgroups > * { flex: none; }
+  .zz-sgroups .penna-touch-header { padding-top: 0; }
+  .zz-addr { display: flex; flex-direction: column; gap: 8px; }
+  .zz-addr > .penna-input[data-penna] { --penna-r: calc(var(--penna-phone-radius) - 8px); }
+  .zz-addr > .penna-input > .zz-ph { color: var(--penna-fg-muted); }
+  .zz-note { margin: -8px 12px 0; font-size: 13px; line-height: 18px; color: var(--penna-fg-muted); }
+
+  .zz-nums { width: 100%; max-width: 1300px; border-collapse: collapse; }
+  .zz-nums th, .zz-nums td { padding: 9px 12px; text-align: left; vertical-align: top; box-shadow: inset 0 -1px 0 var(--penna-divider); }
+  .zz-nums th { color: var(--penna-fg-muted); font-weight: 500; }
+  .zz-nums td:first-child { width: 180px; font-weight: 600; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Phone onboarding</h1>
+    <p>On first launch the phone has no machine, so it opens on an empty Machines page with Add machine and Settings. The desktop greets you with three steps over the sky: what zz is, import your configs, the agent hook. Neither of the last two means anything on a phone. What a phone needs first is a machine. Until it is connected to one it cannot list the tailnet either, so the first machine is always typed. Same sky, same text at the bottom; the phone versions put the action in a full-width 56 button. <b>Copy is a draft</b> except the welcome, which is the desktop's.</p>
+  </div>
+
+  <section data-take="a">
+    <h2>A. Three steps, like the desktop</h2>
+    <p>Welcome, connect a machine, notifications. The connect step is the form: field, Connect. Skip in the corner lands on Machines. The third step stands in for the desktop's hook: one switch, and Start asks iOS for permission.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="a-welcome"></div><figcaption><b>Welcome</b>The desktop's first step as it is.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="a-connect"></div><figcaption><b>Connect</b>Placeholder only. Connect stays off until there is a user@host.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="a-failed"></div><figcaption><b>Failed</b>The reason under the field, the field keeps what was typed.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="a-ping"></div><figcaption><b>Notifications</b>On by default. Start asks iOS, then lands on the machine's page.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="b">
+    <h2>B. Two steps</h2>
+    <p>Welcome, then connect. No notification step: iOS already asks the first time an agent waits on you, which is the moment the question makes sense.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="b-welcome"></div><figcaption><b>Welcome</b>Two dots.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="b-typing"></div><figcaption><b>Typing</b>The text and the field ride the keyboard; the sky fills what is left.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="b-connecting"></div><figcaption><b>Connecting</b>The button spins. A password question comes as the usual ssh sheet. Connected lands on the machine's page.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="c">
+    <h2>C. One screen</h2>
+    <p>The welcome and the field together. Nothing to page through: read one line, type the machine, go.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="c-idle"></div><figcaption><b>First launch</b>Title, line, field, Connect. No dots.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="c-typing"></div><figcaption><b>Typing</b>The title stays above the field while the keyboard is up.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="d">
+    <h2>D. Welcome, then the Add machine sheet</h2>
+    <p>One new screen. Its button opens the Add machine sheet the Machines page already has, over the sky. Least new UI; the sheet carries Copy SSH key and, once a machine is connected, the tailnet list.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="d-welcome"></div><figcaption><b>Welcome</b>One button: Add machine.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="d-sheet"></div><figcaption><b>Sheet</b>The existing sheet. Closing it goes back to the welcome.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="e">
+    <h2>E. Connect one, then your tailnet (picked)</h2>
+    <p>Auto-detect needs one machine first: the phone cannot read the tailnet itself, it asks the first machine it reaches (<code>tailnet hosts</code>) and probes each answer. So the second step is the first machine, typed or scanned from the code desktop Settings › Hosts shows, and the third lists what that machine found, the way the desktop's import step lists found configs: a switch each, on for every one that answers. No tailnet, or nothing found, skips it.</p>
+    <div class="penna-variants zz-phones zz-story">
+      <figure><div class="zz-phone" data-frame="e-welcome"></div><figcaption><b>Welcome</b>The desktop's first step as it is.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="e-connect"></div><figcaption><b>First machine</b>An address, a tailnet name, or the camera on the desktop's code, which opens zz with the machine filled in.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="e-found"></div><figcaption><b>Your tailnet</b>What macbook found, each with a switch. Add saves and connects the ones on, then lands on macbook's page.</figcaption></figure>
+      <figure><div class="zz-phone" data-frame="e-found-off"></div><figcaption><b>One without zz</b>A machine that does not answer has no switch; it says so.</figcaption></figure>
+    </div>
+  </section>
+
+  <section data-take="numbers">
+    <h2>Numbers for E (picked)</h2>
+    <table class="zz-nums">
+      <thead><tr><th>Part</th><th>What</th><th>Code</th></tr></thead>
+      <tbody>
+        <tr><td>Shown</td><td>First launch on iOS and Android: no saved machine, no launch endpoint, not done before. Skip and finishing both mark it done.</td><td>Preferences.onboarded</td></tr>
+        <tr><td>Sky</td><td>Behind everything, as the desktop's onboarding draws it. Zones: title, line, field or rows, dots, button.</td><td>zz_ui::sky, SkyZones</td></tr>
+        <tr><td>Content</td><td>Anchored to the bottom, 20 from the sides, 8 above the home indicator or the keyboard, 440 wide at most.</td><td>phone_onboarding_page</td></tr>
+        <tr><td>Title, line</td><td>Display 26/32 strong; under it, 8 apart, the line in touch body, muted.</td><td>TextStyle::Display, TouchBody</td></tr>
+        <tr><td>Blocks</td><td>18 apart. Dots 14 above the button, centered, one per step.</td><td>page_dots</td></tr>
+        <tr><td>Field</td><td>The Add machine field and its input: Size::Touch, placeholder user@host. Return connects. A bare name ending in .ts.net is a tailnet machine.</td><td>hosts.destination</td></tr>
+        <tr><td>Error</td><td>Under the field in danger ink: why it could not parse, or why the connection failed.</td><td>hosts.error, connection status</td></tr>
+        <tr><td>Button</td><td>Primary, TouchLarge, full width. Next; Connect, off until the address parses; Connecting with a spinner, off; Add N, or Done with every switch off.</td><td>Button</td></tr>
+        <tr><td>Skip</td><td>Quiet, top right under the status area. Marks it done and leaves to Machines.</td><td></td></tr>
+        <tr><td>Your tailnet</td><td>Once the first machine connects, waits for its tailnet answer (about a second). One 52 row per machine found: name, then what Machines says about it (Linux · runs zz) muted 8 after, a switch, on. One without zz says No zz on it yet and has no switch. None found skips the step.</td><td>found_machines</td></tr>
+        <tr><td>Finish</td><td>Saves and connects the machines switched on, marks it done, opens the first machine's page.</td><td>place_overview</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section data-take="compare">
+    <h2>Side by side</h2>
+    <table class="zz-nums">
+      <thead><tr><th></th><th>A. Three steps</th><th>B. Two steps</th><th>C. One screen</th><th>D. Welcome + sheet</th><th>E. Then your tailnet</th></tr></thead>
+      <tbody>
+        <tr><td>Taps to a machine</td><td>Next, type, Connect, Start</td><td>Next, type, Connect</td><td>Type, Connect</td><td>Add machine, type, Connect</td><td>Next, type or scan, Connect, Add</td></tr>
+        <tr><td>Matches desktop</td><td>Closest: three dots, last step is a switch</td><td>Same look, one step fewer</td><td>Same sky and text, no steps</td><td>Same first screen</td><td>Closest: three dots, the third lists found things with switches</td></tr>
+        <tr><td>Notifications</td><td>Asked up front</td><td>Asked when an agent first waits</td><td>Asked when an agent first waits</td><td>Asked when an agent first waits</td><td>Asked when an agent first waits</td></tr>
+        <tr><td>New UI</td><td>Onboarding page, field step, switch step</td><td>Onboarding page, field step</td><td>One page with a field</td><td>One page, reuses the sheet</td><td>Onboarding page, field step, found step</td></tr>
+        <tr><td>Skip</td><td>Corner, every step</td><td>Corner, every step</td><td>Corner</td><td>Corner</td><td>Corner, every step</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const WELCOME = ["Zebrilus is simply tmux in a graphical interface.", "Faster, modern, and not limited by a pty"];
+  const CONNECT = ["Point it at your machine.", "Anything you can ssh into, with zz on it."];
+  const PING = ["Get pinged when an agent waits.", "Only when one needs you."];
+  const FIRST = ["Point it at your machine.", "Type its address, or scan the code from zz on your computer."];
+  const FOUND = ["macbook brought friends.", "Found on your tailnet."];
+
+  const head = ([title, line]) => `<div class="zz-head"><h3 data-zone data-text>${title}</h3><div class="zz-line"><span data-zone data-text>${line}</span></div></div>`;
+  const dots = (count, at) => count ? `<div class="zz-dots" data-zone>${Array.from({ length: count }, (_, i) => `<i${i === at ? " data-on" : ""}></i>`).join("")}</div>` : "";
+  const go = (label, { off, spin } = {}) => `<button class="penna-button zz-go" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-zone${off ? ` disabled aria-disabled="true"` : ""}><span class="penna-label">${spin ? `<i class="zz-spin"></i>` : ""}${label}</span></button>`;
+  const field = (typed) => `<label class="penna-input zz-field" data-penna="field" data-size="touch" data-zone${typed != null ? ` data-state="focused"` : ""}>${typed != null ? `<b>${typed}</b>${typed.endsWith(" ") ? "" : `<i class="zz-caret"></i>`}` : `<span class="zz-ph">user@host</span>`}</label>`;
+  const err = (text) => `<div class="zz-err"><span data-zone data-text>${text}</span></div>`;
+  const sw = (on) => `<span class="penna-switch"${on ? " data-on" : ""}></span>`;
+  const row = (name, tail, detail) => `<div class="zz-row" data-zone><span>${name}${detail ? `<i>${detail}</i>` : ""}</span>${tail}</div>`;
+  const skip = `<button class="zz-skip">Skip</button>`;
+  const kb = () => {
+    const keys = (s) => [...s].map((k) => `<i>${k}</i>`).join("");
+    return `<div class="zz-kb"><div class="zz-kb-row">${keys("qwertyuiop")}</div><div class="zz-kb-row">${keys("asdfghjkl")}</div><div class="zz-kb-row"><i data-w>⇧</i>${keys("zxcvbnm")}<i data-w>⌫</i></div><div class="zz-kb-row"><i data-w>123</i><i data-space>space</i><i data-ret>return</i></div></div>`;
+  };
+  const page = ({ copy, body = "", count = 0, at = 0, button, corner = true, extra = "" }) =>
+    `<canvas></canvas>${corner ? skip : ""}<div class="zz-in">${copy ? head(copy) : ""}${body}<div class="zz-foot">${dots(count, at)}${button}</div></div>${extra}`;
+
+  const disc = (glyph) => `<button class="penna-sheet-disc" aria-label="${glyph}"><span class="penna-button" data-penna="button" data-size="touch">${ic(glyph)}</span></button>`;
+  const header = (text) => `<div class="penna-touch-header"><span>${text}</span></div>`;
+  const keyRow = `<div class="penna-touch-group" data-penna="settings.card" data-ground data-ruled><div class="penna-touch-row" data-penna="phone.row" role="button">${ic("copy")}<span class="penna-touch-row-lines"><span>Copy SSH key</span></span></div></div>`;
+  const sheet = `<div class="penna-sheet" style="--penna-sheet-rest: 34px"><div class="penna-sheet-scrim"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header"><span class="penna-sheet-title">Add machine</span>${disc("xmark")}</div><div class="zz-sgroups"><div class="zz-addr">${header("Address")}<label class="penna-input" data-penna="field" data-size="touch"><span class="zz-ph">user@host</span></label></div><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled aria-disabled="true" style="width:100%;--penna-r:calc(var(--penna-phone-radius) - 8px)"><span class="penna-label">Connect</span></button>${keyRow}<div class="zz-note">Add this phone's key to authorized_keys on the host to sign in without a password.</div></div></div></div></div>`;
+
+  const frames = {
+    "a-welcome": () => page({ copy: WELCOME, count: 3, at: 0, button: go("Next") }),
+    "a-connect": () => page({ copy: CONNECT, body: field(null), count: 3, at: 1, button: go("Connect", { off: true }) }),
+    "a-failed": () => page({ copy: CONNECT, body: field("fabrico@mac.local") + err("Could not reach mac.local."), count: 3, at: 1, button: go("Connect") }),
+    "a-ping": () => page({ copy: PING, body: `<div class="zz-rows">${row("Notifications", sw(true))}</div>`, count: 3, at: 2, button: go("Start"), corner: false }),
+    "b-welcome": () => page({ copy: WELCOME, count: 2, at: 0, button: go("Next") }),
+    "b-typing": () => page({ copy: CONNECT, body: field("fabrico@mac.local"), count: 2, at: 1, button: go("Connect"), extra: kb() }),
+    "b-connecting": () => page({ copy: CONNECT, body: field("fabrico@mac.local "), count: 2, at: 1, button: go("Connecting", { off: true, spin: true }) }),
+    "c-idle": () => page({ copy: WELCOME, body: field(null), button: go("Connect", { off: true }) }),
+    "c-typing": () => page({ copy: WELCOME, body: field("fabrico@mac.local"), button: go("Connect"), extra: kb() }),
+    "e-welcome": () => page({ copy: WELCOME, count: 3, at: 0, button: go("Next") }),
+    "e-connect": () => page({ copy: FIRST, body: field(null), count: 3, at: 1, button: go("Connect", { off: true }) }),
+    "e-found": () => page({ copy: FOUND, body: `<div class="zz-rows">${row("alienware", sw(true), "Linux · runs zz")}${row("xps", sw(true), "Linux · runs zz")}${row("win-desktop", sw(true), "Windows · runs zz")}</div>`, count: 3, at: 2, button: go("Add 3") }),
+    "e-found-off": () => page({ copy: FOUND, body: `<div class="zz-rows">${row("alienware", sw(true), "Linux · runs zz")}${row("homelab", "", "No zz on it yet")}</div>`, count: 3, at: 2, button: go("Add 1") }),
+    "d-welcome": () => page({ copy: WELCOME, button: go("Add machine") }),
+    "d-sheet": () => page({ copy: WELCOME, button: go("Add machine"), extra: sheet }),
+  };
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  for (const phone of document.querySelectorAll("[data-frame]")) {
+    const key = phone.dataset.frame;
+    phone.classList.add("zz-ob");
+    phone.setAttribute("data-sky", "");
+    if (key.endsWith("typing")) phone.setAttribute("data-kb", "");
+    if (key === "d-sheet") phone.setAttribute("data-sheet", "");
+    phone.innerHTML = frames[key]();
+    phone.insertAdjacentHTML("beforeend", status + `<span class="zz-home"></span>`);
+  }
+
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.querySelector(".zz-intro").style.display = "none";
+    for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+  }
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+<script src="sky.js"></script>
+</body>
+</html>

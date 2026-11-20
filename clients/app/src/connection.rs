@@ -65,6 +65,8 @@ pub struct Connection {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     tailnet_offers: Option<u64>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
+    tailnet_probing: bool,
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     failure: Option<zz_daemon_client::HostFailure>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     installer: Option<crate::transport::Connection>,
@@ -185,6 +187,8 @@ impl Connection {
             pending_session: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             tailnet_offers: None,
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            tailnet_probing: false,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             failure: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -1126,6 +1130,12 @@ impl Connection {
     }
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
+    #[must_use]
+    pub fn looking_for_tailnet(&self) -> bool {
+        self.tailnet_offers.is_some() || self.tailnet_probing
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     fn ask_for_tailnet_hosts(&mut self, cx: &mut Context<Self>) {
         self.tailnet_offers = Some(self.invoke(CommandInvocation::new("tailnet", ["hosts"]), cx));
     }
@@ -1141,6 +1151,7 @@ impl Connection {
         if offers.is_empty() {
             return;
         }
+        self.tailnet_probing = true;
         cx.spawn(async move |this, cx| {
             let probed = offers.clone();
             let reachable = cx
@@ -1159,7 +1170,12 @@ impl Connection {
                     },
                 })
                 .collect();
-            this.update(cx, |_, cx| cx.emit(FoundHosts(found))).ok();
+            this.update(cx, |this, cx| {
+                this.tailnet_probing = false;
+                cx.emit(FoundHosts(found));
+                cx.notify();
+            })
+            .ok();
         })
         .detach();
     }
