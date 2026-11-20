@@ -59,7 +59,7 @@ and `ProtocolMessage::AgentLogin` answer `agent-login-v1`, `ProtocolMessage::Ter
 and `TerminalThemesResponse` answer `terminal-themes-v1`, `ProtocolMessage::BrowserScreenshot`
 answers `browser-screenshot-v1`, `ProtocolMessage::AgentAttachFile` and `AgentFileAttached` answer `agent-files-v1`, `ProtocolMessage::FileReadRequest`, `FileReadResponse`,
 `FileWriteRequest` and `FileWriteResponse` answer `file-edit-v1`, and `EventPayload::SimulatorPane`
-answers `simulator-pane-v1`.
+and `SimulatorCommand` answer `simulator-pane-v1`.
 
 The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only inside an epoch:
 
@@ -433,6 +433,15 @@ daemon sends the event to every client for each simulator pane that is new or wh
 (`send_simulator_resync`), so a client that attaches has them all. The client core keeps them by
 pane (`ClientCore::simulator`), drops one on `PaneRemoved` and raises
 `CoreEvent::SimulatorChanged { pane }`.
+
+`SimulatorCommand { pane, command: SimulatorCommand }`, under the same name, asks the desktop
+client showing a simulator pane to act on it: `Screenshot { request_id, path }`, `Tap { request_id,
+x, y }`, `Swipe { request_id, from, to }` (points in the pixels of the upright capture),
+`Type { request_id, text }` and `Press { request_id, button: Home | Lock }`. Path and text are at
+most `MAX_GUI_TEXT_BYTES` on decode. The client answers each with a `GuiResponse` under its
+`request_id`, except a capture that succeeds, which it sends as `BrowserScreenshot` chunks so the
+daemon writes the PNG at `path` on its own host. `capture-simulator`, `tap-simulator`,
+`swipe-simulator`, `type-simulator` and `press-simulator` send it.
 
 `AgentLogin(AgentLogin)` is appended inside v123 and gated by `agent-login-v1`. It is one step of a
 sign-in the daemon drives through a CLI's own login:

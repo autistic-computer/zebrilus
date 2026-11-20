@@ -2,7 +2,7 @@
 type: Design Plan
 title: Simulator pane . a booted iOS simulator in a PiP
 description: "A pane kind that shows a booted iOS simulator's screen and takes touches and keys. It opens as a PiP at centre-right and docks with Tile back like any pane. The desktop client on macOS does the work; the daemon only keeps the pane's device. The kind travels as `Other { kind }` with a gated descriptor event, so the wire epoch stays."
-status: Built (2026-11-20; desktop on macOS. Rotate, the keyboard toggle, the title's picker popover and agent verbs are not built)
+status: Built (2026-11-20; desktop on macOS)
 resource: crates/zz/src/simulator/live.rs
 tags:
 - ui
@@ -31,6 +31,13 @@ clamped to the window. `split-window` and `new-window` take the kind too, with n
 `set-simulator-device [-t %N] DEVICE` changes the device; an empty device shows the list.
 `#{pane_kind}` prints `simulator`.
 
+Agents drive a pane with `capture-simulator -t %N -o PATH` (an upright PNG), `tap-simulator -t %N X Y`
+and `swipe-simulator -t %N X1 Y1 X2 Y2` (in that PNG's pixels), `type-simulator -t %N TEXT` (ASCII)
+and `press-simulator -t %N home|lock`. The daemon sends `EventPayload::SimulatorCommand`, gated by the
+same capability, to the desktop app showing the pane and waits for its `GuiResponse`; the capture
+comes back as `BrowserScreenshot` chunks, so the daemon writes the file on its own host. `zz tools`
+lists the verbs.
+
 The daemon keeps only `SimulatorDescriptor { device }`. Snapshots show the pane as
 `PaneKindSnapshot::Other { kind: "simulator" }`, and the descriptor travels in
 `EventPayload::SimulatorPane`, gated by `simulator-pane-v1`
@@ -42,18 +49,24 @@ The desktop view is `SimulatorView` (`crates/zz/src/simulator/live.rs`), on `cra
 - **No device:** the list of installed simulators, booted ones first, shut down ones dimmed. Picking
   one, by click or with j, k, the arrows and Enter, sets the pane's device; a shut down one is
   booted first.
-- **Screen:** the simulator's own surface, painted with `Window::paint_surface` at the surface's
-  aspect, as large as fits: 6 px in from the sides and bottom in a PiP, 4 px from the top and 16 px
+- **Screen:** the simulator's own surface, painted with `Window::paint_surface_turned` at the
+  aspect it shows, as large as fits: 6 px in from the sides and bottom in a PiP, 4 px from the top and 16 px
   from the sides and bottom when tiled. Corners are 14.6% of the screen's
   width, 3.5% for a tablet, with the theme's border as a 1 px edge. The view repaints only when the
-  simulator reports a new frame.
+  simulator reports a new frame. A hidden pane drops its screen, which stops the callbacks, and
+  attaches again when it shows.
+- **Rotation:** the surface stays portrait; the screen's `uiOrientation` says how far to turn it.
+  Touches are mapped back to the portrait digitizer and captures are turned upright.
 - **Input:** press, drag and release become one touch at the same point of the screen; the wheel
   becomes a drag that ends 120 ms after the last wheel event; a key press becomes its keyboard
   usage, with Shift held around it. Keys with Command, Control, Option or Fn stay with zz.
 - **Booting:** the phone's outline in the theme's border color with a 16 px loader in the middle.
-- **Header:** the pane's own header, with the device's name as its title and Home, Lock, Screenshot
-  (to the clipboard) and Devices as kind buttons. When the header runs out of room, these fold into
+- **Header:** the pane's own header. A chevron after the device's name opens the installed
+  simulators with a check on the current one. Home, Lock, Rotate (a quarter left), Keyboard and
+  Screenshot (to the clipboard) are kind buttons; when the header runs out of room they fold into
   the ellipsis first and Tile back, Zoom and Close stay out.
+- **Keyboard:** attaching turns the device's hardware keyboard on, so typing on the Mac does not
+  raise the on-screen keyboard; Keyboard turns it off and on to show and hide it.
 
 Other platforms draw a one-line note in the pane.
 
@@ -68,6 +81,9 @@ them through the Objective-C runtime. Nothing is linked.
   connection opened from the device's service lookup; it is used whenever the lookup succeeds. The
   older message route is the fallback. Once any tool has connected to the newer service, the older
   route stops working until the simulator's display server restarts, so the newer one is preferred.
+- **Rotation:** the guest's orientation service (`…feature.remote.devicecontrol.orientation`) takes
+  `{payload: {rotate: {_0: "left"|"right"}}}` with a reply; the same connection steps as input.
+- **Keyboard:** `-[SimDevice setHardwareKeyboardEnabled:keyboardType:error:]`.
 - Every selector that was not proven on a live device is sent only after `respondsToSelector:`. A
   missing one took the app down during the first live check.
 
@@ -83,10 +99,5 @@ them through the Objective-C runtime. Nothing is linked.
 
 # Not built
 
-- Rotate and the software keyboard toggle; the ellipsis menu the board draws. Rotation is not part
-  of the input service the pane uses.
-- The picker as a popover under the title: Devices returns to the list in the pane instead.
-- Stopping frame callbacks while the pane is hidden.
-- Verbs for agents (capture, tap, type), a `#{simulator_device}` format variable, and a mention in
-  the tools catalog.
+- A `#{simulator_device}` format variable.
 - Two-finger touch, a remote client, Android.
