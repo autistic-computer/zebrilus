@@ -3950,7 +3950,7 @@ impl AppView {
                     let simulator = self.simulators.get(pane).map(|view| view.read(cx).title());
                     let state = TerminalHeaderState {
                         icon: if simulator.is_some() {
-                            penna::IconName::Asset("icons/smartphone.svg")
+                            crate::simulator::PHONE
                         } else {
                             zz_ui::pane::pane_kind_icon(&snapshot.kind)
                         },
@@ -4684,7 +4684,7 @@ impl AppView {
             let simulator = self.simulators.get(&pane).map(|view| view.read(cx).title());
             let state = TerminalHeaderState {
                 icon: if simulator.is_some() {
-                    penna::IconName::Asset("icons/smartphone.svg")
+                    crate::simulator::PHONE
                 } else {
                     snapshot.map_or(penna::IconName::SquareTerminal, |pane| {
                         zz_ui::pane::pane_kind_icon(&pane.kind)

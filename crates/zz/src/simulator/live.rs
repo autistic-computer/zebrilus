@@ -17,9 +17,9 @@ use zz_simulator::{
 };
 use zz_ui::pane::{PaneKindButton, pane_picker_note_row, pane_picker_surface};
 
+use super::PHONE;
 use crate::mux::client::MuxClient;
 
-const PHONE: IconName = IconName::Asset("icons/smartphone.svg");
 const HOUSE: IconName = IconName::Asset("icons/house.svg");
 const LOCK_ICON: IconName = IconName::Asset("icons/lock.svg");
 const HOME: &str = "simulator-home";

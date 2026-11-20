@@ -85,7 +85,7 @@ impl PaneChoice {
             Self::Terminal => IconName::SquareTerminal,
             Self::Browser => zz_ui::CHROME_ICON,
             Self::Editor => IconName::File,
-            Self::Simulator => IconName::Asset("icons/smartphone.svg"),
+            Self::Simulator => crate::simulator::PHONE,
         }
     }
 

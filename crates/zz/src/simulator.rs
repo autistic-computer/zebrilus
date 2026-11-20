@@ -1,3 +1,5 @@
+pub(crate) const PHONE: penna::IconName = penna::IconName::Asset("icons/smartphone.svg");
+
 #[cfg(target_os = "macos")]
 mod live;
 #[cfg(not(target_os = "macos"))]
