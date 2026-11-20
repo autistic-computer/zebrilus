@@ -637,7 +637,9 @@ the same for both:
   other two drivers use: a prompt's echo (`messageId` `zz-prompt-<turn>-…`) or `PromptAccepted`
   starts the turn, `PromptFinished` ends it as completed, cancelled or failed, a permission answer
   is recorded as the answer, and history replayed by `session/load` gets a turn for each user
-  message. The `Chat` events follow the payload that caused them.
+  message. A text chunk with no `messageId` (grok sends none) is given one per run of chunks, so
+  the text before a tool call and the text after it are two items in that order. The `Chat` events
+  follow the payload that caused them.
 - **Effort, title, session list.** The effort rename, `session_info_update` to `TitleChanged`, and
   the session list kept to the folder asked for. Folders are compared resolved, so `/tmp/x` and
   `/private/tmp/x` are one, and a kept session carries the folder as it was asked for. A new
@@ -652,8 +654,12 @@ the same for both:
   pane failure that starts with those words into the provider's line, `Grok is signed out. Sign in
   by running grok login in a terminal.`, and Antigravity's the same way.
 
-The modes are read like Claude Code's (`default`, `acceptEdits`, `auto`, `plan`,
-`bypassPermissions`), which are the CLI's own permission modes.
+- **Title on load.** grok sends `session_info_update` when it titles a new conversation and not
+  when one is loaded, so a loaded session with no title yet takes `generated_title` (else
+  `session_summary`) from its `summary.json` (`Dialect::stored_title`).
+
+grok reports no modes. Whether it asks before a tool runs is its own setting (`permission_mode` in
+grok's config), so a chat on an always-approve config never asks.
 
 **The flip.** Chat to CLI runs `grok --resume <id> --model <m> --effort <e>`. CLI to chat reads
 the TUI's session from `active_sessions.json` in grok's home (the daemon's `GROK_HOME`, else
@@ -669,11 +675,10 @@ it never refuses the flip.
 latest version (Update runs `grok update`, Install the vendor's script). The command is not
 configurable.
 
-**Not yet seen working.** The CLI was signed out when this was built (2026-11-20), so a turn, the
-permission ask, the title, the modes and a flip from a TUI with an open session are from grok's
-documentation and its files on disk, not from a run. Seen live: the handshake, the signed-out
-failure, chat to TUI, and a signed-out TUI back to a chat. The shared parts (transcript, title,
-permission, replay after a flip) were seen live with Antigravity.
+**Seen working** (2026-11-20, grok 1.0.89): a turn with tool calls, the title, `--model` and
+`--effort`, chat to TUI, a TUI with an open session to a chat, a TUI given `--resume` to a chat
+with its history, and a resumed session's title. Not seen: a permission ask, since the config
+tested approves everything.
 
 **Known gaps in the shared runtime.** A `session/load` that fails falls back to a new session
 with the old transcript replayed over it. A pane with two TUIs of one provider flips the first

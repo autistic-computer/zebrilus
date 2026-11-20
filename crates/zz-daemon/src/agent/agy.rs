@@ -21,6 +21,7 @@ const MAX_USAGE_BYTES: usize = 64 * 1024;
 const DIALECT: Dialect = Dialect {
     effort_option: "thought_level",
     signed_out: "Antigravity is signed out. Sign in by running `agy` in a terminal.",
+    stored_title: |_| None,
 };
 
 pub(crate) async fn run_agy_runtime(

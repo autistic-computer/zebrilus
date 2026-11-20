@@ -4,6 +4,7 @@ use agent_client_protocol::{AcpAgent, AcpAgentConfig};
 use zz_protocol::{AGENT_GROK_COMMAND, AgentProvider};
 
 use crate::agent::{
+    cli_session,
     dialect::{self, Dialect},
     environment::agent_path,
     host::RuntimeChannels,
@@ -13,6 +14,7 @@ use crate::agent::{
 const DIALECT: Dialect = Dialect {
     effort_option: "reasoning_effort",
     signed_out: "Grok is signed out. Sign in by running `grok login` in a terminal.",
+    stored_title,
 };
 
 pub(crate) async fn run_grok_runtime(
@@ -33,6 +35,16 @@ pub(crate) fn home() -> Option<PathBuf> {
     std::env::var_os("GROK_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".grok")))
+}
+
+fn stored_title(session: &str) -> Option<String> {
+    let summary = cli_session::grok_summary(&home()?, session)?;
+    ["generated_title", "session_summary"]
+        .into_iter()
+        .filter_map(|key| summary[key].as_str())
+        .map(str::trim)
+        .find(|title| !title.is_empty())
+        .map(str::to_owned)
 }
 
 fn program(path: Option<&str>) -> Result<PathBuf, String> {

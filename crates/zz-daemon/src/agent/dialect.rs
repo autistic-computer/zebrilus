@@ -20,6 +20,7 @@ const SIGNED_OUT: &str = "Authentication required";
 pub(crate) struct Dialect {
     pub(crate) effort_option: &'static str,
     pub(crate) signed_out: &'static str,
+    pub(crate) stored_title: fn(&str) -> Option<String>,
 }
 
 pub(crate) async fn run(
@@ -60,18 +61,30 @@ pub(crate) async fn run(
         std::future::pending::<Result<(), String>>().await
     };
     let inbound = async {
+        let mut titled = false;
         while let Ok(payload) = event_rx.recv().await {
             let chat = transcript.lock().payload(&payload);
-            let fresh = matches!(
-                payload,
-                AgentStreamPayload::SessionReset { restoring: false }
-            );
-            if events.send(to_zz(payload, dialect)).await.is_err() {
+            let title = match &payload {
+                AgentStreamPayload::SessionReset { restoring } => {
+                    titled = false;
+                    (!restoring).then_some(None)
+                }
+                AgentStreamPayload::SessionReady { session_id, .. }
+                | AgentStreamPayload::SessionSwitched { session_id, .. }
+                    if !titled =>
+                {
+                    (dialect.stored_title)(session_id).map(Some)
+                }
+                _ => None,
+            };
+            let payload = to_zz(payload, dialect);
+            titled |= matches!(payload, AgentStreamPayload::TitleChanged { title: Some(_) });
+            if events.send(payload).await.is_err() {
                 break;
             }
-            if fresh
+            if let Some(title) = title
                 && events
-                    .send(AgentStreamPayload::TitleChanged { title: None })
+                    .send(AgentStreamPayload::TitleChanged { title })
                     .await
                     .is_err()
             {
@@ -273,10 +286,12 @@ mod tests {
     const AGY: Dialect = Dialect {
         effort_option: "thought_level",
         signed_out: "signed out of agy",
+        stored_title: |_| None,
     };
     const GROK: Dialect = Dialect {
         effort_option: "reasoning_effort",
         signed_out: "signed out of grok",
+        stored_title: |_| None,
     };
 
     #[test]

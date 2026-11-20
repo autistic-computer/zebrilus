@@ -524,12 +524,9 @@ pub(crate) fn grok_session(pid: u32, home: Option<&Path>, cwd: Option<PathBuf>) 
         .and_then(|home| read_small(&home.join("active_sessions.json")))
         .and_then(|open| grok_open_session(&open, pid))
         .or_else(|| flag(&["-r", "--resume", "-s", "--session-id"]).filter(|id| uuid(id)));
-    let summary = home.zip(session_id.as_deref()).and_then(|(home, id)| {
-        subdirectories(&home.join("sessions"))
-            .iter()
-            .find_map(|folder| read_small(&folder.join(id).join("summary.json")))
-            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-    });
+    let summary = home
+        .zip(session_id.as_deref())
+        .and_then(|(home, id)| grok_summary(home, id));
     let fact = |key: &str| {
         summary
             .as_ref()
@@ -545,6 +542,16 @@ pub(crate) fn grok_session(pid: u32, home: Option<&Path>, cwd: Option<PathBuf>) 
         effort: fact("reasoning_effort").or_else(|| flag(&["--reasoning-effort", "--effort"])),
         running: Vec::new(),
     }
+}
+
+pub(crate) fn grok_summary(home: &Path, session: &str) -> Option<Value> {
+    if !uuid(session) {
+        return None;
+    }
+    subdirectories(&home.join("sessions"))
+        .iter()
+        .find_map(|folder| read_small(&folder.join(session).join("summary.json")))
+        .and_then(|text| serde_json::from_str(&text).ok())
 }
 
 pub(crate) fn grok_open_session(open: &str, pid: u32) -> Option<String> {

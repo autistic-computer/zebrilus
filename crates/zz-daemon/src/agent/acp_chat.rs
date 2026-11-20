@@ -9,13 +9,25 @@ use super::runtime::RuntimeControl;
 use super::turn::{End, Fact};
 
 const PROMPT_ECHO: &str = "zz-prompt-";
+const UNNAMED: &str = "zz-run-";
+const USER: &str = "user_message_chunk";
+const CHUNK: &str = "_chunk";
+const DRAWN: [&str; 6] = [
+    USER,
+    "agent_message_chunk",
+    "agent_thought_chunk",
+    "tool_call",
+    "tool_call_update",
+    "plan",
+];
 
 #[derive(Default)]
 pub(crate) struct Transcript {
     shadow: Shadow,
     live: bool,
     turn: Option<u64>,
-    user: bool,
+    drawn: String,
+    runs: u64,
 }
 
 impl Transcript {
@@ -27,7 +39,7 @@ impl Transcript {
                     self.shadow.turn(&Fact::SessionClosed, None, now);
                 }
                 self.turn = None;
-                self.user = false;
+                self.drawn.clear();
                 self.shadow.payload(payload);
             }
             AgentStreamPayload::SessionReady { session_id, .. }
@@ -36,18 +48,33 @@ impl Transcript {
                 self.shadow.turn(&Fact::SessionReady, Some(session_id), now);
             }
             AgentStreamPayload::Update { update } => {
-                let user = update["sessionUpdate"] == "user_message_chunk";
+                let kind = update["sessionUpdate"].as_str().unwrap_or_default();
+                if !DRAWN.contains(&kind) {
+                    self.shadow.payload(payload);
+                    return self.shadow.drain();
+                }
+                let user = kind == USER;
+                let next = self.drawn != kind;
+                if next {
+                    self.runs += 1;
+                    kind.clone_into(&mut self.drawn);
+                }
                 if self.live {
                     if let Some(turn) = prompt_echo(update).filter(|_| user) {
                         self.start(turn, now);
                     }
-                } else if user && !self.user {
+                } else if user && next {
                     self.shadow.payload(&AgentStreamPayload::Update {
                         update: turn_mark("started", None),
                     });
                 }
-                self.user = user;
-                self.shadow.payload(payload);
+                if kind.ends_with(CHUNK) && update["messageId"].is_null() {
+                    let mut update = update.clone();
+                    update["messageId"] = Value::from(format!("{UNNAMED}{}", self.runs));
+                    self.shadow.payload(&AgentStreamPayload::Update { update });
+                } else {
+                    self.shadow.payload(payload);
+                }
             }
             AgentStreamPayload::PromptAccepted { turn_id } => self.start(*turn_id, now),
             AgentStreamPayload::PromptFinished { turn_id, outcome } => {
@@ -150,6 +177,13 @@ mod tests {
         }))
     }
 
+    fn unnamed(kind: &str, text: &str) -> AgentStreamPayload {
+        update(json!({
+            "sessionUpdate": kind,
+            "content": { "type": "text", "text": text },
+        }))
+    }
+
     fn kinds(view: &ChatView, turn: usize) -> Vec<(ItemKind, String)> {
         view.turns[turn]
             .items
@@ -182,8 +216,16 @@ mod tests {
                 "third question",
             ),
             AgentStreamPayload::PromptAccepted { turn_id: 7 },
-            text("agent_message_chunk", "new-1", "third "),
-            text("agent_message_chunk", "new-1", "answer"),
+            unnamed("agent_message_chunk", "third "),
+            update(
+                json!({ "sessionUpdate": "available_commands_update", "availableCommands": [] }),
+            ),
+            unnamed("agent_message_chunk", "answer"),
+            update(json!({
+                "sessionUpdate": "tool_call", "toolCallId": "t1", "title": "read_file",
+                "kind": "read", "status": "completed",
+            })),
+            unnamed("agent_message_chunk", "after the tool"),
             AgentStreamPayload::PromptFinished {
                 turn_id: 7,
                 outcome: AgentPromptOutcome::Finished {
@@ -210,6 +252,8 @@ mod tests {
             [
                 (ItemKind::User, "third question".to_owned()),
                 (ItemKind::Agent, "third answer".to_owned()),
+                (ItemKind::Read, String::new()),
+                (ItemKind::Agent, "after the tool".to_owned()),
             ]
         );
         assert!(view.running().is_none());
