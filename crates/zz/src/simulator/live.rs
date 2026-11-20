@@ -15,7 +15,7 @@ use zz_protocol::{CommandInvocation, PaneId, SimulatorDescriptor};
 use zz_simulator::{
     Button, Device, Error, Input, KeyDirection, SHIFT, Screen, Simulator, TouchPhase, key_usage,
 };
-use zz_ui::pane::{PaneKindButton, pane_picker_note_row, pane_picker_surface};
+use zz_ui::pane::{PaneKindButton, PaneTitleRow, pane_picker_note_row, pane_picker_surface};
 
 use super::PHONE;
 use crate::mux::client::MuxClient;
@@ -26,7 +26,6 @@ const HOME: &str = "simulator-home";
 const LOCK: &str = "simulator-lock";
 const KEYBOARD: &str = "simulator-keyboard";
 const SCREENSHOT: &str = "simulator-screenshot";
-const DEVICES: &str = "simulator-devices";
 const TITLE: &str = "Simulator";
 const INSET: f32 = 6.0;
 const TILED_INSET: f32 = 16.0;
@@ -65,6 +64,7 @@ pub(crate) struct SimulatorView {
     mux: Entity<MuxClient>,
     focus: FocusHandle,
     state: State,
+    devices: Vec<Device>,
     selected: usize,
     screen_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
     floating: bool,
@@ -90,6 +90,7 @@ impl SimulatorView {
             mux,
             focus: cx.focus_handle(),
             state: State::Devices(Vec::new()),
+            devices: Vec::new(),
             selected: 0,
             screen_bounds: Rc::new(Cell::new(None)),
             floating: true,
@@ -165,15 +166,32 @@ impl SimulatorView {
         }
     }
 
+    pub(crate) fn title_menu(&self) -> Vec<PaneTitleRow> {
+        if self.device.is_empty() || matches!(self.state, State::Devices(_)) {
+            return Vec::new();
+        }
+        self.devices
+            .iter()
+            .map(|device| PaneTitleRow {
+                label: device.name.clone().into(),
+                detail: device.system.clone().into(),
+                current: device.udid.eq_ignore_ascii_case(&self.device),
+            })
+            .collect()
+    }
+
+    pub(crate) fn title_pick(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(device) = self.devices.get(index) {
+            let udid = device.udid.clone();
+            self.pick(udid, cx);
+        }
+    }
+
     pub(crate) fn header_buttons(&self) -> Vec<PaneKindButton> {
-        let devices = PaneKindButton {
-            key: DEVICES,
-            icon: PHONE,
-            label: "Devices",
-        };
         match &self.state {
-            State::Devices(_) | State::Paused(_) => Vec::new(),
-            State::Waiting(_) | State::Failed(_) => vec![devices],
+            State::Devices(_) | State::Paused(_) | State::Waiting(_) | State::Failed(_) => {
+                Vec::new()
+            }
             State::Live(_) => vec![
                 PaneKindButton {
                     key: HOME,
@@ -195,7 +213,6 @@ impl SimulatorView {
                     icon: IconName::Camera,
                     label: "Screenshot",
                 },
-                devices,
             ],
         }
     }
@@ -212,7 +229,6 @@ impl SimulatorView {
                 }
             }
             SCREENSHOT => self.screenshot(cx),
-            DEVICES => self.pick(String::new(), cx),
             _ => {}
         }
     }
@@ -247,8 +263,10 @@ impl SimulatorView {
         self.touching = false;
         self.wheel = None;
         self.screen_bounds.set(None);
+        let listed = zz_simulator::devices();
+        self.devices = listed.as_ref().map(Clone::clone).unwrap_or_default();
         if self.device.is_empty() {
-            self.state = match zz_simulator::devices() {
+            self.state = match listed {
                 Ok(devices) if devices.is_empty() => State::Failed("No simulators".into()),
                 Ok(devices) => State::Devices(devices),
                 Err(error) => State::Failed(describe(&error)),
@@ -293,14 +311,11 @@ impl SimulatorView {
     }
 
     fn wait(&mut self, cx: &mut Context<Self>) {
-        let name = zz_simulator::devices()
-            .ok()
-            .and_then(|devices| {
-                devices
-                    .into_iter()
-                    .find(|device| device.udid.eq_ignore_ascii_case(&self.device))
-            })
-            .map_or_else(|| TITLE.into(), |device| device.name.into());
+        let name = self
+            .devices
+            .iter()
+            .find(|device| device.udid.eq_ignore_ascii_case(&self.device))
+            .map_or_else(|| TITLE.into(), |device| device.name.clone().into());
         self.state = State::Waiting(name);
         let device = self.device.clone();
         self.opening = Some(cx.spawn(async move |view, cx| {

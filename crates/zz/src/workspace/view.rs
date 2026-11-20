@@ -605,6 +605,7 @@ struct TerminalHeaderState {
     flip: Option<PaneFlip>,
     keys: zz_ui::pane::PaneActionKeys,
     buttons: Vec<zz_ui::pane::PaneKindButton>,
+    menu: Vec<zz_ui::pane::PaneTitleRow>,
     trailing_inset: Pixels,
     radii: Corners<Pixels>,
     opacity: f32,
@@ -639,7 +640,7 @@ impl Render for TerminalHeaderView {
         let click_app = self.app.clone();
         let flip_app = self.app.clone();
         let title = state.title.clone();
-        let header = zz_ui::pane::pane_header(
+        let header = zz_ui::pane::pane_header_with_menu(
             zz_ui::pane::pane_heading_icon(state.icon.clone(), state.program),
             state.active,
             title.clone(),
@@ -652,6 +653,7 @@ impl Render for TerminalHeaderView {
             state.place,
             state.flip,
             &state.buttons,
+            state.menu.clone(),
             &state.keys,
             state.trailing_inset,
             move |action, window, cx| {
@@ -664,6 +666,12 @@ impl Render for TerminalHeaderView {
                 if let TerminalPaneAction::Kind(key) = action {
                     if let Some(app) = flip_app.upgrade() {
                         app.update(cx, |view, cx| view.pane_kind_action(pane, key, window, cx));
+                    }
+                    return;
+                }
+                if let TerminalPaneAction::Title(index) = action {
+                    if let Some(app) = flip_app.upgrade() {
+                        app.update(cx, |view, cx| view.pane_title_pick(pane, index, cx));
                     }
                     return;
                 }
@@ -3749,6 +3757,20 @@ impl AppView {
         Vec::new()
     }
 
+    fn pane_title_menu(&self, pane: PaneId, cx: &App) -> Vec<zz_ui::pane::PaneTitleRow> {
+        self.simulators
+            .get(&pane)
+            .map(|simulator| simulator.read(cx).title_menu())
+            .unwrap_or_default()
+    }
+
+    fn pane_title_pick(&mut self, pane: PaneId, index: usize, cx: &mut Context<Self>) {
+        if let Some(simulator) = self.simulators.get(&pane) {
+            simulator.update(cx, |simulator, cx| simulator.title_pick(index, cx));
+            cx.notify();
+        }
+    }
+
     fn pane_kind_action(
         &mut self,
         pane: PaneId,
@@ -3977,6 +3999,7 @@ impl AppView {
                         flip: self.pane_flip(snapshot),
                         keys: self.pane_action_keys(cx),
                         buttons: self.pane_kind_buttons(*pane, cx),
+                        menu: self.pane_title_menu(*pane, cx),
                         trailing_inset: window_controls_inset(
                             self.window_controls_pane == Some(*pane),
                         ),
@@ -4710,6 +4733,7 @@ impl AppView {
                 flip: snapshot.and_then(|snapshot| self.pane_flip(snapshot)),
                 keys: self.pane_action_keys(cx),
                 buttons: self.pane_kind_buttons(pane, cx),
+                menu: self.pane_title_menu(pane, cx),
                 trailing_inset: px(0.0),
                 radii: Corners::default(),
                 opacity,

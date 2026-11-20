@@ -97,7 +97,19 @@ pub struct PaneTitle {
     drag: PaneDragSource,
     capped: bool,
     folder: Option<SharedString>,
+    menu: Option<(Vec<PaneTitleRow>, PaneActionHandler)>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PaneTitleRow {
+    pub label: SharedString,
+    pub detail: SharedString,
+    pub current: bool,
+}
+
+const PANE_TITLE_MENU_WIDTH: Pixels = px(262.0);
+const PANE_TITLE_CHEVRON: Pixels = px(10.0);
+const PANE_TITLE_CHEVRON_HIT: Pixels = px(16.0);
 
 impl PaneTitle {
     pub fn new(
@@ -113,7 +125,14 @@ impl PaneTitle {
             drag,
             capped: true,
             folder: None,
+            menu: None,
         }
+    }
+
+    #[must_use]
+    fn menu(mut self, rows: Vec<PaneTitleRow>, on_action: PaneActionHandler) -> Self {
+        self.menu = (!rows.is_empty()).then_some((rows, on_action));
+        self
     }
 
     #[must_use]
@@ -197,8 +216,92 @@ impl RenderOnce for PaneTitle {
                     .flex_initial()
                     .when(faded(PipPart::Title), |title| title.opacity(lit)),
             ))
+            .children(
+                self.menu
+                    .map(|(rows, on_action)| title_menu(rows, on_action, cx)),
+            )
             .children(folder);
         self.drag.attach(title)
+    }
+}
+
+fn title_menu(rows: Vec<PaneTitleRow>, on_action: PaneActionHandler, cx: &App) -> AnyElement {
+    let muted = cx.theme().foreground.muted();
+    TitleChevron {
+        base: div()
+            .id("pane-title-menu")
+            .debug_selector(|| "pane-title-menu".into())
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .size(PANE_TITLE_CHEVRON_HIT),
+    }
+    .dropdown_menu_with_anchor(ala::Anchor::TopLeft, move |menu, _, _| {
+        rows.iter()
+            .enumerate()
+            .fold(menu.min_w(PANE_TITLE_MENU_WIDTH), |menu, (index, row)| {
+                let on_action = std::rc::Rc::clone(&on_action);
+                let label = row.label.clone();
+                let detail = row.detail.clone();
+                menu.item(
+                    PopupMenuItem::element(move |_, _, _| {
+                        h_flex()
+                            .w_full()
+                            .gap(px(12.0))
+                            .justify_between()
+                            .child(label.clone())
+                            .child(div().text_color(muted).child(detail.clone()))
+                    })
+                    .checked(row.current)
+                    .on_click(move |_, window, cx| {
+                        on_action(TerminalPaneAction::Title(index), window, cx);
+                    }),
+                )
+            })
+    })
+    .into_any_element()
+}
+
+#[derive(IntoElement)]
+struct TitleChevron {
+    base: Stateful<ala::Div>,
+}
+
+impl ala::Styled for TitleChevron {
+    fn style(&mut self) -> &mut ala::StyleRefinement {
+        self.base.style()
+    }
+}
+
+impl ala::InteractiveElement for TitleChevron {
+    fn interactivity(&mut self) -> &mut ala::Interactivity {
+        self.base.interactivity()
+    }
+}
+
+impl crate::Selectable for TitleChevron {
+    fn selected(self, _: bool) -> Self {
+        self
+    }
+
+    fn is_selected(&self) -> bool {
+        false
+    }
+}
+
+impl PopoverTrigger for TitleChevron {
+    fn opened(self, _: bool) -> Self {
+        self
+    }
+}
+
+impl DropdownMenu for TitleChevron {}
+
+impl RenderOnce for TitleChevron {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        self.base
+            .child(Icon::new(IconName::ChevronDown).size(PANE_TITLE_CHEVRON))
     }
 }
 
@@ -254,6 +357,7 @@ pub enum TerminalPaneAction {
     Close,
     Flip,
     Kind(&'static str),
+    Title(usize),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -330,7 +434,7 @@ impl TerminalPaneAction {
                 "kill-pane",
                 ["-t".to_owned(), pane.to_string()],
             )],
-            Self::Flip | Self::Kind(_) => Vec::new(),
+            Self::Flip | Self::Kind(_) | Self::Title(_) => Vec::new(),
         }
     }
 }
@@ -966,39 +1070,80 @@ pub fn pane_header(
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Stateful<ala::Div> {
-    let actions = PaneActions::new(pane_header_actions(state), on_action)
-        .kinds(buttons)
-        .flip(flip)
-        .keys(keys);
+    pane_header_with_menu(
+        icon,
+        active,
+        title,
+        folder,
+        drag,
+        state,
+        flip,
+        buttons,
+        Vec::new(),
+        keys,
+        trailing_inset,
+        on_action,
+        cx,
+    )
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "a header is the sum of these independent pieces"
+)]
+pub fn pane_header_with_menu(
+    icon: impl Into<Icon>,
+    active: bool,
+    title: impl Into<SharedString>,
+    folder: Option<SharedString>,
+    drag: PaneDragSource,
+    state: PaneState,
+    flip: Option<PaneFlip>,
+    buttons: &[PaneKindButton],
+    menu: Vec<PaneTitleRow>,
+    keys: &PaneActionKeys,
+    trailing_inset: Pixels,
+    on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Stateful<ala::Div> {
+    let on_action: PaneActionHandler = std::rc::Rc::new(on_action);
+    let handler = std::rc::Rc::clone(&on_action);
+    let actions = PaneActions::new(pane_header_actions(state), move |action, window, cx| {
+        handler(action, window, cx);
+    })
+    .kinds(buttons)
+    .flip(flip)
+    .keys(keys);
     let chrome = px(crate::CHROME_GAP * 2.0) + trailing_inset + PANE_HEADER_GAP;
     let icon = icon.into();
     let title = title.into();
     let drag = drag.floating(state.floats);
-    let bar =
-        move |width: Pixels, cx: &App| {
-            let fold = actions.fold(width - chrome, PANE_TITLE_MIN_WIDTH);
-            Bar::new("terminal-pane-header-bar", BarLook::Pane)
-                .flex()
-                .size_full()
-                .items_center()
-                .gap(PANE_HEADER_GAP)
-                .pl(px(crate::CHROME_GAP))
-                .pr(px(crate::CHROME_GAP) + trailing_inset)
-                .font_family(cx.theme().font_family.clone())
-                .type_style(TextStyle::Body, cx)
-                .line_height(px(16.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(
-                    div().flex().flex_1().min_w_0().items_center().child(
-                        PaneTitle::new("terminal-pane-title", icon, title, drag).folder(folder),
-                    ),
-                )
-                .child(lit(actions.slot(
-                    fold,
-                    (!active).then_some("terminal-pane-header"),
-                    cx,
-                )))
-        };
+    let bar = move |width: Pixels, cx: &App| {
+        let fold = actions.fold(width - chrome, PANE_TITLE_MIN_WIDTH);
+        Bar::new("terminal-pane-header-bar", BarLook::Pane)
+            .flex()
+            .size_full()
+            .items_center()
+            .gap(PANE_HEADER_GAP)
+            .pl(px(crate::CHROME_GAP))
+            .pr(px(crate::CHROME_GAP) + trailing_inset)
+            .font_family(cx.theme().font_family.clone())
+            .type_style(TextStyle::Body, cx)
+            .line_height(px(16.0))
+            .text_color(cx.theme().foreground.muted())
+            .child(
+                div().flex().flex_1().min_w_0().items_center().child(
+                    PaneTitle::new("terminal-pane-title", icon, title, drag)
+                        .folder(folder)
+                        .menu(menu, on_action),
+                ),
+            )
+            .child(lit(actions.slot(
+                fold,
+                (!active).then_some("terminal-pane-header"),
+                cx,
+            )))
+    };
     div()
         .id("terminal-pane-header")
         .group("terminal-pane-header")

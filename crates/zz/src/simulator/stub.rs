@@ -49,6 +49,12 @@ impl SimulatorView {
     }
 
     pub(crate) fn header_action(&mut self, _: &str, _: &mut Context<Self>) {}
+
+    pub(crate) fn title_menu(&self) -> Vec<zz_ui::pane::PaneTitleRow> {
+        Vec::new()
+    }
+
+    pub(crate) fn title_pick(&mut self, _: usize, _: &mut Context<Self>) {}
 }
 
 impl Render for SimulatorView {
