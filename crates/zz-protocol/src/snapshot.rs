@@ -294,6 +294,11 @@ impl AgentProvider {
     pub const fn flips(self) -> bool {
         !matches!(self, Self::Cursor)
     }
+
+    #[must_use]
+    pub const fn accounts(self) -> bool {
+        matches!(self, Self::Codex | Self::ClaudeCode)
+    }
 }
 
 impl FromStr for AgentProvider {

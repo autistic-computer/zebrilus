@@ -654,6 +654,9 @@ the same for both:
   pane failure that starts with those words into the provider's line, `Grok is signed out. Sign in
   by running grok login in a terminal.`, and Antigravity's the same way.
 
+- **Usage.** grok answers the extension request `_x.ai/billing` with the plan's credit use and
+  its period. A dialect with `quota` asks it (`RuntimeCommand::Ask`) when a session is ready and
+  after each turn, and a weekly period becomes the week window of `QuotaChanged`.
 - **Title on load.** grok sends `session_info_update` when it titles a new conversation and not
   when one is loaded, so a loaded session with no title yet takes `generated_title` (else
   `session_summary`) from its `summary.json` (`Dialect::stored_title`).
@@ -670,8 +673,9 @@ chat. The model and effort come from that session's `summary.json` (`current_mod
 `reasoning_effort`), then from `--model` and `--effort`. Nothing read says a grok TUI is busy, so
 it never refuses the flip.
 
-**Not there.** Accounts (`--account`, `agent-account`, `agent-accounts --add grok` refuse, though
-`GROK_HOME` would allow them), the sign-in the daemon drives (run `grok login`), forks, and the
+**Not there.** Context use (grok sends no `usage_update`), accounts (`--account`, `agent-account`,
+`agent-accounts --add grok` refuse, though `GROK_HOME` would allow them; the clients offer no
+Add account for a provider where `AgentProvider::accounts` is false), the sign-in the daemon drives (run `grok login`), forks, and the
 latest version (Update runs `grok update`, Install the vendor's script). The command is not
 configurable.
 
@@ -701,12 +705,20 @@ fifth provider, and a chat only. Its CLI has an ACP server, `cursor-agent acp`, 
   terminal.`
 - **No browser.** The ACP process runs with `NO_OPEN_BROWSER=1`, so a signed-out `authenticate`
   fails at once with the vendor's login link, where without it the CLI opens a browser and waits.
-- **Models.** Cursor's model values carry their parameters, `composer-2.5[fast=true]`, and it
-  refuses a bare name. A dialect with `bracket_models` remembers the values last offered and turns
-  a bare `--model composer-2.5` into the offered value that starts with `composer-2.5[`. Effort is
-  one of those parameters, so there is no effort option.
+- **Models.** Cursor's model values carry their parameters, `composer-2.5[fast=true]`, it refuses
+  a bare name, and it names each choice by its slug. A dialect with `model_name` remembers the
+  values last offered, turns a bare `--model composer-2.5` into the offered value that starts with
+  `composer-2.5[`, and renames each choice from its value: the slug in words, then the effort and
+  `Fast` when the parameters carry them (`grok-4.6[effort=high,fast=true]` is `Grok 4.6 High
+  Fast`). Effort is one of those parameters, so there is no effort option.
 - **Modes.** `agent`, `plan` and `ask` come as the `mode` config option, which is where the
   clients read modes; `plan` and `ask` are read-only (`agent_settings::mode_risk`).
+- **Run everything.** Cursor has no mode that stops asking: that is `approvalMode` in its
+  `cli-config.json`, `allowlist` (ask for a shell command not on the list) or `unrestricted`. A
+  dialect with `unguarded` adds a `full-access` choice named Run everything to the mode option.
+  Under `unrestricted` it stands in for `agent`, which never asks there. Under `allowlist` it sits
+  beside `agent`, and choosing it keeps Cursor in `agent` and raises this chat's auto-approve tier
+  to all until another mode is chosen.
 - **Title on load.** Like grok, Cursor titles a new chat and says nothing on load, so a loaded
   session takes `title` from `acp-sessions/<id>/meta.json` in Cursor's folder (`CURSOR_CONFIG_DIR`,
   else `~/.cursor`).
@@ -720,14 +732,16 @@ answers `Session not found` for a CLI chat. So `flip-agent` refuses a Cursor cha
 (`AgentProvider::flips`), the clients offer no switch for one, and a terminal running
 `cursor-agent` is not taken for an agent.
 
-**Not there.** Accounts, the sign-in the daemon drives, forks, the latest version, and answers to
+**Not there.** Usage (the CLI gives the plan's name and no numbers, and Cursor sends no
+`usage_update`), accounts, the sign-in the daemon drives, forks, the latest version, and answers to
 Cursor's own blocking requests (`cursor/ask_question`, `cursor/create_plan`), which the runtime
 refuses as unknown methods.
 
 **Seen working** (2026-11-20, CLI 2026.09.18): sign-in first, a turn with tool calls, the title,
 a bare `--model`, the mode and model options set over ACP, a resumed session with its history and
-title, and the flip refused. Not seen: a permission ask (the config tested runs everything) and
-the two blocking requests.
+title, the flip refused, and in the app the renamed model and Run everything under an
+`unrestricted` config. Not seen: Run everything chosen under `allowlist`, and the two blocking
+requests.
 
 # Codex on the shared app server
 

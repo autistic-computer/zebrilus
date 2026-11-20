@@ -283,7 +283,7 @@ impl PlusSheet<'_> {
                 ));
             }
         }
-        if self.provider.is_some() {
+        if self.provider.is_some_and(AgentProvider::accounts) {
             rows.push(
                 valued(
                     TouchRow::new("chat-plus-account", "Account").icon(IconName::User),

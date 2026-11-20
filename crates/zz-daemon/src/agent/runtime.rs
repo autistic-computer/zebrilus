@@ -11,7 +11,7 @@ use std::{
 };
 
 use agent_client_protocol::{
-    AcpAgent, Agent, Client as AcpClientRole, ConnectTo, LineDirection,
+    AcpAgent, Agent, Client as AcpClientRole, ConnectTo, LineDirection, UntypedMessage,
     schema::ProtocolVersion,
     v1::{
         ConnectionTo, Responder,
@@ -112,6 +112,10 @@ pub(crate) enum RuntimeCommand {
     },
     SetMode {
         mode_id: String,
+    },
+    Ask {
+        method: String,
+        reply: async_channel::Sender<Result<Value, String>>,
     },
     Shutdown,
 }
@@ -1492,6 +1496,19 @@ pub(crate) async fn run_agent_connection(
                             AgentStreamPayload::PromptAccepted { turn_id },
                         )
                         .await?;
+                    }
+                    RuntimeCommand::Ask { method, reply } => {
+                        let answer = match UntypedMessage::new(&method, json!({})) {
+                            Ok(question) => await_rpc(
+                                connection.send_request(question).block_task(),
+                                RPC_TIMEOUT,
+                                "ACP extension request",
+                            )
+                            .await
+                            .map_err(|error| error.to_string()),
+                            Err(error) => Err(error.to_string()),
+                        };
+                        let _ = reply.try_send(answer);
                     }
                     RuntimeCommand::Authenticate { method_id } => {
                         match await_rpc(

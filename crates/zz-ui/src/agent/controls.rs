@@ -361,6 +361,7 @@ pub fn agent_usage_pill(
     });
     let current = pill.account.map(str::to_owned);
     let signs_in = pill.signs_in;
+    let adds = pill.provider.accounts();
     Popover::new(id)
         .anchor(Anchor::BottomRight)
         .p(px(0.0))
@@ -372,6 +373,7 @@ pub fn agent_usage_pill(
                 accounts.as_deref().unwrap_or_default(),
                 current.as_deref(),
                 signs_in,
+                adds,
                 &on_action,
                 cx,
             )
@@ -427,6 +429,7 @@ fn usage_panel(
     accounts: &[AgentAccount],
     current: Option<&str>,
     signs_in: bool,
+    adds: bool,
     on_action: &OnAccount,
     cx: &mut ala::Context<PopoverState>,
 ) -> AnyElement {
@@ -492,7 +495,7 @@ fn usage_panel(
                         .pb(px(6.0))
                         .children(meters),
                 )
-                .child(rule())
+                .when(adds || !accounts.is_empty(), |panel| panel.child(rule()))
         })
         .when(!accounts.is_empty(), |panel| {
             panel
@@ -501,9 +504,11 @@ fn usage_panel(
                         .when_some(cx.theme().row_gap(), Styled::gap_y)
                         .children(rows),
                 )
-                .child(rule())
+                .when(adds, |panel| panel.child(rule()))
         })
-        .child(add_account_row(cx).on_click(pick(Some(AccountAction::Add))))
+        .when(adds, |panel| {
+            panel.child(add_account_row(cx).on_click(pick(Some(AccountAction::Add))))
+        })
         .into_any_element()
 }
 

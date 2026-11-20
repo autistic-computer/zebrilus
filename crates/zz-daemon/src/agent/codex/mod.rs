@@ -774,7 +774,7 @@ impl Runtime {
                 }
                 Ok(())
             }
-            RuntimeCommand::Shutdown => Ok(()),
+            RuntimeCommand::Shutdown | RuntimeCommand::Ask { .. } => Ok(()),
         }
     }
 

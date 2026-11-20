@@ -1,10 +1,13 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use agent_client_protocol::AcpAgent;
 use async_channel::Sender;
 use parking_lot::Mutex;
-use serde_json::Value;
-use zz_protocol::{AgentProvider, chat::ChatEvent};
+use serde_json::{Value, json};
+use zz_protocol::{AgentAutoApprove, AgentProvider, QuotaWindows, chat::ChatEvent};
 
 use crate::agent::{
     acp_chat::Transcript,
@@ -15,6 +18,8 @@ use crate::agent::{
 
 const EFFORT: &str = "effort";
 const MODEL: &str = "model";
+const MODE: &str = "mode";
+const FULL_ACCESS: &str = "full-access";
 const SIGNED_OUT: &str = "Authentication required";
 
 #[derive(Clone, Copy)]
@@ -23,7 +28,61 @@ pub(crate) struct Dialect {
     pub(crate) signed_out: &'static str,
     pub(crate) stored_title: fn(&str) -> Option<String>,
     pub(crate) sign_in: Option<&'static str>,
-    pub(crate) bracket_models: bool,
+    pub(crate) model_name: Option<fn(&str) -> Option<String>>,
+    pub(crate) unguarded: Option<Unguarded>,
+    pub(crate) quota: Option<Quota>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct Quota {
+    pub(crate) method: &'static str,
+    pub(crate) read: fn(&Value) -> Option<QuotaWindows>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct Unguarded {
+    pub(crate) over: &'static str,
+    pub(crate) always: fn() -> bool,
+}
+
+#[derive(Clone, Copy)]
+struct Guard {
+    over: &'static str,
+    on: bool,
+    always: bool,
+    saved: Option<AgentAutoApprove>,
+}
+
+impl Guard {
+    fn choose(&mut self, asked: String, tier: &Mutex<AgentAutoApprove>) -> String {
+        if self.always {
+            return if asked == FULL_ACCESS {
+                self.over.to_owned()
+            } else {
+                asked
+            };
+        }
+        if asked == FULL_ACCESS {
+            if !self.on {
+                self.saved = Some(std::mem::replace(&mut *tier.lock(), AgentAutoApprove::All));
+            }
+            self.on = true;
+            return self.over.to_owned();
+        }
+        if let Some(saved) = self.saved.take() {
+            *tier.lock() = saved;
+        }
+        self.on = false;
+        asked
+    }
+
+    fn shown(&self, mode: String) -> String {
+        if self.on && mode == self.over {
+            FULL_ACCESS.to_owned()
+        } else {
+            mode
+        }
+    }
 }
 
 #[derive(Default)]
@@ -46,6 +105,16 @@ pub(crate) async fn run(
     let sign_in = Mutex::new(SignIn::default());
     let held_commands = command_tx.downgrade();
     let models = Mutex::new(Vec::<String>::new());
+    let tier = channels.auto_approve;
+    let guard = dialect.unguarded.map(|unguarded| {
+        let always = (unguarded.always)();
+        Mutex::new(Guard {
+            over: unguarded.over,
+            on: always,
+            always,
+            saved: None,
+        })
+    });
     let commands = channels.commands;
     let controls = channels.controls;
     let events = channels.events;
@@ -59,11 +128,24 @@ pub(crate) async fn run(
                     }
                 }
                 (_, RuntimeCommand::SetConfigOption { option_id, value })
-                    if dialect.bracket_models && option_id == MODEL =>
+                    if dialect.model_name.is_some() && option_id == MODEL =>
                 {
                     let value = bracket_model(&models.lock(), value);
                     RuntimeCommand::SetConfigOption { option_id, value }
                 }
+                (_, RuntimeCommand::SetConfigOption { option_id, value }) if option_id == MODE => {
+                    let value = match &guard {
+                        Some(guard) => guard.lock().choose(value, &tier),
+                        None => value,
+                    };
+                    RuntimeCommand::SetConfigOption { option_id, value }
+                }
+                (_, RuntimeCommand::SetMode { mode_id }) => RuntimeCommand::SetMode {
+                    mode_id: match &guard {
+                        Some(guard) => guard.lock().choose(mode_id, &tier),
+                        None => mode_id,
+                    },
+                },
                 (_, command) => command,
             };
             if command_tx.send(command).await.is_err() {
@@ -81,6 +163,35 @@ pub(crate) async fn run(
             }
         }
         drop(control_tx);
+        std::future::pending::<Result<(), String>>().await
+    };
+    let (metered_tx, metered_rx) = async_channel::bounded::<()>(1);
+    let quotas = async {
+        while let (Some(quota), Ok(())) = (dialect.quota, metered_rx.recv().await) {
+            let (reply, answer) = async_channel::bounded(1);
+            let Some(commands) = held_commands.upgrade() else {
+                break;
+            };
+            let asked = commands
+                .send(RuntimeCommand::Ask {
+                    method: quota.method.to_owned(),
+                    reply,
+                })
+                .await;
+            drop(commands);
+            if asked.is_err() {
+                break;
+            }
+            if let Ok(Ok(answer)) = answer.recv().await
+                && let Some(quota) = (quota.read)(&answer)
+                && events
+                    .send(AgentStreamPayload::QuotaChanged { quota })
+                    .await
+                    .is_err()
+            {
+                break;
+            }
+        }
         std::future::pending::<Result<(), String>>().await
     };
     let inbound = async {
@@ -102,10 +213,18 @@ pub(crate) async fn run(
                     continue;
                 }
             }
-            if dialect.bracket_models
+            if dialect.model_name.is_some()
                 && let Some(offered) = offered_models(&payload)
             {
                 *models.lock() = offered;
+            }
+            if matches!(
+                payload,
+                AgentStreamPayload::SessionReady { .. }
+                    | AgentStreamPayload::SessionSwitched { .. }
+                    | AgentStreamPayload::PromptFinished { .. }
+            ) {
+                let _ = metered_tx.try_send(());
             }
             let chat = transcript.lock().payload(&payload);
             let title = match &payload {
@@ -121,7 +240,7 @@ pub(crate) async fn run(
                 }
                 _ => None,
             };
-            let payload = to_zz(payload, dialect);
+            let payload = to_zz(payload, dialect, guard.as_ref().map(|guard| *guard.lock()));
             titled |= matches!(payload, AgentStreamPayload::TitleChanged { title: Some(_) });
             if events.send(payload).await.is_err() {
                 break;
@@ -145,7 +264,7 @@ pub(crate) async fn run(
                 agent,
                 config,
                 provider,
-                channels.auto_approve,
+                Arc::clone(&tier),
                 channels.permission_ids,
                 channels.journal,
                 command_rx,
@@ -154,7 +273,7 @@ pub(crate) async fn run(
             ),
             outbound,
         ),
-        answers,
+        futures_lite::future::or(answers, quotas),
     );
     let result = futures_lite::future::zip(runtime, inbound).await.0;
     if let Err(message) = &result {
@@ -198,7 +317,11 @@ fn to_agent(command: RuntimeCommand, effort_option: &str) -> RuntimeCommand {
     }
 }
 
-fn to_zz(payload: AgentStreamPayload, dialect: Dialect) -> AgentStreamPayload {
+fn to_zz(
+    payload: AgentStreamPayload,
+    dialect: Dialect,
+    guard: Option<Guard>,
+) -> AgentStreamPayload {
     let effort_option = dialect.effort_option;
     match payload {
         AgentStreamPayload::PaneFailed { message } if message.starts_with(SIGNED_OUT) => {
@@ -217,7 +340,7 @@ fn to_zz(payload: AgentStreamPayload, dialect: Dialect) -> AgentStreamPayload {
             mut config_options,
         } => {
             if let Some(options) = &mut config_options {
-                rename_effort(options, effort_option);
+                shape(options, dialect, guard);
             }
             AgentStreamPayload::SessionReady {
                 session_id,
@@ -233,7 +356,7 @@ fn to_zz(payload: AgentStreamPayload, dialect: Dialect) -> AgentStreamPayload {
             replay,
         } => {
             if let Some(options) = &mut config_options {
-                rename_effort(options, effort_option);
+                shape(options, dialect, guard);
             }
             AgentStreamPayload::SessionSwitched {
                 session_id,
@@ -248,7 +371,11 @@ fn to_zz(payload: AgentStreamPayload, dialect: Dialect) -> AgentStreamPayload {
             value,
             mut config_options,
         } => {
-            rename_effort(&mut config_options, effort_option);
+            shape(&mut config_options, dialect, guard);
+            let value = match guard {
+                Some(guard) if option_id == MODE => guard.shown(value),
+                _ => value,
+            };
             AgentStreamPayload::ConfigOptionsChanged {
                 option_id: zz_option(option_id, effort_option),
                 value,
@@ -280,6 +407,12 @@ fn to_zz(payload: AgentStreamPayload, dialect: Dialect) -> AgentStreamPayload {
                 replace,
             }
         }
+        AgentStreamPayload::ModeChanged { mode_id } => AgentStreamPayload::ModeChanged {
+            mode_id: match guard {
+                Some(guard) => guard.shown(mode_id),
+                None => mode_id,
+            },
+        },
         AgentStreamPayload::SettingFailed { option_id, message } => {
             AgentStreamPayload::SettingFailed {
                 option_id: zz_option(option_id, effort_option),
@@ -297,7 +430,7 @@ fn to_zz(payload: AgentStreamPayload, dialect: Dialect) -> AgentStreamPayload {
                 }
             }
             Some("config_option_update") => {
-                rename_effort(&mut update["configOptions"], effort_option);
+                shape(&mut update["configOptions"], dialect, guard);
                 AgentStreamPayload::Update { update }
             }
             _ => AgentStreamPayload::Update { update },
@@ -359,11 +492,50 @@ fn zz_option(option_id: String, effort_option: &str) -> String {
     }
 }
 
-fn rename_effort(options: &mut Value, effort_option: &str) {
+fn shape(options: &mut Value, dialect: Dialect, guard: Option<Guard>) {
     for option in options.as_array_mut().into_iter().flatten() {
-        if option["id"] == effort_option {
+        if option["id"] == dialect.effort_option {
             option["id"] = Value::from(EFFORT);
         }
+        if option["id"] == MODEL
+            && let Some(name) = dialect.model_name
+        {
+            for choice in option["options"].as_array_mut().into_iter().flatten() {
+                if let Some(name) = choice["value"].as_str().and_then(name) {
+                    choice["name"] = Value::from(name);
+                }
+            }
+        }
+        if option["id"] == MODE
+            && let Some(guard) = guard
+        {
+            unguard(option, guard);
+        }
+    }
+}
+
+fn unguard(mode: &mut Value, guard: Guard) {
+    if let Some(shown) = mode["currentValue"].as_str() {
+        mode["currentValue"] = Value::from(guard.shown(shown.to_owned()));
+    }
+    let Some(choices) = mode["options"].as_array_mut() else {
+        return;
+    };
+    let Some(at) = choices
+        .iter()
+        .position(|choice| choice["value"] == guard.over)
+    else {
+        return;
+    };
+    let unguarded = json!({
+        "value": FULL_ACCESS,
+        "name": "Run everything",
+        "description": "Run anything without asking",
+    });
+    if guard.always {
+        choices[at] = unguarded;
+    } else {
+        choices.insert(at + 1, unguarded);
     }
 }
 
@@ -378,14 +550,18 @@ mod tests {
         signed_out: "signed out of agy",
         stored_title: |_| None,
         sign_in: None,
-        bracket_models: false,
+        model_name: None,
+        unguarded: None,
+        quota: None,
     };
     const GROK: Dialect = Dialect {
         effort_option: "reasoning_effort",
         signed_out: "signed out of grok",
         stored_title: |_| None,
         sign_in: None,
-        bracket_models: false,
+        model_name: None,
+        unguarded: None,
+        quota: None,
     };
 
     #[test]
@@ -407,6 +583,7 @@ mod tests {
                 config_options: options(),
             },
             AGY,
+            None,
         )
         else {
             panic!("the payload kind changed");
@@ -439,6 +616,7 @@ mod tests {
                     }),
                 },
                 GROK,
+                None,
             ),
             AgentStreamPayload::TitleChanged {
                 title: Some("Create And Read Probe File".to_owned()),
@@ -450,6 +628,7 @@ mod tests {
                     message: "Authentication required: \"no auth method id provided\"".to_owned(),
                 },
                 GROK,
+                None,
             ),
             AgentStreamPayload::PaneFailed {
                 message: "signed out of grok".to_owned(),
@@ -477,5 +656,47 @@ mod tests {
             "composer-2.5[fast=false]"
         );
         assert_eq!(bracket_model(&offered, "gpt-9".to_owned()), "gpt-9");
+        let mut asks = Guard {
+            over: "agent",
+            on: false,
+            always: false,
+            saved: None,
+        };
+        let tier = Mutex::new(AgentAutoApprove::Reads);
+        assert_eq!(asks.choose("full-access".to_owned(), &tier), "agent");
+        assert_eq!(*tier.lock(), AgentAutoApprove::All);
+        let mut modes = json!([{
+            "id": "mode",
+            "currentValue": "agent",
+            "options": [{"value": "agent"}, {"value": "plan"}],
+        }]);
+        shape(&mut modes, GROK, Some(asks));
+        assert_eq!(modes[0]["currentValue"], "full-access");
+        assert_eq!(
+            modes[0]["options"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|choice| choice["value"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["agent", "full-access", "plan"]
+        );
+        assert_eq!(asks.choose("plan".to_owned(), &tier), "plan");
+        assert_eq!(*tier.lock(), AgentAutoApprove::Reads);
+        let never_asks = Guard {
+            over: "agent",
+            on: true,
+            always: true,
+            saved: None,
+        };
+        let mut modes = json!([{
+            "id": "mode",
+            "currentValue": "agent",
+            "options": [{"value": "agent"}, {"value": "plan"}],
+        }]);
+        shape(&mut modes, GROK, Some(never_asks));
+        assert_eq!(modes[0]["currentValue"], "full-access");
+        assert_eq!(modes[0]["options"][0]["value"], "full-access");
+        assert_eq!(modes[0]["options"][1]["value"], "plan");
     }
 }
