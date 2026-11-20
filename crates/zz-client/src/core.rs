@@ -9,7 +9,7 @@ use zz_protocol::{
     ClientMessageKind, ClientView, ClipboardProducer, CommandPromptState, CommandResponse,
     ConfirmState, DisplayPanesState, Event, EventPayload, KeyBindingSnapshot, KeyTableSnapshot,
     MenuState, MouseBindings, MuxOptions, MuxSnapshot, PaneId, ProtocolMessage, ServerHello,
-    SessionId, StatusLine, TerminalUiCommand, Welcome, key_tables_hash,
+    SessionId, SimulatorDescriptor, StatusLine, TerminalUiCommand, Welcome, key_tables_hash,
 };
 use zz_terminal::{
     AppearanceProvenance, ClipboardTarget, PackedCell, TerminalAppearance, TerminalDictionary,
@@ -157,6 +157,9 @@ pub enum CoreEvent {
         pane: PaneId,
         command: BrowserCommand,
     },
+    SimulatorChanged {
+        pane: PaneId,
+    },
     TerminalUiCommand {
         pane: PaneId,
         command: TerminalUiCommand,
@@ -286,6 +289,7 @@ pub struct ClientCore {
     next_row_revision: u64,
     history_limit: usize,
     agent_states: HashMap<PaneId, AgentPaneWire>,
+    simulators: HashMap<PaneId, SimulatorDescriptor>,
     providers: Option<zz_protocol::ProvidersReport>,
     agent_accounts: Option<Vec<zz_protocol::AgentAccount>>,
     agent_quotas: Vec<zz_protocol::AgentQuota>,
@@ -695,6 +699,11 @@ impl ClientCore {
     }
 
     #[must_use]
+    pub fn simulator(&self, pane: PaneId) -> Option<&SimulatorDescriptor> {
+        self.simulators.get(&pane)
+    }
+
+    #[must_use]
     pub const fn providers(&self) -> Option<&zz_protocol::ProvidersReport> {
         self.providers.as_ref()
     }
@@ -873,6 +882,7 @@ impl ClientCore {
         self.viewports.clear();
         self.spare_cells.clear();
         self.agent_states.clear();
+        self.simulators.clear();
         self.full_pending.clear();
     }
 
@@ -1062,6 +1072,7 @@ impl ClientCore {
                 self.spare_cells.remove(&pane);
                 self.copy_generations.remove(&pane);
                 self.agent_states.remove(&pane);
+                self.simulators.remove(&pane);
                 self.full_pending.remove(&pane);
                 if self
                     .command_output
@@ -1273,6 +1284,13 @@ impl ClientCore {
                 }
                 self.events
                     .push_back(CoreEvent::AgentLoginChanged { provider });
+            }
+            EventPayload::SimulatorPane { pane, descriptor } => {
+                if self.simulators.get(&pane) == Some(&descriptor) {
+                    return;
+                }
+                self.simulators.insert(pane, descriptor);
+                self.events.push_back(CoreEvent::SimulatorChanged { pane });
             }
             EventPayload::ControlExit { .. }
             | EventPayload::HookEvent { .. }

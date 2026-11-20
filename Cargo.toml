@@ -196,6 +196,7 @@ zz-daemon-client = { path = "crates/zz-daemon-client" }
 zz-tailnet = { path = "crates/zz-tailnet" }
 zz-mux = { path = "crates/zz-mux" }
 zz-protocol = { path = "crates/zz-protocol" }
+zz-simulator = { path = "crates/zz-simulator" }
 zz-terminal = { path = "crates/zz-terminal", default-features = false }
 zz-tui = { path = "crates/zz-tui" }
 zz-ui = { path = "crates/zz-ui" }

@@ -57,8 +57,9 @@ matches with no wildcard arm, so a new variant does not compile until it answers
 `EventPayload::AgentQuotas`, added inside it, answers `agent-quotas-v1`, `EventPayload::AgentLogin`
 and `ProtocolMessage::AgentLogin` answer `agent-login-v1`, `ProtocolMessage::TerminalThemesRequest`
 and `TerminalThemesResponse` answer `terminal-themes-v1`, `ProtocolMessage::BrowserScreenshot`
-answers `browser-screenshot-v1`, `ProtocolMessage::AgentAttachFile` and `AgentFileAttached` answer `agent-files-v1`, and `ProtocolMessage::FileReadRequest`, `FileReadResponse`,
-`FileWriteRequest` and `FileWriteResponse` answer `file-edit-v1`.
+answers `browser-screenshot-v1`, `ProtocolMessage::AgentAttachFile` and `AgentFileAttached` answer `agent-files-v1`, `ProtocolMessage::FileReadRequest`, `FileReadResponse`,
+`FileWriteRequest` and `FileWriteResponse` answer `file-edit-v1`, and `EventPayload::SimulatorPane`
+answers `simulator-pane-v1`.
 
 The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only inside an epoch:
 
@@ -71,7 +72,8 @@ The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only
   `browser::hello` in the browser client, `hello` in the HTML client. A message the daemon sends
   names one of these. It holds `agent-quotas-v1` (`AGENT_QUOTAS_CAPABILITY`) and
   `terminal-themes-v1` (`TERMINAL_THEMES_CAPABILITY`) and `file-edit-v1` (`FILE_EDIT_CAPABILITY`),
-  which are in `CAPABILITY_NAMES` too, for the requests the answers follow.
+  which are in `CAPABILITY_NAMES` too, for the requests the answers follow. `simulator-pane-v1`
+  (`SIMULATOR_PANE_CAPABILITY`) is here only: nothing a client sends is gated by it.
 - `OPT_IN_CLIENT_CAPABILITY_NAMES` is what a client can decode only when it says so: the daemon
   accepts these names like the ones above, but no hello sends them by itself. A client names one
   in the extra capabilities it hands `connect_stream_hello` (`InteractiveClient::connect_with_capabilities`)
@@ -419,6 +421,18 @@ whenever a record changes, and only records with a window. A client without the 
 it, and a daemon without it never sends it, so either side shows no limits
 ([rate limits](/concepts/agent-panes.md#rate-limits)). `AgentStreamPayload::QuotaChanged`, which
 the drivers send their host, never leaves the daemon.
+
+`SimulatorPane { pane, descriptor: SimulatorDescriptor }` is appended inside v125 and gated by
+`simulator-pane-v1`. It carries the descriptor of a simulator pane, the pane kind snapshots show as
+`PaneKindSnapshot::Other { kind: "simulator" }` (`SIMULATOR_PANE_KIND`):
+`SimulatorDescriptor { device }` is the iOS simulator's device identifier, at most
+`MAX_SIMULATOR_DEVICE_BYTES` (64) on decode, empty until one is picked. The daemon stores it and
+does nothing else with it; the desktop client draws the simulator. After each tree publication the
+daemon sends the event to every client for each simulator pane that is new or whose device changed
+(`changed_simulator_panes`), and it sends one per simulator pane with every resync
+(`send_simulator_resync`), so a client that attaches has them all. The client core keeps them by
+pane (`ClientCore::simulator`), drops one on `PaneRemoved` and raises
+`CoreEvent::SimulatorChanged { pane }`.
 
 `AgentLogin(AgentLogin)` is appended inside v123 and gated by `agent-login-v1`. It is one step of a
 sign-in the daemon drives through a CLI's own login:

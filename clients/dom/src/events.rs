@@ -187,6 +187,7 @@ pub fn describe(client: &mut Client, event: CoreEvent) -> Value {
         CoreEvent::AgentLoginChanged { provider } => {
             json!({ "type": "agentLogin", "provider": provider.as_str() })
         }
+        CoreEvent::SimulatorChanged { pane } => json!({ "type": "simulator", "pane": pane.0 }),
         CoreEvent::Message(message) => {
             json!({ "type": "message", "name": variant(&format!("{message:?}")) })
         }

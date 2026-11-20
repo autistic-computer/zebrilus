@@ -788,6 +788,7 @@ pub struct AppView {
     editors: BTreeMap<PaneId, Entity<EditorView>>,
     #[cfg(feature = "agent-pane")]
     views: BTreeMap<PaneId, Entity<crate::view_pane::ViewPaneView>>,
+    simulators: BTreeMap<PaneId, Entity<crate::simulator::SimulatorView>>,
     command_output: Option<(PaneId, Entity<TerminalView>)>,
     menu: Option<Entity<MenuView>>,
     confirm: Option<Entity<ConfirmView>>,
@@ -1224,6 +1225,7 @@ impl AppView {
             editors: BTreeMap::new(),
             #[cfg(feature = "agent-pane")]
             views: BTreeMap::new(),
+            simulators: BTreeMap::new(),
             command_output: None,
             menu: None,
             confirm: None,
@@ -1885,6 +1887,8 @@ impl AppView {
             Some((browser.entity_id(), browser.read(cx).pane_focus_handle(cx)))
         } else if let Some(editor) = self.editors.get(&pane) {
             Some((editor.entity_id(), editor.read(cx).focus(cx)))
+        } else if let Some(simulator) = self.simulators.get(&pane) {
+            Some((simulator.entity_id(), simulator.read(cx).focus()))
         } else {
             self.view_focus_target(pane, cx)
         }
@@ -2099,6 +2103,7 @@ impl AppView {
         let mut wanted_agents = BTreeSet::new();
         let mut wanted_editors = BTreeSet::new();
         let mut wanted_views = BTreeSet::new();
+        let mut wanted_simulators = BTreeSet::new();
         self.flips.observe(&snapshot);
         let active_window = snapshot
             .sessions
@@ -2223,7 +2228,13 @@ impl AppView {
                             self.ensure_view(*pane, descriptor, vendor, window, cx);
                             self.ensure_pane_header(*pane, cx);
                         }
-                        PaneKindSnapshot::Other { .. } => {}
+                        PaneKindSnapshot::Other { kind } => {
+                            if kind == zz_protocol::SIMULATOR_PANE_KIND {
+                                wanted_simulators.insert(*pane);
+                                self.ensure_simulator(*pane, window, cx);
+                                self.ensure_pane_header(*pane, cx);
+                            }
+                        }
                     }
                 }
             }
@@ -2473,7 +2484,10 @@ impl AppView {
             wanted_terminals.contains(pane)
                 || wanted_agents.contains(pane)
                 || wanted_views.contains(pane)
+                || wanted_simulators.contains(pane)
         });
+        self.simulators
+            .retain(|pane, _| wanted_simulators.contains(pane));
         #[cfg(feature = "agent-pane")]
         for pane in self
             .agents
@@ -3693,6 +3707,13 @@ impl AppView {
                 inactive_style: PaneInactiveStyle::Surface,
                 covers_frame: false,
             })
+        } else if let Some(simulator) = self.simulators.get(&pane) {
+            Some(PaneContent {
+                view: AnyView::from(simulator.clone()),
+                cached: false,
+                inactive_style: PaneInactiveStyle::Surface,
+                covers_frame: false,
+            })
         } else {
             self.view_content(pane)
         }
@@ -3705,6 +3726,9 @@ impl AppView {
         #[cfg(feature = "agent-pane")]
         if let Some(view) = self.views.get(&pane) {
             return view.read(cx).header_buttons();
+        }
+        if let Some(simulator) = self.simulators.get(&pane) {
+            return simulator.read(cx).header_buttons();
         }
         Vec::new()
     }
@@ -3725,7 +3749,34 @@ impl AppView {
         if let Some(view) = self.views.get(&pane) {
             view.update(cx, |view, cx| view.header_action(key, cx));
             cx.notify();
+            return;
         }
+        if let Some(simulator) = self.simulators.get(&pane) {
+            simulator.update(cx, |simulator, cx| simulator.header_action(key, cx));
+            cx.notify();
+        }
+    }
+
+    fn ensure_simulator(&mut self, pane: PaneId, window: &Window, cx: &mut Context<Self>) {
+        let descriptor =
+            self.mux
+                .read(cx)
+                .simulator(pane)
+                .unwrap_or_else(|| zz_protocol::SimulatorDescriptor {
+                    device: String::new(),
+                });
+        if let Some(simulator) = self.simulators.get(&pane) {
+            if simulator.update(cx, |simulator, cx| {
+                simulator.synchronize_descriptor(&descriptor, cx)
+            }) {
+                self.pane_motion.relink(pane, window, cx);
+            }
+            return;
+        }
+        let mux = self.mux.clone();
+        let simulator =
+            cx.new(|cx| crate::simulator::SimulatorView::new(pane, &descriptor, mux, cx));
+        self.simulators.insert(pane, simulator);
     }
 
     fn pane_flip(&self, snapshot: &zz_protocol::PaneSnapshot) -> Option<PaneFlip> {
@@ -3871,16 +3922,22 @@ impl AppView {
                             | PaneKindSnapshot::Agent(_)
                             | PaneKindSnapshot::View(_)
                     ) && !self.pickers.contains_key(pane)
+                        || self.simulators.contains_key(pane)
                 });
                 let header_view = terminal_header
                     .and_then(|snapshot| Some((snapshot, self.terminal_headers.get(pane)?)));
                 let content = if let Some((snapshot, header_view)) = header_view {
                     let heading = zz_client::window_summary::pane_heading(snapshot);
+                    let simulator = self.simulators.get(pane).map(|view| view.read(cx).title());
                     let state = TerminalHeaderState {
-                        icon: zz_ui::pane::pane_kind_icon(&snapshot.kind),
+                        icon: if simulator.is_some() {
+                            penna::IconName::Asset("icons/smartphone.svg")
+                        } else {
+                            zz_ui::pane::pane_kind_icon(&snapshot.kind)
+                        },
                         program: heading.program,
                         active,
-                        title: heading.title,
+                        title: simulator.map_or(heading.title, Into::into),
                         can_drag: self.mux.read(cx).is_connected()
                             && window.zoomed_pane.is_none()
                             && window.panes.len() > 1,
@@ -4215,6 +4272,7 @@ impl AppView {
                     | PaneKindSnapshot::Browser(_)
                     | PaneKindSnapshot::Editor(_)
             ) && !self.terminals.contains_key(&pane)
+                || self.simulators.contains_key(&pane)
         })?;
         let mux = self.mux.clone();
         let sent = Rc::clone(&self.tile_reports);
@@ -5705,6 +5763,7 @@ mod tests {
             | CoreEvent::ProvidersChanged
             | CoreEvent::AgentAccountsChanged
             | CoreEvent::AgentLoginChanged { .. }
+            | CoreEvent::SimulatorChanged { .. }
             | CoreEvent::Message(_) => None,
         }
     }

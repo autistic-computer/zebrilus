@@ -1195,6 +1195,7 @@ impl Shared {
         }
         #[cfg(feature = "agent")]
         self.send_agent_resync(client, outbound);
+        self.send_simulator_resync(outbound);
         if stream {
             let inner = self.inner.lock();
             if let Some(output) = inner.client(client).and_then(|c| c.command_output.as_ref()) {

@@ -434,12 +434,14 @@ fn values_for_kind(
                 (name.clone(), name, "Layout".to_owned())
             })
             .collect(),
-        CommandValueKind::PaneKind => ["terminal", "browser", "picker", "agent"]
+        CommandValueKind::PaneKind => ["terminal", "browser", "picker", "agent", "simulator"]
             .into_iter()
             .filter(|kind| match *kind {
                 "browser" => availability.browser,
                 "picker" => matches!(spec.name, "split-window" | "new-pane"),
-                "agent" => matches!(spec.name, "split-window" | "new-pane" | "new-window"),
+                "agent" | "simulator" => {
+                    matches!(spec.name, "split-window" | "new-pane" | "new-window")
+                }
                 _ => true,
             })
             .map(|kind| (kind.to_owned(), kind.to_owned(), "Pane kind".to_owned()))
@@ -1010,7 +1012,7 @@ mod tests {
                 .filter(|completion| completion.detail == "Pane kind")
                 .map(|completion| completion.label.as_str())
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["agent", "browser", "picker", "terminal"]),
+            BTreeSet::from(["agent", "browser", "picker", "simulator", "terminal"]),
             "gated pane kinds must not be advertised"
         );
 
@@ -1030,7 +1032,7 @@ mod tests {
                 .filter(|completion| completion.detail == "Pane kind")
                 .map(|completion| completion.label.as_str())
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["agent", "browser", "picker", "terminal"])
+            BTreeSet::from(["agent", "browser", "picker", "simulator", "terminal"])
         );
 
         let unavailable = PaneKindAvailability {
@@ -1050,7 +1052,7 @@ mod tests {
                 .filter(|completion| completion.detail == "Pane kind")
                 .map(|completion| completion.label.as_str())
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["agent", "picker", "terminal"])
+            BTreeSet::from(["agent", "picker", "simulator", "terminal"])
         );
         for command in BROWSER_COMMANDS {
             let commands = complete_command(command, command.len(), &[], &snapshot(), unavailable);
@@ -1184,14 +1186,17 @@ mod tests {
     #[test]
     fn new_window_only_completes_supported_kinds() {
         for (input, kinds) in [
-            ("new-window --kind ", &["agent", "browser", "terminal"][..]),
+            (
+                "new-window --kind ",
+                &["agent", "browser", "simulator", "terminal"][..],
+            ),
             (
                 "new-pane --kind ",
-                &["agent", "browser", "picker", "terminal"][..],
+                &["agent", "browser", "picker", "simulator", "terminal"][..],
             ),
             (
                 "split-window --kind ",
-                &["agent", "browser", "picker", "terminal"][..],
+                &["agent", "browser", "picker", "simulator", "terminal"][..],
             ),
         ] {
             let completions = complete_command(

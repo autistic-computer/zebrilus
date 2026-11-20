@@ -2031,6 +2031,18 @@ pub fn pane_picker_folder_row(
     )
 }
 
+pub fn pane_picker_note_row(
+    id: impl Into<ElementId>,
+    title: impl Into<SharedString>,
+    icon: crate::IconName,
+    note: Option<SharedString>,
+    selected: bool,
+    enabled: bool,
+    cx: &App,
+) -> Row {
+    picker_item(id, title.into(), icon, note, None, selected, enabled, cx)
+}
+
 pub fn pane_picker_label(text: impl Into<SharedString>, cx: &App) -> Label {
     Label::new(TextStyle::Caption, text)
         .strong()

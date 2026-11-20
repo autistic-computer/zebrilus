@@ -71,6 +71,7 @@ zz-mux.workspace = true
 zz-protocol.workspace = true
 zz-terminal = { workspace = true, features = ["default"] }
 zz-tui.workspace = true
+zz-simulator.workspace = true
 zz-ui = { workspace = true, features = ["editor", "tree-sitter"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]

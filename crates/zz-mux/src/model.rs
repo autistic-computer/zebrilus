@@ -8,10 +8,10 @@ use zz_protocol::LayoutNode;
 pub use zz_protocol::layout::{joined_layout, swapped_layout};
 use zz_protocol::{
     AgentDescriptor, Axis, BrowserDescriptor, EditorDescriptor, FloatingPaneSnapshot,
-    ModalPaneSnapshot, MuxSnapshot, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus,
-    PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatus, PaneSummary, ServerError, SessionId,
-    SessionSnapshot, SplitId, ViewDescriptor, WindowId, WindowSnapshot,
-    normalize_browser_profile_name,
+    MAX_SIMULATOR_DEVICE_BYTES, ModalPaneSnapshot, MuxSnapshot, PaneBorderIndicators,
+    PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatus,
+    PaneSummary, SIMULATOR_PANE_KIND, ServerError, SessionId, SessionSnapshot, SimulatorDescriptor,
+    SplitId, ViewDescriptor, WindowId, WindowSnapshot, normalize_browser_profile_name,
 };
 
 use crate::{
@@ -174,6 +174,7 @@ pub enum PaneKind {
     Editor(EditorDescriptor),
     Agent(AgentDescriptor),
     View(ViewDescriptor),
+    Simulator(SimulatorDescriptor),
 }
 
 impl PaneKind {
@@ -185,6 +186,9 @@ impl PaneKind {
             Self::Editor(editor) => PaneKindSnapshot::Editor(editor.clone()),
             Self::Agent(agent) => PaneKindSnapshot::Agent(agent.clone()),
             Self::View(view) => PaneKindSnapshot::View(view.clone()),
+            Self::Simulator(_) => PaneKindSnapshot::Other {
+                kind: SIMULATOR_PANE_KIND.to_owned(),
+            },
         }
     }
 }
@@ -2768,6 +2772,28 @@ impl MuxState {
         Ok(())
     }
 
+    pub fn update_simulator_device(
+        &mut self,
+        pane: PaneId,
+        device: &str,
+    ) -> Result<(), ServerError> {
+        let next = simulator_descriptor(device)?;
+        let pane_state = self
+            .pane_mut(pane)
+            .ok_or_else(|| ServerError::MissingTarget(pane.to_string()))?;
+        let PaneKind::Simulator(simulator) = &mut pane_state.kind else {
+            return Err(ServerError::InvalidCommand(format!(
+                "pane {pane} is not a simulator"
+            )));
+        };
+        if *simulator == next {
+            return Ok(());
+        }
+        *simulator = next;
+        self.bump_generation();
+        Ok(())
+    }
+
     pub fn update_browser_profile(
         &mut self,
         pane: PaneId,
@@ -4813,6 +4839,17 @@ fn swap_window_id(value: WindowId, source: WindowId, target: WindowId) -> Window
     }
 }
 
+pub(crate) fn simulator_descriptor(device: &str) -> Result<SimulatorDescriptor, ServerError> {
+    if device.len() > MAX_SIMULATOR_DEVICE_BYTES {
+        return Err(ServerError::InvalidCommand(format!(
+            "simulator device cannot exceed {MAX_SIMULATOR_DEVICE_BYTES} bytes"
+        )));
+    }
+    Ok(SimulatorDescriptor {
+        device: device.to_owned(),
+    })
+}
+
 fn pane_title(kind: &PaneKind, terminal: &str) -> String {
     match kind {
         PaneKind::Picker { .. } => "new pane".to_owned(),
@@ -4823,6 +4860,7 @@ fn pane_title(kind: &PaneKind, terminal: &str) -> String {
         PaneKind::Editor(_) => "editor".to_owned(),
         PaneKind::Agent(_) => "agent".to_owned(),
         PaneKind::View(view) => view.title.clone(),
+        PaneKind::Simulator(_) => "Simulator".to_owned(),
     }
 }
 

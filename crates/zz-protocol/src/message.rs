@@ -3468,6 +3468,10 @@ pub enum EventPayload {
     AgentAccounts(Vec<crate::AgentAccount>),
     AgentQuotas(Vec<crate::AgentQuota>),
     AgentLogin(crate::AgentLogin),
+    SimulatorPane {
+        pane: PaneId,
+        descriptor: crate::SimulatorDescriptor,
+    },
 }
 
 impl EventPayload {
@@ -3543,6 +3547,7 @@ impl EventPayload {
             | Self::AgentAccounts(_) => None,
             Self::AgentQuotas(_) => Some(crate::AGENT_QUOTAS_CAPABILITY),
             Self::AgentLogin(_) => Some(crate::AGENT_LOGIN_CAPABILITY),
+            Self::SimulatorPane { .. } => Some(crate::SIMULATOR_PANE_CAPABILITY),
         }
     }
 

@@ -3353,7 +3353,8 @@ impl MuxEngine {
                 PaneKind::Picker { .. }
                 | PaneKind::Terminal
                 | PaneKind::Browser(_)
-                | PaneKind::View(_) => String::new(),
+                | PaneKind::View(_)
+                | PaneKind::Simulator(_) => String::new(),
             };
             context
                 .pane_start_path

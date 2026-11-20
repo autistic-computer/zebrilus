@@ -121,8 +121,8 @@ use zz_protocol::{
     PanesModeBorder, PasteUploadPurpose, PastedImageFormat, PatchTail, PopupBorderLines,
     PreparedCommand, PreparedCommandResult, PromptCursor, ProtocolError, ProtocolMessage, RawText,
     SERVER_OPTION_CAPABILITY_PREFIX, SPLIT_RATIO_BASIS, ServerError, ServerHello, SessionId,
-    SessionViewer, SourceSpan, SplitId, StatusLine, StdoutClaim, WindowId, canonical_key,
-    encode_protocol_message_into, encode_terminal_patch_event_into,
+    SessionViewer, SimulatorDescriptor, SourceSpan, SplitId, StatusLine, StdoutClaim, WindowId,
+    canonical_key, encode_protocol_message_into, encode_terminal_patch_event_into,
     encode_terminal_viewport_event_into, is_key_name, layout_menu_row, menu_row_cells,
     menu_row_width, resolve_command,
 };
@@ -4708,6 +4708,10 @@ const INSPECT_VERBS: &[(&str, &[&str])] = &[
     ),
     ("editor", &["resize-pane", "kill-pane"]),
     ("view", &["view-pane", "resize-pane", "kill-pane"]),
+    (
+        "simulator",
+        &["set-simulator-device", "resize-pane", "kill-pane"],
+    ),
     ("picker", &["resize-pane", "kill-pane", "select-pane-kind"]),
     (
         "agent",
@@ -27313,6 +27317,7 @@ impl Shared {
         }
         #[cfg(feature = "agent")]
         self.send_agent_resync(client, outbound);
+        self.send_simulator_resync(outbound);
         let inner = self.inner.lock();
         if let Some(output) = inner.client(client).and_then(|c| c.command_output.as_ref()) {
             if skip_command_output == Some(output.output_id) {
@@ -28867,7 +28872,7 @@ impl Shared {
         let startup_ready = with_status.then(|| *self.startup_ready.lock());
         let order = self.snapshot_order.lock();
         let mut border_cycle_started = false;
-        let (snapshots, appearance_updates, requests) = {
+        let (snapshots, appearance_updates, requests, simulators) = {
             let mut inner = self.inner.lock();
             let ServerState {
                 engine,
@@ -28876,6 +28881,7 @@ impl Shared {
             } = &mut *inner;
             window_latest_clients.retain(|window, _| engine.state.windows.contains_key(window));
             release_chooser_zooms(&mut inner);
+            let simulators = changed_simulator_panes(&mut inner);
             let generation = inner.engine.state.generation();
             let tracked = owns_generation || inner.last_published_mux_generation == generation;
             if tracked {
@@ -28894,7 +28900,7 @@ impl Shared {
                     && !inner.client(*client).is_some_and(|c| c.ctrl_initializing)
             });
             if inner.clients.values().all(|c| c.subscriber.is_none()) {
-                (Vec::new(), appearance_updates, Vec::new())
+                (Vec::new(), appearance_updates, Vec::new(), simulators)
             } else {
                 if !targets.is_empty() {
                     inner.engine.set_format_now(unix_timestamp());
@@ -28912,7 +28918,7 @@ impl Shared {
                     startup_ready.unwrap_or_default(),
                     &self.status_job_needs,
                 );
-                (snapshots, appearance_updates, requests)
+                (snapshots, appearance_updates, requests, simulators)
             }
         };
         for (terminal, appearance) in appearance_updates {
@@ -28922,10 +28928,20 @@ impl Shared {
             Self::send_event(&subscriber, EventPayload::Snapshot(snapshot));
         }
         self.publish_compact_trees();
+        for (pane, descriptor) in simulators {
+            self.publish(EventPayload::SimulatorPane { pane, descriptor });
+        }
         drop(order);
         self.publish_status_requests(&requests);
         if border_cycle_started {
             self.nudge_client_timers();
+        }
+    }
+
+    fn send_simulator_resync(&self, outbound: &OutboundMailbox) {
+        let panes = simulator_panes(&self.inner.lock());
+        for (pane, descriptor) in panes {
+            Self::send_event(outbound, EventPayload::SimulatorPane { pane, descriptor });
         }
     }
 
@@ -36243,6 +36259,7 @@ struct ServerState {
     engine: MuxEngine,
     cold_bootstrap: ColdBootstrapLease,
     last_published_mux_generation: u64,
+    published_simulators: BTreeMap<PaneId, SimulatorDescriptor>,
     appearance: Arc<TerminalAppearance>,
     published_style_appearance: Option<Arc<TerminalAppearance>>,
     appearance_provenance: AppearanceProvenance,
@@ -38310,6 +38327,7 @@ impl ChooseTreeSession {
                         PaneKind::View(view) => {
                             (None, format!("View · {}", view.content.kind_name()))
                         }
+                        PaneKind::Simulator(_) => (None, "Simulator".to_owned()),
                     };
                     if !push_choose_tree_item(
                         &mut items,
@@ -44713,6 +44731,31 @@ fn note_snapshot_sent(inner: &mut ServerState, client: ClientId, snapshot: &MuxS
         .replace((snapshot.content_digest(), snapshot.generation));
 }
 
+fn simulator_panes(inner: &ServerState) -> BTreeMap<PaneId, SimulatorDescriptor> {
+    inner
+        .engine
+        .state
+        .windows
+        .values()
+        .flat_map(|window| window.panes.values())
+        .filter_map(|pane| match &pane.kind {
+            PaneKind::Simulator(descriptor) => Some((pane.id, descriptor.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+fn changed_simulator_panes(inner: &mut ServerState) -> Vec<(PaneId, SimulatorDescriptor)> {
+    let current = simulator_panes(inner);
+    let changed = current
+        .iter()
+        .filter(|(pane, descriptor)| inner.published_simulators.get(pane) != Some(descriptor))
+        .map(|(pane, descriptor)| (*pane, descriptor.clone()))
+        .collect();
+    inner.published_simulators = current;
+    changed
+}
+
 fn stamped_snapshot_sends(
     inner: &mut ServerState,
     tracked: bool,
@@ -46775,6 +46818,7 @@ fn resolve_input_sinks(inner: &ServerState, source: PaneId) -> Result<Vec<PaneSi
                 zz_mux::PaneKind::Picker { .. }
                     | zz_mux::PaneKind::Editor(_)
                     | zz_mux::PaneKind::View(_)
+                    | zz_mux::PaneKind::Simulator(_)
             )
         ) {
         } else if let Some(terminal) = inner.terminals.get(&pane) {

@@ -29,10 +29,11 @@ use zz_protocol::{
     DEFAULT_BROWSER_PROFILE, EditorDescriptor, KeyToken, MAX_AGENT_COMMAND_BYTES,
     MAX_AGENT_OPTION_BYTES, MAX_AGENT_SEND_BYTES, MAX_AGENT_SESSION_ID_BYTES, MAX_GUI_TEXT_BYTES,
     MuxOptionKey, NATIVE_COMMAND_NAMES, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus,
-    PaneId, PaneKindSnapshot, PopupBorderLines, RawText, ServerError, SessionId, SourceSpan,
-    TerminalUiCommand, ViewContent, ViewDescriptor, WindowId, catalog_command_spec, command_specs,
-    normalize_browser_profile_name, parse_tmux_command_options, parse_tmux_options,
-    resolve_command, unimplemented_tmux_command_spec,
+    PaneId, PaneKindSnapshot, PopupBorderLines, RawText, SIMULATOR_PANE_KIND, ServerError,
+    SessionId, SourceSpan, TerminalUiCommand, ViewContent, ViewDescriptor, WindowId,
+    catalog_command_spec, command_specs, normalize_browser_profile_name,
+    parse_tmux_command_options, parse_tmux_options, resolve_command,
+    unimplemented_tmux_command_spec,
 };
 use zz_terminal::{
     CopyJump, CopyJumpDirection, CopyModeAction, CopyModeCopy, CopyModeCountPolicy, CopyModeSearch,
@@ -59,7 +60,7 @@ use crate::{
     layout::{CellGeometry, CellLayout, PANE_MAXIMUM, PANE_MINIMUM, split_floating_cell},
     model::{
         DEFAULT_WINDOW_EXTENT, FloatSpawn, FloatZ, GlobPattern, Modal, NO_MARKED_TARGET,
-        is_marked_target,
+        is_marked_target, simulator_descriptor,
     },
     terminfo::TtyTerm,
     tmux_options::{
@@ -250,6 +251,9 @@ pub const TMUX_OPTION_CONSUMERS: &[&str] = &[
 ];
 
 const MAX_COPY_COMMAND_BYTES: usize = 8 * 1024;
+const SIMULATOR_FLOAT_WIDTH: u16 = 35;
+const SIMULATOR_FLOAT_HEIGHT: u16 = 38;
+const SIMULATOR_FLOAT_PLACE: &str = "centre-right";
 const MAX_COMMAND_PROMPT_LABEL_BYTES: usize = 1024;
 const MAX_COMMAND_PROMPT_TEMPLATE_BYTES: usize = 8 * 1024;
 const DEFAULT_DISPLAY_MESSAGE: &str = "[#{session_name}] #{window_index}:#{window_name}, current pane #{pane_index} - (%H:%M %d-%b-%y)";
@@ -2309,6 +2313,7 @@ fn pane_kind_name(kind: &PaneKind) -> &'static str {
         PaneKind::Editor(_) => "editor",
         PaneKind::Agent(_) => "agent",
         PaneKind::View(_) => "view",
+        PaneKind::Simulator(_) => SIMULATOR_PANE_KIND,
     }
 }
 
@@ -6175,6 +6180,7 @@ impl MuxEngine {
             "set-browser-tabs" => self.set_browser_tabs(context, &command.args)?,
             "set-browser-profile" => self.set_browser_profile(context, &command.args)?,
             "set-editor-path" => self.set_editor_path(context, &command.args)?,
+            "set-simulator-device" => self.set_simulator_device(context, &command.args)?,
             "view-pane" => self.view_pane(context, &command.args, hooks)?,
             "select-pane" => self.select_pane(context, &command.args, hooks)?,
             "last-pane" => self.last_pane(context, &command.args, hooks)?,
@@ -7744,6 +7750,18 @@ impl MuxEngine {
                 }
             }
         }
+        let place = (floating && matches!(kind, PaneKind::Simulator(_))).then(|| {
+            let (columns, rows) = self.state.windows[&window].layout.extent();
+            for (flag, size) in [
+                ("-x", SIMULATOR_FLOAT_WIDTH.min(columns)),
+                ("-y", SIMULATOR_FLOAT_HEIGHT.min(rows)),
+            ] {
+                if options.value(flag).is_none() {
+                    options.values.push((flag.to_owned(), size.to_string()));
+                }
+            }
+            SIMULATOR_FLOAT_PLACE
+        });
         let command = matches!(kind, PaneKind::Terminal)
             .then(|| shell_command_positional(&positional))
             .flatten();
@@ -7756,7 +7774,7 @@ impl MuxEngine {
             };
             let border = lines != PaneBorderLines::None;
             let geometry = self
-                .float_geometry(window, &options, border, None)
+                .float_geometry(window, &options, border, None, place)
                 .map_err(ServerError::InvalidCommand)?;
             let modal = options.has("-O").then(|| Modal {
                 capture_keys: options.has("-K"),
@@ -7902,6 +7920,7 @@ impl MuxEngine {
         options: &Options,
         border: bool,
         defaults: Option<CellGeometry>,
+        place: Option<&str>,
     ) -> Result<CellGeometry, String> {
         let window_state = &self.state.windows[&window];
         let (wsx, wsy) = window_state.layout.extent();
@@ -7929,6 +7948,18 @@ impl MuxEngine {
         }
         if let Some(value) = options.value("-Y") {
             oy = Some(percentage_value(value, -sy, wsy, wsy).map_err(position)?);
+        }
+        let cells = |value: i64| i32::try_from(value).unwrap_or(i32::MAX);
+        if let Some((x, y)) = place.and_then(|place| {
+            float_place(
+                place,
+                (cells(wsx), cells(wsy)),
+                (cells(sx), cells(sy)),
+                i32::from(border),
+            )
+        }) {
+            ox = ox.or(Some(i64::from(x)));
+            oy = oy.or(Some(i64::from(y)));
         }
         let (mut last_x, mut last_y) = if window_state.has_floating_panes() {
             window_state.floats.last_new_pane
@@ -8011,6 +8042,10 @@ impl MuxEngine {
         let kind = match kind {
             "terminal" => Ok(PaneKind::Terminal),
             "browser" => browser_from_args(options, positional).map(PaneKind::Browser),
+            SIMULATOR_PANE_KIND => {
+                simulator_descriptor(positional.first().map_or("", RawText::as_str))
+                    .map(PaneKind::Simulator)
+            }
             "picker" => {
                 let target =
                     self.resolve_pane(options.value("-t"), context.window, context.pane)?;
@@ -8313,7 +8348,7 @@ impl MuxEngine {
         let border = self.pane_border_lines(window) != PaneBorderLines::None;
         let defaults = window_state.layout.saved_float(pane);
         let geometry = self
-            .float_geometry(window, options, border, defaults)
+            .float_geometry(window, options, border, defaults, None)
             .map_err(|cause| {
                 ServerError::InvalidCommand(format!("failed to float pane: {cause}"))
             })?;
@@ -8364,29 +8399,10 @@ impl MuxEngine {
                 self.state.move_float_z(target, z)?;
                 return Ok(Execution::default());
             }
-            let (xoff, yoff) = match position {
-                "top-left" => (border, border),
-                "top-centre" | "top-center" => ((wx - px) / 2, border),
-                "top-right" => (wx - px - border, border),
-                "centre-left" | "center-left" => (border, (wy - py) / 2),
-                "centre" | "center" => ((wx - px) / 2, (wy - py) / 2),
-                "centre-right" | "center-right" => (wx - px - border, (wy - py) / 2),
-                "bottom-left" => (border, wy - py - border),
-                "bottom-centre" | "bottom-center" => ((wx - px) / 2, wy - py - border),
-                "bottom-right" => (wx - px - border, wy - py - border),
-                "top-left-centre" | "top-left-center" => (wx / 4 - px / 2, wy / 4 - py / 2),
-                "top-right-centre" | "top-right-center" => ((3 * wx) / 4 - px / 2, wy / 4 - py / 2),
-                "bottom-left-centre" | "bottom-left-center" => {
-                    (wx / 4 - px / 2, (3 * wy) / 4 - py / 2)
-                }
-                "bottom-right-centre" | "bottom-right-center" => {
-                    ((3 * wx) / 4 - px / 2, (3 * wy) / 4 - py / 2)
-                }
-                _ => {
-                    return Err(ServerError::InvalidCommand(format!(
-                        "unknown position: {position}"
-                    )));
-                }
+            let Some((xoff, yoff)) = float_place(position, (wx, wy), (px, py), border) else {
+                return Err(ServerError::InvalidCommand(format!(
+                    "unknown position: {position}"
+                )));
             };
             cell.xoff = xoff;
             cell.yoff = yoff;
@@ -8745,6 +8761,22 @@ impl MuxEngine {
         Ok(Execution::default())
     }
 
+    fn set_simulator_device(
+        &mut self,
+        context: &ExecutionContext,
+        args: &[RawText],
+    ) -> Result<Execution, ServerError> {
+        let (options, positional) = parse_command_options("set-simulator-device", args)?;
+        let pane = self.resolve_pane(options.value("-t"), context.window, context.pane)?;
+        let [device] = positional.as_slice() else {
+            return Err(ServerError::CommandParse(
+                "set-simulator-device needs exactly one device".to_owned(),
+            ));
+        };
+        self.state.update_simulator_device(pane, device)?;
+        Ok(Execution::default())
+    }
+
     fn set_editor_path(
         &mut self,
         context: &ExecutionContext,
@@ -8845,7 +8877,7 @@ impl MuxEngine {
         let (place, _) = parse_command_options("new-pane", &place.args)?;
         let border = self.pane_border_lines(window) != PaneBorderLines::None;
         let geometry = self
-            .float_geometry(window, &place, border, None)
+            .float_geometry(window, &place, border, None, None)
             .map_err(ServerError::InvalidCommand)?;
         self.split_window_with_options(
             context,
@@ -19494,6 +19526,9 @@ fn pane_kind_snapshot(kind: &PaneKind) -> PaneKindSnapshot {
         PaneKind::Editor(editor) => PaneKindSnapshot::Editor(editor.clone()),
         PaneKind::Agent(agent) => PaneKindSnapshot::Agent(agent.clone()),
         PaneKind::View(view) => PaneKindSnapshot::View(view.clone()),
+        PaneKind::Simulator(_) => PaneKindSnapshot::Other {
+            kind: SIMULATOR_PANE_KIND.to_owned(),
+        },
     }
 }
 
@@ -19810,7 +19845,7 @@ fn validate_spawn_kind<'a>(
     let kind = options.value("--kind").unwrap_or("terminal");
     if !(matches!(kind, "terminal" | "browser")
         || matches!(command, "split-window" | "new-pane" | "new-window")
-            && matches!(kind, "picker" | "agent"))
+            && matches!(kind, "picker" | "agent" | SIMULATOR_PANE_KIND))
     {
         return Err(ServerError::NativeCommandParse(format!(
             "{command}: invalid pane kind {kind:?}"
@@ -19846,6 +19881,11 @@ fn validate_spawn_kind<'a>(
                 "--kind browser accepts at most one URL".to_owned(),
             ));
         }
+        if kind == SIMULATOR_PANE_KIND && positional.len() > 1 {
+            return Err(ServerError::NativeCommandParse(
+                "--kind simulator accepts at most one device".to_owned(),
+            ));
+        }
         if kind == "picker" && !positional.is_empty() {
             return Err(ServerError::NativeCommandParse(format!(
                 "--kind {kind} does not accept positional arguments"
@@ -19853,6 +19893,32 @@ fn validate_spawn_kind<'a>(
         }
     }
     Ok(kind)
+}
+
+fn float_place(
+    position: &str,
+    (wx, wy): (i32, i32),
+    (px, py): (i32, i32),
+    border: i32,
+) -> Option<(i32, i32)> {
+    Some(match position {
+        "top-left" => (border, border),
+        "top-centre" | "top-center" => ((wx - px) / 2, border),
+        "top-right" => (wx - px - border, border),
+        "centre-left" | "center-left" => (border, (wy - py) / 2),
+        "centre" | "center" => ((wx - px) / 2, (wy - py) / 2),
+        "centre-right" | "center-right" => (wx - px - border, (wy - py) / 2),
+        "bottom-left" => (border, wy - py - border),
+        "bottom-centre" | "bottom-center" => ((wx - px) / 2, wy - py - border),
+        "bottom-right" => (wx - px - border, wy - py - border),
+        "top-left-centre" | "top-left-center" => (wx / 4 - px / 2, wy / 4 - py / 2),
+        "top-right-centre" | "top-right-center" => ((3 * wx) / 4 - px / 2, wy / 4 - py / 2),
+        "bottom-left-centre" | "bottom-left-center" => (wx / 4 - px / 2, (3 * wy) / 4 - py / 2),
+        "bottom-right-centre" | "bottom-right-center" => {
+            ((3 * wx) / 4 - px / 2, (3 * wy) / 4 - py / 2)
+        }
+        _ => return None,
+    })
 }
 
 fn browser_from_args(
@@ -29415,6 +29481,77 @@ mod tests {
             ),
             Err(ServerError::InvalidCommand(message)) if message.contains("sometimes")
         ));
+    }
+
+    #[test]
+    fn simulator_float_sits_centre_right_and_carries_its_device() {
+        let mut engine = MuxEngine::default();
+        let mut context = ExecutionContext::default();
+        engine
+            .execute(
+                &mut context,
+                &command("new-session", &["-d", "-x", "200", "-y", "60"]),
+            )
+            .unwrap();
+        let window = engine.state.window_for_pane(PaneId(0)).unwrap();
+        let created = engine
+            .execute(
+                &mut context,
+                &command("new-pane", &["-t", "%0", "--kind", "simulator", "ABC"]),
+            )
+            .unwrap();
+        let pane = created
+            .effects
+            .iter()
+            .find_map(|effect| match effect {
+                MuxEffect::PaneCreated { pane, .. } => Some(*pane),
+                _ => None,
+            })
+            .expect("new-pane creates the simulator pane");
+        let device = |engine: &MuxEngine| match engine.state.pane(pane).map(|pane| &pane.kind) {
+            Some(PaneKind::Simulator(descriptor)) => descriptor.device.clone(),
+            other => panic!("expected a simulator pane, got {other:?}"),
+        };
+        let layout = &engine.state.windows[&window].layout;
+        assert!(layout.is_floating(pane));
+        assert_eq!(
+            layout.pane_geometry(pane),
+            Some(CellGeometry {
+                sx: 33,
+                sy: 36,
+                xoff: 166,
+                yoff: 12
+            })
+        );
+        assert_eq!(
+            engine.format_pane_kind(&pane.to_string()),
+            Some("simulator")
+        );
+        assert_eq!(
+            engine.state.snapshot().sessions[0].windows[0].panes[&pane].kind,
+            PaneKindSnapshot::Other {
+                kind: "simulator".to_owned()
+            }
+        );
+        assert_eq!(engine.state.pane(pane).unwrap().title, "Simulator");
+        assert_eq!(device(&engine), "ABC");
+
+        engine
+            .execute(
+                &mut context,
+                &command("set-simulator-device", &["-t", &pane.to_string(), "DEF"]),
+            )
+            .unwrap();
+        assert_eq!(device(&engine), "DEF");
+        assert_eq!(
+            engine
+                .execute(
+                    &mut context,
+                    &command("set-simulator-device", &["-t", "%0", "DEF"]),
+                )
+                .unwrap_err(),
+            ServerError::InvalidCommand("pane %0 is not a simulator".to_owned())
+        );
     }
 
     #[test]

@@ -28,6 +28,8 @@ mod pane;
 mod profile;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod quit_signal;
+#[cfg(feature = "agent-pane")]
+mod simulator;
 mod status_bar;
 mod tailnet;
 mod terminal;
@@ -36,7 +38,6 @@ mod tray;
 mod ui_scale;
 mod update;
 mod user_data;
-#[cfg(feature = "agent-pane")]
 mod view_pane;
 mod window;
 mod workspace;

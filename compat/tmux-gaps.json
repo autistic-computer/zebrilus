@@ -355,6 +355,7 @@
         "native-command:set-browser-tabs",
         "native-command:set-browser-url",
         "native-command:set-editor-path",
+        "native-command:set-simulator-device",
         "native-command:show-last-output",
         "native-command:tailnet",
         "native-command:tools",

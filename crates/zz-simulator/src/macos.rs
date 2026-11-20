@@ -7,7 +7,7 @@ use std::{
     ffi::{CStr, CString, c_char, c_void},
     mem::transmute,
     path::{Path, PathBuf},
-    ptr::null,
+    ptr::{null, null_mut},
     sync::{
         Arc, OnceLock,
         atomic::{AtomicU64, Ordering},
@@ -15,6 +15,12 @@ use std::{
 };
 
 use block2::{ManualBlockEncoding, RcBlock};
+use core_foundation::base::{TCFType, kCFAllocatorDefault};
+use core_video::{
+    pixel_buffer::{CVPixelBuffer, CVPixelBufferRef},
+    pixel_buffer_io_surface::CVPixelBufferCreateWithIOSurface,
+    r#return::kCVReturnSuccess,
+};
 use objc2::{
     ffi::objc_msgSend,
     msg_send,
@@ -41,6 +47,11 @@ const MOUSE_DOWN: i32 = 1;
 const MOUSE_UP: i32 = 2;
 const KEY_DOWN: u32 = 1;
 const KEY_UP: u32 = 2;
+const BOOTED: &str = "Booted";
+const LOCK_READ_ONLY: u32 = 1;
+const BUTTON_TARGET: i32 = 0x33;
+const BUTTON_HOME: i32 = 0x0;
+const BUTTON_LOCK: i32 = 0x1;
 
 #[link(name = "IOSurface", kind = "framework")]
 unsafe extern "C" {
@@ -48,6 +59,10 @@ unsafe extern "C" {
     fn IOSurfaceGetHeight(surface: *const c_void) -> usize;
     fn IOSurfaceGetPixelFormat(surface: *const c_void) -> u32;
     fn IOSurfaceGetSeed(surface: *const c_void) -> u32;
+    fn IOSurfaceGetBytesPerRow(surface: *const c_void) -> usize;
+    fn IOSurfaceGetBaseAddress(surface: *const c_void) -> *const u8;
+    fn IOSurfaceLock(surface: *const c_void, options: u32, seed: *mut u32) -> i32;
+    fn IOSurfaceUnlock(surface: *const c_void, options: u32, seed: *mut u32) -> i32;
 }
 
 unsafe extern "C" {
@@ -59,6 +74,7 @@ type Send = unsafe extern "C-unwind" fn();
 type MouseMessage =
     unsafe extern "C" fn(*const CGPoint, *const CGPoint, u32, i32, f64, f64, u32) -> *mut c_void;
 type KeyMessage = unsafe extern "C" fn(u32, u32) -> *mut c_void;
+type ButtonMessage = unsafe extern "C" fn(i32, i32, i32) -> *mut c_void;
 type SendMessage = unsafe extern "C-unwind" fn(
     *const AnyObject,
     Sel,
@@ -107,6 +123,8 @@ pub enum Error {
     NoDisplay,
     #[error("simulator refused the {0} message")]
     Message(&'static str),
+    #[error("the simulator's screen could not be wrapped for drawing (status {0})")]
+    PixelBuffer(i32),
     #[error("simulator input service {0}")]
     Remote(&'static str),
 }
@@ -127,6 +145,20 @@ pub enum TouchPhase {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Button {
+    Home,
+    Lock,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Device {
+    pub udid: String,
+    pub name: String,
+    pub system: String,
+    pub booted: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyDirection {
     Down,
     Up,
@@ -139,30 +171,9 @@ pub struct Simulator {
 
 impl Simulator {
     pub fn attach(udid: &str) -> Result<Self, Error> {
-        let developer = load_frameworks()?;
-        let context_class = class(c"SimServiceContext")?;
-        let developer = NSString::from_str(&developer.to_string_lossy());
-        let context: Result<Retained<NSObject>, Retained<NSError>> = unsafe {
-            msg_send![context_class, sharedServiceContextForDeveloperDir: &*developer, error: _]
-        };
-        let context = context.map_err(|error| service_error(&error))?;
-        let set: Result<Retained<NSObject>, Retained<NSError>> =
-            unsafe { msg_send![&*context, defaultDeviceSetWithError: _] };
-        let set = set.map_err(|error| service_error(&error))?;
-        let devices: Retained<NSArray<NSObject>> = unsafe { msg_send![&*set, devices] };
-        let device = devices
-            .iter()
-            .find(|device| {
-                let identifier: Retained<NSUUID> = unsafe { msg_send![&**device, UDID] };
-                identifier
-                    .UUIDString()
-                    .to_string()
-                    .eq_ignore_ascii_case(udid)
-            })
-            .ok_or_else(|| Error::DeviceNotFound(udid.to_owned()))?;
-        let state: Retained<NSString> = unsafe { msg_send![&*device, stateString] };
-        let state = state.to_string();
-        if state != "Booted" {
+        let device = find(udid)?;
+        let state = state(&device);
+        if state != BOOTED {
             return Err(Error::NotBooted {
                 udid: udid.to_owned(),
                 state,
@@ -171,16 +182,35 @@ impl Simulator {
         Ok(Self { device })
     }
 
+    pub fn name(&self) -> String {
+        name(&self.device)
+    }
+
+    pub fn screen_size(&self) -> Option<(usize, usize)> {
+        Self::native_size(&self.device)
+    }
+
     pub fn screen(&self) -> Result<Screen, Error> {
-        Screen::open(&self.device)
+        Screen::open(&self.device, Arc::new(|| {}))
+    }
+
+    pub fn screen_with(
+        &self,
+        on_frame: impl Fn() + std::marker::Send + Sync + 'static,
+    ) -> Result<Screen, Error> {
+        Screen::open(&self.device, Arc::new(on_frame))
     }
 
     pub fn input(&self) -> Result<Input, Error> {
-        Input::open(&self.device, None)
+        Input::open(&self.device, None, true)
+    }
+
+    pub fn input_unverified(&self) -> Result<Input, Error> {
+        Input::open(&self.device, None, false)
     }
 
     pub fn input_on(&self, route: Route) -> Result<Input, Error> {
-        Input::open(&self.device, Some(route))
+        Input::open(&self.device, Some(route), true)
     }
 
     fn native_size(device: &NSObject) -> Option<(usize, usize)> {
@@ -227,7 +257,10 @@ pub struct Screen {
 }
 
 impl Screen {
-    fn open(device: &NSObject) -> Result<Self, Error> {
+    fn open(
+        device: &NSObject,
+        notify: Arc<dyn Fn() + std::marker::Send + Sync>,
+    ) -> Result<Self, Error> {
         let io: Option<Retained<NSObject>> = unsafe { msg_send![device, io] };
         let io = io.ok_or(Error::NoDisplay)?;
         let perform = unsafe { transmute::<Send, Perform>(objc_msgSend) };
@@ -239,14 +272,17 @@ impl Screen {
         let surface_changes = Arc::new(AtomicU64::new(0));
         let on_frame = {
             let frames = Arc::clone(&frames);
+            let notify = Arc::clone(&notify);
             RcBlock::with_encoding::<_, _, _, Notify>(move || {
                 frames.fetch_add(1, Ordering::Relaxed);
+                notify();
             })
         };
         let on_surfaces = {
             let surface_changes = Arc::clone(&surface_changes);
             RcBlock::with_encoding::<_, _, _, Notify>(move || {
                 surface_changes.fetch_add(1, Ordering::Relaxed);
+                notify();
             })
         };
         let on_properties = RcBlock::with_encoding::<_, _, _, Notify>(|| {});
@@ -344,6 +380,47 @@ impl Screen {
         Ok(())
     }
 
+    pub fn read_rgba(&self) -> Result<(u32, u32, Vec<u8>), Error> {
+        let surface = Retained::as_ptr(&self.surface).cast::<c_void>();
+        let (width, height) = surface_size(&self.surface);
+        let status = unsafe { IOSurfaceLock(surface, LOCK_READ_ONLY, null_mut()) };
+        if status != 0 {
+            return Err(Error::PixelBuffer(status));
+        }
+        let stride = unsafe { IOSurfaceGetBytesPerRow(surface) };
+        let base = unsafe { IOSurfaceGetBaseAddress(surface) };
+        let mut pixels = Vec::with_capacity(width * height * 4);
+        if !base.is_null() && stride >= width * 4 {
+            for row in 0..height {
+                let line = unsafe { std::slice::from_raw_parts(base.add(row * stride), width * 4) };
+                for pixel in line.as_chunks::<4>().0 {
+                    pixels.extend_from_slice(&[pixel[2], pixel[1], pixel[0], 255]);
+                }
+            }
+        }
+        unsafe { IOSurfaceUnlock(surface, LOCK_READ_ONLY, null_mut()) };
+        if pixels.is_empty() {
+            return Err(Error::NoDisplay);
+        }
+        Ok((width as u32, height as u32, pixels))
+    }
+
+    pub fn pixel_buffer(&self) -> Result<CVPixelBuffer, Error> {
+        let mut buffer: CVPixelBufferRef = null_mut();
+        let status = unsafe {
+            CVPixelBufferCreateWithIOSurface(
+                kCFAllocatorDefault,
+                &*Retained::as_ptr(&self.surface).cast(),
+                null(),
+                &raw mut buffer,
+            )
+        };
+        if status != kCVReturnSuccess || buffer.is_null() {
+            return Err(Error::PixelBuffer(status));
+        }
+        Ok(unsafe { CVPixelBuffer::wrap_under_create_rule(buffer) })
+    }
+
     pub fn frames(&self) -> u64 {
         self.frames.load(Ordering::Relaxed)
     }
@@ -380,14 +457,14 @@ pub struct Input {
 }
 
 impl Input {
-    fn open(device: &NSObject, route: Option<Route>) -> Result<Self, Error> {
+    fn open(device: &NSObject, route: Option<Route>, verify: bool) -> Result<Self, Error> {
         let channel = match route {
             Some(Route::Legacy) => Channel::Legacy(Legacy::open(device)?),
             Some(Route::Remote) => Channel::Remote(
-                Remote::connect(device)?
+                Remote::connect(device, verify)?
                     .ok_or(Error::Remote("is not offered by this simulator"))?,
             ),
-            None => match Remote::connect(device)? {
+            None => match Remote::connect(device, verify)? {
                 Some(remote) => Channel::Remote(remote),
                 None => Channel::Legacy(Legacy::open(device)?),
             },
@@ -416,6 +493,13 @@ impl Input {
         }
     }
 
+    pub fn button(&self, button: Button, direction: KeyDirection) -> Result<(), Error> {
+        match &self.channel {
+            Channel::Remote(remote) => remote.button(button, direction),
+            Channel::Legacy(legacy) => legacy.button(button, direction),
+        }
+    }
+
     pub fn flush(&self) -> Result<(), Error> {
         match &self.channel {
             Channel::Remote(remote) => remote.flush(),
@@ -428,6 +512,7 @@ struct Legacy {
     client: Retained<AnyObject>,
     mouse: MouseMessage,
     key: KeyMessage,
+    button: Option<ButtonMessage>,
 }
 
 impl Legacy {
@@ -440,10 +525,12 @@ impl Legacy {
         let client = client.map_err(|error| service_error(&error))?;
         let mouse = symbol(c"IndigoHIDMessageForMouseNSEvent")?;
         let key = symbol(c"IndigoHIDMessageForKeyboardArbitrary")?;
+        let button = symbol(c"IndigoHIDMessageForButton").ok();
         Ok(Self {
             client,
             mouse: unsafe { transmute::<*mut c_void, MouseMessage>(mouse) },
             key: unsafe { transmute::<*mut c_void, KeyMessage>(key) },
+            button: button.map(|button| unsafe { transmute::<*mut c_void, ButtonMessage>(button) }),
         })
     }
 
@@ -467,6 +554,22 @@ impl Legacy {
         self.send(message, "key")
     }
 
+    fn button(&self, button: Button, direction: KeyDirection) -> Result<(), Error> {
+        let Some(message) = self.button else {
+            return Err(Error::MissingSymbol("IndigoHIDMessageForButton"));
+        };
+        let source = match button {
+            Button::Home => BUTTON_HOME,
+            Button::Lock => BUTTON_LOCK,
+        };
+        let direction = match direction {
+            KeyDirection::Down => KEY_DOWN,
+            KeyDirection::Up => KEY_UP,
+        };
+        let message = unsafe { message(source, direction as i32, BUTTON_TARGET) };
+        self.send(message, "button")
+    }
+
     fn send(&self, message: *mut c_void, kind: &'static str) -> Result<(), Error> {
         if message.is_null() {
             return Err(Error::Message(kind));
@@ -484,6 +587,78 @@ impl Legacy {
         }
         Ok(())
     }
+}
+
+fn device_list() -> Result<Retained<NSArray<NSObject>>, Error> {
+    let developer = load_frameworks()?;
+    let context_class = class(c"SimServiceContext")?;
+    let developer = NSString::from_str(&developer.to_string_lossy());
+    let context: Result<Retained<NSObject>, Retained<NSError>> = unsafe {
+        msg_send![context_class, sharedServiceContextForDeveloperDir: &*developer, error: _]
+    };
+    let context = context.map_err(|error| service_error(&error))?;
+    let set: Result<Retained<NSObject>, Retained<NSError>> =
+        unsafe { msg_send![&*context, defaultDeviceSetWithError: _] };
+    let set = set.map_err(|error| service_error(&error))?;
+    Ok(unsafe { msg_send![&*set, devices] })
+}
+
+fn identifier(device: &NSObject) -> String {
+    let identifier: Retained<NSUUID> = unsafe { msg_send![device, UDID] };
+    identifier.UUIDString().to_string()
+}
+
+fn state(device: &NSObject) -> String {
+    let state: Retained<NSString> = unsafe { msg_send![device, stateString] };
+    state.to_string()
+}
+
+fn name(device: &NSObject) -> String {
+    let name: Retained<NSString> = unsafe { msg_send![device, name] };
+    name.to_string()
+}
+
+fn system(device: &NSObject) -> String {
+    let runtime: Option<Retained<NSObject>> = unsafe { msg_send![device, runtime] };
+    runtime.map_or_else(String::new, |runtime| {
+        let name: Retained<NSString> = unsafe { msg_send![&*runtime, name] };
+        name.to_string()
+    })
+}
+
+fn find(udid: &str) -> Result<Retained<NSObject>, Error> {
+    device_list()?
+        .iter()
+        .find(|device| identifier(device).eq_ignore_ascii_case(udid))
+        .ok_or_else(|| Error::DeviceNotFound(udid.to_owned()))
+}
+
+pub fn devices() -> Result<Vec<Device>, Error> {
+    let mut devices: Vec<Device> = device_list()?
+        .iter()
+        .filter(|device| {
+            let available: bool = unsafe { msg_send![&**device, isAvailable] };
+            available
+        })
+        .map(|device| Device {
+            udid: identifier(&device),
+            name: name(&device),
+            system: system(&device),
+            booted: state(&device) == BOOTED,
+        })
+        .collect();
+    devices.sort_by(|a, b| b.booted.cmp(&a.booted).then_with(|| a.name.cmp(&b.name)));
+    Ok(devices)
+}
+
+pub fn boot(udid: &str) -> Result<(), Error> {
+    let device = find(udid)?;
+    if state(&device) == BOOTED {
+        return Ok(());
+    }
+    let booted: Result<(), Retained<NSError>> =
+        unsafe { msg_send![&*device, bootWithOptions: None::<&NSObject>, error: _] };
+    booted.map_err(|error| service_error(&error))
 }
 
 fn load_frameworks() -> Result<&'static Path, Error> {

@@ -11773,6 +11773,7 @@ dependencies = [
  "zz-daemon-client",
  "zz-mux",
  "zz-protocol",
+ "zz-simulator",
  "zz-terminal",
  "zz-tui",
  "zz-ui",
@@ -12022,6 +12023,8 @@ name = "zz-simulator"
 version = "0.28.0"
 dependencies = [
  "block2 0.6.2",
+ "core-foundation",
+ "core-video",
  "libc",
  "objc2 0.6.5",
  "objc2-core-foundation",

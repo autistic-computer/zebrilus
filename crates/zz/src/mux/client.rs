@@ -39,7 +39,7 @@ use zz_protocol::{
     DisplayPanesState, Event, EventPayload, GitMark, GuiResponse, InputMessage, KeyBindingSnapshot,
     KeyTableSnapshot, MenuState, MuxOptionKey, MuxSnapshot, NEW_SESSION_ATTACH_CAPABILITY, PaneId,
     PastedImageFormat, PathEntry, PathListRoot, ProtocolMessage, ServerError, ServerHello,
-    SessionId, TerminalUiCommand,
+    SessionId, SimulatorDescriptor, TerminalUiCommand,
 };
 #[cfg(test)]
 use zz_protocol::{PROTOCOL_VERSION, ProtocolError, StatusLine};
@@ -3844,6 +3844,11 @@ impl MuxClient {
         self.browser_commands.remove(&pane).unwrap_or_default()
     }
 
+    #[must_use]
+    pub fn simulator(&self, pane: PaneId) -> Option<SimulatorDescriptor> {
+        self.core.simulator(pane).cloned()
+    }
+
     pub(crate) fn take_terminal_commands(&mut self, pane: PaneId) -> Vec<TerminalUiCommand> {
         self.terminal_commands.remove(&pane).unwrap_or_default()
     }
@@ -4788,7 +4793,8 @@ impl MuxClient {
             | CoreEvent::CommandOutputChanged
             | CoreEvent::ProvidersChanged
             | CoreEvent::AgentAccountsChanged
-            | CoreEvent::AgentLoginChanged { .. } => {}
+            | CoreEvent::AgentLoginChanged { .. }
+            | CoreEvent::SimulatorChanged { .. } => {}
             CoreEvent::AgentSessions { pane, result, .. } => {
                 cx.emit(AgentCatalogReply(result.clone()));
                 #[cfg(feature = "agent-pane")]

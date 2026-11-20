@@ -23,11 +23,15 @@ use objc2::{
 };
 use objc2_foundation::{NSError, NSString};
 
-use crate::macos::{Error, KeyDirection, TouchPhase};
+use crate::macos::{Button, Error, KeyDirection, TouchPhase};
 
 const SERVICE: &CStr = c"com.apple.coredevice.feature.remote.hid.digitizer";
 const TOUCH: &CStr = c"IndigoDigitizerEvent";
 const KEY: &CStr = c"IndigoKeyboardButtonEvent";
+const BUTTON: &CStr = c"IndigoButtonEvent";
+const CONSUMER_PAGE: u64 = 0x0C;
+const CONSUMER_MENU: u64 = 0x40;
+const CONSUMER_POWER: u64 = 0x30;
 const REPLY_TIMEOUT: Duration = Duration::from_secs(4);
 const TOUCH_START: u64 = 0;
 const TOUCH_POSITION: u64 = 1;
@@ -76,7 +80,7 @@ pub(crate) struct Remote {
 }
 
 impl Remote {
-    pub(crate) fn connect(device: &NSObject) -> Result<Option<Self>, Error> {
+    pub(crate) fn connect(device: &NSObject, verify: bool) -> Result<Option<Self>, Error> {
         let Some(endpoint_from_port) = private(c"xpc_endpoint_create_mach_port_4sim") else {
             return Ok(None);
         };
@@ -132,7 +136,9 @@ impl Remote {
             closed,
             _events: events,
         };
-        remote.flush()?;
+        if verify {
+            remote.flush()?;
+        }
         Ok(Some(remote))
     }
 
@@ -161,6 +167,23 @@ impl Remote {
 
     pub(crate) fn key(&self, usage: u32, direction: KeyDirection) -> Result<(), Error> {
         self.send(KEY, key_payload(usage, direction))
+    }
+
+    pub(crate) fn button(&self, button: Button, direction: KeyDirection) -> Result<(), Error> {
+        let payload = dictionary();
+        unsafe {
+            xpc_dictionary_set_uint64(payload, c"usagePage".as_ptr(), CONSUMER_PAGE);
+            xpc_dictionary_set_uint64(
+                payload,
+                c"usageCode".as_ptr(),
+                match button {
+                    Button::Home => CONSUMER_MENU,
+                    Button::Lock => CONSUMER_POWER,
+                },
+            );
+            xpc_dictionary_set_uint64(payload, c"state".as_ptr(), state(direction));
+        }
+        self.send(BUTTON, payload)
     }
 
     pub(crate) fn flush(&self) -> Result<(), Error> {
@@ -219,16 +242,16 @@ fn key_payload(usage: u32, direction: KeyDirection) -> Xpc {
     let payload = dictionary();
     unsafe {
         xpc_dictionary_set_uint64(payload, c"usageCode".as_ptr(), u64::from(usage));
-        xpc_dictionary_set_uint64(
-            payload,
-            c"state".as_ptr(),
-            match direction {
-                KeyDirection::Down => KEY_DOWN,
-                KeyDirection::Up => KEY_UP,
-            },
-        );
+        xpc_dictionary_set_uint64(payload, c"state".as_ptr(), state(direction));
     }
     payload
+}
+
+fn state(direction: KeyDirection) -> u64 {
+    match direction {
+        KeyDirection::Down => KEY_DOWN,
+        KeyDirection::Up => KEY_UP,
+    }
 }
 
 fn message(kind: &CStr, barrier: bool, payload: Xpc) -> Xpc {

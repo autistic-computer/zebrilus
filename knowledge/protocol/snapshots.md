@@ -143,7 +143,9 @@ an origin for pointers).
 
 `PaneKindSnapshot::Other { kind }` (v123) is the slot for a pane kind added inside a wire epoch
 ([split updates](/designs/split-updates.md)): `kind` names it, at most `MAX_PANE_KIND_BYTES` (64) on
-decode. The daemon never sends it yet. A client draws it as a placeholder with no process and no
+decode. The daemon sends it for a simulator pane (`kind: "simulator"`), whose descriptor follows in
+`EventPayload::SimulatorPane` ([wire protocol](/protocol/wire-protocol.md)). A client that does not
+draw the kind shows a placeholder with no process and no
 input that names the kind and says a newer zz shows it.
 
 ## Pane status, summary and time

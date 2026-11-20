@@ -230,6 +230,22 @@ impl BrowserDescriptor {
     }
 }
 
+pub const SIMULATOR_PANE_KIND: &str = "simulator";
+pub const MAX_SIMULATOR_DEVICE_BYTES: usize = 64;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SimulatorDescriptor {
+    #[serde(deserialize_with = "deserialize_simulator_device")]
+    pub device: String,
+}
+
+fn deserialize_simulator_device<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, MAX_SIMULATOR_DEVICE_BYTES)
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum AgentProvider {
     #[default]
