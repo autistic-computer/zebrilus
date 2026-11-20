@@ -289,6 +289,13 @@ impl fmt::Display for AgentProvider {
     }
 }
 
+impl AgentProvider {
+    #[must_use]
+    pub const fn flips(self) -> bool {
+        !matches!(self, Self::Cursor)
+    }
+}
+
 impl FromStr for AgentProvider {
     type Err = String;
 

@@ -33,7 +33,7 @@ pub fn flip_target(pane: &PaneSnapshot) -> Option<FlipTarget> {
         PaneKindSnapshot::Agent(_) => FlipTo::Cli,
         _ => return None,
     };
-    let provider = crate::window_summary::pane_agent(pane)?;
+    let provider = crate::window_summary::pane_agent(pane).filter(|provider| provider.flips())?;
     Some(FlipTarget { provider, to })
 }
 

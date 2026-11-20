@@ -9,7 +9,7 @@ timestamp: 2026-11-20T00:00:00-03:00
 
 # Overview
 
-A pane runs Claude Code, Codex, Antigravity, Grok or Cursor one of two ways, and one button switches between them:
+A pane runs Claude Code, Codex, Antigravity or Grok one of two ways, and one button switches between them (Cursor is a chat only, see [Cursor](#cursor)):
 
 - **The CLI.** An ordinary terminal pane running the vendor's own TUI. zz draws the terminal and
   types nothing into it.
@@ -688,12 +688,11 @@ option until the recovery metadata that follows replaces the list.
 # Cursor
 
 Cursor (`AgentProvider::Cursor`; `agent cursor`, `@+cursor`, `(cursor-agent)` in reports) is the
-fifth provider. Its CLI has an ACP server, `cursor-agent acp`, and its driver
+fifth provider, and a chat only. Its CLI has an ACP server, `cursor-agent acp`, and its driver
 (`crates/zz-daemon/src/agent/cursor.rs`) is the third on `agent/dialect.rs`.
 
 - **Which CLI.** The first `cursor-agent` on the agent PATH, else an `agent` there that resolves
-  into a `cursor-agent` folder (the vendor installs both names). A terminal is taken to run Cursor
-  only when its process is named `cursor-agent`: `agent` alone is too common a name.
+  into a `cursor-agent` folder (the vendor installs both names).
 - **Sign-in first.** Cursor refuses `session/new` until the client has called `authenticate` with
   `cursor_login`, signed in or not. A dialect with `sign_in` holds the pane's first `Open`, sends
   `Authenticate` in its place, and sends the held `Open` when `Authenticated` comes back, which it
@@ -702,23 +701,33 @@ fifth provider. Its CLI has an ACP server, `cursor-agent acp`, and its driver
   terminal.`
 - **No browser.** The ACP process runs with `NO_OPEN_BROWSER=1`, so a signed-out `authenticate`
   fails at once with the vendor's login link, where without it the CLI opens a browser and waits.
+- **Models.** Cursor's model values carry their parameters, `composer-2.5[fast=true]`, and it
+  refuses a bare name. A dialect with `bracket_models` remembers the values last offered and turns
+  a bare `--model composer-2.5` into the offered value that starts with `composer-2.5[`. Effort is
+  one of those parameters, so there is no effort option.
+- **Modes.** `agent`, `plan` and `ask` come as the `mode` config option, which is where the
+  clients read modes; `plan` and `ask` are read-only (`agent_settings::mode_risk`).
+- **Title on load.** Like grok, Cursor titles a new chat and says nothing on load, so a loaded
+  session takes `title` from `acp-sessions/<id>/meta.json` in Cursor's folder (`CURSOR_CONFIG_DIR`,
+  else `~/.cursor`).
 
 A prompt sent to a chat that failed to sign in waits in the queue, since the process is still
 there to sign in to.
 
-**The flip.** Chat to CLI runs `cursor-agent --resume <id> --model <m>`. CLI to chat takes the
-chat id from the TUI's `--resume` and its model from `--model`; a TUI started without `--resume`
-starts a new chat.
+**No flip.** Cursor keeps ACP sessions in `acp-sessions/` and its CLI's chats in `chats/`. The
+CLI started with a chat's id opens an empty conversation under that id, and the ACP server
+answers `Session not found` for a CLI chat. So `flip-agent` refuses a Cursor chat
+(`AgentProvider::flips`), the clients offer no switch for one, and a terminal running
+`cursor-agent` is not taken for an agent.
 
-**Not there.** Accounts, the sign-in the daemon drives, forks, the latest version, effort, and
-answers to Cursor's own blocking requests (`cursor/ask_question`, `cursor/create_plan`), which the
-runtime refuses as unknown methods.
+**Not there.** Accounts, the sign-in the daemon drives, forks, the latest version, and answers to
+Cursor's own blocking requests (`cursor/ask_question`, `cursor/create_plan`), which the runtime
+refuses as unknown methods.
 
-**Not yet seen working.** The CLI held a login the server rejected when this was built
-(2026-11-20), so everything after `authenticate` is from Cursor's documentation: a turn, the
-modes (`agent`, `plan`, `ask`; `ask` is read as read-only), model choice over ACP, titles, and
-whether an ACP session id is a chat id the TUI resumes. Seen live: the handshake, the signed-out
-failure with the process kept running, chat to TUI and back.
+**Seen working** (2026-11-20, CLI 2026.09.18): sign-in first, a turn with tool calls, the title,
+a bare `--model`, the mode and model options set over ACP, a resumed session with its history and
+title, and the flip refused. Not seen: a permission ask (the config tested runs everything) and
+the two blocking requests.
 
 # Codex on the shared app server
 
@@ -768,7 +777,7 @@ end no turn.
 
 - `agent-send [-t %N] TEXT` to an agent pane submits a prompt. `--wait`, `--json`, `--final`,
   `--on-block`, `--notify` and `--progress` work on its turn as they did for the old agent pane.
-- `agent-send` with text to a terminal running Claude Code, Codex, Antigravity, Grok or Cursor fails with "runs Claude Code in
+- `agent-send` with text to a terminal running Claude Code, Codex, Antigravity or Grok fails with "runs Claude Code in
   its terminal; flip the pane to chat first". Nothing types prompts into a TUI or posts them to its
   peer socket. `--wait ''` still waits on such a terminal's `@agent_state`.
 - `agent-respond` answers a pending permission in an agent pane.

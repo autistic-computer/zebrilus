@@ -14,6 +14,7 @@ use crate::agent::{
 };
 
 const EFFORT: &str = "effort";
+const MODEL: &str = "model";
 const SIGNED_OUT: &str = "Authentication required";
 
 #[derive(Clone, Copy)]
@@ -22,6 +23,7 @@ pub(crate) struct Dialect {
     pub(crate) signed_out: &'static str,
     pub(crate) stored_title: fn(&str) -> Option<String>,
     pub(crate) sign_in: Option<&'static str>,
+    pub(crate) bracket_models: bool,
 }
 
 #[derive(Default)]
@@ -43,6 +45,7 @@ pub(crate) async fn run(
     let transcript = Mutex::new(Transcript::default());
     let sign_in = Mutex::new(SignIn::default());
     let held_commands = command_tx.downgrade();
+    let models = Mutex::new(Vec::<String>::new());
     let commands = channels.commands;
     let controls = channels.controls;
     let events = channels.events;
@@ -54,6 +57,12 @@ pub(crate) async fn run(
                     RuntimeCommand::Authenticate {
                         method_id: method.to_owned(),
                     }
+                }
+                (_, RuntimeCommand::SetConfigOption { option_id, value })
+                    if dialect.bracket_models && option_id == MODEL =>
+                {
+                    let value = bracket_model(&models.lock(), value);
+                    RuntimeCommand::SetConfigOption { option_id, value }
                 }
                 (_, command) => command,
             };
@@ -92,6 +101,11 @@ pub(crate) async fn run(
                     }
                     continue;
                 }
+            }
+            if dialect.bracket_models
+                && let Some(offered) = offered_models(&payload)
+            {
+                *models.lock() = offered;
             }
             let chat = transcript.lock().payload(&payload);
             let title = match &payload {
@@ -292,6 +306,47 @@ fn to_zz(payload: AgentStreamPayload, dialect: Dialect) -> AgentStreamPayload {
     }
 }
 
+fn offered_models(payload: &AgentStreamPayload) -> Option<Vec<String>> {
+    let options = match payload {
+        AgentStreamPayload::SessionReady { config_options, .. }
+        | AgentStreamPayload::SessionSwitched { config_options, .. } => config_options.as_ref()?,
+        AgentStreamPayload::ConfigOptionsChanged { config_options, .. } => config_options,
+        AgentStreamPayload::Update { update }
+            if update["sessionUpdate"] == "config_option_update" =>
+        {
+            &update["configOptions"]
+        }
+        _ => return None,
+    };
+    let model = options
+        .as_array()?
+        .iter()
+        .find(|option| option["id"] == MODEL)?;
+    Some(
+        model["options"]
+            .as_array()?
+            .iter()
+            .filter_map(|choice| choice["value"].as_str())
+            .map(str::to_owned)
+            .collect(),
+    )
+}
+
+fn bracket_model(offered: &[String], asked: String) -> String {
+    if asked.contains('[') {
+        return asked;
+    }
+    offered
+        .iter()
+        .find(|value| {
+            value
+                .strip_prefix(asked.as_str())
+                .is_some_and(|rest| rest.starts_with('['))
+        })
+        .cloned()
+        .unwrap_or(asked)
+}
+
 fn resolved(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned())
 }
@@ -323,12 +378,14 @@ mod tests {
         signed_out: "signed out of agy",
         stored_title: |_| None,
         sign_in: None,
+        bracket_models: false,
     };
     const GROK: Dialect = Dialect {
         effort_option: "reasoning_effort",
         signed_out: "signed out of grok",
         stored_title: |_| None,
         sign_in: None,
+        bracket_models: false,
     };
 
     #[test]
@@ -398,5 +455,27 @@ mod tests {
                 message: "signed out of grok".to_owned(),
             }
         );
+        let offered = offered_models(&AgentStreamPayload::ConfigOptionsChanged {
+            option_id: "model".to_owned(),
+            value: String::new(),
+            config_options: json!([{
+                "id": "model",
+                "options": [
+                    {"value": "default[]"},
+                    {"value": "composer-2[fast=true]"},
+                    {"value": "composer-2.5[fast=true]"},
+                ],
+            }]),
+        })
+        .unwrap();
+        assert_eq!(
+            bracket_model(&offered, "composer-2".to_owned()),
+            "composer-2[fast=true]"
+        );
+        assert_eq!(
+            bracket_model(&offered, "composer-2.5[fast=false]".to_owned()),
+            "composer-2.5[fast=false]"
+        );
+        assert_eq!(bracket_model(&offered, "gpt-9".to_owned()), "gpt-9");
     }
 }

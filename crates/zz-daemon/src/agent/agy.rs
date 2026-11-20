@@ -23,6 +23,7 @@ const DIALECT: Dialect = Dialect {
     signed_out: "Antigravity is signed out. Sign in by running `agy` in a terminal.",
     stored_title: |_| None,
     sign_in: None,
+    bracket_models: false,
 };
 
 pub(crate) async fn run_agy_runtime(

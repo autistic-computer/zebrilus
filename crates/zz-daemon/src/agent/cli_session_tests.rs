@@ -477,22 +477,3 @@ fn a_grok_tui_resumes_the_session_grok_lists_as_open_for_its_process() {
         ]
     );
 }
-
-#[test]
-fn a_cursor_chat_flips_to_the_cli_resuming_its_chat() {
-    assert_eq!(
-        cli_command(
-            AgentProvider::Cursor,
-            Some("5f1a8af5-adf1-4182-9fd9-b875f617f0c2"),
-            Some("composer-2.5"),
-            Some("high"),
-        ),
-        [
-            "cursor-agent",
-            "--resume",
-            "5f1a8af5-adf1-4182-9fd9-b875f617f0c2",
-            "--model",
-            "composer-2.5",
-        ]
-    );
-}

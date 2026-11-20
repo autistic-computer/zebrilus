@@ -544,24 +544,6 @@ pub(crate) fn grok_session(pid: u32, home: Option<&Path>, cwd: Option<PathBuf>) 
     }
 }
 
-pub(crate) fn cursor_session(pid: u32, cwd: Option<PathBuf>) -> CliSession {
-    let args = arguments(pid);
-    let flag = |name: &str| {
-        option_values(&args, &[name])
-            .into_iter()
-            .find(|value| launch_value(value))
-            .map(str::to_owned)
-    };
-    CliSession {
-        pid: Some(pid),
-        session_id: flag("--resume"),
-        cwd,
-        model: flag("--model"),
-        effort: None,
-        running: Vec::new(),
-    }
-}
-
 pub(crate) fn grok_summary(home: &Path, session: &str) -> Option<Value> {
     if !uuid(session) {
         return None;
@@ -739,15 +721,7 @@ pub(crate) fn cli_command(
                 words.extend(["--effort".to_owned(), effort.to_owned()]);
             }
         }
-        AgentProvider::Cursor => {
-            words.push("cursor-agent".to_owned());
-            if let Some(session) = session_id {
-                words.extend(["--resume".to_owned(), session.to_owned()]);
-            }
-            if let Some(model) = model {
-                words.extend(["--model".to_owned(), model.to_owned()]);
-            }
-        }
+        AgentProvider::Cursor => words.push("cursor-agent".to_owned()),
         AgentProvider::Grok => {
             words.push("grok".to_owned());
             if let Some(session) = session_id {
@@ -840,7 +814,7 @@ fn launch_value(value: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || "-._[]:/".contains(character))
 }
 
-fn read_small(path: &Path) -> Option<String> {
+pub(crate) fn read_small(path: &Path) -> Option<String> {
     let file = std::fs::File::open(path).ok()?;
     if file.metadata().ok()?.len() > MAX_SETTINGS_BYTES {
         return None;

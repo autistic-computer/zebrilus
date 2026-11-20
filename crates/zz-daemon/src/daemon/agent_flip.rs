@@ -109,6 +109,14 @@ impl FlipStep {
     }
 }
 
+#[cfg(all(feature = "agent", unix))]
+fn no_flip(pane: PaneId, provider: AgentProvider) -> ServerError {
+    ServerError::InvalidTarget(format!(
+        "{pane} runs {}, whose CLI and chats keep separate conversations, so it does not flip",
+        provider.label()
+    ))
+}
+
 pub(super) fn cli_provider(process: &[String]) -> Option<AgentProvider> {
     process.iter().find_map(|candidate| {
         let name = candidate.rsplit(['/', '\\']).next()?;
@@ -118,7 +126,6 @@ pub(super) fn cli_provider(process: &[String]) -> Option<AgentProvider> {
             "codex" => Some(AgentProvider::Codex),
             "agy" => Some(AgentProvider::Antigravity),
             "grok" => Some(AgentProvider::Grok),
-            "cursor-agent" => Some(AgentProvider::Cursor),
             _ => None,
         }
     })
@@ -260,6 +267,9 @@ impl Shared {
         };
         match kind {
             PaneKind::Agent(descriptor) => {
+                if !descriptor.provider.flips() {
+                    return Err(no_flip(pane, descriptor.provider));
+                }
                 let provider = descriptor.provider;
                 let account = descriptor
                     .account
@@ -303,7 +313,7 @@ impl Shared {
             PaneKind::Terminal => {
                 let provider = self.terminal_agent(pane).ok_or_else(|| {
                     ServerError::InvalidTarget(format!(
-                        "{pane} runs none of Claude Code, Codex, Antigravity, Grok or Cursor"
+                        "{pane} runs none of Claude Code, Codex, Antigravity or Grok"
                     ))
                 })?;
                 let pane_pid = pane_pid.ok_or(ServerError::PaneExited(pane))?;
@@ -353,16 +363,7 @@ impl Shared {
                         }
                         cli_session::grok_session(pid, home.as_deref(), cwd)
                     }
-                    AgentProvider::Cursor => {
-                        let pid =
-                            cli_session::agent_pid(pane_pid, "cursor-agent").ok_or_else(|| {
-                                ServerError::InvalidTarget(format!(
-                                    "{pane} runs no cursor-agent process"
-                                ))
-                            })?;
-                        let cwd = zz_daemon_client::process_info::working_directory(pid).or(cwd);
-                        cli_session::cursor_session(pid, cwd)
-                    }
+                    AgentProvider::Cursor => return Err(no_flip(pane, provider)),
                 };
                 let account = session
                     .pid
@@ -383,7 +384,7 @@ impl Shared {
                 })
             }
             _ => Err(ServerError::InvalidTarget(format!(
-                "{pane} is neither a chat nor a terminal running Claude Code, Codex, Antigravity, Grok or Cursor"
+                "{pane} is neither a chat nor a terminal running Claude Code, Codex, Antigravity or Grok"
             ))),
         }
     }
