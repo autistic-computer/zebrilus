@@ -30,8 +30,8 @@ use zz_protocol::{
     MAX_AGENT_OPTION_BYTES, MAX_AGENT_SEND_BYTES, MAX_AGENT_SESSION_ID_BYTES, MAX_GUI_TEXT_BYTES,
     MuxOptionKey, NATIVE_COMMAND_NAMES, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus,
     PaneId, PaneKindSnapshot, PopupBorderLines, RawText, SIMULATOR_PANE_KIND, ServerError,
-    SessionId, SourceSpan, TerminalUiCommand, ViewContent, ViewDescriptor, WindowId,
-    catalog_command_spec, command_specs, normalize_browser_profile_name,
+    SessionId, SimulatorDescriptor, SourceSpan, TerminalUiCommand, ViewContent, ViewDescriptor,
+    WindowId, catalog_command_spec, command_specs, normalize_browser_profile_name,
     parse_tmux_command_options, parse_tmux_options, resolve_command,
     unimplemented_tmux_command_spec,
 };
@@ -8073,7 +8073,7 @@ impl MuxEngine {
         let (options, positional) = parse_command_options("select-pane-kind", args)?;
         let Some((selection, command)) = positional.split_first() else {
             return Err(ServerError::CommandParse(
-                "select-pane-kind requires exactly one of: terminal, browser, editor, agent"
+                "select-pane-kind requires exactly one of: terminal, browser, editor, agent, simulator"
                     .to_owned(),
             ));
         };
@@ -8159,6 +8159,7 @@ impl MuxEngine {
                 "about:blank".to_owned(),
                 DEFAULT_BROWSER_PROFILE.to_owned(),
             )),
+            SIMULATOR_PANE_KIND => PaneKind::Simulator(SimulatorDescriptor::default()),
             "editor" => {
                 if !self.experimental_editor_pane {
                     return Err(ServerError::InvalidCommand(
@@ -8179,7 +8180,7 @@ impl MuxEngine {
             }
             _ => {
                 return Err(ServerError::InvalidCommand(format!(
-                    "unknown pane kind {selection:?}; expected terminal, browser, editor, or agent"
+                    "unknown pane kind {selection:?}; expected terminal, browser, editor, agent, or simulator"
                 )));
             }
         };

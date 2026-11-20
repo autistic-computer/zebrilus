@@ -490,6 +490,13 @@ impl Render for AppShell {
                         shell.pane_menu_command("split-window", &["--kind", "browser"], cx);
                     }))
                 })
+                .on_action(cx.listener(|shell, _: &menus::NewSimulatorPane, _, cx| {
+                    shell.pane_menu_command(
+                        "new-pane",
+                        &["--kind", zz_protocol::SIMULATOR_PANE_KIND],
+                        cx,
+                    );
+                }))
                 .on_action(cx.listener(|shell, action: &menus::SwitchSession, _, cx| {
                     let session = shell
                         .mux

@@ -31,6 +31,7 @@ ala::actions!(
         SplitRight,
         SplitDown,
         NewBrowserPane,
+        NewSimulatorPane,
         RenameSession,
         RenameWindow,
         KillWindow,
@@ -163,6 +164,8 @@ fn menu_tree(sessions: &BTreeSet<String>) -> Vec<Menu> {
             MenuItem::action("Split Right", SplitRight),
             MenuItem::action("Split Down", SplitDown),
             MenuItem::action("New Browser Pane", NewBrowserPane),
+            #[cfg(target_os = "macos")]
+            MenuItem::action("New Simulator Pane", NewSimulatorPane),
             MenuItem::separator(),
             MenuItem::submenu(Menu::new("Switch Session").items(
                 sessions.iter().map(|name| {

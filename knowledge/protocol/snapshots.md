@@ -116,7 +116,7 @@ described under [pane status, summary and time](#pane-status-summary-and-time).
 
 `Picker` is a durable, runtime-free pane state used by the native `split-window --kind picker` and `new-window --kind picker` flows. It occupies a real
 layout leaf and survives GUI detach/reattach, but the daemon owns no PTY and the GUI owns no CEF
-session for it. `select-pane-kind` with `terminal`, `browser`, or `editor` materializes the
+session for it. `select-pane-kind` with `terminal`, `browser`, `editor`, or `simulator` materializes the
 same `PaneId` and advances the snapshot generation; a terminal can take `-c` and a command.
 
 `Editor(EditorDescriptor)` is the daemon-owned restore metadata for an Editor pane: the open file's

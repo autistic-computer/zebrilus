@@ -30,12 +30,14 @@ enum PaneChoice {
     Terminal,
     Browser,
     Editor,
+    Simulator,
 }
 
-const CHOICES: [PaneChoice; 3] = [
+const CHOICES: [PaneChoice; 4] = [
     PaneChoice::Terminal,
     PaneChoice::Browser,
     PaneChoice::Editor,
+    PaneChoice::Simulator,
 ];
 
 fn choices(cx: &App) -> Vec<PaneChoice> {
@@ -45,6 +47,7 @@ fn choices(cx: &App) -> Vec<PaneChoice> {
             PaneChoice::Terminal => true,
             PaneChoice::Browser => browser::controller::is_available(cx),
             PaneChoice::Editor => config::editor_pane_enabled(cx),
+            PaneChoice::Simulator => cfg!(target_os = "macos"),
         })
         .collect()
 }
@@ -55,6 +58,7 @@ impl PaneChoice {
             Self::Terminal => "terminal",
             Self::Browser => "browser",
             Self::Editor => "editor",
+            Self::Simulator => zz_protocol::SIMULATOR_PANE_KIND,
         }
     }
 
@@ -63,6 +67,7 @@ impl PaneChoice {
             Self::Terminal => "Terminal",
             Self::Browser => "Browser",
             Self::Editor => "Editor",
+            Self::Simulator => "Simulator",
         }
     }
 
@@ -71,6 +76,7 @@ impl PaneChoice {
             Self::Terminal => "t",
             Self::Browser => "b",
             Self::Editor => "e",
+            Self::Simulator => "s",
         }
     }
 
@@ -79,6 +85,7 @@ impl PaneChoice {
             Self::Terminal => IconName::SquareTerminal,
             Self::Browser => zz_ui::CHROME_ICON,
             Self::Editor => IconName::File,
+            Self::Simulator => IconName::Asset("icons/smartphone.svg"),
         }
     }
 
@@ -87,6 +94,7 @@ impl PaneChoice {
             Self::Terminal => "pane-picker-terminal",
             Self::Browser => "pane-picker-browser",
             Self::Editor => "pane-picker-editor",
+            Self::Simulator => "pane-picker-simulator",
         }
     }
 }
@@ -545,8 +553,9 @@ mod tests {
                 PaneChoice::Terminal,
                 PaneChoice::Browser,
                 PaneChoice::Editor,
+                PaneChoice::Simulator,
             ],
-            "the ungated picker catalog contains all three pane kinds"
+            "the ungated picker catalog contains all four pane kinds"
         );
         assert_eq!(
             picker_action(&key("t"), &CHOICES),
@@ -559,6 +568,10 @@ mod tests {
         assert_eq!(
             picker_action(&key("e"), &CHOICES),
             Some(PickerAction::Activate(PaneChoice::Editor))
+        );
+        assert_eq!(
+            picker_action(&key("s"), &CHOICES),
+            Some(PickerAction::Activate(PaneChoice::Simulator))
         );
         assert_eq!(
             picker_action(&key("escape"), &CHOICES),

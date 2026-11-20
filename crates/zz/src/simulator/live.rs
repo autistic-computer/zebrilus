@@ -8,7 +8,9 @@ use ala::{
     Window, canvas, div, outline, px, size,
 };
 use core_video::pixel_buffer::CVPixelBuffer;
-use penna::{ActiveTheme as _, Colorize as _, IconName, Label, TextStyle};
+use penna::{
+    ActiveTheme as _, Colorize as _, IconName, Label, TextStyle, components::spinner::Spinner,
+};
 use zz_protocol::{CommandInvocation, PaneId, SimulatorDescriptor};
 use zz_simulator::{
     Button, Device, Error, Input, KeyDirection, SHIFT, Screen, Simulator, TouchPhase, key_usage,
@@ -19,11 +21,16 @@ use crate::mux::client::MuxClient;
 
 const PHONE: IconName = IconName::Asset("icons/smartphone.svg");
 const HOUSE: IconName = IconName::Asset("icons/house.svg");
+const LOCK_ICON: IconName = IconName::Asset("icons/lock.svg");
 const HOME: &str = "simulator-home";
+const LOCK: &str = "simulator-lock";
 const SCREENSHOT: &str = "simulator-screenshot";
 const DEVICES: &str = "simulator-devices";
 const TITLE: &str = "Simulator";
 const INSET: f32 = 6.0;
+const TILED_INSET: f32 = 16.0;
+const TILED_TOP: f32 = 4.0;
+const BOOTING_SIZE: (i32, i32) = (1206, 2622);
 const PHONE_CORNER: f32 = 0.146;
 const TABLET_CORNER: f32 = 0.035;
 const TABLET_ASPECT: f32 = 0.6;
@@ -57,6 +64,7 @@ pub(crate) struct SimulatorView {
     state: State,
     selected: usize,
     screen_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    floating: bool,
     touching: bool,
     wheel: Option<(f64, f64)>,
     wheel_epoch: u64,
@@ -80,6 +88,7 @@ impl SimulatorView {
             state: State::Devices(Vec::new()),
             selected: 0,
             screen_bounds: Rc::new(Cell::new(None)),
+            floating: true,
             touching: false,
             wheel: None,
             wheel_epoch: 0,
@@ -102,6 +111,13 @@ impl SimulatorView {
         self.device.clone_from(&descriptor.device);
         self.open(cx);
         true
+    }
+
+    pub(crate) fn set_floating(&mut self, floating: bool, cx: &mut Context<Self>) {
+        if self.floating != floating {
+            self.floating = floating;
+            cx.notify();
+        }
     }
 
     pub(crate) fn focus(&self) -> FocusHandle {
@@ -132,6 +148,11 @@ impl SimulatorView {
                     label: "Home",
                 },
                 PaneKindButton {
+                    key: LOCK,
+                    icon: LOCK_ICON,
+                    label: "Lock",
+                },
+                PaneKindButton {
                     key: SCREENSHOT,
                     icon: IconName::Camera,
                     label: "Screenshot",
@@ -143,15 +164,18 @@ impl SimulatorView {
 
     pub(crate) fn header_action(&mut self, key: &str, cx: &mut Context<Self>) {
         match key {
-            HOME => {
-                if let Some(input) = self.input() {
-                    let _ = input.button(Button::Home, KeyDirection::Down);
-                    let _ = input.button(Button::Home, KeyDirection::Up);
-                }
-            }
+            HOME => self.button(Button::Home),
+            LOCK => self.button(Button::Lock),
             SCREENSHOT => self.screenshot(cx),
             DEVICES => self.pick(String::new(), cx),
             _ => {}
+        }
+    }
+
+    fn button(&self, button: Button) {
+        if let Some(input) = self.input() {
+            let _ = input.button(button, KeyDirection::Down);
+            let _ = input.button(button, KeyDirection::Up);
         }
     }
 
@@ -474,6 +498,55 @@ impl SimulatorView {
             .into_any_element()
     }
 
+    fn stage(&self) -> ala::Div {
+        let stage = div().size_full();
+        if self.floating {
+            stage.px(px(INSET)).pb(px(INSET))
+        } else {
+            stage
+                .pt(px(TILED_TOP))
+                .px(px(TILED_INSET))
+                .pb(px(TILED_INSET))
+        }
+    }
+
+    fn booting(&self, cx: &mut Context<Self>) -> AnyElement {
+        let edge = cx.theme().border();
+        self.stage()
+            .relative()
+            .track_focus(&self.focus)
+            .child(
+                canvas(
+                    |bounds, _, _| {
+                        ObjectFit::Contain.get_bounds(
+                            bounds,
+                            size(DevicePixels(BOOTING_SIZE.0), DevicePixels(BOOTING_SIZE.1)),
+                        )
+                    },
+                    move |_, fit, window, _| {
+                        let radii = Corners::all(fit.size.width * PHONE_CORNER);
+                        window
+                            .paint_quad(outline(fit, edge, BorderStyle::Solid).corner_radii(radii));
+                    },
+                )
+                .size_full(),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        Spinner::new()
+                            .id(("simulator-booting", self.pane.0))
+                            .color(cx.theme().foreground.muted()),
+                    ),
+            )
+            .into_any_element()
+    }
+
     fn screen(&self, live: &Live, cx: &mut Context<Self>) -> AnyElement {
         let buffer = live.buffer.clone();
         let surface = live.screen.surface();
@@ -484,10 +557,7 @@ impl SimulatorView {
         };
         let slot = Rc::clone(&self.screen_bounds);
         let edge = cx.theme().border();
-        div()
-            .size_full()
-            .px(px(INSET))
-            .pb(px(INSET))
+        self.stage()
             .track_focus(&self.focus)
             .on_mouse_down(MouseButton::Left, cx.listener(Self::press))
             .on_mouse_move(cx.listener(Self::drag))
@@ -532,7 +602,7 @@ impl Render for SimulatorView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         match &self.state {
             State::Devices(devices) => self.devices(devices, cx),
-            State::Waiting(name) => self.note(format!("Booting {name}").into(), cx),
+            State::Waiting(_) => self.booting(cx),
             State::Failed(message) => self.note(message.clone(), cx),
             State::Live(live) => self.screen(live, cx),
         }

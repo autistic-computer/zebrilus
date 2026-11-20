@@ -3766,14 +3766,27 @@ impl AppView {
 
     fn ensure_simulator(&mut self, pane: PaneId, window: &Window, cx: &mut Context<Self>) {
         let descriptor = self.mux.read(cx).simulator(pane).unwrap_or_default();
+        let floating = self
+            .mux
+            .read(cx)
+            .snapshot()
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .any(|window| window.floating.iter().any(|float| float.pane == pane));
         let Some(simulator) = self.simulators.get(&pane) else {
             let mux = self.mux.clone();
-            let simulator =
-                cx.new(|cx| crate::simulator::SimulatorView::new(pane, &descriptor, mux, cx));
+            let simulator = cx.new(|cx| {
+                let mut simulator =
+                    crate::simulator::SimulatorView::new(pane, &descriptor, mux, cx);
+                simulator.set_floating(floating, cx);
+                simulator
+            });
             self.simulators.insert(pane, simulator);
             self.simulator_devices.insert(pane, descriptor);
             return;
         };
+        simulator.update(cx, |simulator, cx| simulator.set_floating(floating, cx));
         if self.simulator_devices.get(&pane) == Some(&descriptor) {
             return;
         }
