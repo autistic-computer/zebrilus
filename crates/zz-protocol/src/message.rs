@@ -2269,6 +2269,53 @@ pub enum BrowserCommand {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SimulatorButton {
+    Home,
+    Lock,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SimulatorCommand {
+    Screenshot {
+        request_id: u64,
+        #[serde(deserialize_with = "deserialize_gui_text")]
+        path: String,
+    },
+    Tap {
+        request_id: u64,
+        x: u32,
+        y: u32,
+    },
+    Swipe {
+        request_id: u64,
+        from: (u32, u32),
+        to: (u32, u32),
+    },
+    Type {
+        request_id: u64,
+        #[serde(deserialize_with = "deserialize_gui_text")]
+        text: String,
+    },
+    Press {
+        request_id: u64,
+        button: SimulatorButton,
+    },
+}
+
+impl SimulatorCommand {
+    #[must_use]
+    pub const fn request_id(&self) -> u64 {
+        match self {
+            Self::Screenshot { request_id, .. }
+            | Self::Tap { request_id, .. }
+            | Self::Swipe { request_id, .. }
+            | Self::Type { request_id, .. }
+            | Self::Press { request_id, .. } => *request_id,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentImage {
     #[serde(deserialize_with = "deserialize_agent_image_format")]
@@ -3472,6 +3519,10 @@ pub enum EventPayload {
         pane: PaneId,
         descriptor: crate::SimulatorDescriptor,
     },
+    SimulatorCommand {
+        pane: PaneId,
+        command: SimulatorCommand,
+    },
 }
 
 impl EventPayload {
@@ -3547,7 +3598,9 @@ impl EventPayload {
             | Self::AgentAccounts(_) => None,
             Self::AgentQuotas(_) => Some(crate::AGENT_QUOTAS_CAPABILITY),
             Self::AgentLogin(_) => Some(crate::AGENT_LOGIN_CAPABILITY),
-            Self::SimulatorPane { .. } => Some(crate::SIMULATOR_PANE_CAPABILITY),
+            Self::SimulatorPane { .. } | Self::SimulatorCommand { .. } => {
+                Some(crate::SIMULATOR_PANE_CAPABILITY)
+            }
         }
     }
 

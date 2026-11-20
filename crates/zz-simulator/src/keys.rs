@@ -43,9 +43,55 @@ pub fn key_usage(key: &str) -> Option<u32> {
     Some(usage)
 }
 
+pub fn char_usage(character: char) -> Option<(u32, bool)> {
+    let unshifted = match character {
+        '!' => '1',
+        '@' => '2',
+        '#' => '3',
+        '$' => '4',
+        '%' => '5',
+        '^' => '6',
+        '&' => '7',
+        '*' => '8',
+        '(' => '9',
+        ')' => '0',
+        '_' => '-',
+        '+' => '=',
+        '{' => '[',
+        '}' => ']',
+        '|' => '\\',
+        ':' => ';',
+        '"' => '\'',
+        '~' => '`',
+        '<' => ',',
+        '>' => '.',
+        '?' => '/',
+        'A'..='Z' => character.to_ascii_lowercase(),
+        '\n' => return Some((0x28, false)),
+        '\t' => return Some((0x2B, false)),
+        _ => {
+            return key_usage(character.encode_utf8(&mut [0; 4]))
+                .filter(|_| character.is_ascii_graphic() || character == ' ')
+                .map(|usage| (usage, false));
+        }
+    };
+    key_usage(unshifted.encode_utf8(&mut [0; 4])).map(|usage| (usage, true))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::key_usage;
+    use super::{char_usage, key_usage};
+
+    #[test]
+    fn text_maps_to_usages_with_shift_where_the_key_needs_it() {
+        assert_eq!(char_usage('a'), Some((0x04, false)));
+        assert_eq!(char_usage('A'), Some((0x04, true)));
+        assert_eq!(char_usage('@'), Some((0x1F, true)));
+        assert_eq!(char_usage('?'), Some((0x38, true)));
+        assert_eq!(char_usage(' '), Some((0x2C, false)));
+        assert_eq!(char_usage('\n'), Some((0x28, false)));
+        assert_eq!(char_usage('é'), None);
+    }
 
     #[test]
     fn keys_map_to_their_keyboard_usage_codes() {

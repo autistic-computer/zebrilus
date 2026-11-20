@@ -20,7 +20,8 @@ use crate::{
     MAX_AGENT_RESULT_BYTES, MAX_AGENT_SESSION_DIRECTORIES, MAX_AGENT_SESSION_ID_BYTES,
     MAX_AGENT_UPDATES_BYTES, MAX_ARTIFACT_BYTES, MAX_GUI_TEXT_BYTES, MAX_PASTE_UPLOAD_BYTES,
     MAX_PASTE_UPLOAD_CHUNK_BYTES, MAX_PASTE_UPLOAD_EXTENSION_BYTES, PROTOCOL_VERSION, PaneId,
-    PasteUploadPurpose, PastedImageFormat, ProtocolMessage, agent_update_batch_bytes,
+    PasteUploadPurpose, PastedImageFormat, ProtocolMessage, SimulatorCommand,
+    agent_update_batch_bytes,
     framing::{
         Lane, MAX_ENCODED_FRAME_BYTES, ProtocolError, begin_enveloped_into, decode_enveloped,
         finish_enveloped_in_place, read_enveloped_into,
@@ -581,6 +582,22 @@ fn validate_control_message(message: &ProtocolMessage) -> Result<(), ProtocolErr
     {
         return Err(ProtocolError::InvalidGuiRequest(format!(
             "screenshot path must be at most {MAX_GUI_TEXT_BYTES} bytes"
+        )));
+    }
+    if let ProtocolMessage::Event(Event {
+        payload:
+            EventPayload::SimulatorCommand {
+                command:
+                    SimulatorCommand::Screenshot { path: text, .. }
+                    | SimulatorCommand::Type { text, .. },
+                ..
+            },
+        ..
+    }) = message
+        && text.len() > MAX_GUI_TEXT_BYTES
+    {
+        return Err(ProtocolError::InvalidGuiRequest(format!(
+            "simulator text must be at most {MAX_GUI_TEXT_BYTES} bytes"
         )));
     }
     if let ProtocolMessage::GuiResponse(response) = message {

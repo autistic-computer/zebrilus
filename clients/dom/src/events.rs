@@ -188,6 +188,9 @@ pub fn describe(client: &mut Client, event: CoreEvent) -> Value {
             json!({ "type": "agentLogin", "provider": provider.as_str() })
         }
         CoreEvent::SimulatorChanged { pane } => json!({ "type": "simulator", "pane": pane.0 }),
+        CoreEvent::SimulatorCommand { pane, .. } => {
+            json!({ "type": "simulatorCommand", "pane": pane.0 })
+        }
         CoreEvent::Message(message) => {
             json!({ "type": "message", "name": variant(&format!("{message:?}")) })
         }

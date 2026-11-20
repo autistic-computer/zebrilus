@@ -955,6 +955,7 @@ pub struct MuxClient {
     #[cfg(feature = "agent-pane")]
     watched_agents: BTreeSet<PaneId>,
     screenshot_requests: Vec<(PaneId, u64, String)>,
+    simulator_commands: Vec<(PaneId, zz_protocol::SimulatorCommand)>,
     terminal_commands: BTreeMap<PaneId, Vec<TerminalUiCommand>>,
     command_answers: Vec<(u64, Result<(), String>)>,
     printed_commands: std::cell::RefCell<BTreeSet<u64>>,
@@ -1130,6 +1131,7 @@ impl MuxClient {
             #[cfg(feature = "agent-pane")]
             watched_agents: BTreeSet::new(),
             screenshot_requests: Vec::new(),
+            simulator_commands: Vec::new(),
             terminal_commands: BTreeMap::new(),
             command_answers: Vec::new(),
             printed_commands: std::cell::RefCell::default(),
@@ -3659,6 +3661,7 @@ impl MuxClient {
         self.browser_commands.clear();
         self.clear_agent_streams();
         self.screenshot_requests.clear();
+        self.simulator_commands.clear();
         self.terminal_commands.clear();
         self.clear_all_pasted_images();
         self.pending_commands_revision = self.pending_commands_revision.wrapping_add(1).max(1);
@@ -4164,7 +4167,34 @@ impl MuxClient {
 
     #[must_use]
     pub(crate) fn has_gui_requests(&self) -> bool {
-        !self.screenshot_requests.is_empty()
+        !self.screenshot_requests.is_empty() || !self.simulator_commands.is_empty()
+    }
+
+    pub(crate) fn take_simulator_commands(
+        &mut self,
+    ) -> Vec<(PaneId, zz_protocol::SimulatorCommand)> {
+        std::mem::take(&mut self.simulator_commands)
+    }
+
+    pub(crate) fn send_screenshot(&self, request_id: u64, png: &[u8]) -> Result<(), String> {
+        let Some(client) = &self.attached_connection().client else {
+            return Err("the zz window is not connected".to_owned());
+        };
+        let chunks = png
+            .chunks(zz_protocol::MAX_BROWSER_SCREENSHOT_CHUNK_BYTES)
+            .collect::<Vec<_>>();
+        let last = chunks.len().saturating_sub(1);
+        for (index, chunk) in chunks.into_iter().enumerate() {
+            let message = zz_protocol::ProtocolMessage::BrowserScreenshot {
+                request_id,
+                last: index == last,
+                png: chunk.to_vec(),
+            };
+            client
+                .send(&message)
+                .map_err(|error| format!("could not send the screenshot: {error}"))?;
+        }
+        Ok(())
     }
 
     pub(crate) fn respond_to_request(&self, response: GuiResponse) {
@@ -4795,6 +4825,11 @@ impl MuxClient {
             | CoreEvent::AgentAccountsChanged
             | CoreEvent::AgentLoginChanged { .. }
             | CoreEvent::SimulatorChanged { .. } => {}
+            CoreEvent::SimulatorCommand { pane, command } => {
+                self.simulator_commands.push((pane, command));
+                self.pending_commands_revision =
+                    self.pending_commands_revision.wrapping_add(1).max(1);
+            }
             CoreEvent::AgentSessions { pane, result, .. } => {
                 cx.emit(AgentCatalogReply(result.clone()));
                 #[cfg(feature = "agent-pane")]

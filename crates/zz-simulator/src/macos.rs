@@ -32,7 +32,7 @@ use objc2_core_foundation::{CGPoint, CGSize};
 use objc2_foundation::{NSArray, NSError, NSString, NSUUID};
 use thiserror::Error;
 
-use crate::remote::Remote;
+use crate::remote::{Orientation, Remote};
 
 const CORE_SIMULATOR: &str =
     "/Library/Developer/PrivateFrameworks/CoreSimulator.framework/CoreSimulator";
@@ -95,6 +95,7 @@ type RegisterCallbacks = unsafe extern "C-unwind" fn(
 type UnregisterCallbacks = unsafe extern "C-unwind" fn(*const AnyObject, Sel, *const NSUUID);
 type Perform = unsafe extern "C-unwind" fn(*const AnyObject, Sel);
 type GetObject = unsafe extern "C-unwind" fn(*const AnyObject, Sel) -> *mut AnyObject;
+type GetUnsigned = unsafe extern "C-unwind" fn(*const AnyObject, Sel) -> u32;
 type Responds = unsafe extern "C-unwind" fn(*const AnyObject, Sel, Sel) -> Bool;
 
 struct Notify;
@@ -150,6 +151,12 @@ pub enum Button {
     Lock,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Turn {
+    Left,
+    Right,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Device {
     pub udid: String,
@@ -184,6 +191,12 @@ impl Simulator {
 
     pub fn name(&self) -> String {
         name(&self.device)
+    }
+
+    pub fn rotate(&self, turn: Turn) -> Result<(), Error> {
+        let orientation = Orientation::connect(&self.device)?
+            .ok_or(Error::Remote("has no orientation service"))?;
+        orientation.rotate(turn)
     }
 
     pub fn set_hardware_keyboard(&self, enabled: bool) -> Result<(), Error> {
@@ -293,12 +306,13 @@ impl Screen {
         };
         let on_surfaces = {
             let surface_changes = Arc::clone(&surface_changes);
+            let notify = Arc::clone(&notify);
             RcBlock::with_encoding::<_, _, _, Notify>(move || {
                 surface_changes.fetch_add(1, Ordering::Relaxed);
                 notify();
             })
         };
-        let on_properties = RcBlock::with_encoding::<_, _, _, Notify>(|| {});
+        let on_properties = RcBlock::with_encoding::<_, _, _, Notify>(move || notify());
         let register = unsafe { transmute::<Send, RegisterCallbacks>(objc_msgSend) };
         let register_selector = sel!(registerScreenCallbacksWithUUID:callbackQueue:frameCallback:surfacesChangedCallback:propertiesChangedCallback:);
 
@@ -385,6 +399,22 @@ impl Screen {
             height,
             pixel_format: unsafe { IOSurfaceGetPixelFormat(surface) },
             seed: unsafe { IOSurfaceGetSeed(surface) },
+        }
+    }
+
+    pub fn turns(&self) -> u8 {
+        let Some(properties) = object(&self.registration.descriptor, sel!(screenProperties)) else {
+            return 0;
+        };
+        if !responds(&properties, sel!(uiOrientation)) {
+            return 0;
+        }
+        let get = unsafe { transmute::<Send, GetUnsigned>(objc_msgSend) };
+        match unsafe { get(Retained::as_ptr(&properties), sel!(uiOrientation)) } {
+            2 => 2,
+            3 => 1,
+            4 => 3,
+            _ => 0,
         }
     }
 

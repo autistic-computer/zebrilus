@@ -2769,6 +2769,17 @@ impl AppView {
         if !self.mux.read(cx).has_gui_requests() {
             return;
         }
+        let commands = self.mux.update(cx, |mux, _| mux.take_simulator_commands());
+        for (pane, command) in commands {
+            if let Some(simulator) = self.simulators.get(&pane) {
+                simulator.update(cx, |simulator, cx| simulator.command(command, cx));
+            } else {
+                self.mux.read(cx).respond_to_request(GuiResponse::Error {
+                    request_id: command.request_id(),
+                    message: format!("{pane} has no simulator view in the attached session"),
+                });
+            }
+        }
         let screenshots = self.mux.update(cx, |mux, _| mux.take_screenshot_requests());
         for (pane, request_id, path) in screenshots {
             if let Some(browser) = self.browsers.get(&pane) {
@@ -5820,6 +5831,7 @@ mod tests {
             | CoreEvent::AgentAccountsChanged
             | CoreEvent::AgentLoginChanged { .. }
             | CoreEvent::SimulatorChanged { .. }
+            | CoreEvent::SimulatorCommand { .. }
             | CoreEvent::Message(_) => None,
         }
     }

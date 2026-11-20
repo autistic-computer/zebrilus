@@ -1705,6 +1705,7 @@ fn handle_core_event(
         | CoreEvent::AgentAccountsChanged
         | CoreEvent::AgentLoginChanged { .. }
         | CoreEvent::SimulatorChanged { .. }
+        | CoreEvent::SimulatorCommand { .. }
         | CoreEvent::Message(_) => Ok(ProtocolOutcome::None),
     }
 }

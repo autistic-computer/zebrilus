@@ -121,10 +121,10 @@ use zz_protocol::{
     PanesModeBorder, PasteUploadPurpose, PastedImageFormat, PatchTail, PopupBorderLines,
     PreparedCommand, PreparedCommandResult, PromptCursor, ProtocolError, ProtocolMessage, RawText,
     SERVER_OPTION_CAPABILITY_PREFIX, SPLIT_RATIO_BASIS, ServerError, ServerHello, SessionId,
-    SessionViewer, SimulatorDescriptor, SourceSpan, SplitId, StatusLine, StdoutClaim, WindowId,
-    canonical_key, encode_protocol_message_into, encode_terminal_patch_event_into,
-    encode_terminal_viewport_event_into, is_key_name, layout_menu_row, menu_row_cells,
-    menu_row_width, resolve_command,
+    SessionViewer, SimulatorButton, SimulatorCommand, SimulatorDescriptor, SourceSpan, SplitId,
+    StatusLine, StdoutClaim, WindowId, canonical_key, encode_protocol_message_into,
+    encode_terminal_patch_event_into, encode_terminal_viewport_event_into, is_key_name,
+    layout_menu_row, menu_row_cells, menu_row_width, resolve_command,
 };
 use zz_terminal::{
     AppearanceColor, AppearanceConfigDisposition, AppearanceLoad, AppearanceProvenance,
@@ -4710,7 +4710,16 @@ const INSPECT_VERBS: &[(&str, &[&str])] = &[
     ("view", &["view-pane", "resize-pane", "kill-pane"]),
     (
         "simulator",
-        &["set-simulator-device", "resize-pane", "kill-pane"],
+        &[
+            "set-simulator-device",
+            "capture-simulator",
+            "tap-simulator",
+            "swipe-simulator",
+            "type-simulator",
+            "press-simulator",
+            "resize-pane",
+            "kill-pane",
+        ],
     ),
     ("picker", &["resize-pane", "kill-pane", "select-pane-kind"]),
     (
@@ -4764,6 +4773,7 @@ enum DaemonCommandDispatch {
     WaitPane,
     RunPane,
     CaptureBrowser,
+    Simulator,
     Html,
     DebugMarker,
     Tools,
@@ -4805,6 +4815,11 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("wait-pane", DaemonCommandDispatch::WaitPane),
     ("run-pane", DaemonCommandDispatch::RunPane),
     ("capture-browser", DaemonCommandDispatch::CaptureBrowser),
+    ("capture-simulator", DaemonCommandDispatch::Simulator),
+    ("tap-simulator", DaemonCommandDispatch::Simulator),
+    ("swipe-simulator", DaemonCommandDispatch::Simulator),
+    ("type-simulator", DaemonCommandDispatch::Simulator),
+    ("press-simulator", DaemonCommandDispatch::Simulator),
     ("html", DaemonCommandDispatch::Html),
     ("debug-marker", DaemonCommandDispatch::DebugMarker),
     ("tools", DaemonCommandDispatch::Tools),
@@ -8691,6 +8706,9 @@ impl Shared {
                     }
                     DaemonCommandDispatch::CaptureBrowser => {
                         self.capture_browser(context, &command.args)
+                    }
+                    DaemonCommandDispatch::Simulator => {
+                        self.simulator_command(context, canonical, &command.args)
                     }
                     DaemonCommandDispatch::Html => self.html(
                         client,
@@ -18185,6 +18203,139 @@ impl Shared {
             |request_id| EventPayload::BrowserCommand {
                 pane,
                 command: BrowserCommand::Screenshot { request_id, path },
+            },
+        )
+    }
+
+    fn simulator_command(
+        self: &Arc<Self>,
+        context: &ExecutionContext,
+        name: &str,
+        args: &[RawText],
+    ) -> Result<Execution, DaemonError> {
+        let spec = zz_protocol::catalog_command_spec(name).expect("simulator verbs are cataloged");
+        let name = spec.name;
+        let parsed = zz_protocol::parse_tmux_options(spec, args)?;
+        let mut target = None;
+        let mut output = None;
+        for option in parsed.options {
+            match option {
+                zz_protocol::TmuxOption::Value("-t", value) => target = Some(value.to_owned()),
+                zz_protocol::TmuxOption::Value("-o", value) => output = Some(value.to_owned()),
+                _ => {}
+            }
+        }
+        let words = parsed
+            .positionals
+            .iter()
+            .map(RawText::as_str)
+            .collect::<Vec<_>>();
+        let number = |word: &str| {
+            word.parse::<u32>().map_err(|_| {
+                ServerError::CommandParse(format!("{name} takes whole pixel numbers, not {word:?}"))
+            })
+        };
+        let screenshot = match name {
+            "capture-simulator" => {
+                let output = output.ok_or_else(|| {
+                    ServerError::CommandParse(format!("{name} needs an output path (-o)"))
+                })?;
+                let path = expand_path(&output);
+                if !path.is_absolute() {
+                    return Err(ServerError::InvalidCommand(format!(
+                        "{name} output path must be absolute: {output}"
+                    ))
+                    .into());
+                }
+                Some(
+                    path.to_str()
+                        .ok_or_else(|| {
+                            ServerError::InvalidCommand(format!(
+                                "{name} output path is not valid UTF-8"
+                            ))
+                        })?
+                        .to_owned(),
+                )
+            }
+            _ => None,
+        };
+        let command = match (name, words.as_slice()) {
+            ("capture-simulator", []) => {
+                let path = screenshot.clone().unwrap_or_default();
+                Box::new(move |request_id| SimulatorCommand::Screenshot { request_id, path })
+                    as Box<dyn FnOnce(u64) -> SimulatorCommand>
+            }
+            ("tap-simulator", [x, y]) => {
+                let (x, y) = (number(x)?, number(y)?);
+                Box::new(move |request_id| SimulatorCommand::Tap { request_id, x, y })
+            }
+            ("swipe-simulator", [x1, y1, x2, y2]) => {
+                let from = (number(x1)?, number(y1)?);
+                let to = (number(x2)?, number(y2)?);
+                Box::new(move |request_id| SimulatorCommand::Swipe {
+                    request_id,
+                    from,
+                    to,
+                })
+            }
+            ("type-simulator", words) if !words.is_empty() => {
+                let text = words.join(" ");
+                if text.len() > zz_protocol::MAX_GUI_TEXT_BYTES {
+                    return Err(ServerError::InvalidCommand(format!(
+                        "{name} text must be at most {} bytes",
+                        zz_protocol::MAX_GUI_TEXT_BYTES
+                    ))
+                    .into());
+                }
+                Box::new(move |request_id| SimulatorCommand::Type { request_id, text })
+            }
+            ("press-simulator", [button]) => {
+                let button = match *button {
+                    "home" => SimulatorButton::Home,
+                    "lock" => SimulatorButton::Lock,
+                    other => {
+                        return Err(ServerError::CommandParse(format!(
+                            "{name} takes home or lock, not {other:?}"
+                        ))
+                        .into());
+                    }
+                };
+                Box::new(move |request_id| SimulatorCommand::Press { request_id, button })
+            }
+            _ => {
+                return Err(
+                    ServerError::CommandParse(format!("usage: {name} {}", spec.usage)).into(),
+                );
+            }
+        };
+        let pane = {
+            let inner = self.inner.lock();
+            let pane =
+                inner
+                    .engine
+                    .resolve_pane(target.as_deref(), context.window, context.pane)?;
+            if !matches!(
+                inner.engine.state.pane(pane).map(|pane| &pane.kind),
+                Some(PaneKind::Simulator(_))
+            ) {
+                return Err(
+                    ServerError::InvalidTarget(format!("{pane} is not a simulator pane")).into(),
+                );
+            }
+            pane
+        };
+        self.request_from_gui(
+            pane,
+            |missing| {
+                format!(
+                    "{name}: {missing}, so {pane} is not showing. Open that session in the zz \
+                     app, then retry."
+                )
+            },
+            screenshot,
+            |request_id| EventPayload::SimulatorCommand {
+                pane,
+                command: command(request_id),
             },
         )
     }
@@ -53409,6 +53560,18 @@ Save the latest browser frame as a PNG and print its path. Use an absolute path:
 window showing the pane writes the file on its own machine; an iPad sends the picture and the
 daemon writes it on this host. On Linux, restart with `ZZ_BROWSER_SHARED_TEXTURE=0` if the GPU
 path reports that readback is unavailable.
+
+### `zz capture-simulator -t %N -o /absolute/out.png`
+
+Save an iOS simulator pane's screen as an upright PNG and print its path. The desktop app on
+the Mac that shows the pane sends the picture and the daemon writes it on this host.
+
+### `zz tap-simulator -t %N X Y`
+
+Tap the simulator at a point of that PNG, in its pixels. `swipe-simulator -t %N X1 Y1 X2 Y2`
+drags between two points, `type-simulator -t %N text ...` types with the simulator's keyboard
+(ASCII only), and `press-simulator -t %N home|lock` presses a button. `--kind simulator UDID`
+on `new-pane` opens a pane on a device; `xcrun simctl list devices booted` lists them.
 
 ### Browser through CDP
 

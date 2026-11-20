@@ -23,9 +23,10 @@ use objc2::{
 };
 use objc2_foundation::{NSError, NSString};
 
-use crate::macos::{Button, Error, KeyDirection, TouchPhase};
+use crate::macos::{Button, Error, KeyDirection, TouchPhase, Turn};
 
 const SERVICE: &CStr = c"com.apple.coredevice.feature.remote.hid.digitizer";
+const ORIENTATION: &CStr = c"com.apple.coredevice.feature.remote.devicecontrol.orientation";
 const TOUCH: &CStr = c"IndigoDigitizerEvent";
 const KEY: &CStr = c"IndigoKeyboardButtonEvent";
 const BUTTON: &CStr = c"IndigoButtonEvent";
@@ -72,15 +73,15 @@ unsafe extern "C" {
     fn dispatch_release(object: *mut c_void);
 }
 
-pub(crate) struct Remote {
+struct Link {
     connection: Xpc,
     queue: *mut c_void,
     closed: Arc<AtomicBool>,
     _events: RcBlock<dyn Fn(Xpc)>,
 }
 
-impl Remote {
-    pub(crate) fn connect(device: &NSObject, verify: bool) -> Result<Option<Self>, Error> {
+impl Link {
+    fn open(device: &NSObject, service: &CStr) -> Result<Option<Self>, Error> {
         let Some(endpoint_from_port) = private(c"xpc_endpoint_create_mach_port_4sim") else {
             return Ok(None);
         };
@@ -92,7 +93,7 @@ impl Remote {
         let enable = unsafe { transmute::<*mut c_void, EnableSimulatorToHost>(enable) };
 
         let lookup = unsafe { transmute::<Send, Lookup>(objc_msgSend) };
-        let name = NSString::from_str(&SERVICE.to_string_lossy());
+        let name = NSString::from_str(&service.to_string_lossy());
         let mut error: *mut NSError = null_mut();
         let port = unsafe {
             lookup(
@@ -130,12 +131,70 @@ impl Remote {
             xpc_connection_set_event_handler(connection, RcBlock::as_ptr(&events).cast());
             xpc_connection_resume(connection);
         }
-        let remote = Self {
+        Ok(Some(Self {
             connection,
             queue,
             closed,
             _events: events,
+        }))
+    }
+
+    fn send(&self, message: Xpc) -> Result<(), Error> {
+        let closed = self.closed.load(Ordering::Relaxed);
+        unsafe {
+            if !closed {
+                xpc_connection_send_message(self.connection, message);
+            }
+            xpc_release(message);
+        }
+        if closed {
+            return Err(Error::Remote("closed the connection"));
+        }
+        Ok(())
+    }
+
+    fn request(&self, message: Xpc) -> Result<(), Error> {
+        let (sender, receiver) = mpsc::channel();
+        let reply = RcBlock::new(move |reply: Xpc| {
+            let _ = sender.send(!is_error(reply));
+        });
+        unsafe {
+            xpc_connection_send_message_with_reply(
+                self.connection,
+                message,
+                self.queue,
+                RcBlock::as_ptr(&reply).cast(),
+            );
+            xpc_release(message);
+        }
+        match receiver.recv_timeout(REPLY_TIMEOUT) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(Error::Remote("closed the connection")),
+            Err(_) => Err(Error::Remote("did not answer")),
+        }
+    }
+}
+
+impl Drop for Link {
+    fn drop(&mut self) {
+        unsafe {
+            xpc_connection_cancel(self.connection);
+            xpc_release(self.connection);
+            dispatch_release(self.queue);
+        }
+    }
+}
+
+pub(crate) struct Remote {
+    link: Link,
+}
+
+impl Remote {
+    pub(crate) fn connect(device: &NSObject, verify: bool) -> Result<Option<Self>, Error> {
+        let Some(link) = Link::open(device, SERVICE)? else {
+            return Ok(None);
         };
+        let remote = Self { link };
         if verify {
             remote.flush()?;
         }
@@ -162,11 +221,12 @@ impl Remote {
             xpc_dictionary_set_uint64(payload, c"edge".as_ptr(), 0);
             xpc_dictionary_set_uint64(payload, c"target".as_ptr(), 0);
         }
-        self.send(TOUCH, payload)
+        self.link.send(message(TOUCH, false, payload))
     }
 
     pub(crate) fn key(&self, usage: u32, direction: KeyDirection) -> Result<(), Error> {
-        self.send(KEY, key_payload(usage, direction))
+        self.link
+            .send(message(KEY, false, key_payload(usage, direction)))
     }
 
     pub(crate) fn button(&self, button: Button, direction: KeyDirection) -> Result<(), Error> {
@@ -183,54 +243,44 @@ impl Remote {
             );
             xpc_dictionary_set_uint64(payload, c"state".as_ptr(), state(direction));
         }
-        self.send(BUTTON, payload)
+        self.link.send(message(BUTTON, false, payload))
     }
 
     pub(crate) fn flush(&self) -> Result<(), Error> {
-        let message = message(KEY, true, key_payload(0, KeyDirection::Up));
-        let (sender, receiver) = mpsc::channel();
-        let reply = RcBlock::new(move |reply: Xpc| {
-            let _ = sender.send(!is_error(reply));
-        });
-        unsafe {
-            xpc_connection_send_message_with_reply(
-                self.connection,
-                message,
-                self.queue,
-                RcBlock::as_ptr(&reply).cast(),
-            );
-            xpc_release(message);
-        }
-        match receiver.recv_timeout(REPLY_TIMEOUT) {
-            Ok(true) => Ok(()),
-            Ok(false) => Err(Error::Remote("closed the connection")),
-            Err(_) => Err(Error::Remote("did not answer")),
-        }
-    }
-
-    fn send(&self, kind: &CStr, payload: Xpc) -> Result<(), Error> {
-        let message = message(kind, false, payload);
-        let closed = self.closed.load(Ordering::Relaxed);
-        unsafe {
-            if !closed {
-                xpc_connection_send_message(self.connection, message);
-            }
-            xpc_release(message);
-        }
-        if closed {
-            return Err(Error::Remote("closed the connection"));
-        }
-        Ok(())
+        self.link
+            .request(message(KEY, true, key_payload(0, KeyDirection::Up)))
     }
 }
 
-impl Drop for Remote {
-    fn drop(&mut self) {
+pub(crate) struct Orientation {
+    link: Link,
+}
+
+impl Orientation {
+    pub(crate) fn connect(device: &NSObject) -> Result<Option<Self>, Error> {
+        Ok(Link::open(device, ORIENTATION)?.map(|link| Self { link }))
+    }
+
+    pub(crate) fn rotate(&self, turn: Turn) -> Result<(), Error> {
+        let direction = dictionary();
+        let payload = dictionary();
+        let message = dictionary();
         unsafe {
-            xpc_connection_cancel(self.connection);
-            xpc_release(self.connection);
-            dispatch_release(self.queue);
+            xpc_dictionary_set_string(
+                direction,
+                c"_0".as_ptr(),
+                match turn {
+                    Turn::Left => c"left".as_ptr(),
+                    Turn::Right => c"right".as_ptr(),
+                },
+            );
+            xpc_dictionary_set_value(payload, c"rotate".as_ptr(), direction);
+            xpc_release(direction);
+            xpc_dictionary_set_string(message, c"featureIdentifier".as_ptr(), ORIENTATION.as_ptr());
+            xpc_dictionary_set_value(message, c"payload".as_ptr(), payload);
+            xpc_release(payload);
         }
+        self.link.request(message)
     }
 }
 

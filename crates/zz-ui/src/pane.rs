@@ -231,6 +231,8 @@ fn title_menu(rows: Vec<PaneTitleRow>, on_action: PaneActionHandler, cx: &App) -
         base: div()
             .id("pane-title-menu")
             .debug_selector(|| "pane-title-menu".into())
+            .role(ala::Role::Button)
+            .aria_label("Simulators")
             .flex()
             .flex_none()
             .items_center()

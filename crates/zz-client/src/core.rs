@@ -160,6 +160,10 @@ pub enum CoreEvent {
     SimulatorChanged {
         pane: PaneId,
     },
+    SimulatorCommand {
+        pane: PaneId,
+        command: zz_protocol::SimulatorCommand,
+    },
     TerminalUiCommand {
         pane: PaneId,
         command: TerminalUiCommand,
@@ -1291,6 +1295,10 @@ impl ClientCore {
                 }
                 self.simulators.insert(pane, descriptor);
                 self.events.push_back(CoreEvent::SimulatorChanged { pane });
+            }
+            EventPayload::SimulatorCommand { pane, command } => {
+                self.events
+                    .push_back(CoreEvent::SimulatorCommand { pane, command });
             }
             EventPayload::ControlExit { .. }
             | EventPayload::HookEvent { .. }

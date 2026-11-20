@@ -10,17 +10,19 @@ use crate::mux::client::MuxClient;
 
 pub(crate) struct SimulatorView {
     focus: FocusHandle,
+    mux: Entity<MuxClient>,
 }
 
 impl SimulatorView {
     pub(crate) fn new(
         _: PaneId,
         _: &SimulatorDescriptor,
-        _: Entity<MuxClient>,
+        mux: Entity<MuxClient>,
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
             focus: cx.focus_handle(),
+            mux,
         }
     }
 
@@ -55,6 +57,19 @@ impl SimulatorView {
     }
 
     pub(crate) fn title_pick(&mut self, _: usize, _: &mut Context<Self>) {}
+
+    pub(crate) fn command(
+        &mut self,
+        command: zz_protocol::SimulatorCommand,
+        cx: &mut Context<Self>,
+    ) {
+        self.mux
+            .read(cx)
+            .respond_to_request(zz_protocol::GuiResponse::Error {
+                request_id: command.request_id(),
+                message: "simulators need a Mac".to_owned(),
+            });
+    }
 }
 
 impl Render for SimulatorView {
