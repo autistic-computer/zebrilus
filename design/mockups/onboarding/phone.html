@@ -23,9 +23,9 @@
   .zz-head { display: grid; gap: 8px; }
   .zz-ob h3 { margin: 0; font-size: var(--penna-text-display-size); line-height: var(--penna-text-display-line); font-weight: 700; letter-spacing: -0.015em; }
   .zz-line { font-size: 17px; line-height: 22px; color: var(--penna-fg-muted); }
-  .zz-dots { display: flex; justify-content: center; gap: 6px; }
-  .zz-dots > i { width: 6px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--penna-fg) 22%, transparent); }
-  .zz-dots > i[data-on] { width: 12px; background: var(--penna-fg); }
+  .zz-dots { display: flex; justify-content: center; gap: 8px; }
+  .zz-dots > i { width: 8px; height: 8px; border-radius: 4px; background: var(--penna-fg-faint); }
+  .zz-dots > i[data-on] { width: 24px; background: var(--penna-fg); }
   .zz-foot { display: grid; gap: 14px; }
   .zz-go { width: 100%; }
   .zz-go[data-penna] { --penna-r: 28px; height: 56px; }
@@ -124,12 +124,14 @@
         <tr><td>Sky</td><td>Behind everything, as the desktop's onboarding draws it. Zones: title, line, field or rows, dots, button.</td><td>zz_ui::sky, SkyZones</td></tr>
         <tr><td>Content</td><td>Anchored to the bottom, 20 from the sides, 8 above the home indicator or the keyboard, 440 wide at most.</td><td>phone_onboarding_page</td></tr>
         <tr><td>Title, line</td><td>Display 26/32 strong; under it, 8 apart, the line in touch body, muted.</td><td>TextStyle::Display, TouchBody</td></tr>
-        <tr><td>Blocks</td><td>18 apart. Dots 14 above the button, centered, one per step.</td><td>page_dots</td></tr>
-        <tr><td>Field</td><td>The Add machine field and its input: Size::Touch, placeholder user@host. Return connects. A bare name ending in .ts.net is a tailnet machine.</td><td>hosts.destination</td></tr>
+        <tr><td>Blocks</td><td>18 apart. Progress 14 above the button, centered.</td><td></td></tr>
+        <tr><td>Progress</td><td>One 8 tall capsule per step, 8 apart. The current one 24 wide in the foreground ink, the rest 8 wide and faint. Between steps the wide one travels: each capsule's width and ink follow how near it is to the moving position.</td><td>phone_progress</td></tr>
+        <tr><td>Field</td><td>The Add machine field and its input: the phone field, Size::TouchLarge (56), placeholder user@host. Return connects. A bare name ending in .ts.net is a tailnet machine.</td><td>hosts.destination</td></tr>
         <tr><td>Error</td><td>Under the field in danger ink: why it could not parse, or why the connection failed.</td><td>hosts.error, connection status</td></tr>
         <tr><td>Button</td><td>Primary, TouchLarge, full width. Next; Connect, off until the address parses; Connecting with a spinner, off; Add N, or Done with every switch off.</td><td>Button</td></tr>
-        <tr><td>Scan</td><td>A 44 quiet camera button at the end of the field, iOS only. Opens the live camera, or the photo library where there is none. A zz://host/ code fills the field with the machine's name and connects; anything else puts "That code is not from zz." under the field.</td><td>ala_platform::mobile::scan_code</td></tr>
-        <tr><td>Between steps</td><td>The title and what is under it slide 28 left and fade out, then the next step's slide in from the right and fade in, 340 ms in all, ease out. Dots and button stay. Reduce motion swaps at once.</td><td>STEP_MOTION, STEP_SHIFT</td></tr>
+        <tr><td>Scan</td><td>The field's 44 accessory with the qr-code glyph at 20, 4 inside its end, iOS only. Opens the live camera, or the photo library where there is none. A zz://host/ code fills the field with the machine's name and connects; anything else puts "That code is not from zz." under the field.</td><td>ala_platform::mobile::scan_code</td></tr>
+        <tr><td>Between steps</td><td>The title and what is under it slide 28 left and fade out, then the next step's slide in from the right and fade in, 340 ms in all, ease out; mirrored going back. The button stays. Reduce motion swaps at once.</td><td>STEP_MOTION, STEP_SHIFT</td></tr>
+        <tr><td>Back</td><td>A 44 chevron-left icon button, top left under the status area, mirroring Skip, on the second and third steps. Off while the first machine connects. Back from the tailnet keeps the machine connected; Connect with the same address returns without dialing.</td><td>compact_bar_button</td></tr>
         <tr><td>Skip</td><td>Quiet, top right under the status area. Marks it done and leaves to Machines.</td><td></td></tr>
         <tr><td>Your tailnet</td><td>Once the first machine connects, waits for its tailnet answer (about a second). One 52 row per machine found: name, then what Machines says about it (Linux · runs zz) muted 8 after, a switch, on. One without zz says No zz on it yet and has no switch. None found skips the step.</td><td>found_machines</td></tr>
         <tr><td>Finish</td><td>Saves and connects the machines switched on, marks it done, opens the first machine's page.</td><td>place_overview</td></tr>

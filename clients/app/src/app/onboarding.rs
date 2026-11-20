@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use ala::{AnyElement, App, Context, Div, IntoElement as _, Pixels, Window, div, prelude::*, px};
 use penna::{
     ActiveTheme as _, Disableable as _, IconName, Label, Sizable as _, Size, TextStyle, Tone,
+    blocks::compact::compact_bar_button,
     components::{
         button::{Button, ButtonLook, ButtonVariants as _},
         input::Input,
@@ -10,14 +11,15 @@ use penna::{
     },
 };
 use web_time::{Duration, Instant};
-use zz_ui::onboarding::{PhonePage, PhoneStep, phone_onboarding_page, phone_onboarding_row};
+use zz_ui::onboarding::{
+    PHONE_STEPS, PhonePage, PhoneStep, phone_onboarding_page, phone_onboarding_row,
+};
 
 use super::{AppShell, hosts::parsed_endpoint};
 
 const TAILNET_WAIT: Duration = Duration::from_secs(4);
 const STEP_MOTION: Duration = Duration::from_millis(340);
 const STEP_SHIFT: f32 = 28.0;
-const FIELD_CORNER: f32 = 18.0;
 const NOT_OURS: &str = "That code is not from zz.";
 
 pub(super) struct PhoneOnboarding {
@@ -31,6 +33,20 @@ pub(super) struct PhoneOnboarding {
 
 fn ease_out(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(3)
+}
+
+fn place(step: PhoneStep) -> f32 {
+    PHONE_STEPS
+        .iter()
+        .position(|at| *at == step)
+        .unwrap_or_default() as f32
+}
+
+struct Shown {
+    step: PhoneStep,
+    fade: f32,
+    shift: Pixels,
+    at: f32,
 }
 
 impl AppShell {
@@ -62,6 +78,25 @@ impl AppShell {
             onboarding.focus_field = step == PhoneStep::Machine;
             onboarding.step = step;
             cx.notify();
+        }
+    }
+
+    fn onboarding_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(onboarding) = &mut self.onboarding else {
+            return;
+        };
+        match onboarding.step {
+            PhoneStep::Welcome => {}
+            PhoneStep::Machine => {
+                self.hosts.error = None;
+                window.dismiss_virtual_keyboard();
+                self.onboarding_go(PhoneStep::Welcome, cx);
+            }
+            PhoneStep::Tailnet => {
+                onboarding.machine = None;
+                onboarding.connected_at = None;
+                self.onboarding_go(PhoneStep::Machine, cx);
+            }
         }
     }
 
@@ -102,9 +137,15 @@ impl AppShell {
         self.hosts.saved.add(&endpoint);
         self.hosts.saved.mark_connected(&endpoint, true);
         self.hosts.saved.save();
-        self.connection.update(cx, |connection, cx| {
-            connection.connect_to(endpoint.clone(), cx);
-        });
+        let here = {
+            let connection = self.connection.read(cx);
+            connection.connected && connection.endpoint() == Some(endpoint.as_str())
+        };
+        if !here {
+            self.connection.update(cx, |connection, cx| {
+                connection.connect_to(endpoint.clone(), cx);
+            });
+        }
         if let Some(onboarding) = &mut self.onboarding {
             onboarding.machine = Some(endpoint);
             onboarding.connected_at = None;
@@ -209,42 +250,62 @@ impl AppShell {
         }
     }
 
-    fn onboarding_shown(&mut self, window: &mut Window, cx: &App) -> (PhoneStep, f32, Pixels) {
+    fn onboarding_shown(&mut self, window: &mut Window, cx: &App) -> Shown {
         let Some(onboarding) = &mut self.onboarding else {
-            return (PhoneStep::Welcome, 1.0, px(0.0));
+            return Shown {
+                step: PhoneStep::Welcome,
+                fade: 1.0,
+                shift: px(0.0),
+                at: 0.0,
+            };
         };
-        let Some((from, at)) = onboarding.moved else {
-            return (onboarding.step, 1.0, px(0.0));
+        let step = onboarding.step;
+        let settled = Shown {
+            step,
+            fade: 1.0,
+            shift: px(0.0),
+            at: place(step),
         };
-        let progress = at.elapsed().as_secs_f32() / STEP_MOTION.as_secs_f32();
+        let Some((from, since)) = onboarding.moved else {
+            return settled;
+        };
+        let progress = since.elapsed().as_secs_f32() / STEP_MOTION.as_secs_f32();
         if progress >= 1.0 || cx.reduce_motion() {
             onboarding.moved = None;
-            return (onboarding.step, 1.0, px(0.0));
+            return settled;
         }
         window.request_animation_frame();
+        let way = (place(step) - place(from)).signum();
+        let at = place(from) + (place(step) - place(from)) * ease_out(progress);
         if progress < 0.5 {
             let out = ease_out(progress * 2.0);
-            (from, 1.0 - out, px(-STEP_SHIFT * out))
+            Shown {
+                step: from,
+                fade: 1.0 - out,
+                shift: px(-STEP_SHIFT * way * out),
+                at,
+            }
         } else {
             let into = ease_out((progress - 0.5) * 2.0);
-            (onboarding.step, into, px(STEP_SHIFT * (1.0 - into)))
+            Shown {
+                step,
+                fade: into,
+                shift: px(STEP_SHIFT * way * (1.0 - into)),
+                at,
+            }
         }
     }
 
     fn onboarding_field(&self, waiting: bool, cx: &mut Context<Self>) -> Div {
         let danger = cx.theme().paint(Tone::Danger, penna::Emphasis::Ghost).text;
         let scan = ala_platform::mobile::can_scan().then(|| {
-            Button::new("onboarding-scan")
-                .icon(IconName::Camera)
-                .look(ButtonLook::Quiet)
-                .with_size(Size::Touch)
+            compact_bar_button("onboarding-scan", IconName::QrCode)
                 .disabled(waiting)
                 .on_click(cx.listener(|this, _, window, cx| this.onboarding_scan(window, cx)))
         });
         let field = Input::new(&self.hosts.destination)
             .id("onboarding-field")
-            .with_size(Size::Touch)
-            .rounded(px(FIELD_CORNER))
+            .with_size(Size::TouchLarge)
             .disabled(waiting);
         let field = match scan {
             Some(scan) => field.suffix(scan),
@@ -339,7 +400,12 @@ impl AppShell {
     ) -> Option<AnyElement> {
         self.follow_first_machine(window, cx);
         self.onboarding.as_ref()?;
-        let (shown, fade, shift) = self.onboarding_shown(window, cx);
+        let Shown {
+            step: shown,
+            fade,
+            shift,
+            at,
+        } = self.onboarding_shown(window, cx);
         let (step, waiting) = self
             .onboarding
             .as_ref()
@@ -365,6 +431,12 @@ impl AppShell {
             PhoneStep::Tailnet => Some(self.onboarding_rows(cx)),
         };
         let button = self.onboarding_button(step, waiting, cx);
+        let back = (step != PhoneStep::Welcome).then(|| {
+            compact_bar_button("onboarding-back", IconName::ChevronLeft)
+                .disabled(waiting && step == PhoneStep::Machine)
+                .on_click(cx.listener(|this, _, window, cx| this.onboarding_back(window, cx)))
+                .into_any_element()
+        });
         let skip = Button::new("onboarding-skip")
             .label("Skip")
             .look(ButtonLook::Quiet)
@@ -376,13 +448,14 @@ impl AppShell {
         let safe = viewport - window.fully_visible_bounds().bottom();
         let page = phone_onboarding_page(
             PhonePage {
-                step,
+                at,
                 shown,
                 title: shown.title(&machine),
                 body,
                 fade,
                 shift,
                 button: button.into_any_element(),
+                back,
                 skip: Some(skip),
                 top: window.fully_visible_bounds().top(),
                 bottom: keyboard.max(safe).max(px(0.0)),

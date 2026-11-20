@@ -861,12 +861,15 @@ from any path.
 The iOS and Android app has its own onboarding (`clients/app/src/app/onboarding.rs`, drawn by
 `zz_ui::onboarding::phone_onboarding_page` over the same sky). It shows on a launch with no saved
 machine and no launch endpoint until `onboarded` is set in the app's `preferences.json`; Skip, in the
-top corner of every step, sets it too and leaves to Machines. Three steps:
+top corner of every step, sets it too and leaves to Machines. A back chevron in the other corner goes
+one step back from the second and third steps; it is off while the first machine connects. Three
+steps:
 
 1. What zz is, the desktop's first step. Next goes on and focuses the field.
 2. The first machine. The Add machine field and its input: `user@host` for ssh, a bare name ending in
    `.ts.net` for the tailnet, or a socket path. Connect stays off until the address parses; Return
-   connects. On iOS a camera button at the end of the field scans the code desktop Settings › Hosts
+   connects. The field is the phone field, 56 tall. On iOS a QR button inside its end (the 44
+   accessory with the `qr-code` glyph) scans the code desktop Settings › Hosts
    shows (`ala_platform::mobile::scan_code`: the live camera, or a photo from the library where
    there is no camera, as in the simulator); a `zz://host/` code fills the field and connects, any
    other says so under the field. A `zz://host/` link the system camera opens while onboarding shows
@@ -875,11 +878,16 @@ top corner of every step, sets it too and leaves to Machines. Three steps:
 3. Your tailnet. Once the first machine connects, the step waits up to 4 s for its `tailnet hosts`
    answer and the phone's probes, then lists each machine found that is not saved, with a switch
    that starts on; one without zz says so and has no switch. Add saves and connects the ones switched
-   on. With nothing found the step is skipped.
+   on. With nothing found the step is skipped. Back from here returns to the field with the first
+   machine still in it and still connected; Connect with the same address comes straight back
+   without dialing again.
 
 Finishing opens the first machine's page. Between steps the title and what is under it slide 28
-to the left and fade out, then the next step's slide in from the right, 340 ms in all; the dots and
-the button stay. Reduce motion swaps them at once.
+and fade out, then the next step's slide in from the other side, 340 ms in all: leftward going on,
+rightward going back. The progress under them is one 8 tall capsule per step, 8 apart, the current
+one 24 wide in the foreground ink and the others 8 wide and faint; over the same 340 ms the wide one
+travels to the new step, each capsule's width and ink following how near it is. The button stays.
+Reduce motion swaps them at once.
 
 The desktop and the thin clients build the Interface page from the same item list
 (`zz_ui::settings::appearance::appearance_page_items`: penna's list with zz's Sidebar group, App

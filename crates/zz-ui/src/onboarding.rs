@@ -1,6 +1,6 @@
 use ala::{AnyElement, App, Div, Pixels, SharedString, div, prelude::*, px};
 use penna::{
-    Label, TextStyle,
+    Colorize as _, Label, TextStyle,
     blocks::touch::{PageDot, page_dots},
 };
 
@@ -29,6 +29,9 @@ const PHONE_WIDTH: f32 = 440.0;
 const PHONE_ABOVE: f32 = 8.0;
 const PHONE_ROW: f32 = 52.0;
 const PHONE_DOTS_GAP: f32 = 14.0;
+const PHONE_DOT: f32 = 8.0;
+const PHONE_DOT_ACTIVE: f32 = 24.0;
+const PHONE_DOT_GAP: f32 = 8.0;
 
 pub const PHONE_STEPS: [PhoneStep; 3] =
     [PhoneStep::Welcome, PhoneStep::Machine, PhoneStep::Tailnet];
@@ -61,13 +64,14 @@ impl PhoneStep {
 }
 
 pub struct PhonePage {
-    pub step: PhoneStep,
+    pub at: f32,
     pub shown: PhoneStep,
     pub title: SharedString,
     pub body: Option<Div>,
     pub fade: f32,
     pub shift: Pixels,
     pub button: AnyElement,
+    pub back: Option<AnyElement>,
     pub skip: Option<AnyElement>,
     pub top: Pixels,
     pub bottom: Pixels,
@@ -216,15 +220,7 @@ pub fn phone_onboarding_row(
 #[must_use]
 pub fn phone_onboarding_page(page: PhonePage, cx: &App) -> Div {
     let zones = SkyZones::default();
-    let dots = page_dots(
-        &[PHONE_STEPS
-            .map(|at| PageDot {
-                active: at == page.step,
-                attention: false,
-            })
-            .to_vec()],
-        cx,
-    );
+    let dots = phone_progress(page.at, cx);
     let head = v_flex()
         .flex_none()
         .items_start()
@@ -269,11 +265,34 @@ pub fn phone_onboarding_page(page: PhonePage, cx: &App) -> Div {
                         .child(foot),
                 ),
         )
+        .children(page.back.map(|back| {
+            div()
+                .absolute()
+                .top(page.top)
+                .left(px(PHONE_SIDE - CONTROL_GAP))
+                .child(back)
+        }))
         .children(page.skip.map(|skip| {
             div()
                 .absolute()
                 .top(page.top)
                 .right(px(PHONE_SIDE - CONTROL_GAP))
                 .child(skip)
+        }))
+}
+
+fn phone_progress(at: f32, cx: &App) -> Div {
+    let ink = cx.theme().foreground;
+    h_flex()
+        .flex_none()
+        .gap(px(PHONE_DOT_GAP))
+        .children((0..PHONE_STEPS.len()).map(|index| {
+            let near = (1.0 - (index as f32 - at).abs()).clamp(0.0, 1.0);
+            div()
+                .flex_none()
+                .h(px(PHONE_DOT))
+                .w(px(PHONE_DOT + (PHONE_DOT_ACTIVE - PHONE_DOT) * near))
+                .rounded_full()
+                .bg(ink.mix(ink.faint(), near))
         }))
 }
