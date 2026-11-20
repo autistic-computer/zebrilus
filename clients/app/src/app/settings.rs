@@ -709,7 +709,7 @@ impl AppShell {
         let view = cx.entity().downgrade();
         let shell = cx.entity().downgrade();
         let picked = self.settings_picked;
-        let attached = self.active_window(cx).is_some();
+        let attached = self.compact.overview || self.active_window(cx).is_some();
         #[cfg(any(target_os = "ios", target_os = "android"))]
         let sheet = self.host_sheets(window, cx);
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
