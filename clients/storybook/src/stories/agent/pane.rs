@@ -286,6 +286,7 @@ fn build_with(
                 AgentProvider::Codex => "codex",
                 AgentProvider::Antigravity => "antigravity",
                 AgentProvider::Grok => "grok",
+                AgentProvider::Cursor => "cursor",
             })
             .view(window, cx);
         let mut story = AgentPaneStory {
@@ -467,7 +468,10 @@ impl AgentPaneStory {
                 prefix,
                 mention: None,
                 settings: match self.scene.provider() {
-                    AgentProvider::Codex | AgentProvider::Antigravity | AgentProvider::Grok => {
+                    AgentProvider::Codex
+                    | AgentProvider::Antigravity
+                    | AgentProvider::Grok
+                    | AgentProvider::Cursor => {
                         codex_settings()
                     }
                     AgentProvider::ClaudeCode => claude_settings(),

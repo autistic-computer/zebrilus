@@ -15,6 +15,7 @@ const DIALECT: Dialect = Dialect {
     effort_option: "reasoning_effort",
     signed_out: "Grok is signed out. Sign in by running `grok login` in a terminal.",
     stored_title,
+    sign_in: None,
 };
 
 pub(crate) async fn run_grok_runtime(

@@ -1,15 +1,15 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code, Codex, Antigravity or Grok as a chat (PaneKind::Agent over the vendor drivers, Antigravity and Grok over their own ACP servers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, reopening a chat another chat opened on its session (select-child-chat), what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
+description: How a pane runs Claude Code, Codex, Antigravity, Grok or Cursor as a chat (PaneKind::Agent over the vendor drivers, Antigravity, Grok and Cursor over their own ACP servers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, reopening a chat another chat opened on its session (select-child-chat), what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
-tags: [agent, agent-pane, flip, chat, claude-code, codex, antigravity, grok, driver, stream]
+tags: [agent, agent-pane, flip, chat, claude-code, codex, antigravity, grok, cursor, driver, stream]
 timestamp: 2026-11-20T00:00:00-03:00
 ---
 
 # Overview
 
-A pane runs Claude Code, Codex, Antigravity or Grok one of two ways, and one button switches between them:
+A pane runs Claude Code, Codex, Antigravity, Grok or Cursor one of two ways, and one button switches between them:
 
 - **The CLI.** An ordinary terminal pane running the vendor's own TUI. zz draws the terminal and
   types nothing into it.
@@ -685,6 +685,41 @@ with the old transcript replayed over it. A pane with two TUIs of one provider f
 one found. A client that recovers from the journal sees the agent's own name for the effort
 option until the recovery metadata that follows replaces the list.
 
+# Cursor
+
+Cursor (`AgentProvider::Cursor`; `agent cursor`, `@+cursor`, `(cursor-agent)` in reports) is the
+fifth provider. Its CLI has an ACP server, `cursor-agent acp`, and its driver
+(`crates/zz-daemon/src/agent/cursor.rs`) is the third on `agent/dialect.rs`.
+
+- **Which CLI.** The first `cursor-agent` on the agent PATH, else an `agent` there that resolves
+  into a `cursor-agent` folder (the vendor installs both names). A terminal is taken to run Cursor
+  only when its process is named `cursor-agent`: `agent` alone is too common a name.
+- **Sign-in first.** Cursor refuses `session/new` until the client has called `authenticate` with
+  `cursor_login`, signed in or not. A dialect with `sign_in` holds the pane's first `Open`, sends
+  `Authenticate` in its place, and sends the held `Open` when `Authenticated` comes back, which it
+  keeps from the host so the host does not open a second time. `AuthenticationFailed` reaches the
+  pane as the signed-out line, `Cursor is signed out. Sign in by running cursor-agent login in a
+  terminal.`
+- **No browser.** The ACP process runs with `NO_OPEN_BROWSER=1`, so a signed-out `authenticate`
+  fails at once with the vendor's login link, where without it the CLI opens a browser and waits.
+
+A prompt sent to a chat that failed to sign in waits in the queue, since the process is still
+there to sign in to.
+
+**The flip.** Chat to CLI runs `cursor-agent --resume <id> --model <m>`. CLI to chat takes the
+chat id from the TUI's `--resume` and its model from `--model`; a TUI started without `--resume`
+starts a new chat.
+
+**Not there.** Accounts, the sign-in the daemon drives, forks, the latest version, effort, and
+answers to Cursor's own blocking requests (`cursor/ask_question`, `cursor/create_plan`), which the
+runtime refuses as unknown methods.
+
+**Not yet seen working.** The CLI held a login the server rejected when this was built
+(2026-11-20), so everything after `authenticate` is from Cursor's documentation: a turn, the
+modes (`agent`, `plan`, `ask`; `ask` is read as read-only), model choice over ACP, titles, and
+whether an ACP session id is a chat id the TUI resumes. Seen live: the handshake, the signed-out
+failure with the process kept running, chat to TUI and back.
+
 # Codex on the shared app server
 
 A Codex TUI runs its threads in the app server daemon it starts (`codex app-server daemon start`),
@@ -733,7 +768,7 @@ end no turn.
 
 - `agent-send [-t %N] TEXT` to an agent pane submits a prompt. `--wait`, `--json`, `--final`,
   `--on-block`, `--notify` and `--progress` work on its turn as they did for the old agent pane.
-- `agent-send` with text to a terminal running Claude Code, Codex, Antigravity or Grok fails with "runs Claude Code in
+- `agent-send` with text to a terminal running Claude Code, Codex, Antigravity, Grok or Cursor fails with "runs Claude Code in
   its terminal; flip the pane to chat first". Nothing types prompts into a TUI or posts them to its
   peer socket. `--wait ''` still waits on such a terminal's `@agent_state`.
 - `agent-respond` answers a pending permission in an agent pane.

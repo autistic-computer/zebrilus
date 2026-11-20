@@ -53,6 +53,7 @@ pub struct AgentLaunches {
     pub codex: AgentLaunch,
     pub antigravity: AgentLaunch,
     pub grok: AgentLaunch,
+    pub cursor: AgentLaunch,
 }
 
 impl AgentLaunches {
@@ -63,6 +64,7 @@ impl AgentLaunches {
             AgentProvider::Codex => &self.codex,
             AgentProvider::Antigravity => &self.antigravity,
             AgentProvider::Grok => &self.grok,
+            AgentProvider::Cursor => &self.cursor,
         }
     }
 
@@ -72,6 +74,7 @@ impl AgentLaunches {
             AgentProvider::Codex => &mut self.codex,
             AgentProvider::Antigravity => &mut self.antigravity,
             AgentProvider::Grok => &mut self.grok,
+            AgentProvider::Cursor => &mut self.cursor,
         }
     }
 

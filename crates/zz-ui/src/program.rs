@@ -35,6 +35,7 @@ pub const CLAUDE_ICON: IconName = IconName::Asset("icons/claude.svg");
 pub const OPENAI_ICON: IconName = IconName::Asset("icons/openai.svg");
 pub const ANTIGRAVITY_ICON: IconName = IconName::Asset("programs/antigravity.svgz");
 pub const GROK_ICON: IconName = IconName::Asset("programs/grok.svgz");
+pub const CURSOR_ICON: IconName = IconName::Asset("programs/cursor.svgz");
 pub const CHROME_ICON: IconName = IconName::Asset("icons/brand-chrome.svg");
 
 #[must_use]

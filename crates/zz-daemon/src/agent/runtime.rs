@@ -262,6 +262,7 @@ impl AgentSpawnConfig {
             AgentProvider::ClaudeCode => &self.claude_code_command,
             AgentProvider::Antigravity => zz_protocol::AGENT_ANTIGRAVITY_COMMAND,
             AgentProvider::Grok => zz_protocol::AGENT_GROK_COMMAND,
+            AgentProvider::Cursor => zz_protocol::AGENT_CURSOR_COMMAND,
         }
     }
 
@@ -271,6 +272,7 @@ impl AgentSpawnConfig {
             AgentProvider::ClaudeCode => "agent-claude-code-command",
             AgentProvider::Antigravity => "the agy command",
             AgentProvider::Grok => "the grok command",
+            AgentProvider::Cursor => "the cursor-agent command",
         }
     }
 

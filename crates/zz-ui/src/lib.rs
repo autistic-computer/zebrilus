@@ -43,7 +43,8 @@ pub mod terminal_images;
 pub mod which_key;
 
 pub use program::{
-    ANTIGRAVITY_ICON, Assets, CHROME_ICON, CLAUDE_ICON, GROK_ICON, OPENAI_ICON, ZZ_LOGO,
+    ANTIGRAVITY_ICON, Assets, CHROME_ICON, CLAUDE_ICON, CURSOR_ICON, GROK_ICON, OPENAI_ICON,
+    ZZ_LOGO,
 };
 
 pub fn init(cx: &mut ala::App) {

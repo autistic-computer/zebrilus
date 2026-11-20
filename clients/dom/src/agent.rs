@@ -362,6 +362,7 @@ fn provider_id(provider: AgentProvider) -> &'static str {
         AgentProvider::Codex => "codex",
         AgentProvider::Antigravity => "antigravity",
         AgentProvider::Grok => "grok",
+        AgentProvider::Cursor => "cursor",
     }
 }
 

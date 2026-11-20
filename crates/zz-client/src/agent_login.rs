@@ -154,6 +154,7 @@ pub const fn service(provider: AgentProvider) -> &'static str {
         AgentProvider::Codex => "ChatGPT",
         AgentProvider::Antigravity => "Google",
         AgentProvider::Grok => "Grok",
+        AgentProvider::Cursor => "Cursor",
     }
 }
 

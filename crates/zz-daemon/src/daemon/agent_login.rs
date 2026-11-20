@@ -463,6 +463,11 @@ impl Cli {
             AgentProvider::Grok => {
                 return Err("Sign in to Grok by running grok login in a terminal.".to_owned());
             }
+            AgentProvider::Cursor => {
+                return Err(
+                    "Sign in to Cursor by running cursor-agent login in a terminal.".to_owned(),
+                );
+            }
         };
         command
             .stdin(Stdio::piped())
@@ -529,7 +534,7 @@ impl Cli {
                 "method": "initialize",
                 "params": { "clientInfo": { "name": "zz", "version": env!("CARGO_PKG_VERSION") } },
             }),
-            AgentProvider::Antigravity | AgentProvider::Grok => Value::Null,
+            AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => Value::Null,
         };
         if let Err(error) = cli.send(&first) {
             cli.stop();
@@ -554,7 +559,7 @@ impl Cli {
         let fact = match self.provider {
             AgentProvider::ClaudeCode => self.read_claude(line),
             AgentProvider::Codex => self.read_codex(line),
-            AgentProvider::Antigravity | AgentProvider::Grok => Ok(None),
+            AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => Ok(None),
         };
         match fact {
             Ok(fact) => fact,

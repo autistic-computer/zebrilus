@@ -70,6 +70,7 @@ pub(super) fn parse_agent_accounts_args(
                 let login = match added {
                     AgentProvider::Antigravity => Some("agy"),
                     AgentProvider::Grok => Some("grok login"),
+                    AgentProvider::Cursor => Some("cursor-agent login"),
                     AgentProvider::ClaudeCode | AgentProvider::Codex => None,
                 };
                 if let Some(login) = login {
@@ -410,7 +411,7 @@ impl Shared {
         let login: &[&str] = match provider {
             AgentProvider::ClaudeCode => &["claude", "auth", "login"],
             AgentProvider::Codex => &["codex", "login"],
-            AgentProvider::Antigravity | AgentProvider::Grok => return,
+            AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => return,
         };
         let login = login
             .iter()
@@ -582,7 +583,9 @@ pub(super) fn identify(
                 (signed_out(provider), None)
             }
         },
-        AgentProvider::Antigravity | AgentProvider::Grok => (signed_out(provider), None),
+        AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => {
+            (signed_out(provider), None)
+        }
     };
     (AgentAccount { id, ..account }, quota)
 }

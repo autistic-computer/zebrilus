@@ -544,6 +544,24 @@ pub(crate) fn grok_session(pid: u32, home: Option<&Path>, cwd: Option<PathBuf>) 
     }
 }
 
+pub(crate) fn cursor_session(pid: u32, cwd: Option<PathBuf>) -> CliSession {
+    let args = arguments(pid);
+    let flag = |name: &str| {
+        option_values(&args, &[name])
+            .into_iter()
+            .find(|value| launch_value(value))
+            .map(str::to_owned)
+    };
+    CliSession {
+        pid: Some(pid),
+        session_id: flag("--resume"),
+        cwd,
+        model: flag("--model"),
+        effort: None,
+        running: Vec::new(),
+    }
+}
+
 pub(crate) fn grok_summary(home: &Path, session: &str) -> Option<Value> {
     if !uuid(session) {
         return None;
@@ -719,6 +737,15 @@ pub(crate) fn cli_command(
             }
             if let Some(effort) = effort {
                 words.extend(["--effort".to_owned(), effort.to_owned()]);
+            }
+        }
+        AgentProvider::Cursor => {
+            words.push("cursor-agent".to_owned());
+            if let Some(session) = session_id {
+                words.extend(["--resume".to_owned(), session.to_owned()]);
+            }
+            if let Some(model) = model {
+                words.extend(["--model".to_owned(), model.to_owned()]);
             }
         }
         AgentProvider::Grok => {

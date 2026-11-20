@@ -39,6 +39,10 @@ pub const AGENT_CHOICES: &[AgentChoice] = &[
         program: "grok",
         shortcut: "g",
     },
+    AgentChoice {
+        program: "cursor-agent",
+        shortcut: "u",
+    },
 ];
 
 impl AgentChoice {
@@ -58,6 +62,7 @@ impl AgentChoice {
             "codex" => AgentProvider::Codex,
             "antigravity" => AgentProvider::Antigravity,
             "grok" => AgentProvider::Grok,
+            "cursor-agent" => AgentProvider::Cursor,
             _ => AgentProvider::ClaudeCode,
         }
     }

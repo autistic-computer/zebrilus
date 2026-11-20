@@ -12,11 +12,12 @@ use zz_protocol::{
     ProvidersReport,
 };
 
-const PROVIDERS: [AgentProvider; 4] = [
+const PROVIDERS: [AgentProvider; 5] = [
     AgentProvider::ClaudeCode,
     AgentProvider::Codex,
     AgentProvider::Antigravity,
     AgentProvider::Grok,
+    AgentProvider::Cursor,
 ];
 const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 const LATEST_TIMEOUT: Duration = Duration::from_secs(15);
@@ -29,6 +30,7 @@ const CLAUDE_INSTALL: &str = "curl -fsSL https://claude.ai/install.sh | bash";
 const CODEX_INSTALL: &str = "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
 const ANTIGRAVITY_INSTALL: &str = "curl -fsSL https://antigravity.google/cli/install.sh | bash";
 const GROK_INSTALL: &str = "curl -fsSL https://x.ai/cli/install.sh | bash";
+const CURSOR_INSTALL: &str = "curl -fsS https://cursor.com/install | bash";
 
 #[derive(Default)]
 pub(super) struct Providers {
@@ -287,6 +289,7 @@ pub(super) const fn program(provider: AgentProvider) -> &'static str {
         AgentProvider::Codex => "codex",
         AgentProvider::Antigravity => "agy",
         AgentProvider::Grok => "grok",
+        AgentProvider::Cursor => "cursor-agent",
     }
 }
 
@@ -410,7 +413,7 @@ const fn npm_package(provider: AgentProvider) -> Option<&'static str> {
     match provider {
         AgentProvider::ClaudeCode => Some("@anthropic-ai/claude-code"),
         AgentProvider::Codex => Some("@openai/codex"),
-        AgentProvider::Antigravity | AgentProvider::Grok => None,
+        AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => None,
     }
 }
 
@@ -614,7 +617,7 @@ fn fetch_latest(
             claude_channel(found)
         ),
         AgentProvider::Codex => "https://registry.npmjs.org/@openai%2fcodex/latest".to_owned(),
-        AgentProvider::Antigravity | AgentProvider::Grok => return None,
+        AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => return None,
     };
     let mut command = Command::new("curl");
     command.args(["-fsSL", "--max-time", "10", &url]);
@@ -628,7 +631,7 @@ fn fetch_latest(
             .get("version")?
             .as_str()?
             .to_owned(),
-        AgentProvider::Antigravity | AgentProvider::Grok => return None,
+        AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => return None,
     };
     parse_version(&version)
 }
@@ -652,6 +655,7 @@ fn task_command(
                 AgentProvider::Codex => CODEX_INSTALL,
                 AgentProvider::Antigravity => ANTIGRAVITY_INSTALL,
                 AgentProvider::Grok => GROK_INSTALL,
+                AgentProvider::Cursor => CURSOR_INSTALL,
             });
             command
         }
@@ -1228,7 +1232,7 @@ mod tests {
                     client,
                     ClientKind::Interactive,
                     &mut ExecutionContext::default(),
-                    &CommandInvocation::new("providers", ["-u", "cursor"]),
+                    &CommandInvocation::new("providers", ["-u", "vim"]),
                 )
                 .is_err()
         );

@@ -118,6 +118,7 @@ pub(super) fn cli_provider(process: &[String]) -> Option<AgentProvider> {
             "codex" => Some(AgentProvider::Codex),
             "agy" => Some(AgentProvider::Antigravity),
             "grok" => Some(AgentProvider::Grok),
+            "cursor-agent" => Some(AgentProvider::Cursor),
             _ => None,
         }
     })
@@ -302,7 +303,7 @@ impl Shared {
             PaneKind::Terminal => {
                 let provider = self.terminal_agent(pane).ok_or_else(|| {
                     ServerError::InvalidTarget(format!(
-                        "{pane} runs none of Claude Code, Codex, Antigravity or Grok"
+                        "{pane} runs none of Claude Code, Codex, Antigravity, Grok or Cursor"
                     ))
                 })?;
                 let pane_pid = pane_pid.ok_or(ServerError::PaneExited(pane))?;
@@ -352,6 +353,16 @@ impl Shared {
                         }
                         cli_session::grok_session(pid, home.as_deref(), cwd)
                     }
+                    AgentProvider::Cursor => {
+                        let pid =
+                            cli_session::agent_pid(pane_pid, "cursor-agent").ok_or_else(|| {
+                                ServerError::InvalidTarget(format!(
+                                    "{pane} runs no cursor-agent process"
+                                ))
+                            })?;
+                        let cwd = zz_daemon_client::process_info::working_directory(pid).or(cwd);
+                        cli_session::cursor_session(pid, cwd)
+                    }
                 };
                 let account = session
                     .pid
@@ -372,7 +383,7 @@ impl Shared {
                 })
             }
             _ => Err(ServerError::InvalidTarget(format!(
-                "{pane} is neither a chat nor a terminal running Claude Code, Codex, Antigravity or Grok"
+                "{pane} is neither a chat nor a terminal running Claude Code, Codex, Antigravity, Grok or Cursor"
             ))),
         }
     }

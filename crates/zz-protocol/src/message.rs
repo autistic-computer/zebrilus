@@ -116,6 +116,7 @@ pub const DEFAULT_AGENT_COMMAND: &str = "codex";
 pub const DEFAULT_AGENT_CLAUDE_CODE_COMMAND: &str = "claude";
 pub const AGENT_ANTIGRAVITY_COMMAND: &str = "agy";
 pub const AGENT_GROK_COMMAND: &str = "grok";
+pub const AGENT_CURSOR_COMMAND: &str = "cursor-agent";
 pub const AGENT_FLOAT_WIDTH: &str = "46%";
 pub const AGENT_FLOAT_HEIGHT: &str = "72%";
 pub const DEFAULT_AGENT_AUTO_APPROVE: AgentAutoApprove = AgentAutoApprove::Reads;

@@ -160,6 +160,7 @@ mod tests {
                 AgentProvider::Codex => "/usr/local/bin/codex",
                 AgentProvider::Antigravity => "/usr/local/bin/agy",
                 AgentProvider::Grok => "/usr/local/bin/grok",
+                AgentProvider::Cursor => "/usr/local/bin/cursor-agent",
             }
             .to_owned(),
         ];

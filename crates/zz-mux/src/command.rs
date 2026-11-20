@@ -19524,7 +19524,7 @@ fn agent_selection(
 ) -> Result<AgentDescriptor, ServerError> {
     let usage = || {
         ServerError::CommandParse(
-            "usage: select-pane-kind [-t pane] [-c start-directory] agent claude|codex|agy|grok \
+            "usage: select-pane-kind [-t pane] [-c start-directory] agent claude|codex|agy|grok|cursor \
              [--resume session-id]"
                 .to_owned(),
         )
@@ -19628,7 +19628,7 @@ fn agent_spawn(
     let usage = |cause: &str| {
         ServerError::NativeCommandParse(format!(
             "{cause}\nusage: {command} [-d] [-P -F format] [-c start-directory] [-t target] \
-             --kind agent claude|codex|agy|grok [--model M] [--effort E] [--account A] [--resume ID] \
+             --kind agent claude|codex|agy|grok|cursor [--model M] [--effort E] [--account A] [--resume ID] \
              [BRIEF]"
         ))
     };

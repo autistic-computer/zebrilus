@@ -312,7 +312,7 @@ impl ReplyNotice {
 fn provider(name: &str) -> Option<AgentProvider> {
     AgentProvider::ALL
         .into_iter()
-        .find(|provider| provider.command_name() == name)
+        .find(|provider| provider.command_name() == name || provider.as_str() == name)
 }
 
 fn header(line: &str) -> Option<(PaneId, AgentProvider, &str)> {

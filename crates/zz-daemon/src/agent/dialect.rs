@@ -21,6 +21,13 @@ pub(crate) struct Dialect {
     pub(crate) effort_option: &'static str,
     pub(crate) signed_out: &'static str,
     pub(crate) stored_title: fn(&str) -> Option<String>,
+    pub(crate) sign_in: Option<&'static str>,
+}
+
+#[derive(Default)]
+struct SignIn {
+    done: bool,
+    held: Option<RuntimeCommand>,
 }
 
 pub(crate) async fn run(
@@ -34,16 +41,23 @@ pub(crate) async fn run(
     let (control_tx, control_rx) = async_channel::bounded(1);
     let (event_tx, event_rx) = async_channel::bounded(1);
     let transcript = Mutex::new(Transcript::default());
+    let sign_in = Mutex::new(SignIn::default());
+    let held_commands = command_tx.downgrade();
     let commands = channels.commands;
     let controls = channels.controls;
     let events = channels.events;
     let outbound = async {
         while let Ok(command) = commands.recv().await {
-            if command_tx
-                .send(to_agent(command, dialect.effort_option))
-                .await
-                .is_err()
-            {
+            let command = match (dialect.sign_in, to_agent(command, dialect.effort_option)) {
+                (Some(method), open @ RuntimeCommand::Open { .. }) if !sign_in.lock().done => {
+                    sign_in.lock().held = Some(open);
+                    RuntimeCommand::Authenticate {
+                        method_id: method.to_owned(),
+                    }
+                }
+                (_, command) => command,
+            };
+            if command_tx.send(command).await.is_err() {
                 break;
             }
         }
@@ -63,6 +77,22 @@ pub(crate) async fn run(
     let inbound = async {
         let mut titled = false;
         while let Ok(payload) = event_rx.recv().await {
+            if matches!(payload, AgentStreamPayload::Authenticated) {
+                let held = {
+                    let mut sign_in = sign_in.lock();
+                    sign_in.done = true;
+                    sign_in.held.take()
+                };
+                if let Some(open) = held {
+                    let Some(commands) = held_commands.upgrade() else {
+                        break;
+                    };
+                    if commands.send(open).await.is_err() {
+                        break;
+                    }
+                    continue;
+                }
+            }
             let chat = transcript.lock().payload(&payload);
             let title = match &payload {
                 AgentStreamPayload::SessionReset { restoring } => {
@@ -159,6 +189,11 @@ fn to_zz(payload: AgentStreamPayload, dialect: Dialect) -> AgentStreamPayload {
     match payload {
         AgentStreamPayload::PaneFailed { message } if message.starts_with(SIGNED_OUT) => {
             AgentStreamPayload::PaneFailed {
+                message: dialect.signed_out.to_owned(),
+            }
+        }
+        AgentStreamPayload::AuthenticationFailed { .. } if dialect.sign_in.is_some() => {
+            AgentStreamPayload::AuthenticationFailed {
                 message: dialect.signed_out.to_owned(),
             }
         }
@@ -287,11 +322,13 @@ mod tests {
         effort_option: "thought_level",
         signed_out: "signed out of agy",
         stored_title: |_| None,
+        sign_in: None,
     };
     const GROK: Dialect = Dialect {
         effort_option: "reasoning_effort",
         signed_out: "signed out of grok",
         stored_title: |_| None,
+        sign_in: None,
     };
 
     #[test]

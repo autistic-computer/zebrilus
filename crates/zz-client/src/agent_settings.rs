@@ -163,7 +163,7 @@ pub enum ModeRisk {
 #[must_use]
 pub fn mode_risk(provider: AgentProvider, mode: &str) -> ModeRisk {
     match (provider, mode) {
-        (_, "plan" | "read-only") => ModeRisk::ReadOnly,
+        (_, "plan" | "read-only") | (AgentProvider::Cursor, "ask") => ModeRisk::ReadOnly,
         (_, "bypassPermissions" | "full-access") => ModeRisk::Unguarded,
         (AgentProvider::ClaudeCode, "acceptEdits" | "auto")
         | (AgentProvider::Antigravity, "accept-edits" | "auto") => ModeRisk::Unasked,
@@ -244,6 +244,7 @@ pub const fn agent_program(provider: AgentProvider) -> &'static str {
         AgentProvider::Codex => "codex",
         AgentProvider::Antigravity => "agy",
         AgentProvider::Grok => "grok",
+        AgentProvider::Cursor => "cursor-agent",
     }
 }
 

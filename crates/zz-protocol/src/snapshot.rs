@@ -11,9 +11,9 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use thiserror::Error;
 
 use crate::{
-    AGENT_ANTIGRAVITY_COMMAND, AGENT_GROK_COMMAND, DEFAULT_AGENT_CLAUDE_CODE_COMMAND,
-    DEFAULT_AGENT_COMMAND, PaneId, SessionId, SplitId, TmuxColour, WindowId,
-    message::deserialize_bounded_text,
+    AGENT_ANTIGRAVITY_COMMAND, AGENT_CURSOR_COMMAND, AGENT_GROK_COMMAND,
+    DEFAULT_AGENT_CLAUDE_CODE_COMMAND, DEFAULT_AGENT_COMMAND, PaneId, SessionId, SplitId,
+    TmuxColour, WindowId, message::deserialize_bounded_text,
 };
 
 #[repr(u8)]
@@ -237,10 +237,17 @@ pub enum AgentProvider {
     ClaudeCode,
     Antigravity,
     Grok,
+    Cursor,
 }
 
 impl AgentProvider {
-    pub const ALL: [Self; 4] = [Self::Codex, Self::ClaudeCode, Self::Antigravity, Self::Grok];
+    pub const ALL: [Self; 5] = [
+        Self::Codex,
+        Self::ClaudeCode,
+        Self::Antigravity,
+        Self::Grok,
+        Self::Cursor,
+    ];
 
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -249,6 +256,7 @@ impl AgentProvider {
             Self::ClaudeCode => "claude-code",
             Self::Antigravity => "antigravity",
             Self::Grok => "grok",
+            Self::Cursor => "cursor",
         }
     }
 
@@ -259,6 +267,7 @@ impl AgentProvider {
             Self::ClaudeCode => DEFAULT_AGENT_CLAUDE_CODE_COMMAND,
             Self::Antigravity => AGENT_ANTIGRAVITY_COMMAND,
             Self::Grok => AGENT_GROK_COMMAND,
+            Self::Cursor => AGENT_CURSOR_COMMAND,
         }
     }
 
@@ -269,6 +278,7 @@ impl AgentProvider {
             Self::ClaudeCode => "Claude Code",
             Self::Antigravity => "Antigravity",
             Self::Grok => "Grok",
+            Self::Cursor => "Cursor",
         }
     }
 }
@@ -288,8 +298,9 @@ impl FromStr for AgentProvider {
             "claude" | "claude-code" | "claudecode" => Ok(Self::ClaudeCode),
             "agy" | "antigravity" => Ok(Self::Antigravity),
             "grok" => Ok(Self::Grok),
+            "cursor" | "cursor-agent" => Ok(Self::Cursor),
             _ => Err(format!(
-                "unknown agent provider `{value}`; expected codex, claude-code, antigravity or grok"
+                "unknown agent provider `{value}`; expected codex, claude-code, antigravity, grok or cursor"
             )),
         }
     }

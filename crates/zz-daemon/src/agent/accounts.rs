@@ -75,7 +75,7 @@ pub(crate) const fn variable(provider: AgentProvider) -> Option<&'static str> {
     match provider {
         AgentProvider::ClaudeCode => Some("CLAUDE_CONFIG_DIR"),
         AgentProvider::Codex => Some("CODEX_HOME"),
-        AgentProvider::Antigravity | AgentProvider::Grok => None,
+        AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => None,
     }
 }
 
@@ -95,7 +95,7 @@ pub(crate) const fn login_overrides(provider: AgentProvider) -> &'static [&'stat
             "OPENAI_FEDERATION_RULE_ID",
             "OPENAI_IDENTITY_TOKEN_FILE",
         ],
-        AgentProvider::Antigravity | AgentProvider::Grok => &[],
+        AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => &[],
     }
 }
 
@@ -114,6 +114,7 @@ const fn directory_name(provider: AgentProvider) -> &'static str {
         AgentProvider::Codex => "codex",
         AgentProvider::Antigravity => "antigravity",
         AgentProvider::Grok => "grok",
+        AgentProvider::Cursor => "cursor",
     }
 }
 
@@ -141,7 +142,7 @@ pub(crate) fn default_home(provider: AgentProvider) -> Option<PathBuf> {
     match provider {
         AgentProvider::ClaudeCode => crate::agent::claude::sessions::config_home(),
         AgentProvider::Codex => crate::agent::codex::codex_home(),
-        AgentProvider::Antigravity | AgentProvider::Grok => None,
+        AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => None,
     }
 }
 
@@ -247,7 +248,7 @@ fn linked_names(provider: AgentProvider, default: &Path) -> Vec<OsString> {
                     .filter(|name| name.to_str().is_some_and(codex_database)),
             )
             .collect(),
-        AgentProvider::Antigravity | AgentProvider::Grok => Vec::new(),
+        AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => Vec::new(),
     }
 }
 

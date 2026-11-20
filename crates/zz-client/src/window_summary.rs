@@ -180,6 +180,7 @@ pub fn provider_program(provider: AgentProvider) -> Option<&'static Program> {
         AgentProvider::Codex => "codex",
         AgentProvider::Antigravity => "antigravity",
         AgentProvider::Grok => "grok",
+        AgentProvider::Cursor => "cursor-agent",
     })
 }
 
@@ -218,6 +219,7 @@ pub fn pane_agent(pane: &PaneSnapshot) -> Option<AgentProvider> {
         "codex" => Some(AgentProvider::Codex),
         "antigravity" => Some(AgentProvider::Antigravity),
         "grok" => Some(AgentProvider::Grok),
+        "cursor-agent" => Some(AgentProvider::Cursor),
         _ => None,
     }
 }

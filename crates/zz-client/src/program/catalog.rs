@@ -232,6 +232,16 @@ pub(super) const PROGRAMS: &[Program] = &[
         },
     },
     Program {
+        id: "cursor-agent",
+        name: "Cursor Agent",
+        commands: &["cursor-agent"],
+        icon: None,
+        look: Look::Mark {
+            background: 0x00F7_F7F4,
+            foreground: 0x0026_251D,
+        },
+    },
+    Program {
         id: "d2",
         name: "D2",
         commands: &["d2"],

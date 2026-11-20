@@ -1246,8 +1246,9 @@ is not signed in is left out, and a CLI that is not installed has no rows. Each 
 asks the CLIs again, and sends the whole list to every client that asked when it changes. The
 account work stays on v122.
 
-v125 appends `AgentProvider::Grok` after `Antigravity`, the provider of a chat over `grok`
-([agent panes](/concepts/agent-panes.md#grok)), for the reason v124 gives.
+v125 appends `AgentProvider::Grok` after `Antigravity` and `AgentProvider::Cursor` after it, the
+providers of chats over `grok` and `cursor-agent` ([agent panes](/concepts/agent-panes.md#grok)),
+for the reason v124 gives. Cursor was appended while 125 was unreleased.
 
 v124 appends `AgentProvider::Antigravity` after `Codex`, the provider of a chat over `agy`
 ([agent panes](/concepts/agent-panes.md#antigravity)). The provider is a nested enum that travels in
@@ -1277,7 +1278,7 @@ and from the CLI's own TUI. It appends `PaneKindSnapshot::Agent(AgentDescriptor)
 and `ChooseTreePaneKind::Agent` after `Editor`. `AgentDescriptor { provider, cwd, session_id,
 model, effort }` holds the provider, the absolute working directory, the vendor session to resume,
 and the model and effort to start with; every field but `provider` is optional.
-`select-pane-kind [-c dir] agent claude|codex|agy|grok [--resume session-id]` turns a picker or a terminal
+`select-pane-kind [-c dir] agent claude|codex|agy|grok|cursor [--resume session-id]` turns a picker or a terminal
 into one, and `flip-agent [-t pane] [--now | --when-idle | --cancel]` joins the command catalog.
 v118 also appends `PaneSummary.flip_armed`, set while a `flip-agent --when-idle` waits for the pane
 to go idle ([agent panes](/concepts/agent-panes.md)).
@@ -1288,7 +1289,7 @@ to go idle ([agent panes](/concepts/agent-panes.md)).
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
 - v125 requires updated clients and daemon together, including the daemon on every ssh host.
-  v125 appends `AgentProvider::Grok`.
+  v125 appends `AgentProvider::Grok` and `AgentProvider::Cursor`.
 - v124 requires updated clients and daemon together, including the daemon on every ssh host.
   v124 appends `AgentProvider::Antigravity`.
 - v123 requires updated clients and daemon together, including the daemon on every ssh host.
