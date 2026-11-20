@@ -74,6 +74,7 @@ impl Listing {
 pub enum Menu {
     Folders,
     Chats,
+    Switch,
 }
 
 impl Menu {
@@ -81,7 +82,7 @@ impl Menu {
     pub const fn placeholder(self) -> &'static str {
         match self {
             Self::Folders => "Search folders",
-            Self::Chats => "Search chats",
+            Self::Chats | Self::Switch => "Search chats",
         }
     }
 }
@@ -102,20 +103,41 @@ pub enum ResumeRow {
         place: Option<String>,
         age: Option<String>,
     },
+    Action(ResumeAction),
     Loading,
     Note(&'static str),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResumeAction {
+    NewChat,
+    ChangeFolder,
+}
+
+impl ResumeAction {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::NewChat => "New chat",
+            Self::ChangeFolder => "Change folder…",
+        }
+    }
 }
 
 impl ResumeRow {
     #[must_use]
     pub const fn picks(&self) -> bool {
-        matches!(self, Self::Folder { .. } | Self::Chat { .. })
+        matches!(
+            self,
+            Self::Folder { .. } | Self::Chat { .. } | Self::Action(_)
+        )
     }
 
     fn key(&self) -> Option<String> {
         match self {
             Self::Folder { cwd, .. } => Some(cwd.to_string_lossy().into_owned()),
             Self::Chat { chat, .. } => Some(chat.session_id.clone()),
+            Self::Action(action) => Some(action.label().to_owned()),
             Self::Label(_) | Self::Loading | Self::Note(_) => None,
         }
     }
@@ -165,7 +187,7 @@ impl Resume {
         if self.here.waiting() || self.recent.waiting() {
             return None;
         }
-        (menu == Menu::Chats)
+        (menu != Menu::Folders)
             .then(|| self.here.page(Some(cwd.to_path_buf())))
             .flatten()
             .or_else(|| self.recent.page(None))
@@ -212,6 +234,15 @@ impl Resume {
             None => Vec::new(),
             Some(Menu::Folders) => self.folders(cwd, now),
             Some(Menu::Chats) => self.chats(cwd, session, now),
+            Some(Menu::Switch) => {
+                let mut rows = self.chats(cwd, session, now);
+                if self.query().is_empty() {
+                    rows.extend(
+                        [ResumeAction::NewChat, ResumeAction::ChangeFolder].map(ResumeRow::Action),
+                    );
+                }
+                rows
+            }
         }
     }
 
@@ -392,6 +423,13 @@ impl Resume {
                 cwd: chat.cwd.clone(),
                 additional_directories: chat.additional_directories.clone(),
             }),
+            ResumeRow::Action(ResumeAction::NewChat) => Some(AgentSessionOpKind::New {
+                cwd: cwd.to_path_buf(),
+            }),
+            ResumeRow::Action(ResumeAction::ChangeFolder) => {
+                self.open(Menu::Folders);
+                return None;
+            }
             ResumeRow::Label(_) | ResumeRow::Loading | ResumeRow::Note(_) => return None,
         };
         self.close();
@@ -661,6 +699,70 @@ mod tests {
                 additional_directories: Vec::new(),
             })
         );
+    }
+
+    #[test]
+    fn a_live_chats_menu_ends_in_new_chat_and_change_folder() {
+        let cwd = Path::new("/src/zz");
+        let mut resume = Resume::default();
+        listed_both(
+            &mut resume,
+            cwd,
+            vec![
+                chat("own", "/src/zz", "This chat", "2026-11-10T11:00:00Z"),
+                chat("a", "/src/zz", "Fix the stack", "2026-11-10T10:00:00Z"),
+            ],
+            vec![chat(
+                "b",
+                "/src/penna",
+                "Focus ring",
+                "2026-11-10T09:00:00Z",
+            )],
+        );
+        resume.open(Menu::Switch);
+        let rows = resume.rows(cwd, Some("own"), NOW);
+        let names = |rows: &[ResumeRow]| {
+            rows.iter()
+                .map(|row| match row {
+                    ResumeRow::Label(text) => format!("# {text}"),
+                    ResumeRow::Chat { title, .. } => title.clone(),
+                    ResumeRow::Folder { name, .. } => format!("{name}/"),
+                    ResumeRow::Action(action) => format!("> {}", action.label()),
+                    other => format!("{other:?}"),
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            names(&rows),
+            [
+                "# In zz",
+                "Fix the stack",
+                "# Other folders",
+                "Focus ring",
+                "> New chat",
+                "> Change folder…",
+            ]
+        );
+        resume.set_search("fix");
+        assert_eq!(
+            names(&resume.rows(cwd, Some("own"), NOW)),
+            ["Fix the stack"]
+        );
+        resume.set_search("");
+        assert_eq!(resume.pick(&rows[5], cwd), None);
+        assert_eq!(resume.menu(), Some(Menu::Folders));
+        assert_eq!(
+            names(&resume.rows(cwd, Some("own"), NOW)),
+            ["zz/", "penna/"]
+        );
+        resume.open(Menu::Switch);
+        assert_eq!(
+            resume.pick(&rows[4], cwd),
+            Some(AgentSessionOpKind::New {
+                cwd: cwd.to_path_buf()
+            })
+        );
+        assert_eq!(resume.menu(), None);
     }
 
     #[test]

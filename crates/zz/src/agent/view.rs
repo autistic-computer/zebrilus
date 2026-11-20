@@ -25,7 +25,7 @@ use zz_ui::agent::presentation::rendered_error;
 use zz_ui::agent::presentation::{agent_welcome, error_card};
 use zz_ui::agent::preview::ViewRequest;
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
-use zz_ui::agent::resume::EmptyChat;
+use zz_ui::agent::resume::{EmptyChat, HeaderMenu};
 use zz_ui::agent::tasks::plan_tray;
 
 use ala::{
@@ -279,9 +279,14 @@ pub(crate) struct AgentView {
     open_usage: Cell<bool>,
     resume_scroll: ScrollHandle,
     focus_search: bool,
+    menu_hidden: Option<std::time::Instant>,
     child_requests: HashMap<u64, PaneId>,
     _subscriptions: Vec<Subscription>,
 }
+
+const CHATS_BUTTON: &str = "chats";
+const HEADER_MENU_INSET: Pixels = px(8.0);
+const REOPEN_GUARD: std::time::Duration = std::time::Duration::from_millis(250);
 
 pub(crate) struct AgentAccountPicked {
     pub(crate) account: Option<String>,
@@ -484,6 +489,7 @@ impl AgentView {
             open_usage: Cell::new(false),
             resume_scroll: ScrollHandle::new(),
             focus_search: false,
+            menu_hidden: None,
             child_requests: HashMap::new(),
             _subscriptions: vec![
                 printed,
@@ -647,14 +653,84 @@ impl AgentView {
         state_changed || chat_changed || resume_changed
     }
 
-    fn lists_chats(&self, cx: &ala::App) -> bool {
+    fn can_list(&self) -> bool {
         self.pane_state.connection == AgentConnectionState::Ready
             && !self.pane_state.session_capabilities.watch
+    }
+
+    fn lists_chats(&self, cx: &ala::App) -> bool {
+        self.can_list()
             && !self
                 .controller
                 .read(cx)
                 .pane_chat(self.pane)
                 .is_some_and(zz_ui::agent::chat::shows_chat)
+    }
+
+    pub(crate) fn header_buttons(&self, cx: &ala::App) -> Vec<zz_ui::pane::PaneKindButton> {
+        if !self.can_list() || self.lists_chats(cx) {
+            return Vec::new();
+        }
+        vec![zz_ui::pane::PaneKindButton {
+            key: CHATS_BUTTON,
+            icon: penna::IconName::History,
+            label: "Chats",
+        }]
+    }
+
+    pub(crate) fn header_action(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if key != CHATS_BUTTON || !self.can_list() {
+            return;
+        }
+        if self.open_menu(cx).is_some() {
+            self.hide_menu(true, window, cx);
+        } else if self
+            .menu_hidden
+            .is_none_or(|hidden| hidden.elapsed() > REOPEN_GUARD)
+        {
+            let pane = self.pane;
+            self.controller
+                .update(cx, |controller, cx| controller.request_resume(pane, cx));
+            self.show_menu(Menu::Switch, window, cx);
+        }
+    }
+
+    fn render_header_menu(
+        &self,
+        open: bool,
+        rows: &[ResumeRow],
+        selected: Option<usize>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let close = cx.entity();
+        let pick = cx.entity();
+        let hover = cx.entity();
+        div()
+            .absolute()
+            .top(self.header_inset())
+            .right(HEADER_MENU_INSET)
+            .child(
+                HeaderMenu {
+                    pane: self.pane.0,
+                    open,
+                    rows,
+                    selected,
+                    search: &self.search,
+                    scroll: &self.resume_scroll,
+                }
+                .render(
+                    move |window, cx| {
+                        close.update(cx, |view, cx| view.hide_menu(false, window, cx));
+                    },
+                    move |index, window, cx| {
+                        pick.update(cx, |view, cx| view.pick_resume(index, window, cx));
+                    },
+                    move |index, _, cx| {
+                        hover.update(cx, |view, cx| view.hover_resume(index, cx));
+                    },
+                    cx,
+                ),
+            )
     }
 
     fn synchronize_search(&mut self, cx: &mut Context<Self>) {
@@ -701,7 +777,7 @@ impl AgentView {
     }
 
     fn open_menu(&self, cx: &ala::App) -> Option<Menu> {
-        if !self.lists_chats(cx) {
+        if !self.can_list() {
             return None;
         }
         self.controller
@@ -711,7 +787,7 @@ impl AgentView {
     }
 
     fn resume(&self, cx: &ala::App) -> (Vec<ResumeRow>, Option<usize>) {
-        if !self.lists_chats(cx) {
+        if !self.can_list() {
             return (Vec::new(), None);
         }
         let now = std::time::SystemTime::now()
@@ -757,6 +833,7 @@ impl AgentView {
                 None
             });
         });
+        self.menu_hidden = Some(std::time::Instant::now());
         if refocus {
             self.input.update(cx, |input, cx| input.focus(window, cx));
         }
@@ -800,7 +877,15 @@ impl AgentView {
             controller.update_resume(pane, cx, |resume, cwd| resume.pick(&row, cwd));
         });
         self.clear_search(window, cx);
-        self.input.update(cx, |input, cx| input.focus(window, cx));
+        if let Some(menu) = self.open_menu(cx) {
+            self.search.update(cx, |search, cx| {
+                search.set_placeholder(menu.placeholder(), cx);
+            });
+            self.resume_scroll = ScrollHandle::new();
+            self.focus_search = true;
+        } else {
+            self.input.update(cx, |input, cx| input.focus(window, cx));
+        }
         cx.notify();
     }
 
@@ -1952,6 +2037,15 @@ impl Render for AgentView {
             self.render_empty_chat(&rows, selected, open, cx)
                 .into_any_element()
         });
+        let header_menu = (!listing && self.can_list()).then(|| {
+            let (rows, selected) = if open.is_some() {
+                self.resume(cx)
+            } else {
+                Default::default()
+            };
+            self.render_header_menu(open.is_some(), &rows, selected, cx)
+                .into_any_element()
+        });
         let root = div()
             .id(("agent-pane", self.pane.0))
             .key_context(AGENT_KEY_CONTEXT)
@@ -1993,7 +2087,8 @@ impl Render for AgentView {
                     }),
             )
             .child(self.render_composer(&state, &view, cx))
-            .children(self.header_band().map(zz_ui::pane::header_scrim));
+            .children(self.header_band().map(zz_ui::pane::header_scrim))
+            .children(header_menu);
         let radii = if floats {
             ala::Corners::default()
         } else {
@@ -2285,6 +2380,7 @@ mod completion_tests {
                 open_usage: Cell::new(false),
                 resume_scroll: ScrollHandle::new(),
                 focus_search: false,
+                menu_hidden: None,
                 child_requests: HashMap::new(),
                 _subscriptions: Vec::new(),
             });

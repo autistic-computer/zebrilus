@@ -410,6 +410,7 @@ type PaneActionHandler = std::rc::Rc<dyn Fn(TerminalPaneAction, &mut Window, &mu
 
 pub struct PaneActions {
     kinds: Vec<PaneKindButton>,
+    flip: Option<PaneFlip>,
     actions: Vec<(TerminalPaneAction, IconName, &'static str)>,
     keys: PaneActionKeys,
     enabled: bool,
@@ -423,6 +424,7 @@ impl PaneActions {
     ) -> Self {
         Self {
             kinds: Vec::new(),
+            flip: None,
             actions,
             keys: PaneActionKeys::default(),
             enabled: true,
@@ -433,6 +435,12 @@ impl PaneActions {
     #[must_use]
     pub fn kinds(mut self, kinds: &[PaneKindButton]) -> Self {
         self.kinds = kinds.to_vec();
+        self
+    }
+
+    #[must_use]
+    pub const fn flip(mut self, flip: Option<PaneFlip>) -> Self {
+        self.flip = flip;
         self
     }
 
@@ -450,7 +458,7 @@ impl PaneActions {
 
     #[must_use]
     pub fn count(&self) -> usize {
-        self.kinds.len() + self.actions.len()
+        self.kinds.len() + usize::from(self.flip.is_some()) + self.actions.len()
     }
 
     #[must_use]
@@ -465,11 +473,20 @@ impl PaneActions {
         }
         let Self {
             kinds,
+            flip,
             actions,
             keys,
             enabled,
             on_action,
         } = self;
+        let flip = flip.map(|flip| {
+            let on_action = std::rc::Rc::clone(&on_action);
+            pane_flip_button(
+                flip,
+                move |window, cx| on_action(TerminalPaneAction::Flip, window, cx),
+                cx,
+            )
+        });
         let kinds = kinds.into_iter().map(|button| {
             let on_action = std::rc::Rc::clone(&on_action);
             let key = button.key;
@@ -496,17 +513,26 @@ impl PaneActions {
             slot.invisible().group_hover(group, ala::Styled::visible)
         })
         .children(kinds)
+        .children(flip)
         .children(actions)
     }
 
     fn more(self, hidden_in: Option<&'static str>, cx: &App) -> impl IntoElement {
         let Self {
             kinds,
+            flip,
             actions,
             enabled,
             on_action,
             ..
         } = self;
+        let flip = flip.map(|flip| {
+            (
+                TerminalPaneAction::Flip,
+                flip_icon(flip.to),
+                zz_client::agent_flip::flip_tooltip(flip.to, flip.armed),
+            )
+        });
         let rows = kinds
             .into_iter()
             .map(|button| {
@@ -516,6 +542,7 @@ impl PaneActions {
                     button.label,
                 )
             })
+            .chain(flip)
             .chain(actions)
             .collect::<Vec<_>>();
         PaneActionsMore {
@@ -636,7 +663,6 @@ pub fn pane_flip_button(
     cx: &App,
 ) -> Button {
     pane_header_icon_button("pane-flip", flip_icon(flip.to), !flip.pending, cx)
-        .look(ButtonLook::Toggle)
         .debug_selector(|| "pane-flip".into())
         .selected(flip.armed)
         .when(flip.armed, |button| {
@@ -893,19 +919,11 @@ pub fn pane_header(
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Stateful<ala::Div> {
-    let on_action = std::rc::Rc::new(on_action);
-    let toggle = std::rc::Rc::clone(&on_action);
-    let actions = PaneActions::new(pane_header_actions(state), move |action, window, cx| {
-        on_action(action, window, cx);
-    })
-    .kinds(buttons)
-    .keys(keys);
-    let chrome = px(crate::CHROME_GAP * 2.0)
-        + trailing_inset
-        + PANE_HEADER_GAP
-        + flip.map_or(px(0.0), |_| {
-            crate::PANE_HEADER_CONTROL_HEIGHT + PANE_HEADER_GAP
-        });
+    let actions = PaneActions::new(pane_header_actions(state), on_action)
+        .kinds(buttons)
+        .flip(flip)
+        .keys(keys);
+    let chrome = px(crate::CHROME_GAP * 2.0) + trailing_inset + PANE_HEADER_GAP;
     let icon = icon.into();
     let title = title.into();
     let drag = drag.floating(state.floats);
@@ -928,20 +946,6 @@ pub fn pane_header(
                         PaneTitle::new("terminal-pane-title", icon, title, drag).folder(folder),
                     ),
                 )
-                .children(flip.map(|flip| {
-                    lit(div()
-                        .flex()
-                        .flex_none()
-                        .when(!active && !flip.armed, |slot| {
-                            slot.invisible()
-                                .group_hover("terminal-pane-header", ala::Styled::visible)
-                        })
-                        .child(pane_flip_button(
-                            flip,
-                            move |window, cx| toggle(TerminalPaneAction::Flip, window, cx),
-                            cx,
-                        )))
-                }))
                 .child(lit(actions.slot(
                     collapsed,
                     (!active).then_some("terminal-pane-header"),

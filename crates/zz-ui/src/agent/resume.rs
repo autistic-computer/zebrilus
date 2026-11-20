@@ -9,11 +9,12 @@ use penna::{
     components::{
         button::{Button, ButtonLook},
         input::{Input, InputState},
-        popover::Popover,
+        popover::{Popover, PopoverTrigger},
+        separator::Separator,
         spinner::Spinner,
     },
 };
-use zz_client::agent_resume::{LOADING, Menu, ResumeRow};
+use zz_client::agent_resume::{LOADING, Menu, ResumeAction, ResumeRow};
 use zz_protocol::AgentProvider;
 
 use crate::{
@@ -76,7 +77,7 @@ impl EmptyChat<'_> {
             let selected = self.selected;
             Popover::new(match which {
                 Menu::Folders => ("agent-folder-menu", pane),
-                Menu::Chats => ("agent-resume-menu", pane),
+                Menu::Chats | Menu::Switch => ("agent-resume-menu", pane),
             })
             .anchor(Anchor::TopCenter)
             .p(px(0.0))
@@ -189,6 +190,91 @@ pub fn resume_menu(
         .into_any_element()
 }
 
+#[must_use]
+pub const fn action_icon(action: ResumeAction) -> IconName {
+    match action {
+        ResumeAction::NewChat => IconName::ChatPlus,
+        ResumeAction::ChangeFolder => IconName::Folder,
+    }
+}
+
+#[derive(IntoElement)]
+struct MenuAnchor;
+
+impl crate::Selectable for MenuAnchor {
+    fn selected(self, _: bool) -> Self {
+        self
+    }
+
+    fn is_selected(&self) -> bool {
+        false
+    }
+}
+
+impl PopoverTrigger for MenuAnchor {
+    fn opened(self, _: bool) -> Self {
+        self
+    }
+}
+
+impl RenderOnce for MenuAnchor {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        div().size(px(0.0))
+    }
+}
+
+pub struct HeaderMenu<'a> {
+    pub pane: u64,
+    pub open: bool,
+    pub rows: &'a [ResumeRow],
+    pub selected: Option<usize>,
+    pub search: &'a Entity<InputState>,
+    pub scroll: &'a ScrollHandle,
+}
+
+impl HeaderMenu<'_> {
+    pub fn render(
+        self,
+        on_close: impl Fn(&mut Window, &mut App) + 'static,
+        on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
+        on_hover: impl Fn(usize, &mut Window, &mut App) + 'static,
+        cx: &App,
+    ) -> Popover {
+        let pane = self.pane;
+        let searching = !self.search.read(cx).value().trim().is_empty();
+        let search = self.search.clone();
+        let scroll = self.scroll.clone();
+        let rows = self.rows.to_vec();
+        let selected = self.selected;
+        let on_pick = Rc::new(on_pick);
+        let on_hover = Rc::new(on_hover);
+        Popover::new(("agent-header-menu", pane))
+            .anchor(Anchor::TopRight)
+            .p(px(0.0))
+            .trigger(MenuAnchor)
+            .open(self.open)
+            .on_toggle(move |open, window, cx| {
+                if !open {
+                    on_close(window, cx);
+                }
+            })
+            .content(move |_, _, cx| {
+                let pick = on_pick.clone();
+                let hover = on_hover.clone();
+                let items = resume_rows(
+                    pane,
+                    &rows,
+                    selected,
+                    searching,
+                    move |index, window, cx| pick(index, window, cx),
+                    move |index, window, cx| hover(index, window, cx),
+                    cx,
+                );
+                resume_menu(&search, &scroll, items, cx)
+            })
+    }
+}
+
 #[derive(Default)]
 struct Line {
     icon: Option<IconName>,
@@ -211,10 +297,18 @@ pub fn resume_rows(
 ) -> Vec<AnyElement> {
     let on_pick = Rc::new(on_pick);
     let on_hover: Rc<dyn Fn(usize, &mut Window, &mut App)> = Rc::new(on_hover);
+    let first_action = rows
+        .iter()
+        .position(|row| matches!(row, ResumeRow::Action(_)));
     rows.iter()
         .enumerate()
         .map(|(index, row)| {
             let line = match row {
+                ResumeRow::Action(action) => Line {
+                    icon: Some(action_icon(*action)),
+                    title: action.label().to_owned(),
+                    ..Line::default()
+                },
                 ResumeRow::Label(text) => return label(text.clone(), cx),
                 ResumeRow::Note(text) => return note(text, cx),
                 ResumeRow::Loading => return loading(pane, cx),
@@ -249,7 +343,7 @@ pub fn resume_rows(
             let pick = on_pick.clone();
             let hover = on_hover.clone();
             let picked = selected == Some(index);
-            item(
+            let item = item(
                 (pane, index),
                 line,
                 picked,
@@ -257,8 +351,16 @@ pub fn resume_rows(
                 move |window, cx| pick(index, window, cx),
                 move |window, cx| hover(index, window, cx),
                 cx,
-            )
-            .into_any_element()
+            );
+            if first_action == Some(index) {
+                crate::v_flex()
+                    .flex_none()
+                    .child(Separator::horizontal().my(px(4.0)))
+                    .child(item)
+                    .into_any_element()
+            } else {
+                item.into_any_element()
+            }
         })
         .collect()
 }

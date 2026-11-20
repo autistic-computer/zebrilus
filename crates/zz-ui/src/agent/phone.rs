@@ -909,13 +909,16 @@ pub fn resume_sheet(
                 };
                 row.on_click(pick(index))
             }
+            ResumeRow::Action(action) => TouchRow::new(id, action.label())
+                .icon(super::resume::action_icon(*action))
+                .on_click(pick(index)),
         };
         group.push(touch);
     }
     sections.extend(section(header, group));
     let title = match menu {
         Menu::Folders => FOLDER,
-        Menu::Chats => super::resume::RESUME,
+        Menu::Chats | Menu::Switch => super::resume::RESUME,
     };
     let list = v_flex()
         .w_full()

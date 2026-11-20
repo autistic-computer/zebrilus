@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat switch: another chat, another folder, the CLI</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/badge/badge.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/kbd/kbd.css">
+<link rel="stylesheet" href="/penna-src/components/list/list.css">
+<link rel="stylesheet" href="/penna-src/components/panel/panel.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/blocks/palette/palette.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="../agent-mentions/mentions.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/penna-src/components/kbd/kbd.js" defer></script>
+<script src="../agent-mentions/mentions.js"></script>
+<style>
+  .zz-take { display: grid; gap: 14px; }
+  .zz-take > header { display: grid; gap: 4px; max-width: 110ch; }
+  .zz-take > header p { margin: 0; color: var(--penna-fg-muted); }
+  .zz-row { display: grid; grid-template-columns: repeat(3, 560px); gap: 28px; }
+  .zz-row > figure { display: grid; gap: 10px; margin: 0; align-content: start; }
+  .zz-row figcaption { font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-row figcaption b { margin-right: 6px; color: var(--penna-fg); font-weight: 600; }
+
+  .zz-pane[data-penna="pane"] { position: relative; display: flex; flex-direction: column; height: 440px; overflow: hidden; border: 1px solid var(--penna-border); border-radius: 14px; }
+  .zz-pane > [data-penna="bar.pane"] { flex: none; gap: 6px; padding: 0 8px; }
+  .zz-pane [data-penna="button.title"] { max-width: none; color: var(--penna-fg); }
+  .zz-pane [data-penna="button.title"] > [data-icon="chevron-down"] { color: var(--penna-muted); --penna-icon-size: 10px; }
+  .zz-pane [data-penna="button.title"][data-state~="hover"] { background: color-mix(in srgb, var(--penna-fg) 8%, transparent); }
+  .zz-pane .zz-tx { padding-top: 10px; }
+  .zz-pane .penna-chat-frame { flex: none; }
+  .zz-pane .penna-chat-frame-foot > div:first-child { flex: 1; }
+
+  .zz-pop.penna-menu[data-penna="popover"] { position: absolute; z-index: 5; top: 36px; left: 8px; width: 330px; max-width: none; }
+  .zz-pop [data-penna="menu-item"] > span:first-of-type { overflow: hidden; text-overflow: ellipsis; }
+  .zz-pop [data-icon="check"] { margin-left: auto; --penna-icon-size: 12px; }
+  .zz-find { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; color: var(--penna-muted); font-size: var(--penna-text-small-size); }
+  .zz-keys { margin-left: auto; padding-left: 12px; font-family: var(--penna-mono); font-size: var(--penna-text-caption-size); color: var(--penna-muted); }
+
+  .zz-back { display: grid; flex: none; place-items: center; width: 24px; height: 24px; border-radius: 6px; color: var(--penna-fg-muted); --penna-icon-size: 13px; }
+  .zz-back[data-state~="hover"] { background: color-mix(in srgb, var(--penna-fg) 8%, transparent); color: var(--penna-fg); }
+  .zz-seg { display: flex; flex: none; gap: 2px; padding: 2px; border-radius: 8px; background: color-mix(in srgb, var(--penna-fg) 7%, transparent); }
+  .zz-seg > span { display: grid; place-items: center; width: 26px; height: 20px; border-radius: 6px; color: var(--penna-fg-muted); --penna-icon-size: 13px; }
+  .zz-seg > span[aria-selected="true"] { background: var(--penna-bg); color: var(--penna-fg); box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--penna-fg) 18%, transparent); }
+
+  .zz-acts { display: flex; flex: none; align-items: center; gap: 2px; }
+  .zz-acts > i.zz-gap { width: 6px; }
+  .zz-acts [data-penna="icon-button.bar"][data-state~="hover"] { background: color-mix(in srgb, var(--penna-fg) 10%, transparent); color: var(--penna-fg); }
+  .zz-pop.zz-pop-right.penna-menu[data-penna="popover"] { right: 8px; left: auto; }
+  .zz-tip { position: absolute; z-index: 6; top: 36px; right: 76px; padding: 3px 8px; border-radius: 6px; background: var(--penna-fg); color: var(--penna-bg); font-size: var(--penna-text-caption-size); line-height: 16px; white-space: nowrap; }
+  .zz-take > header code { font-family: var(--penna-mono); font-size: 12px; color: var(--penna-fg); }
+  .zz-ready { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 0; text-align: center; }
+  .zz-ready > [data-icon] { margin-bottom: 8px; color: var(--penna-fg-muted); --penna-icon-size: 34px; }
+  .zz-ready > b { font-size: 17px; line-height: 24px; font-weight: 600; }
+  .zz-ready > span { color: var(--penna-fg-muted); }
+  .zz-ready-buttons { display: flex; gap: 6px; margin-top: 14px; }
+  .zz-last { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 0 10px; height: 30px; border-radius: 8px; font-size: var(--penna-text-small-size); color: var(--penna-fg-muted); --penna-icon-size: 12px; }
+  .zz-last b { color: var(--penna-fg); font-weight: 500; }
+
+  .zz-pane > .zz-terminal { color: var(--penna-fg); font-size: 12px; line-height: 17px; }
+  .zz-terminal .zz-dimmer { color: var(--penna-fg-muted); }
+  .zz-terminal .zz-brand { color: #e6683d; }
+
+  .zz-over { position: relative; }
+  .zz-menu.penna-palette-surface[data-penna] { position: absolute; right: 0; bottom: calc(100% + 8px); left: 0; z-index: 4; width: auto; max-width: none; }
+  .zz-crumb { display: flex; flex: none; align-items: center; height: 28px; padding: 0 14px; font-family: var(--penna-mono); font-size: var(--penna-text-caption-size); line-height: 16px; color: var(--penna-fg-muted); }
+  .zz-menu .penna-palette-rows { padding-bottom: 6px; overflow: hidden; }
+  .zz-caret { display: inline-block; width: 1px; height: 15px; margin-left: 1px; vertical-align: -3px; background: var(--penna-fg); }
+  .zz-palette.penna-palette-surface[data-penna] { position: absolute; z-index: 5; top: 54px; left: 50%; width: 400px; max-width: none; transform: translateX(-50%); }
+  .zz-palette .zz-find { height: 36px; padding: 0 14px; font-size: var(--penna-text-body-size); color: var(--penna-fg); }
+
+  .zz-table { border-collapse: collapse; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-table th, .zz-table td { padding: 7px 14px 7px 0; border-bottom: 1px solid var(--penna-divider); text-align: left; vertical-align: top; }
+  .zz-table th { font-weight: 600; }
+  .zz-table td { color: var(--penna-fg-muted); max-width: 34ch; }
+  .zz-table td:first-child { color: var(--penna-fg); font-weight: 500; }
+  .zz-facts { display: grid; gap: 6px; margin: 0; padding-left: 18px; max-width: 110ch; color: var(--penna-fg-muted); }
+  .zz-facts b { color: var(--penna-fg); font-weight: 600; }
+  .zz-facts code { font-family: var(--penna-mono); font-size: 12px; color: var(--penna-fg); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Chat switch: another chat, another folder, the CLI</h1>
+    <p>Once a chat has a message, the folder and Resume buttons of the empty chat are gone, and nothing takes the chat to the agent's own CLI. Three takes on one live Claude Code chat in <b>~/dev/zebrilus</b>. Each answers both: pick another chat or folder, and jump to the CLI and back.</p>
+  </div>
+
+  <section class="zz-take" data-take="icons">
+    <header><h2>Take 4 · Icons on the right</h2><p>Two icon buttons before the pane's own split and close buttons. The clock opens the chats and folders menu. The terminal flips the pane to the CLI, and on the CLI a chat icon in the same spot flips it back. The flip button is the one the header had until 2026-11-08: <code>flip-agent</code>, its busy choices (now, or when idle) and finding the session the CLI is on are all still in the tree.</p></header>
+    <div class="zz-row" data-row="icons"></div>
+  </section>
+
+  <section class="zz-take" data-take="title-menu">
+    <header><h2>Take 1 · The title is the menu</h2><p>The pane title already names the agent and the folder. It gets a chevron and opens one menu: this folder's chats, the other folders, a new chat, the folder picker, and the CLI. The terminal's title carries the way back.</p></header>
+    <div class="zz-row" data-row="title-menu"></div>
+  </section>
+
+  <section class="zz-take" data-take="header-buttons">
+    <header><h2>Take 2 · Back and a switch</h2><p>Two controls in the pane header. A back chevron returns to the ready screen, the one with the folder and Resume buttons. A two-way switch flips the same pane between the chat and the CLI, and shows which one you are in.</p></header>
+    <div class="zz-row" data-row="header-buttons"></div>
+  </section>
+
+  <section class="zz-take" data-take="slash">
+    <header><h2>Take 3 · Slash commands</h2><p>No new chrome. <b>/resume</b>, <b>/new</b>, <b>/cd</b> and <b>/cli</b> join the composer's command menu and list in the surface the @ menu uses. The CLI has no composer, so the way back is a palette command.</p></header>
+    <div class="zz-row" data-row="slash"></div>
+  </section>
+
+  <section class="zz-take" data-take="compare">
+    <header><h2>Side by side</h2></header>
+    <table class="zz-table">
+      <tr><th></th><th>Another chat</th><th>Another folder</th><th>To the CLI</th><th>Back to the chat</th><th>New chrome</th><th>Keyboard only</th></tr>
+      <tr><td>4 · Icons on the right</td><td>Clock, then a row.</td><td>Change folder in the clock's menu.</td><td>The terminal icon.</td><td>The chat icon, same spot.</td><td>Two icons; one of them is built.</td><td>flip-agent can be bound; the clock needs a key.</td></tr>
+      <tr><td>1 · Title menu</td><td>Title, then a row. One click away.</td><td>Change folder in the same menu, opens the folder picker.</td><td>Last row of the menu.</td><td>The terminal's title menu.</td><td>A chevron on the title.</td><td>Needs a key for the title menu.</td></tr>
+      <tr><td>2 · Back and a switch</td><td>Back, then Resume. Two clicks, and the chat leaves the screen first.</td><td>Back, then the folder button.</td><td>The switch. Always visible.</td><td>The same switch.</td><td>A chevron and a two-way switch.</td><td>Needs two keys.</td></tr>
+      <tr><td>3 · Slash commands</td><td>/resume, then pick.</td><td>/cd, then pick.</td><td>/cli.</td><td>Palette: Open as chat.</td><td>None.</td><td>Yes, but nothing on screen says it exists.</td></tr>
+    </table>
+  </section>
+
+  <section class="zz-take" data-take="facts">
+    <header><h2>What the jump does, in every take</h2></header>
+    <ul class="zz-facts">
+      <li><b>Same pane.</b> The chat pane turns into a terminal in place, in the chat's folder, running <code>claude --resume &lt;id&gt;</code> (<code>codex resume &lt;id&gt;</code> for Codex). <code>select-pane-kind terminal</code> does this today; the layout, window and title stay.</li>
+      <li><b>One owner.</b> zz's own driver for the chat stops before the CLI starts, so two processes never write one session. While a turn runs, the flip asks: now, or when idle.</li>
+      <li><b>Back.</b> The terminal turns into a chat again on the session the CLI is on, even after a clear or a resume inside it: <code>flip-agent</code> already finds that session.</li>
+      <li><b>No messages yet.</b> A chat that never sent anything has no session in the CLI, so the jump opens the plain CLI in that folder.</li>
+      <li><b>Another chat.</b> Picking one swaps the session inside the pane, the way Resume on the empty chat does. The chat you leave stays in the CLI's store and is the first row next time.</li>
+    </ul>
+  </section>
+</main>
+<script>
+(() => {
+  const { esc, ic, ref, you, step, frame, composer, foot } = window.zzm;
+  const caret = `<span class="zz-caret"></span>`;
+  const TITLE = "can the retry loop send twice?";
+  const CHATS = [
+    [TITLE, "now", true],
+    ["Show the model in use in the @ menu", "2h"],
+    ["Phone overview: open the machine's page", "1d"],
+  ];
+  const OTHER = [
+    ["Sky dither at 4px", "landing-page", "3d"],
+    ["Clipboard sync over QUIC", "nidus", "5d"],
+  ];
+
+  const title = ({ icon = "zz-claude", name = "Claude Code", chevron = false, hover = false } = {}) =>
+    `<span data-penna="button.title"${hover ? ` data-state="hover"` : ""}>${ic(icon)}<span>${name}</span><span class="zz-dim">~/dev/zebrilus</span>${chevron ? ic("chevron-down") : ""}</span>`;
+  const transcript = `<div class="zz-tx">${you(`${ref("@codex")} can the retry loop in turn.rs send twice?`)}<p>Yes. A retry scheduled before the ack lands resends the same prompt. Guard on the turn id.</p><div class="zz-steps">${step("file", "Read turn.rs")}${step("square-terminal", "cargo test -p zz-daemon")}</div></div>`;
+  const pane = (bar, body, over = "") => `<section class="zz-pane" data-penna="pane"><div data-penna="bar.pane">${bar}</div>${body}${over}</section>`;
+  const chat = (bar, over = "", opts) => pane(bar, `${transcript}${frame(opts)}`, over);
+  const terminal = `<pre class="zz-terminal"><span class="zz-brand">✻</span> Claude Code  <span class="zz-dimmer">~/dev/zebrilus</span>
+  <span class="zz-dimmer">resumed "${TITLE}"</span>
+
+<span class="zz-dimmer">&gt;</span> @codex can the retry loop in turn.rs send twice?
+
+<span class="zz-brand">⏺</span> Yes. A retry scheduled before the ack lands
+  resends the same prompt. Guard on the turn id.
+
+<span class="zz-dimmer">────────────────────────────────────────────────────────────────</span>
+&gt; <span class="zz-caret"></span>
+<span class="zz-dimmer">────────────────────────────────────────────────────────────────
+  ? for shortcuts                                    Opus 5.5</span></pre>`;
+  const fig = (name, note, body) => `<figure><div>${body}</div><figcaption><b>${name}</b>${note}</figcaption></figure>`;
+  const item = (icon, label, right = "", opts = {}) => `<div data-penna="menu-item"${opts.selected ? ` data-state="selected"` : ""}>${ic(icon)}<span>${esc(label)}</span>${opts.check ? ic("check") : ""}${right ? `<span class="penna-shortcut">${right}</span>` : ""}</div>`;
+  const label = (text) => `<div class="penna-menu-label">${text}</div>`;
+  const rule = `<div class="penna-separator"></div>`;
+  const grow = `<span class="zz-grow"></span>`;
+
+  const titleMenu = `<div class="penna-menu zz-pop" data-penna="popover">
+    <div class="zz-find">${ic("search")}<span>Search chats</span></div>${rule}
+    ${label("zebrilus")}${CHATS.map(([name, age, here]) => item("chat", name, here ? "" : age, { check: here })).join("")}
+    ${label("Other folders")}${OTHER.map(([name, folder, age]) => item("chat", name, `${folder} · ${age}`)).join("")}
+    ${rule}${item("chat-plus", "New chat")}${item("folder", "Change folder…")}
+    ${rule}${item("square-terminal", "Open in the Claude Code CLI", "", { selected: true })}
+  </div>`;
+  const backMenu = `<div class="penna-menu zz-pop" data-penna="popover" style="width: 220px">${item("chat", "Open as chat", "", { selected: true })}${rule}${item("folder", "Change folder…")}</div>`;
+  document.querySelector(`[data-row="title-menu"]`).innerHTML = [
+    fig("The chat", "The title has a chevron and a hover.", chat(title({ chevron: true, hover: true }))),
+    fig("Its menu", "Chats in this folder, then the newest elsewhere, then the actions. The search looks through every chat the CLI has.", chat(title({ chevron: true }), titleMenu)),
+    fig("In the CLI", "The same pane, now a terminal. Its title menu leads back.", pane(title({ icon: "square-terminal", name: "claude", chevron: true }), terminal, backMenu)),
+  ].join("");
+
+  const act = (icon, name, hover = false) => `<button data-penna="icon-button.bar" aria-label="${name}"${hover ? ` data-state="hover"` : ""}>${ic(icon)}</button>`;
+  const acts = (mine) => `<span class="zz-acts">${mine}<i class="zz-gap"></i>${act("panel-bottom", "Split bottom")}${act("panel-right", "Split right")}${act("xmark", "Close pane")}</span>`;
+  const tip = (text) => `<span class="zz-tip">${text}</span>`;
+  const chatsMenu = `<div class="penna-menu zz-pop zz-pop-right" data-penna="popover">
+    <div class="zz-find">${ic("search")}<span>Search chats</span></div>${rule}
+    ${label("zebrilus")}${CHATS.map(([name, age, here]) => item("chat", name, here ? "" : age, { check: here, selected: !here && age === "2h" })).join("")}
+    ${label("Other folders")}${OTHER.map(([name, folder, age]) => item("chat", name, `${folder} · ${age}`)).join("")}
+    ${rule}${item("chat-plus", "New chat")}${item("folder", "Change folder…")}
+  </div>`;
+  document.querySelector(`[data-row="icons"]`).innerHTML = [
+    fig("The chat", "Hovering the flip. On a pane that is not focused both icons hide until the header is hovered, as the flip did before.", chat(`${title()}${grow}${acts(`${act("history", "Chats")}${act("square-terminal", "Switch to the CLI", true)}`)}`, tip("Switch to the CLI"))),
+    fig("The clock", "Chats in this folder, the newest elsewhere, a new chat, the folder picker.", chat(`${title()}${grow}${acts(`${act("history", "Chats", true)}${act("square-terminal", "Switch to the CLI")}`)}`, chatsMenu)),
+    fig("In the CLI", "The same pane as a terminal. One icon, the chat, leads back.", pane(`${title({ icon: "square-terminal", name: "claude" })}${grow}${acts(act("chat", "Switch to chat", true))}`, terminal, tip("Switch to chat"))),
+  ].join("");
+
+  const back = (hover = false) => `<span class="zz-back"${hover ? ` data-state="hover"` : ""}>${ic("chevron-left")}</span>`;
+  const seg = (on) => `<span class="zz-seg"><span aria-selected="${on === "chat"}">${ic("chat")}</span><span aria-selected="${on === "cli"}">${ic("square-terminal")}</span></span>`;
+  const ready = `<div class="zz-ready">${ic("asterisk")}<b>Claude Code is ready</b><span>Start a chat, or pick one up from the CLI.</span>
+    <div class="zz-ready-buttons"><button class="penna-button" data-penna="button" data-size="small">${ic("folder")}<span class="penna-label">zebrilus</span>${ic("chevron-down")}</button><button class="penna-button" data-penna="button.quiet" data-size="small">${ic("history")}<span class="penna-label">Resume</span>${ic("chevron-down")}</button></div>
+    <div class="zz-last">${ic("chevron-right")}<b>${TITLE}</b><span>just left</span></div></div>`;
+  document.querySelector(`[data-row="header-buttons"]`).innerHTML = [
+    fig("The chat", "Back on the left, the switch on the right.", chat(`${back(true)}${title()}${grow}${seg("chat")}`)),
+    fig("After back", "The ready screen as it is today, plus one row to return to the chat you left.", pane(`${title()}${grow}${seg("chat")}`, `${ready}${frame()}`)),
+    fig("After the switch", "The same pane, now a terminal, with the switch on its other side.", pane(`${title({ icon: "square-terminal", name: "claude" })}${grow}${seg("cli")}`, terminal)),
+  ].join("");
+
+  const row = ({ icon, name, detail, right, inside, selected }) =>
+    `<div class="penna-list-item penna-palette-row" data-penna="menu-item" role="option"${detail ? " data-detail" : ""}${selected ? ` data-state="selected" aria-selected="true"` : ""}><div class="penna-palette-content"><i class="penna-palette-icon" data-icon="${icon}"></i><span class="penna-palette-label">${esc(name)}</span>${detail ? `<span class="penna-palette-detail">${esc(detail)}</span>` : ""}${right ? `<span class="penna-palette-right">${esc(right)}</span>` : ""}<span class="zz-inside">${inside ? ic("chevron-right") : ""}</span></div></div>`;
+  const section = (text) => `<div class="penna-palette-section"><span>${text}</span></div>`;
+  const hint = (keys, text, on = true) => `<span class="penna-palette-hint"${on ? "" : ` data-state="disabled"`}><span class="penna-palette-keys"><span class="penna-palette-glyphs" data-kbd="${keys}"></span></span><span>${text}</span></span>`;
+  const surface = (crumb, rows, hints) => `<div class="penna-panel penna-palette-surface zz-menu" data-penna="popover" role="group"><div class="zz-crumb">${esc(crumb)}</div><div class="penna-palette-rows" role="listbox">${rows.join("")}</div><div class="penna-palette-footer"><div class="penna-palette-rule" data-penna="rule.bar"></div>${hints}</div></div>`;
+  const stage = (text, over) => pane(title(), `${transcript}<div class="penna-chat-frame"><div class="penna-chat-frame-top">${composer({ text, over })}</div>${foot}</div>`);
+  const commands = surface("/", [
+    row({ icon: "history", name: "/resume", detail: "pick up another chat", inside: true, selected: true }),
+    row({ icon: "chat-plus", name: "/new", detail: "start over in this folder" }),
+    row({ icon: "folder", name: "/cd", detail: "move to another folder", inside: true }),
+    row({ icon: "square-terminal", name: "/cli", detail: "this chat in the Claude Code CLI" }),
+    section("Today"),
+    row({ icon: "chat", name: "/fork", detail: "go on in a copy" }),
+    row({ icon: "chat", name: "/rewind", detail: "back before your last prompt" }),
+  ], `${hint("enter", "run")}${hint("tab", "into")}`);
+  const resume = surface("/resume", [
+    section("zebrilus"),
+    row({ icon: "chat", name: "Show the model in use in the @ menu", right: "2h", selected: true }),
+    row({ icon: "chat", name: "Phone overview: open the machine's page", right: "1d" }),
+    section("Other folders"),
+    ...OTHER.map(([name, folder, age]) => row({ icon: "chat", name, detail: folder, right: age })),
+  ], `${hint("enter", "resume")}${hint("shift-tab", "back")}`);
+  const palette = `<div class="penna-panel penna-palette-surface zz-palette" data-penna="popover" role="group"><div class="zz-find">open as${caret}</div><div class="penna-palette-rows" role="listbox">${row({ icon: "chat", name: "Open as chat", detail: "claude in this pane", selected: true })}</div></div>`;
+  document.querySelector(`[data-row="slash"]`).innerHTML = [
+    fig("/", "Four new commands on top of the ones the chat has.", stage(`/${caret}`, commands)),
+    fig("/resume", "The same rows as the Resume menu, in the composer's own list.", stage(`/resume ${caret}`, resume)),
+    fig("In the CLI", "After /cli. Back with the command palette.", pane(title({ icon: "square-terminal", name: "claude" }), terminal, palette)),
+  ].join("");
+
+  window.zzm.round();
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.querySelector(".zz-intro").style.display = "none";
+    for (const take of document.querySelectorAll("[data-take]")) if (take.dataset.take !== only) take.style.display = "none";
+  }
+})();
+</script>
+</body>
+</html>

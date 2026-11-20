@@ -827,7 +827,10 @@ end no turn.
 # What the clients draw
 
 - **The flip button.** A terminal running either CLI and an agent pane carry a flip button in their
-  header (`ButtonLook::Toggle`, `zz_ui::pane::pane_flip_button`) that sends `flip-agent -t <pane>`.
+  header that sends `flip-agent -t <pane>`. It is one of the pane's controls
+  (`zz_ui::pane::PaneActions::flip`, `pane_flip_button`): the same bar button as split and close,
+  just before them, hidden with them on a pane that is not focused until the header is hovered,
+  and a row of the More menu when the header is too narrow.
   A `busy:` answer offers Switch when idle and Switch now; an armed flip shows with Cancel.
   `zz_client::agent_flip` (`AgentFlips`) keeps that state per pane for every client, and the
   composer's account switch (`agent-account`) rides the same requests and busy card.
@@ -862,6 +865,14 @@ zz keeps no chats of its own. A chat with nothing in it shows the welcome and, c
 two buttons 6 px apart (`zz_ui::agent::resume::folder_button` and `resume_button`): the folder
 the next chat starts in, and Resume, for a chat the CLI already has. Each opens a menu.
 
+- **From a chat that has messages.** The two buttons are gone once the chat shows, so on the
+  desktop the pane header gets a Chats button (a clock, `AgentView::header_buttons`), a pane
+  control like the flip beside it. It asks for the listings afresh and opens the same popover
+  under the header's right end (`zz_ui::agent::resume::HeaderMenu`, `Menu::Switch`): the Resume
+  rows, then New chat (`AgentSessionOp::New` in the pane's folder, which lands on the empty chat)
+  and Change folder…, which turns the popover into the folder menu. A search hides the two
+  actions. The daemon refuses a switch while a turn runs, and the chat shows its message. The
+  thin clients do not draw this button yet.
 - **The listings.** While the pane is ready and its chat is empty, the client asks the pane's
   driver for two lists with `AgentSessionOp::List` (`zz_client::agent_resume::Resume::start`): the
   chats in the pane's folder, and the newest chats in any folder. Claude Code's come from

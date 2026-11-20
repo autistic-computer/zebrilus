@@ -663,7 +663,7 @@ impl Render for TerminalHeaderView {
                 }
                 if let TerminalPaneAction::Kind(key) = action {
                     if let Some(app) = flip_app.upgrade() {
-                        app.update(cx, |view, cx| view.pane_kind_action(pane, key, cx));
+                        app.update(cx, |view, cx| view.pane_kind_action(pane, key, window, cx));
                     }
                     return;
                 }
@@ -3698,29 +3698,39 @@ impl AppView {
         }
     }
 
-    #[cfg(feature = "agent-pane")]
     fn pane_kind_buttons(&self, pane: PaneId, cx: &App) -> Vec<zz_ui::pane::PaneKindButton> {
-        self.views
-            .get(&pane)
-            .map(|view| view.read(cx).header_buttons())
-            .unwrap_or_default()
-    }
-
-    #[cfg(not(feature = "agent-pane"))]
-    fn pane_kind_buttons(&self, _: PaneId, _: &App) -> Vec<zz_ui::pane::PaneKindButton> {
+        if let Some(agent) = self.agents.get(&pane) {
+            return agent.read(cx).header_buttons(cx);
+        }
+        #[cfg(feature = "agent-pane")]
+        if let Some(view) = self.views.get(&pane) {
+            return view.read(cx).header_buttons();
+        }
         Vec::new()
     }
 
-    #[cfg(feature = "agent-pane")]
-    fn pane_kind_action(&mut self, pane: PaneId, key: &'static str, cx: &mut Context<Self>) {
+    fn pane_kind_action(
+        &mut self,
+        pane: PaneId,
+        key: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(agent) = self.agents.get(&pane) {
+            agent.update(cx, |agent, cx| agent.header_action(key, window, cx));
+            cx.notify();
+            return;
+        }
+        #[cfg(feature = "agent-pane")]
         if let Some(view) = self.views.get(&pane) {
             view.update(cx, |view, cx| view.header_action(key, cx));
             cx.notify();
         }
     }
 
-    #[cfg(not(feature = "agent-pane"))]
-    fn pane_kind_action(&mut self, _: PaneId, _: &'static str, _: &mut Context<Self>) {}
+    fn pane_flip(&self, snapshot: &zz_protocol::PaneSnapshot) -> Option<PaneFlip> {
+        PaneFlip::of(snapshot, self.flips.state(snapshot.id))
+    }
 
     #[cfg(feature = "agent-pane")]
     fn view_content(&self, pane: PaneId) -> Option<PaneContent> {
@@ -3880,7 +3890,7 @@ impl AppView {
                             zoomed: window.zoomed_pane == Some(*pane),
                         },
                         folder: self.pane_folder(snapshot, cx),
-                        flip: None,
+                        flip: self.pane_flip(snapshot),
                         keys: self.pane_action_keys(cx),
                         buttons: self.pane_kind_buttons(*pane, cx),
                         trailing_inset: window_controls_inset(
@@ -4607,7 +4617,7 @@ impl AppView {
                     ..zz_ui::pane::PaneState::default()
                 },
                 folder: snapshot.and_then(|snapshot| self.pane_folder(snapshot, cx)),
-                flip: None,
+                flip: snapshot.and_then(|snapshot| self.pane_flip(snapshot)),
                 keys: self.pane_action_keys(cx),
                 buttons: self.pane_kind_buttons(pane, cx),
                 trailing_inset: px(0.0),
