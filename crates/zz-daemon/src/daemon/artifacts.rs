@@ -571,6 +571,7 @@ impl Shared {
         })
     }
 
+    #[cfg(any(feature = "agent", test))]
     pub(super) fn show_agent_page(self: &Arc<Self>, pane: PaneId, path: &str) {
         let context = {
             let inner = self.inner.lock();
