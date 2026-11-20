@@ -160,6 +160,7 @@ Read, pinned, and cited. None of it is compiled, linked, or shipped.
 | tmux plugin corpus: [tpm](https://github.com/tmux-plugins/tpm), [tmux-sensible](https://github.com/tmux-plugins/tmux-sensible), [vim-tmux-navigator](https://github.com/christoomey/vim-tmux-navigator), [tmux-yank](https://github.com/tmux-plugins/tmux-yank), [tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect), [tmux-continuum](https://github.com/tmux-plugins/tmux-continuum), [tmux-fpp](https://github.com/tmux-plugins/tmux-fpp), [Oh My Tmux](https://github.com/gpakosz/.tmux) | The alias compatibility suite runs real plugin initialization against zz at immutable revisions. | MIT, except Oh My Tmux which is MIT and WTFPLv2. Originals retained in [`third_party/tmux-plugin-corpus/`](third_party/tmux-plugin-corpus/UPSTREAM.md) |
 | [Ghostty](https://github.com/ghostty-org/ghostty), [kitty](https://github.com/kovidgoyal/kitty), [Alacritty](https://github.com/alacritty/alacritty), [cmux](https://github.com/manaflow-ai/cmux) | Throughput and rendering baselines in `bench/`. | Respective upstream licenses |
 | [DOOM-fire-zig](https://github.com/const-void/DOOM-fire-zig) | One of the benchmark fixtures, cloned at a pinned revision into a gitignored cache by `bench/gen-fixtures.sh`. | Upstream license |
+| [idb](https://github.com/facebook/idb) (Meta) | The message keys and connection steps for the simulator's input service in `crates/zz-simulator/src/remote.rs`, read at `36b065d2`. No idb source is copied. | MIT |
 
 ## Prior art
 

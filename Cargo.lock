@@ -12018,6 +12018,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "zz-simulator"
+version = "0.28.0"
+dependencies = [
+ "block2 0.6.2",
+ "libc",
+ "objc2 0.6.5",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "zz-tailnet"
 version = "0.28.0"
 dependencies = [

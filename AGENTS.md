@@ -24,6 +24,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `crates/zz-config` - renderer-free application config, settings actions, preference persistence; behind its `update` feature, the update check and the in-app installer (`update::{detect, prepare, apply}`: find the install, download and verify a release, stage it beside the install, swap it in on restart)
 - `crates/zz-machine` - the shape of zz's pure state machines: a transition returns the next state, effects and rejects, and the state says when to wake; the agent turn machine (`zz-daemon/src/agent/turn.rs`) is built on it
 - `crates/zz-cli` — headless `zz_cli` binary: the CLI, raw-terminal attach, and the ssh-side entry point
+- `crates/zz-simulator` - screen and input access to a booted iOS simulator through Xcode's CoreSimulator and SimulatorKit (macOS only); `examples/probe.rs` attaches, counts frames and sends taps, swipes and keys
 - `crates/zz-terminal` — terminal engine: PTY sessions, libghostty-vt state, frame snapshots
 - `crates/zz-ui` - zz's application UI on penna (panes, terminal painting, agent, palette, zz's settings pages and appearance rows, navigation, the pane glow and frames (`pane_look`), the terminal tool keys, tmux highlighting, the phone overview's host, window and pane tiles; content reads the pane, floating panes, PiPs, the pane stack and the window through `penna::ContentLook`); kit names come from `penna` directly, not through it
 - `crates/zz-tui` — raw-terminal attach client as a library (the binary lives in `zz-cli`)
