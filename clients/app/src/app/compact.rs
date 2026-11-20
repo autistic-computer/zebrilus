@@ -59,6 +59,7 @@ const SCALE_HUD_LINGER: Duration = Duration::from_secs(1);
 #[cfg(any(target_os = "ios", target_os = "android"))]
 const NOTICE_LINGER: Duration = Duration::from_secs(2);
 const LANDING_WAIT: Duration = Duration::from_secs(1);
+const MAKING_WAIT: Duration = Duration::from_secs(10);
 const TOUCH_TARGET: f32 = penna::blocks::touch::TOUCH_TARGET;
 const BAR_SWAP: f32 = 8.0;
 const MENU_DIM: f32 = 0.45;
@@ -88,6 +89,7 @@ pub(super) struct CompactState {
     held: Option<String>,
     host_pager: Pager,
     shown_host: Option<(usize, zz_ui::command::PaletteHostId)>,
+    making: Option<Instant>,
     host_scrolls: BTreeMap<usize, ScrollHandle>,
     hosts_scroll: ScrollHandle,
     host_tiles: Rc<RefCell<BTreeMap<usize, Bounds<Pixels>>>>,
@@ -325,16 +327,16 @@ fn binding_rows(core: &zz_client::ClientCore, prefix: &str) -> Arc<[WhichKeyRow]
 
 impl AppShell {
     pub(super) fn open_machines_when_unattached(&mut self, window: &Window, cx: &App) {
+        let connection = self.connection.read(cx);
         if Self::narrow(window)
             && self.settings.is_none()
             && !self.compact.overview
-            && !self.connection.read(cx).connected
-            && !self.connection.read(cx).busy_or_connecting()
+            && !connection.busy_or_connecting()
+            && !connection.attaching()
             && self.active_window(cx).is_none()
         {
-            self.compact.overview = true;
+            self.place_overview(cx);
             self.compact.lift.snap(true);
-            self.compact.hosts.snap(true);
         }
     }
 
@@ -1077,6 +1079,9 @@ impl AppShell {
         }
         cx.stop_propagation();
         if response.started {
+            if !self.compact.overview {
+                self.aim_overview(cx);
+            }
             self.compact.landing = None;
             self.compact.overview_reveal = true;
         }
@@ -1216,6 +1221,16 @@ impl AppShell {
             } else if now.saturating_duration_since(since) >= LANDING_WAIT {
                 self.compact.entering = None;
                 self.close_overview(cx);
+            } else {
+                window.request_animation_frame();
+            }
+        }
+        if let Some(since) = self.compact.making {
+            if current_pane.is_some() {
+                self.compact.making = None;
+                self.land_overview(current_pane, cx);
+            } else if now.saturating_duration_since(since) >= MAKING_WAIT {
+                self.compact.making = None;
             } else {
                 window.request_animation_frame();
             }

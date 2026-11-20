@@ -44,7 +44,7 @@ machine with no sessions shows the New tile, which opens the same menu under "In
 that is connecting shows Cancel as its main action, and leaves for Machines if it fails. All machines, the handle, or dragging the pill up, zooms out to Machines: every saved machine as a small tile, two to a row, waiting ones first:
 its mark, its name, and its windows as the desktop's program faces with their status dots, or its state in words; a
 tile with something waiting is tinted yellow and counts it. Then Add machine and Settings. Tap a tile to zoom into the
-machine, into its connecting card while it connects, or to reconnect a failed one, and hold it for its sheet. With nothing attached the app opens on Machines. Entering a host, or paging to it with the pill, puts it on screen, since the
+machine, into its connecting card while it connects, or to reconnect a failed one, and hold it for its sheet. With no machine connected the app opens on Machines, and connected with nothing on screen it opens on that machine's page. Entering a host, or paging to it with the pill, puts it on screen, since the
 daemon streams previews only to the client attached to it. The phone has no session tree: the sidebar toggle and `focus-sidebar` open the
 overview instead. The keyboard opens only from that button or a tap on the terminal.
 While it is up, a key row replaces the bar, shaped like it: a pill holding prefix, ctrl, alt,

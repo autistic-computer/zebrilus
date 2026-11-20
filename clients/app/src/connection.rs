@@ -661,6 +661,11 @@ impl Connection {
     }
 
     #[must_use]
+    pub fn attaching(&self) -> bool {
+        self.attaching
+    }
+
+    #[must_use]
     pub fn palette_state(&self) -> zz_ui::command::PaletteHostState {
         use zz_ui::command::PaletteHostState as State;
         if self.connected {

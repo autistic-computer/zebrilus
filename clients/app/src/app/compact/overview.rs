@@ -289,27 +289,37 @@ fn host_counts(connection: &Entity<Connection>, cx: &App) -> HostCounts {
 impl AppShell {
     pub(in super::super) fn open_overview(&mut self, cx: &mut Context<Self>) {
         if !self.compact.overview {
-            let hosts = self.machine_pages(cx);
-            let attached = hosts
-                .iter()
-                .position(|host| host.connection.as_ref() == Some(&self.connection));
-            let at = attached.unwrap_or(0);
-            self.compact.host_pager.sync(at, hosts.len());
-            self.compact.host_pager.go_to(at, Instant::now());
-            self.compact.host_pager.finish();
-            self.compact.shown_host = None;
-            self.compact.hosts.snap(attached.is_none());
-            self.compact.overview = true;
-            self.compact.overview_reveal = true;
-            self.compact.landing = None;
-            self.compact.entering = None;
+            self.place_overview(cx);
             self.compact.lift.animate(true, Instant::now());
         }
         cx.notify();
     }
 
+    pub(in super::super) fn aim_overview(&mut self, cx: &App) {
+        let hosts = self.machine_pages(cx);
+        let attached = hosts
+            .iter()
+            .position(|host| host.connection.as_ref() == Some(&self.connection));
+        let at = attached.unwrap_or(0);
+        self.compact.host_pager.sync(at, hosts.len());
+        self.compact.host_pager.go_to(at, Instant::now());
+        self.compact.host_pager.finish();
+        self.compact.shown_host = None;
+        self.compact.hosts.snap(attached.is_none());
+    }
+
+    pub(in super::super) fn place_overview(&mut self, cx: &App) {
+        self.aim_overview(cx);
+        self.compact.overview = true;
+        self.compact.overview_reveal = true;
+        self.compact.landing = None;
+        self.compact.entering = None;
+        self.compact.making = None;
+    }
+
     pub(in super::super) fn close_overview(&mut self, cx: &mut Context<Self>) {
         self.compact.overview = false;
+        self.compact.making = None;
         self.compact.close_sheets();
         self.compact.landing = None;
         self.compact.entering = None;
@@ -1705,7 +1715,13 @@ impl AppShell {
                 self.command("new-window", args, cx);
             }
         }
-        self.close_overview(cx);
+        if self.active_window(cx).is_some() {
+            self.close_overview(cx);
+        } else {
+            self.compact.close_sheets();
+            self.compact.making = Some(Instant::now());
+            cx.notify();
+        }
     }
 
     fn create_on_shown_host(
