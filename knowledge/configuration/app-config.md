@@ -866,14 +866,20 @@ top corner of every step, sets it too and leaves to Machines. Three steps:
 1. What zz is, the desktop's first step. Next goes on and focuses the field.
 2. The first machine. The Add machine field and its input: `user@host` for ssh, a bare name ending in
    `.ts.net` for the tailnet, or a socket path. Connect stays off until the address parses; Return
-   connects. The button spins while it connects, and the usual ssh sheet asks for a password. A
+   connects. On iOS a camera button at the end of the field scans the code desktop Settings › Hosts
+   shows (`ala_platform::mobile::scan_code`: the live camera, or a photo from the library where
+   there is no camera, as in the simulator); a `zz://host/` code fills the field and connects, any
+   other says so under the field. A `zz://host/` link the system camera opens while onboarding shows
+   does the same. The button spins while it connects, and the usual ssh sheet asks for a password. A
    failure puts the connection's status under the field and drops the machine from the saved list.
 3. Your tailnet. Once the first machine connects, the step waits up to 4 s for its `tailnet hosts`
    answer and the phone's probes, then lists each machine found that is not saved, with a switch
    that starts on; one without zz says so and has no switch. Add saves and connects the ones switched
    on. With nothing found the step is skipped.
 
-Finishing opens the first machine's page.
+Finishing opens the first machine's page. Between steps the title and what is under it slide 28
+to the left and fade out, then the next step's slide in from the right, 340 ms in all; the dots and
+the button stay. Reduce motion swaps them at once.
 
 The desktop and the thin clients build the Interface page from the same item list
 (`zz_ui::settings::appearance::appearance_page_items`: penna's list with zz's Sidebar group, App

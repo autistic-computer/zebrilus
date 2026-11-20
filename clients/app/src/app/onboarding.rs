@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
-use ala::{AnyElement, App, Context, IntoElement as _, Window, div, prelude::*, px};
+use ala::{AnyElement, App, Context, Div, IntoElement as _, Pixels, Window, div, prelude::*, px};
 use penna::{
-    ActiveTheme as _, Disableable as _, Label, Sizable as _, Size, TextStyle, Tone,
+    ActiveTheme as _, Disableable as _, IconName, Label, Sizable as _, Size, TextStyle, Tone,
     components::{
         button::{Button, ButtonLook, ButtonVariants as _},
         input::Input,
@@ -15,13 +15,22 @@ use zz_ui::onboarding::{PhonePage, PhoneStep, phone_onboarding_page, phone_onboa
 use super::{AppShell, hosts::parsed_endpoint};
 
 const TAILNET_WAIT: Duration = Duration::from_secs(4);
+const STEP_MOTION: Duration = Duration::from_millis(340);
+const STEP_SHIFT: f32 = 28.0;
 const FIELD_CORNER: f32 = 18.0;
+const NOT_OURS: &str = "That code is not from zz.";
 
 pub(super) struct PhoneOnboarding {
     step: PhoneStep,
+    moved: Option<(PhoneStep, Instant)>,
+    focus_field: bool,
     machine: Option<String>,
     connected_at: Option<Instant>,
     off: BTreeSet<String>,
+}
+
+fn ease_out(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
 }
 
 impl AppShell {
@@ -32,6 +41,8 @@ impl AppShell {
         {
             self.onboarding = Some(PhoneOnboarding {
                 step: PhoneStep::Welcome,
+                moved: None,
+                focus_field: false,
                 machine: None,
                 connected_at: None,
                 off: BTreeSet::new(),
@@ -43,16 +54,49 @@ impl AppShell {
         self.onboarding.is_some()
     }
 
+    fn onboarding_go(&mut self, step: PhoneStep, cx: &mut Context<Self>) {
+        if let Some(onboarding) = &mut self.onboarding
+            && onboarding.step != step
+        {
+            onboarding.moved = Some((onboarding.step, Instant::now()));
+            onboarding.focus_field = step == PhoneStep::Machine;
+            onboarding.step = step;
+            cx.notify();
+        }
+    }
+
     pub(super) fn onboarding_connect(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let value = self.hosts.destination.read(cx).value().to_string();
-        let endpoint = match parsed_endpoint(&value) {
-            Ok(endpoint) => endpoint,
+        match parsed_endpoint(&value) {
+            Ok(endpoint) => self.onboarding_dial(endpoint, window, cx),
             Err(error) => {
                 self.hosts.error = Some(error.into());
                 cx.notify();
-                return;
             }
-        };
+        }
+    }
+
+    pub(super) fn onboarding_open_host(
+        &mut self,
+        endpoint: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let typed = endpoint
+            .split_once("://")
+            .map_or(endpoint.as_str(), |(_, rest)| rest)
+            .to_owned();
+        self.hosts
+            .destination
+            .update(cx, |input, cx| input.set_value(typed, window, cx));
+        self.onboarding_go(PhoneStep::Machine, cx);
+        if let Some(onboarding) = &mut self.onboarding {
+            onboarding.focus_field = false;
+        }
+        self.onboarding_dial(endpoint, window, cx);
+    }
+
+    fn onboarding_dial(&mut self, endpoint: String, window: &mut Window, cx: &mut Context<Self>) {
         self.hosts.error = None;
         window.dismiss_virtual_keyboard();
         self.hosts.saved.add(&endpoint);
@@ -68,17 +112,27 @@ impl AppShell {
         cx.notify();
     }
 
-    fn onboarding_next(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(onboarding) = &mut self.onboarding else {
-            return;
-        };
-        onboarding.step = PhoneStep::Machine;
-        let input = self.hosts.destination.clone();
-        cx.on_next_frame(window, move |_, window, cx| {
-            input.update(cx, |input, cx| input.focus(window, cx));
-            window.request_virtual_keyboard();
+    fn onboarding_scan(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        window.dismiss_virtual_keyboard();
+        let (sender, receiver) = async_channel::bounded(1);
+        ala_platform::mobile::scan_code(move |code| {
+            let _ = sender.try_send(code);
         });
-        cx.notify();
+        cx.spawn_in(window, async move |this, cx| {
+            let Ok(Some(code)) = receiver.recv().await else {
+                return;
+            };
+            this.update_in(cx, |this, window, cx| {
+                if let Some(endpoint) = super::host_from_url(&code) {
+                    this.onboarding_open_host(endpoint, window, cx);
+                } else {
+                    this.hosts.error = Some(NOT_OURS.into());
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn onboarding_add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -141,9 +195,8 @@ impl AppShell {
             }
             if self.found_machines(cx).is_empty() {
                 self.finish_onboarding(window, cx);
-            } else if let Some(onboarding) = &mut self.onboarding {
-                onboarding.step = PhoneStep::Tailnet;
-                cx.notify();
+            } else {
+                self.onboarding_go(PhoneStep::Tailnet, cx);
             }
         } else if !busy {
             if let Some(onboarding) = &mut self.onboarding {
@@ -156,103 +209,162 @@ impl AppShell {
         }
     }
 
+    fn onboarding_shown(&mut self, window: &mut Window, cx: &App) -> (PhoneStep, f32, Pixels) {
+        let Some(onboarding) = &mut self.onboarding else {
+            return (PhoneStep::Welcome, 1.0, px(0.0));
+        };
+        let Some((from, at)) = onboarding.moved else {
+            return (onboarding.step, 1.0, px(0.0));
+        };
+        let progress = at.elapsed().as_secs_f32() / STEP_MOTION.as_secs_f32();
+        if progress >= 1.0 || cx.reduce_motion() {
+            onboarding.moved = None;
+            return (onboarding.step, 1.0, px(0.0));
+        }
+        window.request_animation_frame();
+        if progress < 0.5 {
+            let out = ease_out(progress * 2.0);
+            (from, 1.0 - out, px(-STEP_SHIFT * out))
+        } else {
+            let into = ease_out((progress - 0.5) * 2.0);
+            (onboarding.step, into, px(STEP_SHIFT * (1.0 - into)))
+        }
+    }
+
+    fn onboarding_field(&self, waiting: bool, cx: &mut Context<Self>) -> Div {
+        let danger = cx.theme().paint(Tone::Danger, penna::Emphasis::Ghost).text;
+        let scan = ala_platform::mobile::can_scan().then(|| {
+            Button::new("onboarding-scan")
+                .icon(IconName::Camera)
+                .look(ButtonLook::Quiet)
+                .with_size(Size::Touch)
+                .disabled(waiting)
+                .on_click(cx.listener(|this, _, window, cx| this.onboarding_scan(window, cx)))
+        });
+        let field = Input::new(&self.hosts.destination)
+            .id("onboarding-field")
+            .with_size(Size::Touch)
+            .rounded(px(FIELD_CORNER))
+            .disabled(waiting);
+        let field = match scan {
+            Some(scan) => field.suffix(scan),
+            None => field,
+        };
+        div().flex().flex_col().gap(px(8.0)).child(field).children(
+            self.hosts
+                .error
+                .clone()
+                .map(|error| Label::new(TextStyle::TouchSmall, error).text_color(danger)),
+        )
+    }
+
+    fn onboarding_rows(&self, cx: &mut Context<Self>) -> Div {
+        let off = self
+            .onboarding
+            .as_ref()
+            .map(|onboarding| onboarding.off.clone())
+            .unwrap_or_default();
+        let rows = self
+            .found_machines(cx)
+            .into_iter()
+            .enumerate()
+            .map(|(index, host)| {
+                let control = host.machine.runs_zz.then(|| {
+                    let endpoint = host.endpoint.clone();
+                    Switch::new(("onboarding-found", index))
+                        .checked(!off.contains(&host.endpoint))
+                        .on_click(cx.listener(move |this, checked: &bool, _, cx| {
+                            if let Some(onboarding) = &mut this.onboarding {
+                                if *checked {
+                                    onboarding.off.remove(&endpoint);
+                                } else {
+                                    onboarding.off.insert(endpoint.clone());
+                                }
+                            }
+                            cx.notify();
+                        }))
+                        .into_any_element()
+                });
+                phone_onboarding_row(
+                    host.machine.name.clone(),
+                    zz_ui::compact::found_detail(&host.machine),
+                    control,
+                )
+            });
+        div().flex().flex_col().children(rows)
+    }
+
+    fn onboarding_button(&self, step: PhoneStep, waiting: bool, cx: &mut Context<Self>) -> Button {
+        let button = match step {
+            PhoneStep::Welcome => Button::new("onboarding-next")
+                .label("Next")
+                .on_click(cx.listener(|this, _, _, cx| this.onboarding_go(PhoneStep::Machine, cx))),
+            PhoneStep::Machine => {
+                let typed = self.hosts.destination.read(cx).value().to_string();
+                Button::new("onboarding-connect")
+                    .label(if waiting { "Connecting" } else { "Connect" })
+                    .loading(waiting)
+                    .disabled(waiting || parsed_endpoint(&typed).is_err())
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.onboarding_connect(window, cx)),
+                    )
+            }
+            PhoneStep::Tailnet => {
+                let off = self
+                    .onboarding
+                    .as_ref()
+                    .map(|onboarding| onboarding.off.clone())
+                    .unwrap_or_default();
+                let picked = self
+                    .found_machines(cx)
+                    .iter()
+                    .filter(|host| host.machine.runs_zz && !off.contains(&host.endpoint))
+                    .count();
+                Button::new("onboarding-add")
+                    .label(if picked == 0 {
+                        "Done".to_owned()
+                    } else {
+                        format!("Add {picked}")
+                    })
+                    .on_click(cx.listener(|this, _, window, cx| this.onboarding_add(window, cx)))
+            }
+        };
+        button.primary().with_size(Size::TouchLarge).w_full()
+    }
+
     pub(super) fn onboarding_layer(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         self.follow_first_machine(window, cx);
-        let onboarding = self.onboarding.as_ref()?;
-        let step = onboarding.step;
-        let waiting = onboarding.machine.is_some();
+        self.onboarding.as_ref()?;
+        let (shown, fade, shift) = self.onboarding_shown(window, cx);
+        let (step, waiting) = self
+            .onboarding
+            .as_ref()
+            .map(|onboarding| (onboarding.step, onboarding.machine.is_some()))?;
+        if shown == PhoneStep::Machine
+            && let Some(onboarding) = &mut self.onboarding
+            && std::mem::take(&mut onboarding.focus_field)
+        {
+            let input = self.hosts.destination.clone();
+            cx.on_next_frame(window, move |_, window, cx| {
+                input.update(cx, |input, cx| input.focus(window, cx));
+                window.request_virtual_keyboard();
+            });
+        }
         let machine = self
             .connection
             .read(cx)
             .endpoint()
             .map_or_else(String::new, super::hosts::host_title);
-        let (body, button) = match step {
-            PhoneStep::Welcome => (
-                None,
-                Button::new("onboarding-next")
-                    .primary()
-                    .label("Next")
-                    .with_size(Size::TouchLarge)
-                    .w_full()
-                    .on_click(cx.listener(|this, _, window, cx| this.onboarding_next(window, cx))),
-            ),
-            PhoneStep::Machine => {
-                let typed = self.hosts.destination.read(cx).value().to_string();
-                let danger = cx.theme().paint(Tone::Danger, penna::Emphasis::Ghost).text;
-                let body =
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(8.0))
-                        .child(
-                            Input::new(&self.hosts.destination)
-                                .id("onboarding-field")
-                                .with_size(Size::Touch)
-                                .rounded(px(FIELD_CORNER))
-                                .disabled(waiting),
-                        )
-                        .children(self.hosts.error.clone().map(|error| {
-                            Label::new(TextStyle::TouchSmall, error).text_color(danger)
-                        }));
-                let button = Button::new("onboarding-connect")
-                    .primary()
-                    .label(if waiting { "Connecting" } else { "Connect" })
-                    .with_size(Size::TouchLarge)
-                    .w_full()
-                    .loading(waiting)
-                    .disabled(waiting || parsed_endpoint(&typed).is_err())
-                    .on_click(
-                        cx.listener(|this, _, window, cx| this.onboarding_connect(window, cx)),
-                    );
-                (Some(body), button)
-            }
-            PhoneStep::Tailnet => {
-                let found = self.found_machines(cx);
-                let picked = found
-                    .iter()
-                    .filter(|host| host.machine.runs_zz && !onboarding.off.contains(&host.endpoint))
-                    .count();
-                let rows = found.into_iter().enumerate().map(|(index, host)| {
-                    let control = host.machine.runs_zz.then(|| {
-                        let endpoint = host.endpoint.clone();
-                        Switch::new(("onboarding-found", index))
-                            .checked(!onboarding.off.contains(&host.endpoint))
-                            .on_click(cx.listener(move |this, checked: &bool, _, cx| {
-                                if let Some(onboarding) = &mut this.onboarding {
-                                    if *checked {
-                                        onboarding.off.remove(&endpoint);
-                                    } else {
-                                        onboarding.off.insert(endpoint.clone());
-                                    }
-                                }
-                                cx.notify();
-                            }))
-                            .into_any_element()
-                    });
-                    phone_onboarding_row(
-                        host.machine.name.clone(),
-                        zz_ui::compact::found_detail(&host.machine),
-                        control,
-                    )
-                });
-                let body = div().flex().flex_col().children(rows);
-                let button = Button::new("onboarding-add")
-                    .primary()
-                    .label(if picked == 0 {
-                        "Done".to_owned()
-                    } else {
-                        format!("Add {picked}")
-                    })
-                    .with_size(Size::TouchLarge)
-                    .w_full()
-                    .on_click(cx.listener(|this, _, window, cx| this.onboarding_add(window, cx)));
-                (Some(body), button)
-            }
+        let body = match shown {
+            PhoneStep::Welcome => None,
+            PhoneStep::Machine => Some(self.onboarding_field(waiting, cx)),
+            PhoneStep::Tailnet => Some(self.onboarding_rows(cx)),
         };
+        let button = self.onboarding_button(step, waiting, cx);
         let skip = Button::new("onboarding-skip")
             .label("Skip")
             .look(ButtonLook::Quiet)
@@ -265,8 +377,11 @@ impl AppShell {
         let page = phone_onboarding_page(
             PhonePage {
                 step,
-                title: step.title(&machine),
+                shown,
+                title: shown.title(&machine),
                 body,
+                fade,
+                shift,
                 button: button.into_any_element(),
                 skip: Some(skip),
                 top: window.fully_visible_bounds().top(),

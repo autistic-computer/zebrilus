@@ -62,8 +62,11 @@ impl PhoneStep {
 
 pub struct PhonePage {
     pub step: PhoneStep,
+    pub shown: PhoneStep,
     pub title: SharedString,
     pub body: Option<Div>,
+    pub fade: f32,
+    pub shift: Pixels,
     pub button: AnyElement,
     pub skip: Option<AnyElement>,
     pub top: Pixels,
@@ -227,7 +230,7 @@ pub fn phone_onboarding_page(page: PhonePage, cx: &App) -> Div {
         .items_start()
         .gap(px(HEAD_GAP))
         .child(Label::new(TextStyle::Display, page.title).strong())
-        .child(Label::new(TextStyle::TouchBody, page.step.description()).muted());
+        .child(Label::new(TextStyle::TouchBody, page.shown.description()).muted());
     let foot = v_flex()
         .flex_none()
         .w_full()
@@ -253,8 +256,16 @@ pub fn phone_onboarding_page(page: PhonePage, cx: &App) -> Div {
                         .w_full()
                         .max_w(px(PHONE_WIDTH))
                         .gap(px(BLOCK_GAP))
-                        .child(zones.mark(head))
-                        .children(page.body.map(|body| zones.mark(body.w_full())))
+                        .child(
+                            v_flex()
+                                .relative()
+                                .left(page.shift)
+                                .w_full()
+                                .gap(px(BLOCK_GAP))
+                                .opacity(page.fade)
+                                .child(zones.mark(head))
+                                .children(page.body.map(|body| zones.mark(body.w_full()))),
+                        )
                         .child(foot),
                 ),
         )

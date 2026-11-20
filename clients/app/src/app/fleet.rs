@@ -48,6 +48,10 @@ impl AppShell {
     ) {
         use penna::{WindowExt as _, blocks::dialog::DialogButtonProps};
 
+        if self.onboarding_open() {
+            self.onboarding_open_host(endpoint, window, cx);
+            return;
+        }
         if self.is_attached_host(&endpoint, cx) {
             return;
         }
