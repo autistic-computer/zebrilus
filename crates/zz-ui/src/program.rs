@@ -354,15 +354,15 @@ mod tests {
     }
 
     #[test]
-    fn host_marks_fill_the_icon_live_area_centred() {
-        for (platform, center_y) in [
-            (HostPlatform::Macos, 11.45),
-            (HostPlatform::Windows, 12.0),
-            (HostPlatform::Linux(LinuxDistro::Other), 12.0),
-            (HostPlatform::Linux(LinuxDistro::Ubuntu), 12.0),
-            (HostPlatform::Linux(LinuxDistro::Debian), 12.0),
-            (HostPlatform::Linux(LinuxDistro::Arch), 12.0),
-            (HostPlatform::Linux(LinuxDistro::Fedora), 12.0),
+    fn host_marks_match_optical_keylines_centred() {
+        for (platform, side, center_y) in [
+            (HostPlatform::Macos, 21.0, 11.4),
+            (HostPlatform::Windows, 17.0, 12.0),
+            (HostPlatform::Linux(LinuxDistro::Other), 20.5, 12.0),
+            (HostPlatform::Linux(LinuxDistro::Ubuntu), 20.0, 12.0),
+            (HostPlatform::Linux(LinuxDistro::Debian), 20.5, 12.0),
+            (HostPlatform::Linux(LinuxDistro::Arch), 21.0, 11.7),
+            (HostPlatform::Linux(LinuxDistro::Fedora), 18.5, 12.0),
         ] {
             let path = platform_icon(platform)
                 .expect("a known platform has an icon")
@@ -381,7 +381,7 @@ mod tests {
                 f32::midpoint(ink.left(), ink.right()),
                 f32::midpoint(ink.top(), ink.bottom()),
             ];
-            let expected = [20.0, 12.0, center_y];
+            let expected = [side, 12.0, center_y];
             assert!(
                 measured
                     .iter()
