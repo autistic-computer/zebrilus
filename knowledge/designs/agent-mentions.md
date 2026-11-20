@@ -289,7 +289,11 @@ cycle limit, and whether a child may create children is [open](#open).
   and effort last picked (`AgentLaunches`, `crates/zz-client/src/agent_launch.rs`), and a chat's
   model picker reads the running chat's config options. The row's default is the last pick from
   `AgentLaunches`, and the second pick lists the daemon's model catalog from `agent-catalog`,
-  which gives that verb its first client.
+  which gives that verb its first client. The picker asks for every agent's catalog when it opens
+  at the top level, so a row with no last pick shows the model the catalog reports as current,
+  and both levels show the model's display name. A row stays blank until its catalog answers.
+  The catalog's session closes on `SessionReady`, or up to 3 s later when the model option names
+  no model yet, which is how Claude Code's applied model gets in.
 - **Token.** The pick shows as `@codex` and leaves as `@+codex`, or `@+codex/MODEL` with a
   model. Why `+`: no target the menu writes starts with it (a file starts with `/` or `~`, every
   other target with a host or session name, and in tmux's own target grammar a leading `+` is an

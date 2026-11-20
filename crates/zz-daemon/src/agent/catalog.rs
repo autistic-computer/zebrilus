@@ -51,6 +51,19 @@ pub(crate) async fn load(
     load_with_runner(cwd, runner).await
 }
 
+const APPLIED_WAIT: Duration = Duration::from_secs(3);
+
+fn names_model(options: &Value) -> bool {
+    options
+        .as_array()
+        .and_then(|options| options.iter().find(|option| option["id"] == "model"))
+        .is_none_or(|model| {
+            [&model["currentValue"], &model["_meta"]["zz"]["applied"]]
+                .into_iter()
+                .any(|value| value.as_str().is_some_and(|value| !value.is_empty()))
+        })
+}
+
 async fn load_with_runner(cwd: PathBuf, runner: PaneRunner) -> Result<Value, String> {
     let (commands, command_rx) = async_channel::bounded(2);
     let (controls, control_rx) = async_channel::bounded(4);
@@ -77,10 +90,41 @@ async fn load_with_runner(cwd: PathBuf, runner: PaneRunner) -> Result<Value, Str
     };
     let collect = async move {
         let mut result = None;
-        while let Ok(event) = event_rx.recv().await {
+        let mut wait = None;
+        loop {
+            let event = match wait.as_mut() {
+                Some(timer) => {
+                    futures_lite::future::or(async { Some(event_rx.recv().await) }, async {
+                        timer.await;
+                        None
+                    })
+                    .await
+                }
+                None => Some(event_rx.recv().await),
+            };
+            let Some(event) = event else {
+                wait = None;
+                let _ = commands.send(RuntimeCommand::Shutdown).await;
+                continue;
+            };
+            let Ok(event) = event else {
+                break;
+            };
             match event {
                 AgentStreamPayload::SessionReady { config_options, .. } => {
-                    result = Some(Ok(config_options.unwrap_or_else(|| serde_json::json!([]))));
+                    let options = config_options.unwrap_or_else(|| serde_json::json!([]));
+                    if names_model(&options) {
+                        let _ = commands.send(RuntimeCommand::Shutdown).await;
+                    } else {
+                        wait = Some(smol::Timer::after(APPLIED_WAIT));
+                    }
+                    result = Some(Ok(options));
+                }
+                AgentStreamPayload::Update { update }
+                    if wait.is_some() && update["sessionUpdate"] == "config_option_update" =>
+                {
+                    wait = None;
+                    result = Some(Ok(update["configOptions"].clone()));
                     let _ = commands.send(RuntimeCommand::Shutdown).await;
                 }
                 AgentStreamPayload::PaneFailed { message }
@@ -152,6 +196,45 @@ mod tests {
         let catalog =
             futures_lite::future::block_on(load_with_runner("/workspace".into(), runner)).unwrap();
         assert_eq!(catalog[0]["currentValue"], "fast");
+    }
+
+    #[test]
+    fn catalog_waits_for_the_model_in_use() {
+        let runner: PaneRunner = Box::new(|channels| {
+            Box::pin(async move {
+                channels.commands.recv().await.unwrap();
+                let options = |meta: Value| serde_json::json!([{ "id": "model", "currentValue": "", "_meta": meta }]);
+                channels
+                    .events
+                    .send(AgentStreamPayload::SessionReady {
+                        session_id: "temporary".into(),
+                        modes: None,
+                        config_options: Some(options(Value::Null)),
+                    })
+                    .await
+                    .unwrap();
+                futures_lite::future::yield_now().await;
+                assert!(channels.commands.try_recv().is_err());
+                channels
+                    .events
+                    .send(AgentStreamPayload::Update {
+                        update: serde_json::json!({
+                            "sessionUpdate": "config_option_update",
+                            "configOptions": options(serde_json::json!({ "zz": { "applied": "sonnet" } })),
+                        }),
+                    })
+                    .await
+                    .unwrap();
+                assert!(matches!(
+                    channels.commands.recv().await.unwrap(),
+                    RuntimeCommand::Shutdown
+                ));
+                Ok(())
+            })
+        });
+        let catalog =
+            futures_lite::future::block_on(load_with_runner("/workspace".into(), runner)).unwrap();
+        assert_eq!(catalog[0]["_meta"]["zz"]["applied"], "sonnet");
     }
 
     #[test]

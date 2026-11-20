@@ -1251,17 +1251,27 @@ fn agent_items(agents: &[TargetAgent], query: &Query) -> Vec<TargetItem> {
                 format!("+{}", agent.name),
             )
             .near(prior, None);
-            item.meta = if agent.model.is_empty() {
-                "default".into()
-            } else {
-                agent.model.clone().into()
-            };
+            item.meta = agent.model.clone().into();
             item.scored(query, "")
         })
         .collect()
 }
 
-fn model_items(agent: &str, models: &[Choice], first: &str, query: &Query) -> Vec<TargetItem> {
+fn model_name(choice: &Choice) -> &str {
+    if choice.name.is_empty() {
+        &choice.value
+    } else {
+        &choice.name
+    }
+}
+
+fn model_items(
+    agent: &TargetAgent,
+    models: &[Choice],
+    first: &str,
+    query: &Query,
+) -> Vec<TargetItem> {
+    let name = &agent.name;
     let mut models = models.iter().collect::<Vec<_>>();
     if let Some(at) = models.iter().position(|choice| choice.value == first) {
         let picked = models.remove(at);
@@ -1271,17 +1281,14 @@ fn model_items(agent: &str, models: &[Choice], first: &str, query: &Query) -> Ve
         .into_iter()
         .filter_map(|choice| {
             let value = escape_model(&choice.value);
-            let mut item = loose_item(
+            loose_item(
                 TargetKind::Model,
-                choice.value.clone(),
-                IconName::Sparkle,
-                format!("{agent}/{value}"),
-                format!("+{agent}/{value}"),
-            );
-            if !choice.name.is_empty() && choice.name != choice.value {
-                item.detail = choice.name.clone().into();
-            }
-            item.scored(query, "")
+                model_name(choice).to_owned(),
+                agent.icon.clone(),
+                format!("{name}/{value}"),
+                format!("+{name}/{value}"),
+            )
+            .scored(query, &choice.value)
         })
         .collect()
 }
@@ -1858,7 +1865,7 @@ impl TargetPicker {
             self.headers = Rc::from([]);
             self.top_files = None;
             self.catalogs
-                .retain(|(_, catalog)| matches!(catalog, Catalog::Ready { .. }));
+                .retain(|(_, catalog)| !matches!(catalog, Catalog::Failed(_)));
             cx.notify();
             return;
         };
@@ -1867,9 +1874,14 @@ impl TargetPicker {
         }
         let hosts = self.backend.hosts(cx);
         let query = parse_target(body, &hosts);
-        if let TargetLevel::Models { agent } = &query.level
-            && let Some(provider) = agent_named(agent)
-        {
+        let providers = match &query.level {
+            TargetLevel::Models { agent } => agent_named(agent).into_iter().collect(),
+            TargetLevel::Top | TargetLevel::Agents => {
+                self.agents.iter().map(|agent| agent.provider).collect()
+            }
+            _ => Vec::new(),
+        };
+        for provider in providers {
             self.ask_catalog(provider, cx);
         }
         let wanted = match &query.level {
@@ -1957,10 +1969,17 @@ impl TargetPicker {
             .iter()
             .map(|agent| {
                 let mut agent = agent.clone();
-                if agent.model.is_empty()
-                    && let Some(Catalog::Ready { current, .. }) = self.catalog(agent.provider)
-                {
-                    agent.model.clone_from(current);
+                if let Some(Catalog::Ready { models, current }) = self.catalog(agent.provider) {
+                    let model = if agent.model.is_empty() {
+                        current
+                    } else {
+                        &agent.model
+                    };
+                    agent.model = models
+                        .iter()
+                        .find(|choice| choice.value == *model)
+                        .map_or(model.as_str(), model_name)
+                        .to_owned();
                 }
                 agent
             })
@@ -1974,11 +1993,14 @@ impl TargetPicker {
         let Some(Catalog::Ready { models, current }) = self.catalog(provider) else {
             return Vec::new();
         };
-        let picked = self
+        let Some(agent) = self
             .agents
             .iter()
             .find(|candidate| candidate.provider == provider)
-            .map(|candidate| candidate.model.as_str())
+        else {
+            return Vec::new();
+        };
+        let picked = Some(agent.model.as_str())
             .filter(|model| models.iter().any(|choice| choice.value == *model))
             .unwrap_or(current);
         ranked(

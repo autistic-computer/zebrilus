@@ -1197,8 +1197,11 @@ fn an_agent_mention_leaves_as_a_plus_token_with_its_model(cx: &mut TestAppContex
     cx.simulate_keystrokes("tab");
     assert_eq!(value(cx), "@codex/");
     let request = match calls.borrow().as_slice() {
-        [Call::Catalog(AgentProvider::Codex, Some(PaneId(5)), request)] => *request,
-        other => panic!("one codex catalog request, got {other:?}"),
+        [
+            Call::Catalog(AgentProvider::ClaudeCode, Some(PaneId(5)), _),
+            Call::Catalog(AgentProvider::Codex, Some(PaneId(5)), request),
+        ] => *request,
+        other => panic!("one catalog request per agent, got {other:?}"),
     };
     let reply = serde_json::to_string(&AgentCatalogResult {
         catalog_provider: AgentProvider::Codex,
@@ -1224,10 +1227,27 @@ fn an_agent_mention_leaves_as_a_plus_token_with_its_model(cx: &mut TestAppContex
         "@ codex"
     );
     assert_eq!(first(cx).as_deref(), Some("+codex/gpt-6.1-sol"));
+    let rows = |cx: &mut VisualTestContext| {
+        picker.read_with(cx, |picker, _| {
+            picker
+                .items()
+                .iter()
+                .map(|item| (item.label.to_string(), item.meta.to_string()))
+                .collect::<Vec<_>>()
+        })
+    };
+    let row = |label: &str, meta: &str| (label.to_owned(), meta.to_owned());
+    assert_eq!(rows(cx), [row("gpt-6.1-sol", ""), row("GPT-6 Luna", "")]);
+    cx.simulate_input("gpt-6-l");
+    assert_eq!(listed(&picker, cx), ["+codex/gpt-6-luna"]);
     cx.simulate_keystrokes("shift-tab");
     assert_eq!(
         (value(cx), first(cx)),
         ("@".to_owned(), Some("+codex".to_owned()))
+    );
+    assert_eq!(
+        rows(cx)[..2],
+        [row("claude", ""), row("codex", "gpt-6.1-sol")]
     );
     cx.simulate_keystrokes("tab enter");
     cx.simulate_input("fix it");
@@ -1237,7 +1257,7 @@ fn an_agent_mention_leaves_as_a_plus_token_with_its_model(cx: &mut TestAppContex
         picker.update(cx, |picker, _| picker.raw_text(&shown)),
         "@+codex/gpt-6.1-sol fix it"
     );
-    assert_eq!(calls.borrow().len(), 1);
+    assert_eq!(calls.borrow().len(), 2);
 }
 
 #[test]
