@@ -1,6 +1,7 @@
 <!-- okf:listing:start (managed by okf.py index — edit prose outside this fence) -->
 # Concepts
 
+* [Agent CLI contracts](agent-cli-contracts.md) - What zz relies on from the agent CLIs it drives (Claude Code, Codex, Antigravity, Grok Build, Cursor) that the vendor can change without notice, the version each was last checked at, which changes break zz quietly, and the commands that recheck them after an update.
 * [ala web windows for agents](ala-web-agents.md) - How ala's web platform hosts several windows in one page (WindowOptions::mount), mirrors each window's AccessKit tree into ARIA elements, and exposes globalThis.ala so agents can find, click, wait for and capture ala content.
 * [ala](ala.md) - ala, our GPUI fork (libs/ala/crates/ala, ala-macros, ala-platform) - where its code lives, how to change it or pull an upstream fix, and what zz changed. gpui-component is not a dependency.
 * [CEF artifact lock](cef-artifacts.md) - Where the CEF/Chromium pin and its per-platform archive SHA-1 mirror live, and how the archive is actually verified before extraction.

@@ -21,6 +21,10 @@ workflow until it publishes. On exit it stops the runners and removes them from 
 the release passed or failed. v0.24.0 went from tag to published in 23.6 min, against 1h to 2h38m
 on hosted runners.
 
+Before shipping, compare the agent CLIs' versions with the table in
+[agent CLI contracts](/references/agent-cli-contracts.md#last-checked) and run the cheap checks for
+any that moved: a vendor update can break chats with no error, and preflight does not cover it.
+
 # Runners
 
 | Label | Machine |
