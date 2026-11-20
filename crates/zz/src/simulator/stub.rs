@@ -58,6 +58,10 @@ impl SimulatorView {
 
     pub(crate) fn title_pick(&mut self, _: usize, _: &mut Context<Self>) {}
 
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "the macOS view takes the command by value"
+    )]
     pub(crate) fn command(
         &mut self,
         command: zz_protocol::SimulatorCommand,
