@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulator pane</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="board.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+</head>
+<body>
+<main class="sp-page">
+  <div class="sp-intro">
+    <h1>Simulator pane</h1>
+    <p>A pane kind, like the browser. It opens as a PiP; Tile back docks it in the split and Float lifts it out again, as on every pane.</p>
+    <p class="sp-ruling">Ruling (fabrico, 2026-11-20): it opens as a PiP.</p>
+  </div>
+
+  <section class="sp-take" data-take="pip">
+    <h2>Opens as a PiP</h2>
+    <figure>
+      <div class="sp-window penna-window penna-gaps" data-penna="window" data-layout="pip"></div>
+      <figcaption><b>Focused</b>A card over the panes at centre-right, 272 px wide. Tile back and Zoom stand where the splits are on a tiled pane.</figcaption>
+    </figure>
+  </section>
+
+  <section class="sp-take" data-take="parked">
+    <h2>While you type in another pane</h2>
+    <figure>
+      <div class="sp-window penna-window penna-gaps" data-penna="window" data-layout="parked"></div>
+      <figcaption><b>Parked</b>What PiPs do today: it slides off the side with 60 px showing while a tiled pane has focus.</figcaption>
+    </figure>
+  </section>
+
+  <section class="sp-take" data-take="tiled">
+    <h2>After Tile back</h2>
+    <figure>
+      <div class="sp-window penna-window penna-gaps" data-penna="window" data-layout="tiled"></div>
+      <figcaption><b>A pane in the split</b>The screen fits the pane's height and width, centred. The device buttons show from 320 px up.</figcaption>
+    </figure>
+  </section>
+
+  <section class="sp-take" data-take="states">
+    <h2>States</h2>
+    <div class="sp-states" data-states></div>
+  </section>
+
+  <section class="sp-take" data-take="numbers">
+    <h2>Numbers</h2>
+    <div class="sp-numbers">
+      <table>
+        <caption>Pane</caption>
+        <tr><td>Kind</td><td><code>simulator</code>, on the wire as <code>Other { kind }</code> with a gated descriptor event; the descriptor holds the device identifier</td></tr>
+        <tr><td>Opens</td><td>as a float, from <code>new-pane --kind simulator [DEVICE]</code>, at <code>centre-right</code></td></tr>
+        <tr><td>Float size</td><td>the cells nearest 272 × 605 px, set where the agent float's default size is set; 12 px from the window edge, as every PiP</td></tr>
+        <tr><td>Card</td><td><code>floating.pip</code>, the pane's own header on top</td></tr>
+        <tr><td>Parked</td><td>60 px showing, unchanged</td></tr>
+        <tr><td>Tiled</td><td>Tile back, unchanged; no size of its own</td></tr>
+      </table>
+      <table>
+        <caption>Screen</caption>
+        <tr><td>Fit</td><td>the surface's own aspect, as large as fits, centred</td></tr>
+        <tr><td>Inset</td><td>PiP: 0 top, 6 px sides and bottom. Tiled: 4 px top, 16 px sides and bottom</td></tr>
+        <tr><td>Corners</td><td>phone: 14.6% of the screen's width (38 px at 260). Tablet: 3.5%</td></tr>
+        <tr><td>Edge</td><td>1 px, foreground at 14%</td></tr>
+        <tr><td>Redraw</td><td>on a frame callback only; callbacks stop while the pane is hidden</td></tr>
+        <tr><td>Pointer</td><td>press, drag and release become one touch at the same point of the screen; the wheel becomes a drag</td></tr>
+      </table>
+      <table>
+        <caption>Header</caption>
+        <tr><td>Title</td><td><code>button.title</code>: smartphone icon, device name, 10 px chevron; opens the picker</td></tr>
+        <tr><td>Device buttons</td><td><code>icon-button.bar</code>, 22 px, 4 px apart: Home, Rotate, Screenshot</td></tr>
+        <tr><td>Fold</td><td>under 320 px of pane width the three fold into the ellipsis, before any pane action</td></tr>
+        <tr><td>Ellipsis menu</td><td>Home, Lock, Rotate, Screenshot, Keyboard</td></tr>
+        <tr><td>Pane actions</td><td>PiP: Tile back, Zoom, Close. Tiled: Split bottom, Split right, Float, Zoom, Close</td></tr>
+        <tr><td>New icons</td><td>smartphone, house, rotate, lock</td></tr>
+      </table>
+      <table>
+        <caption>States</caption>
+        <tr><td>Nothing attached</td><td>the device list in the pane: 6 px dot (success when booted, foreground at 20% when not), name, system at 11 px muted on the right</td></tr>
+        <tr><td>Picker</td><td>the same rows in a 262 px popover under the title, a check on the current device</td></tr>
+        <tr><td>Pick a shut down device</td><td>boots it, then attaches</td></tr>
+        <tr><td>Booting</td><td>the screen's outline, 1 px divider, with a 16 px loader</td></tr>
+        <tr><td>No Xcode</td><td>14 px warning icon and "Xcode is not installed", 13 px muted, centred</td></tr>
+      </table>
+    </div>
+  </section>
+</main>
+<script src="board.js"></script>
+</body>
+</html>
