@@ -191,7 +191,9 @@ pub(crate) fn codex_turn(text: &str, item: &str) -> Option<String> {
         .map(|entry| entry["payload"].clone())
         .find(|payload| {
             payload["type"] == "item_completed"
-                && (payload["item"]["id"] == item || payload["item"]["clientId"] == item)
+                && (payload["item"]["id"] == item
+                    || payload["item"]["client_id"] == item
+                    || payload["item"]["clientId"] == item)
         })
         .and_then(|payload| payload["turn_id"].as_str().map(str::to_owned))
 }
@@ -335,6 +337,7 @@ mod tests {
             json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}),
             json!({"type":"event_msg","payload":{"type":"item_completed","turn_id":"t1","item":{"type":"UserMessage","id":"i1"}}}),
             json!({"type":"event_msg","payload":{"type":"item_completed","turn_id":"t2","item":{"type":"UserMessage","id":"i2","clientId":"c2"}}}),
+            json!({"type":"event_msg","payload":{"type":"item_completed","turn_id":"t3","item":{"type":"UserMessage","id":"i3","client_id":"zz-prompt-3-245b3245","content":[]}}}),
         ]
         .iter()
         .map(line)
@@ -342,7 +345,11 @@ mod tests {
         .join("\n");
         assert_eq!(codex_turn(&text, "i1").as_deref(), Some("t1"));
         assert_eq!(codex_turn(&text, "c2").as_deref(), Some("t2"));
-        assert_eq!(codex_turn(&text, "i3"), None);
+        assert_eq!(
+            codex_turn(&text, "zz-prompt-3-245b3245").as_deref(),
+            Some("t3")
+        );
+        assert_eq!(codex_turn(&text, "i4"), None);
     }
 
     #[test]

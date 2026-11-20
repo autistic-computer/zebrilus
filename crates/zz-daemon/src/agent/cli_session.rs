@@ -31,6 +31,28 @@ const CODEX_EMBEDDED: [&str; 8] = [
     "--remote",
     "--dangerously-bypass-hook-trust",
 ];
+const CODEX_VALUE_FLAGS: [&str; 20] = [
+    "-c",
+    "--config",
+    "-m",
+    "--model",
+    "-C",
+    "--cd",
+    "-p",
+    "--profile",
+    "-s",
+    "--sandbox",
+    "-a",
+    "--ask-for-approval",
+    "-i",
+    "--image",
+    "--add-dir",
+    "--enable",
+    "--disable",
+    "--local-provider",
+    "--remote",
+    "--remote-auth-token-env",
+];
 const CODEX_SHARED: [&str; 2] = [
     "tui.fullscreen_transcript",
     "suppress_unstable_features_warning",
@@ -358,10 +380,7 @@ fn resumed_thread(args: &[String]) -> Option<String> {
     let mut words = args.iter().skip(1);
     let mut after_resume = false;
     while let Some(word) = words.next() {
-        if matches!(
-            word.as_str(),
-            "-c" | "--config" | "-m" | "--model" | "-C" | "--cd" | "-p" | "--profile"
-        ) {
+        if CODEX_VALUE_FLAGS.contains(&word.as_str()) {
             words.next();
             continue;
         }

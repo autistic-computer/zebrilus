@@ -172,6 +172,23 @@ fn a_codex_rollout_names_its_thread_settings_and_open_turn() {
     let args = words(&["codex", "-m", "gpt-x", "resume", thread]);
     let found = codex_session(Some(&sessions), None, &args, None, None);
     assert_eq!(found.session_id.as_deref(), Some(thread));
+    let flagged = words(&[
+        "codex",
+        "-s",
+        "read-only",
+        "-a",
+        "never",
+        "--add-dir",
+        "/tmp",
+        "resume",
+        thread,
+    ]);
+    assert_eq!(
+        codex_session(Some(&sessions), None, &flagged, None, None)
+            .session_id
+            .as_deref(),
+        Some(thread)
+    );
     assert_eq!(found.cwd.as_deref(), Some(Path::new("/repo")));
     assert_eq!(found.model.as_deref(), Some("gpt-6-luna"));
     assert_eq!(found.effort.as_deref(), Some("low"));
