@@ -1,9 +1,10 @@
 use zz_protocol::{AgentProvider, ProviderStatus, ProviderTask, ProvidersReport};
 
-pub const PROVIDERS: [AgentProvider; 3] = [
+pub const PROVIDERS: [AgentProvider; 4] = [
     AgentProvider::ClaudeCode,
     AgentProvider::Codex,
     AgentProvider::Antigravity,
+    AgentProvider::Grok,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]

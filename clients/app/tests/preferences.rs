@@ -146,6 +146,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
         "claude": {"model": "", "effort": ""},
         "codex": {"model": "", "effort": ""},
         "antigravity": {"model": "", "effort": ""},
+        "grok": {"model": "", "effort": ""},
     });
     let fields = expected.as_object_mut().unwrap();
     for retired in [

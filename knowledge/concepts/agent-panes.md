@@ -1,15 +1,15 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code, Codex or Antigravity as a chat (PaneKind::Agent over the vendor drivers, Antigravity over its own ACP server), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, reopening a chat another chat opened on its session (select-child-chat), what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
+description: How a pane runs Claude Code, Codex, Antigravity or Grok as a chat (PaneKind::Agent over the vendor drivers, Antigravity and Grok over their own ACP servers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, reopening a chat another chat opened on its session (select-child-chat), what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
-tags: [agent, agent-pane, flip, chat, claude-code, codex, antigravity, driver, stream]
-timestamp: 2026-11-19T00:00:00-03:00
+tags: [agent, agent-pane, flip, chat, claude-code, codex, antigravity, grok, driver, stream]
+timestamp: 2026-11-20T00:00:00-03:00
 ---
 
 # Overview
 
-A pane runs Claude Code, Codex or Antigravity one of two ways, and one button switches between them:
+A pane runs Claude Code, Codex, Antigravity or Grok one of two ways, and one button switches between them:
 
 - **The CLI.** An ordinary terminal pane running the vendor's own TUI. zz draws the terminal and
   types nothing into it.
@@ -591,8 +591,8 @@ CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
 
 Antigravity (`AgentProvider::Antigravity`; `agent agy` or `agent antigravity`, `@+agy`, `(agy)` in
 reports) is the third provider. Its CLI has an ACP server, `agy acp`, so its driver
-(`crates/zz-daemon/src/agent/agy.rs`) is the generic ACP runtime (`runtime::run_acp_agent`) with
-four changes:
+(`crates/zz-daemon/src/agent/agy.rs`) is the generic ACP runtime (`runtime::run_acp_agent`) behind
+`agent/dialect.rs`, which Grok shares, with four changes:
 
 - **Which agy.** The driver runs the first `agy` on the agent PATH whose `agy acp --help` names the
   subcommand. An install from before the ACP server (1.1.x) prints the general usage there and is
@@ -623,6 +623,62 @@ sign-in the daemon drives: sign in by running `agy`. Forks: `--fork` logs and st
 The latest version: Settings shows the installed one, Update runs `agy update` and Install runs
 the vendor's install script. The command is not configurable: there is no
 `agent-antigravity-command`.
+
+# Grok
+
+Grok (`AgentProvider::Grok`; `agent grok`, `@+grok`, `(grok)` in reports) is the fourth provider.
+Its CLI has an ACP server, `grok agent stdio`, so its driver (`crates/zz-daemon/src/agent/grok.rs`)
+is the same runtime behind `agent/dialect.rs` that Antigravity uses. `dialect::run` takes a
+`Dialect`, the provider's name for the effort option and its signed-out line, and does the rest
+the same for both:
+
+- **The transcript.** The clients draw a chat from `Chat` events only, and the ACP runtime sends
+  none. `agent/acp_chat.rs` (`Transcript`) feeds what the runtime sends through the chat bridge the
+  other two drivers use: a prompt's echo (`messageId` `zz-prompt-<turn>-…`) or `PromptAccepted`
+  starts the turn, `PromptFinished` ends it as completed, cancelled or failed, a permission answer
+  is recorded as the answer, and history replayed by `session/load` gets a turn for each user
+  message. The `Chat` events follow the payload that caused them.
+- **Effort, title, session list.** The effort rename, `session_info_update` to `TitleChanged`, and
+  the session list kept to the folder asked for. Folders are compared resolved, so `/tmp/x` and
+  `/private/tmp/x` are one, and a kept session carries the folder as it was asked for. A new
+  session (`SessionReset` that restores nothing) clears the title.
+- **A failed start.** `run_acp_agent` reports a `session/new` that fails as `PaneFailed` and keeps
+  running, so the pane can still be told to sign in or to open again.
+
+- **Which grok.** The first `grok` on the agent PATH. With none the pane fails with the not
+  installed line.
+- **Effort.** grok calls its effort option `reasoning_effort`; the chat reads it as `effort`.
+- **Signed out.** grok answers `session/new` with `Authentication required`. The dialect turns a
+  pane failure that starts with those words into the provider's line, `Grok is signed out. Sign in
+  by running grok login in a terminal.`, and Antigravity's the same way.
+
+The modes are read like Claude Code's (`default`, `acceptEdits`, `auto`, `plan`,
+`bypassPermissions`), which are the CLI's own permission modes.
+
+**The flip.** Chat to CLI runs `grok --resume <id> --model <m> --effort <e>`. CLI to chat reads
+the TUI's session from `active_sessions.json` in grok's home (the daemon's `GROK_HOME`, else
+`~/.grok`): the row whose `pid` is the TUI's names its `session_id`. A TUI started with another
+`GROK_HOME` refuses the flip, since the chat would not find its session. With
+no row it takes a session id given to `--resume` or `--session-id`, and with neither starts a new
+chat. The model and effort come from that session's `summary.json` (`current_model_id`,
+`reasoning_effort`), then from `--model` and `--effort`. Nothing read says a grok TUI is busy, so
+it never refuses the flip.
+
+**Not there.** Accounts (`--account`, `agent-account`, `agent-accounts --add grok` refuse, though
+`GROK_HOME` would allow them), the sign-in the daemon drives (run `grok login`), forks, and the
+latest version (Update runs `grok update`, Install the vendor's script). The command is not
+configurable.
+
+**Not yet seen working.** The CLI was signed out when this was built (2026-11-20), so a turn, the
+permission ask, the title, the modes and a flip from a TUI with an open session are from grok's
+documentation and its files on disk, not from a run. Seen live: the handshake, the signed-out
+failure, chat to TUI, and a signed-out TUI back to a chat. The shared parts (transcript, title,
+permission, replay after a flip) were seen live with Antigravity.
+
+**Known gaps in the shared runtime.** A `session/load` that fails falls back to a new session
+with the old transcript replayed over it. A pane with two TUIs of one provider flips the first
+one found. A client that recovers from the journal sees the agent's own name for the effort
+option until the recovery metadata that follows replaces the list.
 
 # Codex on the shared app server
 
@@ -672,7 +728,7 @@ end no turn.
 
 - `agent-send [-t %N] TEXT` to an agent pane submits a prompt. `--wait`, `--json`, `--final`,
   `--on-block`, `--notify` and `--progress` work on its turn as they did for the old agent pane.
-- `agent-send` with text to a terminal running Claude Code, Codex or Antigravity fails with "runs Claude Code in
+- `agent-send` with text to a terminal running Claude Code, Codex, Antigravity or Grok fails with "runs Claude Code in
   its terminal; flip the pane to chat first". Nothing types prompts into a TUI or posts them to its
   peer socket. `--wait ''` still waits on such a terminal's `@agent_state`.
 - `agent-respond` answers a pending permission in an agent pane.

@@ -117,6 +117,7 @@ pub(super) fn cli_provider(process: &[String]) -> Option<AgentProvider> {
             "claude" => Some(AgentProvider::ClaudeCode),
             "codex" => Some(AgentProvider::Codex),
             "agy" => Some(AgentProvider::Antigravity),
+            "grok" => Some(AgentProvider::Grok),
             _ => None,
         }
     })
@@ -301,7 +302,7 @@ impl Shared {
             PaneKind::Terminal => {
                 let provider = self.terminal_agent(pane).ok_or_else(|| {
                     ServerError::InvalidTarget(format!(
-                        "{pane} runs none of Claude Code, Codex or Antigravity"
+                        "{pane} runs none of Claude Code, Codex, Antigravity or Grok"
                     ))
                 })?;
                 let pane_pid = pane_pid.ok_or(ServerError::PaneExited(pane))?;
@@ -334,6 +335,23 @@ impl Shared {
                         let cwd = zz_daemon_client::process_info::working_directory(pid).or(cwd);
                         cli_session::agy_session(pid, cwd)
                     }
+                    AgentProvider::Grok => {
+                        let pid = cli_session::agent_pid(pane_pid, "grok").ok_or_else(|| {
+                            ServerError::InvalidTarget(format!("{pane} runs no grok process"))
+                        })?;
+                        let cwd = zz_daemon_client::process_info::working_directory(pid).or(cwd);
+                        let home = crate::agent::grok::home();
+                        let other = zz_daemon_client::process_info::environment(pid, "GROK_HOME")
+                            .map(PathBuf::from)
+                            .filter(|other| Some(other) != home.as_ref());
+                        if let Some(other) = other {
+                            return Err(ServerError::InvalidTarget(format!(
+                                "{pane} runs grok with GROK_HOME={}, which a chat does not use",
+                                other.display()
+                            )));
+                        }
+                        cli_session::grok_session(pid, home.as_deref(), cwd)
+                    }
                 };
                 let account = session
                     .pid
@@ -354,7 +372,7 @@ impl Shared {
                 })
             }
             _ => Err(ServerError::InvalidTarget(format!(
-                "{pane} is neither a chat nor a terminal running Claude Code, Codex or Antigravity"
+                "{pane} is neither a chat nor a terminal running Claude Code, Codex, Antigravity or Grok"
             ))),
         }
     }

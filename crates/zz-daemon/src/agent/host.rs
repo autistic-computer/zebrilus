@@ -536,6 +536,14 @@ impl AgentHost {
             });
             return self.open_with(pane, generation, spec, runner);
         }
+        if provider == AgentProvider::Grok {
+            let runner: PaneRunner = Box::new(move |channels: RuntimeChannels| {
+                Box::pin(crate::agent::grok::run_grok_runtime(
+                    config, provider, channels,
+                ))
+            });
+            return self.open_with(pane, generation, spec, runner);
+        }
         let runner: PaneRunner = Box::new(move |channels: RuntimeChannels| {
             Box::pin(run_agent_runtime(
                 config,

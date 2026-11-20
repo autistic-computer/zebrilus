@@ -261,6 +261,7 @@ impl AgentSpawnConfig {
             AgentProvider::Codex => &self.command,
             AgentProvider::ClaudeCode => &self.claude_code_command,
             AgentProvider::Antigravity => zz_protocol::AGENT_ANTIGRAVITY_COMMAND,
+            AgentProvider::Grok => zz_protocol::AGENT_GROK_COMMAND,
         }
     }
 
@@ -269,6 +270,7 @@ impl AgentSpawnConfig {
             AgentProvider::Codex => "agent-command",
             AgentProvider::ClaudeCode => "agent-claude-code-command",
             AgentProvider::Antigravity => "the agy command",
+            AgentProvider::Grok => "the grok command",
         }
     }
 
@@ -989,46 +991,51 @@ pub(crate) async fn run_agent_connection(
                                         resume_session.as_deref(),
                                     );
                                     routing.lock().begin_new_session();
-                                    let response = await_rpc(
+                                    await_rpc(
                                         connection
                                             .send_request(new_session_request(cwd.clone()))
                                             .block_task(),
                                         RPC_TIMEOUT,
                                         "ACP session creation",
                                     )
-                                    .await?;
-                                    routing
-                                        .lock()
-                                        .claim_new_session(response.session_id.0.as_ref());
-                                    Ok((
-                                        response.session_id,
-                                        response.modes,
-                                        response.config_options,
-                                        true,
-                                        true,
-                                    ))
+                                    .await
+                                    .map(|response| {
+                                        routing
+                                            .lock()
+                                            .claim_new_session(response.session_id.0.as_ref());
+                                        (
+                                            response.session_id,
+                                            response.modes,
+                                            response.config_options,
+                                            true,
+                                            true,
+                                        )
+                                    })
                                 }
                             }
                         } else {
                             routing.lock().begin_new_session();
-                            let response = await_rpc(
+                            let replays = resume_session.is_some() && !restored.is_empty();
+                            await_rpc(
                                 connection
                                     .send_request(new_session_request(cwd.clone()))
                                     .block_task(),
                                 RPC_TIMEOUT,
                                 "ACP session creation",
                             )
-                            .await?;
-                            routing
-                                .lock()
-                                .claim_new_session(response.session_id.0.as_ref());
-                            Ok((
-                                response.session_id,
-                                response.modes,
-                                response.config_options,
-                                true,
-                                resume_session.is_some() && !restored.is_empty(),
-                            ))
+                            .await
+                            .map(|response| {
+                                routing
+                                    .lock()
+                                    .claim_new_session(response.session_id.0.as_ref());
+                                (
+                                    response.session_id,
+                                    response.modes,
+                                    response.config_options,
+                                    true,
+                                    replays,
+                                )
+                            })
                         };
                         match session_result {
                             Ok((

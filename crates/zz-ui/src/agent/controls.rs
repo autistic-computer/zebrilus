@@ -595,11 +595,13 @@ const fn mode_tone(risk: ModeRisk) -> Option<Tone> {
 
 pub fn mode_icon(provider: AgentProvider, mode: &str) -> IconName {
     match (provider, mode) {
-        (AgentProvider::ClaudeCode, "default") => IconName::Hand,
-        (AgentProvider::ClaudeCode, "acceptEdits")
+        (AgentProvider::ClaudeCode | AgentProvider::Grok, "default") => IconName::Hand,
+        (AgentProvider::ClaudeCode | AgentProvider::Grok, "acceptEdits")
         | (AgentProvider::Codex, "auto")
         | (AgentProvider::Antigravity, "accept-edits") => IconName::Pencil,
-        (AgentProvider::ClaudeCode | AgentProvider::Antigravity, "plan") => IconName::Map,
+        (AgentProvider::ClaudeCode | AgentProvider::Antigravity | AgentProvider::Grok, "plan") => {
+            IconName::Map
+        }
         (AgentProvider::ClaudeCode, "auto") => IconName::Bolt,
         (AgentProvider::ClaudeCode, "bypassPermissions")
         | (AgentProvider::Codex, "full-access") => IconName::ShieldOff,

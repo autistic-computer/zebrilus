@@ -447,3 +447,33 @@ fn an_agy_tui_resumes_the_conversation_whose_database_it_holds() {
         ]
     );
 }
+
+#[test]
+fn a_grok_tui_resumes_the_session_grok_lists_as_open_for_its_process() {
+    let open = r#"[
+        {"session_id": "01a0309c-1889-7671-b9fd-4a786941cfd7", "pid": 4242, "pid_start": 1, "cwd": "/repo", "opened_at": "2026-11-20T10:00:00Z"},
+        {"session_id": "01a04e1c-9985-7891-bb3b-d92801fc2e88", "pid": 5151, "pid_start": 2, "cwd": "/repo", "opened_at": "2026-11-20T10:05:00Z"}
+    ]"#;
+    assert_eq!(
+        grok_open_session(open, 5151).as_deref(),
+        Some("01a04e1c-9985-7891-bb3b-d92801fc2e88")
+    );
+    assert_eq!(grok_open_session(open, 6000), None);
+    assert_eq!(
+        cli_command(
+            AgentProvider::Grok,
+            Some("01a04e1c-9985-7891-bb3b-d92801fc2e88"),
+            Some("grok-4.6"),
+            Some("xhigh"),
+        ),
+        [
+            "grok",
+            "--resume",
+            "01a04e1c-9985-7891-bb3b-d92801fc2e88",
+            "--model",
+            "grok-4.6",
+            "--effort",
+            "xhigh",
+        ]
+    );
+}

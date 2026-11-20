@@ -53,6 +53,7 @@ pub const fn agent_provider_icon(provider: zz_protocol::AgentProvider) -> IconNa
         zz_protocol::AgentProvider::Codex => crate::OPENAI_ICON,
         zz_protocol::AgentProvider::ClaudeCode => crate::CLAUDE_ICON,
         zz_protocol::AgentProvider::Antigravity => crate::ANTIGRAVITY_ICON,
+        zz_protocol::AgentProvider::Grok => crate::GROK_ICON,
     }
 }
 

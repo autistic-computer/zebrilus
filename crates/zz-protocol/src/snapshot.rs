@@ -11,8 +11,9 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use thiserror::Error;
 
 use crate::{
-    AGENT_ANTIGRAVITY_COMMAND, DEFAULT_AGENT_CLAUDE_CODE_COMMAND, DEFAULT_AGENT_COMMAND, PaneId,
-    SessionId, SplitId, TmuxColour, WindowId, message::deserialize_bounded_text,
+    AGENT_ANTIGRAVITY_COMMAND, AGENT_GROK_COMMAND, DEFAULT_AGENT_CLAUDE_CODE_COMMAND,
+    DEFAULT_AGENT_COMMAND, PaneId, SessionId, SplitId, TmuxColour, WindowId,
+    message::deserialize_bounded_text,
 };
 
 #[repr(u8)]
@@ -235,10 +236,11 @@ pub enum AgentProvider {
     Codex,
     ClaudeCode,
     Antigravity,
+    Grok,
 }
 
 impl AgentProvider {
-    pub const ALL: [Self; 3] = [Self::Codex, Self::ClaudeCode, Self::Antigravity];
+    pub const ALL: [Self; 4] = [Self::Codex, Self::ClaudeCode, Self::Antigravity, Self::Grok];
 
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -246,6 +248,7 @@ impl AgentProvider {
             Self::Codex => "codex",
             Self::ClaudeCode => "claude-code",
             Self::Antigravity => "antigravity",
+            Self::Grok => "grok",
         }
     }
 
@@ -255,6 +258,7 @@ impl AgentProvider {
             Self::Codex => DEFAULT_AGENT_COMMAND,
             Self::ClaudeCode => DEFAULT_AGENT_CLAUDE_CODE_COMMAND,
             Self::Antigravity => AGENT_ANTIGRAVITY_COMMAND,
+            Self::Grok => AGENT_GROK_COMMAND,
         }
     }
 
@@ -264,6 +268,7 @@ impl AgentProvider {
             Self::Codex => "Codex",
             Self::ClaudeCode => "Claude Code",
             Self::Antigravity => "Antigravity",
+            Self::Grok => "Grok",
         }
     }
 }
@@ -282,8 +287,9 @@ impl FromStr for AgentProvider {
             "codex" => Ok(Self::Codex),
             "claude" | "claude-code" | "claudecode" => Ok(Self::ClaudeCode),
             "agy" | "antigravity" => Ok(Self::Antigravity),
+            "grok" => Ok(Self::Grok),
             _ => Err(format!(
-                "unknown agent provider `{value}`; expected codex, claude-code or antigravity"
+                "unknown agent provider `{value}`; expected codex, claude-code, antigravity or grok"
             )),
         }
     }

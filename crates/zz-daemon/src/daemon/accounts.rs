@@ -67,11 +67,16 @@ pub(super) fn parse_agent_accounts_args(
                 let added = value
                     .parse::<AgentProvider>()
                     .map_err(ServerError::CommandParse)?;
-                if added == AgentProvider::Antigravity {
-                    return Err(ServerError::InvalidCommand(
-                        "agent-accounts: sign in to Antigravity by running agy in a terminal"
-                            .to_owned(),
-                    ));
+                let login = match added {
+                    AgentProvider::Antigravity => Some("agy"),
+                    AgentProvider::Grok => Some("grok login"),
+                    AgentProvider::ClaudeCode | AgentProvider::Codex => None,
+                };
+                if let Some(login) = login {
+                    return Err(ServerError::InvalidCommand(format!(
+                        "agent-accounts: sign in to {} by running {login} in a terminal",
+                        added.label()
+                    )));
                 }
                 provider = Some(added);
             }
@@ -405,7 +410,7 @@ impl Shared {
         let login: &[&str] = match provider {
             AgentProvider::ClaudeCode => &["claude", "auth", "login"],
             AgentProvider::Codex => &["codex", "login"],
-            AgentProvider::Antigravity => return,
+            AgentProvider::Antigravity | AgentProvider::Grok => return,
         };
         let login = login
             .iter()
@@ -577,7 +582,7 @@ pub(super) fn identify(
                 (signed_out(provider), None)
             }
         },
-        AgentProvider::Antigravity => (signed_out(provider), None),
+        AgentProvider::Antigravity | AgentProvider::Grok => (signed_out(provider), None),
     };
     (AgentAccount { id, ..account }, quota)
 }

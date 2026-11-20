@@ -179,6 +179,7 @@ pub fn provider_program(provider: AgentProvider) -> Option<&'static Program> {
         AgentProvider::ClaudeCode => "claude",
         AgentProvider::Codex => "codex",
         AgentProvider::Antigravity => "antigravity",
+        AgentProvider::Grok => "grok",
     })
 }
 
@@ -216,6 +217,7 @@ pub fn pane_agent(pane: &PaneSnapshot) -> Option<AgentProvider> {
         "claude" => Some(AgentProvider::ClaudeCode),
         "codex" => Some(AgentProvider::Codex),
         "antigravity" => Some(AgentProvider::Antigravity),
+        "grok" => Some(AgentProvider::Grok),
         _ => None,
     }
 }

@@ -42,7 +42,9 @@ pub mod terminal;
 pub mod terminal_images;
 pub mod which_key;
 
-pub use program::{ANTIGRAVITY_ICON, Assets, CHROME_ICON, CLAUDE_ICON, OPENAI_ICON, ZZ_LOGO};
+pub use program::{
+    ANTIGRAVITY_ICON, Assets, CHROME_ICON, CLAUDE_ICON, GROK_ICON, OPENAI_ICON, ZZ_LOGO,
+};
 
 pub fn init(cx: &mut ala::App) {
     #[cfg(feature = "tree-sitter")]

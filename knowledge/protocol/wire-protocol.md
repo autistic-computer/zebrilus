@@ -1,10 +1,10 @@
 ---
 type: Protocol
-title: zz wire protocol (v124)
+title: zz wire protocol (v125)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-11-19T00:00:00-03:00
+timestamp: 2026-11-20T00:00:00-03:00
 ---
 
 # Overview
@@ -15,7 +15,7 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 124`** (`crates/zz-protocol/src/message.rs`). Each side also states its
+**`PROTOCOL_VERSION = 125`** (`crates/zz-protocol/src/message.rs`). Each side also states its
 build `REVISION` in the handshake and holds a floor for the other side's (see v123 below).
 
 `PROTOCOL_VERSION` is a wire epoch. It is checked for equality, never negotiated: a frame whose
@@ -1246,6 +1246,9 @@ is not signed in is left out, and a CLI that is not installed has no rows. Each 
 asks the CLIs again, and sends the whole list to every client that asked when it changes. The
 account work stays on v122.
 
+v125 appends `AgentProvider::Grok` after `Antigravity`, the provider of a chat over `grok`
+([agent panes](/concepts/agent-panes.md#grok)), for the reason v124 gives.
+
 v124 appends `AgentProvider::Antigravity` after `Codex`, the provider of a chat over `agy`
 ([agent panes](/concepts/agent-panes.md#antigravity)). The provider is a nested enum that travels in
 `AgentDescriptor`, the providers report, `AgentAccount`, `AgentQuota` and `AgentLogin`, and the
@@ -1274,16 +1277,18 @@ and from the CLI's own TUI. It appends `PaneKindSnapshot::Agent(AgentDescriptor)
 and `ChooseTreePaneKind::Agent` after `Editor`. `AgentDescriptor { provider, cwd, session_id,
 model, effort }` holds the provider, the absolute working directory, the vendor session to resume,
 and the model and effort to start with; every field but `provider` is optional.
-`select-pane-kind [-c dir] agent claude|codex|agy [--resume session-id]` turns a picker or a terminal
+`select-pane-kind [-c dir] agent claude|codex|agy|grok [--resume session-id]` turns a picker or a terminal
 into one, and `flip-agent [-t pane] [--now | --when-idle | --cancel]` joins the command catalog.
 v118 also appends `PaneSummary.flip_armed`, set while a `flip-agent --when-idle` waits for the pane
 to go idle ([agent panes](/concepts/agent-panes.md)).
 
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 124`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 125`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
+- v125 requires updated clients and daemon together, including the daemon on every ssh host.
+  v125 appends `AgentProvider::Grok`.
 - v124 requires updated clients and daemon together, including the daemon on every ssh host.
   v124 appends `AgentProvider::Antigravity`.
 - v123 requires updated clients and daemon together, including the daemon on every ssh host.

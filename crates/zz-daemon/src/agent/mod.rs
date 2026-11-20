@@ -1,4 +1,5 @@
 pub(crate) mod accounts;
+pub(crate) mod acp_chat;
 pub(crate) mod agy;
 pub(crate) mod capture;
 pub(crate) mod catalog;
@@ -18,11 +19,13 @@ pub(crate) mod cli_session;
 pub(crate) mod codex;
 #[cfg(unix)]
 pub(crate) mod codex_queue;
+pub(crate) mod dialect;
 pub(crate) mod environment;
 pub(crate) mod fanout;
 #[cfg(test)]
 pub(crate) mod fixture;
 pub(crate) mod git_summary;
+pub(crate) mod grok;
 pub(crate) mod host;
 pub(crate) mod journal;
 #[cfg(unix)]

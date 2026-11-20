@@ -159,6 +159,7 @@ mod tests {
                 AgentProvider::ClaudeCode => "/usr/local/bin/claude",
                 AgentProvider::Codex => "/usr/local/bin/codex",
                 AgentProvider::Antigravity => "/usr/local/bin/agy",
+                AgentProvider::Grok => "/usr/local/bin/grok",
             }
             .to_owned(),
         ];

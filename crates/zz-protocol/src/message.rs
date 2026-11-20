@@ -23,7 +23,7 @@ use crate::{
     },
 };
 
-pub const PROTOCOL_VERSION: u16 = 124;
+pub const PROTOCOL_VERSION: u16 = 125;
 pub const REVISION: u32 = 6;
 pub const MIN_DAEMON_REVISION: u32 = 1;
 pub const MIN_CLIENT_REVISION: u32 = 1;
@@ -115,6 +115,7 @@ pub(crate) const MAX_MUX_OPTION_VALUE_BYTES: usize = 64 * 1024;
 pub const DEFAULT_AGENT_COMMAND: &str = "codex";
 pub const DEFAULT_AGENT_CLAUDE_CODE_COMMAND: &str = "claude";
 pub const AGENT_ANTIGRAVITY_COMMAND: &str = "agy";
+pub const AGENT_GROK_COMMAND: &str = "grok";
 pub const AGENT_FLOAT_WIDTH: &str = "46%";
 pub const AGENT_FLOAT_HEIGHT: &str = "72%";
 pub const DEFAULT_AGENT_AUTO_APPROVE: AgentAutoApprove = AgentAutoApprove::Reads;
@@ -5764,7 +5765,7 @@ mod tests {
 
     #[test]
     fn detached_reason_holds_its_appended_wire_field() {
-        assert_eq!(super::PROTOCOL_VERSION, 124);
+        assert_eq!(super::PROTOCOL_VERSION, 125);
         for (reason, tag) in [
             (super::DetachReason::Requested, 0),
             (super::DetachReason::Evicted, 1),

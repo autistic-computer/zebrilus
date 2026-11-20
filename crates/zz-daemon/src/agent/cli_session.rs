@@ -497,16 +497,65 @@ pub(crate) fn agy_conversation(path: &Path) -> Option<String> {
         return None;
     }
     let (id, _) = path.file_name()?.to_str()?.split_once(".db")?;
+    uuid(id).then(|| id.to_owned())
+}
+
+fn uuid(id: &str) -> bool {
     let dashes = [8, 13, 18, 23];
-    (id.len() == 36
+    id.len() == 36
         && id.bytes().enumerate().all(|(at, byte)| {
             if dashes.contains(&at) {
                 byte == b'-'
             } else {
                 byte.is_ascii_hexdigit()
             }
-        }))
-    .then(|| id.to_owned())
+        })
+}
+
+pub(crate) fn grok_session(pid: u32, home: Option<&Path>, cwd: Option<PathBuf>) -> CliSession {
+    let args = arguments(pid);
+    let flag = |names: &[&str]| {
+        option_values(&args, names)
+            .into_iter()
+            .find(|value| launch_value(value))
+            .map(str::to_owned)
+    };
+    let session_id = home
+        .and_then(|home| read_small(&home.join("active_sessions.json")))
+        .and_then(|open| grok_open_session(&open, pid))
+        .or_else(|| flag(&["-r", "--resume", "-s", "--session-id"]).filter(|id| uuid(id)));
+    let summary = home.zip(session_id.as_deref()).and_then(|(home, id)| {
+        subdirectories(&home.join("sessions"))
+            .iter()
+            .find_map(|folder| read_small(&folder.join(id).join("summary.json")))
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+    });
+    let fact = |key: &str| {
+        summary
+            .as_ref()
+            .and_then(|summary| summary[key].as_str())
+            .filter(|value| launch_value(value))
+            .map(str::to_owned)
+    };
+    CliSession {
+        pid: Some(pid),
+        session_id,
+        cwd,
+        model: fact("current_model_id").or_else(|| flag(&["-m", "--model"])),
+        effort: fact("reasoning_effort").or_else(|| flag(&["--reasoning-effort", "--effort"])),
+        running: Vec::new(),
+    }
+}
+
+pub(crate) fn grok_open_session(open: &str, pid: u32) -> Option<String> {
+    serde_json::from_str::<Value>(open)
+        .ok()?
+        .as_array()?
+        .iter()
+        .find(|session| session["pid"] == pid)
+        .and_then(|session| session["session_id"].as_str())
+        .filter(|id| uuid(id))
+        .map(str::to_owned)
 }
 
 pub(crate) fn open_rollout(pid: u32) -> Option<PathBuf> {
@@ -657,6 +706,18 @@ pub(crate) fn cli_command(
             words.push("agy".to_owned());
             if let Some(session) = session_id {
                 words.extend(["--conversation".to_owned(), session.to_owned()]);
+            }
+            if let Some(model) = model {
+                words.extend(["--model".to_owned(), model.to_owned()]);
+            }
+            if let Some(effort) = effort {
+                words.extend(["--effort".to_owned(), effort.to_owned()]);
+            }
+        }
+        AgentProvider::Grok => {
+            words.push("grok".to_owned());
+            if let Some(session) = session_id {
+                words.extend(["--resume".to_owned(), session.to_owned()]);
             }
             if let Some(model) = model {
                 words.extend(["--model".to_owned(), model.to_owned()]);
