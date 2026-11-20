@@ -37,6 +37,7 @@ pub const ANTIGRAVITY_ICON: IconName = IconName::Asset("programs/antigravity.svg
 pub const GROK_ICON: IconName = IconName::Asset("programs/grok.svgz");
 pub const CURSOR_ICON: IconName = IconName::Asset("programs/cursor.svgz");
 pub const CHROME_ICON: IconName = IconName::Asset("icons/brand-chrome.svg");
+pub const SMARTPHONE_ICON: IconName = IconName::Asset("icons/smartphone.svg");
 
 #[must_use]
 pub const fn platform_icon(platform: zz_protocol::HostPlatform) -> Option<IconName> {

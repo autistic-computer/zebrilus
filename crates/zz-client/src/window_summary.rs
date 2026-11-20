@@ -19,6 +19,7 @@ pub enum PaneTag {
     Editor,
     Agent(AgentProvider),
     View,
+    Simulator,
     Other,
 }
 
@@ -160,6 +161,9 @@ pub fn pane_tag(kind: &PaneKindSnapshot) -> PaneTag {
         PaneKindSnapshot::Editor(_) => PaneTag::Editor,
         PaneKindSnapshot::Agent(agent) => PaneTag::Agent(agent.provider),
         PaneKindSnapshot::View(_) => PaneTag::View,
+        PaneKindSnapshot::Other { kind } if kind == zz_protocol::SIMULATOR_PANE_KIND => {
+            PaneTag::Simulator
+        }
         PaneKindSnapshot::Other { .. } => PaneTag::Other,
     }
 }

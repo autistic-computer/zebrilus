@@ -58,7 +58,7 @@ pub const fn agent_provider_icon(provider: zz_protocol::AgentProvider) -> IconNa
     }
 }
 
-pub const fn pane_kind_icon(kind: &zz_protocol::PaneKindSnapshot) -> IconName {
+pub fn pane_kind_icon(kind: &zz_protocol::PaneKindSnapshot) -> IconName {
     match kind {
         zz_protocol::PaneKindSnapshot::Terminal => IconName::SquareTerminal,
         zz_protocol::PaneKindSnapshot::Browser(_) => IconName::Globe,
@@ -66,6 +66,11 @@ pub const fn pane_kind_icon(kind: &zz_protocol::PaneKindSnapshot) -> IconName {
         zz_protocol::PaneKindSnapshot::Picker => IconName::Plus,
         zz_protocol::PaneKindSnapshot::Agent(agent) => agent_provider_icon(agent.provider),
         zz_protocol::PaneKindSnapshot::View(_) => IconName::Eye,
+        zz_protocol::PaneKindSnapshot::Other { kind }
+            if kind == zz_protocol::SIMULATOR_PANE_KIND =>
+        {
+            crate::SMARTPHONE_ICON
+        }
         zz_protocol::PaneKindSnapshot::Other { .. } => IconName::Info,
     }
 }
@@ -2209,7 +2214,7 @@ pub fn chat_picker_rows(
                 ChatPickerTarget::Simulator,
                 "chat-picker-simulator",
                 "Simulator",
-                crate::IconName::Asset("icons/smartphone.svg"),
+                crate::SMARTPHONE_ICON,
                 "s",
             ),
             _ => return None,

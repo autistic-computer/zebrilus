@@ -1138,6 +1138,7 @@ const fn tag_name(tag: PaneTag) -> &'static str {
         PaneTag::Browser => "browser",
         PaneTag::Editor => "editor",
         PaneTag::View => "view",
+        PaneTag::Simulator => "simulator",
         PaneTag::Other => "other",
         PaneTag::Picker => "picker",
         PaneTag::Agent(_) => "agent",

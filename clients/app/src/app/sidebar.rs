@@ -90,6 +90,7 @@ fn row_icon(node: SidebarNode) -> IconName {
         SidebarNode::Pane(PaneTag::Browser) => IconName::Globe,
         SidebarNode::Pane(PaneTag::Editor) => IconName::File,
         SidebarNode::Pane(PaneTag::View) => IconName::Eye,
+        SidebarNode::Pane(PaneTag::Simulator) => zz_ui::SMARTPHONE_ICON,
         SidebarNode::Pane(PaneTag::Other) => IconName::Info,
         SidebarNode::Pane(PaneTag::Picker) => IconName::Plus,
         SidebarNode::Pane(PaneTag::Agent(provider)) => zz_ui::pane::agent_provider_icon(provider),

@@ -21,8 +21,9 @@ timestamp: 2026-11-20T00:00:00-03:00
 # What is built
 
 File > New Simulator Pane runs `new-pane --kind simulator` on the active pane. The pane picker lists
-Simulator (`s`), which turns the picker into a tiled simulator pane with `select-pane-kind simulator`.
-Both show on macOS only.
+Simulator (`s`) under Terminal and Browser, which turns the picker into a tiled simulator pane with
+`select-pane-kind simulator`. Both show on macOS only. The sidebar and the palette show the pane with
+the phone icon and "Simulator".
 
 `new-pane --kind simulator [DEVICE]` opens a float of 35 by 36 cells at `centre-right`
 (`SIMULATOR_FLOAT_WIDTH`, `SIMULATOR_FLOAT_HEIGHT` and `float_place` in `crates/zz-mux/src/command.rs`),
@@ -39,7 +40,8 @@ pane, on every change, and again on resync.
 The desktop view is `SimulatorView` (`crates/zz/src/simulator/live.rs`), on `crates/zz-simulator`:
 
 - **No device:** the list of installed simulators, booted ones first, shut down ones dimmed. Picking
-  one sets the pane's device; a shut down one is booted first.
+  one, by click or with j, k, the arrows and Enter, sets the pane's device; a shut down one is
+  booted first.
 - **Screen:** the simulator's own surface, painted with `Window::paint_surface` at the surface's
   aspect, as large as fits: 6 px in from the sides and bottom in a PiP, 4 px from the top and 16 px
   from the sides and bottom when tiled. Corners are 14.6% of the screen's
@@ -50,7 +52,8 @@ The desktop view is `SimulatorView` (`crates/zz/src/simulator/live.rs`), on `cra
   usage, with Shift held around it. Keys with Command, Control, Option or Fn stay with zz.
 - **Booting:** the phone's outline in the theme's border color with a 16 px loader in the middle.
 - **Header:** the pane's own header, with the device's name as its title and Home, Lock, Screenshot
-  (to the clipboard) and Devices as kind buttons, which fold into the ellipsis in a narrow pane.
+  (to the clipboard) and Devices as kind buttons. When the header runs out of room, these fold into
+  the ellipsis first and Tile back, Zoom and Close stay out.
 
 Other platforms draw a one-line note in the pane.
 

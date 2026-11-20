@@ -1,4 +1,4 @@
-pub(crate) const PHONE: penna::IconName = penna::IconName::Asset("icons/smartphone.svg");
+pub(crate) const PHONE: penna::IconName = zz_ui::SMARTPHONE_ICON;
 
 #[cfg(target_os = "macos")]
 mod live;
