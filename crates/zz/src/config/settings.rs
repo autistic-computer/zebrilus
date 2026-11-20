@@ -1017,7 +1017,7 @@ impl SettingsView {
                 )),
         ];
         if let Some(link) = discovered.link.clone()
-            && let Some(code) = qr_code(&link)
+            && let Some(code) = qr_code(&link, cx)
         {
             tailscale_entries.push(
                 SettingEntry::new("Add this machine to a phone")
@@ -1695,29 +1695,106 @@ impl Focusable for SettingsView {
     }
 }
 
-fn qr_code(text: &str) -> Option<AnyElement> {
-    const MODULE: f32 = 4.0;
-    const QUIET: i32 = 4;
-    let code = qrcodegen::QrCode::encode_text(text, qrcodegen::QrCodeEcc::Medium).ok()?;
+const QR_BIRD_WIDTH: i32 = 10;
+const QR_BIRD_HEIGHT: i32 = 6;
+const QR_BIRD_HALO: i32 = 1;
+const QR_BIRD_BODY: [(i32, i32, i32, i32); 9] = [
+    (8, 0, 8, 2),
+    (6, 2, 6, 2),
+    (13, 2, 3, 2),
+    (0, 4, 2, 2),
+    (4, 4, 12, 2),
+    (2, 6, 14, 2),
+    (4, 8, 10, 2),
+    (7, 10, 1, 2),
+    (11, 10, 1, 2),
+];
+const QR_BIRD_BEAK: (i32, i32, i32, i32) = (16, 2, 3, 2);
+
+struct QrLayout {
+    width: i32,
+    bird_origin: (i32, i32),
+    modules: Vec<(i32, i32)>,
+}
+
+fn qr_layout(text: &str) -> Option<QrLayout> {
+    let segments = qrcodegen::QrSegment::make_segments(text);
+    let code = qrcodegen::QrCode::encode_segments_advanced(
+        &segments,
+        qrcodegen::QrCodeEcc::Quartile,
+        qrcodegen::Version::new(3),
+        qrcodegen::Version::MAX,
+        None,
+        true,
+    )
+    .ok()?;
     let width = code.size();
-    let unit = |count: i32| px(MODULE * f32::from(i16::try_from(count).unwrap_or(0)));
-    let dark = (0..width)
+    let bird_x = (width - QR_BIRD_WIDTH) / 2;
+    let bird_y = (width - QR_BIRD_HEIGHT) / 2;
+    let halo_x = (bird_x - QR_BIRD_HALO)..(bird_x + QR_BIRD_WIDTH + QR_BIRD_HALO);
+    let halo_y = (bird_y - QR_BIRD_HALO)..(bird_y + QR_BIRD_HEIGHT + QR_BIRD_HALO);
+    let modules = (0..width)
         .flat_map(|y| (0..width).map(move |x| (x, y)))
-        .filter(|&(x, y)| code.get_module(x, y))
-        .collect::<Vec<_>>();
-    let side = unit(width + 2 * QUIET);
+        .filter(|&(x, y)| code.get_module(x, y) && !(halo_x.contains(&x) && halo_y.contains(&y)))
+        .collect();
+    Some(QrLayout {
+        width,
+        bird_origin: (bird_x, bird_y),
+        modules,
+    })
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "QR code artwork uses fixed high-contrast brand paper, ink and flame colors independent of chrome theme"
+)]
+fn qr_code(text: &str, cx: &App) -> Option<AnyElement> {
+    const MODULE: f32 = 4.0;
+    const HALF_MODULE: f32 = MODULE / 2.0;
+    const QUIET: i32 = 4;
+    let layout = qr_layout(text)?;
+    let paper = ala::rgb(0x00f6_f3f5);
+    let ink = ala::rgb(0x001e_1a1c);
+    let flame = ala::rgb(0x00f2_5820);
+    let radius = cx.theme().radius.min(px(12.0));
+    let unit = |count: i32| px(MODULE * f32::from(i16::try_from(count).unwrap_or(0)));
+    let half = |count: i32| px(HALF_MODULE * f32::from(i16::try_from(count).unwrap_or(0)));
+    let side = unit(layout.width + 2 * QUIET);
     Some(
         ala::canvas(
             |_, _, _| (),
             move |bounds, (), window, _| {
-                window.paint_quad(ala::fill(bounds, ala::white()));
-                for &(x, y) in &dark {
+                window.paint_quad(ala::fill(bounds, paper).corner_radii(radius));
+                for &(x, y) in &layout.modules {
                     let origin = bounds.origin + ala::point(unit(x + QUIET), unit(y + QUIET));
                     window.paint_quad(ala::fill(
                         ala::Bounds::new(origin, ala::size(unit(1), unit(1))),
-                        ala::black(),
+                        ink,
                     ));
                 }
+                let (bird_x, bird_y) = layout.bird_origin;
+                let bird_origin = bounds.origin
+                    + ala::point(
+                        unit(bird_x + QUIET) + px(MODULE / 4.0),
+                        unit(bird_y + QUIET),
+                    );
+                for (x, y, w, h) in QR_BIRD_BODY {
+                    window.paint_quad(ala::fill(
+                        ala::Bounds::new(
+                            bird_origin + ala::point(half(x), half(y)),
+                            ala::size(half(w), half(h)),
+                        ),
+                        ink,
+                    ));
+                }
+                let (x, y, w, h) = QR_BIRD_BEAK;
+                window.paint_quad(ala::fill(
+                    ala::Bounds::new(
+                        bird_origin + ala::point(half(x), half(y)),
+                        ala::size(half(w), half(h)),
+                    ),
+                    flame,
+                ));
             },
         )
         .w(side)
@@ -2713,5 +2790,27 @@ mod tests {
                 .expect("missing source"),
             ""
         );
+    }
+
+    #[test]
+    fn qr_layout_clears_centered_bird_halo_without_touching_finders_or_timing() {
+        let short = qr_layout("zz://host/a:9922").expect("short url encodes");
+        assert_eq!(short.width, 29);
+        assert_eq!(short.bird_origin, (9, 11));
+        assert!(short.bird_origin.0 - QR_BIRD_HALO > 7);
+        assert!(short.bird_origin.1 - QR_BIRD_HALO > 7);
+
+        let host = qr_layout("zz://host/macbook.beluga-wall.ts.net:9922").expect("host encodes");
+        assert_eq!(host.width, 33);
+        assert_eq!(host.bird_origin, (11, 13));
+        assert!(
+            host.modules
+                .iter()
+                .all(|&(x, y)| !((10..22).contains(&x) && (12..20).contains(&y)))
+        );
+        for (fx, fy) in [(0, 0), (host.width - 7, 0), (0, host.width - 7)] {
+            assert!(host.modules.contains(&(fx, fy)));
+            assert!(host.modules.contains(&(fx + 3, fy + 3)));
+        }
     }
 }
