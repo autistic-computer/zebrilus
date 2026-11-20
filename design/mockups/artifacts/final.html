@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Artifacts: final</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="../floating-pane-header/board.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  [hidden] { display: none !important; }
+  .ar-variants.penna-variants { padding: 0; --penna-variant-width: 440px; }
+  .ar-variants > figure { min-width: 0; }
+
+  .ar-window.hf-window.penna-window { position: relative; height: 560px; }
+  .ar-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 250px; gap: 6px; min-height: 0; padding: 0 6px 6px; }
+  .ar-tool { position: absolute; top: var(--hf-head); right: 0; left: 0; display: flex; align-items: center; gap: 4px; height: 32px; padding: 0 6px; --penna-icon-size: 13px; }
+  .ar-tool > [data-penna="icon-button.bar"] { flex: none; }
+  .ar-address[data-penna="field"] { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; height: 24px; padding: 0 8px; font-size: 12px; line-height: 16px; color: var(--penna-fg-muted); white-space: nowrap; overflow: hidden; }
+  .ar-view { position: absolute; inset: calc(var(--hf-head) + 32px) 0 0 0; overflow: hidden; background: #faf6f0; }
+
+  .ar-step { display: flex; align-items: center; gap: 8px; height: 28px; font-size: 13px; line-height: 16px; color: var(--penna-fg-muted); --penna-icon-size: 13px; }
+  .ar-step > small { font-size: var(--penna-text-small-size); color: var(--penna-fg-muted); }
+  .ar-step > .ar-end { --penna-icon-size: 12px; display: inline-flex; }
+  .ar-step[data-open] { cursor: pointer; }
+  .ar-step[data-state="hover"], .ar-step[data-state="hover"] > small { color: var(--penna-fg); }
+  .hf-rows .ar-step { margin: -6px 0; }
+
+  .ar-chat { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 20px 24px; border: 1px solid var(--penna-border); border-radius: 14px; background: var(--penna-bg); font-size: 13px; line-height: 20px; }
+  .ar-chat > p { margin: 0; }
+
+  .pg { width: 900px; background: #faf6f0; color: #2a211c; font: 16px/1.5 Georgia, "Times New Roman", serif; }
+  .pg-nav { display: flex; align-items: center; gap: 28px; padding: 22px 48px; font: 500 14px/1 system-ui, sans-serif; }
+  .pg-nav > b { flex: 1; font: 700 20px/1 Georgia, serif; letter-spacing: -0.01em; }
+  .pg-hero { padding: 44px 48px 40px; }
+  .pg-hero > h3 { margin: 0 0 14px; max-width: 12ch; font-size: 60px; line-height: 1.02; font-weight: 700; letter-spacing: -0.02em; }
+  .pg-hero > p { margin: 0 0 24px; max-width: 44ch; font: 17px/1.5 system-ui, sans-serif; color: #6b5a4f; }
+  .pg-cta { display: inline-block; padding: 12px 22px; border-radius: 4px; background: #b4552d; color: #fff; font: 600 15px/1 system-ui, sans-serif; }
+  .pg-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; padding: 32px 48px 48px; border-top: 1px solid #e6dccf; font: 14px/1.5 system-ui, sans-serif; color: #6b5a4f; }
+  .pg-cols b { display: block; margin-bottom: 4px; font: 700 18px/1.2 Georgia, serif; color: #2a211c; }
+  .pg[data-v2] .pg-hero { background: #2a211c; color: #faf6f0; }
+  .pg[data-v2] .pg-hero > p { color: #cdbfb2; }
+  .pg[data-v2] .pg-cta { background: #3f8f5a; }
+
+  .zn { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px 48px; align-items: start; }
+  .zn h3 { margin: 0 0 6px; font-size: var(--penna-text-body-size); font-weight: 600; }
+  .zn table { border-collapse: collapse; width: 100%; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); }
+  .zn td { padding: 6px 16px 6px 0; border-bottom: 1px solid var(--penna-divider); vertical-align: top; color: var(--penna-fg); }
+  .zn td:first-child { width: 30%; color: var(--penna-fg-muted); }
+  .zn code { font-family: var(--penna-mono); font-size: var(--penna-text-mono-size); }
+</style>
+</head>
+<body>
+<main class="hf-page">
+  <div class="hf-intro">
+    <h1>Artifacts: final</h1>
+    <p>Picked: the page opens beside the chat, the chat keeps a row, the pane shows the last page written. Two changes from the first board: the row is the edit row the chat already draws, with the kit's open mark at its end, and the pane is today's browser pane with its toolbar.</p>
+  </div>
+
+  <section class="hf-take" data-take="flow">
+    <h2>The agent writes a page, then changes it</h2>
+    <figure><div class="hf-window ar-window penna-window penna-gaps" data-penna="window" data-stage="1"></div><figcaption><b>Written</b>The chat pane splits in two and the page takes the right half. Focus stays in the chat.</figcaption></figure>
+    <figure><div class="hf-window ar-window penna-window penna-gaps" data-penna="window" data-stage="2"></div><figcaption><b>Changed</b>The same pane redraws about half a second after the file settles. The chat gains one edit row.</figcaption></figure>
+  </section>
+
+  <section class="hf-take" data-take="states">
+    <h2>The row</h2>
+    <div class="penna-variants ar-variants" data-states></div>
+  </section>
+
+  <section class="hf-take" data-take="numbers">
+    <h2>Numbers</h2>
+    <div class="zn" data-numbers></div>
+  </section>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const bar = (name) => `<button data-penna="icon-button.bar">${ic(name)}</button>`;
+  const ACTIONS = ["panel-bottom", "panel-right", "picture-in-picture", "expand", "xmark"];
+  const header = ({ icon, name, cwd }) => `
+    <div class="hf-head"><div data-penna="bar.pane">
+      <div data-penna="button.title">${ic(icon)}<span class="hf-name">${name}</span>${cwd ? `<span class="hf-cwd">${cwd}</span>` : ""}</div>
+      <span class="hf-grow"></span><div class="hf-actions">${ACTIONS.map(bar).join("")}</div>
+    </div></div>`;
+
+  const page = (v2) => `<div class="pg"${v2 ? " data-v2" : ""}>
+    <div class="pg-nav"><b>Fig &amp; Kettle</b><span>Beans</span><span>Visit</span><span>Subscribe</span></div>
+    <div class="pg-hero"><h3>Coffee, roasted on Tuesdays</h3><p>Small batches from three farms, on your doorstep by Thursday.</p><span class="pg-cta">Start a subscription</span></div>
+    <div class="pg-cols"><div><b>Three farms</b>Huila, Yirgacheffe and Tarrazú, bought direct.</div><div><b>One roast day</b>Every bag ships within two days of roasting.</div><div><b>No contract</b>Skip a week or stop from the same link.</div></div>
+  </div>`;
+
+  const bubble = (text) => `<div class="penna-chat-message"><div class="penna-card penna-chat-bubble" data-penna="card.bubble"><span>${text}</span></div></div>`;
+  const say = (text) => `<p>${text}</p>`;
+  const step = (verb, file, open, hover) => `<div class="ar-step"${open ? " data-open" : ""}${hover ? ` data-state="hover"` : ""}>${ic("pencil")}<span>${verb}</span><small>${file}</small>${open ? `<span class="ar-end">${ic("external-link")}</span>` : ""}</div>`;
+
+  const ASK = bubble("Build a landing page for the coffee shop.");
+  const FIRST = say("A hero, three selling points and a subscribe button.");
+  const AGAIN = bubble("Make the hero dark and the button green.");
+  const DONE = say("Dark hero, green button.");
+  const thread = (stage) => [ASK, step("Edited", "landing.html", true), FIRST, ...(stage === 2 ? [AGAIN, step("Edited", "landing.html", true), DONE] : [])].join("");
+
+  const dock = `<div class="hf-dock"><div class="hf-composer" data-penna="field.composer">
+      <button class="hf-plus" data-penna="icon-button">${ic("plus")}</button><div class="hf-input penna-muted">Message Antigravity...</div>
+      <button data-penna="button.send" data-prominent data-state="disabled">${ic("arrow-up")}</button></div></div>`;
+  const chatPane = (stage) => `<section data-penna="pane" class="hf-pane" data-active>
+    <div class="hf-body"><div class="hf-thread"><div class="hf-rows" style="padding-top: 46px">${thread(stage)}</div></div>${dock}</div>
+    ${header({ icon: "sparkle", name: "Coffee shop landing", cwd: "~/dev/fig-kettle" })}</section>`;
+
+  const P = `<span class="c">fig-kettle</span> <span class="g">❯</span> `;
+  const SHELL = [`${P}ls site`, `landing.html  <span class="b w">img</span>`, `${P}git status -s`, `<span class="r">??</span> site/landing.html`, `${P}<span class="cur"> </span>`];
+  const shellPane = `<section data-penna="pane" class="hf-pane"><div class="hf-body"><pre class="hf-term" style="top: 40px">${SHELL.map((l) => `<div>${l}</div>`).join("")}</pre></div>${header({ icon: "square-terminal", name: "fish", cwd: "~/dev/fig-kettle" })}</section>`;
+  const tool = `<div class="ar-tool">${bar("arrow-left")}${bar("arrow-right")}${bar("redo-2")}<div class="ar-address" data-penna="field">${ic("globe")}zz://k3f9q2/landing.html</div>${bar("inspector")}${bar("ellipsis-vertical")}</div>`;
+  const artifactPane = (stage) => `<section data-penna="pane" class="hf-pane"><div class="ar-view"><div style="zoom: 0.604">${page(stage === 2)}</div></div>${tool}${header({ icon: "globe", name: "Fig &amp; Kettle" })}</section>`;
+
+  for (const win of document.querySelectorAll(".ar-window")) {
+    const stage = Number(win.dataset.stage);
+    win.innerHTML = `
+      <div class="penna-lights"><i></i><i></i><i></i></div>
+      <header data-penna="titlebar"><div data-penna="tab.strip">
+        <div data-penna="tab.window" aria-selected="true" style="width: 180px">${ic("sparkle")}fig-kettle</div>
+        <div data-penna="tab.window" style="width: 180px">${ic("globe")}docs</div>
+      </div></header>
+      <div class="ar-split">${chatPane(stage)}${artifactPane(stage)}${shellPane}</div>`;
+  }
+
+  const figure = (name, note, body) => `<figure><div class="ar-chat">${body}</div><figcaption><b>${name}</b>${note}</figcaption></figure>`;
+  document.querySelector("[data-states]").innerHTML = [
+    figure("Resting", "An edit row on a page file ends with the open mark", step("Edited", "landing.html", true)),
+    figure("Pointer over it", "The whole row takes the full ink. A click opens the file in the chat's pane", step("Edited", "landing.html", true, true)),
+    figure("Any other file", "As today: no mark, no click", step("Edited", "server.rs", false)),
+  ].join("");
+
+  const table = (title, rows) => `<div><h3>${title}</h3><table>${rows.map(([name, value]) => `<tr><td>${name}</td><td>${value}</td></tr>`).join("")}</table></div>`;
+  document.querySelector("[data-numbers]").innerHTML = [
+    table("The row", [
+      ["Which rows", "a finished turn keeps one row for each <code>.html</code>, <code>.htm</code> or <code>.svg</code> file it edited, outside the Worked for fold, above the answer; any provider"],
+      ["Look", "the kit's activity row, unchanged: 28 high, 13 / 16, a 13 px glyph, parts 8 apart, the file in small muted ink"],
+      ["Open mark", "the kit's <code>ActivityEnd::Open</code>: a 12 px external-link glyph, 8 after the file name"],
+      ["Under the pointer", "the row takes the foreground ink and the click cursor"],
+      ["A click", "opens that file in the chat's artifact pane; focus stays in the chat"],
+      ["A file that is gone", "the click shows the command's error, as any failed command does"],
+      ["While the turn runs", "no row yet; its edits show in the run as today"],
+      ["Inside an opened run", "the step row of a page edit carries the same mark and click"],
+      ["Thin clients", "desktop first; web, iPad and iPhone keep the plain row until their turn"],
+    ]),
+    table("The pane", [
+      ["What it is", "today's browser pane on the <code>artifacts</code> profile, loading <code>zz://</code>, toolbar included"],
+      ["One per chat", "while a chat's artifact pane is open, every open goes to it; <code>zz html</code> without <code>-t</code> does the same"],
+      ["Where", "a split of the chat pane: the chat keeps the left half, the page takes the right; other panes keep their size; focus stays in the chat"],
+      ["A new version", "redraws when the file reads the same on two checks 250 ms apart"],
+      ["Another page in the same chat", "replaces the one shown"],
+      ["Closed by you", "stays closed; it opens again on a row click or the next <code>zz html</code>, and not by itself"],
+      ["Title", "the page's <code>&lt;title&gt;</code>, as browser panes show it"],
+    ]),
+    table("Who opens it", [
+      ["Antigravity", "by itself, when it writes a file it marks as a user-facing artifact"],
+      ["Any agent that runs <code>zz html</code>", "by itself, as today"],
+      ["Claude, Codex, Grok, Cursor on a plain edit", "on a row click"],
+      ["Codex visualize", "stays inline in the reply, as today; its fragments are written to sit there"],
+      ["Grok", "gets the agent context the first two providers get, so it knows <code>zz html</code>"],
+      ["Cursor", "no context: its ACP server takes no instructions"],
+    ]),
+    table("Not in this build", [
+      ["Markdown, mermaid and image files", "next; they draw natively, and where that pane sits is its own question"],
+      ["A list or tabs of a chat's pages", "older pages reopen from their rows"],
+      ["Hiding the toolbar on <code>zz://</code>", "left as it is"],
+      ["Marking up the page for the agent", "<code>zz.reply</code> and the element picker exist; no new path"],
+    ]),
+  ].join("");
+
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.documentElement.dataset.only = only;
+    for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+  }
+  const settle = () => window.pennaKit?.roundAll?.();
+  document.getElementById("penna-tokens")?.addEventListener("load", () => requestAnimationFrame(settle));
+  addEventListener("load", () => requestAnimationFrame(settle));
+  settle();
+})();
+</script>
+</body>
+</html>

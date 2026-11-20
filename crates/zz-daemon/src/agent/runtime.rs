@@ -19,7 +19,7 @@ use agent_client_protocol::{
             AgentNotification, AuthMethod, AuthenticateRequest, CancelNotification,
             ClientCapabilities, ClientSessionCapabilities, CloseSessionRequest, ContentBlock,
             ContentChunk, DeleteSessionRequest, ImageContent, Implementation, InitializeRequest,
-            ListSessionsRequest, LoadSessionRequest, MessageId, NewSessionRequest,
+            ListSessionsRequest, LoadSessionRequest, MessageId, Meta, NewSessionRequest,
             PermissionOption, PermissionOptionKind, PromptRequest, RequestPermissionOutcome,
             RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
             SessionConfigOptionValue, SessionConfigOptionsCapabilities, SessionId as AcpSessionId,
@@ -307,6 +307,7 @@ pub(crate) async fn run_agent_runtime(
         command_rx,
         control_rx,
         event_tx,
+        None,
     )
     .await
 }
@@ -321,6 +322,7 @@ pub(crate) async fn run_acp_agent(
     command_rx: Receiver<RuntimeCommand>,
     control_rx: Receiver<RuntimeControl>,
     event_tx: Sender<AgentStreamPayload>,
+    session_meta: Option<Meta>,
 ) -> Result<(), String> {
     let account = config
         .workspace
@@ -352,6 +354,7 @@ pub(crate) async fn run_acp_agent(
         command_rx,
         control_rx,
         event_tx,
+        session_meta,
     )
     .await
     .map_err(|error| runtime_failure_message(provider.label(), &error, stderr.snapshot()))
@@ -412,8 +415,8 @@ fn exit_status_detail(error: &str) -> Option<String> {
     (!status.is_empty()).then_some(status)
 }
 
-fn new_session_request(cwd: PathBuf) -> NewSessionRequest {
-    NewSessionRequest::new(cwd)
+fn new_session_request(cwd: PathBuf, meta: Option<&Meta>) -> NewSessionRequest {
+    NewSessionRequest::new(cwd).meta(meta.cloned())
 }
 
 fn load_session_request(session_id: AcpSessionId, cwd: PathBuf) -> LoadSessionRequest {
@@ -649,6 +652,7 @@ pub(crate) async fn run_agent_connection(
     command_rx: Receiver<RuntimeCommand>,
     control_rx: Receiver<RuntimeControl>,
     event_tx: Sender<AgentStreamPayload>,
+    session_meta: Option<Meta>,
 ) -> Result<(), String> {
     let routing = Arc::new(Mutex::new(RuntimeRouting::default()));
     let prompt_controls = Arc::new(Mutex::new(PromptControls::default()));
@@ -999,7 +1003,7 @@ pub(crate) async fn run_agent_connection(
                                     routing.lock().begin_new_session();
                                     await_rpc(
                                         connection
-                                            .send_request(new_session_request(cwd.clone()))
+                                            .send_request(new_session_request(cwd.clone(), session_meta.as_ref()))
                                             .block_task(),
                                         RPC_TIMEOUT,
                                         "ACP session creation",
@@ -1024,7 +1028,7 @@ pub(crate) async fn run_agent_connection(
                             let replays = resume_session.is_some() && !restored.is_empty();
                             await_rpc(
                                 connection
-                                    .send_request(new_session_request(cwd.clone()))
+                                    .send_request(new_session_request(cwd.clone(), session_meta.as_ref()))
                                     .block_task(),
                                 RPC_TIMEOUT,
                                 "ACP session creation",
@@ -1266,7 +1270,7 @@ pub(crate) async fn run_agent_connection(
                         routing.lock().begin_new_session();
                         match await_rpc(
                             connection
-                                .send_request(new_session_request(cwd.clone()))
+                                .send_request(new_session_request(cwd.clone(), session_meta.as_ref()))
                                 .block_task(),
                             RPC_TIMEOUT,
                             "ACP session creation",

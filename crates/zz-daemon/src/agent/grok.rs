@@ -23,6 +23,7 @@ const DIALECT: Dialect = Dialect {
         method: "_x.ai/billing",
         read: credit_usage,
     }),
+    rules: Some("rules"),
 };
 
 pub(crate) async fn run_grok_runtime(

@@ -267,6 +267,7 @@ mod tests {
                 channels.commands,
                 channels.controls,
                 channels.events,
+                None,
             ))
         });
         let result =

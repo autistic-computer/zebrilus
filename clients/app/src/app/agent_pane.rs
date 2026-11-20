@@ -209,6 +209,7 @@ impl AgentPane {
                     })
                     .ok();
             })),
+            page: None,
         }
     }
 

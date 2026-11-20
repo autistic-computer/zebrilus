@@ -121,6 +121,20 @@ pub struct PlanStep {
     pub status: StepStatus,
 }
 
+const PAGE_EXTENSIONS: [&str; 3] = ["html", "htm", "svg"];
+
+#[must_use]
+pub fn is_page_file(path: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .is_some_and(|extension| {
+            PAGE_EXTENSIONS
+                .iter()
+                .any(|page| extension.eq_ignore_ascii_case(page))
+        })
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemBody {

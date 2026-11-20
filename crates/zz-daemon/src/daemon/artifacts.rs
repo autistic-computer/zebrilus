@@ -21,6 +21,7 @@ const SEND_POLL: Duration = Duration::from_millis(5);
 pub(super) struct Artifacts {
     by_token: HashMap<String, Artifact>,
     by_root: HashMap<PathBuf, String>,
+    pages: HashMap<PaneId, PaneId>,
 }
 
 #[derive(Clone, Debug)]
@@ -125,6 +126,19 @@ impl Artifacts {
         Some((opener, name))
     }
 
+    fn page_of(&self, owner: PaneId, state: &zz_mux::MuxState) -> PageSlot {
+        match self.pages.get(&owner) {
+            None => PageSlot::Unused,
+            Some(page) if shows_pages(state, *page) => PageSlot::Open(*page),
+            Some(_) => PageSlot::Closed,
+        }
+    }
+
+    fn keep_page(&mut self, owner: PaneId, page: PaneId, state: &zz_mux::MuxState) {
+        self.pages.retain(|owner, _| state.pane(*owner).is_some());
+        self.pages.insert(owner, page);
+    }
+
     pub(super) fn watched(&self) -> Vec<(String, Vec<(PathBuf, Option<Stamp>)>)> {
         self.by_token
             .iter()
@@ -141,6 +155,20 @@ impl Artifacts {
             })
             .collect()
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PageSlot {
+    Unused,
+    Open(PaneId),
+    Closed,
+}
+
+fn shows_pages(state: &zz_mux::MuxState, pane: PaneId) -> bool {
+    matches!(
+        state.pane(pane).map(|pane| &pane.kind),
+        Some(PaneKind::Browser(descriptor)) if descriptor.profile == ARTIFACT_PROFILE
+    )
 }
 
 fn mint_token() -> io::Result<String> {
@@ -472,21 +500,20 @@ impl Shared {
                         .resolve_pane(Some(target), context.window, context.pane)
                 })
                 .transpose()?;
-            let reuse = target.filter(|pane| {
-                matches!(
-                    inner.engine.state.pane(*pane).map(|pane| &pane.kind),
-                    Some(PaneKind::Browser(descriptor)) if descriptor.profile == ARTIFACT_PROFILE
-                )
-            });
+            let anchor = target.or(opener).or(context.pane);
+            let reuse = target
+                .filter(|pane| shows_pages(&inner.engine.state, *pane))
+                .or_else(
+                    || match inner.artifacts.page_of(anchor?, &inner.engine.state) {
+                        PageSlot::Open(page) => Some(page),
+                        PageSlot::Unused | PageSlot::Closed => None,
+                    },
+                );
             let token = inner
                 .artifacts
                 .register(root.clone(), opener, parsed.reply)
                 .map_err(|error| ServerError::InvalidCommand(error.to_string()))?;
-            (
-                artifact_url(&token, &root),
-                reuse,
-                target.or(opener).or(context.pane),
-            )
+            (artifact_url(&token, &root), reuse, anchor)
         };
         let mut arguments = Vec::new();
         let verb = if let Some(pane) = reuse {
@@ -523,9 +550,16 @@ impl Shared {
             format_facts_unread,
         )?;
         let pane = execution.effects.iter().find_map(|effect| match effect {
-            MuxEffect::PaneCreated { pane, .. } => Some(pane.to_string()),
+            MuxEffect::PaneCreated { pane, .. } => Some(*pane),
             _ => None,
         });
+        if let (Some(owner), Some(created)) = (anchor, pane) {
+            let mut inner = self.inner.lock();
+            let inner = &mut *inner;
+            inner
+                .artifacts
+                .keep_page(owner, created, &inner.engine.state);
+        }
         self.publish_snapshot();
         let output = match pane {
             Some(pane) => format!("{url} {pane}"),
@@ -535,6 +569,37 @@ impl Shared {
             output: output.into(),
             effects: execution.effects,
         })
+    }
+
+    pub(super) fn show_agent_page(self: &Arc<Self>, pane: PaneId, path: &str) {
+        let context = {
+            let inner = self.inner.lock();
+            if inner.artifacts.page_of(pane, &inner.engine.state) == PageSlot::Closed {
+                return;
+            }
+            ExecutionContext::for_pane(&inner.engine.state, pane)
+        };
+        let Some(mut context) = context else {
+            return;
+        };
+        context.no_hooks = true;
+        let command = CommandInvocation::new(
+            "html",
+            [
+                "-t".to_owned(),
+                pane.to_string(),
+                "--".to_owned(),
+                path.to_owned(),
+            ],
+        );
+        if let Err(error) = self.execute(
+            ClientId(u64::MAX),
+            ClientKind::Command,
+            &mut context,
+            &command,
+        ) {
+            log::debug!("could not show an agent's page: {error}");
+        }
     }
 
     pub(super) fn fetch_artifact(
@@ -1108,6 +1173,83 @@ mod tests {
             .kind = PaneKind::Terminal;
         watcher.join().unwrap();
         assert!(!shared.inner.lock().artifacts_watching);
+    }
+
+    #[test]
+    fn a_pane_keeps_one_page_pane_and_a_closed_one_stays_closed() {
+        let dir = page_dir();
+        let first = fs::canonicalize(dir.path().join(INDEX)).unwrap();
+        let second = first.with_file_name("second.html");
+        fs::write(&second, "<p>second</p>").unwrap();
+        let shared = Arc::new(Shared::new(1));
+        let (session, owner) = {
+            let mut inner = shared.inner.lock();
+            let (session, _, pane) = inner.engine.state.create_session("pages").unwrap();
+            (session, pane)
+        };
+        let mailbox = OutboundMailbox::new();
+        let (client, _) = shared.register_subscribed(ClientKind::Interactive, None, None, mailbox);
+        shared.attach(client, session).unwrap();
+        let run = |verb: &str, arguments: Vec<String>| {
+            let mut context = ExecutionContext::default();
+            shared
+                .execute(
+                    client,
+                    ClientKind::Interactive,
+                    &mut context,
+                    &CommandInvocation::new(verb, arguments),
+                )
+                .unwrap();
+        };
+        let open = |path: &Path| {
+            run(
+                "html",
+                vec![
+                    "-t".to_owned(),
+                    owner.to_string(),
+                    "--".to_owned(),
+                    path.display().to_string(),
+                ],
+            );
+        };
+        let pages = || {
+            let inner = shared.inner.lock();
+            let mut pages: Vec<(PaneId, String)> = inner
+                .engine
+                .state
+                .windows
+                .values()
+                .flat_map(|window| &window.panes)
+                .filter_map(|(pane, entry)| match &entry.kind {
+                    PaneKind::Browser(descriptor) => Some((
+                        *pane,
+                        descriptor.url().rsplit('/').next().unwrap().to_owned(),
+                    )),
+                    _ => None,
+                })
+                .collect();
+            pages.sort();
+            pages
+        };
+
+        shared.show_agent_page(owner, &first.display().to_string());
+        let shown = pages();
+        assert_eq!(shown.len(), 1);
+        assert_eq!(shown[0].1, INDEX);
+        let page = shown[0].0;
+
+        open(&second);
+        assert_eq!(pages(), [(page, "second.html".to_owned())]);
+
+        run("kill-pane", vec!["-t".to_owned(), page.to_string()]);
+        shared.show_agent_page(owner, &first.display().to_string());
+        assert_eq!(pages(), []);
+
+        open(&first);
+        let reopened = pages();
+        assert_eq!(reopened.len(), 1);
+        shared.show_agent_page(owner, &second.display().to_string());
+        assert_eq!(pages(), [(reopened[0].0, "second.html".to_owned())]);
     }
 
     #[test]

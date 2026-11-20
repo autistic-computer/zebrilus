@@ -161,6 +161,7 @@ pub fn child_cards(_: &mut Window, cx: &mut App) -> AnyView {
         cwd: None,
         open: Arc::new(|_, _, _| {}),
         view: None,
+        page: None,
     });
     cx.new(|_| ChildCards {
         cases,
@@ -324,6 +325,7 @@ pub fn child_transcript(window: &mut Window, cx: &mut App) -> AnyView {
         cwd: None,
         open: Arc::new(|_, _, _| {}),
         view: None,
+        page: None,
     };
     threads(
         vec![(

@@ -24,6 +24,7 @@ pub enum Unit {
     Ask(RequestId),
     Record(RequestId),
     Child(Box<ChildCard>),
+    Page(ItemId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -129,7 +130,7 @@ pub fn turn_rows(view: &ChatView, turn: &TurnView, now: u64, fold: &ChildFold) -
             activity,
         };
     };
-    let (mut folded, mut shown) = (Vec::new(), Vec::new());
+    let (mut folded, mut shown, mut reply) = (Vec::new(), Vec::new(), Vec::new());
     let anchors = units
         .iter()
         .map(|unit| matches!(unit, Unit::Child(_)))
@@ -137,13 +138,16 @@ pub fn turn_rows(view: &ChatView, turn: &TurnView, now: u64, fold: &ChildFold) -
         .chain([false])
         .collect::<Vec<_>>();
     for (index, unit) in units.into_iter().enumerate() {
-        let keep = index >= answer || anchors[index] || still_running(view, &unit);
-        if keep {
+        if index >= answer {
+            reply.push(unit);
+        } else if anchors[index] || still_running(view, &unit) {
             shown.push(unit);
         } else {
             folded.push(unit);
         }
     }
+    shown.extend(pages(view, &folded).into_iter().map(Unit::Page));
+    shown.extend(reply);
     TurnRows {
         folded: joined(view, folded),
         shown,
@@ -241,7 +245,8 @@ pub fn unit_at(view: &ChatView, unit: &Unit) -> Option<u64> {
         | Unit::Text(id)
         | Unit::Subagent(id)
         | Unit::Plan(id)
-        | Unit::Notice(id) => id,
+        | Unit::Notice(id)
+        | Unit::Page(id) => id,
         Unit::Run(run) => run.items.first()?,
         Unit::Agents(ids) => ids.first()?,
         Unit::Ask(request) | Unit::Record(request) => {
@@ -930,6 +935,43 @@ fn live_parts(item: &ItemView) -> (&'static str, String) {
         _ => "Using",
     };
     (action, target)
+}
+
+#[must_use]
+pub fn page_target(item: &ItemView) -> Option<&str> {
+    if item.kind != ItemKind::Edit || item.status != ItemStatus::Completed {
+        return None;
+    }
+    item.body
+        .target
+        .as_deref()
+        .filter(|target| zz_protocol::chat::is_page_file(target))
+}
+
+fn pages(view: &ChatView, units: &[Unit]) -> Vec<ItemId> {
+    let mut pages: Vec<(&str, &ItemId)> = Vec::new();
+    let edits = units
+        .iter()
+        .filter_map(|unit| match unit {
+            Unit::Run(run) => Some(&run.items),
+            _ => None,
+        })
+        .flatten();
+    for id in edits {
+        let Some(target) = view.item(id).and_then(page_target) else {
+            continue;
+        };
+        match pages.iter_mut().find(|(page, _)| *page == target) {
+            Some(page) => page.1 = id,
+            None => pages.push((target, id)),
+        }
+    }
+    pages.into_iter().map(|(_, id)| id.clone()).collect()
+}
+
+#[must_use]
+pub fn file_name(target: &str) -> String {
+    short(target)
 }
 
 pub fn run_shows(view: &ChatView, items: &[ItemId]) -> bool {

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use zz_client::agent_settings::{self, fork_chat_command, real_session, source_message};
 
 use zz_ui::agent::preview::ViewRequest;
-use zz_ui::agent::refs::{ChatRefs, open_path};
+use zz_ui::agent::refs::{ChatRefs, open_path, page_command};
 use zz_ui::command::{PaletteTarget, target_hosts};
 use zz_ui::target::{RefTarget, ResolvedTarget};
 
@@ -26,6 +26,8 @@ impl AgentView {
     pub(super) fn chat_refs(&self, view: &Entity<Self>, cx: &ala::App) -> ChatRefs {
         let view = view.downgrade();
         let shows = view.clone();
+        let mux = self.mux.downgrade();
+        let pane = self.pane;
         ChatRefs {
             hosts: target_hosts(&palette_backend(self.mux.clone()).tree(cx)),
             cwd: Some(self.chat_cwd()),
@@ -37,6 +39,11 @@ impl AgentView {
                 shows
                     .update(cx, |view, cx| view.open_view(&request, window, cx))
                     .ok();
+            })),
+            page: Some(Arc::new(move |path, _, cx| {
+                if let Some(mux) = mux.upgrade() {
+                    mux.read(cx).execute(page_command(pane, path));
+                }
             })),
         }
     }

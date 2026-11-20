@@ -26,6 +26,7 @@ const DIALECT: Dialect = Dialect {
     model_name: None,
     unguarded: None,
     quota: None,
+    rules: None,
 };
 
 pub(crate) async fn run_agy_runtime(

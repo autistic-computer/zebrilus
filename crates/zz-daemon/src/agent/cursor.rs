@@ -25,6 +25,7 @@ const DIALECT: Dialect = Dialect {
         always: never_asks,
     }),
     quota: None,
+    rules: None,
 };
 
 pub(crate) async fn run_cursor_runtime(
