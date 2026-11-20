@@ -445,6 +445,28 @@ impl SimulatorView {
         cx.stop_propagation();
     }
 
+    fn list_key(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let State::Devices(devices) = &self.state else {
+            return;
+        };
+        let modifiers = event.keystroke.modifiers;
+        if devices.is_empty() || modifiers.platform || modifiers.control || modifiers.alt {
+            return;
+        }
+        let count = devices.len();
+        match event.keystroke.key.as_str() {
+            "j" | "down" => self.selected = (self.selected + 1) % count,
+            "k" | "up" => self.selected = (self.selected + count - 1) % count,
+            "enter" => {
+                let udid = devices[self.selected.min(count - 1)].udid.clone();
+                self.pick(udid, cx);
+            }
+            _ => return,
+        }
+        cx.notify();
+        cx.stop_propagation();
+    }
+
     fn devices(&self, devices: &[Device], cx: &mut Context<Self>) -> AnyElement {
         let rows = devices
             .iter()
@@ -484,6 +506,7 @@ impl SimulatorView {
             cx,
         )
         .track_focus(&self.focus)
+        .on_key_down(cx.listener(Self::list_key))
         .into_any_element()
     }
 
