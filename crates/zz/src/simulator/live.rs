@@ -65,7 +65,6 @@ enum State {
     Waiting(SharedString),
     Failed(SharedString),
     Live(Box<Live>),
-    Paused(SharedString),
 }
 
 pub(crate) struct SimulatorView {
@@ -141,27 +140,22 @@ impl SimulatorView {
             return;
         }
         self.visible = visible;
-        if visible {
-            if matches!(self.state, State::Paused(_)) {
-                self.open(cx);
+        if let State::Live(live) = &mut self.state {
+            live.screen.set_paused(!visible);
+            if visible {
+                if let Ok(buffer) = live.screen.pixel_buffer() {
+                    live.buffer = buffer;
+                }
+                live.surface_changes = live.screen.surface_changes();
+                live.turns = live.screen.turns();
             }
-        } else if let State::Live(live) = &self.state {
-            self.state = State::Paused(live.name.clone());
-            self.frames = None;
-            self.wheel_end = None;
-            self.touching = false;
-            self.wheel = None;
             cx.notify();
         }
     }
 
-    fn show(&mut self, live: Live) {
-        self.state = if self.visible {
-            State::Live(Box::new(live))
-        } else {
-            self.frames = None;
-            State::Paused(live.name)
-        };
+    fn show(&mut self, mut live: Live) {
+        live.screen.set_paused(!self.visible);
+        self.state = State::Live(Box::new(live));
     }
 
     pub(crate) fn focus(&self) -> FocusHandle {
@@ -171,7 +165,7 @@ impl SimulatorView {
     pub(crate) fn title(&self) -> SharedString {
         match &self.state {
             State::Live(live) => live.name.clone(),
-            State::Waiting(name) | State::Paused(name) => name.clone(),
+            State::Waiting(name) => name.clone(),
             State::Devices(_) | State::Failed(_) => TITLE.into(),
         }
     }
@@ -199,9 +193,7 @@ impl SimulatorView {
 
     pub(crate) fn header_buttons(&self) -> Vec<PaneKindButton> {
         match &self.state {
-            State::Devices(_) | State::Paused(_) | State::Waiting(_) | State::Failed(_) => {
-                Vec::new()
-            }
+            State::Devices(_) | State::Waiting(_) | State::Failed(_) => Vec::new(),
             State::Live(_) => vec![
                 PaneKindButton {
                     key: HOME,
@@ -886,7 +878,6 @@ impl Render for SimulatorView {
             State::Waiting(_) => self.booting(cx),
             State::Failed(message) => self.note(message.clone(), cx),
             State::Live(live) => self.screen(live, cx),
-            State::Paused(_) => self.stage().track_focus(&self.focus).into_any_element(),
         }
     }
 }

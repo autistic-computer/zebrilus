@@ -98,6 +98,10 @@ type GetObject = unsafe extern "C-unwind" fn(*const AnyObject, Sel) -> *mut AnyO
 type GetUnsigned = unsafe extern "C-unwind" fn(*const AnyObject, Sel) -> u32;
 type Responds = unsafe extern "C-unwind" fn(*const AnyObject, Sel, Sel) -> Bool;
 
+fn register_selector() -> Sel {
+    sel!(registerScreenCallbacksWithUUID:callbackQueue:frameCallback:surfacesChangedCallback:propertiesChangedCallback:)
+}
+
 struct Notify;
 
 unsafe impl ManualBlockEncoding for Notify {
@@ -273,8 +277,38 @@ impl Registration {
     }
 }
 
+struct Callbacks {
+    frame: RcBlock<dyn Fn()>,
+    surfaces: RcBlock<dyn Fn()>,
+    properties: RcBlock<dyn Fn()>,
+}
+
+impl Callbacks {
+    fn register(&self, descriptor: Retained<AnyObject>, queue: *mut c_void) -> Registration {
+        let register = unsafe { transmute::<Send, RegisterCallbacks>(objc_msgSend) };
+        let identifier = NSUUID::new();
+        unsafe {
+            register(
+                Retained::as_ptr(&descriptor),
+                register_selector(),
+                Retained::as_ptr(&identifier),
+                queue,
+                RcBlock::as_ptr(&self.frame).cast(),
+                RcBlock::as_ptr(&self.surfaces).cast(),
+                RcBlock::as_ptr(&self.properties).cast(),
+            );
+        }
+        Registration {
+            descriptor,
+            identifier,
+        }
+    }
+}
+
 pub struct Screen {
     registration: Registration,
+    callbacks: Callbacks,
+    paused: bool,
     surface: Retained<AnyObject>,
     queue: *mut c_void,
     frames: Arc<AtomicU64>,
@@ -313,8 +347,11 @@ impl Screen {
             })
         };
         let on_properties = RcBlock::with_encoding::<_, _, _, Notify>(move || notify());
-        let register = unsafe { transmute::<Send, RegisterCallbacks>(objc_msgSend) };
-        let register_selector = sel!(registerScreenCallbacksWithUUID:callbackQueue:frameCallback:surfacesChangedCallback:propertiesChangedCallback:);
+        let callbacks = Callbacks {
+            frame: on_frame,
+            surfaces: on_surfaces,
+            properties: on_properties,
+        };
 
         let mut registrations = Vec::new();
         for port in &ports {
@@ -331,27 +368,12 @@ impl Screen {
             let Some(descriptor) = object(&port, sel!(descriptor)) else {
                 continue;
             };
-            if !responds(&descriptor, register_selector)
+            if !responds(&descriptor, register_selector())
                 || !responds(&descriptor, sel!(framebufferSurface))
             {
                 continue;
             }
-            let identifier = NSUUID::new();
-            unsafe {
-                register(
-                    Retained::as_ptr(&descriptor),
-                    register_selector,
-                    Retained::as_ptr(&identifier),
-                    queue,
-                    RcBlock::as_ptr(&on_frame).cast(),
-                    RcBlock::as_ptr(&on_surfaces).cast(),
-                    RcBlock::as_ptr(&on_properties).cast(),
-                );
-            }
-            registrations.push(Registration {
-                descriptor,
-                identifier,
-            });
+            registrations.push(callbacks.register(descriptor, queue));
         }
 
         let native = Simulator::native_size(device);
@@ -383,6 +405,8 @@ impl Screen {
         }
         Ok(Self {
             registration,
+            callbacks,
+            paused: false,
             surface,
             queue,
             frames,
@@ -399,6 +423,23 @@ impl Screen {
             height,
             pixel_format: unsafe { IOSurfaceGetPixelFormat(surface) },
             seed: unsafe { IOSurfaceGetSeed(surface) },
+        }
+    }
+
+    pub fn set_paused(&mut self, paused: bool) {
+        if paused == self.paused {
+            return;
+        }
+        self.paused = paused;
+        if paused {
+            self.registration.cancel();
+        } else {
+            self.registration = self
+                .callbacks
+                .register(self.registration.descriptor.clone(), self.queue);
+            if let Some(surface) = self.registration.surface() {
+                self.surface = surface;
+            }
         }
     }
 
@@ -479,7 +520,9 @@ impl Screen {
 
 impl Drop for Screen {
     fn drop(&mut self) {
-        self.registration.cancel();
+        if !self.paused {
+            self.registration.cancel();
+        }
         unsafe { dispatch_release(self.queue) };
     }
 }
