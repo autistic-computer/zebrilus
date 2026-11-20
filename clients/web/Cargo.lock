@@ -8602,7 +8602,7 @@ dependencies = [
 
 [[package]]
 name = "zz-app"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "ala",
  "ala-cef",
@@ -8635,7 +8635,7 @@ dependencies = [
 
 [[package]]
 name = "zz-client"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "agent-client-protocol-schema",
  "base64",
@@ -8654,7 +8654,7 @@ dependencies = [
 
 [[package]]
 name = "zz-daemon-client"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "core-foundation",
  "ed25519-dalek",
@@ -8679,7 +8679,7 @@ dependencies = [
 
 [[package]]
 name = "zz-protocol"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "base64",
  "foldhash",
@@ -8695,7 +8695,7 @@ dependencies = [
 
 [[package]]
 name = "zz-terminal"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "csscolorparser",
  "serde",
@@ -8705,7 +8705,7 @@ dependencies = [
 
 [[package]]
 name = "zz-ui"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "ala",
  "chrono",
