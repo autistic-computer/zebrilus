@@ -32,6 +32,8 @@ impl SimulatorView {
         false
     }
 
+    pub(crate) fn set_floating(&mut self, _: bool, _: &mut Context<Self>) {}
+
     pub(crate) fn focus(&self) -> FocusHandle {
         self.focus.clone()
     }
