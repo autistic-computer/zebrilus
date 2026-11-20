@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use ala::{App, Div, ParentElement as _, Styled as _, Window};
 use penna::blocks::touch::{TouchGroup, TouchHeader, TouchRow, TouchTrailing};
+use zz_protocol::{HostPlatform, LinuxDistro};
 
 use crate::{Disableable as _, IconName, v_flex};
 
@@ -57,11 +58,13 @@ pub fn found_detail(machine: &FoundMachine) -> String {
 }
 
 pub fn found_icon(machine: &FoundMachine) -> IconName {
-    if system_name(&machine.system) == "macOS" {
-        IconName::Laptop
-    } else {
-        IconName::HardDrive
-    }
+    let platform = match system_name(&machine.system) {
+        "macOS" => HostPlatform::Macos,
+        "Windows" => HostPlatform::Windows,
+        "Linux" => HostPlatform::Linux(LinuxDistro::Other),
+        _ => HostPlatform::Unknown,
+    };
+    crate::program::platform_icon(platform).unwrap_or(IconName::HardDrive)
 }
 
 pub fn found_machines(
