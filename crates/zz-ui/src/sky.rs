@@ -20,7 +20,7 @@ const REVEAL: f32 = 0.75;
 const STILL: f32 = 38.38;
 const WRAP_GAP: f32 = 60.0;
 const WIDE: f32 = 700.0;
-const HEADER: usize = 10;
+const HEADER: usize = 11;
 const MAX_ZONES: usize = 8;
 const MAX_BIRDS: usize = 4;
 const MAX_FAR_BIRDS: usize = 4;
@@ -165,7 +165,7 @@ struct Sky {
     ramp: vec4<f32>,
     counts: vec4<f32>,
     seed: vec4<f32>,
-    zones: array<vec4<f32>, 8>,
+    content_box: vec4<f32>,
     birds: array<vec4<f32>, 4>,
     far_birds: array<vec4<f32>, 4>,
 }
@@ -229,26 +229,6 @@ fn bayer4(x: u32, y: u32) -> f32 {
         rank = rank * 4u + (((((x ^ y) >> i) & 1u) << 1u) | ((y >> i) & 1u));
     }
     return (f32(rank) + 0.5) / 16.0;
-}
-
-fn smin(a: f32, b: f32, k: f32) -> f32 {
-    let h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
-    return mix(b, a, h) - k * h * (1.0 - h);
-}
-
-fn smooth_clearance(p: vec2<f32>) -> f32 {
-    var nearest = 1.0e3;
-    let count = i32(sky.counts.x);
-    let fade = sky.counts.w;
-    for (var i = 0; i < 8; i++) {
-        if i >= count {
-            break;
-        }
-        let z = sky.zones[i];
-        let away = max(max(z.xy - p, p - z.zw), vec2<f32>(0.0)) / fade;
-        nearest = smin(nearest, length(away), 0.28);
-    }
-    return max(0.0, nearest);
 }
 
 fn sample_moon(p: vec2<f32>, center: vec2<f32>, r: f32, quant_px: f32, moon_rgb: vec3<f32>) -> vec4<f32> {
@@ -343,9 +323,11 @@ fn sky_fragment(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
 
     let cc = (cell + 0.5) * cell_px;
     let cuv = cc / max(sky.frame.yz, vec2<f32>(1.0));
-    let d = smooth_clearance(cc);
     let n_open = fbm2(cc / 120.0);
-    let open = select(0.0, smoothstep(0.08, 1.0, d + (n_open - 0.5) * 0.14), revealed);
+    let h_fade = smoothstep(0.84, 0.22, cuv.y + (n_open - 0.5) * 0.08);
+    let box_away = max(max(sky.content_box.xy - cc, cc - sky.content_box.zw), vec2<f32>(0.0));
+    let e_open = smoothstep(0.0, 1.0, length(box_away) / 140.0 + (n_open - 0.5) * 0.16);
+    let open = select(0.0, h_fade * mix(1.0, mix(0.32, 1.0, e_open), sky.seed.w), revealed);
 
     let p_vec = sky.parallax.xy;
     let moon_pos = sky.parallax.zw - p_vec * vec2<f32>(8.0, 5.0);
@@ -719,6 +701,7 @@ impl Scene<'_> {
         let height = self.bounds.size.height.as_f32();
         let origin = self.bounds.origin;
         let zones = self.zone_css(width, height);
+        let (content_box, center_calm) = self.content_box(width, height);
         let moon = moon_spot(width, height, &zones);
         let (moon_x, moon_y, moon_visible) = match moon {
             Some([x, y]) => (x, y, 1.0),
@@ -741,30 +724,44 @@ impl Scene<'_> {
             rgb(self.bg),
             [FLAME[0], FLAME[1], FLAME[2], 1.0],
             if self.dark { DARK_RAMP } else { LIGHT_RAMP },
-            [
-                zones.len() as f32,
-                birds.len() as f32,
-                far_birds.len() as f32,
-                FADE,
-            ],
+            [0.0, birds.len() as f32, far_birds.len() as f32, FADE],
             [
                 (self.seed & 0xfff) as f32,
                 ((self.seed >> 12) & 0xfff) as f32,
                 moon_visible,
-                0.0,
+                center_calm,
             ],
+            content_box,
         ];
-        values.extend(zones.iter().copied());
-        values.resize(HEADER + MAX_ZONES, [0.0; 4]);
         values.extend(birds.iter().copied());
-        values.resize(HEADER + MAX_ZONES + MAX_BIRDS, [0.0; 4]);
+        values.resize(HEADER + MAX_BIRDS, [0.0; 4]);
         values.extend(far_birds.iter().copied());
-        values.resize(HEADER + MAX_ZONES + MAX_BIRDS + MAX_FAR_BIRDS, [0.0; 4]);
+        values.resize(HEADER + MAX_BIRDS + MAX_FAR_BIRDS, [0.0; 4]);
         values
             .iter()
             .flatten()
             .flat_map(|value| value.to_ne_bytes())
             .collect()
+    }
+
+    fn content_box(&self, width: f32, height: f32) -> ([f32; 4], f32) {
+        if self.zones.is_empty() {
+            return ([0.0, height, width, height], 0.0);
+        }
+        let origin = self.bounds.origin;
+        let mut min_x = f32::INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        for zone in self.zones {
+            min_x = min_x.min((zone.left() - origin.x).as_f32() - PAD);
+            min_y = min_y.min((zone.top() - origin.y).as_f32() - PAD);
+            max_x = max_x.max((zone.right() - origin.x).as_f32() + PAD);
+            max_y = max_y.max((zone.bottom() - origin.y).as_f32() + PAD);
+        }
+        let bottom_ratio = max_y / height.max(1.0);
+        let center_calm = ((0.80 - bottom_ratio) / 0.15).clamp(0.0, 1.0);
+        ([min_x, min_y, max_x, max_y], center_calm)
     }
 
     fn zone_css(&self, width: f32, height: f32) -> Vec<[f32; 4]> {
@@ -999,8 +996,8 @@ mod tests {
             .iter()
             .find(|(_, global)| global.space == naga::AddressSpace::Uniform)
             .expect("uniform block");
-        assert_eq!(layouter[uniform.ty].size, 416);
-        assert_eq!((HEADER + MAX_ZONES + MAX_BIRDS + MAX_FAR_BIRDS) * 16, 416);
+        assert_eq!(layouter[uniform.ty].size, 304);
+        assert_eq!((HEADER + MAX_BIRDS + MAX_FAR_BIRDS) * 16, 304);
     }
 
     #[test]
@@ -1024,7 +1021,7 @@ mod tests {
         };
         let rest = make([0.0, 0.0]);
         let shifted = make([1.0, 0.5]);
-        assert_eq!(rest.uniforms().len(), 416);
+        assert_eq!(rest.uniforms().len(), 304);
 
         let z_rest = rest.zone_css(1200.0, 800.0);
         let z_shift = shifted.zone_css(1200.0, 800.0);
