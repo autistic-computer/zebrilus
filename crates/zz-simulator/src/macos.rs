@@ -186,6 +186,19 @@ impl Simulator {
         name(&self.device)
     }
 
+    pub fn set_hardware_keyboard(&self, enabled: bool) -> Result<(), Error> {
+        let selector = sel!(setHardwareKeyboardEnabled:keyboardType:error:);
+        if !responds(&self.device, selector) {
+            return Err(Error::MissingSymbol(
+                "setHardwareKeyboardEnabled:keyboardType:error:",
+            ));
+        }
+        let set: Result<(), Retained<NSError>> = unsafe {
+            msg_send![&*self.device, setHardwareKeyboardEnabled: enabled, keyboardType: 0_u8, error: _]
+        };
+        set.map_err(|error| service_error(&error))
+    }
+
     pub fn screen_size(&self) -> Option<(usize, usize)> {
         Self::native_size(&self.device)
     }

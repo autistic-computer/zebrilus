@@ -24,6 +24,7 @@ const HOUSE: IconName = IconName::Asset("icons/house.svg");
 const LOCK_ICON: IconName = IconName::Asset("icons/lock.svg");
 const HOME: &str = "simulator-home";
 const LOCK: &str = "simulator-lock";
+const KEYBOARD: &str = "simulator-keyboard";
 const SCREENSHOT: &str = "simulator-screenshot";
 const DEVICES: &str = "simulator-devices";
 const TITLE: &str = "Simulator";
@@ -46,7 +47,8 @@ struct Live {
     buffer: CVPixelBuffer,
     surface_changes: u64,
     tablet: bool,
-    _simulator: Simulator,
+    keyboard: bool,
+    simulator: Simulator,
 }
 
 enum State {
@@ -184,6 +186,11 @@ impl SimulatorView {
                     label: "Lock",
                 },
                 PaneKindButton {
+                    key: KEYBOARD,
+                    icon: IconName::Keyboard,
+                    label: "Keyboard",
+                },
+                PaneKindButton {
                     key: SCREENSHOT,
                     icon: IconName::Camera,
                     label: "Screenshot",
@@ -197,6 +204,13 @@ impl SimulatorView {
         match key {
             HOME => self.button(Button::Home),
             LOCK => self.button(Button::Lock),
+            KEYBOARD => {
+                if let State::Live(live) = &mut self.state
+                    && live.simulator.set_hardware_keyboard(live.keyboard).is_ok()
+                {
+                    live.keyboard = !live.keyboard;
+                }
+            }
             SCREENSHOT => self.screenshot(cx),
             DEVICES => self.pick(String::new(), cx),
             _ => {}
@@ -271,9 +285,10 @@ impl SimulatorView {
             tablet: surface.width as f32 / surface.height.max(1) as f32 > TABLET_ASPECT
                 && surface.height as f32 / surface.width.max(1) as f32 > TABLET_ASPECT,
             input: simulator.input_unverified().ok(),
+            keyboard: simulator.set_hardware_keyboard(true).is_err(),
             screen,
             buffer,
-            _simulator: simulator,
+            simulator,
         })
     }
 

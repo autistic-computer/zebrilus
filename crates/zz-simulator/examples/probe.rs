@@ -14,9 +14,9 @@ mod macos {
         time::{Duration, Instant},
     };
 
-    use zz_simulator::{Input, KeyDirection, Route, Simulator, TouchPhase};
+    use zz_simulator::{Button, Input, KeyDirection, Route, Simulator, TouchPhase};
 
-    const USAGE: &str = "probe UDID [legacy|remote] screen SECONDS [swipe] | tap X Y | swipe X1 Y1 X2 Y2 | key USAGE...";
+    const USAGE: &str = "probe UDID [legacy|remote] screen SECONDS [swipe] | tap X Y | swipe X1 Y1 X2 Y2 | key USAGE... | button home|lock | hardware on|off";
     const STEP: Duration = Duration::from_millis(8);
 
     pub(crate) fn run() -> Result<(), Box<dyn Error>> {
@@ -87,6 +87,22 @@ mod macos {
                     input.key(usage, KeyDirection::Up)?;
                     thread::sleep(Duration::from_millis(40));
                 }
+                input.flush()?;
+                thread::sleep(Duration::from_millis(200));
+            }
+            ("hardware", [state]) => {
+                simulator.set_hardware_keyboard(state == "on")?;
+            }
+            ("button", [name]) => {
+                let button = match name.as_str() {
+                    "home" => Button::Home,
+                    "lock" => Button::Lock,
+                    _ => return Err(USAGE.into()),
+                };
+                let input = open()?;
+                input.button(button, KeyDirection::Down)?;
+                thread::sleep(Duration::from_millis(60));
+                input.button(button, KeyDirection::Up)?;
                 input.flush()?;
                 thread::sleep(Duration::from_millis(200));
             }
