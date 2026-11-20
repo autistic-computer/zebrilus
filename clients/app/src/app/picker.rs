@@ -252,7 +252,9 @@ impl PanePicker {
                                     let machines = this.machines(cx);
                                     this.choose_machine(&machines, index, cx);
                                 }
-                                ChatPickerTarget::Terminal | ChatPickerTarget::Browser => {}
+                                ChatPickerTarget::Terminal
+                                | ChatPickerTarget::Browser
+                                | ChatPickerTarget::Simulator => {}
                             }
                             cx.notify();
                             cx.stop_propagation();
@@ -403,7 +405,9 @@ impl PanePicker {
                 }
                 ChatKey::Close => self.close(cx),
                 ChatKey::Changed => cx.notify(),
-                ChatKey::Terminal | ChatKey::Browser | ChatKey::Ignored => return,
+                ChatKey::Terminal | ChatKey::Browser | ChatKey::Simulator | ChatKey::Ignored => {
+                    return;
+                }
             }
             cx.stop_propagation();
             return;

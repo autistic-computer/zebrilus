@@ -496,6 +496,7 @@ pub enum ChatKey {
     NextMachine,
     Terminal,
     Browser,
+    Simulator,
     Close,
     Changed,
     Ignored,
@@ -607,6 +608,7 @@ pub struct ChatPicker {
     pub machines: usize,
     pub terminal: bool,
     pub browser: bool,
+    pub simulator: bool,
 }
 
 impl ChatPicker {
@@ -623,6 +625,7 @@ impl ChatPicker {
         [
             (self.terminal, ChatKey::Terminal),
             (self.browser, ChatKey::Browser),
+            (self.simulator, ChatKey::Simulator),
         ]
         .into_iter()
         .filter_map(|(offered, key)| offered.then_some(key))
@@ -674,6 +677,7 @@ impl ChatPicker {
                     "k" | "up" => self.step(-1, choices),
                     "t" if self.terminal => ChatKey::Terminal,
                     "b" if self.browser => ChatKey::Browser,
+                    "s" if self.simulator => ChatKey::Simulator,
                     "enter" => AGENT_CHOICES
                         .get(self.selected)
                         .map(|agent| ChatKey::Start(*agent))
@@ -1160,10 +1164,14 @@ mod tests {
         let mut picker = ChatPicker::default();
         assert_eq!(picker.key("t", Some("t"), false, &[]), ChatKey::Ignored);
         assert_eq!(picker.key("b", Some("b"), false, &[]), ChatKey::Ignored);
+        assert_eq!(picker.key("s", Some("s"), false, &[]), ChatKey::Ignored);
         picker.terminal = true;
         picker.browser = true;
         assert_eq!(picker.key("t", Some("t"), false, &[]), ChatKey::Terminal);
         assert_eq!(picker.key("b", Some("b"), false, &[]), ChatKey::Browser);
+        picker.simulator = true;
+        assert_eq!(picker.key("s", Some("s"), false, &[]), ChatKey::Simulator);
+        picker.simulator = false;
         assert_eq!(picker.key("up", None, false, &[]), ChatKey::Changed);
         assert_eq!(picker.selected, AGENT_CHOICES.len() + 1);
         assert_eq!(picker.key("enter", None, false, &[]), ChatKey::Browser);

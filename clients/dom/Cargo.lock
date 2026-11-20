@@ -1409,7 +1409,7 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[package]]
 name = "zz-client"
-version = "0.22.0"
+version = "0.28.0"
 dependencies = [
  "agent-client-protocol-schema",
  "base64",
@@ -1443,7 +1443,7 @@ dependencies = [
 
 [[package]]
 name = "zz-protocol"
-version = "0.22.0"
+version = "0.28.0"
 dependencies = [
  "base64",
  "foldhash",
@@ -1459,7 +1459,7 @@ dependencies = [
 
 [[package]]
 name = "zz-terminal"
-version = "0.22.0"
+version = "0.28.0"
 dependencies = [
  "csscolorparser",
  "serde",

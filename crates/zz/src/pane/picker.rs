@@ -336,6 +336,7 @@ impl PanePickerView {
             }
             ChatKey::Terminal => self.activate(PaneChoice::Terminal, cx),
             ChatKey::Browser => self.activate(PaneChoice::Browser, cx),
+            ChatKey::Simulator => self.activate(PaneChoice::Simulator, cx),
             ChatKey::Close => self.close(cx),
             ChatKey::Changed => cx.notify(),
             ChatKey::Ignored => return false,
@@ -371,6 +372,7 @@ impl PanePickerView {
             .is_some_and(|pane| picker_in_split(&self.mux.read(cx).snapshot(), pane));
         self.chat.terminal = split;
         self.chat.browser = split && browser::controller::is_available(cx);
+        self.chat.simulator = split && cfg!(target_os = "macos");
     }
 
     fn chat_rows(&mut self, chat: &Chat, cx: &mut Context<Self>) -> Vec<AnyElement> {
@@ -397,6 +399,11 @@ impl PanePickerView {
                             ChatPickerTarget::Browser => {
                                 AGENT_CHOICES.len() + usize::from(picker.chat.terminal)
                             }
+                            ChatPickerTarget::Simulator => {
+                                AGENT_CHOICES.len()
+                                    + usize::from(picker.chat.terminal)
+                                    + usize::from(picker.chat.browser)
+                            }
                             ChatPickerTarget::Machine(_) | ChatPickerTarget::FolderLine => return,
                         };
                         if picker.chat.selected != index {
@@ -420,6 +427,9 @@ impl PanePickerView {
                                 picker.activate(PaneChoice::Terminal, cx);
                             }
                             ChatPickerTarget::Browser => picker.activate(PaneChoice::Browser, cx),
+                            ChatPickerTarget::Simulator => {
+                                picker.activate(PaneChoice::Simulator, cx);
+                            }
                         }
                     });
                     cx.stop_propagation();

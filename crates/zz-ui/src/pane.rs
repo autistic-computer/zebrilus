@@ -2102,6 +2102,7 @@ pub enum ChatPickerTarget {
     Agent(usize, zz_client::new_chat::AgentChoice),
     Terminal,
     Browser,
+    Simulator,
 }
 
 fn machine_icon(machine: &zz_client::new_chat::MachineChoice) -> crate::IconName {
@@ -2203,6 +2204,13 @@ pub fn chat_picker_rows(
                 "Browser",
                 crate::CHROME_ICON,
                 "b",
+            ),
+            zz_client::new_chat::ChatKey::Simulator => (
+                ChatPickerTarget::Simulator,
+                "chat-picker-simulator",
+                "Simulator",
+                crate::IconName::Asset("icons/smartphone.svg"),
+                "s",
             ),
             _ => return None,
         };
