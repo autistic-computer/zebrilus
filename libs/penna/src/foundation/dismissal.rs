@@ -71,6 +71,10 @@ impl Dismissal {
         }
     }
 
+    pub fn leaving(&self) -> bool {
+        matches!(self.motion, Motion::Settle { target, .. } if target > 0.0)
+    }
+
     #[cfg(test)]
     fn is_dragging(&self) -> bool {
         self.motion == Motion::Drag
@@ -133,6 +137,23 @@ impl Dismissal {
     pub fn leave(&mut self, extent: f32, now: Instant) {
         self.extent = extent.max(1.0);
         self.settle(self.extent, 0.0, now);
+    }
+
+    pub fn retarget(&mut self, extent: f32) {
+        if let Motion::Settle {
+            target,
+            velocity,
+            at,
+        } = self.motion
+            && target > 0.0
+        {
+            self.extent = extent.max(1.0);
+            self.motion = Motion::Settle {
+                target: self.extent,
+                velocity,
+                at,
+            };
+        }
     }
 
     pub fn cancel(&mut self, now: Instant) {
@@ -425,5 +446,16 @@ mod tests {
         dismissal.cancel(clock.at(10));
         assert_eq!(settle(&mut dismissal, &clock, 10), Tick::Still);
         assert_eq!(dismissal.offset(), 0.0);
+    }
+
+    #[test]
+    fn a_sheet_that_grows_while_leaving_leaves_all_the_way() {
+        let clock = Clock(Instant::now());
+        let mut dismissal = Dismissal::new(Overdrag::Band);
+        dismissal.leave(EXTENT, clock.at(0));
+        assert_eq!(dismissal.tick(clock.at(16)), Tick::Moving);
+        dismissal.retarget(EXTENT + 200.0);
+        assert_eq!(settle(&mut dismissal, &clock, 32), Tick::Dismissed);
+        assert_eq!(dismissal.offset(), EXTENT + 200.0);
     }
 }

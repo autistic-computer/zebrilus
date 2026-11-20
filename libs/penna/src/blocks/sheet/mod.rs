@@ -597,6 +597,7 @@ struct SheetState {
     natural: Option<Pixels>,
     turning: Option<Turning>,
     offsets: Vec<Point<Pixels>>,
+    leaving: bool,
 }
 
 impl SheetState {
@@ -770,6 +771,9 @@ impl BottomSheet {
         });
         let closing = take_close(&self.id, cx);
         let reduce_motion = cx.reduce_motion();
+        if closing && !state.read(cx).leaving {
+            window.dismiss_virtual_keyboard();
+        }
         let (shown, moving, dismiss) = state.update(cx, |state, _| {
             if closing && !state.leaving {
                 state.leaving = true;
@@ -956,6 +960,7 @@ impl BottomSheet {
                 natural: None,
                 turning: None,
                 offsets: Vec::new(),
+                leaving: false,
             }
         });
         let now = cx.background_executor().now();
@@ -979,11 +984,19 @@ impl BottomSheet {
             if closing {
                 state.dismissal.leave(state.extent, now);
             }
+            state.dismissal.retarget(state.extent);
             if reduce_motion {
                 state.dismissal.finish();
             }
-            state.dismissal.tick(now)
+            let leaving = state.dismissal.leaving();
+            let started = leaving && !state.leaving;
+            state.leaving = leaving;
+            (state.dismissal.tick(now), started)
         });
+        let (tick, started) = tick;
+        if started {
+            window.dismiss_virtual_keyboard();
+        }
         match tick {
             Tick::Moving => window.request_animation_frame(),
             Tick::Dismissed => {
