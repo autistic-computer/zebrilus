@@ -464,13 +464,22 @@ pub(super) fn destination_endpoint(input: &str) -> Result<String, String> {
     if destination.chars().any(char::is_whitespace) {
         return Err("A host must not contain spaces.".into());
     }
-    Ok(
-        if destination.contains("://") || destination.starts_with('/') {
-            destination.to_owned()
-        } else {
-            format!("ssh://{destination}")
-        },
-    )
+    let endpoint = if destination.contains("://") || destination.starts_with('/') {
+        destination.to_owned()
+    } else {
+        format!("ssh://{destination}")
+    };
+    if let Some(rest) = endpoint.strip_prefix("ssh://") {
+        let authority = rest.split('/').next().unwrap_or_default();
+        if !authority.contains('@') {
+            let host = authority
+                .rsplit_once(':')
+                .filter(|(_, port)| port.parse::<u16>().is_ok())
+                .map_or(authority, |(host, _)| host);
+            return Err(format!("Add a user, like user@{host}."));
+        }
+    }
+    Ok(endpoint)
 }
 
 pub(crate) fn host_title(endpoint: &str) -> String {
@@ -1384,8 +1393,8 @@ mod tests {
             "ssh://fabrico@mac.local"
         );
         assert_eq!(
-            destination_endpoint("ssh://box:2222").unwrap(),
-            "ssh://box:2222"
+            destination_endpoint("ssh://me@box:2222").unwrap(),
+            "ssh://me@box:2222"
         );
         assert_eq!(
             destination_endpoint("/tmp/zz.sock").unwrap(),
@@ -1393,6 +1402,14 @@ mod tests {
         );
         assert!(destination_endpoint("   ").is_err());
         assert!(destination_endpoint("my mac").is_err());
+        assert_eq!(
+            destination_endpoint("localhost"),
+            Err("Add a user, like user@localhost.".to_owned())
+        );
+        assert_eq!(
+            destination_endpoint("ssh://box:2222"),
+            Err("Add a user, like user@box.".to_owned())
+        );
     }
 
     #[test]
