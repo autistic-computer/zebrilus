@@ -7,8 +7,8 @@ use std::{
 };
 
 use ala::{
-    AnyElement, App, Bounds, Context, Corners, Div, Entity, Focusable as _, IntoElement, Keystroke,
-    ParentElement as _, PinchEvent, Pixels, ScrollDelta, ScrollHandle, ScrollWheelEvent,
+    AnyElement, App, Bounds, Context, Corners, Div, Entity, Focusable as _, Hsla, IntoElement,
+    Keystroke, ParentElement as _, PinchEvent, Pixels, ScrollDelta, ScrollHandle, ScrollWheelEvent,
     SharedString, Stateful, Styled as _, Subscription, TouchPhase, Window, div, point, prelude::*,
     px,
 };
@@ -140,6 +140,24 @@ pub(super) enum PillNotice {
     Done,
     Hint,
     Failed,
+}
+
+fn bar_wash(dim: f32, corner: Pixels, ground: Hsla) -> Option<Div> {
+    (dim > 0.0).then(|| {
+        div()
+            .absolute()
+            .inset_0()
+            .rounded(corner)
+            .bg(ground.alpha(dim))
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
+pub(super) struct BarHoles {
+    pub pill: (Bounds<Pixels>, Pixels),
+    pub disc: Option<(Bounds<Pixels>, Pixels)>,
+    pub handle: Bounds<Pixels>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -811,7 +829,7 @@ impl AppShell {
         motion: f32,
         top_inset: Pixels,
         reserve: Pixels,
-        hole: Option<(Bounds<Pixels>, Pixels)>,
+        hole: Option<BarHoles>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -1231,11 +1249,23 @@ impl AppShell {
                 bounds.size,
             )
         };
-        let hole = (floating && morph >= 1.0).then(|| {
-            (
+        let hole = (floating && morph >= 1.0).then(|| BarHoles {
+            pill: (
                 in_window(pill_shown),
                 pill_corner(pill_shown, &placement, cx),
-            )
+            ),
+            disc: can_make.then(|| {
+                let disc = bar_disc_bounds(px(width), &placement, true);
+                let disc = Bounds::new(
+                    point(
+                        disc.origin.x,
+                        pill_shown.center().y - disc.size.height / 2.0,
+                    ),
+                    disc.size,
+                );
+                (in_window(disc), pill_corner(disc, &placement, cx))
+            }),
+            handle: in_window(pill_handle_bounds(pill_shown)),
         });
         let reserve = if floating { zone } else { px(0.0) };
         let veil = self
@@ -1362,6 +1392,12 @@ impl AppShell {
                 .tool_keys
                 .as_ref()
                 .is_some_and(|(keys, _)| keys.prefix.read(cx).menu().read(cx).is_shown());
+            if [&stack, &new_stack].into_iter().any(|menu| {
+                let menu = menu.read(cx);
+                menu.is_shown() && !menu.is_open()
+            }) {
+                window.request_animation_frame();
+            }
             let frozen = (!open
                 && (stack.read(cx).is_shown()
                     || new_stack.read(cx).is_shown()
@@ -1490,6 +1526,7 @@ impl AppShell {
                     can_make,
                     &new_stack,
                     [morph_bar_ink(morph); 2],
+                    (0.0, page_background),
                     cx,
                 ))
             } else {
@@ -1539,6 +1576,7 @@ impl AppShell {
                     can_make,
                     &new_stack,
                     [morph_bar_ink(morph); 2],
+                    (0.0, page_background),
                     cx,
                 ))
                 .into_any_element()
@@ -1570,8 +1608,13 @@ impl AppShell {
                 .w(pill_shown.size.width)
                 .h(pill_shown.size.height)
                 .flex()
-                .opacity(fade * (1.0 - menu_progress) * (1.0 - new_progress * MENU_DIM))
-                .child(strip);
+                .opacity(fade * (1.0 - menu_progress))
+                .child(strip)
+                .children(bar_wash(
+                    new_progress * MENU_DIM,
+                    pill_corner(pill_shown, &pill_placement, cx),
+                    page_background,
+                ));
             let jump = (!lifting
                 && shown_terminal
                     .as_ref()
@@ -1624,8 +1667,9 @@ impl AppShell {
                     &new_stack,
                     [
                         fade * (1.0 - MENU_DIM * menu_progress.max(new_progress)),
-                        fade * (1.0 - new_progress) * (1.0 - MENU_DIM * menu_progress),
+                        fade * (1.0 - new_progress),
                     ],
+                    (MENU_DIM * menu_progress, page_background),
                     cx,
                 ))
                 .into_any_element()
@@ -1770,6 +1814,7 @@ impl AppShell {
         can_make: bool,
         new_stack: &Entity<StackMenu>,
         ink: [f32; 2],
+        wash: (f32, Hsla),
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         if ink.iter().all(|ink| *ink <= 0.0) {
@@ -1802,6 +1847,11 @@ impl AppShell {
                 .child(
                     compact_bar_disc("compact-bar-new", IconName::Plus, "New", placement, cx)
                         .child(StackMenu::pill_anchor(new_stack, cx))
+                        .children(bar_wash(
+                            wash.0,
+                            pill_corner(plus_at, placement, cx),
+                            wash.1,
+                        ))
                         .on_click(cx.listener(|this, _, _, cx| {
                             cx.haptic(ala::Haptic::Light);
                             this.open_new_menu(cx);

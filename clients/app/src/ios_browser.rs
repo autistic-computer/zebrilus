@@ -69,6 +69,7 @@ pub struct BrowserMount {
     pub radius: Pixels,
     pub covered_bottom: Pixels,
     pub holes: Vec<(Bounds<Pixels>, Pixels)>,
+    pub grabs: Vec<Bounds<Pixels>>,
     pub backdrop: Option<Bounds<Pixels>>,
 }
 use ala_cef::element_picker::{
@@ -76,6 +77,7 @@ use ala_cef::element_picker::{
     ELEMENT_PICKER_SCRIPT as PICKER_SCRIPT,
 };
 const PICKER_HANDLER: &str = "zzElementPicker";
+const HOLES: &str = "zzHoles";
 const PAGE_SCHEME: &str = "zz";
 pub(crate) const REPLY_HANDLER: &str = "zzReply";
 const FILE_MISSING: isize = -1100;
@@ -873,23 +875,33 @@ impl BrowserView {
             let _: () = msg_send![layer, setMasksToBounds: YES];
             if mount.holes.is_empty() {
                 let _: () = msg_send![layer, setMask: nil];
+                let _: () = msg_send![layer, setValue: nil forKey: ns_string(HOLES)];
             } else {
+                let local_rect = |area: Bounds<Pixels>| CGRect {
+                    origin: CGPoint {
+                        x: points(area.origin.x - bounds.origin.x),
+                        y: points(area.origin.y - bounds.origin.y),
+                    },
+                    size: CGSize {
+                        width: points(area.size.width),
+                        height: points(area.size.height),
+                    },
+                };
                 let path: id = msg_send![class!(UIBezierPath), bezierPathWithRect: local];
+                let holes: id = msg_send![class!(NSMutableArray), array];
                 for (hole, radius) in &mount.holes {
-                    let rect = CGRect {
-                        origin: CGPoint {
-                            x: points(hole.origin.x - bounds.origin.x),
-                            y: points(hole.origin.y - bounds.origin.y),
-                        },
-                        size: CGSize {
-                            width: points(hole.size.width),
-                            height: points(hole.size.height),
-                        },
-                    };
+                    let rect = local_rect(*hole);
                     let radius = points(*radius).min(rect.size.height / 2.0);
                     let cutout: id = msg_send![class!(UIBezierPath), bezierPathWithRoundedRect: rect cornerRadius: radius];
                     let _: () = msg_send![path, appendPath: cutout];
+                    let _: () = msg_send![holes, addObject: cutout];
                 }
+                for grab in &mount.grabs {
+                    let area: id =
+                        msg_send![class!(UIBezierPath), bezierPathWithRect: local_rect(*grab)];
+                    let _: () = msg_send![holes, addObject: area];
+                }
+                let _: () = msg_send![layer, setValue: holes forKey: ns_string(HOLES)];
                 let shape: id = msg_send![path, CGPath];
                 let _: () = msg_send![self.mask, setFrame: local];
                 let _: () = msg_send![self.mask, setPath: shape];
@@ -1324,11 +1336,15 @@ fn host_class() -> &'static Class {
 extern "C" fn host_hit_test(this: &Object, _: Sel, point: CGPoint, event: id) -> id {
     unsafe {
         let layer: id = msg_send![this, layer];
-        let mask: id = msg_send![layer, mask];
-        if !mask.is_null() {
-            let path: *const std::ffi::c_void = msg_send![mask, path];
-            if !path.is_null() && !CGPathContainsPoint(path, std::ptr::null(), point, true) {
-                return nil;
+        let holes: id = msg_send![layer, valueForKey: ns_string(HOLES)];
+        if !holes.is_null() {
+            let count: usize = msg_send![holes, count];
+            for index in 0..count {
+                let hole: id = msg_send![holes, objectAtIndex: index];
+                let inside: BOOL = msg_send![hole, containsPoint: point];
+                if inside == YES {
+                    return nil;
+                }
             }
         }
         msg_send![super(this, class!(UIView)), hitTest: point withEvent: event]
@@ -1461,12 +1477,6 @@ unsafe extern "C" {
         image: *mut std::ffi::c_void,
     );
     fn CGContextRelease(context: *mut std::ffi::c_void);
-    fn CGPathContainsPoint(
-        path: *const std::ffi::c_void,
-        transform: *const std::ffi::c_void,
-        point: CGPoint,
-        even_odd: bool,
-    ) -> bool;
 }
 
 #[link(name = "UIKit", kind = "framework")]

@@ -37,6 +37,7 @@ pub struct BrowserMount {
     pub radius: Pixels,
     pub covered_bottom: Pixels,
     pub holes: Vec<(Bounds<Pixels>, Pixels)>,
+    pub grabs: Vec<Bounds<Pixels>>,
     pub backdrop: Option<Bounds<Pixels>>,
 }
 

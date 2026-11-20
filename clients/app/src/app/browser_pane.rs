@@ -48,7 +48,7 @@ use zz_ui::{
     pane_look::PaneLook,
 };
 
-use super::compact::PillNotice;
+use super::compact::{BarHoles, PillNotice};
 use crate::connection::Connection;
 
 struct Tab {
@@ -100,7 +100,7 @@ pub(super) struct BrowserPane {
     holding_pick: bool,
     pick_reached_page: bool,
     covered_bottom: Pixels,
-    pill_hole: Option<(Bounds<Pixels>, Pixels)>,
+    pill_hole: Option<BarHoles>,
     backdrop: Option<(u64, Bounds<Pixels>, Arc<RenderImage>, Option<Hsla>)>,
     frozen: bool,
     still: Option<(u64, Arc<RenderImage>)>,
@@ -184,6 +184,7 @@ impl BrowserPane {
                     }
                     if open {
                         this.address_open = false;
+                        this.drop_suggestions();
                         window.dismiss_virtual_keyboard();
                         cx.notify();
                     }
@@ -327,7 +328,7 @@ impl BrowserPane {
     pub(super) fn set_pill(
         &mut self,
         covered_bottom: Pixels,
-        hole: Option<(Bounds<Pixels>, Pixels)>,
+        hole: Option<BarHoles>,
         cx: &mut Context<Self>,
     ) {
         if self.covered_bottom != covered_bottom || self.pill_hole != hole {
@@ -629,10 +630,14 @@ impl BrowserPane {
             }
             BrowserEvent::Backdrop { bounds, image } => {
                 let hole = self.pill_hole.filter(|_| index == self.active);
-                let next = hole.map(|(hole, _)| {
-                    let color = average_under(&image, bounds, hole);
-                    (self.tabs[index].id, bounds, image, color)
-                });
+                let next = hole.map(
+                    |BarHoles {
+                         pill: (hole, _), ..
+                     }| {
+                        let color = average_under(&image, bounds, hole);
+                        (self.tabs[index].id, bounds, image, color)
+                    },
+                );
                 if let Some((_, _, old, _)) = std::mem::replace(&mut self.backdrop, next) {
                     let _ = window.drop_image(old);
                 }
@@ -776,8 +781,7 @@ impl BrowserPane {
         if std::mem::take(&mut self.address_open) {
             window.dismiss_virtual_keyboard();
         }
-        self.phone_rows.clear();
-        self.suggestions_hole.set(None);
+        self.drop_suggestions();
         cx.notify();
     }
 
@@ -859,8 +863,8 @@ impl BrowserPane {
                 .set_visible(visible && available && index == self.active);
             tab.view.set_interactive(writable);
         }
-        if !visible && !self.frozen {
-            self.address_open = false;
+        if !visible && !self.frozen && std::mem::take(&mut self.address_open) {
+            self.drop_suggestions();
         }
         if self.visible != visible || changed_route {
             self.visible = visible;
@@ -1644,7 +1648,7 @@ impl BrowserPane {
 
     pub(super) fn start_pick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.tabs[self.active].picking {
-            self.toggle_element_pick(window, cx);
+            self.switch_element_pick(window, cx);
         }
     }
 
@@ -1685,12 +1689,16 @@ impl BrowserPane {
         cx.notify();
     }
 
+    fn drop_suggestions(&mut self) {
+        self.phone_rows.clear();
+        self.suggestions_hole.set(None);
+    }
+
     pub(super) fn close_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !std::mem::take(&mut self.address_open) {
             return;
         }
-        self.phone_rows.clear();
-        self.suggestions_hole.set(None);
+        self.drop_suggestions();
         self.focus.focus(window, cx);
         window.dismiss_virtual_keyboard();
         self.update_address(window, cx);
@@ -2087,9 +2095,11 @@ impl Render for BrowserPane {
                                 covered_bottom,
                                 holes: hole
                                     .into_iter()
+                                    .flat_map(|holes| std::iter::once(holes.pill).chain(holes.disc))
                                     .chain(strip)
                                     .chain(suggestions_hole.get())
                                     .collect(),
+                                grabs: hole.map(|holes| holes.handle).into_iter().collect(),
                                 backdrop,
                             },
                             window,
