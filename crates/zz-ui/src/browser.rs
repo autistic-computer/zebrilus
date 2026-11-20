@@ -90,7 +90,7 @@ impl RenderOnce for BrowserHeader {
         let show_separator = toolbar.show_separator;
         let chrome = px(crate::CHROME_GAP * 2.0) + trailing_inset + BROWSER_TAB_ROW_GAP;
         let tab_row = move |width: Pixels, cx: &App| {
-            let collapsed = actions.collapses(width - chrome, BROWSER_TABS_MIN_WIDTH);
+            let fold = actions.fold(width - chrome, BROWSER_TABS_MIN_WIDTH);
             div()
                 .id("browser-tab-row")
                 .debug_selector(|| "browser-tab-row".into())
@@ -106,7 +106,7 @@ impl RenderOnce for BrowserHeader {
                 .line_height(BROWSER_LINE_HEIGHT)
                 .text_color(cx.theme().foreground.muted())
                 .child(tabs)
-                .child(actions.slot(collapsed, (!active).then_some("browser-pane-header"), cx))
+                .child(actions.slot(fold, (!active).then_some("browser-pane-header"), cx))
         };
         Bar::new("browser-pane-header", BarLook::Pane)
             .group("browser-pane-header")

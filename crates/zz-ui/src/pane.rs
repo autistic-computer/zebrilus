@@ -407,6 +407,14 @@ pub(crate) fn by_width(
 }
 
 type PaneActionHandler = std::rc::Rc<dyn Fn(TerminalPaneAction, &mut Window, &mut App)>;
+type PaneActionRow = (TerminalPaneAction, IconName, &'static str);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PaneActionsFold {
+    Open,
+    Kinds,
+    All,
+}
 
 pub struct PaneActions {
     kinds: Vec<PaneKindButton>,
@@ -462,13 +470,27 @@ impl PaneActions {
     }
 
     #[must_use]
-    pub fn collapses(&self, room: Pixels, min_content: Pixels) -> bool {
-        pane_actions_collapse(room, self.count(), min_content)
+    pub fn fold(&self, room: Pixels, min_content: Pixels) -> PaneActionsFold {
+        let count = self.count();
+        if !pane_actions_collapse(room, count, min_content) {
+            PaneActionsFold::Open
+        } else if self.kinds.len() >= 2
+            && !pane_actions_collapse(room, count - self.kinds.len() + 1, min_content)
+        {
+            PaneActionsFold::Kinds
+        } else {
+            PaneActionsFold::All
+        }
     }
 
-    pub fn slot(self, collapsed: bool, hidden_in: Option<&'static str>, cx: &App) -> ala::Div {
+    pub fn slot(
+        self,
+        fold: PaneActionsFold,
+        hidden_in: Option<&'static str>,
+        cx: &App,
+    ) -> ala::Div {
         let slot = div().flex().flex_none().items_center().gap(PANE_ACTION_GAP);
-        if collapsed {
+        if fold == PaneActionsFold::All {
             return slot.child(self.more(hidden_in, cx));
         }
         let Self {
@@ -479,6 +501,13 @@ impl PaneActions {
             enabled,
             on_action,
         } = self;
+        let (folded, kinds) = if fold == PaneActionsFold::Kinds {
+            let rows = kinds.iter().map(kind_row).collect();
+            let menu = actions_menu(rows, enabled, std::rc::Rc::clone(&on_action), None, cx);
+            (Some(menu), Vec::new())
+        } else {
+            (None, kinds)
+        };
         let flip = flip.map(|flip| {
             let on_action = std::rc::Rc::clone(&on_action);
             pane_flip_button(
@@ -512,6 +541,7 @@ impl PaneActions {
         slot.when_some(hidden_in, |slot, group| {
             slot.invisible().group_hover(group, ala::Styled::visible)
         })
+        .children(folded)
         .children(kinds)
         .children(flip)
         .children(actions)
@@ -534,42 +564,54 @@ impl PaneActions {
             )
         });
         let rows = kinds
-            .into_iter()
-            .map(|button| {
-                (
-                    TerminalPaneAction::Kind(button.key),
-                    button.icon,
-                    button.label,
-                )
-            })
+            .iter()
+            .map(kind_row)
             .chain(flip)
             .chain(actions)
             .collect::<Vec<_>>();
-        PaneActionsMore {
-            button: pane_header_icon_button("pane-actions-more", IconName::Ellipsis, true, cx)
-                .debug_selector(|| "pane-actions-more".into())
-                .tooltip("Pane actions")
-                .on_click(|_, _, cx| cx.stop_propagation()),
-            hidden_in,
-        }
-        .dropdown_menu_with_anchor(ala::Anchor::TopRight, move |menu, _, _| {
-            rows.iter().fold(menu, |menu, (action, icon, label)| {
-                let action = *action;
-                let on_action = std::rc::Rc::clone(&on_action);
-                let menu = if action == TerminalPaneAction::Close {
-                    menu.separator()
-                } else {
-                    menu
-                };
-                menu.item(
-                    PopupMenuItem::new(*label)
-                        .icon(icon.clone())
-                        .disabled(!enabled)
-                        .on_click(move |_, window, cx| on_action(action, window, cx)),
-                )
-            })
-        })
+        actions_menu(rows, enabled, on_action, hidden_in, cx)
     }
+}
+
+fn kind_row(button: &PaneKindButton) -> PaneActionRow {
+    (
+        TerminalPaneAction::Kind(button.key),
+        button.icon.clone(),
+        button.label,
+    )
+}
+
+fn actions_menu(
+    rows: Vec<PaneActionRow>,
+    enabled: bool,
+    on_action: PaneActionHandler,
+    hidden_in: Option<&'static str>,
+    cx: &App,
+) -> impl IntoElement + use<> {
+    PaneActionsMore {
+        button: pane_header_icon_button("pane-actions-more", IconName::Ellipsis, true, cx)
+            .debug_selector(|| "pane-actions-more".into())
+            .tooltip("Pane actions")
+            .on_click(|_, _, cx| cx.stop_propagation()),
+        hidden_in,
+    }
+    .dropdown_menu_with_anchor(ala::Anchor::TopRight, move |menu, _, _| {
+        rows.iter().fold(menu, |menu, (action, icon, label)| {
+            let action = *action;
+            let on_action = std::rc::Rc::clone(&on_action);
+            let menu = if action == TerminalPaneAction::Close {
+                menu.separator()
+            } else {
+                menu
+            };
+            menu.item(
+                PopupMenuItem::new(*label)
+                    .icon(icon.clone())
+                    .disabled(!enabled)
+                    .on_click(move |_, window, cx| on_action(action, window, cx)),
+            )
+        })
+    })
 }
 
 #[derive(IntoElement)]
@@ -929,7 +971,7 @@ pub fn pane_header(
     let drag = drag.floating(state.floats);
     let bar =
         move |width: Pixels, cx: &App| {
-            let collapsed = actions.collapses(width - chrome, PANE_TITLE_MIN_WIDTH);
+            let fold = actions.fold(width - chrome, PANE_TITLE_MIN_WIDTH);
             Bar::new("terminal-pane-header-bar", BarLook::Pane)
                 .flex()
                 .size_full()
@@ -947,7 +989,7 @@ pub fn pane_header(
                     ),
                 )
                 .child(lit(actions.slot(
-                    collapsed,
+                    fold,
                     (!active).then_some("terminal-pane-header"),
                     cx,
                 )))
@@ -2266,6 +2308,38 @@ pub fn pane_picker_choices(rows: impl IntoIterator<Item = AnyElement>) -> ala::D
 mod tests {
     use super::*;
     use ala::point;
+
+    #[test]
+    fn kind_buttons_fold_before_the_pane_actions() {
+        let kind = |key| PaneKindButton {
+            key,
+            icon: IconName::Camera,
+            label: key,
+        };
+        let actions = PaneActions::new(
+            pane_header_actions(PaneState {
+                floats: true,
+                ..PaneState::default()
+            }),
+            |_, _, _| {},
+        )
+        .kinds(&[kind("home"), kind("lock"), kind("shot"), kind("devices")]);
+        let title = px(100.0);
+        let count = actions.count();
+        assert_eq!(
+            actions.fold(pane_actions_width(count) + title, title),
+            PaneActionsFold::Open
+        );
+        let unfolded = count - 4 + 1;
+        assert_eq!(
+            actions.fold(pane_actions_width(unfolded) + title, title),
+            PaneActionsFold::Kinds
+        );
+        assert_eq!(
+            actions.fold(pane_actions_width(unfolded) + title - px(1.0), title),
+            PaneActionsFold::All
+        );
+    }
 
     #[ala::test]
     fn a_see_through_gapped_pane_paints_its_plate_as_a_fill_under_the_rim(
