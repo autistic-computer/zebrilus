@@ -2589,6 +2589,15 @@ impl AppView {
                     if let Some(agent) = self.agents.get(pane) {
                         agent.update(cx, |agent, cx| agent.set_visible(visible, cx));
                     }
+                    if let Some(simulator) = self.simulators.get(pane) {
+                        simulator.update(cx, |simulator, cx| {
+                            simulator.set_visible(visible, cx);
+                            simulator.set_floating(
+                                float.is_some() && mux_window.zoomed_pane != Some(*pane),
+                                cx,
+                            );
+                        });
+                    }
                 }
             }
         }
@@ -3786,7 +3795,6 @@ impl AppView {
             self.simulator_devices.insert(pane, descriptor);
             return;
         };
-        simulator.update(cx, |simulator, cx| simulator.set_floating(floating, cx));
         if self.simulator_devices.get(&pane) == Some(&descriptor) {
             return;
         }

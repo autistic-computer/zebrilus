@@ -54,6 +54,7 @@ enum State {
     Waiting(SharedString),
     Failed(SharedString),
     Live(Box<Live>),
+    Paused(SharedString),
 }
 
 pub(crate) struct SimulatorView {
@@ -65,6 +66,7 @@ pub(crate) struct SimulatorView {
     selected: usize,
     screen_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
     floating: bool,
+    visible: bool,
     touching: bool,
     wheel: Option<(f64, f64)>,
     wheel_epoch: u64,
@@ -89,6 +91,7 @@ impl SimulatorView {
             selected: 0,
             screen_bounds: Rc::new(Cell::new(None)),
             floating: true,
+            visible: true,
             touching: false,
             wheel: None,
             wheel_epoch: 0,
@@ -120,6 +123,34 @@ impl SimulatorView {
         }
     }
 
+    pub(crate) fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
+        if self.visible == visible {
+            return;
+        }
+        self.visible = visible;
+        if visible {
+            if matches!(self.state, State::Paused(_)) {
+                self.open(cx);
+            }
+        } else if let State::Live(live) = &self.state {
+            self.state = State::Paused(live.name.clone());
+            self.frames = None;
+            self.wheel_end = None;
+            self.touching = false;
+            self.wheel = None;
+            cx.notify();
+        }
+    }
+
+    fn show(&mut self, live: Live) {
+        self.state = if self.visible {
+            State::Live(Box::new(live))
+        } else {
+            self.frames = None;
+            State::Paused(live.name)
+        };
+    }
+
     pub(crate) fn focus(&self) -> FocusHandle {
         self.focus.clone()
     }
@@ -127,7 +158,7 @@ impl SimulatorView {
     pub(crate) fn title(&self) -> SharedString {
         match &self.state {
             State::Live(live) => live.name.clone(),
-            State::Waiting(name) => name.clone(),
+            State::Waiting(name) | State::Paused(name) => name.clone(),
             State::Devices(_) | State::Failed(_) => TITLE.into(),
         }
     }
@@ -139,7 +170,7 @@ impl SimulatorView {
             label: "Devices",
         };
         match &self.state {
-            State::Devices(_) => Vec::new(),
+            State::Devices(_) | State::Paused(_) => Vec::new(),
             State::Waiting(_) | State::Failed(_) => vec![devices],
             State::Live(_) => vec![
                 PaneKindButton {
@@ -211,7 +242,7 @@ impl SimulatorView {
             self.selected = 0;
         } else {
             match self.attach(cx) {
-                Ok(live) => self.state = State::Live(Box::new(live)),
+                Ok(live) => self.show(live),
                 Err(Error::NotBooted { .. } | Error::NoDisplay) => self.wait(cx),
                 Err(error) => self.state = State::Failed(describe(&error)),
             }
@@ -275,7 +306,7 @@ impl SimulatorView {
                 cx.background_executor().timer(RETRY).await;
                 let attached = view.update(cx, |view, cx| match view.attach(cx) {
                     Ok(live) => {
-                        view.state = State::Live(Box::new(live));
+                        view.show(live);
                         cx.notify();
                         true
                     }
@@ -628,6 +659,7 @@ impl Render for SimulatorView {
             State::Waiting(_) => self.booting(cx),
             State::Failed(message) => self.note(message.clone(), cx),
             State::Live(live) => self.screen(live, cx),
+            State::Paused(_) => self.stage().track_focus(&self.focus).into_any_element(),
         }
     }
 }
