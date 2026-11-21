@@ -11,9 +11,9 @@ use ala::{App, Context, Entity, Image, ImageFormat, Task};
 use zz_daemon::{AgentPromptOutcome, AgentStreamItem, AgentStreamPayload};
 use zz_protocol::chat::ChatView;
 use zz_protocol::{
-    AgentConnectionPhase, AgentGitSummary, AgentPaneWire, AgentProvider, AgentQuestionAnswer,
-    AgentTaskWire, MAX_AGENT_AVAILABLE_COMMANDS, MAX_AGENT_QUEUED_PROMPTS, PaneId,
-    agent_stream::AgentQuestion,
+    AgentConnectionPhase, AgentGitSummary, AgentPaneWire, AgentPermissionWire, AgentProvider,
+    AgentQuestionAnswer, AgentTaskWire, MAX_AGENT_AVAILABLE_COMMANDS, MAX_AGENT_QUEUED_PROMPTS,
+    PaneId, agent_stream::AgentQuestion,
 };
 
 use crate::{
@@ -139,6 +139,7 @@ struct AgentThread {
     settings: Option<LensSettings>,
     resume: Resume,
     resume_revision: u64,
+    parked: Option<AgentPermissionWire>,
 }
 
 impl AgentThread {
@@ -164,6 +165,17 @@ impl AgentThread {
             settings: None,
             resume: Resume::default(),
             resume_revision: 0,
+            parked: None,
+        }
+    }
+
+    fn show_parked(&mut self) {
+        if let Some(permission) = &self.parked
+            && let Some((tool_call, options, questions)) =
+                decode_permission_payload(&permission.payload)
+        {
+            self.transcript
+                .request_questions(permission.request_id, tool_call, options, questions);
         }
     }
 
@@ -873,17 +885,8 @@ impl AgentController {
             thread.tasks = state.tasks.clone().into();
         }
         thread.transcript.clear_permissions();
-        if let Some(permission) = &state.pending_permission
-            && let Some((tool_call, options, questions)) =
-                decode_permission_payload(&permission.payload)
-        {
-            thread.transcript.request_questions(
-                permission.request_id,
-                tool_call,
-                options,
-                questions,
-            );
-        }
+        thread.parked.clone_from(&state.pending_permission);
+        thread.show_parked();
         if self.pane_state(pane).as_ref() != Some(&before) {
             cx.notify();
         }
@@ -1208,6 +1211,7 @@ impl AgentController {
                             thread.transcript.fail_inflight();
                         }
                     }
+                    thread.show_parked();
                     changed_pane = Some(pane);
                 }
             }
@@ -2839,6 +2843,62 @@ mod tests {
                 let pane_state = controller.pane_state(pane).expect("the pane is registered");
                 assert!(pane_state.tasks.is_empty());
                 assert!(pane_state.pending_permissions.is_empty());
+            });
+        });
+    }
+
+    #[ala::test]
+    fn a_card_the_daemon_keeps_past_the_turn_stays_after_it_ends(cx: &mut TestAppContext) {
+        let (controller, _sink) = proxy_controller(cx);
+        let pane = PaneId(10);
+        cx.update(|cx| {
+            controller.update(cx, |controller, cx| {
+                ready_pane(controller, pane);
+                let parked = |request_id| AgentPaneWire {
+                    phase: AgentConnectionPhase::Ready,
+                    pending_permission: Some(zz_protocol::AgentPermissionWire {
+                        request_id,
+                        payload: serde_json::json!({
+                            "toolCall": {"toolCallId": "ask-3", "title": "fruit?"},
+                            "options": [],
+                            "questions": [asked("fruit", &["apple"], false)],
+                        })
+                        .to_string(),
+                    }),
+                    ..AgentPaneWire::default()
+                };
+                let pending = |controller: &AgentController| {
+                    controller
+                        .pane_state(pane)
+                        .expect("the pane is registered")
+                        .pending_permissions
+                        .iter()
+                        .map(|request| request.request_id)
+                        .collect::<Vec<_>>()
+                };
+
+                controller.apply_pane_state(pane, &parked(6), cx);
+                controller.apply_stream_items(
+                    pane,
+                    vec![item(1, turn_finished(StopReason::EndTurn))],
+                    cx,
+                );
+                assert_eq!(pending(controller), [6]);
+
+                controller.apply_pane_state(
+                    pane,
+                    &AgentPaneWire {
+                        phase: AgentConnectionPhase::Ready,
+                        ..AgentPaneWire::default()
+                    },
+                    cx,
+                );
+                controller.apply_stream_items(
+                    pane,
+                    vec![item(2, turn_finished(StopReason::EndTurn))],
+                    cx,
+                );
+                assert_eq!(pending(controller), Vec::<u64>::new());
             });
         });
     }
