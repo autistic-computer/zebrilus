@@ -665,6 +665,10 @@ the same for both:
   agent named that session while it loaded.
 - **A failed start.** `run_acp_agent` reports a `session/new` that fails as `PaneFailed` and keeps
   running, so the pane can still be told to sign in or to open again.
+- **A session that will not load.** When `session/load` fails on reopen, the runtime opens a new
+  session and replays the old transcript from zz's journal over it, then says once in the chat, as
+  a notice journalled with the new session, that the agent could not restore the earlier session
+  and starts fresh without that context.
 - **Stop.** The runtime sends `session/cancel`, answers the turn's open asks as cancelled, and ends
   the turn as cancelled when the agent answers the cancelled `session/prompt`, so what the agent
   sends while it stops stays in that turn. An agent that has not answered after 5 s
@@ -708,8 +712,7 @@ The command is not configurable. Settings reads the latest version from `grok up
 with its history, and a resumed session's title. Not seen: a permission ask, since the config
 tested approves everything.
 
-**Known gaps in the shared runtime.** A `session/load` that fails falls back to a new session
-with the old transcript replayed over it. A load that replays more than 4,096 updates or 18 MiB
+**Known gaps in the shared runtime.** A load that replays more than 4,096 updates or 18 MiB
 opens on the newest and drops the oldest, with a log line only: nothing in the chat says older
 history was left out. The latest title among the dropped updates is still applied. A pane with two TUIs of one provider flips the first
 one found. A client that recovers from the journal sees the agent's own name for the effort

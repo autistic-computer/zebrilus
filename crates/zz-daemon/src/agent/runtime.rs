@@ -988,6 +988,7 @@ pub(crate) async fn run_agent_connection(
                             (capabilities.load && resume_session.is_some()) || !restored.is_empty();
                         send_payload(&event_tx, AgentStreamPayload::SessionReset { restoring })
                             .await?;
+                        let mut lost = false;
                         let session_result: Result<_, agent_client_protocol::Error> = if let Some(resume) =
                             resume_session.clone().filter(|_| capabilities.load)
                         {
@@ -1017,6 +1018,7 @@ pub(crate) async fn run_agent_connection(
                                         target: "zz::agent",
                                         "could not restore the ACP session: {error}; creating a new session"
                                     );
+                                    lost = true;
                                     restored = journal_replay(
                                         journal.as_deref(),
                                         provider,
@@ -1108,6 +1110,11 @@ pub(crate) async fn run_agent_connection(
                                 )
                                 .await?;
                                 session = Some(session_id);
+                                if lost {
+                                    let notice = restore_notice(provider)?;
+                                    record_update(journal.as_deref(), provider, &live, &notice);
+                                    send_payload(&event_tx, update_payload(&notice)?).await?;
+                                }
                             }
                             Err(error) => {
                                 routing.lock().clear_staging();
@@ -1974,6 +1981,23 @@ pub(crate) fn prompt_updates(
     updates
 }
 
+fn restore_notice(provider: AgentProvider) -> Result<SessionUpdate, agent_client_protocol::Error> {
+    let id = getrandom::u64()
+        .map_err(|error| agent_client_protocol::Error::internal_error().data(error.to_string()))?;
+    let text = format!(
+        "{} could not restore the earlier session, so it starts fresh without that context.",
+        provider.label()
+    );
+    Ok(SessionUpdate::AgentMessageChunk(
+        ContentChunk::new(ContentBlock::Text(TextContent::new(text)))
+            .message_id(MessageId::new(format!("zz-notice-{id:016x}")))
+            .meta(serde_json::Map::from_iter([(
+                "zz".to_owned(),
+                json!({ "notice": true }),
+            )])),
+    ))
+}
+
 pub(crate) fn prompt_echo(
     blocks: &[ContentBlock],
     message_id: &MessageId,
@@ -2531,6 +2555,99 @@ mod tests {
         };
         assert!(answered < CANCEL_GRACE, "{answered:?}");
         assert!(stuck >= CANCEL_GRACE, "{stuck:?}");
+    }
+
+    #[test]
+    fn a_session_that_fails_to_load_says_the_agent_starts_fresh() {
+        use agent_client_protocol::v1::schema::{
+            AgentCapabilities, InitializeResponse, NewSessionResponse,
+        };
+        use zz_protocol::chat::ChatView;
+
+        let agent = Agent
+            .v1()
+            .on_receive_request(
+                async |initialize: InitializeRequest, responder, _| {
+                    responder.respond(
+                        InitializeResponse::new(initialize.protocol_version)
+                            .agent_capabilities(AgentCapabilities::new().load_session(true)),
+                    )
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                async |_: LoadSessionRequest, responder, _| {
+                    responder.respond_with_error(
+                        agent_client_protocol::Error::internal_error().data("Session not found"),
+                    )
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                async |_: NewSessionRequest, responder, _| {
+                    responder.respond(NewSessionResponse::new("fresh"))
+                },
+                agent_client_protocol::on_receive_request!(),
+            );
+        let (commands, command_rx) = async_channel::unbounded();
+        let (_controls, control_rx) = async_channel::unbounded();
+        let (event_tx, events) = async_channel::unbounded();
+        let runtime = run_agent_connection(
+            AgentProvider::Grok,
+            Arc::new(Mutex::new(AgentAutoApprove::Off)),
+            agent,
+            Arc::new(AtomicU64::new(1)),
+            None,
+            command_rx,
+            control_rx,
+            event_tx,
+            None,
+        );
+        let drive = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: PathBuf::from("/workspace"),
+                    resume_session: Some("lost".to_owned()),
+                })
+                .await
+                .expect("open");
+            let mut sent = Vec::new();
+            loop {
+                let payload = events.recv().await.expect("event");
+                let ready = matches!(payload, AgentStreamPayload::SessionReady { .. });
+                sent.push(payload);
+                if ready {
+                    break;
+                }
+            }
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+            sent
+        };
+        let (result, mut sent) =
+            futures_lite::future::block_on(futures_lite::future::zip(runtime, drive));
+        result.expect("the runtime keeps running");
+        sent.extend(std::iter::from_fn(|| events.try_recv().ok()));
+        let mut transcript = crate::agent::acp_chat::Transcript::default();
+        let mut view = ChatView::default();
+        for payload in &sent {
+            for event in transcript.payload(payload) {
+                view.apply(&event)
+                    .unwrap_or_else(|skip| panic!("skipped {event:?}: {skip:?}"));
+            }
+        }
+        assert_eq!(
+            view.items
+                .values()
+                .map(|item| (item.kind, item.body.text.as_str()))
+                .collect::<Vec<_>>(),
+            [(
+                ItemKind::Notice,
+                "Grok could not restore the earlier session, so it starts fresh without that context."
+            )]
+        );
     }
 
     #[test]

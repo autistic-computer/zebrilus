@@ -245,7 +245,7 @@ zz speaks ACP v1 through `agent-client-protocol` 5.0.0 with schema 1.15.1 (`Carg
 | What zz relies on | Where | If it changes |
 |---|---|---|
 | `agentCapabilities.loadSession` | `runtime.rs` | Reopening a chat starts a fresh agent session and replays zz's journal, so the agent forgets the conversation |
-| `session/load` failing falls back to `session/new` | `runtime.rs` | Same as above, with no error |
+| `session/load` failing falls back to `session/new` | `runtime.rs` | Same as above, with a notice in the chat |
 | `session/list` entries carry an absolute `cwd` that exists | `runtime.rs` | Entries are dropped from the resume list |
 | After `session/cancel` the agent sends what is left of the turn, then answers the pending `session/prompt` | `runtime.rs` | Stop leaves the chat stopping for 5 s (`CANCEL_GRACE`) before the turn ends, and updates sent after that show in the next turn. Checked 2026-11-21 with one short prompt each, cancelled 0.05 to 0.33 s after it was sent, before any reply text: agy 1.5.13 (`gemini-3.8-flash`) answered `cancelled` 0.17 s after `session/cancel`, grok 1.0.92 (`grok-4.7-build-fast`) 0.008 s, cursor-agent 2026.11.19 (`gpt-5.4-nano`) 0.006 s. A cancel during a running tool call was not tried |
 | `sessionUpdate` kinds and shapes match schema 1.15.1 | `chat_bridge.rs`, `acp_chat.rs` | A new kind or a reshaped one fails to parse and the whole update is dropped. Bump the crate when a provider moves to a newer schema |
