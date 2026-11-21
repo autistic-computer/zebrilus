@@ -44,6 +44,7 @@ use zz_protocol::{
 use crate::agent::{
     accounts,
     chat_bridge::attach_images,
+    child::fit_update,
     environment::{
         AgentWorkspaceEnvironment, with_account, with_platform_environment,
         with_workspace_environment,
@@ -686,15 +687,10 @@ pub(crate) async fn run_agent_connection(
                                 return Ok(());
                             }
                         }
-                        let payload = update_payload(&notification.update)?;
-                        if validate_payload(&payload)? > MAX_AGENT_RESULT_BYTES {
-                            return Err(agent_client_protocol::Error::internal_error().data(format!(
-                                "agent stream item exceeds the {MAX_AGENT_RESULT_BYTES} byte limit"
-                            )));
-                        }
+                        let (update, payload) = fitted_update(notification.update)?;
                         let (update, live, journaled) = {
                             let mut routing = notification_routing.lock();
-                            let update = match routing.stage(&session_id, notification.update) {
+                            let update = match routing.stage(&session_id, update) {
                                 Ok(()) => return Ok(()),
                                 Err(update) => update,
                             };
@@ -744,7 +740,9 @@ pub(crate) async fn run_agent_connection(
                         target: "zz::agent",
                         "auto-approving tool permission with option {option_id}"
                     );
-                    let update = encode_update(&SessionUpdate::ToolCallUpdate(request.tool_call))?;
+                    let update = fit_update(encode_update(&SessionUpdate::ToolCallUpdate(
+                        request.tool_call,
+                    ))?);
                     if let Err(error) = send_payload(
                         &permission_events,
                         AgentStreamPayload::Update { update },
@@ -766,13 +764,13 @@ pub(crate) async fn run_agent_connection(
                 let Ok((requested, bytes)) = json_of(&request.tool_call)
                     .and_then(|tool_call| Ok((tool_call, json_of(&request.options)?)))
                     .and_then(|(tool_call, options)| {
-                        let payload = AgentStreamPayload::PermissionRequested {
+                        let mut payload = AgentStreamPayload::PermissionRequested {
                             questions: Vec::new(),
                             request_id,
                             tool_call,
                             options,
                         };
-                        let bytes = validate_payload(&payload)?;
+                        let bytes = fit_permission(&mut payload)?;
                         Ok((payload, bytes))
                     })
                 else {
@@ -1799,6 +1797,37 @@ fn update_payload(
     Ok(payload)
 }
 
+fn fitted_update(
+    update: SessionUpdate,
+) -> Result<(SessionUpdate, AgentStreamPayload), agent_client_protocol::Error> {
+    if let Ok(payload) = update_payload(&update) {
+        return Ok((update, payload));
+    }
+    let update = serde_json::from_value::<SessionUpdate>(fit_update(encode_update(&update)?))
+        .map_err(|error| {
+            agent_client_protocol::Error::internal_error()
+                .data(format!("could not trim an agent update: {error}"))
+        })?;
+    let payload = update_payload(&update)?;
+    Ok((update, payload))
+}
+
+fn fit_permission(payload: &mut AgentStreamPayload) -> Result<usize, agent_client_protocol::Error> {
+    for fields in [["rawInput", "rawOutput"].as_slice(), &["content"]] {
+        if let Ok(bytes) = validate_payload(payload) {
+            return Ok(bytes);
+        }
+        if let AgentStreamPayload::PermissionRequested { tool_call, .. } = payload
+            && let Some(tool_call) = tool_call.as_object_mut()
+        {
+            for field in fields {
+                tool_call.remove(*field);
+            }
+        }
+    }
+    validate_payload(payload)
+}
+
 async fn cancel_pending_permissions(
     routing: &Arc<Mutex<RuntimeRouting>>,
     event_tx: &Sender<AgentStreamPayload>,
@@ -2158,6 +2187,158 @@ mod tests {
             Some("titled")
         );
         assert_eq!(clean_session_metadata("   ", 64), None);
+    }
+
+    #[test]
+    fn oversized_agent_frames_reach_the_chat_trimmed() {
+        use agent_client_protocol::v1::schema::{
+            InitializeResponse, NewSessionResponse, PromptResponse, SessionNotification, StopReason,
+        };
+
+        let note = |text: &str| json!([{ "type": "content", "content": { "type": "text", "text": text } }]);
+        let notification = |update: Value| {
+            serde_json::from_value::<SessionNotification>(
+                json!({ "sessionId": "s", "update": update }),
+            )
+            .expect("notification")
+        };
+        let agent = Agent
+            .v1()
+            .on_receive_request(
+                async |initialize: InitializeRequest, responder, _| {
+                    responder.respond(InitializeResponse::new(initialize.protocol_version))
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                async |_: NewSessionRequest, responder, _| {
+                    responder.respond(NewSessionResponse::new("s"))
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                async move |_: PromptRequest, responder, connection: ConnectionTo<AcpClientRole>| {
+                    connection.send_notification(notification(json!({
+                        "sessionUpdate": "agent_message_chunk",
+                        "messageId": "m",
+                        "content": { "type": "text", "text": "x".repeat(MAX_AGENT_RESULT_BYTES) },
+                    })))?;
+                    connection.send_notification(notification(json!({
+                        "sessionUpdate": "tool_call",
+                        "toolCallId": "read",
+                        "title": "Read big",
+                        "rawInput": { "content": "y".repeat(MAX_AGENT_RESULT_BYTES) },
+                        "content": note("read"),
+                    })))?;
+                    let permission = connection.send_request(
+                        serde_json::from_value::<RequestPermissionRequest>(json!({
+                            "sessionId": "s",
+                            "toolCall": {
+                                "toolCallId": "edit",
+                                "title": "Edit big",
+                                "rawInput": { "content": "z".repeat(MAX_AGENT_PERMISSION_BYTES) },
+                                "content": note("edit"),
+                            },
+                            "options": [{ "optionId": "allow", "name": "Allow", "kind": "allow_once" }],
+                        }))
+                        .expect("permission request"),
+                    );
+                    connection.spawn(async move {
+                        permission.block_task().await?;
+                        responder.respond(PromptResponse::new(StopReason::EndTurn))
+                    })
+                },
+                agent_client_protocol::on_receive_request!(),
+            );
+        let (commands, command_rx) = async_channel::unbounded();
+        let (controls, control_rx) = async_channel::unbounded();
+        let (event_tx, events) = async_channel::unbounded();
+        let runtime = run_agent_connection(
+            AgentProvider::Grok,
+            Arc::new(Mutex::new(AgentAutoApprove::Off)),
+            agent,
+            Arc::new(AtomicU64::new(1)),
+            None,
+            command_rx,
+            control_rx,
+            event_tx,
+            None,
+        );
+        let drive = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: PathBuf::from("/workspace"),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            commands
+                .send(RuntimeCommand::Prompt {
+                    turn_id: 1,
+                    prompt: AgentPrompt {
+                        text: "go".to_owned(),
+                        ..AgentPrompt::default()
+                    },
+                    note: None,
+                })
+                .await
+                .expect("prompt");
+            let mut shown = Vec::new();
+            loop {
+                match events.recv().await.expect("event") {
+                    AgentStreamPayload::Update { update }
+                        if update["sessionUpdate"] != "user_message_chunk" =>
+                    {
+                        shown.push(update);
+                    }
+                    AgentStreamPayload::PermissionRequested {
+                        request_id,
+                        tool_call,
+                        ..
+                    } => {
+                        shown.push(tool_call);
+                        controls
+                            .send(RuntimeControl::RespondPermission {
+                                request_id,
+                                option_id: Some("allow".to_owned()),
+                            })
+                            .await
+                            .expect("answer");
+                    }
+                    AgentStreamPayload::PromptFinished { .. } => break,
+                    _ => {}
+                }
+            }
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+            shown
+        };
+        let (result, shown) =
+            futures_lite::future::block_on(futures_lite::future::zip(runtime, drive));
+        result.expect("the runtime keeps running");
+        assert_eq!(
+            shown,
+            [
+                json!({
+                    "sessionUpdate": "agent_message_chunk",
+                    "messageId": "m",
+                    "content": { "type": "text", "text": format!("{}…", "x".repeat(MAX_AGENT_RESULT_BYTES / 2)) },
+                }),
+                json!({
+                    "sessionUpdate": "tool_call",
+                    "toolCallId": "read",
+                    "title": "Read big",
+                    "content": note("read"),
+                }),
+                json!({
+                    "toolCallId": "edit",
+                    "title": "Edit big",
+                    "content": note("edit"),
+                }),
+            ]
+        );
     }
 
     #[test]
