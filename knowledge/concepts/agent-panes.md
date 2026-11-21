@@ -1246,8 +1246,9 @@ calls:
   still waiting.
 - **Claude Code's background agents.** An agent started in the background keeps running after
   the turn that launched it ends, and can still ask for approval then. Its `can_use_tool` request
-  names it in `agent_id`, the task id `background_tasks_changed` lists. The driver marks that ask
-  with `_meta.zz.backgroundAgent`, so the host keeps it past the end of the turn
+  names it in `agent_id`, the task id `background_tasks_changed` lists; an agent it starts asks
+  with its own id, which `task_started` ties to it through `parent_task_id`. The driver marks an ask
+  from either with `_meta.zz.backgroundAgent`, so the host keeps it past the end of the turn
   (`AgentPendingPermission::outlives_turn`) and both clients keep its card. Unlike Codex's
   questions it stays blocking: the chat says it waits for you, and the ask sits under the
   agent's row. Stop interrupts the foreground turn only, and Claude Code leaves a background

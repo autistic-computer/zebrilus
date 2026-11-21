@@ -238,6 +238,7 @@ pub(crate) async fn run_claude_runtime(
         last_turn: 0,
         deferred_cancels: HashSet::new(),
         tasks: Vec::new(),
+        parents: HashMap::new(),
         verbs: 0,
         reply: None,
         title: Title::default(),
@@ -603,6 +604,7 @@ struct Runtime {
     last_turn: u64,
     deferred_cancels: HashSet<u64>,
     tasks: Vec<AgentTaskWire>,
+    parents: HashMap<String, String>,
     settings: Settings,
     verbs: u64,
     reply: Option<String>,
@@ -2012,6 +2014,13 @@ impl Runtime {
                 self.emit(AgentStreamPayload::TasksChanged { tasks })
                     .await?;
             }
+            Some("task_started") => {
+                if let (Some(task), Some(parent)) =
+                    (frame["task_id"].as_str(), frame["parent_task_id"].as_str())
+                {
+                    self.parents.insert(task.to_owned(), parent.to_owned());
+                }
+            }
             Some("commands_changed") => {
                 self.settings.commands = frame["commands"].as_array().cloned().unwrap_or_default();
                 self.publish_commands().await?;
@@ -2092,7 +2101,13 @@ impl Runtime {
             .to_owned();
         let background = request["agent_id"]
             .as_str()
-            .filter(|agent| self.tasks.iter().any(|task| task.id == *agent))
+            .filter(|agent| {
+                std::iter::successors(Some(*agent), |agent| {
+                    self.parents.get(*agent).map(String::as_str)
+                })
+                .take(MAX_AGENT_TASKS)
+                .any(|agent| self.tasks.iter().any(|task| task.id == agent))
+            })
             .map(str::to_owned);
         match tool.as_str() {
             "AskUserQuestion" => {
