@@ -96,8 +96,9 @@ chat left unpicked leaves nothing behind.
 # What a picker offers
 
 The sidebar view decides, not the picker's window (`agent_picker_place`, which every client asks
-with its own view: the desktop's `flat-sidebar` setting, zz-app's `flat_sidebar` preference on web,
-iPad and iPhone, and the HTML client's preference passed in with `set_chat_view`):
+with its own view: the desktop's `flat-sidebar` setting, zz-app's `flat_sidebar` preference on web
+and iPad, chat view always in the phone shell, and the HTML client's preference passed in with
+`set_chat_view`):
 
 - **Chat view.** Every picker pane offers the agents (`ChatPicker`, drawn by
   `zz_ui::pane::chat_picker_rows`): every machine (the desktop, and the thin clients' New chat
@@ -151,7 +152,10 @@ Choosing an agent runs `select-pane-kind -t <pane> -c <folder> [--model m] [--ef
 - no session is the folder's: `new-session -d -s <folder name>`, `move-window` into it and
   `kill-window -a` its starting shell; a session holding only the picker is renamed instead.
 
-The desktop switches to the window if it moved sessions. No client draws a chat over a terminal.
+The desktop switches to the window if it moved sessions. On a phone only the `select-pane-kind`
+runs (`agent_pane_command`), so the chat stays on screen in the session the plus menu named: the
+phone's sheet has no folder line, and its pager pages only through the attached session. No client
+draws a chat over a terminal.
 `flip-agent` switches a pane between the CLI and the chat on the same session (see the
 [agent panes](/concepts/agent-panes.md)). The iPhone's pill menu offers it; the pane headers on the
 desktop, web, iPad and the HTML client dropped their button on 2026-11-08 until the chat view

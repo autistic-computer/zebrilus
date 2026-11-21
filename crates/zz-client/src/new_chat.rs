@@ -152,7 +152,7 @@ fn holder(snapshot: &MuxSnapshot, pane: PaneId) -> Option<(&SessionSnapshot, Win
 }
 
 #[must_use]
-fn agent_pane_command(
+pub fn agent_pane_command(
     target: String,
     folder: &str,
     agent: AgentChoice,

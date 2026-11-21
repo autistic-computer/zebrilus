@@ -12,8 +12,8 @@ use zz_client::{
     agent_launch::AgentLaunches,
     new_chat::{
         AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, FolderChoice, MachineChoice,
-        agent_picker_place, close_picker_command, landing_chat_commands, picker_folders,
-        recent_folders, start_agent_commands,
+        agent_pane_command, agent_picker_place, close_picker_command, landing_chat_commands,
+        picker_folders, recent_folders, start_agent_commands,
     },
     pane_picker::{PaneChoice, PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
 };
@@ -184,6 +184,14 @@ impl PanePicker {
         let folder = self.chat.folder(folders);
         let snapshot = connection.core.snapshot();
         let commands = match self.pane {
+            Some(pane) if super::settings::phone() => {
+                vec![agent_pane_command(
+                    pane.to_string(),
+                    folder,
+                    agent,
+                    &self.launches,
+                )]
+            }
             Some(pane) => start_agent_commands(snapshot, pane, folder, agent, &self.launches),
             None => landing_chat_commands(snapshot, folder, agent, &self.launches),
         };
