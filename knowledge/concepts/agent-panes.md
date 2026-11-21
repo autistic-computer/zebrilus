@@ -1392,11 +1392,13 @@ The full delivery contract is in the
   `MAX_PENDING_AGENT_BYTES` (9 MiB + 64 KiB) per pane. Overflow drops the pane's queued frames and
   queues `AgentLagged`, so a slow client replays instead of being disconnected.
 - **Replay.** Each pane keeps an 18 MiB ring of encoded items (`MAX_REPLAY_RING_BYTES`); a replay
-  older than the ring takes the reset path the runtime design describes. When the journal cannot
-  vouch for the session either (it stops at 4,096 records or 18 MiB), only the client that asked
-  gets a rebuild: a restoring reset, the closing metadata and the newest part of the chat that
-  fits in 4.5 MiB (`MAX_REBUILD_BYTES`), on numbers it skips, so no other viewer is sent anything.
-  Events that refer to the part left out count in `ChatView.skipped`. A driver that resumes a
+  older than the ring goes to the client that asked alone, on numbers it skips, so no other viewer
+  is sent anything. It is a restoring reset, the journalled updates, the closing metadata and the
+  whole chat when the journal vouches for the session and all of it fits in 4.5 MiB
+  (`MAX_REBUILD_BYTES`); otherwise, or when the journal cannot vouch for the session (it stops at
+  4,096 records or 18 MiB), it is a rebuild: a restoring reset, the closing metadata and the newest
+  part of the chat that fits in 4.5 MiB. Events that refer to the part left out count in
+  `ChatView.skipped`. A driver that resumes a
   session replays its history from the CLI's own file first. A pane's numbers never start over
   within a daemon process, so a client's position stays good across reconnects to the same
   daemon (`server_id` in the hello).

@@ -118,25 +118,32 @@ hundreds of updates, so agent streams get their own `OutboundState` lane, preced
   coalesces items into 25 ms windows (`BATCH_WINDOW`) before enqueueing, on one shared flush
   thread that parks whenever no pane has anything gathered, so a healthy client sees a few
   frames per second, not one per token.
-- Each pane also keeps a `MAX_REPLAY_RING_BYTES` (2 × 9 MiB = 18 MiB) in-memory ring of encoded items. A
-  replay inside the ring is served straight to the asking client and nothing else moves. A
-  replay older than the ring falls back to the journal when the journal can vouch for the whole
-  session (`AgentJournal::is_complete_for`). The lane emits cached adapter `Ready`,
-  `SessionReset { restoring: true }`, the journalled updates, and `SessionReady` with the current
-  session/configuration as freshly numbered items, followed by an ordered `StateSynced` snapshot.
-  Journalled `config_option_update`s are left out: the runtime journals the agent's own option
-  list, before the ACP dialect renames its effort option, and the `SessionReady` carries the list
-  live viewers last saw.
-  The client rebuilds the transcript, then returns to the daemon's current Running, Failed,
-  permission, or Ready phase even though reliable state frames drain first. Without a trustworthy
-  journal (it stops at 4,096 records or 18 MiB) the asking client alone gets a rebuild
-  (`PaneLane::rebuild`): `SessionReset { restoring: true }`, the cached `Ready`, the closing
-  metadata, a chat `Restart` and the newest chat events that fit in `MAX_REBUILD_BYTES` (4.5 MiB),
-  with the latest `SessionReady` and the open turn's `TurnStarted` kept when they fall in the part
-  left out. Events that refer to that part fail to apply and count in `ChatView.skipped`. The
-  rebuild takes the numbers the asker skips, ending on the lane's last one, so it mints none and no
-  other viewer is sent anything; when fewer numbers are skipped than it needs, it keeps the newest
-  part that fits them.
+- Each pane also keeps a `MAX_REPLAY_RING_BYTES` (2 × 9 MiB = 18 MiB) in-memory ring of encoded
+  items. A replay inside the ring is served straight to the asking client and nothing else moves.
+  A `from_seq` equal to the last evicted number counts as inside: the desktop, and the phone after
+  a gap or a lag, send the last number they hold. The phone's resume after a hello sends the next
+  one, so at that boundary it sees a gap and asks again with the last. A replay older than the
+  ring goes to the asking client alone, after the lane's unsent batch goes out to every viewer as
+  usual. It takes the numbers the asker skips, ending on the lane's last one, so it mints none and
+  no other viewer is sent anything. When the journal can vouch for the whole session
+  (`AgentJournal::is_complete_for`), it is `SessionReset { restoring: true }`, the cached adapter
+  `Ready`, the journalled updates, the closing metadata (`SessionReady` with the current
+  session/configuration, the open turn, an ordered `StateSynced` snapshot), a chat `Restart` and
+  the whole chat, as long as that fits in the skipped numbers and in `MAX_REBUILD_BYTES` (4.5
+  MiB). Journalled `config_option_update`s are left out: the runtime journals the agent's own
+  option list, before the ACP dialect renames its effort option, and the `SessionReady` carries
+  the list live viewers last saw. The client rebuilds the transcript, then returns to the daemon's
+  current Running, Failed, permission, or Ready phase even though reliable state frames drain
+  first. When that does not fit, or without a trustworthy journal (it stops at 4,096 records or 18
+  MiB), the asker gets a rebuild (`PaneLane::rebuild`): `SessionReset { restoring: true }`, the
+  cached `Ready`, the closing metadata, a chat `Restart` and the newest chat events that fit in
+  `MAX_REBUILD_BYTES`, with the latest `SessionReady` and the open turn's `TurnStarted` kept when
+  they fall in the part left out. Events that refer to that part fail to apply and count in
+  `ChatView.skipped`; when fewer numbers are skipped than it needs, it keeps the newest part that
+  fits them. A rebuild carries no raw updates, so after one the slash command list and the usage
+  come back only when the agent sends them again. The cap keeps a replay under the 9 MiB + 64 KiB
+  a client's agent lane holds (`MAX_PENDING_AGENT_BYTES`): a bigger one is cut by the next live
+  frame for the pane, and the client asks again.
 - Drain order: `reliable` → `command_output` → `agent` (round-robin) → `terminals`.
 - Overflow does NOT close the connection: the pane's lane is cleared and a tiny
   `AgentLagged { pane, next_seq }` marker queued; the client re-requests `AgentReplay` from its
@@ -160,9 +167,9 @@ replay cursor.
 Two things about that sequence deviate from the sketch above. **The fanout mints it, not the
 host.** The host stamps its own per-pane counter for its internal bookkeeping, but request
 replies leave the stream entirely without spending a wire sequence, and a journal replay
-synthesizes fresh items, so only the fanout can promise a client a gapless run. It is therefore
-not literally the journal's seq. **An item too large for one frame is dropped, not stamped**: a
-single encoded `AgentStreamItem` over `MAX_AGENT_UPDATES_BYTES` is logged and skipped, because
+renumbers what it sends into the numbers the asker skipped, so only the fanout can promise a
+client a gapless run. It is therefore not literally the journal's seq. **An item too large for
+one frame is dropped, not stamped**: a single encoded `AgentStreamItem` over `MAX_AGENT_UPDATES_BYTES` is logged and skipped, because
 the wire cannot carry it and a sequence spent on it would read as loss to every client.
 
 v54 keeps the fanout sequence across a runtime replacement. Each open receives a runtime generation;
@@ -187,8 +194,8 @@ phone and web clients keep their positions when a new hello carries the same `se
 revision of 8 or more, and start over otherwise. A replay from a position older than a lane that
 has evicted nothing since it opened goes to the asking client alone, as a restoring
 `SessionReset` stamped one below the lane's first number followed by the whole ring; it skips the
-journal and mints no numbers. A replay older than a ring that did evict reads the journal, or
-without one gets the private rebuild above.
+journal and mints no numbers. A replay older than a ring that did evict gets the private journal
+replay or rebuild above.
 
 # Daemon host (`zz-daemon/src/agent/`)
 

@@ -35074,30 +35074,6 @@ impl Shared {
         subscriber.enqueue_agent_replay(pane, encoded);
     }
 
-    fn publish_agent_replay(
-        &self,
-        pane: PaneId,
-        frames: Vec<(u64, Vec<Vec<u8>>)>,
-        also: Option<ClientId>,
-    ) {
-        let subscribers = agent_stream_subscribers(&self.inner.lock(), pane, also);
-        let mut encoded = Vec::with_capacity(frames.len());
-        for (first_seq, items) in frames {
-            let message = Self::event(EventPayload::AgentUpdates {
-                pane,
-                first_seq,
-                items,
-            });
-            let Ok(frame) = zz_protocol::encode_protocol_message(&message) else {
-                return;
-            };
-            encoded.push((first_seq, OutboundFrame::Shared(Arc::from(frame))));
-        }
-        for subscriber in subscribers {
-            subscriber.enqueue_shared_agent_replay(pane, encoded.clone());
-        }
-    }
-
     fn apply_agent_state(
         self: &Arc<Self>,
         pane: PaneId,

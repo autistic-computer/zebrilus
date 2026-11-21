@@ -64,13 +64,6 @@ pub(crate) trait AgentPublisher: Send + Sync + 'static {
         pane: PaneId,
         frames: Vec<(u64, Vec<Vec<u8>>)>,
     );
-    fn publish_agent_replay(
-        &self,
-        generation: u64,
-        pane: PaneId,
-        frames: Vec<(u64, Vec<Vec<u8>>)>,
-        also: Option<ClientId>,
-    );
     fn publish_agent_state(&self, generation: u64, pane: PaneId, state: AgentPaneWire);
     fn publish_agent_folder(&self, generation: u64, pane: PaneId, cwd: PathBuf);
     fn publish_agent_quota(&self, generation: u64, pane: PaneId, quota: QuotaWindows);
@@ -1011,7 +1004,7 @@ impl AgentFanout {
         };
         let generation = lane.generation;
         let from = from_seq.max(1);
-        if from > lane.evicted_seq {
+        if from_seq >= lane.evicted_seq {
             let items = lane
                 .ring
                 .iter()
@@ -1071,7 +1064,9 @@ impl AgentFanout {
             publisher.send_agent_replay(generation, client, pane, split_frames(first_seq, items));
             return;
         };
-        lane.take_batch();
+        for (first_seq, items) in lane.take_batch() {
+            publisher.publish_agent_updates(generation, pane, first_seq, items, None);
+        }
         log::info!(
             target: "zz::agent",
             "replaying pane {pane} for client {client} out of the journal: \
@@ -1079,36 +1074,20 @@ impl AgentFanout {
             lane.evicted_seq.saturating_add(1),
             replay.len(),
         );
-        let first_seq = lane.next_seq;
-        let mut synthesized = Vec::new();
-        lane.stamp_recovery(
-            pane,
-            AgentStreamPayload::SessionReset { restoring: true },
-            &mut synthesized,
-        );
-        if let Some(ready) = lane.ready.clone() {
-            lane.stamp_recovery(pane, ready, &mut synthesized);
-        }
-        for (_, entry) in replay {
-            let payload = match entry {
-                JournalEntry::Update(update)
-                    if update["sessionUpdate"] == "config_option_update" =>
-                {
-                    continue;
-                }
-                JournalEntry::Update(update) => AgentStreamPayload::Update { update },
-            };
-            lane.stamp_recovery(pane, payload, &mut synthesized);
-        }
-        for payload in lane
-            .recovery_metadata()
-            .into_iter()
-            .chain(lane.chat_recovery())
-        {
-            lane.stamp_recovery(pane, payload, &mut synthesized);
-        }
-        let frames = split_frames(first_seq, synthesized);
-        publisher.publish_agent_replay(generation, pane, frames, Some(client));
+        let mut payloads = vec![AgentStreamPayload::SessionReset { restoring: true }];
+        payloads.extend(lane.ready.clone());
+        payloads.extend(replay.into_iter().filter_map(|(_, entry)| match entry {
+            JournalEntry::Update(update) if update["sessionUpdate"] == "config_option_update" => {
+                None
+            }
+            JournalEntry::Update(update) => Some(AgentStreamPayload::Update { update }),
+        }));
+        payloads.extend(lane.recovery_metadata());
+        payloads.extend(lane.chat_recovery());
+        let frames = lane
+            .skipped(from_seq, payloads)
+            .unwrap_or_else(|| lane.rebuild(pane, from_seq));
+        publisher.send_agent_replay(generation, client, pane, frames);
     }
 
     fn acknowledge_prompt_restore(&self, owner: ClientInstanceId, pane: PaneId, reclaim_id: u64) {
@@ -1335,28 +1314,24 @@ impl PaneLane {
         }
     }
 
-    fn stamp_recovery(
-        &mut self,
-        pane: PaneId,
-        payload: AgentStreamPayload,
-        items: &mut Vec<Vec<u8>>,
-    ) {
-        let reclaim_id = match &payload {
-            AgentStreamPayload::PromptsRestored { reclaim_id, .. } => Some(*reclaim_id),
-            _ => None,
-        };
-        let Some((seq, encoded)) = self.stamp(pane, payload) else {
-            return;
-        };
-        self.push_ring(seq, encoded.clone());
-        items.push(encoded);
-        if let Some(cached) = reclaim_id.and_then(|reclaim_id| {
-            self.reclaimed
-                .iter_mut()
-                .find(|cached| cached.reclaim_id == reclaim_id)
-        }) {
-            cached.last_seq = seq;
+    fn skipped(
+        &self,
+        from_seq: u64,
+        payloads: Vec<AgentStreamPayload>,
+    ) -> Option<Vec<(u64, Vec<Vec<u8>>)>> {
+        let count = u64::try_from(payloads.len()).ok()?;
+        if count > self.next_seq.saturating_sub(from_seq).saturating_sub(1) {
+            return None;
         }
+        let first_seq = self.next_seq - count;
+        let items = payloads
+            .into_iter()
+            .zip(first_seq..)
+            .map(|(payload, seq)| serde_json::to_vec(&AgentStreamItem { seq, payload }))
+            .collect::<Result<Vec<_>, _>>()
+            .ok()?;
+        (items.iter().map(Vec::len).sum::<usize>() <= MAX_REBUILD_BYTES)
+            .then(|| split_frames(first_seq, items))
     }
 
     fn stamp(&mut self, pane: PaneId, payload: AgentStreamPayload) -> Option<(u64, Vec<u8>)> {
@@ -1696,20 +1671,6 @@ mod tests {
             );
         }
 
-        fn publish_agent_replay(
-            &self,
-            _generation: u64,
-            pane: PaneId,
-            frames: Vec<(u64, Vec<Vec<u8>>)>,
-            also: Option<ClientId>,
-        ) {
-            self.broadcast.lock().extend(
-                frames
-                    .into_iter()
-                    .map(|(first_seq, items)| (pane, first_seq, items, also)),
-            );
-        }
-
         fn publish_agent_state(&self, _generation: u64, pane: PaneId, state: AgentPaneWire) {
             self.states.lock().push((pane, state));
         }
@@ -1993,15 +1954,13 @@ mod tests {
             .next_seq
             .saturating_sub(1);
 
-        fixture.fanout.replay(ClientId(3), fixture.pane, 1);
-        let replayed = fixture
-            .recorder
-            .broadcast
-            .lock()
-            .iter()
-            .filter(|(_, _, _, also)| *also == Some(ClientId(3)))
-            .flat_map(|(_, _, items, _)| items.clone())
-            .map(|item| serde_json::from_slice::<AgentStreamItem>(&item).expect("decode"))
+        fixture.fanout.replay(ClientId(3), fixture.pane, 0);
+        let replayed = direct_items(&fixture.recorder)
+            .into_iter()
+            .map(|(client, _, item)| {
+                assert_eq!(client, ClientId(3));
+                item
+            })
             .collect::<Vec<_>>();
 
         assert!(
@@ -2031,19 +1990,15 @@ mod tests {
             replayed.iter().filter_map(text_of).collect::<Vec<_>>(),
             ["one", "two"]
         );
-        assert!(
-            replayed[0].seq > last_live,
-            "the synthesized replay is stamped with fresh sequences"
-        );
         assert_eq!(
             replayed.iter().map(|item| item.seq).collect::<Vec<_>>(),
-            (replayed[0].seq..replayed[0].seq + 6).collect::<Vec<_>>(),
-            "and stays contiguous for every client on the pane"
+            (last_live - 5..=last_live).collect::<Vec<_>>(),
+            "the replay takes the numbers the asker skips and mints none"
         );
     }
 
     #[test]
-    fn a_large_journal_replay_keeps_its_reset_and_every_frame() {
+    fn a_journal_too_large_to_send_rebuilds_the_asker_from_memory() {
         let directory = tempfile::tempdir().expect("journal directory");
         let journal = Arc::new(AgentJournal::open(directory.path()).expect("open journal"));
         let body = "x".repeat(850 * 1024);
@@ -2070,49 +2025,42 @@ mod tests {
             modes: None,
             config_options: None,
         });
-        fixture.recorder.wait_for_items(2);
+        for text in ["a", "b", "c"] {
+            fixture.chunk(text);
+        }
+        fixture.recorder.wait_for_items(5);
         fixture
             .fanout
             .lanes
             .lock()
             .get_mut(&fixture.pane)
             .expect("lane")
-            .evicted_seq = 1;
+            .evicted_seq = 2;
+        fixture.recorder.broadcast.lock().clear();
 
         fixture.fanout.replay(ClientId(3), fixture.pane, 1);
-        let frames = fixture
-            .recorder
-            .broadcast
-            .lock()
-            .iter()
-            .filter(|(_, _, _, also)| *also == Some(ClientId(3)))
-            .cloned()
-            .collect::<Vec<_>>();
-        assert!(frames.len() > 1);
-        let replayed = frames
-            .into_iter()
-            .flat_map(|(_, _, items, _)| items)
-            .map(|item| serde_json::from_slice::<AgentStreamItem>(&item).expect("decode"))
-            .collect::<Vec<_>>();
-        assert!(matches!(
-            replayed.first().map(|item| &item.payload),
-            Some(AgentStreamPayload::SessionReset { restoring: true })
-        ));
-        assert!(matches!(
-            replayed.last().map(|item| &item.payload),
-            Some(AgentStreamPayload::StateSynced { .. })
-        ));
+        assert!(fixture.recorder.broadcast.lock().is_empty());
         assert_eq!(
-            replayed
-                .iter()
-                .filter(|item| matches!(item.payload, AgentStreamPayload::Update { .. }))
-                .count(),
-            12
-        );
-        assert!(
-            replayed
-                .windows(2)
-                .all(|items| items[1].seq == items[0].seq + 1)
+            direct_items(&fixture.recorder)
+                .into_iter()
+                .map(|(client, seq, item)| {
+                    let kind = match item.payload {
+                        AgentStreamPayload::SessionReset { restoring: true } => "reset",
+                        AgentStreamPayload::Ready { .. } => "ready",
+                        AgentStreamPayload::SessionReady { .. } => "session",
+                        AgentStreamPayload::StateSynced { .. } => "state",
+                        _ => "other",
+                    };
+                    (client, seq, kind)
+                })
+                .collect::<Vec<_>>(),
+            [
+                (ClientId(3), 2, "reset"),
+                (ClientId(3), 3, "ready"),
+                (ClientId(3), 4, "session"),
+                (ClientId(3), 5, "state"),
+            ],
+            "past the rebuild cap the journal stays out and the asker is rebuilt from memory"
         );
     }
 
@@ -2344,7 +2292,7 @@ mod tests {
         {
             let mut lanes = fixture.fanout.lanes.lock();
             let lane = lanes.get_mut(&fixture.pane).expect("pane lane");
-            while lane.ring.front().is_some_and(|(seq, _)| *seq <= asked) {
+            while lane.ring.front().is_some_and(|(seq, _)| *seq <= asked + 1) {
                 let (seq, dropped) = lane.ring.pop_front().expect("ring item");
                 lane.ring_bytes -= dropped.len();
                 lane.evicted_seq = seq;
@@ -2678,7 +2626,9 @@ mod tests {
             ))
             .expect("encode mode update"),
         });
-        fixture.recorder.wait_for_items(2);
+        fixture.chunk("a");
+        fixture.chunk("b");
+        fixture.recorder.wait_for_items(4);
         {
             let mut lanes = fixture.fanout.lanes.lock();
             let lane = lanes.get_mut(&fixture.pane).expect("pane lane");
@@ -2686,14 +2636,9 @@ mod tests {
         }
 
         fixture.fanout.replay(ClientId(3), fixture.pane, 1);
-        let replayed = fixture
-            .recorder
-            .broadcast
-            .lock()
-            .iter()
-            .filter(|(_, _, _, also)| *also == Some(ClientId(3)))
-            .flat_map(|(_, _, items, _)| items.clone())
-            .map(|item| serde_json::from_slice::<AgentStreamItem>(&item).expect("decode"))
+        let replayed = direct_items(&fixture.recorder)
+            .into_iter()
+            .map(|(_, _, item)| item)
             .collect::<Vec<_>>();
         let modes = replayed.iter().find_map(|item| match &item.payload {
             AgentStreamPayload::SessionReady {
@@ -2750,7 +2695,9 @@ mod tests {
             ))
             .expect("encode config update"),
         });
-        fixture.recorder.wait_for_items(2);
+        fixture.chunk("a");
+        fixture.chunk("b");
+        fixture.recorder.wait_for_items(4);
         {
             let mut lanes = fixture.fanout.lanes.lock();
             let lane = lanes.get_mut(&fixture.pane).expect("pane lane");
@@ -2758,14 +2705,9 @@ mod tests {
         }
 
         fixture.fanout.replay(ClientId(3), fixture.pane, 1);
-        let replayed = fixture
-            .recorder
-            .broadcast
-            .lock()
-            .iter()
-            .filter(|(_, _, _, also)| *also == Some(ClientId(3)))
-            .flat_map(|(_, _, items, _)| items.clone())
-            .map(|item| serde_json::from_slice::<AgentStreamItem>(&item).expect("decode"))
+        let replayed = direct_items(&fixture.recorder)
+            .into_iter()
+            .map(|(_, _, item)| item)
             .collect::<Vec<_>>();
         let config = replayed.iter().find_map(|item| match &item.payload {
             AgentStreamPayload::SessionReady {
@@ -2822,7 +2764,12 @@ mod tests {
         accept(AgentStreamPayload::Update {
             update: json!({"sessionUpdate": "config_option_update", "configOptions": options("effort", "high")}),
         });
-        let live = fixture.recorder.wait_for_items(2);
+        for text in ["a", "b"] {
+            accept(AgentStreamPayload::Update {
+                update: json!({"sessionUpdate": "agent_message_chunk", "content": {"text": text}}),
+            });
+        }
+        let live = fixture.recorder.wait_for_items(4);
         {
             let mut lanes = fixture.fanout.lanes.lock();
             let lane = lanes.get_mut(&pane).expect("pane lane");
@@ -2867,6 +2814,92 @@ mod tests {
             lists(&fixture.recorder.payloads()),
             [["\"model\"=\"gemini-3.8-flash\"", "\"effort\"=\"high\""]]
         );
+    }
+
+    #[test]
+    fn a_journal_replay_goes_to_the_asker_alone_on_the_numbers_it_skips() {
+        let directory = tempfile::tempdir().expect("journal directory");
+        let journal = Arc::new(AgentJournal::open(directory.path()).expect("open journal"));
+        journal
+            .append_for(
+                AgentProvider::Codex,
+                "s-1",
+                &json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "journalled"}}),
+            )
+            .expect("journal");
+        let fixture = Fixture::open(Some(journal), Some("s-1"));
+        fixture.accept(AgentStreamPayload::SessionReady {
+            session_id: "s-1".to_owned(),
+            modes: None,
+            config_options: None,
+        });
+        for text in ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"] {
+            fixture.chunk(text);
+        }
+        fixture.recorder.wait_for_items(11);
+        let evict = |upto: u64| {
+            let mut lanes = fixture.fanout.lanes.lock();
+            let lane = lanes.get_mut(&fixture.pane).expect("pane lane");
+            while lane.ring.front().is_some_and(|(seq, _)| *seq <= upto) {
+                let (seq, dropped) = lane.ring.pop_front().expect("ring item");
+                lane.ring_bytes -= dropped.len();
+                lane.evicted_seq = seq;
+            }
+            (lane.evicted_seq, lane.next_seq)
+        };
+        fixture.recorder.broadcast.lock().clear();
+        let sent = |from_seq| {
+            fixture.recorder.direct.lock().clear();
+            fixture.fanout.replay(ClientId(3), fixture.pane, from_seq);
+            fixture
+                .recorder
+                .direct
+                .lock()
+                .iter()
+                .flat_map(|(client, _, _, items)| {
+                    assert_eq!(*client, ClientId(3));
+                    items.clone()
+                })
+                .map(|item| {
+                    let item = serde_json::from_slice::<AgentStreamItem>(&item).expect("decode");
+                    let kind = match &item.payload {
+                        AgentStreamPayload::Update { update } => update["content"]["text"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_owned(),
+                        AgentStreamPayload::SessionReset { .. } => "reset".to_owned(),
+                        AgentStreamPayload::SessionReady { .. } => "ready".to_owned(),
+                        AgentStreamPayload::StateSynced { .. } => "state".to_owned(),
+                        other => format!("{other:?}"),
+                    };
+                    (item.seq, kind)
+                })
+                .collect::<Vec<_>>()
+        };
+        let journal_replay = [
+            (8, "reset".to_owned()),
+            (9, "journalled".to_owned()),
+            (10, "ready".to_owned()),
+            (11, "state".to_owned()),
+        ];
+
+        assert_eq!(evict(1), (1, 12));
+        assert_eq!(
+            sent(0),
+            journal_replay,
+            "a client that holds nothing is reset when the ring lacks its first item"
+        );
+        assert_eq!(evict(9), (9, 12));
+        assert_eq!(
+            sent(9),
+            [(10, "i".to_owned()), (11, "j".to_owned())],
+            "a client that has the last evicted number takes the ring"
+        );
+        assert_eq!(sent(1), journal_replay);
+        assert!(fixture.recorder.broadcast.lock().is_empty());
+        let lanes = fixture.fanout.lanes.lock();
+        let lane = &lanes[&fixture.pane];
+        assert_eq!((lane.evicted_seq, lane.next_seq), (9, 12));
     }
 
     #[test]

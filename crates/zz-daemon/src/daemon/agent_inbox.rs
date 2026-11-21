@@ -65,10 +65,6 @@ impl AgentInbox {
                     shared.send_agent_replay(client, pane, frames);
                     None
                 }
-                Payload::BroadcastReplay { frames, also } => {
-                    shared.publish_agent_replay(pane, frames, also);
-                    None
-                }
                 Payload::State(state) => shared.apply_agent_state(pane, state),
                 Payload::Folder(cwd) => {
                     shared.apply_agent_folder(pane, cwd);
