@@ -677,13 +677,22 @@ impl AgentFanout {
         session_id: Option<String>,
     ) {
         let mut lane = PaneLane::new(generation, provider, session_id);
-        if let Some(next_seq) = self.parked.lock().remove(&pane) {
+        let parked = self.parked.lock().remove(&pane);
+        if let Some(next_seq) = parked {
             lane.next_seq = next_seq;
             lane.opened_at = next_seq;
             lane.evicted_seq = next_seq.saturating_sub(1);
+            lane.enqueue(pane, AgentStreamPayload::SessionReset { restoring: true });
+            lane.enqueue(
+                pane,
+                AgentStreamPayload::Chat {
+                    event: ChatEvent::Restart,
+                },
+            );
         }
         self.lanes.lock().insert(pane, lane);
         self.ensure_flusher();
+        self.wake.notify_all();
     }
 
     fn close_lane(&self, pane: PaneId) {
@@ -2209,6 +2218,30 @@ mod tests {
         );
     }
 
+    fn label(item: &AgentStreamItem) -> String {
+        match &item.payload {
+            AgentStreamPayload::SessionReset { restoring: true } => "reset".to_owned(),
+            AgentStreamPayload::Chat {
+                event: ChatEvent::Restart,
+            } => "restart".to_owned(),
+            _ => text_of(item).unwrap_or_default(),
+        }
+    }
+
+    fn direct_items(recorder: &Recorder) -> Vec<(ClientId, u64, AgentStreamItem)> {
+        recorder
+            .direct
+            .lock()
+            .iter()
+            .flat_map(|(client, _, _, items)| {
+                items.iter().map(move |item| {
+                    let item: AgentStreamItem = serde_json::from_slice(item).expect("decode item");
+                    (*client, item.seq, item)
+                })
+            })
+            .collect()
+    }
+
     #[test]
     fn a_reopened_chat_continues_its_numbers_and_replays_only_to_the_asker() {
         let fixture = Fixture::open(None, Some("s-1"));
@@ -2231,40 +2264,116 @@ mod tests {
                 },
             );
         }
-        let items = fixture.recorder.wait_for_items(8);
+        let items = fixture.recorder.wait_for_items(10);
         assert_eq!(
             items.iter().map(|item| item.seq).collect::<Vec<_>>(),
-            [1, 2, 3, 4, 5, 6, 7, 8]
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         );
         let broadcast = fixture.recorder.broadcast.lock().len();
 
         fixture.fanout.replay(ClientId(9), fixture.pane, 0);
-        let direct = fixture
-            .recorder
-            .direct
-            .lock()
-            .iter()
-            .flat_map(|(client, _, _, items)| items.iter().map(move |item| (*client, item.clone())))
-            .map(|(client, item)| {
-                let item: AgentStreamItem = serde_json::from_slice(&item).expect("decode item");
-                let text = text_of(&item);
-                let reset = matches!(
-                    item.payload,
-                    AgentStreamPayload::SessionReset { restoring: true }
-                );
-                (client, item.seq, reset, text)
-            })
+        let direct = direct_items(&fixture.recorder)
+            .into_iter()
+            .map(|(client, seq, item)| (client, seq, label(&item)))
             .collect::<Vec<_>>();
         assert_eq!(
             direct,
             [
-                (ClientId(9), 5, true, None),
-                (ClientId(9), 6, false, Some("f".to_owned())),
-                (ClientId(9), 7, false, Some("g".to_owned())),
-                (ClientId(9), 8, false, Some("h".to_owned())),
+                (ClientId(9), 5, "reset".to_owned()),
+                (ClientId(9), 6, "reset".to_owned()),
+                (ClientId(9), 7, "restart".to_owned()),
+                (ClientId(9), 8, "f".to_owned()),
+                (ClientId(9), 9, "g".to_owned()),
+                (ClientId(9), 10, "h".to_owned()),
             ]
         );
         assert_eq!(fixture.recorder.broadcast.lock().len(), broadcast);
+    }
+
+    #[test]
+    fn a_client_kept_across_a_reopen_shows_the_resumed_chat_once() {
+        use zz_protocol::chat::{
+            ChatView, ItemBody, ItemId, ItemKind, ItemStatus, TurnBy, TurnId, TurnOutcome,
+        };
+
+        let turn = |id: u64, item: &str, text: &str| {
+            let item = ItemId::new(item);
+            [
+                ChatEvent::TurnStarted {
+                    turn: TurnId(id),
+                    by: TurnBy::Agent,
+                    at: 0,
+                },
+                ChatEvent::ItemStarted {
+                    item: item.clone(),
+                    turn: Some(TurnId(id)),
+                    parent: None,
+                    kind: ItemKind::Agent,
+                    body: ItemBody::default(),
+                    at: 0,
+                },
+                ChatEvent::ItemAppended {
+                    item: item.clone(),
+                    text: text.to_owned(),
+                },
+                ChatEvent::ItemEnded {
+                    item,
+                    status: ItemStatus::Completed,
+                    at: 0,
+                },
+                ChatEvent::TurnEnded {
+                    turn: TurnId(id),
+                    outcome: TurnOutcome::Completed {
+                        stop_reason: "end_turn".to_owned(),
+                    },
+                    at: 0,
+                },
+            ]
+        };
+        let fixture = Fixture::open(None, Some("s-1"));
+        for event in turn(7, "agent:live", "before the flip") {
+            fixture.accept(AgentStreamPayload::Chat { event });
+        }
+        let mut view = ChatView::default();
+        for item in fixture.recorder.wait_for_items(5) {
+            if let AgentStreamPayload::Chat { event } = item.payload {
+                let _ = view.apply(&event);
+            }
+        }
+        assert_eq!(view.turns.len(), 1);
+
+        fixture.fanout.close_lane(fixture.pane);
+        fixture.fanout.open_lane(
+            fixture.pane,
+            2,
+            AgentProvider::Codex,
+            Some("s-1".to_owned()),
+        );
+        for event in turn(1, "agent:resumed", "the resumed history") {
+            fixture.accept_generation(2, AgentStreamPayload::Chat { event });
+        }
+        fixture.recorder.wait_for_items(12);
+        fixture.fanout.replay(ClientId(9), fixture.pane, 6);
+        let direct = direct_items(&fixture.recorder);
+        assert_eq!(
+            direct.iter().map(|(_, seq, _)| *seq).collect::<Vec<_>>(),
+            [6, 7, 8, 9, 10, 11, 12]
+        );
+        for (_, _, item) in direct {
+            if let AgentStreamPayload::Chat { event } = item.payload {
+                let _ = view.apply(&event);
+            }
+        }
+        assert_eq!(
+            view.turns.iter().map(|turn| turn.id).collect::<Vec<_>>(),
+            [TurnId(1)]
+        );
+        assert_eq!(view.items.len(), 1);
+        assert_eq!(
+            view.items[&ItemId::new("agent:resumed")].body.text,
+            "the resumed history"
+        );
+        assert_eq!(view.skipped, 0);
     }
 
     #[test]

@@ -164,7 +164,15 @@ queue without accepting stale adapter state or output.
 
 Since `REVISION` 8 a pane's sequence never starts over within one daemon process: a lane that closes
 (a flip to the CLI, a pane that stops being a chat) leaves its next number in `parked`, and the
-next lane for that pane continues from it (`PaneLane::opened_at`). A client's position, read
+next lane for that pane continues from it (`PaneLane::opened_at`). Pane ids are never reused within
+a daemon process, so `parked` keeps one number per closed chat pane and nothing clears it. A lane
+that continues a parked number opens with a restoring `SessionReset` and a chat `Restart` before
+anything its driver sends: a client that kept a position from the old lane, and its chat view,
+drop what they held, and the driver's own replay of the session then shows once. The drivers do
+not promise this themselves: Claude Code and Codex send `Ready` before their `SessionReset`, a
+reset clears a client's buffer and transcript model but not its chat view, and a resumed
+session's turns are numbered again from 1, which a chat view still holding higher turn numbers
+refuses. A client's position, read
 together with the daemon's `server_id` from the hello, is therefore good across reconnects: the
 phone and web clients keep their positions when a new hello carries the same `server_id` and a
 revision of 8 or more, and start over otherwise. A replay from a position older than a lane that
