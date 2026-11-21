@@ -214,27 +214,17 @@ impl AgentRuntime {
     }
 
     pub(crate) fn close_and_wait(&self, pane: PaneId) {
-        self.stop_and_wait(pane, false);
-    }
-
-    pub(crate) fn close_for_reopen(&self, pane: PaneId) {
-        self.stop_and_wait(pane, true);
-    }
-
-    fn stop_and_wait(&self, pane: PaneId, reopen: bool) {
-        let thread = {
+        let (thread, generation) = {
             let _lifecycle = self.lifecycle.lock();
-            let thread = self.host.close(pane);
-            if reopen {
-                self.fanout.park_lane(pane);
-            } else {
-                self.fanout.close_lane(pane);
-            }
-            thread
+            (self.host.close(pane), self.pane_generation(pane))
         };
         if let Some(thread) = thread {
             let _ = thread.join();
             crate::agent::child::join_reapers();
+        }
+        let _lifecycle = self.lifecycle.lock();
+        if self.pane_generation(pane) == generation {
+            self.fanout.park_lane(pane);
         }
     }
 
@@ -645,7 +635,7 @@ struct AgentFanout {
     journal: Option<Arc<AgentJournal>>,
     lifecycle: Arc<Mutex<()>>,
     lanes: Mutex<BTreeMap<PaneId, PaneLane>>,
-    parked: Mutex<BTreeMap<PaneId, u64>>,
+    parked: Mutex<BTreeMap<PaneId, (u64, u64)>>,
     wake: Condvar,
     stopped: AtomicBool,
     flusher: Mutex<Option<JoinHandle<()>>>,
@@ -678,8 +668,9 @@ impl AgentFanout {
     ) {
         let mut lane = PaneLane::new(generation, provider, session_id);
         let parked = self.parked.lock().remove(&pane);
-        if let Some(next_seq) = parked {
+        if let Some((next_seq, next_reclaim_id)) = parked {
             lane.next_seq = next_seq;
+            lane.next_reclaim_id = next_reclaim_id;
             lane.opened_at = next_seq;
             lane.evicted_seq = next_seq.saturating_sub(1);
             lane.enqueue(pane, AgentStreamPayload::SessionReset { restoring: true });
@@ -698,7 +689,9 @@ impl AgentFanout {
     fn close_lane(&self, pane: PaneId) {
         let lane = self.lanes.lock().remove(&pane);
         if let Some(lane) = lane {
-            self.parked.lock().insert(pane, lane.next_seq);
+            self.parked
+                .lock()
+                .insert(pane, (lane.next_seq, lane.next_reclaim_id));
         }
     }
 
@@ -711,7 +704,9 @@ impl AgentFanout {
                 publisher.publish_agent_updates(lane.generation, pane, first_seq, items, None);
             }
         }
-        self.parked.lock().insert(pane, lane.next_seq);
+        self.parked
+            .lock()
+            .insert(pane, (lane.next_seq, lane.next_reclaim_id));
     }
 
     fn published_state(&self, pane: PaneId) -> Option<AgentPaneWire> {
@@ -2427,6 +2422,84 @@ mod tests {
             std::thread::sleep(Duration::from_millis(2));
         }
         panic!("the original lane stopped delivering after a duplicate open");
+    }
+
+    #[test]
+    fn closing_a_busy_chat_hands_its_queue_back_to_the_composer() {
+        let recorder = Arc::new(Recorder::default());
+        let publisher: Arc<dyn AgentPublisher> = Arc::<Recorder>::clone(&recorder);
+        let runtime = AgentRuntime::new(&publisher, AgentSpawnConfig::default(), None);
+        runtime.set_runner_factory(Box::new(|spec| {
+            fixture_runner(
+                spec.provider,
+                Behavior::Hang,
+                zz_protocol::AgentAutoApprove::Off,
+                true,
+            )
+        }));
+        let pane = PaneId(46);
+        let spec = AgentPaneSpec {
+            model: None,
+            effort: None,
+            provider: AgentProvider::Codex,
+            cwd: PathBuf::from("/"),
+            resume_session: None,
+            auto_approve: None,
+            workspace: crate::agent::environment::AgentWorkspaceEnvironment::default(),
+        };
+        let prompt = |text: &str| AgentPrompt {
+            owner: ClientInstanceId(7),
+            text: text.to_owned(),
+            images: Vec::new(),
+        };
+        let deadline = Instant::now() + DEADLINE;
+        let wait = |done: &dyn Fn(&AgentPaneState) -> bool, what: &str| {
+            while !runtime
+                .host
+                .snapshot_state(pane)
+                .is_some_and(|state| done(&state))
+            {
+                assert!(Instant::now() < deadline, "{what}");
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        };
+        for (running, waiting) in [("running", "waiting"), ("running again", "waiting again")] {
+            assert!(runtime.open(pane, spec.clone()));
+            wait(&|state| state.session_id.is_some(), "the chat never opened");
+            assert!(runtime.prompt(pane, prompt(running)));
+            wait(
+                &|state| state.phase == AgentConnectionPhase::Running,
+                "the turn never ran",
+            );
+            assert!(runtime.prompt(pane, prompt(waiting)));
+            wait(
+                &|state| state.queued_prompts == 1,
+                "the prompt never queued",
+            );
+            runtime.close_and_wait(pane);
+        }
+
+        let restored = recorder
+            .payloads()
+            .into_iter()
+            .filter_map(|item| match item.payload {
+                AgentStreamPayload::PromptsRestored {
+                    reclaim_id,
+                    prompts,
+                } => Some((reclaim_id, prompts[0].owner, prompts[0].text.clone())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            restored,
+            [
+                (1, ClientInstanceId(7), "running".to_owned()),
+                (2, ClientInstanceId(7), "waiting".to_owned()),
+                (3, ClientInstanceId(7), "running again".to_owned()),
+                (4, ClientInstanceId(7), "waiting again".to_owned()),
+            ]
+        );
+        runtime.shutdown();
     }
 
     #[test]

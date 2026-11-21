@@ -188,7 +188,7 @@ impl Shared {
     #[cfg(all(feature = "agent", unix))]
     pub(super) fn switch_agent_account(self: &Arc<Self>, pane: PaneId, account: Option<String>) {
         if let Some(runtime) = self.open_agent_runtime() {
-            runtime.close_for_reopen(pane);
+            runtime.close_and_wait(pane);
         }
         let changed = self
             .inner
