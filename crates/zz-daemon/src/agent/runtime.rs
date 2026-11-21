@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     future::Future,
     path::PathBuf,
     str::FromStr as _,
@@ -156,10 +156,10 @@ struct PromptControls {
 #[derive(Default)]
 struct RuntimeRouting {
     live_sessions: HashSet<String>,
-    staged_updates: HashMap<String, Vec<SessionUpdate>>,
+    staged_updates: HashMap<String, VecDeque<(usize, SessionUpdate)>>,
     staged_update_count: usize,
     staged_update_bytes: usize,
-    staged_overflowed: bool,
+    staged_skipped: usize,
     pending_new_session: bool,
     user_echo_turn: Option<(String, u64)>,
     permissions: HashMap<u64, PendingPermissionResponder>,
@@ -192,7 +192,7 @@ impl RuntimeRouting {
     fn begin_staging(&mut self, session_id: &str) {
         self.clear_staging();
         self.staged_updates
-            .insert(session_id.to_owned(), Vec::new());
+            .insert(session_id.to_owned(), VecDeque::new());
     }
 
     fn begin_new_session(&mut self) {
@@ -203,16 +203,19 @@ impl RuntimeRouting {
     fn claim_new_session(&mut self, session_id: &str) {
         self.pending_new_session = false;
         self.staged_updates.retain(|id, _| id == session_id);
-        self.staged_updates
+        let staged = self
+            .staged_updates
             .entry(session_id.to_owned())
             .or_default();
+        self.staged_update_count = staged.len();
+        self.staged_update_bytes = staged.iter().map(|(bytes, _)| bytes).sum();
     }
 
     fn clear_staging(&mut self) {
         self.staged_updates.clear();
         self.staged_update_count = 0;
         self.staged_update_bytes = 0;
-        self.staged_overflowed = false;
+        self.staged_skipped = 0;
         self.pending_new_session = false;
     }
 
@@ -228,26 +231,35 @@ impl RuntimeRouting {
         }
         let bytes =
             serde_json::to_vec(&update).map_or(MAX_STAGED_UPDATE_BYTES + 1, |value| value.len());
-        if self.staged_update_count >= MAX_STAGED_UPDATES
-            || self.staged_update_bytes.saturating_add(bytes) > MAX_STAGED_UPDATE_BYTES
-        {
-            self.staged_overflowed = true;
-            return Ok(());
-        }
-        self.staged_updates
+        let staged = self
+            .staged_updates
             .entry(session_id.to_owned())
-            .or_default()
-            .push(update);
+            .or_default();
+        staged.push_back((bytes, update));
         self.staged_update_count += 1;
         self.staged_update_bytes += bytes;
+        while self.staged_update_count > MAX_STAGED_UPDATES
+            || self.staged_update_bytes > MAX_STAGED_UPDATE_BYTES
+        {
+            let Some((dropped, _)) = staged.pop_front() else {
+                break;
+            };
+            self.staged_update_count = self.staged_update_count.saturating_sub(1);
+            self.staged_update_bytes = self.staged_update_bytes.saturating_sub(dropped);
+            self.staged_skipped += 1;
+        }
         Ok(())
     }
 
     fn drain_staging(&mut self, session_id: &str) -> Vec<SessionUpdate> {
-        self.staged_updates
-            .get_mut(session_id)
-            .map(std::mem::take)
-            .unwrap_or_default()
+        let Some(staged) = self.staged_updates.get_mut(session_id) else {
+            return Vec::new();
+        };
+        self.staged_update_count = self.staged_update_count.saturating_sub(staged.len());
+        self.staged_update_bytes = self
+            .staged_update_bytes
+            .saturating_sub(staged.iter().map(|(bytes, _)| bytes).sum());
+        staged.drain(..).map(|(_, update)| update).collect()
     }
 }
 
@@ -572,16 +584,17 @@ async fn complete_staged_session(
 
     let mut final_payload = Some(final_payload);
     loop {
-        let staged = {
+        let (staged, skipped) = {
             let mut routes = routing.lock();
-            if routes.staged_overflowed {
-                routes.clear_staging();
-                return Err(agent_client_protocol::Error::internal_error().data(format!(
-                    "agent session replay exceeded {MAX_STAGED_UPDATES} updates or {MAX_STAGED_UPDATE_BYTES} bytes"
-                )));
-            }
-            routes.drain_staging(session_id)
+            let skipped = std::mem::take(&mut routes.staged_skipped);
+            (routes.drain_staging(session_id), skipped)
         };
+        if skipped > 0 {
+            log::info!(
+                target: "zz::agent",
+                "session {session_id} replayed more than {MAX_STAGED_UPDATES} updates or {MAX_STAGED_UPDATE_BYTES} bytes; skipped the oldest {skipped}"
+            );
+        }
         for update in staged {
             let payload = update_payload(&update)?;
             if record_replay {
@@ -592,12 +605,6 @@ async fn complete_staged_session(
 
         let retry_payload = {
             let mut routes = routing.lock();
-            if routes.staged_overflowed {
-                routes.clear_staging();
-                return Err(agent_client_protocol::Error::internal_error().data(format!(
-                    "agent session replay exceeded {MAX_STAGED_UPDATES} updates or {MAX_STAGED_UPDATE_BYTES} bytes"
-                )));
-            }
             if routes
                 .staged_updates
                 .get(session_id)
@@ -2151,5 +2158,55 @@ mod tests {
             Some("titled")
         );
         assert_eq!(clean_session_metadata("   ", 64), None);
+    }
+
+    #[test]
+    fn a_session_too_long_to_replay_opens_on_its_newest_updates() {
+        let routing = Arc::new(Mutex::new(RuntimeRouting::default()));
+        routing.lock().begin_staging("long");
+        for index in 0..MAX_STAGED_UPDATES + 3 {
+            let chunk = ContentChunk::new(ContentBlock::Text(TextContent::new(index.to_string())));
+            assert!(
+                routing
+                    .lock()
+                    .stage("long", SessionUpdate::AgentMessageChunk(chunk))
+                    .is_ok()
+            );
+        }
+        let (events, received) = async_channel::unbounded();
+        futures_lite::future::block_on(complete_staged_session(
+            &routing,
+            &events,
+            None,
+            AgentProvider::Grok,
+            "long",
+            None,
+            Vec::new(),
+            AgentStreamPayload::SessionReady {
+                session_id: "long".to_owned(),
+                modes: None,
+                config_options: None,
+            },
+            false,
+            false,
+        ))
+        .expect("the session opens");
+        let mut sent = std::iter::from_fn(|| received.try_recv().ok()).collect::<Vec<_>>();
+        assert!(matches!(
+            sent.pop(),
+            Some(AgentStreamPayload::SessionReady { session_id, .. }) if session_id == "long"
+        ));
+        assert_eq!(
+            sent.iter()
+                .map(|payload| match payload {
+                    AgentStreamPayload::Update { update } => update["content"]["text"].clone(),
+                    other => panic!("unexpected payload {other:?}"),
+                })
+                .collect::<Vec<_>>(),
+            (3..MAX_STAGED_UPDATES + 3)
+                .map(|index| Value::from(index.to_string()))
+                .collect::<Vec<_>>()
+        );
+        assert!(routing.lock().live_sessions.contains("long"));
     }
 }
