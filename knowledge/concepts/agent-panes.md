@@ -1329,7 +1329,9 @@ The full delivery contract is in the
   queues `AgentLagged`, so a slow client replays instead of being disconnected.
 - **Replay.** Each pane keeps an 18 MiB ring of encoded items (`MAX_REPLAY_RING_BYTES`); a replay
   older than the ring takes the reset path the runtime design describes. A driver that resumes a
-  session replays its history from the CLI's own file first.
+  session replays its history from the CLI's own file first. A pane's numbers never start over
+  within a daemon process, so a client's position stays good across reconnects to the same
+  daemon (`server_id` in the hello).
 - **Visibility.** The heavy stream goes to clients for whom the pane is an agent pane in their
   focused window, honoring zoom (`visible_agent_panes`), and to clients watching the pane.
   `AgentState` goes to every client attached to the session and to the pane's watchers, and a
@@ -1339,8 +1341,11 @@ The full delivery contract is in the
   while its connection is the host on screen and the pane is in the attached session; any other
   chat is paused: its updates are dropped and its position stays where it was. When it turns live
   again the client sends `AgentReplay` from its position plus one (`AgentCursor::resume_from`), so
-  the daemon sends only what it missed. A new chat, one that stopped being a chat, and every chat
-  after a new hello start over from 0. Each buffer carries a stream number
+  the daemon sends only what it missed. A new chat and one that stopped being a chat start over
+  from 0. After a new hello the client keeps every position when the hello's `server_id` matches
+  the one the positions came from and the daemon's revision is 8 or more; a daemon with the same
+  `server_id` and an older revision keeps the list of chats it watches but not the positions, and a
+  different `server_id` starts everything over. Each buffer carries a stream number
   (`Connection::agent_stream`); a chat view that sees a different number starts its transcript
   over. The buffers are capped by bytes only (`MAX_AGENT_HISTORY_BYTES`, 32 MiB per chat and per
   connection), and `AgentCursor::trimmed` records the newest item the cap dropped: a view that had

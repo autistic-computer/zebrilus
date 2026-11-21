@@ -456,6 +456,7 @@ struct PaneLane {
     generation: u64,
     provider: AgentProvider,
     next_seq: u64,
+    opened_at: u64,
     evicted_seq: u64,
     batch: Vec<Vec<u8>>,
     batch_bytes: usize,
@@ -563,6 +564,7 @@ impl PaneLane {
             generation,
             provider,
             next_seq: 1,
+            opened_at: 1,
             evicted_seq: 0,
             batch: Vec::new(),
             batch_bytes: 0,
@@ -677,6 +679,7 @@ impl AgentFanout {
         let mut lane = PaneLane::new(generation, provider, session_id);
         if let Some(next_seq) = self.parked.lock().remove(&pane) {
             lane.next_seq = next_seq;
+            lane.opened_at = next_seq;
             lane.evicted_seq = next_seq.saturating_sub(1);
         }
         self.lanes.lock().insert(pane, lane);
@@ -684,8 +687,10 @@ impl AgentFanout {
     }
 
     fn close_lane(&self, pane: PaneId) {
-        self.parked.lock().remove(&pane);
-        self.lanes.lock().remove(&pane);
+        let lane = self.lanes.lock().remove(&pane);
+        if let Some(lane) = lane {
+            self.parked.lock().insert(pane, lane.next_seq);
+        }
     }
 
     fn park_lane(&self, pane: PaneId) {
@@ -1021,22 +1026,26 @@ impl AgentFanout {
             publisher.send_agent_replay(generation, client, pane, frames);
             return;
         }
+        let intact = lane.evicted_seq.saturating_add(1) == lane.opened_at;
         let replay = lane
             .session_id
             .as_deref()
             .zip(self.journal.as_ref())
+            .filter(|_| !intact)
             .filter(|(session_id, journal)| journal.is_complete_for(lane.provider, session_id))
             .and_then(|(session_id, journal)| journal.replay_for(lane.provider, session_id).ok());
         let Some(replay) = replay else {
             for (first_seq, items) in lane.take_batch() {
                 publisher.publish_agent_updates(generation, pane, first_seq, items, None);
             }
-            log::warn!(
-                target: "zz::agent",
-                "replaying pane {pane} for client {client} from memory alone: \
-                 asked for {from_seq}, memory starts at {}, and the journal cannot vouch for the rest",
-                lane.evicted_seq.saturating_add(1),
-            );
+            if !intact {
+                log::warn!(
+                    target: "zz::agent",
+                    "replaying pane {pane} for client {client} from memory alone: \
+                     asked for {from_seq}, memory starts at {}, and the journal cannot vouch for the rest",
+                    lane.evicted_seq.saturating_add(1),
+                );
+            }
             let first_seq = lane.evicted_seq;
             let reset = AgentStreamItem {
                 seq: first_seq,
@@ -1052,12 +1061,14 @@ impl AgentFanout {
                     .filter(|(seq, _)| *seq > first_seq)
                     .map(|(_, encoded)| encoded.clone()),
             );
-            let mut metadata = Vec::new();
-            metadata.extend(lane.ready.clone());
-            metadata.extend(lane.recovery_metadata());
-            metadata.extend(lane.chat_recovery());
-            for payload in metadata {
-                lane.stamp_recovery(pane, payload, &mut items, true);
+            if !intact {
+                let mut metadata = Vec::new();
+                metadata.extend(lane.ready.clone());
+                metadata.extend(lane.recovery_metadata());
+                metadata.extend(lane.chat_recovery());
+                for payload in metadata {
+                    lane.stamp_recovery(pane, payload, &mut items, true);
+                }
             }
             publisher.send_agent_replay(generation, client, pane, split_frames(first_seq, items));
             drop(lanes);
@@ -2196,6 +2207,64 @@ mod tests {
                 .all(|item| !matches!(item.payload, AgentStreamPayload::SessionReset { .. })),
             "no viewer that did not ask is reset"
         );
+    }
+
+    #[test]
+    fn a_reopened_chat_continues_its_numbers_and_replays_only_to_the_asker() {
+        let fixture = Fixture::open(None, Some("s-1"));
+        for text in ["a", "b", "c", "d", "e"] {
+            fixture.chunk(text);
+        }
+        fixture.recorder.wait_for_items(5);
+        fixture.fanout.close_lane(fixture.pane);
+        fixture.fanout.open_lane(
+            fixture.pane,
+            2,
+            AgentProvider::Codex,
+            Some("s-1".to_owned()),
+        );
+        for text in ["f", "g", "h"] {
+            fixture.accept_generation(
+                2,
+                AgentStreamPayload::Update {
+                    update: json!({ "sessionUpdate": "agent_message_chunk", "content": { "text": text } }),
+                },
+            );
+        }
+        let items = fixture.recorder.wait_for_items(8);
+        assert_eq!(
+            items.iter().map(|item| item.seq).collect::<Vec<_>>(),
+            [1, 2, 3, 4, 5, 6, 7, 8]
+        );
+        let broadcast = fixture.recorder.broadcast.lock().len();
+
+        fixture.fanout.replay(ClientId(9), fixture.pane, 0);
+        let direct = fixture
+            .recorder
+            .direct
+            .lock()
+            .iter()
+            .flat_map(|(client, _, _, items)| items.iter().map(move |item| (*client, item.clone())))
+            .map(|(client, item)| {
+                let item: AgentStreamItem = serde_json::from_slice(&item).expect("decode item");
+                let text = text_of(&item);
+                let reset = matches!(
+                    item.payload,
+                    AgentStreamPayload::SessionReset { restoring: true }
+                );
+                (client, item.seq, reset, text)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            direct,
+            [
+                (ClientId(9), 5, true, None),
+                (ClientId(9), 6, false, Some("f".to_owned())),
+                (ClientId(9), 7, false, Some("g".to_owned())),
+                (ClientId(9), 8, false, Some("h".to_owned())),
+            ]
+        );
+        assert_eq!(fixture.recorder.broadcast.lock().len(), broadcast);
     }
 
     #[test]

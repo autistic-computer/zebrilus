@@ -264,6 +264,8 @@ pub enum CoreDetachReason {
 #[derive(Debug, Default)]
 pub struct ClientCore {
     hello_received: bool,
+    server_id: u64,
+    server_revision: u32,
     server_clock: u64,
     host_platform: zz_protocol::HostPlatform,
     capabilities: Vec<String>,
@@ -545,12 +547,24 @@ impl ClientCore {
     }
 
     #[must_use]
+    pub const fn server_id(&self) -> u64 {
+        self.server_id
+    }
+
+    #[must_use]
+    pub const fn server_revision(&self) -> u32 {
+        self.server_revision
+    }
+
+    #[must_use]
     pub const fn host_platform(&self) -> zz_protocol::HostPlatform {
         self.host_platform
     }
 
     pub fn adopt_welcome(&mut self, welcome: Welcome) {
         self.hello_received = true;
+        self.server_id = welcome.server_id;
+        self.server_revision = welcome.revision;
         self.server_clock = welcome.clock;
         self.host_platform = welcome.platform;
         self.capabilities = welcome.capability_strings();
@@ -834,7 +848,7 @@ impl ClientCore {
         self.command_output_watermark = 0;
         let ServerHello {
             protocol_version: _,
-            server_id: _,
+            server_id,
             client_id: _,
             client_instance_id: _,
             capabilities,
@@ -845,9 +859,11 @@ impl ClientCore {
             key_tables,
             clock,
             platform,
-            revision: _,
+            revision,
         } = hello;
         self.hello_received = true;
+        self.server_id = server_id;
+        self.server_revision = revision;
         self.server_clock = clock;
         self.host_platform = platform;
         self.capabilities = capabilities;

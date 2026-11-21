@@ -514,11 +514,6 @@ impl AgentPane {
                     event,
                     zz_client::CoreEvent::HelloReceived | zz_client::CoreEvent::Attached { .. }
                 ) {
-                    if matches!(event, zz_client::CoreEvent::HelloReceived) {
-                        this.transcript = Transcript::default();
-                        this.usage = None;
-                        this.last_sequence = 0;
-                    }
                     this.resume_for = None;
                     if this.upload.take().is_some() {
                         this.draft_error = Some(UPLOAD_LOST.to_owned());
@@ -1217,6 +1212,7 @@ impl AgentPane {
         if stream != self.stream {
             self.stream = stream;
             self.transcript = Transcript::default();
+            self.usage = None;
             self.last_sequence = 0;
         }
         let events = self.connection.read(cx).agent_events.get(&self.pane);

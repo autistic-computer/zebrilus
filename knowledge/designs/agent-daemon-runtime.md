@@ -162,6 +162,18 @@ can close one adapter and open another without resetting the client cursor or ad
 from the old child. A retiring generation may deliver only `PromptsReclaimed`, which preserves the
 queue without accepting stale adapter state or output.
 
+Since `REVISION` 8 a pane's sequence never starts over within one daemon process: a lane that closes
+(a flip to the CLI, a pane that stops being a chat) leaves its next number in `parked`, and the
+next lane for that pane continues from it (`PaneLane::opened_at`). A client's position, read
+together with the daemon's `server_id` from the hello, is therefore good across reconnects: the
+phone and web clients keep their positions when a new hello carries the same `server_id` and a
+revision of 8 or more, and start over otherwise. A replay from a position older than a lane that
+has evicted nothing since it opened goes to the asking client alone, as a restoring
+`SessionReset` stamped one below the lane's first number followed by the whole ring; it skips the
+journal and mints no numbers. A replay older than a ring that did evict still stamps its closing
+metadata and the chat's recovery live, so every viewer of the pane gets them: those items take
+shared numbers, and a viewer left without them would see a gap and fetch the same items by replay.
+
 # Daemon host (`zz-daemon/src/agent/`)
 
 Behind an `agent` cargo feature (`default = ["agent"]`; `zz-tui` depends only on

@@ -86,6 +86,7 @@ pub struct Connection {
     next_agent_stream: u64,
     watched_agents: BTreeSet<PaneId>,
     live_agents: BTreeSet<PaneId>,
+    agent_epoch: Option<u64>,
     pub flips: zz_client::agent_flip::AgentFlips,
     terminal_images: crate::terminal_images::TerminalImages,
     pasted_images: crate::terminal_images::PastedImages,
@@ -169,6 +170,7 @@ enum TerminalThemes {
 }
 
 const LINK_TAP_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+const RESUMABLE_AGENT_REVISION: u32 = 8;
 
 impl Connection {
     pub fn expect_link_tap(&mut self, pane: PaneId) {
@@ -212,6 +214,7 @@ impl Connection {
             next_agent_stream: 0,
             watched_agents: BTreeSet::new(),
             live_agents: BTreeSet::new(),
+            agent_epoch: None,
             flips: zz_client::agent_flip::AgentFlips::default(),
             terminal_images: crate::terminal_images::TerminalImages::default(),
             pasted_images: crate::terminal_images::PastedImages::default(),
@@ -419,6 +422,22 @@ impl Connection {
         self.agent_cursors.clear();
         self.agent_streams.clear();
         self.live_agents.clear();
+    }
+
+    fn adopt_agent_epoch(&mut self) {
+        let epoch = self.core.server_id();
+        if self.agent_epoch != Some(epoch) {
+            self.forget_agent_streams();
+            self.watched_agents.clear();
+        } else if self.core.server_revision() < RESUMABLE_AGENT_REVISION {
+            self.forget_agent_streams();
+        } else {
+            self.live_agents.clear();
+            for cursor in self.agent_cursors.values_mut() {
+                cursor.replay_pending = false;
+            }
+        }
+        self.agent_epoch = Some(epoch);
     }
 
     fn agent_cursor(&mut self, pane: PaneId) -> &mut AgentCursor {
@@ -1487,7 +1506,7 @@ impl Connection {
                         self.failures = 0;
                     }
                     self.pasted_images.clear();
-                    self.forget_agent_streams();
+                    self.adopt_agent_epoch();
                     let target = self.remembered_session.map_or_else(
                         || {
                             #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -3044,6 +3063,86 @@ mod tests {
                 lens.chat.items[&ItemId::new("a1")].body.text,
                 "word ".repeat(PIECES)
             );
+        });
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[ala::test]
+    fn a_new_hello_resumes_chats_only_from_the_same_daemon(cx: &mut ala::TestAppContext) {
+        use ala::AppContext as _;
+        use zz_protocol::{
+            AgentDescriptor, AgentProvider, Event, EventPayload, PaneId, PaneKindSnapshot,
+            SessionId,
+        };
+
+        let pane = PaneId(1);
+        let hello = |server_id| {
+            ProtocolMessage::ServerHello(Box::new(zz_protocol::ServerHello {
+                protocol_version: zz_protocol::PROTOCOL_VERSION,
+                server_id,
+                client_id: zz_protocol::ClientId(1),
+                client_instance_id: zz_protocol::ClientInstanceId(1),
+                capabilities: Vec::new(),
+                appearance: zz_terminal::TerminalAppearance::default(),
+                appearance_provenance: zz_terminal::AppearanceProvenance::default(),
+                mux_options: zz_protocol::MuxOptions::default(),
+                status: zz_protocol::StatusLine::default(),
+                key_tables: Vec::new(),
+                clock: 0,
+                platform: zz_protocol::HostPlatform::default(),
+                revision: zz_protocol::REVISION,
+            }))
+        };
+        let attached = || ProtocolMessage::Attached {
+            session: SessionId(1),
+            snapshot: single_pane_snapshot(
+                1,
+                pane,
+                PaneKindSnapshot::Agent(AgentDescriptor {
+                    provider: AgentProvider::ClaudeCode,
+                    ..AgentDescriptor::default()
+                }),
+            ),
+            read_only: false,
+            client_flags: String::new(),
+        };
+        let connection = cx.new(super::Connection::new);
+        let sent = connection.update(cx, |connection, _| connection.record_input_for_test());
+        let replays = || {
+            sent.borrow()
+                .iter()
+                .filter_map(|message| match message {
+                    ProtocolMessage::AgentReplay {
+                        pane: target,
+                        from_seq,
+                    } if *target == pane => Some(*from_seq),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        connection.update(cx, |connection, cx| {
+            connection.handle_message_for_test(hello(7), cx);
+            connection.handle_message_for_test(attached(), cx);
+            connection.handle_message_for_test(
+                ProtocolMessage::Event(Event {
+                    sequence: 1,
+                    payload: EventPayload::AgentUpdates {
+                        pane,
+                        first_seq: 1,
+                        items: (1..=50).map(blob).collect(),
+                    },
+                }),
+                cx,
+            );
+            connection.handle_message_for_test(hello(7), cx);
+            connection.handle_message_for_test(attached(), cx);
+            assert_eq!(replays(), [0, 51]);
+            assert_eq!(connection.agent_events[&pane].len(), 50);
+
+            connection.handle_message_for_test(hello(9), cx);
+            connection.handle_message_for_test(attached(), cx);
+            assert_eq!(replays(), [0, 51, 0]);
+            assert!(!connection.agent_events.contains_key(&pane));
         });
     }
 
