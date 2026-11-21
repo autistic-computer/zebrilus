@@ -601,6 +601,11 @@ CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
 - **Antigravity.** The conversation is the one whose `conversations/<uuid>.db` file the `agy`
   process holds open, else the one `--conversation <id>` names (`cli_session::agy_session`). Model
   and effort come from its `--model` and `--effort` arguments only.
+- **Which process.** Antigravity and Grok read the `agy` or `grok` process in the pane's
+  foreground process group, else the first one under the pane's shell. Both read files keyed to
+  that one process, so two TUIs in one folder each flip to their own session, and a pane with a
+  TUI stopped with ctrl-z behind another flips the one on screen (agy stops on ctrl-z; grok, as of
+  1.0.92, takes ctrl-z as a key and never leaves the foreground).
 
 # Antigravity
 
@@ -714,8 +719,7 @@ tested approves everything.
 
 **Known gaps in the shared runtime.** A load that replays more than 4,096 updates or 18 MiB
 opens on the newest and drops the oldest, with a log line only: nothing in the chat says older
-history was left out. The latest title among the dropped updates is still applied. A pane with two TUIs of one provider flips the first
-one found. A client that recovers from the journal sees the agent's own name for the effort
+history was left out. The latest title among the dropped updates is still applied. A client that recovers from the journal sees the agent's own name for the effort
 option until the recovery metadata that follows replaces the list.
 
 # Cursor
