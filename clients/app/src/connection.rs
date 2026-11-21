@@ -328,7 +328,14 @@ impl Connection {
             .difference(&self.live_agents)
             .copied()
             .collect::<Vec<_>>();
+        let paused = self
+            .live_agents
+            .difference(&live)
+            .filter(|pane| self.watched_agents.contains(pane))
+            .copied()
+            .collect::<Vec<_>>();
         self.live_agents = live;
+        self.unwatch_agents(paused, cx);
         for pane in woken {
             if self.watched_agents.insert(pane) {
                 self.forget_agent_stream(pane);
@@ -415,6 +422,22 @@ impl Connection {
         self.agent_events.remove(&pane);
         self.agent_cursors.remove(&pane);
         self.agent_streams.remove(&pane);
+    }
+
+    fn unwatches_agents(&self) -> bool {
+        self.core
+            .capabilities()
+            .iter()
+            .any(|capability| capability == zz_protocol::AGENT_UNWATCH_CAPABILITY)
+    }
+
+    fn unwatch_agents(&mut self, panes: Vec<PaneId>, cx: &mut Context<Self>) {
+        if !self.unwatches_agents() {
+            return;
+        }
+        for pane in panes {
+            self.send(ProtocolMessage::AgentUnwatch { pane }, cx);
+        }
     }
 
     fn forget_agent_streams(&mut self) {
@@ -853,7 +876,10 @@ impl Connection {
             return;
         }
         self.background = true;
-        self.live_agents.clear();
+        let paused = std::mem::take(&mut self.live_agents);
+        if self.connected {
+            self.unwatch_agents(paused.into_iter().collect(), cx);
+        }
         #[cfg(any(target_os = "ios", target_os = "android"))]
         if let Some(client) = &self.client {
             client.set_loopback_discovery(false);
@@ -1525,7 +1551,12 @@ impl Connection {
                     if self.background {
                         self.status = "Connected".into();
                         self.send(ProtocolMessage::Resync, cx);
-                        self.replay_agent_streams(cx);
+                        if self.unwatches_agents() {
+                            let watched = self.watched_agents.iter().copied().collect();
+                            self.unwatch_agents(watched, cx);
+                        } else {
+                            self.replay_agent_streams(cx);
+                        }
                     } else if !self.attaching {
                         self.attach_target(target, cx);
                     }

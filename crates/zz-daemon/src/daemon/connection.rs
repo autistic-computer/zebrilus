@@ -1193,6 +1193,7 @@ impl Session {
             | ProtocolMessage::AgentAuthenticate { .. }
             | ProtocolMessage::AgentSessionOp { .. }
             | ProtocolMessage::AgentReplay { .. }
+            | ProtocolMessage::AgentUnwatch { .. }
             | ProtocolMessage::AgentAcknowledgePromptRestore { .. }
             | ProtocolMessage::AgentAnswerQuestion { .. }
             | ProtocolMessage::AgentStopTask { .. }
@@ -1200,6 +1201,7 @@ impl Session {
                 let read_only_blocked = !matches!(
                     message,
                     ProtocolMessage::AgentReplay { .. }
+                        | ProtocolMessage::AgentUnwatch { .. }
                         | ProtocolMessage::AgentAcknowledgePromptRestore { .. }
                 ) && shared.inner.lock().client_flags.contains(client);
                 if read_only_blocked {

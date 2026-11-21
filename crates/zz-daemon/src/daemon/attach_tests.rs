@@ -604,6 +604,7 @@ fn a_server_hello_lists_the_daemon_capabilities_without_the_control_plane() {
         "agent-setup-v1",
         "daemon-identity-v1",
         "agent-files-v1",
+        "agent-unwatch-v1",
     ];
     let (_, hello) =
         shared.register_subscribed(ClientKind::Command, None, None, OutboundMailbox::new());

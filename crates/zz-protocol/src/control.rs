@@ -24,6 +24,7 @@ pub const AGENT_SETUP_CAPABILITY: &str = "agent-setup-v1";
 pub const DAEMON_IDENTITY_CAPABILITY: &str = "daemon-identity-v1";
 pub const AGENT_FILES_CAPABILITY: &str = "agent-files-v1";
 pub const SIMULATOR_PANE_CAPABILITY: &str = "simulator-pane-v1";
+pub const AGENT_UNWATCH_CAPABILITY: &str = "agent-unwatch-v1";
 pub const MAX_BATCH_FRAMES: usize = 4096;
 
 pub const CAPABILITY_NAMES: &[&str] = &[
@@ -67,6 +68,7 @@ pub const CAPABILITY_NAMES: &[&str] = &[
     AGENT_SETUP_CAPABILITY,
     DAEMON_IDENTITY_CAPABILITY,
     AGENT_FILES_CAPABILITY,
+    AGENT_UNWATCH_CAPABILITY,
 ];
 
 pub const CLIENT_CAPABILITY_NAMES: &[&str] = &[

@@ -58,8 +58,9 @@ matches with no wildcard arm, so a new variant does not compile until it answers
 and `ProtocolMessage::AgentLogin` answer `agent-login-v1`, `ProtocolMessage::TerminalThemesRequest`
 and `TerminalThemesResponse` answer `terminal-themes-v1`, `ProtocolMessage::BrowserScreenshot`
 answers `browser-screenshot-v1`, `ProtocolMessage::AgentAttachFile` and `AgentFileAttached` answer `agent-files-v1`, `ProtocolMessage::FileReadRequest`, `FileReadResponse`,
-`FileWriteRequest` and `FileWriteResponse` answer `file-edit-v1`, and `EventPayload::SimulatorPane`
-and `SimulatorCommand` answer `simulator-pane-v1`.
+`FileWriteRequest` and `FileWriteResponse` answer `file-edit-v1`, `EventPayload::SimulatorPane`
+and `SimulatorCommand` answer `simulator-pane-v1`, and `ProtocolMessage::AgentUnwatch` answers
+`agent-unwatch-v1`.
 
 The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only inside an epoch:
 
@@ -246,7 +247,8 @@ fields in declaration order.
 | `AgentSetMode { pane, mode_id }` | one mode | Switch the session mode |
 | `AgentAuthenticate { pane, method_id }` | one method | Run one advertised authentication method |
 | `AgentSessionOp { pane, op }` | `List { cwd, cursor, replace }` / `New { cwd }` / `Switch { session_id, cwd, additional_directories }` / `Delete { session_id }` | Session management against the pane's adapter; `List` answers with `EventPayload::AgentSessions` |
-| `AgentReplay { pane, from_seq: u64 }` | journal cursor | Replay the pane's agent stream from `from_seq`, then tail it. Sent when a client opens the lens, after `AgentLagged`, and when a lens pane enters the visible set. For a terminal running Claude Code or Codex the daemon first opens its lens runtime; any other pane is refused. The sender watches the pane from then on, attached to its session or not: it gets the pane's `AgentState` at once, then its live `AgentUpdates`, `AgentState` and `AgentLagged` until it disconnects or the pane closes |
+| `AgentReplay { pane, from_seq: u64 }` | journal cursor | Replay the pane's agent stream from `from_seq`, then tail it. Sent when a client opens the lens, after `AgentLagged`, and when a lens pane enters the visible set. For a terminal running Claude Code or Codex the daemon first opens its lens runtime; any other pane is refused. The sender watches the pane from then on, attached to its session or not: it gets the pane's `AgentState` at once, then its live `AgentUpdates`, `AgentState` and `AgentLagged` until it disconnects or the pane closes. A replay also ends an `AgentUnwatch` the sender sent for the pane |
+| `AgentUnwatch { pane }` | stream off, state on | Client → daemon, gated by `agent-unwatch-v1`: stop sending the pane's `AgentUpdates` (and so `AgentLagged`) to the sender and drop the ones already queued for it, whether it sees the pane in its focused window or watches it. The sender becomes a watcher if it was not one, so the pane's `AgentState` keeps reaching it, at once and on every change. The next `AgentReplay` for the pane turns the stream back on. The phone and web clients send it for a chat that stops being on screen and, after a hello on a host in the background, for every chat they watch |
 | `AgentAcknowledgePromptRestore { pane, reclaim_id }` | one restored draft | Retire one daemon-cached recovered prompt after its owning client has put it back in the composer, preventing a later replay from restoring it again |
 | `PrepareCommandList { request_id, commands }` | request identity plus `Vec<CommandInvocation>` | Client → daemon: freeze one live alias layer for a complete command unit under one mux lock. Preparation performs no command effects, target or format resolution, hook emission, message publication, or authorization |
 | `PreparedCommandList { request_id, commands }` | request identity plus one `PreparedCommand` per input | Daemon → client: return the immutable invocation, optional canonical identity, `alias_matched`, and `Ready` or a typed `ServerError`. Multi-command and empty aliases return their opaque invocation with `canonical_name: None`, `alias_matched: true`, and `Ready`. The echoed request ID lets a client ignore stale replies while notifications share the stream |

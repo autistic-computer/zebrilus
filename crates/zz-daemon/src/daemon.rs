@@ -34504,6 +34504,7 @@ impl Shared {
         for client in inner.clients.values_mut() {
             for pane in panes {
                 client.watched_agents.remove(pane);
+                client.muted_agents.remove(pane);
             }
         }
     }
@@ -34579,11 +34580,15 @@ impl Shared {
                 let watcher = {
                     let mut inner = self.inner.lock();
                     match inner.client_mut(client) {
-                        Some(entry) if !entry.watched_agents.contains(&pane) => {
-                            entry.watched_agents.insert(pane);
-                            entry.subscriber.clone()
+                        Some(entry) => {
+                            entry.muted_agents.remove(&pane);
+                            entry
+                                .watched_agents
+                                .insert(pane)
+                                .then(|| entry.subscriber.clone())
+                                .flatten()
                         }
-                        _ => None,
+                        None => None,
                     }
                 };
                 if let Some(subscriber) = watcher
@@ -34592,6 +34597,23 @@ impl Shared {
                     Self::send_event(&subscriber, EventPayload::AgentState { pane, state });
                 }
                 runtime.replay(client, pane, from_seq);
+                return Ok(());
+            }
+            ProtocolMessage::AgentUnwatch { .. } => {
+                let (subscriber, watching) = {
+                    let mut inner = self.inner.lock();
+                    let Some(entry) = inner.client_mut(client) else {
+                        return Ok(());
+                    };
+                    entry.muted_agents.insert(pane);
+                    (entry.subscriber.clone(), entry.watched_agents.insert(pane))
+                };
+                if let Some(subscriber) = subscriber {
+                    subscriber.cancel_agent(pane);
+                    if watching && let Some(state) = runtime.wire_state(pane) {
+                        Self::send_event(&subscriber, EventPayload::AgentState { pane, state });
+                    }
+                }
                 return Ok(());
             }
             ProtocolMessage::AgentAcknowledgePromptRestore { reclaim_id, .. } => {
@@ -35244,6 +35266,7 @@ fn agent_message_pane(message: &ProtocolMessage) -> Result<PaneId, ServerError> 
         | ProtocolMessage::AgentAuthenticate { pane, .. }
         | ProtocolMessage::AgentSessionOp { pane, .. }
         | ProtocolMessage::AgentReplay { pane, .. }
+        | ProtocolMessage::AgentUnwatch { pane }
         | ProtocolMessage::AgentAcknowledgePromptRestore { pane, .. }
         | ProtocolMessage::AgentAnswerQuestion { pane, .. }
         | ProtocolMessage::AgentStopTask { pane, .. }
@@ -36381,6 +36404,8 @@ struct Client {
     visible_agents: Option<BTreeSet<PaneId>>,
     #[cfg(feature = "agent")]
     watched_agents: BTreeSet<PaneId>,
+    #[cfg(feature = "agent")]
+    muted_agents: BTreeSet<PaneId>,
     published_mux_options: Option<MuxOptions>,
     published_terminal_negotiation: Option<TerminalNegotiation>,
     command_output: Option<CommandOutputSession>,
@@ -47427,6 +47452,7 @@ fn agent_stream_subscribers(
         .filter_map(|client| {
             inner
                 .client(client)
+                .filter(|c| !c.muted_agents.contains(&pane))
                 .and_then(|c| c.subscriber.as_ref())
                 .cloned()
         })
@@ -54475,6 +54501,7 @@ fn handle_connection_message<S: TransportStream>(
             | ProtocolMessage::AgentAuthenticate { .. }
             | ProtocolMessage::AgentSessionOp { .. }
             | ProtocolMessage::AgentReplay { .. }
+            | ProtocolMessage::AgentUnwatch { .. }
             | ProtocolMessage::AgentAcknowledgePromptRestore { .. }
             | ProtocolMessage::AgentAnswerQuestion { .. }
             | ProtocolMessage::AgentStopTask { .. }
@@ -54482,6 +54509,7 @@ fn handle_connection_message<S: TransportStream>(
                 let read_only_blocked = !matches!(
                     message,
                     ProtocolMessage::AgentReplay { .. }
+                        | ProtocolMessage::AgentUnwatch { .. }
                         | ProtocolMessage::AgentAcknowledgePromptRestore { .. }
                 ) && shared.inner.lock().client_flags.contains(client);
                 if read_only_blocked {

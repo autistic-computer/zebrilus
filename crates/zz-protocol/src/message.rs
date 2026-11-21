@@ -4033,6 +4033,9 @@ pub enum ProtocolMessage {
         #[serde(deserialize_with = "deserialize_attachment_result")]
         result: Result<String, String>,
     },
+    AgentUnwatch {
+        pane: PaneId,
+    },
 }
 
 impl ProtocolMessage {
@@ -4130,6 +4133,7 @@ impl ProtocolMessage {
             Self::AgentAttachFile { .. } | Self::AgentFileAttached { .. } => {
                 Some(crate::AGENT_FILES_CAPABILITY)
             }
+            Self::AgentUnwatch { .. } => Some(crate::AGENT_UNWATCH_CAPABILITY),
         }
     }
 }

@@ -1341,7 +1341,10 @@ The full delivery contract is in the
   while its connection is the host on screen and the pane is in the attached session; any other
   chat is paused: its updates are dropped and its position stays where it was. When it turns live
   again the client sends `AgentReplay` from its position plus one (`AgentCursor::resume_from`), so
-  the daemon sends only what it missed. A new chat and one that stopped being a chat start over
+  the daemon sends only what it missed. A daemon with `agent-unwatch-v1` is told with
+  `AgentUnwatch` when a chat pauses, so it stops sending that chat's updates while `AgentState`
+  keeps coming: the overview's working and waiting marks, the unseen dot and the done chime all
+  read `AgentState`, not the updates. A new chat and one that stopped being a chat start over
   from 0. After a new hello the client keeps every position when the hello's `server_id` matches
   the one the positions came from and the daemon's revision is 8 or more; a daemon with the same
   `server_id` and an older revision keeps the list of chats it watches but not the positions, and a
@@ -1357,8 +1360,10 @@ The full delivery contract is in the
   the watch starts. A client can follow an agent this way without attaching to its session, which
   would resize its panes, and an attached client keeps a chat live while its focused window shows
   something else. A client that both sees and watches a pane is
-  sent each frame once, and a watched pane leaving the visible set keeps its queued frames. There is
-  no unwatch message.
+  sent each frame once, and a watched pane leaving the visible set keeps its queued frames.
+  `AgentUnwatch` (`agent-unwatch-v1`) mutes a pane's updates for its sender, seen or watched, and
+  makes it a watcher of the pane's `AgentState`; the next `AgentReplay` unmutes it
+  (`muted_agents` on the client entry).
 
 # Related
 
