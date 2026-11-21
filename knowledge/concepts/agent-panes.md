@@ -1229,7 +1229,8 @@ calls:
   with `_meta.zz.backgroundAgent`, so the host keeps it past the end of the turn
   (`AgentPendingPermission::outlives_turn`) and both clients keep its card. Unlike Codex's
   questions it stays blocking: the chat says it waits for you, and the ask sits under the
-  agent's row.
+  agent's row. Stop interrupts the foreground turn only, and Claude Code leaves a background
+  agent running, so Stop denies the turn's own asks and leaves the agent's ask open.
 - **Callouts.** `> [!NOTE]` style alerts and `:::name title` blocks draw as a flat card washed in
   their tone with an icon and a title (penna's `BlockNode::Callout`).
 - **Preview cards.** With a view opener, mermaid and SVG blocks, code blocks of six lines or more

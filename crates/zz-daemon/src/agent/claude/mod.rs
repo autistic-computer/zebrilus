@@ -226,6 +226,7 @@ pub(crate) async fn run_claude_runtime(
         requests: HashMap::new(),
         next_request: 0,
         permissions: HashMap::new(),
+        background_asks: HashSet::new(),
         turns: TurnState::default(),
         chat: Mutex::default(),
         last_turn: 0,
@@ -590,6 +591,7 @@ struct Runtime {
     requests: HashMap<String, (Outgoing, Instant)>,
     next_request: u64,
     permissions: HashMap<u64, Permission>,
+    background_asks: HashSet<u64>,
     turns: TurnState,
     chat: Mutex<Shadow>,
     last_turn: u64,
@@ -990,14 +992,14 @@ impl Runtime {
                 let owner = self.turns.turn().map(|turn| turn.owner.unwrap_or(0));
                 if owner == Some(turn_id) {
                     self.apply(&Fact::Cancel).await?;
-                    self.cancel_permissions(true).await
+                    self.stop_permissions().await
                 } else if turn_id == 0 && owner.is_none() {
                     self.request(
                         &json!({ "subtype": "interrupt" }),
                         Outgoing::Interrupt,
                         CONTROL_TIMEOUT,
                     );
-                    self.cancel_permissions(true).await
+                    self.stop_permissions().await
                 } else {
                     if turn_id > self.last_turn {
                         self.deferred_cancels.insert(turn_id);
@@ -2118,6 +2120,7 @@ impl Runtime {
         background: Option<String>,
     ) -> Result<u64, String> {
         let request_id = self.permission_ids.fetch_add(1, Ordering::Relaxed);
+        let in_background = background.is_some();
         if let Some(agent) = background {
             tool_call["_meta"]["zz"]["backgroundAgent"] = Value::from(agent);
         }
@@ -2143,6 +2146,11 @@ impl Runtime {
             return Ok(request_id);
         }
         self.permissions.insert(request_id, permission);
+        if in_background {
+            self.background_asks
+                .retain(|id| self.permissions.contains_key(id));
+            self.background_asks.insert(request_id);
+        }
         self.emit(payload).await?;
         Ok(request_id)
     }
@@ -2276,6 +2284,16 @@ impl Runtime {
             })
             .await?;
         }
+        Ok(())
+    }
+
+    async fn stop_permissions(&mut self) -> Result<(), String> {
+        let background = self
+            .permissions
+            .extract_if(|request_id, _| self.background_asks.contains(request_id))
+            .collect::<HashMap<_, _>>();
+        self.cancel_permissions(true).await?;
+        self.permissions.extend(background);
         Ok(())
     }
 

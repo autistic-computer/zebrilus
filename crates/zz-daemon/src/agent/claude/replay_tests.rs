@@ -33,6 +33,7 @@ fn setup() -> (Runtime, Receiver<AgentStreamPayload>) {
         requests: HashMap::new(),
         next_request: 0,
         permissions: HashMap::new(),
+        background_asks: HashSet::new(),
         turns: TurnState::default(),
         chat: Mutex::new(Shadow::recording()),
         last_turn: 0,
@@ -386,6 +387,46 @@ fn an_ask_from_a_background_agent_outlives_the_turn_and_a_foreground_ask_does_no
             (json!("toolu_01CMVtk5BeuLNryViYvdStZN"), true),
         ]
     );
+}
+
+#[test]
+fn stop_answers_the_turn_s_ask_and_leaves_a_background_agent_s_ask_open() {
+    let (mut runtime, receiver) = setup();
+    let recording = background_recording();
+    let at = |dir: &str, subtype: &str| {
+        recording
+            .iter()
+            .position(|entry| {
+                entry["dir"] == dir
+                    && (entry["msg"]["request"]["subtype"] == subtype
+                        || entry["msg"]["response"]["response"]["behavior"] == subtype)
+            })
+            .expect("recorded step")
+    };
+    let (interrupt, answer) = (at("in", "interrupt"), at("in", "allow"));
+    play(&mut runtime, &recording[..interrupt]);
+    let asks = std::iter::from_fn(|| receiver.try_recv().ok())
+        .filter_map(|event| match event {
+            AgentStreamPayload::PermissionRequested {
+                request_id,
+                tool_call,
+                ..
+            } => Some((tool_call["toolCallId"].as_str()?.to_owned(), request_id)),
+            _ => None,
+        })
+        .collect::<HashMap<_, _>>();
+    let foreground = asks["toolu_01LPpEBtdDfksG9zSnXyV14S"];
+    let background = asks["toolu_01CMVtk5BeuLNryViYvdStZN"];
+    smol::block_on(runtime.control(RuntimeControl::Cancel {
+        turn_id: 1,
+        session_id: None,
+    }))
+    .expect("stop");
+    assert_eq!(resolved(&receiver), [(foreground, true)]);
+    play(&mut runtime, &recording[interrupt..answer]);
+    assert_eq!(turn_events(&receiver), [Seen::Finished(1, cancelled())]);
+    smol::block_on(runtime.answer(background, Some("allow".to_owned()))).expect("allow");
+    assert_eq!(resolved(&receiver), [(background, false)]);
 }
 
 fn chat_of(runtime: &Runtime) -> (zz_protocol::chat::ChatView, Vec<String>) {
