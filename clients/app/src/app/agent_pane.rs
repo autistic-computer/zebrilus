@@ -491,7 +491,7 @@ impl AgentPane {
             InputState::new(window, cx)
                 .placeholder(placeholder)
                 .auto_grow(1, 8)
-                .submit_on_enter(true)
+                .submit_on_enter(!super::phone())
                 .context_menu(true)
         });
         let observation = cx.observe(&connection, |this, connection, cx| {
@@ -559,7 +559,9 @@ impl AgentPane {
         );
         let subscription =
             cx.subscribe_in(&input, window, |this, _, event, window, cx| match event {
-                InputEvent::PressEnter { shift: false, .. } => this.enter(window, cx),
+                InputEvent::PressEnter { shift: false, .. } if !super::phone() => {
+                    this.enter(window, cx);
+                }
                 InputEvent::Change => {
                     this.draft_error = None;
                     cx.notify();

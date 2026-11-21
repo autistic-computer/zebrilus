@@ -348,7 +348,8 @@ input view. Number fields in Settings ask for the decimal pad, and the browser c
 `inputmode="decimal"` from the same setting. Pads without a Return key (decimal, numeric,
 phone) get a Done button above them; a comma from the decimal pad is typed as a point. Done,
 or Return in any settings field, commits the value and hides the keyboard. Return in the Hosts
-destination field connects and hides it too.
+destination field connects and hides it too. On iPhone, Return in the agent composer breaks the
+line and the send button sends; on iPad Return sends, as on the desktop.
 
 In the wide layout, pausing after the prefix shows the which-key sheet at the bottom of the
 panes: the core bindings of the prefix table, or of a custom `-T` table, grouped as on the
