@@ -515,29 +515,23 @@ fn codex_cli_session(
     let sessions = cli_session::codex_home().map(|home| home.join("sessions"));
     let held = cli_session::open_rollout(pid);
     let embedded = held.is_some() || cli_session::codex_embedded(&args);
-    let rollout = held.or_else(|| {
-        let sessions = sessions.as_deref()?;
-        let cwd = cwd.as_deref()?;
-        let since = std::time::SystemTime::now()
-            .checked_sub(zz_daemon_client::process_info::running_for(pid)?)?;
-        let mut found = cli_session::rollouts_since(sessions, cwd, since);
-        (found.len() == 1).then(|| found.remove(0))
-    });
+    let since = zz_daemon_client::process_info::running_for(pid)
+        .and_then(|running| std::time::SystemTime::now().checked_sub(running));
     let mut session = cli_session::codex_session(
         sessions.as_deref(),
         cli_session::codex_home().as_deref(),
         &args,
         cwd,
-        rollout,
+        held,
+        since,
     );
     session.pid = Some(pid);
     if !embedded {
         session.running.clear();
     }
     if session.session_id.is_none()
-        && let (Some(sessions), Some(cwd)) = (sessions.as_deref(), session.cwd.as_deref())
-        && let Some(since) = zz_daemon_client::process_info::running_for(pid)
-            .and_then(|running| std::time::SystemTime::now().checked_sub(running))
+        && let (Some(sessions), Some(cwd), Some(since)) =
+            (sessions.as_deref(), session.cwd.as_deref(), since)
         && cli_session::rollouts_since(sessions, cwd, since).len() > 1
     {
         return Err(ServerError::InvalidTarget(format!(

@@ -294,12 +294,16 @@ pub(crate) fn codex_session(
     home: Option<&Path>,
     args: &[String],
     cwd: Option<PathBuf>,
-    rollout: Option<PathBuf>,
+    held: Option<PathBuf>,
+    since: Option<SystemTime>,
 ) -> CliSession {
     let thread = resumed_thread(args);
-    let rollout = rollout.or_else(|| {
-        let thread = thread.as_deref()?;
-        find_rollout(sessions?, thread)
+    let rollout = held.or_else(|| {
+        if let Some(thread) = thread.as_deref() {
+            return find_rollout(sessions?, thread);
+        }
+        let mut found = rollouts_since(sessions?, cwd.as_deref()?, since?);
+        (found.len() == 1).then(|| found.remove(0))
     });
     let meta = rollout.as_deref().and_then(RolloutMeta::read);
     let cwd = meta.as_ref().map(|meta| meta.cwd.clone()).or(cwd);

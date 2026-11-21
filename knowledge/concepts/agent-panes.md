@@ -578,11 +578,13 @@ CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
   the transcript's last assistant line (`message.model`, `effort`) and its "Set model to" and "Set
   effort level to" lines, over the CLI's arguments and settings files (`Facts::claude_launch`);
   a model name the CLI printed becomes its alias for `--model`.
-- **Codex.** The thread is the one `codex resume <id>` names, else the parentless rollout the TUI
-  holds open (embedded), else the one parentless rollout in the TUI's folder modified since it
-  started; two such rollouts refuse the flip and ask for `codex resume <id>`. Model and effort
-  come from the rollout's `turn_context` and `thread_settings_applied` lines over `config.toml`
-  and the arguments.
+- **Codex.** The thread is the parentless rollout the TUI holds open (embedded), else the one
+  `codex resume <id>` names, else the one parentless rollout in the TUI's folder modified since it
+  started; two such rollouts refuse the flip and ask for `codex resume <id>`. A newer rollout in
+  the folder may be another pane's, so it never beats the named thread. A TUI on the shared app
+  server holds no rollout, so after `/new` or `/resume` inside it the flip still opens the thread
+  its command line names. Model and effort come from the rollout's `turn_context` and
+  `thread_settings_applied` lines over `config.toml` and the arguments.
 - **Antigravity.** The conversation is the one whose `conversations/<uuid>.db` file the `agy`
   process holds open, else the one `--conversation <id>` names (`cli_session::agy_session`). Model
   and effort come from its `--model` and `--effort` arguments only.

@@ -170,7 +170,7 @@ fn a_codex_rollout_names_its_thread_settings_and_open_turn() {
     ];
     write_lines(&rollout, &lines);
     let args = words(&["codex", "-m", "gpt-x", "resume", thread]);
-    let found = codex_session(Some(&sessions), None, &args, None, None);
+    let found = codex_session(Some(&sessions), None, &args, None, None, None);
     assert_eq!(found.session_id.as_deref(), Some(thread));
     let flagged = words(&[
         "codex",
@@ -184,7 +184,7 @@ fn a_codex_rollout_names_its_thread_settings_and_open_turn() {
         thread,
     ]);
     assert_eq!(
-        codex_session(Some(&sessions), None, &flagged, None, None)
+        codex_session(Some(&sessions), None, &flagged, None, None, None)
             .session_id
             .as_deref(),
         Some(thread)
@@ -196,7 +196,7 @@ fn a_codex_rollout_names_its_thread_settings_and_open_turn() {
 
     lines.push(json!({ "type": "event_msg", "payload": { "type": "task_complete" } }));
     write_lines(&rollout, &lines);
-    let idle = codex_session(None, None, &words(&["codex"]), None, Some(rollout));
+    let idle = codex_session(None, None, &words(&["codex"]), None, Some(rollout), None);
     assert_eq!(idle.session_id.as_deref(), Some(thread));
     assert!(idle.running.is_empty());
 
@@ -206,9 +206,58 @@ fn a_codex_rollout_names_its_thread_settings_and_open_turn() {
         &words(&["codex", "-c", "model=\"o3\""]),
         Some(PathBuf::from("/elsewhere")),
         None,
+        None,
     );
     assert_eq!(fresh.session_id, None);
     assert_eq!(fresh.model.as_deref(), Some("o3"));
+}
+
+#[test]
+fn a_codex_tui_flips_to_the_thread_it_holds_or_resumed_over_a_newer_one() {
+    let root = tempfile::tempdir().unwrap();
+    let sessions = root.path().join("sessions");
+    let cwd = std::fs::canonicalize(root.path()).unwrap();
+    let rollout = |thread: &str| {
+        let path = sessions
+            .join("2026/11/21")
+            .join(format!("rollout-2026-11-21T10-00-00-{thread}.jsonl"));
+        write_lines(
+            &path,
+            &[json!({ "type": "session_meta", "payload": { "id": thread, "cwd": cwd } })],
+        );
+        path
+    };
+    let resumed = "019a0000-0000-7000-8000-00000000000a";
+    let newer = "019a0000-0000-7000-8000-00000000000b";
+    let held = "019a0000-0000-7000-8000-00000000000c";
+    let started = SystemTime::now() - std::time::Duration::from_secs(60);
+    std::fs::File::options()
+        .write(true)
+        .open(rollout(resumed))
+        .unwrap()
+        .set_modified(started - std::time::Duration::from_secs(3600))
+        .unwrap();
+    rollout(newer);
+    let thread = |args: &[&str], held: Option<PathBuf>| {
+        codex_session(
+            Some(&sessions),
+            None,
+            &words(args),
+            Some(cwd.clone()),
+            held,
+            Some(started),
+        )
+        .session_id
+    };
+    assert_eq!(
+        thread(&["codex", "resume", resumed], None).as_deref(),
+        Some(resumed)
+    );
+    assert_eq!(thread(&["codex"], None).as_deref(), Some(newer));
+    assert_eq!(
+        thread(&["codex", "resume", resumed], Some(rollout(held))).as_deref(),
+        Some(held)
+    );
 }
 
 #[test]
