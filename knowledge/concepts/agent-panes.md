@@ -1334,6 +1334,15 @@ The full delivery contract is in the
   focused window, honoring zoom (`visible_agent_panes`), and to clients watching the pane.
   `AgentState` goes to every client attached to the session and to the pane's watchers, and a
   reattaching client gets it for every agent pane there (`send_agent_resync`, `session_agent_panes`).
+- **The phone and web clients** (`clients/app/src/connection.rs`) keep a chat's buffer and
+  position for as long as the pane stays a chat, across host and session switches. A chat is live
+  while its connection is the host on screen and the pane is in the attached session; any other
+  chat is paused: its updates are dropped and its position stays where it was. When it turns live
+  again the client sends `AgentReplay` from its position plus one (`AgentCursor::resume_from`), so
+  the daemon sends only what it missed. A new chat, one that stopped being a chat, and every chat
+  after a new hello start over from 0. Each buffer carries a stream number
+  (`Connection::agent_stream`); a chat view that sees a different number starts its transcript
+  over.
 - **Watchers.** A client that sends `AgentReplay` for a pane watches it from then on, attached or
   not (`watched_agents` on the client entry): it gets the pane's `AgentUpdates`, `AgentState` and
   `AgentLagged` until it disconnects or the pane closes, and the pane's `AgentState` right away when

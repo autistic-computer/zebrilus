@@ -135,6 +135,11 @@ impl BrowserMenus {
     }
 }
 
+type ParkedChats = (
+    HashMap<PaneId, Entity<AgentPane>>,
+    HashMap<PaneId, ala::WeakEntity<AgentPane>>,
+);
+
 pub struct AppShell {
     connection: Entity<Connection>,
     _connection_subscriptions: [Subscription; 6],
@@ -156,6 +161,7 @@ pub struct AppShell {
     waiting_panes: BTreeSet<PaneId>,
     agents: HashMap<PaneId, Entity<AgentPane>>,
     chats: Rc<RefCell<HashMap<PaneId, ala::WeakEntity<AgentPane>>>>,
+    parked_chats: HashMap<ala::EntityId, ParkedChats>,
     views: HashMap<PaneId, Entity<view_pane::ViewPane>>,
     editors: HashMap<PaneId, Entity<editor_pane::EditorPane>>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -547,6 +553,7 @@ impl AppShell {
             waiting_panes: BTreeSet::new(),
             agents: HashMap::new(),
             chats,
+            parked_chats: HashMap::new(),
             views: HashMap::new(),
             editors: HashMap::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]

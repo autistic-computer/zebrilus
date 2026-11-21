@@ -82,7 +82,10 @@ pub struct Connection {
     providers_requested: bool,
     pub agent_events: HashMap<PaneId, Vec<(u64, Vec<u8>)>>,
     agent_cursors: HashMap<PaneId, AgentCursor>,
+    agent_streams: HashMap<PaneId, u64>,
+    next_agent_stream: u64,
     watched_agents: BTreeSet<PaneId>,
+    live_agents: BTreeSet<PaneId>,
     pub flips: zz_client::agent_flip::AgentFlips,
     terminal_images: crate::terminal_images::TerminalImages,
     pasted_images: crate::terminal_images::PastedImages,
@@ -205,7 +208,10 @@ impl Connection {
             providers_requested: false,
             agent_events: HashMap::new(),
             agent_cursors: HashMap::new(),
+            agent_streams: HashMap::new(),
+            next_agent_stream: 0,
             watched_agents: BTreeSet::new(),
+            live_agents: BTreeSet::new(),
             flips: zz_client::agent_flip::AgentFlips::default(),
             terminal_images: crate::terminal_images::TerminalImages::default(),
             pasted_images: crate::terminal_images::PastedImages::default(),
@@ -269,35 +275,50 @@ impl Connection {
         self.watched_agents.contains(&pane)
     }
 
+    fn agent_live(&self, pane: PaneId) -> bool {
+        self.live_agents.contains(&pane)
+    }
+
+    #[must_use]
+    pub fn agent_stream(&self, pane: PaneId) -> Option<u64> {
+        self.agent_streams.get(&pane).copied()
+    }
+
     fn watch_agent_panes(&mut self, cx: &mut Context<Self>) {
-        let attached = self.core.attached_session();
-        let wanted = self
-            .core
-            .snapshot()
-            .sessions
-            .iter()
-            .filter(|session| Some(session.id) == attached)
-            .flat_map(|session| &session.windows)
-            .flat_map(|window| &window.panes)
-            .filter(|(_, pane)| matches!(pane.kind, PaneKindSnapshot::Agent(_)))
-            .map(|(id, _)| *id)
-            .collect::<BTreeSet<_>>();
-        for pane in self
-            .watched_agents
-            .difference(&wanted)
-            .copied()
-            .collect::<Vec<_>>()
-        {
-            self.forget_agent_stream(pane);
+        let attached = self.core.attached_session().filter(|_| !self.background);
+        let mut agents = BTreeSet::new();
+        let mut live = BTreeSet::new();
+        for session in &self.core.snapshot().sessions {
+            for (id, pane) in session.windows.iter().flat_map(|window| &window.panes) {
+                if matches!(pane.kind, PaneKindSnapshot::Agent(_)) {
+                    agents.insert(*id);
+                    if Some(session.id) == attached {
+                        live.insert(*id);
+                    }
+                }
+            }
         }
-        let added = wanted
-            .difference(&self.watched_agents)
+        let gone = self
+            .watched_agents
+            .difference(&agents)
             .copied()
             .collect::<Vec<_>>();
-        self.watched_agents = wanted;
-        for pane in added {
+        for pane in gone {
+            self.watched_agents.remove(&pane);
             self.forget_agent_stream(pane);
-            self.request_agent_replay(pane, cx);
+        }
+        let woken = live
+            .difference(&self.live_agents)
+            .copied()
+            .collect::<Vec<_>>();
+        self.live_agents = live;
+        for pane in woken {
+            if self.watched_agents.insert(pane) {
+                self.forget_agent_stream(pane);
+                self.request_agent_replay(pane, cx);
+            } else {
+                self.resume_agent_stream(pane, cx);
+            }
         }
     }
 
@@ -376,6 +397,22 @@ impl Connection {
     fn forget_agent_stream(&mut self, pane: PaneId) {
         self.agent_events.remove(&pane);
         self.agent_cursors.remove(&pane);
+        self.agent_streams.remove(&pane);
+    }
+
+    fn forget_agent_streams(&mut self) {
+        self.agent_events.clear();
+        self.agent_cursors.clear();
+        self.agent_streams.clear();
+        self.live_agents.clear();
+    }
+
+    fn agent_cursor(&mut self, pane: PaneId) -> &mut AgentCursor {
+        if !self.agent_streams.contains_key(&pane) {
+            self.next_agent_stream += 1;
+            self.agent_streams.insert(pane, self.next_agent_stream);
+        }
+        self.agent_cursors.entry(pane).or_default()
     }
 
     fn replay_agent_streams(&mut self, cx: &mut Context<Self>) {
@@ -783,6 +820,7 @@ impl Connection {
             return;
         }
         self.background = true;
+        self.live_agents.clear();
         #[cfg(any(target_os = "ios", target_os = "android"))]
         if let Some(client) = &self.client {
             client.set_loopback_discovery(false);
@@ -1435,8 +1473,7 @@ impl Connection {
                         self.failures = 0;
                     }
                     self.pasted_images.clear();
-                    self.agent_events.clear();
-                    self.agent_cursors.clear();
+                    self.forget_agent_streams();
                     let target = self.remembered_session.map_or_else(
                         || {
                             #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -1467,9 +1504,6 @@ impl Connection {
                     self.remembered_session = Some(*session);
                     self.status = "Connected".into();
                     self.pasted_images.clear();
-                    self.agent_events.clear();
-                    self.agent_cursors.clear();
-                    self.watched_agents.clear();
                     self.watch_agent_panes(cx);
                     self.send(
                         ProtocolMessage::Input(InputMessage::ClientFocus {
@@ -1617,7 +1651,8 @@ impl Connection {
                     pane,
                     first_seq,
                     items,
-                } if self.agent_watched(*pane) => {
+                } if self.agent_live(*pane) => {
+                    self.agent_cursor(*pane);
                     let cursor = self.agent_cursors.entry(*pane).or_default();
                     let journal = self.agent_events.entry(*pane).or_default();
                     let (replay, invalid) = cursor.apply(journal, *first_seq, items);
@@ -1640,13 +1675,14 @@ impl Connection {
                         );
                     }
                 }
-                CoreEvent::AgentLagged { pane, .. } if self.agent_watched(*pane) => {
+                CoreEvent::AgentLagged { pane, .. } if self.agent_live(*pane) => {
                     self.request_agent_replay(*pane, cx);
                 }
                 CoreEvent::PaneRemoved { pane } => {
                     self.history.forget(*pane);
                     self.pasted_images.remove_pane(*pane);
                     self.watched_agents.remove(pane);
+                    self.live_agents.remove(pane);
                     self.forget_agent_stream(*pane);
                 }
                 CoreEvent::Detached { .. } if self.background => {
@@ -1901,7 +1937,12 @@ impl Connection {
     }
 
     fn request_agent_replay(&mut self, pane: PaneId, cx: &mut Context<Self>) {
-        let from_seq = self.agent_cursors.entry(pane).or_default().replay_from();
+        let from_seq = self.agent_cursor(pane).replay_from();
+        self.send(ProtocolMessage::AgentReplay { pane, from_seq }, cx);
+    }
+
+    fn resume_agent_stream(&mut self, pane: PaneId, cx: &mut Context<Self>) {
+        let from_seq = self.agent_cursor(pane).resume_from();
         self.send(ProtocolMessage::AgentReplay { pane, from_seq }, cx);
     }
 
@@ -2525,6 +2566,75 @@ mod tests {
         format!(r#"{{"seq":{seq},"item":"promptAccepted","turn_id":1}}"#).into_bytes()
     }
 
+    #[cfg(not(target_family = "wasm"))]
+    fn single_pane_snapshot(
+        generation: u64,
+        pane: zz_protocol::PaneId,
+        kind: zz_protocol::PaneKindSnapshot,
+    ) -> zz_protocol::MuxSnapshot {
+        use zz_protocol::{
+            LayoutNode, MuxSnapshot, PaneSnapshot, PaneSummary, SessionId, SessionSnapshot,
+            WindowId, WindowSnapshot,
+        };
+
+        MuxSnapshot {
+            generation,
+            sessions: vec![SessionSnapshot {
+                id: SessionId(1),
+                name: "test".into(),
+                active_window: WindowId(1),
+                viewers: Vec::new(),
+                windows: vec![WindowSnapshot {
+                    id: WindowId(1),
+                    index: 0,
+                    name: "test".into(),
+                    automatic_rename: true,
+                    active_pane: pane,
+                    zoomed_pane: None,
+                    layout: LayoutNode::Pane(pane),
+                    panes: [(
+                        pane,
+                        PaneSnapshot {
+                            id: pane,
+                            title: "test".into(),
+                            kind,
+                            synchronized_input: false,
+                            bell: false,
+                            dead: false,
+                            dead_status: None,
+                            border_colour: None,
+                            active_border_colour: None,
+                            border_status_text: String::new(),
+                            mode: None,
+                            status: None,
+                            summary: PaneSummary {
+                                process: vec!["claude".to_owned()],
+                                ..PaneSummary::default()
+                            },
+                        },
+                    )]
+                    .into(),
+                    layout_dump: String::new(),
+                    visible_layout_dump: String::new(),
+                    status_label: String::new(),
+                    activity: false,
+                    silence: false,
+                    pane_border_status: zz_protocol::PaneBorderStatus::default(),
+                    pane_border_lines: zz_protocol::PaneBorderLines::default(),
+                    pane_border_indicators: zz_protocol::PaneBorderIndicators::default(),
+                    pane_order: vec![pane],
+                    pane_z_order: vec![pane],
+                    floating: Vec::new(),
+                    modal: None,
+                    sx: 0,
+                    sy: 0,
+                    pane_base_index: 0,
+                }],
+            }],
+            focused_window: Some(WindowId(1)),
+        }
+    }
+
     #[test]
     fn retained_hellos_require_both_control_and_terminal_capabilities() {
         for mask in 0..4 {
@@ -2737,72 +2847,79 @@ mod tests {
 
     #[cfg(not(target_family = "wasm"))]
     #[ala::test]
+    fn a_chat_resumes_from_its_position_when_its_host_comes_back(cx: &mut ala::TestAppContext) {
+        use ala::AppContext as _;
+        use zz_protocol::{
+            AgentDescriptor, AgentProvider, Event, EventPayload, PaneId, PaneKindSnapshot,
+            SessionId,
+        };
+
+        let pane = PaneId(1);
+        let chat = PaneKindSnapshot::Agent(AgentDescriptor {
+            provider: AgentProvider::ClaudeCode,
+            ..AgentDescriptor::default()
+        });
+        let attached = || ProtocolMessage::Attached {
+            session: SessionId(1),
+            snapshot: single_pane_snapshot(1, pane, chat.clone()),
+            read_only: false,
+            client_flags: String::new(),
+        };
+        let updates = |first: u64, last: u64| {
+            ProtocolMessage::Event(Event {
+                sequence: first,
+                payload: EventPayload::AgentUpdates {
+                    pane,
+                    first_seq: first,
+                    items: (first..=last).map(blob).collect(),
+                },
+            })
+        };
+        let connection = cx.new(super::Connection::new);
+        let sent = connection.update(cx, |connection, _| connection.record_input_for_test());
+        let replays = || {
+            sent.borrow()
+                .iter()
+                .filter_map(|message| match message {
+                    ProtocolMessage::AgentReplay {
+                        pane: target,
+                        from_seq,
+                    } if *target == pane => Some(*from_seq),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        connection.update(cx, |connection, cx| {
+            connection.connected = true;
+            connection.handle_message_for_test(attached(), cx);
+            connection.handle_message_for_test(updates(1, 50), cx);
+            assert_eq!(connection.agent_events[&pane].len(), 50);
+            let stream = connection.agent_stream(pane);
+
+            connection.send_to_background(cx);
+            connection.handle_message_for_test(updates(51, 60), cx);
+            assert_eq!(connection.agent_events[&pane].len(), 50);
+
+            connection.bring_forward(Some(SessionId(1)), cx);
+            connection.handle_message_for_test(attached(), cx);
+            assert_eq!(replays(), [0, 51]);
+            assert_eq!(connection.agent_events[&pane].len(), 50);
+            assert_eq!(connection.agent_stream(pane), stream);
+        });
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[ala::test]
     fn an_agent_pane_is_watched_and_flips_through_a_busy_choice(cx: &mut ala::TestAppContext) {
         use ala::AppContext as _;
         use zz_client::agent_flip::{Flip, FlipMode};
         use zz_protocol::{
-            AgentDescriptor, AgentProvider, CommandResponse, Event, EventPayload, LayoutNode,
-            MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot, PaneSummary, ServerError,
-            SessionId, SessionSnapshot, WindowId, WindowSnapshot,
+            AgentDescriptor, AgentProvider, CommandResponse, Event, EventPayload, PaneId,
+            PaneKindSnapshot, ServerError, SessionId,
         };
 
         let pane = PaneId(1);
-        let snapshot = |generation, kind: PaneKindSnapshot| MuxSnapshot {
-            generation,
-            sessions: vec![SessionSnapshot {
-                id: SessionId(1),
-                name: "test".into(),
-                active_window: WindowId(1),
-                viewers: Vec::new(),
-                windows: vec![WindowSnapshot {
-                    id: WindowId(1),
-                    index: 0,
-                    name: "test".into(),
-                    automatic_rename: true,
-                    active_pane: pane,
-                    zoomed_pane: None,
-                    layout: LayoutNode::Pane(pane),
-                    panes: [(
-                        pane,
-                        PaneSnapshot {
-                            id: pane,
-                            title: "test".into(),
-                            kind,
-                            synchronized_input: false,
-                            bell: false,
-                            dead: false,
-                            dead_status: None,
-                            border_colour: None,
-                            active_border_colour: None,
-                            border_status_text: String::new(),
-                            mode: None,
-                            status: None,
-                            summary: PaneSummary {
-                                process: vec!["claude".to_owned()],
-                                ..PaneSummary::default()
-                            },
-                        },
-                    )]
-                    .into(),
-                    layout_dump: String::new(),
-                    visible_layout_dump: String::new(),
-                    status_label: String::new(),
-                    activity: false,
-                    silence: false,
-                    pane_border_status: zz_protocol::PaneBorderStatus::default(),
-                    pane_border_lines: zz_protocol::PaneBorderLines::default(),
-                    pane_border_indicators: zz_protocol::PaneBorderIndicators::default(),
-                    pane_order: vec![pane],
-                    pane_z_order: vec![pane],
-                    floating: Vec::new(),
-                    modal: None,
-                    sx: 0,
-                    sy: 0,
-                    pane_base_index: 0,
-                }],
-            }],
-            focused_window: Some(WindowId(1)),
-        };
+        let snapshot = |generation, kind| single_pane_snapshot(generation, pane, kind);
         let event = |sequence, payload| ProtocolMessage::Event(Event { sequence, payload });
         let updates = |seq| EventPayload::AgentUpdates {
             pane,

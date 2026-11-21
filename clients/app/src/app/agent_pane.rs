@@ -424,6 +424,7 @@ pub(super) struct AgentPane {
     last_input: String,
     last_cursor: usize,
     transcript: Transcript,
+    stream: Option<u64>,
     last_sequence: u64,
     last_reclaim_id: u64,
     queued_seen: u32,
@@ -512,9 +513,11 @@ impl AgentPane {
                     event,
                     zz_client::CoreEvent::HelloReceived | zz_client::CoreEvent::Attached { .. }
                 ) {
-                    this.transcript = Transcript::default();
-                    this.usage = None;
-                    this.last_sequence = 0;
+                    if matches!(event, zz_client::CoreEvent::HelloReceived) {
+                        this.transcript = Transcript::default();
+                        this.usage = None;
+                        this.last_sequence = 0;
+                    }
                     this.resume_for = None;
                     if this.upload.take().is_some() {
                         this.draft_error = Some(UPLOAD_LOST.to_owned());
@@ -634,6 +637,7 @@ impl AgentPane {
             last_input: String::new(),
             last_cursor: 0,
             transcript: Transcript::default(),
+            stream: None,
             last_sequence: 0,
             last_reclaim_id: 0,
             queued_seen: 0,
@@ -1207,6 +1211,12 @@ impl AgentPane {
     }
 
     fn synchronize(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let stream = self.connection.read(cx).agent_stream(self.pane);
+        if stream != self.stream {
+            self.stream = stream;
+            self.transcript = Transcript::default();
+            self.last_sequence = 0;
+        }
         let events = self.connection.read(cx).agent_events.get(&self.pane);
         let newest = events
             .and_then(|events| events.last())

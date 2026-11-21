@@ -177,6 +177,12 @@ impl AppShell {
             self.fleet
                 .retain(|(connection, _)| connection.read(cx).endpoint() != Some(endpoint));
         }
+        let hosts = self
+            .host_connections()
+            .iter()
+            .map(Entity::entity_id)
+            .collect::<Vec<_>>();
+        self.parked_chats.retain(|host, _| hosts.contains(host));
         cx.notify();
     }
 
@@ -199,9 +205,20 @@ impl AppShell {
             let (next, _) = self.fleet.remove(index);
             let previous = std::mem::replace(&mut self.connection, next);
             previous.update(cx, Connection::send_to_background);
+            self.parked_chats.insert(
+                previous.entity_id(),
+                (
+                    std::mem::take(&mut self.agents),
+                    std::mem::take(&mut *self.chats.borrow_mut()),
+                ),
+            );
             let observer = cx.observe(&previous, |_, _, cx| cx.notify());
             self.fleet.insert(index, (previous, observer));
             self.reset_host_state();
+            if let Some((agents, chats)) = self.parked_chats.remove(&self.connection.entity_id()) {
+                self.agents = agents;
+                *self.chats.borrow_mut() = chats;
+            }
             self.attention.forget_host(cx);
             self._connection_subscriptions = watch_connection(&self.connection, window, cx);
             self.sync_terminal_themes(window, cx);
@@ -264,5 +281,35 @@ impl compact::CompactState {
     fn reset_host(&mut self) {
         self.reset_attachment();
         self.forget_panes();
+    }
+}
+
+#[cfg(all(test, not(target_family = "wasm")))]
+mod tests {
+    use zz_protocol::PaneId;
+
+    use super::AppShell;
+
+    #[ala::test]
+    fn switching_host_a_b_a_brings_back_the_same_chat_view(cx: &mut ala::TestAppContext) {
+        cx.update(|cx| {
+            zz_ui::init(cx);
+            cx.set_global(penna::UiZoom(1.0));
+        });
+        let (shell, cx) = cx.add_window_view(AppShell::new);
+        shell.update_in(cx, |shell, window, cx| {
+            let pane = PaneId(1);
+            shell.connection.update(cx, |connection, cx| {
+                connection.connect_to("a".to_owned(), cx);
+            });
+            shell.add_background_host("b".to_owned(), window, cx);
+            let first = shell.agent_entity(pane, window, cx);
+            shell.switch_host("b", None, None, window, cx);
+            let other = shell.agent_entity(pane, window, cx);
+            shell.switch_host("a", None, None, window, cx);
+            let back = shell.agent_entity(pane, window, cx);
+            assert_eq!(back.entity_id(), first.entity_id());
+            assert_ne!(other.entity_id(), first.entity_id());
+        });
     }
 }

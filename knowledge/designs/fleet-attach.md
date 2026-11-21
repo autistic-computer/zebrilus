@@ -233,7 +233,9 @@ Recorded so later phases inherit intent, ordered roughly by expected sequence.
   the host on screen attached and the rest connected without attaching, holding only their tree
   (`Connection::send_to_background` detaches, `bring_forward` attaches again; a connection that
   never attached sends `Resync` after the hello). Switching host forgets every pane-, window- and
-  session-keyed view, since each daemon numbers its own. Only the host on screen mirrors its
+  session-keyed view, since each daemon numbers its own, except the chat views: those are parked
+  per host (`AppShell::parked_chats`, keyed by the host's connection) and come back with the host,
+  until it disconnects. Only the host on screen mirrors its
   localhost ports onto the phone (`InteractiveClient::set_loopback_discovery`), so two hosts never
   race for the same port. The overview shows one host per page, paged by swiping the pill; hosts
   the user was on reconnect at launch from `hosts.json`'s `connected` list. The iPad shell uses

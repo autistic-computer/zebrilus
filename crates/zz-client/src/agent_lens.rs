@@ -185,6 +185,11 @@ impl AgentCursor {
         self.replay_pending = true;
         self.last_seq
     }
+
+    #[must_use]
+    pub const fn resume_from(&self) -> u64 {
+        self.last_seq.saturating_add(1)
+    }
 }
 
 pub struct LensTranscript<I> {
