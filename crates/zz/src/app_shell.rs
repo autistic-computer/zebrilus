@@ -5,7 +5,9 @@ use ala::{
     AnyElement, AnyView, App, Context, DragMoveEvent, Entity, IntoElement, KeyUpEvent,
     ModifiersChangedEvent, Render, StyleRefinement, Window, div, prelude::*, px,
 };
-use penna::{ActiveTheme as _, Root, WINDOW_CONTROLS_INSET, WindowControls, draws_window_controls};
+use penna::{
+    ActiveTheme as _, Root, WindowControls, draws_window_controls, window_controls_inset_in,
+};
 use zz_ui::navigation::{workspace_chrome_controls_width_for, workspace_sidebar_slideover};
 use zz_ui::shell::{app_shell_surface, titlebar_over_panes};
 
@@ -248,14 +250,45 @@ impl AppShell {
         })
     }
 
-    fn render_floating_window_controls(&self, window: &Window, cx: &App) -> Option<AnyElement> {
+    fn floating_window_controls_height(&self, route: WorkspaceRoute, cx: &App) -> ala::Pixels {
+        if route == WorkspaceRoute::App {
+            let mux = self.mux.read(cx);
+            let snapshot = mux.snapshot();
+            let top_right_is_browser = mux
+                .attached_session()
+                .and_then(|id| snapshot.sessions.iter().find(|session| session.id == id))
+                .and_then(|session| {
+                    let focused = snapshot.focused_window_for(session);
+                    session.windows.iter().find(|window| window.id == focused)
+                })
+                .and_then(|window| {
+                    let pane_id = window
+                        .zoomed_pane
+                        .or_else(|| crate::workspace::top_right_pane(&window.layout))?;
+                    window.panes.get(&pane_id)
+                })
+                .is_some_and(|pane| matches!(pane.kind, zz_protocol::PaneKindSnapshot::Browser(_)));
+            if top_right_is_browser {
+                return zz_ui::browser::BrowserHeader::TAB_ROW_HEIGHT;
+            }
+        }
+        cx.theme().pane_header_height()
+    }
+
+    fn render_floating_window_controls(
+        &self,
+        route: WorkspaceRoute,
+        window: &Window,
+        cx: &App,
+    ) -> Option<AnyElement> {
         draws_window_controls(window).then(|| {
             let theme = cx.theme();
+            let height = self.floating_window_controls_height(route, cx);
             div()
                 .absolute()
                 .top(theme.pane_margin)
-                .right(theme.pane_margin + WINDOW_CONTROLS_INSET)
-                .h(theme.pane_header_height())
+                .right(theme.pane_margin + window_controls_inset_in(height, cx))
+                .h(height)
                 .flex()
                 .items_center()
                 .child(self.window_controls())
@@ -388,7 +421,7 @@ impl Render for AppShell {
             && route == WorkspaceRoute::App
             && (mode == ChromeMode::Titlebar || sliding);
         let floating_window_controls = (!status_bar_shown)
-            .then(|| self.render_floating_window_controls(window, cx))
+            .then(|| self.render_floating_window_controls(route, window, cx))
             .flatten();
         let dialog_layer = Root::render_dialog_layer(window, cx);
         let notification_layer = Root::render_notification_layer(window, cx);

@@ -258,15 +258,17 @@ fn browser_metadata_command(
 
 const WINDOW_CONTROLS_CLEARANCE: Pixels = px(8.0);
 
-fn window_controls_inset(holds_controls: bool) -> Pixels {
+fn window_controls_inset(holds_controls: bool, header_height: Pixels, cx: &App) -> Pixels {
     if holds_controls {
-        penna::WINDOW_CONTROLS_SPAN + WINDOW_CONTROLS_CLEARANCE
+        let extra_inset =
+            penna::window_controls_inset_in(header_height, cx) - penna::WINDOW_CONTROLS_INSET;
+        penna::window_controls_span(cx) + extra_inset + WINDOW_CONTROLS_CLEARANCE
     } else {
         px(0.0)
     }
 }
 
-fn top_right_pane(node: &LayoutNode) -> Option<PaneId> {
+pub(crate) fn top_right_pane(node: &LayoutNode) -> Option<PaneId> {
     match node {
         LayoutNode::Pane(pane) => Some(*pane),
         LayoutNode::Empty => None,
@@ -4021,6 +4023,8 @@ impl AppView {
                         menu: self.pane_title_menu(*pane, cx),
                         trailing_inset: window_controls_inset(
                             self.window_controls_pane == Some(*pane),
+                            cx.theme().pane_header_height(),
+                            cx,
                         ),
                         radii,
                         opacity: if dimmed { inactive_opacity } else { 1.0 },
@@ -4301,7 +4305,11 @@ impl AppView {
     fn synchronize_window_controls_pane(&mut self, pane: Option<PaneId>, cx: &mut Context<Self>) {
         self.window_controls_pane = pane;
         for (id, browser) in &self.browsers {
-            let inset = window_controls_inset(Some(*id) == pane);
+            let inset = window_controls_inset(
+                Some(*id) == pane,
+                zz_ui::browser::BrowserHeader::TAB_ROW_HEIGHT,
+                cx,
+            );
             browser.update(cx, |browser, cx| {
                 browser.set_header_trailing_inset(inset, cx);
             });

@@ -53,6 +53,7 @@ pub struct BrowserHeader {
 }
 
 impl BrowserHeader {
+    pub const TAB_ROW_HEIGHT: Pixels = px(BROWSER_TAB_ROW_HEIGHT);
     pub const HEIGHT: Pixels =
         px(BROWSER_TAB_ROW_HEIGHT + BROWSER_CONTROL_HEIGHT + crate::CHROME_GAP);
 

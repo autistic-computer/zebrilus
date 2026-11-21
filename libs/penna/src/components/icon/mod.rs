@@ -3,6 +3,8 @@ pub mod glyphs;
 
 pub use assets::Assets;
 
+use std::sync::Arc;
+
 use ala::{
     AnyElement, App, Hsla, IntoElement, Pixels, RenderOnce, SharedString, StyleRefinement, Styled,
     Svg, Transformation, Window, font, prelude::FluentBuilder as _, svg,
@@ -13,6 +15,7 @@ use crate::{Sizable, Size, Theme, rems_from_px};
 #[derive(Clone, Default, IntoElement)]
 pub struct Icon {
     path: SharedString,
+    data: Option<Arc<[u8]>>,
     asset: bool,
     style: StyleRefinement,
     text_color: Option<Hsla>,
@@ -34,7 +37,15 @@ impl Icon {
     #[must_use]
     pub fn path(mut self, path: impl Into<SharedString>) -> Self {
         self.path = path.into();
+        self.data = None;
         self.asset = false;
+        self
+    }
+
+    pub(crate) fn with_svg_data(mut self, path: SharedString, data: Arc<[u8]>) -> Self {
+        self.path = path;
+        self.data = Some(data);
+        self.asset = true;
         self
     }
 
@@ -83,7 +94,11 @@ impl Sizable for Icon {
 
 impl RenderOnce for Icon {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let path = self.drawn_path(cx);
+        let path = if self.data.is_some() {
+            self.path
+        } else {
+            self.drawn_path(cx)
+        };
         let color = self.text_color.unwrap_or_else(|| window.text_style().color);
         let styled_size = self.style.size.width.is_some() || self.style.size.height.is_some();
         let size = self.size.or_else(|| (!styled_size).then_some(Size::Medium));
@@ -91,14 +106,19 @@ impl RenderOnce for Icon {
         let mut base = svg();
         *base.style() = self.style;
 
-        base.flex_shrink_0()
+        let base = base
+            .flex_shrink_0()
             .text_color(color)
             .when_some(size, |this, size| match size {
                 Size::Size(size) => this.size(size),
                 size => this.size(rems_from_px(size.icon_px())),
             })
-            .when_some(self.transformation, Svg::with_transformation)
-            .path(path)
+            .when_some(self.transformation, Svg::with_transformation);
+        if let Some(data) = self.data {
+            base.shared_data(path, data)
+        } else {
+            base.path(path)
+        }
     }
 }
 
