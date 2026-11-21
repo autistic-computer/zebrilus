@@ -655,6 +655,11 @@ the same for both:
   agent named that session while it loaded.
 - **A failed start.** `run_acp_agent` reports a `session/new` that fails as `PaneFailed` and keeps
   running, so the pane can still be told to sign in or to open again.
+- **Stop.** The runtime sends `session/cancel`, answers the turn's open asks as cancelled, and ends
+  the turn as cancelled when the agent answers the cancelled `session/prompt`, so what the agent
+  sends while it stops stays in that turn. An agent that has not answered after 5 s
+  (`CANCEL_GRACE`) has its turn ended anyway. The queue is handed back at Stop, and a prompt
+  queued while the turn is stopping is handed back the same way when the turn ends.
 
 - **Which grok.** The first `grok` on the agent PATH. With none the pane fails with the not
   installed line.
