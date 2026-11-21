@@ -7,6 +7,9 @@ rust-version.workspace = true
 description = "The thin-client app the web, iOS and Android clients share"
 publish = false
 
+[features]
+showcase = []
+
 [dependencies]
 async-channel.workspace = true
 base64.workspace = true

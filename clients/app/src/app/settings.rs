@@ -1322,7 +1322,7 @@ impl AppShell {
     }
 }
 
-fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
+pub(super) fn app_logo(mode: penna::ThemeMode) -> Arc<ala::Image> {
     static LOGOS: std::sync::LazyLock<[Arc<ala::Image>; 2]> = std::sync::LazyLock::new(|| {
         let [light, dark]: [&'static [u8]; 2] = if zz_protocol::app_identity::DEVELOPMENT {
             [
@@ -1342,13 +1342,17 @@ fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
             ))
         })
     });
+    Arc::clone(&LOGOS[usize::from(mode.is_dark())])
+}
+
+fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
     let platform = if cfg!(target_family = "wasm") {
         "browser · wasm32".to_owned()
     } else {
         format!("{} · {}", std::env::consts::OS, std::env::consts::ARCH)
     };
     let copied = platform.clone();
-    let logo = Arc::clone(&LOGOS[usize::from(cx.theme().mode.is_dark())]);
+    let logo = app_logo(cx.theme().mode);
     settings_scroll_column("settings-about")
         .child(about_hero(
             &ZZ_ABOUT,

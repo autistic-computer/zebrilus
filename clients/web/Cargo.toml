@@ -15,6 +15,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 syntax-highlighting = ["zz-ui/tree-sitter"]
+showcase = ["zz-app/showcase"]
 
 [dependencies]
 ala = { path = "../../libs/ala/crates/ala" }
@@ -61,6 +62,11 @@ debug = 1
 opt-level = 3
 lto = "fat"
 codegen-units = 1
+
+[profile.showcase]
+inherits = "release"
+opt-level = "z"
+panic = "abort"
 
 [patch."https://github.com/autistic-computer/ala"]
 ala = { path = "../../libs/ala/crates/ala" }
