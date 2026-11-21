@@ -4196,8 +4196,8 @@ impl OutboundMailbox {
         self.notify_all();
     }
 
-    fn take_preview_refresh(&self) -> Option<PaneId> {
-        take_preview_refresh(&mut self.state.lock())
+    fn take_preview_refreshes(&self) -> Vec<PaneId> {
+        take_preview_refreshes(&mut self.state.lock())
     }
 
     #[cfg(test)]
@@ -4421,13 +4421,16 @@ fn clear_preview_refresh(state: &mut OutboundState, pane: PaneId) {
     }
 }
 
-fn take_preview_refresh(state: &mut OutboundState) -> Option<PaneId> {
-    while let Some(pane) = state.preview_refresh_order.pop_front() {
-        if state.preview_refreshes.remove(&pane) {
-            return Some(pane);
-        }
-    }
-    None
+fn take_preview_refreshes(state: &mut OutboundState) -> Vec<PaneId> {
+    let OutboundState {
+        preview_refreshes,
+        preview_refresh_order,
+        ..
+    } = state;
+    preview_refresh_order
+        .drain(..)
+        .filter(|pane| preview_refreshes.remove(pane))
+        .collect()
 }
 
 fn shed_preview_terminals(state: &mut OutboundState) {
@@ -27494,6 +27497,12 @@ impl Shared {
                     viewport: None,
                 },
             );
+        }
+    }
+
+    fn send_preview_refreshes(&self, client: ClientId, outbound: &OutboundMailbox) {
+        for pane in outbound.take_preview_refreshes() {
+            self.send_full(client, pane, outbound);
         }
     }
 
@@ -54631,13 +54640,8 @@ fn write_outbound(
             break;
         }
         outbound.finish_batch(&mut batch);
-        for _ in 0..frames {
-            let Some(pane) = outbound.take_preview_refresh() else {
-                break;
-            };
-            if let Some(shared) = shared.upgrade() {
-                shared.send_full(client, pane, outbound);
-            }
+        if let Some(shared) = shared.upgrade() {
+            shared.send_preview_refreshes(client, outbound);
         }
     }
     let _ = stream.shutdown();

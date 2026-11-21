@@ -215,6 +215,30 @@ fn a_preview_stream_and_a_lagging_client_keep_their_own_decisions() {
 }
 
 #[test]
+fn a_preview_refresh_that_does_not_fit_waits_for_the_next_write() {
+    let stream = Stream::new(3904, &[TerminalStreamKind::Preview]);
+    let (client, mailbox) = &stream.clients[0];
+    let view = TerminalViewId(client.0);
+    stream.terminal.attach_view(view);
+    stream.terminal.set_view_stream(view, ViewStream::Preview);
+    stream.terminal.fresh_viewport();
+    assert!(stream.terminal.latest_viewport_for(view).is_some());
+    {
+        let mut state = mailbox.state.lock();
+        state.queued_bytes = MAX_PREVIEW_OUTBOUND_BYTES;
+        mark_preview_refresh(&mut state, stream.pane);
+    }
+
+    stream.shared.send_preview_refreshes(*client, mailbox);
+
+    let state = mailbox.state.lock();
+    assert_eq!(state.preview_refreshes, BTreeSet::from([stream.pane]));
+    assert_eq!(state.preview_refresh_order, VecDeque::from([stream.pane]));
+    assert!(state.terminals.is_empty());
+    assert_eq!(state.queued_bytes, MAX_PREVIEW_OUTBOUND_BYTES);
+}
+
+#[test]
 fn every_client_frame_for_one_pane_carries_the_pane_stream_sequence() {
     let mut stream = Stream::new(
         3903,

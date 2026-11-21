@@ -1835,9 +1835,7 @@ impl EventLoop {
                 crate::wake::wake_loop(&self.waker)?;
             }
             if let Some(client) = connection.client {
-                while let Some(pane) = connection.outbound.take_preview_refresh() {
-                    shared.send_full(client, pane, &connection.outbound);
-                }
+                shared.send_preview_refreshes(client, &connection.outbound);
             }
             let writing = !connection.frames.is_empty();
             if connection.exec_mode
@@ -2250,10 +2248,8 @@ pub(super) fn write_fixture(
                     }
                     if frame_index == frames.len() {
                         outbound.recycle_written_batch(&mut frames);
-                        while let Some(pane) = outbound.take_preview_refresh() {
-                            if let Some(shared) = shared.upgrade() {
-                                shared.send_full(client, pane, outbound);
-                            }
+                        if let Some(shared) = shared.upgrade() {
+                            shared.send_preview_refreshes(client, outbound);
                         }
                     }
                     continue;
