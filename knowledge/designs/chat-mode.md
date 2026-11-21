@@ -156,7 +156,9 @@ Choosing an agent runs `select-pane-kind -t <pane> -c <folder> [--model m] [--ef
   =<name>:` into it and `kill-window -t =<name>:^` its starting shell, so nothing else is closed when
   a step fails; a session holding only the picker is renamed instead.
 
-The desktop switches to the window if it moved sessions. On a phone only the `select-pane-kind`
+The desktop switches to the window if it moved sessions (`follow_moved_window`). Web, iPad and the
+HTML client run `start_and_follow_agent_commands` instead, which ends a move with `attach-session -t
+<window>`, so the daemon puts them on the window's new session. On a phone only the `select-pane-kind`
 runs (`agent_pane_command`), so the chat stays on screen in the session the plus menu named: the
 phone's sheet has no folder line, and its pager pages only through the attached session. No client
 draws a chat over a terminal.

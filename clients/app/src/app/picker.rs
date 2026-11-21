@@ -13,7 +13,7 @@ use zz_client::{
     new_chat::{
         AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, FolderChoice, MachineChoice,
         agent_pane_command, agent_picker_place, close_picker_command, landing_chat_commands,
-        picker_folders, recent_folders, start_agent_commands,
+        picker_folders, recent_folders, start_and_follow_agent_commands,
     },
     pane_picker::{PaneChoice, PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
 };
@@ -192,7 +192,9 @@ impl PanePicker {
                     &self.launches,
                 )]
             }
-            Some(pane) => start_agent_commands(snapshot, pane, folder, agent, &self.launches),
+            Some(pane) => {
+                start_and_follow_agent_commands(snapshot, pane, folder, agent, &self.launches)
+            }
             None => landing_chat_commands(snapshot, folder, agent, &self.launches),
         };
         self.connection.update(cx, |connection, cx| {

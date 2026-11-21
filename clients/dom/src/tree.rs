@@ -13,7 +13,7 @@ use zz_client::{
     new_chat::{
         AGENT_CHOICES, ChatKey, ChatPicker, ChatStage, ChatViewPlace, FolderChoice,
         agent_picker_place, close_picker_command, folder_rows, landing_chat_commands,
-        leave_picker_command, picker_folders, recent_folders, start_agent_commands,
+        leave_picker_command, picker_folders, recent_folders, start_and_follow_agent_commands,
     },
     pane_drop_command,
     pane_picker::{PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
@@ -872,9 +872,13 @@ impl Client {
                     .map(|picker| picker.folder(&folders).to_owned())
                     .unwrap_or_default();
                 let launches = zz_client::agent_launch::AgentLaunches::default();
-                for command in
-                    start_agent_commands(self.core.snapshot(), pane, &folder, agent, &launches)
-                {
+                for command in start_and_follow_agent_commands(
+                    self.core.snapshot(),
+                    pane,
+                    &folder,
+                    agent,
+                    &launches,
+                ) {
                     self.invoke(command);
                 }
                 true

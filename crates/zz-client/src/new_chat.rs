@@ -291,6 +291,26 @@ pub fn start_agent_commands(
 }
 
 #[must_use]
+pub fn start_and_follow_agent_commands(
+    snapshot: &MuxSnapshot,
+    pane: PaneId,
+    folder: &str,
+    agent: AgentChoice,
+    launches: &AgentLaunches,
+) -> Vec<CommandInvocation> {
+    let mut commands = start_agent_commands(snapshot, pane, folder, agent, launches);
+    if let Some((_, window)) = holder(snapshot, pane)
+        && commands.iter().any(|command| command.name == "move-window")
+    {
+        commands.push(command(
+            "attach-session",
+            ["-t".to_owned(), window.to_string()],
+        ));
+    }
+    commands
+}
+
+#[must_use]
 pub fn agent_picker_place(
     snapshot: &MuxSnapshot,
     pane: PaneId,
@@ -942,6 +962,33 @@ mod tests {
                 "move-window -s @3 -t =notes:",
                 "kill-window -t =notes:^",
             ]
+        );
+    }
+
+    #[test]
+    fn a_chat_that_moves_sessions_is_followed_there() {
+        let fleet = fleet();
+        let none = AgentLaunches::default();
+        let start = |folder: &str| {
+            lines(&start_and_follow_agent_commands(
+                &fleet,
+                PaneId(4),
+                folder,
+                AGENT_CHOICES[1],
+                &none,
+            ))
+        };
+        assert_eq!(
+            start("~/dev/clairvo"),
+            [
+                "select-pane-kind -t %4 -c ~/dev/clairvo agent codex",
+                "move-window -s @3 -t $2:",
+                "attach-session -t @3",
+            ]
+        );
+        assert_eq!(
+            start("~/dev/zz"),
+            ["select-pane-kind -t %4 -c ~/dev/zz agent codex"]
         );
     }
 
