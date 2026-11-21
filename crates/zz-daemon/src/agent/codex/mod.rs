@@ -146,6 +146,7 @@ pub(crate) async fn run_codex_runtime(
         visuals: Mutex::new(Visuals::default()),
         last_turn: 0,
         deferred_cancels: HashSet::new(),
+        steers: Vec::new(),
         settings: Settings::default(),
         notices: 0,
         reply: None,
@@ -218,7 +219,11 @@ enum Outgoing {
         turn_id: u64,
     },
     Quiet,
-    Steer,
+    Steer {
+        thread: String,
+        steer: AgentPrompt,
+    },
+    SteerTurn,
     Answer {
         text: String,
         steered: bool,
@@ -441,6 +446,7 @@ struct Runtime {
     visuals: Mutex<Visuals>,
     last_turn: u64,
     deferred_cancels: HashSet<u64>,
+    steers: Vec<AgentPrompt>,
     settings: Settings,
     notices: u64,
     reply: Option<String>,
@@ -607,6 +613,7 @@ impl Runtime {
                 .await?;
         }
         let gone = matches!(fact, Fact::Exited { .. } | Fact::SessionClosed);
+        let mut drained = false;
         for effect in step.effects {
             match effect {
                 Effect::Interrupt => {
@@ -631,13 +638,105 @@ impl Runtime {
                     self.emit(AgentStreamPayload::Activity { busy: false })
                         .await?;
                 }
-                Effect::Settle { turn: None, .. }
-                | Effect::Dismiss { .. }
-                | Effect::Drain
-                | Effect::Reclaim => {}
+                Effect::Drain => drained = true,
+                Effect::Settle { turn: None, .. } | Effect::Dismiss { .. } | Effect::Reclaim => {}
             }
         }
+        self.resolve_steers(drained).await?;
         Ok(step.rejected)
+    }
+
+    async fn resolve_steers(&mut self, drained: bool) -> Result<(), String> {
+        if self.steers.is_empty() {
+            return Ok(());
+        }
+        match self.turns.phase {
+            turn::Phase::Running(_) => {
+                self.send_steers();
+                Ok(())
+            }
+            turn::Phase::Cancelling { .. } => Ok(()),
+            turn::Phase::Idle if drained => {
+                for steer in std::mem::take(&mut self.steers) {
+                    self.steer_as_prompt(steer).await?;
+                }
+                Ok(())
+            }
+            turn::Phase::Idle | turn::Phase::Offline | turn::Phase::Exited => {
+                let steers = std::mem::take(&mut self.steers);
+                self.give_back(steers).await
+            }
+        }
+    }
+
+    fn send_steers(&mut self) {
+        let turn::Phase::Running(turn) = &self.turns.phase else {
+            return;
+        };
+        let (Some(command), Some(thread)) =
+            (turn.active_command().map(str::to_owned), self.thread_id())
+        else {
+            return;
+        };
+        for steer in std::mem::take(&mut self.steers) {
+            self.request(
+                "turn/steer",
+                &json!({
+                    "threadId": thread,
+                    "expectedTurnId": command,
+                    "input": [{ "type": "text", "text": steer.text, "text_elements": [] }],
+                }),
+                Outgoing::Steer {
+                    thread: thread.clone(),
+                    steer,
+                },
+            );
+        }
+    }
+
+    async fn steer_as_prompt(&mut self, steer: AgentPrompt) -> Result<(), String> {
+        let live = !matches!(self.turns.phase, turn::Phase::Offline | turn::Phase::Exited);
+        let Some(thread) = self.thread_id().filter(|_| live) else {
+            return self.give_back(vec![steer]).await;
+        };
+        let echo = format!("zz-steer-{:016x}", random_u64());
+        for update in prompt_echo(&prompt_blocks(steer.clone()), &MessageId::new(echo.clone()))? {
+            self.update(update, true).await?;
+        }
+        self.translator.expect_prompt(&steer.text);
+        let mut params = json!({
+            "threadId": thread,
+            "input": turn_input(&steer, None),
+            "clientUserMessageId": echo,
+        });
+        self.settings.turn_overrides(&mut params);
+        self.request("turn/start", &params, Outgoing::SteerTurn);
+        Ok(())
+    }
+
+    async fn missed_steer(
+        &mut self,
+        thread: String,
+        steer: AgentPrompt,
+        error: &str,
+    ) -> Result<(), String> {
+        log::debug!(target: "zz::agent", "Codex did not take a steer: {error}");
+        if self.thread_id().as_deref() != Some(thread.as_str()) {
+            return self.give_back(vec![steer]).await;
+        }
+        if matches!(self.turns.phase, turn::Phase::Cancelling { .. }) {
+            self.steers.push(steer);
+            return Ok(());
+        }
+        self.steer_as_prompt(steer).await
+    }
+
+    async fn give_back(&self, prompts: Vec<AgentPrompt>) -> Result<(), String> {
+        if prompts.is_empty() {
+            return Ok(());
+        }
+        self.emit(AgentStreamPayload::PromptsReclaimed { prompts })
+            .await
     }
 
     fn owns(&self, turn_id: u64) -> bool {
@@ -708,7 +807,7 @@ impl Runtime {
                 prompt,
                 note,
             } => self.prompt(turn_id, prompt, note.as_deref()).await,
-            RuntimeCommand::Verb { prompt } => self.verb(&prompt.text).await,
+            RuntimeCommand::Verb { prompt } => self.verb(prompt).await,
             RuntimeCommand::Authenticate { .. } => {
                 self.emit(AgentStreamPayload::AuthenticationFailed {
                     message: "Codex signs in with `codex login` in a terminal".to_owned(),
@@ -1493,8 +1592,17 @@ impl Runtime {
         }
     }
 
-    async fn verb(&mut self, text: &str) -> Result<(), String> {
+    async fn verb(&mut self, prompt: AgentPrompt) -> Result<(), String> {
+        let text = prompt.text.as_str();
         let (name, rest) = agent_verb(text).unwrap_or(("", ""));
+        let mut steer =
+            (name == "steer" && !rest.is_empty() && self.session.is_some()).then(|| AgentPrompt {
+                text: rest.to_owned(),
+                ..prompt.clone()
+            });
+        if let Some(steer) = steer.take_if(|_| self.turns.turn().is_none()) {
+            return self.steer_as_prompt(steer).await;
+        }
         self.notices += 1;
         let echo = format!(
             "zz-command-{}-{:08x}",
@@ -1511,7 +1619,14 @@ impl Runtime {
         )
         .await?;
         self.reply = Some(echo);
-        let answered = self.answer_verb(name, rest).await;
+        let answered = match steer {
+            Some(steer) => {
+                self.steers.push(steer);
+                self.send_steers();
+                Ok(())
+            }
+            None => self.answer_verb(name, rest).await,
+        };
         self.reply = None;
         answered
     }
@@ -1521,26 +1636,6 @@ impl Runtime {
             return self.notice("Codex is not running.").await;
         };
         match name {
-            "steer" if !rest.is_empty() => {
-                let Some(codex) = self
-                    .turns
-                    .turn()
-                    .and_then(Turn::active_command)
-                    .map(str::to_owned)
-                else {
-                    return self.notice("Nothing is running to steer.").await;
-                };
-                self.request(
-                    "turn/steer",
-                    &json!({
-                        "threadId": thread,
-                        "expectedTurnId": codex,
-                        "input": [{ "type": "text", "text": rest, "text_elements": [] }],
-                    }),
-                    Outgoing::Steer,
-                );
-                Ok(())
-            }
             "fork" => {
                 if self.turns.turn().is_some() {
                     return self.notice("Stop the turn before forking.").await;
@@ -1692,12 +1787,16 @@ impl Runtime {
             (Outgoing::Models | Outgoing::Terminals, Err(_))
             | (Outgoing::Quiet, _)
             | (
-                Outgoing::Steer
+                Outgoing::Steer { .. }
+                | Outgoing::SteerTurn
                 | Outgoing::SideTurn { .. }
                 | Outgoing::Answer { .. }
                 | Outgoing::TitleTurn,
                 Ok(_),
             ) => Ok(()),
+            (Outgoing::Steer { thread, steer }, Err(error)) => {
+                self.missed_steer(thread, steer, &error).await
+            }
             (
                 Outgoing::Answer {
                     text,
@@ -1931,7 +2030,7 @@ impl Runtime {
                 self.notice(&format!("Codex could not read the thread: {error}"))
                     .await
             }
-            (Outgoing::Steer, Err(error)) => {
+            (Outgoing::SteerTurn, Err(error)) => {
                 self.notice(&format!("Codex did not take the steer: {error}"))
                     .await
             }
@@ -2013,7 +2112,21 @@ impl Runtime {
             message.push_str(&tail);
         }
         self.cancel_permissions().await?;
-        self.requests.clear();
+        let mut flying = self
+            .requests
+            .drain()
+            .filter_map(|(id, (outgoing, _))| match outgoing {
+                Outgoing::Steer { steer, .. } => Some((id, steer)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        flying.sort_unstable_by_key(|(id, _)| *id);
+        let steers = flying
+            .into_iter()
+            .map(|(_, steer)| steer)
+            .chain(std::mem::take(&mut self.steers))
+            .collect();
+        self.give_back(steers).await?;
         if let Some(starting) = self.starting.take() {
             return self.fail_start(starting.start, message).await;
         }
@@ -3021,6 +3134,14 @@ while IFS= read -r line; do
     *'"id":900,'*'"fruit":{"answers":["pear"]}'*)
       printf '%s\n' '{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u2","status":"completed"}}}' ;;
     *'"id":900,'*) echo "bad answer: $line" >&2; exit 4 ;;
+    *'"method":"turn/start"'*'"text":"hold the id"'*) held=$id ;;
+    *'"method":"thread/list"'*)
+      [ -n "$held" ] && printf '{"id":%s,"result":{"turn":{"id":"u7"}}}\n' "$held"
+      held=
+      printf '{"id":%s,"result":{"data":[],"nextCursor":null}}\n' "$id" ;;
+    *'"method":"turn/steer"'*)
+      printf '%s\n' '{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u7","status":"completed"}}}'
+      printf '{"id":%s,"error":{"code":-32600,"message":"no active turn to steer"}}\n' "$id" ;;
     *'"method":"turn/start"'*)
       printf '{"id":%s,"result":{"turn":{"id":"u1"}}}\n' "$id"
       printf '%s\n' '{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1"}}}'
@@ -3595,6 +3716,146 @@ done
                 .find(|message| message["id"] == 901 && message.get("method").is_none())
                 .map(|message| message["result"].clone()),
             Some(json!({ "decision": "cancel" }))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_steer_waits_for_its_turn_and_goes_out_as_the_next_prompt_when_it_misses() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let (commands, events, runtime) = fake_codex(directory.path());
+        let prompt = |text: &str| AgentPrompt {
+            text: text.to_owned(),
+            ..Default::default()
+        };
+        let list = || RuntimeCommand::ListSessions {
+            client: zz_protocol::ClientId(1),
+            cwd: None,
+            cursor: None,
+            replace: true,
+        };
+        let seen = |payload: AgentStreamPayload| match payload {
+            AgentStreamPayload::Update { update }
+                if update["sessionUpdate"] == "user_message_chunk" =>
+            {
+                Some(
+                    update["content"]["text"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned(),
+                )
+            }
+            AgentStreamPayload::Update { update } if update["_meta"]["zz"]["notice"] == true => {
+                Some(format!("notice: {}", update["content"]["text"]))
+            }
+            AgentStreamPayload::PromptFinished { turn_id, outcome } => {
+                Some(format!("turn {turn_id}: {outcome:?}"))
+            }
+            _ => None,
+        };
+        let driver = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: directory.path().to_path_buf(),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::SessionReady { .. })
+            })
+            .await;
+            commands
+                .send(RuntimeCommand::Prompt {
+                    turn_id: 1,
+                    note: None,
+                    prompt: prompt("hold the id"),
+                })
+                .await
+                .expect("prompt");
+            commands
+                .send(RuntimeCommand::Verb {
+                    prompt: prompt("/steer go left"),
+                })
+                .await
+                .expect("steer");
+            commands.send(list()).await.expect("list");
+            let mut shown = Vec::new();
+            loop {
+                let payload = until(&events, |_| true).await;
+                if payload == (AgentStreamPayload::Activity { busy: false }) {
+                    break;
+                }
+                shown.extend(seen(payload));
+                if shown
+                    .last()
+                    .is_some_and(|text| text.starts_with("notice: "))
+                {
+                    break;
+                }
+            }
+            commands
+                .send(RuntimeCommand::Verb {
+                    prompt: prompt("/steer go right"),
+                })
+                .await
+                .expect("steer");
+            commands.send(list()).await.expect("list");
+            loop {
+                let payload = until(&events, |_| true).await;
+                if matches!(payload, AgentStreamPayload::SessionsListed { .. }) {
+                    break;
+                }
+                shown.extend(seen(payload));
+            }
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+            shown
+        };
+        let (result, shown) = smol::block_on(futures_lite::future::zip(runtime, driver));
+        assert_eq!(result, Ok(()));
+        assert_eq!(
+            shown,
+            [
+                "hold the id",
+                "/steer go left",
+                "turn 1: Finished { stop_reason: String(\"end_turn\") }",
+                "go left",
+                "go right",
+            ]
+        );
+        let log = std::fs::read_to_string(directory.path().join("codex.log")).expect("log");
+        let requests = log
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|request| {
+                matches!(
+                    request["method"].as_str(),
+                    Some("turn/start" | "turn/steer" | "thread/list")
+                )
+            })
+            .map(|request| {
+                (
+                    request["method"].as_str().unwrap_or_default().to_owned(),
+                    request["params"]["expectedTurnId"].clone(),
+                    request["params"]["input"][0]["text"].clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let sent = |method: &str, turn: Value, text: Value| (method.to_owned(), turn, text);
+        assert_eq!(
+            requests,
+            [
+                sent("turn/start", Value::Null, json!("hold the id")),
+                sent("thread/list", Value::Null, Value::Null),
+                sent("turn/steer", json!("u7"), json!("go left")),
+                sent("turn/start", Value::Null, json!("go left")),
+                sent("turn/start", Value::Null, json!("go right")),
+                sent("thread/list", Value::Null, Value::Null),
+            ],
+            "{log}"
         );
     }
 

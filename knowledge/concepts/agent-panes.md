@@ -800,6 +800,11 @@ subscribed to when a resume brings different overrides. Where it falls short:
 - **Codex.** `/compact` and `/review`.
 - **zz's own verbs** (`/btw`, `/side`, `/steer`, `/fork`, `/rewind`) and the `/model` and `/effort`
   setters come from the client (`zz_client::agent_completion`).
+- **Steer.** `/steer <text>` (and `AgentSteer`) adds text to the running turn; with no turn running
+  the host sends the text as a prompt. Codex takes it as `turn/steer` on the turn's id. The driver
+  holds a steer until Codex names the turn, and a steer Codex refuses, or one that finds the turn
+  already over, goes out as the next prompt: a plain user message, ahead of anything queued. A held
+  steer goes back to the composer when the turn is stopped or fails, as the queue does.
 
 The driver follows a `/clear`'s new session id (`follow_session`), and the empty `result` frames
 the CLI writes while it resumes (`num_turns: 0`, before its first idle `session_state_changed`)

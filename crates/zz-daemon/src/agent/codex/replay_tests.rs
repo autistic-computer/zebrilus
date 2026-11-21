@@ -37,6 +37,7 @@ fn setup(thread: &str) -> (Runtime, Receiver<AgentStreamPayload>) {
         visuals: Mutex::new(crate::agent::visualize::Visuals::default()),
         last_turn: 0,
         deferred_cancels: HashSet::new(),
+        steers: Vec::new(),
         settings: Settings::default(),
         notices: 0,
         reply: None,
