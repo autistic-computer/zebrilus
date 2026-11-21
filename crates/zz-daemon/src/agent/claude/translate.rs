@@ -209,8 +209,10 @@ impl Translator {
                 let Some(tool) = self.task_tool(frame) else {
                     return Vec::new();
                 };
-                let summary = frame["summary"]
+                let summary = frame["handback_report"]["text"]
                     .as_str()
+                    .filter(|report| !report.trim().is_empty())
+                    .or_else(|| frame["summary"].as_str())
                     .filter(|summary| !summary.is_empty())
                     .map(str::to_owned);
                 let failed = matches!(
@@ -649,7 +651,12 @@ impl Translator {
         } else {
             match name.as_str() {
                 "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => None,
-                "Agent" | "Task" => Some(self.summaries.remove(id).unwrap_or(text)),
+                "Agent" | "Task" => Some(
+                    self.summaries
+                        .remove(id)
+                        .or_else(|| structured.and_then(agent_report))
+                        .unwrap_or(text),
+                ),
                 "Bash" | "PowerShell" => Some(structured.and_then(command_output).unwrap_or(text)),
                 _ => Some(text),
             }
@@ -1018,6 +1025,18 @@ fn output_tail(path: &Path) -> Option<String> {
         &text
     };
     Some(text.trim_end().to_owned())
+}
+
+fn agent_report(structured: &Value) -> Option<String> {
+    structured["handbackReport"]["text"]
+        .as_str()
+        .map(str::to_owned)
+        .or_else(|| {
+            structured["content"]
+                .is_array()
+                .then(|| result_text(&structured["content"]))
+        })
+        .filter(|report| !report.trim().is_empty())
 }
 
 fn command_output(structured: &Value) -> Option<String> {
@@ -1639,6 +1658,56 @@ mod tests {
         assert_eq!(updates[0]["toolCallId"], "g1");
         assert_eq!(updates[0]["status"], "completed");
         assert_eq!(updates[0]["content"][0]["content"]["text"], "src/lib.rs:4");
+    }
+
+    #[test]
+    fn a_foreground_agent_shows_its_report_live_and_from_either_transcript_shape() {
+        let notice = "This agent's report was delivered to you as a message from \"a1\" (its SubagentHandback call). Read it there; it is not repeated here.\n";
+        let call = json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[
+            {"type":"tool_use","id":"f1","name":"Agent","input":{"description":"pong check","prompt":"Reply with exactly: pong"}}]}});
+        let done = json!({"type":"system","subtype":"task_notification","task_id":"a1","tool_use_id":"f1",
+            "status":"completed","summary":notice,"handback":"send","handback_report":{"text":"pong","toolUseId":"h1"}});
+        let result = |key: &str, structured: Value, text: &str| {
+            let mut frame = json!({"type":"user","parent_tool_use_id":null,"message":{"role":"user","content":[
+                {"type":"tool_result","tool_use_id":"f1","content":[{"type":"text","text":text}]}]}});
+            frame[key] = structured;
+            frame
+        };
+        let handed_back = json!({"status":"completed","agentId":"a1","handback":"send",
+            "handbackReport":{"text":"pong","toolUseId":"h1"},"content":[{"type":"text","text":notice}]});
+        let replied =
+            json!({"status":"completed","agentId":"a1","content":[{"type":"text","text":"pong"}]});
+        let wrapped = "[Subagent hand-back] The report follows:\n  pong\nagentId: a1";
+        let output = |updates: Vec<Value>| {
+            updates.last().expect("update")["content"][0]["content"]["text"]
+                .as_str()
+                .map(str::to_owned)
+        };
+        let mut live = Translator::new(PathBuf::from("/work"));
+        live.frame(&call);
+        live.frame(&done);
+        let live = output(live.frame(&result(
+            "tool_use_result",
+            handed_back.clone(),
+            &format!("  {notice}agentId: a1"),
+        )));
+        let reloaded = |structured: Value, text: &str| {
+            let mut translator = Translator::new(PathBuf::from("/work"));
+            translator.history_entry(&call);
+            output(translator.history_entry(&result("toolUseResult", structured, text)))
+        };
+        assert_eq!(
+            [
+                live,
+                reloaded(handed_back, &format!("  {notice}agentId: a1")),
+                reloaded(replied, wrapped),
+            ],
+            [
+                Some("pong".to_owned()),
+                Some("pong".to_owned()),
+                Some("pong".to_owned())
+            ]
+        );
     }
 
     #[test]

@@ -560,9 +560,10 @@ fn tool_rows_read_as_plain_steps_with_their_failures() {
 #[test]
 fn a_send_message_that_resumes_an_agent_runs_as_its_card_until_the_notification() {
     let recording = include_str!("fixtures/resume.ndjson");
+    let original = ItemId::new("toolu_01BdLYjCUyvH5UtK2E9y6v31");
     let resume = ItemId::new("toolu_01PabzHgZypSdK6PirEx1vpB");
     let handback = ItemId::new("toolu_01HAcDaX3g4UMG6J4Tf4nCoj");
-    let card = |lines: usize| {
+    let card = |lines: usize, card: &ItemId| {
         let prefix = recording.lines().take(lines).collect::<Vec<_>>().join("\n");
         let (runtime, _) = run(&prefix);
         let (view, rejects) = chat_of(&runtime);
@@ -571,7 +572,7 @@ fn a_send_message_that_resumes_an_agent_runs_as_its_card_until_the_notification(
             .filter(|reject| !reject.starts_with("Turn("))
             .collect::<Vec<_>>();
         assert!(dropped.is_empty(), "{lines}: {dropped:#?}");
-        let item = view.item(&resume).expect("resume card").clone();
+        let item = view.item(card).expect("card").clone();
         (
             (
                 item.kind,
@@ -588,14 +589,14 @@ fn a_send_message_that_resumes_an_agent_runs_as_its_card_until_the_notification(
         Some("pong again".to_owned()),
         Some("Reply with exactly: pong again".to_owned()),
     );
-    let after_result = card(114);
+    let after_result = card(114, &resume);
     assert_eq!(after_result.0, shown);
     assert_eq!(
         after_result.1,
         (String::new(), ItemStatus::Running, true, Vec::new())
     );
     assert_eq!(
-        card(132).1,
+        card(132, &resume).1,
         (
             String::new(),
             ItemStatus::Running,
@@ -603,8 +604,13 @@ fn a_send_message_that_resumes_an_agent_runs_as_its_card_until_the_notification(
             vec![handback.clone()]
         )
     );
-    let (_, (_, status, _, children)) = card(149);
-    assert_eq!((status, children), (ItemStatus::Completed, vec![handback]));
+    let (_, (text, status, _, children)) = card(149, &resume);
+    assert_eq!(
+        (text.as_str(), status, children),
+        ("pong again", ItemStatus::Completed, vec![handback])
+    );
+    let (_, (text, status, ..)) = card(149, &original);
+    assert_eq!((text.as_str(), status), ("pong", ItemStatus::Completed));
 }
 
 #[test]
