@@ -124,6 +124,9 @@ hundreds of updates, so agent streams get their own `OutboundState` lane, preced
   session (`AgentJournal::is_complete_for`). The lane emits cached adapter `Ready`,
   `SessionReset { restoring: true }`, the journalled updates, and `SessionReady` with the current
   session/configuration as freshly numbered items, followed by an ordered `StateSynced` snapshot.
+  Journalled `config_option_update`s are left out: the runtime journals the agent's own option
+  list, before the ACP dialect renames its effort option, and the `SessionReady` carries the list
+  live viewers last saw.
   The client rebuilds the transcript, then returns to the daemon's current Running, Failed,
   permission, or Ready phase even though reliable state frames drain first. Without a trustworthy
   journal (it stops at 4,096 records or 18 MiB) the asking client alone gets a rebuild

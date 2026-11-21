@@ -1091,6 +1091,11 @@ impl AgentFanout {
         }
         for (_, entry) in replay {
             let payload = match entry {
+                JournalEntry::Update(update)
+                    if update["sessionUpdate"] == "config_option_update" =>
+                {
+                    continue;
+                }
                 JournalEntry::Update(update) => AgentStreamPayload::Update { update },
             };
             lane.stamp_recovery(pane, payload, &mut synthesized);
@@ -2776,6 +2781,91 @@ mod tests {
                 .and_then(|option| option.get("currentValue"))
                 .and_then(Value::as_bool),
             Some(true)
+        );
+    }
+
+    #[test]
+    fn a_journal_replay_shows_the_effort_option_as_the_live_chat_does() {
+        let directory = tempfile::tempdir().expect("journal directory");
+        let journal = Arc::new(AgentJournal::open(directory.path()).expect("open journal"));
+        let options = |effort: &str, level: &str| {
+            json!([
+                {"id": "model", "name": "Model", "type": "select", "currentValue": "gemini-3.8-flash", "options": [{"value": "gemini-3.8-flash", "name": "Flash"}]},
+                {"id": effort, "name": "Thinking", "type": "select", "currentValue": level, "options": [{"value": "low", "name": "Low"}, {"value": "high", "name": "High"}]},
+            ])
+        };
+        let fixture = Fixture::open(Some(Arc::clone(&journal)), None);
+        let pane = PaneId(5);
+        fixture
+            .fanout
+            .open_lane(pane, 1, AgentProvider::Antigravity, Some("s-1".to_owned()));
+        let accept = |payload| {
+            fixture.fanout.accept(
+                pane,
+                1,
+                &state(AgentConnectionPhase::Ready),
+                Some(AgentStreamItem { seq: 0, payload }),
+            );
+        };
+        accept(AgentStreamPayload::SessionReady {
+            session_id: "s-1".to_owned(),
+            modes: None,
+            config_options: Some(options("effort", "low")),
+        });
+        journal
+            .append_for(
+                AgentProvider::Antigravity,
+                "s-1",
+                &json!({"sessionUpdate": "config_option_update", "configOptions": options("thought_level", "high")}),
+            )
+            .expect("journal the agent's update");
+        accept(AgentStreamPayload::Update {
+            update: json!({"sessionUpdate": "config_option_update", "configOptions": options("effort", "high")}),
+        });
+        let live = fixture.recorder.wait_for_items(2);
+        {
+            let mut lanes = fixture.fanout.lanes.lock();
+            let lane = lanes.get_mut(&pane).expect("pane lane");
+            lane.evicted_seq = lane.next_seq.saturating_sub(1);
+        }
+        fixture.recorder.broadcast.lock().clear();
+
+        fixture.fanout.replay(ClientId(3), pane, 1);
+        let lists = |items: &[AgentStreamItem]| {
+            items
+                .iter()
+                .filter_map(|item| match &item.payload {
+                    AgentStreamPayload::SessionReady {
+                        config_options: Some(options),
+                        ..
+                    } => Some(options.clone()),
+                    AgentStreamPayload::Update { update }
+                        if update["sessionUpdate"] == "config_option_update" =>
+                    {
+                        Some(update["configOptions"].clone())
+                    }
+                    _ => None,
+                })
+                .map(|options| {
+                    options
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|option| format!("{}={}", option["id"], option["currentValue"]))
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            lists(&live),
+            [
+                ["\"model\"=\"gemini-3.8-flash\"", "\"effort\"=\"low\""],
+                ["\"model\"=\"gemini-3.8-flash\"", "\"effort\"=\"high\""],
+            ]
+        );
+        assert_eq!(
+            lists(&fixture.recorder.payloads()),
+            [["\"model\"=\"gemini-3.8-flash\"", "\"effort\"=\"high\""]]
         );
     }
 

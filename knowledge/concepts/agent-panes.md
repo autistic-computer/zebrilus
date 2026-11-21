@@ -719,8 +719,7 @@ tested approves everything.
 
 **Known gaps in the shared runtime.** A load that replays more than 4,096 updates or 18 MiB
 opens on the newest and drops the oldest, with a log line only: nothing in the chat says older
-history was left out. The latest title among the dropped updates is still applied. A client that recovers from the journal sees the agent's own name for the effort
-option until the recovery metadata that follows replaces the list.
+history was left out. The latest title among the dropped updates is still applied.
 
 # Cursor
 
