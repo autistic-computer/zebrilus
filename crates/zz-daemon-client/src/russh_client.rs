@@ -12,8 +12,9 @@ use std::{
 
 use parking_lot::Mutex;
 use russh::{
-    ChannelMsg, Disconnect, MethodKind,
+    ChannelMsg, Disconnect, MethodKind, Preferred,
     client::{self, AuthResult, KeyboardInteractiveAuthResponse},
+    compression,
     keys::{
         Algorithm, Error as KeyError, HashAlg, PrivateKey, PrivateKeyWithHashAlg, PublicKey,
         PublicKeyOrCertificate, check_known_hosts_path, decode_secret_key,
@@ -439,7 +440,15 @@ async fn sign_in(
         .ok_or_else(|| ssh_failed("ssh endpoints need an explicit user".to_owned()))?;
 
     let directory = ssh_directory().map_err(|error| ssh_failed(error.to_string()))?;
-    let config = Arc::new(client::Config::default());
+    let config = Arc::new(client::Config {
+        preferred: Preferred {
+            compression: std::borrow::Cow::Borrowed(compression_order(
+                std::env::var_os("ZZ_SSH_COMPRESSION").as_deref(),
+            )),
+            ..Preferred::default()
+        },
+        ..client::Config::default()
+    });
     let host_key_failure = Arc::new(Mutex::new(None));
     let handler = TofuHandler {
         host: host.clone(),
@@ -1057,6 +1066,18 @@ fn save_host_key(
     }
     learn_known_hosts_path(host, port, key, path)
         .map_err(|error| io::Error::other(error.to_string()))
+}
+
+fn compression_order(setting: Option<&std::ffi::OsStr>) -> &'static [compression::Name] {
+    if setting.is_some_and(|setting| setting == "no") {
+        &[compression::NONE]
+    } else {
+        &[
+            compression::ZLIB_LEGACY,
+            compression::ZLIB,
+            compression::NONE,
+        ]
+    }
 }
 
 fn ssh_directory() -> io::Result<PathBuf> {

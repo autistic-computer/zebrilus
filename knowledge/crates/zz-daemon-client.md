@@ -31,6 +31,17 @@ and `cargo clippy -p zz-android -p zz-app -p zz-daemon-client --target aarch64-l
 (with the NDK's clang as the linker, as `scripts/android.sh` sets it) are the checks that cover
 those modules.
 
+That ssh client asks for compression first (`russh_client::compression_order`): it offers
+`zlib@openssh.com`, then `zlib`, then `none`, and a server that offers neither falls back to
+`none`. OpenSSH servers offer only the delayed `zlib@openssh.com` by default, so that is what gets
+negotiated: compression starts after authentication, the server deflates at level 6 and the client
+at the fastest level. `ZZ_SSH_COMPRESSION=no` in the app's environment offers `none` alone, for a
+comparison on a device (`xcrun devicectl device process launch --environment-variables
+'{"ZZ_SSH_COMPRESSION":"no"}' dev.zz.ios-dev`, or through `just ios device`, which passes it on).
+Measured from the iOS simulator through a private sshd on this Mac: a cold open of one long chat
+came down to 893 KB on the wire from 2.19 MB, and a keystroke's echo round trip measured between
+the app and the server stayed at a 0.82 ms median either way.
+
 # What the server takes from it
 
 The server uses these and nothing else from the client half:
