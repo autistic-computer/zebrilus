@@ -767,7 +767,10 @@ It takes frames up to 64 MiB there, the line size it takes from an app server of
 (`MAX_FRAME_BYTES` in `agent/child.rs`), so a long `thread/read` arrives whole; a larger frame
 closes the connection, where the line would be dropped. A thread then outlives whichever side drove it: a flip kills the TUI and `thread/resume`s, or
 closes the chat's connection and runs `codex resume`, mid-turn included, and the server unloads an
-idle thread with no client 60 s later. A configured command with arguments keeps an app server of
+idle thread with no client 60 s later. The server sends no `turn/started` to a connection that
+joins mid-turn, so a chat that opens a thread whose `thread/read` says `status.type` `active` with
+its last turn `inProgress` starts that turn as running itself: Stop interrupts it, and its
+`turn/completed` settles the chat. A configured command with arguments keeps an app server of
 its own per chat. A chat that moves to another thread (new chat, switch, fork, rewind) sends
 `thread/unsubscribe` for the thread it left and the subagent threads it saw that thread spawn,
 drops their events and answers a request still coming from them with `cancel`, so the new chat

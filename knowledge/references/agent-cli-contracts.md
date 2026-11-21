@@ -31,7 +31,7 @@ After a check, update the table: the version, the date, and how far the check we
 | CLI | Installed 2026-11-20 | Last checked against | How far |
 |---|---|---|---|
 | Claude Code (`claude`) | 2.1.330 (2026-11-21) | 2.1.292, 2026-10-07 | Full: the fixtures in `agent/claude/fixtures` were recorded on it. 2.1.330 passed the flag probe, the binary grep and the `auth status` keys below, and `get_settings` with no prompt sent showed the last `--model` and `--effort` applied. `resume.ndjson` (an agent resumed with `SendMessage`) and `background.ndjson` (a background agent's approval across the end of its turn) were recorded on 2.1.330 |
-| Codex (`codex`) | 0.171.0 (shared daemon 0.171.0) | 0.159.0, 2026-10-07 | Full: `tools.ndjson` and `subagent.ndjson` in `agent/codex/fixtures`; `app-server-live.jsonl` is 0.166.0. 0.171.0 had the schema check and a binary grep, all names present, `thread/unsubscribe` included (2026-11-21), and a turn with no model call on a private app server for `turn/steer` refusals and `turn/start` during a turn |
+| Codex (`codex`) | 0.171.0 (shared daemon 0.171.0) | 0.159.0, 2026-10-07 | Full: `tools.ndjson` and `subagent.ndjson` in `agent/codex/fixtures`; `app-server-live.jsonl` is 0.166.0. 0.171.0 had the schema check and a binary grep, all names present, `thread/unsubscribe` included (2026-11-21), and a turn with no model call on a private app server for `turn/steer` refusals, `turn/start` during a turn and resuming a thread mid-turn |
 | Antigravity (`agy`) | 1.5.13 | 1.5.13, 2026-11-20 | Live turns through a private daemon, including the artifact signal |
 | Grok Build (`grok`) | 1.0.92 (2026-11-21) | 1.0.92, 2026-11-21 | Cheap checks and the model list (`agent-catalog`) on 1.0.92; live turns through a private daemon on 1.0.89, including `_meta.rules` |
 | Cursor (`cursor-agent`) | 2026.11.19 | 2026.09.18, 2026-11-20 | Live turns on 2026.09.18. 2026.11.19 (it updated itself that morning) passed the initialize probe and, on 2026-11-21, the model list (`agent-catalog`), no turns |
@@ -80,7 +80,8 @@ new flags; a new flag that takes a value has to join the list `cli_session.rs` s
 **Codex around a running turn.** `thread/shellCommand` with a `sleep` runs a turn with no model
 call. On a private app server (`codex app-server --listen unix://<sock>` with `CODEX_HOME` set to an
 empty directory, signed out) it shows how the server answers while a turn runs: `turn/steer`
-refusals and `turn/start` joining the turn. The socket speaks WebSocket, like the daemon's.
+refusals, `turn/start` joining the turn, and what a second connection sees when it
+`thread/resume`s after the first one closed. The socket speaks WebSocket, like the daemon's.
 
 **ACP handshake.** One `initialize` line creates no session and works signed out. Keep stdin open
 for a moment, because Grok exits on end of input before it answers:
@@ -170,6 +171,7 @@ binary under `~/.codex/packages/app-server-daemon/`, so its version is the one t
 | `config/read` returns `config.developer_instructions`; zz prepends it to its context and sends both as `developerInstructions` on `thread/start` | `mod.rs` | On an error zz sends no instructions at all; if `developerInstructions` stops replacing the config's, the user's instructions arrive twice | Fake |
 | `turn/start` `clientUserMessageId` comes back as `userMessage.clientId` | `mod.rs`, `translate.rs` | /rewind says the prompt is no longer in the conversation | Fake |
 | `turn/steer` with `expectedTurnId` answers an error when that turn is no longer the running one (`no active turn to steer`, ``expected active turn id `X` but found `Y` ``), and `turn/start` while a turn runs joins that turn and answers its id. zz holds a steer until it knows the turn id and sends a refused one as the next prompt with `turn/start` | `mod.rs` | A steer that Codex took is sent again, or one it dropped is never sent | Fake; the errors and the join seen on 0.171.0 with a `thread/shellCommand` turn on a private app server |
+| A turn keeps running when the connection that started it closes. `thread/resume` and `thread/read` give `thread.status.type` (`active` while a turn runs) and each turn's `status` (`inProgress` for the running one); a connection that resumes mid-turn gets no `turn/started`, only the turn's later events, and can `turn/interrupt` it | `mod.rs` | A chat flipped from a TUI mid-turn shows idle: no Stop, and the next prompt joins the old turn | Fake; seen on 0.171.0 with a `thread/shellCommand` turn resumed from a second connection after the first closed |
 | `thread/fork` `beforeTurnId` | `mod.rs` | /rewind keeps the later turns | Fake |
 | `turn/completed` (`turn.status`), `thread/status/changed` (`status.type == "active"`) | `mod.rs` | The turn never settles | Recording |
 | A connection keeps getting a thread's events and requests until it sends `thread/unsubscribe`, and every request carries `threadId`. After a new chat, switch, fork or rewind zz unsubscribes the thread it left and its subagent threads, drops their events and answers their approvals with `cancel` | `mod.rs` | Without `threadId` the left thread's approvals show in the new chat; if unsubscribe stops working, zz cancels every later approval on that thread, a TUI's on the shared server included | Fake |

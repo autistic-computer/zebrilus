@@ -1165,9 +1165,15 @@ impl Runtime {
             );
             return Ok(());
         }
-        let name = response["thread"]["name"].clone();
-        self.settle(start, thread, cwd, Vec::new(), Vec::new(), &name)
-            .await
+        self.settle(
+            start,
+            thread,
+            cwd,
+            Vec::new(),
+            Vec::new(),
+            &response["thread"],
+        )
+        .await
     }
 
     async fn settle(
@@ -1177,7 +1183,7 @@ impl Runtime {
         cwd: PathBuf,
         history: Vec<(Value, bool)>,
         questions: Vec<Asked>,
-        name: &Value,
+        opened: &Value,
     ) -> Result<(), String> {
         let (source, before) = self
             .starting
@@ -1238,6 +1244,12 @@ impl Runtime {
                 .await?;
             }
         }
+        if let Some(command) = running_turn(opened) {
+            self.apply(&Fact::Started {
+                command: command.to_owned(),
+            })
+            .await?;
+        }
         self.update(
             json!({
                 "sessionUpdate": "available_commands_update",
@@ -1249,7 +1261,7 @@ impl Runtime {
             true,
         )
         .await?;
-        let title = name.as_str().and_then(clean_title).or_else(|| {
+        let title = opened["name"].as_str().and_then(clean_title).or_else(|| {
             (start == Start::Fork)
                 .then(|| self.title.current())
                 .flatten()
@@ -1361,7 +1373,7 @@ impl Runtime {
             loading.cwd,
             history,
             questions,
-            &loading.thread["name"],
+            &loading.thread,
         )
         .await
     }
@@ -2887,6 +2899,14 @@ fn thread_items(thread: &Value) -> Vec<Value> {
         .collect()
 }
 
+fn running_turn(thread: &Value) -> Option<&str> {
+    let turn = thread["turns"].as_array()?.last()?;
+    if thread["status"]["type"] != "active" || turn["status"] != "inProgress" {
+        return None;
+    }
+    turn["id"].as_str()
+}
+
 fn turn_history(
     translator: &mut Translator,
     turn: &Value,
@@ -3113,6 +3133,12 @@ while IFS= read -r line; do
     *'"method":"thread/resume"'*'"threadId":"t2"'*) printf '{"id":%s,"result":{"thread":{"id":"t2"}}}\n' "$id" ;;
     *'"method":"thread/resume"'*'"threadId":"gone"'*) printf '{"id":%s,"error":{"code":-32600,"message":"no rollout for gone"}}\n' "$id" ;;
     *'"method":"thread/resume"'*'"threadId":"t3"'*) printf '{"id":%s,"result":{"thread":{"id":"t3"}}}\n' "$id" ;;
+    *'"method":"thread/resume"'*'"threadId":"t4"'*) printf '{"id":%s,"result":{"thread":{"id":"t4"}}}\n' "$id" ;;
+    *'"method":"thread/read"'*'"threadId":"t4"'*)
+      printf '{"id":%s,"result":{"thread":{"id":"t4","status":{"type":"active","activeFlags":[]},"turns":[{"id":"r1","status":"inProgress","items":[{"type":"userMessage","id":"m4","content":[{"type":"text","text":"keep going"}]}]}]}}}\n' "$id" ;;
+    *'"method":"turn/interrupt"'*'"turnId":"r1"'*)
+      printf '{"id":%s,"result":{}}\n' "$id"
+      printf '%s\n' '{"method":"turn/completed","params":{"threadId":"t4","turn":{"id":"r1","status":"interrupted"}}}' ;;
     *'"method":"thread/read"'*'"threadId":"t3"'*)
       printf '{"id":%s,"result":{"thread":{"id":"t3","turns":[]}}}\n' "$id"
       printf '%s\n' '{"method":"item/commandExecution/requestApproval","id":901,"params":{"threadId":"t1","turnId":"u9","itemId":"exec-left","command":"rm -rf build"}}'
@@ -3857,6 +3883,71 @@ done
             ],
             "{log}"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_thread_opened_mid_turn_shows_the_turn_running_until_stop_ends_it() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let (commands, controls, events, runtime) =
+            fake_codex_in(directory.path(), AgentWorkspaceEnvironment::default());
+        let driver = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: directory.path().to_path_buf(),
+                    resume_session: Some("t4".to_owned()),
+                })
+                .await
+                .expect("open");
+            until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::SessionReady { .. })
+            })
+            .await;
+            commands
+                .send(RuntimeCommand::ListSessions {
+                    client: zz_protocol::ClientId(1),
+                    cwd: None,
+                    cursor: None,
+                    replace: true,
+                })
+                .await
+                .expect("list");
+            let mut busy = Vec::new();
+            loop {
+                match until(&events, |_| true).await {
+                    AgentStreamPayload::Activity { busy: now } => busy.push(now),
+                    AgentStreamPayload::SessionsListed { .. } => break,
+                    _ => {}
+                }
+            }
+            assert_eq!(busy, [true]);
+            controls
+                .send(RuntimeControl::Cancel {
+                    turn_id: 0,
+                    session_id: Some("t4".to_owned()),
+                })
+                .await
+                .expect("stop");
+            let settled = until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::Activity { .. })
+            })
+            .await;
+            assert_eq!(settled, AgentStreamPayload::Activity { busy: false });
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+        };
+        let (result, ()) = smol::block_on(futures_lite::future::zip(runtime, driver));
+        assert_eq!(result, Ok(()));
+        let log = std::fs::read_to_string(directory.path().join("codex.log")).expect("log");
+        let interrupts = log
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|request| request["method"] == "turn/interrupt")
+            .map(|request| request["params"].clone())
+            .collect::<Vec<_>>();
+        assert_eq!(interrupts, [json!({ "threadId": "t4", "turnId": "r1" })]);
     }
 
     #[cfg(unix)]
