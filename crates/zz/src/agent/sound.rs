@@ -5,6 +5,7 @@ use std::{
     time::Instant,
 };
 
+use ala::App;
 use zz_client::attention::{Chime, bell_due, chime_due, chime_wav};
 
 const SOUND_ENV: &str = "ZZ_AGENT_SOUND";
@@ -14,8 +15,13 @@ static LAST_CHIME: Mutex<Option<Instant>> = Mutex::new(None);
 static LAST_DISCONNECT: Mutex<Option<Instant>> = Mutex::new(None);
 static LAST_BELL: Mutex<Option<Instant>> = Mutex::new(None);
 
-pub(crate) fn play(chime: Chime) {
-    if cfg!(test) || !enabled(std::env::var_os(SOUND_ENV).as_deref()) || !due(chime, Instant::now())
+pub(crate) fn play(chime: Chime, cx: &App) {
+    if cfg!(test)
+        || !enabled(
+            crate::config::sounds_enabled(cx),
+            std::env::var_os(SOUND_ENV).as_deref(),
+        )
+        || !due(chime, Instant::now())
     {
         return;
     }
@@ -37,8 +43,8 @@ fn due(chime: Chime, now: Instant) -> bool {
     }
 }
 
-fn enabled(value: Option<&OsStr>) -> bool {
-    value.is_none_or(|value| value != "0")
+fn enabled(setting: bool, env: Option<&OsStr>) -> bool {
+    setting && env.is_none_or(|value| value != "0")
 }
 
 fn play_blocking(chime: Chime) -> Result<(), String> {
@@ -118,10 +124,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_env_kill_switch_only_answers_to_zero() {
-        assert!(enabled(None));
-        assert!(enabled(Some(OsStr::new("1"))));
-        assert!(enabled(Some(OsStr::new(""))));
-        assert!(!enabled(Some(OsStr::new("0"))));
+    fn sounds_play_only_with_the_setting_on_and_no_env_kill_switch() {
+        assert!(enabled(true, None));
+        assert!(enabled(true, Some(OsStr::new("1"))));
+        assert!(enabled(true, Some(OsStr::new(""))));
+        assert!(!enabled(true, Some(OsStr::new("0"))));
+        assert!(!enabled(false, None));
+        assert!(!enabled(false, Some(OsStr::new("1"))));
     }
 }

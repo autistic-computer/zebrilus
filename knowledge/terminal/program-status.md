@@ -114,8 +114,8 @@ answer first. Surfaces without a PTY (output views) leave
   fast as it writes, and when one look finds several edges only the most urgent rings: request
   over failure over completion. The chimes are WAVs in `crates/zz-client/assets/sounds`
   (`zz_client::attention::chime_wav`); the desktop plays them through `afplay`, `paplay`,
-  `pw-play` or `aplay` and stays silent on Windows, and `ZZ_AGENT_SOUND=0` silences every zz
-  sound. While zz is in the background the same edges post a desktop notification
+  `pw-play` or `aplay` and stays silent on Windows, and the `sounds` setting or
+  `ZZ_AGENT_SOUND=0` silences every zz sound. While zz is in the background the same edges post a desktop notification
   named after `app` with `msg` as its body, at most one per pane every two seconds; clicking it
   selects the pane (`zz_client::attention::banner`).
 - Thin clients (web, iPad, iPhone): the attached host's terminal panes and agent panes feed the

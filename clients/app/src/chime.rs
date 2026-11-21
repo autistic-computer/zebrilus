@@ -1,7 +1,21 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use zz_client::attention::Chime;
 
-#[cfg(target_family = "wasm")]
+static ENABLED: AtomicBool = AtomicBool::new(true);
+
+pub(crate) fn set_enabled(enabled: bool) {
+    ENABLED.store(enabled, Ordering::Relaxed);
+}
+
 pub(crate) fn play(chime: Chime) {
+    if ENABLED.load(Ordering::Relaxed) {
+        output(chime);
+    }
+}
+
+#[cfg(target_family = "wasm")]
+fn output(chime: Chime) {
     use base64::Engine as _;
 
     let source = format!(
@@ -20,7 +34,7 @@ pub(crate) fn play(chime: Chime) {
 
 #[cfg(target_os = "ios")]
 #[allow(unsafe_code, unexpected_cfgs)]
-pub(crate) fn play(chime: Chime) {
+fn output(chime: Chime) {
     use std::{ffi::CString, sync::OnceLock};
 
     use objc::{class, msg_send, runtime::Object, sel, sel_impl};
@@ -56,4 +70,4 @@ pub(crate) fn play(chime: Chime) {
 }
 
 #[cfg(not(any(target_family = "wasm", target_os = "ios")))]
-pub(crate) const fn play(_chime: Chime) {}
+const fn output(_chime: Chime) {}

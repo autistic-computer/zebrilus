@@ -1209,14 +1209,22 @@ impl SettingsView {
                 )
             })
             .child(
-                SettingsStack::titled("Notifications").child(
-                    Self::boolean_setting(
-                        ConfigKey::Notifications,
-                        "Notify when a pane needs you",
-                        resolved.notifications,
+                SettingsStack::titled("Notifications")
+                    .child(
+                        Self::boolean_setting(
+                            ConfigKey::Notifications,
+                            "Notify when a pane needs you",
+                            resolved.notifications,
+                        )
+                        .description("While zz is in the background"),
                     )
-                    .description("While zz is in the background"),
-                ),
+                    .when(!cfg!(target_os = "windows"), |stack| {
+                        stack.child(Self::boolean_setting(
+                            ConfigKey::Sounds,
+                            "Play sounds",
+                            resolved.sounds,
+                        ))
+                    }),
             )
             .when(crate::profile::profile(cx).has_daemon_lifecycle, |column| {
                 column.child(
@@ -2345,6 +2353,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::Motion
         | ConfigKey::Tray
         | ConfigKey::Notifications
+        | ConfigKey::Sounds
         | ConfigKey::QuitDaemonOnExit
         | ConfigKey::AutoRestartStaleDaemon
         | ConfigKey::CheckForUpdates

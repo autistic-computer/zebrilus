@@ -355,6 +355,10 @@ pub(crate) fn notifications_enabled(cx: &App) -> bool {
     resolved_config(cx).notifications.value
 }
 
+pub(crate) fn sounds_enabled(cx: &App) -> bool {
+    resolved_config(cx).sounds.value
+}
+
 pub(crate) fn browser_egress_enabled(cx: &App) -> bool {
     resolved_config(cx).browser_egress.value
 }
@@ -1255,6 +1259,7 @@ mod tests {
              window-corner-radius = 10\n\
              motion = off\n\
              notifications = false\n\
+             sounds = false\n\
              quit-daemon-on-exit = true\n\
              auto-restart-stale-daemon = true\n\
              check-for-updates = false\n\
@@ -1320,6 +1325,8 @@ mod tests {
         assert_eq!(parsed.config.motion.provenance, ConfigProvenance::Override);
         assert!(!parsed.config.notifications.value);
         assert!(AppConfig::default().notifications.value);
+        assert!(!parsed.config.sounds.value);
+        assert!(AppConfig::default().sounds.value);
         assert!(parsed.config.quit_daemon_on_exit.value);
         assert_eq!(
             parsed.config.quit_daemon_on_exit.provenance,
@@ -2964,6 +2971,7 @@ mod tests {
             "motion",
             "tray",
             "notifications",
+            "sounds",
             "quit-daemon-on-exit",
             "auto-restart-stale-daemon",
             "check-for-updates",

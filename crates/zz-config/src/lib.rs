@@ -47,6 +47,7 @@ pub const DEFAULT_POINTING_HAND: bool = false;
 pub const DEFAULT_CHROME_TINT: f32 = 0.15;
 pub const DEFAULT_TRAY: bool = true;
 pub const DEFAULT_NOTIFICATIONS: bool = true;
+pub const DEFAULT_SOUNDS: bool = true;
 pub const DEFAULT_QUIT_DAEMON_ON_EXIT: bool = false;
 pub const DEFAULT_AUTO_RESTART_STALE_DAEMON: bool = false;
 pub const DEFAULT_CHECK_FOR_UPDATES: bool = true;
@@ -78,6 +79,7 @@ pub enum ConfigKey {
     Motion,
     Tray,
     Notifications,
+    Sounds,
     QuitDaemonOnExit,
     AutoRestartStaleDaemon,
     CheckForUpdates,
@@ -124,6 +126,7 @@ impl ConfigKey {
             Self::Motion => "motion",
             Self::Tray => "tray",
             Self::Notifications => "notifications",
+            Self::Sounds => "sounds",
             Self::QuitDaemonOnExit => "quit-daemon-on-exit",
             Self::AutoRestartStaleDaemon => "auto-restart-stale-daemon",
             Self::CheckForUpdates => "check-for-updates",
@@ -170,6 +173,7 @@ impl ConfigKey {
             "motion" => Some(Self::Motion),
             "tray" => Some(Self::Tray),
             "notifications" => Some(Self::Notifications),
+            "sounds" => Some(Self::Sounds),
             "quit-daemon-on-exit" => Some(Self::QuitDaemonOnExit),
             "auto-restart-stale-daemon" => Some(Self::AutoRestartStaleDaemon),
             "check-for-updates" => Some(Self::CheckForUpdates),
@@ -227,6 +231,7 @@ impl ConfigKey {
             | Self::Motion
             | Self::Tray
             | Self::Notifications
+            | Self::Sounds
             | Self::QuitDaemonOnExit
             | Self::AutoRestartStaleDaemon
             | Self::CheckForUpdates
@@ -357,6 +362,7 @@ pub struct AppConfig {
     pub motion: ConfigValue<MotionSetting>,
     pub tray: ConfigValue<bool>,
     pub notifications: ConfigValue<bool>,
+    pub sounds: ConfigValue<bool>,
     pub quit_daemon_on_exit: ConfigValue<bool>,
     pub auto_restart_stale_daemon: ConfigValue<bool>,
     pub check_for_updates: ConfigValue<bool>,
@@ -397,6 +403,7 @@ impl Default for AppConfig {
             motion: ConfigValue::from_default(MotionSetting::Default),
             tray: ConfigValue::from_default(DEFAULT_TRAY),
             notifications: ConfigValue::from_default(DEFAULT_NOTIFICATIONS),
+            sounds: ConfigValue::from_default(DEFAULT_SOUNDS),
             quit_daemon_on_exit: ConfigValue::from_default(DEFAULT_QUIT_DAEMON_ON_EXIT),
             auto_restart_stale_daemon: ConfigValue::from_default(DEFAULT_AUTO_RESTART_STALE_DAEMON),
             check_for_updates: ConfigValue::from_default(DEFAULT_CHECK_FOR_UPDATES),
@@ -437,6 +444,7 @@ impl AppConfig {
             ConfigKey::PaletteVimMode => Some(&mut self.palette_vim_mode),
             ConfigKey::Tray => Some(&mut self.tray),
             ConfigKey::Notifications => Some(&mut self.notifications),
+            ConfigKey::Sounds => Some(&mut self.sounds),
             ConfigKey::QuitDaemonOnExit => Some(&mut self.quit_daemon_on_exit),
             ConfigKey::AutoRestartStaleDaemon => Some(&mut self.auto_restart_stale_daemon),
             ConfigKey::CheckForUpdates => Some(&mut self.check_for_updates),
@@ -1122,6 +1130,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::Motion
             | ConfigKey::Tray
             | ConfigKey::Notifications
+            | ConfigKey::Sounds
             | ConfigKey::QuitDaemonOnExit
             | ConfigKey::AutoRestartStaleDaemon
             | ConfigKey::CheckForUpdates

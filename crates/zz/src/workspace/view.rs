@@ -2107,7 +2107,7 @@ impl AppView {
         if bell_revision != self.bell_revision {
             self.bell_revision = bell_revision;
             window.request_attention();
-            crate::agent::sound::play(zz_client::attention::Chime::Bell);
+            crate::agent::sound::play(zz_client::attention::Chime::Bell, cx);
         }
         let mut wanted_pickers = BTreeSet::new();
         let mut wanted_terminals = BTreeSet::new();

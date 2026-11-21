@@ -534,7 +534,7 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
   preferences);
   Navigation: the which-key delay; Display: drawing under the home indicator, matching the
   system text size, and keeping the screen awake while connected; Notifications: Notify when
-  a pane needs you.
+  a pane needs you and Play sounds.
 - **About:** app version and source link.
 
 The page omits desktop-only options and controls for unsupported pane kinds. iPhone also

@@ -486,6 +486,7 @@ impl AppShell {
         let key_events = cx.intercept_keystrokes(key_listener);
         let connection_subscriptions = watch_connection(&connection, window, cx);
         let preferences = settings::Preferences::load();
+        crate::chime::set_enabled(preferences.sounds);
         let chrome = preferences.chrome_keymaps();
         cx.set_global(chrome.clone());
         cx.set_global(crate::preferences::AgentPicks(

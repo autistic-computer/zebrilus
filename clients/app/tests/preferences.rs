@@ -131,6 +131,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     expected["chrome_keys"] = serde_json::json!([]);
     expected["search_engine"] = "google".into();
     expected["notifications"] = true.into();
+    expected["sounds"] = true.into();
     expected["window_follows_theme"] = true.into();
     expected["onboarded"] = false.into();
     for device in [

@@ -1036,21 +1036,34 @@ impl AppShell {
                     )
                     .when(!cfg!(target_os = "android"), |page| {
                         page.child(
-                            SettingsStack::titled("Notifications").child(
-                                SettingEntry::new("Notify when a pane needs you")
-                                    .description("While zz is in the background")
-                                    .control(
-                                        Switch::new("settings-notifications")
-                                            .checked(self.preferences.notifications)
-                                            .on_click(cx.listener(|this, _, window, cx| {
-                                                this.preferences.notifications =
-                                                    !this.preferences.notifications;
+                            SettingsStack::titled("Notifications")
+                                .child(
+                                    SettingEntry::new("Notify when a pane needs you")
+                                        .description("While zz is in the background")
+                                        .control(
+                                            Switch::new("settings-notifications")
+                                                .checked(self.preferences.notifications)
+                                                .on_click(cx.listener(|this, _, window, cx| {
+                                                    this.preferences.notifications =
+                                                        !this.preferences.notifications;
+                                                    this.preferences.save();
+                                                    this.reconcile_attention(window, None, cx);
+                                                    cx.notify();
+                                                })),
+                                        ),
+                                )
+                                .child(
+                                    SettingEntry::new("Play sounds").control(
+                                        Switch::new("settings-sounds")
+                                            .checked(self.preferences.sounds)
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.preferences.sounds = !this.preferences.sounds;
                                                 this.preferences.save();
-                                                this.reconcile_attention(window, None, cx);
+                                                crate::chime::set_enabled(this.preferences.sounds);
                                                 cx.notify();
                                             })),
                                     ),
-                            ),
+                                ),
                         )
                     })
                     .when(shown(Setting::CommandPalette, phone), |page| {

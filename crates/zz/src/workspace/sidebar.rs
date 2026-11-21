@@ -305,7 +305,7 @@ impl WorkspaceSidebar {
         let watched = self.watched_pane(cx).map(|pane| (attached_host, pane));
         let edges = self.tracker.observe(&statuses, watched);
         if let Some(chime) = loudest(&edges) {
-            crate::agent::sound::play(chime);
+            crate::agent::sound::play(chime, cx);
         }
         self.post_banners(&statuses, watched, &edges, cx);
         let badges = statuses
