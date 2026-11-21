@@ -4,7 +4,7 @@ title: Agent CLI contracts
 description: What zz relies on from the agent CLIs it drives (Claude Code, Codex, Antigravity, Grok Build, Cursor) that the vendor can change without notice, the version each was last checked at, which changes break zz quietly, and the commands that recheck them after an update.
 resource: crates/zz-daemon/src/agent/
 tags: [agent, claude-code, codex, antigravity, grok, cursor, acp, compatibility, reference]
-timestamp: 2026-11-20T00:00:00-03:00
+timestamp: 2026-11-21T00:00:00-03:00
 ---
 
 # Why this page exists
@@ -30,7 +30,7 @@ After a check, update the table: the version, the date, and how far the check we
 
 | CLI | Installed 2026-11-20 | Last checked against | How far |
 |---|---|---|---|
-| Claude Code (`claude`) | 2.1.329 | 2.1.292, 2026-10-07 | Full: the fixtures in `agent/claude/fixtures` were recorded on it. 2.1.329 passed the flag probe, the binary grep and the `auth status` keys below, nothing live |
+| Claude Code (`claude`) | 2.1.329 | 2.1.292, 2026-10-07 | Full: the fixtures in `agent/claude/fixtures` were recorded on it. 2.1.329 passed the flag probe, the binary grep and the `auth status` keys below, nothing live. `resume.ndjson` (an agent resumed with `SendMessage`) was recorded on 2.1.330 |
 | Codex (`codex`) | 0.171.0 (shared daemon 0.171.0) | 0.159.0, 2026-10-07 | Full: `tools.ndjson` and `subagent.ndjson` in `agent/codex/fixtures`; `app-server-live.jsonl` is 0.166.0. 0.171.0 had the schema check and a binary grep, all names present |
 | Antigravity (`agy`) | 1.5.13 | 1.5.13, 2026-11-20 | Live turns through a private daemon, including the artifact signal |
 | Grok Build (`grok`) | 1.0.89 | 1.0.89, 2026-11-20 | Live turns through a private daemon, including `_meta.rules` |
@@ -134,9 +134,10 @@ Driver: `agent/claude/` (`mod.rs` frames and flags, `translate.rs` rows, `sessio
 | A turn ends on `command_lifecycle` (`command_uuid`, `state`), else on `system/session_state_changed` (asked for with `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1`) | `mod.rs`, `turn.rs` | Both gone: the spinner never stops | Recording |
 | `--replay-user-messages` echoes carry `isReplay` | `translate.rs` | Every prompt shows twice | Recording |
 | Each `assistant` frame carries the block just streamed by `stream_event`, keyed by message id and index | `translate.rs` | Text shows twice or goes missing | Recording |
-| `initialize` fields `agentProgressSummaries`, `forwardSubagentText` | `mod.rs` | Subagent progress lines and text stop | Not recorded |
+| `initialize` fields `agentProgressSummaries`, `forwardSubagentText` | `mod.rs` | Subagent progress lines and text stop | Sent in `resume.ndjson`; no progress summary or subagent text showed up in it |
 | `get_settings` (`applied.model`, `applied.effort`), `get_usage` (`rate_limits`), `generate_session_title` | `mod.rs` | Model badge, quota bars and titles stop | Fakes only; never confirmed against a real CLI |
 | Tool names zz special-cases: `AskUserQuestion` (answers), `ExitPlanMode` (mode switch), `TodoWrite`, `TaskCreate`, `TaskUpdate` (plan panel), `Bash` (auto-approve of `zz` commands) | `translate.rs`, `mod.rs` | A renamed question or plan tool is approved with no answers or no mode switch; other renames lose their rows | Recording for `Agent`, `Edit`, `AskUserQuestion` |
+| Resuming a finished agent: `SendMessage` input `to` (the agent id), `summary`, `message`; then `task_started` with the agent's id as `task_id` and the `SendMessage` call as `tool_use_id`; the agent's frames keep the first `Agent` call as `parent_tool_use_id` and name the agent in `agent_id`; `tool_use_result.resumedAgentId`; the closing `task_notification` names the `SendMessage` call | `translate.rs` | The resumed agent shows as a plain "Send message" row and its steps are dropped | Recording (`resume.ndjson`) |
 | `can_use_tool` fields `permission_suggestions`, `requires_user_interaction`, `suppress_always_allow_rule` | `mod.rs` | Wrong auto-approve, or "Always allow" missing | Recording |
 | `system/init.terminal_slash_commands` | `mod.rs` | A TUI-only command shows in chat and fails | Hand-written |
 | Model ids start with `claude-`; `[…]` suffixes like `[1m]`; aliases `opus`, `sonnet`, `haiku`, `fable` | `mod.rs`, `cli_session.rs` | Wrong model badge, or flip opens the TUI on another model | Hand-written |
@@ -238,8 +239,8 @@ zz speaks ACP v1 through `agent-client-protocol` 5.0.0 with schema 1.15.1 (`Carg
 * No recorder for Claude Code or Codex sessions, so a full recheck needs an outside harness. Only
   two of the nine steps in `app-server-live.jsonl` feed a test, and the `rollout-lens-stress`
   files feed none.
-* The Claude Code recordings predate four things the driver uses now: the two `initialize` fields
-  above, `CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES` output, and `get_settings`/`get_usage` replies.
+* Only `resume.ndjson` carries the two `initialize` fields above and `CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES`
+  output; no recording has `get_settings`/`get_usage` replies.
 * The ACP effort option ids are copied into the dialect tests, so changing `agy.rs` or `grok.rs`
   breaks no test.
 * Signed-out detection for the ACP providers reads error text, not the error code.

@@ -558,6 +558,93 @@ fn tool_rows_read_as_plain_steps_with_their_failures() {
 }
 
 #[test]
+fn a_send_message_that_resumes_an_agent_runs_as_its_card_until_the_notification() {
+    let recording = include_str!("fixtures/resume.ndjson");
+    let resume = ItemId::new("toolu_01PabzHgZypSdK6PirEx1vpB");
+    let handback = ItemId::new("toolu_01HAcDaX3g4UMG6J4Tf4nCoj");
+    let card = |lines: usize| {
+        let prefix = recording.lines().take(lines).collect::<Vec<_>>().join("\n");
+        let (runtime, _) = run(&prefix);
+        let (view, rejects) = chat_of(&runtime);
+        let dropped = rejects
+            .iter()
+            .filter(|reject| !reject.starts_with("Turn("))
+            .collect::<Vec<_>>();
+        assert!(dropped.is_empty(), "{lines}: {dropped:#?}");
+        let item = view.item(&resume).expect("resume card").clone();
+        (
+            (
+                item.kind,
+                item.body.title,
+                item.body.activity,
+                item.body.target,
+            ),
+            (item.body.text, item.status, item.background, item.children),
+        )
+    };
+    let shown = (
+        ItemKind::Subagent,
+        "pong check".to_owned(),
+        Some("pong again".to_owned()),
+        Some("Reply with exactly: pong again".to_owned()),
+    );
+    let after_result = card(114);
+    assert_eq!(after_result.0, shown);
+    assert_eq!(
+        after_result.1,
+        (String::new(), ItemStatus::Running, true, Vec::new())
+    );
+    assert_eq!(
+        card(132).1,
+        (
+            String::new(),
+            ItemStatus::Running,
+            true,
+            vec![handback.clone()]
+        )
+    );
+    let (_, (_, status, _, children)) = card(149);
+    assert_eq!((status, children), (ItemStatus::Completed, vec![handback]));
+}
+
+#[test]
+fn a_send_message_to_an_unknown_recipient_stays_a_plain_row() {
+    let (mut runtime, _receiver) = setup();
+    prompt(&mut runtime, 1, ORIGINAL);
+    let frames = [
+        json!({"type":"command_lifecycle","command_uuid":ORIGINAL,"state":"started"}),
+        json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m1","content":[
+            {"type":"tool_use","id":"s1","name":"SendMessage",
+                "input":{"to":"reviewer","summary":"ping","message":"ping"}}]}}),
+        json!({"type":"user","parent_tool_use_id":null,"message":{"role":"user","content":[
+            {"type":"tool_result","tool_use_id":"s1","content":"Message sent to reviewer"}]},
+            "tool_use_result":{"success":true,"message":"Message sent to reviewer"}}),
+    ];
+    for frame in frames {
+        smol::block_on(runtime.frame(frame)).expect("frame");
+    }
+    let (view, rejects) = chat_of(&runtime);
+    assert!(rejects.is_empty(), "{rejects:#?}");
+    let item = view.item(&ItemId::new("s1")).expect("row");
+    assert_eq!(
+        (
+            item.kind,
+            item.body.title.clone(),
+            item.body.activity.clone(),
+            item.body.text.clone(),
+            item.status.clone(),
+        ),
+        (
+            ItemKind::Tool,
+            "Send message".to_owned(),
+            None,
+            "Message sent to reviewer".to_owned(),
+            ItemStatus::Completed,
+        )
+    );
+}
+
+#[test]
 fn every_recording_drives_the_chat_machine() {
     for (name, recording) in [
         ("hello", include_str!("fixtures/hello.ndjson")),

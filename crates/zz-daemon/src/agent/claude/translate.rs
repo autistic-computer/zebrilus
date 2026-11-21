@@ -335,7 +335,14 @@ impl Translator {
     }
 
     fn assistant(&mut self, frame: &Value) -> Vec<Value> {
-        self.blocks(frame, frame["parent_tool_use_id"].as_str())
+        let parent = frame["parent_tool_use_id"].as_str().map(|parent| {
+            frame["agent_id"]
+                .as_str()
+                .and_then(|agent| self.task_tools.get(agent))
+                .map_or(parent, String::as_str)
+                .to_owned()
+        });
+        self.blocks(frame, parent.as_deref())
     }
 
     fn blocks(&mut self, frame: &Value, parent: Option<&str>) -> Vec<Value> {
@@ -394,6 +401,24 @@ impl Translator {
         };
         let name = block["name"].as_str().unwrap_or("Tool").to_owned();
         let input = block["input"].clone();
+        let resumed = input["to"]
+            .as_str()
+            .filter(|_| name == "SendMessage")
+            .and_then(|agent| self.task_tools.get(agent))
+            .filter(|tool| {
+                matches!(
+                    self.tools.get(*tool).map(String::as_str),
+                    Some("Agent" | "Task")
+                ) && self.settled.contains(*tool)
+                    && !self.background.contains(*tool)
+            })
+            .and_then(|tool| self.labels.get(tool))
+            .cloned();
+        let name = if resumed.is_some() {
+            "Agent".to_owned()
+        } else {
+            name
+        };
         self.tools.insert(id.to_owned(), name.clone());
         match name.as_str() {
             "TodoWrite" => {
@@ -460,6 +485,10 @@ impl Translator {
                 .insert(id.to_owned(), json!(super::question_list(&input)));
         }
         let mut info = tool_info(&name, &input, &self.cwd);
+        if let Some(label) = &resumed {
+            info.title.clone_from(label);
+            info.target = input["message"].as_str().map(str::to_owned);
+        }
         if matches!(name.as_str(), "TaskStop" | "KillShell" | "KillBash")
             && let Some(label) = input["task_id"]
                 .as_str()
@@ -492,7 +521,12 @@ impl Translator {
             call["_meta"]["claudeCode"]["parentToolUseId"] = Value::from(parent);
             call["_meta"]["zz"]["parent"] = Value::from(parent);
         }
-        if let Some(activity) = input["description"]
+        let activity = if resumed.is_some() {
+            &input["summary"]
+        } else {
+            &input["description"]
+        };
+        if let Some(activity) = activity
             .as_str()
             .map(str::trim)
             .filter(|text| !text.is_empty())
@@ -590,11 +624,17 @@ impl Translator {
         }
         let name = self.tools.get(id).cloned().unwrap_or_default();
         if !is_error
-            && let Some(launch) = structured
-                .filter(|result| result["isAsync"] == true || result["status"] == "async_launched")
+            && let Some(launch) = structured.filter(|result| {
+                result["isAsync"] == true
+                    || result["status"] == "async_launched"
+                    || result["resumedAgentId"].is_string()
+            })
         {
             self.background.insert(id.to_owned());
-            if let Some(agent) = launch["agentId"].as_str() {
+            if let Some(agent) = launch["agentId"]
+                .as_str()
+                .or_else(|| launch["resumedAgentId"].as_str())
+            {
                 self.task_tools.insert(agent.to_owned(), id.to_owned());
             }
         }

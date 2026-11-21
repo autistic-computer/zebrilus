@@ -95,8 +95,9 @@ updates, `sessions.rs` reads Claude's own session files.
   subagent text stays out of the main thread.
 - **Peer bus.** The CLI registers its own session record, so the daemon no longer registers a
   `PeerInbox` for a native Claude pane.
-- **Tests.** The translator replays three scrubbed real recordings in `agent/claude/fixtures`
-  (CLI 2.1.292, 2026-10-07). An end-to-end test runs the loop against a fake `claude` script.
+- **Tests.** The translator replays four scrubbed real recordings in `agent/claude/fixtures`
+  (CLI 2.1.292, 2026-10-07; `resume.ndjson` on 2.1.330, 2026-11-21). An end-to-end test runs the
+  loop against a fake `claude` script.
 
 Verified live on 2026-10-07 through a private daemon and `zz_cli`: a plain reply, a tool turn that
 edited files, an `AskUserQuestion` answered with `agent-respond`, and `restart-agent-pane` resuming
