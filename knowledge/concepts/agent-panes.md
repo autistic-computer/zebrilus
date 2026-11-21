@@ -1342,7 +1342,10 @@ The full delivery contract is in the
   the daemon sends only what it missed. A new chat, one that stopped being a chat, and every chat
   after a new hello start over from 0. Each buffer carries a stream number
   (`Connection::agent_stream`); a chat view that sees a different number starts its transcript
-  over.
+  over. The buffers are capped by bytes only (`MAX_AGENT_HISTORY_BYTES`, 32 MiB per chat and per
+  connection), and `AgentCursor::trimmed` records the newest item the cap dropped: a view that had
+  not applied it yet asks for the whole chat again (`Connection::refetch_agent`) instead of drawing
+  a chat with its start missing.
 - **Watchers.** A client that sends `AgentReplay` for a pane watches it from then on, attached or
   not (`watched_agents` on the client entry): it gets the pane's `AgentUpdates`, `AgentState` and
   `AgentLagged` until it disconnects or the pane closes, and the pane's `AgentState` right away when

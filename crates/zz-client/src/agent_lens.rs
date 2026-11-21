@@ -16,13 +16,13 @@ use crate::{
 };
 
 pub const MAX_AGENT_HISTORY_BYTES: usize = 32 * 1024 * 1024;
-pub const MAX_AGENT_HISTORY_ITEMS: usize = 10_000;
 
 #[derive(Default)]
 pub struct AgentCursor {
     pub last_seq: u64,
     pub replay_pending: bool,
     pub bytes: usize,
+    pub trimmed: u64,
     pub history_supported: bool,
     pub session_load_supported: bool,
     pub session_delete_supported: bool,
@@ -115,6 +115,7 @@ impl AgentCursor {
             if item.item == "sessionReset" {
                 journal.clear();
                 self.bytes = 0;
+                self.trimmed = 0;
                 self.commands = Arc::from([]);
                 self.command_session_reset = true;
             } else if item.item == "sessionReady" {
@@ -164,17 +165,11 @@ impl AgentCursor {
         (None, invalid)
     }
 
-    pub fn trim(
-        &mut self,
-        journal: &mut Vec<(u64, Vec<u8>)>,
-        byte_limit: usize,
-        item_limit: usize,
-    ) -> bool {
+    pub fn trim(&mut self, journal: &mut Vec<(u64, Vec<u8>)>, byte_limit: usize) -> bool {
         let mut remove = 0;
-        while remove < journal.len()
-            && (self.bytes > byte_limit || journal.len() - remove > item_limit)
-        {
+        while remove < journal.len() && self.bytes > byte_limit {
             self.bytes = self.bytes.saturating_sub(journal[remove].1.len());
+            self.trimmed = journal[remove].0;
             remove += 1;
         }
         journal.drain(..remove);
@@ -699,7 +694,7 @@ mod tests {
             cursor.commands[0].input_hint.as_deref(),
             Some("branch or files")
         );
-        assert!(cursor.trim(&mut journal, 0, 0));
+        assert!(cursor.trim(&mut journal, 0));
         assert!(journal.is_empty());
         assert_eq!(cursor.commands[0].name, "review");
         cursor.apply(&mut journal, 2, &[reset(2, true)]);
@@ -820,7 +815,7 @@ mod tests {
         assert!(cursor.session_delete_supported);
         assert!(cursor.images_supported);
         assert_eq!(journal[0].0, 2);
-        cursor.trim(&mut journal, 0, 0);
+        cursor.trim(&mut journal, 0);
         assert!(cursor.history_supported);
         assert!(cursor.session_load_supported);
         assert!(cursor.session_delete_supported);
@@ -835,20 +830,22 @@ mod tests {
     }
 
     #[test]
-    fn agent_history_limits_bytes_and_items_without_rewinding_replay() {
+    fn agent_history_limits_bytes_without_rewinding_replay() {
         let mut cursor = AgentCursor::default();
         let mut journal = Vec::new();
         cursor.apply(&mut journal, 1, &[blob(1), blob(2), blob(3)]);
         let limit = blob(2).len() + blob(3).len();
-        assert!(cursor.trim(&mut journal, limit, 10));
+        assert!(cursor.trim(&mut journal, limit));
         assert_eq!(
             journal.iter().map(|(seq, _)| *seq).collect::<Vec<_>>(),
             [2, 3]
         );
         assert_eq!(cursor.bytes, limit);
         assert_eq!(cursor.last_seq, 3);
-        assert!(cursor.trim(&mut journal, limit, 1));
+        assert_eq!(cursor.trimmed, 1);
+        assert!(cursor.trim(&mut journal, blob(3).len()));
         assert_eq!(journal[0].0, 3);
+        assert_eq!(cursor.trimmed, 2);
         assert_eq!(
             cursor.apply(&mut journal, 3, &[blob(3), blob(4)]),
             (None, false)

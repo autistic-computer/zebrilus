@@ -425,6 +425,7 @@ pub(super) struct AgentPane {
     last_cursor: usize,
     transcript: Transcript,
     stream: Option<u64>,
+    refetched: bool,
     last_sequence: u64,
     last_reclaim_id: u64,
     queued_seen: u32,
@@ -638,6 +639,7 @@ impl AgentPane {
             last_cursor: 0,
             transcript: Transcript::default(),
             stream: None,
+            refetched: false,
             last_sequence: 0,
             last_reclaim_id: 0,
             queued_seen: 0,
@@ -1223,6 +1225,17 @@ impl AgentPane {
             .map_or(0, |(sequence, _)| *sequence);
         if newest == self.last_sequence && !self.transcript_dirty {
             return;
+        }
+        if self.connection.read(cx).agent_trimmed(self.pane) > self.last_sequence {
+            if !self.refetched {
+                self.refetched = true;
+                let pane = self.pane;
+                self.connection
+                    .update(cx, |connection, cx| connection.refetch_agent(pane, cx));
+                return;
+            }
+        } else {
+            self.refetched = false;
         }
         let skipped = events
             .and_then(|events| events.first())

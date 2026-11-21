@@ -7,7 +7,7 @@ use std::{
 
 use ala::{Context, EventEmitter};
 use zz_client::agent_completion::AgentCommand;
-use zz_client::agent_lens::{AgentCursor, MAX_AGENT_HISTORY_BYTES, MAX_AGENT_HISTORY_ITEMS};
+use zz_client::agent_lens::{AgentCursor, MAX_AGENT_HISTORY_BYTES};
 use zz_client::{
     ClientCore, CoreEvent, Outbound,
     scrollback::{DeferredBackfill, HISTORY_BACKFILL_QUIET, HistoryFollowUp, HistoryPacer},
@@ -282,6 +282,20 @@ impl Connection {
     #[must_use]
     pub fn agent_stream(&self, pane: PaneId) -> Option<u64> {
         self.agent_streams.get(&pane).copied()
+    }
+
+    #[must_use]
+    pub fn agent_trimmed(&self, pane: PaneId) -> u64 {
+        self.agent_cursors
+            .get(&pane)
+            .map_or(0, |cursor| cursor.trimmed)
+    }
+
+    pub fn refetch_agent(&mut self, pane: PaneId, cx: &mut Context<Self>) {
+        self.forget_agent_stream(pane);
+        if self.agent_live(pane) {
+            self.request_agent_replay(pane, cx);
+        }
     }
 
     fn watch_agent_panes(&mut self, cx: &mut Context<Self>) {
@@ -1656,8 +1670,7 @@ impl Connection {
                     let cursor = self.agent_cursors.entry(*pane).or_default();
                     let journal = self.agent_events.entry(*pane).or_default();
                     let (replay, invalid) = cursor.apply(journal, *first_seq, items);
-                    let pane_trimmed =
-                        cursor.trim(journal, MAX_AGENT_HISTORY_BYTES, MAX_AGENT_HISTORY_ITEMS);
+                    let pane_trimmed = cursor.trim(journal, MAX_AGENT_HISTORY_BYTES);
                     let history_trimmed = self.trim_agent_history();
                     if pane_trimmed || history_trimmed {
                         self.status = "Showing recent agent history to limit memory use.".into();
@@ -1966,7 +1979,7 @@ impl Connection {
             };
             let old_bytes = cursor.bytes;
             let limit = old_bytes.saturating_sub(bytes - MAX_AGENT_HISTORY_BYTES);
-            trimmed |= cursor.trim(journal, limit, MAX_AGENT_HISTORY_ITEMS);
+            trimmed |= cursor.trim(journal, limit);
             bytes -= old_bytes - cursor.bytes;
         }
         trimmed
@@ -2905,6 +2918,132 @@ mod tests {
             assert_eq!(replays(), [0, 51]);
             assert_eq!(connection.agent_events[&pane].len(), 50);
             assert_eq!(connection.agent_stream(pane), stream);
+        });
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[ala::test]
+    fn a_long_chat_keeps_every_turn_past_ten_thousand_items(cx: &mut ala::TestAppContext) {
+        use ala::AppContext as _;
+        use zz_protocol::{
+            AgentDescriptor, AgentProvider, Event, EventPayload, PaneId, PaneKindSnapshot,
+            SessionId,
+            agent_stream::{AgentStreamItem, AgentStreamPayload},
+            chat::{
+                ChatEvent, ItemBody, ItemId, ItemKind, ItemStatus, TurnBy, TurnId, TurnOutcome,
+            },
+        };
+
+        const TURNS: u64 = 46;
+        const PIECES: usize = 252;
+        let pane = PaneId(1);
+        let mut events = Vec::new();
+        for turn in 1..=TURNS {
+            let user = ItemId::new(format!("u{turn}"));
+            let agent = ItemId::new(format!("a{turn}"));
+            events.push(ChatEvent::TurnStarted {
+                turn: TurnId(turn),
+                by: TurnBy::User { prompt: turn },
+                at: turn,
+            });
+            events.push(ChatEvent::ItemStarted {
+                item: user.clone(),
+                turn: Some(TurnId(turn)),
+                parent: None,
+                kind: ItemKind::User,
+                body: ItemBody::text(format!("prompt {turn}")),
+                at: turn,
+            });
+            events.push(ChatEvent::ItemEnded {
+                item: user,
+                status: ItemStatus::Completed,
+                at: turn,
+            });
+            events.push(ChatEvent::ItemStarted {
+                item: agent.clone(),
+                turn: Some(TurnId(turn)),
+                parent: None,
+                kind: ItemKind::Agent,
+                body: ItemBody::default(),
+                at: turn,
+            });
+            events.extend((0..PIECES).map(|_| ChatEvent::ItemAppended {
+                item: agent.clone(),
+                text: "word ".to_owned(),
+            }));
+            events.push(ChatEvent::ItemEnded {
+                item: agent,
+                status: ItemStatus::Completed,
+                at: turn,
+            });
+            events.push(ChatEvent::TurnEnded {
+                turn: TurnId(turn),
+                outcome: TurnOutcome::Completed {
+                    stop_reason: "end_turn".to_owned(),
+                },
+                at: turn,
+            });
+        }
+        let items = events
+            .into_iter()
+            .zip(1..)
+            .map(|(event, seq)| {
+                serde_json::to_vec(&AgentStreamItem {
+                    seq,
+                    payload: AgentStreamPayload::Chat { event },
+                })
+                .expect("encode a chat item")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(items.len(), 11_868);
+        let connection = cx.new(super::Connection::new);
+        let _sent = connection.update(cx, |connection, _| connection.record_input_for_test());
+        connection.update(cx, |connection, cx| {
+            connection.connected = true;
+            connection.handle_message_for_test(
+                ProtocolMessage::Attached {
+                    session: SessionId(1),
+                    snapshot: single_pane_snapshot(
+                        1,
+                        pane,
+                        PaneKindSnapshot::Agent(AgentDescriptor {
+                            provider: AgentProvider::ClaudeCode,
+                            ..AgentDescriptor::default()
+                        }),
+                    ),
+                    read_only: false,
+                    client_flags: String::new(),
+                },
+                cx,
+            );
+            for (index, frame) in items.chunks(6_000).enumerate() {
+                connection.handle_message_for_test(
+                    ProtocolMessage::Event(Event {
+                        sequence: index as u64 + 1,
+                        payload: EventPayload::AgentUpdates {
+                            pane,
+                            first_seq: index as u64 * 6_000 + 1,
+                            items: frame.to_vec(),
+                        },
+                    }),
+                    cx,
+                );
+            }
+            let journal = &connection.agent_events[&pane];
+            assert_eq!(journal.len(), 11_868);
+            assert_eq!(connection.agent_trimmed(pane), 0);
+            let mut lens =
+                zz_client::agent_lens::LensTranscript::new(|_, _| Some(()) as Option<()>);
+            for (_, bytes) in journal {
+                lens.apply(&serde_json::from_slice(bytes).expect("decode a chat item"));
+            }
+            assert_eq!(lens.chat.turns.len(), 46);
+            assert_eq!(lens.chat.items.len(), 92);
+            assert_eq!(lens.chat.skipped, 0);
+            assert_eq!(
+                lens.chat.items[&ItemId::new("a1")].body.text,
+                "word ".repeat(PIECES)
+            );
         });
     }
 

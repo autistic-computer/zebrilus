@@ -18,7 +18,7 @@ use zz_client::{
     agent_flip::{AgentFlips, FlipMode, FlipTo, flip_target},
     agent_lens::{
         AGENT_WELCOME_DETAIL, AgentCursor, AgentEmpty, LensTranscript, MAX_AGENT_HISTORY_BYTES,
-        MAX_AGENT_HISTORY_ITEMS, PendingPermission, accepts_prompt, agent_empty, agent_placeholder,
+        PendingPermission, accepts_prompt, agent_empty, agent_placeholder,
         agent_welcome_title, conversation_changed, pending_permissions, restore_reclaim_id,
         restored_prompts, track_usage, turn_running,
     },
@@ -387,7 +387,7 @@ impl Agents {
         let cursor = self.cursors.entry(pane).or_default();
         let journal = self.journals.entry(pane).or_default();
         let (replay, invalid) = cursor.apply(journal, first_seq, &items);
-        let pane_trimmed = cursor.trim(journal, MAX_AGENT_HISTORY_BYTES, MAX_AGENT_HISTORY_ITEMS);
+        let pane_trimmed = cursor.trim(journal, MAX_AGENT_HISTORY_BYTES);
         let history_trimmed = self.trim_history();
         if pane_trimmed || history_trimmed {
             self.status = Some("Showing recent agent history to limit memory use.".to_owned());
@@ -431,7 +431,7 @@ impl Agents {
             };
             let old_bytes = cursor.bytes;
             let limit = old_bytes.saturating_sub(bytes - MAX_AGENT_HISTORY_BYTES);
-            trimmed |= cursor.trim(journal, limit, MAX_AGENT_HISTORY_ITEMS);
+            trimmed |= cursor.trim(journal, limit);
             if cursor.bytes == old_bytes {
                 break;
             }
