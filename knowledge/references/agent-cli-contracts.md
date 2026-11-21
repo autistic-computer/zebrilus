@@ -53,7 +53,7 @@ claude -p --output-format stream-json --input-format stream-json --verbose --inc
 
 `--resume-session-at requires --resume` means every flag parsed. `error: unknown option '--…'`
 names the one that went away. Add `--fork-session`, `--session-id`, `--append-system-prompt`,
-`--model` and `--effort` the same way when touching those paths.
+`--model`, `--effort` and `--permission-mode default` the same way when touching those paths.
 
 **Claude Code control requests and env vars.** The binary carries the names it handles; a count of
 0 means the name is gone:
@@ -150,6 +150,7 @@ Driver: `agent/claude/` (`mod.rs` frames and flags, `translate.rs` rows, `sessio
 | `interrupt` ends the foreground turn only: Claude Code sends `control_cancel_request` for that turn's asks and leaves a background agent running with its ask open | `mod.rs` | If interrupt starts stopping background agents without a `control_cancel_request` for their asks, Stop leaves a card open that nothing waits on | Recording (`background.ndjson`) |
 | `system/init.terminal_slash_commands` | `mod.rs` | A TUI-only command shows in chat and fails | Hand-written |
 | Every launch passes the picked model's `value` (from `initialize` `models`) as `--model` and the picked effort as `--effort`, after the user's own arguments, so the last of each must win | `mod.rs` | A new chat, fork, rewind, switch or restart runs another model or effort than the picker shows | Fake; checked on 2.1.330 with `get_settings` (`applied.model`, `applied.effort`), no prompt |
+| Every launch after the chat first showed a mode passes that mode as `--permission-mode`, after the user's own arguments: the last one wins, and `default` is taken although `--help` lists `manual` (which `initialize` reports as `default`). The first launch passes none, so `permissions.defaultMode` in the user's settings applies | `mod.rs` | A new chat, fork, rewind, switch or restart drops the mode and the picker jumps to the settings default | Fake; checked on 2.1.330 with `initialize` `current_permission_mode`, no prompt |
 | Model ids start with `claude-`; `[…]` suffixes like `[1m]`; aliases `opus`, `sonnet`, `haiku`, `fable` | `mod.rs`, `cli_session.rs` | Wrong model badge, or flip opens the TUI on another model | Hand-written |
 | `claude auth status --json` keys | `daemon/accounts.rs` | Every account reads as signed out | Sample JSON |
 | `CLAUDE_CONFIG_DIR` isolates credentials (keychain entry included) and `.claude.json`; zz unsets `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` and the account id vars | `accounts.rs`, `environment.rs` | A new override variable signs a pane into the wrong account | Hand-written |

@@ -1135,6 +1135,9 @@ impl Runtime {
         if !self.settings.effort.is_empty() {
             command.args(["--effort", &self.settings.effort]);
         }
+        if self.ready_sent {
+            command.args(["--permission-mode", &self.settings.mode]);
+        }
         for name in crate::PARENT_CLAUDE_SESSION_ENVIRONMENT {
             command.env_remove(name);
         }
@@ -3302,7 +3305,7 @@ done
 
     #[cfg(unix)]
     #[test]
-    fn a_new_chat_starts_on_the_picked_model_and_effort() {
+    fn a_new_chat_starts_on_the_picked_model_effort_and_mode() {
         let directory = tempfile::tempdir().expect("tempdir");
         let (commands, events, runtime) = respawning(directory.path(), None);
         let cwd = directory.path().to_path_buf();
@@ -3318,7 +3321,11 @@ done
                 matches!(payload, AgentStreamPayload::SessionReady { .. })
             })
             .await;
-            for (option_id, value) in [("model", "opus"), ("effort", "high")] {
+            for (option_id, value) in [
+                ("model", "opus"),
+                ("effort", "high"),
+                ("mode", "acceptEdits"),
+            ] {
                 commands
                     .send(RuntimeCommand::SetConfigOption {
                         option_id: option_id.to_owned(),
@@ -3353,6 +3360,10 @@ done
         assert_eq!(
             spawned_flags(directory.path(), "--effort"),
             [None, Some("high".to_owned())]
+        );
+        assert_eq!(
+            spawned_flags(directory.path(), "--permission-mode"),
+            [None, Some("acceptEdits".to_owned())]
         );
     }
 

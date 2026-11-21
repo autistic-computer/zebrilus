@@ -169,7 +169,9 @@ with the descriptor's provider, folder, session, model and effort and the pane's
 environment (`ZZ_PANE`, `TMUX`, `TMUX_PANE`). The descriptor's model and effort follow the chat:
 each `AgentState` whose config options hold a `model` or `effort` option writes its current value
 there (none for `default`), so a reopen after `agent-account` or a sign-in starts on what the chat
-last showed, not on what it was created with. A resumed Claude session replays its transcript
+last showed, not on what it was created with. The descriptor holds no permission mode, so such a
+reopen starts on the command's mode or the CLI's default; within one Claude Code driver, a new
+chat, switch, fork, rewind or restart passes the mode the chat showed as `--permission-mode`. A resumed Claude session replays its transcript
 before the driver says it is ready; a resumed Codex thread comes back through `thread/resume`.
 Closing the pane closes the driver. Agent messages (`AgentReplay`, `AgentPrompt`, approvals,
 settings) are accepted only for agent panes, and `AgentState` and the stream follow
