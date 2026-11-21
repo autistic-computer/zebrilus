@@ -33,8 +33,8 @@ After a check, update the table: the version, the date, and how far the check we
 | Claude Code (`claude`) | 2.1.330 (2026-11-21) | 2.1.292, 2026-10-07 | Full: the fixtures in `agent/claude/fixtures` were recorded on it. 2.1.330 passed the flag probe, the binary grep and the `auth status` keys below, and `get_settings` with no prompt sent showed the last `--model` and `--effort` applied. `resume.ndjson` (an agent resumed with `SendMessage`) was recorded on 2.1.330 |
 | Codex (`codex`) | 0.171.0 (shared daemon 0.171.0) | 0.159.0, 2026-10-07 | Full: `tools.ndjson` and `subagent.ndjson` in `agent/codex/fixtures`; `app-server-live.jsonl` is 0.166.0. 0.171.0 had the schema check and a binary grep, all names present |
 | Antigravity (`agy`) | 1.5.13 | 1.5.13, 2026-11-20 | Live turns through a private daemon, including the artifact signal |
-| Grok Build (`grok`) | 1.0.89 | 1.0.89, 2026-11-20 | Live turns through a private daemon, including `_meta.rules` |
-| Cursor (`cursor-agent`) | 2026.11.19 | 2026.09.18, 2026-11-20 | Live turns on 2026.09.18. 2026.11.19 (it updated itself that morning) passed the initialize probe, nothing live |
+| Grok Build (`grok`) | 1.0.92 (2026-11-21) | 1.0.92, 2026-11-21 | Cheap checks and the model list (`agent-catalog`) on 1.0.92; live turns through a private daemon on 1.0.89, including `_meta.rules` |
+| Cursor (`cursor-agent`) | 2026.11.19 | 2026.09.18, 2026-11-20 | Live turns on 2026.09.18. 2026.11.19 (it updated itself that morning) passed the initialize probe and, on 2026-11-21, the model list (`agent-catalog`), no turns |
 
 # Cheap checks, no sign-in
 

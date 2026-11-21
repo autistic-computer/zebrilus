@@ -454,6 +454,52 @@ pub(crate) type PaneRunner = Box<
         + 'static,
 >;
 
+pub(crate) fn pane_runner(config: AgentSpawnConfig, provider: AgentProvider) -> PaneRunner {
+    if let Some(command) = native_claude(&config, provider) {
+        let workspace = config.workspace;
+        return Box::new(move |channels: RuntimeChannels| {
+            Box::pin(run_claude_runtime(command, workspace, provider, channels))
+        });
+    }
+    if let Some(command) = native_codex(&config, provider) {
+        let workspace = config.workspace;
+        return Box::new(move |channels: RuntimeChannels| {
+            Box::pin(run_codex_runtime(command, workspace, provider, channels))
+        });
+    }
+    match provider {
+        AgentProvider::Antigravity => Box::new(move |channels: RuntimeChannels| {
+            Box::pin(crate::agent::agy::run_agy_runtime(
+                config, provider, channels,
+            ))
+        }),
+        AgentProvider::Cursor => Box::new(move |channels: RuntimeChannels| {
+            Box::pin(crate::agent::cursor::run_cursor_runtime(
+                config, provider, channels,
+            ))
+        }),
+        AgentProvider::Grok => Box::new(move |channels: RuntimeChannels| {
+            Box::pin(crate::agent::grok::run_grok_runtime(
+                config, provider, channels,
+            ))
+        }),
+        AgentProvider::ClaudeCode | AgentProvider::Codex => {
+            Box::new(move |channels: RuntimeChannels| {
+                Box::pin(run_agent_runtime(
+                    config,
+                    provider,
+                    channels.auto_approve,
+                    channels.permission_ids,
+                    channels.journal,
+                    channels.commands,
+                    channels.controls,
+                    channels.events,
+                ))
+            })
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) type PaneRunnerFactory = Box<dyn Fn(&AgentPaneSpec) -> PaneRunner + Send + Sync>;
 
@@ -513,57 +559,7 @@ impl AgentHost {
         }
         let mut config = self.config.lock().clone();
         config.workspace.adopt_pane_identity(&spec.workspace);
-        let provider = spec.provider;
-        if let Some(command) = native_claude(&config, provider) {
-            let workspace = config.workspace;
-            let runner: PaneRunner = Box::new(move |channels: RuntimeChannels| {
-                Box::pin(run_claude_runtime(command, workspace, provider, channels))
-            });
-            return self.open_with(pane, generation, spec, runner);
-        }
-        if let Some(command) = native_codex(&config, provider) {
-            let workspace = config.workspace;
-            let runner: PaneRunner = Box::new(move |channels: RuntimeChannels| {
-                Box::pin(run_codex_runtime(command, workspace, provider, channels))
-            });
-            return self.open_with(pane, generation, spec, runner);
-        }
-        if provider == AgentProvider::Antigravity {
-            let runner: PaneRunner = Box::new(move |channels: RuntimeChannels| {
-                Box::pin(crate::agent::agy::run_agy_runtime(
-                    config, provider, channels,
-                ))
-            });
-            return self.open_with(pane, generation, spec, runner);
-        }
-        if provider == AgentProvider::Cursor {
-            let runner: PaneRunner = Box::new(move |channels: RuntimeChannels| {
-                Box::pin(crate::agent::cursor::run_cursor_runtime(
-                    config, provider, channels,
-                ))
-            });
-            return self.open_with(pane, generation, spec, runner);
-        }
-        if provider == AgentProvider::Grok {
-            let runner: PaneRunner = Box::new(move |channels: RuntimeChannels| {
-                Box::pin(crate::agent::grok::run_grok_runtime(
-                    config, provider, channels,
-                ))
-            });
-            return self.open_with(pane, generation, spec, runner);
-        }
-        let runner: PaneRunner = Box::new(move |channels: RuntimeChannels| {
-            Box::pin(run_agent_runtime(
-                config,
-                provider,
-                channels.auto_approve,
-                channels.permission_ids,
-                channels.journal,
-                channels.commands,
-                channels.controls,
-                channels.events,
-            ))
-        });
+        let runner = pane_runner(config, spec.provider);
         self.open_with(pane, generation, spec, runner)
     }
 
