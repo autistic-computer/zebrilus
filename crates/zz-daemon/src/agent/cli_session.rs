@@ -84,9 +84,10 @@ impl Facts {
             self.cwd = Some(cwd.to_owned());
         }
         if entry["type"] == "assistant" {
-            if let Some(model) = entry["message"]["model"]
-                .as_str()
-                .filter(|model| model.starts_with("claude-"))
+            if let Some(model) = [&entry["requestedModel"], &entry["message"]["model"]]
+                .into_iter()
+                .filter_map(Value::as_str)
+                .find(|model| model.starts_with("claude-"))
             {
                 self.model = Some(model.to_owned());
             }

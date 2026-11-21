@@ -580,7 +580,8 @@ CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
 - **Claude Code.** The record `sessions/<pid>.json` under `$CLAUDE_CONFIG_DIR` or `~/.claude` whose
   process is the pane's or below it (`claude_peers::record_in_pane_with`) names the session, the
   folder and the status. The CLI writes it at start and removes it at exit. Model and effort are
-  the transcript's last assistant line (`message.model`, `effort`) and its "Set model to" and "Set
+  the transcript's last assistant line (`requestedModel`, which keeps a suffix like `[1m]`, else
+  `message.model`, which drops it; and `effort`) and its "Set model to" and "Set
   effort level to" lines, over the CLI's arguments and settings files (`Facts::claude_launch`);
   a model name the CLI printed becomes its alias for `--model`.
 - **Codex.** The thread is the parentless rollout the TUI holds open (embedded), else the one
