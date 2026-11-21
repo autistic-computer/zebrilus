@@ -275,7 +275,7 @@ impl Process {
     ) -> Result<Self, String> {
         use std::{io::ErrorKind, os::unix::net::UnixStream};
 
-        use tungstenite::Message;
+        use tungstenite::{Message, protocol::WebSocketConfig};
 
         let failed = |error: &dyn std::fmt::Display| format!("could not reach {agent}: {error}");
         let stream = UnixStream::connect(path).map_err(|error| failed(&error))?;
@@ -283,8 +283,12 @@ impl Process {
             .set_read_timeout(Some(SOCKET_HANDSHAKE))
             .and_then(|()| stream.set_write_timeout(Some(SOCKET_HANDSHAKE)))
             .map_err(|error| failed(&error))?;
+        let limits = WebSocketConfig::default()
+            .max_frame_size(Some(MAX_FRAME_BYTES))
+            .max_message_size(Some(MAX_FRAME_BYTES));
         let (mut socket, _) =
-            tungstenite::client("ws://localhost/", stream).map_err(|error| failed(&error))?;
+            tungstenite::client::client_with_config("ws://localhost/", stream, Some(limits))
+                .map_err(|error| failed(&error))?;
         socket
             .get_ref()
             .set_read_timeout(Some(SOCKET_POLL))
@@ -311,9 +315,6 @@ impl Process {
                 match socket.read() {
                     Ok(Message::Text(text)) => {
                         let line = text.as_str().as_bytes().to_vec();
-                        if line.len() > MAX_FRAME_BYTES {
-                            continue;
-                        }
                         if events
                             .send_blocking(ChildEvent::Line(generation, line))
                             .is_err()
@@ -524,6 +525,38 @@ pub(crate) fn rewind_shortfall(prompts: usize) -> String {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_managed_server_frame_as_large_as_a_stdio_line_arrives_whole() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("s");
+        let listener = std::os::unix::net::UnixListener::bind(&path).expect("bind");
+        let size = 20 << 20;
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept");
+            let mut socket = tungstenite::accept(stream).expect("handshake");
+            socket
+                .send(tungstenite::Message::text("x".repeat(size)))
+                .expect("send");
+            while socket.read().is_ok() {}
+        });
+        let (events, received) = async_channel::unbounded();
+        let process = Process::connect(&path, "test agent", 1, &events).expect("connect");
+        let first = smol::block_on(futures_lite::future::or(
+            async { received.recv().await.ok() },
+            async {
+                smol::Timer::after(Duration::from_secs(20)).await;
+                None
+            },
+        ));
+        let arrived = match first {
+            Some(ChildEvent::Line(1, line)) => Some(line.len()),
+            _ => None,
+        };
+        assert_eq!(arrived, Some(size));
+        drop(process);
+        server.join().expect("server");
+    }
 
     #[test]
     fn join_reapers_waits_until_a_child_that_outlives_stdin_cleans_up() {

@@ -763,7 +763,9 @@ reached over a WebSocket on `$CODEX_HOME/app-server-control/app-server-control.s
 `agent-command` is plain `codex`, the chat driver connects there too (`Process::connect`,
 `codex::managed_daemon`) instead of starting an app server of its own, starting the daemon first
 when its socket is missing (without the pane's `ZZ_PANE`, `ZZ_SESSION`, `TMUX` or `TMUX_PANE`).
-A thread then outlives whichever side drove it: a flip kills the TUI and `thread/resume`s, or
+It takes frames up to 64 MiB there, the line size it takes from an app server of its own
+(`MAX_FRAME_BYTES` in `agent/child.rs`), so a long `thread/read` arrives whole; a larger frame
+closes the connection, where the line would be dropped. A thread then outlives whichever side drove it: a flip kills the TUI and `thread/resume`s, or
 closes the chat's connection and runs `codex resume`, mid-turn included, and the server unloads an
 idle thread with no client 60 s later. A configured command with arguments keeps an app server of
 its own per chat. A chat that moves to another thread (new chat, switch, fork, rewind) sends
