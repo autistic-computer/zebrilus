@@ -636,6 +636,54 @@ fn a_chat_mode_prompt_shows_its_pasted_images_and_sends_them_once() {
 }
 
 #[test]
+fn a_prompt_sent_in_several_chunks_is_one_user_item_live_and_replayed() {
+    use agent_client_protocol::v1::schema::MessageId;
+    use zz_protocol::{ClientInstanceId, MAX_AGENT_RESULT_BYTES};
+
+    use super::runtime::{prompt_blocks, prompt_echo};
+    use super::stream::AgentPrompt;
+
+    let text = "x".repeat(MAX_AGENT_RESULT_BYTES / 4 + 1);
+    let blocks = prompt_blocks(AgentPrompt {
+        owner: ClientInstanceId::default(),
+        text: text.clone(),
+        images: Vec::new(),
+    });
+    let echo = prompt_echo(&blocks, &MessageId::new("long"))
+        .expect("echo")
+        .into_iter()
+        .map(update)
+        .collect::<Vec<_>>();
+    assert_eq!(echo.len(), 3);
+
+    let mut live = Shadow::recording();
+    ready(&mut live);
+    running(&mut live, "c1");
+    for payload in &echo {
+        live.payload(payload);
+    }
+    let mut replayed = Shadow::recording();
+    for payload in &echo {
+        replayed.payload(payload);
+    }
+    ready(&mut replayed);
+
+    for shadow in [&live, &replayed] {
+        assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+        let users = view(shadow)
+            .items
+            .into_values()
+            .filter(|item| item.kind == ItemKind::User)
+            .map(|item| (item.id, item.body.text == text, item.status))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            users,
+            [(ItemId::new("u:long"), true, ItemStatus::Completed)]
+        );
+    }
+}
+
+#[test]
 fn a_long_prompt_leaves_its_images_only_the_room_left_under_the_stream_cap() {
     let image = "A".repeat(MAX_PROMPT_IMAGES_BASE64 / 2);
     let mut short = json!({ "content": { "type": "text", "text": "look" } });

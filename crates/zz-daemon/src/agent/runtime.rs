@@ -1890,9 +1890,16 @@ pub(crate) fn prompt_updates(
             }
             _ => vec![block.clone()],
         };
-        for content in chunks {
+        let count = chunks.len();
+        for (index, content) in chunks.into_iter().enumerate() {
             let mut chunk = ContentChunk::new(content);
             chunk.message_id = Some(message_id.clone());
+            if index + 1 < count {
+                chunk.meta = Some(serde_json::Map::from_iter([(
+                    "zz".to_owned(),
+                    json!({ "more": true }),
+                )]));
+            }
             updates.push(SessionUpdate::UserMessageChunk(chunk));
         }
     }

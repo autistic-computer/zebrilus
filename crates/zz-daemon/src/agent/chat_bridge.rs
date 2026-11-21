@@ -249,7 +249,7 @@ impl Shadow {
             return;
         };
         let parent = update["_meta"]["zz"]["parent"].as_str().map(ItemId::new);
-        let whole = whole || parent.is_some();
+        let whole = (whole || parent.is_some()) && update["_meta"]["zz"]["more"] != true;
         let key = update["messageId"].as_str().unwrap_or("message");
         let base = ItemId::new(format!("{prefix}:{key}"));
         let split = self.splits.get(&base).copied().unwrap_or(0);
@@ -263,9 +263,15 @@ impl Shadow {
         }
         if self.open(&item) {
             self.step(Fact::ItemAppended {
-                item,
+                item: item.clone(),
                 text: text.to_owned(),
             });
+            if whole {
+                self.step(Fact::ItemEnded {
+                    item,
+                    status: ItemStatus::Completed,
+                });
+            }
             return;
         }
         if self.replaying && self.started(&item) {

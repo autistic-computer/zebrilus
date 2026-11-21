@@ -1091,6 +1091,9 @@ calls:
   (`FoldFade`, ala's vertical text fade, so it works on glass), and offers Show full message, then
   Show less. The bubble measures its own text as it draws and reports it through
   `ChatClick::Tall`; `ChatClick::Unfold` flips the fold (`ChatOpen::tall`, `ChatOpen::unfolded`).
+  `runtime::prompt_updates` sends a prompt over 128 KiB as several text chunks of one message; every
+  chunk but the last carries `_meta.zz.more`, and the bridge keeps the user item open until the
+  last one, so the prompt is one bubble live and after a replay.
 - **Pasted images.** The translators put a prompt's images on its `user_message_chunk` as
   `_meta.zz.images` (`{ format, data }`, base64): Claude's base64 image blocks, minus the
   `[Image #N]` placeholders, and Codex's data URLs and local image files. The bridge
