@@ -2228,6 +2228,7 @@ impl MuxClient {
             disconnected.snapshot = connection.snapshot.as_ref().map(Arc::clone);
         }
 
+        crate::agent::sound::play(zz_client::attention::Chime::Disconnected);
         disconnected.state = HostState::Reconnecting { attempt: 1 };
         self.connections.insert(host, disconnected);
         if was_attached {

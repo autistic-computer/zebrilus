@@ -98,9 +98,19 @@ The desktop clients ship no fonts; they render with the system text stack.
 
 ## Sounds
 
-The agent chimes in [`crates/zz-client/assets/sounds/`](crates/zz-client/assets/sounds/)
-are the default `ready.wav` and `attention.wav` from [Cuelume](https://github.com/danielwh2/cuelume)
-at [`2a1ba4fc`](https://github.com/danielwh2/cuelume/tree/2a1ba4fc1b67e8371c9f37e37a51e61353166335/claude-code/sounds/default).
+The sounds in [`crates/zz-client/assets/sounds/`](crates/zz-client/assets/sounds/) are cues of
+the `bubble` theme from [Cuelume](https://github.com/danielwh2/cuelume) 0.2.8 (npm), rendered
+offline through its own Web Audio render path to 48 kHz stereo 16-bit PCM, with each play's
+random variation held at its centre and the trailing silence trimmed:
+
+| File | Cue | Emphasis |
+| --- | --- | --- |
+| `request.wav` | `warning` | normal |
+| `done.wav` | `success` | normal |
+| `failed.wav` | `error` | normal |
+| `disconnected.wav` | `error` | subtle |
+| `sent.wav` | `tap` | subtle |
+| `bell.wav` | `tap` | normal |
 
 ```text
 MIT License

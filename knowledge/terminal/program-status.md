@@ -105,12 +105,17 @@ answer first. Surfaces without a PTY (output views) leave
   does not land on the new process.
 - Desktop sidebar: every terminal pane feeds `AgentAttentionTracker`
   (`crates/zz-client/src/attention.rs`) from its tree record
-  (`agent_pane_statuses` in `crates/zz/src/workspace/sidebar.rs`), idle until it reports. `blocked` and `error` show the needs-input and failed badges and ring the
-  request chime, even on a pane's first report. `done` rings the completion chime and leaves the
+  (`agent_pane_statuses` in `crates/zz/src/workspace/sidebar.rs`), idle until it reports. `blocked` shows the needs-input badge and rings the request chime,
+  and `error` the failed badge and the failure chime, even on a pane's first report. `done`
+  rings the completion chime and leaves the
   finished badge until the pane is watched, whether or not the tracker saw `working` first (a
   program can report both between two looks); `working` to `idle` does the same.
   Chimes closer than two seconds apart are dropped, since any program can flip its state as
-  fast as it writes. While zz is in the background the same edges post a desktop notification
+  fast as it writes, and when one look finds several edges only the most urgent rings: request
+  over failure over completion. The chimes are WAVs in `crates/zz-client/assets/sounds`
+  (`zz_client::attention::chime_wav`); the desktop plays them through `afplay`, `paplay`,
+  `pw-play` or `aplay` and stays silent on Windows, and `ZZ_AGENT_SOUND=0` silences every zz
+  sound. While zz is in the background the same edges post a desktop notification
   named after `app` with `msg` as its body, at most one per pane every two seconds; clicking it
   selects the pane (`zz_client::attention::banner`).
 - Thin clients (web, iPad, iPhone): the attached host's terminal panes and agent panes feed the
@@ -120,8 +125,8 @@ answer first. Surfaces without a PTY (output views) leave
   their edges from the `attention` of each `CoreEvent::AgentStateChanged`, which core works out
   per message, so a turn that starts and ends, or a permission asked and answered by another
   client, inside one poll batch still chimes (`AgentAttentionTracker::observe_reported`). They
-  ring the same chimes (`clients/app/src/chime.rs`: a system sound on iOS, an audio element on
-  the web) and, while the app is inactive or in the background and the device setting Notify
+  ring the same chimes under the same rules (`clients/app/src/chime.rs`: a system sound on
+  iOS, an audio element on the web) and, while the app is inactive or in the background and the device setting Notify
   when a pane needs you is on, post the same notifications through ala (UNUserNotificationCenter
   on iOS; the web Notification API, whose permission is asked on the first click or key press
   after a notification was due). Tapping one selects the pane; on iPhone it also leaves the

@@ -402,8 +402,8 @@ being composed, hardware keys go to the input method first.
 - Ctrl-= and Ctrl-- on a hardware keyboard step the Terminal font scale setting by 10%
   (on the pinch's 5% grid, between 50% and 300%), so every terminal changes and the size is
   saved.
-- A terminal bell plays the system alert sound, which vibrates instead on an iPhone in silent
-  mode. Bells within 200 ms of the last sound are dropped. The host's `bell-action` and
+- A terminal bell plays the bell sound as an alert, which vibrates instead on an iPhone in
+  silent mode. Bells within 200 ms of the last sound are dropped. The host's `bell-action` and
   `visual-bell` options decide which bells ring.
 - The cursor stops blinking after 10 seconds without input and while its pane is off screen,
   as on the desktop.
@@ -433,13 +433,17 @@ and other scripts render. Emoji still show as blank: ala's text system only trea
 Color Emoji as a color font.
 
 When a pane on the attached host asks for input, fails or finishes while you are looking
-at another pane, the app plays the request or done chime. While the app is inactive or in
+at another pane, the app plays the request, failure or done chime. While the app is inactive or in
 the short background time, it also posts a notification naming the program and the pane;
 tapping it selects that pane (on iPhone it leaves the overview and any sheet for the pane).
 iOS asks for permission the first time a pane needs you, and Settings › System ›
 Notifications turns them off. While they are on, the app icon badge counts the panes that
 need you, failed or finished unseen; turning them off clears the badge and never asks for
 permission. A suspended app gets nothing: that would need a push service.
+
+Sending a message from a chat's composer plays a soft tap. A connection that drops after it
+was up plays the lost-connection sound once; the retries after it and a disconnect you ask
+for stay silent.
 
 ## Frame rate
 

@@ -59,8 +59,9 @@ A program rings BEL in a pane:
   Protocol v73 client-window focus and pane/application Focus transitions also leave the bell
   unchanged, including when a client sends both signals for one scene transition.
 
-* macOS also plays the system beep (`objc2_app_kit::NSBeep`, one call, no new deps) on
-  the same edge. Unlike the bounce it sounds while the window is key . readline's
+* The desktop also plays the bell sound (`Chime::Bell`, `crates/zz-client/assets/sounds/bell.wav`)
+  on the same edge, on macOS and Linux, at most once per 200 ms. It used to be the macOS system
+  beep. Unlike the bounce it sounds while the window is key . readline's
   backspace-on-empty BEL is the canonical case. The latch still applies, but interactive
   bells re-ring naturally: the keystroke that provokes the BEL is input, so it clears the
   latch the reply immediately re-raises. A non-interactive flood stays one ding.
@@ -115,10 +116,11 @@ Two small pieces, no client-held bell state:
 
 * `crates/zz/src/mux/client.rs`: accept `EventPayload::Bell` from attached and background hosts and
   advance the shared bell revision; `AppView` turns a new revision into `request_attention()` and
-  the macOS system beep.
-* `clients/app/src/bell.rs`: the thin client rings on `CoreEvent::Bell`, with the iOS system alert
-  sound at most once per 200 ms or, on the web, a `•` flashed three times in front of the page title
-  that later bells do not restart. Android stays silent.
+  the bell sound (`crates/zz/src/agent/sound.rs`, silenced by `ZZ_AGENT_SOUND=0`).
+* `clients/app/src/bell.rs`: the thin client rings on `CoreEvent::Bell`, playing the bell sound at
+  most once per 200 ms (an alert sound on iOS, so a silenced iPhone vibrates instead; an audio
+  element on the web) and, on the web, flashing a `•` three times in front of the page title,
+  which later bells do not restart. Android stays silent.
 * `crates/zz/src/workspace/sidebar.rs` and `zz-mux/src/status.rs`: render from the snapshot flag.
   Sidebar dots bubble from panes through collapsed window, session, and host rows so hidden remote
   descendants still advertise attention.
@@ -140,7 +142,7 @@ Two small pieces, no client-held bell state:
 * macOS dock badge. Ghostty shows one; ala has no badge API. zz already depends on
   `objc2-app-kit`, so a local `NSDockTile` call is viable without touching the fork.
 * Window-title bell suffix.
-* The ding on Linux/Windows, custom audio files (`bell-audio-path` style), border flash,
+* The ding on Windows, custom audio files (`bell-audio-path` style), border flash,
   and a `bell-features` config key.
 * Activity/silence monitoring (tmux `#` / `~`) . different feature, same plumbing; this
   plan's `EventPayload` + snapshot-flag shape is the template for it.

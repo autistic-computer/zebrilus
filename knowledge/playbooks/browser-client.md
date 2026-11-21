@@ -166,8 +166,8 @@ Kitty image placement use the shared rendering rules; the cursor stops blinking 
 without input and while its pane is off screen. Keyboard input, text composition,
 selection, scrolling, search, and paste reach the daemon through its existing input messages.
 Ctrl-= and Ctrl-- step the saved Terminal font scale setting by 10%, so every terminal changes.
-A terminal bell, when the host's `bell-action` and `visual-bell` let it ring, flashes a `•` in
-front of the page title three times.
+A terminal bell, when the host's `bell-action` and `visual-bell` let it ring, plays the bell
+sound (at most once per 200 ms) and flashes a `•` in front of the page title three times.
 Reconnects attach to the remembered session and replay focus and Agent transcript state.
 Agent replay includes submitted prompts when the provider emits `user_message_chunk` updates;
 the daemon does not journal a separate copy of submitted prompt text. Browser image transfers

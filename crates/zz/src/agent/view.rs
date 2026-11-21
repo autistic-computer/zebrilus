@@ -1283,6 +1283,7 @@ impl AgentView {
         });
         match result {
             Ok(()) => {
+                crate::agent::sound::play(zz_client::attention::Chime::Sent);
                 self.input.update(cx, |input, cx| {
                     input.set_value("", window, cx);
                 });

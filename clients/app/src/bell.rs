@@ -1,45 +1,23 @@
+use std::cell::Cell;
+
 use ala::App;
+use web_time::Instant;
+use zz_client::attention::{Chime, bell_due};
+
+thread_local! {
+    static LAST: Cell<Option<Instant>> = const { Cell::new(None) };
+}
 
 pub fn ring(cx: &mut App) {
-    #[cfg(target_os = "ios")]
-    ios::ring();
+    let mut last = LAST.get();
+    if bell_due(&mut last, Instant::now()) {
+        crate::chime::play(Chime::Bell);
+    }
+    LAST.set(last);
     #[cfg(target_family = "wasm")]
     web::ring(cx);
     #[cfg(not(target_family = "wasm"))]
     let _ = cx;
-}
-
-#[cfg(target_os = "ios")]
-#[allow(unsafe_code)]
-mod ios {
-    use std::{
-        cell::Cell,
-        time::{Duration, Instant},
-    };
-
-    const BEEP: u32 = 1052;
-    const QUIET: Duration = Duration::from_millis(200);
-
-    thread_local! {
-        static LAST: Cell<Option<Instant>> = const { Cell::new(None) };
-    }
-
-    #[link(name = "AudioToolbox", kind = "framework")]
-    unsafe extern "C" {
-        fn AudioServicesPlayAlertSound(sound: u32);
-    }
-
-    pub(super) fn ring() {
-        let now = Instant::now();
-        if LAST
-            .get()
-            .is_some_and(|last| now.duration_since(last) < QUIET)
-        {
-            return;
-        }
-        LAST.set(Some(now));
-        unsafe { AudioServicesPlayAlertSound(BEEP) };
-    }
 }
 
 #[cfg(target_family = "wasm")]

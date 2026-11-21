@@ -1937,6 +1937,9 @@ impl Connection {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fn disconnect_native(&mut self, status: String, cx: &mut Context<Self>) {
         self.drop_agent_setup(cx);
+        if self.connected {
+            crate::chime::play(zz_client::attention::Chime::Disconnected);
+        }
         self.connected = false;
         self.client = None;
         self.native = None;
@@ -2102,6 +2105,9 @@ impl Connection {
     #[cfg(target_family = "wasm")]
     fn closed(&mut self, code: Option<u16>, reason: String, cx: &mut Context<Self>) {
         self.drop_agent_setup(cx);
+        if self.connected {
+            crate::chime::play(zz_client::attention::Chime::Disconnected);
+        }
         self.connected = false;
         self.epoch = self.epoch.wrapping_add(1);
         self.prefix_cancel_pending = None;

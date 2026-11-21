@@ -29,14 +29,11 @@ pub(crate) fn play(chime: Chime) {
     unsafe extern "C" {
         fn AudioServicesCreateSystemSoundID(url: *mut Object, sound: *mut u32) -> i32;
         fn AudioServicesPlaySystemSound(sound: u32);
+        fn AudioServicesPlayAlertSound(sound: u32);
     }
 
     fn load(chime: Chime) -> Option<u32> {
-        let name = match chime {
-            Chime::Request => "request",
-            Chime::Done => "done",
-        };
-        let path = std::env::temp_dir().join(format!("zz-chime-{name}.wav"));
+        let path = std::env::temp_dir().join(format!("zz-chime-{}.wav", chime.name()));
         std::fs::write(&path, zz_client::attention::chime_wav(chime)).ok()?;
         let path = CString::new(path.to_str()?).ok()?;
         let mut sound = 0;
@@ -49,14 +46,12 @@ pub(crate) fn play(chime: Chime) {
         (status == 0).then_some(sound)
     }
 
-    static SOUNDS: OnceLock<[Option<u32>; 2]> = OnceLock::new();
-    let sounds = SOUNDS.get_or_init(|| [Chime::Request, Chime::Done].map(load));
-    let sound = match chime {
-        Chime::Request => sounds[0],
-        Chime::Done => sounds[1],
-    };
-    if let Some(sound) = sound {
-        unsafe { AudioServicesPlaySystemSound(sound) };
+    static SOUNDS: OnceLock<[Option<u32>; Chime::ALL.len()]> = OnceLock::new();
+    let sounds = SOUNDS.get_or_init(|| Chime::ALL.map(load));
+    match (chime, sounds[chime as usize]) {
+        (_, None) => {}
+        (Chime::Bell, Some(sound)) => unsafe { AudioServicesPlayAlertSound(sound) },
+        (_, Some(sound)) => unsafe { AudioServicesPlaySystemSound(sound) },
     }
 }
 

@@ -1128,6 +1128,7 @@ impl AgentPane {
     }
 
     fn sent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        crate::chime::play(zz_client::attention::Chime::Sent);
         cx.haptic(ala::Haptic::Light);
         self.attachments.clear();
         self.files.clear();

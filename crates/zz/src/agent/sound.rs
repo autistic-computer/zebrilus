@@ -5,19 +5,17 @@ use std::{
     time::Instant,
 };
 
-use zz_client::attention::{Chime, chime_due, chime_wav};
+use zz_client::attention::{Chime, bell_due, chime_due, chime_wav};
 
 const SOUND_ENV: &str = "ZZ_AGENT_SOUND";
 const PLAYER_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
 
 static LAST_CHIME: Mutex<Option<Instant>> = Mutex::new(None);
+static LAST_DISCONNECT: Mutex<Option<Instant>> = Mutex::new(None);
+static LAST_BELL: Mutex<Option<Instant>> = Mutex::new(None);
 
 pub(crate) fn play(chime: Chime) {
-    if !enabled(std::env::var_os(SOUND_ENV).as_deref())
-        || !chime_due(
-            &mut LAST_CHIME.lock().unwrap_or_else(PoisonError::into_inner),
-            Instant::now(),
-        )
+    if cfg!(test) || !enabled(std::env::var_os(SOUND_ENV).as_deref()) || !due(chime, Instant::now())
     {
         return;
     }
@@ -26,6 +24,17 @@ pub(crate) fn play(chime: Chime) {
             log::debug!(target: "zz::agent::sound", "chime playback failed: {error}");
         }
     });
+}
+
+fn due(chime: Chime, now: Instant) -> bool {
+    let last =
+        |slot: &'static Mutex<Option<Instant>>| slot.lock().unwrap_or_else(PoisonError::into_inner);
+    match chime {
+        Chime::Request | Chime::Failed | Chime::Done => chime_due(&mut last(&LAST_CHIME), now),
+        Chime::Disconnected => chime_due(&mut last(&LAST_DISCONNECT), now),
+        Chime::Bell => bell_due(&mut last(&LAST_BELL), now),
+        Chime::Sent => true,
+    }
 }
 
 fn enabled(value: Option<&OsStr>) -> bool {
@@ -56,26 +65,19 @@ fn play_blocking(chime: Chime) -> Result<(), String> {
 }
 
 fn materialize(chime: Chime) -> Result<&'static Path, String> {
-    static FILES: OnceLock<[Result<PathBuf, String>; 2]> = OnceLock::new();
+    static FILES: OnceLock<[Result<PathBuf, String>; Chime::ALL.len()]> = OnceLock::new();
     let files = FILES.get_or_init(|| {
-        [Chime::Request, Chime::Done].map(|chime| {
+        Chime::ALL.map(|chime| {
             let path = std::env::temp_dir().join(format!(
                 "zz-agent-{}-{}.wav",
-                match chime {
-                    Chime::Request => "request",
-                    Chime::Done => "done",
-                },
+                chime.name(),
                 std::process::id()
             ));
             std::fs::write(&path, chime_wav(chime)).map_err(|error| error.to_string())?;
             Ok(path)
         })
     });
-    let index = match chime {
-        Chime::Request => 0,
-        Chime::Done => 1,
-    };
-    files[index]
+    files[chime as usize]
         .as_deref()
         .map_err(|error: &String| error.clone())
 }

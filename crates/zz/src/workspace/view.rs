@@ -2107,8 +2107,7 @@ impl AppView {
         if bell_revision != self.bell_revision {
             self.bell_revision = bell_revision;
             window.request_attention();
-            #[cfg(target_os = "macos")]
-            objc2_app_kit::NSBeep();
+            crate::agent::sound::play(zz_client::attention::Chime::Bell);
         }
         let mut wanted_pickers = BTreeSet::new();
         let mut wanted_terminals = BTreeSet::new();

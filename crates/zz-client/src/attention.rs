@@ -13,6 +13,7 @@ use crate::{
 
 const MIN_BANNER_GAP: Duration = Duration::from_secs(2);
 const MIN_CHIME_GAP: Duration = Duration::from_secs(2);
+const MIN_BELL_GAP: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum AgentPaneStatus {
@@ -115,7 +116,42 @@ impl AgentBadge {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Chime {
     Request,
+    Failed,
     Done,
+    Disconnected,
+    Sent,
+    Bell,
+}
+
+impl Chime {
+    pub const ALL: [Self; 6] = [
+        Self::Request,
+        Self::Failed,
+        Self::Done,
+        Self::Disconnected,
+        Self::Sent,
+        Self::Bell,
+    ];
+
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Request => "request",
+            Self::Failed => "failed",
+            Self::Done => "done",
+            Self::Disconnected => "disconnected",
+            Self::Sent => "sent",
+            Self::Bell => "bell",
+        }
+    }
+
+    const fn rank(self) -> u8 {
+        match self {
+            Self::Request => 0,
+            Self::Failed => 1,
+            Self::Done | Self::Disconnected | Self::Sent | Self::Bell => 2,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -130,7 +166,7 @@ pub fn loudest<K>(edges: &[AttentionEdge<K>]) -> Option<Chime> {
     edges
         .iter()
         .map(|edge| edge.chime)
-        .max_by_key(|chime| *chime == Chime::Request)
+        .min_by_key(|chime| chime.rank())
 }
 
 const fn chime_for(previous: AgentPaneStatus, next: AgentPaneStatus) -> Option<Chime> {
@@ -138,7 +174,8 @@ const fn chime_for(previous: AgentPaneStatus, next: AgentPaneStatus) -> Option<C
         (AgentPaneStatus::NeedsInput, AgentPaneStatus::NeedsInput)
         | (AgentPaneStatus::Failed, AgentPaneStatus::Failed)
         | (AgentPaneStatus::Done, AgentPaneStatus::Done) => None,
-        (_, AgentPaneStatus::NeedsInput | AgentPaneStatus::Failed) => Some(Chime::Request),
+        (_, AgentPaneStatus::NeedsInput) => Some(Chime::Request),
+        (_, AgentPaneStatus::Failed) => Some(Chime::Failed),
         (AgentPaneStatus::Working, AgentPaneStatus::Idle) | (_, AgentPaneStatus::Done) => {
             Some(Chime::Done)
         }
@@ -345,7 +382,15 @@ pub fn banner(
 }
 
 pub fn chime_due(last: &mut Option<Instant>, now: Instant) -> bool {
-    if last.is_some_and(|last| now.saturating_duration_since(last) < MIN_CHIME_GAP) {
+    due(last, now, MIN_CHIME_GAP)
+}
+
+pub fn bell_due(last: &mut Option<Instant>, now: Instant) -> bool {
+    due(last, now, MIN_BELL_GAP)
+}
+
+fn due(last: &mut Option<Instant>, now: Instant, gap: Duration) -> bool {
+    if last.is_some_and(|last| now.saturating_duration_since(last) < gap) {
         return false;
     }
     *last = Some(now);
@@ -355,8 +400,12 @@ pub fn chime_due(last: &mut Option<Instant>, now: Instant) -> bool {
 #[must_use]
 pub const fn chime_wav(chime: Chime) -> &'static [u8] {
     match chime {
-        Chime::Request => include_bytes!("../assets/sounds/attention.wav"),
-        Chime::Done => include_bytes!("../assets/sounds/ready.wav"),
+        Chime::Request => include_bytes!("../assets/sounds/request.wav"),
+        Chime::Failed => include_bytes!("../assets/sounds/failed.wav"),
+        Chime::Done => include_bytes!("../assets/sounds/done.wav"),
+        Chime::Disconnected => include_bytes!("../assets/sounds/disconnected.wav"),
+        Chime::Sent => include_bytes!("../assets/sounds/sent.wav"),
+        Chime::Bell => include_bytes!("../assets/sounds/bell.wav"),
     }
 }
 
@@ -408,11 +457,16 @@ mod tests {
         assert!(!chime_due(&mut last, start + MIN_CHIME_GAP / 2));
         assert!(chime_due(&mut last, start + MIN_CHIME_GAP));
         assert!(!chime_due(&mut last, start));
+
+        let mut last = None;
+        assert!(bell_due(&mut last, start));
+        assert!(!bell_due(&mut last, start + MIN_BELL_GAP / 2));
+        assert!(bell_due(&mut last, start + MIN_BELL_GAP));
     }
 
     #[test]
     fn bundled_chimes_are_stereo_48khz_pcm_wavs() {
-        for chime in [Chime::Request, Chime::Done] {
+        for chime in Chime::ALL {
             let data = chime_wav(chime);
             assert_eq!(&data[..4], b"RIFF");
             assert_eq!(u32_at(data, 4) as usize, data.len() - 8);
@@ -432,12 +486,14 @@ mod tests {
     }
 
     #[test]
-    fn the_two_chimes_are_distinct_and_audible() {
-        let request = chime_wav(Chime::Request);
-        let done = chime_wav(Chime::Done);
-        assert_ne!(request, done);
-        for data in [request, done] {
-            assert!(data[44..].iter().any(|&byte| byte != 0));
+    fn every_chime_is_distinct_and_audible() {
+        for (index, chime) in Chime::ALL.into_iter().enumerate() {
+            assert_eq!(chime as usize, index);
+            let data = chime_wav(chime);
+            assert!(data[44..].iter().any(|&byte| byte != 0), "{chime:?}");
+            for other in &Chime::ALL[index + 1..] {
+                assert_ne!(data, chime_wav(*other), "{chime:?} and {other:?}");
+            }
         }
     }
 
@@ -447,8 +503,9 @@ mod tests {
         assert_eq!(chime_for(Working, NeedsInput), Some(Chime::Request));
         assert_eq!(chime_for(Idle, NeedsInput), Some(Chime::Request));
         assert_eq!(chime_for(Failed, NeedsInput), Some(Chime::Request));
-        assert_eq!(chime_for(Working, Failed), Some(Chime::Request));
-        assert_eq!(chime_for(Idle, Failed), Some(Chime::Request));
+        assert_eq!(chime_for(Working, Failed), Some(Chime::Failed));
+        assert_eq!(chime_for(Idle, Failed), Some(Chime::Failed));
+        assert_eq!(chime_for(NeedsInput, Failed), Some(Chime::Failed));
         assert_eq!(chime_for(Working, Idle), Some(Chime::Done));
         assert_eq!(chime_for(Working, Done), Some(Chime::Done));
         assert_eq!(chime_for(Idle, Done), Some(Chime::Done));
@@ -568,7 +625,7 @@ mod tests {
     }
 
     #[test]
-    fn a_question_outranks_a_completion_in_the_same_batch() {
+    fn a_question_outranks_a_failure_and_a_failure_a_completion() {
         let mut tracker = AgentAttentionTracker::default();
         tracker.observe(
             &statuses(&[(1, AgentPaneStatus::Working), (2, AgentPaneStatus::Working)]),
@@ -576,6 +633,21 @@ mod tests {
         );
         let chime = loudest(&tracker.observe(
             &statuses(&[(1, AgentPaneStatus::Idle), (2, AgentPaneStatus::NeedsInput)]),
+            None,
+        ));
+        assert_eq!(chime, Some(Chime::Request));
+
+        let chime = loudest(&tracker.observe(
+            &statuses(&[(1, AgentPaneStatus::Failed), (2, AgentPaneStatus::Done)]),
+            None,
+        ));
+        assert_eq!(chime, Some(Chime::Failed));
+
+        let chime = loudest(&tracker.observe(
+            &statuses(&[
+                (1, AgentPaneStatus::NeedsInput),
+                (2, AgentPaneStatus::Failed),
+            ]),
             None,
         ));
         assert_eq!(chime, Some(Chime::Request));
@@ -602,11 +674,11 @@ mod tests {
                 AttentionEdge {
                     pane: PaneId(2),
                     status: Failed,
-                    chime: Chime::Request,
+                    chime: Chime::Failed,
                 },
             ]
         );
-        assert_eq!(loudest(&edges), Some(Chime::Request));
+        assert_eq!(loudest(&edges), Some(Chime::Failed));
         assert_eq!(loudest::<PaneId>(&[]), None);
     }
 
