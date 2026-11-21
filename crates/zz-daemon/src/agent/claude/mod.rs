@@ -70,6 +70,12 @@ const CHAT_REFUSED: [&str; 12] = [
     "fast",
     "doctor",
 ];
+const REPLY_ENDS: [&str; 4] = [
+    "end_turn",
+    "max_tokens",
+    "refusal",
+    "model_context_window_exceeded",
+];
 const AGENT_NAME: &str = "Claude Code";
 const AGENT_KEY: &str = "claude-code";
 const BASE_ARGS: [&str; 11] = [
@@ -1867,11 +1873,15 @@ impl Runtime {
             }
             Some("result") => {
                 let error = (frame["is_error"] == true).then(|| result_error(&frame));
+                let stop_reason = frame["stop_reason"]
+                    .as_str()
+                    .filter(|reason| REPLY_ENDS.contains(reason))
+                    .map(str::to_owned);
                 let commands = result_commands(&frame);
                 if commands.is_empty() {
                     self.apply(&Fact::Reported {
                         command: None,
-                        stop_reason: None,
+                        stop_reason,
                         error,
                     })
                     .await?;
@@ -1879,7 +1889,7 @@ impl Runtime {
                     for command in commands {
                         self.apply(&Fact::Reported {
                             command: Some(command),
-                            stop_reason: None,
+                            stop_reason: stop_reason.clone(),
                             error: error.clone(),
                         })
                         .await?;

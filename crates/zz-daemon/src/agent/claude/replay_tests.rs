@@ -221,6 +221,38 @@ fn a_hard_failure_is_reported_as_failed_not_cancelled() {
     );
 }
 
+#[test]
+fn a_refused_reply_finishes_its_turn_as_refused_and_a_steered_one_as_done() {
+    let (mut runtime, receiver) = setup();
+    let mut finish = |turn: u64, command: &str, stop_reason: &str| {
+        prompt(&mut runtime, turn, command);
+        for frame in [
+            json!({
+                "type": "result",
+                "subtype": "success",
+                "is_error": false,
+                "num_turns": 1,
+                "stop_reason": stop_reason,
+                "user_message_uuids": [command],
+            }),
+            json!({ "type": "command_lifecycle", "command_uuid": command, "state": "completed" }),
+        ] {
+            smol::block_on(runtime.frame(frame)).expect("frame");
+        }
+        turn_events(&receiver)
+    };
+    assert_eq!(
+        finish(1, "refused", "refusal"),
+        [Seen::Finished(
+            1,
+            AgentPromptOutcome::Finished {
+                stop_reason: Value::from("refusal"),
+            },
+        )]
+    );
+    assert_eq!(finish(2, "steered", "tool_use"), [end_turn(2)]);
+}
+
 #[cfg(unix)]
 #[test]
 fn a_late_result_from_a_cancelled_turn_cannot_fail_the_next_prompt() {
