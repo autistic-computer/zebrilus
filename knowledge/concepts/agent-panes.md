@@ -119,8 +119,8 @@ no pending request (already answered, or none was asked)`.
 **Reopening a child.** A child chat is its session, not its pane. For every chat a chat opens,
 the daemon keeps a `ChildRecord` under the opener's provider and session
 (`AgentRuntime::update_child`): the child's original pane id, provider, session id once its
-session starts, folder, the model and effort it last showed (`note_child_descriptor`), account,
-the pane that holds it now, and every pane it was reopened in (`reopened`). The records are saved next to the opener's
+session starts, folder, the model and effort it last showed and the account it is on
+(`note_child_descriptor`, which an `agent-account` move runs too), the pane that holds it now, and every pane it was reopened in (`reopened`). The records are saved next to the opener's
 journal as `<key>.children.json`, so they outlive a daemon restart and the opener being resumed in
 another pane; they go when the opener's session is deleted (`AgentJournal::remove_for`), not when
 its pane closes. `select-child-chat [-t HOST] %N` (internal, for the card a host draws) takes any
