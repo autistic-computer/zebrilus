@@ -1127,6 +1127,12 @@ impl Runtime {
             }
         };
         command.args(&self.command.args).current_dir(cwd);
+        if !self.settings.model.is_empty() {
+            command.args(["--model", &self.settings.model]);
+        }
+        if !self.settings.effort.is_empty() {
+            command.args(["--effort", &self.settings.effort]);
+        }
         for name in crate::PARENT_CLAUDE_SESSION_ENVIRONMENT {
             command.env_remove(name);
         }
@@ -3233,6 +3239,62 @@ done
         assert_eq!(sessions.len(), 3, "{sessions:?}");
         assert_eq!(sessions[0].as_deref(), Some(session_id.as_str()));
         assert_eq!(sessions[2].as_deref(), Some(session_id.as_str()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_new_chat_starts_on_the_picked_model_and_effort() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let (commands, events, runtime) = respawning(directory.path(), None);
+        let cwd = directory.path().to_path_buf();
+        let driver = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: cwd.clone(),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::SessionReady { .. })
+            })
+            .await;
+            for (option_id, value) in [("model", "opus"), ("effort", "high")] {
+                commands
+                    .send(RuntimeCommand::SetConfigOption {
+                        option_id: option_id.to_owned(),
+                        value: value.to_owned(),
+                    })
+                    .await
+                    .expect("pick");
+                until(&events, |payload| {
+                    matches!(payload, AgentStreamPayload::ConfigOptionsChanged { .. })
+                })
+                .await;
+            }
+            commands
+                .send(RuntimeCommand::NewSession { cwd: cwd.clone() })
+                .await
+                .expect("new chat");
+            until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::SessionSwitched { .. })
+            })
+            .await;
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+        };
+        let (result, ()) = smol::block_on(futures_lite::future::zip(runtime, driver));
+        assert_eq!(result, Ok(()));
+        assert_eq!(
+            spawned_flags(directory.path(), "--model"),
+            [None, Some("opus".to_owned())]
+        );
+        assert_eq!(
+            spawned_flags(directory.path(), "--effort"),
+            [None, Some("high".to_owned())]
+        );
     }
 
     #[cfg(unix)]

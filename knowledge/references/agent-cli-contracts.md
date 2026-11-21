@@ -30,7 +30,7 @@ After a check, update the table: the version, the date, and how far the check we
 
 | CLI | Installed 2026-11-20 | Last checked against | How far |
 |---|---|---|---|
-| Claude Code (`claude`) | 2.1.329 | 2.1.292, 2026-10-07 | Full: the fixtures in `agent/claude/fixtures` were recorded on it. 2.1.329 passed the flag probe, the binary grep and the `auth status` keys below, nothing live. `resume.ndjson` (an agent resumed with `SendMessage`) was recorded on 2.1.330 |
+| Claude Code (`claude`) | 2.1.330 (2026-11-21) | 2.1.292, 2026-10-07 | Full: the fixtures in `agent/claude/fixtures` were recorded on it. 2.1.330 passed the flag probe, the binary grep and the `auth status` keys below, and `get_settings` with no prompt sent showed the last `--model` and `--effort` applied. `resume.ndjson` (an agent resumed with `SendMessage`) was recorded on 2.1.330 |
 | Codex (`codex`) | 0.171.0 (shared daemon 0.171.0) | 0.159.0, 2026-10-07 | Full: `tools.ndjson` and `subagent.ndjson` in `agent/codex/fixtures`; `app-server-live.jsonl` is 0.166.0. 0.171.0 had the schema check and a binary grep, all names present |
 | Antigravity (`agy`) | 1.5.13 | 1.5.13, 2026-11-20 | Live turns through a private daemon, including the artifact signal |
 | Grok Build (`grok`) | 1.0.89 | 1.0.89, 2026-11-20 | Live turns through a private daemon, including `_meta.rules` |
@@ -52,8 +52,8 @@ claude -p --output-format stream-json --input-format stream-json --verbose --inc
 ```
 
 `--resume-session-at requires --resume` means every flag parsed. `error: unknown option '--…'`
-names the one that went away. Add `--fork-session`, `--session-id`, `--append-system-prompt` and
-`--effort` the same way when touching those paths.
+names the one that went away. Add `--fork-session`, `--session-id`, `--append-system-prompt`,
+`--model` and `--effort` the same way when touching those paths.
 
 **Claude Code control requests and env vars.** The binary carries the names it handles; a count of
 0 means the name is gone:
@@ -141,6 +141,7 @@ Driver: `agent/claude/` (`mod.rs` frames and flags, `translate.rs` rows, `sessio
 | A finished agent's report: `task_notification.handback_report.text`, and in a foreground result `tool_use_result.handbackReport.text`, or the older `tool_use_result.content`; `summary` then only says the report went elsewhere | `translate.rs` | Agent cards show that notice instead of the report | Recording (`resume.ndjson`) for the notification; foreground shapes hand-written from 2.1.330 and `tools.ndjson` |
 | `can_use_tool` fields `permission_suggestions`, `requires_user_interaction`, `suppress_always_allow_rule` | `mod.rs` | Wrong auto-approve, or "Always allow" missing | Recording |
 | `system/init.terminal_slash_commands` | `mod.rs` | A TUI-only command shows in chat and fails | Hand-written |
+| Every launch passes the picked model's `value` (from `initialize` `models`) as `--model` and the picked effort as `--effort`, after the user's own arguments, so the last of each must win | `mod.rs` | A new chat, fork, rewind, switch or restart runs another model or effort than the picker shows | Fake; checked on 2.1.330 with `get_settings` (`applied.model`, `applied.effort`), no prompt |
 | Model ids start with `claude-`; `[…]` suffixes like `[1m]`; aliases `opus`, `sonnet`, `haiku`, `fable` | `mod.rs`, `cli_session.rs` | Wrong model badge, or flip opens the TUI on another model | Hand-written |
 | `claude auth status --json` keys | `daemon/accounts.rs` | Every account reads as signed out | Sample JSON |
 | `CLAUDE_CONFIG_DIR` isolates credentials (keychain entry included) and `.claude.json`; zz unsets `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` and the account id vars | `accounts.rs`, `environment.rs` | A new override variable signs a pane into the wrong account | Hand-written |
