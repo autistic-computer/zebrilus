@@ -191,6 +191,7 @@ struct Starting {
     cwd: PathBuf,
     resume: Option<String>,
     before: Option<String>,
+    live: bool,
 }
 
 enum Outgoing {
@@ -811,22 +812,22 @@ impl Runtime {
         start: Start,
         resume: Option<String>,
     ) -> Result<(), String> {
-        self.begin_with(Starting {
-            start,
-            cwd,
-            resume,
-            before: None,
-        })
-        .await
+        self.begin_with(start, cwd, resume, None).await
     }
 
-    async fn begin_with(&mut self, starting: Starting) -> Result<(), String> {
-        let start = starting.start;
-        if start == Start::Fork && starting.resume.is_none() {
+    async fn begin_with(
+        &mut self,
+        start: Start,
+        cwd: PathBuf,
+        resume: Option<String>,
+        before: Option<String>,
+    ) -> Result<(), String> {
+        if start == Start::Fork && resume.is_none() {
             return self
                 .notice("Nothing to fork yet: send a prompt first.")
                 .await;
         }
+        let live = !matches!(self.turns.phase, turn::Phase::Offline | turn::Phase::Exited);
         self.cancel_permissions().await?;
         self.apply(&Fact::SessionClosed).await?;
         if self.process.is_none()
@@ -834,7 +835,13 @@ impl Runtime {
         {
             return self.fail_start(start, message).await;
         }
-        self.starting = Some(starting);
+        self.starting = Some(Starting {
+            start,
+            cwd,
+            resume,
+            before,
+            live,
+        });
         if self.initialized {
             self.open_thread();
         }
@@ -987,13 +994,16 @@ impl Runtime {
     }
 
     async fn fail_start(&mut self, start: Start, message: String) -> Result<(), String> {
-        self.starting = None;
+        let live = self.starting.take().is_some_and(|starting| starting.live);
         match start {
             Start::Open => {
                 self.process = None;
                 self.emit(AgentStreamPayload::PaneFailed { message }).await
             }
             Start::New | Start::Switch | Start::Fork => {
+                if live {
+                    self.apply(&Fact::SessionReady).await?;
+                }
                 self.emit(AgentStreamPayload::SessionSwitchFailed { message })
                     .await
             }
@@ -1193,13 +1203,8 @@ impl Runtime {
         match prompts.swap_remove(index) {
             (0, _, _) => self.begin(cwd, Start::New, None).await,
             (_, before, _) => {
-                self.begin_with(Starting {
-                    start: Start::Fork,
-                    cwd,
-                    resume: Some(source),
-                    before: Some(before),
-                })
-                .await
+                self.begin_with(Start::Fork, cwd, Some(source), Some(before))
+                    .await
             }
         }
     }
@@ -1312,14 +1317,19 @@ impl Runtime {
             turn: turn_id,
             command: (text.trim() == "/compact").then(|| compact_command(turn_id)),
         };
-        if self.apply(&fact).await?.is_some() {
+        if let Some(reject) = self.apply(&fact).await? {
             self.emit(AgentStreamPayload::PromptAccepted { turn_id })
                 .await?;
+            let message = if reject == Reject::Offline {
+                "agent session is not ready"
+            } else {
+                "a turn is already running"
+            };
             return self
                 .finish(
                     turn_id,
                     AgentPromptOutcome::Failed {
-                        message: "a turn is already running".to_owned(),
+                        message: message.to_owned(),
                     },
                 )
                 .await;
@@ -2957,6 +2967,7 @@ while IFS= read -r line; do
   case "$line" in
     *'"method":"config/read"'*) printf '{"id":%s,"result":{"config":{"developer_instructions":"be terse"},"origins":{}}}\n' "$id" ;;
     *'"method":"thread/resume"'*'"threadId":"t2"'*) printf '{"id":%s,"result":{"thread":{"id":"t2"}}}\n' "$id" ;;
+    *'"method":"thread/resume"'*'"threadId":"gone"'*) printf '{"id":%s,"error":{"code":-32600,"message":"no rollout for gone"}}\n' "$id" ;;
     *'"method":"thread/read"'*'"threadId":"t2"'*)
       printf '{"id":%s,"result":{"thread":{"id":"t2","turns":[{"id":"u0","items":[{"type":"userMessage","id":"m0","clientId":null,"content":[{"type":"text","text":"one"}]}]},{"id":"u1","items":[{"type":"userMessage","id":"m1","clientId":"zz-prompt-2-x","content":[{"type":"text","text":"two"}]}]}]}}}\n' "$id" ;;
     *'"method":"thread/fork"'*'"beforeTurnId":"u1"'*) printf '{"id":%s,"result":{"thread":{"id":"f1"}}}\n' "$id" ;;
@@ -3393,6 +3404,89 @@ done
         };
         let (result, ()) = smol::block_on(futures_lite::future::zip(runtime, driver));
         assert_eq!(result, Ok(()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_switch_keeps_the_thread_and_takes_the_next_prompt() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let (commands, events, runtime) = fake_codex(directory.path());
+        let driver = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: directory.path().to_path_buf(),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::SessionReady { .. })
+            })
+            .await;
+            commands
+                .send(RuntimeCommand::SwitchSession {
+                    session: AgentSessionSummary {
+                        session_id: "gone".to_owned(),
+                        cwd: directory.path().to_path_buf(),
+                        additional_directories: Vec::new(),
+                        title: None,
+                        updated_at: None,
+                    },
+                })
+                .await
+                .expect("switch");
+            let failed = until(&events, |payload| {
+                matches!(
+                    payload,
+                    AgentStreamPayload::SessionSwitchFailed { .. }
+                        | AgentStreamPayload::SessionSwitched { .. }
+                )
+            })
+            .await;
+            assert_eq!(
+                failed,
+                AgentStreamPayload::SessionSwitchFailed {
+                    message: "Codex could not open the thread: no rollout for gone".to_owned(),
+                }
+            );
+            commands
+                .send(RuntimeCommand::Prompt {
+                    turn_id: 1,
+                    note: None,
+                    prompt: AgentPrompt {
+                        text: "start a server".to_owned(),
+                        ..Default::default()
+                    },
+                })
+                .await
+                .expect("prompt");
+            let finished = until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::PromptFinished { .. })
+            })
+            .await;
+            assert_eq!(
+                finished,
+                AgentStreamPayload::PromptFinished {
+                    turn_id: 1,
+                    outcome: AgentPromptOutcome::Finished {
+                        stop_reason: Value::from("end_turn"),
+                    },
+                }
+            );
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+        };
+        let (result, ()) = smol::block_on(futures_lite::future::zip(runtime, driver));
+        assert_eq!(result, Ok(()));
+        let log = std::fs::read_to_string(directory.path().join("codex.log")).expect("log");
+        let turn = log
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .find(|request| request["method"] == "turn/start")
+            .expect("a turn/start");
+        assert_eq!(turn["params"]["threadId"], "t1");
     }
 
     #[cfg(unix)]

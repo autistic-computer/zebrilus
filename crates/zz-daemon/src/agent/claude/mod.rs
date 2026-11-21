@@ -259,12 +259,13 @@ struct Session {
     cwd: PathBuf,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Start {
     Open { resume: bool },
     New,
     Switch,
     Fork,
+    Restore { failure: String },
 }
 
 enum Launch {
@@ -881,14 +882,19 @@ impl Runtime {
                     turn: turn_id,
                     command: Some(uuid.clone()),
                 };
-                if self.apply(&fact).await?.is_some() {
+                if let Some(reject) = self.apply(&fact).await? {
                     self.emit(AgentStreamPayload::PromptAccepted { turn_id })
                         .await?;
+                    let message = if reject == Reject::Offline {
+                        "agent session is not ready"
+                    } else {
+                        "a turn is already running"
+                    };
                     return self
                         .finish(
                             turn_id,
                             AgentPromptOutcome::Failed {
-                                message: "a turn is already running".to_owned(),
+                                message: message.to_owned(),
                             },
                         )
                         .await;
@@ -1023,7 +1029,7 @@ impl Runtime {
                 .and_then(|config| sessions::session_file(config, &cwd, id))
                 .is_some()
         };
-        let launch = match (start, resume) {
+        let launch = match (&start, resume) {
             (Start::Fork, Some(source)) if exists(&source) => Launch::Fork {
                 source,
                 id: new_uuid(),
@@ -1176,10 +1182,32 @@ impl Runtime {
         self.process = None;
         self.starting = None;
         match start {
-            Start::Open { .. } => self.emit(AgentStreamPayload::PaneFailed { message }).await,
+            Start::Open { .. } | Start::Restore { .. } => {
+                self.emit(AgentStreamPayload::PaneFailed { message }).await
+            }
             Start::New | Start::Switch | Start::Fork => {
-                self.emit(AgentStreamPayload::SessionSwitchFailed { message })
-                    .await
+                let Some(Session { id, cwd }) = &self.session else {
+                    return self
+                        .emit(AgentStreamPayload::SessionSwitchFailed { message })
+                        .await;
+                };
+                let (id, cwd) = (id.clone(), cwd.clone());
+                let config = sessions::config_home();
+                let exists = |id: &str| {
+                    config
+                        .as_deref()
+                        .and_then(|config| sessions::session_file(config, &cwd, id))
+                        .is_some()
+                };
+                let launch = if exists(&id) {
+                    Launch::Resume(id)
+                } else {
+                    self.unsent_fork(&id)
+                        .filter(|launch| launch.history().is_some_and(exists))
+                        .unwrap_or(Launch::New(id))
+                };
+                let start = Start::Restore { failure: message };
+                Box::pin(self.launch(cwd, start, launch)).await
             }
         }
     }
@@ -1192,6 +1220,15 @@ impl Runtime {
         self.settings.models = response["models"].as_array().cloned().unwrap_or_default();
         if let Some(mode) = response["current_permission_mode"].as_str() {
             mode.clone_into(&mut self.settings.mode);
+        }
+        if let Start::Restore { failure } = starting.start {
+            self.translator = Translator::new(starting.cwd);
+            self.apply(&Fact::SessionReady).await?;
+            self.publish_settings().await?;
+            self.ask_applied();
+            return self
+                .emit(AgentStreamPayload::SessionSwitchFailed { message: failure })
+                .await;
         }
         if !self.ready_sent {
             self.ready_sent = true;
@@ -1231,7 +1268,7 @@ impl Runtime {
         });
         let restoring = match starting.start {
             Start::Open { .. } => !replay.is_empty(),
-            Start::New | Start::Switch | Start::Fork => true,
+            Start::New | Start::Switch | Start::Fork | Start::Restore { .. } => true,
         };
         self.emit(AgentStreamPayload::SessionReset { restoring })
             .await?;
@@ -1250,7 +1287,7 @@ impl Runtime {
                 })
                 .await?;
             }
-            Start::New | Start::Switch | Start::Fork => {
+            Start::New | Start::Switch | Start::Fork | Start::Restore { .. } => {
                 self.emit(AgentStreamPayload::SessionSwitched {
                     session_id,
                     cwd: starting.cwd,
@@ -1613,7 +1650,7 @@ impl Runtime {
             (Outgoing::Initialize, Err(error)) => {
                 let start = self
                     .starting
-                    .as_ref()
+                    .take()
                     .map_or(Start::Open { resume: false }, |starting| starting.start);
                 let tail = self.stderr.snapshot();
                 let message = tail.map_or_else(
@@ -3026,6 +3063,176 @@ while read -r line; do :; done
             }
         );
         assert_eq!(seen, None, "nothing runs on the default account");
+    }
+
+    #[cfg(unix)]
+    const FAKE_RESPAWN_CLAUDE: &str = r#"#!/bin/sh
+printf '%s\n' "$*" >> spawns
+[ $(wc -l < spawns) -eq "${FAIL_SPAWN:-0}" ] && exit 3
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\(zz-[0-9]*\)".*/\1/p')
+  case "$line" in
+    *'"subtype":"initialize"'*) printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{"commands":[],"models":[{"value":"opus","supportsEffort":true,"supportedEffortLevels":["low","high"]}],"current_permission_mode":"default"}}}\n' "$id" ;;
+    *'"type":"control_request"'*) printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{}}}\n' "$id" ;;
+    *'"type":"user"'*)
+      printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"running"}'
+      printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"num_turns":1}'
+      printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"idle"}' ;;
+  esac
+done
+"#;
+
+    #[cfg(unix)]
+    fn respawning(
+        directory: &Path,
+        fail_spawn: Option<usize>,
+    ) -> (
+        async_channel::Sender<RuntimeCommand>,
+        async_channel::Receiver<AgentStreamPayload>,
+        impl std::future::Future<Output = Result<(), String>>,
+    ) {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let program = directory.join("claude");
+        std::fs::write(&program, FAKE_RESPAWN_CLAUDE).expect("fake claude");
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+            .expect("executable");
+        let line = match fail_spawn {
+            Some(spawn) => format!("FAIL_SPAWN={spawn} {}", program.display()),
+            None => program.display().to_string(),
+        };
+        let command = ClaudeCommand::parse(&line).expect("native");
+        let (commands, command_rx) = async_channel::unbounded();
+        let (_controls, control_rx) = async_channel::unbounded();
+        let (events, event_rx) = async_channel::unbounded();
+        let runtime = run_claude_runtime(
+            command,
+            AgentWorkspaceEnvironment::default(),
+            AgentProvider::ClaudeCode,
+            RuntimeChannels {
+                auto_approve: Arc::new(Mutex::new(AgentAutoApprove::Off)),
+                permission_ids: Arc::new(AtomicU64::new(1)),
+                journal: None,
+                commands: command_rx,
+                controls: control_rx,
+                events,
+            },
+        );
+        (commands, event_rx, runtime)
+    }
+
+    #[cfg(unix)]
+    async fn until(
+        events: &async_channel::Receiver<AgentStreamPayload>,
+        accept: fn(&AgentStreamPayload) -> bool,
+    ) -> AgentStreamPayload {
+        loop {
+            let payload =
+                futures_lite::future::or(async { events.recv().await.expect("event") }, async {
+                    smol::Timer::after(Duration::from_secs(20)).await;
+                    panic!("timed out waiting for the runtime");
+                })
+                .await;
+            if accept(&payload) {
+                return payload;
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    fn spawned_flags(directory: &Path, flag: &str) -> Vec<Option<String>> {
+        std::fs::read_to_string(directory.join("spawns"))
+            .expect("spawns")
+            .lines()
+            .map(|line| {
+                let mut words = line.split_whitespace();
+                words.find(|word| *word == flag)?;
+                words.next().map(str::to_owned)
+            })
+            .collect()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_new_chat_resumes_the_session_it_left() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let (commands, events, runtime) = respawning(directory.path(), Some(2));
+        let cwd = directory.path().to_path_buf();
+        let driver = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: cwd.clone(),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            let AgentStreamPayload::SessionReady { session_id, .. } = until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::SessionReady { .. })
+            })
+            .await
+            else {
+                unreachable!();
+            };
+            commands
+                .send(RuntimeCommand::NewSession { cwd: cwd.clone() })
+                .await
+                .expect("new chat");
+            let failed = until(&events, |payload| {
+                matches!(
+                    payload,
+                    AgentStreamPayload::SessionSwitchFailed { .. }
+                        | AgentStreamPayload::SessionSwitched { .. }
+                        | AgentStreamPayload::SessionReset { .. }
+                        | AgentStreamPayload::PaneFailed { .. }
+                )
+            })
+            .await;
+            assert_eq!(
+                failed,
+                AgentStreamPayload::SessionSwitchFailed {
+                    message: "Claude Code exited (exit status: 3)".to_owned(),
+                }
+            );
+            commands
+                .send(RuntimeCommand::Prompt {
+                    turn_id: 1,
+                    note: None,
+                    prompt: crate::agent::stream::AgentPrompt {
+                        text: "hello".to_owned(),
+                        ..Default::default()
+                    },
+                })
+                .await
+                .expect("prompt");
+            let finished = until(&events, |payload| {
+                matches!(
+                    payload,
+                    AgentStreamPayload::PromptFinished { .. }
+                        | AgentStreamPayload::PaneFailed { .. }
+                )
+            })
+            .await;
+            assert_eq!(
+                finished,
+                AgentStreamPayload::PromptFinished {
+                    turn_id: 1,
+                    outcome: AgentPromptOutcome::Finished {
+                        stop_reason: Value::from("end_turn"),
+                    },
+                }
+            );
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+            session_id
+        };
+        let (result, session_id) = smol::block_on(futures_lite::future::zip(runtime, driver));
+        assert_eq!(result, Ok(()));
+        let sessions = spawned_flags(directory.path(), "--session-id");
+        assert_eq!(sessions.len(), 3, "{sessions:?}");
+        assert_eq!(sessions[0].as_deref(), Some(session_id.as_str()));
+        assert_eq!(sessions[2].as_deref(), Some(session_id.as_str()));
     }
 
     #[cfg(unix)]
