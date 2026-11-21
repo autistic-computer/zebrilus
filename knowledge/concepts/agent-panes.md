@@ -1231,7 +1231,11 @@ calls:
   `Ask::Plan`) shows the plan in a scrolling inset with a button that opens it in the view pane.
   The rules for titles, send labels and hints live in `zz_client::agent_ask`, shared by every
   client. The chat keeps one row per ask while it waits ("waiting for you"), and an answered
-  question as a row per question with its answer.
+  question as a row per question with its answer. An ask leaves the client that answered it at
+  once and does not come back from a pane state that left the daemon before the answer got there:
+  the desktop keeps the ids it answered while the state's `pending_permission` still names them
+  (`AgentThread::answered`), and the thin clients keep `permission_answered` while the transcript
+  or the state still shows the ask.
 - **Codex's async questions.** Codex can ask without stopping its turn
   (`request_user_input_async`); the app server sends that as an `agentMessage` with
   `delivery: "async"`, `questions` (`{ title, options? }`) and a markdown copy in `text`. The

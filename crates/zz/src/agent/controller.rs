@@ -140,6 +140,7 @@ struct AgentThread {
     resume: Resume,
     resume_revision: u64,
     parked: Option<AgentPermissionWire>,
+    answered: BTreeSet<u64>,
 }
 
 impl AgentThread {
@@ -166,11 +167,13 @@ impl AgentThread {
             resume: Resume::default(),
             resume_revision: 0,
             parked: None,
+            answered: BTreeSet::new(),
         }
     }
 
     fn show_parked(&mut self) {
         if let Some(permission) = &self.parked
+            && !self.answered.contains(&permission.request_id)
             && let Some((tool_call, options, questions)) =
                 decode_permission_payload(&permission.payload)
         {
@@ -610,6 +613,7 @@ impl AgentController {
         ) {
             if let Some(thread) = self.panes.get_mut(&pane) {
                 thread.transcript.resolve_permission(request_id, canceled);
+                thread.answered.insert(request_id);
             }
             cx.notify();
             return true;
@@ -636,6 +640,7 @@ impl AgentController {
         }
         if let Some(thread) = self.panes.get_mut(&pane) {
             thread.transcript.resolve_permission(request_id, false);
+            thread.answered.insert(request_id);
         }
         cx.notify();
         true
@@ -886,6 +891,8 @@ impl AgentController {
         }
         thread.transcript.clear_permissions();
         thread.parked.clone_from(&state.pending_permission);
+        let parked = thread.parked.as_ref().map(|parked| parked.request_id);
+        thread.answered.retain(|request| parked == Some(*request));
         thread.show_parked();
         if self.pane_state(pane).as_ref() != Some(&before) {
             cx.notify();
@@ -2899,6 +2906,56 @@ mod tests {
                     cx,
                 );
                 assert_eq!(pending(controller), Vec::<u64>::new());
+            });
+        });
+    }
+
+    #[ala::test]
+    fn an_answered_card_stays_gone_when_an_older_state_still_holds_it(cx: &mut TestAppContext) {
+        let (controller, _sink) = proxy_controller(cx);
+        let pane = PaneId(11);
+        cx.update(|cx| {
+            controller.update(cx, |controller, cx| {
+                ready_pane(controller, pane);
+                let holding = |request_id| AgentPaneWire {
+                    phase: AgentConnectionPhase::AwaitingPermission,
+                    pending_permission: Some(zz_protocol::AgentPermissionWire {
+                        request_id,
+                        payload: serde_json::json!({
+                            "toolCall": {"toolCallId": "ask-4", "title": "fruit?"},
+                            "options": [],
+                            "questions": [asked("fruit", &["apple"], false)],
+                        })
+                        .to_string(),
+                    }),
+                    ..AgentPaneWire::default()
+                };
+                let pending = |controller: &AgentController| {
+                    controller
+                        .pane_state(pane)
+                        .expect("the pane is registered")
+                        .pending_permissions
+                        .iter()
+                        .map(|request| request.request_id)
+                        .collect::<Vec<_>>()
+                };
+
+                controller.apply_pane_state(pane, &holding(6), cx);
+                assert_eq!(pending(controller), [6]);
+                assert!(controller.answer_question(pane, 6, vec![reply("fruit", &["apple"])], cx));
+                assert_eq!(pending(controller), Vec::<u64>::new());
+
+                controller.apply_pane_state(pane, &holding(6), cx);
+                assert_eq!(pending(controller), Vec::<u64>::new());
+                controller.apply_stream_items(
+                    pane,
+                    vec![item(1, turn_finished(StopReason::EndTurn))],
+                    cx,
+                );
+                assert_eq!(pending(controller), Vec::<u64>::new());
+
+                controller.apply_pane_state(pane, &holding(7), cx);
+                assert_eq!(pending(controller), [7]);
             });
         });
     }
