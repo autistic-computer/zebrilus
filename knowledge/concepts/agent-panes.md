@@ -370,8 +370,10 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
   `email`, `workspaceName` as the organization and `planType` as the plan; an API key login is
   signed in with no email or plan. The server's stdin is closed, it gets 2 s to exit, and then its
   process group is killed. Both probes drop the parent Claude Code session variables and `ZZ_PANE`,
-  `ZZ_SESSION`, `TMUX` and `TMUX_PANE` (and for an account the login overrides above), give up
-  after 10 s, and count as signed out when they fail.
+  `ZZ_SESSION`, `TMUX` and `TMUX_PANE` (and for an account the login overrides above) and give up
+  after 10 s. A probe that fails, times out or gets no `loggedIn` from Claude Code leaves the
+  status unknown (`identify` gives `None`): the list shows it as signed out, and a sign-in never
+  picks it.
   An account directory is linked (`accounts::prepare`) before its probe, so a Codex home has its
   state databases before its first app server.
 - **Watching.** A plain call adds the client to the watchers, sends the list the daemon already has
@@ -381,7 +383,7 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
   follow the login window.
 - **Which account.** `--add` subscribes the caller too. `--account default` signs in the CLI's own
   login, `--account <id>` an existing account directory (signed out or not). Without `--account`
-  the daemon asks that CLI's accounts, picks the first account that is not signed in, else the
+  the daemon asks that CLI's accounts, picks the first account it read as signed out, else the
   lowest `aN` not taken (`a1`, `a2`, ...), and creates or completes it (`accounts::create`: 0700,
   links, Claude seed; `accounts::pick_account`).
 - **Two ways to sign in.** A caller that declared `agent-login-v1` in its hello gets a sign-in the
