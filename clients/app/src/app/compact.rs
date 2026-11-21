@@ -1298,6 +1298,9 @@ impl AppShell {
             reserve,
             keyboard,
             veil: if open { 0.0 } else { veil },
+            covered: !self.compact_can_focus(window, cx)
+                || self.compact.bindings
+                || self.stacks().any(|menu| menu.read(cx).is_open()),
         });
         let mut strip = Vec::new();
         if !lifting {

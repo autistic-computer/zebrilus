@@ -509,6 +509,7 @@ pub struct Sky {
     id: ElementId,
     zones: SkyZones,
     fill: AnyElement,
+    paused: bool,
 }
 
 pub fn sky(id: impl Into<ElementId>, zones: &SkyZones) -> Sky {
@@ -516,6 +517,15 @@ pub fn sky(id: impl Into<ElementId>, zones: &SkyZones) -> Sky {
         id: id.into(),
         zones: zones.clone(),
         fill: div().absolute().inset_0().into_any_element(),
+        paused: false,
+    }
+}
+
+impl Sky {
+    #[must_use]
+    pub fn paused(mut self, paused: bool) -> Self {
+        self.paused = paused;
+        self
     }
 }
 
@@ -579,7 +589,7 @@ impl Element for Sky {
             return;
         };
         let still = cx.reduce_motion();
-        let running = !still && window.is_window_active();
+        let running = !still && !self.paused && window.is_window_active();
         let view = window.current_view();
         let mouse = window.mouse_position();
         let (elapsed, parallax) =
@@ -592,7 +602,11 @@ impl Element for Sky {
                     tick: None,
                 });
                 if running {
-                    let raw_dt = (now - clock.last).min(MAX_GAP);
+                    let raw_dt = if clock.tick.is_some() {
+                        (now - clock.last).min(MAX_GAP)
+                    } else {
+                        Duration::ZERO
+                    };
                     let dt = ala::animation_time(raw_dt);
                     clock.elapsed += dt;
                     let target = if bounds.contains(&mouse) {

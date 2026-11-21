@@ -57,6 +57,7 @@ pub(in super::super) struct PhoneDock {
     pub reserve: Pixels,
     pub keyboard: bool,
     pub veil: f32,
+    pub covered: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -654,6 +655,7 @@ impl AgentPane {
             reserve: px(0.0),
             keyboard: false,
             veil: 0.0,
+            covered: false,
         });
         let head = permissions.first();
         if self.other.is_some_and(|(request, question)| {
@@ -785,7 +787,8 @@ impl AgentPane {
         let folder = folder_name(&self.cwd(cx));
         let open = cx.entity().downgrade();
         let zones = SkyZones::default();
-        let sky = start.then(|| sky(("phone-agent-sky", self.pane.0), &zones));
+        let covered = dock.covered || self.sheet.is_some() || !self.completions.is_empty();
+        let sky = start.then(|| sky(("phone-agent-sky", self.pane.0), &zones).paused(covered));
         let empty = empty.map(|(empty, _)| {
             zones.mark(
                 div()
