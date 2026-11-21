@@ -340,6 +340,54 @@ fn an_exit_resolves_the_open_permission_cards() {
     assert_eq!(resolved(&receiver), [(request, true)]);
 }
 
+fn play(runtime: &mut Runtime, recording: &[Value]) {
+    for entry in recording {
+        let message = &entry["msg"];
+        if entry["dir"] == "in" && message["type"] == "user" {
+            prompt(runtime, 1, message["uuid"].as_str().expect("uuid"));
+        } else if entry["dir"] == "out" && message.is_object() {
+            smol::block_on(runtime.frame(message.clone())).expect("frame");
+        }
+    }
+}
+
+fn background_recording() -> Vec<Value> {
+    include_str!("fixtures/background.ndjson")
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("recorded line"))
+        .collect()
+}
+
+#[test]
+fn an_ask_from_a_background_agent_outlives_the_turn_and_a_foreground_ask_does_not() {
+    let (mut runtime, receiver) = setup();
+    play(&mut runtime, &background_recording());
+    let asks = std::iter::from_fn(|| receiver.try_recv().ok())
+        .filter_map(|event| match event {
+            AgentStreamPayload::PermissionRequested {
+                request_id,
+                tool_call,
+                options,
+                questions,
+            } => Some(crate::agent::host::AgentPendingPermission {
+                request_id,
+                tool_call,
+                options,
+                questions,
+            }),
+            _ => None,
+        })
+        .map(|ask| (ask.tool_call["toolCallId"].clone(), ask.outlives_turn()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        asks,
+        [
+            (json!("toolu_01LPpEBtdDfksG9zSnXyV14S"), false),
+            (json!("toolu_01CMVtk5BeuLNryViYvdStZN"), true),
+        ]
+    );
+}
+
 fn chat_of(runtime: &Runtime) -> (zz_protocol::chat::ChatView, Vec<String>) {
     let shadow = runtime.chat.lock();
     let mut view = zz_protocol::chat::ChatView::default();

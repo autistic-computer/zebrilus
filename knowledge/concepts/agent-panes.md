@@ -1223,6 +1223,13 @@ calls:
   as a bubble, also when the TUI sent it. Any other message closes the card with no answer, Stop
   leaves it open, and a resumed thread shows the answered ones as records and reopens the one
   still waiting.
+- **Claude Code's background agents.** An agent started in the background keeps running after
+  the turn that launched it ends, and can still ask for approval then. Its `can_use_tool` request
+  names it in `agent_id`, the task id `background_tasks_changed` lists. The driver marks that ask
+  with `_meta.zz.backgroundAgent`, so the host keeps it past the end of the turn
+  (`AgentPendingPermission::outlives_turn`) and both clients keep its card. Unlike Codex's
+  questions it stays blocking: the chat says it waits for you, and the ask sits under the
+  agent's row.
 - **Callouts.** `> [!NOTE]` style alerts and `:::name title` blocks draw as a flat card washed in
   their tone with an icon and a title (penna's `BlockNode::Callout`).
 - **Preview cards.** With a view opener, mermaid and SVG blocks, code blocks of six lines or more

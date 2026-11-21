@@ -324,8 +324,9 @@ pub(crate) struct AgentPendingPermission {
 }
 
 impl AgentPendingPermission {
-    fn outlives_turn(&self) -> bool {
-        self.tool_call["_meta"]["zz"]["background"] == true
+    pub(crate) fn outlives_turn(&self) -> bool {
+        let zz = &self.tool_call["_meta"]["zz"];
+        zz["background"] == true || zz["backgroundAgent"].is_string()
     }
 }
 

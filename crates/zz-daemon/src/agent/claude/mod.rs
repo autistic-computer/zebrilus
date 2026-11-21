@@ -2049,8 +2049,15 @@ impl Runtime {
             .as_str()
             .unwrap_or(&claude_id)
             .to_owned();
+        let background = request["agent_id"]
+            .as_str()
+            .filter(|agent| self.tasks.iter().any(|task| task.id == *agent))
+            .map(str::to_owned);
         match tool.as_str() {
-            "AskUserQuestion" => self.ask_questions(claude_id, &tool_use_id, input).await,
+            "AskUserQuestion" => {
+                self.ask_questions(claude_id, &tool_use_id, input, background)
+                    .await
+            }
             "ExitPlanMode" => {
                 let (tool_call, options) = plan_request(&tool_use_id, &input);
                 self.ask(
@@ -2058,6 +2065,7 @@ impl Runtime {
                     tool_call,
                     options,
                     Vec::new(),
+                    background,
                 )
                 .await
                 .map(drop)
@@ -2093,6 +2101,7 @@ impl Runtime {
                     tool_call,
                     options,
                     Vec::new(),
+                    background,
                 )
                 .await
                 .map(drop)
@@ -2103,11 +2112,15 @@ impl Runtime {
     async fn ask(
         &mut self,
         permission: Permission,
-        tool_call: Value,
+        mut tool_call: Value,
         options: Value,
         questions: Vec<AgentQuestion>,
+        background: Option<String>,
     ) -> Result<u64, String> {
         let request_id = self.permission_ids.fetch_add(1, Ordering::Relaxed);
+        if let Some(agent) = background {
+            tool_call["_meta"]["zz"]["backgroundAgent"] = Value::from(agent);
+        }
         let mut payload = AgentStreamPayload::PermissionRequested {
             request_id,
             tool_call,
@@ -2139,6 +2152,7 @@ impl Runtime {
         claude_id: String,
         tool_use_id: &str,
         input: Value,
+        background: Option<String>,
     ) -> Result<(), String> {
         let questions = question_list(&input);
         if questions.is_empty() {
@@ -2155,6 +2169,7 @@ impl Runtime {
             tool_call,
             options,
             questions,
+            background,
         )
         .await
         .map(drop)
