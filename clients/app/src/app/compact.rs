@@ -76,6 +76,7 @@ pub(super) struct CompactState {
     zoom_intent: Option<PaneId>,
     compact_keyboard: Option<bool>,
     last_current: Option<PaneId>,
+    last_zoomed: Option<WindowId>,
     pinch: Option<(f32, f32)>,
     scale_hud: Option<Instant>,
     notice: Option<(PaneId, &'static str, PillNotice, Instant)>,
@@ -123,6 +124,7 @@ impl CompactState {
         self.preview = None;
         self.zoom_intent = None;
         self.last_current = None;
+        self.last_zoomed = None;
         self.bindings = std::env::var("ALA_BENCH").is_ok_and(|bench| bench.starts_with("sheet"));
         self.menu = None;
         self.new_menu = None;
@@ -429,6 +431,40 @@ impl AppShell {
         if let Some(page) = pages.get(index) {
             self.compact_select(page, cx);
         }
+    }
+
+    fn follow_compact_page(&mut self, current: Option<PaneId>, cx: &mut Context<Self>) {
+        let shown = {
+            let core = &self.connection.read(cx).core;
+            let snapshot = core.snapshot();
+            snapshot
+                .sessions
+                .iter()
+                .find(|session| Some(session.id) == core.attached_session())
+                .map(|session| {
+                    let id = snapshot.focused_window_for(session);
+                    let zoomed = session
+                        .windows
+                        .iter()
+                        .any(|window| window.id == id && window.zoomed_pane.is_some());
+                    let watched = session
+                        .viewers
+                        .iter()
+                        .any(|viewer| !viewer.is_self && viewer.window == id);
+                    (id, zoomed, watched)
+                })
+        };
+        let left_unzoomed =
+            shown.is_some_and(|(id, _, watched)| watched && self.compact.last_zoomed != Some(id));
+        if self.compact.last_current.is_some()
+            && current != self.compact.last_current
+            && !left_unzoomed
+        {
+            self.compact.zoom_intent = current;
+        }
+        self.compact.last_current = current;
+        self.compact.last_zoomed = shown.and_then(|(id, zoomed, _)| zoomed.then_some(id));
+        self.reconcile_compact_zoom(cx);
     }
 
     fn reconcile_compact_zoom(&mut self, cx: &mut Context<Self>) {
@@ -1144,11 +1180,7 @@ impl AppShell {
         let model = self.status_model(cx);
         let (pages, current) = pages(&model, &self.unseen_agents);
         let current_pane = pages.get(current).map(|page| page.pane);
-        if self.compact.last_current.is_some() && current_pane != self.compact.last_current {
-            self.compact.zoom_intent = current_pane;
-        }
-        self.compact.last_current = current_pane;
-        self.reconcile_compact_zoom(cx);
+        self.follow_compact_page(current_pane, cx);
         let width = f32::from(window.fully_visible_bounds().size.width);
         self.compact.width = width;
         self.compact.pager.sync(current, pages.len());
@@ -2311,5 +2343,150 @@ mod tests {
             MuxOptionSource::RuntimeCommand,
         );
         assert_eq!(live_prefix(&options), tmux_keystroke("C-a"));
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    fn watched_two_panes(active: u64, zoomed: Option<u64>) -> zz_protocol::MuxSnapshot {
+        use zz_protocol::{
+            Axis, LayoutNode, MuxSnapshot, PaneSnapshot, PaneSummary, SessionId, SessionSnapshot,
+            SessionViewer, SplitId, WindowSnapshot,
+        };
+        let pane = |id: u64| {
+            (
+                PaneId(id),
+                PaneSnapshot {
+                    id: PaneId(id),
+                    title: format!("pane {id}"),
+                    kind: PaneKindSnapshot::Terminal,
+                    synchronized_input: false,
+                    bell: false,
+                    dead: false,
+                    dead_status: None,
+                    border_colour: None,
+                    active_border_colour: None,
+                    border_status_text: String::new(),
+                    mode: None,
+                    status: None,
+                    summary: PaneSummary::default(),
+                },
+            )
+        };
+        let viewer = |name: &str, is_self: bool| SessionViewer {
+            name: name.to_owned(),
+            window: WindowId(1),
+            is_self,
+        };
+        MuxSnapshot {
+            generation: 1,
+            sessions: vec![SessionSnapshot {
+                id: SessionId(1),
+                name: "work".into(),
+                active_window: WindowId(1),
+                viewers: vec![viewer("phone", true), viewer("desktop", false)],
+                windows: vec![WindowSnapshot {
+                    id: WindowId(1),
+                    index: 0,
+                    name: "work".into(),
+                    automatic_rename: true,
+                    active_pane: PaneId(active),
+                    zoomed_pane: zoomed.map(PaneId),
+                    layout: LayoutNode::Split {
+                        id: SplitId(1),
+                        axis: Axis::Horizontal,
+                        ratio: 0.5,
+                        first: Box::new(LayoutNode::Pane(PaneId(1))),
+                        second: Box::new(LayoutNode::Pane(PaneId(3))),
+                    },
+                    panes: [pane(1), pane(3)].into(),
+                    layout_dump: String::new(),
+                    visible_layout_dump: String::new(),
+                    status_label: String::new(),
+                    activity: false,
+                    silence: false,
+                    pane_border_status: zz_protocol::PaneBorderStatus::default(),
+                    pane_border_lines: zz_protocol::PaneBorderLines::default(),
+                    pane_border_indicators: zz_protocol::PaneBorderIndicators::default(),
+                    pane_order: vec![PaneId(1), PaneId(3)],
+                    pane_z_order: vec![PaneId(1), PaneId(3)],
+                    floating: Vec::new(),
+                    modal: None,
+                    sx: 160,
+                    sy: 48,
+                    pane_base_index: 0,
+                }],
+            }],
+            focused_window: Some(WindowId(1)),
+        }
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[ala::test]
+    fn a_page_change_from_another_device_zooms_only_a_window_that_was_zoomed(
+        cx: &mut ala::TestAppContext,
+    ) {
+        use zz_protocol::{CommandInvocation, Event, EventPayload, ProtocolMessage, SessionId};
+        cx.update(|cx| {
+            zz_ui::init(cx);
+            cx.set_global(penna::UiZoom(1.0));
+        });
+        let (shell, cx) = cx.add_window_view(AppShell::new);
+        shell.update_in(cx, |shell, _, cx| {
+            let sent = shell
+                .connection
+                .update(cx, |connection, _| connection.record_input_for_test());
+            shell.connection.update(cx, |connection, cx| {
+                connection.connected = true;
+                connection.handle_message_for_test(
+                    ProtocolMessage::Attached {
+                        session: SessionId(1),
+                        snapshot: watched_two_panes(1, None),
+                        read_only: false,
+                        client_flags: String::new(),
+                    },
+                    cx,
+                );
+            });
+            let render = |shell: &mut AppShell,
+                          snapshot: Option<zz_protocol::MuxSnapshot>,
+                          cx: &mut Context<AppShell>| {
+                if let Some(snapshot) = snapshot {
+                    shell.connection.update(cx, |connection, cx| {
+                        connection.handle_message_for_test(
+                            ProtocolMessage::Event(Event {
+                                sequence: 1,
+                                payload: EventPayload::Snapshot(snapshot),
+                            }),
+                            cx,
+                        );
+                    });
+                }
+                let (pages, current) = pages(&shell.status_model(cx), &shell.unseen_agents);
+                shell.follow_compact_page(pages.get(current).map(|page| page.pane), cx);
+            };
+            let zooms = || {
+                sent.borrow()
+                    .iter()
+                    .filter_map(|message| match message {
+                        ProtocolMessage::CommandRequest(request)
+                            if request.command.name == "resize-pane" =>
+                        {
+                            Some(request.command.clone())
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            };
+
+            render(shell, None, cx);
+            render(shell, Some(watched_two_panes(3, None)), cx);
+            assert_eq!(zooms(), Vec::<CommandInvocation>::new());
+
+            render(shell, Some(watched_two_panes(1, Some(1))), cx);
+            render(shell, Some(watched_two_panes(3, None)), cx);
+            assert_eq!(
+                zooms(),
+                [CommandInvocation::new("resize-pane", ["-Z", "-t", "%3"])]
+            );
+        });
     }
 }
