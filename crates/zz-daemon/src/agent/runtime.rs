@@ -301,28 +301,21 @@ impl AgentSpawnConfig {
 pub(crate) async fn run_agent_runtime(
     config: AgentSpawnConfig,
     provider: AgentProvider,
-    auto_approve: Arc<Mutex<AgentAutoApprove>>,
-    permission_ids: Arc<AtomicU64>,
-    journal: Option<Arc<AgentJournal>>,
-    command_rx: Receiver<RuntimeCommand>,
-    control_rx: Receiver<RuntimeControl>,
-    event_tx: Sender<AgentStreamPayload>,
+    channels: crate::agent::host::RuntimeChannels,
 ) -> Result<(), String> {
     let agent = AcpAgent::from_str(config.command_for(provider))
         .map_err(|error| format!("invalid {}: {error}", AgentSpawnConfig::key_for(provider)))?;
-    run_acp_agent(
-        agent,
-        config,
-        provider,
-        auto_approve,
-        permission_ids,
-        journal,
-        command_rx,
-        control_rx,
-        event_tx,
-        None,
-    )
-    .await
+    let dialect = crate::agent::dialect::Dialect {
+        effort_option: "effort",
+        signed_out: "Authentication required",
+        stored_title: |_| None,
+        sign_in: None,
+        model_name: None,
+        unguarded: None,
+        quota: None,
+        rules: None,
+    };
+    crate::agent::dialect::run(agent, dialect, config, provider, channels).await
 }
 
 pub(crate) async fn run_acp_agent(

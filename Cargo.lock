@@ -12019,6 +12019,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "zz-showcase-daemon"
+version = "0.29.0"
+dependencies = [
+ "agent-client-protocol",
+ "serde_json",
+ "zz-daemon",
+ "zz-daemon-client",
+ "zz-protocol",
+ "zz-terminal",
+]
+
+[[package]]
 name = "zz-simulator"
 version = "0.29.0"
 dependencies = [

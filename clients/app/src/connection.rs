@@ -2145,7 +2145,7 @@ impl Connection {
         cx.notify();
     }
 
-    #[cfg(all(target_family = "wasm", not(feature = "showcase")))]
+    #[cfg(target_family = "wasm")]
     fn prompted(&mut self, prompt: zz_protocol::gateway::SignInPrompt, cx: &mut Context<Self>) {
         use zz_protocol::gateway::AskpassPromptKind;
         let (kind, text) = match prompt.kind {
@@ -2206,7 +2206,6 @@ impl Connection {
                 }
                 self.receive(*message, cx);
             }
-            #[cfg(not(feature = "showcase"))]
             inbox::SocketEvent::Frame(bytes) => match zz_protocol::decode_protocol_frame(&bytes) {
                 decoded if page_out_of_date(&decoded) => {
                     self.stale_page = self.endpoint.as_deref() == Some(GATEWAY_LOCAL);
@@ -2252,9 +2251,7 @@ impl Connection {
                     return false;
                 }
             },
-            #[cfg(not(feature = "showcase"))]
             inbox::SocketEvent::Focus(focused) => self.set_focused(focused, cx),
-            #[cfg(not(feature = "showcase"))]
             inbox::SocketEvent::Prompt(prompt) => self.prompted(prompt, cx),
         }
         cx.notify();
@@ -2262,7 +2259,7 @@ impl Connection {
     }
 }
 
-#[cfg(any(all(target_family = "wasm", not(feature = "showcase")), test))]
+#[cfg(any(target_family = "wasm", test))]
 fn page_out_of_date(decoded: &Result<ProtocolMessage, zz_protocol::ProtocolError>) -> bool {
     match decoded {
         Err(zz_protocol::ProtocolError::VersionMismatch { expected, received }) => {
@@ -2277,7 +2274,7 @@ fn page_out_of_date(decoded: &Result<ProtocolMessage, zz_protocol::ProtocolError
     }
 }
 
-#[cfg(any(all(target_family = "wasm", not(feature = "showcase")), test))]
+#[cfg(any(target_family = "wasm", test))]
 fn supports_required_protocol(message: &ProtocolMessage) -> bool {
     [
         zz_protocol::PANE_FRAME_CAPABILITY,
@@ -2296,6 +2293,16 @@ fn supports_required_protocol(message: &ProtocolMessage) -> bool {
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 pub(crate) const GATEWAY_LOCAL: &str = "local";
+
+#[cfg(all(target_family = "wasm", feature = "showcase"))]
+pub(crate) fn browser_live_daemon() -> bool {
+    web_sys::window()
+        .and_then(|window| {
+            js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("__zzLiveDaemon")).ok()
+        })
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
 
 #[cfg(any(target_family = "wasm", test))]
 const SIGN_IN_CLOSE_CODE: u16 = 4401;
@@ -2334,7 +2341,7 @@ fn settled(reason: &str) -> &str {
         .trim_end_matches(" Reconnecting…")
 }
 
-#[cfg(all(target_family = "wasm", not(feature = "showcase")))]
+#[cfg(target_family = "wasm")]
 fn daemon_below_floor(message: &ProtocolMessage) -> Option<u32> {
     let revision = match message {
         ProtocolMessage::Welcome(welcome) => welcome.revision,
@@ -2354,13 +2361,10 @@ mod inbox {
     #[derive(Debug, PartialEq)]
     pub enum SocketEvent {
         Opened,
-        #[cfg(any(not(feature = "showcase"), test))]
         Frame(Vec<u8>),
         #[cfg(feature = "showcase")]
         Message(Box<zz_protocol::ProtocolMessage>),
-        #[cfg(any(not(feature = "showcase"), test))]
         Focus(bool),
-        #[cfg(any(not(feature = "showcase"), test))]
         Prompt(zz_protocol::gateway::SignInPrompt),
     }
 
@@ -2413,19 +2417,15 @@ mod inbox {
             true
         }
 
-        #[cfg(any(not(feature = "showcase"), test))]
         pub fn frame(&self, length: usize, copy: impl FnOnce() -> Vec<u8>) -> bool {
             self.accepts(length) && self.push(SocketEvent::Frame(copy()))
         }
 
         pub fn push(&self, event: SocketEvent) -> bool {
-            #[cfg(any(not(feature = "showcase"), test))]
             let bytes = match &event {
                 SocketEvent::Frame(bytes) => bytes.len(),
                 _ => 0,
             };
-            #[cfg(not(any(not(feature = "showcase"), test)))]
-            let bytes = 0;
             if !self.accepts(bytes) {
                 return false;
             }
@@ -2456,7 +2456,6 @@ mod inbox {
                 return None;
             }
             let event = self.receiver.recv().await.ok()?;
-            #[cfg(any(not(feature = "showcase"), test))]
             if let SocketEvent::Frame(bytes) = &event {
                 self.state
                     .bytes
@@ -2475,89 +2474,11 @@ mod inbox {
     }
 }
 
-#[cfg(all(target_family = "wasm", feature = "showcase"))]
+#[cfg(target_family = "wasm")]
 mod browser {
+    #[cfg(feature = "showcase")]
     use std::cell::RefCell;
 
-    use zz_protocol::{
-        AttachOperation, ClientHello, ClientInstanceId, ClientKind, Hello, PROTOCOL_VERSION,
-        ProtocolMessage, gateway::SignInAnswer,
-    };
-
-    use super::inbox::{self, Receiver, Sender, SocketEvent};
-    use crate::showcase::DemoHost;
-
-    pub struct Socket {
-        host: RefCell<DemoHost>,
-        sender: Sender,
-    }
-
-    impl Socket {
-        pub fn connect(host: &str) -> Result<(Self, Receiver), String> {
-            let (sender, receiver) = inbox::channel(128, zz_protocol::MAX_ENCODED_FRAME_BYTES);
-            let _ = sender.push(SocketEvent::Opened);
-            Ok((
-                Self {
-                    host: RefCell::new(DemoHost::for_host(host)),
-                    sender,
-                },
-                receiver,
-            ))
-        }
-
-        pub fn answer(&self, _: &SignInAnswer) -> Result<(), ()> {
-            Ok(())
-        }
-
-        pub fn buffered_amount(&self) -> usize {
-            0
-        }
-
-        pub fn send(&self, message: &ProtocolMessage) -> Result<(), String> {
-            let replies = self.host.borrow_mut().handle(message.clone());
-            for reply in replies {
-                if !self.sender.push(SocketEvent::Message(Box::new(reply))) {
-                    return Err("Showcase inbox full".into());
-                }
-            }
-            Ok(())
-        }
-    }
-
-    pub fn new_instance_id() -> ClientInstanceId {
-        ClientInstanceId(js_sys::Math::random().to_bits().max(1))
-    }
-
-    pub fn hello(instance: ClientInstanceId, target: Option<String>) -> Hello {
-        let mut hello = Hello::from_client(ClientHello {
-            protocol_version: PROTOCOL_VERSION,
-            client_instance_id: instance,
-            kind: ClientKind::Interactive,
-            device_name: Some("Browser".into()),
-            capabilities: [
-                ClientHello::CLIENT_TERMINAL_CAPABILITY,
-                ClientHello::CLIENT_UTF8_CAPABILITY,
-                ClientHello::CLIENT_PATH_PICKER_CAPABILITY,
-                zz_protocol::AGENT_LOGIN_CAPABILITY,
-            ]
-            .into_iter()
-            .chain(zz_protocol::CLIENT_CAPABILITY_NAMES.iter().copied())
-            .map(str::to_owned)
-            .collect(),
-            color_scheme: None,
-            origin: None,
-            working_directory: None,
-            environment: Vec::new(),
-            process_id: 0,
-            revision: zz_protocol::REVISION,
-        });
-        hello.attach = target.map(AttachOperation::Session);
-        hello
-    }
-}
-
-#[cfg(all(target_family = "wasm", not(feature = "showcase")))]
-mod browser {
     use wasm_bindgen::{JsCast, closure::Closure};
     use zz_protocol::{
         AttachOperation, ClientHello, ClientInstanceId, ClientKind, Hello, PROTOCOL_VERSION,
@@ -2565,11 +2486,13 @@ mod browser {
     };
 
     use super::inbox::{self, Receiver, Sender, SocketEvent};
+    #[cfg(feature = "showcase")]
+    use crate::showcase::DemoHost;
 
     const CONNECTION_FAILED: &str =
         "Cannot connect to zz. Start the daemon and check the gateway socket. Retrying…";
 
-    pub struct Socket {
+    struct WebSocketTransport {
         ws: web_sys::WebSocket,
         sender: Sender,
         open: Closure<dyn FnMut(web_sys::Event)>,
@@ -2580,8 +2503,8 @@ mod browser {
         blur: Closure<dyn FnMut(web_sys::Event)>,
     }
 
-    impl Socket {
-        pub fn connect(host: &str) -> Result<(Self, Receiver), String> {
+    impl WebSocketTransport {
+        fn connect(host: &str) -> Result<(Self, Receiver), String> {
             let window = web_sys::window().ok_or("Browser window unavailable")?;
             let location = window.location();
             let scheme = if location.protocol().unwrap_or_default() == "https:" {
@@ -2671,16 +2594,16 @@ mod browser {
             Ok((socket, receiver))
         }
 
-        pub fn answer(&self, answer: &SignInAnswer) -> Result<(), ()> {
+        fn answer(&self, answer: &SignInAnswer) -> Result<(), ()> {
             let text = serde_json::to_string(answer).map_err(drop)?;
             self.ws.send_with_str(&text).map_err(drop)
         }
 
-        pub fn buffered_amount(&self) -> usize {
+        fn buffered_amount(&self) -> usize {
             self.ws.buffered_amount() as usize
         }
 
-        pub fn send(&self, message: &ProtocolMessage) -> Result<(), String> {
+        fn send(&self, message: &ProtocolMessage) -> Result<(), String> {
             if self.ws.ready_state() != web_sys::WebSocket::OPEN {
                 return Err("Connection closed. This action was not sent. Reconnecting…".into());
             }
@@ -2697,7 +2620,7 @@ mod browser {
         }
     }
 
-    impl Drop for Socket {
+    impl Drop for WebSocketTransport {
         fn drop(&mut self) {
             self.ws.set_onopen(None);
             self.ws.set_onmessage(None);
@@ -2716,6 +2639,77 @@ mod browser {
             let _ = self.ws.close();
             self.sender.close("Connection closed. Retrying…".into());
             let _ = (&self.open, &self.message, &self.close, &self.error);
+        }
+    }
+
+    enum Transport {
+        WebSocket(Box<WebSocketTransport>),
+        #[cfg(feature = "showcase")]
+        Demo {
+            host: RefCell<DemoHost>,
+            sender: Sender,
+        },
+    }
+
+    pub struct Socket {
+        inner: Transport,
+    }
+
+    impl Socket {
+        pub fn connect(host: &str) -> Result<(Self, Receiver), String> {
+            #[cfg(feature = "showcase")]
+            if !super::browser_live_daemon() {
+                let (sender, receiver) = inbox::channel(128, zz_protocol::MAX_ENCODED_FRAME_BYTES);
+                let _ = sender.push(SocketEvent::Opened);
+                return Ok((
+                    Self {
+                        inner: Transport::Demo {
+                            host: RefCell::new(DemoHost::for_host(host)),
+                            sender,
+                        },
+                    },
+                    receiver,
+                ));
+            }
+            let (transport, receiver) = WebSocketTransport::connect(host)?;
+            Ok((
+                Self {
+                    inner: Transport::WebSocket(Box::new(transport)),
+                },
+                receiver,
+            ))
+        }
+
+        pub fn answer(&self, answer: &SignInAnswer) -> Result<(), ()> {
+            match &self.inner {
+                Transport::WebSocket(ws) => ws.answer(answer),
+                #[cfg(feature = "showcase")]
+                Transport::Demo { .. } => Ok(()),
+            }
+        }
+
+        pub fn buffered_amount(&self) -> usize {
+            match &self.inner {
+                Transport::WebSocket(ws) => ws.buffered_amount(),
+                #[cfg(feature = "showcase")]
+                Transport::Demo { .. } => 0,
+            }
+        }
+
+        pub fn send(&self, message: &ProtocolMessage) -> Result<(), String> {
+            match &self.inner {
+                Transport::WebSocket(ws) => ws.send(message),
+                #[cfg(feature = "showcase")]
+                Transport::Demo { host, sender } => {
+                    let replies = host.borrow_mut().handle(message.clone());
+                    for reply in replies {
+                        if !sender.push(SocketEvent::Message(Box::new(reply))) {
+                            return Err("Showcase inbox full".into());
+                        }
+                    }
+                    Ok(())
+                }
+            }
         }
     }
 

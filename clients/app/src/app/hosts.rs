@@ -326,9 +326,16 @@ impl AppShell {
             this.update_in(cx, |this, window, cx| {
                 this.hosts.adopt(hosts);
                 #[cfg(feature = "showcase")]
-                for (name, _, local) in crate::showcase::SHOWCASE_HOSTS {
-                    if !local {
-                        this.hosts.saved.mark_connected(name, false);
+                {
+                    let remote_hosts: Vec<String> = this
+                        .hosts
+                        .gateway
+                        .iter()
+                        .filter(|host| !host.local)
+                        .map(|host| host.name.clone())
+                        .collect();
+                    for name in remote_hosts {
+                        this.hosts.saved.mark_connected(&name, false);
                     }
                 }
                 this.reconnect_saved_hosts(window, cx);
@@ -364,22 +371,8 @@ impl AppShell {
     }
 }
 
-#[cfg(all(target_family = "wasm", feature = "showcase"))]
-async fn gateway_hosts() -> Option<Vec<GatewayHost>> {
-    Some(
-        crate::showcase::SHOWCASE_HOSTS
-            .iter()
-            .map(|(name, title, local)| GatewayHost {
-                name: (*name).to_owned(),
-                title: (*title).to_owned(),
-                local: *local,
-            })
-            .collect(),
-    )
-}
-
-#[cfg(all(target_family = "wasm", not(feature = "showcase")))]
-async fn gateway_hosts() -> Option<Vec<GatewayHost>> {
+#[cfg(target_family = "wasm")]
+async fn fetch_gateway_hosts() -> Option<Vec<GatewayHost>> {
     use wasm_bindgen::JsCast as _;
     use wasm_bindgen_futures::JsFuture;
 
@@ -397,6 +390,28 @@ async fn gateway_hosts() -> Option<Vec<GatewayHost>> {
         .ok()?
         .as_string()?;
     serde_json::from_str(&body).ok()
+}
+
+#[cfg(all(target_family = "wasm", feature = "showcase"))]
+async fn gateway_hosts() -> Option<Vec<GatewayHost>> {
+    if crate::connection::browser_live_daemon() {
+        return fetch_gateway_hosts().await;
+    }
+    Some(
+        crate::showcase::SHOWCASE_HOSTS
+            .iter()
+            .map(|(name, title, local)| GatewayHost {
+                name: (*name).to_owned(),
+                title: (*title).to_owned(),
+                local: *local,
+            })
+            .collect(),
+    )
+}
+
+#[cfg(all(target_family = "wasm", not(feature = "showcase")))]
+async fn gateway_hosts() -> Option<Vec<GatewayHost>> {
+    fetch_gateway_hosts().await
 }
 
 #[cfg(all(target_family = "wasm", feature = "showcase"))]

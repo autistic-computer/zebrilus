@@ -13,6 +13,16 @@ use zz_ui::interface_theme::{
 };
 
 pub const MAX_TERMINAL_PADDING: f32 = 64.0;
+pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 12.25;
+
+fn default_theme_overrides() -> ThemeOverrides {
+    ThemeOverrides {
+        radius: Some(DEFAULT_WIDGET_CORNER_RADIUS),
+        controls: Some(interface_theme::Controls::Rounded),
+        glass: Some(interface_theme::Glass::Liquid),
+        ..ThemeOverrides::default()
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -102,10 +112,10 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             sidebar: true,
-            flat_sidebar: false,
+            flat_sidebar: true,
             program_colors: true,
             sidebar_width: penna::blocks::sidebar::SIDEBAR_DEFAULT_WIDTH,
-            gaps: false,
+            gaps: true,
             dark: true,
             terminal_font_family: None,
             terminal_font_scale: 1.0,
@@ -113,6 +123,7 @@ impl Default for Preferences {
             terminal_dark_theme: None,
             appearance: Appearance {
                 mode: Some("system".into()),
+                overrides: default_theme_overrides(),
                 ..Appearance::default()
             },
             pane_inactive_opacity: 0.7,
@@ -240,7 +251,11 @@ impl Preferences {
     }
 
     pub fn change_appearance(&mut self, change: AppearanceChange) {
+        let reset = matches!(change, AppearanceChange::ResetLook);
         self.appearance.change(change);
+        if reset {
+            self.appearance.overrides = default_theme_overrides();
+        }
     }
 
     #[must_use]
@@ -295,6 +310,15 @@ impl Preferences {
         let mut preferences: Self = serde_json::from_value(source.clone())?;
         if source.get("mode").is_none() && source.get("dark").is_none() {
             preferences.appearance.mode = Some("system".into());
+        }
+        if source.get("radius").is_none() {
+            preferences.appearance.overrides.radius = Some(DEFAULT_WIDGET_CORNER_RADIUS);
+        }
+        if source.get("controls").is_none() {
+            preferences.appearance.overrides.controls = Some(interface_theme::Controls::Rounded);
+        }
+        if source.get("glass").is_none() {
+            preferences.appearance.overrides.glass = Some(interface_theme::Glass::Liquid);
         }
         Ok(preferences.sanitized())
     }
@@ -475,7 +499,7 @@ mod tests {
                     accent: Some("green".into()),
                     tint: Some(0.25),
                     tint_hue: Some(200.0),
-                    ..ThemeOverrides::default()
+                    ..super::default_theme_overrides()
                 },
                 ..Appearance::default()
             },
@@ -693,7 +717,7 @@ mod tests {
             ThemeOverrides {
                 radius: Some(12.0),
                 tint: Some(0.3),
-                ..ThemeOverrides::default()
+                ..super::default_theme_overrides()
             }
         );
 
@@ -724,8 +748,8 @@ mod tests {
         assert_eq!(restored, tuned);
 
         tuned.change_appearance(AppearanceChange::ResetLook);
-        assert_eq!(tuned.appearance.overrides, ThemeOverrides::default());
-        assert_eq!(tuned.shown_theme(), *platform);
+        assert_eq!(tuned.appearance.overrides, super::default_theme_overrides());
+        assert_eq!(tuned.shown_theme(), Preferences::default().shown_theme());
         assert_eq!(
             tuned.shown_ui_font(),
             platform.face.as_deref().unwrap_or("")
@@ -742,7 +766,7 @@ mod tests {
             older.appearance.overrides,
             ThemeOverrides {
                 radius: Some(12.0),
-                ..ThemeOverrides::default()
+                ..super::default_theme_overrides()
             }
         );
         let written = serde_json::to_value(&older).unwrap();
@@ -751,20 +775,16 @@ mod tests {
 
     #[test]
     fn older_preferences_gain_pane_controls_and_values_remain_bounded() {
-        let preferences = serde_json::from_str::<Preferences>(
+        let preferences = Preferences::decode(
             r#"{"gaps":true,"radius":8,"pane_radius":20,"pane_border_width":3}"#,
         )
-        .unwrap()
-        .sanitized();
+        .unwrap();
         assert!(preferences.gaps);
         assert_eq!(preferences.appearance.overrides.radius, Some(8.0));
         assert_eq!(preferences.pane_margin, 6.0);
         assert_eq!(preferences.pane_glow_strength, 1.0);
         assert_eq!(
-            serde_json::from_str::<Preferences>(
-                r#"{"gaps":true,"mode":"system","pane_glass":true}"#
-            )
-            .unwrap(),
+            Preferences::decode(r#"{"gaps":true,"mode":"system","pane_glass":true}"#).unwrap(),
             Preferences {
                 gaps: true,
                 ..Preferences::default()

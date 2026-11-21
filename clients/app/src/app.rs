@@ -19,7 +19,7 @@ mod picker;
 mod providers;
 mod settings;
 #[cfg(all(
-    feature = "showcase",
+    feature = "showcase-browser",
     not(any(target_os = "ios", target_os = "android"))
 ))]
 mod showcase_browser;
@@ -176,7 +176,7 @@ pub struct AppShell {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     browsers: HashMap<PaneId, Entity<browser_pane::BrowserPane>>,
     #[cfg(all(
-        feature = "showcase",
+        feature = "showcase-browser",
         not(any(target_os = "ios", target_os = "android"))
     ))]
     showcase_browsers: HashMap<PaneId, Entity<showcase_browser::ShowcaseBrowserPane>>,
@@ -575,7 +575,7 @@ impl AppShell {
             #[cfg(any(target_os = "ios", target_os = "android"))]
             browsers: HashMap::new(),
             #[cfg(all(
-                feature = "showcase",
+                feature = "showcase-browser",
                 not(any(target_os = "ios", target_os = "android"))
             ))]
             showcase_browsers: HashMap::new(),
@@ -1681,7 +1681,7 @@ impl AppShell {
         self.browsers
             .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Browser(_))));
         #[cfg(all(
-            feature = "showcase",
+            feature = "showcase-browser",
             not(any(target_os = "ios", target_os = "android"))
         ))]
         self.showcase_browsers
@@ -2755,7 +2755,7 @@ impl AppShell {
                     browser.into_any_element()
                 }
                 #[cfg(all(
-                    feature = "showcase",
+                    feature = "showcase-browser",
                     not(any(target_os = "ios", target_os = "android"))
                 ))]
                 PaneKindSnapshot::Browser(descriptor) => {
@@ -2807,7 +2807,7 @@ impl AppShell {
                     browser.into_any_element()
                 }
                 #[cfg(all(
-                    not(feature = "showcase"),
+                    not(feature = "showcase-browser"),
                     not(any(target_os = "ios", target_os = "android"))
                 ))]
                 PaneKindSnapshot::Browser(descriptor) => unsupported_pane(

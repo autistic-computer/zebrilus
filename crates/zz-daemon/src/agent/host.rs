@@ -486,16 +486,7 @@ pub(crate) fn pane_runner(config: AgentSpawnConfig, provider: AgentProvider) -> 
         }),
         AgentProvider::ClaudeCode | AgentProvider::Codex => {
             Box::new(move |channels: RuntimeChannels| {
-                Box::pin(run_agent_runtime(
-                    config,
-                    provider,
-                    channels.auto_approve,
-                    channels.permission_ids,
-                    channels.journal,
-                    channels.commands,
-                    channels.controls,
-                    channels.events,
-                ))
+                Box::pin(run_agent_runtime(config, provider, channels))
             })
         }
     }

@@ -1,0 +1,23 @@
+[package]
+name = "zz-showcase-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Compact static daemon, CLI, socket proxy, and local ACP agent for the in-browser showcase"
+publish = false
+
+[[bin]]
+name = "zz-showcase-daemon"
+path = "src/main.rs"
+
+[dependencies]
+agent-client-protocol.workspace = true
+serde_json.workspace = true
+zz-daemon = { workspace = true, features = ["agent"] }
+zz-daemon-client.workspace = true
+zz-protocol.workspace = true
+zz-terminal = { workspace = true, features = ["session"] }
+
+[lints]
+workspace = true

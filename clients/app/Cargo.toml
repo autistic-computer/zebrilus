@@ -8,7 +8,8 @@ description = "The thin-client app the web, iOS and Android clients share"
 publish = false
 
 [features]
-showcase = []
+showcase = ["showcase-browser"]
+showcase-browser = []
 
 [dependencies]
 async-channel.workspace = true

@@ -21,7 +21,7 @@ fn launch(cx: &mut App) {
     let theme = Theme::global_mut(cx);
     theme.font_family = "Inter Variable".into();
     theme.mono_font_family = "Lilex".into();
-    theme.radius = px(6.0);
+    theme.radius = px(12.25);
     cx.set_global(UiZoom(1.0));
     #[cfg(target_family = "wasm")]
     zz_app::web_frames::show_html_in_chats(cx);
