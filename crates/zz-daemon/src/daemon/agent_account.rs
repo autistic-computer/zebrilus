@@ -197,7 +197,10 @@ impl Shared {
             .state
             .update_agent(pane, |agent| agent.account = account);
         match changed {
-            Ok(true) => self.publish_snapshot_state(),
+            Ok(true) => {
+                self.publish_snapshot_state();
+                self.note_child_descriptor(pane);
+            }
             Ok(false) => {}
             Err(error) => {
                 log::warn!(target: "zz::agent", "could not move {pane} to another account: {error}");

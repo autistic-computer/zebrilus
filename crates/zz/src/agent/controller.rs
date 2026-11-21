@@ -140,6 +140,7 @@ struct AgentThread {
     resume: Resume,
     resume_revision: u64,
     parked: Option<AgentPermissionWire>,
+    answered: BTreeSet<u64>,
 }
 
 impl AgentThread {
@@ -166,11 +167,13 @@ impl AgentThread {
             resume: Resume::default(),
             resume_revision: 0,
             parked: None,
+            answered: BTreeSet::new(),
         }
     }
 
     fn show_parked(&mut self) {
         if let Some(permission) = &self.parked
+            && !self.answered.contains(&permission.request_id)
             && let Some((tool_call, options, questions)) =
                 decode_permission_payload(&permission.payload)
         {
@@ -460,7 +463,12 @@ impl AgentController {
         }
     }
 
-    pub(crate) fn retain_panes(&mut self, retained: &BTreeSet<PaneId>, cx: &mut Context<Self>) {
+    pub(crate) fn retain_panes(
+        &mut self,
+        retained: &BTreeSet<PaneId>,
+        existing: &BTreeSet<PaneId>,
+        cx: &mut Context<Self>,
+    ) {
         let removed = self
             .retained_panes
             .difference(retained)
@@ -471,9 +479,9 @@ impl AgentController {
         }
         self.viewports.retain(|pane, _| retained.contains(pane));
         self.pending_composer
-            .retain(|pane, _| retained.contains(pane));
+            .retain(|pane, _| existing.contains(pane));
         self.pending_images
-            .retain(|pane, _| retained.contains(pane));
+            .retain(|pane, _| existing.contains(pane));
         let changed = self.retained_panes != *retained;
         self.retained_panes.clone_from(retained);
         if changed {
@@ -574,6 +582,18 @@ impl AgentController {
         self.pending_images.remove(&pane).unwrap_or_default()
     }
 
+    pub(crate) fn keep_draft(&mut self, pane: PaneId, text: &str, mut images: Vec<Arc<Image>>) {
+        let draft = match self.pending_composer.remove(&pane) {
+            Some(pending) => zz_ui::agent::merged_draft(text, pending),
+            None => text.to_owned(),
+        };
+        self.queue_composer_text(pane, &draft);
+        images.extend(self.take_pending_images(pane));
+        if !images.is_empty() {
+            self.pending_images.insert(pane, images);
+        }
+    }
+
     pub(crate) fn cancel(&mut self, pane: PaneId, cx: &mut Context<Self>) {
         let Some(thread) = self.panes.get(&pane) else {
             return;
@@ -610,6 +630,7 @@ impl AgentController {
         ) {
             if let Some(thread) = self.panes.get_mut(&pane) {
                 thread.transcript.resolve_permission(request_id, canceled);
+                thread.answered.insert(request_id);
             }
             cx.notify();
             return true;
@@ -636,6 +657,7 @@ impl AgentController {
         }
         if let Some(thread) = self.panes.get_mut(&pane) {
             thread.transcript.resolve_permission(request_id, false);
+            thread.answered.insert(request_id);
         }
         cx.notify();
         true
@@ -886,6 +908,8 @@ impl AgentController {
         }
         thread.transcript.clear_permissions();
         thread.parked.clone_from(&state.pending_permission);
+        let parked = thread.parked.as_ref().map(|parked| parked.request_id);
+        thread.answered.retain(|request| parked == Some(*request));
         thread.show_parked();
         if self.pane_state(pane).as_ref() != Some(&before) {
             cx.notify();
@@ -2273,6 +2297,47 @@ mod tests {
     }
 
     #[ala::test]
+    fn prompts_handed_back_by_a_flip_wait_in_the_draft_until_the_pane_closes(
+        cx: &mut TestAppContext,
+    ) {
+        let (controller, _sink) = proxy_controller(cx);
+        let pane = PaneId(5);
+        let restored = |reclaim_id, text: &str| {
+            item(
+                reclaim_id,
+                AgentStreamPayload::PromptsRestored {
+                    reclaim_id,
+                    prompts: vec![zz_daemon::AgentPrompt {
+                        owner: zz_protocol::ClientInstanceId(1),
+                        text: text.to_owned(),
+                        images: Vec::new(),
+                    }],
+                },
+            )
+        };
+        let flipped = BTreeSet::from([pane]);
+        cx.update(|cx| {
+            controller.update(cx, |controller, cx| {
+                ready_pane(controller, pane);
+                controller.apply_stream_items(pane, vec![restored(1, "queued second")], cx);
+                controller.keep_draft(pane, "typed first", Vec::new());
+                controller.retain_panes(&BTreeSet::new(), &flipped, cx);
+                ready_pane(controller, pane);
+                assert_eq!(
+                    controller.take_pending_composer(pane).as_deref(),
+                    Some("typed first\nqueued second")
+                );
+
+                controller.apply_stream_items(pane, vec![restored(2, "queued again")], cx);
+                controller.retain_panes(&BTreeSet::new(), &flipped, cx);
+                controller.retain_panes(&BTreeSet::new(), &BTreeSet::new(), cx);
+                ready_pane(controller, pane);
+                assert_eq!(controller.take_pending_composer(pane), None);
+            });
+        });
+    }
+
+    #[ala::test]
     fn an_item_the_client_cannot_re_type_is_dropped_without_stalling_the_cursor(
         cx: &mut TestAppContext,
     ) {
@@ -2410,13 +2475,13 @@ mod tests {
                     assert_eq!(expected.len(), 4);
                     assert!(matches!(&expected[0], AgentThreadEntry::User { markdown, .. } if markdown == "first"));
                     assert!(matches!(&expected[2], AgentThreadEntry::User { markdown, .. } if markdown == "second"));
-                    controller.retain_panes(&BTreeSet::new(), cx);
+                    controller.retain_panes(&BTreeSet::new(), &BTreeSet::new(), cx);
                     ready_pane(controller, pane);
                     controller.panes.get_mut(&pane).expect("pane").provider = provider;
                     controller.apply_stream_items(pane, items.clone(), cx);
                     controller.apply_stream_items(pane, items.clone(), cx);
                     assert_eq!(controller.pane_entries(pane).expect("replayed entries").0, expected);
-                    controller.retain_panes(&BTreeSet::new(), cx);
+                    controller.retain_panes(&BTreeSet::new(), &BTreeSet::new(), cx);
                 }
             });
         });
@@ -2899,6 +2964,56 @@ mod tests {
                     cx,
                 );
                 assert_eq!(pending(controller), Vec::<u64>::new());
+            });
+        });
+    }
+
+    #[ala::test]
+    fn an_answered_card_stays_gone_when_an_older_state_still_holds_it(cx: &mut TestAppContext) {
+        let (controller, _sink) = proxy_controller(cx);
+        let pane = PaneId(11);
+        cx.update(|cx| {
+            controller.update(cx, |controller, cx| {
+                ready_pane(controller, pane);
+                let holding = |request_id| AgentPaneWire {
+                    phase: AgentConnectionPhase::AwaitingPermission,
+                    pending_permission: Some(zz_protocol::AgentPermissionWire {
+                        request_id,
+                        payload: serde_json::json!({
+                            "toolCall": {"toolCallId": "ask-4", "title": "fruit?"},
+                            "options": [],
+                            "questions": [asked("fruit", &["apple"], false)],
+                        })
+                        .to_string(),
+                    }),
+                    ..AgentPaneWire::default()
+                };
+                let pending = |controller: &AgentController| {
+                    controller
+                        .pane_state(pane)
+                        .expect("the pane is registered")
+                        .pending_permissions
+                        .iter()
+                        .map(|request| request.request_id)
+                        .collect::<Vec<_>>()
+                };
+
+                controller.apply_pane_state(pane, &holding(6), cx);
+                assert_eq!(pending(controller), [6]);
+                assert!(controller.answer_question(pane, 6, vec![reply("fruit", &["apple"])], cx));
+                assert_eq!(pending(controller), Vec::<u64>::new());
+
+                controller.apply_pane_state(pane, &holding(6), cx);
+                assert_eq!(pending(controller), Vec::<u64>::new());
+                controller.apply_stream_items(
+                    pane,
+                    vec![item(1, turn_finished(StopReason::EndTurn))],
+                    cx,
+                );
+                assert_eq!(pending(controller), Vec::<u64>::new());
+
+                controller.apply_pane_state(pane, &holding(7), cx);
+                assert_eq!(pending(controller), [7]);
             });
         });
     }

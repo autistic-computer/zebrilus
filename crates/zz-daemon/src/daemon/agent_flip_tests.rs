@@ -179,6 +179,59 @@ fn a_terminal_running_the_cli_flips_into_a_chat_once_the_cli_exits() {
 }
 
 #[test]
+fn a_pane_with_two_agy_tuis_flips_the_one_on_screen() {
+    let folder = tempfile::tempdir().expect("folder");
+    let cli = folder.path().join("agy");
+    std::fs::write(&cli, "#!/bin/sh\nsleep 30\n").expect("fake CLI");
+    std::fs::set_permissions(&cli, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+        .expect("executable");
+    let behind = "11111111-1111-4111-8111-111111111111";
+    let shown = "22222222-2222-4222-8222-222222222222";
+    let agy = cli.display().to_string();
+    let (shared, _client, pane) = fixture_running(
+        "flip-two-agy",
+        &format!("set -m; {agy} --conversation {behind} & {agy} --conversation {shown}"),
+    );
+    let terminal = Arc::clone(&shared.inner.lock().terminals[&pane]);
+    wait_for("the TUI on screen", || {
+        shared
+            .inner
+            .lock()
+            .engine
+            .pane_runtime_facts(pane)
+            .is_some_and(|facts| facts.pid.is_some())
+            && terminal.foreground_process_id().is_some_and(|pid| {
+                crate::agent::cli_session::arguments(pid)
+                    .iter()
+                    .any(|argument| argument == shown)
+            })
+    });
+    shared
+        .inner
+        .lock()
+        .engine
+        .state
+        .update_pane_summary(pane, |summary| summary.process = vec![agy.clone()]);
+    let plan = shared.flip_plan(pane).expect("flip plan");
+    let FlipStep::ToChat { session, .. } = plan.step else {
+        panic!("a terminal flips into a chat");
+    };
+    assert_eq!(session.session_id.as_deref(), Some(shown));
+    if let Some(pane_pid) = shared
+        .inner
+        .lock()
+        .engine
+        .pane_runtime_facts(pane)
+        .and_then(|facts| facts.pid)
+    {
+        for pid in zz_daemon_client::process_info::descendants(pane_pid) {
+            zz_daemon_client::process_info::terminate(pid);
+        }
+    }
+    shared.request_shutdown();
+}
+
+#[test]
 fn agent_send_refuses_a_terminal_running_the_cli() {
     let (shared, client, pane) = fixture("send-to-cli");
     let terminal = Arc::clone(&shared.inner.lock().terminals[&pane]);

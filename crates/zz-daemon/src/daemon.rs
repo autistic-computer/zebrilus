@@ -34090,6 +34090,7 @@ impl Shared {
             }
             record.model = agent.model;
             record.effort = agent.effort;
+            record.account = agent.account;
         });
     }
 
@@ -35071,30 +35072,6 @@ impl Shared {
             encoded.push((first_seq, frame));
         }
         subscriber.enqueue_agent_replay(pane, encoded);
-    }
-
-    fn publish_agent_replay(
-        &self,
-        pane: PaneId,
-        frames: Vec<(u64, Vec<Vec<u8>>)>,
-        also: Option<ClientId>,
-    ) {
-        let subscribers = agent_stream_subscribers(&self.inner.lock(), pane, also);
-        let mut encoded = Vec::with_capacity(frames.len());
-        for (first_seq, items) in frames {
-            let message = Self::event(EventPayload::AgentUpdates {
-                pane,
-                first_seq,
-                items,
-            });
-            let Ok(frame) = zz_protocol::encode_protocol_message(&message) else {
-                return;
-            };
-            encoded.push((first_seq, OutboundFrame::Shared(Arc::from(frame))));
-        }
-        for subscriber in subscribers {
-            subscriber.enqueue_shared_agent_replay(pane, encoded.clone());
-        }
     }
 
     fn apply_agent_state(
@@ -125195,6 +125172,41 @@ bind - split-window -v -c "#{pane_current_path}"
                 Ok("%3".to_owned())
             );
             assert_eq!(picks(PaneId(3)), shown);
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn a_child_record_follows_the_account_its_chat_moved_to() {
+            let workspace = workspace(Behavior::Chunk);
+            let host = workspace.agent;
+            run_as(
+                &workspace,
+                ClientId(99),
+                Some(host),
+                "new-pane",
+                &["-d", "--kind", "agent", "claude"],
+            )
+            .expect("child chat");
+            let child = PaneId(2);
+            wait_until("the child's session in its record", || {
+                workspace
+                    .shared
+                    .child_record(host, child)
+                    .is_some_and(|record| record.session.as_deref() == Some("fixture-session"))
+            });
+            let account = |workspace: &Workspace| {
+                workspace
+                    .shared
+                    .child_record(host, child)
+                    .and_then(|record| record.account)
+            };
+            assert_eq!(account(&workspace), None);
+            workspace
+                .shared
+                .switch_agent_account(child, Some("zz-moved-here".to_owned()));
+            assert_eq!(account(&workspace), Some("zz-moved-here".to_owned()));
+            workspace.shared.switch_agent_account(child, None);
+            assert_eq!(account(&workspace), None);
         }
 
         #[test]

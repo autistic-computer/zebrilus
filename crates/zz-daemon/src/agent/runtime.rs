@@ -65,6 +65,11 @@ const TRUNCATION_MARKER: &str = "… [truncated]";
 const INITIALIZE_TIMEOUT: Duration = Duration::from_mins(1);
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(2);
+const CANCEL_GRACE: Duration = if cfg!(test) {
+    Duration::from_millis(300)
+} else {
+    Duration::from_secs(5)
+};
 const MAX_STAGED_UPDATES: usize = 4096;
 const MAX_STAGED_UPDATE_BYTES: usize = 2 * MAX_AGENT_UPDATES_BYTES;
 const MAX_PENDING_PERMISSIONS: usize = 64;
@@ -144,7 +149,6 @@ struct PendingPermissionResponder {
 
 struct PendingPromptCancellation {
     cancel: Sender<()>,
-    done: Receiver<()>,
 }
 
 #[derive(Default)]
@@ -161,6 +165,7 @@ struct RuntimeRouting {
     staged_update_count: usize,
     staged_update_bytes: usize,
     staged_skipped: usize,
+    staged_title: Option<SessionUpdate>,
     pending_new_session: bool,
     user_echo_turn: Option<(String, u64)>,
     permissions: HashMap<u64, PendingPermissionResponder>,
@@ -217,6 +222,7 @@ impl RuntimeRouting {
         self.staged_update_count = 0;
         self.staged_update_bytes = 0;
         self.staged_skipped = 0;
+        self.staged_title = None;
         self.pending_new_session = false;
     }
 
@@ -242,9 +248,13 @@ impl RuntimeRouting {
         while self.staged_update_count > MAX_STAGED_UPDATES
             || self.staged_update_bytes > MAX_STAGED_UPDATE_BYTES
         {
-            let Some((dropped, _)) = staged.pop_front() else {
+            let Some((dropped, update)) = staged.pop_front() else {
                 break;
             };
+            if matches!(&update, SessionUpdate::SessionInfoUpdate(info) if !info.title.is_undefined())
+            {
+                self.staged_title = Some(update);
+            }
             self.staged_update_count = self.staged_update_count.saturating_sub(1);
             self.staged_update_bytes = self.staged_update_bytes.saturating_sub(dropped);
             self.staged_skipped += 1;
@@ -581,7 +591,11 @@ async fn complete_staged_session(
         let (staged, skipped) = {
             let mut routes = routing.lock();
             let skipped = std::mem::take(&mut routes.staged_skipped);
-            (routes.drain_staging(session_id), skipped)
+            let title = routes.staged_title.take();
+            (
+                title.into_iter().chain(routes.drain_staging(session_id)),
+                skipped,
+            )
         };
         if skipped > 0 {
             log::info!(
@@ -884,22 +898,25 @@ pub(crate) async fn run_agent_connection(
                         } => {
                             let pending = {
                                 let mut prompts = control_prompts.lock();
-                                let pending = prompts.pending.remove(&turn_id);
+                                let pending = prompts
+                                    .pending
+                                    .get(&turn_id)
+                                    .map(|pending| pending.cancel.clone());
                                 if pending.is_none() && turn_id > prompts.last_consumed {
                                     prompts.deferred.insert(turn_id);
                                 }
                                 pending
                             };
-                            if let Some(pending) = pending {
-                                pending.cancel.close();
-                                let _ = pending.done.recv().await;
-                            }
                             if let Some(session_id) = session_id {
                                 control_connection.send_notification(CancelNotification::new(
                                     AcpSessionId::new(session_id),
                                 ))?;
                             }
                             cancel_pending_permissions(&control_routing, &control_events).await?;
+                            if let Some(cancel) = pending {
+                                cancel.close();
+                                continue;
+                            }
                             control_routing.lock().finish_prompt(turn_id);
                             send_payload(
                                 &control_events,
@@ -964,6 +981,7 @@ pub(crate) async fn run_agent_connection(
                             (capabilities.load && resume_session.is_some()) || !restored.is_empty();
                         send_payload(&event_tx, AgentStreamPayload::SessionReset { restoring })
                             .await?;
+                        let mut lost = false;
                         let session_result: Result<_, agent_client_protocol::Error> = if let Some(resume) =
                             resume_session.clone().filter(|_| capabilities.load)
                         {
@@ -993,6 +1011,7 @@ pub(crate) async fn run_agent_connection(
                                         target: "zz::agent",
                                         "could not restore the ACP session: {error}; creating a new session"
                                     );
+                                    lost = true;
                                     restored = journal_replay(
                                         journal.as_deref(),
                                         provider,
@@ -1084,6 +1103,11 @@ pub(crate) async fn run_agent_connection(
                                 )
                                 .await?;
                                 session = Some(session_id);
+                                if lost {
+                                    let notice = restore_notice(provider)?;
+                                    record_update(journal.as_deref(), provider, &live, &notice);
+                                    send_payload(&event_tx, update_payload(&notice)?).await?;
+                                }
                             }
                             Err(error) => {
                                 routing.lock().clear_staging();
@@ -1411,7 +1435,6 @@ pub(crate) async fn run_agent_connection(
                         let note = zz_protocol::agent_mention::hidden_note(&prompt.text, note.as_deref());
                         let blocks = prompt_blocks(prompt);
                         let (cancel_tx, cancel_rx) = async_channel::bounded::<()>(1);
-                        let (done_tx, done_rx) = async_channel::bounded::<()>(1);
                         let deferred = {
                             let mut prompts = prompt_controls.lock();
                             prompts.last_consumed = prompts.last_consumed.max(turn_id);
@@ -1420,10 +1443,7 @@ pub(crate) async fn run_agent_connection(
                             } else {
                                 prompts.pending.insert(
                                     turn_id,
-                                    PendingPromptCancellation {
-                                        cancel: cancel_tx,
-                                        done: done_rx,
-                                    },
+                                    PendingPromptCancellation { cancel: cancel_tx },
                                 );
                                 false
                             }
@@ -1461,29 +1481,48 @@ pub(crate) async fn run_agent_connection(
                         let task_prompts = Arc::clone(&prompt_controls);
                         let task_routing = Arc::clone(&routing);
                         let spawned = connection.spawn(async move {
+                            let mut response = std::pin::pin!(request.block_task());
                             let completed = futures_lite::future::race(
-                                async { Some(request.block_task().await) },
+                                async { Some(response.as_mut().await) },
                                 async {
                                     let _ = cancel_rx.recv().await;
                                     None
                                 },
                             )
                             .await;
-                            task_prompts.lock().pending.remove(&turn_id);
-                            task_routing.lock().finish_prompt(turn_id);
-                            let _ = done_tx.try_send(());
-                            let Some(completed) = completed else {
-                                return Ok(());
-                            };
                             let outcome = match completed {
-                                Ok(response) => AgentPromptOutcome::Finished {
+                                Some(Ok(response)) => AgentPromptOutcome::Finished {
                                     stop_reason: serde_json::to_value(response.stop_reason)
                                         .unwrap_or(Value::Null),
                                 },
-                                Err(error) => AgentPromptOutcome::Failed {
+                                Some(Err(error)) => AgentPromptOutcome::Failed {
                                     message: error.to_string(),
                                 },
+                                None => {
+                                    let answered = futures_lite::future::race(
+                                        async {
+                                            let _ = response.as_mut().await;
+                                            true
+                                        },
+                                        async {
+                                            smol::Timer::after(CANCEL_GRACE).await;
+                                            false
+                                        },
+                                    )
+                                    .await;
+                                    if !answered {
+                                        log::warn!(
+                                            target: "zz::agent",
+                                            "the agent did not answer cancelled turn {turn_id} within {CANCEL_GRACE:?}"
+                                        );
+                                    }
+                                    AgentPromptOutcome::Finished {
+                                        stop_reason: Value::String("cancelled".to_owned()),
+                                    }
+                                }
                             };
+                            task_prompts.lock().pending.remove(&turn_id);
+                            task_routing.lock().finish_prompt(turn_id);
                             let _ = prompt_events
                                 .send(AgentStreamPayload::PromptFinished { turn_id, outcome })
                                 .await;
@@ -1935,6 +1974,23 @@ pub(crate) fn prompt_updates(
     updates
 }
 
+fn restore_notice(provider: AgentProvider) -> Result<SessionUpdate, agent_client_protocol::Error> {
+    let id = getrandom::u64()
+        .map_err(|error| agent_client_protocol::Error::internal_error().data(error.to_string()))?;
+    let text = format!(
+        "{} could not restore the earlier session, so it starts fresh without that context.",
+        provider.label()
+    );
+    Ok(SessionUpdate::AgentMessageChunk(
+        ContentChunk::new(ContentBlock::Text(TextContent::new(text)))
+            .message_id(MessageId::new(format!("zz-notice-{id:016x}")))
+            .meta(serde_json::Map::from_iter([(
+                "zz".to_owned(),
+                json!({ "notice": true }),
+            )])),
+    ))
+}
+
 pub(crate) fn prompt_echo(
     blocks: &[ContentBlock],
     message_id: &MessageId,
@@ -2335,9 +2391,268 @@ mod tests {
     }
 
     #[test]
+    fn stop_settles_the_turn_when_the_agent_answers_the_cancelled_prompt() {
+        use agent_client_protocol::v1::schema::{
+            InitializeResponse, NewSessionResponse, PromptResponse, SessionNotification, StopReason,
+        };
+
+        let chunk = |text: &str| {
+            serde_json::from_value::<SessionNotification>(json!({
+                "sessionId": "s",
+                "update": {
+                    "sessionUpdate": "agent_message_chunk",
+                    "content": { "type": "text", "text": text },
+                },
+            }))
+            .expect("notification")
+        };
+        let hung = Arc::new(Mutex::new(Vec::new()));
+        let answering = Arc::clone(&hung);
+        let agent = Agent
+            .v1()
+            .on_receive_request(
+                async |initialize: InitializeRequest, responder, _| {
+                    responder.respond(InitializeResponse::new(initialize.protocol_version))
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                async |_: NewSessionRequest, responder, _| {
+                    responder.respond(NewSessionResponse::new("s"))
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                async move |_: PromptRequest,
+                            responder,
+                            connection: ConnectionTo<AcpClientRole>| {
+                    connection.send_notification(chunk("working"))?;
+                    hung.lock().push(Some(responder));
+                    Ok(())
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_notification(
+                async move |_: CancelNotification, connection: ConnectionTo<AcpClientRole>| {
+                    let Some(responder) = answering.lock().first_mut().and_then(Option::take)
+                    else {
+                        return Ok(());
+                    };
+                    let late = connection.clone();
+                    connection.spawn(async move {
+                        smol::Timer::after(Duration::from_millis(20)).await;
+                        late.send_notification(chunk("late"))?;
+                        responder.respond(PromptResponse::new(StopReason::Cancelled))
+                    })
+                },
+                agent_client_protocol::on_receive_notification!(),
+            );
+        let (commands, command_rx) = async_channel::unbounded();
+        let (controls, control_rx) = async_channel::unbounded();
+        let (event_tx, events) = async_channel::unbounded();
+        let runtime = run_agent_connection(
+            AgentProvider::Grok,
+            Arc::new(Mutex::new(AgentAutoApprove::Off)),
+            agent,
+            Arc::new(AtomicU64::new(1)),
+            None,
+            command_rx,
+            control_rx,
+            event_tx,
+            None,
+        );
+        let drive = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: PathBuf::from("/workspace"),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            while !matches!(
+                events.recv().await.expect("event"),
+                AgentStreamPayload::SessionReady { .. }
+            ) {}
+            let mut seen = Vec::new();
+            let mut waited = Vec::new();
+            for turn_id in [1, 2] {
+                commands
+                    .send(RuntimeCommand::Prompt {
+                        turn_id,
+                        prompt: AgentPrompt {
+                            text: "go".to_owned(),
+                            ..AgentPrompt::default()
+                        },
+                        note: None,
+                    })
+                    .await
+                    .expect("prompt");
+                let mut stopped = None;
+                loop {
+                    match events.recv().await.expect("event") {
+                        AgentStreamPayload::Update { update }
+                            if update["sessionUpdate"] == "agent_message_chunk" =>
+                        {
+                            seen.push(
+                                update["content"]["text"]
+                                    .as_str()
+                                    .unwrap_or_default()
+                                    .to_owned(),
+                            );
+                            if stopped.is_none() {
+                                for _ in 0..2 {
+                                    controls
+                                        .send(RuntimeControl::Cancel {
+                                            turn_id,
+                                            session_id: Some("s".to_owned()),
+                                        })
+                                        .await
+                                        .expect("stop");
+                                }
+                                stopped = Some(std::time::Instant::now());
+                            }
+                        }
+                        AgentStreamPayload::PromptFinished { turn_id, outcome } => {
+                            seen.push(format!("turn {turn_id} ended: {outcome:?}"));
+                            waited.push(stopped.map(|stopped| stopped.elapsed()));
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+            (seen, waited)
+        };
+        let (result, (seen, waited)) =
+            futures_lite::future::block_on(futures_lite::future::zip(runtime, drive));
+        result.expect("the runtime keeps running");
+        let cancelled = AgentPromptOutcome::Finished {
+            stop_reason: json!("cancelled"),
+        };
+        assert_eq!(
+            seen,
+            [
+                "working".to_owned(),
+                "late".to_owned(),
+                format!("turn 1 ended: {cancelled:?}"),
+                "working".to_owned(),
+                format!("turn 2 ended: {cancelled:?}"),
+            ]
+        );
+        let [Some(answered), Some(stuck)] = waited[..] else {
+            panic!("both turns were stopped: {waited:?}");
+        };
+        assert!(answered < CANCEL_GRACE, "{answered:?}");
+        assert!(stuck >= CANCEL_GRACE, "{stuck:?}");
+    }
+
+    #[test]
+    fn a_session_that_fails_to_load_says_the_agent_starts_fresh() {
+        use agent_client_protocol::v1::schema::{
+            AgentCapabilities, InitializeResponse, NewSessionResponse,
+        };
+        use zz_protocol::chat::ChatView;
+
+        let agent = Agent
+            .v1()
+            .on_receive_request(
+                async |initialize: InitializeRequest, responder, _| {
+                    responder.respond(
+                        InitializeResponse::new(initialize.protocol_version)
+                            .agent_capabilities(AgentCapabilities::new().load_session(true)),
+                    )
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                async |_: LoadSessionRequest, responder, _| {
+                    responder.respond_with_error(
+                        agent_client_protocol::Error::internal_error().data("Session not found"),
+                    )
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                async |_: NewSessionRequest, responder, _| {
+                    responder.respond(NewSessionResponse::new("fresh"))
+                },
+                agent_client_protocol::on_receive_request!(),
+            );
+        let (commands, command_rx) = async_channel::unbounded();
+        let (_controls, control_rx) = async_channel::unbounded();
+        let (event_tx, events) = async_channel::unbounded();
+        let runtime = run_agent_connection(
+            AgentProvider::Grok,
+            Arc::new(Mutex::new(AgentAutoApprove::Off)),
+            agent,
+            Arc::new(AtomicU64::new(1)),
+            None,
+            command_rx,
+            control_rx,
+            event_tx,
+            None,
+        );
+        let drive = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: PathBuf::from("/workspace"),
+                    resume_session: Some("lost".to_owned()),
+                })
+                .await
+                .expect("open");
+            let mut sent = Vec::new();
+            loop {
+                let payload = events.recv().await.expect("event");
+                let ready = matches!(payload, AgentStreamPayload::SessionReady { .. });
+                sent.push(payload);
+                if ready {
+                    break;
+                }
+            }
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+            sent
+        };
+        let (result, mut sent) =
+            futures_lite::future::block_on(futures_lite::future::zip(runtime, drive));
+        result.expect("the runtime keeps running");
+        sent.extend(std::iter::from_fn(|| events.try_recv().ok()));
+        let mut transcript = crate::agent::acp_chat::Transcript::default();
+        let mut view = ChatView::default();
+        for payload in &sent {
+            for event in transcript.payload(payload) {
+                view.apply(&event)
+                    .unwrap_or_else(|skip| panic!("skipped {event:?}: {skip:?}"));
+            }
+        }
+        assert_eq!(
+            view.items
+                .values()
+                .map(|item| (item.kind, item.body.text.as_str()))
+                .collect::<Vec<_>>(),
+            [(
+                ItemKind::Notice,
+                "Grok could not restore the earlier session, so it starts fresh without that context."
+            )]
+        );
+    }
+
+    #[test]
     fn a_session_too_long_to_replay_opens_on_its_newest_updates() {
         let routing = Arc::new(Mutex::new(RuntimeRouting::default()));
         routing.lock().begin_staging("long");
+        let titled = serde_json::from_value::<SessionUpdate>(json!({
+            "sessionUpdate": "session_info_update",
+            "title": "Long chat",
+        }))
+        .expect("session info");
+        assert!(routing.lock().stage("long", titled).is_ok());
         for index in 0..MAX_STAGED_UPDATES + 3 {
             let chunk = ContentChunk::new(ContentBlock::Text(TextContent::new(index.to_string())));
             assert!(
@@ -2370,8 +2685,14 @@ mod tests {
             sent.pop(),
             Some(AgentStreamPayload::SessionReady { session_id, .. }) if session_id == "long"
         ));
+        assert!(matches!(
+            sent.first(),
+            Some(AgentStreamPayload::Update { update })
+                if *update == json!({ "sessionUpdate": "session_info_update", "title": "Long chat" })
+        ));
         assert_eq!(
-            sent.iter()
+            sent[1..]
+                .iter()
                 .map(|payload| match payload {
                     AgentStreamPayload::Update { update } => update["content"]["text"].clone(),
                     other => panic!("unexpected payload {other:?}"),

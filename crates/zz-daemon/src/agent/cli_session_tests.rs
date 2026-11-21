@@ -414,9 +414,10 @@ fn claude_facts_follow_the_transcript_and_its_set_commands() {
         "type": "assistant",
         "cwd": "/work",
         "effort": "xhigh",
+        "requestedModel": "claude-opus-5-5[1m]",
         "message": { "model": "claude-opus-5-5", "content": [] },
     }));
-    assert_eq!(facts.model.as_deref(), Some("claude-opus-5-5"));
+    assert_eq!(facts.model.as_deref(), Some("claude-opus-5-5[1m]"));
     assert_eq!(facts.effort.as_deref(), Some("xhigh"));
     facts.claude_entry(&local("Set model to `Haiku 5.5` and saved as your default"));
     facts.claude_entry(&local("Set effort level to max (this session only)"));

@@ -245,25 +245,28 @@ impl Shared {
     pub(super) fn flip_plan(&self, pane: PaneId) -> Result<FlipPlan, ServerError> {
         use crate::agent::{accounts, cli_session};
 
-        let (kind, pane_pid, cwd) = {
+        let (kind, pane_pid, cwd, foreground) = {
             let inner = self.inner.lock();
             let state = inner
                 .engine
                 .state
                 .pane(pane)
                 .ok_or_else(|| ServerError::MissingTarget(pane.to_string()))?;
-            let cwd = inner
-                .terminals
-                .get(&pane)
-                .and_then(|terminal| terminal_working_directory(terminal));
+            let terminal = inner.terminals.get(&pane);
             (
                 state.kind.clone(),
                 inner
                     .engine
                     .pane_runtime_facts(pane)
                     .and_then(|runtime| runtime.pid),
-                cwd,
+                terminal.and_then(|terminal| terminal_working_directory(terminal)),
+                terminal.and_then(|terminal| terminal_foreground_process(terminal)),
             )
+        };
+        let on_screen = |pane_pid: u32, name: &str| {
+            foreground
+                .and_then(|foreground| cli_session::agent_pid(foreground, name))
+                .or_else(|| cli_session::agent_pid(pane_pid, name))
         };
         match kind {
             PaneKind::Agent(descriptor) => {
@@ -340,14 +343,14 @@ impl Shared {
                     }
                     AgentProvider::Codex => codex_cli_session(pane, pane_pid, cwd)?,
                     AgentProvider::Antigravity => {
-                        let pid = cli_session::agent_pid(pane_pid, "agy").ok_or_else(|| {
+                        let pid = on_screen(pane_pid, "agy").ok_or_else(|| {
                             ServerError::InvalidTarget(format!("{pane} runs no agy process"))
                         })?;
                         let cwd = zz_daemon_client::process_info::working_directory(pid).or(cwd);
                         cli_session::agy_session(pid, cwd)
                     }
                     AgentProvider::Grok => {
-                        let pid = cli_session::agent_pid(pane_pid, "grok").ok_or_else(|| {
+                        let pid = on_screen(pane_pid, "grok").ok_or_else(|| {
                             ServerError::InvalidTarget(format!("{pane} runs no grok process"))
                         })?;
                         let cwd = zz_daemon_client::process_info::working_directory(pid).or(cwd);

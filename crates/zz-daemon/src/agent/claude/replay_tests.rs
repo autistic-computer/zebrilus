@@ -39,6 +39,7 @@ fn setup() -> (Runtime, Receiver<AgentStreamPayload>) {
         last_turn: 0,
         deferred_cancels: HashSet::new(),
         tasks: Vec::new(),
+        parents: HashMap::new(),
         verbs: 0,
         reply: None,
         title: Title::default(),
@@ -221,6 +222,38 @@ fn a_hard_failure_is_reported_as_failed_not_cancelled() {
     );
 }
 
+#[test]
+fn a_refused_reply_finishes_its_turn_as_refused_and_a_steered_one_as_done() {
+    let (mut runtime, receiver) = setup();
+    let mut finish = |turn: u64, command: &str, stop_reason: &str| {
+        prompt(&mut runtime, turn, command);
+        for frame in [
+            json!({
+                "type": "result",
+                "subtype": "success",
+                "is_error": false,
+                "num_turns": 1,
+                "stop_reason": stop_reason,
+                "user_message_uuids": [command],
+            }),
+            json!({ "type": "command_lifecycle", "command_uuid": command, "state": "completed" }),
+        ] {
+            smol::block_on(runtime.frame(frame)).expect("frame");
+        }
+        turn_events(&receiver)
+    };
+    assert_eq!(
+        finish(1, "refused", "refusal"),
+        [Seen::Finished(
+            1,
+            AgentPromptOutcome::Finished {
+                stop_reason: Value::from("refusal"),
+            },
+        )]
+    );
+    assert_eq!(finish(2, "steered", "tool_use"), [end_turn(2)]);
+}
+
 #[cfg(unix)]
 #[test]
 fn a_late_result_from_a_cancelled_turn_cannot_fail_the_next_prompt() {
@@ -360,33 +393,46 @@ fn background_recording() -> Vec<Value> {
 }
 
 #[test]
-fn an_ask_from_a_background_agent_outlives_the_turn_and_a_foreground_ask_does_not() {
-    let (mut runtime, receiver) = setup();
-    play(&mut runtime, &background_recording());
-    let asks = std::iter::from_fn(|| receiver.try_recv().ok())
-        .filter_map(|event| match event {
-            AgentStreamPayload::PermissionRequested {
-                request_id,
-                tool_call,
-                options,
-                questions,
-            } => Some(crate::agent::host::AgentPendingPermission {
-                request_id,
-                tool_call,
-                options,
-                questions,
-            }),
-            _ => None,
-        })
-        .map(|ask| (ask.tool_call["toolCallId"].clone(), ask.outlives_turn()))
-        .collect::<Vec<_>>();
-    assert_eq!(
-        asks,
-        [
-            (json!("toolu_01LPpEBtdDfksG9zSnXyV14S"), false),
-            (json!("toolu_01CMVtk5BeuLNryViYvdStZN"), true),
-        ]
-    );
+fn an_ask_from_a_background_agent_or_one_it_started_outlives_the_turn_and_a_foreground_ask_does_not()
+ {
+    for (recording, expected) in [
+        (
+            include_str!("fixtures/background.ndjson"),
+            vec![
+                (json!("toolu_01LPpEBtdDfksG9zSnXyV14S"), false),
+                (json!("toolu_01CMVtk5BeuLNryViYvdStZN"), true),
+            ],
+        ),
+        (
+            include_str!("fixtures/nested.ndjson"),
+            vec![(json!("toolu_013isakmv9aNq6LLL2rSWRDX"), true)],
+        ),
+    ] {
+        let (mut runtime, receiver) = setup();
+        let recording = recording
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("recorded line"))
+            .collect::<Vec<Value>>();
+        play(&mut runtime, &recording);
+        let asks = std::iter::from_fn(|| receiver.try_recv().ok())
+            .filter_map(|event| match event {
+                AgentStreamPayload::PermissionRequested {
+                    request_id,
+                    tool_call,
+                    options,
+                    questions,
+                } => Some(crate::agent::host::AgentPendingPermission {
+                    request_id,
+                    tool_call,
+                    options,
+                    questions,
+                }),
+                _ => None,
+            })
+            .map(|ask| (ask.tool_call["toolCallId"].clone(), ask.outlives_turn()))
+            .collect::<Vec<_>>();
+        assert_eq!(asks, expected);
+    }
 }
 
 #[test]

@@ -378,12 +378,17 @@ impl Driver {
 
     fn probe(&self, account: &Account) -> Fact {
         let provider = self.login.provider;
+        let id = self.login.account.clone();
         let (probed, quota) = super::accounts::identify(
             provider,
             &account.program,
-            self.login.account.clone(),
+            id.clone(),
             account.search.as_ref(),
-        );
+        )
+        .unwrap_or_else(|| {
+            let unread = super::accounts::signed_out(provider);
+            (zz_protocol::AgentAccount { id, ..unread }, None)
+        });
         let pane = match self.shared.upgrade() {
             Some(shared) => {
                 shared.record_agent_account(probed.clone(), quota);

@@ -39,8 +39,8 @@ use crate::agent::{
         report_journal_error, tier_approves, validate_payload,
     },
     stream::{
-        AgentPromptOutcome, AgentQuestion, AgentQuestionOption, AgentSessionCapabilities,
-        AgentSessionSummary, AgentStreamPayload,
+        AgentPrompt, AgentPromptOutcome, AgentQuestion, AgentQuestionOption,
+        AgentSessionCapabilities, AgentSessionSummary, AgentStreamPayload,
     },
     turn::{self, Effect, End, Fact, Reject, TurnMachine, TurnState},
     zz_command,
@@ -69,6 +69,12 @@ const CHAT_REFUSED: [&str; 12] = [
     "focus",
     "fast",
     "doctor",
+];
+const REPLY_ENDS: [&str; 4] = [
+    "end_turn",
+    "max_tokens",
+    "refusal",
+    "model_context_window_exceeded",
 ];
 const AGENT_NAME: &str = "Claude Code";
 const AGENT_KEY: &str = "claude-code";
@@ -232,6 +238,7 @@ pub(crate) async fn run_claude_runtime(
         last_turn: 0,
         deferred_cancels: HashSet::new(),
         tasks: Vec::new(),
+        parents: HashMap::new(),
         verbs: 0,
         reply: None,
         title: Title::default(),
@@ -597,6 +604,7 @@ struct Runtime {
     last_turn: u64,
     deferred_cancels: HashSet<u64>,
     tasks: Vec<AgentTaskWire>,
+    parents: HashMap<String, String>,
     settings: Settings,
     verbs: u64,
     reply: Option<String>,
@@ -973,7 +981,7 @@ impl Runtime {
                 );
                 Ok(())
             }
-            RuntimeCommand::Verb { prompt } => self.verb(&prompt.text).await,
+            RuntimeCommand::Verb { prompt } => self.verb(prompt).await,
             RuntimeCommand::StopTask { task_id } => {
                 self.request(
                     &json!({ "subtype": "stop_task", "task_id": task_id }),
@@ -1134,6 +1142,9 @@ impl Runtime {
         }
         if !self.settings.effort.is_empty() {
             command.args(["--effort", &self.settings.effort]);
+        }
+        if self.ready_sent {
+            command.args(["--permission-mode", &self.settings.mode]);
         }
         for name in crate::PARENT_CLAUDE_SESSION_ENVIRONMENT {
             command.env_remove(name);
@@ -1371,8 +1382,19 @@ impl Runtime {
         }
     }
 
-    async fn verb(&mut self, text: &str) -> Result<(), String> {
+    async fn verb(&mut self, prompt: AgentPrompt) -> Result<(), String> {
+        let text = prompt.text.as_str();
         let (name, rest) = agent_verb(text).unwrap_or(("", ""));
+        if name == "steer"
+            && !rest.is_empty()
+            && !matches!(self.turns.phase, turn::Phase::Running(_))
+        {
+            let steer = AgentPrompt {
+                text: rest.to_owned(),
+                ..prompt.clone()
+            };
+            return self.steer_as_prompt(steer).await;
+        }
         self.verbs += 1;
         let id = format!(
             "zz-command-{}-{:08x}",
@@ -1394,6 +1416,29 @@ impl Runtime {
         answered
     }
 
+    async fn steer_as_prompt(&mut self, steer: AgentPrompt) -> Result<(), String> {
+        if self.turns.phase != turn::Phase::Idle {
+            return self
+                .emit(AgentStreamPayload::PromptsReclaimed {
+                    prompts: vec![steer],
+                })
+                .await;
+        }
+        let uuid = new_uuid();
+        for update in prompt_echo(&prompt_blocks(steer.clone()), &MessageId::new(uuid.clone()))? {
+            self.update(update, true).await?;
+        }
+        self.send(&json!({
+            "type": "user",
+            "uuid": uuid,
+            "session_id": "",
+            "parent_tool_use_id": null,
+            "message": { "role": "user", "content": prompt_content(&steer, None) },
+            "origin": { "kind": "human" },
+        }));
+        Ok(())
+    }
+
     async fn answer_verb(&mut self, name: &str, rest: &str, id: &str) -> Result<(), String> {
         if self.session.is_none() || self.process.is_none() {
             return self.notice("Claude Code is not running.").await;
@@ -1412,18 +1457,10 @@ impl Runtime {
             }
             "steer" if !rest.is_empty() => {
                 let uuid = new_uuid();
-                match self
-                    .apply(&Fact::Steer {
-                        command: uuid.clone(),
-                    })
-                    .await?
-                {
-                    Some(Reject::NotRunning) => {
-                        return self.notice("Nothing is running to steer.").await;
-                    }
-                    Some(_) => return self.notice("The turn is stopping.").await,
-                    None => {}
-                }
+                self.apply(&Fact::Steer {
+                    command: uuid.clone(),
+                })
+                .await?;
                 self.send(&json!({
                     "type": "user",
                     "uuid": uuid,
@@ -1838,11 +1875,15 @@ impl Runtime {
             }
             Some("result") => {
                 let error = (frame["is_error"] == true).then(|| result_error(&frame));
+                let stop_reason = frame["stop_reason"]
+                    .as_str()
+                    .filter(|reason| REPLY_ENDS.contains(reason))
+                    .map(str::to_owned);
                 let commands = result_commands(&frame);
                 if commands.is_empty() {
                     self.apply(&Fact::Reported {
                         command: None,
-                        stop_reason: None,
+                        stop_reason,
                         error,
                     })
                     .await?;
@@ -1850,7 +1891,7 @@ impl Runtime {
                     for command in commands {
                         self.apply(&Fact::Reported {
                             command: Some(command),
-                            stop_reason: None,
+                            stop_reason: stop_reason.clone(),
                             error: error.clone(),
                         })
                         .await?;
@@ -1973,6 +2014,13 @@ impl Runtime {
                 self.emit(AgentStreamPayload::TasksChanged { tasks })
                     .await?;
             }
+            Some("task_started") => {
+                if let (Some(task), Some(parent)) =
+                    (frame["task_id"].as_str(), frame["parent_task_id"].as_str())
+                {
+                    self.parents.insert(task.to_owned(), parent.to_owned());
+                }
+            }
             Some("commands_changed") => {
                 self.settings.commands = frame["commands"].as_array().cloned().unwrap_or_default();
                 self.publish_commands().await?;
@@ -2053,7 +2101,13 @@ impl Runtime {
             .to_owned();
         let background = request["agent_id"]
             .as_str()
-            .filter(|agent| self.tasks.iter().any(|task| task.id == *agent))
+            .filter(|agent| {
+                std::iter::successors(Some(*agent), |agent| {
+                    self.parents.get(*agent).map(String::as_str)
+                })
+                .take(MAX_AGENT_TASKS)
+                .any(|agent| self.tasks.iter().any(|task| task.id == agent))
+            })
             .map(str::to_owned);
         match tool.as_str() {
             "AskUserQuestion" => {
@@ -3276,7 +3330,7 @@ done
 
     #[cfg(unix)]
     #[test]
-    fn a_new_chat_starts_on_the_picked_model_and_effort() {
+    fn a_new_chat_starts_on_the_picked_model_effort_and_mode() {
         let directory = tempfile::tempdir().expect("tempdir");
         let (commands, events, runtime) = respawning(directory.path(), None);
         let cwd = directory.path().to_path_buf();
@@ -3292,7 +3346,11 @@ done
                 matches!(payload, AgentStreamPayload::SessionReady { .. })
             })
             .await;
-            for (option_id, value) in [("model", "opus"), ("effort", "high")] {
+            for (option_id, value) in [
+                ("model", "opus"),
+                ("effort", "high"),
+                ("mode", "acceptEdits"),
+            ] {
                 commands
                     .send(RuntimeCommand::SetConfigOption {
                         option_id: option_id.to_owned(),
@@ -3328,6 +3386,10 @@ done
             spawned_flags(directory.path(), "--effort"),
             [None, Some("high".to_owned())]
         );
+        assert_eq!(
+            spawned_flags(directory.path(), "--permission-mode"),
+            [None, Some("acceptEdits".to_owned())]
+        );
     }
 
     #[cfg(unix)]
@@ -3341,6 +3403,11 @@ printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request
 read -r side
 case "$side" in *'"request_id":"zz-4"'*'"subtype":"side_question"'*'"question":"what is 2+2"'*) ;; *) echo "bad side: $side" >&2; exit 3 ;; esac
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-4","response":{"response":"4","synthetic":false}}}'
+read -r steer
+case "$steer" in *'"type":"user"'*) ;; *) echo "bad steer: $steer" >&2; exit 5 ;; esac
+case "$steer" in *'"text":"left"'*) ;; *) echo "bad steer: $steer" >&2; exit 5 ;; esac
+case "$steer" in *priority*) echo "steered a turn: $steer" >&2; exit 5 ;; esac
+printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"running"}'
 while read -r line; do :; done
 "#;
 
@@ -3423,8 +3490,19 @@ while read -r line; do :; done
                 matches!(payload, AgentStreamPayload::Update { update } if update["_meta"]["zz"]["side"] == true)
             );
             commands.send(verb("/steer left")).await.expect("steer");
-            assert_eq!(next_text().await.0, "/steer left");
-            assert_eq!(next_text().await.0, "Nothing is running to steer.");
+            let (steered, payload) = next_text().await;
+            assert_eq!(steered, "left");
+            assert!(
+                matches!(payload, AgentStreamPayload::Update { update } if update["sessionUpdate"] == "user_message_chunk")
+            );
+            assert_eq!(
+                until(&event_rx, |payload| matches!(
+                    payload,
+                    AgentStreamPayload::Activity { .. } | AgentStreamPayload::PaneFailed { .. }
+                ))
+                .await,
+                AgentStreamPayload::Activity { busy: true }
+            );
             commands.send(verb("/what")).await.expect("unknown");
             assert_eq!(next_text().await.0, "/what");
             assert_eq!(next_text().await.0, VERB_HELP);

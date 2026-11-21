@@ -315,8 +315,21 @@ impl Shared {
         let (list, quotas): (Vec<_>, Vec<_>) = PROVIDERS
             .into_iter()
             .filter_map(|provider| {
-                providers::locate(provider, search.as_ref())
-                    .map(|program| provider_accounts(provider, &program, search.as_ref()))
+                providers::locate(provider, search.as_ref()).map(|program| {
+                    provider_accounts(provider, &program, search.as_ref())
+                        .into_iter()
+                        .map(move |(id, probe)| {
+                            probe.unwrap_or_else(|| {
+                                (
+                                    AgentAccount {
+                                        id,
+                                        ..signed_out(provider)
+                                    },
+                                    None,
+                                )
+                            })
+                        })
+                })
             })
             .flatten()
             .filter(|(account, _)| account.id.is_none() || account.signed_in)
@@ -477,7 +490,12 @@ pub(super) fn pick_account(
             let probed = provider_accounts(provider, program, search);
             let existing = probed
                 .iter()
-                .filter_map(|(account, _)| Some((account.id.as_deref()?, account.signed_in)))
+                .filter_map(|(id, probe)| {
+                    Some((
+                        id.as_deref()?,
+                        probe.as_ref().is_none_or(|(account, _)| account.signed_in),
+                    ))
+                })
                 .collect::<Vec<_>>();
             let id = login_account(&existing);
             let fresh = existing.iter().all(|(taken, _)| *taken != id);
@@ -501,16 +519,22 @@ fn provider_accounts(
     provider: AgentProvider,
     program: &Path,
     search: Option<&OsString>,
-) -> Vec<(AgentAccount, Option<QuotaWindows>)> {
+) -> Vec<(Option<String>, Option<(AgentAccount, Option<QuotaWindows>)>)> {
     let ids = std::iter::once(None)
         .chain(crate::agent::accounts::ids(provider).into_iter().map(Some))
         .collect::<Vec<_>>();
     thread::scope(|scope| {
         ids.into_iter()
-            .map(|id| scope.spawn(move || identify(provider, program, id, search)))
+            .map(|id| {
+                let probe = id.clone();
+                (
+                    id,
+                    scope.spawn(move || identify(provider, program, probe, search)),
+                )
+            })
             .collect::<Vec<_>>()
             .into_iter()
-            .filter_map(|probe| probe.join().ok())
+            .map(|(id, probe)| (id, probe.join().ok().flatten()))
             .collect()
     })
 }
@@ -521,7 +545,7 @@ pub(super) fn identify(
     program: &Path,
     id: Option<String>,
     search: Option<&OsString>,
-) -> (AgentAccount, Option<QuotaWindows>) {
+) -> Option<(AgentAccount, Option<QuotaWindows>)> {
     use crate::agent::accounts;
 
     let home = match id.as_deref() {
@@ -531,13 +555,13 @@ pub(super) fn identify(
                 Ok(home) => Some(home),
                 Err(error) => {
                     log::info!(target: "zz::agent", "{error}");
-                    return (
+                    return Some((
                         AgentAccount {
                             id,
                             ..signed_out(provider)
                         },
                         None,
-                    );
+                    ));
                 }
             }
         }
@@ -562,10 +586,10 @@ pub(super) fn identify(
             let account =
                 match crate::bounded_command::run_output_until(command, MAX_STATUS_BYTES, deadline)
                 {
-                    Ok(output) => claude_status(&output.stdout),
+                    Ok(output) => claude_status(&output.stdout)?,
                     Err(error) => {
                         log::info!(target: "zz::agent", "claude auth status: {error}");
-                        signed_out(provider)
+                        return None;
                     }
                 };
             (account, None)
@@ -580,14 +604,14 @@ pub(super) fn identify(
             }
             Err(error) => {
                 log::info!(target: "zz::agent", "codex account/read: {error}");
-                (signed_out(provider), None)
+                return None;
             }
         },
         AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => {
             (signed_out(provider), None)
         }
     };
-    (AgentAccount { id, ..account }, quota)
+    Some((AgentAccount { id, ..account }, quota))
 }
 
 #[cfg(all(feature = "agent", unix))]
@@ -641,7 +665,7 @@ fn stop(child: &mut Child) {
 }
 
 #[cfg(all(feature = "agent", unix))]
-const fn signed_out(provider: AgentProvider) -> AgentAccount {
+pub(super) const fn signed_out(provider: AgentProvider) -> AgentAccount {
     AgentAccount {
         provider,
         id: None,
@@ -662,15 +686,15 @@ fn text(value: &serde_json::Value, key: &str) -> Option<String> {
 }
 
 #[cfg(all(feature = "agent", unix))]
-fn claude_status(stdout: &[u8]) -> AgentAccount {
-    let status = serde_json::from_slice::<serde_json::Value>(stdout).unwrap_or_default();
-    AgentAccount {
-        signed_in: status["loggedIn"] == true,
+fn claude_status(stdout: &[u8]) -> Option<AgentAccount> {
+    let status = serde_json::from_slice::<serde_json::Value>(stdout).ok()?;
+    Some(AgentAccount {
+        signed_in: status["loggedIn"].as_bool()?,
         email: text(&status, "email"),
         organization: text(&status, "orgName"),
         plan: text(&status, "planTier").or_else(|| text(&status, "subscriptionType")),
         ..signed_out(AgentProvider::ClaudeCode)
-    }
+    })
 }
 
 #[cfg(all(feature = "agent", unix))]
@@ -716,14 +740,14 @@ mod tests {
 }"#;
         assert_eq!(
             claude_status(signed_in),
-            AgentAccount {
+            Some(AgentAccount {
                 provider: AgentProvider::ClaudeCode,
                 id: None,
                 signed_in: true,
                 email: Some("me@example.com".to_owned()),
                 organization: Some("Example Org".to_owned()),
                 plan: Some("max_20x".to_owned()),
-            }
+            })
         );
         let signed_out = br#"{
   "loggedIn": false,
@@ -734,8 +758,33 @@ mod tests {
 }"#;
         assert_eq!(
             claude_status(signed_out),
-            super::signed_out(AgentProvider::ClaudeCode)
+            Some(super::signed_out(AgentProvider::ClaudeCode))
         );
+    }
+
+    #[test]
+    fn a_status_the_cli_could_not_give_is_unknown() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let directory = tempfile::tempdir().expect("temp directory");
+        let garbled = directory.path().join("claude");
+        std::fs::write(&garbled, "#!/bin/sh\necho 'keychain is locked'\nexit 1\n")
+            .expect("write the fake cli");
+        std::fs::set_permissions(&garbled, std::fs::Permissions::from_mode(0o755))
+            .expect("make the fake cli runnable");
+        let missing = directory.path().join("missing");
+        for (provider, program) in [
+            (AgentProvider::ClaudeCode, &garbled),
+            (AgentProvider::ClaudeCode, &missing),
+            (AgentProvider::Codex, &missing),
+        ] {
+            assert_eq!(
+                identify(provider, program, None, None),
+                None,
+                "{provider:?} {}",
+                program.display()
+            );
+        }
     }
 
     #[test]

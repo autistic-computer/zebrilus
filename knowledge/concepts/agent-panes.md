@@ -119,8 +119,8 @@ no pending request (already answered, or none was asked)`.
 **Reopening a child.** A child chat is its session, not its pane. For every chat a chat opens,
 the daemon keeps a `ChildRecord` under the opener's provider and session
 (`AgentRuntime::update_child`): the child's original pane id, provider, session id once its
-session starts, folder, the model and effort it last showed (`note_child_descriptor`), account,
-the pane that holds it now, and every pane it was reopened in (`reopened`). The records are saved next to the opener's
+session starts, folder, the model and effort it last showed and the account it is on
+(`note_child_descriptor`, which an `agent-account` move runs too), the pane that holds it now, and every pane it was reopened in (`reopened`). The records are saved next to the opener's
 journal as `<key>.children.json`, so they outlive a daemon restart and the opener being resumed in
 another pane; they go when the opener's session is deleted (`AgentJournal::remove_for`), not when
 its pane closes. `select-child-chat [-t HOST] %N` (internal, for the card a host draws) takes any
@@ -169,7 +169,9 @@ with the descriptor's provider, folder, session, model and effort and the pane's
 environment (`ZZ_PANE`, `TMUX`, `TMUX_PANE`). The descriptor's model and effort follow the chat:
 each `AgentState` whose config options hold a `model` or `effort` option writes its current value
 there (none for `default`), so a reopen after `agent-account` or a sign-in starts on what the chat
-last showed, not on what it was created with. A resumed Claude session replays its transcript
+last showed, not on what it was created with. The descriptor holds no permission mode, so such a
+reopen starts on the command's mode or the CLI's default; within one Claude Code driver, a new
+chat, switch, fork, rewind or restart passes the mode the chat showed as `--permission-mode`. A resumed Claude session replays its transcript
 before the driver says it is ready; a resumed Codex thread comes back through `thread/resume`.
 Closing the pane closes the driver. Agent messages (`AgentReplay`, `AgentPrompt`, approvals,
 settings) are accepted only for agent panes, and `AgentState` and the stream follow
@@ -250,7 +252,12 @@ A chat is named after its session, the name each CLI gives its own sessions.
     `-c` overrides, `--profile`, `--no-daemon` and the like, or holding its rollout open) refuses
     like Claude, reading its rollout's last `task_started` and `task_complete`.
 - **`--now`** flips anyway: the turn and every background shell and subagent of a Claude session
-  stop with the process.
+  stop with the process. Prompts typed into the chat that were still queued go back to their
+  owners' composers as the driver closes (`PromptsRestored`). The desktop keeps them, after what
+  was in the composer, as the pane's draft while the pane is a terminal
+  (`AgentController::keep_draft`, `retain_panes`) and puts them back in the composer when it flips
+  back to a chat; closing the pane drops them. The thin clients still drop them with the chat's
+  composer.
 - **`--when-idle`** arms the flip. The pane's `PaneSummary.flip_armed` turns on (wire 118, in the
   snapshot and `TreeOp::PaneSummary`), and a watcher thread checks every 250 ms and flips once
   nothing runs, then clears it. **`--cancel`** clears it. An armed pane that closes or stops running
@@ -368,8 +375,10 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
   `email`, `workspaceName` as the organization and `planType` as the plan; an API key login is
   signed in with no email or plan. The server's stdin is closed, it gets 2 s to exit, and then its
   process group is killed. Both probes drop the parent Claude Code session variables and `ZZ_PANE`,
-  `ZZ_SESSION`, `TMUX` and `TMUX_PANE` (and for an account the login overrides above), give up
-  after 10 s, and count as signed out when they fail.
+  `ZZ_SESSION`, `TMUX` and `TMUX_PANE` (and for an account the login overrides above) and give up
+  after 10 s. A probe that fails, times out or gets no `loggedIn` from Claude Code leaves the
+  status unknown (`identify` gives `None`): the list shows it as signed out, and a sign-in never
+  picks it.
   An account directory is linked (`accounts::prepare`) before its probe, so a Codex home has its
   state databases before its first app server.
 - **Watching.** A plain call adds the client to the watchers, sends the list the daemon already has
@@ -379,7 +388,7 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
   follow the login window.
 - **Which account.** `--add` subscribes the caller too. `--account default` signs in the CLI's own
   login, `--account <id>` an existing account directory (signed out or not). Without `--account`
-  the daemon asks that CLI's accounts, picks the first account that is not signed in, else the
+  the daemon asks that CLI's accounts, picks the first account it read as signed out, else the
   lowest `aN` not taken (`a1`, `a2`, ...), and creates or completes it (`accounts::create`: 0700,
   links, Claude seed; `accounts::pick_account`).
 - **Two ways to sign in.** A caller that declared `agent-login-v1` in its hello gets a sign-in the
@@ -578,7 +587,8 @@ CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
 - **Claude Code.** The record `sessions/<pid>.json` under `$CLAUDE_CONFIG_DIR` or `~/.claude` whose
   process is the pane's or below it (`claude_peers::record_in_pane_with`) names the session, the
   folder and the status. The CLI writes it at start and removes it at exit. Model and effort are
-  the transcript's last assistant line (`message.model`, `effort`) and its "Set model to" and "Set
+  the transcript's last assistant line (`requestedModel`, which keeps a suffix like `[1m]`, else
+  `message.model`, which drops it; and `effort`) and its "Set model to" and "Set
   effort level to" lines, over the CLI's arguments and settings files (`Facts::claude_launch`);
   a model name the CLI printed becomes its alias for `--model`.
 - **Codex.** The thread is the parentless rollout the TUI holds open (embedded), else the one
@@ -591,6 +601,11 @@ CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
 - **Antigravity.** The conversation is the one whose `conversations/<uuid>.db` file the `agy`
   process holds open, else the one `--conversation <id>` names (`cli_session::agy_session`). Model
   and effort come from its `--model` and `--effort` arguments only.
+- **Which process.** Antigravity and Grok read the `agy` or `grok` process in the pane's
+  foreground process group, else the first one under the pane's shell. Both read files keyed to
+  that one process, so two TUIs in one folder each flip to their own session, and a pane with a
+  TUI stopped with ctrl-z behind another flips the one on screen (agy stops on ctrl-z; grok, as of
+  1.0.92, takes ctrl-z as a key and never leaves the foreground).
 
 # Antigravity
 
@@ -655,6 +670,15 @@ the same for both:
   agent named that session while it loaded.
 - **A failed start.** `run_acp_agent` reports a `session/new` that fails as `PaneFailed` and keeps
   running, so the pane can still be told to sign in or to open again.
+- **A session that will not load.** When `session/load` fails on reopen, the runtime opens a new
+  session and replays the old transcript from zz's journal over it, then says once in the chat, as
+  a notice journalled with the new session, that the agent could not restore the earlier session
+  and starts fresh without that context.
+- **Stop.** The runtime sends `session/cancel`, answers the turn's open asks as cancelled, and ends
+  the turn as cancelled when the agent answers the cancelled `session/prompt`, so what the agent
+  sends while it stops stays in that turn. An agent that has not answered after 5 s
+  (`CANCEL_GRACE`) has its turn ended anyway. The queue is handed back at Stop, and a prompt
+  queued while the turn is stopping is handed back the same way when the turn ends.
 
 - **Which grok.** The first `grok` on the agent PATH. With none the pane fails with the not
   installed line.
@@ -693,10 +717,9 @@ The command is not configurable. Settings reads the latest version from `grok up
 with its history, and a resumed session's title. Not seen: a permission ask, since the config
 tested approves everything.
 
-**Known gaps in the shared runtime.** A `session/load` that fails falls back to a new session
-with the old transcript replayed over it. A pane with two TUIs of one provider flips the first
-one found. A client that recovers from the journal sees the agent's own name for the effort
-option until the recovery metadata that follows replaces the list.
+**Known gaps in the shared runtime.** A load that replays more than 4,096 updates or 18 MiB
+opens on the newest and drops the oldest, with a log line only: nothing in the chat says older
+history was left out. The latest title among the dropped updates is still applied.
 
 # Cursor
 
@@ -807,7 +830,10 @@ subscribed to when a resume brings different overrides. Where it falls short:
   the host sends the text as a prompt. Codex takes it as `turn/steer` on the turn's id. The driver
   holds a steer until Codex names the turn, and a steer Codex refuses, or one that finds the turn
   already over, goes out as the next prompt: a plain user message, ahead of anything queued. A held
-  steer goes back to the composer when the turn is stopped or fails, as the queue does.
+  steer goes back to the composer when the turn is stopped or fails, as the queue does. Claude Code
+  takes a steer as a user message with `priority: "now"`; one that reaches its driver after the turn
+  ended goes out as the next prompt the same way, and one that arrives while the turn is stopping or
+  the CLI is down goes back to the composer.
 
 The driver follows a `/clear`'s new session id (`follow_session`), and the empty `result` frames
 the CLI writes while it resumes (`num_turns: 0`, before its first idle `session_state_changed`)
@@ -1216,7 +1242,11 @@ calls:
   `Ask::Plan`) shows the plan in a scrolling inset with a button that opens it in the view pane.
   The rules for titles, send labels and hints live in `zz_client::agent_ask`, shared by every
   client. The chat keeps one row per ask while it waits ("waiting for you"), and an answered
-  question as a row per question with its answer.
+  question as a row per question with its answer. An ask leaves the client that answered it at
+  once and does not come back from a pane state that left the daemon before the answer got there:
+  the desktop keeps the ids it answered while the state's `pending_permission` still names them
+  (`AgentThread::answered`), and the thin clients keep `permission_answered` while the transcript
+  or the state still shows the ask.
 - **Codex's async questions.** Codex can ask without stopping its turn
   (`request_user_input_async`); the app server sends that as an `agentMessage` with
   `delivery: "async"`, `questions` (`{ title, options? }`) and a markdown copy in `text`. The
@@ -1233,8 +1263,9 @@ calls:
   still waiting.
 - **Claude Code's background agents.** An agent started in the background keeps running after
   the turn that launched it ends, and can still ask for approval then. Its `can_use_tool` request
-  names it in `agent_id`, the task id `background_tasks_changed` lists. The driver marks that ask
-  with `_meta.zz.backgroundAgent`, so the host keeps it past the end of the turn
+  names it in `agent_id`, the task id `background_tasks_changed` lists; an agent it starts asks
+  with its own id, which `task_started` ties to it through `parent_task_id`. The driver marks an ask
+  from either with `_meta.zz.backgroundAgent`, so the host keeps it past the end of the turn
   (`AgentPendingPermission::outlives_turn`) and both clients keep its card. Unlike Codex's
   questions it stays blocking: the chat says it waits for you, and the ask sits under the
   agent's row. Stop interrupts the foreground turn only, and Claude Code leaves a background
@@ -1361,7 +1392,13 @@ The full delivery contract is in the
   `MAX_PENDING_AGENT_BYTES` (9 MiB + 64 KiB) per pane. Overflow drops the pane's queued frames and
   queues `AgentLagged`, so a slow client replays instead of being disconnected.
 - **Replay.** Each pane keeps an 18 MiB ring of encoded items (`MAX_REPLAY_RING_BYTES`); a replay
-  older than the ring takes the reset path the runtime design describes. A driver that resumes a
+  older than the ring goes to the client that asked alone, on numbers it skips, so no other viewer
+  is sent anything. It is a restoring reset, the journalled updates, the closing metadata and the
+  whole chat when the journal vouches for the session and all of it fits in 4.5 MiB
+  (`MAX_REBUILD_BYTES`); otherwise, or when the journal cannot vouch for the session (it stops at
+  4,096 records or 18 MiB), it is a rebuild: a restoring reset, the closing metadata and the newest
+  part of the chat that fits in 4.5 MiB. Events that refer to the part left out count in
+  `ChatView.skipped`. A driver that resumes a
   session replays its history from the CLI's own file first. A pane's numbers never start over
   within a daemon process, so a client's position stays good across reconnects to the same
   daemon (`server_id` in the hello).

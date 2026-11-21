@@ -42,10 +42,6 @@ pub(super) enum Payload {
         client: ClientId,
         frames: Vec<(u64, Vec<Vec<u8>>)>,
     },
-    BroadcastReplay {
-        frames: Vec<(u64, Vec<Vec<u8>>)>,
-        also: Option<ClientId>,
-    },
     State(AgentPaneWire),
     Folder(PathBuf),
     Quota(QuotaWindows),
@@ -127,16 +123,6 @@ impl AgentPublisher for Publisher {
         frames: Vec<(u64, Vec<Vec<u8>>)>,
     ) {
         self.post(generation, pane, Payload::Replay { client, frames });
-    }
-
-    fn publish_agent_replay(
-        &self,
-        generation: u64,
-        pane: PaneId,
-        frames: Vec<(u64, Vec<Vec<u8>>)>,
-        also: Option<ClientId>,
-    ) {
-        self.post(generation, pane, Payload::BroadcastReplay { frames, also });
     }
 
     fn publish_agent_state(&self, generation: u64, pane: PaneId, state: AgentPaneWire) {
