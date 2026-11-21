@@ -714,6 +714,9 @@ impl Translator {
     }
 
     fn result(&mut self, frame: &Value) -> Vec<Value> {
+        if frame["num_turns"] == 0 {
+            return Vec::new();
+        }
         let size = frame["modelUsage"].as_object().and_then(|models| {
             models
                 .values()
@@ -1534,6 +1537,19 @@ mod tests {
         let usage = updates.last().expect("usage");
         assert_eq!(usage["size"], 200_000);
         assert!(usage["used"].as_u64().is_some_and(|used| used > 0));
+    }
+
+    #[test]
+    fn a_result_with_no_turns_leaves_the_context_meter_alone() {
+        let used = replay("resume.ndjson")
+            .iter()
+            .filter(|update| update["sessionUpdate"] == "usage_update")
+            .map(|update| update["used"].as_u64())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            used,
+            [Some(33_178), Some(33_708), Some(37_249), Some(37_670)]
+        );
     }
 
     #[test]
