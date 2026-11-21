@@ -592,40 +592,29 @@ impl Element for Sky {
         let running = !still && !self.paused && window.is_window_active();
         let view = window.current_view();
         let mouse = window.mouse_position();
+        let target = if bounds.contains(&mouse) {
+            let width = bounds.size.width.as_f32().max(1.0);
+            let height = bounds.size.height.as_f32().max(1.0);
+            [
+                (((mouse.x - bounds.origin.x).as_f32() / width) * 2.0 - 1.0).clamp(-1.0, 1.0),
+                (((mouse.y - bounds.origin.y).as_f32() / height) * 2.0 - 1.0).clamp(-1.0, 1.0),
+            ]
+        } else {
+            [0.0, 0.0]
+        };
         let (elapsed, parallax) =
             window.with_element_state::<SkyClock, _>(global_id, |clock, _| {
                 let now = Instant::now();
+                let step = step_index(EPOCH.elapsed());
                 let mut clock = clock.unwrap_or(SkyClock {
                     elapsed: Duration::ZERO,
                     last: now,
+                    step,
                     parallax: [0.0, 0.0],
                     tick: None,
                 });
-                if running {
-                    let raw_dt = if clock.tick.is_some() {
-                        (now - clock.last).min(MAX_GAP)
-                    } else {
-                        Duration::ZERO
-                    };
-                    let dt = ala::animation_time(raw_dt);
-                    clock.elapsed += dt;
-                    let target = if bounds.contains(&mouse) {
-                        let width = bounds.size.width.as_f32().max(1.0);
-                        let height = bounds.size.height.as_f32().max(1.0);
-                        [
-                            (((mouse.x - bounds.origin.x).as_f32() / width) * 2.0 - 1.0)
-                                .clamp(-1.0, 1.0),
-                            (((mouse.y - bounds.origin.y).as_f32() / height) * 2.0 - 1.0)
-                                .clamp(-1.0, 1.0),
-                        ]
-                    } else {
-                        [0.0, 0.0]
-                    };
-                    let ease = 1.0 - (-dt.as_secs_f32() * 4.5).exp();
-                    clock.parallax[0] += (target[0] - clock.parallax[0]) * ease;
-                    clock.parallax[1] += (target[1] - clock.parallax[1]) * ease;
-                }
-                clock.last = now;
+                let was_running = clock.tick.is_some();
+                clock.advance(now, step, running, was_running, target);
                 clock.tick = running.then(|| tick(view, cx));
                 let out_parallax = if still { [0.0, 0.0] } else { clock.parallax };
                 ((clock.elapsed, out_parallax), clock)
@@ -651,15 +640,51 @@ impl Element for Sky {
             bg: theme.background,
         };
         let uniforms = scene.uniforms();
-        window.paint_shader_layer(bounds, &SHADER, uniforms, |_| {});
+        window.paint_retained_shader_layer(bounds, &SHADER, uniforms);
     }
 }
 
 struct SkyClock {
     elapsed: Duration,
     last: Instant,
+    step: u128,
     parallax: [f32; 2],
     tick: Option<Task<()>>,
+}
+
+impl SkyClock {
+    fn advance(
+        &mut self,
+        now: Instant,
+        step: u128,
+        running: bool,
+        was_running: bool,
+        target: [f32; 2],
+    ) {
+        if !running {
+            self.last = now;
+            return;
+        }
+        if was_running && self.step == step {
+            return;
+        }
+        let raw_dt = if was_running {
+            (now - self.last).min(MAX_GAP)
+        } else {
+            Duration::ZERO
+        };
+        let dt = ala::animation_time(raw_dt);
+        self.elapsed += dt;
+        let ease = 1.0 - (-dt.as_secs_f32() * 4.5).exp();
+        self.parallax[0] += (target[0] - self.parallax[0]) * ease;
+        self.parallax[1] += (target[1] - self.parallax[1]) * ease;
+        self.last = now;
+        self.step = step;
+    }
+}
+
+fn step_index(since_epoch: Duration) -> u128 {
+    (since_epoch.as_nanos() + STEP.as_nanos() / 8) / STEP.as_nanos()
 }
 
 fn tick(view: EntityId, cx: &mut App) -> Task<()> {
@@ -1012,6 +1037,62 @@ mod tests {
             .expect("uniform block");
         assert_eq!(layouter[uniform.ty].size, 304);
         assert_eq!((HEADER + MAX_BIRDS + MAX_FAR_BIRDS) * 16, 304);
+    }
+
+    #[test]
+    fn the_clock_moves_once_per_step_and_not_while_paused() {
+        let start = Instant::now();
+        let mut clock = SkyClock {
+            elapsed: Duration::ZERO,
+            last: start,
+            step: 0,
+            parallax: [0.0, 0.0],
+            tick: None,
+        };
+        let paint = |clock: &mut SkyClock, at: Duration, running: bool, was_running: bool| {
+            let before = clock.elapsed;
+            clock.advance(start + at, step_index(at), running, was_running, [0.0, 0.0]);
+            clock.elapsed != before
+        };
+        let moved = (0..120)
+            .filter(|&frame| {
+                paint(
+                    &mut clock,
+                    Duration::from_micros(8_333 * frame),
+                    true,
+                    frame > 0,
+                )
+            })
+            .count();
+        assert_eq!(moved, 23);
+        assert!((clock.elapsed.as_secs_f64() - 0.958_295).abs() < 1e-6);
+
+        let late = [Duration::from_millis(5), Duration::from_millis(22)];
+        let moved = (24..48u32)
+            .filter(|&tick| {
+                paint(
+                    &mut clock,
+                    STEP * tick + late[tick as usize % 2],
+                    true,
+                    true,
+                )
+            })
+            .count();
+        assert_eq!(moved, 24);
+
+        let held = clock.elapsed;
+        for frame in 0..60 {
+            paint(
+                &mut clock,
+                STEP * 48 + Duration::from_micros(8_333 * frame),
+                false,
+                true,
+            );
+        }
+        assert_eq!(clock.elapsed, held);
+        assert!(!paint(&mut clock, STEP * 70, true, false));
+        assert!(paint(&mut clock, STEP * 71, true, true));
+        assert!((clock.elapsed.as_secs_f64() - held.as_secs_f64() - 0.041_667).abs() < 1e-6);
     }
 
     #[test]

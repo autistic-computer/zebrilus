@@ -238,7 +238,8 @@ the native transport, key translation, and UIKit backend.
 - An empty agent chat on iPad is the desktop's: the welcome over the dithered sky, then the
   folder button and Resume, each opening the desktop's popover menu at its desktop size. A tap
   on its search field raises the keyboard and the popover moves up to stay above it. On iPhone
-  the two are rows under the title that open sheets, with no sky.
+  the two are rows under the title that open sheets, over the same sky, which holds still while a
+  sheet or menu covers it.
 - Browser panes use native WebKit with tabs, an address field, back/forward, and reload.
   SSH connections route page traffic through the host; `localhost` addresses reach
   the host's loopback servers through port forwarding. Cookies and site storage
