@@ -814,7 +814,10 @@ subscribed to when a resume brings different overrides. Where it falls short:
   the host sends the text as a prompt. Codex takes it as `turn/steer` on the turn's id. The driver
   holds a steer until Codex names the turn, and a steer Codex refuses, or one that finds the turn
   already over, goes out as the next prompt: a plain user message, ahead of anything queued. A held
-  steer goes back to the composer when the turn is stopped or fails, as the queue does.
+  steer goes back to the composer when the turn is stopped or fails, as the queue does. Claude Code
+  takes a steer as a user message with `priority: "now"`; one that reaches its driver after the turn
+  ended goes out as the next prompt the same way, and one that arrives while the turn is stopping or
+  the CLI is down goes back to the composer.
 
 The driver follows a `/clear`'s new session id (`follow_session`), and the empty `result` frames
 the CLI writes while it resumes (`num_turns: 0`, before its first idle `session_state_changed`)

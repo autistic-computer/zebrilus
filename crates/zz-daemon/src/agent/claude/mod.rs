@@ -39,8 +39,8 @@ use crate::agent::{
         report_journal_error, tier_approves, validate_payload,
     },
     stream::{
-        AgentPromptOutcome, AgentQuestion, AgentQuestionOption, AgentSessionCapabilities,
-        AgentSessionSummary, AgentStreamPayload,
+        AgentPrompt, AgentPromptOutcome, AgentQuestion, AgentQuestionOption,
+        AgentSessionCapabilities, AgentSessionSummary, AgentStreamPayload,
     },
     turn::{self, Effect, End, Fact, Reject, TurnMachine, TurnState},
     zz_command,
@@ -973,7 +973,7 @@ impl Runtime {
                 );
                 Ok(())
             }
-            RuntimeCommand::Verb { prompt } => self.verb(&prompt.text).await,
+            RuntimeCommand::Verb { prompt } => self.verb(prompt).await,
             RuntimeCommand::StopTask { task_id } => {
                 self.request(
                     &json!({ "subtype": "stop_task", "task_id": task_id }),
@@ -1371,8 +1371,19 @@ impl Runtime {
         }
     }
 
-    async fn verb(&mut self, text: &str) -> Result<(), String> {
+    async fn verb(&mut self, prompt: AgentPrompt) -> Result<(), String> {
+        let text = prompt.text.as_str();
         let (name, rest) = agent_verb(text).unwrap_or(("", ""));
+        if name == "steer"
+            && !rest.is_empty()
+            && !matches!(self.turns.phase, turn::Phase::Running(_))
+        {
+            let steer = AgentPrompt {
+                text: rest.to_owned(),
+                ..prompt.clone()
+            };
+            return self.steer_as_prompt(steer).await;
+        }
         self.verbs += 1;
         let id = format!(
             "zz-command-{}-{:08x}",
@@ -1394,6 +1405,29 @@ impl Runtime {
         answered
     }
 
+    async fn steer_as_prompt(&mut self, steer: AgentPrompt) -> Result<(), String> {
+        if self.turns.phase != turn::Phase::Idle {
+            return self
+                .emit(AgentStreamPayload::PromptsReclaimed {
+                    prompts: vec![steer],
+                })
+                .await;
+        }
+        let uuid = new_uuid();
+        for update in prompt_echo(&prompt_blocks(steer.clone()), &MessageId::new(uuid.clone()))? {
+            self.update(update, true).await?;
+        }
+        self.send(&json!({
+            "type": "user",
+            "uuid": uuid,
+            "session_id": "",
+            "parent_tool_use_id": null,
+            "message": { "role": "user", "content": prompt_content(&steer, None) },
+            "origin": { "kind": "human" },
+        }));
+        Ok(())
+    }
+
     async fn answer_verb(&mut self, name: &str, rest: &str, id: &str) -> Result<(), String> {
         if self.session.is_none() || self.process.is_none() {
             return self.notice("Claude Code is not running.").await;
@@ -1412,18 +1446,10 @@ impl Runtime {
             }
             "steer" if !rest.is_empty() => {
                 let uuid = new_uuid();
-                match self
-                    .apply(&Fact::Steer {
-                        command: uuid.clone(),
-                    })
-                    .await?
-                {
-                    Some(Reject::NotRunning) => {
-                        return self.notice("Nothing is running to steer.").await;
-                    }
-                    Some(_) => return self.notice("The turn is stopping.").await,
-                    None => {}
-                }
+                self.apply(&Fact::Steer {
+                    command: uuid.clone(),
+                })
+                .await?;
                 self.send(&json!({
                     "type": "user",
                     "uuid": uuid,
@@ -3341,6 +3367,11 @@ printf '%s\n' '{"type":"control_response","response":{"subtype":"error","request
 read -r side
 case "$side" in *'"request_id":"zz-4"'*'"subtype":"side_question"'*'"question":"what is 2+2"'*) ;; *) echo "bad side: $side" >&2; exit 3 ;; esac
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-4","response":{"response":"4","synthetic":false}}}'
+read -r steer
+case "$steer" in *'"type":"user"'*) ;; *) echo "bad steer: $steer" >&2; exit 5 ;; esac
+case "$steer" in *'"text":"left"'*) ;; *) echo "bad steer: $steer" >&2; exit 5 ;; esac
+case "$steer" in *priority*) echo "steered a turn: $steer" >&2; exit 5 ;; esac
+printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"running"}'
 while read -r line; do :; done
 "#;
 
@@ -3423,8 +3454,19 @@ while read -r line; do :; done
                 matches!(payload, AgentStreamPayload::Update { update } if update["_meta"]["zz"]["side"] == true)
             );
             commands.send(verb("/steer left")).await.expect("steer");
-            assert_eq!(next_text().await.0, "/steer left");
-            assert_eq!(next_text().await.0, "Nothing is running to steer.");
+            let (steered, payload) = next_text().await;
+            assert_eq!(steered, "left");
+            assert!(
+                matches!(payload, AgentStreamPayload::Update { update } if update["sessionUpdate"] == "user_message_chunk")
+            );
+            assert_eq!(
+                until(&event_rx, |payload| matches!(
+                    payload,
+                    AgentStreamPayload::Activity { .. } | AgentStreamPayload::PaneFailed { .. }
+                ))
+                .await,
+                AgentStreamPayload::Activity { busy: true }
+            );
             commands.send(verb("/what")).await.expect("unknown");
             assert_eq!(next_text().await.0, "/what");
             assert_eq!(next_text().await.0, VERB_HELP);
