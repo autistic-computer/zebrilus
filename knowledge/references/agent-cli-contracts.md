@@ -90,6 +90,13 @@ it zz cancels instead of closing; Cursor has never offered it). Cursor must stil
 before its first session. Also: `agy acp --help` must contain the text `agy acp`, which is how zz
 tells a new enough `agy` from an old one (`agent/agy.rs`).
 
+**Latest versions for Settings.** Each must print a version, and the Cursor one must work from an
+ssh session with the keychain locked:
+
+```bash
+curl -fsSL https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json | jq -r .version; grok update --check --json | jq -r .latestVersion; CURSOR_AGENT_CLI_ASSUME_SSH=0 cursor-agent about --format json | jq -r .latestVersion
+```
+
 **ACP TUI flags for flip-agent.** `agy --help` must list `--conversation`, `--model`, `--effort`;
 `grok --help` must list `--resume`, `--model`, `--effort`.
 
@@ -184,6 +191,7 @@ Driver: `agent/agy.rs` on the shared ACP runtime (`dialect.rs`, `runtime.rs`).
 | Mode ids `default`, `accept-edits`, `auto`, `plan` | `agent_settings.rs` | Wrong risk badge on the mode | None |
 | The TUI keeps `…/conversations/<uuid>.db` open | `cli_session.rs` | Flip from the TUI opens a fresh chat | Test |
 | The signed-out error starts with `Authentication required` | `dialect.rs` | The raw error shows instead of the sign-in hint. Not confirmed that agy sends this text | Grok-shaped test |
+| The latest release is `version` in `<updater>/manifests/<os>_<arch>.json` (`darwin`, `linux`, `windows`; `amd64`, `arm64`), the manifest agy's updater and install script read | `daemon/providers.rs` | Settings shows the installed version with no check and no Update | Test |
 
 ## Grok Build
 
@@ -197,6 +205,7 @@ Driver: `agent/grok.rs` on the shared ACP runtime.
 | `$GROK_HOME/sessions/*/<uuid>/summary.json` keys `generated_title`, `session_summary`, `current_model_id`, `reasoning_effort` | `grok.rs`, `cli_session.rs` | Untitled resumed chats; flip opens on the wrong model | None |
 | `$GROK_HOME/active_sessions.json`, an array of `{session_id, pid}` | `cli_session.rs` | Flip from the TUI opens a fresh chat | Test |
 | The signed-out error starts with `Authentication required` | `dialect.rs` | Raw error instead of the sign-in hint | Test |
+| `grok update --check --json` prints `latestVersion` | `daemon/providers.rs` | Settings shows the installed version with no check and no Update | Test |
 
 ## Cursor
 
@@ -209,6 +218,8 @@ Driver: `agent/cursor.rs` on the shared ACP runtime. Cursor has no flip.
 | Mode option `mode` with `agent`, `plan`, `ask`; `~/.cursor/cli-config.json` `approvalMode` | `cursor.rs`, `dialect.rs` | No "Run everything" choice, wrong badges | Mechanism tested, values not |
 | `~/.cursor/acp-sessions/<id>/meta.json` key `title` | `cursor.rs` | Untitled resumed chats | None |
 | `cursor/ask_question` and `cursor/create_plan` get "method not found" | `runtime.rs` | Unknown: what Cursor does then has not been seen | None |
+| `cursor-agent about --format json` prints `latestVersion` | `daemon/providers.rs` | Settings shows the installed version with no check and no Update | Test |
+| `CURSOR_AGENT_CLI_ASSUME_SSH=0` skips the keychain probe every command runs first when `SSH_CONNECTION`, `SSH_CLIENT` or `SSH_TTY` is set | `daemon/providers.rs` | From a daemon started over ssh with the keychain locked, the version, the latest check and Update all exit 1 with "Your macOS login keychain is locked" | Test fakes the probe |
 
 ## Every ACP provider
 

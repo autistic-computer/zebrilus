@@ -31,6 +31,8 @@ const CODEX_INSTALL: &str = "curl -fsSL https://chatgpt.com/codex/install.sh | s
 const ANTIGRAVITY_INSTALL: &str = "curl -fsSL https://antigravity.google/cli/install.sh | bash";
 const GROK_INSTALL: &str = "curl -fsSL https://x.ai/cli/install.sh | bash";
 const CURSOR_INSTALL: &str = "curl -fsS https://cursor.com/install | bash";
+const ANTIGRAVITY_MANIFESTS: &str =
+    "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests";
 
 #[derive(Default)]
 pub(super) struct Providers {
@@ -611,29 +613,51 @@ fn fetch_latest(
     found: Option<&Found>,
     search: Option<&OsString>,
 ) -> Option<String> {
-    let url = match provider {
-        AgentProvider::ClaudeCode => format!(
+    let curl = |url: &str| {
+        let mut command = Command::new("curl");
+        command.args(["-fsSL", "--max-time", "10", url]);
+        command
+    };
+    let own = |args: [&str; 3]| {
+        let mut command = Command::new(&found?.path);
+        command.args(args);
+        Some(command)
+    };
+    let mut command = match provider {
+        AgentProvider::ClaudeCode => curl(&format!(
             "https://downloads.claude.ai/claude-code-releases/{}",
             claude_channel(found)
-        ),
-        AgentProvider::Codex => "https://registry.npmjs.org/@openai%2fcodex/latest".to_owned(),
-        AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => return None,
+        )),
+        AgentProvider::Codex => curl("https://registry.npmjs.org/@openai%2fcodex/latest"),
+        AgentProvider::Antigravity => curl(&format!(
+            "{ANTIGRAVITY_MANIFESTS}/{}_{}.json",
+            match std::env::consts::OS {
+                "macos" => "darwin",
+                os => os,
+            },
+            match std::env::consts::ARCH {
+                "x86_64" => "amd64",
+                "aarch64" => "arm64",
+                arch => arch,
+            },
+        )),
+        AgentProvider::Grok => own(["update", "--check", "--json"])?,
+        AgentProvider::Cursor => own(["about", "--format", "json"])?,
     };
-    let mut command = Command::new("curl");
-    command.args(["-fsSL", "--max-time", "10", &url]);
     prepare(&mut command, search, None);
     let mut body = String::new();
     run(command, LATEST_TIMEOUT, |line| body.push_str(line)).ok()?;
-    let version = match provider {
-        AgentProvider::ClaudeCode => body.trim().to_owned(),
-        AgentProvider::Codex => serde_json::from_str::<serde_json::Value>(&body)
-            .ok()?
-            .get("version")?
-            .as_str()?
-            .to_owned(),
-        AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => return None,
+    let field = match provider {
+        AgentProvider::ClaudeCode => return parse_version(body.trim()),
+        AgentProvider::Codex | AgentProvider::Antigravity => "version",
+        AgentProvider::Grok | AgentProvider::Cursor => "latestVersion",
     };
-    parse_version(&version)
+    parse_version(
+        serde_json::from_str::<serde_json::Value>(&body)
+            .ok()?
+            .get(field)?
+            .as_str()?,
+    )
 }
 
 fn task_command(
@@ -702,6 +726,7 @@ pub(super) fn prepare(command: &mut Command, search: Option<&OsString>, first: O
     command
         .env("NONINTERACTIVE", "1")
         .env("HOMEBREW_NO_ENV_HINTS", "1")
+        .env("CURSOR_AGENT_CLI_ASSUME_SSH", "0")
         .env("NO_COLOR", "1")
         .env("TERM", "dumb")
         .stdin(Stdio::null());
@@ -1138,6 +1163,19 @@ mod tests {
                 fail = dir.path().join("fail").display(),
             ),
         );
+        script(&bin.join("agy"), "echo 1.5.13");
+        script(
+            &bin.join("grok"),
+            "case \"$1\" in\n--version) echo 'grok 1.0.92 (b06756fd6256) [stable]' ;;\n\
+             update) echo '{\"currentVersion\":\"1.0.92\",\"latestVersion\":\"1.0.92\",\
+             \"updateAvailable\":false,\"error\":null}' ;;\nesac",
+        );
+        script(
+            &bin.join("cursor-agent"),
+            "[ \"$CURSOR_AGENT_CLI_ASSUME_SSH\" = 0 ] || { echo 'Error: Your macOS login keychain is locked.' >&2; exit 1; }\n\
+             case \"$1\" in\n--version) echo 2026.11.19-f005e9d ;;\n\
+             about) printf '{\\n  \"cliVersion\": \"2026.11.19-f005e9d\",\\n  \"latestStatus\": \"update_available\",\\n  \"latestVersion\": \"2026.11.20-0a1b2c3\"\\n}\\n' ;;\nesac",
+        );
         let installer = dir.path().join("install-codex.sh");
         fs::write(
             &installer,
@@ -1153,6 +1191,7 @@ mod tests {
                 "for url; do :; done\ncase \"$url\" in\n\
                  *claude-code-releases/latest) echo 2.1.309 ;;\n\
                  *registry.npmjs.org*) echo '{{\"name\":\"@openai/codex\",\"version\":\"0.164.0\"}}' ;;\n\
+                 *auto-updater*/manifests/*_*.json) printf '{{\\n  \"version\": \"1.5.13\",\\n  \"url\": \"https://example.invalid/cli.tar.gz\"\\n}}\\n' ;;\n\
                  *codex/install.sh) cat {installer} ;;\n*) exit 22 ;;\nesac",
                 installer = installer.display(),
             ),
@@ -1189,6 +1228,23 @@ mod tests {
         let codex = report.provider(AgentProvider::Codex).unwrap();
         assert!(!codex.installed());
         assert_eq!(codex.latest.as_deref(), Some("0.164.0"));
+        let versions = |provider| {
+            let status = report.provider(provider).unwrap();
+            (status.version.as_deref(), status.latest.as_deref())
+        };
+        assert_eq!(
+            versions(AgentProvider::Antigravity),
+            (Some("1.5.13"), Some("1.5.13"))
+        );
+        assert_eq!(
+            versions(AgentProvider::Grok),
+            (Some("1.0.92"), Some("1.0.92"))
+        );
+        assert_eq!(
+            versions(AgentProvider::Cursor),
+            (Some("2026.11.19-f005e9d"), Some("2026.11.20-0a1b2c3"))
+        );
+        assert!(report.provider(AgentProvider::Cursor).unwrap().outdated());
 
         run(&["-u", "claude-code"]);
         let (report, seen) = next_report(&mailbox, |report| {

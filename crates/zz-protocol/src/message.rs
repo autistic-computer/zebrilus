@@ -24,7 +24,7 @@ use crate::{
 };
 
 pub const PROTOCOL_VERSION: u16 = 125;
-pub const REVISION: u32 = 6;
+pub const REVISION: u32 = 7;
 pub const MIN_DAEMON_REVISION: u32 = 1;
 pub const MIN_CLIENT_REVISION: u32 = 1;
 pub const NEW_SESSION_ATTACH_CAPABILITY: &str = "new-session-attach-v1";

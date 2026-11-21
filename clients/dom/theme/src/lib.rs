@@ -217,7 +217,6 @@ fn home_relative(path: &str) -> String {
 
 fn provider_row(status: &ProviderStatus, checking: bool) -> Value {
     let installed = status.installed();
-    let stale = status.outdated() || status.latest.is_none();
     let version = match (&status.version, &status.latest) {
         (Some(version), Some(latest)) if status.outdated() => format!("{version} → {latest}"),
         (Some(version), _) => version.clone(),
@@ -229,7 +228,7 @@ fn provider_row(status: &ProviderStatus, checking: bool) -> Value {
         Some(
             json!({ "label": if installed { "Updating" } else { "Installing" }, "disabled": true }),
         )
-    } else if installed && !stale {
+    } else if installed && !status.outdated() {
         None
     } else if let Some(manual) = &status.manual {
         manual
@@ -244,7 +243,7 @@ fn provider_row(status: &ProviderStatus, checking: bool) -> Value {
         }))
     };
     let mut lines = Vec::new();
-    if let Some(manual) = status.manual.as_ref().filter(|_| stale) {
+    if let Some(manual) = status.manual.as_ref().filter(|_| status.outdated()) {
         match &manual.command {
             Some(command) => {
                 lines.push(json!({ "text": format!("Installed by {}. Update it with:", manual.owner), "tone": "muted" }));
@@ -275,7 +274,7 @@ fn provider_row(status: &ProviderStatus, checking: bool) -> Value {
         "icon": icon,
         "description": status.path.as_deref().map_or_else(|| "Not installed".to_owned(), home_relative),
         "version": version,
-        "check": installed && !status.outdated() && status.latest.is_some(),
+        "check": status.version.is_some() && status.latest.is_some() && !status.outdated(),
         "action": action,
         "lines": lines,
     })

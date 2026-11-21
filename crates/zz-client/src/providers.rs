@@ -33,11 +33,6 @@ pub enum ProviderAction {
 }
 
 #[must_use]
-pub fn stale(status: &ProviderStatus) -> bool {
-    status.outdated() || status.latest.is_none()
-}
-
-#[must_use]
 pub fn home_relative(path: &str) -> String {
     ["/Users/", "/home/"]
         .iter()
@@ -70,7 +65,7 @@ pub fn version_text(status: &ProviderStatus) -> String {
 
 #[must_use]
 pub fn version_current(status: &ProviderStatus) -> bool {
-    status.installed() && !status.outdated() && status.latest.is_some()
+    status.version.is_some() && status.latest.is_some() && !status.outdated()
 }
 
 #[must_use]
@@ -81,7 +76,7 @@ pub fn provider_action(status: &ProviderStatus, checking: bool) -> Option<Provid
             label: if installed { "Updating" } else { "Installing" },
         });
     }
-    if installed && !stale(status) {
+    if installed && !status.outdated() {
         return None;
     }
     if let Some(manual) = &status.manual {
@@ -99,7 +94,7 @@ pub fn provider_action(status: &ProviderStatus, checking: bool) -> Option<Provid
 #[must_use]
 pub fn provider_notes(status: &ProviderStatus) -> Vec<(String, NoteTone)> {
     let mut notes = Vec::new();
-    if let Some(manual) = status.manual.as_ref().filter(|_| stale(status)) {
+    if let Some(manual) = status.manual.as_ref().filter(|_| status.outdated()) {
         match &manual.command {
             Some(command) => {
                 notes.push((
@@ -135,4 +130,34 @@ pub fn provider_rows(report: &ProvidersReport) -> Vec<ProviderStatus> {
                 .unwrap_or_else(|| ProviderStatus::new(provider))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_known_newer_release_offers_an_update() {
+        let mut grok = ProviderStatus::new(AgentProvider::Grok);
+        grok.path = Some("/Users/me/.local/bin/grok".to_owned());
+        grok.version = Some("1.0.92".to_owned());
+        assert_eq!(provider_action(&grok, false), None);
+        assert!(!version_current(&grok));
+        grok.latest = Some("1.0.92".to_owned());
+        assert_eq!(provider_action(&grok, true), None);
+        assert!(version_current(&grok));
+        grok.latest = Some("1.0.93".to_owned());
+        assert_eq!(
+            provider_action(&grok, false),
+            Some(ProviderAction::Update {
+                label: "Update",
+                primary: true,
+                disabled: false,
+            })
+        );
+        grok.version = None;
+        assert_eq!(provider_action(&grok, false), None);
+        assert!(!version_current(&grok));
+        assert_eq!(version_text(&grok), "Unknown version");
+    }
 }

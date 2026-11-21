@@ -620,9 +620,9 @@ stops with it.
 **Not there.** Accounts: agy documents no variable for its home, so `--account`, `agent-account`
 and `agent-accounts --add agy` refuse, and agy has no rows in the account list or the limits. The
 sign-in the daemon drives: sign in by running `agy`. Forks: `--fork` logs and starts a new chat.
-The latest version: Settings shows the installed one, Update runs `agy update` and Install runs
-the vendor's install script. The command is not configurable: there is no
-`agent-antigravity-command`.
+The command is not configurable: there is no `agent-antigravity-command`. Settings reads the latest
+version from the manifest agy's own updater reads, Update runs `agy update` and Install runs the
+vendor's install script.
 
 # Grok
 
@@ -675,9 +675,9 @@ it never refuses the flip.
 
 **Not there.** Context use (grok sends no `usage_update`), accounts (`--account`, `agent-account`,
 `agent-accounts --add grok` refuse, though `GROK_HOME` would allow them; the clients offer no
-Add account for a provider where `AgentProvider::accounts` is false), the sign-in the daemon drives (run `grok login`), forks, and the
-latest version (Update runs `grok update`, Install the vendor's script). The command is not
-configurable.
+Add account for a provider where `AgentProvider::accounts` is false), the sign-in the daemon drives (run `grok login`), and forks.
+The command is not configurable. Settings reads the latest version from `grok update --check
+--json`, Update runs `grok update` and Install the vendor's script.
 
 **Seen working** (2026-11-20, grok 1.0.89): a turn with tool calls, the title, `--model` and
 `--effort`, chat to TUI, a TUI with an open session to a chat, a TUI given `--resume` to a chat
@@ -733,9 +733,13 @@ answers `Session not found` for a CLI chat. So `flip-agent` refuses a Cursor cha
 `cursor-agent` is not taken for an agent.
 
 **Not there.** Usage (the CLI gives the plan's name and no numbers, and Cursor sends no
-`usage_update`), accounts, the sign-in the daemon drives, forks, the latest version, and answers to
+`usage_update`), accounts, the sign-in the daemon drives, forks, and answers to
 Cursor's own blocking requests (`cursor/ask_question`, `cursor/create_plan`), which the runtime
-refuses as unknown methods.
+refuses as unknown methods. Settings reads the latest version from `cursor-agent about --format
+json`, Update runs `cursor-agent update` and Install the vendor's script. The daemon runs those
+with `CURSOR_AGENT_CLI_ASSUME_SSH=0`: a daemon started over ssh carries `SSH_CONNECTION`, and with
+it set every `cursor-agent` command first probes the login keychain and exits 1 when it is locked,
+`--version` included.
 
 **Seen working** (2026-11-20, CLI 2026.09.18): sign-in first, a turn with tool calls, the title,
 a bare `--model`, the mode and model options set over ACP, a resumed session with its history and
