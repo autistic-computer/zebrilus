@@ -113,6 +113,7 @@ pub struct InputState {
     pub(super) follow_cursor: bool,
     pub(super) reset_scroll: bool,
     pub(super) revealed_viewport: Option<ala::Size<Pixels>>,
+    pub(super) edit_menu_pending: bool,
 
     blink: Entity<BlinkCursor>,
     context_menu: Option<Entity<PopupMenu>>,
@@ -181,6 +182,7 @@ impl InputState {
             follow_cursor: false,
             reset_scroll: false,
             revealed_viewport: None,
+            edit_menu_pending: false,
             blink,
             context_menu: None,
             context_menu_position: Point::default(),
@@ -1363,6 +1365,28 @@ impl InputState {
         self.selecting = false;
     }
 
+    pub(super) fn on_long_press(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(layout) = self.last_layout.as_ref() else {
+            return;
+        };
+        let offset = layout.offset_for_position(position);
+        self.focus_handle.focus(window, cx);
+        window.request_virtual_keyboard();
+        if !self.selection.contains(&offset) {
+            self.move_to(offset, cx);
+        }
+    }
+
+    pub(super) fn show_edit_menu(&mut self, cx: &mut Context<Self>) {
+        self.edit_menu_pending = true;
+        cx.notify();
+    }
+
     pub(super) fn on_scroll_wheel(
         &mut self,
         event: &ScrollWheelEvent,
@@ -1404,6 +1428,7 @@ impl InputState {
 
     fn on_blur(&mut self, _: &mut Window, cx: &mut Context<Self>) {
         self.selecting = false;
+        self.edit_menu_pending = false;
         self.history.break_group();
         if self.menu_focus_round_trip {
             return;

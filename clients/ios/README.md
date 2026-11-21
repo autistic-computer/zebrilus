@@ -393,6 +393,8 @@ being composed, hardware keys go to the input method first.
   and Select All. On iPad, letting go of a selection made with a trackpad or mouse also
   copies it, as on the desktop, unless the session's `set-clipboard` is `off`. A long-press
   selection leaves the clipboard alone, so Paste in its menu pastes what you copied.
+- Long-press a text field to put the caret there and open the same edit menu, so Paste works
+  with only the on-screen keyboard.
 - Ctrl-V with an image on the clipboard uploads the image to the pane instead of sending
   Ctrl-V. Text pastes over 4 MiB are refused with a warning.
 - Ctrl-= and Ctrl-- on a hardware keyboard step the Terminal font scale setting by 10%

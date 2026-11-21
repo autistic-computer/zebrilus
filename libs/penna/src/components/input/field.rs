@@ -1,7 +1,8 @@
 use ala::{
-    AnyElement, App, Div, ElementId, Entity, InteractiveElement, IntoElement, MouseButton,
-    ParentElement as _, Pixels, RenderOnce, Role, SharedString, StatefulInteractiveElement,
-    StyleRefinement, Styled, TextAlign, Window, div, prelude::FluentBuilder as _, px, relative,
+    AnyElement, App, Div, ElementId, Entity, HitboxBehavior, InteractiveElement, IntoElement,
+    LongPressEvent, MouseButton, ParentElement as _, Pixels, RenderOnce, Role, SharedString,
+    StatefulInteractiveElement, StyleRefinement, Styled, TextAlign, TouchPhase, Window, canvas,
+    div, prelude::FluentBuilder as _, px, relative,
 };
 
 use crate::{
@@ -305,6 +306,38 @@ impl Input {
         element.h(size.control_h())
     }
 
+    fn long_press(state: &Entity<InputState>) -> impl IntoElement {
+        let state = state.clone();
+        canvas(
+            |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
+            move |_, hitbox, window, _| {
+                window.on_mouse_event(move |event: &LongPressEvent, phase, window, cx| {
+                    if !phase.bubble() {
+                        return;
+                    }
+                    match event.phase {
+                        TouchPhase::Started
+                            if !window.default_prevented()
+                                && hitbox.is_hovered_at(event.start_position, window) =>
+                        {
+                            window.prevent_default();
+                            window.capture_long_press(&state);
+                            state.update(cx, |state, cx| {
+                                state.on_long_press(event.start_position, window, cx);
+                            });
+                        }
+                        TouchPhase::Ended if window.has_long_press_capture(&state) => {
+                            state.update(cx, InputState::show_edit_menu);
+                        }
+                        _ => {}
+                    }
+                });
+            },
+        )
+        .absolute()
+        .inset_0()
+    }
+
     fn clear_button(
         state: &Entity<InputState>,
         author: Option<&SharedString>,
@@ -487,6 +520,7 @@ impl RenderOnce for Input {
                 window.listener_for(&self.state, InputState::on_mouse_down),
             )
             .on_scroll_wheel(window.listener_for(&self.state, InputState::on_scroll_wheel))
+            .when(editable, |this| this.child(Self::long_press(&self.state)))
             .children(prefix.map(|prefix| {
                 div()
                     .flex_none()

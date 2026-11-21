@@ -1,4 +1,4 @@
-use std::{ops::Range, rc::Rc};
+use std::{mem, ops::Range, rc::Rc};
 
 use ala::{
     App, AvailableSpace, Bounds, ContentMask, DispatchPhase, Element, ElementId,
@@ -525,6 +525,14 @@ impl Element for TextElement {
             ElementInputHandler::new(layout.bounds, self.state.clone()),
             cx,
         );
+        if window.visual_viewport_bounds() == window.target_visual_viewport_bounds()
+            && self
+                .state
+                .update(cx, |state, _| mem::take(&mut state.edit_menu_pending))
+        {
+            let caret = self.state.read(cx).selection().start;
+            window.show_edit_menu(layout.origin + layout.position_for_offset(caret));
+        }
 
         let caret_color = window.text_style().color;
         let selection_color = caret_color.wash();
