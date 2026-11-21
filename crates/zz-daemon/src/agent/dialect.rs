@@ -236,29 +236,14 @@ pub(crate) async fn run(
                 let _ = metered_tx.try_send(());
             }
             let chat = transcript.lock().payload(&payload);
-            let title = match &payload {
-                AgentStreamPayload::SessionReset { restoring } => {
-                    titled = false;
-                    (!restoring).then_some(None)
-                }
-                AgentStreamPayload::SessionReady { session_id, .. }
-                | AgentStreamPayload::SessionSwitched { session_id, .. }
-                    if !titled =>
-                {
-                    (dialect.stored_title)(session_id).map(Some)
-                }
-                _ => None,
-            };
+            let title = settled_title(&payload, &mut titled, dialect.stored_title);
             let payload = to_zz(payload, dialect, guard.as_ref().map(|guard| *guard.lock()));
             titled |= matches!(payload, AgentStreamPayload::TitleChanged { title: Some(_) });
             if events.send(payload).await.is_err() {
                 break;
             }
             if let Some(title) = title
-                && events
-                    .send(AgentStreamPayload::TitleChanged { title })
-                    .await
-                    .is_err()
+                && events.send(title).await.is_err()
             {
                 break;
             }
@@ -304,6 +289,27 @@ async fn send_chat(
         }
     }
     Ok(())
+}
+
+fn settled_title(
+    payload: &AgentStreamPayload,
+    titled: &mut bool,
+    stored_title: fn(&str) -> Option<String>,
+) -> Option<AgentStreamPayload> {
+    let title = match payload {
+        AgentStreamPayload::SessionReset { restoring } => {
+            *titled = false;
+            (!restoring).then_some(None)
+        }
+        AgentStreamPayload::SessionReady { session_id, .. } if !*titled => {
+            stored_title(session_id).map(Some)
+        }
+        AgentStreamPayload::SessionSwitched { session_id, .. } if !*titled => {
+            Some(stored_title(session_id))
+        }
+        _ => None,
+    };
+    title.map(|title| AgentStreamPayload::TitleChanged { title })
 }
 
 pub(crate) fn installed(path: Option<&str>, program: &str) -> Vec<PathBuf> {
@@ -710,5 +716,56 @@ mod tests {
         assert_eq!(modes[0]["currentValue"], "full-access");
         assert_eq!(modes[0]["options"][0]["value"], "full-access");
         assert_eq!(modes[0]["options"][1]["value"], "plan");
+    }
+
+    #[test]
+    fn a_new_chat_or_a_switch_shows_that_sessions_title_or_none() {
+        let stored = |session: &str| (session == "named").then(|| "Named".to_owned());
+        let ready = |session: &str| AgentStreamPayload::SessionReady {
+            session_id: session.to_owned(),
+            modes: None,
+            config_options: None,
+        };
+        let switched = |session: &str| AgentStreamPayload::SessionSwitched {
+            session_id: session.to_owned(),
+            cwd: PathBuf::from("/workspace"),
+            modes: None,
+            config_options: None,
+            replay: Vec::new(),
+        };
+        let reset = AgentStreamPayload::SessionReset { restoring: true };
+        let shown = |title: Option<&str>| {
+            Some(AgentStreamPayload::TitleChanged {
+                title: title.map(str::to_owned),
+            })
+        };
+        let mut named = false;
+        let mut sent = Vec::new();
+        for payload in [
+            &reset,
+            &ready("named"),
+            &reset,
+            &switched("fresh"),
+            &reset,
+            &switched("named"),
+        ] {
+            sent.push(settled_title(payload, &mut named, stored));
+        }
+        sent.push(settled_title(&ready("fresh"), &mut named, stored));
+        named = true;
+        sent.push(settled_title(&switched("fresh"), &mut named, stored));
+        assert_eq!(
+            sent,
+            [
+                None,
+                shown(Some("Named")),
+                None,
+                shown(None),
+                None,
+                shown(Some("Named")),
+                None,
+                None,
+            ]
+        );
     }
 }

@@ -4,7 +4,7 @@ title: Agent panes and the flip
 description: How a pane runs Claude Code, Codex, Antigravity, Grok or Cursor as a chat (PaneKind::Agent over the vendor drivers, Antigravity, Grok and Cursor over their own ACP servers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, reopening a chat another chat opened on its session (select-child-chat), what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, antigravity, grok, cursor, driver, stream]
-timestamp: 2026-11-20T00:00:00-03:00
+timestamp: 2026-11-21T00:00:00-03:00
 ---
 
 # Overview
@@ -645,7 +645,9 @@ the same for both:
 - **Effort, title, session list.** The effort rename, `session_info_update` to `TitleChanged`, and
   the session list kept to the folder asked for. Folders are compared resolved, so `/tmp/x` and
   `/private/tmp/x` are one, and a kept session carries the folder as it was asked for. A new
-  session (`SessionReset` that restores nothing) clears the title.
+  session (`SessionReset` that restores nothing) clears the title. A new chat or a switch
+  (`SessionSwitched`) takes the stored title of the session it lands on, or clears it, unless the
+  agent named that session while it loaded.
 - **A failed start.** `run_acp_agent` reports a `session/new` that fails as `PaneFailed` and keeps
   running, so the pane can still be told to sign in or to open again.
 
