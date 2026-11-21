@@ -34066,13 +34066,15 @@ impl Shared {
         });
     }
 
-    fn note_child_session(self: &Arc<Self>, pane: PaneId, session: &str) {
+    fn note_child_descriptor(self: &Arc<Self>, pane: PaneId) {
         let Some(host) = self.inner.lock().engine.agent_parent(pane) else {
             return;
         };
-        let (Some((provider, host_session)), Some(runtime)) =
-            (self.host_key(host), self.open_agent_runtime())
-        else {
+        let (Some((provider, host_session)), Some(agent), Some(runtime)) = (
+            self.host_key(host),
+            self.chat_descriptor(pane),
+            self.open_agent_runtime(),
+        ) else {
             return;
         };
         let Some(record) = runtime
@@ -34083,7 +34085,11 @@ impl Shared {
             return;
         };
         runtime.update_child(provider, &host_session, PaneId(record.pane), |record| {
-            record.session = Some(session.to_owned());
+            if agent.session_id.is_some() {
+                record.session = agent.session_id;
+            }
+            record.model = agent.model;
+            record.effort = agent.effort;
         });
     }
 
@@ -35121,19 +35127,31 @@ impl Shared {
                 })
                 .flatten()
         };
-        let adopted = state.session_id.clone().is_some_and(|session_id| {
-            self.inner
-                .lock()
-                .engine
-                .state
-                .update_agent(pane, |agent| agent.session_id = Some(session_id))
-                .unwrap_or(false)
-        });
+        let options =
+            serde_json::from_str::<serde_json::Value>(&state.config_options).unwrap_or_default();
+        let options = options.as_array().map(Vec::as_slice).unwrap_or_default();
+        let adopted = self
+            .inner
+            .lock()
+            .engine
+            .state
+            .update_agent(pane, |agent| {
+                if let Some(session_id) = &state.session_id {
+                    agent.session_id = Some(session_id.clone());
+                }
+                for (id, shown) in [("model", &mut agent.model), ("effort", &mut agent.effort)] {
+                    if let Some(option) = options.iter().find(|option| option["id"] == id) {
+                        *shown = option["currentValue"]
+                            .as_str()
+                            .filter(|value| !value.is_empty() && *value != "default")
+                            .map(str::to_owned);
+                    }
+                }
+            })
+            .unwrap_or(false);
         if adopted {
             self.publish_snapshot_state();
-            if let Some(session) = state.session_id.as_deref() {
-                self.note_child_session(pane, session);
-            }
+            self.note_child_descriptor(pane);
         }
         self.apply_agent_title(pane, state.title.as_deref());
         let subscribers = {
@@ -125124,6 +125142,59 @@ bind - split-window -v -c "#{pane_current_path}"
                         .to_owned()
                 )
             );
+        }
+
+        #[test]
+        fn a_reopened_chat_starts_on_the_model_and_effort_it_last_showed() {
+            let workspace = workspace(Behavior::Chunk);
+            let host = workspace.agent;
+            run_as(
+                &workspace,
+                ClientId(99),
+                Some(host),
+                "new-pane",
+                &[
+                    "-d", "--kind", "agent", "--model", "haiku", "--effort", "low", "claude",
+                ],
+            )
+            .expect("child chat");
+            let child = PaneId(2);
+            wait_until("the child's session in its record", || {
+                workspace
+                    .shared
+                    .child_record(host, child)
+                    .is_some_and(|record| record.session.as_deref() == Some("fixture-session"))
+            });
+            let _ = workspace.shared.apply_agent_state(
+                child,
+                AgentPaneWire {
+                    session_id: Some("fixture-session".to_owned()),
+                    config_options: serde_json::json!([
+                        { "id": "model", "currentValue": "opus" },
+                        { "id": "effort", "currentValue": "high" },
+                    ])
+                    .to_string(),
+                    ..AgentPaneWire::default()
+                },
+            );
+            let picks = |pane: PaneId| {
+                let spec = workspace.shared.agent_pane_spec(pane).expect("a chat");
+                (spec.model, spec.effort)
+            };
+            let shown = (Some("opus".to_owned()), Some("high".to_owned()));
+            assert_eq!(picks(child), shown);
+            run_as(&workspace, ClientId(97), None, "kill-pane", &["-t", "%2"]).expect("kill");
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(97),
+                    None,
+                    "select-child-chat",
+                    &["-t", "%1", "%2"],
+                ),
+                Ok("%3".to_owned())
+            );
+            assert_eq!(picks(PaneId(3)), shown);
         }
 
         #[test]
