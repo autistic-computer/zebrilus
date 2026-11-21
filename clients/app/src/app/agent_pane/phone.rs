@@ -183,6 +183,44 @@ impl AgentPane {
         cx.notify();
     }
 
+    fn loop_sheet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        static LOOPING: std::sync::Once = std::sync::Once::new();
+        let Some(period) = std::env::var("ZZ_ALA_SHEET_LOOP")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .map(std::time::Duration::from_millis)
+        else {
+            return;
+        };
+        LOOPING.call_once(|| {
+            cx.spawn_in(window, async move |this, cx| {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs(8))
+                    .await;
+                loop {
+                    cx.background_executor().timer(period).await;
+                    let at = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0.0, |time| time.as_secs_f64() * 1000.0);
+                    let toggled = this.update_in(cx, |this, window, cx| {
+                        if this.sheet.is_none() {
+                            eprintln!("[zz-sheet] open at={at:.1}");
+                            this.open_sheet(ChatSheet::Plus(PlusPage::Root), window, cx);
+                        } else {
+                            eprintln!("[zz-sheet] close at={at:.1}");
+                            close_sheet(CHAT_SHEET, cx);
+                            cx.notify();
+                        }
+                    });
+                    if toggled.is_err() {
+                        break;
+                    }
+                }
+            })
+            .detach();
+        });
+    }
+
     fn mention_turned(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.mention_level = self
             .mention
@@ -783,6 +821,7 @@ impl AgentPane {
         let start = empty.as_ref().is_some_and(|(_, start)| *start);
         if start {
             self.request_resume(cx);
+            self.loop_sheet(window, cx);
         }
         let folder = folder_name(&self.cwd(cx));
         let open = cx.entity().downgrade();

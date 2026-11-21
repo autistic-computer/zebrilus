@@ -200,7 +200,7 @@ PY
         echo "installed; the phone is locked, so open zz dev from the home screen"
         exit 0
     fi
-    launch_env="$(ZZ_ALA_ENDPOINT="$endpoint" python3 -c 'import json, os; print(json.dumps({key: os.environ[key] for key in ("ZZ_ALA_ENDPOINT", "ZZ_ALA_SESSION", "ALA_FRAME_LOG", "ALA_BENCH", "ZZ_ALA_GLASS", "ALA_FRAME_STATS") if os.environ.get(key)}))')"
+    launch_env="$(ZZ_ALA_ENDPOINT="$endpoint" python3 -c 'import json, os; print(json.dumps({key: os.environ[key] for key in ("ZZ_ALA_ENDPOINT", "ZZ_ALA_SESSION", "ALA_FRAME_LOG", "ALA_BENCH", "ZZ_ALA_GLASS", "ALA_FRAME_STATS", "ZZ_ALA_SHEET_LOOP", "ALA_GPU_TIMES", "ALA_RETAIN_SHADER_LAYERS") if os.environ.get(key)}))')"
     echo "launching on $udid with endpoint $endpoint"
     exec xcrun devicectl device process launch --device "$udid" --terminate-existing --console \
         --environment-variables "$launch_env" "$bundle_id"
@@ -236,7 +236,7 @@ unset SIMCTL_CHILD_ZZ_ALA_ENDPOINT
 if [[ -n "$endpoint" ]]; then
     export SIMCTL_CHILD_ZZ_ALA_ENDPOINT="$endpoint"
 fi
-for key in ZZ_ALA_SESSION ALA_FRAME_LOG ALA_BENCH ZZ_ALA_GLASS ALA_FRAME_STATS; do
+for key in ZZ_ALA_SESSION ALA_FRAME_LOG ALA_BENCH ZZ_ALA_GLASS ALA_FRAME_STATS ZZ_ALA_SHEET_LOOP ALA_GPU_TIMES ALA_RETAIN_SHADER_LAYERS; do
     unset "SIMCTL_CHILD_$key"
     if [[ -n "${!key:-}" ]]; then
         export "SIMCTL_CHILD_$key=${!key}"

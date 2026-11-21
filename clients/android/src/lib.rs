@@ -59,9 +59,6 @@ fn main() {
         theme.font_family = "Inter Variable".into();
         theme.mono_font_family = "Lilex".into();
         theme.radius = px(6.);
-        theme.glass = std::env::var("ZZ_ALA_GLASS")
-            .ok()
-            .and_then(|name| ala::GlassMaterial::preset(&name));
         cx.set_global(UiZoom(1.0));
         open_workspace(cx);
         cx.spawn(async move |cx| {

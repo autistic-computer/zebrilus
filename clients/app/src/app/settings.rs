@@ -170,6 +170,19 @@ fn system_accessibility() -> SystemAccessibility {
     }
 }
 
+fn glass_from_env() -> Option<penna::foundation::interface_theme::Glass> {
+    use penna::foundation::interface_theme::{Glass, GlassPair};
+    let name = std::env::var("ZZ_ALA_GLASS").ok()?;
+    if name == "none" {
+        return Some(Glass::None);
+    }
+    let material = ala::GlassMaterial::preset(&name)?;
+    Some(Glass::Material(Box::new(GlassPair {
+        light: material,
+        dark: material,
+    })))
+}
+
 impl Preferences {
     fn apply_pane_frame(&self, cx: &mut App) {
         Theme::global_mut(cx).pane_margin = self.margin();
@@ -211,6 +224,9 @@ impl Preferences {
         let mut shown = self.appearance.clone();
         if system.reduce_transparency {
             shown.overrides.glass = Some(penna::foundation::interface_theme::Glass::None);
+        }
+        if let Some(glass) = glass_from_env() {
+            shown.overrides.glass = Some(glass);
         }
         shown.set_theme_mode(mode);
         shown.contrast =

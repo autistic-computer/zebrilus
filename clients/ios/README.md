@@ -462,7 +462,12 @@ Bench mode builds and installs the device app like `device` mode, creates a sess
 `iphone-bench` on the host's `zz-dev` (two panes with scrollback), launches the app three times
 against it (pager swipes, terminal flings, then 25 idle seconds), kills the session, and prints one
 `frames total` line per bench and the last idle link reports. `ZZ_BENCH_CYCLES` (default 16),
-`ZZ_BENCH_SESSION`, `ZZ_BENCH_CLI`, and `ZZ_BENCH_OUT` (log directory) adjust it. To bench an app
+`ZZ_BENCH_SESSION`, `ZZ_BENCH_CLI`, and `ZZ_BENCH_OUT` (log directory) adjust it.
+`ZZ_BENCH_KINDS` picks the runs (default `swipe scroll sheet idle`); `drawer` adds an agent window
+to the session and opens and closes the new chat's plus drawer over the sky every 1.5 s for 45 s,
+three times: with shader layer retention off (`before`), on (`after`), and on without glass
+(`after-noglass`). It prints, for the drawer opening, closing, open and closed, the frames drawn,
+how many of them ran the sky's shader, GPU time, frame interval and main-thread time per frame. To bench an app
 built elsewhere, such as a baseline, run `scripts/ios-bench.sh <udid> <app> <endpoint>`. In the
 output, `interval` is the time between new frames in milliseconds (8.33 at 120 Hz), `dropped`
 counts vsyncs that passed without a new frame inside a burst, `cpu` is the main-thread time of
@@ -476,8 +481,15 @@ terminal flings, slow 1.5 s terminal drags that hold still before letting go, ea
 fling back, or one terminal fling every 4 s, two toward older output and then three toward newer,
 from the display link. `ALA_BENCH=sheet` opens the All bindings sheet on attach and flings
 its list down and back, which with `ZZ_ALA_GLASS` set measures content moving under glass. `ALA_FRAME_STATS=frames.jsonl` writes ala's per-frame JSON stats into the app's
-`tmp` directory. `ZZ_ALA_GLASS=frosted` (or `regular`, `clear`, `bubble`, `smoked`) turns
-floating surfaces into liquid glass. Device and simulator launches forward these variables and `ZZ_ALA_SESSION`;
+`tmp` directory. `ZZ_ALA_GLASS=frosted` (or `regular`, `clear`, `bubble`, `smoked`) draws
+every glass surface in that material, and `ZZ_ALA_GLASS=none` turns glass off.
+`ALA_GPU_TIMES=1` prints each frame's GPU time from timestamp queries, or, where the GPU has none
+(the simulator), the time from submitting a frame until the GPU finishes it, with the app waiting
+for every frame; each line also counts the custom shaders that frame ran. A frame with a single
+render pass reports `NaN`: Apple GPUs return its start and end samples out of order.
+`ALA_RETAIN_SHADER_LAYERS=0` draws retained shader layers, such as the sky, again on every frame.
+`ZZ_ALA_SHEET_LOOP=<ms>` opens and closes the plus drawer of an empty agent chat at that period,
+eight seconds after it shows. Device and simulator launches forward these variables and `ZZ_ALA_SESSION`;
 `ZZ_ALA_CARGO_PROFILE=testflight` builds the device app with line tables for Instruments.
 
 ## Settings
