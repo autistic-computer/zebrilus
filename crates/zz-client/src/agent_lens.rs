@@ -594,8 +594,14 @@ pub fn agent_empty(
     let agent = provider.map_or("the agent", AgentProvider::label);
     let text = if connected {
         match (phase, settling) {
-            (AgentConnectionPhase::Starting, Some(AgentSettling::Restoring)) => {
-                format!("Resuming {agent}’s session…")
+            (
+                AgentConnectionPhase::Starting | AgentConnectionPhase::Ready,
+                Some(AgentSettling::Restoring),
+            ) => {
+                return AgentEmpty::Message {
+                    text: format!("Resuming {agent}’s session…"),
+                    busy: true,
+                };
             }
             (AgentConnectionPhase::Running, Some(AgentSettling::Cancelling)) => {
                 "Cancelling the current turn…".to_owned()

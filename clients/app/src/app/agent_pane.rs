@@ -1207,6 +1207,14 @@ impl AgentPane {
         cx.notify();
     }
 
+    fn settling(&self, cx: &App) -> Option<zz_client::agent_lens::AgentSettling> {
+        if self.connection.read(cx).agent_loading(self.pane) {
+            Some(zz_client::agent_lens::AgentSettling::Restoring)
+        } else {
+            self.transcript.lens.settling()
+        }
+    }
+
     fn synchronize(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let stream = self.connection.read(cx).agent_stream(self.pane);
         if stream != self.stream {
@@ -2089,12 +2097,7 @@ impl Render for AgentPane {
             .pane_snapshot(cx)
             .and_then(zz_client::window_summary::pane_agent);
         let empty = (!use_chat).then(|| {
-            match agent_empty(
-                connected,
-                &state.phase,
-                provider,
-                self.transcript.lens.settling(),
-            ) {
+            match agent_empty(connected, &state.phase, provider, self.settling(cx)) {
                 AgentEmpty::Welcome(provider) if writable && !watch_only => {
                     self.render_empty_chat(provider, cx)
                 }

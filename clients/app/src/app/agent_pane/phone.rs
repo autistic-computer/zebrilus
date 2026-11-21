@@ -799,12 +799,7 @@ impl AgentPane {
         let provider = self.provider(cx);
         let connected = self.connection.read(cx).connected;
         let empty = (!use_chat).then(|| {
-            let kind = agent_empty(
-                connected,
-                &state.phase,
-                provider,
-                self.transcript.lens.settling(),
-            );
+            let kind = agent_empty(connected, &state.phase, provider, self.settling(cx));
             let start = matches!(kind, AgentEmpty::Welcome(_)) && writable && !watch_only;
             let empty = match kind {
                 AgentEmpty::Welcome(provider) => PhoneEmpty::new(

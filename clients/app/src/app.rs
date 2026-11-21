@@ -162,6 +162,7 @@ pub struct AppShell {
     agents: HashMap<PaneId, Entity<AgentPane>>,
     chats: Rc<RefCell<HashMap<PaneId, ala::WeakEntity<AgentPane>>>>,
     parked_chats: HashMap<ala::EntityId, ParkedChats>,
+    drawn_agents: BTreeSet<PaneId>,
     views: HashMap<PaneId, Entity<view_pane::ViewPane>>,
     editors: HashMap<PaneId, Entity<editor_pane::EditorPane>>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -554,6 +555,7 @@ impl AppShell {
             agents: HashMap::new(),
             chats,
             parked_chats: HashMap::new(),
+            drawn_agents: BTreeSet::new(),
             views: HashMap::new(),
             editors: HashMap::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -1670,6 +1672,7 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<AgentPane> {
+        self.drawn_agents.insert(pane);
         self.agents
             .entry(pane)
             .or_insert_with(|| {
@@ -1742,9 +1745,11 @@ impl AppShell {
                     _ => None,
                 })
         });
-        let origin = descriptor
-            .origin
-            .and_then(|origin| self.agents.get(&origin).cloned());
+        let origin = descriptor.origin.and_then(|origin| {
+            let chat = self.agents.get(&origin).cloned()?;
+            self.drawn_agents.insert(origin);
+            Some(chat)
+        });
         let view = self.view_entity(pane, descriptor, cx);
         if view.update(cx, |view, cx| {
             view.synchronize(descriptor, vendor, origin, cx)
@@ -3802,6 +3807,9 @@ impl Render for AppShell {
         } else {
             self.compact_shell(terminal_overlays, overlays, window, cx)
         };
+        let drawn = std::mem::take(&mut self.drawn_agents);
+        self.connection
+            .update(cx, |connection, cx| connection.show_agents(drawn, cx));
         #[cfg(any(target_os = "ios", target_os = "android", target_family = "wasm"))]
         let unobstructed = {
             let connection = self.connection.read(cx);

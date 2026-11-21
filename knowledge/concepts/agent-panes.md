@@ -1338,14 +1338,22 @@ The full delivery contract is in the
   reattaching client gets it for every agent pane there (`send_agent_resync`, `session_agent_panes`).
 - **The phone and web clients** (`clients/app/src/connection.rs`) keep a chat's buffer and
   position for as long as the pane stays a chat, across host and session switches. A chat is live
-  while its connection is the host on screen and the pane is in the attached session; any other
-  chat is paused: its updates are dropped and its position stays where it was. When it turns live
+  while its connection is the host on screen, the pane is in the attached session and the shell
+  drew its chat view in the last frame (`AppShell::drawn_agents`, handed over with
+  `Connection::show_agents`; a view pane's origin chat counts as drawn): one chat on the phone,
+  every chat in the window on wider layouts. Any other chat is paused: its updates are dropped
+  and its position stays where it was. So an attach asks only for the chats on screen, and
+  another chat of the session is fetched the first time it shows. Until its first items land the
+  chat reads Resuming the agent's session (`Connection::agent_loading`), not the empty new chat.
+  A chat that was never shown still gets its `AgentState` as part of the attached session, so its
+  face, marks, unseen dot and chimes do not need the replay. When it turns live
   again the client sends `AgentReplay` from its position plus one (`AgentCursor::resume_from`), so
   the daemon sends only what it missed. A daemon with `agent-unwatch-v1` is told with
-  `AgentUnwatch` when a chat pauses, so it stops sending that chat's updates while `AgentState`
-  keeps coming: the overview's working and waiting marks, the unseen dot and the done chime all
-  read `AgentState`, not the updates. A new chat and one that stopped being a chat start over
-  from 0. After a new hello the client keeps every position when the hello's `server_id` matches
+  `AgentUnwatch` when a chat pauses, and for every chat of the attached session that is not on
+  screen, and again for every chat it keeps after a new hello, so the daemon stops sending their
+  updates while `AgentState` keeps coming: the overview's working and waiting marks, the unseen
+  dot and the done chime all read `AgentState`, not the updates. A chat with no position yet and
+  one that stopped being a chat start over from 0. After a new hello the client keeps every position when the hello's `server_id` matches
   the one the positions came from and the daemon's revision is 8 or more; a daemon with the same
   `server_id` and an older revision keeps the list of chats it watches but not the positions, and a
   different `server_id` starts everything over. Each buffer carries a stream number

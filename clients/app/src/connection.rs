@@ -86,6 +86,7 @@ pub struct Connection {
     next_agent_stream: u64,
     watched_agents: BTreeSet<PaneId>,
     live_agents: BTreeSet<PaneId>,
+    shown_agents: BTreeSet<PaneId>,
     agent_epoch: Option<u64>,
     pub flips: zz_client::agent_flip::AgentFlips,
     terminal_images: crate::terminal_images::TerminalImages,
@@ -214,6 +215,7 @@ impl Connection {
             next_agent_stream: 0,
             watched_agents: BTreeSet::new(),
             live_agents: BTreeSet::new(),
+            shown_agents: BTreeSet::new(),
             agent_epoch: None,
             flips: zz_client::agent_flip::AgentFlips::default(),
             terminal_images: crate::terminal_images::TerminalImages::default(),
@@ -301,20 +303,33 @@ impl Connection {
         }
     }
 
-    fn watch_agent_panes(&mut self, cx: &mut Context<Self>) {
-        let attached = self.core.attached_session().filter(|_| !self.background);
-        let mut agents = BTreeSet::new();
-        let mut live = BTreeSet::new();
-        for session in &self.core.snapshot().sessions {
-            for (id, pane) in session.windows.iter().flat_map(|window| &window.panes) {
-                if matches!(pane.kind, PaneKindSnapshot::Agent(_)) {
-                    agents.insert(*id);
-                    if Some(session.id) == attached {
-                        live.insert(*id);
-                    }
-                }
-            }
+    pub fn show_agents(&mut self, shown: BTreeSet<PaneId>, cx: &mut Context<Self>) {
+        if shown != self.shown_agents {
+            self.shown_agents = shown;
+            self.refresh_live_agents(cx);
         }
+    }
+
+    #[must_use]
+    pub fn agent_loading(&self, pane: PaneId) -> bool {
+        self.agent_live(pane)
+            && self
+                .agent_cursors
+                .get(&pane)
+                .is_none_or(|cursor| cursor.last_seq == 0)
+    }
+
+    fn watch_agent_panes(&mut self, cx: &mut Context<Self>) {
+        let agents = self
+            .core
+            .snapshot()
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .flat_map(|window| &window.panes)
+            .filter(|(_, pane)| matches!(pane.kind, PaneKindSnapshot::Agent(_)))
+            .map(|(id, _)| *id)
+            .collect::<BTreeSet<_>>();
         let gone = self
             .watched_agents
             .difference(&agents)
@@ -324,24 +339,54 @@ impl Connection {
             self.watched_agents.remove(&pane);
             self.forget_agent_stream(pane);
         }
+        self.refresh_live_agents(cx);
+    }
+
+    fn refresh_live_agents(&mut self, cx: &mut Context<Self>) {
+        let attached = self.core.attached_session().filter(|_| !self.background);
+        let session_agents = self
+            .core
+            .snapshot()
+            .sessions
+            .iter()
+            .filter(|session| Some(session.id) == attached)
+            .flat_map(|session| &session.windows)
+            .flat_map(|window| &window.panes)
+            .filter(|(_, pane)| matches!(pane.kind, PaneKindSnapshot::Agent(_)))
+            .map(|(id, _)| *id)
+            .collect::<BTreeSet<_>>();
+        let live = session_agents
+            .intersection(&self.shown_agents)
+            .copied()
+            .collect::<BTreeSet<_>>();
         let woken = live
             .difference(&self.live_agents)
             .copied()
             .collect::<Vec<_>>();
-        let paused = self
+        let mut quiet = self
             .live_agents
             .difference(&live)
             .filter(|pane| self.watched_agents.contains(pane))
             .copied()
             .collect::<Vec<_>>();
+        if self.unwatches_agents() {
+            let unseen = session_agents
+                .difference(&live)
+                .filter(|pane| !self.watched_agents.contains(pane))
+                .copied()
+                .collect::<Vec<_>>();
+            self.watched_agents.extend(unseen.iter().copied());
+            quiet.extend(unseen);
+        }
         self.live_agents = live;
-        self.unwatch_agents(paused, cx);
+        self.unwatch_agents(quiet, cx);
         for pane in woken {
-            if self.watched_agents.insert(pane) {
+            self.watched_agents.insert(pane);
+            if self.agent_cursors.contains_key(&pane) {
+                self.resume_agent_stream(pane, cx);
+            } else {
                 self.forget_agent_stream(pane);
                 self.request_agent_replay(pane, cx);
-            } else {
-                self.resume_agent_stream(pane, cx);
             }
         }
     }
@@ -1548,13 +1593,12 @@ impl Connection {
                     );
                     #[cfg(any(target_os = "ios", target_os = "android"))]
                     let target = self.pending_session.take().unwrap_or(target);
+                    let watched = self.watched_agents.iter().copied().collect();
+                    self.unwatch_agents(watched, cx);
                     if self.background {
                         self.status = "Connected".into();
                         self.send(ProtocolMessage::Resync, cx);
-                        if self.unwatches_agents() {
-                            let watched = self.watched_agents.iter().copied().collect();
-                            self.unwatch_agents(watched, cx);
-                        } else {
+                        if !self.unwatches_agents() {
                             self.replay_agent_streams(cx);
                         }
                     } else if !self.attaching {
@@ -2955,6 +2999,7 @@ mod tests {
         connection.update(cx, |connection, cx| {
             connection.connected = true;
             connection.handle_message_for_test(attached(), cx);
+            connection.show_agents(std::collections::BTreeSet::from([pane]), cx);
             connection.handle_message_for_test(updates(1, 50), cx);
             assert_eq!(connection.agent_events[&pane].len(), 50);
             let stream = connection.agent_stream(pane);
@@ -3066,6 +3111,7 @@ mod tests {
                 },
                 cx,
             );
+            connection.show_agents(std::collections::BTreeSet::from([pane]), cx);
             for (index, frame) in items.chunks(6_000).enumerate() {
                 connection.handle_message_for_test(
                     ProtocolMessage::Event(Event {
@@ -3154,6 +3200,7 @@ mod tests {
         connection.update(cx, |connection, cx| {
             connection.handle_message_for_test(hello(7), cx);
             connection.handle_message_for_test(attached(), cx);
+            connection.show_agents(std::collections::BTreeSet::from([pane]), cx);
             connection.handle_message_for_test(
                 ProtocolMessage::Event(Event {
                     sequence: 1,
@@ -3174,6 +3221,75 @@ mod tests {
             connection.handle_message_for_test(attached(), cx);
             assert_eq!(replays(), [0, 51, 0]);
             assert!(!connection.agent_events.contains_key(&pane));
+        });
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[ala::test]
+    fn only_a_shown_chat_is_replayed_and_a_chat_shown_again_resumes(cx: &mut ala::TestAppContext) {
+        use std::collections::BTreeSet;
+
+        use ala::AppContext as _;
+        use zz_protocol::{
+            AgentDescriptor, AgentProvider, Event, EventPayload, PaneId, PaneKindSnapshot,
+            SessionId,
+        };
+
+        let [first, second, third] = [PaneId(1), PaneId(2), PaneId(3)];
+        let chat = PaneKindSnapshot::Agent(AgentDescriptor {
+            provider: AgentProvider::ClaudeCode,
+            ..AgentDescriptor::default()
+        });
+        let mut snapshot = single_pane_snapshot(1, first, chat);
+        let window = &mut snapshot.sessions[0].windows[0];
+        for pane in [second, third] {
+            let mut copy = window.panes[&first].clone();
+            copy.id = pane;
+            window.panes.insert(pane, copy);
+            window.pane_order.push(pane);
+        }
+        let connection = cx.new(super::Connection::new);
+        let sent = connection.update(cx, |connection, _| connection.record_input_for_test());
+        let replays = || {
+            sent.borrow()
+                .iter()
+                .filter_map(|message| match message {
+                    ProtocolMessage::AgentReplay { pane, from_seq } => Some((*pane, *from_seq)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        connection.update(cx, |connection, cx| {
+            connection.connected = true;
+            connection.handle_message_for_test(
+                ProtocolMessage::Attached {
+                    session: SessionId(1),
+                    snapshot,
+                    read_only: false,
+                    client_flags: String::new(),
+                },
+                cx,
+            );
+            connection.show_agents(BTreeSet::from([first]), cx);
+            assert_eq!(replays(), [(first, 0)]);
+            connection.handle_message_for_test(
+                ProtocolMessage::Event(Event {
+                    sequence: 1,
+                    payload: EventPayload::AgentUpdates {
+                        pane: first,
+                        first_seq: 1,
+                        items: (1..=20).map(blob).collect(),
+                    },
+                }),
+                cx,
+            );
+
+            connection.show_agents(BTreeSet::from([second]), cx);
+            assert_eq!(replays(), [(first, 0), (second, 0)]);
+
+            connection.show_agents(BTreeSet::from([first]), cx);
+            assert_eq!(replays(), [(first, 0), (second, 0), (first, 21)]);
+            assert_eq!(connection.agent_events[&first].len(), 20);
         });
     }
 
@@ -3262,6 +3378,7 @@ mod tests {
                 },
                 cx,
             );
+            connection.show_agents(std::collections::BTreeSet::from([pane]), cx);
             assert_eq!(
                 connection.terminal_agent(pane),
                 Some(AgentProvider::ClaudeCode)
