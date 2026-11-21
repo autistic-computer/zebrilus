@@ -766,7 +766,10 @@ when its socket is missing (without the pane's `ZZ_PANE`, `ZZ_SESSION`, `TMUX` o
 A thread then outlives whichever side drove it: a flip kills the TUI and `thread/resume`s, or
 closes the chat's connection and runs `codex resume`, mid-turn included, and the server unloads an
 idle thread with no client 60 s later. A configured command with arguments keeps an app server of
-its own per chat.
+its own per chat. A chat that moves to another thread (new chat, switch, fork, rewind) sends
+`thread/unsubscribe` for the thread it left and the subagent threads it saw that thread spawn,
+drops their events and answers a request still coming from them with `cancel`, so the new chat
+never shows them; a TUI on the old thread keeps getting them.
 
 The server's environment is its starter's, so the chat hands each thread its pane's environment:
 `thread/start`, `thread/resume` and `thread/fork` carry a `config` override that sets

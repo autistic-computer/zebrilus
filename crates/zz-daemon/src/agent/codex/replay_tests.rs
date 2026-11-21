@@ -41,6 +41,7 @@ fn setup(thread: &str) -> (Runtime, Receiver<AgentStreamPayload>) {
         notices: 0,
         reply: None,
         sides: HashMap::new(),
+        left: HashMap::new(),
         tasks: Vec::new(),
         loading: None,
         instructions: None,

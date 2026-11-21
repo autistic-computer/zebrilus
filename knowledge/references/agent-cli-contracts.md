@@ -31,7 +31,7 @@ After a check, update the table: the version, the date, and how far the check we
 | CLI | Installed 2026-11-20 | Last checked against | How far |
 |---|---|---|---|
 | Claude Code (`claude`) | 2.1.330 (2026-11-21) | 2.1.292, 2026-10-07 | Full: the fixtures in `agent/claude/fixtures` were recorded on it. 2.1.330 passed the flag probe, the binary grep and the `auth status` keys below, and `get_settings` with no prompt sent showed the last `--model` and `--effort` applied. `resume.ndjson` (an agent resumed with `SendMessage`) was recorded on 2.1.330 |
-| Codex (`codex`) | 0.171.0 (shared daemon 0.171.0) | 0.159.0, 2026-10-07 | Full: `tools.ndjson` and `subagent.ndjson` in `agent/codex/fixtures`; `app-server-live.jsonl` is 0.166.0. 0.171.0 had the schema check and a binary grep, all names present |
+| Codex (`codex`) | 0.171.0 (shared daemon 0.171.0) | 0.159.0, 2026-10-07 | Full: `tools.ndjson` and `subagent.ndjson` in `agent/codex/fixtures`; `app-server-live.jsonl` is 0.166.0. 0.171.0 had the schema check and a binary grep, all names present, `thread/unsubscribe` included (2026-11-21) |
 | Antigravity (`agy`) | 1.5.13 | 1.5.13, 2026-11-20 | Live turns through a private daemon, including the artifact signal |
 | Grok Build (`grok`) | 1.0.92 (2026-11-21) | 1.0.92, 2026-11-21 | Cheap checks and the model list (`agent-catalog`) on 1.0.92; live turns through a private daemon on 1.0.89, including `_meta.rules` |
 | Cursor (`cursor-agent`) | 2026.11.19 | 2026.09.18, 2026-11-20 | Live turns on 2026.09.18. 2026.11.19 (it updated itself that morning) passed the initialize probe and, on 2026-11-21, the model list (`agent-catalog`), no turns |
@@ -69,7 +69,7 @@ B="$(readlink -f "$(command -v claude)")"; for s in can_use_tool command_lifecyc
 against it (`--experimental`, because zz asks for the experimental API):
 
 ```bash
-D=$(mktemp -d); codex app-server generate-json-schema --experimental --out "$D"; for s in clientUserMessageId beforeTurnId developerInstructions useStateDbOnly excludeTurns subAgentActivity collabAgentToolCall thread/backgroundTerminals/list item/tool/requestUserInput item/permissions/requestApproval turn/steer review/start thread/compact/start account/rateLimits/read; do printf '%s=%s\n' "$s" "$(rg -l -F "$s" "$D" | wc -l)"; done
+D=$(mktemp -d); codex app-server generate-json-schema --experimental --out "$D"; for s in clientUserMessageId beforeTurnId developerInstructions useStateDbOnly excludeTurns subAgentActivity collabAgentToolCall thread/backgroundTerminals/list item/tool/requestUserInput item/permissions/requestApproval turn/steer review/start thread/compact/start account/rateLimits/read thread/unsubscribe; do printf '%s=%s\n' "$s" "$(rg -l -F "$s" "$D" | wc -l)"; done
 ```
 
 `jq '.properties | keys' "$D/v2/ThreadForkParams.json"` (or any other `*Params.json`) shows a
@@ -164,6 +164,7 @@ binary under `~/.codex/packages/app-server-daemon/`, so its version is the one t
 | `turn/start` `clientUserMessageId` comes back as `userMessage.clientId` | `mod.rs`, `translate.rs` | /rewind says the prompt is no longer in the conversation | Fake |
 | `thread/fork` `beforeTurnId` | `mod.rs` | /rewind keeps the later turns | Fake |
 | `turn/completed` (`turn.status`), `thread/status/changed` (`status.type == "active"`) | `mod.rs` | The turn never settles | Recording |
+| A connection keeps getting a thread's events and requests until it sends `thread/unsubscribe`, and every request carries `threadId`. After a new chat, switch, fork or rewind zz unsubscribes the thread it left and its subagent threads, drops their events and answers their approvals with `cancel` | `mod.rs` | Without `threadId` the left thread's approvals show in the new chat; if unsubscribe stops working, zz cancels every later approval on that thread, a TUI's on the shared server included | Fake |
 | Item types `userMessage`, `agentMessage`, `reasoning`, `commandExecution`, `fileChange`, `mcpToolCall`, `dynamicToolCall`, `webSearch`, `collabAgentToolCall`, `subAgentActivity` and their fields | `translate.rs` | An unknown or renamed type drops its row | Recording for most; `mcpToolCall`, `dynamicToolCall`, `webSearch` fake only |
 | `thread/list` `{useStateDbOnly}` returns `data[].{id, cwd, name, updatedAt}`; `thread/read` returns turns with items | `mod.rs` | Chats vanish from the resume list; reopened chats are empty | Fake |
 | `model/list` fields `model`, `displayName`, `isDefault`, `supportedReasoningEfforts` | `mod.rs` | No model or effort picker | Fake |

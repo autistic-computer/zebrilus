@@ -283,6 +283,10 @@ impl Translator {
         std::mem::take(&mut self.asked)
     }
 
+    pub(crate) fn agent_threads(&self) -> Vec<String> {
+        self.agents.keys().cloned().collect()
+    }
+
     pub(crate) fn reopen(&mut self, asked: Vec<Asked>) {
         self.asked = asked
             .into_iter()

@@ -150,6 +150,7 @@ pub(crate) async fn run_codex_runtime(
         notices: 0,
         reply: None,
         sides: HashMap::new(),
+        left: HashMap::new(),
         tasks: Vec::new(),
         loading: None,
         instructions: None,
@@ -444,6 +445,7 @@ struct Runtime {
     notices: u64,
     reply: Option<String>,
     sides: HashMap<String, Side>,
+    left: HashMap<String, String>,
     tasks: Vec<AgentTaskWire>,
     loading: Option<Loading>,
     instructions: Option<String>,
@@ -1084,6 +1086,19 @@ impl Runtime {
             .map_or((None, None), |starting| (starting.resume, starting.before));
         let resumed = start != Start::Fork && source.is_some();
         self.ready().await?;
+        if let Some(previous) = self.thread_id().filter(|previous| *previous != thread) {
+            let children = self.translator.agent_threads();
+            for left in std::iter::once(previous.clone()).chain(children) {
+                self.request(
+                    "thread/unsubscribe",
+                    &json!({ "threadId": left }),
+                    Outgoing::Quiet,
+                );
+                self.left.insert(left, previous.clone());
+            }
+        }
+        self.left
+            .retain(|left, chat| *left != thread && *chat != thread);
         self.translator = Translator::new(cwd.clone());
         self.translator.reopen(questions);
         self.tasks.clear();
@@ -2073,6 +2088,12 @@ impl Runtime {
             self.title_notification(method, params);
             return Ok(());
         }
+        if params["threadId"]
+            .as_str()
+            .is_some_and(|thread| self.left.contains_key(thread))
+        {
+            return Ok(());
+        }
         let current = self.thread_id();
         if let Some(thread) = params["threadId"].as_str()
             && Some(thread) != current.as_deref()
@@ -2248,6 +2269,16 @@ impl Runtime {
             .is_some_and(|thread| self.is_title_helper(thread))
         {
             self.reply_error(&rpc_id, "naming a thread does not run tools");
+            return Ok(());
+        }
+        if params["threadId"]
+            .as_str()
+            .is_some_and(|thread| self.left.contains_key(thread))
+        {
+            match approval(method, params) {
+                Some((reply, _)) => self.reply(&rpc_id, &decision(&reply, "cancel")),
+                None => self.reply_error(&rpc_id, "the chat moved to another thread"),
+            }
             return Ok(());
         }
         if let Some((reply, tool_call)) = approval(method, params) {
@@ -2968,6 +2999,11 @@ while IFS= read -r line; do
     *'"method":"config/read"'*) printf '{"id":%s,"result":{"config":{"developer_instructions":"be terse"},"origins":{}}}\n' "$id" ;;
     *'"method":"thread/resume"'*'"threadId":"t2"'*) printf '{"id":%s,"result":{"thread":{"id":"t2"}}}\n' "$id" ;;
     *'"method":"thread/resume"'*'"threadId":"gone"'*) printf '{"id":%s,"error":{"code":-32600,"message":"no rollout for gone"}}\n' "$id" ;;
+    *'"method":"thread/resume"'*'"threadId":"t3"'*) printf '{"id":%s,"result":{"thread":{"id":"t3"}}}\n' "$id" ;;
+    *'"method":"thread/read"'*'"threadId":"t3"'*)
+      printf '{"id":%s,"result":{"thread":{"id":"t3","turns":[]}}}\n' "$id"
+      printf '%s\n' '{"method":"item/commandExecution/requestApproval","id":901,"params":{"threadId":"t1","turnId":"u9","itemId":"exec-left","command":"rm -rf build"}}'
+      printf '%s\n' '{"method":"item/commandExecution/requestApproval","id":902,"params":{"threadId":"c3","turnId":"v9","itemId":"exec-subagent","command":"ls"}}' ;;
     *'"method":"thread/read"'*'"threadId":"t2"'*)
       printf '{"id":%s,"result":{"thread":{"id":"t2","turns":[{"id":"u0","items":[{"type":"userMessage","id":"m0","clientId":null,"content":[{"type":"text","text":"one"}]}]},{"id":"u1","items":[{"type":"userMessage","id":"m1","clientId":"zz-prompt-2-x","content":[{"type":"text","text":"two"}]}]}]}}}\n' "$id" ;;
     *'"method":"thread/fork"'*'"beforeTurnId":"u1"'*) printf '{"id":%s,"result":{"thread":{"id":"f1"}}}\n' "$id" ;;
@@ -3487,6 +3523,79 @@ done
             .find(|request| request["method"] == "turn/start")
             .expect("a turn/start");
         assert_eq!(turn["params"]["threadId"], "t1");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_switched_chat_cancels_the_left_threads_approvals_and_shows_subagents() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let log = directory.path().join("codex.log");
+        let (commands, events, runtime) = fake_codex(directory.path());
+        let driver = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: directory.path().to_path_buf(),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::SessionReady { .. })
+            })
+            .await;
+            commands
+                .send(RuntimeCommand::SwitchSession {
+                    session: AgentSessionSummary {
+                        session_id: "t3".to_owned(),
+                        cwd: directory.path().to_path_buf(),
+                        additional_directories: Vec::new(),
+                        title: None,
+                        updated_at: None,
+                    },
+                })
+                .await
+                .expect("switch");
+            let asked = until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::PermissionRequested { .. })
+            })
+            .await;
+            let AgentStreamPayload::PermissionRequested { tool_call, .. } = asked else {
+                unreachable!("waited for a permission");
+            };
+            assert_eq!(tool_call["toolCallId"], "exec-subagent");
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while !std::fs::read_to_string(&log)
+                .unwrap_or_default()
+                .contains(r#""id":901,"result""#)
+            {
+                assert!(Instant::now() < deadline, "no answer for the left thread");
+                smol::Timer::after(Duration::from_millis(10)).await;
+            }
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+        };
+        let (result, ()) = smol::block_on(futures_lite::future::zip(runtime, driver));
+        assert_eq!(result, Ok(()));
+        let sent = std::fs::read_to_string(&log)
+            .expect("log")
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            sent.iter()
+                .filter(|message| message["method"] == "thread/unsubscribe")
+                .map(|message| message["params"].clone())
+                .collect::<Vec<_>>(),
+            [json!({ "threadId": "t1" })]
+        );
+        assert_eq!(
+            sent.iter()
+                .find(|message| message["id"] == 901 && message.get("method").is_none())
+                .map(|message| message["result"].clone()),
+            Some(json!({ "decision": "cancel" }))
+        );
     }
 
     #[cfg(unix)]
