@@ -121,8 +121,11 @@ and iPad, chat view always in the phone shell, and the HTML client's preference 
 
 Chat view with nothing open shows the agent picker too. On the desktop that is the empty workspace
 (no sessions): the picker takes the place of the New session card, and picking runs
-`first_chat_commands` (`new-session -d -s <folder name> -c <folder>`, `select-pane-kind -t <name>:
--c <folder> [--model m] [--effort e] agent <cli>`, `attach-session -t <name>`). Web and iPad never
+`first_chat_commands` (`new-session -d -s <name> -c <folder>`, `select-pane-kind -t =<name>:
+-c <folder> [--model m] [--effort e] agent <cli>`, `attach-session -t =<name>`). The name is the
+folder's own, or the first of `<name>-2`, `<name>-3` and on that no session has
+(`free_session_name`), and every target after `new-session` matches it exactly (`=`), so a
+session already holding the name is never touched. Web and iPad never
 sit on an empty host: the daemon makes a session when a client attaches to none, so a host with no
 chats lands on a shell, which they show as a shell.
 
@@ -149,8 +152,9 @@ Choosing an agent runs `select-pane-kind -t <pane> -c <folder> [--model m] [--ef
 
 - the folder's session is the picker's own: nothing moves;
 - another session is the folder's: `move-window` into it;
-- no session is the folder's: `new-session -d -s <folder name>`, `move-window` into it and
-  `kill-window -a` its starting shell; a session holding only the picker is renamed instead.
+- no session is the folder's: `new-session -d -s <name>` with the free name above, `move-window -t
+  =<name>:` into it and `kill-window -t =<name>:^` its starting shell, so nothing else is closed when
+  a step fails; a session holding only the picker is renamed instead.
 
 The desktop switches to the window if it moved sessions. On a phone only the `select-pane-kind`
 runs (`agent_pane_command`), so the chat stays on screen in the session the plus menu named: the

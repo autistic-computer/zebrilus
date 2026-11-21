@@ -133,6 +133,23 @@ fn session_name(folder: &str) -> String {
     }
 }
 
+fn free_session_name(snapshot: &MuxSnapshot, folder: &str) -> String {
+    let name = session_name(folder);
+    let taken = |candidate: &str| {
+        snapshot
+            .sessions
+            .iter()
+            .any(|session| session.name == candidate)
+    };
+    let mut free = name.clone();
+    let mut count = 1;
+    while taken(&free) {
+        count += 1;
+        free = format!("{name}-{count}");
+    }
+    free
+}
+
 fn command(name: &str, arguments: impl IntoIterator<Item = String>) -> CommandInvocation {
     CommandInvocation::new(name, arguments.into_iter().collect::<Vec<_>>())
 }
@@ -166,11 +183,12 @@ pub fn agent_pane_command(
 
 #[must_use]
 pub fn first_chat_commands(
+    snapshot: &MuxSnapshot,
     folder: &str,
     agent: AgentChoice,
     launches: &AgentLaunches,
 ) -> Vec<CommandInvocation> {
-    let name = session_name(folder);
+    let name = free_session_name(snapshot, folder);
     vec![
         command(
             "new-session",
@@ -182,8 +200,8 @@ pub fn first_chat_commands(
                 folder.to_owned(),
             ],
         ),
-        agent_pane_command(format!("{name}:"), folder, agent, launches),
-        command("attach-session", ["-t".to_owned(), name]),
+        agent_pane_command(format!("={name}:"), folder, agent, launches),
+        command("attach-session", ["-t".to_owned(), format!("={name}")]),
     ]
 }
 
@@ -195,7 +213,7 @@ pub fn landing_chat_commands(
     launches: &AgentLaunches,
 ) -> Vec<CommandInvocation> {
     let Some(session) = session_for_folder(snapshot, folder) else {
-        return first_chat_commands(folder, agent, launches);
+        return first_chat_commands(snapshot, folder, agent, launches);
     };
     let target = session_target(session);
     vec![
@@ -252,7 +270,7 @@ pub fn start_agent_commands(
         )),
         None if place.is_none() => {}
         None => {
-            let name = session_name(folder);
+            let name = free_session_name(snapshot, folder);
             commands.extend([
                 command(
                     "new-session",
@@ -264,11 +282,8 @@ pub fn start_agent_commands(
                         folder.to_owned(),
                     ],
                 ),
-                move_to(format!("{name}:")),
-                command(
-                    "kill-window",
-                    ["-a".to_owned(), "-t".to_owned(), window.to_string()],
-                ),
+                move_to(format!("={name}:")),
+                command("kill-window", ["-t".to_owned(), format!("={name}:^")]),
             ]);
         }
     }
@@ -924,8 +939,46 @@ mod tests {
             [
                 "select-pane-kind -t %4 -c ~/notes agent claude",
                 "new-session -d -s notes -c ~/notes",
-                "move-window -s @3 -t notes:",
-                "kill-window -a -t @3",
+                "move-window -s @3 -t =notes:",
+                "kill-window -t =notes:^",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_new_chat_session_never_takes_a_name_already_in_use() {
+        let none = AgentLaunches::default();
+        let mut taken = fleet();
+        taken.sessions.push(SessionSnapshot {
+            name: "notes".to_owned(),
+            ..session(3, vec![window(5, vec![shell(6, "~/elsewhere", 1)])])
+        });
+        assert_eq!(
+            lines(&start_agent_commands(
+                &taken,
+                PaneId(4),
+                "~/notes",
+                AGENT_CHOICES[0],
+                &none
+            )),
+            [
+                "select-pane-kind -t %4 -c ~/notes agent claude",
+                "new-session -d -s notes-2 -c ~/notes",
+                "move-window -s @3 -t =notes-2:",
+                "kill-window -t =notes-2:^",
+            ]
+        );
+        assert_eq!(
+            lines(&first_chat_commands(
+                &taken,
+                "~/notes",
+                AGENT_CHOICES[0],
+                &none
+            )),
+            [
+                "new-session -d -s notes-2 -c ~/notes",
+                "select-pane-kind -t =notes-2: -c ~/notes agent claude",
+                "attach-session -t =notes-2",
             ]
         );
     }
@@ -934,20 +987,26 @@ mod tests {
     fn a_first_chat_makes_its_own_session_and_attaches_to_it() {
         let none = AgentLaunches::default();
         assert_eq!(
-            lines(&first_chat_commands("~", AGENT_CHOICES[0], &none)),
+            lines(&first_chat_commands(
+                &snapshot(Vec::new()),
+                "~",
+                AGENT_CHOICES[0],
+                &none
+            )),
             [
                 "new-session -d -s home -c ~",
-                "select-pane-kind -t home: -c ~ agent claude",
-                "attach-session -t home",
+                "select-pane-kind -t =home: -c ~ agent claude",
+                "attach-session -t =home",
             ]
         );
         assert_eq!(
             lines(&first_chat_commands(
+                &snapshot(Vec::new()),
                 "~/dev/zz.app",
                 AGENT_CHOICES[1],
                 &none
             ))[1],
-            "select-pane-kind -t zz-app: -c ~/dev/zz.app agent codex"
+            "select-pane-kind -t =zz-app: -c ~/dev/zz.app agent codex"
         );
     }
 
@@ -980,8 +1039,13 @@ mod tests {
             ["select-pane-kind -t %4 -c ~/dev/zz --model haiku --effort low agent claude"]
         );
         assert_eq!(
-            lines(&first_chat_commands("~", AGENT_CHOICES[1], &launches))[1],
-            "select-pane-kind -t home: -c ~ --effort medium agent codex"
+            lines(&first_chat_commands(
+                &snapshot(Vec::new()),
+                "~",
+                AGENT_CHOICES[1],
+                &launches
+            ))[1],
+            "select-pane-kind -t =home: -c ~ --effort medium agent codex"
         );
     }
 
@@ -1221,7 +1285,12 @@ mod tests {
                 AGENT_CHOICES[1],
                 &none
             )),
-            lines(&first_chat_commands("~/notes", AGENT_CHOICES[1], &none))
+            lines(&first_chat_commands(
+                &snapshot,
+                "~/notes",
+                AGENT_CHOICES[1],
+                &none
+            ))
         );
     }
 
