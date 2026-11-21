@@ -161,6 +161,7 @@ struct RuntimeRouting {
     staged_update_count: usize,
     staged_update_bytes: usize,
     staged_skipped: usize,
+    staged_title: Option<SessionUpdate>,
     pending_new_session: bool,
     user_echo_turn: Option<(String, u64)>,
     permissions: HashMap<u64, PendingPermissionResponder>,
@@ -217,6 +218,7 @@ impl RuntimeRouting {
         self.staged_update_count = 0;
         self.staged_update_bytes = 0;
         self.staged_skipped = 0;
+        self.staged_title = None;
         self.pending_new_session = false;
     }
 
@@ -242,9 +244,13 @@ impl RuntimeRouting {
         while self.staged_update_count > MAX_STAGED_UPDATES
             || self.staged_update_bytes > MAX_STAGED_UPDATE_BYTES
         {
-            let Some((dropped, _)) = staged.pop_front() else {
+            let Some((dropped, update)) = staged.pop_front() else {
                 break;
             };
+            if matches!(&update, SessionUpdate::SessionInfoUpdate(info) if !info.title.is_undefined())
+            {
+                self.staged_title = Some(update);
+            }
             self.staged_update_count = self.staged_update_count.saturating_sub(1);
             self.staged_update_bytes = self.staged_update_bytes.saturating_sub(dropped);
             self.staged_skipped += 1;
@@ -588,7 +594,11 @@ async fn complete_staged_session(
         let (staged, skipped) = {
             let mut routes = routing.lock();
             let skipped = std::mem::take(&mut routes.staged_skipped);
-            (routes.drain_staging(session_id), skipped)
+            let title = routes.staged_title.take();
+            (
+                title.into_iter().chain(routes.drain_staging(session_id)),
+                skipped,
+            )
         };
         if skipped > 0 {
             log::info!(
@@ -2345,6 +2355,12 @@ mod tests {
     fn a_session_too_long_to_replay_opens_on_its_newest_updates() {
         let routing = Arc::new(Mutex::new(RuntimeRouting::default()));
         routing.lock().begin_staging("long");
+        let titled = serde_json::from_value::<SessionUpdate>(json!({
+            "sessionUpdate": "session_info_update",
+            "title": "Long chat",
+        }))
+        .expect("session info");
+        assert!(routing.lock().stage("long", titled).is_ok());
         for index in 0..MAX_STAGED_UPDATES + 3 {
             let chunk = ContentChunk::new(ContentBlock::Text(TextContent::new(index.to_string())));
             assert!(
@@ -2377,8 +2393,14 @@ mod tests {
             sent.pop(),
             Some(AgentStreamPayload::SessionReady { session_id, .. }) if session_id == "long"
         ));
+        assert!(matches!(
+            sent.first(),
+            Some(AgentStreamPayload::Update { update })
+                if *update == json!({ "sessionUpdate": "session_info_update", "title": "Long chat" })
+        ));
         assert_eq!(
-            sent.iter()
+            sent[1..]
+                .iter()
                 .map(|payload| match payload {
                     AgentStreamPayload::Update { update } => update["content"]["text"].clone(),
                     other => panic!("unexpected payload {other:?}"),

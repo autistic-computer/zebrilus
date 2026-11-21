@@ -694,7 +694,9 @@ with its history, and a resumed session's title. Not seen: a permission ask, sin
 tested approves everything.
 
 **Known gaps in the shared runtime.** A `session/load` that fails falls back to a new session
-with the old transcript replayed over it. A pane with two TUIs of one provider flips the first
+with the old transcript replayed over it. A load that replays more than 4,096 updates or 18 MiB
+opens on the newest and drops the oldest, with a log line only: nothing in the chat says older
+history was left out. The latest title among the dropped updates is still applied. A pane with two TUIs of one provider flips the first
 one found. A client that recovers from the journal sees the agent's own name for the effort
 option until the recovery metadata that follows replaces the list.
 
