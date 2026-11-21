@@ -31,6 +31,7 @@ use crate::agent::{
 
 const BATCH_WINDOW: Duration = Duration::from_millis(25);
 const MAX_REPLAY_RING_BYTES: usize = 2 * MAX_AGENT_UPDATES_BYTES;
+const MAX_REBUILD_BYTES: usize = MAX_AGENT_UPDATES_BYTES / 2;
 const MAX_AGENT_FRAME_BYTES: usize = MAX_AGENT_RESULT_BYTES;
 const MAX_RECLAIMED_PROMPTS: usize = MAX_AGENT_QUEUED_PROMPTS + 1;
 
@@ -1045,10 +1046,12 @@ impl AgentFanout {
             if !intact {
                 log::warn!(
                     target: "zz::agent",
-                    "replaying pane {pane} for client {client} from memory alone: \
+                    "rebuilding pane {pane} for client {client} from memory alone: \
                      asked for {from_seq}, memory starts at {}, and the journal cannot vouch for the rest",
                     lane.evicted_seq.saturating_add(1),
                 );
+                publisher.send_agent_replay(generation, client, pane, lane.rebuild(pane, from_seq));
+                return;
             }
             let first_seq = lane.evicted_seq;
             let reset = AgentStreamItem {
@@ -1065,18 +1068,7 @@ impl AgentFanout {
                     .filter(|(seq, _)| *seq > first_seq)
                     .map(|(_, encoded)| encoded.clone()),
             );
-            if !intact {
-                let mut metadata = Vec::new();
-                metadata.extend(lane.ready.clone());
-                metadata.extend(lane.recovery_metadata());
-                metadata.extend(lane.chat_recovery());
-                for payload in metadata {
-                    lane.stamp_recovery(pane, payload, &mut items, true);
-                }
-            }
             publisher.send_agent_replay(generation, client, pane, split_frames(first_seq, items));
-            drop(lanes);
-            self.wake.notify_all();
             return;
         };
         lane.take_batch();
@@ -1093,23 +1085,22 @@ impl AgentFanout {
             pane,
             AgentStreamPayload::SessionReset { restoring: true },
             &mut synthesized,
-            false,
         );
         if let Some(ready) = lane.ready.clone() {
-            lane.stamp_recovery(pane, ready, &mut synthesized, false);
+            lane.stamp_recovery(pane, ready, &mut synthesized);
         }
         for (_, entry) in replay {
             let payload = match entry {
                 JournalEntry::Update(update) => AgentStreamPayload::Update { update },
             };
-            lane.stamp_recovery(pane, payload, &mut synthesized, false);
+            lane.stamp_recovery(pane, payload, &mut synthesized);
         }
         for payload in lane
             .recovery_metadata()
             .into_iter()
             .chain(lane.chat_recovery())
         {
-            lane.stamp_recovery(pane, payload, &mut synthesized, false);
+            lane.stamp_recovery(pane, payload, &mut synthesized);
         }
         let frames = split_frames(first_seq, synthesized);
         publisher.publish_agent_replay(generation, pane, frames, Some(client));
@@ -1254,12 +1245,96 @@ impl PaneLane {
             .collect()
     }
 
+    fn rebuild(&self, pane: PaneId, from_seq: u64) -> Vec<(u64, Vec<Vec<u8>>)> {
+        let events = self.chat.events().collect::<Vec<_>>();
+        let chat = |at: usize| AgentStreamPayload::Chat {
+            event: events[at].clone(),
+        };
+        let restart = AgentStreamPayload::Chat {
+            event: ChatEvent::Restart,
+        };
+        let size = |payload: AgentStreamPayload| {
+            serde_json::to_vec(&AgentStreamItem {
+                seq: self.next_seq,
+                payload,
+            })
+            .map_or(usize::MAX, |encoded| encoded.len())
+        };
+        let session = events
+            .iter()
+            .rposition(|event| matches!(event, ChatEvent::SessionReady { .. }));
+        let open_turn = events
+            .iter()
+            .rposition(|event| {
+                matches!(
+                    event,
+                    ChatEvent::TurnStarted { .. } | ChatEvent::TurnEnded { .. }
+                )
+            })
+            .filter(|at| matches!(events[*at], ChatEvent::TurnStarted { .. }));
+        let mut spine = [session, open_turn]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        spine.sort_unstable();
+        let mut payloads = vec![AgentStreamPayload::SessionReset { restoring: true }];
+        payloads.extend(self.ready.clone());
+        payloads.extend(self.recovery_metadata());
+        let room = usize::try_from(self.next_seq.saturating_sub(from_seq).saturating_sub(1))
+            .unwrap_or(usize::MAX);
+        let mut count = payloads.len() + 1 + spine.len();
+        let mut bytes = payloads
+            .iter()
+            .cloned()
+            .chain([restart.clone()])
+            .chain(spine.iter().map(|at| chat(*at)))
+            .map(size)
+            .fold(0, usize::saturating_add);
+        let mut cut = events.len();
+        while cut > 0 && count < room {
+            let next = size(chat(cut - 1));
+            if bytes.saturating_add(next) > MAX_REBUILD_BYTES {
+                break;
+            }
+            count += 1;
+            bytes = bytes.saturating_add(next);
+            cut -= 1;
+        }
+        if !events.is_empty() && count <= room {
+            if cut > 0 {
+                log::info!(
+                    target: "zz::agent",
+                    "rebuilt pane {pane} on its newest {} chat events and left out the oldest {cut}",
+                    events.len() - cut,
+                );
+            }
+            payloads.push(restart);
+            payloads.extend(spine.into_iter().filter(|at| *at < cut).map(chat));
+            payloads.extend((cut..events.len()).map(chat));
+        }
+        payloads.truncate(room);
+        let first_seq = self
+            .next_seq
+            .saturating_sub(u64::try_from(payloads.len()).unwrap_or(u64::MAX));
+        let items = payloads
+            .into_iter()
+            .zip(first_seq..)
+            .map(|(payload, seq)| serde_json::to_vec(&AgentStreamItem { seq, payload }))
+            .collect::<Result<Vec<_>, _>>();
+        match items {
+            Ok(items) => split_frames(first_seq, items),
+            Err(error) => {
+                log::error!(target: "zz::agent", "could not encode the rebuild of pane {pane}: {error}");
+                Vec::new()
+            }
+        }
+    }
+
     fn stamp_recovery(
         &mut self,
         pane: PaneId,
         payload: AgentStreamPayload,
         items: &mut Vec<Vec<u8>>,
-        live: bool,
     ) {
         let reclaim_id = match &payload {
             AgentStreamPayload::PromptsRestored { reclaim_id, .. } => Some(*reclaim_id),
@@ -1268,11 +1343,7 @@ impl PaneLane {
         let Some((seq, encoded)) = self.stamp(pane, payload) else {
             return;
         };
-        if live {
-            self.push(seq, encoded.clone());
-        } else {
-            self.push_ring(seq, encoded.clone());
-        }
+        self.push_ring(seq, encoded.clone());
         items.push(encoded);
         if let Some(cached) = reclaim_id.and_then(|reclaim_id| {
             self.reclaimed
@@ -2074,15 +2145,16 @@ mod tests {
         let mut expected = ChatView::default();
         for event in &events {
             expected.apply(event).expect("valid");
+            fixture.chunk("update");
             fixture.accept(AgentStreamPayload::Chat {
                 event: event.clone(),
             });
         }
-        fixture.recorder.wait_for_items(events.len());
+        fixture.recorder.wait_for_items(2 * events.len());
         {
             let mut lanes = fixture.fanout.lanes.lock();
             let lane = lanes.get_mut(&fixture.pane).expect("pane lane");
-            while lane.ring.front().is_some_and(|(seq, _)| *seq <= 3) {
+            while lane.ring.front().is_some_and(|(seq, _)| *seq <= 6) {
                 let (seq, dropped) = lane.ring.pop_front().expect("ring item");
                 lane.ring_bytes -= dropped.len();
                 lane.evicted_seq = seq;
@@ -2110,7 +2182,12 @@ mod tests {
     }
 
     #[test]
-    fn a_replay_older_than_the_ring_without_a_complete_journal_resets_only_the_asker() {
+    fn a_long_chat_the_journal_cannot_vouch_for_is_rebuilt_for_the_asker_alone() {
+        use zz_protocol::chat::{
+            ChatPhase, ChatView, ItemBody, ItemId, ItemKind, ItemStatus, SessionView, TurnBy,
+            TurnId, TurnOutcome,
+        };
+
         let directory = tempfile::tempdir().expect("journal directory");
         let journal = Arc::new(AgentJournal::open(directory.path()).expect("open journal"));
         let refused = (0..10_000).any(|index| {
@@ -2138,79 +2215,151 @@ mod tests {
             modes: None,
             config_options: None,
         });
-        for text in ["one", "two", "three"] {
-            fixture.chunk(text);
+        let item = |id: &str, turn: u64, text: String| ChatEvent::ItemStarted {
+            item: ItemId::new(id),
+            turn: Some(TurnId(turn)),
+            parent: None,
+            kind: ItemKind::Agent,
+            body: ItemBody::text(text),
+            at: 0,
+        };
+        let ended = |id: &str| ChatEvent::ItemEnded {
+            item: ItemId::new(id),
+            status: ItemStatus::Completed,
+            at: 0,
+        };
+        let started = |turn: u64| ChatEvent::TurnStarted {
+            turn: TurnId(turn),
+            by: TurnBy::Agent,
+            at: 0,
+        };
+        let mut events = vec![ChatEvent::SessionReady {
+            session: "s-1".to_owned(),
+        }];
+        for turn in 1..=24 {
+            let id = format!("a{turn}");
+            events.extend([
+                started(turn),
+                item(&id, turn, "x".repeat(1024 * 1024)),
+                ended(&id),
+                ChatEvent::TurnEnded {
+                    turn: TurnId(turn),
+                    outcome: TurnOutcome::Completed {
+                        stop_reason: "end_turn".to_owned(),
+                    },
+                    at: 0,
+                },
+            ]);
         }
-        fixture.recorder.wait_for_items(5);
+        events.extend([
+            started(25),
+            item("b1", 25, "y".repeat(3 * 1024 * 1024)),
+            ended("b1"),
+            item("b2", 25, "z".repeat(3 * 1024 * 1024)),
+            ended("b2"),
+            item("b3", 25, "now".to_owned()),
+        ]);
+        for event in events {
+            fixture.accept(AgentStreamPayload::Chat { event });
+        }
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.fanout.lanes.lock()[&fixture.pane]
+            .deadline
+            .is_some()
         {
-            let mut lanes = fixture.fanout.lanes.lock();
-            let lane = lanes.get_mut(&fixture.pane).expect("pane lane");
-            while lane.ring.front().is_some_and(|(seq, _)| *seq <= 3) {
-                let (seq, dropped) = lane.ring.pop_front().expect("ring item");
-                lane.ring_bytes -= dropped.len();
-                lane.evicted_seq = seq;
-            }
-            assert_eq!(lane.evicted_seq, 3);
+            assert!(Instant::now() < deadline, "the live batch flushes");
+            std::thread::sleep(Duration::from_millis(2));
         }
+        let (next_seq, ring) = {
+            let lanes = fixture.fanout.lanes.lock();
+            let lane = &lanes[&fixture.pane];
+            assert!(lane.evicted_seq > 1, "the ring no longer holds the start");
+            (lane.next_seq, lane.ring.len())
+        };
         let broadcast_before = fixture.recorder.broadcast.lock().len();
 
         fixture.fanout.replay(ClientId(3), fixture.pane, 1);
 
-        let decode =
-            |item: &Vec<u8>| serde_json::from_slice::<AgentStreamItem>(item).expect("decode");
-        let replayed = fixture
-            .recorder
-            .direct
-            .lock()
-            .iter()
-            .filter(|(client, ..)| *client == ClientId(3))
-            .flat_map(|(_, _, _, items)| items.clone())
-            .map(|item| decode(&item))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            replayed.iter().map(|item| item.seq).collect::<Vec<_>>(),
-            (3..=8).collect::<Vec<_>>(),
-            "the reset borrows the evicted sequence and the rest stays contiguous: {replayed:?}"
-        );
-        assert!(matches!(
-            replayed[0].payload,
-            AgentStreamPayload::SessionReset { restoring: true }
-        ));
-        assert_eq!(
-            replayed.iter().filter_map(text_of).collect::<Vec<_>>(),
-            ["two", "three"]
-        );
-        assert!(matches!(
-            replayed.last().map(|item| &item.payload),
-            Some(AgentStreamPayload::StateSynced { .. })
-        ));
         {
             let lanes = fixture.fanout.lanes.lock();
             let lane = &lanes[&fixture.pane];
-            assert_eq!(lane.next_seq, 9);
-            assert!(lane.ring.iter().all(|(seq, _)| *seq > 3));
+            assert!(lane.batch.is_empty() && lane.deadline.is_none());
+            assert_eq!((lane.next_seq, lane.ring.len()), (next_seq, ring));
         }
-
-        fixture.recorder.wait_for_items(14);
-        let broadcast = fixture.recorder.broadcast.lock();
-        let later = broadcast[broadcast_before..]
-            .iter()
-            .flat_map(|(_, _, items, _)| items.clone())
-            .map(|item| decode(&item))
-            .collect::<Vec<_>>();
         assert_eq!(
-            later.iter().map(|item| item.seq).collect::<Vec<_>>(),
-            [6, 7, 8],
-            "other viewers get only the live metadata, in sequence"
+            fixture.recorder.broadcast.lock().len(),
+            broadcast_before,
+            "no viewer that did not ask gets anything"
         );
+        let direct = fixture.recorder.direct.lock().clone();
+        let bytes = direct
+            .iter()
+            .flat_map(|(_, _, _, items)| items.iter().map(Vec::len))
+            .sum::<usize>();
+        assert!(bytes <= MAX_REBUILD_BYTES, "{bytes} bytes");
+        let replayed = direct_items(&fixture.recorder);
+        assert!(replayed.iter().all(|(client, ..)| *client == ClientId(3)));
+        assert_eq!(
+            replayed.iter().map(|(_, seq, _)| *seq).collect::<Vec<_>>(),
+            (next_seq - 11..next_seq).collect::<Vec<_>>(),
+            "the rebuild ends on the lane's last number and mints none"
+        );
+        assert!(matches!(
+            replayed[0].2.payload,
+            AgentStreamPayload::SessionReset { restoring: true }
+        ));
+        let mut rebuilt = ChatView::default();
+        for (_, _, item) in replayed {
+            if let AgentStreamPayload::Chat { event } = item.payload {
+                let _ = rebuilt.apply(&event);
+            }
+        }
+        assert_eq!(
+            rebuilt.session,
+            SessionView::Ready {
+                session: "s-1".to_owned()
+            }
+        );
+        assert_eq!(
+            rebuilt.turns.iter().map(|turn| turn.id).collect::<Vec<_>>(),
+            [TurnId(25)]
+        );
+        assert_eq!(
+            rebuilt.turns[0].items,
+            [ItemId::new("b2"), ItemId::new("b3")]
+        );
+        assert_eq!(rebuilt.items[&ItemId::new("b3")].body.text, "now");
+        assert_eq!(rebuilt.phase(), ChatPhase::Running);
+        assert_eq!(
+            rebuilt.skipped, 1,
+            "the end of b1, whose start was left out"
+        );
+
+        let asked = next_seq - 9;
+        {
+            let mut lanes = fixture.fanout.lanes.lock();
+            let lane = lanes.get_mut(&fixture.pane).expect("pane lane");
+            while lane.ring.front().is_some_and(|(seq, _)| *seq <= asked) {
+                let (seq, dropped) = lane.ring.pop_front().expect("ring item");
+                lane.ring_bytes -= dropped.len();
+                lane.evicted_seq = seq;
+            }
+        }
+        fixture.fanout.replay(ClientId(4), fixture.pane, asked);
+        let tight = direct_items(&fixture.recorder)
+            .into_iter()
+            .filter(|(client, ..)| *client == ClientId(4))
+            .collect::<Vec<_>>();
+        assert!(matches!(
+            tight[0].2.payload,
+            AgentStreamPayload::SessionReset { restoring: true }
+        ));
         assert!(
-            broadcast
-                .iter()
-                .flat_map(|(_, _, items, _)| items.iter())
-                .map(decode)
-                .all(|item| !matches!(item.payload, AgentStreamPayload::SessionReset { .. })),
-            "no viewer that did not ask is reset"
+            tight[0].1 > asked,
+            "the reset at {} lands past {asked}, the last number the client holds",
+            tight[0].1
         );
+        assert_eq!(tight.last().map(|(_, seq, _)| *seq), Some(next_seq - 1));
     }
 
     fn label(item: &AgentStreamItem) -> String {

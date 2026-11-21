@@ -126,8 +126,14 @@ hundreds of updates, so agent streams get their own `OutboundState` lane, preced
   session/configuration as freshly numbered items, followed by an ordered `StateSynced` snapshot.
   The client rebuilds the transcript, then returns to the daemon's current Running, Failed,
   permission, or Ready phase even though reliable state frames drain first. Without a trustworthy
-  journal the reset stays private to the asking client (stamped with the evicted sequence and
-  followed by the ring's contents); only the closing metadata is stamped live for every viewer.
+  journal (it stops at 4,096 records or 18 MiB) the asking client alone gets a rebuild
+  (`PaneLane::rebuild`): `SessionReset { restoring: true }`, the cached `Ready`, the closing
+  metadata, a chat `Restart` and the newest chat events that fit in `MAX_REBUILD_BYTES` (4.5 MiB),
+  with the latest `SessionReady` and the open turn's `TurnStarted` kept when they fall in the part
+  left out. Events that refer to that part fail to apply and count in `ChatView.skipped`. The
+  rebuild takes the numbers the asker skips, ending on the lane's last one, so it mints none and no
+  other viewer is sent anything; when fewer numbers are skipped than it needs, it keeps the newest
+  part that fits them.
 - Drain order: `reliable` → `command_output` → `agent` (round-robin) → `terminals`.
 - Overflow does NOT close the connection: the pane's lane is cleared and a tiny
   `AgentLagged { pane, next_seq }` marker queued; the client re-requests `AgentReplay` from its
@@ -178,9 +184,8 @@ phone and web clients keep their positions when a new hello carries the same `se
 revision of 8 or more, and start over otherwise. A replay from a position older than a lane that
 has evicted nothing since it opened goes to the asking client alone, as a restoring
 `SessionReset` stamped one below the lane's first number followed by the whole ring; it skips the
-journal and mints no numbers. A replay older than a ring that did evict still stamps its closing
-metadata and the chat's recovery live, so every viewer of the pane gets them: those items take
-shared numbers, and a viewer left without them would see a gap and fetch the same items by replay.
+journal and mints no numbers. A replay older than a ring that did evict reads the journal, or
+without one gets the private rebuild above.
 
 # Daemon host (`zz-daemon/src/agent/`)
 
