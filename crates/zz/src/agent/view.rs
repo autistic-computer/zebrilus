@@ -509,6 +509,13 @@ impl AgentView {
         self.row_input().read(cx).focus_handle(cx)
     }
 
+    pub(crate) fn draft(&self, cx: &ala::App) -> (String, Vec<Arc<Image>>) {
+        (
+            self.input.read(cx).value().to_string(),
+            self.attachments.clone(),
+        )
+    }
+
     fn asking_input(&self) -> Option<Entity<InputState>> {
         let head = self
             .permission_wizard

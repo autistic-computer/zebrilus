@@ -2116,6 +2116,7 @@ impl AppView {
         let mut wanted_editors = BTreeSet::new();
         let mut wanted_views = BTreeSet::new();
         let mut wanted_simulators = BTreeSet::new();
+        let mut existing = BTreeSet::new();
         self.flips.observe(&snapshot);
         let active_window = snapshot
             .sessions
@@ -2131,6 +2132,7 @@ impl AppView {
         {
             for mux_window in &session.windows {
                 for (pane, snapshot) in &mux_window.panes {
+                    existing.insert(*pane);
                     match &snapshot.kind {
                         PaneKindSnapshot::Picker => {
                             wanted_pickers.insert(*pane);
@@ -2502,17 +2504,24 @@ impl AppView {
             .retain(|pane, _| wanted_simulators.contains(pane));
         self.simulator_devices
             .retain(|pane, _| wanted_simulators.contains(pane));
+        self.drain_agent_events(cx);
         #[cfg(feature = "agent-pane")]
-        for pane in self
+        for (pane, view) in self
             .agents
-            .keys()
-            .filter(|pane| !wanted_agents.contains(pane))
+            .iter()
+            .filter(|(pane, _)| !wanted_agents.contains(pane))
         {
             self.mux.update(cx, |mux, _| mux.unwatch_agent(*pane));
+            if existing.contains(pane) {
+                let (text, images) = view.read(cx).draft(cx);
+                self.agent_controller.update(cx, |controller, _| {
+                    controller.keep_draft(*pane, &text, images);
+                });
+            }
         }
         self.agents.retain(|pane, _| wanted_agents.contains(pane));
         self.agent_controller.update(cx, |controller, cx| {
-            controller.retain_panes(&wanted_agents, cx);
+            controller.retain_panes(&wanted_agents, &existing, cx);
         });
         self.editors.retain(|pane, _| wanted_editors.contains(pane));
         #[cfg(feature = "agent-pane")]

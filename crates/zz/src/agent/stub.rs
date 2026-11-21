@@ -21,6 +21,7 @@ impl AgentController {
     pub(crate) fn retain_panes(
         &mut self,
         _retained: &std::collections::BTreeSet<PaneId>,
+        _existing: &std::collections::BTreeSet<PaneId>,
         _cx: &mut Context<Self>,
     ) {
     }

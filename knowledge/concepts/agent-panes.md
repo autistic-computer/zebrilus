@@ -252,7 +252,12 @@ A chat is named after its session, the name each CLI gives its own sessions.
     `-c` overrides, `--profile`, `--no-daemon` and the like, or holding its rollout open) refuses
     like Claude, reading its rollout's last `task_started` and `task_complete`.
 - **`--now`** flips anyway: the turn and every background shell and subagent of a Claude session
-  stop with the process.
+  stop with the process. Prompts typed into the chat that were still queued go back to their
+  owners' composers as the driver closes (`PromptsRestored`). The desktop keeps them, after what
+  was in the composer, as the pane's draft while the pane is a terminal
+  (`AgentController::keep_draft`, `retain_panes`) and puts them back in the composer when it flips
+  back to a chat; closing the pane drops them. The thin clients still drop them with the chat's
+  composer.
 - **`--when-idle`** arms the flip. The pane's `PaneSummary.flip_armed` turns on (wire 118, in the
   snapshot and `TreeOp::PaneSummary`), and a watcher thread checks every 250 ms and flips once
   nothing runs, then clears it. **`--cancel`** clears it. An armed pane that closes or stops running
