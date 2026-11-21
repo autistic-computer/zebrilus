@@ -18,9 +18,16 @@ mod onboarding;
 mod picker;
 mod providers;
 mod settings;
+#[cfg(all(
+    feature = "showcase",
+    not(any(target_os = "ios", target_os = "android"))
+))]
+mod showcase_browser;
 mod sidebar;
 mod status_bar;
 mod view_pane;
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+mod web_menu;
 
 use penna::blocks::sidebar::{sidebar_panel, sidebar_resize_handle, sidebar_titlebar};
 use std::{
@@ -54,6 +61,8 @@ use zz_protocol::{
     ConfirmAction, DisplayPanesAction, InputMessage, PaneId, PaneKindSnapshot, ProtocolMessage,
     WindowSnapshot,
 };
+#[cfg(any(target_os = "ios", target_os = "android"))]
+use zz_ui::navigation::workspace_sidebar_titlebar_controls;
 use zz_ui::{
     chooser::{
         ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind, ChooserSearch,
@@ -63,8 +72,7 @@ use zz_ui::{
     navigation::{
         SidebarAction, workspace_layout_button, workspace_sidebar_action,
         workspace_sidebar_actions, workspace_sidebar_fade, workspace_sidebar_footer,
-        workspace_sidebar_ground, workspace_sidebar_slideover, workspace_sidebar_titlebar_controls,
-        workspace_sidebar_view_button,
+        workspace_sidebar_ground, workspace_sidebar_slideover, workspace_sidebar_view_button,
     },
     pane::{
         DropPreview, DropPreviewFrame, HeaderPlace, PaneArrivals, PaneChrome, PaneDrag,
@@ -167,6 +175,11 @@ pub struct AppShell {
     editors: HashMap<PaneId, Entity<editor_pane::EditorPane>>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     browsers: HashMap<PaneId, Entity<browser_pane::BrowserPane>>,
+    #[cfg(all(
+        feature = "showcase",
+        not(any(target_os = "ios", target_os = "android"))
+    ))]
+    showcase_browsers: HashMap<PaneId, Entity<showcase_browser::ShowcaseBrowserPane>>,
     pickers: HashMap<PaneId, Entity<picker::PanePicker>>,
     landing_picker: Option<Entity<picker::PanePicker>>,
     folder_pick: Option<(ala::WeakEntity<picker::PanePicker>, String)>,
@@ -561,6 +574,11 @@ impl AppShell {
             editors: HashMap::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             browsers: HashMap::new(),
+            #[cfg(all(
+                feature = "showcase",
+                not(any(target_os = "ios", target_os = "android"))
+            ))]
+            showcase_browsers: HashMap::new(),
             pickers: HashMap::new(),
             landing_picker: None,
             folder_pick: None,
@@ -1281,27 +1299,67 @@ impl AppShell {
         .detach();
     }
 
-    fn controls(&self, ground: Ground, cx: &Context<Self>) -> AnyElement {
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    pub(super) fn controls(&self, ground: Ground, cx: &Context<Self>) -> AnyElement {
         div()
             .flex()
             .items_center()
             .gap_1()
             .child(
-                workspace_layout_button("web-sidebar", true)
+                workspace_layout_button("web-sidebar", self.sidebar)
                     .on(ground)
                     .on_click(cx.listener(|this, _, window, cx| this.toggle_sidebar(window, cx))),
             )
-            .when(
-                cfg!(any(target_os = "ios", target_os = "android")),
-                |controls| {
-                    controls.child(
-                        zz_ui::navigation::workspace_palette_button("web-palette")
-                            .on(ground)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_palette(None, window, cx);
-                            })),
+            .child(
+                zz_ui::navigation::workspace_palette_button("web-palette")
+                    .on(ground)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_palette(None, window, cx);
+                    })),
+            )
+            .into_any_element()
+    }
+
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    pub(super) fn controls(&self, ground: Ground, cx: &Context<Self>) -> AnyElement {
+        self.web_header_controls(true, ground, cx)
+    }
+
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    fn web_header_controls(
+        &self,
+        show_view: bool,
+        ground: Ground,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let logo = div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .size(penna::blocks::sidebar::CHROME_BUTTON_SIZE)
+            .child(ala::img(settings::app_logo(cx.theme().mode)).size(px(24.0)));
+        zz_ui::navigation::workspace_chrome_controls()
+            .child(logo)
+            .child(web_menu::app_menu_button(cx.entity().downgrade(), ground))
+            .when(show_view, |controls| {
+                controls.child(
+                    workspace_sidebar_view_button(
+                        "web-sidebar-view",
+                        self.preferences.flat_sidebar,
                     )
-                },
+                    .on(ground)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        let on = !this.preferences.flat_sidebar;
+                        sidebar::set_chat_view(this, on, cx);
+                        cx.notify();
+                    })),
+                )
+            })
+            .child(
+                workspace_layout_button("web-sidebar", self.sidebar)
+                    .on(ground)
+                    .on_click(cx.listener(|this, _, window, cx| this.toggle_sidebar(window, cx))),
             )
             .into_any_element()
     }
@@ -1311,7 +1369,7 @@ impl AppShell {
             if cfg!(any(target_os = "ios", target_os = "android")) {
                 2
             } else {
-                1
+                4
             },
             window,
         )
@@ -1389,26 +1447,42 @@ impl AppShell {
                 cx,
             )
         });
-        let controls = if self.settings.is_none() {
-            workspace_sidebar_titlebar_controls(
-                workspace_sidebar_view_button("web-sidebar-view", self.preferences.flat_sidebar)
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        let titlebar = sidebar_titlebar(
+            "web-sidebar-titlebar",
+            self.web_header_controls(self.settings.is_none(), ground, cx),
+            cx,
+        )
+        .justify_start()
+        .pl(px(penna::blocks::sidebar::SIDEBAR_CONTENT_INSET))
+        .pr_0();
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let titlebar = {
+            let controls = if self.settings.is_none() {
+                workspace_sidebar_titlebar_controls(
+                    workspace_sidebar_view_button(
+                        "web-sidebar-view",
+                        self.preferences.flat_sidebar,
+                    )
                     .on(ground)
                     .on_click(cx.listener(|this, _, _, cx| {
                         let on = !this.preferences.flat_sidebar;
                         sidebar::set_chat_view(this, on, cx);
                         cx.notify();
                     })),
-                self.controls(ground, cx),
-            )
-            .into_any_element()
-        } else {
-            self.controls(ground, cx)
+                    self.controls(ground, cx),
+                )
+                .into_any_element()
+            } else {
+                self.controls(ground, cx)
+            };
+            sidebar_titlebar("web-sidebar-titlebar", controls, cx)
         };
         let divider = !(self.preferences.gaps && self.inline_sidebar(window));
         sidebar_panel(
             "web-sidebar-surface",
             self.sidebar_width(window),
-            sidebar_titlebar("web-sidebar-titlebar", controls, cx),
+            titlebar,
             navigation,
             ground,
             divider,
@@ -1605,6 +1679,12 @@ impl AppShell {
             .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Editor(_))));
         #[cfg(any(target_os = "ios", target_os = "android"))]
         self.browsers
+            .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Browser(_))));
+        #[cfg(all(
+            feature = "showcase",
+            not(any(target_os = "ios", target_os = "android"))
+        ))]
+        self.showcase_browsers
             .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Browser(_))));
         self.pickers.retain(|pane, _| shown.contains(pane));
     }
@@ -2674,7 +2754,62 @@ impl AppShell {
                     }
                     browser.into_any_element()
                 }
-                #[cfg(not(any(target_os = "ios", target_os = "android")))]
+                #[cfg(all(
+                    feature = "showcase",
+                    not(any(target_os = "ios", target_os = "android"))
+                ))]
+                PaneKindSnapshot::Browser(descriptor) => {
+                    let connection = self.connection.clone();
+                    let browser = self
+                        .showcase_browsers
+                        .entry(pane_id)
+                        .or_insert_with(|| {
+                            cx.new(|cx| {
+                                showcase_browser::ShowcaseBrowserPane::new(
+                                    pane_id,
+                                    descriptor,
+                                    connection.clone(),
+                                    window,
+                                    cx,
+                                )
+                            })
+                        })
+                        .clone();
+                    let snapshot = self.connection.read(cx).core.snapshot();
+                    let mut pane_state = zz_client::floating::pane_state(snapshot, pane_id);
+                    pane_state.floats |= is_float;
+                    let float_rows = self.pip_fill_rows(cx);
+                    let shell_view = cx.entity();
+                    let on_drag_start =
+                        Rc::new(move |drag: PaneDrag, _: &mut Window, cx: &mut App| {
+                            shell_view.update(cx, |this, cx| this.on_pane_drag_start(drag, cx));
+                        });
+                    browser.update(cx, |browser, cx| {
+                        browser.synchronize(
+                            pane_id == active_window.active_pane,
+                            radii,
+                            pane_state,
+                            float_rows,
+                            on_drag_start,
+                            cx,
+                        );
+                    });
+                    if can_focus
+                        && pane_id == active_window.active_pane
+                        && self.focused_pane != Some(pane_id)
+                    {
+                        let focus = browser.read(cx).focus_handle();
+                        if !focus.contains_focused(window, cx) {
+                            focus.focus(window, cx);
+                        }
+                        self.focused_pane = Some(pane_id);
+                    }
+                    browser.into_any_element()
+                }
+                #[cfg(all(
+                    not(feature = "showcase"),
+                    not(any(target_os = "ios", target_os = "android"))
+                ))]
                 PaneKindSnapshot::Browser(descriptor) => unsupported_pane(
                     "Browser",
                     IconName::Globe,

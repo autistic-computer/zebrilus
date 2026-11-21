@@ -325,6 +325,12 @@ impl AppShell {
             let hosts = gateway_hosts().await.unwrap_or_default();
             this.update_in(cx, |this, window, cx| {
                 this.hosts.adopt(hosts);
+                #[cfg(feature = "showcase")]
+                for (name, _, local) in crate::showcase::SHOWCASE_HOSTS {
+                    if !local {
+                        this.hosts.saved.mark_connected(name, false);
+                    }
+                }
                 this.reconnect_saved_hosts(window, cx);
                 if let Some(last) = last {
                     this.reopen_once_connected(last, window, cx);
@@ -358,7 +364,21 @@ impl AppShell {
     }
 }
 
-#[cfg(target_family = "wasm")]
+#[cfg(all(target_family = "wasm", feature = "showcase"))]
+async fn gateway_hosts() -> Option<Vec<GatewayHost>> {
+    Some(
+        crate::showcase::SHOWCASE_HOSTS
+            .iter()
+            .map(|(name, title, local)| GatewayHost {
+                name: (*name).to_owned(),
+                title: (*title).to_owned(),
+                local: *local,
+            })
+            .collect(),
+    )
+}
+
+#[cfg(all(target_family = "wasm", not(feature = "showcase")))]
 async fn gateway_hosts() -> Option<Vec<GatewayHost>> {
     use wasm_bindgen::JsCast as _;
     use wasm_bindgen_futures::JsFuture;
@@ -379,7 +399,12 @@ async fn gateway_hosts() -> Option<Vec<GatewayHost>> {
     serde_json::from_str(&body).ok()
 }
 
-#[cfg(target_family = "wasm")]
+#[cfg(all(target_family = "wasm", feature = "showcase"))]
+async fn added_host(_destination: String) -> Result<GatewayHost, String> {
+    Err("Adding live SSH hosts requires the native zz app or web gateway.".to_owned())
+}
+
+#[cfg(all(target_family = "wasm", not(feature = "showcase")))]
 async fn added_host(destination: String) -> Result<GatewayHost, String> {
     use wasm_bindgen::JsCast as _;
     use wasm_bindgen_futures::JsFuture;

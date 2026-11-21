@@ -22,6 +22,8 @@ use ios_browser as native_browser;
 pub mod page_keys;
 pub mod preferences;
 mod roster;
+#[cfg(feature = "showcase")]
+pub mod showcase;
 pub mod terminal;
 pub mod terminal_images;
 #[cfg(any(target_os = "ios", target_os = "android"))]

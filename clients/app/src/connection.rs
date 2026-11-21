@@ -2145,7 +2145,7 @@ impl Connection {
         cx.notify();
     }
 
-    #[cfg(target_family = "wasm")]
+    #[cfg(all(target_family = "wasm", not(feature = "showcase")))]
     fn prompted(&mut self, prompt: zz_protocol::gateway::SignInPrompt, cx: &mut Context<Self>) {
         use zz_protocol::gateway::AskpassPromptKind;
         let (kind, text) = match prompt.kind {
@@ -2199,6 +2199,14 @@ impl Connection {
                     cx,
                 );
             }
+            #[cfg(feature = "showcase")]
+            inbox::SocketEvent::Message(message) => {
+                if let ProtocolMessage::Welcome(welcome) = message.as_ref() {
+                    self.welcome = Some(*welcome);
+                }
+                self.receive(*message, cx);
+            }
+            #[cfg(not(feature = "showcase"))]
             inbox::SocketEvent::Frame(bytes) => match zz_protocol::decode_protocol_frame(&bytes) {
                 decoded if page_out_of_date(&decoded) => {
                     self.stale_page = self.endpoint.as_deref() == Some(GATEWAY_LOCAL);
@@ -2244,7 +2252,9 @@ impl Connection {
                     return false;
                 }
             },
+            #[cfg(not(feature = "showcase"))]
             inbox::SocketEvent::Focus(focused) => self.set_focused(focused, cx),
+            #[cfg(not(feature = "showcase"))]
             inbox::SocketEvent::Prompt(prompt) => self.prompted(prompt, cx),
         }
         cx.notify();
@@ -2252,7 +2262,7 @@ impl Connection {
     }
 }
 
-#[cfg(any(target_family = "wasm", test))]
+#[cfg(any(all(target_family = "wasm", not(feature = "showcase")), test))]
 fn page_out_of_date(decoded: &Result<ProtocolMessage, zz_protocol::ProtocolError>) -> bool {
     match decoded {
         Err(zz_protocol::ProtocolError::VersionMismatch { expected, received }) => {
@@ -2267,7 +2277,7 @@ fn page_out_of_date(decoded: &Result<ProtocolMessage, zz_protocol::ProtocolError
     }
 }
 
-#[cfg(any(target_family = "wasm", test))]
+#[cfg(any(all(target_family = "wasm", not(feature = "showcase")), test))]
 fn supports_required_protocol(message: &ProtocolMessage) -> bool {
     [
         zz_protocol::PANE_FRAME_CAPABILITY,
@@ -2324,7 +2334,7 @@ fn settled(reason: &str) -> &str {
         .trim_end_matches(" Reconnecting…")
 }
 
-#[cfg(target_family = "wasm")]
+#[cfg(all(target_family = "wasm", not(feature = "showcase")))]
 fn daemon_below_floor(message: &ProtocolMessage) -> Option<u32> {
     let revision = match message {
         ProtocolMessage::Welcome(welcome) => welcome.revision,
@@ -2344,8 +2354,13 @@ mod inbox {
     #[derive(Debug, PartialEq)]
     pub enum SocketEvent {
         Opened,
+        #[cfg(any(not(feature = "showcase"), test))]
         Frame(Vec<u8>),
+        #[cfg(feature = "showcase")]
+        Message(Box<zz_protocol::ProtocolMessage>),
+        #[cfg(any(not(feature = "showcase"), test))]
         Focus(bool),
+        #[cfg(any(not(feature = "showcase"), test))]
         Prompt(zz_protocol::gateway::SignInPrompt),
     }
 
@@ -2398,15 +2413,19 @@ mod inbox {
             true
         }
 
+        #[cfg(any(not(feature = "showcase"), test))]
         pub fn frame(&self, length: usize, copy: impl FnOnce() -> Vec<u8>) -> bool {
             self.accepts(length) && self.push(SocketEvent::Frame(copy()))
         }
 
         pub fn push(&self, event: SocketEvent) -> bool {
+            #[cfg(any(not(feature = "showcase"), test))]
             let bytes = match &event {
                 SocketEvent::Frame(bytes) => bytes.len(),
                 _ => 0,
             };
+            #[cfg(not(any(not(feature = "showcase"), test)))]
+            let bytes = 0;
             if !self.accepts(bytes) {
                 return false;
             }
@@ -2437,6 +2456,7 @@ mod inbox {
                 return None;
             }
             let event = self.receiver.recv().await.ok()?;
+            #[cfg(any(not(feature = "showcase"), test))]
             if let SocketEvent::Frame(bytes) = &event {
                 self.state
                     .bytes
@@ -2455,7 +2475,88 @@ mod inbox {
     }
 }
 
-#[cfg(target_family = "wasm")]
+#[cfg(all(target_family = "wasm", feature = "showcase"))]
+mod browser {
+    use std::cell::RefCell;
+
+    use zz_protocol::{
+        AttachOperation, ClientHello, ClientInstanceId, ClientKind, Hello, PROTOCOL_VERSION,
+        ProtocolMessage, gateway::SignInAnswer,
+    };
+
+    use super::inbox::{self, Receiver, Sender, SocketEvent};
+    use crate::showcase::DemoHost;
+
+    pub struct Socket {
+        host: RefCell<DemoHost>,
+        sender: Sender,
+    }
+
+    impl Socket {
+        pub fn connect(host: &str) -> Result<(Self, Receiver), String> {
+            let (sender, receiver) = inbox::channel(128, zz_protocol::MAX_ENCODED_FRAME_BYTES);
+            let _ = sender.push(SocketEvent::Opened);
+            Ok((
+                Self {
+                    host: RefCell::new(DemoHost::for_host(host)),
+                    sender,
+                },
+                receiver,
+            ))
+        }
+
+        pub fn answer(&self, _: &SignInAnswer) -> Result<(), ()> {
+            Ok(())
+        }
+
+        pub fn buffered_amount(&self) -> usize {
+            0
+        }
+
+        pub fn send(&self, message: &ProtocolMessage) -> Result<(), String> {
+            let replies = self.host.borrow_mut().handle(message.clone());
+            for reply in replies {
+                if !self.sender.push(SocketEvent::Message(Box::new(reply))) {
+                    return Err("Showcase inbox full".into());
+                }
+            }
+            Ok(())
+        }
+    }
+
+    pub fn new_instance_id() -> ClientInstanceId {
+        ClientInstanceId(js_sys::Math::random().to_bits().max(1))
+    }
+
+    pub fn hello(instance: ClientInstanceId, target: Option<String>) -> Hello {
+        let mut hello = Hello::from_client(ClientHello {
+            protocol_version: PROTOCOL_VERSION,
+            client_instance_id: instance,
+            kind: ClientKind::Interactive,
+            device_name: Some("Browser".into()),
+            capabilities: [
+                ClientHello::CLIENT_TERMINAL_CAPABILITY,
+                ClientHello::CLIENT_UTF8_CAPABILITY,
+                ClientHello::CLIENT_PATH_PICKER_CAPABILITY,
+                zz_protocol::AGENT_LOGIN_CAPABILITY,
+            ]
+            .into_iter()
+            .chain(zz_protocol::CLIENT_CAPABILITY_NAMES.iter().copied())
+            .map(str::to_owned)
+            .collect(),
+            color_scheme: None,
+            origin: None,
+            working_directory: None,
+            environment: Vec::new(),
+            process_id: 0,
+            revision: zz_protocol::REVISION,
+        });
+        hello.attach = target.map(AttachOperation::Session);
+        hello
+    }
+}
+
+#[cfg(all(target_family = "wasm", not(feature = "showcase")))]
 mod browser {
     use wasm_bindgen::{JsCast, closure::Closure};
     use zz_protocol::{
