@@ -35,8 +35,9 @@ impl Transcript {
         let now = Instant::now();
         match payload {
             AgentStreamPayload::SessionReset { .. } => {
-                if std::mem::take(&mut self.live) {
-                    self.shadow.turn(&Fact::SessionClosed, None, now);
+                if self.live {
+                    *self = Self::default();
+                    return vec![ChatEvent::Restart];
                 }
                 self.turn = None;
                 self.drawn.clear();
@@ -257,5 +258,72 @@ mod tests {
             ]
         );
         assert!(view.running().is_none());
+    }
+
+    #[test]
+    fn a_session_loaded_again_shows_its_history_once() {
+        let ready = || AgentStreamPayload::SessionReady {
+            session_id: "s1".to_owned(),
+            modes: None,
+            config_options: None,
+        };
+        let history = |turns: &[(&str, &str)]| {
+            let mut payloads = vec![AgentStreamPayload::SessionReset { restoring: true }];
+            for (index, (question, answer)) in turns.iter().enumerate() {
+                payloads.push(text(
+                    "user_message_chunk",
+                    &format!("old-{index}"),
+                    question,
+                ));
+                payloads.push(unnamed("agent_message_chunk", answer));
+            }
+            payloads.push(ready());
+            payloads
+        };
+        let mut payloads = history(&[("first question", "first answer")]);
+        payloads.extend([
+            text(
+                "user_message_chunk",
+                "zz-prompt-7-00000000000000aa",
+                "second question",
+            ),
+            AgentStreamPayload::PromptAccepted { turn_id: 7 },
+            unnamed("agent_message_chunk", "second answer"),
+            AgentStreamPayload::PromptFinished {
+                turn_id: 7,
+                outcome: AgentPromptOutcome::Finished {
+                    stop_reason: json!("end_turn"),
+                },
+            },
+        ]);
+        payloads.extend(history(&[
+            ("first question", "first answer"),
+            ("second question", "second answer"),
+        ]));
+
+        let mut transcript = Transcript::default();
+        let mut view = ChatView::default();
+        for payload in &payloads {
+            for event in transcript.payload(payload) {
+                let _ = view.apply(&event);
+            }
+        }
+        assert_eq!(
+            (0..view.turns.len())
+                .map(|turn| kinds(&view, turn))
+                .collect::<Vec<_>>(),
+            [
+                [
+                    (ItemKind::User, "first question".to_owned()),
+                    (ItemKind::Agent, "first answer".to_owned()),
+                ],
+                [
+                    (ItemKind::User, "second question".to_owned()),
+                    (ItemKind::Agent, "second answer".to_owned()),
+                ],
+            ]
+        );
+        assert_eq!(view.items.len(), 4);
+        assert_eq!(view.skipped, 0);
     }
 }

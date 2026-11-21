@@ -638,8 +638,10 @@ the same for both:
   starts the turn, `PromptFinished` ends it as completed, cancelled or failed, a permission answer
   is recorded as the answer, and history replayed by `session/load` gets a turn for each user
   message. A text chunk with no `messageId` (grok sends none) is given one per run of chunks, so
-  the text before a tool call and the text after it are two items in that order. The `Chat` events
-  follow the payload that caused them.
+  the text before a tool call and the text after it are two items in that order. A `SessionReset`
+  after the session went live (a sign-in that opens the session again, a switch) starts the
+  transcript over and sends `ChatEvent::Restart`, so the history the agent replays on load shows
+  once. The `Chat` events follow the payload that caused them.
 - **Effort, title, session list.** The effort rename, `session_info_update` to `TitleChanged`, and
   the session list kept to the folder asked for. Folders are compared resolved, so `/tmp/x` and
   `/private/tmp/x` are one, and a kept session carries the folder as it was asked for. A new
