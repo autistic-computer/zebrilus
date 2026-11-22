@@ -140,7 +140,7 @@ hundreds of updates, so agent streams get their own `OutboundState` lane, preced
   (`ChatLog::in_effect`) and the newest chat events that fit in `MAX_REBUILD_BYTES` and the skipped
   numbers. Events that refer to the part left out fail to apply and count in `ChatView.skipped`.
   When the rebuild needs more numbers than the asker skipped, the lane first stamps exactly the
-  missing ones as repeats of its latest chat queue event (or usage event, or an empty queue), which
+  missing ones as repeats of its latest chat usage event (or queue event, or an empty queue), which
   every viewer gets and folds to the chat it had, so the rebuild still ends on the lane's last
   number and is never cut short. A rebuild carries no raw updates, so after one the slash command
   list and the usage come back only when the agent sends them again. The cap keeps a replay under

@@ -1400,7 +1400,7 @@ The full delivery contract is in the
   chat is still in effect (open rows, open asks, the running turn, the queue and usage) and the
   newest part of the chat that fits in 4.5 MiB. Events that refer to the part left out count in
   `ChatView.skipped`. When the asker skipped too few numbers for that, the lane first adds the
-  missing ones as repeats of its queue or usage event, which every viewer gets and which change
+  missing ones as repeats of its usage or queue event, which every viewer gets and which change
   nothing they show. A driver that resumes a
   session replays its history from the CLI's own file first. A pane's numbers never start over
   within a daemon process, so a client's position stays good across reconnects to the same

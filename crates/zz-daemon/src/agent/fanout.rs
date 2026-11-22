@@ -1327,8 +1327,8 @@ impl PaneLane {
             return;
         }
         let last = |kind: fn(&ChatEvent) -> bool| events.iter().rev().find(|event| kind(event));
-        let event = last(|event| matches!(event, ChatEvent::QueueChanged { .. }))
-            .or_else(|| last(|event| matches!(event, ChatEvent::UsageChanged { .. })))
+        let event = last(|event| matches!(event, ChatEvent::UsageChanged { .. }))
+            .or_else(|| last(|event| matches!(event, ChatEvent::QueueChanged { .. })))
             .cloned()
             .unwrap_or(ChatEvent::QueueChanged {
                 prompts: Vec::new(),

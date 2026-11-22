@@ -110,8 +110,8 @@ the item of every open request with their parents, every open request, the turns
 the queue and the usage) and then the newest events that fit, all in their original order. A
 rebuilt chat can show an old turn holding only its still-open rows, and an open item without its
 finished children. When the rebuild needs more numbers than the asker skips, the lane first takes
-exactly the missing ones with repeats of its latest queue event (its latest usage event when it
-has no queue, an empty queue when it has neither), which every viewer gets and which change no
+exactly the missing ones with repeats of its latest usage event (its latest queue event when it
+has no usage, an empty queue when it has neither), which every viewer gets and which change no
 client's chat, and the asker gets the rebuild on those numbers too. Only when the events still in
 effect pass 4.5 MiB on their own does it send no chat, and the asker keeps the chat it had. The
 log grows with items and turns, not with streamed text, and keeps pasted images only on the last 8
