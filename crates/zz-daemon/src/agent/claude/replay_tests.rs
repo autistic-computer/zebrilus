@@ -2,14 +2,21 @@ use async_channel::Receiver;
 use zz_protocol::chat::{ItemId, ItemKind, ItemStatus};
 
 use super::*;
+use crate::agent::cut_points::{Tape, Taping};
 
 const ORIGINAL: &str = "5ea128f9-c87f-42ce-898a-b86101954ace";
 
 fn setup() -> (Runtime, Receiver<AgentStreamPayload>) {
+    let (mut runtime, receiver) = fresh();
+    smol::block_on(runtime.apply(&Fact::SessionReady)).expect("ready");
+    (runtime, receiver)
+}
+
+fn fresh() -> (Runtime, Receiver<AgentStreamPayload>) {
     let command = ClaudeCommand::parse("claude").expect("command");
     let (events, receiver) = async_channel::unbounded();
     let (child_tx, _) = async_channel::unbounded();
-    let mut runtime = Runtime {
+    let runtime = Runtime {
         provider: AgentProvider::ClaudeCode,
         settings: Settings::new(&command),
         command,
@@ -45,7 +52,6 @@ fn setup() -> (Runtime, Receiver<AgentStreamPayload>) {
         title: Title::default(),
         listed: HashMap::new(),
     };
-    smol::block_on(runtime.apply(&Fact::SessionReady)).expect("ready");
     (runtime, receiver)
 }
 
@@ -110,30 +116,7 @@ fn run_with(recording: &str, foreign: bool) -> (Runtime, Vec<(usize, Seen)>) {
     let mut turn = 0;
     for (index, line) in recording.lines().enumerate() {
         let entry: Value = serde_json::from_str(line).expect("recorded line");
-        let message = &entry["msg"];
-        if entry["dir"] == "in" && message["type"] == "user" {
-            let command = message["uuid"].as_str().expect("uuid").to_owned();
-            if message["priority"] == "now" {
-                smol::block_on(runtime.apply(&Fact::Steer { command })).expect("steer");
-            } else if runtime.turns.accepts_prompt() {
-                turn += 1;
-                prompt(&mut runtime, turn, &command);
-            }
-        } else if foreign
-            && entry["dir"] == "in"
-            && message["type"] == "control_request"
-            && message["request"]["subtype"] == "interrupt"
-        {
-            let _ = smol::block_on(runtime.apply(&Fact::Cancel));
-        } else if entry["dir"] == "out" && message.is_object() {
-            smol::block_on(runtime.frame(message.clone())).expect("frame");
-        } else if foreign && entry["dir"] == "in" && message["type"] == "query.open" {
-            let _ = smol::block_on(runtime.apply(&Fact::SessionReady));
-        } else if entry["dir"] == "exit" {
-            let _ = smol::block_on(runtime.apply(&Fact::Exited {
-                message: "the recording ended the process".to_owned(),
-            }));
-        }
+        run_line(&mut runtime, &entry, foreign, &mut turn);
         seen.extend(
             turn_events(&receiver)
                 .into_iter()
@@ -141,6 +124,33 @@ fn run_with(recording: &str, foreign: bool) -> (Runtime, Vec<(usize, Seen)>) {
         );
     }
     (runtime, seen)
+}
+
+fn run_line(runtime: &mut Runtime, entry: &Value, foreign: bool, turn: &mut u64) {
+    let message = &entry["msg"];
+    if entry["dir"] == "in" && message["type"] == "user" {
+        let command = message["uuid"].as_str().expect("uuid").to_owned();
+        if message["priority"] == "now" {
+            smol::block_on(runtime.apply(&Fact::Steer { command })).expect("steer");
+        } else if runtime.turns.accepts_prompt() {
+            *turn += 1;
+            prompt(runtime, *turn, &command);
+        }
+    } else if foreign
+        && entry["dir"] == "in"
+        && message["type"] == "control_request"
+        && message["request"]["subtype"] == "interrupt"
+    {
+        let _ = smol::block_on(runtime.apply(&Fact::Cancel));
+    } else if entry["dir"] == "out" && message.is_object() {
+        smol::block_on(runtime.frame(message.clone())).expect("frame");
+    } else if foreign && entry["dir"] == "in" && message["type"] == "query.open" {
+        let _ = smol::block_on(runtime.apply(&Fact::SessionReady));
+    } else if entry["dir"] == "exit" {
+        let _ = smol::block_on(runtime.apply(&Fact::Exited {
+            message: "the recording ended the process".to_owned(),
+        }));
+    }
 }
 
 fn replay(recording: &str) -> Vec<(usize, Seen)> {
@@ -376,13 +386,93 @@ fn an_exit_resolves_the_open_permission_cards() {
 
 fn play(runtime: &mut Runtime, recording: &[Value]) {
     for entry in recording {
-        let message = &entry["msg"];
-        if entry["dir"] == "in" && message["type"] == "user" {
-            prompt(runtime, 1, message["uuid"].as_str().expect("uuid"));
-        } else if entry["dir"] == "out" && message.is_object() {
-            smol::block_on(runtime.frame(message.clone())).expect("frame");
-        }
+        play_line(runtime, entry);
     }
+}
+
+fn play_line(runtime: &mut Runtime, entry: &Value) {
+    let message = &entry["msg"];
+    if entry["dir"] == "in" && message["type"] == "user" {
+        prompt(runtime, 1, message["uuid"].as_str().expect("uuid"));
+    } else if entry["dir"] == "out" && message.is_object() {
+        smol::block_on(runtime.frame(message.clone())).expect("frame");
+    }
+}
+
+pub(crate) fn tapes() -> Vec<Tape> {
+    let run = |name, recording| {
+        let mut turn = 0;
+        tape(name, recording, move |runtime, entry| {
+            run_line(runtime, entry, false, &mut turn);
+        })
+    };
+    vec![
+        run("claude hello", include_str!("fixtures/hello.ndjson")),
+        run("claude tools", include_str!("fixtures/tools.ndjson")),
+        run("claude steer", include_str!("fixtures/steer.ndjson")),
+        run("claude resume", include_str!("fixtures/resume.ndjson")),
+        tape(
+            "claude background",
+            include_str!("fixtures/background.ndjson"),
+            play_line,
+        ),
+        tape(
+            "claude nested",
+            include_str!("fixtures/nested.ndjson"),
+            play_line,
+        ),
+    ]
+}
+
+fn tape(name: &'static str, recording: &str, mut step: impl FnMut(&mut Runtime, &Value)) -> Tape {
+    let session = recording
+        .lines()
+        .find_map(|line| {
+            let entry = serde_json::from_str::<Value>(line).ok()?;
+            entry["msg"]["session_id"]
+                .as_str()
+                .filter(|session| sessions::valid_uuid(session))
+                .map(str::to_owned)
+        })
+        .expect("recorded session");
+    let (mut runtime, receiver) = fresh();
+    runtime.session = Some(Session {
+        id: session.clone(),
+        cwd: PathBuf::from("/work"),
+    });
+    let mut taping = Taping::new(name, AgentProvider::ClaudeCode, &session);
+    runtime.journal = Some(taping.journal());
+    smol::block_on(runtime.apply(&Fact::SessionReady)).expect("ready");
+    taping.line(None, drain(&receiver));
+    for line in recording.lines() {
+        let entry: Value = serde_json::from_str(line).expect("recorded line");
+        step(&mut runtime, &entry);
+        taping.line(Some(&entry), drain(&receiver));
+    }
+    let emitted = runtime.chat.lock().events.clone();
+    taping.finish(&emitted, reload)
+}
+
+fn drain(receiver: &Receiver<AgentStreamPayload>) -> Vec<AgentStreamPayload> {
+    std::iter::from_fn(|| receiver.try_recv().ok()).collect()
+}
+
+fn reload(session: &str, journal: &[Value]) -> Vec<ChatEvent> {
+    let directory = tempfile::tempdir().expect("journal directory");
+    let held = Arc::new(AgentJournal::open(directory.path()).expect("open journal"));
+    for update in journal {
+        held.append_for(AgentProvider::ClaudeCode, session, update)
+            .expect("journal");
+    }
+    let (mut runtime, _receiver) = fresh();
+    runtime.journal = Some(held);
+    runtime.starting = Some(Starting {
+        start: Start::Open { resume: true },
+        launch: Launch::Resume(session.to_owned()),
+        cwd: PathBuf::from("/work"),
+    });
+    smol::block_on(runtime.initialized(&json!({}))).expect("reload");
+    runtime.chat.lock().events.clone()
 }
 
 fn background_recording() -> Vec<Value> {

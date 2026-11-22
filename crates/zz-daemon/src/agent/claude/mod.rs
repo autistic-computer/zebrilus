@@ -2618,6 +2618,8 @@ fn prompt_content(prompt: &crate::agent::stream::AgentPrompt, note: Option<&str>
 
 #[cfg(test)]
 mod replay_tests;
+#[cfg(test)]
+pub(crate) use replay_tests::tapes;
 
 #[cfg(test)]
 mod tests {

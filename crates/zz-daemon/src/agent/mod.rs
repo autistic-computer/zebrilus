@@ -20,6 +20,8 @@ pub(crate) mod codex;
 #[cfg(unix)]
 pub(crate) mod codex_queue;
 pub(crate) mod cursor;
+#[cfg(test)]
+pub(crate) mod cut_points;
 pub(crate) mod dialect;
 pub(crate) mod environment;
 pub(crate) mod fanout;

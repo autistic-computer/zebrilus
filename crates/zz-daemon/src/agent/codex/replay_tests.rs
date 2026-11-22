@@ -4,12 +4,19 @@ use zz_protocol::chat::{
 };
 
 use super::*;
+use crate::agent::cut_points::{Tape, Taping};
 
 fn setup(thread: &str) -> (Runtime, Receiver<AgentStreamPayload>) {
+    let (mut runtime, receiver) = fresh(thread);
+    smol::block_on(runtime.apply(&Fact::SessionReady)).expect("ready");
+    (runtime, receiver)
+}
+
+fn fresh(thread: &str) -> (Runtime, Receiver<AgentStreamPayload>) {
     let command = CodexCommand::parse("codex").expect("command");
     let (events, receiver) = async_channel::unbounded();
     let (child_tx, _) = async_channel::unbounded();
-    let mut runtime = Runtime {
+    let runtime = Runtime {
         provider: AgentProvider::Codex,
         command,
         workspace: AgentWorkspaceEnvironment::default(),
@@ -49,7 +56,6 @@ fn setup(thread: &str) -> (Runtime, Receiver<AgentStreamPayload>) {
         title: Title::default(),
         titler: None,
     };
-    smol::block_on(runtime.apply(&Fact::SessionReady)).expect("ready");
     (runtime, receiver)
 }
 
@@ -88,45 +94,7 @@ fn run(recording: &str, thread: &str) -> (Runtime, Vec<(usize, Seen)>) {
     let mut prompts = HashMap::new();
     for (index, line) in recording.lines().enumerate() {
         let entry: Value = serde_json::from_str(line).expect("recorded line");
-        let message = &entry["msg"];
-        if entry["dir"] == "in" && message["method"] == "turn/interrupt" {
-            let _ = smol::block_on(runtime.apply(&Fact::Cancel));
-        } else if entry["dir"] == "in" && message["method"] == "turn/steer" {
-            if let Some(command) = message["params"]["expectedTurnId"].as_str() {
-                let _ = smol::block_on(runtime.apply(&Fact::Steer {
-                    command: command.to_owned(),
-                }));
-            }
-        } else if entry["dir"] == "exit" {
-            let _ = smol::block_on(runtime.apply(&Fact::Exited {
-                message: "the recording ended the process".to_owned(),
-            }));
-        } else if entry["dir"] == "in" && message["method"] == "turn/start" {
-            let turn = prompts.len() as u64 + 1;
-            prompts.insert(message["id"].clone(), turn);
-            let fact = Fact::Prompt {
-                turn,
-                command: None,
-            };
-            assert_eq!(smol::block_on(runtime.apply(&fact)), Ok(None));
-        } else if entry["dir"] == "out" {
-            match (message.get("method"), prompts.get(&message["id"])) {
-                (None, Some(turn)) => {
-                    let fact = Fact::Accepted {
-                        turn: *turn,
-                        command: message["result"]["turn"]["id"]
-                            .as_str()
-                            .expect("turn id")
-                            .to_owned(),
-                    };
-                    smol::block_on(runtime.apply(&fact)).expect("accepted");
-                }
-                (Some(_), _) => {
-                    smol::block_on(runtime.message(message.clone())).expect("message");
-                }
-                (None, None) => {}
-            }
-        }
+        run_line(&mut runtime, &entry, &mut prompts);
         seen.extend(
             turn_events(&receiver)
                 .into_iter()
@@ -134,6 +102,114 @@ fn run(recording: &str, thread: &str) -> (Runtime, Vec<(usize, Seen)>) {
         );
     }
     (runtime, seen)
+}
+
+fn run_line(runtime: &mut Runtime, entry: &Value, prompts: &mut HashMap<Value, u64>) {
+    let message = &entry["msg"];
+    if entry["dir"] == "in" && message["method"] == "turn/interrupt" {
+        let _ = smol::block_on(runtime.apply(&Fact::Cancel));
+    } else if entry["dir"] == "in" && message["method"] == "turn/steer" {
+        if let Some(command) = message["params"]["expectedTurnId"].as_str() {
+            let _ = smol::block_on(runtime.apply(&Fact::Steer {
+                command: command.to_owned(),
+            }));
+        }
+    } else if entry["dir"] == "exit" {
+        let _ = smol::block_on(runtime.apply(&Fact::Exited {
+            message: "the recording ended the process".to_owned(),
+        }));
+    } else if entry["dir"] == "in" && message["method"] == "turn/start" {
+        let turn = prompts.len() as u64 + 1;
+        prompts.insert(message["id"].clone(), turn);
+        let fact = Fact::Prompt {
+            turn,
+            command: None,
+        };
+        assert_eq!(smol::block_on(runtime.apply(&fact)), Ok(None));
+    } else if entry["dir"] == "out" {
+        match (message.get("method"), prompts.get(&message["id"])) {
+            (None, Some(turn)) => {
+                let fact = Fact::Accepted {
+                    turn: *turn,
+                    command: message["result"]["turn"]["id"]
+                        .as_str()
+                        .expect("turn id")
+                        .to_owned(),
+                };
+                smol::block_on(runtime.apply(&fact)).expect("accepted");
+            }
+            (Some(_), _) => {
+                smol::block_on(runtime.message(message.clone())).expect("message");
+            }
+            (None, None) => {}
+        }
+    }
+}
+
+pub(crate) fn tapes() -> Vec<Tape> {
+    let run = |name, recording, thread| {
+        let mut prompts = HashMap::new();
+        tape(name, recording, thread, move |runtime, entry| {
+            run_line(runtime, entry, &mut prompts);
+        })
+    };
+    vec![
+        run(
+            "codex tools",
+            include_str!("fixtures/tools.ndjson"),
+            "01a117e9-e87d-7431-9e95-14e3ab67fc26",
+        ),
+        run(
+            "codex subagent",
+            include_str!("fixtures/subagent.ndjson"),
+            "01a11854-86d3-7e22-bf6e-748a315d3a61",
+        ),
+        tape(
+            "codex app-server-live",
+            include_str!("fixtures/app-server-live.jsonl"),
+            LIVE_THREAD,
+            feed,
+        ),
+    ]
+}
+
+fn tape(
+    name: &'static str,
+    recording: &str,
+    thread: &str,
+    mut step: impl FnMut(&mut Runtime, &Value),
+) -> Tape {
+    let (mut runtime, receiver) = fresh(thread);
+    let mut taping = Taping::new(name, AgentProvider::Codex, thread);
+    runtime.journal = Some(taping.journal());
+    smol::block_on(runtime.apply(&Fact::SessionReady)).expect("ready");
+    taping.line(None, payloads(&receiver));
+    for line in recording.lines() {
+        let entry: Value = serde_json::from_str(line).expect("recorded line");
+        step(&mut runtime, &entry);
+        taping.line(Some(&entry), payloads(&receiver));
+    }
+    let emitted = runtime.chat.lock().events.clone();
+    taping.finish(&emitted, reload)
+}
+
+fn reload(session: &str, journal: &[Value]) -> Vec<ChatEvent> {
+    let directory = tempfile::tempdir().expect("journal directory");
+    let held = Arc::new(AgentJournal::open(directory.path()).expect("open journal"));
+    for update in journal {
+        held.append_for(AgentProvider::Codex, session, update)
+            .expect("journal");
+    }
+    let (mut runtime, _receiver) = fresh(session);
+    runtime.journal = Some(held);
+    runtime.loading = Some(Loading {
+        start: Start::Open,
+        thread: json!({ "id": session, "turns": [] }),
+        cwd: PathBuf::from("/work"),
+        children: HashMap::new(),
+    });
+    smol::block_on(runtime.load()).expect("reload");
+    runtime.chat.lock().events.clone()
 }
 
 fn replay(recording: &str, thread: &str) -> Vec<(usize, Seen)> {
@@ -546,9 +622,15 @@ const LIVE_CALL: &str = "call_a04acfd0ee5f43b584adae85ea080afd";
 fn feed_step(runtime: &mut Runtime, step: &str) {
     for line in include_str!("fixtures/app-server-live.jsonl").lines() {
         let entry: Value = serde_json::from_str(line).expect("recorded line");
-        if entry["step"] == step && entry["dir"] == "in" && entry["msg"]["method"].is_string() {
-            smol::block_on(runtime.message(entry["msg"].clone())).expect("message");
+        if entry["step"] == step {
+            feed(runtime, &entry);
         }
+    }
+}
+
+fn feed(runtime: &mut Runtime, entry: &Value) {
+    if entry["dir"] == "in" && entry["msg"]["method"].is_string() {
+        smol::block_on(runtime.message(entry["msg"].clone())).expect("message");
     }
 }
 

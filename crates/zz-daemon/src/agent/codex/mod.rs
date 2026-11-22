@@ -3049,6 +3049,8 @@ pub(crate) fn turn_input(prompt: &AgentPrompt, note: Option<&str>) -> Value {
 
 #[cfg(test)]
 mod replay_tests;
+#[cfg(test)]
+pub(crate) use replay_tests::tapes;
 
 #[cfg(test)]
 mod tests {

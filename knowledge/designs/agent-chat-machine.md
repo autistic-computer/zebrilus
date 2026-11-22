@@ -220,6 +220,30 @@ could tie to real Claude Code or Codex behavior.
 
   What the replays still reject is expected: a Claude `result` for a wake turn when the recording
   has no session state events, and a child's end that arrives after its parent was stopped.
+- Cut-point sweeps (`agent/cut_points.rs`) take each recording as a tape (`claude::tapes`,
+  `codex::tapes`: the payloads every recording line produced, and what the journal held after it)
+  and do something to the chat at every position, then compare with the uninterrupted view:
+  - Late attach (`every_cut_of_a_recording_compacts_to_the_view_a_live_client_holds`, and the same
+    check on the random chats in `chat_tests.rs`): `Restart` plus `ChatLog::events()` at the cut,
+    then the rest live, must equal the straight fold.
+  - Fanout replay (`fanout.rs`,
+    `every_replay_path_at_every_cut_of_a_recording_shows_the_live_chat`): the real
+    `AgentFanout::replay` for a spread of `from_seq`. The ring, reopened lane and journal paths
+    must give an equal view. The capped rebuild, tried at every cut size through `room`, must keep
+    the phase, the running turn, the queue, the usage and every open item and request.
+  - Journal reload (`a_reload_from_the_journal_at_every_line_shows_the_live_chat`): what a real
+    `AgentJournal` held at that line goes through each driver's history fallback into a fresh
+    runtime, and the rows must match the live ones.
+
+  A failure is grouped by signature (sweep, path, first differing field) with a count and its
+  smallest example. Each sweep ends with the exact list of signatures it finds today and fails
+  when that list changes either way, so a listed signature is an open bug and fixing one means
+  deleting its line. Open on 2026-11-22: `ChatLog` drops the queue and usage on a session switch
+  while `ChatView` keeps them; `PaneLane::rebuild` keeps only the last `SessionReady` and the open
+  `TurnStarted`, so an approval or a running item that started before the cut is missing for the
+  asker; a chat reloaded from the journal has no turns, because the journal holds no turn marks
+  for Claude or Codex. The two Codex rollout fixtures have no driver that plays them and are not
+  taped, and agy, Grok and Cursor have no recordings.
 
 # Next
 

@@ -8,6 +8,7 @@ use zz_protocol::chat::{
 };
 
 use super::chat::{ChatMachine, ChatState, Ctx, Effect, Fact, Reject};
+use super::cut_points::{Cut, Findings};
 use super::turn::{self, End, Outcome};
 
 struct Chat {
@@ -848,37 +849,67 @@ fn random_fact(dice: &mut Dice, owner: &mut u64) -> Fact {
     }
 }
 
+fn random_chat(seed: u64) -> Chat {
+    let mut dice = Dice(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+    let mut chat = Chat::ready();
+    let mut owner = 0;
+    for _ in 0..3000 {
+        if dice.chance(10) {
+            chat.later(dice.below(12));
+        }
+        let fact = random_fact(&mut dice, &mut owner);
+        let Ok(mut effects) = chat.step(&fact) else {
+            continue;
+        };
+        while let Some(effect) = effects.pop() {
+            if let Effect::Send { prompt } = effect {
+                assert!(chat.view.running().is_none(), "sent into a running turn");
+                let sent = !dice.chance(20)
+                    && chat
+                        .step(&Fact::Turn(turn::Fact::Prompt {
+                            turn: prompt.id,
+                            command: Some(format!("p{}", prompt.id)),
+                        }))
+                        .is_ok();
+                if !sent {
+                    effects.extend(chat.ok(&Fact::SendFailed { prompt: prompt.id }));
+                }
+            }
+        }
+        assert!(chat.state.sending().is_none(), "a prompt stuck in flight");
+    }
+    chat
+}
+
+#[test]
+fn every_cut_of_a_random_chat_compacts_to_the_view_a_live_client_holds() {
+    const CONTINUED: usize = 64;
+    let mut findings = Findings::new("A late attach, random chats");
+    for seed in 1..=40_u64 {
+        let chat = random_chat(seed);
+        let name = format!("seed {seed}");
+        let total = chat.events.len();
+        let mut cut = Cut::new(&name, &chat.events, &chat.view);
+        let mut sample = 0;
+        loop {
+            let continued = cut.k >= total * sample / CONTINUED;
+            if continued {
+                sample += 1;
+            }
+            cut.check(&mut findings, continued);
+            if cut.k == total {
+                break;
+            }
+            cut.advance(&mut findings);
+        }
+    }
+    findings.finish(&["A | at the cut | queue", "A | at the cut | usage"]);
+}
+
 #[test]
 fn random_facts_keep_the_view_and_the_machine_in_step() {
     for seed in 1..=40_u64 {
-        let mut dice = Dice(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
-        let mut chat = Chat::ready();
-        let mut owner = 0;
-        for _ in 0..3000 {
-            if dice.chance(10) {
-                chat.later(dice.below(12));
-            }
-            let fact = random_fact(&mut dice, &mut owner);
-            let Ok(mut effects) = chat.step(&fact) else {
-                continue;
-            };
-            while let Some(effect) = effects.pop() {
-                if let Effect::Send { prompt } = effect {
-                    assert!(chat.view.running().is_none(), "sent into a running turn");
-                    let sent = !dice.chance(20)
-                        && chat
-                            .step(&Fact::Turn(turn::Fact::Prompt {
-                                turn: prompt.id,
-                                command: Some(format!("p{}", prompt.id)),
-                            }))
-                            .is_ok();
-                    if !sent {
-                        effects.extend(chat.ok(&Fact::SendFailed { prompt: prompt.id }));
-                    }
-                }
-            }
-            assert!(chat.state.sending().is_none(), "a prompt stuck in flight");
-        }
+        let chat = random_chat(seed);
         let mut replayed = ChatView::default();
         for event in &chat.events {
             replayed.apply(event).expect("replay");

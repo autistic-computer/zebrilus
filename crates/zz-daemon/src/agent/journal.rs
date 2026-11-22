@@ -438,6 +438,28 @@ impl AgentJournal {
     }
 
     #[cfg(test)]
+    pub(crate) fn held_for(
+        &self,
+        provider: AgentProvider,
+        session_id: &str,
+    ) -> Result<Vec<Value>, JournalError> {
+        let key = journal_key(provider, session_id);
+        let mut held = read_records(&self.directory.join(journal_file_name(&key)))?
+            .into_iter()
+            .map(|(_, JournalEntry::Update(update))| update)
+            .collect::<Vec<_>>();
+        if let Some(pending) = self
+            .handles
+            .lock()
+            .get(&key)
+            .and_then(|journal| journal.pending.as_ref())
+        {
+            held.push(pending.update.clone());
+        }
+        Ok(held)
+    }
+
+    #[cfg(test)]
     pub(crate) fn last_seq_for(
         &self,
         provider: AgentProvider,

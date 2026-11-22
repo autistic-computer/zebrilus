@@ -3044,4 +3044,311 @@ mod tests {
         accept_in(&fixture, AgentConnectionPhase::Ready, finished("end_turn"));
         assert!(!replays_a_running_turn(&fixture));
     }
+
+    struct Watched {
+        fixture: Fixture,
+        seen: u64,
+        chat: Vec<(u64, ChatEvent)>,
+        straight: zz_protocol::chat::ChatView,
+    }
+
+    impl Watched {
+        fn open(
+            tape: &crate::agent::cut_points::Tape,
+            journal: Option<Arc<AgentJournal>>,
+            parked: Option<u64>,
+        ) -> Self {
+            let recorder = Arc::new(Recorder::default());
+            let publisher: Arc<dyn AgentPublisher> = Arc::<Recorder>::clone(&recorder);
+            let fanout = Arc::new(AgentFanout::new(
+                &publisher,
+                journal,
+                Arc::new(Mutex::new(())),
+            ));
+            let pane = PaneId(4);
+            if let Some(next_seq) = parked {
+                fanout.parked.lock().insert(pane, (next_seq, 1));
+            }
+            fanout.open_lane(pane, 1, tape.provider, Some(tape.session.clone()));
+            let mut watched = Self {
+                fixture: Fixture {
+                    fanout,
+                    recorder,
+                    pane,
+                },
+                seen: 0,
+                chat: Vec::new(),
+                straight: zz_protocol::chat::ChatView::default(),
+            };
+            watched.catch_up();
+            watched
+        }
+
+        fn accept(&mut self, payload: &AgentStreamPayload) {
+            self.fixture.accept(payload.clone());
+            self.fixture.recorder.broadcast.lock().clear();
+            self.catch_up();
+        }
+
+        fn catch_up(&mut self) {
+            let lanes = self.fixture.fanout.lanes.lock();
+            let seen = self.seen;
+            for (seq, encoded) in lanes[&self.fixture.pane]
+                .ring
+                .iter()
+                .filter(|(seq, _)| *seq > seen)
+            {
+                let item: AgentStreamItem = serde_json::from_slice(encoded).expect("decode");
+                if let AgentStreamPayload::Chat { event } = item.payload {
+                    let _ = self.straight.apply(&event);
+                    self.chat.push((*seq, event));
+                }
+                self.seen = *seq;
+            }
+        }
+
+        fn next_seq(&self) -> u64 {
+            self.fixture.fanout.lanes.lock()[&self.fixture.pane].next_seq
+        }
+
+        fn log(&self) -> Vec<ChatEvent> {
+            std::iter::once(ChatEvent::Restart)
+                .chain(
+                    self.fixture.fanout.lanes.lock()[&self.fixture.pane]
+                        .chat
+                        .events()
+                        .cloned(),
+                )
+                .collect()
+        }
+
+        fn known(&self, from_seq: u64) -> zz_protocol::chat::ChatView {
+            crate::agent::cut_points::fold(
+                self.chat
+                    .iter()
+                    .take_while(|(seq, _)| *seq <= from_seq)
+                    .map(|(_, event)| event),
+            )
+        }
+
+        fn replay(&self, from_seq: u64, evicted: bool) -> Vec<AgentStreamItem> {
+            let pane = self.fixture.pane;
+            let before = {
+                let mut lanes = self.fixture.fanout.lanes.lock();
+                let lane = lanes.get_mut(&pane).expect("lane");
+                let before = lane.evicted_seq;
+                if evicted {
+                    lane.evicted_seq = lane.next_seq;
+                }
+                before
+            };
+            self.fixture.fanout.replay(ClientId(7), pane, from_seq);
+            self.fixture
+                .fanout
+                .lanes
+                .lock()
+                .get_mut(&pane)
+                .expect("lane")
+                .evicted_seq = before;
+            self.fixture.recorder.broadcast.lock().clear();
+            std::mem::take(&mut *self.fixture.recorder.direct.lock())
+                .into_iter()
+                .flat_map(|(_, _, _, items)| items)
+                .map(|item| serde_json::from_slice(&item).expect("decode"))
+                .collect()
+        }
+    }
+
+    fn client_view(
+        mut cursor: u64,
+        mut view: zz_protocol::chat::ChatView,
+        items: &[AgentStreamItem],
+    ) -> Result<(u64, zz_protocol::chat::ChatView), u64> {
+        for item in items {
+            if item.seq > cursor.saturating_add(1)
+                && matches!(
+                    item.payload,
+                    AgentStreamPayload::SessionReset { restoring: true }
+                )
+            {
+                cursor = item.seq.saturating_sub(1);
+            }
+            if item.seq <= cursor {
+                continue;
+            }
+            if item.seq > cursor.saturating_add(1) {
+                return Err(item.seq);
+            }
+            cursor = item.seq;
+            if let AgentStreamPayload::Chat { event } = &item.payload {
+                let _ = view.apply(event);
+            }
+        }
+        Ok((cursor, view))
+    }
+
+    #[test]
+    fn every_replay_path_at_every_cut_of_a_recording_shows_the_live_chat() {
+        use crate::agent::cut_points::{
+            Findings, difference, fold, payload_kind, short, sub_view_difference, tapes,
+        };
+        use zz_protocol::chat::{ChatView, TurnBy, TurnId};
+
+        const REOPENED_AT: u64 = 1000;
+        let stale = fold(&[
+            ChatEvent::SessionReady {
+                session: "stale".to_owned(),
+            },
+            ChatEvent::TurnStarted {
+                turn: TurnId(99),
+                by: TurnBy::Agent,
+                at: 0,
+            },
+        ]);
+        let mut findings = Findings::new("B fanout replay");
+        for tape in tapes() {
+            let directory = tempfile::tempdir().expect("journal directory");
+            let journal = Arc::new(AgentJournal::open(directory.path()).expect("open journal"));
+            let mut reopened = Watched::open(tape, None, Some(REOPENED_AT));
+            let mut journalled = Watched::open(tape, Some(Arc::clone(&journal)), None);
+            let mut memory = Watched::open(tape, None, None);
+            let total = tape
+                .lines
+                .iter()
+                .map(|line| line.payloads.len())
+                .sum::<usize>();
+            let mut position = 0;
+            for (index, line) in tape.lines.iter().enumerate() {
+                journal
+                    .remove_for(tape.provider, &tape.session)
+                    .expect("clear the journal");
+                for update in tape.journal_at(index) {
+                    journal
+                        .append_for(tape.provider, &tape.session, &update)
+                        .expect("journal");
+                }
+                for payload in &line.payloads {
+                    position += 1;
+                    for watched in [&mut reopened, &mut journalled, &mut memory] {
+                        watched.accept(payload);
+                    }
+                    let at = payload_kind(payload);
+                    let mut check = |path: &str,
+                                     watched: &Watched,
+                                     from_seq: u64,
+                                     evicted: bool| {
+                        let next_seq = watched.next_seq();
+                        let items = watched.replay(from_seq, evicted);
+                        let room = next_seq - from_seq - 1;
+                        let rank = (
+                            total,
+                            position * 10_000 + usize::try_from(room).unwrap_or(0),
+                        );
+                        let example = |detail: &str| {
+                            format!(
+                                "{} pos {position}/{total} after {} from_seq {from_seq} next_seq {next_seq} room {room}: {detail}",
+                                tape.name,
+                                short(payload)
+                            )
+                        };
+                        let chat = items
+                            .iter()
+                            .filter_map(|item| match &item.payload {
+                                AgentStreamPayload::Chat { event } => Some(event.clone()),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>();
+                        let restart = chat.contains(&ChatEvent::Restart);
+                        let prior = match (restart, path) {
+                            (true, _) => ChatView::default(),
+                            (false, "b") => stale.clone(),
+                            (false, _) => watched.known(from_seq),
+                        };
+                        findings.checked();
+                        let (cursor, view) = match client_view(from_seq, prior, &items) {
+                            Ok(caught) => caught,
+                            Err(seq) => {
+                                findings.add(
+                                    format!("B | {path} | gap in the replay"),
+                                    at.clone(),
+                                    rank,
+                                    || example(&format!("item {seq} after {from_seq}")),
+                                );
+                                return items.len();
+                            }
+                        };
+                        if cursor != next_seq - 1 {
+                            findings.add(
+                                format!("B | {path} | replay ends short of the lane"),
+                                at.clone(),
+                                rank,
+                                || example(&format!("cursor {cursor}")),
+                            );
+                        }
+                        let journal_path = items
+                            .iter()
+                            .any(|item| matches!(item.payload, AgentStreamPayload::Update { .. }));
+                        let (path, diff) = match path {
+                            "a" | "b" => (path, difference(&watched.straight, &view)),
+                            _ if journal_path => ("c", difference(&watched.straight, &view)),
+                            _ if chat == watched.log() => {
+                                ("d whole", difference(&watched.straight, &view))
+                            }
+                            _ if restart => ("d", sub_view_difference(&watched.straight, &view)),
+                            _ => (
+                                "d without Restart",
+                                sub_view_difference(&watched.straight, &view).map(|mut diff| {
+                                    diff.at = format!("{}, {}", diff.field, diff.at);
+                                    "the asker keeps its old chat".clone_into(&mut diff.field);
+                                    diff
+                                }),
+                            ),
+                        };
+                        if let Some(diff) = diff {
+                            findings.add(
+                                format!("B | {path} | {}", diff.field),
+                                at.clone(),
+                                rank,
+                                || example(&diff.describe()),
+                            );
+                        }
+                        items.len()
+                    };
+                    let next_seq = reopened.next_seq();
+                    for from_seq in [0, REOPENED_AT - 2] {
+                        check("b", &reopened, from_seq, false);
+                    }
+                    let span = next_seq - (REOPENED_AT - 1);
+                    for step in 0..=8 {
+                        let from_seq = REOPENED_AT - 1 + span * step / 8;
+                        if from_seq < next_seq {
+                            check("a", &reopened, from_seq, false);
+                        }
+                    }
+                    let next_seq = journalled.next_seq();
+                    let count = u64::try_from(check("c", &journalled, 0, true)).unwrap_or(0);
+                    for from_seq in [next_seq - 1 - count, next_seq - count] {
+                        if (1..next_seq).contains(&from_seq) {
+                            check("c", &journalled, from_seq, true);
+                        }
+                    }
+                    let log = u64::try_from(memory.log().len()).unwrap_or(0);
+                    for from_seq in 0..next_seq {
+                        if from_seq == 0 || next_seq - from_seq - 1 <= log + 6 {
+                            check("d", &memory, from_seq, true);
+                        }
+                    }
+                }
+            }
+        }
+        findings.finish(&[
+            "B | d without Restart | the asker keeps its old chat",
+            "B | d | open items[] missing",
+            "B | d | open requests[] missing",
+            "B | d | phase Ended read as Idle",
+            "B | d | phase Waiting read as Idle",
+            "B | d | phase Waiting read as Running",
+            "B | d | usage",
+        ]);
+    }
 }
