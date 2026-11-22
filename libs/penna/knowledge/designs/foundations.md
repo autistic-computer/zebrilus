@@ -91,7 +91,7 @@ An inset reaches the text's line box, not its letters. In `body` (13 on 18) capi
 
 ## Type
 
-Faces: the platform system face natively (`.SystemUIFont`), Inter Variable in the storybook and on the web. The code face is the platform's natively (`Theme::mono_font_family`: Menlo on macOS and iOS, Consolas on Windows, DejaVu Sans Mono elsewhere) and Lilex in the storybook and on the web, until Appearance's Mono font picks another. Weights: 400 text, 500 emphasis in the interface (`strong`), 600 headings. No other weights.
+Faces: the platform system face natively (`.SystemUIFont`), Inter Variable in the storybook and on the web. The code face is the platform's natively (`Theme::mono_font_family`: Menlo on macOS and iOS, Consolas on Windows, DejaVu Sans Mono elsewhere) and CommitMono in the storybook and on the web, until Appearance's Mono font picks another. Weights: 400 text, 500 emphasis in the interface (`strong`), 600 headings. No other weights.
 
 Interface (`TextStyle`, built):
 
@@ -131,7 +131,7 @@ Code takes the size and line of the text around it, in the code face: `mono` in 
 
 Root text (built): `Root` sets `body` on every window, before the caller's own style, and `penna.css` the same on `html`, so text with no style is 13 on 18 on both, where ala alone gives 16 on 25.89. A storybook section sets `body` too, and the storybook's own labels and sample text take text styles like any component (state labels are `caption` in the code face).
 
-Centering: Inter centers its capitals in the line box (within 0.01px at 13 on 18); the macOS system face sits them 0.33px low and Lilex 0.34px. Center a line box to center text; center icons beside text on the capitals with `cap_center_drop`.
+Centering: Inter and CommitMono center their capitals in the line box (within 0.01px at 13 on 18); the macOS system face sits them 0.33px low. Center a line box to center text; center icons beside text on the capitals with `cap_center_drop`.
 
 ## Size
 
@@ -344,7 +344,7 @@ HTML: a theme file's knobs generate its tokens (`cargo run --example theme_css`)
 
 How the knobs are spelled and decided:
 
-- `tint` is a named accent (`blue`, `orange`, ...), one hex color for both modes, or `{ "light": ..., "dark": ... }`, and sets `accent`; left out, it is `blue`. A person's Accent replaces it. The named accents, light then dark: blue #0a64dd #3183ff, purple #8549d1 #a366f7, pink #c02a82 #e648a0, red #cc252d #f44647, orange #ad4f00 #de6700, yellow #876400 #af8200, green #007b2c #009f3b, graphite #6a6a6a #868686. Each dark one is the most saturated color of its hue that reads at 4.5:1 as text on `bg` and holds a near-white mark at 3:1.
+- `tint` is a named accent (`blue`, `orange`, ...), one hex color for both modes, or `{ "light": ..., "dark": ... }`, and sets `accent`; left out, it is `blue`. A person's Accent replaces it. The named accents, light then dark: blue #0a64dd #3183ff, purple #8549d1 #a366f7, pink #c02a82 #e648a0, red #cc252d #f44647, orange #ad4f00 #da6500, yellow #876400 #ac8000, green #007b2c #009c3a, graphite #6a6a6a #868686. Each dark one is the most saturated color of its hue that reads at 4.5:1 as text on `bg` and holds a near-white mark at 3:1.
 - `neutral` is `{ "hue": 60, "amount": 0.15 }` by default, hue in OKLCH degrees. Amount 1 is 0.02 of OKLCH chroma on `bg` and 0.35 of that on `fg`. The base colors in code are the Color table; a neutral moves them by the difference between its tint and the default's, so the default reproduces the table exactly and other values tint like a person's tint did. A person's Tint and Tint strength override the hue and the amount.
 - `radius` and `control-radius` clamp to 0 to 25 and `smoothing` to 2 to 5, both where a file is parsed and where a person's override applies. `full` draws capsule controls (buttons, chips, tabs, badges, swatches) as pills and any other control at 25 with its 45% stop. A `radius` or `control-radius` of 25 is a round corner, never a pill.
 - `glass` as an object is a material: `light` and `dark` each name the fields that differ from `liquid` in that mode; an object with neither applies to both modes. Every material's tint rises to the lowest opacity that keeps `fg` at 4.5:1 over a black backdrop under dark text and a white one under light text, blended in sRGB and ignoring blur: 0.596 in light and 0.705 in dark with the default colors, so both looks keep their own tint, 0.8 and 0.75.
@@ -1533,128 +1533,6 @@ Anatomy, rail:
 - Rail: a pill 26 tall across the full width, in `--penna-control`. From its left end to the picked step it takes the `accent` fill, a pill of its own that ends 13 past the step's center, under the knob. A dot 4 across marks each step, the first 13 in from the left end and the last 13 in from the right, in the muted ink past the pick and in the accent's ink under the fill. With `.open_start()` the first step is a ring 6 across with a 1 wide line instead of a dot, and picking it leaves the rail unfilled.
 - Knob: a circle 30 across centered on the picked step, 2 past the rail above and below and at either end, `--penna-knob` with `shadow-contact`. With nothing picked there is no knob and no fill.
 
-Sizes: every rung through `.with_size()` (`Sizable`), `md` by default (follows density). `xs` and `sm` in toolbars and dense rows, `touch` under a coarse pointer. Every control in a row has the same size (Rules 6).
-
-States:
-
-| State | Look | Notes |
-|---|---|---|
-| rest | the track, labels in the quiet ink | |
-| hover | the quiet button's hover fill behind the segment, the pill's height and radius, and its label in the hover ink | not on the picked segment |
-| pressed | the quiet button's active fill behind the segment, while held | as hover |
-| selected | the pill under it, its label in the selected ink | exactly one segment |
-| focused | the focus ring, 1.5 outside the track; the track takes the field's focused fill | from the keyboard only, never from a click |
-| disabled | the track takes the field's disabled paint; the pill keeps its selected paint at half strength (fill and edge, no shadow), and every label takes its ink at half strength | presses, keys and hover are ignored, and it leaves the focus order; the pick still shows |
-
-Behavior: a click on a segment picks it and calls `on_select` with its index; the caller sets `selected`. With `on_select` the control is one tab stop: Left and Up pick the previous segment, Right and Down the next, Home and End the first and last, each through `on_select`, and they stop at the ends. A click picks without focusing. The pill slides to the new segment in 220ms (`turn`) with an ease out, and holds still with reduced motion. Under a coarse pointer each segment's hit area grows to the touch slop.
-
-Content: one or two words per segment, sentence case, no period ("System", "Light", "Dark"). Keep the labels about the same length, since each segment is as wide as its own.
-
-Placement: at the trailing end of a settings row (Appearance's mode and density), above content to switch its view (the docs' Rust and HTML tabs), or at full width under a menu's search field to scope its rows (Menu).
-
-HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index, `data-size` (`xsmall` to `touch`), `aria-disabled="true"`) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `.penna-segment` takes `:hover` or `data-state="hover"` and `:active` or `data-state="active"`, drawn in the root `--penna-quiet-hover` and `--penna-quiet-pressed` (the quiet button's fills) with the pill's radius (`--penna-pill-r`, which `segmented.js` sets). `segmented.js` makes the track a tab stop, places the pill, sets `aria-selected`, moves the pick on click and on the keys above, fires `change` with `{ index }`, and sizes the ring (`--penna-ring-r`) that `:focus-visible` or `data-state="focused"` draws. With `aria-disabled="true"` it leaves the track out of the tab order, ignores clicks and keys, and marks `.penna-segments` disabled so the tokens give the labels their disabled ink. `data-width="full"` fills the container with the segments sharing its width. `pennaSegmented.wire(root)` sets up controls added after load, and `pennaSegmented.set(control, index)` moves the pick from code without firing `change`.
-
-Status: matches.
-
-### Select
-
-A select picks one value from a list that opens under it. For two to five short options always in view, use a segmented control; for on or off, a switch; to type a value, an input; to run a command, a button with a caret.
-
-Kinds: one. `Select::new(&state)` draws a `SelectState`, which holds the options (any `SelectDelegate`, such as a `Vec`) and the picked one. Under a coarse pointer the list opens as a bottom sheet instead of a menu.
-
-Anatomy, left to right, all from the select's rung of the control ladder (Size):
-
-- Trigger: a field (the field role's fill, a hairline edge of at least 1px, radius the theme radius capped at 45% of the height), height `control_px`, the field inset at both sides (6, 6, 8, 10, 12, 12 from `xs` to `touch`). It is as wide as its value unless the caller sets a width.
-- Value: the rung's text style (`caption`, `small`, `body`, `body`, `lead`, `touch-body`), cut with an ellipsis when it doesn't fit. With nothing picked it shows the placeholder (or "Select") in the field's faint ink.
-- Chevron: `chevron-down` at the end, `icon_gap` after the value (4, 4, 6, 6, 8, 8), in the muted ink, a rung smaller than the trigger from `md` up: 12, 12, 12, 14, 16, 16.
-- Menu: a popover menu `space-4` under the trigger, its trailing edge on the trigger's, at least as wide as the trigger and scrolling past its height (`.menu_max_h()`). Its rows are menu rows (`small`, 12 icons) with a check before the picked one. An empty list shows a 28 inbox icon in the faint muted ink, `space-24` above and below, or the caller's `.empty()`. Past 12 options it carries the menu's search field (Menu), with the placeholder from `.search_placeholder()` ("Search" by default); `.searchable(bool)` forces it on or off. With `.scopes()` it carries the menu's scopes (Menu) and opens on the first scope that keeps the picked option's title, or the first scope.
-- Sheet (coarse pointer): a bottom sheet (Sheet) titled by `.title()` or the placeholder, its options as touch rows in one ruled group, the chosen one ending in a `check`, a font option drawn in its own typeface; above the group a search field when the select is searchable, as above, at the `touch` rung 44 with `touch-body` text, as tall as the scopes under it (a field that filters a list is not a form's field, which is 56), and under it a full-width `touch` segmented control when it has scopes, which filters the rows the same way, the two 16 in and `gap-group` 16 above the group. A long list scrolls inside the sheet under its fixed header, the sheet at most 85% of the screen.
-
-Sizes: `md` by default (follows density). Same rungs and uses as a field. Every control in a row has the same size (Rules 6).
-
-States:
-
-| State | Look | Notes |
-|---|---|---|
-| rest | the field's fill and edge | |
-| hover | the fill's hover step | not when disabled |
-| focused | the field's focused fill | also while the menu is open |
-| open | the focused look, with the menu under it and the picked row highlighted | |
-| disabled | the field's disabled paint, faint value | leaves the focus order and never opens |
-| error | `.tone(Tone::Danger)` paints the trigger in the danger tone, like a field: its edge only | its Field shows the message with an icon (Field) |
-
-Behavior: a press on the trigger opens the menu, and a second press closes it. While focused, Enter, Space, Up or Down open it. In the menu, Up and Down move, Enter picks, Escape closes it and returns focus to the trigger. Picking a row closes the menu and emits `SelectEvent::Confirm`. A searchable menu opens with its field focused and the picked row highlighted, and filters as the menu's search does. Under a coarse pointer the trigger's hit area grows to the touch slop.
-
-Content: options are short nouns in sentence case ("Rust", "Floating"). The placeholder names what is picked ("Language"), with no closing period.
-
-Placement: like a field: in a Field in a form, or at the end of a settings row whose title names it.
-
-HTML: `div.penna-select` with `data-options` (a comma list), `data-value` (the picked index), `data-placeholder`, `data-size` (`xsmall` to `touch`), `data-tone="danger"` for an error, `aria-disabled="true"`, and `data-open` (with `data-pinned` to stay open without focus). `select.js` builds `.penna-select-trigger` (`data-penna="field"`, carrying the select's `data-tone`) holding `.penna-select-title` (`data-placeholder` while nothing is picked) and `<i data-icon="chevron-down">`, and the menu `.penna-menu.penna-select-menu` (`data-penna="popover"`) of `menu-item` rows, each with a `.penna-select-check`. It sets `role="combobox"`, answers the same keys (Tab also closes), closes on a press outside and fires `change` with `{ index, value }`. Past 12 options, or with `data-searchable` (`"false"` turns it off), the menu takes `data-searchable` and holds `.penna-select-search` (a `label.penna-input` with the search icon, its placeholder from `data-search-placeholder`) over `.penna-select-rows`; filtered rows take `hidden` and `.penna-select-none` says "No matches". `data-scopes` is a JSON list of `{ "label", "keep": [option names] }`, where a scope without `keep` keeps every option: the menu takes `data-scoped` and holds `.penna-select-scopes`, a full-width segmented control, after the search; it opens on the first scope that keeps the picked option, `data-scope` on the select holds the shown one, and Tab and Shift-Tab switch scope instead of closing. The page loads `segmented.css` and `segmented.js`.
-
-Status: matches.
-
-### Separator
-
-A separator is a one pixel line between things that takes no room along its axis. Reach for space first: a `gap-group` between groups usually separates them on its own, and a line is for where space can't, such as between panes or between groups in a menu. For a line on an element's own edge (under a bar, beside a sidebar), use `.rule(look, edge, cx)` on that element.
-
-Looks (`RuleLook`, `.look()`):
-
-| Look | Recipe | Use |
-|---|---|---|
-| Plain (default) | `rule` | between panes in a split |
-| Bar | `rule.bar` | under the title bar and other bars, over footers |
-| List | `rule.list` | between menu groups, setting rows and stacked cards |
-| Tree | `rule.tree` | the guides that join a tree's children |
-
-All four draw a hairline in the same ink.
-
-Anatomy:
-
-- Line: `RULE_WIDTH` 1, in `divider` (the ink at the theme's edge weight), centered on the separator's box.
-- Box: full width and zero height (horizontal), or full height and zero width (vertical), so the gap on either side is the parent's alone. A vertical separator needs a parent with a definite height.
-- `.rule(look, edge, cx)`: a 1px border in `divider` on one edge of any element; unlike a separator it takes its pixel of room.
-
-Behavior: none. `.id(id)` makes it an accessibility node (a splitter, with its orientation); it doesn't drag.
-
-Placement: between siblings, with the parent's gap on each side (`gap-related` 8 in the display story). A settings card starts its list rules `inset-card` 12 in, where the row text starts, and runs them to the card's far edge, as a ruled touch group does.
-
-Content: plain ink. `.tone(tone)` draws the line in a tone's ink (`Primary`, `Danger`, `Warning`, `Success`, `Accent`; `Neutral` is the plain ink), and nothing takes a free color (Rules 8). A status tone on it comes with a word next to it ("Danger zone").
-
-HTML: `.penna-separator-rule` holding a `div` with `data-penna` set to `rule`, `rule.bar`, `rule.list` or `rule.tree`; `data-axis="vertical"` for a vertical one, `data-tone` (`primary`, `danger`, `warning`, `success`, `accent`) for a toned line, `role="separator"` (and `aria-orientation="vertical"`) where native gives it an id. The line is 1px, offset half a pixel to sit centered.
-
-Status: matches.
-
-### Slider
-
-A slider sets a value on a range by dragging or with the arrow keys. For an exact number, use a number input; for a few named choices that read better side by side, a segmented control.
-
-Kinds:
-
-| Kind | Call | Use |
-|---|---|---|
-| Continuous | `Slider::new(id, label, value, range, on_change)` | a value on a range: tint, hue, zoom. `.step()` snaps it, `.display()` formats it |
-| Stepped | `DiscreteSlider::new(id, label, steps, picked, on_change)` | one of a few ordered, named steps: scrollback, opacity |
-| Rail | `StepRail::new(id, label, steps, picked, on_change)` | the same, as one thick rail to drag, where the control has a row to itself: an effort under a list of models in a popover. `.open_start()` when the first step means "not set" |
-
-Anatomy, continuous:
-
-- Box: the rung's `control_px` tall (28 at `md`, which follows density; 44 under a coarse pointer at any size), half the knob inside at each side. The whole box takes the press.
-- Rail: a pill, 4 tall at `xs` and `sm` and 6 from `md` up. Up to the value it takes the `accent` fill, past it the neutral soft paint's pressed fill (`--penna-control`); `.track(colors)` paints a gradient instead, as on the hue slider.
-- Knob: a circle (Sizes; 28 under a coarse pointer) centered on the value, whichever of `bg` and `fg` is lighter (`--penna-knob`), with `shadow-contact`.
-- Under a coarse pointer, unless `.inline()`: a field at the slider's rung showing the value and a 72 wide preview rail (4 tall, 10 knob); a tap opens the control modal (Modal on a phone) titled by the label, with the close, and a full slider with the value after it in `touch-small` muted.
-
-Anatomy, stepped (all text `small`, `caption` at `xs` and `sm`; the three parts `space-8` apart):
-
-- Label: before the pills, in the muted ink.
-- Pills: one per step, `space-4` apart, sharing the width, each at most 24 wide. Each is a bar as thick as the continuous rail (4 at `xs` and `sm`, 6 from `md` up) in a hit box the rung's `control_px` tall. Steps up to the picked one take the `accent` fill, the rest `--penna-control`.
-- Value: the picked step's name in the ink, in a 52 wide column after the pills.
-
-Anatomy, rail:
-
-- Rows: one per step, the last step on top, each 32 tall with its name in `small`, `space-10` from the left. The picked row takes the menu row's selected fill, the rest its hover on the pointer.
-- Lane: 32 wide, `space-8` from the right edge, over the rows. In it a rail 12 wide, a pill from the first row's center to the last's, in `--penna-control`; up to the picked row it takes the `accent` fill. A dot 4 across marks each step, in the faint ink past the pick and in the accent's ink under it.
-- Knob: a circle 22 across on the picked row's center, `--penna-knob` with `shadow-contact`, an 8 dot of the accent in it. With nothing picked there is no knob and no fill.
-
 Sizes: every rung through `.with_size()` (`Sizable`) on the continuous and stepped kinds, `md` by default (follows density); the rail has one size:
 
 | Size | Box | Rail | Knob |
@@ -1833,7 +1711,7 @@ Anatomy, top to bottom:
 - Headings: the reading ladder, all 600 and wrapping: h1 `read-h1` 26 on 32, h2 `read-h2` 20 on 28, h3 `read-h3` 16 on 24, h4 `read-h4` 14 on 22, h5 and h6 `read-h5` 13 on 20.
 - Paragraphs: `read-body`. Bold is 600, italic slants, a strikethrough is a 1px line.
 - Links: the accent with a 1px underline; a link's title shows in a tooltip.
-- Inline code: the code face at the size of the text around it, on the `card.code` fill, corners at most 6.
+- Inline code: the code face at the size of the text around it, on the `card.code` fill, padded horizontally so glyphs clear the edge, corners at most 4.
 - Lists: items touch, with no gap; markers `•`, `◦`, `▪` by depth, or `1.`; a nested list indents `space-16` (16). A task item's checkbox is as tall as the font, centered on the capitals in a box one line tall, `space-6` (6) before its text.
 - Quotes: a `space-4` (4) bar in the divider color at the start, `space-16` (16) inside it, text in `fg-muted`.
 - Callouts: an alert (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) or a `:::name title` block is a `card.activity` card washed in its tone (note and info the accent, tip success, important primary, warning warning, caution, danger and error danger, any other name neutral), `space-12` (12) by `space-8` (8) inside. Its first line is the tone's icon as tall as the font, centered on the capitals, `space-8` (8) before the title at 600: the alert's own title or its kind, the text after a directive's name or the name itself; its blocks follow `space-4` (4) below. HTML has no callout yet.

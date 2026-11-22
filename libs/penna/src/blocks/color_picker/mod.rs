@@ -501,12 +501,23 @@ impl ColorPicker {
             None => ("penna-color-picker", self.state.entity_id()).into(),
         };
         let swatch = |size: Pixels| {
+            let unset = shown.a <= 0.0;
             div()
                 .size(size)
                 .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
                 .rounded(cx.theme().swatch_radius())
                 .bg(shown)
-                .surface_edge(cx)
+                .when(unset, |this| {
+                    this.border_1().border_color(cx.theme().border()).child(
+                        crate::Icon::new(crate::IconName::Plus)
+                            .size(px(10.0))
+                            .text_color(cx.theme().foreground.muted()),
+                    )
+                })
+                .when(!unset, |this| this.surface_edge(cx))
         };
         let button = match self.swatch {
             Some(size) => Button::new(id.clone())

@@ -2,14 +2,10 @@
 
 What a tile becomes when it grows to fill the screen: the machine you went into, or the form behind the add tile. For a short question, a sheet.
 
-```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Drag down, pinch out and the scanner not built</span><span class="penna-text penna-notice-detail" data-penna-text>The zoom, the card with its close control, the add card's found rows and field, and the connecting card are native. Drag down, pinch out and the scanner are drawn here with the HTML kit.</span></div></div></div>
-```
-
 ## Anatomy
 
 ```figure uses=compact,touch,button,input,list
-<div class="penna-zoom-card" data-penna="phone.card" style="width: 370px; height: 656px; padding-top: var(--penna-inset-pane)">
+<div class="penna-zoom-card" data-penna="phone.card" style="width: 370px; max-width: 100%; height: 656px; padding-top: var(--penna-inset-pane)">
   <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Close"><i data-icon="xmark"></i></button></div>
   <div class="penna-zoom-title">Add machine</div>
   <div class="penna-zoom-body">
@@ -21,7 +17,7 @@ What a tile becomes when it grows to fill the screen: the machine you went into,
         <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>homelab</span><span>No zz on it yet</span></span></div>
       </div>
     </div>
-    <label class="penna-input" data-penna="field" data-size="touch-large"><input placeholder="user@host" /></label>
+    <label class="penna-input" data-penna="field" data-size="touch-large"><input placeholder="user@host" aria-label="Address" /><button class="penna-touch-icon" data-penna="phone.button" style="margin-right: -6px" aria-label="Scan QR code"><i data-icon="qr-code"></i></button></label>
   </div>
   <div class="penna-action-bar"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled aria-disabled="true"><span class="penna-label" data-penna-text>Connect</span></button></div>
 </div>
@@ -68,8 +64,16 @@ Behind a connecting tile. Cancel is its one action, drawn as a secondary since s
 
 ## A card of tiles
 
-What you went into can be a screen of tiles in turn, a machine holding its windows: then the pill sits at the bottom in place of the action bar, and its tiles zoom one level further. Its windows and sessions are made from the pill's menu, not from a card. Going into a window, what grows is the mini pane the tap opens, so its preview becomes the pane. When what the card shows goes away, as when a machine disconnects, it zooms back out to its tile, which says why.
+What you went into can be a screen of window cards in turn, a machine holding its sessions: then the floating strip and plus disc sit at the bottom in place of the action bar, and each card zooms one level further. Its windows and sessions are made from the plus disc's menu, not from a card. When what the card shows goes away, as when a machine disconnects, it zooms back out to its tile, which says why.
 
 ## Motion
 
-It opens with the zoom: the tile's layer grows to the screen while the grid behind scales up around it, and the two cross-fade between 30% and 70% of the way, on the touch spring. It closes the same way back, one level at a time, from the close control, a drag down or a pinch out, or on a card of tiles by dragging the pill up.
+It opens with the zoom: the tile's layer grows to the screen while the grid behind scales up around it, and the two cross-fade between 30% and 70% of the way, on the touch spring. It closes the same way back, one level at a time, from the close control, a drag down or a pinch out, or by dragging the bar's handle up.
+
+## API
+
+| Rust | HTML | Does |
+| --- | --- | --- |
+| `ZoomCard::new(id, title, on_close)` | `.penna-zoom-card[data-penna="phone.card"]` | Full-screen zoom card with top row, title and body |
+| `.action_bar(bar)`, `.top(el)` | `.penna-action-bar`, `.penna-zoom-top` | Bottom action bar and optional leading top control |
+| `zoom_card_ground(cx)` | none | Ground for rows and cards inside a zoom card |

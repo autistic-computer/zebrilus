@@ -33,8 +33,8 @@ storybook/fonts/inter
   see storybook/fonts/inter/LICENSE.txt.
 
 
-storybook/fonts/lilex
+storybook/fonts/commit-mono
 
-  Lilex, https://github.com/mishamyrt/Lilex
-  Copyright 2019 The Lilex Project Authors. SIL Open Font License 1.1,
-  see storybook/fonts/lilex/LICENSE.txt.
+  Commit Mono, https://github.com/eigilnikolajsen/commit-mono
+  Copyright (c) 2023 Eigil Nikolajsen. SIL Open Font License 1.1,
+  see storybook/fonts/commit-mono/LICENSE.txt.

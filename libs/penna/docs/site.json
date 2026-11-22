@@ -29,12 +29,14 @@
         "badge",
         "bar",
         "card",
+        "chart",
         "check",
         "chip",
         "field",
         "icon",
         "input",
         "kbd",
+        "key-field",
         "label",
         "list",
         "menu",
@@ -65,6 +67,7 @@
         "empty-state",
         "palette",
         "sheet",
+        "ui-block",
         "zoom-card"
       ]
     }

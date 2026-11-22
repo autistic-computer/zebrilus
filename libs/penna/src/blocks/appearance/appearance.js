@@ -192,6 +192,13 @@ function wireCustom(frame) {
   frame.querySelectorAll(".appearance-swatches .penna-color-picker").forEach((picker) => {
     if (picker.appearanceCustom) return;
     picker.appearanceCustom = true;
+    const swatch = picker.querySelector(".penna-color-picker-swatch");
+    if (swatch && !swatch.querySelector("[data-icon]")) {
+      const plus = document.createElement("i");
+      plus.dataset.icon = "plus";
+      plus.setAttribute("aria-hidden", "true");
+      swatch.append(plus);
+    }
     const row = picker.closest(".appearance-swatches");
     picker.addEventListener("change", (event) => {
       const custom = Boolean(event.detail);

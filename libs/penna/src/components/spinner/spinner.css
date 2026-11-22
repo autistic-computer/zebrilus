@@ -21,6 +21,10 @@
   --penna-icon-size: 16px;
 }
 
+.penna-spinner[data-size="touch-large"] {
+  --penna-icon-size: 20px;
+}
+
 .penna-spinner > [data-icon] {
   animation: penna-spinner-turn 900ms linear infinite;
 }

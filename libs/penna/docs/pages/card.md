@@ -17,6 +17,7 @@ A box in the flow of content that holds one thing. To float over the view use a 
 - **Code**: code blocks and inline code.
 - **Figure**: tables. No fill of its own, no outline.
 - **Image**: image tiles in messages and the composer.
+- **Activity**: expanded tool outputs and status cards in an agent chat.
 
 ```rust
 Card::new("snippet", CardLook::Code)
@@ -55,7 +56,8 @@ Keep the card's own `inset-card`. Don't pick a padding by eye.
 | Rust | HTML | Does |
 | --- | --- | --- |
 | `Card::new(id, CardLook::Bubble)` | `.penna-card`, `data-penna="card.bubble"`, `role="group"` | Bubble look |
-| `CardLook::Code`, `Figure`, `Image` | `card.code`; `card.figure`, `card.image` with `role="figure"` | Other looks |
+| `CardLook::Code`, `Figure`, `Image`, `Activity` | `card.code`, `card.activity`; `card.figure`, `card.image` with `role="figure"` | Other looks |
+| `.tone(tone)` | `data-tone` | Tints the card's wash |
 | `.p(space)` | `padding` | Replaces the inset |
 | `.on(ground)` | `data-ground` on the container it sits in | Paints it a step above that ground |
 | `.on(cx.theme().ground_of(look))` on children | `data-ground` on the card | Children paint on the card |

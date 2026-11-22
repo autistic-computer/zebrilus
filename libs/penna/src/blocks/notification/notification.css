@@ -71,11 +71,22 @@
 }
 
 .penna-toast-message {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
 }
 
-.penna-toast-text > div > span {
+.penna-toast-message[data-expanded] {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+
+.penna-toast-title > span {
   display: inline-block;
   white-space: nowrap;
 }

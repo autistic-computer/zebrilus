@@ -83,10 +83,6 @@ ListItem::new("work").selected(true).on_click(open).child(
 
 On a phone, lists use touch rows: found machines, chats, settings.
 
-```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Partly built natively</span><span class="penna-text penna-notice-detail" data-penna-text>Rows, groups, headers and the mark at a row's end are built. The swipe and the header's hold are drawn with the HTML kit.</span></div></div></div>
-```
-
 ```figure uses=touch
 <div class="docs-show" data-gap="wide" style="align-items: flex-start">
   <div class="docs-cell" style="width: 370px">
@@ -147,7 +143,7 @@ On a phone, lists use touch rows: found machines, chats, settings.
 </div>
 ```
 
-The header is 28 tall, strong `touch-small`, muted, with an optional count of what is under it, lined up with the rows' icons. A header you can hold (a session over its windows) is 44. A header holds no button: new things come from the pill's menu, never from the header. A row that closes, removes or forgets takes the danger ink and comes last. A group has the phone container corner, twice `radius`. Its rows sit 4 in from its edges and 2 apart, with no separators, so a pressed or hovered row's fill never meets an edge or a line; a row's corner is never rounder than the group's less 4.
+The header is 28 tall, strong `touch-small`, muted, with an optional count of what is under it, lined up with the rows' icons. A header you can hold (a session over its windows) is 44. A header holds no button: new things come from the plus disc's menu, never from the header. A row that closes, removes or forgets takes the danger ink and comes last. A group has the phone container corner, twice `radius`. Its rows sit 4 in from its edges and 2 apart, with no separators, so a pressed or hovered row's fill never meets an edge or a line; a row's corner is never rounder than the group's less 4.
 
 ```rust
 TouchHeader::new("Found on your tailnet").count(3);
@@ -160,14 +156,16 @@ TouchGroup::new()
 | --- | --- | --- |
 | `TouchRow::new(id, title)` | `.penna-touch-row[data-penna="phone.row"]` | Row, 52 tall |
 | `.icon(icon)` | `<i data-icon>` first | Leading glyph, 20 |
-| `.detail(text)` | second span in `.penna-touch-row-lines`, `data-lines="2"` | Second line, 64 tall |
+| `.detail(text)` | second span in `.penna-touch-row-lines`, `data-lines="2"` | Second line, 64 tall (empty strings are ignored) |
 | `.trailing(TouchTrailing::Glyph(icon))` | `<i data-icon>` last | Chevron or plus |
 | `.trailing(TouchTrailing::Value(text))` | `.penna-touch-row-value` | A value |
 | `.trailing(TouchTrailing::Check)` | `.penna-touch-row-state > i[data-icon="check"]` | The picked row |
+| `.trailing(TouchTrailing::State(mark, word))` | `.penna-touch-row-state` | Status dot or spinner and word |
 | `.danger()` | `data-tone="danger"` | Danger ink |
 | `.disabled(true)` | `aria-disabled="true"` | Faint title, no fill |
+| `.on_click(handler)` | `click` | Runs on release |
 | `TouchGroup::new().row(row)` | `.penna-touch-group[data-penna="settings.card"]` | Group, phone corner |
 | `TouchHeader::new(title)` | `.penna-touch-header` | Section header |
 | `.count(n)` | `.penna-touch-count` | Count at its end |
-| `.holdable()` | `data-hold` | 44 tall |
+| `.holdable()`, `.on_hold(handler)` | `data-hold` | 44 tall, press-and-hold modal |
 | `.over_tiles()` | header before a grid | Inset 12 |

@@ -58,7 +58,7 @@
   --penna-sheet-ink: var(--penna-ink);
   touch-action: none;
   pointer-events: auto;
-  will-change: if(style(--penna-glass: 1): transform; else: auto);
+  will-change: transform;
 }
 
 .penna-sheet-panel[data-penna][data-penna][data-penna] {

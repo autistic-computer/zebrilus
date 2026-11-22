@@ -51,4 +51,5 @@ The thumb sits `space-2` (2) in from the edge and the track's ends. Every length
 | `Scrollbar::vertical(&handle)` | `.penna-scrollbar` | The bar on its own |
 | `.axis(ScrollbarAxis::Both)` | `data-axis` | Vertical, horizontal or both |
 | `.scrollbar_show(ScrollbarShow::Hover)` | `data-show` | Mode; the theme's by default |
+| `.top_fade(px)`, `.bottom_fade(px)` | | Soft edge fade on a scrolling region |
 | `.id(id)` | `data-bar` | Names the bars |

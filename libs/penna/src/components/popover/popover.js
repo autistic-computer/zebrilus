@@ -63,7 +63,7 @@
     const trigger = event.target.closest(".penna-popover-trigger");
     document.querySelectorAll(".penna-popover[data-open]").forEach((popover) => {
       if (popover.contains(event.target)) return;
-      if (popover.dataset.closable !== "false") setOpen(popover, false);
+      if (triggerOf(popover) && popover.dataset.closable !== "false") setOpen(popover, false);
     });
     if (!trigger) return;
     const popover = trigger.closest(".penna-popover");
@@ -87,7 +87,7 @@
   });
 
   document.querySelectorAll(".penna-popover:not([data-open])").forEach((popover) => {
-    panelOf(popover)?.remove();
+    if (triggerOf(popover)) panelOf(popover)?.remove();
   });
 
   document.querySelectorAll(".penna-popover[data-open]").forEach((popover) => {

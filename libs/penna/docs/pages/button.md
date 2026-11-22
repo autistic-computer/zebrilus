@@ -20,7 +20,8 @@ Starts an action. To go somewhere use a link, in a menu a menu row, for a settin
 - **Ghost**: bars, toolbars and rows.
 - **Outline**: on a ground with its own fill.
 - **Danger**: destroys, or can't be undone.
-- **Link**: goes somewhere.
+- **Text**: an inline action in foreground ink, no fill.
+- **Link**: goes somewhere, in the accent ink.
 
 ```rust
 Button::new("save").label("Save").primary()
@@ -69,7 +70,7 @@ Medium is the default and follows density. One size per row.
   <div class="docs-cell"><button class="penna-button" data-penna="button" data-state="focused"><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Focused</span></div>
   <div class="docs-cell"><button class="penna-button" data-penna="button.quiet" data-state="current"><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Selected</span></div>
   <div class="docs-cell"><button class="penna-button" data-penna="button" disabled><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Off</span></div>
-  <div class="docs-cell"><button class="penna-button" data-penna="button" data-loading><span class="penna-spinner" data-size="small"><i data-icon="loader"></i></span><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Busy</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-loading><span class="penna-spinner"><i data-icon="loader"></i></span><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Busy</span></div>
 </div>
 ```
 
@@ -112,32 +113,34 @@ Actions at the end, main action last. Destructive confirms are danger, not prima
 | --- | --- | --- |
 | `.label(text)` | `.penna-label` | Label |
 | `.icon(name)` | `<i data-icon>` | Icon before the label |
-| `.primary()`, `.ghost()`, `.danger()`, `.link()` | `data-tone`, `data-prominent`, `data-penna="button.quiet"`, `data-variant` | Kind |
+| `.primary()`, `.ghost()`, `.danger()`, `.text()`, `.link()` | `data-tone`, `data-prominent`, `data-penna="button.quiet"`, `data-variant` | Kind |
 | `.emphasis(Emphasis::Outline)` | `data-penna="button.outline"` | Outline kind |
+| `.look(ButtonLook)` | `data-penna` | Surface role (`Floating`, `Send`, `Chrome`, `Row`, …) |
+| `Button::inside(id, radius)` | `--penna-inside` | Concentric corner inside a rounded parent |
 | `.xsmall()` … `.touch_large()` | `data-size` | Size; medium by default |
 | `.selected(true)` | `data-state="current"` | Selected |
 | `.disabled(true)` | `disabled` | Off |
 | `.loading(true)` | `data-loading` | Busy |
 | `.dropdown_caret(true)` | `data-caret`, `.penna-caret` | Caret |
-| `.tooltip(text)` | `data-tooltip` | Tooltip; required with only an icon |
+| `.tooltip(text)`, `.tooltip_keys(text, keys)` | `data-tooltip` | Tooltip, optionally with keycaps; required with only an icon |
 | `.on_click(handler)` | `click` | Runs on release |
 
 ## Phone
 
-```figure uses=button,touch,compact
+```figure uses=button,spinner,touch,compact
 <div class="docs-show" data-gap="wide" style="align-items: flex-start">
-  <div class="docs-cell" style="width: 370px; gap: 12px">
+  <div class="docs-cell" style="width: 370px; max-width: 100%; gap: 12px">
     <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" style="width: 100%"><span class="penna-label" data-penna-text>Connect</span></button>
     <button class="penna-button" data-penna="button" data-size="touch-large" style="width: 100%"><span class="penna-label" data-penna-text>Scan QR</span></button>
     <button class="penna-button" data-penna="button.quiet" data-size="touch-large" style="width: 100%"><span class="penna-label" data-penna-text>Type an address instead</span></button>
     <button class="penna-button" data-penna="button" data-tone="danger" data-size="touch-large" style="width: 100%"><span class="penna-label" data-penna-text>Forget xps</span></button>
     <span class="docs-note">Primary, secondary, ghost, danger</span>
   </div>
-  <div class="docs-cell" style="width: 370px; gap: 12px">
+  <div class="docs-cell" style="width: 370px; max-width: 100%; gap: 12px">
     <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" style="width: 100%"><span class="penna-label" data-penna-text>Rest</span></button>
     <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-state="active" style="width: 100%"><span class="penna-label" data-penna-text>Pressed</span></button>
     <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled aria-disabled="true" style="width: 100%"><span class="penna-label" data-penna-text>Disabled</span></button>
-    <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-loading style="width: 100%"><i class="penna-touch-spinner" data-icon="loader"></i><span class="penna-label" data-penna-text>Connecting</span></button>
+    <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-loading style="width: 100%"><span class="penna-spinner" data-size="touch-large"><i data-icon="loader"></i></span><span class="penna-label" data-penna-text>Connecting</span></button>
     <span class="docs-note">States</span>
   </div>
 </div>

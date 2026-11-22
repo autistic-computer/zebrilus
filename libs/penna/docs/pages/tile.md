@@ -68,56 +68,88 @@ A tone tints the label. Say what it means in words.
 
 Size, inset, picking and dragging are yours, natively and in HTML.
 
-## Phone tile
+## Phone tiles and cards
 
-The cell of every screen of things on a phone: machines on the overview, windows inside a machine. The whole tile is the target, and holding it opens a sheet of what you can do to it.
+The cells of every screen of things on a phone: `MachineTile` on the overview and `WindowCard` inside a machine. The whole surface is the target, and holding it opens a modal of what you can do to it.
 
-```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Partly built natively</span><span class="penna-text penna-notice-detail" data-penna-text>The phone tile is native with both contents, its marks, previews and corner. Press and hold is drawn with the HTML kit.</span></div></div></div>
-```
-
-### Machine content
+### Machine tiles
 
 ```figure uses=compact,touch
-<div class="penna-machine-grid" style="width: 370px">
-  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>alienware</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>1 chat</span><span>cachyos-upgrade</span></span><span class="penna-press"></span></div>
-  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="warning"></span><span>macbook</span></span><span class="penna-machine-state" data-tone="warning">1 waiting for you</span><span class="penna-machine-foot"><span>3 chats</span><span>2 working</span></span><span class="penna-press"></span></div>
-  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name"><i class="penna-touch-spinner" data-icon="loader"></i><span>homelab</span></span><span class="penna-machine-state">Connecting</span><span class="penna-machine-foot"><span>Over Tailscale</span></span><span class="penna-press"></span></div>
-  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="off"></span><span>xps</span></span><span class="penna-machine-state">Not connected</span><span class="penna-machine-foot"><span>Last seen 2 days ago</span></span><span class="penna-press"></span></div>
-  <div class="penna-machine-tile" data-penna="phone.card" role="button" data-state="active"><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>alienware</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>1 chat</span></span><span class="penna-press"></span></div>
-  <div class="penna-machine-tile" data-penna="phone.add" data-add role="button"><i data-icon="plus"></i>Add machine<span class="penna-press"></span></div>
+<div class="penna-machine-grid" style="width: 370px; max-width: 100%">
+  <div class="penna-machine-card" data-penna="phone.card" role="button"><div class="penna-machine-top"><span class="penna-face-chip"><i data-icon="hard-drive"></i></span></div><div class="penna-machine-bottom"><span class="penna-machine-label">alienware</span><div class="penna-machine-line"><span class="penna-face-stack"><span class="penna-face-chip"><i data-icon="bot"></i></span><span class="penna-face-chip"><i data-icon="square-terminal"></i></span></span></div></div><span class="penna-press"></span></div>
+  <div class="penna-machine-card" data-penna="phone.card" data-waiting role="button"><div class="penna-machine-top"><span class="penna-face-chip"><i data-icon="laptop"></i></span><span class="penna-machine-waiting">1 waiting</span></div><div class="penna-machine-bottom"><span class="penna-machine-label">macbook</span><div class="penna-machine-line"><span class="penna-face-stack"><span class="penna-face-chip"><i data-icon="bot"></i></span><span class="penna-face-chip"><i data-icon="square-terminal"></i></span><span class="penna-face-chip"><i data-icon="globe"></i></span></span></div></div><span class="penna-press"></span></div>
+  <div class="penna-machine-card" data-penna="phone.card" role="button"><div class="penna-machine-top"><span class="penna-face-chip"><i data-icon="server"></i></span></div><div class="penna-machine-bottom"><span class="penna-machine-label">homelab</span><div class="penna-machine-line"><span class="penna-machine-state">Connecting</span></div></div><span class="penna-press"></span></div>
+  <div class="penna-machine-card" data-penna="phone.card" data-dimmed role="button"><div class="penna-machine-top"><span class="penna-face-chip"><i data-icon="laptop"></i></span></div><div class="penna-machine-bottom"><span class="penna-machine-label">xps</span><div class="penna-machine-line"><span class="penna-machine-state">Not connected</span></div></div><span class="penna-press"></span></div>
+  <div class="penna-machine-card" data-penna="phone.card" role="button" data-state="active"><div class="penna-machine-top"><span class="penna-face-chip"><i data-icon="hard-drive"></i></span></div><div class="penna-machine-bottom"><span class="penna-machine-label">alienware</span><div class="penna-machine-line"><span class="penna-machine-state">Connected</span></div></div><span class="penna-press"></span></div>
+  <div class="penna-machine-card" data-penna="phone.add" style="align-items: center; justify-content: center; gap: 6px; color: var(--penna-muted)" role="button"><i data-icon="plus"></i>Add machine<span class="penna-press"></span></div>
 </div>
 ```
 
+`MachineTile` is 112 tall, two to a row: the host's face at the top left, a waiting word in warning ink at the top right (washing the card in 14% warning), the host name below, and either stacked 24 program faces or its connection state. Offline hosts dim their face and name to 55%.
+
 | State | Says | A tap |
 | --- | --- | --- |
-| Connected | a green dot, "Connected" | zooms into the machine |
-| Waiting | a warning dot, "1 waiting for you" | zooms into the machine |
-| Connecting | a spinner, "Connecting", how it is reached | zooms into the [connecting card](zoom-card.html), where Cancel is the one action |
-| Offline | a faint dot, "Not connected", when it was last seen | reconnects |
-| Pressed | the press over the tile | |
+| Connected | stacked faces of running programs | zooms into the machine |
+| Waiting | 14% warning wash and "1 waiting" | zooms into the machine |
+| Connecting | "Connecting" | zooms into the [connecting card](zoom-card.html), where Cancel is the one action |
+| Offline | dimmed face and name, "Not connected" | reconnects |
 | Add | "Add machine" | zooms into the [add card](zoom-card.html) |
 
-### Window content
+### Window cards
 
 ```figure uses=compact,touch
-<div class="penna-bento" style="--rows: 6; --penna-bento-width: 370px; width: 370px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" style="--column: 0; --row: 0; --columns: 4; --span: 2"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="warning"></span><span>Make the pill menu offer New chat</span></span><span class="penna-machine-state" data-tone="warning">Needs approval</span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" style="--x: 0; --y: 0; --w: 0.5; --h: 1"><span class="penna-window-chat"><span class="penna-window-bubble"><i style="--w: 0.92"></i><i style="--w: 0.5"></i></span><span class="penna-window-lines"><i style="--w: 1"></i><i style="--w: 0.9"></i><i style="--w: 0.96"></i><i style="--w: 0.62"></i></span></span></span><span class="penna-window-pane" data-penna="tile.mini" style="--x: 0.5; --y: 0; --w: 0.5; --h: 0.5"><pre class="penna-window-term">~/dev/zebrilus main&#10;<b>❯ cargo test -p zz-client pill</b>&#10;   Compiling zz-client v0.42.0&#10;running 14 tests&#10;test pill::menu_order ... ok&#10;<span data-ink="success">test result: ok. 14 passed</span></pre></span><span class="penna-window-pane" data-penna="tile.mini" style="--x: 0.5; --y: 0.5; --w: 0.5; --h: 0.5"><span class="penna-window-host">127.0.0.1:8090</span><span class="penna-window-page"><i data-bar style="--w: 0.55"></i><i style="--w: 1"></i><i style="--w: 0.9"></i><i style="--w: 0.72"></i><i data-block></i></span></span></span><span class="penna-press"></span></div><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" style="--column: 0; --row: 2; --columns: 2; --span: 2"><span class="penna-machine-name"><i class="penna-touch-spinner" data-icon="loader"></i><span>Fix pane stack hit testing on iPad</span></span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" style="--x: 0; --y: 0; --w: 1; --h: 1"><span class="penna-window-chat"><span class="penna-window-bubble"><i style="--w: 0.8"></i><i style="--w: 0.42"></i></span><span class="penna-window-lines"><i style="--w: 1"></i><i style="--w: 0.94"></i><i style="--w: 0.7"></i></span></span></span></span><span class="penna-press"></span></div><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" style="--column: 2; --row: 2; --columns: 2; --span: 2"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="strong"></span><span>Port the bento grid to penna</span></span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" style="--x: 0; --y: 0; --w: 0.5; --h: 1"><span class="penna-window-chat"><span class="penna-window-bubble"><i style="--w: 0.7"></i></span><span class="penna-window-lines"><i style="--w: 1"></i><i style="--w: 0.88"></i><i style="--w: 0.95"></i><i style="--w: 0.5"></i></span></span></span><span class="penna-window-pane" data-penna="tile.mini" style="--x: 0.5; --y: 0; --w: 0.5; --h: 1"><span class="penna-window-host">docs.rs</span><span class="penna-window-page"><i data-bar style="--w: 0.4"></i><i style="--w: 1"></i><i style="--w: 0.84"></i><i style="--w: 0.92"></i><i data-block></i></span></span></span><span class="penna-press"></span></div><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" style="--column: 0; --row: 4; --columns: 2; --span: 2"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="danger"></span><span>cargo build</span></span><span class="penna-machine-state" data-tone="danger">Exit 101</span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" style="--x: 0; --y: 0; --w: 1; --h: 1"><pre class="penna-window-term">~/dev/nidus warp&#10;<b>❯ cargo build --release</b>&#10;   Compiling nidus v0.9.1&#10;<span data-ink="danger">error[E0425]: cannot find value `edge`</span>&#10;  --&gt; src/warp.rs:88:21&#10;<span data-ink="danger">error: could not compile `nidus`</span></pre></span></span><span class="penna-press"></span></div><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" style="--column: 2; --row: 4; --columns: 2; --span: 2"><span class="penna-machine-name"><span>Phone machines</span></span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" style="--x: 0; --y: 0; --w: 1; --h: 1"><span class="penna-window-host">127.0.0.1:8090</span><span class="penna-window-page"><i data-bar style="--w: 0.55"></i><i style="--w: 1"></i><i style="--w: 0.9"></i><i style="--w: 0.72"></i><i data-block></i></span></span></span><span class="penna-press"></span></div></div>
+<div style="display: flex; flex-direction: column; gap: 8px; width: 370px; max-width: 100%">
+  <div class="penna-window-card" data-penna="phone.card" data-waiting role="button">
+    <div class="penna-window-row">
+      <span class="penna-face-chip"><i data-icon="bot"></i></span>
+      <div class="penna-window-row-copy">
+        <span class="penna-window-row-title">Fix glass rim parity</span>
+        <span class="penna-window-row-detail"><span style="color: var(--penna-warning-ink)">Needs approval</span><span>cargo test -p penna</span></span>
+      </div>
+      <i data-icon="chevron-right"></i>
+    </div>
+  </div>
+  <div class="penna-window-card" data-penna="phone.card" role="button">
+    <div class="penna-window-row">
+      <span class="penna-face-chip"><i data-icon="globe"></i></span>
+      <div class="penna-window-row-copy">
+        <span class="penna-window-row-title">Look · penna</span>
+        <span class="penna-window-row-detail"><span>127.0.0.1:8099</span></span>
+      </div>
+      <i data-icon="chevron-right"></i>
+    </div>
+  </div>
+  <div class="penna-window-card" data-penna="phone.card" role="button">
+    <div class="penna-window-tail-card">
+      <div class="penna-window-tail-head">
+        <span class="penna-face-chip"><i data-icon="square-terminal"></i></span>
+        <span class="penna-window-row-title">cargo watch</span>
+        <i class="penna-touch-spinner" data-icon="loader"></i>
+      </div>
+      <div class="penna-window-tails">
+        <pre class="penna-window-tail">   Compiling penna v0.1.0
+running 7 tests
+test theme_css::rim ... ok
+test result: ok. 7 passed</pre>
+        <div class="penna-window-tail-rule"></div>
+        <pre class="penna-window-tail">serving target/docs
+GET /look.html 200
+GET /phone.html 200
+GET /chat.html 200</pre>
+      </div>
+    </div>
+  </div>
+</div>
 ```
 
-The preview is the tile, and text is one line: the mark, then the title. A window takes half the width with one or two panes, the full width with three, and a taller full width with four or more. The preview is the window's own split, each pane on the ground's fill with a concentric corner and no label: a terminal's top lines as tiny live text, a browser's host over a quiet page, a chat's last message as a bubble over the reply's lines.
+`WindowCard` spans the full width in one of two shapes: a 64 row card (face slot, title, status or summary line, trailing chevron) for chats and browsers, or a tail card (24 header over up to four lines of live mono output per split pane, parted by a vertical rule) for terminals. Holding a card opens its modal with Rename and Close window; new windows and sessions are made from the plus disc's menu.
 
-| State | Mark, line | A tap |
+### Phone API
+
+| Rust | HTML | Does |
 | --- | --- | --- |
-| Waiting for you | a warning dot, "Needs approval" or "Has a question" | zooms into the pane that asks |
-| Failed | a danger dot, "Failed" or "Exit 101" | zooms into the pane that failed |
-| Working | a spinner | zooms into the pane at work |
-| Done, not seen | a dot in the ink | zooms into the pane that finished |
-| Idle | nothing | zooms into the active pane |
-
-Words come only when the window asks for you or broke, so those tiles stand out; calm tiles are the mark alone. Folder, branch, age and the work's message are under the title of the hold sheet. Working is a spinner, never green: green means a machine is connected.
-
-```figure uses=compact,touch
-<div class="penna-bento" style="--rows: 2; --penna-bento-width: 370px; width: 181px"><div class="penna-bento-tile penna-window-tile" data-penna="phone.card" role="button" data-state="active" style="--column: 0; --row: 0; --columns: 2; --span: 2"><span class="penna-machine-name"><span>cargo watch</span></span><span class="penna-window-preview"><span class="penna-window-pane" data-penna="tile.mini" style="--x: 0; --y: 0; --w: 1; --h: 1"><pre class="penna-window-term">~/dev/zebrilus main&#10;<b>❯ cargo watch -x &#x27;check -p zz-mux&#x27;</b>&#10;[Running &#x27;cargo check -p zz-mux&#x27;]&#10;    Checking zz-mux v0.42.0&#10;<span data-ink="success">    Finished `dev` profile in 2.14s</span></pre></span></span><span class="penna-press"></span></div></div>
-```
-
-Pressed, the press covers the whole tile. Mini panes are not targets: the zoom grows the pane the tap opens out of its preview. Title strong `touch-body`, line `touch-small`, inset 12, panes 4 apart. The corner is the phone container corner, twice `radius`, 24 by default and 16 in Yaru; a mini pane's is 12 less, so 12 and 4. No button inside, no ghost tiles. A session's grid has no add tile and its header no button: windows are made from the pill's menu. A machine with no sessions shows one add tile alone, which opens that menu.
+| `MachineTile::new(id, name)` | `.penna-machine-card[data-penna="phone.card"]` | 112 tall host tile |
+| `.face()`, `.faces()`, `.waiting()`, `.state()`, `.dimmed()`, `.on_hold()` | `data-waiting`, `data-dimmed`, `.penna-face-stack` | Host face, program faces, waiting wash and hold modal |
+| `WindowCard::new(id, title)` | `.penna-window-card[data-penna="phone.card"]` | Full-width window row or tail card |
+| `.faces()`, `.line()`, `.state()`, `.working()`, `.waiting()`, `.tail(WindowTail)` | `.penna-window-row`, `.penna-window-tail-card` | Row summary or 4-line mono terminal tail |
+| `phone_card_ground(waiting, cx)` | none | Flat card fill with optional 14% warning wash |

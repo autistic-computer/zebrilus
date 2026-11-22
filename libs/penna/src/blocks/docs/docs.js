@@ -80,10 +80,28 @@
     storybook?.then(knobs).catch(() => {});
   });
 
-  document.querySelectorAll("[data-docs-menu]").forEach((button) => {
-    button.addEventListener("click", () => {
-      document.querySelector(".penna-docs-side")?.toggleAttribute("data-open");
+  const side = document.querySelector(".penna-docs-side");
+  const menus = [...document.querySelectorAll("[data-docs-menu]")];
+
+  function setMenu(open) {
+    if (!side) return;
+    side.toggleAttribute("data-open", open);
+    menus.forEach((button) => button.setAttribute("aria-expanded", String(open)));
+  }
+
+  menus.forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setMenu(!side?.hasAttribute("data-open"));
     });
+  });
+
+  document.addEventListener("click", (event) => {
+    if (side?.hasAttribute("data-open") && !side.contains(event.target)) setMenu(false);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && side?.hasAttribute("data-open")) setMenu(false);
   });
 
   document.querySelectorAll("[data-docs-mode]").forEach((button) => {

@@ -70,7 +70,7 @@ impl Session {
 
 const JSON: &str = r#"{
   "theme": "nord",
-  "font": { "family": "Lilex", "size": 13 },
+  "font": { "family": "CommitMono", "size": 13 },
   "status": { "left": "%s", "interval": 5 },
   "panes": [1, 2, 3],
   "motion": false,

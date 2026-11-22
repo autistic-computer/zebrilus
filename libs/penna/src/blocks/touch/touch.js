@@ -120,7 +120,7 @@
 
   function grounds() {
     const probe = document.createElement("div");
-    probe.dataset.penna = "phone.pill";
+    probe.dataset.penna = "floating";
     probe.hidden = true;
     document.body.append(probe);
     const style = getComputedStyle(probe);

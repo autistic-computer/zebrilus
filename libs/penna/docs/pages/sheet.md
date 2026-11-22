@@ -4,8 +4,8 @@ Holds a list or a page you drill into and returns you where you were: a picker, 
 
 ## Anatomy
 
-```figure uses=sheet,touch,button,label
-<div style="position: relative; width: 390px; height: 520px; overflow: hidden; border-radius: 28px; background: var(--penna-bg)">
+```figure uses=sheet,chat,touch,button,label
+<div style="position: relative; width: 390px; max-width: 100%; height: 610px; overflow: hidden; border-radius: 28px; background: var(--penna-bg)">
   <div class="penna-sheet" style="--penna-sheet-rest: 8px">
     <div class="penna-sheet-scrim"></div>
     <div class="penna-sheet-frame">
@@ -13,6 +13,11 @@ Holds a list or a page you drill into and returns you where you were: a picker, 
         <div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div>
         <div class="penna-sheet-header"><span class="penna-sheet-title" data-penna-text>Claude Code</span><button class="penna-sheet-disc" aria-label="Close"><span data-penna="button"><i data-icon="xmark"></i></span></button></div>
         <div class="penna-sheet-groups">
+          <div class="penna-chat-tiles">
+            <button class="penna-chat-tile" data-penna="settings.card"><i data-icon="camera"></i><span>Camera</span></button>
+            <button class="penna-chat-tile" data-penna="settings.card"><i data-icon="image"></i><span>Photos</span></button>
+            <button class="penna-chat-tile" data-penna="settings.card"><i data-icon="file"></i><span>File</span></button>
+          </div>
           <div class="penna-touch-group" data-penna="settings.card" data-ruled data-ground>
             <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="list-tree"></i><span class="penna-touch-row-lines"><span>Mention</span></span><i data-icon="chevron-right"></i></div>
           </div>
@@ -20,6 +25,7 @@ Holds a list or a page you drill into and returns you where you were: a picker, 
             <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="sparkle"></i><span class="penna-touch-row-lines"><span>Model</span></span><span class="penna-touch-row-value"><span>Default</span></span><i data-icon="chevron-right"></i></div>
             <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="cpu"></i><span class="penna-touch-row-lines"><span>Effort</span></span><span class="penna-touch-row-value"><span>Default</span></span><i data-icon="chevron-right"></i></div>
             <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="hand"></i><span class="penna-touch-row-lines"><span>Permissions</span></span><span class="penna-touch-row-value"><span>Ask</span></span><i data-icon="chevron-right"></i></div>
+            <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="user"></i><span class="penna-touch-row-lines"><span>Account</span></span><span class="penna-touch-row-value"><span>Work</span></span><i data-icon="chevron-right"></i></div>
           </div>
           <p class="penna-sheet-note">Context 0%</p>
         </div>
@@ -30,7 +36,7 @@ Holds a list or a page you drill into and returns you where you were: a picker, 
 ```
 
 1. **Panel**: the phone container corner, twice `radius`.
-2. **Grabber**: 36 by 5. Drag down past half its height, or fling, to dismiss.
+2. **Grabber**: 36 by 5. Drag down past half its height, or fling, to dismiss. Starting to dismiss drops the virtual keyboard right away so the sheet and keyboard leave together.
 3. **Header**: 44, the title in `touch-small` at 600, centered on the sheet; the 44 close at its end.
 4. **Groups**: 16 below the header, 8 from the sides and bottom, 16 apart, their corner the panel's less 8. Rows are flush, with a hairline from the label to the end.
 5. **Note**: a muted line under the last group, for the whole sheet.
@@ -117,3 +123,13 @@ On a phone it is a modal: the desktop's title, ssh's own words under it, a finge
 **Action menu**: the thing's name, the close, its actions in one group, the one that removes last in danger ink. **Confirm**: the question, one muted line on what goes, then Cancel and the verb side by side, 48 tall, the verb in `danger`. **Rename**: a 48 field, then Cancel and Rename in `accent`, off until the name changes. **Control**: the label, the close, a slider with its value after it.
 
 The card is the sheet's own surface and its groups the sheet's, so the two read as one material. It is the screen's width less 64, at most 340, padded 20, centered above the keyboard. A tap on the scrim cancels; there is no drag. In light the scrim is the ink at 28%, stronger than a sheet's, so the card stands off a busy screen. When the two buttons' labels can't share a line at large text, they stack, the verb on top.
+
+## API
+
+| Rust | HTML | Does |
+| --- | --- | --- |
+| `Sheet::new(id, title, on_close)` | `.penna-sheet`, `.penna-sheet-panel[data-penna="drawer"]` | Bottom sheet with grabber, title and close disc |
+| `.on_back(handler)`, `.page(key)` | `.penna-sheet-disc[data-side="start"]` | Drill-in back button and horizontal page transition |
+| `sheet_groups()`, `ruled_group(rows, cx)`, `sheet_note(text, cx)` | `.penna-sheet-groups`, `.penna-touch-group[data-ruled]`, `.penna-sheet-note` | Ruled option groups and footer note |
+| `Modal::new(id, title, on_close)` | `.penna-modal`, `.penna-modal-card[data-penna="drawer"]` | Centered phone modal for menus, confirms, renames and controls |
+| `.detail(text)`, `.actions(bar)` | `.penna-modal-detail`, `.penna-modal-bar` | Muted explanation and side-by-side (or stacked) action bar |

@@ -314,16 +314,16 @@ mod web {
             .add_fonts(vec![
                 super::Cow::Borrowed(include_bytes!("../fonts/inter/InterVariable.ttf")),
                 super::Cow::Borrowed(include_bytes!("../fonts/inter/InterVariable-Italic.ttf")),
-                super::Cow::Borrowed(include_bytes!("../fonts/lilex/Lilex-Regular.ttf")),
-                super::Cow::Borrowed(include_bytes!("../fonts/lilex/Lilex-Bold.ttf")),
-                super::Cow::Borrowed(include_bytes!("../fonts/lilex/Lilex-Italic.ttf")),
-                super::Cow::Borrowed(include_bytes!("../fonts/lilex/Lilex-BoldItalic.ttf")),
+                super::Cow::Borrowed(include_bytes!("../fonts/commit-mono/CommitMono-400-Regular.ttf")),
+                super::Cow::Borrowed(include_bytes!("../fonts/commit-mono/CommitMono-700-Regular.ttf")),
+                super::Cow::Borrowed(include_bytes!("../fonts/commit-mono/CommitMono-400-Italic.ttf")),
+                super::Cow::Borrowed(include_bytes!("../fonts/commit-mono/CommitMono-700-Italic.ttf")),
             ])
             .expect("failed to load the interface fonts");
         (catalog().init)(cx);
         let theme = penna::Theme::global_mut(cx);
         theme.font_family = super::knobs::UI_FONT.into();
-        theme.mono_font_family = "Lilex".into();
+        theme.mono_font_family = "CommitMono".into();
         super::KNOBS.with(|knobs| knobs.borrow().apply(cx));
     }
 

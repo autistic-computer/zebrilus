@@ -11,8 +11,9 @@ Sets a value on a range by dragging or with the arrow keys. For an exact number 
 </div>
 ```
 
-- **Continuous**: any value on a range. A step snaps it.
+- **Continuous**: any value on a range. A step snaps it. Under a coarse pointer (unless `.inline()`), taps open a centered control modal with a full slider.
 - **Stepped**: one of a few named steps, in order.
+- **Rail**: `StepRail`, one thick 26px rail with a dot per step and a 30px knob to drag across a full row (such as Effort in a popover). `.open_start()` makes the first step an unfilled ring meaning "not set".
 
 ```rust
 DiscreteSlider::new("scrollback", "Scrollback", steps, picked, pick)
@@ -83,6 +84,7 @@ Show the value people know, with its unit.
 | `.step(size)` | `data-step` | Snaps the value |
 | `.display(format)` | | Formats the value |
 | `.commit_on_release()` | | Changes once, on release |
+| `.inline()` | | Keeps the slider inline under a coarse pointer instead of opening a modal |
 | `.track(colors)` | | Paints a gradient rail |
 | `DiscreteSlider::new(..)` | `.penna-steps`, `data-label`, `data-steps`, `data-value` | Stepped |
 | `StepRail::new(..)` | | Stepped, one thick rail with a dot per step and the picked step's name over it. No HTML yet |

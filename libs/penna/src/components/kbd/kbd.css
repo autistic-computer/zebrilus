@@ -17,6 +17,10 @@
   --penna-icon-size: 13px;
 }
 
+.penna-kbd[data-penna="keycap"][hidden] {
+  display: none;
+}
+
 .penna-kbd:is([data-size="xsmall"], [data-size="small"]) {
   height: var(--penna-text-small-line);
   min-width: var(--penna-text-small-line);

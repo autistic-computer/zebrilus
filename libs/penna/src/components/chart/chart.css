@@ -1,0 +1,135 @@
+.penna-chart {
+  --penna-series-0: #3183ff;
+  --penna-series-1: #e648a0;
+  --penna-series-2: #ac8000;
+  --penna-series-3: #a366f7;
+  display: flex;
+  flex-direction: column;
+  gap: var(--penna-gap-related);
+  width: 100%;
+  font-family: var(--penna-font);
+  font-variant-numeric: tabular-nums;
+}
+
+:root[data-penna-mode="light"] .penna-chart {
+  --penna-series-0: #0a64dd;
+  --penna-series-1: #c02a82;
+  --penna-series-2: #876400;
+  --penna-series-3: #8549d1;
+}
+
+.penna-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--penna-space-12);
+  padding-left: 40px;
+  font-size: var(--penna-text-caption-size);
+  line-height: var(--penna-text-caption-line);
+  color: var(--penna-fg-muted);
+}
+
+.penna-chart-key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--penna-space-6);
+}
+
+.penna-chart-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--series, var(--penna-series-0));
+}
+
+.penna-chart-body {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+}
+
+.penna-chart-gutter {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 160px;
+}
+
+.penna-chart-tick {
+  position: absolute;
+  right: var(--penna-space-8);
+  transform: translateY(-50%);
+  font-size: var(--penna-text-caption-size);
+  line-height: var(--penna-text-caption-line);
+  color: var(--penna-fg-muted);
+}
+
+.penna-chart-plot {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 160px;
+}
+
+.penna-chart-rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--penna-divider);
+}
+
+.penna-chart-bars {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 100%;
+}
+
+.penna-chart-band {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  height: 100%;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.penna-chart-band:hover {
+  background: var(--penna-quiet-hover);
+}
+
+.penna-chart-bar {
+  flex: 1;
+  max-width: 24px;
+  border-radius: 4px 4px 0 0;
+  background: var(--series, var(--penna-series-0));
+}
+
+.penna-chart-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.penna-chart-axis {
+  display: flex;
+  padding-left: 40px;
+}
+
+.penna-chart-axis > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--penna-text-caption-size);
+  line-height: var(--penna-text-caption-line);
+  color: var(--penna-fg-muted);
+}

@@ -320,7 +320,7 @@ pub fn platform_mono_font_family() -> SharedString {
     } else if cfg!(target_os = "windows") {
         "Consolas".into()
     } else if cfg!(target_family = "wasm") {
-        "Lilex".into()
+        "CommitMono".into()
     } else {
         "DejaVu Sans Mono".into()
     }

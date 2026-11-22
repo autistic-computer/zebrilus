@@ -31,6 +31,7 @@ Select::new(&language).placeholder("Language")
   <span>large</span><span><code>32</code></span><span><code>body</code></span><span><div class="penna-select" data-options="Rust, Go, Zig" data-value="1" data-size="large"></div></span>
   <span>xlarge</span><span><code>40</code></span><span><code>lead</code></span><span><div class="penna-select" data-options="Rust, Go, Zig" data-value="1" data-size="xlarge"></div></span>
   <span>touch</span><span><code>44</code></span><span><code>touch-body</code></span><span><div class="penna-select" data-options="Rust, Go, Zig" data-value="1" data-size="touch"></div></span>
+  <span>touch-large</span><span><code>56</code></span><span><code>touch-body</code></span><span><div class="penna-select" data-options="Rust, Go, Zig" data-value="1" data-size="touch-large"></div></span>
 </div>
 ```
 
@@ -55,6 +56,10 @@ Medium is the default and follows density. Same size as the controls beside it.
 
 Enter, Space, Up or Down open it. Up and Down move, Enter picks, Escape closes.
 
+## Search, scopes and phone
+
+Past 12 options the menu carries a search field automatically (or force it with `.searchable()`), and `.scopes()` adds a full-width segmented control underneath to filter groups (Tab and Shift+Tab cycle scopes). Under a coarse pointer, the list opens as a bottom [sheet](sheet.html) of ruled touch rows with the picked option checked, keeping the search field and scopes above the list.
+
 ## Options
 
 Two options read better side by side. Keep the select for longer lists.
@@ -72,11 +77,13 @@ Two options read better side by side. Keep the select for longer lists.
 | --- | --- | --- |
 | `SelectState::new(items, picked, ..)` | `data-options`, `data-value` | Options and the picked one |
 | `.placeholder(text)` | `data-placeholder` | Shown with nothing picked |
-| `.xsmall()` … `.touch()` | `data-size` | Size; medium by default |
+| `.xsmall()` … `.touch_large()` | `data-size` | Size; medium by default |
 | `.disabled(true)` | `aria-disabled="true"` | Off |
 | `.tone(Tone::Danger)` | `data-tone="danger"` | Error edge |
 | `.w(width)` | `style="width"` | Fixed width |
 | `.menu_max_h(height)` | | Menu height |
+| `.searchable(bool)`, `.search_placeholder(text)` | `data-searchable`, `data-search-placeholder` | Search field in the menu or sheet |
+| `.scopes(scopes)` | `data-scopes`, `data-scope` | Scoped option groups |
 | `.empty(builder)` | | Empty list |
 | `.title(text)` | | Sheet title under touch |
 | `SelectEvent::Confirm` | `change` | A row was picked |

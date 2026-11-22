@@ -6,7 +6,7 @@
   gap: var(--penna-space-4);
   width: 100%;
   height: 48px;
-  padding: 0 var(--penna-space-16) 0.5px;
+  padding: 0 var(--penna-space-16);
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -132,8 +132,13 @@
   padding: 0;
   overflow-y: auto;
   border: 0;
+  border-right: 1px solid var(--penna-divider);
   border-radius: 0;
   box-shadow: none;
+}
+
+.penna-docs-side > .penna-docs-rule[data-edge="right"] {
+  display: none;
 }
 
 .penna-docs-main {

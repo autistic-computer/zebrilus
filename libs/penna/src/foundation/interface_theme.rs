@@ -29,9 +29,9 @@ const ACCENT_COLORS: [(&str, &str, &str); ACCENTS.len()] = [
     ("purple", "#8549d1", "#a366f7"),
     ("pink", "#c02a82", "#e648a0"),
     ("red", "#cc252d", "#f44647"),
-    ("orange", "#ad4f00", "#de6700"),
-    ("yellow", "#876400", "#af8200"),
-    ("green", "#007b2c", "#009f3b"),
+    ("orange", "#ad4f00", "#da6500"),
+    ("yellow", "#876400", "#ac8000"),
+    ("green", "#007b2c", "#009c3a"),
     ("graphite", "#6a6a6a", "#868686"),
 ];
 
@@ -1039,6 +1039,21 @@ mod tests {
     #[test]
     fn every_accent_reads_in_every_theme_at_any_neutral() {
         assert_eq!(ACCENT_COLORS.map(|(name, ..)| name), ACCENTS);
+        for mode in [ThemeMode::Light, ThemeMode::Dark] {
+            for accent in ACCENTS {
+                let theme = InterfaceTheme {
+                    tint: Tint::named(accent).expect("named accent"),
+                    ..InterfaceTheme::default()
+                };
+                let drawn = kit(&theme, mode);
+                let mark = drawn.paint(Tone::Accent, Emphasis::Solid).text;
+                assert_eq!(
+                    crate::to_hex(mark),
+                    "#ebebeb",
+                    "{accent} {mode:?} mark should be near-white"
+                );
+            }
+        }
         for (id, builtin) in builtin_themes() {
             assert!(!builtin.name.is_empty(), "{id} has no name");
             assert_reads(id, builtin);

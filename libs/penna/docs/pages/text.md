@@ -41,9 +41,9 @@ Code takes the reading size in the code face. Blocks sit on a card. With the `tr
 <div class="penna-md docs-full"><p>Run <code data-penna="card.code">cargo run</code> to start the server.</p><div class="md-code"><pre data-penna="card.code"><code><span class="tk-keyword">let</span> pane = session.<span class="tk-function">active_pane</span>();</code></pre></div></div>
 ```
 
-## Quotes and tables
+## Quotes, callouts and tables
 
-A quote has a 4 bar and 16 inside it. Table columns size to their content from 48 to 480 and share the width; a scrolling table keeps those widths and scrolls sideways.
+A quote has a 4 bar and 16 inside it; GitHub-style callouts (`[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) tint the bar and title. Task lists, strikethrough, autolinks and inline/display math render with `.markdown_extensions()`. Table columns size to their content from 48 to 480 and share the width; a scrolling table keeps those widths and scrolls sideways.
 
 ```figure
 <div class="penna-md" style="width: 320px"><div class="md-quote"><blockquote><p>The server outlives the app.</p></blockquote></div><div class="md-table"><div class="md-figure" data-penna="card.figure"><div class="md-row"><div class="md-cell" data-align="left">Command</div><div class="md-cell" data-align="center">Key</div></div><div class="md-row"><div class="md-cell" data-align="left">Split right</div><div class="md-cell" data-align="center"><code data-penna="card.code">Ctrl+D</code></div></div></div></div></div>
@@ -85,6 +85,8 @@ New text fades in over 120 to 220ms, at the pace it arrives. With reduced motion
 | `.streaming(true)` | `data-streaming`, `template[data-tail]` | Text still arriving |
 | `.scrollable(true)` | none | Fills its container and scrolls |
 | `.code_block_actions(f)` | `data-actions`, `.md-actions` | Buttons on code blocks |
+| `.code_block_body(f)` | none | Custom renderer for fenced blocks (such as diagrams or UI blocks) |
+| `.markdown_extensions(ext)` | none | Enables callouts, math, task lists and footnotes |
 | `.links(handler)` | `a` | Handles link clicks |
 | `.text(None)` on `TextViewStyle` | `data-text="inherit"` | Takes its container's text style, no measure |
 | `.table(style)` on `TextViewStyle` | `data-scroll`, `.md-scroll` | `overflow_x` scroll: tables scroll sideways |

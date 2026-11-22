@@ -22,6 +22,10 @@
   --penna-icon-size: 16px;
 }
 
+[data-icon][data-size="touch-large"] {
+  --penna-icon-size: 20px;
+}
+
 [data-icon][data-size="6"] {
   --penna-icon-size: 24px;
 }

@@ -37,6 +37,23 @@
   transform: translateX(-50%);
 }
 
+@keyframes penna-popover-rise {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+
+.penna-popover[data-open] > .penna-popover-panel {
+  animation: penna-popover-rise 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .penna-popover:not([data-open]) > .penna-popover-panel {
   display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .penna-popover[data-open] > .penna-popover-panel {
+    animation: none;
+  }
 }

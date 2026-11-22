@@ -147,6 +147,11 @@
   height: var(--penna-control-touch);
 }
 
+.penna-button[data-shape="icon"][data-size="touch-large"] {
+  width: var(--penna-control-touch-lg);
+  height: var(--penna-control-touch-lg);
+}
+
 .penna-button[data-shape="compact-icon"] {
   width: 24px;
   height: 24px;

@@ -1,6 +1,6 @@
 # Keycap
 
-A keystroke drawn the way it is pressed. Menus and tooltips show shortcuts as plain text instead.
+A keystroke drawn the way it is pressed: in settings, palettes, shortcuts and tooltips (`sm` caps). Menus show shortcuts as plain text instead.
 
 ## Kinds
 
@@ -40,10 +40,11 @@ Kbd::new(Keystroke::parse("cmd-shift-p").unwrap_or_default())
   <span class="docs-head">Size</span><span class="docs-head">Height</span><span class="docs-head">Text</span><span class="docs-head">Example</span>
   <span>small</span><span><code>16</code></span><span><code>micro</code></span><span><kbd class="penna-kbd" data-penna="keycap" data-kbd="cmd-k" data-size="small"></kbd></span>
   <span>medium</span><span><code>18</code></span><span><code>caption</code></span><span><kbd class="penna-kbd" data-penna="keycap" data-kbd="cmd-k"></kbd></span>
+  <span>touch</span><span><code>22</code></span><span><code>small</code></span><span><kbd class="penna-kbd" data-penna="keycap" data-kbd="cmd-k" data-size="touch"></kbd></span>
 </div>
 ```
 
-Medium beside body text, small beside small text. Extra small draws like small, large and up like medium.
+Medium beside body text, small beside small text and in tooltips, touch beside touch text. Extra small draws like small, large and xlarge like medium.
 
 ## Emphasis
 

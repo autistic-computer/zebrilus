@@ -292,6 +292,12 @@ select[data-penna] {
   --penna-icon-size: 16px;
 }
 
+:is([data-penna="icon-button"], [data-penna="icon-button.flat"])[data-size="touch-large"] {
+  width: var(--penna-control-touch-lg);
+  height: var(--penna-control-touch-lg);
+  --penna-icon-size: 20px;
+}
+
 :is([data-penna="field"], [data-penna="field.outline"], [data-penna="field.multiline"], [data-penna="field.multiline.outline"]) {
   display: flex;
   align-items: center;
@@ -434,7 +440,7 @@ select[data-penna] {
   display: inline-flex;
   align-items: center;
   gap: var(--penna-space-12);
-  padding: var(--penna-space-2) var(--penna-space-8);
+  padding: var(--penna-space-4) var(--penna-space-10);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
 }
@@ -654,9 +660,9 @@ select[data-penna] {
 }
 
 [data-penna="chrome.button"] {
-  width: 32px;
-  height: 32px;
-  --penna-icon-size: 17px;
+  width: 28px;
+  height: 28px;
+  --penna-icon-size: 16px;
 }
 
 [data-penna="sidebar.row"] {

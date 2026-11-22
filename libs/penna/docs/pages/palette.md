@@ -55,8 +55,11 @@ palette_vim_badge(PaletteVimMode::Normal, Some('g'), cx)
 | `PaletteRow { matches, muted_prefix, .. }` | `.penna-palette-match`, `.penna-palette-muted` | Matched letters, muted path |
 | `PaletteRow { status, running, .. }` | `.penna-palette-dot[data-status]` | Status and running dots |
 | `PaletteRow { shortcut: Some(PaletteShortcut::Keys(..)), .. }` | `.penna-palette-shortcut` | Keys |
+| `PaletteRow { inside: true, .. }` | trailing `chevron-right` | Marks a row that drills in |
 | `.usage(text)`, `.reserve_usage()` | `.penna-palette-usage` | Usage line |
 | `.hints(hints)` | `.penna-palette-hint` | Footer keys |
+| `.width(w)`, `.max_rows(n)`, `.padding(p)` | | Layout overrides |
+| `PaletteKeys` | | Shared keyboard navigation (`Up`, `Down`, `Enter`, `Escape`) |
 | `palette_section(label, hint, cx)` | `.penna-palette-section` | Section header |
 | `palette_empty(label, cx)` | `.penna-palette-empty` | Nothing matched |
 | `PaletteVim`, `palette_vim_badge(mode, pending, cx)` | `.penna-palette-vim` | Vim modes |

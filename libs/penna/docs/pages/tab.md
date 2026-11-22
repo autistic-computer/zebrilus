@@ -45,11 +45,11 @@ Inset and content are yours; the stories use 10 at the sides. A tab is as wide a
 
 ```figure uses=tab
 <div class="docs-show" data-gap="wide">
-  <div class="docs-cell"><div class="penna-tab-strip" data-penna="tab.strip" role="tablist" style="--penna-around-rows: 28px"><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>notes</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>build</span></span></div></div></div>
+  <div class="docs-cell"><div class="penna-tab-strip" data-penna="tab.strip" role="tablist"><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>notes</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>build</span></span></div></div></div>
 </div>
 ```
 
-Window tabs, and a browser's page tabs, sit in one strip: a wash with no edge, 2 inside and 2 between tabs. Its corner is the tabs' corner plus 2, so the open tab sits concentric in it. With one tab there is no strip, just the tab.
+Window tabs, and a browser's page tabs, sit in one strip: a wash with no edge, 2 between tabs, as tall as its tabs and sharing their corner. When glass is on, the open tab takes the glass highlight. With one tab there is no strip, just the tab at its own height.
 
 ```rust
 let on = TabStrip::ground(bar, windows.len(), cx);
@@ -109,6 +109,8 @@ One open tab per bar.
 | Rust | HTML | Does |
 | --- | --- | --- |
 | `Tab::new(id, look)` | `.penna-tab[role="tab"][data-penna]` | Tab in a look |
+| `TabStrip::new(id, look)` | `.penna-tab-strip[data-penna="tab.strip"]` | Strip holding two or more tabs |
+| `TabStrip::ground(bar, count, cx)` | none | Ground for tabs inside a strip |
 | `.state(state)` | `data-state`, `aria-selected`, `aria-disabled` | State from the app |
 | `.focused(true)` | `data-state="focused"` | Focus ring over any state |
 | `.with_size(size)`, `.small()` … `.touch()` | `data-size` | Height; large by default |

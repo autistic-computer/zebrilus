@@ -50,7 +50,7 @@ Medium is the default and follows density. Each segment's side inset is the rung
 - Picked: the pill under it. Always exactly one.
 - Hover and pressed: a quiet fill behind the segment, as tall and round as the pill. Not on the picked one.
 - Press one to slide the pill there.
-- Focused: a ring outside the track, from the keyboard only. The arrow keys move the pick, Home and End jump to the ends.
+- Focused: a ring outside the track and the field's focused fill, from the keyboard only. The arrow keys move the pick, Home and End jump to the ends.
 - Disabled: the track fades and the pill and labels drop to half strength, so the pick still shows. Presses and keys do nothing, and it leaves the focus order.
 
 ## Labels
@@ -72,5 +72,6 @@ One or two words each, about the same length.
 | `.selected(index)` | `data-value` | The picked one |
 | `.on_select(handler)` | `change` | Gets the picked index |
 | `.xsmall()` … `.touch()` | `data-size` | Size; medium by default |
+| `.full_width()` | `data-width="full"` | Fills its container with equal-width segments |
 | `.disabled(true)` | `aria-disabled="true"` | Off |
 | `.on(ground)` | | Paints for the surface under it |

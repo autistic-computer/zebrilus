@@ -31,9 +31,13 @@ Spinner::new().small().color(cx.theme().foreground.muted())
 ```figure uses=spinner
 <div class="docs-tokens">
   <span class="docs-head">Size</span><span class="docs-head">Icon</span><span class="docs-head">Beside</span><span class="docs-head">Example</span>
+  <span>xsmall</span><span><code>12</code></span><span>caption</span><span><div class="penna-spinner" data-size="xsmall"><i data-icon="loader"></i></div></span>
   <span>small</span><span><code>12</code></span><span>small, caption</span><span><div class="penna-spinner" data-size="small"><i data-icon="loader"></i></div></span>
   <span>medium</span><span><code>14</code></span><span>body</span><span><div class="penna-spinner"><i data-icon="loader"></i></div></span>
   <span>large</span><span><code>16</code></span><span>lead, heading</span><span><div class="penna-spinner" data-size="large"><i data-icon="loader"></i></div></span>
+  <span>xlarge</span><span><code>16</code></span><span>lead</span><span><div class="penna-spinner" data-size="xlarge"><i data-icon="loader"></i></div></span>
+  <span>touch</span><span><code>16</code></span><span>touch-small</span><span><div class="penna-spinner" data-size="touch"><i data-icon="loader"></i></div></span>
+  <span>touch-large</span><span><code>20</code></span><span>touch-body</span><span><div class="penna-spinner" data-size="touch-large"><i data-icon="loader"></i></div></span>
 </div>
 ```
 
@@ -43,8 +47,8 @@ In a control it takes the size of the icon it stands in for.
 
 ```figure uses=spinner,input
 <div class="docs-show" data-gap="wide">
-  <div class="docs-cell"><button class="penna-button" data-penna="button" data-loading><span class="penna-spinner" data-size="small"><i data-icon="loader"></i></span><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Busy button</span></div>
-  <div class="docs-cell"><div class="docs-row"><label class="penna-input" data-penna="field"><input value="Resolving host" /><span class="penna-input-suffix"><span class="penna-spinner"><i data-icon="loader"></i></span></span></label></div><span class="docs-note">Checking field</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-loading><span class="penna-spinner"><i data-icon="loader"></i></span><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Busy button</span></div>
+  <div class="docs-cell"><div class="docs-row"><label class="penna-input" data-penna="field"><input value="Resolving host" /><span class="penna-input-suffix"><span class="penna-spinner" data-size="small"><i data-icon="loader"></i></span></span></label></div><span class="docs-note">Checking field</span></div>
 </div>
 ```
 
@@ -66,7 +70,7 @@ On its own, a spinner doesn't say what is loading. Put a line beside it.
 | Rust | HTML | Does |
 | --- | --- | --- |
 | `Spinner::new()` | `.penna-spinner`, `<i data-icon="loader">` | Spinner |
-| `.small()` … `.touch()` | `data-size` | Size; medium by default |
+| `.xsmall()` … `.touch_large()` | `data-size` | Size; medium by default |
 | `.with_size(px(32.))` | `--penna-icon-size` | Size off the ladder |
 | `.color(color)` | `data-color` | Tint |
 | `.id(id)` | `role="progressbar"`, `aria-label` | Announces it as loading |

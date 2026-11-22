@@ -26,7 +26,7 @@ Progress::new("update", 0.42).label("Downloading")
 ## Sizes
 
 ```figure uses=progress
-<div class="docs-tokens">
+<div class="docs-tokens" data-cols="3">
   <span class="docs-head">Size</span><span class="docs-head">Track</span><span class="docs-head">Example</span>
   <span>small</span><span><code>4</code></span><span><div class="penna-progress" data-size="small" style="--penna-value: 42%; width: 160px"><div class="penna-progress-fill"></div></div></span>
   <span>medium</span><span><code>6</code></span><span><div class="penna-progress" style="--penna-value: 42%; width: 160px"><div class="penna-progress-fill"></div></div></span>

@@ -13,7 +13,7 @@ const sets = [JSON.parse(readFileSync(join(penna, "src/components/icon/solar.jso
 const set = sets[0];
 const renderer = readFileSync(join(here, "glyph.js"), "utf8");
 const template = readFileSync(join(here, "sheet.html"), "utf8");
-const lilex = readFileSync(join(here, "../fonts/lilex/Lilex-Regular.ttf")).toString("base64");
+const commitMono = readFileSync(join(here, "../fonts/commit-mono/CommitMono-400-Regular.ttf")).toString("base64");
 
 const usage = {};
 for (const icon of set.icons) {
@@ -29,7 +29,7 @@ for (const icon of set.icons) {
 }
 
 const page = template
-  .replace("/*LILEX*/", lilex)
+  .replace("/*COMMITMONO*/", commitMono)
   .replace("/*RENDERER*/", renderer)
   .replace("/*SETS*/", JSON.stringify(sets))
   .replace("/*USAGE*/", JSON.stringify(usage));

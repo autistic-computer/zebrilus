@@ -71,11 +71,11 @@
   width: 100%;
 }
 
-:is(.penna-row, .penna-item)[data-penna][data-state~="focused"] {
+:is(.penna-row, .penna-item)[data-penna]:is(:focus-visible, [data-state~="focused"]) {
   --penna-ring: var(--penna-focus);
 }
 
-:is(.penna-row, .penna-item)[data-penna][data-state~="focused"]::after {
+:is(.penna-row, .penna-item)[data-penna]:is(:focus-visible, [data-state~="focused"])::after {
   content: "";
   position: absolute;
   inset: var(--penna-ring-inset, -1.5px);

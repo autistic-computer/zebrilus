@@ -30,42 +30,80 @@ function modeName(value) {
   return MODES.includes(value) ? value : undefined;
 }
 
+const showSwitcher = script.dataset.switcher !== "off" && !params.has("bare");
 const saved = stored();
 const choice = {
-  theme: themeName(params.get("theme")) || themeName(saved.theme) || script.dataset.theme || THEMES[0],
+  theme: themeName(params.get("theme")) || (showSwitcher ? themeName(saved.theme) : undefined) || script.dataset.theme || THEMES[0],
   mode: modeName(params.get("mode")) || modeName(saved.mode) || "dark",
 };
 
-const density = params.get("density");
+const density = params.get("density") || (!params.has("bare") ? saved.density : undefined);
 if (density === "compact" || density === "comfortable") document.documentElement.dataset.density = density;
+const glass = params.get("glass") || (!params.has("bare") ? saved.glass : undefined);
+if (glass === "none") document.documentElement.dataset.glass = "none";
 if (params.get("pointer") === "arrow") document.documentElement.dataset.pointer = "arrow";
 
-function sheet(id) {
-  let link = document.getElementById(id);
-  if (!link) {
-    link = document.createElement("link");
-    link.id = id;
-    link.rel = "stylesheet";
-    document.head.prepend(link);
-  }
-  return link;
-}
+const swapping = new Map();
+const active = new Map();
 
-function load(id, file) {
-  const link = sheet(id);
+document.addEventListener(
+  "load",
+  (event) => {
+    const job = swapping.get(event.target);
+    if (!job) return;
+    swapping.delete(event.target);
+    if (active.get(job.id) === event.target) active.delete(job.id);
+    job.existing?.remove();
+    job.onReady?.();
+    requestAnimationFrame(() => {
+      roundAll();
+      ceilTextRuns();
+    });
+  },
+  true,
+);
+
+function load(id, file, onReady) {
+  const existing = document.getElementById(id);
   const href = new URL(`${file}.css`, tokens).href;
-  if (link.href !== href) {
-    link.href = href;
-    link.addEventListener(
-      "load",
-      () =>
-        requestAnimationFrame(() => {
-          roundAll();
-          ceilTextRuns();
-        }),
-      { once: true },
-    );
+  const inflight = active.get(id);
+  if (inflight && inflight.href === href) return;
+  if (inflight) {
+    const prior = swapping.get(inflight);
+    swapping.delete(inflight);
+    active.delete(id);
+    inflight.remove();
+    if (prior?.existing && !document.getElementById(id)) prior.existing.id = id;
   }
+  const current = document.getElementById(id);
+  if (current && current.href === href) {
+    onReady?.();
+    return;
+  }
+  const link = document.createElement("link");
+  link.id = id;
+  link.rel = "stylesheet";
+  link.href = href;
+  if (!current) {
+    swapping.set(link, { id, existing: null, onReady });
+    active.set(id, link);
+    document.head.prepend(link);
+    return;
+  }
+  current.removeAttribute("id");
+  swapping.set(link, { id, existing: current, onReady });
+  active.set(id, link);
+  link.addEventListener(
+    "error",
+    () => {
+      swapping.delete(link);
+      if (active.get(id) === link) active.delete(id);
+      link.remove();
+      if (!document.getElementById(id)) current.id = id;
+    },
+    { once: true },
+  );
+  current.after(link);
 }
 
 function ceilTextRuns(root = document, selector = "[data-penna-text]") {
@@ -78,12 +116,16 @@ function ceilTextRuns(root = document, selector = "[data-penna-text]") {
 }
 
 function apply() {
+  const initial = !document.getElementById("penna-tokens");
+  const commit = () => {
+    document.documentElement.dataset.pennaTheme = choice.theme;
+    document.documentElement.dataset.pennaMode = choice.mode;
+    remember(showSwitcher ? { ...stored(), ...choice } : { ...stored(), mode: choice.mode });
+    document.dispatchEvent(new CustomEvent("penna-theme", { detail: { ...choice } }));
+  };
+  if (initial) commit();
   load("penna-icons", `${choice.theme}-icons`);
-  load("penna-tokens", `${choice.theme}-${choice.mode}`);
-  document.documentElement.dataset.pennaTheme = choice.theme;
-  document.documentElement.dataset.pennaMode = choice.mode;
-  remember(choice);
-  document.dispatchEvent(new CustomEvent("penna-theme", { detail: { ...choice } }));
+  load("penna-tokens", `${choice.theme}-${choice.mode}`, initial ? undefined : commit);
 }
 
 function apparentCorner(radius, half, k) {
@@ -116,19 +158,19 @@ function cornerOf(style, width, height) {
   const around = style.getPropertyValue("--penna-around").trim();
   if (around) {
     const rows = parseFloat(style.getPropertyValue("--penna-around-rows")) || 28;
-    const share = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-control-share")) || 0;
+    const share = parseFloat(style.getPropertyValue("--penna-control-share")) || 0;
     const inset = parseFloat(around) || 0;
     corner = Math.min(share * rows + inset, rows / 2 + inset);
   }
   const inside = style.getPropertyValue("--penna-inside").trim();
   if (inside) {
     const rows = parseFloat(style.getPropertyValue("--penna-inside-rows")) || 28;
-    const share = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-control-share")) || 0;
+    const share = parseFloat(style.getPropertyValue("--penna-control-share")) || 0;
     corner = Math.max(Math.min(share * rows, rows / 2) - (parseFloat(inside) || 0), 0);
   }
   const nest = style.getPropertyValue("--penna-nest-inset").trim();
   if (nest) {
-    const outer = parseFloat(style.getPropertyValue("--penna-nest-outer")) || parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-radius")) || 0;
+    const outer = parseFloat(style.getPropertyValue("--penna-nest-outer")) || parseFloat(style.getPropertyValue("--penna-radius")) || 0;
     corner = Math.max(Math.min(corner, outer - (parseFloat(nest) || 0)), 0);
   }
   return corner;
@@ -239,6 +281,7 @@ function dropLens(element) {
   lens.filter.remove();
   lenses.delete(element);
   element.style.removeProperty("backdrop-filter");
+  element.style.removeProperty("-webkit-backdrop-filter");
 }
 
 function refract(element) {
@@ -256,9 +299,11 @@ function refract(element) {
     dropLens(element);
     return;
   }
-  const radius = Math.min(parseFloat(style.borderTopLeftRadius) || 0, shorter / 2);
+  const corner = parseFloat(style.getPropertyValue("--penna-corner"));
+  const radius = Math.min(Number.isFinite(corner) ? corner : parseFloat(style.borderTopLeftRadius) || 0, shorter / 2);
   const exponent = 2 ** (parseFloat(style.getPropertyValue("--penna-k")) || 1);
-  const key = [width, height, radius, bezel, refraction, exponent].join();
+  const backdrop = style.getPropertyValue("--penna-backdrop").trim();
+  const key = [width, height, radius, bezel, refraction, exponent, backdrop].join();
   let lens = lenses.get(element);
   if (lens?.key === key) return;
   if (!lensRoot) {
@@ -287,10 +332,10 @@ function refract(element) {
   map.setAttribute("height", height);
   map.setAttribute("href", lensMap(width, height, radius, bezel, exponent));
   lens.filter.querySelector("feDisplacementMap").setAttribute("scale", 2 * refraction);
-  const backdrop = style.getPropertyValue("--penna-backdrop").trim();
   const lensed = /^blur\([^)]*\)/.test(backdrop)
     ? backdrop.replace(/^(blur\([^)]*\))/, `$1 url(#${lens.filter.id})`)
     : `url(#${lens.filter.id}) ${backdrop}`;
+  element.style.webkitBackdropFilter = lensed;
   element.style.backdropFilter = lensed;
 }
 
@@ -306,12 +351,13 @@ function watch(root) {
   root.querySelectorAll?.("[data-penna]").forEach((element) => resized.observe(element));
 }
 
-function roundAll() {
-  document.querySelectorAll("[data-penna]").forEach(settle);
+function roundAll(root = document) {
+  if (root.matches?.("[data-penna]")) settle(root);
+  root.querySelectorAll?.("[data-penna]").forEach(settle);
 }
 
 function switcher() {
-  if (document.querySelector("[data-penna-switcher]") || params.has("bare")) return;
+  if (!showSwitcher || document.querySelector("[data-penna-switcher]")) return;
   const themes = THEMES.includes(choice.theme) ? THEMES : [...THEMES, choice.theme];
   const bar = document.createElement("div");
   bar.dataset.pennaSwitcher = "";
@@ -347,7 +393,11 @@ addEventListener("DOMContentLoaded", () => {
   new MutationObserver((records) =>
     records.forEach((record) => {
       if (record.type === "attributes") {
-        if (record.target.matches("[data-penna]")) settle(record.target);
+        if (record.attributeName === "data-look" || record.attributeName === "data-ground") {
+          roundAll(record.target);
+        } else if (record.target.matches("[data-penna]")) {
+          settle(record.target);
+        }
         return;
       }
       record.addedNodes.forEach((node) => node.nodeType === 1 && watch(node));
@@ -356,7 +406,7 @@ addEventListener("DOMContentLoaded", () => {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ["data-state", "data-penna", "data-tone", "data-prominent", "aria-selected", "aria-current"],
+    attributeFilter: ["data-state", "data-penna", "data-tone", "data-prominent", "data-look", "data-emphasis", "data-solid", "data-ground", "data-size", "data-shape", "aria-selected", "aria-current"],
   });
   switcher();
   roundAll();
@@ -369,4 +419,24 @@ function drawnCorner(corner, width, height, k = parseFloat(getComputedStyle(docu
   return apparentCorner(corner, Math.min(width, height) / 2, k);
 }
 
-window.pennaKit = { choice, apply, roundAll, ceilText: ceilTextRuns, focusRing, apparentCorner, drawnCorner };
+function setDensity(next) {
+  const valid = next === "compact" || next === "comfortable" ? next : "";
+  if (valid) document.documentElement.dataset.density = valid;
+  else delete document.documentElement.dataset.density;
+  if (!params.has("bare")) remember({ ...stored(), density: valid || "regular" });
+  requestAnimationFrame(() => {
+    roundAll();
+    ceilTextRuns();
+  });
+  document.dispatchEvent(new CustomEvent("penna-theme", { detail: { ...choice, density: valid || "regular" } }));
+}
+
+function setGlass(on) {
+  if (on) delete document.documentElement.dataset.glass;
+  else document.documentElement.dataset.glass = "none";
+  if (!params.has("bare")) remember({ ...stored(), glass: on ? "liquid" : "none" });
+  requestAnimationFrame(() => roundAll());
+  document.dispatchEvent(new CustomEvent("penna-theme", { detail: { ...choice, glass: on ? "liquid" : "none" } }));
+}
+
+window.pennaKit = { choice, apply, roundAll, settle, setDensity, setGlass, ceilText: ceilTextRuns, focusRing, apparentCorner, drawnCorner };

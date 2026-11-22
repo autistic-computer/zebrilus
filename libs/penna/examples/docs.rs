@@ -19,52 +19,120 @@ use penna::{
         theme_css::{self, SYNTAX},
     },
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-const STYLES: [&str; 7] = [
+const STYLES: [&str; 14] = [
+    "components/badge/badge.css",
     "components/button/button.css",
+    "components/card/card.css",
     "components/kbd/kbd.css",
+    "components/list/list.css",
+    "components/panel/panel.css",
+    "components/popover/popover.css",
     "components/segmented/segmented.css",
+    "components/switch/switch.css",
     "components/text/text.css",
     "components/tooltip/tooltip.css",
-    "blocks/sidebar/sidebar.css",
     "blocks/docs/docs.css",
+    "blocks/palette/palette.css",
+    "blocks/sidebar/sidebar.css",
 ];
 
-const SCRIPTS: [&str; 6] = [
+const SCRIPTS: [&str; 7] = [
     "components/button/button.js",
     "components/kbd/kbd.js",
     "components/segmented/segmented.js",
+    "components/switch/switch.js",
     "components/text/text.js",
     "components/tooltip/tooltip.js",
     "blocks/docs/docs.js",
 ];
 
-const LOOKS: [(&str, &str); 11] = [
+const LOOKS: &[(&str, &str)] = &[
     ("default", "{}"),
-    ("green", r#"{ "tint": "green" }"#),
+    ("purple", r#"{ "tint": "purple" }"#),
     ("pink", r#"{ "tint": "pink" }"#),
+    ("red", r#"{ "tint": "red" }"#),
+    ("orange", r#"{ "tint": "orange" }"#),
+    ("yellow", r#"{ "tint": "yellow" }"#),
+    ("green", r#"{ "tint": "green" }"#),
+    ("graphite", r#"{ "tint": "graphite" }"#),
+    (
+        "neutral-pure",
+        r#"{ "neutral": { "hue": 60, "amount": 0 } }"#,
+    ),
+    (
+        "neutral-cool",
+        r#"{ "neutral": { "hue": 250, "amount": 0.5 } }"#,
+    ),
+    (
+        "neutral-warm",
+        r#"{ "neutral": { "hue": 55, "amount": 0.65 } }"#,
+    ),
+    (
+        "colors-slate",
+        r##"{ "tint": "#58989b", "colors": { "light": { "bg": "#f2f5fa", "fg": "#1a2230", "danger": "#b82832" }, "dark": { "bg": "#151a22", "fg": "#dce4f0", "danger": "#cc241d" } } }"##,
+    ),
+    (
+        "colors-warm",
+        r##"{ "tint": "#d79921", "colors": { "light": { "bg": "#fbf1c7", "fg": "#3c3836", "danger": "#cc241d" }, "dark": { "bg": "#1d2021", "fg": "#a89984", "danger": "#cc241d" } } }"##,
+    ),
     ("radius-4", r#"{ "radius": 4 }"#),
     ("radius-20", r#"{ "radius": 20 }"#),
     ("pill", r#"{ "control-radius": "full" }"#),
     ("smoothing-2", r#"{ "radius": 24, "smoothing": 2 }"#),
     ("smoothing-3", r#"{ "radius": 24 }"#),
+    ("smoothing-4", r#"{ "radius": 24, "smoothing": 4 }"#),
     ("smoothing-5", r#"{ "radius": 24, "smoothing": 5 }"#),
     ("glass-none", r#"{ "glass": "none" }"#),
     ("glass-liquid", r#"{ "glass": "liquid" }"#),
 ];
 
-const LOOK_ROLES: [&str; 10] = [
+const LOOK_ROLES: &[&str] = &[
     "button",
     "button.quiet",
+    "button.outline",
+    "icon-button",
+    "icon-button.flat",
+    "icon-button.floating",
     "field",
+    "field.outline",
+    "field.multiline",
+    "field.multiline.outline",
+    "field.composer",
     "menu-item",
+    "item",
+    "row",
+    "tab",
+    "tile",
+    "well",
+    "badge",
+    "badge.outline",
+    "keycap",
+    "panel",
+    "rule.bar",
     "popover",
     "floating",
+    "dialog",
+    "sheet",
     "drawer",
+    "toast",
+    "tooltip",
     "card",
+    "notice",
+    "settings.card",
+    "phone.card",
+    "phone.row",
+    "phone.pill",
+    "phone.pill.icon",
+    "phone.button",
+    "phone.key",
+    "sidebar.row",
+    "tab.window",
+    "tab.page",
     "tile.card",
     "chip",
+    "chip.floating",
 ];
 
 const KIT: &str = "../../../../src/";
@@ -96,9 +164,26 @@ fn story_pages_last(assets: BTreeSet<String>) -> impl Iterator<Item = String> {
     widgets.into_iter().chain(pages)
 }
 
+#[derive(Serialize)]
+struct SearchHeading {
+    text: String,
+    id: String,
+}
+
+#[derive(Serialize)]
+struct SearchEntry {
+    slug: String,
+    title: String,
+    group: String,
+    summary: String,
+    headings: Vec<SearchHeading>,
+}
+
 struct Page {
     slug: String,
     title: String,
+    summary: String,
+    headings: Vec<SearchHeading>,
     group: usize,
     body: String,
     styles: BTreeSet<String>,
@@ -141,12 +226,16 @@ fn main() -> io::Result<()> {
             let source = fs::read_to_string(builder.root.join(format!("docs/pages/{slug}.md")))?;
             let tree = markdown::to_mdast(&source, &ParseOptions::gfm())
                 .map_err(|error| io::Error::other(error.to_string()))?;
-            let title = first_heading(&tree).unwrap_or_else(|| slug.clone());
+            let title = first_heading(&tree).unwrap_or_else(|| title_from_slug(slug));
+            let summary = first_summary(&tree);
+            let headings = section_headings(&tree);
             builder.mounts.set(0);
             let body = builder.page(&tree)?;
             pages.push(Page {
                 slug: slug.clone(),
                 title,
+                summary,
+                headings,
                 group,
                 body,
                 styles: builder.styles.take(),
@@ -160,11 +249,19 @@ fn main() -> io::Result<()> {
     }
     let assets = out.join("assets");
     copy_assets(&builder.root, &assets)?;
+    write_search_index(&site, &pages, &assets.join("search.json"))?;
+    fs::copy(
+        builder.root.join("docs/favicon.svg"),
+        out.join("favicon.svg"),
+    )?;
+    let logo = fs::read_to_string(builder.root.join("docs/logo.svg"))?
+        .trim()
+        .to_owned();
     if builder.native {
         copy_dir(&wasm, &assets.join("storybook/wasm"))?;
     }
     for (index, page) in pages.iter().enumerate() {
-        let html = document(&site, &pages, index, builder.native);
+        let html = document(&site, &pages, index, &logo, builder.native);
         fs::write(out.join(file_name(&page.slug)), &html)?;
         if index == 0 {
             fs::write(out.join("index.html"), &html)?;
@@ -172,6 +269,28 @@ fn main() -> io::Result<()> {
     }
     println!("{}", out.join("index.html").display());
     Ok(())
+}
+
+fn write_search_index(site: &Site, pages: &[Page], path: &Path) -> io::Result<()> {
+    let entries: Vec<SearchEntry> = pages
+        .iter()
+        .map(|page| SearchEntry {
+            slug: page.slug.clone(),
+            title: page.title.clone(),
+            group: site.groups[page.group].title.clone(),
+            summary: page.summary.clone(),
+            headings: page
+                .headings
+                .iter()
+                .map(|heading| SearchHeading {
+                    text: heading.text.clone(),
+                    id: heading.id.clone(),
+                })
+                .collect(),
+        })
+        .collect();
+    let json = serde_json::to_string(&entries).map_err(io::Error::other)?;
+    fs::write(path, json)
 }
 
 fn file_name(slug: &str) -> String {
@@ -196,6 +315,20 @@ fn copy_assets(root: &Path, assets: &Path) -> io::Result<()> {
         &assets.join("storybook/fonts"),
     )?;
     fs::copy(root.join("docs/site.css"), assets.join("site.css"))?;
+    fs::copy(root.join("docs/chrome.js"), assets.join("chrome.js"))?;
+    fs::copy(root.join("docs/hero.js"), assets.join("hero.js"))?;
+    fs::copy(root.join("docs/install.js"), assets.join("install.js"))?;
+    fs::copy(root.join("docs/overview.js"), assets.join("overview.js"))?;
+    fs::copy(
+        root.join("docs/principles.js"),
+        assets.join("principles.js"),
+    )?;
+    fs::copy(root.join("docs/color.js"), assets.join("color.js"))?;
+    fs::copy(root.join("docs/spacing.js"), assets.join("spacing.js"))?;
+    fs::copy(root.join("docs/sizes.js"), assets.join("sizes.js"))?;
+    fs::copy(root.join("docs/phone.js"), assets.join("phone.js"))?;
+    fs::copy(root.join("docs/look.js"), assets.join("look.js"))?;
+    fs::copy(root.join("docs/logo.svg"), assets.join("logo.svg"))?;
     Ok(())
 }
 
@@ -210,11 +343,18 @@ fn write_looks(dir: &Path) -> io::Result<()> {
         let look = interface_theme::parse_theme(source).map_err(io::Error::other)?;
         fs::write(dir.join(format!("{name}.css")), look_sheet(name, &look))?;
     }
+    let glass_none =
+        interface_theme::parse_theme(r#"{ "glass": "none" }"#).map_err(io::Error::other)?;
+    fs::write(
+        dir.with_file_name(GLASS_OFF_SHEET),
+        glass_off_sheet(&glass_none),
+    )?;
     fs::write(dir.with_file_name(RESET_SHEET), reset_sheet())?;
     Ok(())
 }
 
 const RESET_SHEET: &str = "looks-reset.css";
+const GLASS_OFF_SHEET: &str = "glass-off.css";
 
 const MODES: [ThemeMode; 2] = [ThemeMode::Light, ThemeMode::Dark];
 
@@ -233,13 +373,15 @@ fn mode_rules(theme: &InterfaceTheme, mode: ThemeMode) -> (Vec<Rule>, Vec<String
 fn look_sheet(name: &str, look: &InterfaceTheme) -> String {
     let mut css = String::new();
     for mode in MODES {
-        let (base, _) = mode_rules(interface_theme::default_theme(), mode);
+        let (base, local) = mode_rules(interface_theme::default_theme(), mode);
         let (shown, _) = mode_rules(look, mode);
+        let mut diff = changed(&base, &shown);
+        diff.extend(removed(&base, &shown, &local));
         let scope = format!(
             ":root[data-penna-mode=\"{}\"] [data-look=\"{name}\"]",
             mode.name()
         );
-        write_scope(&mut css, &scope, &changed(&base, &shown));
+        write_scope(&mut css, &scope, &diff);
     }
     css
 }
@@ -266,8 +408,29 @@ fn reset_sheet() -> String {
     css
 }
 
+fn glass_off_sheet(look: &InterfaceTheme) -> String {
+    let mut css = String::new();
+    for mode in MODES {
+        let (base, local) = mode_rules(interface_theme::default_theme(), mode);
+        let (shown, _) = mode_rules(look, mode);
+        let mut diff = changed(&base, &shown);
+        diff.extend(removed(&base, &shown, &local));
+        diff.retain(|rule| rule.path.as_slice() != [":root"]);
+        let scope = format!(
+            "(:root[data-penna-mode=\"{}\"][data-glass=\"none\"]) to ([data-look])",
+            mode.name()
+        );
+        write_raw_scope(&mut css, &scope, &diff);
+    }
+    css
+}
+
 fn write_scope(css: &mut String, scope: &str, rules: &[Rule]) {
-    let _ = writeln!(css, "@scope ({scope}) {{");
+    write_raw_scope(css, &format!("({scope})"), rules);
+}
+
+fn write_raw_scope(css: &mut String, scope: &str, rules: &[Rule]) {
+    let _ = writeln!(css, "@scope {scope} {{");
     let mut outer: Vec<&str> = Vec::new();
     for rule in rules {
         if let Some(first) = rule.path.first()
@@ -525,7 +688,27 @@ fn rules(css: &str) -> Vec<Rule> {
             }
         }
     }
-    rules
+    let mut merged: Vec<Rule> = Vec::new();
+    let mut index: HashMap<Vec<String>, usize> = HashMap::new();
+    for rule in rules {
+        if rule.decls.is_empty() {
+            continue;
+        }
+        if let Some(&at) = index.get(&rule.path) {
+            let target = &mut merged[at].decls;
+            for (name, value) in rule.decls {
+                if let Some(existing) = target.iter_mut().find(|(other, _)| *other == name) {
+                    existing.1 = value;
+                } else {
+                    target.push((name, value));
+                }
+            }
+        } else {
+            index.insert(rule.path.clone(), merged.len());
+            merged.push(rule);
+        }
+    }
+    merged
 }
 
 fn decls(text: &str) -> Vec<(String, String)> {
@@ -605,14 +788,15 @@ fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn document(site: &Site, pages: &[Page], current: usize, native: bool) -> String {
+fn document(site: &Site, pages: &[Page], current: usize, logo: &str, native: bool) -> String {
     let page = &pages[current];
     let mut html = String::new();
     let _ = write!(
         html,
         "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\" />\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n\
-         <title>{} · {}</title>\n<link rel=\"stylesheet\" href=\"assets/web/penna.css\" />\n\
+         <title>{} · {}</title>\n<link rel=\"icon\" type=\"image/svg+xml\" href=\"favicon.svg\" />\n\
+         <link rel=\"stylesheet\" href=\"assets/web/penna.css\" />\n\
          <link rel=\"stylesheet\" href=\"assets/web/story.css\" />\n",
         escape(&page.title),
         escape(&site.title)
@@ -625,9 +809,10 @@ fn document(site: &Site, pages: &[Page], current: usize, native: bool) -> String
     for style in story_pages_last(styles) {
         let _ = writeln!(html, "<link rel=\"stylesheet\" href=\"{style}\" />");
     }
+    html.push_str("<link rel=\"stylesheet\" href=\"assets/glass-off.css\" />\n");
     html.push_str("<link rel=\"stylesheet\" href=\"assets/site.css\" />\n");
     html.push_str(
-        "<script src=\"assets/web/kit.js\" data-tokens=\"assets/web/tokens/\"></script>\n",
+        "<script src=\"assets/web/kit.js\" data-tokens=\"assets/web/tokens/\" data-switcher=\"off\"></script>\n",
     );
     let scripts = SCRIPTS
         .iter()
@@ -637,35 +822,82 @@ fn document(site: &Site, pages: &[Page], current: usize, native: bool) -> String
     for script in story_pages_last(scripts) {
         let _ = writeln!(html, "<script src=\"{script}\" defer></script>");
     }
+    html.push_str("<script src=\"assets/chrome.js\" defer></script>\n");
+    if page.body.contains("data-docs-hero") {
+        html.push_str("<script src=\"assets/hero.js\" defer></script>\n");
+    }
+    if page.body.contains("data-docs-install") {
+        html.push_str("<script src=\"assets/install.js\" defer></script>\n");
+    }
+    if page.body.contains("data-docs-overview") {
+        html.push_str("<script src=\"assets/overview.js\" defer></script>\n");
+    }
+    if page.body.contains("data-docs-principles") {
+        html.push_str("<script src=\"assets/principles.js\" defer></script>\n");
+    }
+    if page.body.contains("data-docs-color") {
+        html.push_str("<script src=\"assets/color.js\" defer></script>\n");
+    }
+    if page.body.contains("data-docs-spacing") {
+        html.push_str("<script src=\"assets/spacing.js\" defer></script>\n");
+    }
+    if page.body.contains("data-docs-sizes") {
+        html.push_str("<script src=\"assets/sizes.js\" defer></script>\n");
+    }
+    if page.body.contains("data-docs-phone") {
+        html.push_str("<script src=\"assets/phone.js\" defer></script>\n");
+    }
+    if page.body.contains("data-docs-look") {
+        html.push_str("<script src=\"assets/look.js\" defer></script>\n");
+    }
     let storybook = if native {
         format!(" data-docs-storybook=\"{STORYBOOK}\"")
+    } else {
+        String::new()
+    };
+    let eyebrow = if current > 0 {
+        format!(
+            "<div class=\"penna-docs-eyebrow\"><span data-penna-text>{}</span></div>\n",
+            escape(&site.groups[page.group].title)
+        )
     } else {
         String::new()
     };
     let _ = write!(
         html,
         "</head>\n<body>\n<div class=\"penna-docs-layout\"{storybook}>\n{}\n<div class=\"penna-docs-body\">\n\
-         <aside class=\"penna-docs-side\" data-penna=\"sidebar\"><div class=\"penna-docs-rule\" data-penna=\"rule.sidebar\" data-edge=\"right\"></div>{}</aside>\n\
-         <main class=\"penna-docs-main\"><article class=\"penna-docs-page\">\n{}</article></main>\n\
-         </div>\n</div>\n</body>\n</html>\n",
-        header(site, pages, page.group),
+         <aside class=\"penna-docs-side\" data-penna=\"sidebar\" data-ground>{}</aside>\n\
+         <main class=\"penna-docs-main\"><article class=\"penna-docs-page\" data-page=\"{}\">\n{}{}{}</article></main>\n\
+         </div>\n</div>\n{}\n</body>\n</html>\n",
+        header(site, pages, current, logo),
         nav(site, pages, current),
-        page.body
+        escape(&page.slug),
+        eyebrow,
+        page.body,
+        pager(site, pages, current),
+        search_palette()
     );
     html
 }
 
 fn segments<'a>(labels: impl Iterator<Item = &'a str>, name: &str) -> String {
-    let spans = labels.fold(String::new(), |mut html, label_text| {
-        let _ = write!(
-            html,
-            "<span class=\"penna-segment\" role=\"button\">{}</span>",
-            label(label_text)
-        );
-        html
-    });
+    segments_with(labels, name, "")
+}
+
+fn segments_with<'a>(labels: impl Iterator<Item = &'a str>, name: &str, attrs: &str) -> String {
+    let spans = labels
+        .enumerate()
+        .fold(String::new(), |mut html, (index, label_text)| {
+            let _ = write!(
+                html,
+                "<span class=\"penna-segment\" role=\"radio\" aria-checked=\"{}\">{}</span>",
+                index == 0,
+                label(label_text)
+            );
+            html
+        });
     format!(
-        "<div class=\"penna-segmented\" data-penna=\"field\" data-value=\"0\" role=\"radiogroup\" aria-label=\"{name}\">\
+        "<div class=\"penna-segmented\" data-penna=\"field\" data-value=\"0\" role=\"radiogroup\" aria-label=\"{name}\"{attrs}>\
          <div class=\"penna-segments\" data-penna=\"button.quiet\" data-state=\"current\"><span class=\"penna-segment-pill\"></span>{spans}</div></div>"
     )
 }
@@ -685,33 +917,109 @@ fn current_attrs(current: bool) -> &'static str {
     }
 }
 
-fn header(site: &Site, pages: &[Page], group: usize) -> String {
-    let links = site
-        .groups
+fn header(site: &Site, pages: &[Page], current: usize, logo: &str) -> String {
+    let page = &pages[current];
+    let group_title = &site.groups[page.group].title;
+    let group_href = pages
         .iter()
-        .enumerate()
-        .filter_map(|(index, entry)| {
-            let first = pages.iter().find(|page| page.group == index)?;
-            Some(format!(
-                "<a class=\"penna-button\" data-penna=\"button.quiet\" data-size=\"small\" data-docs-link href=\"{}\"{}>{}</a>",
-                file_name(&first.slug),
-                current_attrs(index == group),
-                label(&entry.title)
-            ))
-        })
-        .collect::<String>();
+        .find(|entry| entry.group == page.group)
+        .map_or_else(|| "index.html".to_owned(), |entry| file_name(&entry.slug));
+    let crumb = if current == 0 {
+        format!(
+            "<nav class=\"docs-crumb\" aria-label=\"Breadcrumb\">\
+             <span class=\"docs-crumb-sep\" aria-hidden=\"true\">/</span>\
+             <span class=\"docs-crumb-now\" data-penna-text>{}</span></nav>",
+            escape(&page.title)
+        )
+    } else {
+        format!(
+            "<nav class=\"docs-crumb\" aria-label=\"Breadcrumb\">\
+             <span class=\"docs-crumb-sep\" aria-hidden=\"true\">/</span>\
+             <a class=\"docs-crumb-link\" href=\"{}\"><span data-penna-text>{}</span></a>\
+             <span class=\"docs-crumb-sep\" aria-hidden=\"true\">/</span>\
+             <span class=\"docs-crumb-now\" data-penna-text>{}</span></nav>",
+            group_href,
+            escape(group_title),
+            escape(&page.title)
+        )
+    };
+    let mode_seg = segments_with(
+        ["Dark", "Light"].into_iter(),
+        "Mode",
+        " data-size=\"small\" data-docs-opt=\"mode\"",
+    );
+    let density_seg = segments_with(
+        ["Compact", "Regular", "Comfort"].into_iter(),
+        "Density",
+        " data-size=\"small\" data-docs-opt=\"density\"",
+    );
     format!(
         "<header class=\"penna-docs-header\" data-penna=\"bar\" role=\"toolbar\">\
          <div class=\"penna-docs-rule\" data-penna=\"rule.bar\"></div>\
-         <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" aria-label=\"Pages\" data-docs-menu><i data-icon=\"panel-left\"></i></button>\
-         <div class=\"penna-docs-start\"><a class=\"penna-docs-brand\" href=\"index.html\"><i data-icon=\"app-window\"></i><span data-penna-text>{}</span></a>\
-         <div class=\"penna-docs-links\">{links}</div></div><div class=\"penna-docs-spacer\"></div>\
-         <a class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" aria-label=\"Source\" data-tooltip=\"Source\" href=\"{}\"><i data-icon=\"git-branch\"></i></a>\
-         <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" aria-label=\"Light or dark\" data-tooltip=\"Light or dark\" data-docs-mode><i data-icon=\"palette\"></i></button>\
-         </header>",
+         <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Pages\" aria-expanded=\"false\" data-docs-menu><i data-icon=\"panel-left\"></i></button>\
+         <div class=\"penna-docs-start\"><a class=\"penna-docs-brand\" href=\"index.html\"><span class=\"penna-docs-mark\" aria-hidden=\"true\">{logo}</span><span data-penna-text>{}</span></a>{crumb}</div>\
+         <div class=\"penna-docs-spacer\"></div>\
+         <div class=\"docs-header-actions\">\
+         <button class=\"penna-button penna-docs-search docs-search-btn\" data-penna=\"field\" data-size=\"small\" type=\"button\" aria-label=\"Search docs\" aria-haspopup=\"dialog\" data-docs-search><i data-icon=\"search\"></i><span class=\"docs-search-label\" data-penna-text>Search docs…</span><span class=\"penna-docs-spacer\"></span><kbd class=\"penna-kbd docs-search-kbd\" data-penna=\"keycap\" data-size=\"small\" data-kbd=\"cmd-k\"></kbd></button>\
+         <div class=\"penna-popover docs-look-pop\" data-anchor=\"right\" data-docs-look>\
+         <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Appearance\" aria-expanded=\"false\" aria-haspopup=\"dialog\" data-tooltip=\"Appearance\" data-docs-look-trigger><i data-icon=\"sliders\"></i></button>\
+         <div class=\"penna-popover-panel docs-look-panel\" data-penna=\"popover\" data-ground role=\"dialog\" aria-label=\"Appearance\">\
+         <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Mode</span>{mode_seg}</div>\
+         <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Glass</span><button class=\"penna-toggle\" data-size=\"small\" data-docs-opt=\"glass\" aria-checked=\"true\" aria-label=\"Liquid glass\" type=\"button\"></button></div>\
+         <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Density</span>{density_seg}</div>\
+         <div class=\"docs-look-foot\"><a class=\"docs-look-more\" href=\"look.html\"><span data-penna-text>All look knobs</span><i data-icon=\"arrow-right\"></i></a></div>\
+         </div></div>\
+         <a class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" aria-label=\"Source\" data-tooltip=\"Source\" href=\"{}\" target=\"_blank\" rel=\"noopener\"><i data-icon=\"git-branch\"></i></a>\
+         <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Light or dark\" data-tooltip=\"Light or dark\" data-docs-mode><i data-icon=\"sun\" data-docs-mode-icon=\"dark\"></i><i data-icon=\"moon\" data-docs-mode-icon=\"light\"></i></button>\
+         </div></header>",
         escape(&site.title),
         escape(&site.source)
     )
+}
+
+fn search_palette() -> &'static str {
+    "<div class=\"docs-palette-backdrop\" data-docs-palette hidden>\
+     <div class=\"penna-panel penna-palette-surface docs-palette-dialog\" data-penna=\"popover\" data-ground data-inset=\"8\" role=\"dialog\" aria-modal=\"true\" aria-label=\"Search documentation\">\
+     <label class=\"penna-palette-input\"><i class=\"docs-palette-search-icon\" data-icon=\"search\"></i><input class=\"docs-palette-input\" type=\"search\" placeholder=\"Search pages, sections, or commands…\" autocomplete=\"off\" spellcheck=\"false\" /></label>\
+     <div class=\"penna-palette-rows docs-palette-rows\" role=\"listbox\"></div>\
+     <div class=\"penna-palette-footer\"><div class=\"penna-palette-rule\" data-penna=\"rule.bar\"></div>\
+     <span class=\"penna-palette-hint\"><span class=\"penna-palette-keys\"><span class=\"penna-palette-glyphs\" data-kbd=\"up\"></span><span class=\"penna-palette-glyphs\" data-kbd=\"down\"></span></span><span data-penna-text>navigate</span></span>\
+     <span class=\"penna-palette-hint\"><span class=\"penna-palette-keys\"><span class=\"penna-palette-glyphs\" data-kbd=\"enter\"></span></span><span data-penna-text>open</span></span>\
+     <span class=\"penna-palette-hint\"><span class=\"penna-palette-keys\"><span class=\"penna-palette-glyphs\" data-kbd=\"escape\"></span></span><span data-penna-text>close</span></span>\
+     </div></div></div>"
+}
+
+fn pager(site: &Site, pages: &[Page], current: usize) -> String {
+    let prev = current
+        .checked_sub(1)
+        .and_then(|index| pages.get(index))
+        .map_or_else(
+            || "<span class=\"penna-docs-pager-gap\"></span>".to_owned(),
+            |page| {
+                format!(
+                    "<a class=\"penna-docs-pager-link penna-card\" data-penna=\"card\" data-dir=\"prev\" href=\"{}\">\
+                     <span class=\"penna-docs-pager-meta\"><i data-icon=\"arrow-left\"></i><span data-penna-text>Previous · {}</span></span>\
+                     <span class=\"penna-docs-pager-title\" data-penna-text>{}</span></a>",
+                    file_name(&page.slug),
+                    escape(&site.groups[page.group].title),
+                    escape(&page.title)
+                )
+            },
+        );
+    let next = pages.get(current + 1).map_or_else(
+        || "<span class=\"penna-docs-pager-gap\"></span>".to_owned(),
+        |page| {
+            format!(
+                "<a class=\"penna-docs-pager-link penna-card\" data-penna=\"card\" data-dir=\"next\" href=\"{}\">\
+                 <span class=\"penna-docs-pager-meta\"><span data-penna-text>Next · {}</span><i data-icon=\"arrow-right\"></i></span>\
+                 <span class=\"penna-docs-pager-title\" data-penna-text>{}</span></a>",
+                file_name(&page.slug),
+                escape(&site.groups[page.group].title),
+                escape(&page.title)
+            )
+        },
+    );
+    format!("<nav class=\"penna-docs-pager\" aria-label=\"Page navigation\">{prev}{next}</nav>\n")
 }
 
 fn nav(site: &Site, pages: &[Page], current: usize) -> String {
@@ -745,6 +1053,69 @@ fn first_heading(tree: &Node) -> Option<String> {
         Node::Heading(heading) if heading.depth == 1 => Some(plain(&heading.children)),
         _ => None,
     })
+}
+
+fn first_summary(tree: &Node) -> String {
+    let Some(children) = tree.children() else {
+        return String::new();
+    };
+    let text = children
+        .iter()
+        .find_map(|node| match node {
+            Node::Paragraph(paragraph) => {
+                let value = plain(&paragraph.children)
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                (!value.is_empty()).then_some(value)
+            }
+            _ => None,
+        })
+        .unwrap_or_default();
+    let sentence = text
+        .split_once(". ")
+        .map_or(text.as_str(), |(head, _)| head);
+    let mut clipped = String::new();
+    for ch in sentence.chars().take(88) {
+        clipped.push(ch);
+    }
+    if sentence.chars().count() > 88 {
+        clipped.push('…');
+    }
+    clipped
+}
+
+fn section_headings(tree: &Node) -> Vec<SearchHeading> {
+    let Some(children) = tree.children() else {
+        return Vec::new();
+    };
+    children
+        .iter()
+        .filter_map(|node| match node {
+            Node::Heading(heading) if heading.depth == 2 => {
+                let text = plain(&heading.children);
+                Some(SearchHeading {
+                    id: slug(&text),
+                    text,
+                })
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn title_from_slug(slug: &str) -> String {
+    let mut chars = slug.chars();
+    match chars.next() {
+        Some(first) => {
+            let mut out = first.to_uppercase().to_string();
+            for ch in chars {
+                out.push(if ch == '-' { ' ' } else { ch });
+            }
+            out
+        }
+        None => String::new(),
+    }
 }
 
 fn plain(nodes: &[Node]) -> String {
@@ -927,14 +1298,25 @@ impl Builder {
             .filter_map(|token| token.strip_prefix("uses="))
             .flat_map(|list| list.split(','))
             .for_each(|name| self.uses(name));
-        for look in code.value.split("data-look=\"").skip(1) {
-            let name = &look[..look.find('"').unwrap_or(0)];
+        let add_look = |name: &str| -> io::Result<()> {
             if LOOKS.iter().all(|(known, _)| *known != name) {
                 return Err(io::Error::other(format!("no look named {name}")));
             }
             let mut styles = self.styles.borrow_mut();
             styles.insert(format!("assets/{RESET_SHEET}"));
             styles.insert(format!("assets/looks/{name}.css"));
+            Ok(())
+        };
+        for name in meta(code)
+            .into_iter()
+            .filter_map(|token| token.strip_prefix("looks="))
+            .flat_map(|list| list.split(','))
+        {
+            add_look(name)?;
+        }
+        for look in code.value.split("data-look=\"").skip(1) {
+            let name = &look[..look.find('"').unwrap_or(0)];
+            add_look(name)?;
         }
         let body = match story_ref(code) {
             Some(reference) => {
@@ -1164,9 +1546,18 @@ fn inline(node: &Node) -> String {
 }
 
 fn code_block(lang: Option<&str>, source: &str) -> String {
+    let label = lang
+        .filter(|lang| !lang.is_empty() && *lang != "text")
+        .map(|lang| {
+            format!(
+                "<span class=\"md-lang\" data-penna-text>{}</span>",
+                escape(lang)
+            )
+        })
+        .unwrap_or_default();
     format!(
-        "<div class=\"md-code\"><pre data-penna=\"card.code\" data-actions><code>{}</code>\
-         <div class=\"md-actions\"><div><button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" aria-label=\"Copy\" data-tooltip=\"Copy\" data-copy><i data-icon=\"copy\"></i></button></div></div></pre></div>",
+        "<div class=\"md-code\"><pre data-penna=\"card.code\" data-ground data-actions><code>{}</code>\
+         <div class=\"md-actions\">{label}<div><button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" aria-label=\"Copy\" data-tooltip=\"Copy\" data-copy><i data-icon=\"copy\"></i></button></div></div></pre></div>",
         highlight(lang.unwrap_or("text"), source)
     )
 }

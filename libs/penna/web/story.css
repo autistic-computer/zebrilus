@@ -13,34 +13,34 @@
 }
 
 @font-face {
-  font-family: "Lilex";
+  font-family: "CommitMono";
   font-weight: 400;
-  src: url("../storybook/fonts/lilex/Lilex-Regular.ttf") format("truetype");
+  src: url("../storybook/fonts/commit-mono/CommitMono-400-Regular.ttf") format("truetype");
 }
 
 @font-face {
-  font-family: "Lilex";
+  font-family: "CommitMono";
   font-weight: 700;
-  src: url("../storybook/fonts/lilex/Lilex-Bold.ttf") format("truetype");
+  src: url("../storybook/fonts/commit-mono/CommitMono-700-Regular.ttf") format("truetype");
 }
 
 @font-face {
-  font-family: "Lilex";
+  font-family: "CommitMono";
   font-style: italic;
   font-weight: 400;
-  src: url("../storybook/fonts/lilex/Lilex-Italic.ttf") format("truetype");
+  src: url("../storybook/fonts/commit-mono/CommitMono-400-Italic.ttf") format("truetype");
 }
 
 @font-face {
-  font-family: "Lilex";
+  font-family: "CommitMono";
   font-style: italic;
   font-weight: 700;
-  src: url("../storybook/fonts/lilex/Lilex-BoldItalic.ttf") format("truetype");
+  src: url("../storybook/fonts/commit-mono/CommitMono-700-Italic.ttf") format("truetype");
 }
 
 :root:root {
   --penna-font: "Inter Variable";
-  --penna-mono: "Lilex", "Inter Variable";
+  --penna-mono: "CommitMono", "Inter Variable";
 }
 
 section[data-section] {

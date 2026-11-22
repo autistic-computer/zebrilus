@@ -71,6 +71,10 @@ Rows follow density: 24 compact, 32 comfortable.
 - **Enter**: run the row and close.
 - **Escape**: close every level.
 
+## Search and scopes
+
+Long menus (like font pickers or command groups) can carry a search field at the top and a full-width segmented control below it to scope rows. Typing filters rows immediately; Tab and Shift+Tab cycle scopes without closing the menu.
+
 ## Labels
 
 A verb in sentence case. Give the row its action and the shortcut shows.
@@ -111,3 +115,5 @@ Related rows together, a separator between groups.
 | `.label(text)` | `{ kind: "label" }` | Section label |
 | `.separator()` | `{ kind: "separator" }` | Separator |
 | `.scrollable(true)`, `.max_h(height)` | none | Scrolls past a height |
+| `.searchable(true)`, `.search_placeholder(text)` | `data-searchable`, `data-search-placeholder` | Filters rows as you type |
+| `.scopes(scopes)` | `data-scopes`, `data-scope` | Full-width segmented control scoping rows |

@@ -39,6 +39,7 @@ Chip::new("host", "Ready").dot(Tone::Success).detail("this Mac")
 - **Floating**: over a pane's content. Glass when neutral; with a tone it draws the tone opaque.
 - **Marker**: pane markers. A ring lights it.
 - **Drag**: follows a dragged pane.
+- **Icon**: square icon-only chip in a bar or list.
 
 ## Anatomy
 
@@ -113,6 +114,8 @@ Chips sit 8 apart, at the size of the controls beside them.
 | Rust | HTML | Does |
 | --- | --- | --- |
 | `Chip::new(id, label)` | `.penna-chip`, `.penna-chip-label` | Label |
+| `Chip::empty(id)` | `.penna-chip` with icon or dot only | Icon-only or dot-only chip |
+| `Dot::new(tone)` | `i.penna-dot[data-tone]` | Standalone status dot |
 | `.dot(tone)` | `i.penna-dot[data-tone]` | Dot before the label |
 | `.icon(name)` | `<i data-icon>` | Icon before the label |
 | `.detail(text)` | `.penna-chip-detail`, `data-detail` | Muted detail after the label |

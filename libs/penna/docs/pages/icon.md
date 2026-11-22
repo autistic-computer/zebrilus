@@ -4,11 +4,11 @@ A glyph beside a label, or alone on an icon button in a bar. One set, drawn for 
 
 ## Set
 
-24 grid, 1.5 stroke, no fill. Corners follow the theme radius.
+107 glyphs in 8 groups on a 24 grid, 1.5 stroke, no fill. Corners follow the theme radius.
 
 ```figure uses=icon
 <div class="docs-show" data-gap="wide">
-  <i data-icon="square-terminal" data-size="6"></i><i data-icon="git-branch" data-size="6"></i><i data-icon="folder" data-size="6"></i><i data-icon="server" data-size="6"></i><i data-icon="settings" data-size="6"></i><i data-icon="bell" data-size="6"></i><i data-icon="search" data-size="6"></i><i data-icon="panel-left" data-size="6"></i><i data-icon="keyboard" data-size="6"></i><i data-icon="laptop" data-size="6"></i>
+  <i data-icon="square-terminal" data-size="6"></i><i data-icon="git-branch" data-size="6"></i><i data-icon="folder" data-size="6"></i><i data-icon="server" data-size="6"></i><i data-icon="settings" data-size="6"></i><i data-icon="bell" data-size="6"></i><i data-icon="search" data-size="6"></i><i data-icon="panel-left" data-size="6"></i><i data-icon="sliders" data-size="6"></i><i data-icon="camera" data-size="6"></i><i data-icon="qr-code" data-size="6"></i><i data-icon="laptop" data-size="6"></i>
 </div>
 ```
 
@@ -37,6 +37,7 @@ A chrome toggle draws the glyph of the view on screen, outline only.
   <span>xsmall, small</span><span><code>12</code></span><span><span><code>caption</code>, <code>small</code></span></span><span style="gap: var(--penna-space-4)"><i data-icon="eye" data-size="small"></i><span class="penna-type" data-type="small" data-penna-text>Show hidden files</span></span>
   <span>medium</span><span><code>14</code></span><span><code>body</code></span><span style="gap: var(--penna-space-6)"><i data-icon="panel-right" data-size="medium"></i><span class="penna-type" data-type="body" data-penna-text>Split right</span></span>
   <span>large, xlarge, touch</span><span><code>16</code></span><span><span><code>lead</code>, <code>heading</code></span></span><span style="gap: var(--penna-space-8)"><i data-icon="server-plus" data-size="large"></i><span class="penna-type" data-type="lead" data-penna-text>Add host</span></span>
+  <span>touch-large</span><span><code>20</code></span><span><code>touch-body</code></span><span style="gap: var(--penna-space-8)"><i data-icon="sliders" data-size="touch-large"></i><span class="penna-type" data-type="touch-body" data-penna-text>Chat options</span></span>
 </div>
 ```
 
@@ -59,7 +60,7 @@ Pair an icon with a word. Alone, only on an icon button in a bar or row, with a 
 | --- | --- | --- |
 | `Icon::new(IconName::Bell)` | `<i data-icon="bell">` | A glyph from the set |
 | `IconName::Asset(path)` | none | The app's own file, as it is |
-| `.xsmall()`, `.small()`, `.medium()`, `.large()` | `data-size` | Size; medium (14) when unset |
+| `.xsmall()` … `.touch_large()` | `data-size` | Size; medium (14) when unset |
 | `.with_size(Size::Size(px))` | `--penna-icon-size` | Any size |
 | `.text_color(color)` | `data-tone` | Color; the text color by default |
 | `.transform(Transformation::rotate(..))` | `data-turn` | Turns it, paint only |

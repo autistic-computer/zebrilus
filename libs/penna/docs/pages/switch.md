@@ -57,7 +57,7 @@ Medium is the default and stays put with density. Under touch, medium and up dra
 ```
 
 - Hover and pressed: the track a step deeper, then another while held. The thumb stays.
-- Focused: a ring outside the track, one ring width off it when on, from the keyboard only. Space or Enter flips it.
+- Focused: a ring outside the track, standing off by one ring width when the accent is close to the ring's color, from the keyboard only. Space or Enter flips it.
 - Disabled: half strength, presses ignored, out of the focus order.
 - The thumb holds still with reduced motion.
 
@@ -80,6 +80,6 @@ Name the setting, never its state. One switch per row, at its end.
 | `.checked(true)` | `aria-checked="true"` | On |
 | `.on_click(handler)` | `change` | Gets the new value |
 | `.label(text)` | `aria-label` | Name for screen readers |
-| `.tooltip(text)` | | Tooltip |
+| `.tooltip(text)` | `data-tooltip` | Tooltip |
 | `.xsmall()` … `.touch()` | `data-size` | Size; medium by default |
 | `.disabled(true)` | `disabled` | Off |

@@ -31,17 +31,18 @@ plan_list(&[(PlanState::Current, "Give pinned tabs a 28px floor".into())], cx)
 The field with a leading button, the context meter and the action button, which sends, queues behind a running turn or stops it. ChatComposer adds a prefix above, a footer below and an `over` layer that floats over the chat from the composer's top edge without moving it, where zz puts its @ menu. It is glass when glass is on; otherwise it rests on the activity cards' wash, opaque and with no edge.
 
 ```rust example story=chat/composer
+let on = composer_ground(ground, cx);
 ChatComposer {
     composer: Composer {
         input,
-        leading: Some(composer_add_button("add", "Mention a chat, host, session or file", cx).into_any_element()),
+        leading: Some(composer_add_button("add", "Mention a chat, host, session or file", on).into_any_element()),
         usage: Some(context_meter("usage", 0.34, "34% of the context used", cx)),
-        action: composer_action_button("send", ComposerAction::Send, true, cx).into_any_element(),
+        action: composer_action_button("send", ComposerAction::Send, true, on).into_any_element(),
         attachments: None,
         command_hint: None,
         ask: None,
         secret: false,
-        ground: None,
+        ground,
     },
     prefix: vec![queue_chip("queued", 2, true, on_return, cx).into_any_element()],
     over: None,
@@ -105,19 +106,18 @@ empty_state("No messages yet", false, view, cx)
 
 ## On a phone
 
-The same chat drawn for a thumb. The composer is one row: a 44 plus, the field at `touch-body` growing to five lines, and a 44 action that sends, stops or queues. Send is one look whatever the permission mode. The plus opens a sheet with Mention, which lists what the desktop's @ menu does and writes the picked one into the field by name, then the chat's settings (Model, Effort, Permissions, Account) and one muted line for the context and the account's limits. A pasted image sits over the field as an 88 thumbnail, its remove control a 24 badge on its corner with a 44 target. Tool steps are 44 rows, and a held message opens a sheet with Copy and Fork from here.
+The same chat drawn for a thumb. The composer is one row: a 44 options button (`sliders`), the field at `touch-body` growing to five lines, and a 44 action that sends, stops or queues. Send is one look whatever the permission mode. The options button opens a sheet led by three 84 attach tiles (`Camera`, `Photos`, `File`), then `Mention`, which lists what the desktop's @ menu does and writes the picked one into the field by name, then the chat's settings (`Model`, `Effort`, `Permissions`, `Account`) and one muted line for the context and the account's limits. Attached images and files sit over the field as 88 tiles, each with a 24 remove badge on its corner and a 44 target. Tool steps are 44 rows, and a held message opens a sheet with Copy and Fork from here.
 
-A permission request or a question takes the composer's place as a card, with no scrim: what is asked in one or two lines, then the answers as touch rows, each answering on tap. No key caps and no answer button.
+A permission request or a question takes the composer's place as a card, with no scrim: what is asked in one or two lines, then the answers as touch rows, each answering on tap. No key caps and no answer button. A chat that cannot accept input shows an error card in the composer's place.
 
 ```figure uses=chat,touch,button,label
 <div class="docs-show" data-gap="wide" style="align-items: flex-end">
-  <div class="docs-cell" style="width: 370px"><div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer" data-size="touch"><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Chat options"><i data-icon="plus"></i></button><span class="penna-chat-input" role="textbox">Run the menu story too</span><button class="penna-button" data-penna="button.send" data-shape="icon" data-emphasis="solid" data-solid="primary" aria-label="Send"><i data-icon="arrow-up"></i></button></div></div><span class="docs-note">Composer row</span></div>
-  <div class="docs-cell" style="width: 370px"><div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer" data-size="touch"><div class="penna-chat-attach"><span class="penna-chat-thumb" style="background-image: linear-gradient(160deg, color-mix(in srgb, var(--penna-accent) 40%, transparent), transparent 60%), repeating-linear-gradient(0deg, color-mix(in srgb, var(--penna-fg) 18%, transparent) 0 6px, transparent 6px 14px)"><button class="penna-chat-thumb-remove" aria-label="Remove the image"><span class="penna-chat-thumb-disc" data-penna="floating"><i data-icon="xmark"></i></span></button></span></div><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Chat options"><i data-icon="plus"></i></button><span class="penna-chat-input" role="textbox">This is the menu now</span><button class="penna-button" data-penna="button.send" data-shape="icon" data-emphasis="solid" data-solid="primary" aria-label="Send"><i data-icon="arrow-up"></i></button></div></div><span class="docs-note">A pasted image, its badge 24 with a 44 target</span></div>
-  <div class="docs-cell" style="width: 370px"><div class="penna-chat-ask-card" data-penna="field.composer"><div class="penna-chat-ask-what" role="button"><div class="penna-chat-ask-what-head"><span class="penna-chat-ask-what-title">Run this command?</span></div><span class="penna-chat-ask-what-detail">cargo test -p penna pill_menu --all-features</span></div><div class="penna-touch-row" data-penna="phone.row" role="button"><span class="penna-touch-row-lines"><span>Allow once</span></span></div><div class="penna-touch-row" data-penna="phone.row" role="button"><span class="penna-touch-row-lines"><span>Always allow cargo test</span></span></div><div class="penna-touch-row" data-penna="phone.row" role="button"><span class="penna-touch-row-lines"><span>Deny</span></span></div></div><span class="docs-note">Ask card</span></div>
+  <div class="docs-cell" style="width: 370px; max-width: 100%"><div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer" data-size="touch"><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Chat options"><i data-icon="sliders"></i></button><span class="penna-chat-input" role="textbox">Run the menu story too</span><button class="penna-button" data-penna="button.send" data-shape="icon" data-emphasis="solid" data-solid="primary" aria-label="Send"><i data-icon="arrow-up"></i></button></div></div><span class="docs-note">Composer row</span></div>
+  <div class="docs-cell" style="width: 370px; max-width: 100%"><div class="penna-chat-composer"><div class="penna-chat-field input-chrome" data-penna="field.composer" data-size="touch"><div class="penna-chat-attach"><span class="penna-chat-thumb" style="background-image: linear-gradient(160deg, color-mix(in srgb, var(--penna-accent) 40%, transparent), transparent 60%), repeating-linear-gradient(0deg, color-mix(in srgb, var(--penna-fg) 18%, transparent) 0 6px, transparent 6px 14px)"><button class="penna-chat-thumb-remove" aria-label="Remove the image"><span class="penna-chat-thumb-disc" data-penna="floating"><i data-icon="xmark"></i></span></button></span><span class="penna-chat-file"><i data-icon="file"></i><span class="penna-chat-file-copy"><span class="penna-chat-file-name">theme_css.rs</span><span class="penna-chat-file-meta">28 KB</span></span><button class="penna-chat-thumb-remove" aria-label="Remove the file"><span class="penna-chat-thumb-disc" data-penna="floating"><i data-icon="xmark"></i></span></button></span></div><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Chat options"><i data-icon="sliders"></i></button><span class="penna-chat-input" role="textbox">This is the menu now</span><button class="penna-button" data-penna="button.send" data-shape="icon" data-emphasis="solid" data-solid="primary" aria-label="Send"><i data-icon="arrow-up"></i></button></div></div><span class="docs-note">Image and file tiles, 24 badge with 44 target</span></div>
+  <div class="docs-cell" style="width: 370px; max-width: 100%"><div class="penna-chat-ask-card" data-penna="field.composer"><div class="penna-chat-ask-what" role="button"><div class="penna-chat-ask-what-head"><span class="penna-chat-ask-what-title">Run this command?</span></div><span class="penna-chat-ask-what-detail">cargo test -p penna pill_menu --all-features</span></div><div class="penna-touch-row" data-penna="phone.row" role="button"><span class="penna-touch-row-lines"><span>Allow once</span></span></div><div class="penna-touch-row" data-penna="phone.row" role="button"><span class="penna-touch-row-lines"><span>Always allow cargo test</span></span></div><div class="penna-touch-row" data-penna="phone.row" role="button"><span class="penna-touch-row-lines"><span>Deny</span></span></div></div><span class="docs-note">Ask card</span></div>
+  <div class="docs-cell" style="width: 370px; max-width: 100%"><div class="penna-chat-error" data-penna="field.composer"><span class="penna-chat-error-glyph"><i data-icon="triangle-alert"></i></span><span class="penna-chat-error-copy"><strong>Session disconnected</strong><span>Reconnect to continue this chat.</span></span></div><span class="docs-note">Error card</span></div>
 </div>
 ```
-
-Not built natively yet: the Queued sheet, Folder and Resume under an empty chat, and an image in the transcript zooming to the screen.
 
 ## API
 
@@ -132,8 +132,9 @@ Not built natively yet: the Queued sheet, Folder and Resume under an empty chat,
 | `suggestion_list`, `suggestion_row` | `.penna-chat-list`, `.penna-chat-suggestion` | Slash and mention suggestions |
 | `ask_question`, `ask_header`, `ask_body`, `ask_inset`, `ask_sheet`, `ask_options`, `AskOption`, `ask_key`, `ask_picked_key`, `ask_send`, `ask_skip`, `ask_hints`, `AskHint` | `.penna-chat-ask`, `.penna-chat-ask-option` | Questions and approvals inside the composer |
 | `plan_tray` | `.penna-chat-tray` | The plan over the composer |
-| `PhoneComposer`, `phone_plus_button`, `phone_close_button`, `phone_action_button` | `.penna-chat-field[data-size="touch"]`, `.penna-chat-above` | The composer row on a phone |
-| `phone_thumbnail` | `.penna-chat-thumb` | A pasted image with its remove badge |
-| `AskCard` | `.penna-chat-ask-card` | An ask in the composer's place on a phone |
-| `phone_queued_row`, `phone_jump_button` | `.penna-chat-queued`, `.penna-touch-icon[data-penna="floating"]` | The queued row and jump to latest on a phone |
+| `PhoneComposer`, `phone_options_button`, `phone_close_button`, `phone_action_button` | `.penna-chat-field[data-size="touch"]`, `.penna-chat-above` | The composer row on a phone |
+| `phone_attach_tile` | `.penna-chat-tiles`, `.penna-chat-tile` | Camera, Photos and File attach tiles in the options sheet |
+| `phone_thumbnail`, `phone_file_tile` | `.penna-chat-thumb`, `.penna-chat-file` | Attached image or file with its remove badge |
+| `AskCard`, `phone_error_card` | `.penna-chat-ask-card`, `.penna-chat-error` | An ask or error card in the composer's place on a phone |
+| `phone_queued_row`, `phone_plan_tray`, `phone_jump_button` | `.penna-chat-queued`, `.penna-touch-icon[data-penna="floating"]` | The queued row, plan tray and jump to latest on a phone |
 | `ActivityMark::touch`, `touch_transcript_text` | `.penna-chat-activity[data-size="touch"]` | Transcript rows and text at touch sizes |

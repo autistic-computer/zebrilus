@@ -48,6 +48,7 @@ Input::new(&search).cleanable(true)
   <span>large</span><span><code>32</code></span><span><code>body</code></span><span><label class="penna-input" data-penna="field" data-size="large" style="width: 200px"><input value="git log --stat" /></label></span>
   <span>xlarge</span><span><code>40</code></span><span><code>lead</code></span><span><label class="penna-input" data-penna="field" data-size="xlarge" style="width: 200px"><input value="git log --stat" /></label></span>
   <span>touch</span><span><code>44</code></span><span><code>touch-body</code></span><span><label class="penna-input" data-penna="field" data-size="touch" style="width: 200px"><input value="git log --stat" /></label></span>
+  <span>touch-large</span><span><code>56</code></span><span><code>touch-body</code></span><span><label class="penna-input" data-penna="field" data-size="touch-large" style="width: 200px"><input value="git log --stat" /></label></span>
 </div>
 ```
 
@@ -100,11 +101,12 @@ In a form, a [Field](field.html) puts the label above it. The placeholder only h
 | `.default_value(text)` on the state | `value` | Starting text |
 | `.prefix(el)`, `.suffix(el)` | `.penna-input-prefix`, `.penna-input-suffix` | Before and after the text |
 | `.emphasis(Emphasis::Outline)` | `data-penna="field.outline"` | Outline kind |
-| `.auto_grow(min, max)` on the state | `field.multiline`, `data-min-rows`, `data-max-rows` | Multi-line |
+| `.auto_grow(min, max)`, `.set_max_rows(max, ..)` | `field.multiline`, `data-min-rows`, `data-max-rows` | Multi-line growth |
 | `NumberInput::new(&state)` | `.penna-number`, `data-step`, `data-min`, `data-max` | Number kind |
-| `.xsmall()` … `.touch()` | `data-size` | Size; medium by default |
+| `.xsmall()` … `.touch_large()` | `data-size` | Size; medium by default |
 | `.cleanable(true)` | `.penna-input-clear` | Clear button |
 | `.set_loading(true, ..)` on the state | `.penna-spinner` in the suffix | Busy |
+| `.set_highlights(ranges, ..)` on the state | none | Highlights inline spans (such as `@mentions`) |
 | `.content_type(Password)` | `type="password"` | Masked text |
 | `.disabled(true)` | `data-disabled`, `disabled` | Off |
 | `.tone(Tone::Danger)` | `data-tone="danger"` | Error edge |

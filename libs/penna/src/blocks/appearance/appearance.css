@@ -89,7 +89,7 @@
 .appearance-rule {
   flex: none;
   height: 1px;
-  padding: 0 var(--penna-inset-card);
+  padding: 0 0 0 var(--penna-inset-card);
 }
 
 .appearance-rule > [data-penna] {
@@ -138,7 +138,17 @@
 }
 
 .appearance-ring .penna-color-picker:not([data-custom]) .penna-color-picker-swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--penna-border);
   background: transparent;
+  color: var(--penna-fg-muted);
+  --penna-icon-size: 10px;
+}
+
+.appearance-ring .penna-color-picker[data-custom] .penna-color-picker-swatch > [data-icon] {
+  display: none;
 }
 
 .appearance-slider-row {

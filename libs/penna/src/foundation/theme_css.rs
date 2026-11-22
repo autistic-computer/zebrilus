@@ -234,14 +234,26 @@ fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, Strin
     let mut gapped = theme.clone();
     gapped.pane_margin = gapped.pane_margin.max(px(1.0));
     let pane = gapped.layer(Surface::new(Kind::Pane.role()), PaintState::Rest);
+    let pane_shadow = gapped.pane_shadows();
     let key = ".penna-gaps [data-penna=\"pane\"]".to_owned();
-    let css = format!(
-        "{key} {{ --penna-rim: {}; --penna-edge: {}; --penna-bw: {}; }}\n",
-        pane.glass
-            .map_or_else(|| "0 0 #0000".to_owned(), |material| rim(&material)),
-        color(pane.border),
-        length(f32::from(pane.border_width))
-    );
+    let css = if pane_shadow.is_empty() {
+        format!(
+            "{key} {{ --penna-rim: {}; --penna-edge: {}; --penna-bw: {}; }}\n",
+            pane.glass
+                .map_or_else(|| "0 0 #0000".to_owned(), |material| rim(&material)),
+            color(pane.border),
+            length(f32::from(pane.border_width))
+        )
+    } else {
+        format!(
+            "{key} {{ --penna-rim: {}; --penna-shadow: {}; --penna-edge: {}; --penna-bw: {}; }}\n",
+            pane.glass
+                .map_or_else(|| "0 0 #0000".to_owned(), |material| rim(&material)),
+            shadows(&pane_shadow),
+            color(pane.border),
+            length(f32::from(pane.border_width))
+        )
+    };
     rules.push((key, css));
     for role in SurfaceRole::KIT
         .into_iter()
@@ -653,7 +665,6 @@ fn write_root(css: &mut String, theme: &Theme) {
     } else {
         theme.foreground
     };
-    let thumb = theme.foreground.wash();
     let mono = theme.mono_font_family.as_ref();
     let font = theme.font_family.as_ref();
     let mut root = vec![
@@ -674,7 +685,6 @@ fn write_root(css: &mut String, theme: &Theme) {
         ("--penna-control".to_owned(), color(control)),
         ("--penna-wash".to_owned(), color(theme.background.washed(1))),
         ("--penna-knob".to_owned(), color(knob)),
-        ("--penna-thumb".to_owned(), color(thumb)),
         ("--penna-success".to_owned(), color(theme.success)),
         ("--penna-warning".to_owned(), color(theme.warning)),
         ("--penna-danger".to_owned(), color(theme.danger)),
@@ -890,6 +900,7 @@ fn glass_vars(material: &GlassMaterial) -> Vec<(String, String)> {
         (var("tint"), color(material.tint)),
         (var("specular"), number(material.specular)),
         (var("glint"), length(f32::from(material.glint_width))),
+        (var("glint-spread"), number(material.glint_spread)),
         (
             var("light-angle"),
             format!("{}rad", number(material.light_angle)),
@@ -904,6 +915,9 @@ fn glass_vars(material: &GlassMaterial) -> Vec<(String, String)> {
         (var("edge-width"), length(f32::from(material.edge_width))),
         (var("edge-color"), color(material.edge_color)),
         (var("edge-spread"), number(material.edge_spread)),
+        (var("noise"), number(material.noise)),
+        (var("glow"), number(material.glow)),
+        (var("glow-radius"), length(f32::from(material.glow_radius))),
         (var("backdrop"), backdrop(material)),
         (var("rim"), rim(material)),
     ]
@@ -936,36 +950,122 @@ fn tone(contrast: f32, brightness: f32) -> String {
     }
 }
 
+fn mix(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
+
 fn rim(material: &GlassMaterial) -> String {
     let (x, y) = (material.light_angle.cos(), material.light_angle.sin());
-    let glint = f32::from(material.glint_width);
-    let edge = f32::from(material.edge_width);
     let bezel = f32::from(material.bezel);
+    let glint = f32::from(material.glint_width).min(bezel);
+    let edge = f32::from(material.edge_width);
     let light = material.light_color;
     let lit = if bezel > 0.0 { light.a } else { 0.0 };
-    let facing = light.alpha((lit * material.specular).min(1.0));
-    let far =
-        light.alpha((lit * material.specular * (1.0 - material.light_directionality)).min(1.0));
-    let fresnel = light.alpha((lit * material.fresnel).min(1.0));
+    let directionality = material.light_directionality.clamp(0.0, 1.0);
+    let glint_spread = material.glint_spread.clamp(0.0, 1.0);
+    let edge_spread = material.edge_spread.clamp(0.0, 1.0);
+
+    let mut layers = Vec::new();
+    let mut push = |inset: bool, dx: f32, dy: f32, blur: f32, spread: f32, ink: Hsla| {
+        if ink.a > 0.001
+            && (dx.abs() > 0.001 || dy.abs() > 0.001 || blur > 0.001 || spread.abs() > 0.001)
+        {
+            layers.push(shadow(inset, dx, dy, blur, spread, ink));
+        }
+    };
+
+    if glint > 0.0 && lit * material.specular > 0.0 {
+        let base_lit = mix(mix(0.15, 0.06, directionality), 1.0, glint_spread);
+        let facing_extra = (1.0 - base_lit).max(0.0);
+        let far_lit = mix(mix(1.0, 0.18, directionality), 1.0, glint_spread);
+        let far_extra = (far_lit - base_lit).max(0.0);
+        let spec = lit * material.specular;
+        push(
+            true,
+            0.0,
+            0.0,
+            0.0,
+            glint,
+            light.alpha((spec * base_lit).min(1.0)),
+        );
+        if bezel > glint {
+            let tail = (glint * 4.0).min(bezel) * 2.0;
+            push(
+                true,
+                0.0,
+                0.0,
+                tail,
+                0.0,
+                light.alpha((spec * 0.2 * base_lit).min(1.0)),
+            );
+        }
+        push(
+            true,
+            -x * glint,
+            -y * glint,
+            0.0,
+            0.0,
+            light.alpha((spec * facing_extra).min(1.0)),
+        );
+        push(
+            true,
+            x * glint,
+            y * glint,
+            0.0,
+            0.0,
+            light.alpha((spec * far_extra).min(1.0)),
+        );
+    }
+
+    if bezel > 0.0 && lit * material.fresnel > 0.0 {
+        push(
+            true,
+            0.0,
+            0.0,
+            bezel * 2.0,
+            0.0,
+            light.alpha((lit * material.fresnel).min(1.0)),
+        );
+    }
+
     let dark = material.edge_color;
-    let ring_alpha =
-        material.edge_shadow * (material.edge_spread + (1.0 - material.edge_spread) * 0.35);
-    let far_alpha = material.edge_shadow * (1.0 - material.edge_spread) * 0.65;
-    [
-        shadow(true, -x * glint, -y * glint, 0.0, 0.0, facing),
-        shadow(true, x * glint, y * glint, 0.0, 0.0, far),
-        shadow(true, 0.0, 0.0, bezel * 2.0, 0.0, fresnel),
-        shadow(false, 0.0, 0.0, 0.0, edge, dark.alpha(dark.a * ring_alpha)),
-        shadow(
+    if edge > 0.0 && dark.a * material.edge_shadow > 0.0 {
+        let base_edge = mix(mix(0.35, 0.2, directionality), 1.0, edge_spread);
+        let away_extra = (1.0 - base_edge).max(0.0);
+        let toward_lit = mix(mix(1.0, 0.2, directionality), 1.0, edge_spread);
+        let toward_extra = (toward_lit - base_edge).max(0.0);
+        let contour = dark.a * material.edge_shadow;
+        push(
+            false,
+            0.0,
+            0.0,
+            0.0,
+            edge,
+            dark.alpha((contour * base_edge).min(1.0)),
+        );
+        push(
             false,
             -x * edge,
             -y * edge,
             0.0,
             0.0,
-            dark.alpha(dark.a * far_alpha),
-        ),
-    ]
-    .join(", ")
+            dark.alpha((contour * away_extra).min(1.0)),
+        );
+        push(
+            false,
+            x * edge,
+            y * edge,
+            0.0,
+            0.0,
+            dark.alpha((contour * toward_extra).min(1.0)),
+        );
+    }
+
+    if layers.is_empty() {
+        "0 0 #0000".to_owned()
+    } else {
+        layers.join(", ")
+    }
 }
 
 fn shadows(shadows: &[BoxShadow]) -> String {
@@ -1131,5 +1231,18 @@ mod tests {
         let toned = format!("{}[data-prominent][data-tone=\"danger\"]", selector(SEND));
         assert!(stylesheet(&theme, &[SEND]).contains(&toned));
         assert!(!stylesheet(&theme, &[]).contains(&toned));
+    }
+
+    #[test]
+    fn full_glint_spread_emits_a_perimeter_ring_without_transparent_stubs() {
+        let dark = kit_theme(&builtin_themes()[0].1, ThemeMode::Dark);
+        let dark_rim = rim(&dark.glass.expect("default dark has glass"));
+        assert_eq!(dark_rim, "inset 0px 0px 0px 0.5px #ffffff2b");
+
+        let light = kit_theme(&builtin_themes()[0].1, ThemeMode::Light);
+        let light_rim = rim(&light.glass.expect("default light has glass"));
+        assert!(light_rim.starts_with("inset 0px 0px 0px 0.85px #ffffff33, "));
+        assert!(light_rim.ends_with(", 0px 0px 0px 0.5px #00000033"));
+        assert!(!light_rim.contains("transparent"));
     }
 }

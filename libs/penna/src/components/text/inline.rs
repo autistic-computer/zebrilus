@@ -27,9 +27,9 @@ use super::{
 };
 use crate::Colorize as _;
 
-const CODE_FILL_PAD_X: f32 = 1.0;
-const CODE_FILL_PAD_Y: f32 = 1.0;
-const CODE_FILL_RADIUS_MAX: f32 = 6.0;
+const CODE_FILL_PAD_X: f32 = 4.0;
+const CODE_FILL_PAD_Y: f32 = 1.5;
+const CODE_FILL_RADIUS_MAX: f32 = 4.0;
 
 fn selectable_line_bounds(
     lines: &[Arc<WrappedLineLayout>],

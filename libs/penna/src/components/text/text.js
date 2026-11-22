@@ -51,7 +51,11 @@
       spans.push(span);
     }
     probe.replaceChildren(...spans);
-    return probe.getBoundingClientRect().width;
+    const codePad = [...cell.querySelectorAll("code")].reduce((sum, code) => {
+      const box = getComputedStyle(code);
+      return sum + (parseFloat(box.paddingLeft) || 0) + (parseFloat(box.paddingRight) || 0);
+    }, 0);
+    return probe.getBoundingClientRect().width + codePad;
   }
 
   function sizeTable(table) {
@@ -163,7 +167,7 @@
     });
   }
 
-  const INLINE_CODE_RADIUS = 6;
+  const INLINE_CODE_RADIUS = 4;
 
   function shape(root = document) {
     const fraction = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-corner-fraction")) || 0.45;
@@ -201,10 +205,20 @@
 
   document.addEventListener("click", (event) => {
     const copy = event.target.closest(".penna-md [data-copy]");
-    if (copy) {
-      const text = copy.closest("pre")?.querySelector("code")?.textContent ?? "";
-      navigator.clipboard?.writeText(text).catch(() => {});
-    }
+    if (!copy) return;
+    const text = copy.closest("pre")?.querySelector("code")?.textContent ?? "";
+    navigator.clipboard?.writeText(text).catch(() => {});
+    const icon = copy.querySelector("[data-icon]");
+    if (!icon) return;
+    clearTimeout(copy._copyTimer);
+    icon.dataset.icon = "check";
+    copy.dataset.copied = "";
+    if (copy.hasAttribute("data-tooltip")) copy.dataset.tooltip = "Copied";
+    copy._copyTimer = setTimeout(() => {
+      icon.dataset.icon = "copy";
+      delete copy.dataset.copied;
+      if (copy.hasAttribute("data-tooltip")) copy.dataset.tooltip = "Copy";
+    }, 1600);
   });
 
   document.addEventListener("keydown", (event) => {
@@ -225,7 +239,7 @@
   });
   document.querySelectorAll(".penna-md[data-selectable][data-selected]").forEach(selectAll);
 
-  const FACES = ["400 16px 'Inter Variable'", "italic 400 16px 'Inter Variable'", "700 16px 'Inter Variable'", "400 13px Lilex", "700 13px Lilex"];
+  const FACES = ["400 16px 'Inter Variable'", "italic 400 16px 'Inter Variable'", "700 16px 'Inter Variable'", "400 13px CommitMono", "700 13px CommitMono"];
 
   settle();
   document.querySelectorAll(".penna-md[data-streaming]").forEach(stream);
