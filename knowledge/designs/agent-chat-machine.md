@@ -126,9 +126,12 @@ end mark too (`Shadow::marking_turns`), so the fallback rebuilds the turns; jour
 session falls back to the journal too. There the bridge opens a turn at each run of user text, as
 it does for a loaded session, so an ACP turn journals only its end mark (`Transcript::ended_turns`,
 handed to the journal by `dialect::run_through`), and a turn that was stopped or failed reloads
-that way; an ACP journal written without them reloads every turn as completed. The fanout's
-journal replay leaves the marks out, as it does `config_option_update`, and the ACP dialect keeps
-the marks a fallback replays out of the stream it forwards.
+that way; an ACP journal written without them reloads every turn as completed. When a person
+declines an ask, the shadow journals a note naming the tool (`_meta.zz.declined`) the same way,
+and the fallback reads it so the tool's failed end shows as declined, as it did live; Claude and
+Codex already carry the decline in the tool update they journal. The fanout's journal replay
+leaves the marks and notes out (`is_zz_note`), as it does `config_option_update`, and the ACP
+dialect keeps the ones a fallback replays out of the stream it forwards.
 
 # Rules
 
@@ -294,10 +297,8 @@ could tie to real Claude Code or Codex behavior.
   reloaded from the journal shows an answered question with its question and answers but without
   its options, since only the tool update that carries the answer is journalled, and permission
   cards and open questions are not journalled at all. The restore notice of a provider that refused
-  to load the session is journalled, so every later reload shows one more of them. A declined ACP
-  tool call reloads as
-  failed, since the decline is not journalled. The two Codex rollout fixtures have no driver that
-  plays them and are not taped.
+  to load the session is journalled, so every later reload shows one more of them. The two Codex
+  rollout fixtures have no driver that plays them and are not taped.
 
 # Next
 

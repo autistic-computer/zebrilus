@@ -132,7 +132,8 @@ hundreds of updates, so agent streams get their own `OutboundState` lane, preced
   the whole chat, as long as that fits in the skipped numbers and in `MAX_REBUILD_BYTES` (4.5
   MiB). Journalled `config_option_update`s are left out: the runtime journals the agent's own
   option list, before the ACP dialect renames its effort option, and the `SessionReady` carries
-  the list live viewers last saw. The client rebuilds the transcript, then returns to the daemon's
+  the list live viewers last saw. The turn marks and decline notes zz journals for its own history
+  fallback are left out the same way. The client rebuilds the transcript, then returns to the daemon's
   current Running, Failed, permission, or Ready phase even though reliable state frames drain
   first. When that does not fit, or without a trustworthy journal (it stops at 4,096 records or 18
   MiB), the asker gets a rebuild (`PaneLane::rebuild`): `SessionReset { restoring: true }`, the

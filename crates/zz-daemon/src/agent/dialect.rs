@@ -12,7 +12,7 @@ use zz_protocol::{AgentAutoApprove, AgentProvider, QuotaWindows, chat::ChatEvent
 
 use crate::agent::{
     acp_chat::Transcript,
-    chat_bridge::{is_turn_mark, journal_marks},
+    chat_bridge::{is_zz_note, journal_marks},
     host::RuntimeChannels,
     runtime::{AgentSpawnConfig, RuntimeCommand, run_acp_agent, validate_payload},
     stream::AgentStreamPayload,
@@ -200,7 +200,7 @@ where
         while let Ok(control) = controls.recv().await {
             let (chat, ended) = {
                 let mut transcript = transcript.lock();
-                (transcript.control(&control), transcript.ended_turns())
+                (transcript.control(&control), transcript.journal_notes())
             };
             record(ended);
             if send_chat(&events, chat).await.is_err() || control_tx.send(control).await.is_err() {
@@ -273,11 +273,11 @@ where
             }
             let (chat, ended) = {
                 let mut transcript = transcript.lock();
-                (transcript.payload(&payload), transcript.ended_turns())
+                (transcript.payload(&payload), transcript.journal_notes())
             };
             record(ended);
             let note =
-                matches!(&payload, AgentStreamPayload::Update { update } if is_turn_mark(update));
+                matches!(&payload, AgentStreamPayload::Update { update } if is_zz_note(update));
             let title = settled_title(&payload, &mut titled, dialect.stored_title);
             let payload = to_zz(payload, dialect, guard.as_ref().map(|guard| *guard.lock()));
             titled |= matches!(payload, AgentStreamPayload::TitleChanged { title: Some(_) });
@@ -312,7 +312,7 @@ where
     if let Err(message) = &result {
         let (chat, ended) = {
             let mut transcript = transcript.lock();
-            (transcript.exited(message), transcript.ended_turns())
+            (transcript.exited(message), transcript.journal_notes())
         };
         record(ended);
         let _ = send_chat(&events, chat).await;

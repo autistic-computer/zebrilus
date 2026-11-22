@@ -41,7 +41,7 @@ impl Transcript {
         }
     }
 
-    pub(crate) fn ended_turns(&mut self) -> (Option<String>, Vec<Value>) {
+    pub(crate) fn journal_notes(&mut self) -> (Option<String>, Vec<Value>) {
         let marks = self
             .shadow
             .take_marks()

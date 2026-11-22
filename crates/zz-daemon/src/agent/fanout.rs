@@ -20,7 +20,7 @@ use zz_protocol::{
 };
 
 use crate::agent::{
-    chat_bridge::is_turn_mark,
+    chat_bridge::is_zz_note,
     host::{
         AgentConnectionPhase, AgentHost, AgentPaneSpec, AgentPaneState, AgentTurnFailure,
         AgentTurnWaiter, HostCommand, PromptSource, QueuedPrompt,
@@ -1083,7 +1083,7 @@ impl AgentFanout {
         payloads.extend(lane.ready.clone());
         payloads.extend(replay.into_iter().filter_map(|(_, entry)| match entry {
             JournalEntry::Update(update)
-                if update["sessionUpdate"] == "config_option_update" || is_turn_mark(&update) =>
+                if update["sessionUpdate"] == "config_option_update" || is_zz_note(&update) =>
             {
                 None
             }
@@ -3556,13 +3556,13 @@ mod tests {
                             }
                         };
                         if items.iter().any(|item| {
-                            matches!(&item.payload, AgentStreamPayload::Update { update } if is_turn_mark(update))
+                            matches!(&item.payload, AgentStreamPayload::Update { update } if is_zz_note(update))
                         }) {
                             findings.add(
-                                format!("B | {path} | sends a turn mark"),
+                                format!("B | {path} | sends a journal note"),
                                 at.clone(),
                                 rank,
-                                || example("a journalled turn mark reached the asker"),
+                                || example("a turn mark or decline note from the journal reached the asker"),
                             );
                         }
                         if cursor != next_seq - 1 {

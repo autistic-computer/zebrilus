@@ -94,6 +94,9 @@ impl Shadow {
                 Answer::Questions { .. } => false,
             };
             if declined {
+                if let Some(marks) = self.marks.as_mut() {
+                    marks.push(declined_note(&item));
+                }
                 self.declined.insert(item);
             }
         }
@@ -549,6 +552,11 @@ impl Shadow {
         {
             self.replayed_turn(mark, zz["error"].as_str());
         }
+        if self.replaying
+            && let Some(item) = zz["declined"].as_str()
+        {
+            self.declined.insert(ItemId::new(item));
+        }
         if let (Some(summary), Some(ids)) = (
             zz["summary"].as_str().map(str::trim),
             zz["toolCallIds"].as_array(),
@@ -763,8 +771,21 @@ fn live_turn_mark(event: &ChatEvent) -> Option<Value> {
     }
 }
 
+fn declined_note(item: &ItemId) -> Value {
+    json!({
+        "sessionUpdate": "session_info_update",
+        "_meta": { "zz": { "declined": item.as_str() } },
+    })
+}
+
 pub(crate) fn is_turn_mark(update: &Value) -> bool {
     update["sessionUpdate"] == "session_info_update" && update["_meta"]["zz"]["turn"].is_string()
+}
+
+pub(crate) fn is_zz_note(update: &Value) -> bool {
+    is_turn_mark(update)
+        || update["sessionUpdate"] == "session_info_update"
+            && update["_meta"]["zz"]["declined"].is_string()
 }
 
 pub(crate) fn attach_images(
