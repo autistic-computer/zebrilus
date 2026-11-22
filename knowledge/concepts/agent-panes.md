@@ -1393,12 +1393,15 @@ The full delivery contract is in the
   queues `AgentLagged`, so a slow client replays instead of being disconnected.
 - **Replay.** Each pane keeps an 18 MiB ring of encoded items (`MAX_REPLAY_RING_BYTES`); a replay
   older than the ring goes to the client that asked alone, on numbers it skips, so no other viewer
-  is sent anything. It is a restoring reset, the journalled updates, the closing metadata and the
+  is sent anything but the no-op numbers a rebuild may add. It is a restoring reset, the journalled updates, the closing metadata and the
   whole chat when the journal vouches for the session and all of it fits in 4.5 MiB
   (`MAX_REBUILD_BYTES`); otherwise, or when the journal cannot vouch for the session (it stops at
-  4,096 records or 18 MiB), it is a rebuild: a restoring reset, the closing metadata and the newest
-  part of the chat that fits in 4.5 MiB. Events that refer to the part left out count in
-  `ChatView.skipped`. A driver that resumes a
+  4,096 records or 18 MiB), it is a rebuild: a restoring reset, the closing metadata, what in the
+  chat is still in effect (open rows, open asks, the running turn, the queue and usage) and the
+  newest part of the chat that fits in 4.5 MiB. Events that refer to the part left out count in
+  `ChatView.skipped`. When the asker skipped too few numbers for that, the lane first adds the
+  missing ones as repeats of its queue or usage event, which every viewer gets and which change
+  nothing they show. A driver that resumes a
   session replays its history from the CLI's own file first. A pane's numbers never start over
   within a daemon process, so a client's position stays good across reconnects to the same
   daemon (`server_id` in the hello).

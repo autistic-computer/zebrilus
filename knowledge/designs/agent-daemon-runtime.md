@@ -125,7 +125,7 @@ hundreds of updates, so agent streams get their own `OutboundState` lane, preced
   one, so at that boundary it sees a gap and asks again with the last. A replay older than the
   ring goes to the asking client alone, after the lane's unsent batch goes out to every viewer as
   usual. It takes the numbers the asker skips, ending on the lane's last one, so it mints none and
-  no other viewer is sent anything. When the journal can vouch for the whole session
+  no other viewer is sent anything, except the no-op numbers a rebuild may add (below). When the journal can vouch for the whole session
   (`AgentJournal::is_complete_for`), it is `SessionReset { restoring: true }`, the cached adapter
   `Ready`, the journalled updates, the closing metadata (`SessionReady` with the current
   session/configuration, the open turn, an ordered `StateSynced` snapshot), a chat `Restart` and
@@ -136,14 +136,17 @@ hundreds of updates, so agent streams get their own `OutboundState` lane, preced
   current Running, Failed, permission, or Ready phase even though reliable state frames drain
   first. When that does not fit, or without a trustworthy journal (it stops at 4,096 records or 18
   MiB), the asker gets a rebuild (`PaneLane::rebuild`): `SessionReset { restoring: true }`, the
-  cached `Ready`, the closing metadata, a chat `Restart` and the newest chat events that fit in
-  `MAX_REBUILD_BYTES`, with the latest `SessionReady` and the open turn's `TurnStarted` kept when
-  they fall in the part left out. Events that refer to that part fail to apply and count in
-  `ChatView.skipped`; when fewer numbers are skipped than it needs, it keeps the newest part that
-  fits them. A rebuild carries no raw updates, so after one the slash command list and the usage
-  come back only when the agent sends them again. The cap keeps a replay under the 9 MiB + 64 KiB
-  a client's agent lane holds (`MAX_PENDING_AGENT_BYTES`): a bigger one is cut by the next live
-  frame for the pane, and the client asks again.
+  cached `Ready`, the closing metadata, a chat `Restart`, the chat events still in effect
+  (`ChatLog::in_effect`) and the newest chat events that fit in `MAX_REBUILD_BYTES` and the skipped
+  numbers. Events that refer to the part left out fail to apply and count in `ChatView.skipped`.
+  When the rebuild needs more numbers than the asker skipped, the lane first stamps exactly the
+  missing ones as repeats of its latest chat queue event (or usage event, or an empty queue), which
+  every viewer gets and folds to the chat it had, so the rebuild still ends on the lane's last
+  number and is never cut short. A rebuild carries no raw updates, so after one the slash command
+  list and the usage come back only when the agent sends them again. The cap keeps a replay under
+  the 9 MiB + 64 KiB a client's agent lane holds (`MAX_PENDING_AGENT_BYTES`): a bigger one is cut
+  by the next live frame for the pane, and the client asks again. So when the events still in
+  effect pass the cap on their own, the rebuild leaves the chat out and the asker keeps its own.
 - Drain order: `reliable` → `command_output` → `agent` (round-robin) → `terminals`.
 - Overflow does NOT close the connection: the pane's lane is cleared and a tiny
   `AgentLagged { pane, next_seq }` marker queued; the client re-requests `AgentReplay` from its

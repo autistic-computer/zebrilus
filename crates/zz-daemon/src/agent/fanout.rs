@@ -1045,7 +1045,10 @@ impl AgentFanout {
                      asked for {from_seq}, memory starts at {}, and the journal cannot vouch for the rest",
                     lane.evicted_seq.saturating_add(1),
                 );
-                publisher.send_agent_replay(generation, client, pane, lane.rebuild(pane, from_seq));
+                let frames = lane.rebuild(pane, from_seq);
+                publisher.send_agent_replay(generation, client, pane, frames);
+                drop(lanes);
+                self.wake.notify_all();
                 return;
             }
             let first_seq = lane.evicted_seq;
@@ -1092,6 +1095,8 @@ impl AgentFanout {
             .skipped(from_seq, payloads)
             .unwrap_or_else(|| lane.rebuild(pane, from_seq));
         publisher.send_agent_replay(generation, client, pane, frames);
+        drop(lanes);
+        self.wake.notify_all();
     }
 
     fn acknowledge_prompt_restore(&self, owner: ClientInstanceId, pane: PaneId, reclaim_id: u64) {
@@ -1233,26 +1238,27 @@ impl PaneLane {
             .collect()
     }
 
-    fn rebuild(&self, pane: PaneId, from_seq: u64) -> Vec<(u64, Vec<Vec<u8>>)> {
-        let events = self.chat.events().collect::<Vec<_>>();
+    fn rebuild(&mut self, pane: PaneId, from_seq: u64) -> Vec<(u64, Vec<Vec<u8>>)> {
+        let events = self.chat.events().cloned().collect::<Vec<_>>();
+        let spine = self.chat.in_effect();
         let chat = |at: usize| AgentStreamPayload::Chat {
             event: events[at].clone(),
         };
-        let restart = AgentStreamPayload::Chat {
-            event: ChatEvent::Restart,
-        };
+        let next_seq = self.next_seq;
         let size = |payload: AgentStreamPayload| {
             serde_json::to_vec(&AgentStreamItem {
-                seq: self.next_seq,
+                seq: next_seq,
                 payload,
             })
             .map_or(usize::MAX, |encoded| encoded.len())
         };
-        let spine = self.chat.in_effect();
         let mut payloads = vec![AgentStreamPayload::SessionReset { restoring: true }];
         payloads.extend(self.ready.clone());
         payloads.extend(self.recovery_metadata());
-        let room = usize::try_from(self.next_seq.saturating_sub(from_seq).saturating_sub(1))
+        let restart = AgentStreamPayload::Chat {
+            event: ChatEvent::Restart,
+        };
+        let room = usize::try_from(next_seq.saturating_sub(from_seq).saturating_sub(1))
             .unwrap_or(usize::MAX);
         let mut count = payloads.len() + 1 + spine.len();
         let mut bytes = payloads
@@ -1262,8 +1268,9 @@ impl PaneLane {
             .chain(spine.iter().map(|at| chat(*at)))
             .map(size)
             .fold(0, usize::saturating_add);
+        let fits = bytes <= MAX_REBUILD_BYTES;
         let mut cut = events.len();
-        while cut > 0 && count < room {
+        while fits && cut > 0 && count < room {
             if spine.binary_search(&(cut - 1)).is_ok() {
                 cut -= 1;
                 continue;
@@ -1276,21 +1283,26 @@ impl PaneLane {
             bytes = bytes.saturating_add(next);
             cut -= 1;
         }
-        if !events.is_empty() && count <= room && bytes <= MAX_REBUILD_BYTES {
-            if cut > 0 {
+        if fits {
+            let kept = spine.iter().filter(|at| **at < cut).count();
+            if cut > kept {
                 log::info!(
                     target: "zz::agent",
-                    "rebuilt pane {pane} on its newest {} chat events and the {} older ones still in effect, leaving out {}",
+                    "rebuilt pane {pane} on its newest {} chat events and the {kept} older ones still in effect, leaving out {}",
                     events.len() - cut,
-                    spine.iter().filter(|at| **at < cut).count(),
-                    cut - spine.iter().filter(|at| **at < cut).count(),
+                    cut - kept,
                 );
             }
             payloads.push(restart);
             payloads.extend(spine.into_iter().filter(|at| *at < cut).map(chat));
             payloads.extend((cut..events.len()).map(chat));
+        } else {
+            log::warn!(
+                target: "zz::agent",
+                "rebuilt pane {pane} without its chat: the events still in effect take {bytes} bytes, over {MAX_REBUILD_BYTES}",
+            );
         }
-        payloads.truncate(room);
+        self.widen(pane, from_seq, payloads.len(), &events);
         let first_seq = self
             .next_seq
             .saturating_sub(u64::try_from(payloads.len()).unwrap_or(u64::MAX));
@@ -1304,6 +1316,35 @@ impl PaneLane {
             Err(error) => {
                 log::error!(target: "zz::agent", "could not encode the rebuild of pane {pane}: {error}");
                 Vec::new()
+            }
+        }
+    }
+
+    fn widen(&mut self, pane: PaneId, from_seq: u64, needed: usize, events: &[ChatEvent]) {
+        let needed = u64::try_from(needed).unwrap_or(u64::MAX);
+        let room = |lane: &Self| lane.next_seq.saturating_sub(from_seq).saturating_sub(1);
+        if room(self) >= needed {
+            return;
+        }
+        let last = |kind: fn(&ChatEvent) -> bool| events.iter().rev().find(|event| kind(event));
+        let event = last(|event| matches!(event, ChatEvent::QueueChanged { .. }))
+            .or_else(|| last(|event| matches!(event, ChatEvent::UsageChanged { .. })))
+            .cloned()
+            .unwrap_or(ChatEvent::QueueChanged {
+                prompts: Vec::new(),
+            });
+        let deficit = needed - room(self);
+        log::info!(
+            target: "zz::agent",
+            "widening the rebuild of pane {pane} by {deficit} numbers with a repeat of {}",
+            if matches!(event, ChatEvent::UsageChanged { .. }) { "the usage" } else { "the queue" },
+        );
+        while room(self) < needed {
+            let payload = AgentStreamPayload::Chat {
+                event: event.clone(),
+            };
+            if self.enqueue_with_seq(pane, payload).is_none() {
+                break;
             }
         }
     }
@@ -2040,28 +2081,48 @@ mod tests {
         fixture.recorder.broadcast.lock().clear();
 
         fixture.fanout.replay(ClientId(3), fixture.pane, 1);
-        assert!(fixture.recorder.broadcast.lock().is_empty());
+        let kind = |payload: AgentStreamPayload| match payload {
+            AgentStreamPayload::SessionReset { restoring: true } => "reset",
+            AgentStreamPayload::Ready { .. } => "ready",
+            AgentStreamPayload::SessionReady { .. } => "session",
+            AgentStreamPayload::StateSynced { .. } => "state",
+            AgentStreamPayload::Chat {
+                event: ChatEvent::Restart,
+            } => "restart",
+            AgentStreamPayload::Chat {
+                event: ChatEvent::QueueChanged { prompts },
+            } if prompts.is_empty() => "empty queue",
+            _ => "other",
+        };
         assert_eq!(
             direct_items(&fixture.recorder)
                 .into_iter()
-                .map(|(client, seq, item)| {
-                    let kind = match item.payload {
-                        AgentStreamPayload::SessionReset { restoring: true } => "reset",
-                        AgentStreamPayload::Ready { .. } => "ready",
-                        AgentStreamPayload::SessionReady { .. } => "session",
-                        AgentStreamPayload::StateSynced { .. } => "state",
-                        _ => "other",
-                    };
-                    (client, seq, kind)
-                })
+                .map(|(client, seq, item)| (client, seq, kind(item.payload)))
                 .collect::<Vec<_>>(),
             [
                 (ClientId(3), 2, "reset"),
                 (ClientId(3), 3, "ready"),
                 (ClientId(3), 4, "session"),
                 (ClientId(3), 5, "state"),
+                (ClientId(3), 6, "restart"),
             ],
             "past the rebuild cap the journal stays out and the asker is rebuilt from memory"
+        );
+        fixture.recorder.wait_for_items(6);
+        assert_eq!(
+            fixture
+                .recorder
+                .broadcast
+                .lock()
+                .iter()
+                .flat_map(|(_, _, items, _)| items)
+                .map(|item| {
+                    let item: AgentStreamItem = serde_json::from_slice(item).expect("decode");
+                    (item.seq, kind(item.payload))
+                })
+                .collect::<Vec<_>>(),
+            [(6, "empty queue")],
+            "the other viewers get only the number the rebuild needed, as a no-op"
         );
     }
 
@@ -3254,32 +3315,65 @@ mod tests {
             )
         }
 
-        fn replay(&self, from_seq: u64, evicted: bool) -> Vec<AgentStreamItem> {
+        fn replay(&mut self, from_seq: u64, evicted: bool) -> Replayed {
             let pane = self.fixture.pane;
-            let before = {
+            let decode = |item: &Vec<u8>| -> AgentStreamItem {
+                serde_json::from_slice(item).expect("decode")
+            };
+            let (before, next_seq) = {
                 let mut lanes = self.fixture.fanout.lanes.lock();
                 let lane = lanes.get_mut(&pane).expect("lane");
                 let before = lane.evicted_seq;
                 if evicted {
                     lane.evicted_seq = lane.next_seq;
                 }
-                before
+                (before, lane.next_seq)
             };
-            self.fixture.fanout.replay(ClientId(7), pane, from_seq);
-            self.fixture
-                .fanout
-                .lanes
-                .lock()
-                .get_mut(&pane)
-                .expect("lane")
-                .evicted_seq = before;
             self.fixture.recorder.broadcast.lock().clear();
-            std::mem::take(&mut *self.fixture.recorder.direct.lock())
+            let straight = self.straight.clone();
+            self.fixture.fanout.replay(ClientId(7), pane, from_seq);
+            let mut others = {
+                let mut lanes = self.fixture.fanout.lanes.lock();
+                let lane = lanes.get_mut(&pane).expect("lane");
+                lane.evicted_seq = before;
+                lane.take_batch()
+                    .into_iter()
+                    .flat_map(|(_, items)| items)
+                    .collect::<Vec<_>>()
+            };
+            others.extend(
+                std::mem::take(&mut *self.fixture.recorder.broadcast.lock())
+                    .into_iter()
+                    .flat_map(|(_, _, items, _)| items),
+            );
+            let mut others = others
+                .iter()
+                .map(decode)
+                .filter(|item| item.seq >= next_seq)
+                .collect::<Vec<_>>();
+            others.sort_by_key(|item| item.seq);
+            let asker = std::mem::take(&mut *self.fixture.recorder.direct.lock())
                 .into_iter()
                 .flat_map(|(_, _, _, items)| items)
-                .map(|item| serde_json::from_slice(&item).expect("decode"))
-                .collect()
+                .map(|item| decode(&item))
+                .collect();
+            self.catch_up();
+            Replayed {
+                asker,
+                others,
+                before: next_seq,
+                after: self.next_seq(),
+                straight,
+            }
         }
+    }
+
+    struct Replayed {
+        asker: Vec<AgentStreamItem>,
+        others: Vec<AgentStreamItem>,
+        before: u64,
+        after: u64,
+        straight: zz_protocol::chat::ChatView,
     }
 
     fn client_view(
@@ -3357,23 +3451,61 @@ mod tests {
                     }
                     let at = payload_kind(payload);
                     let mut check = |path: &str,
-                                     watched: &Watched,
+                                     watched: &mut Watched,
                                      from_seq: u64,
                                      evicted: bool| {
-                        let next_seq = watched.next_seq();
-                        let items = watched.replay(from_seq, evicted);
-                        let room = next_seq - from_seq - 1;
+                        let replayed = watched.replay(from_seq, evicted);
+                        let (next_seq, items) = (replayed.after, &replayed.asker);
+                        let room = replayed.before - from_seq - 1;
                         let rank = (
                             total,
                             position * 10_000 + usize::try_from(room).unwrap_or(0),
                         );
                         let example = |detail: &str| {
                             format!(
-                                "{} pos {position}/{total} after {} from_seq {from_seq} next_seq {next_seq} room {room}: {detail}",
+                                "{} pos {position}/{total} after {} from_seq {from_seq} next_seq {} room {room}: {detail}",
                                 tape.name,
-                                short(payload)
+                                short(payload),
+                                replayed.before,
                             )
                         };
+                        findings.checked();
+                        if let Some(diff) = difference(&replayed.straight, &watched.straight) {
+                            findings.add(
+                                format!("B | {path} | a widening no-op changed the chat"),
+                                at.clone(),
+                                rank,
+                                || example(&diff.describe()),
+                            );
+                        }
+                        match client_view(
+                            replayed.before - 1,
+                            replayed.straight.clone(),
+                            &replayed.others,
+                        ) {
+                            Ok((cursor, view)) if cursor == next_seq - 1 => {
+                                if let Some(diff) = difference(&watched.straight, &view) {
+                                    findings.add(
+                                        format!("B | {path} | a current viewer's chat changed"),
+                                        at.clone(),
+                                        rank,
+                                        || example(&diff.describe()),
+                                    );
+                                }
+                            }
+                            Ok((cursor, _)) => findings.add(
+                                format!("B | {path} | a current viewer ends short of the lane"),
+                                at.clone(),
+                                rank,
+                                || example(&format!("cursor {cursor} of {next_seq}")),
+                            ),
+                            Err(seq) => findings.add(
+                                format!("B | {path} | a current viewer sees a gap"),
+                                at.clone(),
+                                rank,
+                                || example(&format!("item {seq} after {}", replayed.before - 1)),
+                            ),
+                        }
                         let chat = items
                             .iter()
                             .filter_map(|item| match &item.payload {
@@ -3387,8 +3519,7 @@ mod tests {
                             (false, "b") => stale.clone(),
                             (false, _) => watched.known(from_seq),
                         };
-                        findings.checked();
-                        let (cursor, view) = match client_view(from_seq, prior, &items) {
+                        let (cursor, view) = match client_view(from_seq, prior, items) {
                             Ok(caught) => caught,
                             Err(seq) => {
                                 findings.add(
@@ -3421,6 +3552,26 @@ mod tests {
                         let journal_path = items
                             .iter()
                             .any(|item| matches!(item.payload, AgentStreamPayload::Update { .. }));
+                        let rebuilt = !matches!(path, "a" | "b") && !journal_path;
+                        let numbers = items.iter().map(|item| item.seq).collect::<Vec<_>>();
+                        let first = numbers.first().copied().unwrap_or(next_seq);
+                        let widened = next_seq > replayed.before;
+                        if rebuilt
+                            && (numbers != (first..next_seq).collect::<Vec<_>>()
+                                || first <= from_seq
+                                || (widened && first != from_seq + 1)
+                                || !matches!(
+                                    items.first().map(|item| &item.payload),
+                                    Some(AgentStreamPayload::SessionReset { restoring: true })
+                                ))
+                        {
+                            findings.add(
+                                format!("B | {path} | the rebuild is not numbered from_seq + 1 ..= next_seq - 1"),
+                                at.clone(),
+                                rank,
+                                || example(&format!("numbered {numbers:?}")),
+                            );
+                        }
                         let (path, diff) = match path {
                             "a" | "b" => (path, difference(&watched.straight, &view)),
                             _ if journal_path => ("c", difference(&watched.straight, &view)),
@@ -3449,31 +3600,36 @@ mod tests {
                     };
                     let next_seq = reopened.next_seq();
                     for from_seq in [0, REOPENED_AT - 2] {
-                        check("b", &reopened, from_seq, false);
+                        check("b", &mut reopened, from_seq, false);
                     }
                     let span = next_seq - (REOPENED_AT - 1);
                     for step in 0..=8 {
                         let from_seq = REOPENED_AT - 1 + span * step / 8;
                         if from_seq < next_seq {
-                            check("a", &reopened, from_seq, false);
+                            check("a", &mut reopened, from_seq, false);
                         }
                     }
-                    let next_seq = journalled.next_seq();
-                    let count = u64::try_from(check("c", &journalled, 0, true)).unwrap_or(0);
-                    for from_seq in [next_seq - 1 - count, next_seq - count] {
-                        if (1..next_seq).contains(&from_seq) {
-                            check("c", &journalled, from_seq, true);
+                    let count = u64::try_from(check("c", &mut journalled, 0, true)).unwrap_or(0);
+                    for short_by in [0, 1] {
+                        if let Some(from_seq) = journalled
+                            .next_seq()
+                            .checked_sub(1 + count)
+                            .map(|fits| fits + short_by)
+                            .filter(|from_seq| (1..journalled.next_seq()).contains(from_seq))
+                        {
+                            check("c", &mut journalled, from_seq, true);
                         }
                     }
+                    check("d", &mut memory, 0, true);
                     let log = u64::try_from(memory.log().len()).unwrap_or(0);
-                    for from_seq in 0..next_seq {
-                        if from_seq == 0 || next_seq - from_seq - 1 <= log + 6 {
-                            check("d", &memory, from_seq, true);
+                    for room in 0..=log + 6 {
+                        if let Some(from_seq) = memory.next_seq().checked_sub(room + 1) {
+                            check("d", &mut memory, from_seq, true);
                         }
                     }
                 }
             }
         }
-        findings.finish(&["B | d without Restart | the asker keeps its old chat"]);
+        findings.finish(&[]);
     }
 }

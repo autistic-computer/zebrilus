@@ -103,15 +103,19 @@ the requested items it sends them; once older items were dropped it sends a rese
 the journal or from memory, and the chat events would be lost. So the lane keeps a `ChatLog`: every
 chat event in order, with text appends and body changes folded into the item's start and only the
 latest queue and usage kept. The journal path ends with `Restart` and that whole log, which folds to
-the same view (the random test checks it at every event). The rebuild from memory has to fit the
-numbers the asker skips and 4.5 MiB, so it sends `Restart`, the events of the log still in effect
-(`ChatLog::in_effect`: the last session start and end, the running turn, every open item and the
-item of every open request with their parents, every open request, the turns those started in, the
-queue and the usage) and then the newest events that fit, all in their original order. A rebuilt
-chat can show an old turn holding only its still-open rows, and an open item without its finished
-children. When the events still in effect do not fit, it sends no chat at all and the asker keeps
-the chat it had. The log grows with items and
-turns, not with streamed text, and keeps pasted images only on the last 8 items that have them.
+the same view (the random test checks it at every event). The rebuild from memory goes on the
+numbers the asker skips and stays within 4.5 MiB: it sends `Restart`, the events of the log still in
+effect (`ChatLog::in_effect`: the last session start and end, the running turn, every open item and
+the item of every open request with their parents, every open request, the turns those started in,
+the queue and the usage) and then the newest events that fit, all in their original order. A
+rebuilt chat can show an old turn holding only its still-open rows, and an open item without its
+finished children. When the rebuild needs more numbers than the asker skips, the lane first takes
+exactly the missing ones with repeats of its latest queue event (its latest usage event when it
+has no queue, an empty queue when it has neither), which every viewer gets and which change no
+client's chat, and the asker gets the rebuild on those numbers too. Only when the events still in
+effect pass 4.5 MiB on their own does it send no chat, and the asker keeps the chat it had. The
+log grows with items and turns, not with streamed text, and keeps pasted images only on the last 8
+items that have them.
 `ChatView` applies the same rule as it folds events, so a connected client's view holds no more
 images than a replay would give it. A daemon restart needs no journal for this: the driver restores
 the session's history and the bridge replays it through the machine. When the vendor's history is
@@ -242,7 +246,9 @@ could tie to real Claude Code or Codex behavior.
     `every_replay_path_at_every_cut_of_a_recording_shows_the_live_chat`): the real
     `AgentFanout::replay` for a spread of `from_seq`. The ring, reopened lane and journal paths
     must give an equal view. The capped rebuild, tried at every cut size through `room`, must keep
-    the phase, the running turn, the queue, the usage and every open item and request.
+    the phase, the running turn, the queue, the usage and every open item and request, come
+    numbered from `from_seq + 1` to the lane's last number with no gap, and leave a viewer that was
+    current with the same chat and no gap.
   - Journal reload (`a_reload_from_the_journal_at_every_line_shows_the_live_chat`): what a real
     `AgentJournal` held at that line goes through each driver's history fallback into a fresh
     runtime. The turns, their outcomes and the rows in each must match the live ones, and every
@@ -252,12 +258,12 @@ could tie to real Claude Code or Codex behavior.
   A failure is grouped by signature (sweep, path, first differing field) with a count and its
   smallest example. Each sweep ends with the exact list of signatures it finds today and fails
   when that list changes either way, so a listed signature is an open bug and fixing one means
-  deleting its line. Open on 2026-11-22: a rebuild whose events still in effect do not fit the
-  numbers the asker skips sends no `Restart`, so that client keeps its old chat. A chat reloaded
-  from the journal shows an answered question with its question and answers but without its
-  options, since only the tool update that carries the answer is journalled, and permission cards
-  and open questions are not journalled at all. The two Codex rollout fixtures have no driver that
-  plays them and are not taped, and agy, Grok and Cursor have no recordings.
+  deleting its line. Open on 2026-11-22: a rebuild whose events still in effect pass 4.5 MiB on
+  their own sends no `Restart`, so that client keeps its old chat; no recording reaches it. A chat
+  reloaded from the journal shows an answered question with its question and answers but without
+  its options, since only the tool update that carries the answer is journalled, and permission
+  cards and open questions are not journalled at all. The two Codex rollout fixtures have no driver
+  that plays them and are not taped, and agy, Grok and Cursor have no recordings.
 
 # Next
 
