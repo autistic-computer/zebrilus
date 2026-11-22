@@ -51,7 +51,36 @@ nav:not([data-divider]) > .sidebar-resize:hover {
 .app .penna-strip {
   justify-content: flex-start;
   height: var(--penna-titlebar-height, 40px);
-  padding: 0 16px 0 8px;
+  padding: 0 12px 0 8px;
+}
+
+.chrome-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  height: 100%;
+}
+
+.app [data-penna="chrome.button"] {
+  width: 28px;
+  height: 28px;
+  --penna-icon-size: 16px;
+}
+
+.chrome-logo {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+}
+
+.chrome-logo > img {
+  display: block;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
 }
 
 #tree {
@@ -336,6 +365,10 @@ nav:not([data-divider]) > .sidebar-resize:hover {
   cursor: var(--penna-click-cursor);
 }
 
+.flat-host.separated {
+  margin-top: 18px;
+}
+
 .flat-host:hover {
   color: var(--penna-fg);
 }
@@ -477,9 +510,56 @@ nav:not([data-divider]) > .sidebar-resize:hover {
 }
 
 .flat-tile,
-.deck-tile {
+.deck-tile,
+.flat-pane-tile {
   background: linear-gradient(color-mix(in srgb, var(--penna-fg) 6%, var(--penna-fill)), var(--penna-fill));
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--penna-fg) 16%, transparent), var(--penna-shadow-contact);
+}
+
+:is(.flat-tile, .deck-tile, .flat-pane-tile)[data-program] {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--program-bg) 84%, #fff),
+    color-mix(in oklab, var(--program-bg) 90%, #000)
+  );
+  box-shadow:
+    0 0.5px 1.5px rgb(0 0 0 / 0.4),
+    0 0 0 0.75px rgb(0 0 0 / 0.25),
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    inset 0 0 0 0.75px rgb(255 255 255 / 0.12);
+}
+
+:root[data-penna-mode="light"] :is(.flat-tile, .deck-tile, .flat-pane-tile)[data-program] {
+  box-shadow:
+    0 0.5px 1.5px rgb(0 0 0 / 0.2),
+    0 0 0 0.5px rgb(0 0 0 / 0.09),
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.8);
+}
+
+.program-mark {
+  display: block;
+  width: 62.5%;
+  height: 62.5%;
+  background: var(--program-fg, #fff);
+  -webkit-mask: var(--program-mask) center / contain no-repeat;
+  mask: var(--program-mask) center / contain no-repeat;
+}
+
+.program-art {
+  display: block;
+  width: 62.5%;
+  height: 62.5%;
+  object-fit: contain;
+}
+
+.program-mask {
+  display: block;
+  width: var(--penna-icon-size, 14px);
+  height: var(--penna-icon-size, 14px);
+  background: currentColor;
+  -webkit-mask: var(--program-mask) center / contain no-repeat;
+  mask: var(--program-mask) center / contain no-repeat;
 }
 
 .flat-tile {
@@ -490,6 +570,65 @@ nav:not([data-divider]) > .sidebar-resize:hover {
   width: 28px;
   height: 28px;
   --penna-icon-size: 16px;
+}
+
+.flat-expand {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-right: -4px;
+  color: var(--penna-muted);
+  --penna-icon-size: 10px;
+}
+
+.flat-window:not(:hover) > .flat-expand:not(:has([data-open])) {
+  display: none;
+}
+
+.flat-children {
+  display: flex;
+  flex-direction: column;
+  padding-left: 16px;
+}
+
+.flat-pane {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 calc(var(--penna-row-inset) + 12px) 0 calc(var(--penna-row-inset) + 10px);
+  font-size: 12px;
+  color: var(--penna-muted);
+  cursor: var(--penna-click-cursor);
+}
+
+.flat-pane:hover,
+.flat-pane:has(.flat-fill[data-state~="current"]) {
+  color: var(--penna-fg);
+}
+
+.flat-pane-tile {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px !important;
+  --penna-icon-size: 12px;
+}
+
+.flat-pane-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.flat-window.nested {
+  height: 40px;
 }
 
 .flat-text {

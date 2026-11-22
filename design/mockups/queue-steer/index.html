@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Queue and send now</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/kbd/kbd.css">
+<link rel="stylesheet" href="/penna-src/components/panel/panel.css">
+<link rel="stylesheet" href="/penna-src/components/row/row.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/components/tooltip/tooltip.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="../floating-pane-header/board.css">
+<link rel="stylesheet" href="../agent-mentions/mentions.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/penna-src/components/kbd/kbd.js" defer></script>
+<script src="../agent-mentions/mentions.js"></script>
+<style>
+  .hf-page.qs-page { grid-template-columns: repeat(3, 520px); gap: 48px 40px; max-width: none; margin: 0; }
+  .qs-wide { grid-column: 1 / -1; }
+  .qs-page > .hf-take { align-content: start; }
+  .qs-pane.zz-host[data-penna="pane"] { width: 520px; height: 520px; overflow: hidden; }
+  .qs-pane .zz-tx { padding-top: 8px; }
+  .qs-pane .penna-chat-frame { flex: none; }
+  .qs-pane .penna-chat-frame-foot > div:first-child { flex: 1; }
+
+  .qs-list.penna-chat-list[data-penna] { gap: 2px; }
+  .qs-row.penna-row[data-penna] { gap: 4px; padding-right: 2px; }
+  .qs-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .qs-acts { display: none; flex: none; gap: 2px; }
+  .qs-acts > .penna-button[data-penna] { width: 24px; height: 24px; color: var(--penna-fg-muted); --penna-icon-size: 13px; }
+  [data-state~="hover"] > .qs-acts, .qs-under > .qs-acts { display: flex; }
+
+  .qs-queue { position: relative; }
+  .qs-queue > .penna-button[data-state~="active"] { color: var(--penna-fg) !important; }
+  .qs-menu[data-penna="popover"] { position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 6; width: 320px; }
+  .qs-menu [data-penna="menu-item"] { gap: 4px; padding-right: 2px; }
+  .qs-menu [data-penna="menu-item"] > [data-icon] { margin-right: 4px; }
+
+  .qs-wait.penna-chat-bubble[data-penna] { background: transparent; box-shadow: inset 0 0 0 1px var(--penna-border); color: var(--penna-fg-muted); }
+  .qs-tx > .penna-chat-message { gap: 2px; }
+  .qs-under { display: flex; justify-content: flex-end; width: 100%; }
+
+  .qs-anchor { position: relative; display: inline-flex; flex: none; }
+  .qs-tip.penna-tooltip[data-penna="tooltip"] { position: absolute; bottom: calc(100% + 10px); left: 50%; z-index: 7; margin: 0; transform: translateX(-50%); }
+  .qs-split { display: inline-flex; flex: none; gap: 1px; }
+  .qs-split > .penna-button[data-penna="button.send"] { width: auto !important; }
+  .qs-split > .qs-main[data-penna] { display: inline-flex !important; align-items: center; flex-direction: row; min-width: max-content; white-space: nowrap; gap: 4px; padding: 0 10px 0 8px; border-top-right-radius: 3px !important; border-bottom-right-radius: 3px !important; --penna-icon-size: 13px; }
+  .qs-split > .qs-caret[data-penna] { display: inline-flex !important; align-items: center; justify-content: center; width: 22px !important; padding: 0; border-top-left-radius: 3px !important; border-bottom-left-radius: 3px !important; --penna-icon-size: 10px; }
+  .qs-split-menu[data-penna="popover"] { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 6; min-width: 180px; width: max-content; }
+
+  .qs-after { display: grid; grid-template-columns: repeat(3, 520px); gap: 40px; align-items: start; }
+  .qs-after > figure { display: grid; gap: 10px; margin: 0; }
+  .qs-after .zz-chat { gap: 8px; }
+  .qs-after .zz-steps { gap: 0; }
+  .qs-stopped { color: var(--penna-fg-muted); }
+
+  .qs-table { border-collapse: collapse; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); }
+  .qs-table th, .qs-table td { padding: 8px 20px 8px 0; border-bottom: 1px solid var(--penna-divider); text-align: left; vertical-align: top; }
+  .qs-table th { font-size: var(--penna-text-small-size); font-weight: 500; color: var(--penna-muted); white-space: nowrap; }
+  .qs-table td:first-child { white-space: nowrap; font-weight: 500; }
+  .qs-table td { font-variant-numeric: tabular-nums; }
+  .qs-table small { display: block; color: var(--penna-muted); font-size: var(--penna-text-small-size); }
+
+  .qs-measure { position: absolute; top: 0; left: -10000px; visibility: hidden; }
+  .qs-measure .penna-chat-frame-top { width: 520px; box-sizing: border-box; }
+  .qs-measure .zz-tx { width: 520px; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<main class="hf-page qs-page">
+  <div class="hf-intro qs-wide">
+    <h1>Queue and send now</h1>
+    <p>A Claude Code chat mid-turn, two messages waiting, a draft in the field.</p>
+  </div>
+
+  <section class="hf-take" data-take="q-rows">
+    <h2>1A. Rows over the field</h2>
+    <figure><div data-pane="q-rows"></div><figcaption><b>A.</b>Waiting messages stack over the field, oldest first; the hovered row shows its actions.</figcaption></figure>
+  </section>
+
+  <section class="hf-take" data-take="q-chip">
+    <h2>1B. The chip opens the list</h2>
+    <figure><div data-pane="q-chip"></div><figcaption><b>B.</b>The chip stays where it is today and opens a menu with the same actions.</figcaption></figure>
+  </section>
+
+  <section class="hf-take" data-take="q-bubbles">
+    <h2>1C. Waiting bubbles in the chat</h2>
+    <figure><div data-pane="q-bubbles"></div><figcaption><b>C.</b>Waiting messages end the transcript as outlined bubbles.</figcaption></figure>
+  </section>
+
+  <section class="hf-take" data-take="s-enter-queues">
+    <h2>2A. Enter queues, Cmd+Enter sends now</h2>
+    <figure><div data-pane="s-enter-queues"></div><figcaption><b>A.</b>Queue stays the main button; Send now sits beside it.</figcaption></figure>
+  </section>
+
+  <section class="hf-take" data-take="s-enter-sends">
+    <h2>2B. Enter sends now, Tab queues</h2>
+    <figure><div data-pane="s-enter-sends"></div><figcaption><b>B.</b>Send now becomes the main button; Queue moves beside it.</figcaption></figure>
+  </section>
+
+  <section class="hf-take" data-take="s-split">
+    <h2>2C. One button with a menu</h2>
+    <figure><div data-pane="s-split"></div><figcaption><b>C.</b>The button repeats the last choice; the caret picks the other.</figcaption></figure>
+  </section>
+
+  <section class="hf-take qs-wide" data-take="after">
+    <h2>Right after Send now</h2>
+    <div class="qs-after" data-after></div>
+  </section>
+
+  <section class="hf-take qs-wide" data-take="table">
+    <h2>Side by side</h2>
+    <table class="qs-table" data-table></table>
+  </section>
+</main>
+<div class="qs-measure" data-measure></div>
+<script>
+(() => {
+  const { ic, spin, you, step, ring, round } = window.zzm;
+
+  const ASK = "fix the failing daemon tests";
+  const REPLY = "Two attach tests time out. Running the daemon suite to see what else fails.";
+  const COMMAND = "cargo test -p zz-daemon";
+  const DRAFT = "skip the flaky attach test for now";
+  const WAITING = ["also bump the version in Cargo.toml", "then run clippy and fix what it finds"];
+  const FOUR = [...WAITING, "update the changelog entry for the attach fix", "push to main once the suite is green and clippy is clean"];
+
+  const pointer = (style) => `<span class="zz-pointer" style="${style}"></span>`;
+  const mono = (text) => `<span class="zz-mono">${text}</span>`;
+  const running = () => step("spin", mono(COMMAND), "", { strong: true });
+  const stopped = () => step("stop", mono(COMMAND), "stopped");
+  const finished = () => step("file", "Read attach.rs");
+  const thread = (extra = "") => `${you(ASK)}<p>${REPLY}</p><div class="zz-steps">${finished()}${running()}</div>${extra}`;
+
+  const rowAct = (icon, label) => `<button class="penna-button" data-penna="icon-button.row" data-shape="icon" aria-label="${label}">${ic(icon)}</button>`;
+  const acts = `<span class="qs-acts">${rowAct("arrow-up", "Send now")}${rowAct("pencil", "Edit")}${rowAct("xmark", "Remove")}</span>`;
+  const hoverAt = (on) => (on ? ` data-state="hover"` : "");
+
+  const rows = (list, hovered = -1) => `<div class="penna-panel penna-chat-list qs-list" data-penna="inline-panel" role="list">${list
+    .map((text, i) => `<div class="penna-row qs-row" data-penna="menu-item" role="listitem"${hoverAt(i === hovered)}><span class="qs-text">${text}</span>${acts}${i === hovered ? pointer("right: 26px; top: 17px") : ""}</div>`)
+    .join("")}</div>`;
+
+  const chip = (n, open) => `<button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small"${open ? ` data-state="active"` : ""} style="color: var(--penna-fg-muted)">${ic("undo-2")}<span class="penna-label">${n} queued</span></button>`;
+  const chipMenu = `<div class="penna-menu qs-menu" data-penna="popover">${WAITING.map((text, i) => `<div class="penna-row" data-penna="menu-item"${hoverAt(i === 1)}><span class="qs-text">${text}</span>${acts}${i === 1 ? pointer("right: 26px; top: 17px") : ""}</div>`).join("")}<div class="penna-separator"></div><div data-penna="menu-item">${ic("undo-2")}<span>Return all to the field</span></div></div>`;
+  const queueRow = (n, open) => `<div class="penna-chat-queue qs-queue">${chip(n, open)}${open ? chipMenu : ""}</div>`;
+
+  const waitBubble = (text, hover) => `<div class="penna-chat-message"${hoverAt(hover)}><div class="penna-card penna-chat-bubble qs-wait" data-penna="card.bubble" role="group"><span>${text}</span></div>${hover ? `<div class="qs-under">${acts}</div>` : ""}${hover ? `<span class="zz-rel" style="width: 100%; height: 0">${pointer("right: 28px; top: -12px")}</span>` : ""}</div>`;
+  const waitBubbles = (list, hovered = -1) => list.map((text, i) => waitBubble(text, i === hovered)).join("");
+
+  const sendBtn = (icon, label, solid) => `<button class="penna-button" data-penna="button.send" data-shape="icon"${solid ? ` data-emphasis="solid" data-solid="primary"` : ""} aria-label="${label}">${ic(icon)}</button>`;
+  const tip = (label, key) => `<div class="penna-tooltip qs-tip" data-penna="tooltip" role="tooltip"><span>${label}</span><span class="penna-tooltip-key"><kbd class="penna-kbd" data-penna="keycap" data-size="small" data-kbd="${key}"></kbd></span></div>`;
+  const withTip = (button, label, key) => `<span class="qs-anchor">${button}${tip(label, key)}${pointer("left: 19px; top: 19px")}</span>`;
+
+  const ACTIONS = {
+    today: () => sendBtn("plus", "Queue", false),
+    queues: () => withTip(sendBtn("arrow-up", "Send now", false), "Send now", "cmd-enter") + sendBtn("plus", "Queue", true),
+    sends: () => withTip(sendBtn("plus", "Queue", false), "Queue", "tab") + sendBtn("arrow-up", "Send now", true),
+    split: () => `<span class="qs-anchor"><span class="qs-split"><button class="penna-button qs-main" data-penna="button.send" data-emphasis="solid" data-solid="primary">${ic("plus")}<span class="penna-label">Queue</span></button><button class="penna-button qs-caret" data-penna="button.send" data-emphasis="solid" data-solid="primary" data-state="active" aria-label="More">${ic("chevron-down")}</button></span><div class="penna-menu qs-split-menu" data-penna="popover"><div data-penna="menu-item" data-state="selected">${ic("plus")}<span>Queue</span><span class="penna-shortcut" data-kbd-text="enter"></span></div><div data-penna="menu-item">${ic("arrow-up")}<span>Send now</span><span class="penna-shortcut" data-kbd-text="cmd-enter"></span></div></div>${pointer("right: 2px; top: 18px")}</span>`,
+  };
+
+  const field = (actions) => `<div class="penna-chat-composer"><span class="input-underlay" data-penna="field.composer"></span><div class="penna-chat-field input-chrome" data-penna="field.composer"><button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="Mention">${ic("plus")}</button><span class="penna-chat-input" role="textbox">${DRAFT}</span>${ring(34)}${actions}</div></div>`;
+  const foot = `<div class="penna-chat-frame-foot"><div></div><button class="penna-button penna-chat-chrome" data-penna="button.quiet" data-size="small"><i class="zz-dim" data-icon="hand"></i><span class="penna-label">Opus 5.5</span><span class="zz-dim">High</span>${ic("chevron-down")}</button></div>`;
+  const frame = (prefix, actions) => `<div class="penna-chat-frame"><div class="penna-chat-frame-top">${prefix}${field(actions)}</div>${foot}</div>`;
+
+  const pane = (tx, composer) => `<section class="zz-host hf-pane qs-pane" data-penna="pane" data-active>
+    <div data-penna="bar.pane"><span data-penna="button.title">${ic("zz-claude")}<span>Claude Code</span><span class="zz-dim">~/dev/zebrilus</span></span></div>
+    <div class="zz-tx qs-tx">${tx}</div>${composer}</section>`;
+
+  const PANES = {
+    "q-rows": pane(thread(), frame(rows(WAITING, 1), ACTIONS.today())),
+    "q-chip": pane(thread(), frame(queueRow(2, true), ACTIONS.today())),
+    "q-bubbles": pane(thread(waitBubbles(WAITING, 1)), frame("", ACTIONS.today())),
+    "s-enter-queues": pane(thread(), frame(rows(WAITING), ACTIONS.queues())),
+    "s-enter-sends": pane(thread(), frame(rows(WAITING), ACTIONS.sends())),
+    "s-split": pane(thread(), frame(rows(WAITING), ACTIONS.split())),
+  };
+  for (const [id, html] of Object.entries(PANES)) document.querySelector(`[data-pane="${id}"]`).innerHTML = html;
+
+  const sent = you(DRAFT);
+  const AFTER = [
+    ["Claude Code", "The running step stops, the message follows, the turn keeps going.", `${you(ASK)}<p>${REPLY}</p><div class="zz-steps">${finished()}${stopped()}</div>${sent}<div class="zz-steps">${step("spin", "Editing attach.rs", "", { strong: true })}</div>`],
+    ["Codex", "The step keeps running and the message lands under it, same turn.", `${you(ASK)}<p>${REPLY}</p><div class="zz-steps">${finished()}${running()}</div>${sent}`],
+    ["Antigravity, Grok, Cursor", "The turn ends Stopped and the message starts a new one.", `${you(ASK)}<p>${REPLY}</p><div class="zz-steps">${finished()}${stopped()}${step("stop", "Stopped")}</div>${sent}<div class="zz-steps">${step("spin", "Thinking", "", { strong: true })}</div>`],
+  ];
+  document.querySelector("[data-after]").innerHTML = AFTER.map(([name, note, body]) => `<figure><div class="zz-chat">${body}</div><figcaption><b>${name}</b>${note}</figcaption></figure>`).join("");
+
+  const measureBox = document.querySelector("[data-measure]");
+  measureBox.innerHTML = `
+    <div class="penna-chat-frame-top" data-m="rows-2">${rows(WAITING)}</div>
+    <div class="penna-chat-frame-top" data-m="rows-4">${rows(FOUR)}</div>
+    <div class="penna-chat-frame-top" data-m="chip">${queueRow(2, false)}</div>
+    <div class="zz-tx qs-tx" data-m="bubbles-2">${waitBubbles(WAITING)}</div>
+    <div class="zz-tx qs-tx" data-m="bubbles-4">${waitBubbles(FOUR)}</div>`;
+
+  const GAP = 8;
+  const TX_GAP = 10;
+  const h = (key) => Math.round(measureBox.querySelector(`[data-m="${key}"] > *`).getBoundingClientRect().height);
+  const stack = (key) => {
+    const kids = [...measureBox.querySelector(`[data-m="${key}"]`).children];
+    return Math.round(kids.reduce((sum, el) => sum + el.getBoundingClientRect().height, 0) + TX_GAP * kids.length);
+  };
+
+  const COLS = ["1A Rows", "1B Chip", "1C Bubbles", "2A Enter queues", "2B Enter sends", "2C Split"];
+  const fill = () => {
+    const rows2 = h("rows-2") + GAP;
+    const rows4 = h("rows-4") + GAP;
+    const chipH = h("chip") + GAP;
+    const b2 = stack("bubbles-2");
+    const b4 = stack("bubbles-4");
+    const onRows = `${rows2} / ${rows4}`;
+    const table = [
+      ["Clicks to see a waiting message", "0", "1", "0", "0", "0", "0"],
+      ["Height it adds to the pane, 2 / 4 waiting (px)", onRows, `${chipH} / ${chipH}<small>as today; the menu floats</small>`, `0 / 0<small>transcript grows ${b2} / ${b4}</small>`, onRows, onRows, onRows],
+      ["Works with keyboard only", "yes<small>Up from the field enters the rows</small>", "yes<small>a key opens the menu, arrows move</small>", "no<small>needs a way into the transcript</small>", "yes<small>Cmd+Enter</small>", "yes<small>Tab</small>", "yes<small>Enter, Cmd+Enter</small>"],
+      ["Changes what Enter does today", "no", "no", "no", "no", "yes", "yes<small>after a Send now</small>"],
+    ];
+    document.querySelector("[data-table]").innerHTML = `<tr><th></th>${COLS.map((c) => `<th>${c}</th>`).join("")}</tr>${table.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}`;
+    document.documentElement.dataset.measured = JSON.stringify({ rows2, rows4, chipH, b2, b4 });
+  };
+
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.documentElement.dataset.only = only;
+    for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+  }
+  const settle = () => {
+    round();
+    globalThis.pennaKbd?.fill?.(document);
+    fill();
+  };
+  document.getElementById("penna-tokens")?.addEventListener("load", () => requestAnimationFrame(settle));
+  addEventListener("load", () => requestAnimationFrame(settle));
+  settle();
+})();
+</script>
+</body>
+</html>

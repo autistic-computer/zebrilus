@@ -3,8 +3,15 @@ mod appearance;
 mod events;
 mod overlays;
 mod palette;
+#[cfg(feature = "showcase")]
+#[allow(clippy::pedantic, dead_code)]
+#[path = "../../app/src/showcase.rs"]
+mod showcase;
 mod terminal;
 mod tree;
+
+#[cfg(feature = "showcase")]
+use std::collections::VecDeque;
 
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
@@ -173,5 +180,55 @@ fn scheme(dark: bool) -> TerminalColorScheme {
         TerminalColorScheme::Dark
     } else {
         TerminalColorScheme::Light
+    }
+}
+
+#[cfg(feature = "showcase")]
+#[wasm_bindgen]
+pub struct ShowcaseHost {
+    host: showcase::DemoHost,
+    pending: VecDeque<Vec<u8>>,
+}
+
+#[cfg(feature = "showcase")]
+#[wasm_bindgen]
+impl ShowcaseHost {
+    #[wasm_bindgen(constructor)]
+    pub fn new(id: Option<String>) -> Self {
+        Self {
+            host: showcase::DemoHost::for_host(id.as_deref().unwrap_or("local")),
+            pending: VecDeque::new(),
+        }
+    }
+
+    pub fn hosts() -> String {
+        Value::Array(
+            showcase::SHOWCASE_HOSTS
+                .iter()
+                .map(|(id, name, local)| {
+                    json!({
+                        "id": id,
+                        "name": name,
+                        "local": local,
+                    })
+                })
+                .collect(),
+        )
+        .to_string()
+    }
+
+    pub fn send(&mut self, frame: &[u8]) -> Result<(), JsError> {
+        let message =
+            decode_protocol_frame(frame).map_err(|error| JsError::new(&error.to_string()))?;
+        for reply in self.host.handle(message) {
+            if let Ok(encoded) = encode_protocol_message(&reply) {
+                self.pending.push_back(encoded);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn outbound(&mut self) -> Option<Vec<u8>> {
+        self.pending.pop_front()
     }
 }

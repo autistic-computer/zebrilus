@@ -17,9 +17,9 @@ use zz_client::{
     terminal_color::{decorative_glyph, resolved_foreground},
     terminal_view::{
         PointerGrid, accumulate_scroll, cursor_should_blink, dead_label, mode_text, openable_uri,
-        pasted_image_number, presented_uri, scroll_fraction, scrollbar_strip_hit,
-        search_case_label, search_key_action, search_result_text, selection_autoscroll_lines,
-        status_text, terminal_shortcut,
+        oversized_paste_warning, pasted_image_number, presented_uri, scroll_fraction,
+        scrollbar_strip_hit, search_case_label, search_key_action, search_result_text,
+        selection_autoscroll_lines, selection_has_extent, status_text, terminal_shortcut,
     },
 };
 use zz_protocol::{
@@ -253,6 +253,7 @@ struct View {
     scrollbar_dragging: bool,
     force_local: bool,
     pressed: HashSet<u8>,
+    selection_anchor: Option<PointerCellEvent>,
     selection_pointer: Option<PointerCellEvent>,
     autoscroll: i32,
     focused: bool,
@@ -263,6 +264,7 @@ impl View {
         self.selecting = false;
         self.scrollbar_dragging = false;
         self.force_local = false;
+        self.selection_anchor = None;
         self.selection_pointer = None;
         self.autoscroll = 0;
     }
@@ -749,6 +751,7 @@ impl Client {
             shift || view.force_local,
         );
         view.selection_pointer = view.selecting.then_some(input.cell);
+        view.selection_anchor = view.selection_pointer;
         if let Some(target) = view.scroll.flush() {
             self.send_view(id, output, TerminalViewAction::ScrollToOffset(target));
         }
@@ -788,10 +791,27 @@ impl Client {
             Modifiers::new(shift, control, alt, meta),
             shift || view.force_local,
         );
+        let copies = button == 0
+            && view.selecting
+            && (view.autoscroll != 0
+                || view
+                    .selection_anchor
+                    .zip(view.selection_pointer)
+                    .is_some_and(|(anchor, pointer)| selection_has_extent(anchor, pointer)));
         if button == 0 {
             view.end_drag();
         }
         self.send_view(id, output, TerminalViewAction::Mouse(input));
+        if copies {
+            self.send_view(
+                id,
+                output,
+                TerminalViewAction::CopySelection {
+                    request_id: 1,
+                    target: ClipboardTarget::Primary,
+                },
+            );
+        }
         step_json(true, false, &[])
     }
 
@@ -1153,7 +1173,7 @@ impl Client {
     }
 
     pub fn type_text(&mut self, pane: f64, output: bool, text: &str, composed: bool) -> bool {
-        if text.is_empty() {
+        if text.is_empty() || (!composed && oversized_paste_warning(text).is_some()) {
             return false;
         }
         let id = pane_id(pane);
@@ -1169,7 +1189,14 @@ impl Client {
         redraw
     }
 
+    pub fn paste_warning(&self, text: &str) -> Option<String> {
+        oversized_paste_warning(text)
+    }
+
     pub fn terminal_paste(&mut self, pane: f64, output: bool, text: String) {
+        if oversized_paste_warning(&text).is_some() {
+            return;
+        }
         let id = pane_id(pane);
         self.views.get(id, output).scroll.cancel();
         self.send_view(id, output, TerminalViewAction::Paste(text));

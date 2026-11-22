@@ -18,20 +18,25 @@ use zz_client::{
     agent_flip::{AgentFlips, FlipMode, FlipTo, flip_target},
     agent_lens::{
         AGENT_WELCOME_DETAIL, AgentCursor, AgentEmpty, LensTranscript, MAX_AGENT_HISTORY_BYTES,
-        PendingPermission, accepts_prompt, agent_empty, agent_placeholder,
-        agent_welcome_title, conversation_changed, pending_permissions, restore_reclaim_id,
-        restored_prompts, track_usage, turn_running,
+        PendingPermission, accepts_prompt, agent_empty, agent_placeholder, agent_welcome_title,
+        conversation_changed, pending_permissions, restore_reclaim_id, restored_prompts,
+        track_usage, turn_running,
     },
     agent_question::{QuestionCard, QuestionCardStep},
+    agent_settings::{self, LensSettings},
     agent_timeline::{
         AgentToolKind, AgentToolStatus, ComposerAction, StepNesting, TRACE_COUNT_NOUNS,
         TimelineGroupKind, TimelineItem, TimelineRow, TimelineShape, TraceHeader, TurnClocks,
         composer_action, context_usage_fraction, context_usage_tooltip, ending_failure,
         final_assistant_entry_id, fold_timeline_rows, git_file_count_label, git_summary_tooltip,
-        is_turn_row, plan_chip_label, plan_items, plan_progress, single_line, split_turn,
-        thought_tail, tool_tag, trace_header,
+        is_turn_row, percent_label, plan_chip_label, plan_items, plan_progress, single_line,
+        split_turn, thought_tail, tool_tag, trace_header,
     },
     agent_transcript::{AgentThreadEntry, ToolPayload, is_zz_command, rewind_command},
+    chat_rows::{
+        self, AgentState, Fold, RunLabel, Unit, agent_ms, agent_rows, agent_state, answered,
+        background_rows, child_fold, duration, now_ms, turn_rows,
+    },
     mend::mend,
     providers::{
         provider_action, provider_description, provider_notes, provider_rows, version_current,
@@ -39,7 +44,9 @@ use zz_client::{
     },
     window_summary::pane_agent,
 };
-use zz_protocol::chat::{Ask, ItemKind, RequestId};
+use zz_protocol::chat::{
+    Ask, ChatView, ItemId, ItemKind, ItemStatus, ItemView, RequestId, StepStatus,
+};
 use zz_protocol::{
     AgentConnectionPhase, AgentPaneWire, AgentProvider, AgentQuestionAnswer, CommandInvocation,
     CommandResponse, PaneId, PaneKindSnapshot, PaneSnapshot, ProtocolMessage,
@@ -69,6 +76,7 @@ struct Lens {
     permission_selected: usize,
     question: Option<QuestionCard>,
     expanded: HashMap<u64, bool>,
+    expanded_keys: HashSet<String>,
     clocks: TurnClocks,
     plan_open: bool,
     last_input: String,
@@ -79,6 +87,7 @@ struct Lens {
     commands: Arc<[AgentCommand]>,
     drafts: Vec<String>,
     markdown: HashMap<u64, (String, String)>,
+    chat_markdown: HashMap<String, (String, String)>,
 }
 
 impl Lens {
@@ -93,6 +102,7 @@ impl Lens {
             permission_selected: 0,
             question: None,
             expanded: HashMap::new(),
+            expanded_keys: HashSet::new(),
             clocks: TurnClocks::default(),
             plan_open: false,
             last_input: String::new(),
@@ -103,6 +113,7 @@ impl Lens {
             commands: Arc::from([]),
             drafts: Vec::new(),
             markdown: HashMap::new(),
+            chat_markdown: HashMap::new(),
         }
     }
 
@@ -116,8 +127,10 @@ impl Lens {
 
     fn clear_timeline(&mut self) {
         self.expanded.clear();
+        self.expanded_keys.clear();
         self.clocks.clear();
         self.markdown.clear();
+        self.chat_markdown.clear();
     }
 
     fn synchronize(
@@ -185,6 +198,22 @@ impl Lens {
         }
         let html = markdown_html(display);
         self.markdown.insert(id, (display.to_owned(), html.clone()));
+        html
+    }
+
+    fn chat_html(&mut self, key: &str, source: &str, streaming: bool) -> String {
+        let mended = (streaming && source.len() <= MAX_STREAMING_MEND_BYTES)
+            .then(|| mend(source))
+            .flatten();
+        let display = mended.as_deref().unwrap_or(source);
+        if let Some((cached, html)) = self.chat_markdown.get(key)
+            && cached == display
+        {
+            return html.clone();
+        }
+        let html = markdown_html(display);
+        self.chat_markdown
+            .insert(key.to_owned(), (display.to_owned(), html.clone()));
         html
     }
 
@@ -707,83 +736,92 @@ impl Client {
             );
         let byte_cursor = utf16_to_byte(value, cursor);
         lens.synchronize_completions(value, byte_cursor, context.commands.clone());
-        let entries = items(&lens.transcript);
-        let folded = fold_timeline_rows(&entries);
-        let rows = folded.rows;
-        let streaming = running
-            .then(|| {
-                lens.transcript
-                    .model
-                    .entries()
-                    .last()
-                    .map(AgentThreadEntry::id)
-            })
-            .flatten();
-        let live_row = running
-            .then(|| rows.len().checked_sub(1))
-            .flatten()
-            .filter(|last| is_turn_row(&rows[*last]));
-        lens.clocks.tick(live_row.map(|row| rows[row].id()));
-        let copyable = if running {
-            None
-        } else {
-            final_assistant_entry_id(&rows)
-        };
         let rewind = context.verbs.then_some(
             context.writable
                 && !running
                 && state.phase == AgentConnectionPhase::Ready
                 && state.pending_permission.is_none(),
         );
-        let row_values = rows
-            .iter()
-            .enumerate()
-            .map(|(index, row)| {
-                lens_row(
-                    lens,
-                    row,
-                    index > 0,
-                    live_row == Some(index),
-                    copyable,
-                    rewind,
-                    streaming,
-                )
-            })
-            .collect::<Vec<_>>();
+        let use_chat =
+            !lens.transcript.chat.turns.is_empty() || !lens.transcript.chat.background.is_empty();
+        let row_values = if use_chat {
+            chat_view_rows(lens, running, rewind)
+        } else {
+            let entries = items(&lens.transcript);
+            let folded = fold_timeline_rows(&entries);
+            let rows = folded.rows;
+            let streaming = running
+                .then(|| {
+                    lens.transcript
+                        .model
+                        .entries()
+                        .last()
+                        .map(AgentThreadEntry::id)
+                })
+                .flatten();
+            let live_row = running
+                .then(|| rows.len().checked_sub(1))
+                .flatten()
+                .filter(|last| is_turn_row(&rows[*last]));
+            lens.clocks.tick(live_row.map(|row| rows[row].id()));
+            let copyable = if running {
+                None
+            } else {
+                final_assistant_entry_id(&rows)
+            };
+            rows.iter()
+                .enumerate()
+                .map(|(index, row)| {
+                    lens_row(
+                        lens,
+                        row,
+                        index > 0,
+                        live_row == Some(index),
+                        copyable,
+                        rewind,
+                        streaming,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
         let has_content = !value.trim().is_empty();
         let action = composer_action(running, has_content);
         let action_enabled = match action {
             ComposerAction::Stop | ComposerAction::Queue => context.writable,
             ComposerAction::Send => ready && state.pending_permission.is_none() && has_content,
         };
-        let plan = lens
-            .transcript
-            .model
-            .entries()
-            .iter()
-            .rev()
-            .find_map(|entry| match entry {
-                AgentThreadEntry::Plan { markdown, .. } => Some(markdown.clone()),
-                _ => None,
-            })
-            .filter(|source| {
-                let (done, total, _) = plan_progress(source);
-                total > 0 && (done < total || running)
+        let plan_tray =
+            chat_plan_tray(&lens.transcript.chat, running, lens.plan_open).or_else(|| {
+                let plan = lens
+                    .transcript
+                    .model
+                    .entries()
+                    .iter()
+                    .rev()
+                    .find_map(|entry| match entry {
+                        AgentThreadEntry::Plan { markdown, .. } => Some(markdown.clone()),
+                        _ => None,
+                    })
+                    .filter(|source| {
+                        let (done, total, _) = plan_progress(source);
+                        total > 0 && (done < total || running)
+                    });
+                plan.as_deref().and_then(|source| {
+                    let (label, current) = plan_chip_label(source)?;
+                    Some(json!({
+                        "plan": {
+                            "label": label,
+                            "current": current,
+                            "open": lens.plan_open,
+                            "items": plan_items(source).into_iter().map(|(state, text)| json!({
+                                "state": state,
+                                "text": text,
+                            })).collect::<Vec<_>>(),
+                        },
+                    }))
+                })
             });
-        let tray = plan.as_deref().and_then(|source| {
-            let (label, current) = plan_chip_label(source)?;
-            Some(json!({
-                "plan": {
-                    "label": label,
-                    "current": current,
-                    "open": lens.plan_open,
-                    "items": plan_items(source).into_iter().map(|(state, text)| json!({
-                        "state": state,
-                        "text": text,
-                    })).collect::<Vec<_>>(),
-                },
-            }))
-        });
+        let tray = plan_tray;
         let ask = head.map(|head| {
             let counter = (pending_count > 1).then(|| format!("1 of {pending_count}"));
             if let Some(card) = lens
@@ -822,7 +860,7 @@ impl Client {
                     "stopped": matches!(state.phase, AgentConnectionPhase::Failed { .. }),
                 })
             });
-        let empty = rows.is_empty().then(|| {
+        let empty = row_values.is_empty().then(|| {
             match agent_empty(
                 context.connected,
                 &state.phase,
@@ -849,6 +887,17 @@ impl Client {
                 })
             })
             .collect::<Vec<_>>();
+        let usage = lens
+            .transcript
+            .chat
+            .usage
+            .map(|usage| (usage.used, usage.size))
+            .or(lens.usage);
+        let settings = lens
+            .transcript
+            .settings
+            .clone()
+            .or_else(|| LensSettings::from_json(&state.config_options));
         json!({
             "pane": pane.0,
             "provider": context.provider.map(provider_id),
@@ -869,10 +918,15 @@ impl Client {
             "hint": active_command_hint(value, &lens.commands),
             "action": action,
             "actionEnabled": action_enabled,
-            "usage": lens.usage.map(|(used, size)| json!({
-                "fraction": context_usage_fraction(used, size),
-                "tooltip": context_usage_tooltip(used, size),
-            })),
+            "usage": usage.map(|(used, size)| {
+                let fraction = context_usage_fraction(used, size);
+                json!({
+                    "fraction": fraction,
+                    "percent": percent_label(fraction),
+                    "tooltip": context_usage_tooltip(used, size),
+                })
+            }),
+            "settings": settings.as_ref().map(settings_json),
             "git": state.git.as_ref().map(|git| json!({
                 "branch": git.branch,
                 "files": git_file_count_label(git.changed_files),
@@ -1258,6 +1312,534 @@ fn turn_json(
     })
 }
 
+fn chat_item_tool_name(kind: ItemKind) -> &'static str {
+    match kind {
+        ItemKind::Read => "read",
+        ItemKind::Search => "search",
+        ItemKind::Edit => "edit",
+        ItemKind::Execute => "execute",
+        ItemKind::Fetch | ItemKind::Web => "fetch",
+        ItemKind::Reasoning => "think",
+        _ => "other",
+    }
+}
+
+fn chat_item_label(item: &ItemView) -> String {
+    if let Some(target) = item.body.target.as_deref().map(str::trim)
+        && !target.is_empty()
+    {
+        return single_line(target).into_owned();
+    }
+    if !item.body.title.trim().is_empty() {
+        return single_line(&item.body.title).into_owned();
+    }
+    chat_item_tool_name(item.kind).to_owned()
+}
+
+fn chat_item_tool_json(item: &ItemView, live: bool) -> Value {
+    let running = item.status.is_open();
+    let spin = running && live;
+    let tint = match &item.status {
+        ItemStatus::Failed { .. } => Some("danger"),
+        ItemStatus::Declined | ItemStatus::Interrupted => Some("warning"),
+        ItemStatus::Running | ItemStatus::Completed => None,
+    };
+    let tag = match &item.status {
+        ItemStatus::Failed { .. } => item
+            .body
+            .exit_code
+            .filter(|code| *code != 0)
+            .map(|code| json!({ "text": format!("exit {code}"), "danger": true }))
+            .or_else(|| Some(json!({ "text": "failed", "danger": true }))),
+        ItemStatus::Declined => Some(json!({ "text": "denied", "danger": false })),
+        ItemStatus::Interrupted => Some(json!({ "text": "stopped", "danger": false })),
+        ItemStatus::Running | ItemStatus::Completed => None,
+    };
+    let opens = item.kind == ItemKind::Execute && !running && !item.body.text.trim().is_empty();
+    json!({
+        "kind": "tool",
+        "id": item.id.as_str(),
+        "label": chat_item_label(item),
+        "tool": chat_item_tool_name(item.kind),
+        "agent": false,
+        "spin": spin,
+        "tint": tint,
+        "tag": tag,
+        "opens": opens,
+    })
+}
+
+fn chat_item_images(item: &ItemView) -> Vec<String> {
+    item.body
+        .images
+        .iter()
+        .filter_map(|image| {
+            let data = BASE64.decode(&image.data).ok()?;
+            decode_image(&image.format, data)
+        })
+        .collect()
+}
+
+fn chat_unit_json(
+    lens: &mut Lens,
+    unit: &Unit,
+    now: u64,
+    live: bool,
+    copy_id: Option<&ItemId>,
+    rewind: Option<bool>,
+) -> Option<Value> {
+    match unit {
+        Unit::User(id) => {
+            let item = lens.transcript.chat.item(id)?.clone();
+            let text = item.body.text.clone();
+            let images = chat_item_images(&item);
+            let html = (!text.trim().is_empty())
+                .then(|| lens.chat_html(&format!("u:{}", id.as_str()), &text, false));
+            let source_id = agent_settings::source_message(id.as_str()).map(str::to_owned);
+            Some(json!({
+                "kind": "user",
+                "id": id.as_str(),
+                "key": format!("cu:{}", id.as_str()),
+                "html": html,
+                "images": images,
+                "rewind": rewind.and_then(|enabled| source_id.map(|msg| json!({ "id": msg, "enabled": enabled }))),
+            }))
+        }
+        Unit::Text(id) => {
+            let item = lens.transcript.chat.item(id)?.clone();
+            let text = item.body.text.clone();
+            let streaming = live && item.status.is_open();
+            let html = lens.chat_html(&format!("a:{}", id.as_str()), &text, streaming);
+            Some(json!({
+                "kind": "text",
+                "id": id.as_str(),
+                "html": html,
+                "copy": (copy_id == Some(id)).then_some(text),
+            }))
+        }
+        Unit::Notice(id) => {
+            let item = lens.transcript.chat.item(id)?.clone();
+            let html = lens.chat_html(&format!("n:{}", id.as_str()), &item.body.text, false);
+            Some(json!({
+                "kind": "notice",
+                "id": id.as_str(),
+                "html": html,
+            }))
+        }
+        Unit::Run(run) => {
+            let key = run
+                .items
+                .first()
+                .map_or_else(|| "run".to_owned(), |id| format!("run:{}", id.as_str()));
+            let expanded = lens.expanded_keys.contains(&key);
+            let (label, detail, running) = match &run.label {
+                RunLabel::Live { action, detail } => (
+                    (*action).to_owned(),
+                    (!detail.is_empty()).then(|| detail.clone()),
+                    true,
+                ),
+                RunLabel::Thinking { heading } => (
+                    heading
+                        .as_deref()
+                        .filter(|text| !text.is_empty())
+                        .unwrap_or("Thinking")
+                        .to_owned(),
+                    None,
+                    true,
+                ),
+                RunLabel::Done { summary } => (summary.clone(), None, false),
+            };
+            let steps = if expanded {
+                run.items
+                    .iter()
+                    .filter_map(|id| {
+                        let item = lens.transcript.chat.item(id)?.clone();
+                        if item.kind == ItemKind::Reasoning {
+                            let empty = item.body.text.trim().is_empty();
+                            let html = (!empty).then(|| {
+                                lens.chat_html(
+                                    &format!("r:{}", id.as_str()),
+                                    &item.body.text,
+                                    live && item.status.is_open(),
+                                )
+                            });
+                            Some(json!({
+                                "kind": "thought",
+                                "id": id.as_str(),
+                                "html": html,
+                            }))
+                        } else {
+                            Some(chat_item_tool_json(&item, live))
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            Some(json!({
+                "kind": "run",
+                "key": key,
+                "label": label,
+                "detail": detail,
+                "running": running && live,
+                "expanded": expanded,
+                "steps": steps,
+            }))
+        }
+        Unit::Subagent(id) => {
+            let item = lens.transcript.chat.item(id)?.clone();
+            let state = agent_state(&lens.transcript.chat, id)?;
+            let elapsed = agent_ms(&lens.transcript.chat, id, now).map(duration);
+            let key = format!("sub:{}", id.as_str());
+            let expanded = lens.expanded_keys.contains(&key);
+            let (status, summary) = match state {
+                AgentState::Working { label } => (
+                    "working",
+                    match label {
+                        RunLabel::Live { action, detail } => format!("{action} {detail}"),
+                        RunLabel::Thinking { heading } => {
+                            heading.unwrap_or_else(|| "Thinking".to_owned())
+                        }
+                        RunLabel::Done { summary } => summary,
+                    },
+                ),
+                AgentState::Waiting => ("waiting", "Waiting for your answer".to_owned()),
+                AgentState::Done { result } => ("done", result.unwrap_or_default()),
+                AgentState::Failed { message } => {
+                    ("failed", message.unwrap_or_else(|| "Failed".to_owned()))
+                }
+                AgentState::Stopped => ("stopped", "Stopped".to_owned()),
+            };
+            let children = if expanded {
+                let units = agent_rows(&lens.transcript.chat, id);
+                units
+                    .iter()
+                    .filter_map(|child| chat_unit_json(lens, child, now, live, None, None))
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            Some(json!({
+                "kind": "subagent",
+                "key": key,
+                "title": if item.body.title.trim().is_empty() { "Subagent" } else { item.body.title.as_str() },
+                "status": status,
+                "summary": single_line(&summary),
+                "elapsed": elapsed,
+                "expanded": expanded,
+                "children": children,
+            }))
+        }
+        Unit::Agents(ids) => {
+            let agents = ids
+                .iter()
+                .filter_map(|id| {
+                    chat_unit_json(lens, &Unit::Subagent(id.clone()), now, live, None, None)
+                })
+                .collect::<Vec<_>>();
+            Some(json!({
+                "kind": "agents",
+                "agents": agents,
+            }))
+        }
+        Unit::Plan(id) => {
+            let item = lens.transcript.chat.item(id)?.clone();
+            let items = item
+                .body
+                .steps
+                .iter()
+                .map(|step| {
+                    json!({
+                        "state": match step.status {
+                            StepStatus::Done => "done",
+                            StepStatus::Running => "inProgress",
+                            StepStatus::Pending => "pending",
+                            StepStatus::Cancelled => "cancelled",
+                        },
+                        "text": step.text,
+                    })
+                })
+                .collect::<Vec<_>>();
+            Some(json!({
+                "kind": "plan",
+                "id": id.as_str(),
+                "items": items,
+            }))
+        }
+        Unit::Record(request_id) => {
+            let request = lens.transcript.chat.request(*request_id)?;
+            let pairs = answered(request)
+                .into_iter()
+                .map(|(question, answer)| json!({ "question": question, "answer": answer }))
+                .collect::<Vec<_>>();
+            (!pairs.is_empty()).then(|| {
+                json!({
+                    "kind": "record",
+                    "id": request_id.0,
+                    "answers": pairs,
+                })
+            })
+        }
+        Unit::Child(card) => Some(json!({
+            "kind": "child",
+            "pane": card.pane.0,
+            "agent": provider_id(card.agent),
+            "state": format!("{:?}", card.state),
+        })),
+        Unit::Ask(_) | Unit::Page(_) => None,
+    }
+}
+
+fn chat_view_rows(lens: &mut Lens, running: bool, rewind: Option<bool>) -> Vec<Value> {
+    let now = now_ms();
+    let fold_map = child_fold(&lens.transcript.chat);
+    let turns = lens.transcript.chat.turns.clone();
+    let last_text = (!running)
+        .then(|| {
+            turns.last().and_then(|turn| {
+                turn.items.iter().rev().find_map(|id| {
+                    let item = lens.transcript.chat.item(id)?;
+                    (item.kind == ItemKind::Agent && !item.body.text.trim().is_empty())
+                        .then(|| id.clone())
+                })
+            })
+        })
+        .flatten();
+    let mut rows = Vec::new();
+    for turn in &turns {
+        let live = turn.is_open();
+        let tr = turn_rows(&lens.transcript.chat, turn, now, &fold_map);
+        let fold_key = format!("turn:{}", turn.id.0);
+        let expanded = lens.expanded_keys.contains(&fold_key);
+        let mut turn_units = Vec::new();
+        for unit in &tr.shown {
+            if let Unit::User(_) = unit {
+                if let Some(user_row) =
+                    chat_unit_json(lens, unit, now, live, last_text.as_ref(), rewind)
+                {
+                    rows.push(user_row);
+                }
+            } else if let Some(rendered) =
+                chat_unit_json(lens, unit, now, live, last_text.as_ref(), None)
+            {
+                turn_units.push(rendered);
+            }
+        }
+        let fold_json = tr
+            .fold
+            .filter(|_| !tr.folded.is_empty() || live)
+            .map(|fold| {
+                let state = match fold {
+                    Fold::Working { .. } => "live",
+                    Fold::Worked { .. } => "done",
+                    Fold::Stopped { .. } => "stopped",
+                    Fold::Failed { .. } => "failed",
+                };
+                let folded_units = if expanded {
+                    tr.folded
+                        .iter()
+                        .filter_map(|unit| chat_unit_json(lens, unit, now, live, None, None))
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
+                json!({
+                    "key": fold_key,
+                    "label": fold.label(),
+                    "state": state,
+                    "expanded": expanded,
+                    "activity": tr.activity,
+                    "units": folded_units,
+                })
+            });
+        if fold_json.is_some() || !turn_units.is_empty() {
+            rows.push(json!({
+                "kind": "chatTurn",
+                "id": turn.id.0,
+                "key": format!("ct:{}", turn.id.0),
+                "live": live,
+                "fold": fold_json,
+                "units": turn_units,
+            }));
+        }
+    }
+    let bg = background_rows(&lens.transcript.chat, &fold_map);
+    if !bg.is_empty() {
+        let units = bg
+            .iter()
+            .filter_map(|unit| {
+                chat_unit_json(
+                    lens,
+                    unit,
+                    now,
+                    chat_rows::background_live(&lens.transcript.chat),
+                    None,
+                    None,
+                )
+            })
+            .collect::<Vec<_>>();
+        if !units.is_empty() {
+            rows.push(json!({
+                "kind": "chatTurn",
+                "id": 0,
+                "key": "ct:bg",
+                "live": chat_rows::background_live(&lens.transcript.chat),
+                "fold": Value::Null,
+                "units": units,
+            }));
+        }
+    }
+    rows
+}
+
+fn chat_plan_tray(chat: &ChatView, running: bool, open: bool) -> Option<Value> {
+    let steps = chat
+        .turns
+        .iter()
+        .rev()
+        .flat_map(|turn| turn.items.iter().rev())
+        .find_map(|id| {
+            let item = chat.item(id)?;
+            (item.kind == ItemKind::Plan && !item.body.steps.is_empty()).then_some(&item.body.steps)
+        })?;
+    let total = steps.len();
+    let done = steps
+        .iter()
+        .filter(|step| step.status == StepStatus::Done)
+        .count();
+    if total == 0 || (done >= total && !running) {
+        return None;
+    }
+    let current = steps
+        .iter()
+        .find(|step| step.status == StepStatus::Running)
+        .or_else(|| steps.iter().find(|step| step.status == StepStatus::Pending))
+        .map(|step| step.text.clone());
+    Some(json!({
+        "plan": {
+            "label": format!("{done}/{total}"),
+            "current": current,
+            "open": open,
+            "items": steps.iter().map(|step| json!({
+                "state": match step.status {
+                    StepStatus::Done => "done",
+                    StepStatus::Running => "inProgress",
+                    StepStatus::Pending => "pending",
+                    StepStatus::Cancelled => "cancelled",
+                },
+                "text": step.text,
+            })).collect::<Vec<_>>(),
+        }
+    }))
+}
+
+fn settings_json(settings: &LensSettings) -> Value {
+    let choices = |list: &[agent_settings::Choice]| {
+        list.iter()
+            .map(|choice| json!({ "value": choice.value, "name": choice.name }))
+            .collect::<Vec<_>>()
+    };
+    json!({
+        "model": settings.shown_model(),
+        "modelLabel": settings.model_label,
+        "models": choices(&settings.models),
+        "effort": settings.shown_effort(),
+        "effortName": settings.effort_name(),
+        "efforts": choices(&settings.efforts),
+        "mode": settings.mode,
+        "modeName": settings.mode_name(),
+        "modes": choices(&settings.modes),
+    })
+}
+
+fn mermaid_caption(source: &str) -> &'static str {
+    let Ok(Some(found)) = pele::detect_type(source) else {
+        return "Diagram";
+    };
+    match found.diagram_type {
+        "flowchart" => "Flowchart",
+        "sequence" => "Sequence diagram",
+        "pie" => "Pie chart",
+        "quadrantChart" => "Quadrant chart",
+        "class" => "Class diagram",
+        "state" => "State diagram",
+        "er" => "ER diagram",
+        "gantt" => "Gantt chart",
+        _ => "Diagram",
+    }
+}
+
+fn render_mermaid_svg(source: &str, theme_json: &str) -> Value {
+    if !pele::supports(source) {
+        return json!({ "ok": false, "unsupported": true });
+    }
+    let colors = serde_json::from_str::<Value>(theme_json).unwrap_or(Value::Null);
+    let pick = |key: &str, fallback: &str| {
+        colors
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(fallback)
+            .to_owned()
+    };
+    let series = colors
+        .get("series")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .filter(|items| !items.is_empty())
+        .unwrap_or_else(|| {
+            vec![
+                pick("accent", "#5b8def"),
+                pick("success", "#4ea874"),
+                pick("warning", "#d9a441"),
+                pick("danger", "#d96060"),
+            ]
+        });
+    let options = pele::RenderOptions {
+        font_size: 13.0,
+        font_family: pick("font", "Inter Variable, system-ui, sans-serif"),
+        font_family_mono: pick("mono", "Lilex, ui-monospace, monospace"),
+        id_prefix: "zz-mermaid".to_owned(),
+        max_width: Some(640.0),
+        transparent: true,
+        theme: pele::Theme {
+            background: pick("background", "#1c1c1e"),
+            foreground: pick("foreground", "#e6e6e8"),
+            muted: pick("muted", "#9a9aa0"),
+            line: pick("muted", "#9a9aa0"),
+            surface: pick("surface", "#252528"),
+            surface_alt: pick("surfaceAlt", "#2c2c30"),
+            border: pick("border", "#3a3a3f"),
+            accent: series[0].clone(),
+            node: Some(pick("node", "#27272b")),
+            node_border: Some(pick("nodeBorder", "#43434a")),
+            series,
+            radius: colors.get("radius").and_then(Value::as_f64).unwrap_or(8.0),
+            stroke_width: 1.25,
+        },
+        ..pele::RenderOptions::default()
+    };
+    match pele::render(source, &options) {
+        Ok(rendered) => json!({
+            "ok": true,
+            "svg": rendered.svg,
+            "width": rendered.width,
+            "height": rendered.height,
+            "title": mermaid_caption(source),
+        }),
+        Err(error) => json!({
+            "ok": false,
+            "error": error.to_string(),
+        }),
+    }
+}
+
 #[wasm_bindgen]
 impl Client {
     pub fn agent_connection(&mut self, connected: bool) {
@@ -1532,6 +2114,147 @@ impl Client {
             let expanded = lens.expanded.entry(id as u64).or_insert(false);
             *expanded = !*expanded;
         }
+    }
+
+    pub fn agent_toggle_key(&mut self, pane: f64, key: &str) {
+        if let Some(lens) = self.agents.views.get_mut(&pane_id(pane))
+            && !lens.expanded_keys.remove(key)
+        {
+            lens.expanded_keys.insert(key.to_owned());
+        }
+    }
+
+    pub fn agent_set_config(&mut self, pane: f64, option: &str, value: &str) -> bool {
+        if !self.writable() {
+            return false;
+        }
+        let pane = pane_id(pane);
+        if let Some(lens) = self.agents.views.get_mut(&pane) {
+            let settings = lens.transcript.settings.get_or_insert_with(|| {
+                self.core
+                    .agent_state(pane)
+                    .and_then(|state| LensSettings::from_json(&state.config_options))
+                    .unwrap_or_default()
+            });
+            match option {
+                agent_settings::MODEL => {
+                    value.clone_into(&mut settings.model);
+                    settings.model_label = settings
+                        .models
+                        .iter()
+                        .find(|choice| choice.value == value && !choice.name.is_empty())
+                        .map_or_else(|| value.to_owned(), |choice| choice.name.clone());
+                }
+                agent_settings::EFFORT => value.clone_into(&mut settings.effort),
+                agent_settings::MODE => value.clone_into(&mut settings.mode),
+                _ => {}
+            }
+        }
+        self.send(&ProtocolMessage::AgentSetConfigOption {
+            pane,
+            option_id: option.to_owned(),
+            value: value.to_owned(),
+        });
+        true
+    }
+
+    pub fn agent_open_output_key(&mut self, pane: f64, item_id: &str) {
+        let pane = pane_id(pane);
+        let cwd = self
+            .pane_snapshot(pane)
+            .map(|snapshot| snapshot.summary.cwd.clone())
+            .unwrap_or_default();
+        let Some(args) = self.agents.views.get(&pane).and_then(|lens| {
+            let item = lens
+                .transcript
+                .chat
+                .item(&ItemId::new(item_id.to_owned()))?;
+            zz_client::agent_output::output_pane_args(
+                pane,
+                std::path::Path::new(&cwd),
+                &chat_item_label(item),
+                item.body.exit_code.map(i64::from),
+                &item.body.text,
+            )
+        }) else {
+            return;
+        };
+        if self.writable() {
+            self.invoke(CommandInvocation::new("split-window", args));
+        }
+    }
+
+    pub fn agent_mentions(&self, pane: f64, query: &str) -> String {
+        let needle = query.trim().to_ascii_lowercase();
+        let current_pane = pane_id(pane);
+        let mut results = Vec::new();
+        for session in &self.core.snapshot().sessions {
+            for window in &session.windows {
+                for candidate in window.panes.values() {
+                    if candidate.id == current_pane {
+                        continue;
+                    }
+                    let label = zz_client::window_summary::pane_heading(candidate).title;
+                    let token = format!("pane:%{}", candidate.id.0);
+                    let detail = format!("{} · {}", window.name, candidate.summary.cwd);
+                    if needle.is_empty()
+                        || label.to_ascii_lowercase().contains(&needle)
+                        || window.name.to_ascii_lowercase().contains(&needle)
+                        || token.to_ascii_lowercase().contains(&needle)
+                    {
+                        results.push(json!({
+                            "label": label,
+                            "detail": detail,
+                            "insert": format!("@{token} "),
+                            "icon": crate::tree::kind(&candidate.kind),
+                        }));
+                    }
+                }
+            }
+        }
+        results.truncate(12);
+        Value::Array(results).to_string()
+    }
+
+    pub fn render_mermaid(&self, source: &str, theme_json: &str) -> String {
+        render_mermaid_svg(source, theme_json).to_string()
+    }
+
+    pub fn markdown_to_html(&self, source: &str) -> String {
+        markdown_html(source)
+    }
+
+    pub fn open_view_pane(
+        &mut self,
+        pane: f64,
+        title: &str,
+        kind: &str,
+        language: Option<String>,
+        text: &str,
+        float_rows: u16,
+    ) {
+        if !self.writable() {
+            return;
+        }
+        let mut args = vec![
+            "-t".to_owned(),
+            pane_id(pane).to_string(),
+            "-T".to_owned(),
+            title.to_owned(),
+        ];
+        if float_rows > 0 {
+            args.push("-y".to_owned());
+            args.push(float_rows.to_string());
+        }
+        args.push("-k".to_owned());
+        args.push(kind.to_owned());
+        if let Some(language) = language.filter(|lang| !lang.is_empty()) {
+            args.push("-l".to_owned());
+            args.push(language);
+        }
+        args.push("--".to_owned());
+        args.push(text.to_owned());
+        self.invoke(CommandInvocation::new("view-pane", args));
     }
 
     pub fn agent_plan(&mut self, pane: f64) {

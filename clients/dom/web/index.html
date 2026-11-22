@@ -6,6 +6,7 @@
 <title>zz</title>
 <link rel="stylesheet" href="kit/penna.css">
 <link rel="stylesheet" href="kit/slider.css">
+<link rel="stylesheet" href="kit/segmented.css">
 <link rel="stylesheet" href="kit/zz.css">
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/sidebar.css">
@@ -17,15 +18,20 @@
 <link rel="stylesheet" href="css/agent.css">
 <link rel="stylesheet" href="css/browser.css">
 <script src="kit/kit.js" data-theme="default"></script>
+<script src="kit/segmented.js" defer></script>
 </head>
 <body>
 <div class="penna-window app" data-penna="window">
   <nav data-penna="sidebar">
     <div class="penna-strip">
-      <span data-penna="badge" data-tone="primary" id="prefix" hidden>prefix</span>
+      <div class="chrome-controls">
+        <span class="chrome-logo"><img id="chrome-logo" alt="zz"></span>
+        <button data-penna="chrome.button" id="app-menu" title="App menu"><i data-icon="menu"></i></button>
+        <button data-penna="chrome.button" id="flat-list" title="Show chats"><i data-icon="layers"></i></button>
+        <button data-penna="chrome.button" id="toggle-sidebar" title="Toggle sidebar"><i data-icon="panel-left"></i></button>
+      </div>
       <span class="grow"></span>
-      <button data-penna="chrome.button" id="flat-list" title="Show chats"><i data-icon="layers"></i></button>
-      <button data-penna="chrome.button" id="toggle-sidebar" title="Toggle sidebar"><i data-icon="panel-left"></i></button>
+      <span data-penna="badge" data-tone="primary" id="prefix" hidden>prefix</span>
     </div>
     <div class="sidebar-actions" id="sidebar-actions"></div>
     <div id="tree"></div>

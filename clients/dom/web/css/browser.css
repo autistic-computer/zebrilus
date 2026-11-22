@@ -1,11 +1,124 @@
+.browser-header[data-penna="bar.pane"] {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  height: 74px;
+  padding: 0 0 6px;
+  gap: 0;
+  box-shadow: inset 0 -1px var(--penna-divider);
+}
+
+.browser-tab-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  padding: 0 6px;
+  color: var(--penna-muted);
+}
+
+.browser-tabs-wrap {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+}
+
+.browser-pane-title {
+  flex: none;
+  cursor: var(--penna-click-cursor);
+}
+
+.browser-tab-group {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.browser-tabs[data-penna="tab.strip"] {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.browser-tab[data-penna="tab.page"] {
+  display: inline-flex;
+  flex: 0 1 240px;
+  align-items: center;
+  gap: 5px;
+  min-width: 36px;
+  height: 28px;
+  padding: 0 9px;
+  font-size: 13px;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: var(--penna-click-cursor);
+  --penna-icon-size: 14px;
+  --penna-inside-rows: 28px;
+}
+
+.browser-tab[data-penna="tab.page"]:has(> .browser-tab-close) {
+  padding-right: 4px;
+}
+
+.browser-tab-icon {
+  flex: none;
+  color: var(--penna-muted);
+}
+
+.browser-tab-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browser-new-tab[data-penna="icon-button"] {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--penna-muted);
+  --penna-icon-size: 14px;
+}
+
+.browser-pane-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--penna-muted);
+}
+
+[data-pane]:not([data-active]) .browser-header:not(:hover) .browser-pane-actions {
+  visibility: hidden;
+}
+
 .browser-toolbar {
   display: flex;
   flex: none;
   align-items: center;
   gap: 4px;
+  width: 100%;
   height: 28px;
   padding: 0 6px;
-  box-shadow: inset 0 -1px var(--penna-divider);
+  color: var(--penna-fg);
 }
 
 .browser-cluster {
@@ -18,18 +131,230 @@
 .browser-toolbar [data-penna="icon-button"] {
   display: inline-grid;
   place-items: center;
+  flex: none;
   width: 28px;
   height: 28px;
   padding: 0;
   --penna-icon-size: 14px;
 }
 
-.browser-url {
+.browser-address[data-penna="field.address"] {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px 0 2.5px;
+}
+
+.browser-site-btn[data-penna="icon-button.flat"] {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--penna-muted);
+  --penna-icon-size: 14px;
+}
+
+.browser-url-input {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
+  height: 100%;
+  padding: 0 6px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--penna-fg);
+  font: 13px/16px var(--penna-font);
+}
+
+.browser-url-input::placeholder {
+  color: var(--penna-muted);
+}
+
+.browser-pick-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: color-mix(in oklab, var(--penna-accent) 14%, var(--penna-bg));
+  border-bottom: 1px solid color-mix(in oklab, var(--penna-accent) 35%, transparent);
   font-size: 12px;
-  white-space: nowrap;
+  color: var(--penna-fg);
+  --penna-icon-size: 13px;
+}
+
+.browser-pick-bar > span {
+  flex: 1;
+}
+
+.browser-picked-banner {
+  padding: 8px 12px 0;
+}
+
+.browser-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  --penna-icon-size: 13px;
+}
+
+.browser-notice > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.browser-notice code {
+  font-family: var(--penna-mono);
+  color: var(--penna-accent);
+}
+
+.browser-viewport {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: transparent;
+}
+
+.browser-mock-page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.browser-mock-page.centered {
+  justify-content: center;
+}
+
+.browser-mock-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.browser-mock-left,
+.browser-mock-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.browser-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--penna-success);
+}
+
+.browser-mock-host {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.browser-mock-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+}
+
+.browser-mock-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+
+.browser-mock-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.browser-mock-sub {
+  font-size: 12px;
+}
+
+.browser-ac-ascii {
+  margin: 0;
+  font-family: var(--penna-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.browser-ac-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.browser-ac-link {
+  font-size: 11px;
+  color: var(--penna-accent);
+}
+
+.is-pickable {
+  cursor: crosshair;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.is-pickable:hover,
+.is-picked {
+  outline: 1.5px solid var(--penna-accent);
+  background: color-mix(in oklab, var(--penna-accent) 12%, var(--penna-panel)) !important;
+}
+
+.browser-start {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.browser-start-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.browser-start-head {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.browser-recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.browser-recent-row {
+  justify-content: flex-start;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  font-size: 12px;
+  cursor: var(--penna-click-cursor);
 }
 
 .browser-message {
@@ -40,7 +365,7 @@
   justify-content: center;
   gap: 12px;
   padding: 24px;
-  background: var(--penna-bg);
+  background: transparent;
   --penna-icon-size: 26px;
 }
 

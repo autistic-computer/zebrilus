@@ -121,6 +121,11 @@ document.addEventListener("paste", (event) => {
   const text = event.clipboardData?.getData("text/plain");
   if (!text) return;
   event.preventDefault();
+  const warning = state.client.paste_warning(text);
+  if (warning) {
+    emit("clientMessage", { pane: at.pane, kind: "Warning", text: warning, durationMs: 5000, messageId: null });
+    return;
+  }
   state.client.terminal_paste(at.pane, at.output, text);
   flush();
   markPane(at.pane);
@@ -137,7 +142,9 @@ for (const [type, focused] of [
   });
 }
 
-on("attached", focusTerminal);
+const embedded = new URLSearchParams(location.search).has("embed");
+
+if (!embedded) on("attached", focusTerminal);
 on("focusTerminal", focusTerminal);
 on("commandOutput", () => {
   if (state.client?.command_output_pane() != null) focusTerminal();

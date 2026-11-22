@@ -1,4 +1,5 @@
 import { emit, flush, markPane, on, state } from "./core.js";
+import { preferences } from "./preferences.js";
 import { panes, paneRenderer } from "./workspace.js";
 
 const THUMB_WIDTH = 6;
@@ -23,12 +24,21 @@ export function padding() {
   return state.appearance?.padding || [2, 4, 2, 4];
 }
 
-const scale = () => devicePixelRatio || 1;
+const zoomFactor = () => preferences.zoom || 1;
+const scale = () => (devicePixelRatio || 1) * zoomFactor();
 const snap = (value) => Math.round(value * scale()) / scale();
 
 function family() {
-  const fonts = (state.appearance?.fonts || []).map((font) => `"${font}"`);
+  const configured = preferences.terminal_font_family ? [preferences.terminal_font_family] : [];
+  const host = configured.length ? [] : (state.appearance?.fonts || []);
+  const fonts = [...configured, ...host].map((font) => `"${font}"`);
   return [...fonts, '"Lilex"', "ui-monospace", "monospace"].join(", ");
+}
+
+function baseFontSize() {
+  const host = state.appearance?.size || 13;
+  const factor = preferences.terminal_font_scale || 1;
+  return Math.min(48, Math.max(7, host * factor));
 }
 
 function metrics(size) {
@@ -38,14 +48,19 @@ function metrics(size) {
   probe.className = "probe";
   probe.style.font = `${state.appearance?.weight || 400} ${size}px ${family()}`;
   probe.style.lineHeight = "normal";
+  probe.style.fontKerning = "none";
+  probe.style.fontVariantLigatures = "none";
   probe.textContent = "m".repeat(100);
   document.body.append(probe);
   const box = probe.getBoundingClientRect();
   probe.remove();
+  const zoom = zoomFactor();
+  const rawWidth = box.width / zoom;
+  const rawHeight = box.height / zoom;
   const device = 1 / scale();
-  const advance = box.width / 100 > 1 ? box.width / 100 : 8;
+  const advance = rawWidth / 100 > 1 ? rawWidth / 100 : 8;
   const width = Math.max(snap(Math.max(advance, device)), device);
-  const height = state.client ? state.client.terminal_metrics(box.height, scale()) : snap(box.height);
+  const height = state.client ? state.client.terminal_metrics(rawHeight, scale()) : snap(rawHeight);
   const result = { size, width, height, advance };
   metricsCache.set(key, result);
   return result;
@@ -60,7 +75,7 @@ function measure() {
   root.setProperty("--term-font", family());
   root.setProperty("--term-weight", String(state.appearance?.weight || 400));
   root.setProperty("--term-padding", `${top}px ${right}px ${bottom}px ${left}px`);
-  const cell = metrics(state.appearance?.size || 13);
+  const cell = metrics(baseFontSize());
   state.cell = { width: cell.width, height: cell.height };
   for (const view of views.values()) {
     view.size = null;
@@ -185,14 +200,15 @@ function terminal(pane) {
       return pane.id;
     },
     metrics() {
-      const base = state.appearance?.size || 13;
-      return metrics(Math.min(48, Math.max(7, base + view.fontDelta)));
+      return metrics(Math.min(48, Math.max(7, baseFontSize() + view.fontDelta)));
     },
     measureGrid() {
       const cell = view.metrics();
       const surface = $(".surface");
-      const width = surface.clientWidth;
-      const height = surface.clientHeight;
+      const rect = surface.getBoundingClientRect();
+      const zoom = zoomFactor();
+      const width = rect.width > 0 ? rect.width / zoom : surface.clientWidth;
+      const height = rect.height > 0 ? rect.height / zoom : surface.clientHeight;
       const tolerance = (1 / scale()) * 0.01;
       const columns = Math.max(1, Math.floor((width + tolerance) / cell.width));
       const rows = Math.max(1, Math.floor((height + tolerance) / cell.height));
@@ -855,6 +871,16 @@ export async function uploadImage(pane, file) {
 
 paneRenderer("terminal", terminal);
 on("appearance", measure);
+on("preferences", ({ preferences: next, previous }) => {
+  if (
+    next.terminal_font_family !== previous?.terminal_font_family ||
+    next.terminal_font_scale !== previous?.terminal_font_scale ||
+    next.zoom !== previous?.zoom
+  ) {
+    measure();
+  }
+});
+on("terminalFind", () => activeView()?.openSearch());
 on("theme", markAll);
 on("focus", markAll);
 on("commandOutput", markAll);

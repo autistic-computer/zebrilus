@@ -19,21 +19,10 @@ Logic the ala client decided outside of drawing moved into `zz-client` and both 
   those types carry ala types. Move them into `zz-client` with plain types and delete the copies.
 - The DOM palette has no GUI settings verbs, no `insert path` file level and no vim mode; recent
   places live only for the page's lifetime.
-- Settings' Look group on ala draws Mode, Controls and Glass as segmented controls and the theme
-  file's Copy, Paste and Reset in a menu; the DOM page draws mode tiles, Controls and Glass as
-  selects, and the theme file actions as buttons.
-- A split pane reports about 2 fewer terminal columns than ala for the same width, so long lines
-  wrap earlier. Check the column math in `terminal.js` against `clients/app/src/terminal.rs`
-  (padding, scrollbar gutter, rounding).
-- Terminal: popup terminals have a view but nothing mounts them; the find bar input has no focus
-  ring (the kit has no focused field token); bold and italic font families and ligatures are not
-  used.
-- Workspace: throwing or stashing a float, spring motion, program icons (no artwork in the kit),
-  pane stack hover in window tabs, tooltips, the narrow (phone) layout.
-- Overlays: which-key UI (ala draws it only on phone layouts), the Unzoom chip for
-  `choose-tree -Z`.
+- Terminal: popup terminals have a view but nothing mounts them; separate bold and italic font
+  families are not overridden independently.
+- Workspace: throwing or stashing a float, spring motion, pane stack hover in window tabs, tooltips,
+  the narrow (phone) layout.
+- Overlays: which-key UI (ala draws it only on phone layouts).
 - Settings: narrow layout, ala's own color picker and font list, minimum contrast in the terminal
-  preview, the Advanced fade, toasts drawn by the overlays module.
-- Agent: syntax highlighting in code blocks, HTML/Mermaid/SVG previews, the `@` picker; question
-  cards, plans, background tasks, the queue chip, error cards and jump-to-bottom are shared logic but
-  unchecked visually because no test agent produced them.
+  preview, the Advanced fade.

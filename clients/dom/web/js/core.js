@@ -1,8 +1,12 @@
-import init, { Client } from "../pkg/zz_dom.js";
+import init, * as wasm from "../pkg/zz_dom.js";
 
 export const state = {
   client: null,
   socket: null,
+  host: null,
+  hosts: [],
+  hostId: "local",
+  showcase: false,
   tree: null,
   appearance: null,
   cell: { width: 8, height: 16 },
@@ -38,13 +42,80 @@ export function phase(name, handler) {
   phases[name].push(handler);
 }
 
+let flushing = false;
+
+function receiveFrame(client, bytes) {
+  let events;
+  try {
+    events = JSON.parse(client.receive(bytes));
+  } catch (error) {
+    status(String(error));
+    return [];
+  }
+  return events;
+}
+
+function flushHost(entry, active) {
+  if (!entry.host) return;
+  while (true) {
+    let progressed = false;
+    let outbound;
+    while ((outbound = entry.client.outbound())) {
+      progressed = true;
+      entry.host.send(outbound);
+    }
+    let inbound;
+    while ((inbound = entry.host.outbound())) {
+      progressed = true;
+      const events = receiveFrame(entry.client, inbound);
+      for (const event of events) {
+        if (event.type === "hello") entry.connected = true;
+        if (event.type === "attached") entry.remembered = `$${event.session}`;
+        if (active) emit(event.type, event);
+      }
+    }
+    if (!progressed) break;
+  }
+}
+
 export function flush() {
-  const { client, socket } = state;
+  const { client, socket, host } = state;
   if (!client) return;
+  if (host) {
+    if (flushing) return;
+    flushing = true;
+    try {
+      for (const entry of state.hosts) {
+        flushHost(entry, entry.id === state.hostId);
+      }
+    } finally {
+      flushing = false;
+    }
+    return;
+  }
   let message;
   while ((message = client.outbound())) {
     if (socket?.readyState === WebSocket.OPEN) socket.send(message);
   }
+}
+
+export function switchHost(id, after) {
+  const next = state.hosts.find((entry) => entry.id === id);
+  if (!next) return;
+  const changed = state.hostId !== next.id;
+  if (changed) {
+    state.hostId = next.id;
+    state.client = next.client;
+    state.host = next.host;
+    state.connected = next.connected;
+    state.client.color_scheme(dark());
+    state.client.focus(document.hasFocus());
+    emit("hostSwitched", { id: next.id });
+    emit("appearance");
+  }
+  if (after) after(next.client);
+  flush();
+  markTree();
 }
 
 export function command(name, args = []) {
@@ -106,7 +177,37 @@ export function status(text) {
 }
 
 function connect() {
-  state.client = new Client(Math.floor(Math.random() * 2 ** 52) + 1);
+  if (typeof wasm.ShowcaseHost === "function") {
+    state.showcase = true;
+    const specs = typeof wasm.ShowcaseHost.hosts === "function"
+      ? JSON.parse(wasm.ShowcaseHost.hosts())
+      : [{ id: "local", name: "This computer", local: true }];
+    state.hosts = specs.map((spec, index) => {
+      const client = new wasm.Client(Math.floor(Math.random() * 2 ** 52) + index + 1);
+      client.set_host_name(spec.name);
+      const host = new wasm.ShowcaseHost(spec.id);
+      return { id: spec.id, name: spec.name, local: spec.local, client, host, connected: false, remembered: "" };
+    });
+    const primary = state.hosts[0];
+    state.hostId = primary.id;
+    state.client = primary.client;
+    state.host = primary.host;
+    status("Attaching…");
+    for (const entry of state.hosts) {
+      entry.client.hello("", dark());
+    }
+    flush();
+    for (const entry of state.hosts) {
+      entry.client.sidebar_hello(Date.now() / 1000);
+    }
+    markTree();
+    return;
+  }
+  const client = new wasm.Client(Math.floor(Math.random() * 2 ** 52) + 1);
+  client.set_host_name("This computer");
+  state.client = client;
+  state.hostId = "local";
+  state.hosts = [{ id: "local", name: "This computer", local: true, client, host: null, connected: false, remembered: "" }];
   const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
   state.socket = socket;
   socket.binaryType = "arraybuffer";
@@ -116,18 +217,13 @@ function connect() {
     flush();
   };
   socket.onmessage = (message) => {
-    let events;
-    try {
-      events = JSON.parse(state.client.receive(new Uint8Array(message.data)));
-    } catch (error) {
-      status(String(error));
-      return;
-    }
+    const events = receiveFrame(state.client, new Uint8Array(message.data));
     flush();
     for (const event of events) emit(event.type, event);
   };
   socket.onclose = () => {
     state.connected = false;
+    if (state.hosts[0]) state.hosts[0].connected = false;
     status("Disconnected. Retrying…");
     emit("disconnected");
     setTimeout(connect, 1500);
@@ -136,6 +232,8 @@ function connect() {
 
 on("hello", () => {
   state.connected = true;
+  const active = state.hosts.find((entry) => entry.id === state.hostId);
+  if (active) active.connected = true;
   emit("appearance");
 });
 
@@ -157,10 +255,10 @@ export async function start() {
   await init();
   new MutationObserver(() => {
     if (!state.client) return;
-    state.client.color_scheme(dark());
+    for (const entry of state.hosts) entry.client.color_scheme(dark());
     flush();
     emit("theme");
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-penna-mode", "data-penna-theme"] });
-  globalThis.zzDom = { state, emit, on, command };
+  globalThis.zzDom = { state, emit, on, command, switchHost };
   connect();
 }

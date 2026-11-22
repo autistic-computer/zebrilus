@@ -6,10 +6,13 @@ use zz_client::{
     ChromeKeymap, ChromeProfile, DropZone, MAX_VISIBLE_WINDOWS, PaneRect, SIDEBAR_TABLE,
     StatusBarModel, UI_TABLE, coerced_drop_zone, drop_preview_bounds, drop_zone_at,
     floating::{
-        FloatCells, PipGeometry, float_pane_commands, float_placement, float_title,
-        tile_pane_command, zoom_pane_command,
+        FloatCells, FloatGrip, FloatWindow, PipGeometry, float_drag_command, float_drag_preview,
+        float_pane_commands, float_placement, float_title, tile_pane_command, zoom_pane_command,
     },
-    navigation::{RenameTarget, ordered_panes, pane_folder, rename_prompt_command, session_label},
+    navigation::{
+        RenameTarget, kill_session_prompt_command, ordered_panes, pane_folder,
+        rename_prompt_command, session_label,
+    },
     new_chat::{
         AGENT_CHOICES, ChatKey, ChatPicker, ChatStage, ChatViewPlace, FolderChoice,
         agent_picker_place, close_picker_command, folder_rows, landing_chat_commands,
@@ -19,6 +22,7 @@ use zz_client::{
     pane_picker::{PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
     pane_separator::{SeparatorSide, pane_separator},
     picker_split_command, predicted_drop_layout,
+    program::{Look, Program},
     sidebar::{
         SidebarBadge, SidebarNode, SidebarTarget, TreeNavigation, TreeNavigationResult,
         navigation_rows, sidebar_activation, sidebar_active, sidebar_active_path,
@@ -26,18 +30,29 @@ use zz_client::{
         tree_navigation,
     },
     split_ratio_basis, visible_window_range,
-    window_summary::{Attention, DaemonClock, PaneTag, Tone, age_label, summarize_chats},
+    window_summary::{
+        Attention, ChatHints, ChatParent, ChatRow, DaemonClock, DetailPart, PaneEntry, PaneTag,
+        PaneTile, Tone, WindowRow, age_label, pane_agent, pane_program, summarize_chat_machine,
+    },
 };
 use zz_protocol::{
-    Axis, CommandInvocation, InputMessage, LayoutNode, MuxOptionKey, PaneBorderLines, PaneId,
-    PaneKindSnapshot, SplitId, WindowId, WindowSnapshot,
+    AgentProvider, Axis, CommandInvocation, InputMessage, LayoutNode, MuxOptionKey,
+    PaneBorderLines, PaneId, PaneKindSnapshot, SplitId, WindowId, WindowSnapshot,
 };
 use zz_terminal::{KeyAction, KeyCode, KeyInput, Modifiers};
 
 use crate::{Client, terminal::key_code};
 
 #[derive(Default)]
+struct FlatState {
+    hints: ChatHints,
+    open_windows: BTreeSet<WindowId>,
+    pile_open: bool,
+}
+
+#[derive(Default)]
 pub struct Sidebar {
+    host_name: Option<String>,
     collapsed: BTreeSet<SidebarTarget>,
     selection: Option<SidebarTarget>,
     pointer_selection: bool,
@@ -49,6 +64,13 @@ pub struct Sidebar {
     chat_view: bool,
     place: ChatViewPlace,
     landing_picker: ChatPicker,
+    flat: FlatState,
+}
+
+impl Sidebar {
+    fn host_label(&self) -> &str {
+        self.host_name.as_deref().unwrap_or("This computer")
+    }
 }
 
 #[wasm_bindgen]
@@ -243,12 +265,18 @@ impl Client {
             .filter(|float| float.visible)
             .filter_map(|float| {
                 let modal = window.modal.filter(|modal| modal.pane == float.pane);
-                let (placed, content) = float_placement(float, cell, canvas)?;
-                let frame = if modal.is_some() {
-                    placed
+                let (frame, inset) = if modal.is_some() {
+                    let (placed, content) = float_placement(float, cell, canvas)?;
+                    (placed, [content.x - placed.x, content.y - placed.y])
                 } else {
-                    pip_geometry(window, cell, canvas, float.border_lines, header)
-                        .frame(FloatCells::from(float))
+                    let frame = pip_geometry(window, cell, canvas, float.border_lines, header)
+                        .frame(FloatCells::from(float));
+                    let pad = if float.border_lines == PaneBorderLines::None {
+                        0.0
+                    } else {
+                        1.0
+                    };
+                    (frame, [pad * cell.0, pad * cell.1])
                 };
                 let title = window
                     .panes
@@ -262,7 +290,7 @@ impl Client {
                     "closeOnClick": modal.is_some_and(|modal| modal.close_on_click),
                     "bordered": float.border_lines != PaneBorderLines::None,
                     "frame": [frame.x, frame.y, frame.width, frame.height],
-                    "inset": [content.x - placed.x, content.y - placed.y],
+                    "inset": inset,
                     "title": title,
                     "cells": [float.xoff, float.yoff, float.sx, float.sy],
                 }))
@@ -319,6 +347,96 @@ impl Client {
             return false;
         }
         self.invoke(place.command(pane));
+        true
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "wasm-bindgen JS boundary takes flat scalar and typed-array arguments"
+    )]
+    pub fn float_resize_preview(
+        &self,
+        window: f64,
+        pane: f64,
+        cell: Vec<f32>,
+        canvas: Vec<f32>,
+        header: f32,
+        grip: &str,
+        delta: Vec<i32>,
+    ) -> Vec<f32> {
+        let pane = pane_id(pane);
+        let Some(grip) = parse_float_grip(grip) else {
+            return Vec::new();
+        };
+        let Some(rect) = self.window(window).and_then(|window| {
+            let float = window.floating.iter().find(|float| float.pane == pane)?;
+            let geometry = pip_geometry(
+                window,
+                (cell[0], cell[1]),
+                (canvas[0], canvas[1]),
+                float.border_lines,
+                header,
+            );
+            let start = FloatCells::from(float);
+            let target =
+                geometry.within(float_drag_preview(start, grip, (delta[0], delta[1])), grip);
+            Some(geometry.frame(target))
+        }) else {
+            return Vec::new();
+        };
+        vec![rect.x, rect.y, rect.width, rect.height]
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "wasm-bindgen JS boundary takes flat scalar and typed-array arguments"
+    )]
+    pub fn float_resize(
+        &mut self,
+        window: f64,
+        pane: f64,
+        cell: Vec<f32>,
+        canvas: Vec<f32>,
+        header: f32,
+        grip: &str,
+        delta: Vec<i32>,
+    ) -> bool {
+        let pane = pane_id(pane);
+        let Some(grip) = parse_float_grip(grip) else {
+            return false;
+        };
+        if self.core.attached_read_only() {
+            return false;
+        }
+        let Some(command) = self.window(window).and_then(|window| {
+            let float = window.floating.iter().find(|float| float.pane == pane)?;
+            let geometry = pip_geometry(
+                window,
+                (cell[0], cell[1]),
+                (canvas[0], canvas[1]),
+                float.border_lines,
+                header,
+            );
+            let start = FloatCells::from(float);
+            let target =
+                geometry.within(float_drag_preview(start, grip, (delta[0], delta[1])), grip);
+            (target != start).then(|| {
+                float_drag_command(
+                    pane,
+                    grip,
+                    start,
+                    target,
+                    float.border_lines,
+                    FloatWindow {
+                        border_status: float.border_status,
+                        rows: window.sy,
+                    },
+                )
+            })
+        }) else {
+            return false;
+        };
+        self.invoke(command);
         true
     }
 
@@ -392,7 +510,15 @@ impl Client {
             let mut panes = window
                 .panes
                 .iter()
-                .map(|pane| json!({ "id": pane.id.0, "label": pane.label, "tag": tag(&pane.kind), "active": pane.active }))
+                .map(|pane| {
+                    json!({
+                        "id": pane.id.0,
+                        "label": pane.label,
+                        "tag": tag(&pane.kind),
+                        "program": program_json(pane.program),
+                        "active": pane.active,
+                    })
+                })
                 .collect::<Vec<_>>();
             if let Some(index) = window.panes.iter().position(|pane| pane.active) {
                 let focused = panes.remove(index);
@@ -506,6 +632,70 @@ impl Client {
         }
     }
 
+    pub fn set_host_name(&mut self, name: &str) {
+        self.sidebar.host_name = (!name.trim().is_empty()).then(|| name.trim().to_owned());
+    }
+
+    pub fn app_menu_state(&self) -> String {
+        let snapshot = self.core.snapshot();
+        let mut sessions = snapshot
+            .sessions
+            .iter()
+            .map(|session| (session.name.clone(), session.id.0))
+            .collect::<Vec<_>>();
+        sessions.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        let active_window = self.active_window();
+        let has_terminal = active_window.is_some_and(|window| {
+            window
+                .panes
+                .get(&window.active_pane)
+                .is_some_and(|pane| matches!(pane.kind, PaneKindSnapshot::Terminal))
+        });
+        let zoomed = active_window.is_some_and(|window| window.zoomed_pane.is_some());
+        json!({
+            "writable": !self.core.attached_read_only(),
+            "hasTerminal": has_terminal,
+            "zoomed": zoomed,
+            "attached": self.core.attached_session().map(|session| session.0),
+            "sessions": sessions
+                .into_iter()
+                .map(|(name, id)| json!({ "id": id, "name": name }))
+                .collect::<Vec<_>>(),
+        })
+        .to_string()
+    }
+
+    pub fn session_prompt(&mut self, kind: &str) {
+        if self.core.attached_read_only() {
+            return;
+        }
+        let Some(attached) = self.core.attached_session() else {
+            return;
+        };
+        let Some(session) = self
+            .core
+            .snapshot()
+            .sessions
+            .iter()
+            .find(|session| session.id == attached)
+        else {
+            return;
+        };
+        let command = match kind {
+            "rename-session" => {
+                Some(rename_prompt_command(RenameTarget::Session(session.id), &session.name).1)
+            }
+            "rename-window" => self.active_window().map(|window| {
+                rename_prompt_command(RenameTarget::Window(window.id), &window.name).1
+            }),
+            "kill-session" => Some(kill_session_prompt_command(session.id, &session.name)),
+            _ => None,
+        };
+        if let Some(command) = command {
+            self.invoke(command);
+        }
+    }
+
     pub fn sidebar_rows(&mut self, window_active: bool) -> String {
         let (rows, scroll) = self.reconcile_sidebar(window_active);
         let snapshot = self.core.snapshot();
@@ -513,10 +703,16 @@ impl Client {
         let selected = (!self.sidebar.pointer_selection)
             .then_some(self.sidebar.selection)
             .flatten();
+        let host_label = self.sidebar.host_label().to_owned();
         let rows = rows
             .iter()
             .enumerate()
             .map(|(index, row)| {
+                let label = if matches!(row.node, SidebarNode::Host) {
+                    host_label.as_str()
+                } else {
+                    row.label.as_str()
+                };
                 json!({
                     "key": target_key(row.target),
                     "depth": row.depth,
@@ -524,7 +720,7 @@ impl Client {
                     "platform": matches!(row.node, SidebarNode::Host)
                         .then(|| self.core.host_platform().slug())
                         .flatten(),
-                    "label": row.label,
+                    "label": label,
                     "index": row.index,
                     "onActivePath": row.on_active_path,
                     "active": active_row == Some(index),
@@ -533,7 +729,7 @@ impl Client {
                     "expandable": row.expandable,
                     "bell": row.bell,
                     "badge": row.badge.map(badge_name),
-                    "program": row.program.map(|program| program.id),
+                    "program": program_json(row.program),
                     "add": sidebar_add_command(row.target).map(|(label, _)| label),
                     "close": sidebar_close_command(row.target).map(|(label, _)| label),
                     "rename": sidebar_rename_command(snapshot, row.target).map(|(label, _)| label),
@@ -566,12 +762,12 @@ impl Client {
             return false;
         };
         self.sidebar.place.close_landing();
-        if self.sidebar.chat_view && !self.core.attached_read_only() {
-            if let Some(command) =
+        if self.sidebar.chat_view
+            && !self.core.attached_read_only()
+            && let Some(command) =
                 leave_picker_command(self.core.snapshot(), self.core.attached_session(), target)
-            {
-                self.invoke(command);
-            }
+        {
+            self.invoke(command);
         }
         let activation =
             sidebar_activation(self.core.snapshot(), self.core.attached_session(), target);
@@ -633,53 +829,97 @@ impl Client {
         self.sidebar.selection.map(target_key)
     }
 
-    pub fn flat_sidebar(&self, now: f64) -> String {
+    pub fn flat_toggle_window(&mut self, window: f64) {
+        let id = WindowId(window as u64);
+        if !self.sidebar.flat.open_windows.remove(&id) {
+            self.sidebar.flat.open_windows.insert(id);
+        }
+    }
+
+    pub fn flat_toggle_pile(&mut self) {
+        self.sidebar.flat.pile_open = !self.sidebar.flat.pile_open;
+    }
+
+    pub fn flat_sidebar(&mut self, now: f64) -> String {
         let snapshot = self.core.snapshot();
-        let now = self.sidebar.clock.now(now as u64);
-        let (chats, rollup) = summarize_chats(&snapshot.sessions);
-        let current = self
-            .core
-            .attached_session()
-            .and_then(|attached| {
-                snapshot
-                    .sessions
-                    .iter()
-                    .find(|session| session.id == attached)
-            })
-            .map(|session| snapshot.focused_window_for(session).0);
-        let chats = chats
+        let live_windows = snapshot
+            .sessions
             .iter()
-            .map(|window| {
-                let age = age_label(window.changed_at, now);
-                let detail = window.detail.iter().map(|part| part.text.as_str()).collect::<String>();
-                let description = [Some(detail.as_str()), attention_word(window.attention), age.as_deref()]
-                    .into_iter()
-                    .flatten()
-                    .filter(|part| !part.is_empty())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                json!({
-                    "id": window.window.0,
-                    "title": window.title,
-                    "detail": window.detail.iter().map(|part| json!({ "text": part.text, "tone": tone_name(part.tone) })).collect::<Vec<_>>(),
-                    "age": age,
-                    "description": description,
-                    "working": window.attention == Attention::Working,
-                    "current": current == Some(window.window.0),
-                    "tiles": window.tiles.iter().map(|tile| json!({
-                        "pane": tile.pane.0,
-                        "tag": tag_name(tile.tag),
-                        "label": tile.label,
-                        "program": tile.program.map(|program| program.id),
-                    })).collect::<Vec<_>>(),
-                })
+            .flat_map(|session| session.windows.iter().map(|window| window.id))
+            .collect::<BTreeSet<_>>();
+        self.sidebar
+            .flat
+            .hints
+            .retain(|window| live_windows.contains(&window));
+        self.sidebar
+            .flat
+            .open_windows
+            .retain(|window| live_windows.contains(window));
+        let active_window = self.core.attached_session().and_then(|attached| {
+            let session = snapshot
+                .sessions
+                .iter()
+                .find(|session| session.id == attached)?;
+            let id = snapshot.focused_window_for(session);
+            session.windows.iter().find(|window| window.id == id)
+        });
+        if let Some(window) = active_window {
+            self.sidebar.flat.hints.observe(window);
+        }
+        let now = self.sidebar.clock.now(now as u64);
+        let open_windows = &self.sidebar.flat.open_windows;
+        let pile_open = self.sidebar.flat.pile_open;
+        let machine =
+            summarize_chat_machine(&snapshot.sessions, &self.sidebar.flat.hints, |parent| {
+                match parent {
+                    ChatParent::Window(id) => open_windows.contains(&id),
+                    ChatParent::Pile => pile_open,
+                }
+            });
+        let current =
+            active_window.and_then(|window| machine.current(window.id, window.active_pane));
+        let rows = machine
+            .rows
+            .iter()
+            .enumerate()
+            .map(|(index, row)| {
+                let row_current = current.filter(|cur| cur.row == index);
+                match row {
+                    ChatRow::Window(window) => flat_window_json(window, now, row_current),
+                    ChatRow::Pile(pile) => {
+                        let age = age_label(pile.summary.changed_at, now);
+                        let active_detail = if pile.windows.is_empty() {
+                            &pile.summary.detail
+                        } else {
+                            &pile.open_detail
+                        };
+                        json!({
+                            "kind": "pile",
+                            "id": pile.summary.window.0,
+                            "title": pile.summary.title,
+                            "detail": detail_json(active_detail),
+                            "age": age,
+                            "description": describe_row(active_detail, pile.summary.attention, age.as_deref()),
+                            "working": pile.working,
+                            "open": !pile.windows.is_empty(),
+                            "current": row_current.is_some() && pile.windows.is_empty(),
+                            "tiles": pile.summary.tiles.iter().map(tile_json).collect::<Vec<_>>(),
+                            "windows": pile.windows.iter().enumerate().map(|(w_idx, win)| {
+                                let child_current = row_current
+                                    .filter(|cur| cur.entry == Some(w_idx))
+                                    .map(|_| zz_client::window_summary::ChatCurrent { row: 0, entry: None });
+                                flat_window_json(win, now, child_current)
+                            }).collect::<Vec<_>>(),
+                        })
+                    }
+                }
             })
             .collect::<Vec<_>>();
         json!({
-            "name": "zz daemon",
+            "name": self.sidebar.host_label(),
             "platform": self.core.host_platform().slug(),
-            "rollup": rollup_json(&rollup),
-            "chats": chats,
+            "rollup": rollup_json(&machine.rollup),
+            "rows": rows,
         })
         .to_string()
     }
@@ -976,11 +1216,15 @@ impl Client {
                 let agent_picker = matches!(pane.kind, PaneKindSnapshot::Terminal)
                     && agent_picker_place(self.core.snapshot(), pane.id, self.sidebar.chat_view)
                         .is_some();
+                let heading = zz_client::window_summary::pane_heading(pane);
+                let program = heading.program.or_else(|| pane_program(pane));
                 json!({
                     "id": pane.id.0,
-                    "label": zz_client::window_summary::pane_heading(pane).title,
+                    "label": heading.title,
                     "folder": pane_folder(pane),
                     "kind": if agent_picker { "picker" } else { kind(&pane.kind) },
+                    "program": program_json(program),
+                    "provider": pane_agent(pane).map(provider_slug),
                     "dead": pane.dead,
                     "deadStatus": pane.dead_status,
                     "deadLabel": pane.dead.then(|| pane.dead_status.map_or_else(|| "Dead".to_owned(), |status| format!("Dead · {status}"))),
@@ -996,6 +1240,10 @@ impl Client {
                             "active": browser.active_tab,
                             "url": browser.tabs.get(browser.active_tab),
                         }),
+                        _ => Value::Null,
+                    },
+                    "view": match &pane.kind {
+                        PaneKindSnapshot::View(view) => serde_json::to_value(view).unwrap_or(Value::Null),
                         _ => Value::Null,
                     },
                     "other": match &pane.kind {
@@ -1026,6 +1274,49 @@ impl Client {
             "rows": window.sy,
         })
     }
+}
+
+fn parse_float_grip(name: &str) -> Option<FloatGrip> {
+    let grip = match name {
+        "left" => FloatGrip {
+            left: true,
+            ..FloatGrip::MOVE
+        },
+        "right" => FloatGrip {
+            right: true,
+            ..FloatGrip::MOVE
+        },
+        "top" => FloatGrip {
+            top: true,
+            ..FloatGrip::MOVE
+        },
+        "bottom" => FloatGrip {
+            bottom: true,
+            ..FloatGrip::MOVE
+        },
+        "top-left" => FloatGrip {
+            left: true,
+            top: true,
+            ..FloatGrip::MOVE
+        },
+        "top-right" => FloatGrip {
+            right: true,
+            top: true,
+            ..FloatGrip::MOVE
+        },
+        "bottom-left" => FloatGrip {
+            left: true,
+            bottom: true,
+            ..FloatGrip::MOVE
+        },
+        "bottom-right" => FloatGrip {
+            right: true,
+            bottom: true,
+            ..FloatGrip::MOVE
+        },
+        _ => return None,
+    };
+    Some(grip)
 }
 
 fn pip_geometry(
@@ -1191,6 +1482,139 @@ fn rollup_json(rollup: &zz_client::window_summary::AttentionRollup) -> Value {
     })
 }
 
+const fn provider_slug(provider: AgentProvider) -> &'static str {
+    match provider {
+        AgentProvider::ClaudeCode => "claude",
+        AgentProvider::Codex => "codex",
+        AgentProvider::Antigravity => "antigravity",
+        AgentProvider::Grok => "grok",
+        AgentProvider::Cursor => "cursor",
+    }
+}
+
+fn hex_rgb(color: u32) -> String {
+    format!("#{:06x}", color & 0x00ff_ffff)
+}
+
+fn program_json(program: Option<&'static Program>) -> Value {
+    let Some(program) = program else {
+        return Value::Null;
+    };
+    let (kind, bg, fg) = match program.look {
+        Look::Mark {
+            background,
+            foreground,
+        } => ("mark", hex_rgb(background), Some(hex_rgb(foreground))),
+        Look::Art { background } => ("art", hex_rgb(background), None),
+    };
+    json!({
+        "id": program.id,
+        "name": program.name,
+        "icon": program.icon,
+        "kind": kind,
+        "bg": bg,
+        "fg": fg,
+    })
+}
+
+fn detail_json(parts: &[DetailPart]) -> Vec<Value> {
+    parts
+        .iter()
+        .map(|part| json!({ "text": part.text, "tone": tone_name(part.tone) }))
+        .collect()
+}
+
+fn describe_row(parts: &[DetailPart], attention: Attention, age: Option<&str>) -> String {
+    let detail = parts
+        .iter()
+        .map(|part| part.text.as_str())
+        .collect::<String>();
+    [Some(detail.as_str()), attention_word(attention), age]
+        .into_iter()
+        .flatten()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+const fn attention_name(attention: Attention) -> &'static str {
+    match attention {
+        Attention::NeedsYou => "warning",
+        Attention::Failed => "danger",
+        Attention::Done => "success",
+        Attention::Bell => "bell",
+        Attention::Working => "working",
+        Attention::None => "none",
+    }
+}
+
+fn tile_json(tile: &PaneTile) -> Value {
+    json!({
+        "pane": tile.pane.0,
+        "tag": tag_name(tile.tag),
+        "label": tile.label,
+        "program": program_json(tile.program),
+        "attention": attention_name(tile.attention),
+    })
+}
+
+fn pane_entry_json(entry: &PaneEntry, now: u64, current: bool) -> Value {
+    let age = age_label(entry.changed_at, now);
+    json!({
+        "pane": entry.face.pane.0,
+        "title": entry.title,
+        "detail": detail_json(&entry.detail),
+        "age": age,
+        "description": describe_row(&entry.detail, entry.face.attention, age.as_deref()),
+        "working": entry.face.attention == Attention::Working,
+        "chat": entry.chat,
+        "current": current,
+        "tile": tile_json(&entry.face),
+    })
+}
+
+fn flat_window_json(
+    window: &WindowRow,
+    now: u64,
+    current: Option<zz_client::window_summary::ChatCurrent>,
+) -> Value {
+    let open = !window.panes.is_empty();
+    let active_detail = if open {
+        &window.open_detail
+    } else {
+        &window.summary.detail
+    };
+    let age = age_label(window.summary.changed_at, now);
+    let panes = window
+        .panes
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            pane_entry_json(
+                entry,
+                now,
+                current.is_some_and(|cur| cur.entry == Some(index)),
+            )
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "kind": "window",
+        "id": window.summary.window.0,
+        "session": window.session.0,
+        "title": window.summary.title,
+        "detail": detail_json(active_detail),
+        "age": age,
+        "description": describe_row(active_detail, window.summary.attention, age.as_deref()),
+        "working": window.summary.attention == Attention::Working,
+        "chat": window.chat,
+        "opens": window.opens,
+        "open": open,
+        "current": current.is_some() && !open,
+        "tiles": window.summary.tiles.iter().map(tile_json).collect::<Vec<_>>(),
+        "panes": panes,
+    })
+}
+
 pub fn kind(kind: &PaneKindSnapshot) -> &'static str {
     match kind {
         PaneKindSnapshot::Picker => "picker",
@@ -1231,5 +1655,65 @@ pub fn layout_json(node: &LayoutNode, active: PaneId) -> Value {
             "second": layout_json(second, active),
         }),
         LayoutNode::Empty => Value::Null,
+    }
+}
+
+#[cfg(all(test, feature = "showcase"))]
+mod tests {
+    use super::*;
+    use crate::ShowcaseHost;
+
+    fn pump(client: &mut Client, host: &mut ShowcaseHost) {
+        for _ in 0..8 {
+            let mut moved = false;
+            while let Some(frame) = client.outbound() {
+                host.send(&frame).expect("host accepts frame");
+                moved = true;
+            }
+            while let Some(frame) = host.outbound() {
+                client.receive(&frame).expect("client accepts frame");
+                moved = true;
+            }
+            if !moved {
+                break;
+            }
+        }
+    }
+
+    #[test]
+    fn floating_pip_stays_visible_when_canvas_is_narrower_than_window_cells() {
+        let mut client = Client::new(1.0);
+        let mut host = ShowcaseHost::new(Some("desktop".to_owned()));
+        client.hello("", true);
+        pump(&mut client, &mut host);
+        let tree: Value = serde_json::from_str(&client.tree()).expect("tree json");
+        let window = &tree["sessions"][0]["windows"][0];
+        let window_id = window["id"].as_f64().expect("window id");
+        let browser = window["panes"]
+            .as_array()
+            .expect("panes")
+            .iter()
+            .find(|pane| pane["kind"] == "browser")
+            .expect("browser pane");
+        let pane_id = browser["id"].as_f64().expect("pane id");
+        let rows = client.float_rows(window_id, vec![8.0, 18.0], vec![694.0, 982.0], 34.0);
+        client.pane_action(pane_id, "float", rows);
+        pump(&mut client, &mut host);
+        let floats: Vec<Value> = serde_json::from_str(&client.floats(
+            window_id,
+            vec![8.0, 18.0],
+            vec![694.0, 982.0],
+            34.0,
+        ))
+        .expect("floats json");
+        assert_eq!(floats.len(), 1);
+        assert_eq!(floats[0]["pane"].as_f64(), Some(pane_id));
+        let frame = floats[0]["frame"].as_array().expect("frame");
+        let x = frame[0].as_f64().expect("x");
+        let y = frame[1].as_f64().expect("y");
+        let w = frame[2].as_f64().expect("w");
+        let h = frame[3].as_f64().expect("h");
+        assert!(x >= 0.0 && y >= 0.0 && w > 100.0 && h > 100.0);
+        assert!(x + w <= 694.5 && y + h <= 982.5);
     }
 }

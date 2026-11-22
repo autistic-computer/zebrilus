@@ -1,9 +1,11 @@
-import { $, emit, flush, markTree, on, onKey, phase, state } from "./core.js";
-import { contextMenu, narrow, paneIcon, preferences, setPreferences, sidebarInline } from "./workspace.js";
+import { $, emit, flush, markTree, on, onKey, phase, state, switchHost } from "./core.js";
+import { appLogoSrc, contextMenu, narrow, openAppMenu, paintTile, paneIcon, preferences, programMaskHtml, setPreferences, sidebarInline } from "./workspace.js";
 
 const app = $(".app");
 const nav = $("nav[data-penna='sidebar']");
 const list = $("#tree");
+const logoImg = $("#chrome-logo");
+const appMenuButton = $("#app-menu");
 const toggleButton = $("#toggle-sidebar");
 const viewButton = $("#flat-list");
 const actions = $("#sidebar-actions");
@@ -19,7 +21,7 @@ guides.className = "tree-guides";
 nav.tabIndex = -1;
 
 let slideover = false;
-let flatFolds = { host: false };
+const flatFolds = {};
 
 const NODE_ICONS = { host: "hard-drive", session: "layers", window: "app-window" };
 
@@ -50,6 +52,7 @@ function applyLayout() {
   scrim.hidden = inline || !slideover;
   viewButton.title = preferences.flat_sidebar ? "Show the session tree" : "Show chats";
   viewButton.querySelector("[data-icon]").dataset.icon = preferences.flat_sidebar ? "chat" : "layers";
+  if (logoImg) logoImg.src = appLogoSrc();
 }
 
 function hoverFill(row) {
@@ -122,7 +125,7 @@ function release() {
 function marker(icon, row) {
   const element = document.createElement("span");
   element.className = "tree-marker";
-  element.innerHTML = row.node === "host" ? hostMark(row.platform) : `<i data-icon="${icon}"></i>`;
+  element.innerHTML = row.node === "host" ? hostMark(row.platform) : programMaskHtml(row.program, icon);
   if (row.bell) element.insertAdjacentHTML("beforeend", `<i class="marker-dot bell"></i>`);
   if (row.badge) element.insertAdjacentHTML("beforeend", `<i class="marker-dot badge" data-badge="${row.badge}"></i>`);
   return element;
@@ -145,17 +148,20 @@ function action(icon, title, run) {
   return button;
 }
 
-function treeRow(row, rows) {
+function treeRow(row, rows, entry) {
+  const isActiveHost = !entry || entry.id === state.hostId;
+  const hostClient = entry ? entry.client : state.client;
+  const live = entry ? entry.connected || (isActiveHost && state.connected) : state.connected;
   const element = document.createElement("div");
   element.dataset.penna = "sidebar.row";
   element.dataset.key = row.key;
   element.dataset.node = row.node;
   element.style.setProperty("--depth", row.depth);
-  element.toggleAttribute("data-path", state.connected && row.onActivePath);
+  element.toggleAttribute("data-path", live && isActiveHost && row.onActivePath);
   element.toggleAttribute("data-host", row.node === "host");
-  element.toggleAttribute("data-active", row.active);
+  element.toggleAttribute("data-active", isActiveHost && row.active);
   element.toggleAttribute("data-expandable", row.expandable);
-  if (row.selected || (row.active && rows.focused)) element.dataset.state = "current";
+  if (isActiveHost && (row.selected || (row.active && rows.focused))) element.dataset.state = "current";
   const icon = NODE_ICONS[row.node] || paneIcon(row.node);
   const slot = marker(icon, row);
   if (row.expandable) {
@@ -166,7 +172,7 @@ function treeRow(row, rows) {
     disclosure.addEventListener("pointerdown", (event) => event.stopPropagation());
     disclosure.addEventListener("click", (event) => {
       event.stopPropagation();
-      state.client.sidebar_toggle(row.key, true);
+      hostClient.sidebar_toggle(row.key, true);
       markTree();
     });
     element.append(disclosure);
@@ -187,33 +193,40 @@ function treeRow(row, rows) {
   element.append(label);
   const actions = document.createElement("span");
   actions.className = "tree-actions";
-  if (row.node === "host" && !state.connected) {
+  if (row.node === "host" && !live) {
     actions.insertAdjacentHTML("beforeend", `<i data-icon="triangle-alert" class="host-alert"></i>`);
   }
-  if (row.add) actions.append(action(row.node === "host" ? "layers-plus" : "window-plus", row.add, () => state.client.sidebar_command(row.key, "add")));
-  if (row.close) actions.append(action("xmark", row.close, () => state.client.sidebar_command(row.key, "close")));
+  if (row.add) actions.append(action(row.node === "host" ? "layers-plus" : "window-plus", row.add, () => switchHost(entry.id, (client) => client.sidebar_command(row.key, "add"))));
+  if (row.close) actions.append(action("xmark", row.close, () => switchHost(entry.id, (client) => client.sidebar_command(row.key, "close"))));
   element.append(actions);
   element.addEventListener("pointerdown", () => {
     if (!focused()) {
-      state.client.sidebar_focus(true);
+      hostClient.sidebar_focus(true);
       nav.focus({ preventScroll: true });
     }
   });
   element.addEventListener("click", () => {
-    state.client.sidebar_select(row.key, true);
-    if (row.node === "host" && state.connected) {
-      state.client.sidebar_toggle(row.key, true);
-    } else if (slideover && row.node !== "host" && state.connected) {
-      release();
+    hostClient.sidebar_select(row.key, true);
+    if (row.node === "host" && live) {
+      hostClient.sidebar_toggle(row.key, true);
+      markTree();
+      return;
     }
-    if (state.connected) state.client.sidebar_activate(row.key);
-    flush();
+    if (slideover && row.node !== "host" && live) release();
+    if (live) {
+      if (entry && !isActiveHost) {
+        switchHost(entry.id, (client) => client.sidebar_activate(row.key));
+      } else {
+        hostClient.sidebar_activate(row.key);
+        flush();
+      }
+    }
     markTree();
   });
   if (row.rename && writable()) {
     element.addEventListener("contextmenu", (event) => {
       event.preventDefault();
-      contextMenu(event.clientX, event.clientY, [[row.rename, () => state.client.sidebar_command(row.key, "rename")]]);
+      contextMenu(event.clientX, event.clientY, [[row.rename, () => switchHost(entry.id, (client) => client.sidebar_command(row.key, "rename"))]]);
     });
   }
   return element;
@@ -250,11 +263,25 @@ function drawGuides(rows) {
 }
 
 function renderTree() {
-  const model = JSON.parse(state.client.sidebar_rows(document.hasFocus()));
+  const entries = state.hosts.length ? state.hosts : state.client ? [{ id: state.hostId, client: state.client, connected: state.connected }] : [];
+  const allRows = [];
+  const elements = [];
+  let scrollTarget = null;
+  for (const entry of entries) {
+    const isActive = entry.id === state.hostId;
+    const model = JSON.parse(entry.client.sidebar_rows(isActive && document.hasFocus()));
+    if (isActive && model.scroll !== null && model.scroll !== undefined) {
+      scrollTarget = allRows.length + model.scroll;
+    }
+    for (const row of model.rows) {
+      allRows.push({ ...row, onActivePath: isActive && row.onActivePath });
+      elements.push(treeRow(row, model, entry));
+    }
+  }
   list.className = "tree";
-  list.replaceChildren(guides, ...model.rows.map((row) => treeRow(row, model)));
-  drawGuides(model.rows);
-  if (model.scroll !== null && model.scroll !== undefined) list.children[model.scroll + 1]?.scrollIntoView({ block: "nearest" });
+  list.replaceChildren(guides, ...elements);
+  drawGuides(allRows);
+  if (scrollTarget !== null) list.children[scrollTarget + 1]?.scrollIntoView({ block: "nearest" });
 }
 
 function rollup(counts, live) {
@@ -267,112 +294,249 @@ function rollup(counts, live) {
   return element;
 }
 
-function tileStack(window) {
+function tileStack(tiles, onPick) {
   const stack = document.createElement("span");
   stack.className = "flat-stack";
-  window.tiles.slice(0, 3).forEach((tile, index) => {
+  tiles.slice(0, 3).forEach((tile, index) => {
     const element = document.createElement("span");
     element.dataset.penna = "tile.stack";
     element.className = "flat-tile";
     if (index === 0) element.dataset.state = "current";
     element.style.left = `${index * 7}px`;
     element.style.zIndex = 3 - index;
-    element.innerHTML = `<i data-icon="${tile.tag === "terminal" ? "terminal" : paneIcon(tile.tag)}"></i>`;
+    paintTile(element, tile);
     element.title = tile.label;
-    element.addEventListener("click", (event) => {
-      event.stopPropagation();
-      if (!state.connected) return;
-      state.client.select_pane(tile.pane, true);
-      flush();
-    });
+    if (onPick) {
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        onPick(tile);
+      });
+    }
     stack.append(element);
   });
   return stack;
 }
 
-function renderFlat() {
-  const host = JSON.parse(state.client.flat_sidebar(Date.now() / 1000));
-  list.className = "flat";
-  if (!host.chats.length) {
-    list.replaceChildren();
-    return;
+function attachHover(row, fill) {
+  row.addEventListener("mouseenter", () => fill.setAttribute("data-state", `${fill.dataset.state || ""} hover`.trim()));
+  row.addEventListener("mouseleave", () => {
+    const states = (fill.dataset.state || "").split(" ").filter((item) => item && item !== "hover");
+    if (states.length) fill.dataset.state = states.join(" ");
+    else delete fill.dataset.state;
+  });
+}
+
+function detailText(titleText, parts, ageText, working, live) {
+  const text = document.createElement("span");
+  text.className = "flat-text";
+  text.innerHTML = `<span class="flat-title"><span class="flat-label"></span></span><span class="flat-detail"><span class="flat-parts"></span></span>`;
+  text.querySelector(".flat-label").textContent = titleText;
+  text.querySelector(".flat-label").setAttribute("aria-label", titleText);
+  text.querySelector(".flat-parts").setAttribute("aria-label", parts.map((part) => part.text).join(""));
+  if (working && live) text.querySelector(".flat-title").insertAdjacentHTML("beforeend", `<i data-icon="loader" class="spin"></i>`);
+  for (const part of parts) {
+    const span = document.createElement("span");
+    span.dataset.tone = part.tone;
+    span.textContent = part.text;
+    text.querySelector(".flat-parts").append(span);
   }
-  const live = state.connected;
-  const rows = [];
-  const header = document.createElement("div");
-  header.className = "flat-host";
-  header.setAttribute("role", "button");
-  header.setAttribute("aria-label", host.name);
-  header.setAttribute("aria-expanded", String(!flatFolds.host));
-  header.innerHTML = `<i data-icon="${host.platform ? `host-${host.platform}` : "laptop"}" class="flat-glyph"></i><span class="flat-name" data-text></span><i data-icon="chevron-right" class="chevron"${flatFolds.host ? "" : " data-open"}></i><span class="grow"></span>`;
-  header.querySelector(".flat-name").textContent = host.name;
-  if (flatFolds.host) header.append(rollup(host.rollup, live));
-  if (!live) header.insertAdjacentHTML("beforeend", `<i data-icon="circle-x" class="flat-status"></i>`);
-  header.addEventListener("click", () => {
-    flatFolds.host = !flatFolds.host;
+  if (ageText) {
+    const age = document.createElement("span");
+    age.className = "flat-age";
+    age.textContent = ageText;
+    text.querySelector(".flat-detail").append(age);
+  }
+  return text;
+}
+
+function flatPaneRow(entry, windowId, pane, isHostActive, live) {
+  const row = document.createElement("div");
+  row.className = "flat-pane";
+  const fill = document.createElement("span");
+  fill.className = "flat-fill";
+  fill.dataset.penna = "row.nav";
+  if (isHostActive && pane.current) fill.dataset.state = "current";
+  row.append(fill);
+  attachHover(row, fill);
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-label", pane.title);
+  row.setAttribute("aria-description", pane.description);
+  row.toggleAttribute("data-dimmed", !live);
+  const badge = document.createElement("span");
+  badge.dataset.penna = "tile.stack";
+  badge.className = "flat-pane-tile";
+  paintTile(badge, pane.tile);
+  const label = document.createElement("span");
+  label.className = "flat-pane-label";
+  label.textContent = pane.title;
+  row.append(badge, label);
+  if (pane.working && live) row.insertAdjacentHTML("beforeend", `<i data-icon="loader" class="spin"></i>`);
+  row.addEventListener("click", () => {
+    if (!live) return;
+    if (slideover) release();
+    switchHost(entry.id, (client) => {
+      client.sidebar_activate(`window-@${windowId}`);
+      client.select_pane(pane.pane, false);
+    });
+  });
+  return row;
+}
+
+function flatWindowRow(entry, win, stackWidth, isHostActive, live, nested = false) {
+  const row = document.createElement("div");
+  row.className = nested ? "flat-window nested" : "flat-window";
+  const fill = document.createElement("span");
+  fill.className = "flat-fill";
+  fill.dataset.penna = "row.nav";
+  if (isHostActive && win.current) fill.dataset.state = "current";
+  row.append(fill);
+  attachHover(row, fill);
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-label", win.title);
+  row.setAttribute("aria-description", win.description);
+  row.toggleAttribute("data-dimmed", !live);
+  const stack = tileStack(win.tiles, (tile) => {
+    if (!live) return;
+    if (slideover) release();
+    switchHost(entry.id, (client) => {
+      client.select_pane(tile.pane, true);
+    });
+  });
+  stack.style.width = `${stackWidth}px`;
+  const text = detailText(win.title, win.detail, win.age, win.working, live);
+  row.append(stack, text);
+  if (win.opens && !nested) {
+    const toggle = document.createElement("button");
+    toggle.className = "flat-expand";
+    toggle.dataset.penna = "icon-button.row";
+    toggle.title = win.open ? "Collapse panes" : "Show panes";
+    toggle.innerHTML = `<i data-icon="chevron-right" class="chevron"${win.open ? " data-open" : ""}></i>`;
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      entry.client.flat_toggle_window(win.id);
+      markTree();
+    });
+    row.append(toggle);
+  }
+  row.addEventListener("click", () => {
+    if (!live) return;
+    if (slideover) release();
+    switchHost(entry.id, (client) => {
+      client.sidebar_activate(`window-@${win.id}`);
+    });
+  });
+  row.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    if (!live) return;
+    contextMenu(event.clientX, event.clientY, [
+      ["Rename window", () => switchHost(entry.id, (client) => client.sidebar_command(`window-@${win.id}`, "rename"))],
+      ["Close window", () => switchHost(entry.id, (client) => client.sidebar_command(`window-@${win.id}`, "close"))],
+    ]);
+  });
+  const nodes = [row];
+  if (win.open && win.panes?.length) {
+    const group = document.createElement("div");
+    group.className = "flat-children";
+    for (const pane of win.panes) {
+      group.append(flatPaneRow(entry, win.id, pane, isHostActive, live));
+    }
+    nodes.push(group);
+  }
+  return nodes;
+}
+
+function flatPileRow(entry, pile, stackWidth, isHostActive, live) {
+  const row = document.createElement("div");
+  row.className = "flat-window";
+  const fill = document.createElement("span");
+  fill.className = "flat-fill";
+  fill.dataset.penna = "row.nav";
+  if (isHostActive && pile.current) fill.dataset.state = "current";
+  row.append(fill);
+  attachHover(row, fill);
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-label", pile.title);
+  row.setAttribute("aria-description", pile.description);
+  row.toggleAttribute("data-dimmed", !live);
+  const stack = tileStack(pile.tiles, (tile) => {
+    if (!live) return;
+    if (slideover) release();
+    switchHost(entry.id, (client) => {
+      client.select_pane(tile.pane, true);
+    });
+  });
+  stack.style.width = `${stackWidth}px`;
+  const text = detailText(pile.title, pile.detail, pile.age, pile.working, live);
+  const toggle = document.createElement("button");
+  toggle.className = "flat-expand";
+  toggle.dataset.penna = "icon-button.row";
+  toggle.title = pile.open ? "Collapse windows" : "Show windows";
+  toggle.innerHTML = `<i data-icon="chevron-right" class="chevron"${pile.open ? " data-open" : ""}></i>`;
+  toggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    entry.client.flat_toggle_pile();
     markTree();
   });
-  rows.push(header);
-  if (!flatFolds.host) {
-    const tiles = Math.max(0, ...host.chats.map((window) => window.tiles.length));
-    for (const window of host.chats) {
-      const row = document.createElement("div");
-      row.className = "flat-window";
-      const fill = document.createElement("span");
-      fill.className = "flat-fill";
-      fill.dataset.penna = "row.nav";
-      row.append(fill);
-      row.addEventListener("mouseenter", () => fill.setAttribute("data-state", `${fill.dataset.state || ""} hover`.trim()));
-      row.addEventListener("mouseleave", () => {
-        const states = (fill.dataset.state || "").split(" ").filter((item) => item && item !== "hover");
-        if (states.length) fill.dataset.state = states.join(" ");
-        else delete fill.dataset.state;
-      });
-      row.setAttribute("role", "button");
-      row.setAttribute("aria-label", window.title);
-      row.setAttribute("aria-description", window.description);
-      if (window.current) fill.dataset.state = "current";
-      row.toggleAttribute("data-dimmed", !live);
-      const text = document.createElement("span");
-      text.className = "flat-text";
-      text.innerHTML = `<span class="flat-title"><span class="flat-label"></span></span><span class="flat-detail"><span class="flat-parts"></span></span>`;
-      text.querySelector(".flat-label").textContent = window.title;
-      text.querySelector(".flat-label").setAttribute("aria-label", window.title);
-      text.querySelector(".flat-parts").setAttribute("aria-label", window.detail.map((part) => part.text).join(""));
-      if (window.working && live) text.querySelector(".flat-title").insertAdjacentHTML("beforeend", `<i data-icon="loader" class="spin"></i>`);
-      for (const part of window.detail) {
-        const span = document.createElement("span");
-        span.dataset.tone = part.tone;
-        span.textContent = part.text;
-        text.querySelector(".flat-parts").append(span);
-      }
-      if (window.age) {
-        const age = document.createElement("span");
-        age.className = "flat-age";
-        age.textContent = window.age;
-        text.querySelector(".flat-detail").append(age);
-      }
-      const stack = tileStack(window);
-      stack.style.width = `${28 + (Math.max(tiles, window.tiles.length, 1) > 1 ? (Math.min(Math.max(tiles, 1), 3) - 1) * 7 : 0)}px`;
-      row.append(stack, text);
-      row.addEventListener("click", () => {
-        if (slideover && state.connected) release();
-        state.client.sidebar_activate(`window-@${window.id}`);
-        flush();
-      });
-      row.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        if (!writable()) return;
-        contextMenu(event.clientX, event.clientY, [
-          ["Rename window", () => state.client.sidebar_command(`window-@${window.id}`, "rename")],
-          ["Close window", () => state.client.sidebar_command(`window-@${window.id}`, "close")],
-        ]);
-      });
-      rows.push(row);
+  row.append(stack, text, toggle);
+  row.addEventListener("click", () => {
+    if (!live) return;
+    if (slideover) release();
+    switchHost(entry.id, (client) => {
+      client.sidebar_activate(`window-@${pile.id}`);
+    });
+  });
+  const nodes = [row];
+  if (pile.open && pile.windows?.length) {
+    const group = document.createElement("div");
+    group.className = "flat-children";
+    for (const win of pile.windows) {
+      group.append(...flatWindowRow(entry, win, 28, isHostActive, live, true));
     }
+    nodes.push(group);
   }
+  return nodes;
+}
+
+function renderFlat() {
+  const now = Date.now() / 1000;
+  const entries = state.hosts.length ? state.hosts : state.client ? [{ id: state.hostId, client: state.client, connected: state.connected }] : [];
+  const models = entries.map((entry) => ({
+    entry,
+    host: JSON.parse(entry.client.flat_sidebar(now)),
+    live: entry.connected || (entry.id === state.hostId && state.connected),
+  }));
+  const allRows = models.flatMap(({ host }) => host.rows || []);
+  const maxTiles = Math.min(Math.max(1, ...allRows.map((row) => Math.min(row.tiles?.length || 1, 3))), 3);
+  const stackWidth = 28 + (maxTiles > 1 ? (maxTiles - 1) * 7 : 0);
+  const nodes = [];
+  models.forEach(({ entry, host, live }, hostIndex) => {
+    const rows = host.rows || [];
+    if (!rows.length && models.length === 1) return;
+    const folded = Boolean(flatFolds[entry.id]);
+    const header = document.createElement("div");
+    header.className = hostIndex > 0 ? "flat-host separated" : "flat-host";
+    header.setAttribute("role", "button");
+    header.setAttribute("aria-label", host.name);
+    header.setAttribute("aria-expanded", String(!folded));
+    header.innerHTML = `<i data-icon="${host.platform ? `host-${host.platform}` : "laptop"}" class="flat-glyph"></i><span class="flat-name" data-text></span><i data-icon="chevron-right" class="chevron"${folded ? "" : " data-open"}></i><span class="grow"></span>`;
+    header.querySelector(".flat-name").textContent = host.name;
+    if (folded) header.append(rollup(host.rollup, live));
+    if (!live) header.insertAdjacentHTML("beforeend", `<i data-icon="circle-x" class="flat-status"></i>`);
+    header.addEventListener("click", () => {
+      flatFolds[entry.id] = !folded;
+      markTree();
+    });
+    nodes.push(header);
+    if (!folded) {
+      const isHostActive = entry.id === state.hostId;
+      for (const item of rows) {
+        if (item.kind === "pile") nodes.push(...flatPileRow(entry, item, stackWidth, isHostActive, live));
+        else nodes.push(...flatWindowRow(entry, item, stackWidth, isHostActive, live));
+      }
+    }
+  });
   list.className = "flat";
-  list.replaceChildren(...rows);
+  list.replaceChildren(...nodes);
 }
 
 function fade() {
@@ -393,8 +557,13 @@ list.addEventListener("scroll", fade, { passive: true });
 phase("tree", render);
 
 toggleButton.addEventListener("click", toggleSidebar);
+appMenuButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  openAppMenu(appMenuButton);
+});
 hoverFill($("#open-settings"));
 viewButton.addEventListener("click", () => setPreferences({ flat_sidebar: !preferences.flat_sidebar }));
+on("theme", applyLayout);
 scrim.addEventListener("pointerdown", (event) => {
   event.preventDefault();
   release();

@@ -1,5 +1,5 @@
 import { emit, flush, markTree, on, phase, schedule, state } from "./core.js";
-import { paneRenderer } from "./workspace.js";
+import { floatRows, paneHeaderButton, paneIcon, paneRenderer } from "./workspace.js";
 
 const TOOL_ICONS = {
   read: "file",
@@ -49,13 +49,208 @@ function spinner() {
   return icon("loader", { class: "agent-spin" });
 }
 
-function markdown(html) {
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]);
+}
+
+const colorCanvas = document.createElement("canvas");
+colorCanvas.width = 1;
+colorCanvas.height = 1;
+const colorCtx = colorCanvas.getContext("2d", { willReadFrequently: true });
+
+function cssToHex(value, fallback) {
+  if (!value || !colorCtx) return fallback;
+  colorCtx.clearRect(0, 0, 1, 1);
+  colorCtx.fillStyle = "#000000";
+  colorCtx.fillStyle = value;
+  colorCtx.fillRect(0, 0, 1, 1);
+  const [r, g, b, a] = colorCtx.getImageData(0, 0, 1, 1).data;
+  if (a === 0) return fallback;
+  return `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function mermaidTheme() {
+  const styles = getComputedStyle(document.documentElement);
+  const read = (name, fallback) => cssToHex(styles.getPropertyValue(name).trim(), fallback);
+  const accent = read("--penna-accent", "#5b8def");
+  const success = read("--penna-success", "#4ea874");
+  const warning = read("--penna-warning", "#d9a441");
+  const danger = read("--penna-danger", "#d96060");
+  const bg = read("--penna-bg", "#1a1a1c");
+  const fg = read("--penna-fg", "#e6e6e8");
+  const muted = read("--penna-muted", "#9a9aa0");
+  const panel = read("--penna-panel", "#232326");
+  const divider = read("--penna-divider", "#36363c");
+  const dark = document.documentElement.dataset.pennaMode !== "light";
+  const node = cssToHex(dark ? `color-mix(in oklab, ${panel} 82%, ${accent} 18%)` : `color-mix(in oklab, ${panel} 88%, ${accent} 12%)`, panel);
+  const nodeBorder = cssToHex(dark ? `color-mix(in oklab, ${divider} 55%, ${accent} 45%)` : `color-mix(in oklab, ${divider} 60%, ${accent} 40%)`, divider);
+  return {
+    background: bg,
+    foreground: fg,
+    muted,
+    surface: panel,
+    surfaceAlt: bg,
+    border: divider,
+    node,
+    nodeBorder,
+    accent,
+    success,
+    warning,
+    danger,
+    series: [accent, success, warning, danger],
+    font: styles.getPropertyValue("--penna-font").trim() || "Inter Variable, system-ui, sans-serif",
+    mono: styles.getPropertyValue("--penna-mono").trim() || "Lilex, ui-monospace, monospace",
+    radius: parseFloat(styles.getPropertyValue("--penna-radius")) || 8,
+  };
+}
+
+export function renderMermaid(source) {
+  if (!state.client) return { ok: false };
+  try {
+    return JSON.parse(state.client.render_mermaid(source, JSON.stringify(mermaidTheme())));
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+}
+
+const KEYWORDS = new Set([
+  "as", "async", "await", "break", "case", "catch", "class", "const", "continue", "crate", "def", "default",
+  "defer", "do", "dyn", "elif", "else", "enum", "export", "extends", "extern", "false", "finally", "fn", "for",
+  "from", "func", "function", "go", "if", "impl", "import", "in", "interface", "is", "let", "loop", "match",
+  "mod", "move", "mut", "new", "nil", "none", "null", "package", "pass", "pub", "raise", "ref", "return",
+  "self", "Self", "static", "struct", "super", "switch", "then", "this", "throw", "trait", "true", "try",
+  "type", "typeof", "undefined", "unsafe", "use", "var", "void", "where", "while", "with", "yield",
+]);
+
+export function highlightCode(source, language = "text") {
+  const clean = source.replace(/\n$/, "");
+  const lang = (language || "text").toLowerCase();
+  if (lang === "text" || lang === "plain" || clean.length > 32768) return escapeHtml(clean);
+  const pattern = /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b\d+(?:\.\d+)?\b|\b[A-Z][A-Za-z0-9_]*\b|\b[a-zA-Z_][A-Za-z0-9_]*\b)/g;
+  let out = "";
+  let last = 0;
+  for (const match of clean.matchAll(pattern)) {
+    const start = match.index;
+    const token = match[0];
+    if (start > last) out += escapeHtml(clean.slice(last, start));
+    last = start + token.length;
+    let cls = "";
+    if (token.startsWith("//") || token.startsWith("/*") || (token.startsWith("#") && !["css", "html", "xml"].includes(lang))) {
+      cls = "hl-cmt";
+    } else if (token[0] === '"' || token[0] === "'" || token[0] === "`") {
+      cls = "hl-str";
+    } else if (/^\d/.test(token)) {
+      cls = "hl-num";
+    } else if (KEYWORDS.has(token)) {
+      cls = "hl-kw";
+    } else if (/^[A-Z]/.test(token)) {
+      cls = "hl-type";
+    } else if (clean[last] === "(") {
+      cls = "hl-fn";
+    }
+    out += cls ? `<span class="${cls}">${escapeHtml(token)}</span>` : escapeHtml(token);
+  }
+  if (last < clean.length) out += escapeHtml(clean.slice(last));
+  return out;
+}
+
+function figureCard(paneId, title, language, source, svgHtml) {
+  const openPip = () => {
+    if (paneId == null || !state.client) return;
+    state.client.open_view_pane(paneId, title, "diagram", language, source, floatRows());
+    flush();
+  };
+  const canvas = h("div", { class: "agent-figure-canvas" });
+  canvas.innerHTML = svgHtml;
+  const card = h(
+    "div",
+    {
+      class: "agent-figure",
+      "data-penna": "card.activity",
+      role: "button",
+      title: "Open in floating view pane",
+      onclick: openPip,
+    },
+    canvas,
+    h(
+      "div",
+      { class: "agent-figure-bar" },
+      text(title, { class: "agent-figure-caption" }),
+      h(
+        "div",
+        { class: "agent-figure-actions" },
+        button("icon-button.row", "Copy source", "copy", (event) => {
+          event.stopPropagation();
+          copy(source);
+        }),
+        button("icon-button.row", "Open in floating view", "picture-in-picture", (event) => {
+          event.stopPropagation();
+          openPip();
+        }),
+      ),
+    ),
+  );
+  return card;
+}
+
+function htmlVisualCard(source) {
+  const styles = getComputedStyle(document.documentElement);
+  const vars = ["--penna-bg", "--penna-fg", "--penna-muted", "--penna-panel", "--penna-divider", "--penna-accent", "--penna-success", "--penna-warning", "--penna-danger", "--penna-font", "--penna-mono"]
+    .map((name) => `${name}:${styles.getPropertyValue(name).trim() || "inherit"};`)
+    .join("");
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><style>:root{${vars}color-scheme:${document.documentElement.dataset.pennaMode === "light" ? "light" : "dark"};}html,body{margin:0;padding:12px;background:transparent;color:var(--penna-fg);font:13px/1.5 var(--penna-font);}</style></head><body>${source}</body></html>`;
+  let showingCode = false;
+  const iframe = h("iframe", { class: "agent-visual-frame", sandbox: "allow-scripts", srcdoc: doc });
+  const pre = h("pre", { class: "agent-visual-code", hidden: true });
+  pre.innerHTML = highlightCode(source, "html");
+  const toggleBtn = button("icon-button.row", "Toggle source", "braces", () => {
+    showingCode = !showingCode;
+    iframe.hidden = showingCode;
+    pre.hidden = !showingCode;
+  });
+  return h(
+    "div",
+    { class: "agent-visual", "data-penna": "card.activity" },
+    iframe,
+    pre,
+    h(
+      "div",
+      { class: "agent-figure-bar" },
+      text("HTML", { class: "agent-figure-caption" }),
+      h(
+        "div",
+        { class: "agent-figure-actions" },
+        toggleBtn,
+        button("icon-button.row", "Copy HTML", "copy", () => copy(source)),
+      ),
+    ),
+  );
+}
+
+function markdown(html, paneId = null) {
   const root = h("div", { class: "agent-md" });
   root.innerHTML = html || "";
   for (const pre of [...root.querySelectorAll("pre")]) {
     const code = pre.querySelector("code");
     const language = (code?.className.match(/language-(\S+)/)?.[1] || "text").toLowerCase();
     const source = code?.textContent ?? pre.textContent;
+    if (language === "mermaid") {
+      const rendered = renderMermaid(source);
+      if (rendered?.ok && rendered.svg) {
+        pre.replaceWith(figureCard(paneId, rendered.title || "Diagram", "mermaid", source, rendered.svg));
+        continue;
+      }
+    }
+    if (language === "svg" && source.includes("<svg")) {
+      pre.replaceWith(figureCard(paneId, "SVG", "svg", source, source));
+      continue;
+    }
+    if (language === "html" && /<(?:html|body|div|svg|canvas|style|section|table)\b/i.test(source)) {
+      pre.replaceWith(htmlVisualCard(source));
+      continue;
+    }
+    const body = h("pre");
+    body.innerHTML = highlightCode(source, language);
     const block = h(
       "div",
       { class: "agent-code", "data-penna": "card.code" },
@@ -63,9 +258,19 @@ function markdown(html) {
         "div",
         { class: "agent-code-chrome" },
         text(language, { class: "agent-code-language" }),
-        button("icon-button.row", "Copy code", "copy", () => copy(source), { class: "agent-code-copy" }),
+        h(
+          "div",
+          { class: "agent-code-actions" },
+          paneId != null
+            ? button("icon-button.row", "Open in floating view", "picture-in-picture", () => {
+                state.client?.open_view_pane(paneId, language, "code", language, source, floatRows());
+                flush();
+              }, { class: "agent-code-copy" })
+            : null,
+          button("icon-button.row", "Copy code", "copy", () => copy(source), { class: "agent-code-copy" }),
+        ),
       ),
-      h("pre", {}, source.replace(/\n$/, "")),
+      body,
     );
     pre.replaceWith(block);
   }
@@ -131,7 +336,7 @@ function activity({ glyph, tint, label, labelTone, detail, counts = [], tag, end
   return row;
 }
 
-function toolRow(lens, tool) {
+function toolRow(lens, tool, keyMode = false) {
   const glyph = tool.spin ? spinner() : icon(tool.agent ? "bot" : TOOL_ICONS[tool.tool] || "asterisk");
   return activity({
     glyph,
@@ -140,8 +345,141 @@ function toolRow(lens, tool) {
     tag: tool.tag,
     end: tool.opens ? "external-link" : null,
     title: tool.opens ? "Open the output in a pane" : null,
-    onclick: tool.opens ? () => act(lens, () => state.client.agent_open_output(lens.pane, tool.id)) : null,
+    onclick: tool.opens
+      ? () =>
+          act(lens, () =>
+            keyMode
+              ? state.client.agent_open_output_key(lens.pane, String(tool.id))
+              : state.client.agent_open_output(lens.pane, tool.id),
+          )
+      : null,
   });
+}
+
+function renderChatUnit(lens, unit) {
+  if (!unit) return null;
+  if (unit.kind === "text") {
+    const block = h("div", { class: "agent-answer" }, markdown(unit.html, lens.pane));
+    if (unit.copy !== null && unit.copy !== undefined) {
+      block.append(h("div", { class: "agent-answer-actions" }, button("icon-button.row", "Copy message", "copy", () => copy(unit.copy))));
+    }
+    return block;
+  }
+  if (unit.kind === "notice") {
+    return h("div", { class: "agent-notice" }, h("span", { class: "agent-notice-icon" }, icon("info")), h("div", { class: "agent-notice-text" }, markdown(unit.html, lens.pane)));
+  }
+  if (unit.kind === "run") {
+    const box = h("div", { class: "agent-trace" });
+    box.append(
+      activity({
+        glyph: unit.running ? spinner() : null,
+        label: unit.label,
+        labelTone: unit.running ? "foreground" : null,
+        detail: unit.detail,
+        end: unit.expanded ? "chevron-down" : "chevron-right",
+        onclick: () => act(lens, () => state.client.agent_toggle_key(lens.pane, unit.key)),
+      }),
+    );
+    if (unit.expanded && unit.steps?.length) {
+      const steps = h("div", { class: "agent-steps", "data-penna": "rule.tree" });
+      for (const step of unit.steps) {
+        if (step.kind === "thought") {
+          steps.append(
+            h(
+              "div",
+              { class: "agent-step-thought" },
+              activity({ glyph: icon("cpu"), label: "Thought" }),
+              step.html ? h("div", { class: "agent-step-text" }, markdown(step.html, lens.pane)) : null,
+            ),
+          );
+        } else {
+          steps.append(toolRow(lens, step, true));
+        }
+      }
+      box.append(steps);
+    }
+    return box;
+  }
+  if (unit.kind === "subagent") {
+    const box = h("div", { class: "agent-trace" });
+    const working = unit.status === "working";
+    box.append(
+      activity({
+        glyph: working ? spinner() : icon("bot"),
+        tint: unit.status === "failed" ? "danger" : unit.status === "waiting" ? "warning" : null,
+        label: unit.title,
+        detail: [unit.summary, unit.elapsed].filter(Boolean).join(" · ") || null,
+        end: unit.expanded ? "chevron-down" : "chevron-right",
+        onclick: () => act(lens, () => state.client.agent_toggle_key(lens.pane, unit.key)),
+      }),
+    );
+    if (unit.expanded && unit.children?.length) {
+      const steps = h("div", { class: "agent-steps", "data-penna": "rule.tree" });
+      for (const child of unit.children) {
+        const node = renderChatUnit(lens, child);
+        if (node) steps.append(node);
+      }
+      box.append(steps);
+    }
+    return box;
+  }
+  if (unit.kind === "agents") {
+    return h("div", { class: "agent-trace" }, ...(unit.agents || []).map((child) => renderChatUnit(lens, child)));
+  }
+  if (unit.kind === "plan" && unit.items?.length) {
+    return h(
+      "div",
+      { class: "agent-plan", "data-penna": "inline-panel" },
+      unit.items.map((item) =>
+        h(
+          "div",
+          { class: "agent-plan-item", "data-state": item.state },
+          h("span", { class: "agent-plan-mark" }, item.state === "inProgress" ? h("span", { class: "agent-plan-dot" }) : h("span", { class: "agent-md-box", "data-checked": item.state === "done" || null }, item.state === "done" ? icon("check") : null)),
+          h("div", { class: "agent-plan-text" }, item.text),
+        ),
+      ),
+    );
+  }
+  if (unit.kind === "record" && unit.answers?.length) {
+    return h(
+      "div",
+      { class: "agent-record", "data-penna": "inline-panel" },
+      unit.answers.map((pair) => h("div", { class: "agent-record-row" }, text(pair.question, { class: "agent-record-q" }), text(pair.answer, { class: "agent-record-a" }))),
+    );
+  }
+  return null;
+}
+
+function renderChatTurn(lens, row) {
+  const turn = h("div", { class: "agent-turn" });
+  if (row.fold) {
+    const fold = row.fold;
+    const box = h("div", { class: "agent-trace" });
+    box.append(
+      activity({
+        glyph: fold.state === "live" ? spinner() : null,
+        tint: fold.state === "failed" ? "danger" : null,
+        label: fold.label,
+        detail: fold.activity || null,
+        end: fold.expanded ? "chevron-down" : "chevron-right",
+        onclick: () => act(lens, () => state.client.agent_toggle_key(lens.pane, fold.key)),
+      }),
+    );
+    if (fold.expanded && fold.units?.length) {
+      const steps = h("div", { class: "agent-steps", "data-penna": "rule.tree" });
+      for (const unit of fold.units) {
+        const node = renderChatUnit(lens, unit);
+        if (node) steps.append(node);
+      }
+      box.append(steps);
+    }
+    turn.append(box);
+  }
+  for (const unit of row.units || []) {
+    const node = renderChatUnit(lens, unit);
+    if (node) turn.append(node);
+  }
+  return turn;
 }
 
 function trace(lens, turn) {
@@ -226,8 +564,9 @@ function userBubble(lens, user) {
 
 function renderRow(lens, row) {
   if (row.kind === "user") return userBubble(lens, row);
+  if (row.kind === "chatTurn") return renderChatTurn(lens, row);
   if (row.kind === "notice") {
-    return h("div", { class: "agent-notice" }, h("span", { class: "agent-notice-icon" }, icon("info")), h("div", { class: "agent-notice-text" }, markdown(row.html)));
+    return h("div", { class: "agent-notice" }, h("span", { class: "agent-notice-icon" }, icon("info")), h("div", { class: "agent-notice-text" }, markdown(row.html, lens.pane)));
   }
   if (row.kind === "reply") {
     return h(
@@ -239,7 +578,7 @@ function renderRow(lens, row) {
           "div",
           { class: "agent-reply-popover", "data-penna": "inline-panel" },
           reply.side ? h("div", { class: "agent-reply-side" }, "Side answer · not in the conversation") : null,
-          markdown(reply.html),
+          markdown(reply.html, lens.pane),
         ),
       ),
     );
@@ -247,7 +586,7 @@ function renderRow(lens, row) {
   const turn = h("div", { class: "agent-turn" });
   if (row.trace) turn.append(trace(lens, row));
   for (const answer of row.answers) {
-    const block = h("div", { class: "agent-answer" }, markdown(answer.html));
+    const block = h("div", { class: "agent-answer" }, markdown(answer.html, lens.pane));
     if (answer.copy !== null && answer.copy !== undefined) {
       block.append(h("div", { class: "agent-answer-actions" }, button("icon-button.row", "Copy message", "copy", () => copy(answer.copy))));
     }
@@ -495,13 +834,212 @@ function completions(lens, view) {
   return list;
 }
 
-function usageRing(usage) {
-  const radius = 7;
+function usageMeter(usage) {
+  const radius = 5.5;
   const length = 2 * Math.PI * radius;
-  const ring = `<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="${radius}" fill="none" stroke-width="2" class="agent-usage-track"/><circle cx="8" cy="8" r="${radius}" fill="none" stroke-width="2" class="agent-usage-fill" stroke-dasharray="${(usage.fraction * length).toFixed(2)} ${length.toFixed(2)}" transform="rotate(-90 8 8)"/></svg>`;
-  const meter = h("div", { class: "agent-usage", role: "progressbar", "aria-label": usage.tooltip, title: usage.tooltip });
+  const fraction = usage ? Math.min(1, Math.max(0, usage.fraction || 0)) : 0;
+  const label = usage?.percent || "--";
+  const tooltip = usage?.tooltip || "Context window usage";
+  const ring = `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="${radius}" fill="none" stroke-width="1.6" class="agent-usage-track"/><circle cx="7" cy="7" r="${radius}" fill="none" stroke-width="1.6" class="agent-usage-fill" stroke-dasharray="${(fraction * length).toFixed(2)} ${length.toFixed(2)}" transform="rotate(-90 7 7)"/></svg>`;
+  const meter = h("div", { class: "agent-usage-pill", role: "progressbar", "aria-label": tooltip, title: tooltip });
   meter.innerHTML = ring;
+  meter.append(text(label, { class: "agent-usage-label" }));
   return meter;
+}
+
+let modelPopover = null;
+
+let modelPopoverCleanup = null;
+
+function closeModelPopover() {
+  modelPopoverCleanup?.();
+  modelPopoverCleanup = null;
+  modelPopover?.remove();
+  modelPopover = null;
+}
+
+function openModelPopover(lens, settings, anchor) {
+  if (modelPopover?.owner === anchor) {
+    closeModelPopover();
+    return;
+  }
+  closeModelPopover();
+  const pick = (option, value) => {
+    act(lens, () => state.client.agent_set_config(lens.pane, option, value));
+    closeModelPopover();
+  };
+  const panel = h("div", { class: "penna-menu agent-model-popover", "data-penna": "popover" });
+  panel.owner = anchor;
+  if (settings.models?.length) {
+    panel.append(h("div", { class: "agent-popover-head", text: "Model" }));
+    for (const choice of settings.models) {
+      const selected = choice.value === settings.model;
+      panel.append(
+        h(
+          "div",
+          {
+            "data-penna": "menu-item",
+            class: "agent-model-item",
+            "data-state": selected ? "selected" : null,
+            onclick: () => pick("model", choice.value),
+          },
+          text(choice.name || choice.value, { class: "penna-label" }),
+          selected ? icon("check") : null,
+        ),
+      );
+    }
+  }
+  if (settings.efforts?.length) {
+    if (panel.childElementCount) panel.append(h("div", { class: "agent-ask-divider", "data-penna": "rule.list" }));
+    panel.append(h("div", { class: "agent-popover-head", text: "Effort" }));
+    const seg = h(
+      "div",
+      { class: "penna-segmented agent-effort-seg", "data-penna": "field", "data-size": "small", "data-width": "full" },
+      h(
+        "div",
+        { class: "penna-segments" },
+        settings.efforts.map((choice) =>
+          h(
+            "button",
+            {
+              class: "penna-segment",
+              type: "button",
+              "aria-selected": String(choice.value === settings.effort),
+              onclick: () => pick("effort", choice.value),
+            },
+            text(choice.name || choice.value, { class: "penna-label" }),
+          ),
+        ),
+      ),
+    );
+    panel.append(h("div", { class: "agent-popover-pad" }, seg));
+  }
+  if (settings.modes?.length) {
+    if (panel.childElementCount) panel.append(h("div", { class: "agent-ask-divider", "data-penna": "rule.list" }));
+    panel.append(h("div", { class: "agent-popover-head", text: "Permissions" }));
+    for (const choice of settings.modes) {
+      const selected = choice.value === settings.mode;
+      panel.append(
+        h(
+          "div",
+          {
+            "data-penna": "menu-item",
+            class: "agent-model-item",
+            "data-state": selected ? "selected" : null,
+            onclick: () => pick("mode", choice.value),
+          },
+          text(choice.name || choice.value, { class: "penna-label" }),
+          selected ? icon("check") : null,
+        ),
+      );
+    }
+  }
+  document.body.append(panel);
+  const rect = anchor.getBoundingClientRect();
+  const bounds = panel.getBoundingClientRect();
+  const left = Math.max(8, Math.min(rect.right - bounds.width, innerWidth - bounds.width - 8));
+  const top = Math.max(8, rect.top - bounds.height - 6);
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+  modelPopover = panel;
+  const dismiss = (event) => {
+    if (panel.contains(event.target) || anchor.contains(event.target)) return;
+    closeModelPopover();
+  };
+  const onEscape = (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeModelPopover();
+  };
+  modelPopoverCleanup = () => {
+    removeEventListener("pointerdown", dismiss, true);
+    removeEventListener("keydown", onEscape, true);
+  };
+  setTimeout(() => {
+    if (modelPopover !== panel) return;
+    addEventListener("pointerdown", dismiss, true);
+    addEventListener("keydown", onEscape, true);
+  });
+}
+
+function modelPickerButton(lens, settings, enabled) {
+  const hasChoices = Boolean(settings.models?.length || settings.efforts?.length || settings.modes?.length);
+  const label = settings.modelLabel || settings.model || "Model";
+  return h(
+    "button",
+    {
+      "data-penna": "button.quiet",
+      "data-size": "small",
+      class: "agent-model-trigger",
+      disabled: !enabled || !hasChoices || null,
+      title: "Choose the model and effort",
+      onclick: (event) => {
+        event.stopPropagation();
+        openModelPopover(lens, settings, event.currentTarget);
+      },
+    },
+    text(label, { class: "agent-model-name" }),
+    settings.effortName ? text(settings.effortName, { class: "agent-model-effort" }) : null,
+    icon("chevron-down", { class: "agent-model-chevron" }),
+  );
+}
+
+function mentionQuery(input) {
+  const cursor = input.selectionStart ?? input.value.length;
+  const head = input.value.slice(0, cursor);
+  const match = head.match(/(?:^|\s)@([^\s]*)$/);
+  if (!match) return null;
+  return { start: cursor - match[1].length - 1, end: cursor, query: match[1] };
+}
+
+function acceptMention(lens, index) {
+  const mention = lens.mentions?.[index ?? lens.mentionSelected ?? 0];
+  const query = mentionQuery(lens.input);
+  if (!mention || !query) return false;
+  const value = lens.input.value;
+  const next = `${value.slice(0, query.start)}${mention.insert}${value.slice(query.end)}`;
+  const at = query.start + mention.insert.length;
+  lens.input.value = next;
+  lens.input.focus();
+  lens.input.setSelectionRange(at, at);
+  lens.mentions = [];
+  lens.mentionSelected = 0;
+  grow(lens);
+  mark(lens.pane);
+  return true;
+}
+
+function mentionsList(lens) {
+  const list = h("div", { class: "agent-completions", "data-penna": "inline-panel" });
+  lens.mentions.forEach((item, index) => {
+    list.append(
+      h(
+        "div",
+        {
+          class: "agent-completion",
+          "data-penna": "menu-item",
+          "data-state": index === lens.mentionSelected ? "selected" : null,
+          onmouseenter: () => {
+            if (lens.mentionSelected !== index) {
+              lens.mentionSelected = index;
+              mark(lens.pane);
+            }
+          },
+          onmousedown: (event) => event.preventDefault(),
+          onclick: () => acceptMention(lens, index),
+        },
+        icon(paneIcon(item.icon)),
+        h(
+          "div",
+          { class: "agent-completion-copy" },
+          h("div", { class: "agent-completion-name" }, item.label),
+          item.detail ? h("div", { class: "agent-completion-detail" }, item.detail) : null,
+        ),
+      ),
+    );
+  });
+  return list;
 }
 
 function act(lens, effect) {
@@ -530,6 +1068,7 @@ function submit(lens) {
     lens.input.value = "";
     grow(lens);
     lens.pinned = true;
+    emit("agentSubmitted", { pane: lens.pane });
   }
   mark(lens.pane);
 }
@@ -595,14 +1134,16 @@ function createLens(pane) {
     if (lens.view?.action === "stop") act(lens, () => state.client.agent_cancel(lens.pane));
     else submit(lens);
   });
-  const row = h("div", { class: "agent-row" }, mention, lead, h("div", { class: "agent-field" }, input, reply, hint), usage, trailing, action);
+  const row = h("div", { class: "agent-composer-row" }, mention, lead, h("div", { class: "agent-field" }, input, reply, hint), trailing, action);
   const pill = h("div", { class: "agent-pill", "data-penna": "field.composer" }, ask, askRule, row);
   const upper = h("div", { class: "agent-upper" }, h("div", { class: "agent-column agent-stack" }, prefix, h("div", { class: "agent-pill-back" }, pill)));
-  const git = h("div", { class: "agent-column agent-git" });
+  const git = h("div", { class: "agent-git" });
+  const meta = h("div", { class: "agent-footer-right" }, usage);
+  const footerBar = h("div", { class: "agent-column agent-footer-bar" }, git, meta);
   const hints = h("div", { class: "agent-column agent-ask-hints", hidden: true });
-  const composer = h("div", { class: "agent-composer" }, upper, h("div", { class: "agent-footer" }, git, hints));
+  const composer = h("div", { class: "agent-composer" }, upper, h("div", { class: "agent-footer" }, footerBar, hints));
   const root = h("div", { class: "agent-chat" }, area, composer);
-  Object.assign(lens, { root, list, scroll, area, jump, prefix, pill, upper, hint, usage, action, git, composer, mention, reply, lead, ask, askRule, trailing, hints });
+  Object.assign(lens, { root, list, scroll, area, jump, prefix, pill, upper, hint, usage, meta, footerBar, action, git, composer, mention, reply, lead, ask, askRule, trailing, hints, mentions: [], mentionSelected: 0 });
 
   scroll.addEventListener("scroll", () => {
     const distance = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
@@ -640,6 +1181,32 @@ function createLens(pane) {
     if (event.isComposing) return;
     const view = lens.view;
     const hasCompletions = Boolean(view?.completions.length);
+    const hasMentions = Boolean(lens.mentions?.length);
+    if (hasMentions && !hasCompletions) {
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        lens.mentionSelected = (lens.mentionSelected - 1 + lens.mentions.length) % lens.mentions.length;
+        mark(lens.pane);
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        lens.mentionSelected = (lens.mentionSelected + 1) % lens.mentions.length;
+        mark(lens.pane);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        lens.mentions = [];
+        mark(lens.pane);
+        return;
+      }
+      if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
+        event.preventDefault();
+        acceptMention(lens, lens.mentionSelected);
+        return;
+      }
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       if (hasCompletions && accept(lens, null)) return;
@@ -701,12 +1268,27 @@ function updateComposer(lens, view) {
   }
   if (view.tray) prefix.push(tray(lens, view.tray));
   if (view.error) prefix.push(errorCard(view.error));
-  if (view.completions.length && !view.ask?.reply) prefix.push(completions(lens, view));
+  if (view.completions.length && !view.ask?.reply) {
+    lens.mentions = [];
+    prefix.push(completions(lens, view));
+  } else if (!view.ask?.reply) {
+    const mq = mentionQuery(lens.input);
+    lens.mentions = mq && state.client ? JSON.parse(state.client.agent_mentions(lens.pane, mq.query)) : [];
+    lens.mentionSelected = Math.min(lens.mentionSelected || 0, Math.max(0, lens.mentions.length - 1));
+    if (lens.mentions.length) prefix.push(mentionsList(lens));
+  } else {
+    lens.mentions = [];
+  }
   lens.prefix.replaceChildren(...prefix);
   lens.composer.toggleAttribute("data-prefix", prefix.length > 0);
   lens.hint.textContent = view.hint || "";
   lens.hint.hidden = !view.hint;
-  lens.usage.replaceChildren(...(view.usage && !view.ask ? [usageRing(view.usage)] : []));
+  const metaItems = [];
+  if (!view.ask) {
+    metaItems.push(usageMeter(view.usage));
+    if (view.settings) metaItems.push(modelPickerButton(lens, view.settings, view.writable));
+  }
+  lens.meta.replaceChildren(...metaItems);
   const [iconName, title] = {
     send: ["arrow-up", "Send message"],
     queue: ["plus", "Queue this as the next turn"],
@@ -745,6 +1327,9 @@ function updateComposer(lens, view) {
 function updateAsk(lens, view) {
   const ask = view.ask;
   lens.pill.toggleAttribute("data-asking", Boolean(ask));
+  const wasAsking = lens.pill.hasAttribute("data-asking");
+  lens.pill.toggleAttribute("data-asking", Boolean(ask));
+  if (wasAsking !== Boolean(ask)) globalThis.pennaKit?.roundAll?.();
   lens.ask.hidden = !ask;
   lens.askRule.hidden = !ask;
   lens.ask.replaceChildren(...(ask ? askBody(lens, ask) : []));
@@ -774,7 +1359,7 @@ function updateAsk(lens, view) {
   lens.trailing.hidden = trailing.length === 0;
   lens.hints.replaceChildren(...(ask ? ask.hints.map((hint) => (hint.strong ? h("b", {}, hint.text) : text(hint.text))) : []));
   lens.hints.hidden = !ask;
-  lens.git.hidden = Boolean(ask);
+  lens.footerBar.hidden = Boolean(ask);
 }
 
 function render(lens) {
@@ -816,6 +1401,8 @@ function markAll() {
   schedule();
 }
 
+const embedded = new URLSearchParams(location.search).has("embed");
+
 function chat(pane) {
   state.client.agent_open(pane.id);
   flush();
@@ -824,10 +1411,11 @@ function chat(pane) {
   pane.body.append(lens.root);
   pane.element.toggleAttribute("data-chat", true);
   const window = state.tree?.sessions.flatMap((session) => session.windows).find((window) => window.panes.some((item) => item.id === pane.id));
-  if (window?.activePane === pane.id) lens.input.focus({ preventScroll: true });
+  if (!embedded && window?.activePane === pane.id) lens.input.focus({ preventScroll: true });
   mark(pane.id);
   return {
     destroy() {
+      closeModelPopover();
       state.client?.agent_close(pane.id);
       flush();
       clearTimeout(lens.tick);
@@ -839,6 +1427,30 @@ function chat(pane) {
 }
 
 paneRenderer("agent", chat);
+
+const flipButtons = new Map();
+
+paneHeaderButton((pane) => {
+  const info = flipState(pane.id);
+  if (!info) {
+    flipButtons.delete(pane.id);
+    return null;
+  }
+  let btn = flipButtons.get(pane.id);
+  if (!btn) {
+    btn = h("button", { "data-penna": "icon-button.toggle" }, icon(info.icon));
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      flip(pane.id);
+    });
+    flipButtons.set(pane.id, btn);
+  }
+  btn.title = info.title;
+  btn.firstChild.dataset.icon = info.icon;
+  btn.toggleAttribute("data-armed", Boolean(info.armed));
+  btn.disabled = Boolean(info.pending);
+  return btn;
+});
 
 export function flip(pane) {
   if (!state.client?.agent_flip(pane)) return;
@@ -905,7 +1517,10 @@ on("flip", (event) => {
   if (event.error) emit("status", { text: event.error });
   markTree();
 });
-on("theme", markAll);
+on("theme", () => {
+  for (const lens of lenses.values()) lens.rowCache.clear();
+  markAll();
+});
 
 export function providers(force = false) {
   if (!state.client) return null;
@@ -919,4 +1534,14 @@ export function updateProvider(provider) {
   flush();
 }
 
-globalThis.zzAgent = { lenses, flip, chooseFlip, render: (pane) => mark(pane), providers, updateProvider };
+globalThis.zzAgent = {
+  lenses,
+  flip,
+  chooseFlip,
+  render: (pane) => mark(pane),
+  providers,
+  updateProvider,
+  renderMermaid,
+  highlightCode,
+  renderMarkdown: (html, paneId) => markdown(html, paneId),
+};

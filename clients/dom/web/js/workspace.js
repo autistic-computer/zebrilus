@@ -1,7 +1,52 @@
-import { $, activeWindow, emit, flush, markPane, markTree, on, onKey, phase, schedule, session, state } from "./core.js";
-import { preferences, setPreferences } from "./preferences.js";
+import { $, activeWindow, command, dark, emit, flush, markPane, markTree, on, onKey, phase, schedule, session, state } from "./core.js";
+import { about as aboutInfo, preferences, setPreferences } from "./preferences.js";
 
 export { preferences, setPreferences };
+
+let appIdentity = null;
+
+export function appLogoSrc() {
+  if (!appIdentity) appIdentity = aboutInfo("browser");
+  const prefix = appIdentity?.development ? "zz-dev" : "zz";
+  return `img/${prefix}-${dark() ? "dark" : "light"}-512.png`;
+}
+
+export function programAssetUrl(program) {
+  if (!program) return null;
+  const path = program.icon ? `img/icons/${program.icon}.svg` : `img/programs/${program.id}.svg`;
+  return new URL(path, document.baseURI).href;
+}
+
+export function paintTile(element, tile) {
+  const program = preferences.program_colors ? tile.program : null;
+  if (program) {
+    const url = programAssetUrl(program);
+    element.setAttribute("data-program", program.id);
+    element.style.setProperty("--program-bg", program.bg);
+    if (program.kind === "art") {
+      element.innerHTML = `<img class="program-art" src="${url}" alt="">`;
+    } else {
+      element.innerHTML = `<i class="program-mark" style="--program-fg:${program.fg || "#ffffff"};--program-mask:url('${url}')"></i>`;
+    }
+    return;
+  }
+  element.removeAttribute("data-program");
+  element.style.removeProperty("--program-bg");
+  const glyph = tile.tag === "terminal" ? "terminal" : paneIcon(tile.tag);
+  element.innerHTML = `<i data-icon="${glyph}"></i>`;
+}
+
+export function programMaskHtml(program, fallbackIcon, extraClass = "") {
+  const cls = extraClass ? ` ${extraClass}` : "";
+  if (program) {
+    const url = programAssetUrl(program);
+    if (program.kind === "art") {
+      return `<img class="program-art${cls}" src="${url}" alt="">`;
+    }
+    return `<i class="program-mask${cls}" style="--program-mask:url('${url}')"></i>`;
+  }
+  return `<i data-icon="${fallbackIcon}"${extraClass ? ` class="${extraClass}"` : ""}></i>`;
+}
 
 export const panes = new Map();
 const renderers = new Map();
@@ -44,11 +89,22 @@ const toast = document.createElement("div");
 toast.className = "canvas-toast";
 toast.dataset.penna = "toast";
 toast.hidden = true;
+const unzoomChip = document.createElement("button");
+unzoomChip.className = "unzoom-chip";
+unzoomChip.dataset.penna = "chip.floating";
+unzoomChip.hidden = true;
+unzoomChip.title = "Unzoom pane";
+unzoomChip.innerHTML = `<i data-icon="shrink"></i><span data-text>Unzoom</span>`;
+unzoomChip.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (!writable()) return;
+  command("resize-pane", ["-Z"]);
+});
 const empty = document.createElement("div");
 empty.className = "empty-workspace";
 empty.hidden = true;
 empty.innerHTML = `<i data-icon="square-terminal"></i><div class="empty-title" data-text>Your workspace</div><div class="empty-status penna-muted" data-text></div><button data-penna="button"></button>`;
-canvas.append(content, preview, toast, empty);
+canvas.append(content, preview, toast, unzoomChip, empty);
 workspace.append(titlebar, canvas);
 
 const chip = document.createElement("div");
@@ -222,9 +278,10 @@ function chrome(pane, info, window, floating) {
   const active = window.activePane === pane.id;
   const terminal = info.kind === "terminal";
   const chat = info.kind === "agent";
+  const view = info.kind === "view";
   const { header: headerHeight, gaps } = metrics();
   const framed = gaps && !floating;
-  const showHeader = (terminal || chat) && !floating;
+  const showHeader = (terminal || chat || view) && !floating;
   pane.info = info;
   pane.floating = floating;
   pane.element.toggleAttribute("data-active", active);
@@ -265,7 +322,12 @@ function renderHeader(parts, pane, info, window, floats, label) {
   parts.element.toggleAttribute("data-active", active);
   parts.title.querySelector(".title").textContent = label ?? info.label ?? "";
   parts.title.querySelector(".folder").textContent = info.folder ?? "";
-  parts.title.querySelector(".kind").dataset.icon = paneIcon(info.kind);
+  const iconSlot = parts.title.querySelector(".title-icon");
+  const iconKey = info.program ? `p:${info.program.id}` : `k:${info.kind}`;
+  if (iconSlot.dataset.iconKey !== iconKey) {
+    iconSlot.dataset.iconKey = iconKey;
+    iconSlot.innerHTML = `${programMaskHtml(info.program, paneIcon(info.kind), "kind")}<i data-icon="arrows-move" class="move"></i>`;
+  }
   parts.title.toggleAttribute("data-movable", floats ? writable() : canDrag(window));
   const lone = window.panes.length === 1;
   const zoomed = window.zoomedPane === pane.id;
@@ -392,7 +454,7 @@ function layoutKey(layout) {
   return JSON.stringify(layout, (key, value) => (key === "highlight" ? undefined : value));
 }
 
-function beginPaneDrag(id, event, requiresPrefix) {
+export function beginPaneDrag(id, event, requiresPrefix) {
   const window = activeWindow();
   if (!window || !canDrag(window) || !window.panes.some((pane) => pane.id === id)) return;
   const startX = event.clientX;
@@ -525,14 +587,17 @@ function floatCanvas() {
   return [content.clientWidth, content.clientHeight];
 }
 
-function floatRows() {
+export function floatRows() {
   const window = activeWindow();
   if (!window) return 0;
   return state.client.float_rows(window.id, new Float32Array(cellSize()), new Float32Array(floatCanvas()), metrics().header);
 }
 
+const PIP_GRIPS = ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"];
+
 function floatSurface(pane, float, info, window) {
   const active = window.activePane === pane.id;
+  const ownHeader = !float.modal && info.kind === "browser";
   let surface = pane.surface;
   if (!surface) {
     surface = el("div", { class: "float-surface" });
@@ -540,18 +605,27 @@ function floatSurface(pane, float, info, window) {
     pane.surface = surface;
   }
   surface.dataset.penna = float.modal ? "floating.pane" : "floating.pip";
+  surface.dataset.kind = info.kind;
   surface.toggleAttribute("data-bordered", float.bordered);
   surface.toggleAttribute("data-modal", float.modal);
+  surface.toggleAttribute("data-own-header", ownHeader);
   surface.dataset.state = float.modal && active ? "current" : "";
-  const [insetX, insetY] = float.inset;
+  const [rawInsetX, rawInsetY] = float.inset;
   const { header: headerHeight } = metrics();
-  const docked = !float.modal && float.bordered && insetY > 0;
-  const top = float.modal ? insetY : docked ? Math.max(headerHeight, insetY) : insetY;
+  const isTerminal = info.kind === "terminal";
+  const insetX = ownHeader ? 0 : float.modal || isTerminal ? rawInsetX : 0;
+  const insetY = ownHeader ? 0 : float.modal || isTerminal ? rawInsetY : 0;
+  const docked = !float.modal && !ownHeader && float.bordered && rawInsetY > 0;
+  const headerSlot = Math.max(headerHeight, rawInsetY);
+  const top = ownHeader ? 0 : float.modal ? rawInsetY : docked ? headerSlot : insetY;
   surface.style.setProperty("--inset-x", `${insetX}px`);
   surface.style.setProperty("--inset-top", `${top}px`);
   surface.style.setProperty("--inset-y", `${insetY}px`);
-  surface.style.setProperty("--header", `${Math.max(headerHeight, insetY)}px`);
-  if (float.modal) {
+  surface.style.setProperty("--header", `${headerSlot}px`);
+  if (ownHeader) {
+    surface.querySelector(":scope > .float-title")?.remove();
+    surface.querySelector(":scope > .pip-header")?.remove();
+  } else if (float.modal) {
     let label = surface.querySelector(":scope > .float-title");
     if (!label) {
       label = el("div", { class: "float-title penna-mono" }, `<span data-text></span>`);
@@ -601,24 +675,37 @@ function renderFloats(window) {
     }
     const holder = el("div", { class: "float-frame" });
     let [x, y, width, height] = float.frame;
-    if (pipDrag?.pane === float.pane) [x, y] = [pipDrag.x, pipDrag.y];
+    if (pipDrag?.pane === float.pane) {
+      if (pipDrag.frame) [x, y, width, height] = pipDrag.frame;
+      else [x, y] = [pipDrag.x, pipDrag.y];
+    }
     Object.assign(holder.style, { left: `${x}px`, top: `${y}px`, width: `${width}px`, height: `${height}px` });
     holder.dataset.pane = float.pane;
     pane.frameRect = [x, y, width, height];
     holder.append(floatSurface(pane, float, info, window));
+    if (!float.modal && float.bordered && writable()) {
+      for (const name of PIP_GRIPS) {
+        const grip = el("div", { class: `pip-grip pip-grip-${name}`, "data-grip": name });
+        grip.addEventListener("pointerdown", (event) => beginPipResize(pane, name, event));
+        holder.append(grip);
+      }
+    }
     layer.push(holder);
   }
   floatLayer.replaceChildren(...layer);
   floatLayer.hidden = !layer.length;
+  if (layer.length) requestAnimationFrame(() => globalThis.pennaKit?.roundAll?.());
   return new Set(list.map((float) => float.pane));
 }
 
-function beginPip(pane, event) {
+export function beginPip(pane, event) {
   const window = activeWindow();
   if (!window || !writable() || !pane.frameRect) return;
   event.preventDefault();
-  const [x, y] = pane.frameRect;
+  event.stopPropagation();
+  const [x, y, width, height] = pane.frameRect;
   const start = { x: event.clientX, y: event.clientY };
+  const [canvasW, canvasH] = floatCanvas();
   let moved = false;
   focusPane(pane.id);
   const move = (moveEvent) => {
@@ -626,7 +713,9 @@ function beginPip(pane, event) {
     const dy = moveEvent.clientY - start.y;
     if (!moved && Math.hypot(dx, dy) < 3) return;
     moved = true;
-    pipDrag = { pane: pane.id, x: x + dx, y: y + dy };
+    const clampedX = Math.max(-width * 0.25, Math.min(canvasW - width * 0.75, x + dx));
+    const clampedY = Math.max(0, Math.min(Math.max(0, canvasH - height * 0.75), y + dy));
+    pipDrag = { pane: pane.id, x: clampedX, y: clampedY };
     const holder = floatLayer.querySelector(`.float-frame[data-pane="${pane.id}"]`);
     if (holder) Object.assign(holder.style, { left: `${pipDrag.x}px`, top: `${pipDrag.y}px` });
   };
@@ -635,7 +724,6 @@ function beginPip(pane, event) {
     removeEventListener("pointerup", end);
     removeEventListener("pointercancel", end);
     if (!moved || !pipDrag) return;
-    const [, , width, height] = pane.frameRect;
     state.client.float_land(window.id, pane.id, new Float32Array(cellSize()), new Float32Array(floatCanvas()), metrics().header, new Float32Array([pipDrag.x + width / 2, pipDrag.y + height / 2]));
     flush();
     pipDrag.landing = state.tree?.generation ?? 0;
@@ -651,12 +739,71 @@ function beginPip(pane, event) {
   addEventListener("pointercancel", end);
 }
 
+function beginPipResize(pane, grip, event) {
+  if (event.button !== 0) return;
+  const window = activeWindow();
+  if (!window || !writable() || !pane.frameRect) return;
+  event.preventDefault();
+  event.stopPropagation();
+  focusPane(pane.id);
+  const [cw, ch] = cellSize();
+  const canvas = floatCanvas();
+  const headerHeight = metrics().header;
+  const start = { x: event.clientX, y: event.clientY };
+  let lastDelta = [0, 0];
+  let moved = false;
+  const move = (moveEvent) => {
+    const dx = Math.round((moveEvent.clientX - start.x) / cw);
+    const dy = Math.round((moveEvent.clientY - start.y) / ch);
+    if (dx === lastDelta[0] && dy === lastDelta[1]) return;
+    lastDelta = [dx, dy];
+    moved = true;
+    const rect = state.client.float_resize_preview(window.id, pane.id, new Float32Array([cw, ch]), new Float32Array(canvas), headerHeight, grip, new Int32Array([dx, dy]));
+    if (rect.length !== 4) return;
+    pipDrag = { pane: pane.id, frame: [...rect] };
+    const holder = floatLayer.querySelector(`.float-frame[data-pane="${pane.id}"]`);
+    if (holder) {
+      Object.assign(holder.style, { left: `${rect[0]}px`, top: `${rect[1]}px`, width: `${rect[2]}px`, height: `${rect[3]}px` });
+      pane.view?.layout?.();
+    }
+  };
+  const end = () => {
+    removeEventListener("pointermove", move);
+    removeEventListener("pointerup", end);
+    removeEventListener("pointercancel", end);
+    if (!moved) {
+      pipDrag = null;
+      return;
+    }
+    const committed = state.client.float_resize(window.id, pane.id, new Float32Array([cw, ch]), new Float32Array(canvas), headerHeight, grip, new Int32Array(lastDelta));
+    flush();
+    if (!committed) {
+      pipDrag = null;
+      markTree();
+      return;
+    }
+    if (pipDrag) {
+      pipDrag.landing = state.tree?.generation ?? 0;
+      const landing = pipDrag;
+      setTimeout(() => {
+        if (pipDrag !== landing) return;
+        pipDrag = null;
+        markTree();
+      }, 1000);
+    }
+  };
+  addEventListener("pointermove", move);
+  addEventListener("pointerup", end);
+  addEventListener("pointercancel", end);
+}
+
 function windowTab(entry) {
   const tab = el("div", { class: "window-tab", "data-penna": "tab.window", "data-window": entry.id, title: entry.label });
   if (entry.active) tab.dataset.state = "current";
   const deck = el("div", { class: "tab-deck" });
   entry.panes.slice(0, 3).forEach((pane, index) => {
-    const tile = el("span", { class: "deck-tile", "data-penna": "tile.stack" }, `<i data-icon="${paneIcon(pane.tag)}"></i>`);
+    const tile = el("span", { class: "deck-tile", "data-penna": "tile.stack" });
+    paintTile(tile, pane);
     if (index === 0) tile.dataset.state = "current";
     tile.style.left = `${index * 5}px`;
     tile.style.zIndex = 3 - index;
@@ -689,36 +836,204 @@ function windowTab(entry) {
   return tab;
 }
 
+function closeMenus() {
+  for (const menu of document.querySelectorAll(".zz-context-menu")) menu.remove();
+}
+
 export function contextMenu(x, y, items) {
-  document.querySelector(".zz-context-menu")?.remove();
-  const menu = el("div", { class: "penna-menu zz-context-menu", "data-penna": "popover" });
-  menu.setAttribute("role", "menu");
-  for (const [label, run, icon] of items) {
-    const item = el("div", { "data-penna": "menu-item" });
-    item.setAttribute("role", "menuitem");
-    item.innerHTML = `${icon ? `<i data-icon="${icon}"></i>` : ""}<span data-text></span>`;
-    item.querySelector("span").textContent = label;
-    item.addEventListener("click", () => {
-      menu.remove();
-      run();
-      flush();
-    });
-    item.addEventListener("mouseenter", () => (item.dataset.state = "selected"));
-    item.addEventListener("mouseleave", () => delete item.dataset.state);
-    menu.append(item);
-  }
+  closeMenus();
+  const root = buildMenuLevel(items, 0);
+  positionMenu(root, x, y);
+  const dismiss = (event) => {
+    if (event.target.closest?.(".zz-context-menu")) return;
+    closeMenus();
+    removeEventListener("pointerdown", dismiss, true);
+    removeEventListener("keydown", onEscape, true);
+  };
+  const onEscape = (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    closeMenus();
+    removeEventListener("pointerdown", dismiss, true);
+    removeEventListener("keydown", onEscape, true);
+  };
+  setTimeout(() => {
+    addEventListener("pointerdown", dismiss, true);
+    addEventListener("keydown", onEscape, true);
+  });
+}
+
+function positionMenu(menu, x, y, avoidRect = null) {
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
   document.body.append(menu);
   const bounds = menu.getBoundingClientRect();
-  if (bounds.right > innerWidth - 8) menu.style.left = `${Math.max(8, innerWidth - 8 - bounds.width)}px`;
-  if (bounds.bottom > innerHeight - 8) menu.style.top = `${Math.max(8, innerHeight - 8 - bounds.height)}px`;
-  const dismiss = (event) => {
-    if (menu.contains(event.target)) return;
-    menu.remove();
-    removeEventListener("pointerdown", dismiss, true);
+  let left = x;
+  let top = y;
+  if (bounds.right > innerWidth - 8) {
+    left = avoidRect ? Math.max(8, avoidRect.left - bounds.width - 4) : Math.max(8, innerWidth - 8 - bounds.width);
+  }
+  if (bounds.bottom > innerHeight - 8) top = Math.max(8, innerHeight - 8 - bounds.height);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
+function buildMenuLevel(items, depth) {
+  const menu = el("div", { class: "penna-menu zz-context-menu", "data-penna": "popover", "data-depth": depth });
+  menu.setAttribute("role", "menu");
+  const pruneDeeper = () => {
+    for (const open of document.querySelectorAll(".zz-context-menu")) {
+      if (Number(open.dataset.depth) > depth) open.remove();
+    }
   };
-  setTimeout(() => addEventListener("pointerdown", dismiss, true));
+  for (const raw of items) {
+    if (raw === "---" || raw?.separator) {
+      menu.append(el("div", { class: "zz-context-rule", "data-penna": "rule.list" }));
+      continue;
+    }
+    const entry = Array.isArray(raw) ? { label: raw[0], run: raw[1], icon: raw[2] } : raw;
+    const item = el("div", { "data-penna": "menu-item" });
+    item.setAttribute("role", "menuitem");
+    if (entry.disabled) item.dataset.state = "disabled";
+    item.innerHTML = `${entry.icon ? `<i data-icon="${entry.icon}"></i>` : ""}<span class="penna-label" data-text></span>${entry.submenu ? `<i data-icon="chevron-right" class="menu-chevron"></i>` : ""}`;
+    item.querySelector(".penna-label").textContent = entry.label;
+    const openSub = () => {
+      pruneDeeper();
+      if (!entry.submenu || entry.disabled) return;
+      const sub = buildMenuLevel(entry.submenu, depth + 1);
+      const rect = item.getBoundingClientRect();
+      positionMenu(sub, rect.right + 4, rect.top - 4, rect);
+    };
+    item.addEventListener("mouseenter", () => {
+      if (!entry.disabled) item.dataset.state = "selected";
+      if (entry.submenu) openSub();
+      else pruneDeeper();
+    });
+    item.addEventListener("mouseleave", () => {
+      if (!entry.disabled) delete item.dataset.state;
+    });
+    item.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (entry.disabled) return;
+      if (entry.submenu) {
+        openSub();
+        return;
+      }
+      closeMenus();
+      entry.run?.();
+      flush();
+    });
+    menu.append(item);
+  }
+  return menu;
+}
+
+export function openAppMenu(anchor) {
+  const existing = document.querySelector(".zz-context-menu");
+  if (existing && existing.dataset.owner === anchor.id) {
+    closeMenus();
+    return;
+  }
+  const info = state.client ? JSON.parse(state.client.app_menu_state()) : { writable: false, hasTerminal: false, sessions: [] };
+  const connected = state.connected;
+  const canWrite = connected && info.writable;
+  const about = aboutInfo("browser");
+  const docsUrl = "https://autistic.computer/zz";
+  const openUrl = (url) => window.open(url, "_blank", "noopener");
+  const adjustZoom = (delta) => {
+    const next = delta === 0 ? 1 : Math.min(3, Math.max(0.5, Math.round(((preferences.zoom || 1) + delta) * 20) / 20));
+    setPreferences({ zoom: next });
+  };
+  const pane = activeWindow()?.activePane;
+  const items = [
+    {
+      label: "zz",
+      submenu: [
+        { label: "About zz", run: () => emit("open-settings", { section: "about" }) },
+        { label: "Settings…", run: () => emit("open-settings", { section: "appearance" }) },
+      ],
+    },
+    {
+      label: "File",
+      submenu: [
+        { label: "New Session", disabled: !canWrite, run: () => command("new-session") },
+        { label: "New Window", disabled: !canWrite, run: () => command("new-window") },
+        { label: "Split Right", disabled: !canWrite, run: () => command("split-window", ["-h"]) },
+        { label: "Split Down", disabled: !canWrite, run: () => command("split-window", ["-v"]) },
+        { label: "New Browser Pane", disabled: !canWrite, run: () => command("split-window", ["--kind", "browser"]) },
+        "---",
+        info.sessions.length && connected
+          ? {
+              label: "Switch Session",
+              submenu: info.sessions.map((entry) => ({
+                label: entry.name,
+                icon: entry.id === info.attached ? "check" : null,
+                run: () => state.client.attach(`$${entry.id}`),
+              })),
+            }
+          : { label: "Switch Session", disabled: true },
+        { label: "Rename Session…", disabled: !canWrite, run: () => state.client.session_prompt("rename-session") },
+        { label: "Rename Window…", disabled: !canWrite, run: () => state.client.session_prompt("rename-window") },
+        "---",
+        { label: "Close Pane", disabled: !canWrite, run: () => command("kill-pane") },
+        { label: "Kill Window", disabled: !canWrite, run: () => command("kill-window") },
+        { label: "Kill Session…", disabled: !canWrite, run: () => state.client.session_prompt("kill-session") },
+        "---",
+        { label: "Detach", disabled: !connected, run: () => command("detach-client") },
+      ],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { label: "Find…", disabled: !info.hasTerminal, run: () => emit("terminalFind") },
+        { label: "Copy Mode", disabled: !canWrite, run: () => command("copy-mode") },
+        {
+          label: "Clear Scrollback",
+          disabled: !info.hasTerminal || pane == null,
+          run: () => state.client.terminal_action(pane, false, "clearHistory"),
+        },
+      ],
+    },
+    {
+      label: "View",
+      submenu: [
+        { label: "Command Palette…", run: () => emit("openPalette", { mode: "command" }) },
+        { label: "Choose Window…", disabled: !canWrite, run: () => command("choose-tree", ["-w"]) },
+        "---",
+        { label: "Toggle Sidebar", run: () => emit("toggleSidebar") },
+        "---",
+        { label: info.zoomed ? "Unzoom Pane" : "Zoom Pane", disabled: !canWrite, run: () => command("resize-pane", ["-Z"]) },
+        {
+          label: "Select Pane",
+          disabled: !canWrite,
+          submenu: [
+            { label: "Up", disabled: !canWrite, run: () => command("select-pane", ["-U"]) },
+            { label: "Down", disabled: !canWrite, run: () => command("select-pane", ["-D"]) },
+            { label: "Left", disabled: !canWrite, run: () => command("select-pane", ["-L"]) },
+            { label: "Right", disabled: !canWrite, run: () => command("select-pane", ["-R"]) },
+          ],
+        },
+        "---",
+        { label: "Zoom In", run: () => adjustZoom(0.1) },
+        { label: "Zoom Out", run: () => adjustZoom(-0.1) },
+        { label: "Reset Zoom", run: () => adjustZoom(0) },
+      ],
+    },
+    {
+      label: "Help",
+      submenu: [
+        { label: "zz Documentation", run: () => openUrl(docsUrl) },
+        { label: "Keyboard Shortcuts", run: () => openUrl(docsUrl) },
+        { label: "Release Notes", run: () => openUrl(about.releases || docsUrl) },
+        "---",
+        { label: "Report an Issue", run: () => openUrl(about.issues || docsUrl) },
+      ],
+    },
+  ];
+  const rect = anchor.getBoundingClientRect();
+  contextMenu(rect.left, rect.bottom + 4, items);
+  const root = document.querySelector(".zz-context-menu[data-depth='0']");
+  if (root) root.dataset.owner = anchor.id || "app-menu";
 }
 
 export function narrow() {
@@ -752,10 +1067,16 @@ function renderTitlebar() {
     });
     tabs.append(more);
   }
-  const toggle = el("button", { "data-penna": "chrome.button", class: "titlebar-toggle", title: "Toggle sidebar" }, `<i data-icon="panel-top"></i>`);
+  const logo = el("span", { class: "chrome-logo" }, `<img src="${appLogoSrc()}" alt="zz">`);
+  const menuButton = el("button", { "data-penna": "chrome.button", id: "titlebar-app-menu", title: "App menu" }, `<i data-icon="menu"></i>`);
+  menuButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openAppMenu(menuButton);
+  });
+  const toggle = el("button", { "data-penna": "chrome.button", class: "titlebar-toggle", title: "Toggle sidebar" }, `<i data-icon="panel-left"></i>`);
   toggle.addEventListener("click", () => emit("toggleSidebar"));
-  const controls = el("div", { class: "titlebar-controls" });
-  controls.append(toggle);
+  const controls = el("div", { class: "titlebar-controls chrome-controls" });
+  controls.append(logo, menuButton, toggle);
   const body = el("div", { class: "titlebar-content" });
   body.append(strip);
   titlebar.replaceChildren(el("div", { class: "titlebar-leading" }), controls, body);
@@ -816,15 +1137,18 @@ function render() {
   if (pipDrag?.landing !== undefined && (tree?.generation ?? 0) > pipDrag.landing) pipDrag = null;
   if (paneDrag && (!window || paneDrag.window !== window.id || layoutKey(window.layout) !== paneDrag.layout || window.zoomedPane || !writable() || (paneDrag.requiresPrefix && !prefixArmed))) cancelDrags();
   if (tree?.landing) {
+    unzoomChip.hidden = true;
     renderLanding();
     return;
   }
   if (!window) {
+    unzoomChip.hidden = true;
     content.replaceChildren();
     renderEmpty();
     return;
   }
   empty.hidden = true;
+  unzoomChip.hidden = !(window.zoomedPane != null && window.panes.length > 1);
   arrivals(window);
   const root = window.zoomedPane ? { pane: window.zoomedPane } : override?.layout || window.layout;
   const laid = new Set();
@@ -886,6 +1210,19 @@ on("attached", () => {
   override = null;
   splitDrag = null;
   cancelDrags();
+});
+
+on("hostSwitched", () => {
+  override = null;
+  splitDrag = null;
+  cancelDrags();
+  for (const [id, pane] of panes) {
+    pane.view?.destroy?.();
+    pane.element.remove();
+    panes.delete(id);
+    pickers.delete(id);
+  }
+  arrived = { window: null, known: new Set() };
 });
 
 state.chatView = Boolean(preferences.flat_sidebar);
@@ -1076,6 +1413,85 @@ function unsupported(title, icon, reason) {
   };
 }
 
+function viewPane(pane) {
+  const root = el("div", { class: "view-pane" });
+  pane.body.append(root);
+  let showSource = false;
+  let lastKey = "";
+  const toggleButton = el("button", { "data-penna": "icon-button.bar", title: "Show source" }, `<i data-icon="braces"></i>`);
+  toggleButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    showSource = !showSource;
+    toggleButton.title = showSource ? "Show diagram" : "Show source";
+    toggleButton.innerHTML = `<i data-icon="${showSource ? "list-tree" : "braces"}"></i>`;
+    lastKey = "";
+    view.update();
+  });
+  pane.viewToggle = toggleButton;
+  const renderContent = () => {
+    const descriptor = pane.info?.view;
+    if (!descriptor?.content) {
+      root.innerHTML = `<div class="unsupported-pane"><i data-icon="eye"></i><div class="penna-muted reason">Nothing to show</div></div>`;
+      return;
+    }
+    const content = descriptor.content;
+    const key = `${JSON.stringify(content)}|${showSource}|${document.documentElement.dataset.pennaMode}`;
+    if (key === lastKey) return;
+    lastKey = key;
+    if (content.Diagram) {
+      const { language, source } = content.Diagram;
+      pane.hasDiagramToggle = true;
+      if (showSource) {
+        const html = globalThis.zzAgent?.highlightCode?.(source, language) ?? escape(source);
+        root.innerHTML = `<div class="view-code-wrap"><pre class="view-code">${html}</pre></div>`;
+        return;
+      }
+      if (language.toLowerCase() === "svg") {
+        root.innerHTML = `<div class="view-diagram">${source}</div>`;
+        return;
+      }
+      const rendered = globalThis.zzAgent?.renderMermaid?.(source);
+      if (rendered?.ok) {
+        root.innerHTML = `<div class="view-diagram">${rendered.svg}</div>`;
+      } else {
+        root.innerHTML = `<div class="unsupported-pane"><i data-icon="triangle-alert"></i><div class="penna-muted reason">${escape(rendered?.error || "Could not render diagram")}</div></div>`;
+      }
+      return;
+    }
+    pane.hasDiagramToggle = false;
+    if (content.Code) {
+      const { language, text } = content.Code;
+      const html = globalThis.zzAgent?.highlightCode?.(text, language || "text") ?? escape(text);
+      root.innerHTML = `<div class="view-code-wrap"><pre class="view-code">${html}</pre></div>`;
+      return;
+    }
+    if (content.Markdown) {
+      const html = state.client?.markdown_to_html(content.Markdown.text) ?? `<p>${escape(content.Markdown.text)}</p>`;
+      const block = globalThis.zzAgent?.renderMarkdown?.(html, pane.id);
+      root.replaceChildren(el("div", { class: "view-markdown" }, ""));
+      if (block) root.firstChild.append(block);
+      else root.firstChild.innerHTML = html;
+      return;
+    }
+    root.innerHTML = `<div class="unsupported-pane"><i data-icon="eye"></i><div class="penna-muted reason">Preview not available in this pane</div></div>`;
+  };
+  const view = {
+    update: renderContent,
+    layout() {},
+    destroy() {
+      pane.viewToggle = null;
+      pane.hasDiagramToggle = false;
+    },
+  };
+  renderContent();
+  return view;
+}
+
+paneHeaderButton((pane, info) => (info.kind === "view" && pane.hasDiagramToggle ? pane.viewToggle : null));
+on("theme", () => {
+  for (const pane of panes.values()) if (pane.kind === "view") markPane(pane.id);
+});
+
 paneRenderer("editor", unsupported("Editor", "file", "The daemon does not share editor file contents with browser clients yet."));
-paneRenderer("view", unsupported("View", "eye", "Diagrams, code and images from a chat open in the zz app."));
+paneRenderer("view", viewPane);
 paneRenderer("other", (pane, info) => unsupported(escape(info.other.kind), "info", escape(info.other.text))(pane));

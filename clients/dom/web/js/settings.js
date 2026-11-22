@@ -1,4 +1,5 @@
-import { $, command, emit, on, state } from "./core.js";
+import { $, command, emit, on, state, switchHost } from "./core.js";
+import { toast as overlayToast } from "./overlays.js";
 import * as preferences from "./preferences.js";
 import * as engine from "../theme/zz_dom_theme.js";
 
@@ -351,9 +352,39 @@ function modePreview(mode, modes) {
 }
 
 function toast(message, tone) {
-  const element = h("div", { "data-penna": "toast", class: "settings-toast", role: "status", "data-tone": tone }, h("span", { class: "settings-toast-message", text: message }));
-  page.append(element);
-  setTimeout(() => element.remove(), 4000);
+  overlayToast(tone === "danger" ? "error" : tone || "info", message, 4000);
+}
+
+function segmented({ label, value, items, onchange }) {
+  const selected = Math.max(0, items.findIndex((item) => item.value === value));
+  const segments = h(
+    "div",
+    { class: "penna-segments", "data-penna": "button.quiet", "data-state": "current" },
+    h("span", { class: "penna-segment-pill" }),
+    items.map((item, index) =>
+      h(
+        "span",
+        { class: "penna-segment", role: "button", "aria-selected": String(index === selected) },
+        h("span", { class: "penna-label", "data-penna-text": true, text: item.title }),
+      ),
+    ),
+  );
+  const control = h(
+    "div",
+    {
+      class: "penna-segmented",
+      "data-penna": "field",
+      "data-value": String(selected),
+      role: "radiogroup",
+      "aria-label": label,
+    },
+    segments,
+  );
+  control.addEventListener("change", (event) => {
+    const item = items[event.detail?.index];
+    if (item) onchange(item.value);
+  });
+  return control;
 }
 
 function adaptive(radius, size) {
@@ -455,7 +486,12 @@ function interfacePage() {
       }),
       entry({
         title: "Controls",
-        control: choose({ value: picks.controls, items: CONTROL_SHAPES.map(([value, title]) => ({ value, title })), onpick: (value) => set({ controls: value }) }),
+        control: segmented({
+          label: "Controls",
+          value: picks.controls,
+          items: CONTROL_SHAPES.map(([value, title]) => ({ value, title })),
+          onchange: (value) => set({ controls: value }),
+        }),
       }),
       entry({
         title: "Corner radius",
@@ -488,10 +524,11 @@ function interfacePage() {
       }),
       entry({
         title: "Density",
-        control: choose({
+        control: segmented({
+          label: "Density",
           value: p.density || "regular",
           items: DENSITIES.map(([value, title]) => ({ value, title })),
-          onpick: (value) => set({ density: value }),
+          onchange: (value) => set({ density: value }),
         }),
       }),
     ]),
@@ -504,10 +541,11 @@ function interfacePage() {
       }),
       entry({
         title: "Motion",
-        control: choose({
+        control: segmented({
+          label: "Motion",
           value: p.motion || "default",
           items: MOTIONS.map(([value, title]) => ({ value, title })),
-          onpick: (value) => set({ motion: value }),
+          onchange: (value) => set({ motion: value }),
         }),
       }),
     ]),
@@ -802,20 +840,33 @@ function terminalPage() {
 }
 
 function hostsPage() {
-  const connected = state.connected;
-  const endpoint = `zz web gateway at ${location.host}`;
-  return [
-    heading("Hosts"),
-    stack("Hosts", [
-      entry({
-        title: "This computer",
-        description: endpoint,
-        glyph: h("i", { "data-icon": "hard-drive", style: { color: connected ? "var(--penna-success)" : "var(--penna-warning)" } }),
-        status: h("div", { class: "setting-status" }, block(connected ? "Connected" : "Connecting…")),
-        control: button("Reconnect", { onclick: () => state.socket?.close() }, text("Reconnect")),
+  const hosts = state.hosts.length
+    ? state.hosts
+    : [{ id: "local", name: "This computer", local: true, connected: state.connected }];
+  const entries = hosts.map((host) => {
+    const active = host.id === state.hostId;
+    const description = state.showcase
+      ? host.local
+        ? "Built-in demo host"
+        : "Simulated remote host"
+      : `zz web gateway at ${location.host}`;
+    const control = state.showcase
+      ? active
+        ? text("Active", { class: "setting-note" })
+        : button("Switch", { onclick: () => { switchHost(host.id); close(); } }, text("Switch"))
+      : button("Reconnect", { onclick: () => state.socket?.close() }, text("Reconnect"));
+    return entry({
+      title: host.name,
+      description,
+      glyph: h("i", {
+        "data-icon": host.local ? "hard-drive" : "server",
+        style: { color: host.connected ? "var(--penna-success)" : "var(--penna-warning)" },
       }),
-    ]),
-  ];
+      status: h("div", { class: "setting-status" }, block(host.connected ? "Connected" : "Connecting…")),
+      control,
+    });
+  });
+  return [heading("Hosts"), stack("Hosts", entries)];
 }
 
 function providerEntry(row) {
@@ -858,14 +909,30 @@ function systemPage() {
       entry({
         title: "Window chooser",
         description: "Sessions and windows before you type",
-        control: choose({
+        control: segmented({
+          label: "Window chooser",
           value: p.palette_grouped ? "grouped" : "flat",
-          className: "choice",
           items: PALETTE_LAYOUTS.map(([value, title]) => ({ value, title })),
-          onpick: (value) => set({ palette_grouped: value === "grouped" }),
+          onchange: (value) => set({ palette_grouped: value === "grouped" }),
         }),
       }),
       entry({ title: "Show shortcuts", description: "Each command's keys beside it", control: toggle(p.palette_show_keys, "Show shortcuts", (value) => set({ palette_show_keys: value })) }),
+    ]),
+    stack("Notifications", [
+      entry({
+        title: "Notify when a pane needs you",
+        description: "While zz is in the background",
+        control: toggle(p.notifications !== false, "Notify when a pane needs you", (value) => {
+          set({ notifications: value });
+          if (value && typeof Notification !== "undefined" && Notification.permission === "default") {
+            Notification.requestPermission().catch(() => {});
+          }
+        }),
+      }),
+      entry({
+        title: "Play sounds",
+        control: toggle(p.sounds !== false, "Play sounds", (value) => set({ sounds: value })),
+      }),
     ]),
   ];
 }
@@ -959,6 +1026,7 @@ function render() {
   const next = h("div", { class: "settings-scroll", "data-section": view.section }, content);
   page.replaceChildren(next);
   next.scrollTop = offset;
+  requestAnimationFrame(() => globalThis.pennaSegmented?.wire(page));
 }
 
 export function open(section = "appearance") {

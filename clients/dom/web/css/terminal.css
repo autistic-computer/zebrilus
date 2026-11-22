@@ -9,7 +9,7 @@
   font-weight: var(--term-weight, 400);
   line-height: var(--lh, 16px);
   cursor: text;
-  font-variant-ligatures: none;
+  font-variant-ligatures: contextual common-ligatures;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -189,6 +189,10 @@
   flex: 1;
   min-width: 110px;
   --penna-icon-size: 13px;
+}
+
+.term .find-field:focus-within {
+  box-shadow: 0 0 0 1.5px var(--penna-focus-neutral, var(--penna-accent));
 }
 
 .term .find-tail {

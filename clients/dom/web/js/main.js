@@ -9,5 +9,6 @@ import "./palette.js";
 import "./settings.js";
 import "./agent.js";
 import "./browser.js";
+import "./sounds.js";
 
 await start();
