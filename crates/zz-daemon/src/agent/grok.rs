@@ -12,7 +12,7 @@ use crate::agent::{
     session_files,
 };
 
-const DIALECT: Dialect = Dialect {
+pub(crate) const DIALECT: Dialect = Dialect {
     effort_option: "reasoning_effort",
     signed_out: "Grok is signed out. Sign in by running `grok login` in a terminal.",
     stored_title,

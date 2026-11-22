@@ -193,7 +193,7 @@ fn tape(
     taping.finish(&emitted, reload)
 }
 
-fn reload(session: &str, journal: &[Value]) -> Vec<ChatEvent> {
+fn reload(_provider: AgentProvider, session: &str, journal: &[Value]) -> Vec<ChatEvent> {
     let directory = tempfile::tempdir().expect("journal directory");
     let held = Arc::new(AgentJournal::open(directory.path()).expect("open journal"));
     for update in journal {

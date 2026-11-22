@@ -14,7 +14,7 @@ use crate::agent::{
 
 const SHORT_COMMAND: &str = "agent";
 const NO_BROWSER: &str = "NO_OPEN_BROWSER";
-const DIALECT: Dialect = Dialect {
+pub(crate) const DIALECT: Dialect = Dialect {
     effort_option: "effort",
     signed_out: "Cursor is signed out. Sign in by running `cursor-agent login` in a terminal.",
     stored_title,

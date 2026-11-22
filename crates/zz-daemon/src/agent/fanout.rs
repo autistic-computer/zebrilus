@@ -3434,8 +3434,30 @@ mod tests {
                 .iter()
                 .map(|line| line.payloads.len())
                 .sum::<usize>();
+            let kinds = tape
+                .lines
+                .iter()
+                .map(|line| line.payloads.iter().map(payload_kind).collect::<Vec<_>>())
+                .collect::<Vec<_>>();
+            let acp = matches!(
+                tape.provider,
+                AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor
+            );
             let mut position = 0;
             for (index, line) in tape.lines.iter().enumerate() {
+                let inside_a_run = acp
+                    && index > 0
+                    && kinds.get(index - 1) == Some(&kinds[index])
+                    && kinds.get(index + 1) == Some(&kinds[index]);
+                if inside_a_run {
+                    for payload in &line.payloads {
+                        position += 1;
+                        for watched in [&mut reopened, &mut journalled, &mut memory] {
+                            watched.accept(payload);
+                        }
+                    }
+                    continue;
+                }
                 journal
                     .remove_for(tape.provider, &tape.session)
                     .expect("clear the journal");

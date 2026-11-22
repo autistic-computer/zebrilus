@@ -19,7 +19,7 @@ pub(crate) struct Tape {
     pub(crate) session: String,
     pub(crate) lines: Vec<Line>,
     journal: Vec<Value>,
-    reload: fn(&str, &[Value]) -> Vec<ChatEvent>,
+    reload: fn(AgentProvider, &str, &[Value]) -> Vec<ChatEvent>,
 }
 
 pub(crate) struct Line {
@@ -47,7 +47,7 @@ impl Tape {
     }
 
     fn reload(&self, line: usize) -> Vec<ChatEvent> {
-        (self.reload)(&self.session, &self.journal_at(line))
+        (self.reload)(self.provider, &self.session, &self.journal_at(line))
     }
 }
 
@@ -58,13 +58,24 @@ pub(crate) struct Taping {
     journal: Arc<AgentJournal>,
     lines: Vec<Line>,
     held: Vec<Value>,
-    _directory: tempfile::TempDir,
+    _directory: Option<tempfile::TempDir>,
 }
 
 impl Taping {
     pub(crate) fn new(name: &'static str, provider: AgentProvider, session: &str) -> Self {
         let directory = tempfile::tempdir().expect("journal directory");
         let journal = Arc::new(AgentJournal::open(directory.path()).expect("open journal"));
+        let mut taping = Self::sharing(name, provider, session, journal);
+        taping._directory = Some(directory);
+        taping
+    }
+
+    pub(crate) fn sharing(
+        name: &'static str,
+        provider: AgentProvider,
+        session: &str,
+        journal: Arc<AgentJournal>,
+    ) -> Self {
         Self {
             name,
             provider,
@@ -72,7 +83,7 @@ impl Taping {
             journal,
             lines: Vec::new(),
             held: Vec::new(),
-            _directory: directory,
+            _directory: None,
         }
     }
 
@@ -103,7 +114,7 @@ impl Taping {
     pub(crate) fn finish(
         self,
         emitted: &[ChatEvent],
-        reload: fn(&str, &[Value]) -> Vec<ChatEvent>,
+        reload: fn(AgentProvider, &str, &[Value]) -> Vec<ChatEvent>,
     ) -> Tape {
         let streamed = self
             .lines
@@ -148,6 +159,7 @@ pub(crate) fn tapes() -> &'static [Tape] {
     TAPES.get_or_init(|| {
         let mut tapes = super::claude::tapes();
         tapes.extend(super::codex::tapes());
+        tapes.extend(super::runtime::acp_tapes());
         tapes
     })
 }
@@ -921,6 +933,94 @@ fn a_reload_from_the_journal_at_every_line_shows_the_live_chat() {
             if let Some(diff) = reload_difference(&live, &reloaded) {
                 findings.add(format!("C | {}", diff.field), at, rank, || example(&diff));
             }
+        }
+    }
+    findings.finish(&["C | rows.len", "C | turns.len", "C | turns[].outcome"]);
+}
+
+fn resume_difference(ended: &ChatView, resumed: &ChatView) -> Option<Difference> {
+    same(
+        "turns.len",
+        "turns",
+        &ended.turns.len(),
+        &resumed.turns.len(),
+    )
+    .or_else(|| {
+        ended
+            .turns
+            .iter()
+            .zip(&resumed.turns)
+            .enumerate()
+            .find_map(|(index, (turn, other))| {
+                same(
+                    "turns[].outcome",
+                    &format!("turns[{index}].outcome"),
+                    &turn.outcome,
+                    &other.outcome,
+                )
+                .or_else(|| {
+                    rows_difference(
+                        &format!("turns[{index}].rows"),
+                        &rows(ended, &turn.items, false),
+                        &rows(resumed, &other.items, false),
+                    )
+                })
+            })
+    })
+    .or_else(|| {
+        let background = rows(ended, &ended.background, false);
+        rows_difference(
+            "background",
+            &background,
+            &without_the_restore_notice(&background, rows(resumed, &resumed.background, false)),
+        )
+    })
+}
+
+fn without_the_restore_notice(ended: &[Row], mut resumed: Vec<Row>) -> Vec<Row> {
+    if resumed.len() == ended.len() + 1
+        && resumed
+            .last()
+            .is_some_and(|row| row.kind == ItemKind::Notice)
+    {
+        resumed.pop();
+    }
+    resumed
+}
+
+#[test]
+fn a_second_process_shows_the_chat_the_first_one_ended_with() {
+    let mut findings = Findings::new("R resume");
+    for first in tapes().iter().filter(|tape| tape.name.ends_with(" 1/2")) {
+        let name = first.name.replace(" 1/2", " 2/2");
+        let second = tapes()
+            .iter()
+            .find(|tape| tape.name == name)
+            .expect("the second process");
+        let ended = fold(&first.events());
+        let loaded = second
+            .lines
+            .iter()
+            .position(|line| {
+                line.payloads
+                    .iter()
+                    .any(|payload| matches!(payload, AgentStreamPayload::SessionReady { .. }))
+            })
+            .expect("the second process opens a session");
+        let resumed = fold(
+            second.lines[..=loaded]
+                .iter()
+                .flat_map(|line| line.payloads.iter())
+                .filter_map(chat_event),
+        );
+        findings.checked();
+        if let Some(diff) = resume_difference(&ended, &resumed) {
+            findings.add(
+                format!("R | {}", diff.field),
+                second.name.to_owned(),
+                (second.lines.len(), loaded),
+                || format!("{name} line {loaded}: {}", diff.describe()),
+            );
         }
     }
     findings.finish(&[]);

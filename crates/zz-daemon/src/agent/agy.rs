@@ -18,7 +18,7 @@ const ACP: &str = "acp";
 const ACP_USAGE: &str = "agy acp";
 const USAGE_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_USAGE_BYTES: usize = 64 * 1024;
-const DIALECT: Dialect = Dialect {
+pub(crate) const DIALECT: Dialect = Dialect {
     effort_option: "thought_level",
     signed_out: "Antigravity is signed out. Sign in by running `agy` in a terminal.",
     stored_title: |_| None,

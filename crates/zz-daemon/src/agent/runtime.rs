@@ -2073,6 +2073,11 @@ fn truncate_payload(text: &mut String, max_bytes: usize) {
 }
 
 #[cfg(test)]
+mod tape_tests;
+#[cfg(test)]
+pub(crate) use tape_tests::tapes as acp_tapes;
+
+#[cfg(test)]
 mod tests {
     use agent_client_protocol::v1::schema::{PermissionOptionId, PermissionOptionKind};
 

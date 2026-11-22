@@ -1,4 +1,5 @@
 use std::{
+    future::Future,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -99,9 +100,6 @@ pub(crate) async fn run(
     provider: AgentProvider,
     channels: RuntimeChannels,
 ) -> Result<(), String> {
-    let (command_tx, command_rx) = async_channel::bounded(1);
-    let (control_tx, control_rx) = async_channel::bounded(1);
-    let (event_tx, event_rx) = async_channel::bounded(1);
     let session_meta = dialect
         .rules
         .zip(config.workspace.pane.as_deref())
@@ -110,6 +108,34 @@ pub(crate) async fn run(
             let rules = crate::workspace_context(pane, session, true);
             serde_json::Map::from_iter([(key.to_owned(), Value::String(rules))])
         });
+    run_through(dialect, channels, move |inner| {
+        run_acp_agent(
+            agent,
+            config,
+            provider,
+            inner.auto_approve,
+            inner.permission_ids,
+            inner.journal,
+            inner.commands,
+            inner.controls,
+            inner.events,
+            session_meta,
+        )
+    })
+    .await
+}
+
+pub(crate) async fn run_through<F>(
+    dialect: Dialect,
+    channels: RuntimeChannels,
+    runtime: impl FnOnce(RuntimeChannels) -> F,
+) -> Result<(), String>
+where
+    F: Future<Output = Result<(), String>>,
+{
+    let (command_tx, command_rx) = async_channel::bounded(1);
+    let (control_tx, control_rx) = async_channel::bounded(1);
+    let (event_tx, event_rx) = async_channel::bounded(1);
     let transcript = Mutex::new(Transcript::default());
     let sign_in = Mutex::new(SignIn::default());
     let held_commands = command_tx.downgrade();
@@ -254,18 +280,14 @@ pub(crate) async fn run(
     };
     let runtime = futures_lite::future::or(
         futures_lite::future::or(
-            run_acp_agent(
-                agent,
-                config,
-                provider,
-                Arc::clone(&tier),
-                channels.permission_ids,
-                channels.journal,
-                command_rx,
-                control_rx,
-                event_tx,
-                session_meta,
-            ),
+            runtime(RuntimeChannels {
+                auto_approve: Arc::clone(&tier),
+                permission_ids: channels.permission_ids,
+                journal: channels.journal,
+                commands: command_rx,
+                controls: control_rx,
+                events: event_tx,
+            }),
             outbound,
         ),
         futures_lite::future::or(answers, quotas),

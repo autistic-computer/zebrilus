@@ -17,7 +17,9 @@ runs `kill-server` on that socket and keeps the tapes, the chat text and the CLI
 files under `/private/tmp/zz-tapes/<provider>-<scenario>-*`. `open` starts the chat with no prompt,
 to see whether the CLI is signed in. `scrub.py <raw> <out>` rewrites the workspace, the homes, the
 login, the host name, emails, credentials, plan names and billing figures, prints what it
-replaced, and exits 1 when the output still holds any of them.
+replaced, and exits 1 when the output still holds any of them. A path split across two streamed
+chunks is not rewritten (`agy-tools` has one), and that exit check looks only for the login, the
+homes, the host name and emails.
 
 ## browser/ - capability parity for browser panes
 
