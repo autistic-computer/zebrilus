@@ -102,11 +102,16 @@ A client that attaches late asks the fanout lane for a replay. While the lane's 
 the requested items it sends them; once older items were dropped it sends a reset and rebuilds from
 the journal or from memory, and the chat events would be lost. So the lane keeps a `ChatLog`: every
 chat event in order, with text appends and body changes folded into the item's start and only the
-latest queue and usage kept. Both rebuild paths end with `Restart` and that log, which folds to the
-same view (the random test checks it on every seed). The log grows with items and turns, not with
-streamed text, and keeps pasted images only on the last 8 items that have them. `ChatView` applies
-the same rule as it folds events, so a connected client's view holds no more images than a replay
-would give it. A daemon restart needs no journal for this: the driver restores the session's
+latest queue and usage kept. The journal path ends with `Restart` and that whole log, which folds to
+the same view (the random test checks it at every event). The rebuild from memory has to fit the
+numbers the asker skips and 4.5 MiB, so it sends `Restart`, the events of the log still in effect
+(`ChatLog::in_effect`: the last session start and end, the running turn, every open item with the
+whole tree it sits in, every open request, the turns those started in, the queue and the usage) and
+then the newest events that fit, all in their original order. When the events still in effect do
+not fit, it sends no chat at all and the asker keeps the chat it had. The log grows with items and
+turns, not with streamed text, and keeps pasted images only on the last 8 items that have them.
+`ChatView` applies the same rule as it folds events, so a connected client's view holds no more
+images than a replay would give it. A daemon restart needs no journal for this: the driver restores the session's
 history and the bridge replays it through the machine.
 
 # Rules
@@ -238,11 +243,11 @@ could tie to real Claude Code or Codex behavior.
   A failure is grouped by signature (sweep, path, first differing field) with a count and its
   smallest example. Each sweep ends with the exact list of signatures it finds today and fails
   when that list changes either way, so a listed signature is an open bug and fixing one means
-  deleting its line. Open on 2026-11-22: `PaneLane::rebuild` keeps only the last `SessionReady`
-  and the open `TurnStarted`, so an approval or a running item that started before the cut is
-  missing for the asker; a chat reloaded from the journal has no turns, because the journal holds
-  no turn marks for Claude or Codex. The two Codex rollout fixtures have no driver that plays them
-  and are not taped, and agy, Grok and Cursor have no recordings.
+  deleting its line. Open on 2026-11-22: a rebuild whose events still in effect do not fit the
+  numbers the asker skips sends no `Restart`, so that client keeps its old chat; a chat reloaded
+  from the journal has no turns, because the journal holds no turn marks for Claude or Codex. The
+  two Codex rollout fixtures have no driver that plays them and are not taped, and agy, Grok and
+  Cursor have no recordings.
 
 # Next
 

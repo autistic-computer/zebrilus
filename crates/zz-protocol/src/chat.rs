@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -888,5 +888,111 @@ impl ChatLog {
             .iter()
             .chain(self.queue.iter())
             .chain(self.usage.iter())
+    }
+
+    #[must_use]
+    pub fn in_effect(&self) -> Vec<usize> {
+        let events = self.events().collect::<Vec<_>>();
+        let mut view = ChatView::default();
+        let applied = events
+            .iter()
+            .map(|event| view.apply(event).is_ok())
+            .collect::<Vec<_>>();
+        let requests = view
+            .open_requests()
+            .map(|request| request.id)
+            .collect::<HashSet<_>>();
+        let mut stack = view
+            .open_items()
+            .map(|item| &item.id)
+            .chain(
+                view.open_requests()
+                    .filter_map(|request| request.item.as_ref()),
+            )
+            .filter_map(|id| {
+                let mut item = view.item(id)?;
+                while let Some(parent) = item.parent.as_ref().and_then(|parent| view.item(parent)) {
+                    item = parent;
+                }
+                Some(item.id.clone())
+            })
+            .collect::<Vec<_>>();
+        let mut items = HashSet::new();
+        while let Some(id) = stack.pop() {
+            if let Some(item) = view.item(&id)
+                && items.insert(id)
+            {
+                stack.extend(item.children.iter().cloned());
+            }
+        }
+        let mut turns = view
+            .running()
+            .map(|turn| turn.id)
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let mut session = None;
+        let mut named = None;
+        for (at, event) in events.iter().enumerate().filter(|(at, _)| applied[*at]) {
+            match event {
+                ChatEvent::ItemStarted {
+                    item,
+                    turn: Some(turn),
+                    ..
+                } if items.contains(item) => {
+                    turns.insert(*turn);
+                }
+                ChatEvent::RequestOpened {
+                    request,
+                    turn: Some(turn),
+                    ..
+                } if requests.contains(request) => {
+                    turns.insert(*turn);
+                }
+                ChatEvent::SessionReady { session: id } => {
+                    session = Some(at);
+                    if !id.is_empty() {
+                        named = Some(at);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut ended = None;
+        let mut activity = HashMap::new();
+        for (at, event) in events.iter().enumerate().filter(|(at, _)| applied[*at]) {
+            match event {
+                ChatEvent::SessionEnded { .. } if Some(at) > session => ended = Some(at),
+                ChatEvent::TurnActivity { turn, .. } if turns.contains(turn) => {
+                    activity.insert(*turn, at);
+                }
+                _ => {}
+            }
+        }
+        (0..events.len())
+            .filter(|at| {
+                applied[*at]
+                    && match events[*at] {
+                        ChatEvent::SessionReady { .. } => [session, named].contains(&Some(*at)),
+                        ChatEvent::SessionEnded { .. } => ended == Some(*at),
+                        ChatEvent::TurnStarted { turn, .. }
+                        | ChatEvent::TurnClaimed { turn, .. }
+                        | ChatEvent::TurnStopping { turn }
+                        | ChatEvent::TurnEnded { turn, .. } => turns.contains(turn),
+                        ChatEvent::TurnActivity { turn, .. } => activity.get(turn) == Some(at),
+                        ChatEvent::ItemStarted { item, .. }
+                        | ChatEvent::ItemBackgrounded { item }
+                        | ChatEvent::ItemEnded { item, .. } => items.contains(item),
+                        ChatEvent::ItemsSummarized { items: named, .. } => {
+                            named.iter().any(|item| items.contains(item))
+                        }
+                        ChatEvent::RequestOpened { request, .. } => requests.contains(request),
+                        ChatEvent::QueueChanged { .. } | ChatEvent::UsageChanged { .. } => true,
+                        ChatEvent::ItemAppended { .. }
+                        | ChatEvent::ItemChanged { .. }
+                        | ChatEvent::RequestClosed { .. }
+                        | ChatEvent::Restart => false,
+                    }
+            })
+            .collect()
     }
 }

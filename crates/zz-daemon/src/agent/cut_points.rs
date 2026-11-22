@@ -232,11 +232,16 @@ macro_rules! first_field {
     };
 }
 
+fn within(all: &[ItemId], kept: &[ItemId]) -> bool {
+    let mut all = all.iter();
+    kept.iter().all(|id| all.any(|other| other == id))
+}
+
 fn turn_difference(
     at: &str,
     expected: &TurnView,
     got: &TurnView,
-    suffix: bool,
+    subsequence: bool,
 ) -> Option<Difference> {
     first_field!(
         "turns[]",
@@ -246,7 +251,7 @@ fn turn_difference(
         [id, by, started_at, ended_at, outcome, stopping]
     )
     .or_else(|| {
-        if suffix && expected.items.ends_with(&got.items) {
+        if subsequence && within(&expected.items, &got.items) {
             return None;
         }
         first_field!("turns[]", at, expected, got, [items])
@@ -525,10 +530,10 @@ pub(crate) fn sub_view_difference(straight: &ChatView, rebuilt: &ChatView) -> Op
                 })
         })
         .or_else(|| {
-            (!straight.background.ends_with(&rebuilt.background)).then(|| Difference {
+            (!within(&straight.background, &rebuilt.background)).then(|| Difference {
                 field: "background".to_owned(),
                 at: "background".to_owned(),
-                expected: format!("a suffix of {}", short(&straight.background)),
+                expected: format!("an ordered subset of {}", short(&straight.background)),
                 got: short(&rebuilt.background),
             })
         })
@@ -673,6 +678,27 @@ impl<'a> Cut<'a> {
         if let Some(diff) = difference(&self.live, &compacted) {
             findings.add(
                 format!("A | at the cut | {}", diff.field),
+                at.clone(),
+                rank,
+                || example(&diff),
+            );
+        }
+        let logged = self.log.events().collect::<Vec<_>>();
+        let mut spine = ChatView::default();
+        findings.checked();
+        for kept in self.log.in_effect() {
+            if let Err(skip) = spine.apply(logged[kept]) {
+                findings.add(
+                    format!("A | in effect | skipped {skip:?}"),
+                    kind_of(logged[kept]),
+                    rank,
+                    || format!("{name} k={k}: {}", short(logged[kept])),
+                );
+            }
+        }
+        if let Some(diff) = sub_view_difference(&self.live, &spine) {
+            findings.add(
+                format!("A | in effect | {}", diff.field),
                 at.clone(),
                 rank,
                 || example(&diff),

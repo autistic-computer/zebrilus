@@ -1245,23 +1245,7 @@ impl PaneLane {
             })
             .map_or(usize::MAX, |encoded| encoded.len())
         };
-        let session = events
-            .iter()
-            .rposition(|event| matches!(event, ChatEvent::SessionReady { .. }));
-        let open_turn = events
-            .iter()
-            .rposition(|event| {
-                matches!(
-                    event,
-                    ChatEvent::TurnStarted { .. } | ChatEvent::TurnEnded { .. }
-                )
-            })
-            .filter(|at| matches!(events[*at], ChatEvent::TurnStarted { .. }));
-        let mut spine = [session, open_turn]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
-        spine.sort_unstable();
+        let spine = self.chat.in_effect();
         let mut payloads = vec![AgentStreamPayload::SessionReset { restoring: true }];
         payloads.extend(self.ready.clone());
         payloads.extend(self.recovery_metadata());
@@ -1277,6 +1261,10 @@ impl PaneLane {
             .fold(0, usize::saturating_add);
         let mut cut = events.len();
         while cut > 0 && count < room {
+            if spine.binary_search(&(cut - 1)).is_ok() {
+                cut -= 1;
+                continue;
+            }
             let next = size(chat(cut - 1));
             if bytes.saturating_add(next) > MAX_REBUILD_BYTES {
                 break;
@@ -1285,12 +1273,14 @@ impl PaneLane {
             bytes = bytes.saturating_add(next);
             cut -= 1;
         }
-        if !events.is_empty() && count <= room {
+        if !events.is_empty() && count <= room && bytes <= MAX_REBUILD_BYTES {
             if cut > 0 {
                 log::info!(
                     target: "zz::agent",
-                    "rebuilt pane {pane} on its newest {} chat events and left out the oldest {cut}",
+                    "rebuilt pane {pane} on its newest {} chat events and the {} older ones still in effect, leaving out {}",
                     events.len() - cut,
+                    spine.iter().filter(|at| **at < cut).count(),
+                    cut - spine.iter().filter(|at| **at < cut).count(),
                 );
             }
             payloads.push(restart);
@@ -2323,6 +2313,136 @@ mod tests {
         assert_eq!(tight.last().map(|(_, seq, _)| *seq), Some(next_seq - 1));
     }
 
+    #[test]
+    fn a_capped_rebuild_keeps_an_old_approval_and_a_running_background_item() {
+        use zz_protocol::chat::{
+            Ask, ChatPhase, ChatView, ItemBody, ItemId, ItemKind, ItemStatus, RequestId, TurnBy,
+            TurnId, TurnOutcome,
+        };
+
+        let fixture = Fixture::open(None, Some("s-1"));
+        let watcher = ItemId::new("watcher");
+        let turn = |id: u64, item: &str, text: String| {
+            let item = ItemId::new(item);
+            [
+                ChatEvent::TurnStarted {
+                    turn: TurnId(id),
+                    by: TurnBy::Agent,
+                    at: 0,
+                },
+                ChatEvent::ItemStarted {
+                    item: item.clone(),
+                    turn: Some(TurnId(id)),
+                    parent: None,
+                    kind: ItemKind::Agent,
+                    body: ItemBody::text(text),
+                    at: 0,
+                },
+                ChatEvent::ItemEnded {
+                    item,
+                    status: ItemStatus::Completed,
+                    at: 0,
+                },
+                ChatEvent::TurnEnded {
+                    turn: TurnId(id),
+                    outcome: TurnOutcome::Completed {
+                        stop_reason: "end_turn".to_owned(),
+                    },
+                    at: 0,
+                },
+            ]
+        };
+        let mut events = vec![
+            ChatEvent::SessionReady {
+                session: "s-1".to_owned(),
+            },
+            ChatEvent::TurnStarted {
+                turn: TurnId(1),
+                by: TurnBy::Agent,
+                at: 0,
+            },
+            ChatEvent::ItemStarted {
+                item: watcher.clone(),
+                turn: Some(TurnId(1)),
+                parent: None,
+                kind: ItemKind::Execute,
+                body: ItemBody::titled("tail -f build.log"),
+                at: 0,
+            },
+            ChatEvent::ItemBackgrounded {
+                item: watcher.clone(),
+            },
+            ChatEvent::RequestOpened {
+                request: RequestId(7),
+                turn: None,
+                item: Some(watcher.clone()),
+                ask: Ask::Approval {
+                    title: "rm -rf build".to_owned(),
+                    detail: None,
+                    options: Vec::new(),
+                },
+                blocking: true,
+                at: 0,
+            },
+            ChatEvent::TurnEnded {
+                turn: TurnId(1),
+                outcome: TurnOutcome::Completed {
+                    stop_reason: "end_turn".to_owned(),
+                },
+                at: 0,
+            },
+        ];
+        for id in 2..=9 {
+            events.extend(turn(id, &format!("a{id}"), "x".repeat(1024 * 1024)));
+        }
+        let mut live = ChatView::default();
+        for event in events {
+            live.apply(&event).expect("live event");
+            fixture.accept(AgentStreamPayload::Chat { event });
+        }
+        assert_eq!(live.phase(), ChatPhase::Waiting);
+        fixture
+            .fanout
+            .lanes
+            .lock()
+            .get_mut(&fixture.pane)
+            .expect("lane")
+            .evicted_seq = 2;
+
+        fixture.fanout.replay(ClientId(3), fixture.pane, 1);
+
+        let replayed = direct_items(&fixture.recorder);
+        let bytes = fixture
+            .recorder
+            .direct
+            .lock()
+            .iter()
+            .flat_map(|(_, _, _, items)| items.iter().map(Vec::len))
+            .sum::<usize>();
+        assert!(bytes <= MAX_REBUILD_BYTES, "{bytes} bytes");
+        let mut rebuilt = ChatView::default();
+        for (_, _, item) in replayed {
+            if let AgentStreamPayload::Chat { event } = item.payload {
+                let _ = rebuilt.apply(&event);
+            }
+        }
+        assert_eq!(rebuilt.phase(), ChatPhase::Waiting);
+        assert_eq!(rebuilt.item(&watcher), live.item(&watcher));
+        assert_eq!(rebuilt.request(RequestId(7)), live.request(RequestId(7)));
+        assert_eq!(
+            rebuilt
+                .turns
+                .iter()
+                .map(|turn| turn.id.0)
+                .collect::<Vec<_>>(),
+            [1, 6, 7, 8, 9]
+        );
+        assert_eq!(
+            rebuilt.skipped, 2,
+            "the end of a5 and of its turn, whose starts were left out"
+        );
+    }
+
     fn label(item: &AgentStreamItem) -> String {
         match &item.payload {
             AgentStreamPayload::SessionReset { restoring: true } => "reset".to_owned(),
@@ -3341,14 +3461,6 @@ mod tests {
                 }
             }
         }
-        findings.finish(&[
-            "B | d without Restart | the asker keeps its old chat",
-            "B | d | open items[] missing",
-            "B | d | open requests[] missing",
-            "B | d | phase Ended read as Idle",
-            "B | d | phase Waiting read as Idle",
-            "B | d | phase Waiting read as Running",
-            "B | d | usage",
-        ]);
+        findings.finish(&["B | d without Restart | the asker keeps its old chat"]);
     }
 }
