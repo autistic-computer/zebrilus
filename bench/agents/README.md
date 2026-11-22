@@ -1,7 +1,23 @@
 # Agent benchmarks
 
 Three harnesses that measure zz as a target for AI agents. All run against real agents and a real
-zz, append TSV rows, and print a summary; none is part of `cargo test`.
+zz, append TSV rows, and print a summary; none is part of `cargo test`. A fourth rig, `tapes/`,
+records what zz and an agent CLI say to each other.
+
+## tapes/ - recordings of vendor frames
+
+`record.sh agy|grok|cursor open|hello|tools|stop|queue|reload` starts a private daemon from the
+worktree build (`cargo build -p zz-cli` and `cargo build -p zz-daemon-client --example
+agent_cancel`) on its own socket under `/tmp`, with a scratch HOME that links only the CLI's
+credentials (the keychain, Grok's `auth.json`, a copy of Cursor's `cli-config.json` set to ask
+before running tools) and `ZZ_AGENT_TAPE_DIR` set. It opens a chat in a scratch workspace with two
+small files, sends the scenario's prompts with `agent-send` and answers approvals only in `tools`,
+stops a turn with the `agent_cancel` example, reopens a chat with `--resume` for `reload`, then
+runs `kill-server` on that socket and keeps the tapes, the chat text and the CLI's own session
+files under `/private/tmp/zz-tapes/<provider>-<scenario>-*`. `open` starts the chat with no prompt,
+to see whether the CLI is signed in. `scrub.py <raw> <out>` rewrites the workspace, the homes, the
+login, the host name, emails, credentials, plan names and billing figures, prints what it
+replaced, and exits 1 when the output still holds any of them.
 
 ## browser/ - capability parity for browser panes
 

@@ -1,6 +1,7 @@
 use std::{
     io::{BufRead as _, BufReader, Write as _},
     process::{Child, Command, Stdio},
+    sync::Arc,
     thread,
     time::{Duration, Instant},
 };
@@ -8,11 +9,12 @@ use std::{
 use async_channel::{Receiver, Sender};
 use serde_json::{Value, json};
 use zz_daemon_client::unmasked::SpawnUnmasked as _;
-use zz_protocol::MAX_AGENT_RESULT_BYTES;
+use zz_protocol::{AgentProvider, MAX_AGENT_RESULT_BYTES};
 
 use crate::agent::{
     runtime::{StderrTail, validate_payload},
     stream::{AgentPromptOutcome, AgentStreamPayload},
+    tape::{Direction, Tape},
     turn::Outcome,
 };
 
@@ -66,6 +68,7 @@ pub(crate) enum ChildEvent {
 pub(crate) struct Process {
     child: Option<Child>,
     stdin: Sender<String>,
+    tape: Option<Arc<Tape>>,
 }
 
 impl Process {
@@ -94,9 +97,20 @@ impl Drop for Process {
         let Some(mut child) = self.child.take() else {
             return;
         };
+        let tape = self.tape.take();
         let spawned = thread::Builder::new()
             .name("zz-claude-reap".to_owned())
-            .spawn(move || reap(&mut child));
+            .spawn(move || {
+                reap(&mut child);
+                if let Some(tape) = tape {
+                    let status = child.try_wait().ok().flatten();
+                    tape.exit(&status.map_or(Value::Null, |status| {
+                        status
+                            .code()
+                            .map_or_else(|| Value::from(status.to_string()), Value::from)
+                    }));
+                }
+            });
         match spawned {
             Ok(reaper) => {
                 let mut reapers = REAPERS.lock();
@@ -170,6 +184,7 @@ fn signal_group(child: &mut Child, _signal: Signal) {
 impl Process {
     pub(crate) fn launch(
         command: &mut Command,
+        provider: AgentProvider,
         agent: &str,
         generation: u64,
         events: &Sender<ChildEvent>,
@@ -180,6 +195,12 @@ impl Process {
             use std::os::unix::process::CommandExt as _;
             command.process_group(0);
         }
+        let tape = Tape::start(
+            provider,
+            command.get_program(),
+            command.get_args(),
+            command.get_current_dir(),
+        );
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -194,10 +215,15 @@ impl Process {
         let process = Self {
             child: Some(child),
             stdin: stdin_tx,
+            tape: tape.clone(),
         };
         if let Some(mut stdin) = stdin {
+            let tape = tape.clone();
             spawn_thread("zz-agent-in", move || {
                 while let Ok(line) = stdin_rx.recv_blocking() {
+                    if let Some(tape) = &tape {
+                        tape.line(Direction::In, &line);
+                    }
                     if stdin
                         .write_all(line.as_bytes())
                         .and_then(|()| stdin.write_all(b"\n"))
@@ -223,6 +249,9 @@ impl Process {
                             log::warn!(target: "zz::agent", "dropping a {} byte {agent} frame", line.len());
                         }
                         Ok(_) => {
+                            if let Some(tape) = &tape {
+                                tape.line(Direction::Out, &String::from_utf8_lossy(&line));
+                            }
                             if events
                                 .send_blocking(ChildEvent::Line(
                                     generation,
@@ -257,6 +286,7 @@ impl Process {
 impl Process {
     pub(crate) fn connect(
         _path: &std::path::Path,
+        _provider: AgentProvider,
         _agent: &str,
         _generation: u64,
         _events: &Sender<ChildEvent>,
@@ -269,6 +299,7 @@ impl Process {
 impl Process {
     pub(crate) fn connect(
         path: &std::path::Path,
+        provider: AgentProvider,
         agent: &str,
         generation: u64,
         events: &Sender<ChildEvent>,
@@ -295,11 +326,15 @@ impl Process {
             .map_err(|error| failed(&error))?;
         let (outgoing, sent) = async_channel::unbounded::<String>();
         let events = events.clone();
+        let tape = Tape::start(provider, path.as_os_str(), std::iter::empty(), None);
         spawn_thread("zz-agent-socket", move || {
             'pump: loop {
                 loop {
                     match sent.try_recv() {
                         Ok(text) => {
+                            if let Some(tape) = &tape {
+                                tape.line(Direction::In, &text);
+                            }
                             if socket.send(Message::text(text)).is_err() {
                                 break 'pump;
                             }
@@ -314,6 +349,9 @@ impl Process {
                 }
                 match socket.read() {
                     Ok(Message::Text(text)) => {
+                        if let Some(tape) = &tape {
+                            tape.line(Direction::Out, text.as_str());
+                        }
                         let line = text.as_str().as_bytes().to_vec();
                         if events
                             .send_blocking(ChildEvent::Line(generation, line))
@@ -331,11 +369,15 @@ impl Process {
                     Err(_) => break,
                 }
             }
+            if let Some(tape) = &tape {
+                tape.exit(&Value::Null);
+            }
             let _ = events.send_blocking(ChildEvent::Closed(generation));
         })?;
         Ok(Self {
             child: None,
             stdin: outgoing,
+            tape: None,
         })
     }
 }
@@ -541,7 +583,8 @@ mod tests {
             while socket.read().is_ok() {}
         });
         let (events, received) = async_channel::unbounded();
-        let process = Process::connect(&path, "test agent", 1, &events).expect("connect");
+        let process = Process::connect(&path, AgentProvider::Codex, "test agent", 1, &events)
+            .expect("connect");
         let first = smol::block_on(futures_lite::future::or(
             async { received.recv().await.ok() },
             async {
@@ -571,6 +614,7 @@ mod tests {
         let (events, _events) = async_channel::unbounded();
         let process = Process::launch(
             &mut command,
+            AgentProvider::Codex,
             "test agent",
             1,
             &events,

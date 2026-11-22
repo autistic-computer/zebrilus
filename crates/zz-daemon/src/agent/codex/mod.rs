@@ -987,6 +987,7 @@ impl Runtime {
         if let Some(socket) = managed {
             self.process = Some(Process::connect(
                 &socket,
+                self.provider,
                 AGENT_NAME,
                 self.generation,
                 &self.child_tx,
@@ -1011,6 +1012,7 @@ impl Runtime {
             }
             self.process = Some(Process::launch(
                 &mut command,
+                self.provider,
                 AGENT_NAME,
                 self.generation,
                 &self.child_tx,

@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    ffi::OsStr,
     future::Future,
     path::PathBuf,
     str::FromStr as _,
@@ -54,6 +55,7 @@ use crate::agent::{
         AgentAuthMethod, AgentPrompt, AgentPromptOutcome, AgentSessionCapabilities,
         AgentSessionSummary, AgentStreamPayload,
     },
+    tape::{Direction, Tape},
 };
 
 const MAX_SESSION_ID_BYTES: usize = 16 * 1024;
@@ -353,15 +355,32 @@ pub(crate) async fn run_acp_agent(
     );
     let stderr = StderrTail::default();
     let debug_stderr = stderr.clone();
-    let agent =
-        with_workspace_environment(agent, &config.workspace).with_debug(move |line, direction| {
-            if matches!(direction, LineDirection::Stderr) {
-                log::warn!(target: "zz::agent::stderr", "{line}");
-                debug_stderr.push(line);
+    let agent = with_workspace_environment(agent, &config.workspace);
+    let tape = Tape::start(
+        provider,
+        agent.config().command().as_os_str(),
+        agent.config().arguments().iter().map(OsStr::new),
+        None,
+    );
+    let debug_tape = tape.clone();
+    let agent = agent.with_debug(move |line, direction| match direction {
+        LineDirection::Stderr => {
+            log::warn!(target: "zz::agent::stderr", "{line}");
+            debug_stderr.push(line);
+        }
+        LineDirection::Stdin => {
+            if let Some(tape) = &debug_tape {
+                tape.line(Direction::In, line);
             }
-        });
+        }
+        LineDirection::Stdout => {
+            if let Some(tape) = &debug_tape {
+                tape.line(Direction::Out, line);
+            }
+        }
+    });
 
-    run_agent_connection(
+    let result = run_agent_connection(
         provider,
         auto_approve,
         agent,
@@ -372,8 +391,16 @@ pub(crate) async fn run_acp_agent(
         event_tx,
         session_meta,
     )
-    .await
-    .map_err(|error| runtime_failure_message(provider.label(), &error, stderr.snapshot()))
+    .await;
+    if let Some(tape) = &tape {
+        tape.exit(
+            &result
+                .as_ref()
+                .err()
+                .map_or(Value::Null, |error| Value::from(error.as_str())),
+        );
+    }
+    result.map_err(|error| runtime_failure_message(provider.label(), &error, stderr.snapshot()))
 }
 
 #[derive(Clone, Default)]

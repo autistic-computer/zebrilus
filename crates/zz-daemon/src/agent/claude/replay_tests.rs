@@ -60,6 +60,7 @@ fn attach_sink(runtime: &mut Runtime) {
     runtime.process = Some(
         Process::launch(
             &mut Command::new("/bin/cat"),
+            AgentProvider::ClaudeCode,
             "replay sink",
             runtime.generation,
             &runtime.child_tx,

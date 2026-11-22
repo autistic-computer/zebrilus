@@ -4,7 +4,7 @@ title: Agent CLI contracts
 description: What zz relies on from the agent CLIs it drives (Claude Code, Codex, Antigravity, Grok Build, Cursor) that the vendor can change without notice, the version each was last checked at, which changes break zz quietly, and the commands that recheck them after an update.
 resource: crates/zz-daemon/src/agent/
 tags: [agent, claude-code, codex, antigravity, grok, cursor, acp, compatibility, reference]
-timestamp: 2026-11-21T00:00:00-03:00
+timestamp: 2026-11-22T00:00:00-03:00
 ---
 
 # Why this page exists
@@ -32,9 +32,9 @@ After a check, update the table: the version, the date, and how far the check we
 |---|---|---|---|
 | Claude Code (`claude`) | 2.1.330 (2026-11-21) | 2.1.292, 2026-10-07 | Full: the fixtures in `agent/claude/fixtures` were recorded on it. 2.1.330 passed the flag probe, the binary grep and the `auth status` keys below, and `get_settings` with no prompt sent showed the last `--model` and `--effort` applied. `resume.ndjson` (an agent resumed with `SendMessage`), `background.ndjson` (a background agent's approval across the end of its turn) and `nested.ndjson` (an approval from an agent a background agent started) were recorded on 2.1.330 |
 | Codex (`codex`) | 0.171.0 (shared daemon 0.171.0) | 0.159.0, 2026-10-07 | Full: `tools.ndjson` and `subagent.ndjson` in `agent/codex/fixtures`; `app-server-live.jsonl` is 0.166.0. 0.171.0 had the schema check and a binary grep, all names present, `thread/unsubscribe` included (2026-11-21), and a turn with no model call on a private app server for `turn/steer` refusals, `turn/start` during a turn and resuming a thread mid-turn |
-| Antigravity (`agy`) | 1.5.13 | 1.5.13, 2026-11-20 | Live turns through a private daemon, including the artifact signal |
-| Grok Build (`grok`) | 1.0.92 (2026-11-21) | 1.0.92, 2026-11-21 | Cheap checks and the model list (`agent-catalog`) on 1.0.92; live turns through a private daemon on 1.0.89, including `_meta.rules` |
-| Cursor (`cursor-agent`) | 2026.11.19 | 2026.09.18, 2026-11-20 | Live turns on 2026.09.18. 2026.11.19 (it updated itself that morning) passed the initialize probe and, on 2026-11-21, the model list (`agent-catalog`), no turns |
+| Antigravity (`agy`) | 1.5.14 (2026-11-22) | 1.5.14, 2026-11-22 | The ACP handshake, `agy acp --help` and the TUI flags on 1.5.14; live turns through the tape rig (hello, tools with approvals, stop, reload). Its `initialize` still reports `agentInfo.version` 1.5.13. 1.5.13 had live turns including the artifact signal |
+| Grok Build (`grok`) | 1.0.92 (2026-11-21) | 1.0.92, 2026-11-22 | Live turns through the tape rig on 1.0.92 (hello, tools with an approval, stop, queue, reload), including `_meta.rules` and `_x.ai/billing` |
+| Cursor (`cursor-agent`) | 2026.11.19 | 2026.09.18, 2026-11-20 | Live turns on 2026.09.18. 2026.11.19 passed the initialize probe, the model list (`agent-catalog`) and, on 2026-11-22, `authenticate`, `session/new` and `session/load` through the tape rig; every prompt there ended at once with the reply "Add a payment method to continue", so no turn ran |
 
 # Cheap checks, no sign-in
 
@@ -115,7 +115,16 @@ a few releases.
   (`{t,dir,msg}` per line, like the files in `agent/claude/fixtures` and `agent/codex/fixtures`),
   then run `cargo test -p zz-daemon agent::claude` (or `agent::codex`) and
   `ZZ_REPLAY_DIR=<dir> cargo test -p zz-daemon -- --ignored recordings_in_a_folder_drive_the_chat_machine`.
-  The repo has no recorder yet; the 2026-10-07 recordings came from an outside harness.
+  The 2026-10-07 recordings came from an outside harness. The daemon now records its own: with
+  `ZZ_AGENT_TAPE_DIR=<dir>` set, every agent process it starts writes
+  `<provider>-<start>-<pid>-<n>.ndjson` there (`agent/tape.rs`): a `meta` line with the provider,
+  program, arguments and folder, then every line zz sends (`in`) and the CLI prints (`out`), parsed
+  as JSON or kept as text, and an `exit` line. Stderr is not recorded. Claude Code and Codex are
+  taped at their pipes or Codex's shared-daemon socket (`child.rs`), the ACP providers at the
+  connection's line hook (`runtime.rs`). `bench/agents/tapes/record.sh <provider> <scenario>` runs
+  a private daemon with it in a scratch HOME and workspace and keeps the run under
+  `/private/tmp/zz-tapes/`; `bench/agents/tapes/scrub.py <raw> <out>` takes the user out of a tape
+  before it goes anywhere.
 * **Every provider: a chat on a private daemon.** Build the CLI (`ZZ_DEV_BUILD=1 cargo build -p
   zz-cli`), run it with `--socket /tmp/<name>.sock`, make a pane an agent with
   `select-pane-kind -t %0 -c DIR agent <provider>`, then `agent-send -t %0 --wait --final`. Read the
@@ -253,9 +262,9 @@ zz speaks ACP v1 through `agent-client-protocol` 5.0.0 with schema 1.15.1 (`Carg
 
 # Known gaps
 
-* No recorder for Claude Code or Codex sessions, so a full recheck needs an outside harness. Only
-  two of the nine steps in `app-server-live.jsonl` feed a test, and the `rollout-lens-stress`
-  files feed none.
+* The tape recorder (`ZZ_AGENT_TAPE_DIR`, `bench/agents/tapes/`) records any provider, but its
+  rig only drives the ACP providers so far, and no test replays the ACP tapes yet. Only two of the
+  nine steps in `app-server-live.jsonl` feed a test, and the `rollout-lens-stress` files feed none.
 * Only `resume.ndjson` carries the two `initialize` fields above and `CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES`
   output; no recording has `get_settings`/`get_usage` replies.
 * The ACP effort option ids are copied into the dialect tests, so changing `agy.rs` or `grok.rs`

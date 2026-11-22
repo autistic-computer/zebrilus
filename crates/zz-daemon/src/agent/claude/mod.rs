@@ -1197,6 +1197,7 @@ impl Runtime {
         self.generation += 1;
         let process = Process::launch(
             &mut command,
+            self.provider,
             "Claude Code",
             self.generation,
             &self.child_tx,
