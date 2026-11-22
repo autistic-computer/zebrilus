@@ -33,6 +33,7 @@ fn scratch_env<'a>(command: &'a mut Command, root: &std::path::Path) -> &'a mut 
         .env("XDG_DATA_HOME", data)
         .env("XDG_RUNTIME_DIR", runtime)
         .env("TMPDIR", temporary)
+        .env("ZZ_WSL_DISCOVERY", "0")
 }
 
 const TMUX_USAGE: &str = concat!(

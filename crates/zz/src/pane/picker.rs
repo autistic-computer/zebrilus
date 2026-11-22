@@ -4,15 +4,16 @@ use ala::{
 };
 use penna::IconName;
 use zz_client::new_chat::{
-    AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, ChatStage, FolderChoice, MachineChoice,
-    agent_picker_place, close_picker_command, landing_chat_commands, picker_folders,
+    AGENT_CHOICES, AgentChoice, ChatAgentStatus, ChatKey, ChatPicker, ChatStage, FolderChoice,
+    MachineChoice, MachineChoiceState, agent_picker_place, any_agent_installed, chat_agent_status,
+    close_picker_command, landing_chat_commands, landing_pane_commands, picker_folders,
     picker_in_split, recent_folders, start_agent_commands,
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
 use zz_ui::pane::{ChatPickerRow, ChatPickerTarget, chat_picker_rows, pane_picker_row};
 
 use crate::mux::client::MuxClient;
-use crate::mux::hosts::HostId;
+use crate::mux::hosts::{HostId, HostState};
 use crate::window::corners::WindowCorners;
 use crate::{browser, config};
 
@@ -169,17 +170,28 @@ fn chat_picker(snapshot: &MuxSnapshot, pane: Option<PaneId>, chat_view: bool) ->
 fn machines(mux: &MuxClient) -> Vec<MachineChoice> {
     let attached = mux.attached_host();
     mux.fleet_hosts()
-        .map(|(host, name, _, snapshot)| MachineChoice {
-            host: u64::from(zz_ui::command::PaletteHostId::from(host).0),
-            name: if host == HostId::LOCAL {
-                crate::workspace::sidebar::local_hostname().to_string()
+        .map(|(host, name, host_state, snapshot)| {
+            let state = if snapshot.is_some() {
+                MachineChoiceState::Live
+            } else if matches!(host_state, HostState::Installing) {
+                MachineChoiceState::Installing
+            } else if matches!(host_state, HostState::Missing) && mux.host_supports_install(host) {
+                MachineChoiceState::InstallZz
             } else {
-                name.to_owned()
-            },
-            remote: host != HostId::LOCAL,
-            platform: mux.host_platform(host),
-            live: snapshot.is_some(),
-            current: host == attached,
+                MachineChoiceState::Offline
+            };
+            MachineChoice {
+                host: u64::from(zz_ui::command::PaletteHostId::from(host).0),
+                name: if host == HostId::LOCAL {
+                    crate::workspace::sidebar::local_hostname().to_string()
+                } else {
+                    name.to_owned()
+                },
+                remote: host != HostId::LOCAL,
+                platform: mux.host_platform(host),
+                state,
+                current: host == attached,
+            }
         })
         .collect()
 }
@@ -213,6 +225,8 @@ pub(crate) struct PanePickerView {
     window_corners: WindowCorners,
     chat: ChatPicker,
     chat_view: bool,
+    pending_install: Option<(HostId, AgentChoice)>,
+    pending_host: Option<HostId>,
 }
 
 impl EventEmitter<AgentChosen> for PanePickerView {}
@@ -231,6 +245,11 @@ impl PanePickerView {
     }
 
     fn build(pane: Option<PaneId>, mux: ala::Entity<MuxClient>, cx: &mut Context<Self>) -> Self {
+        cx.observe(&mux, |picker, _, cx| {
+            picker.observe_mux(cx);
+            cx.notify();
+        })
+        .detach();
         Self {
             pane,
             mux,
@@ -239,6 +258,56 @@ impl PanePickerView {
             window_corners: WindowCorners::NONE,
             chat: ChatPicker::default(),
             chat_view: false,
+            pending_install: None,
+            pending_host: None,
+        }
+    }
+
+    fn observe_mux(&mut self, cx: &mut Context<Self>) {
+        if let Some((host, agent)) = self.pending_install {
+            let status = {
+                let mux = self.mux.read(cx);
+                chat_agent_status(mux.host_providers(host), agent.provider())
+            };
+            match status {
+                ChatAgentStatus::Ready => {
+                    self.pending_install = None;
+                    if self.mux.read(cx).attached_host() == host
+                        && let Some(chat) = self.chat(cx)
+                    {
+                        self.start_agent(&chat, agent, cx);
+                    }
+                }
+                ChatAgentStatus::Failed { .. } => {
+                    self.pending_install = None;
+                }
+                ChatAgentStatus::Installable | ChatAgentStatus::Installing { .. } => {}
+            }
+        }
+        if let Some(host) = self.pending_host {
+            let state = self
+                .mux
+                .read(cx)
+                .fleet_hosts()
+                .find_map(|(id, _, state, snapshot)| {
+                    (id == host).then(|| (state.clone(), snapshot.is_some()))
+                });
+            match state {
+                Some((_, true)) => {
+                    self.pending_host = None;
+                    cx.emit(ChooseMachine {
+                        host,
+                        pane: self.pane,
+                    });
+                }
+                Some((
+                    HostState::Installing | HostState::Connecting | HostState::Disconnected,
+                    _,
+                )) => {}
+                _ => {
+                    self.pending_host = None;
+                }
+            }
         }
     }
 
@@ -271,6 +340,15 @@ impl PanePickerView {
     fn activate(&self, choice: PaneChoice, cx: &Context<Self>) {
         if let Some(pane) = self.pane {
             self.mux.read(cx).execute(materialize_command(pane, choice));
+            return;
+        }
+        let Some(chat) = self.chat(cx) else {
+            return;
+        };
+        let folder = self.chat.folder(&chat.folders);
+        let mux = self.mux.read(cx);
+        for command in landing_pane_commands(&mux.snapshot(), folder, choice.command_argument()) {
+            mux.execute(command);
         }
     }
 
@@ -299,16 +377,46 @@ impl PanePickerView {
         let Some(machine) = chat.machines.get(index) else {
             return;
         };
-        if !machine.current && machine.live {
-            cx.emit(ChooseMachine {
-                host: machine_host(machine),
-                pane: self.pane,
-            });
+        if machine.current {
+            return;
+        }
+        let host = machine_host(machine);
+        match machine.state {
+            MachineChoiceState::Live => {
+                cx.emit(ChooseMachine {
+                    host,
+                    pane: self.pane,
+                });
+            }
+            MachineChoiceState::InstallZz => {
+                self.pending_host = Some(host);
+                self.mux
+                    .update(cx, |mux, cx| mux.install_zz_on_host(host, cx));
+            }
+            MachineChoiceState::Installing | MachineChoiceState::Offline => {}
         }
         cx.notify();
     }
 
-    fn start(&self, chat: &Chat, agent: AgentChoice, cx: &mut Context<Self>) {
+    fn start(&mut self, chat: &Chat, agent: AgentChoice, cx: &mut Context<Self>) {
+        let (host, status) = {
+            let mux = self.mux.read(cx);
+            let host = mux.attached_host();
+            let status = chat_agent_status(mux.host_providers(host), agent.provider());
+            (host, status)
+        };
+        match status {
+            ChatAgentStatus::Ready => self.start_agent(chat, agent, cx),
+            ChatAgentStatus::Installable | ChatAgentStatus::Failed { .. } => {
+                self.pending_install = Some((host, agent));
+                self.mux.read(cx).update_provider(host, agent.provider());
+                cx.notify();
+            }
+            ChatAgentStatus::Installing { .. } => {}
+        }
+    }
+
+    fn start_agent(&self, chat: &Chat, agent: AgentChoice, cx: &mut Context<Self>) {
         let mux = self.mux.read(cx);
         let folder = self.chat.folder(&chat.folders);
         let launches = crate::agent::launch::load();
@@ -367,21 +475,33 @@ impl PanePickerView {
     }
 
     fn sync_offers(&mut self, cx: &App) {
+        let mux = self.mux.read(cx);
         let split = self
             .pane
-            .is_some_and(|pane| picker_in_split(&self.mux.read(cx).snapshot(), pane));
-        self.chat.terminal = split;
-        self.chat.browser = split && browser::controller::is_available(cx);
+            .is_some_and(|pane| picker_in_split(&mux.snapshot(), pane));
+        let no_agents = !any_agent_installed(mux.host_providers(mux.attached_host()));
+        let offer_panes = split || no_agents;
+        self.chat.terminal = offer_panes;
+        self.chat.browser = offer_panes && browser::controller::is_available(cx);
         self.chat.simulator = split && cfg!(target_os = "macos");
     }
 
     fn chat_rows(&mut self, chat: &Chat, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        if self.mux.read(cx).providers_unrequested() {
+            let mux = self.mux.clone();
+            cx.defer(move |cx| mux.update(cx, |mux, _| mux.request_providers(false)));
+        }
         self.sync_offers(cx);
+        let providers = {
+            let mux = self.mux.read(cx);
+            mux.host_providers(mux.attached_host()).cloned()
+        };
         chat_picker_rows(
             self.id(),
             &self.chat,
             &chat.folders,
             &chat.machines,
+            providers.as_ref(),
             true,
             cx,
         )

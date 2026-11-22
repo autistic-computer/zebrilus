@@ -1589,9 +1589,28 @@ impl MuxClient {
     }
 
     pub fn host_platform(&self, host: HostId) -> zz_protocol::HostPlatform {
-        self.connections
+        let reported = self
+            .connections
             .get(&host)
-            .map_or_default(|connection| connection.platform)
+            .map_or_default(|connection| connection.platform);
+        if reported == zz_protocol::HostPlatform::Unknown
+            && let Some(Endpoint::Wsl(wsl)) = self.registry.get(host).map(|entry| &entry.endpoint)
+        {
+            let lower = wsl.distro.to_ascii_lowercase();
+            let distro = if lower.contains("ubuntu") {
+                zz_protocol::LinuxDistro::Ubuntu
+            } else if lower.contains("debian") {
+                zz_protocol::LinuxDistro::Debian
+            } else if lower.contains("arch") {
+                zz_protocol::LinuxDistro::Arch
+            } else if lower.contains("fedora") {
+                zz_protocol::LinuxDistro::Fedora
+            } else {
+                zz_protocol::LinuxDistro::Other
+            };
+            return zz_protocol::HostPlatform::Linux(distro);
+        }
+        reported
     }
 
     pub(crate) fn host_snapshot(&self, host: HostId) -> Option<&Arc<MuxSnapshot>> {
@@ -2013,6 +2032,13 @@ impl MuxClient {
     }
 
     #[must_use]
+    pub(crate) fn host_supports_install(&self, host: HostId) -> bool {
+        self.registry
+            .get(host)
+            .is_some_and(|entry| matches!(entry.endpoint, Endpoint::Ssh(_) | Endpoint::Wsl(_)))
+    }
+
+    #[must_use]
     pub(crate) fn host_update_offer(&self, host: HostId) -> Option<InstallOffer> {
         self.connections
             .get(&host)?
@@ -2037,9 +2063,9 @@ impl MuxClient {
         };
         let endpoint = entry.endpoint.clone();
         let name = entry.name.clone();
-        let Endpoint::Ssh(ssh) = endpoint.clone() else {
+        if !matches!(endpoint, Endpoint::Ssh(_) | Endpoint::Wsl(_)) {
             return;
-        };
+        }
         let Some(offer) = self.host_update_offer(host) else {
             return;
         };
@@ -2058,12 +2084,18 @@ impl MuxClient {
 
         let prompts = self.ssh_prompts(host, &endpoint, cx);
         let (results, incoming) = async_channel::bounded(1);
+        let restart_daemon = offer == InstallOffer::Update;
         let install_thread = thread::Builder::new()
             .name("zz-host-install".to_owned())
             .spawn(move || {
-                let result =
-                    zz_daemon_client::install_remote(&ssh, prompts, offer == InstallOffer::Update)
-                        .map_err(|error| error.ssh_reason().unwrap_or_else(|| error.to_string()));
+                let result = match &endpoint {
+                    Endpoint::Ssh(ssh) => {
+                        zz_daemon_client::install_remote(ssh, prompts, restart_daemon)
+                    }
+                    Endpoint::Wsl(wsl) => zz_daemon_client::install_wsl(wsl, restart_daemon),
+                    Endpoint::Local(_) | Endpoint::Tailnet(_) => return,
+                }
+                .map_err(|error| error.ssh_reason().unwrap_or_else(|| error.to_string()));
                 let _ = results.send_blocking(result);
             });
         if let Err(error) = install_thread {

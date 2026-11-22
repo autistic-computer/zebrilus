@@ -5,13 +5,13 @@ use ala::{
     SharedString, Window, div, prelude::*,
 };
 use penna::{
-    ActiveTheme as _, Sizable as _,
+    ActiveTheme as _, Disableable as _, Sizable as _,
     components::{
         button::{Button, ButtonLook, ButtonVariants as _},
         switch::Switch,
     },
 };
-use zz_client::providers::home_relative;
+use zz_client::providers::{ProviderAction, home_relative, provider_action};
 use zz_ui::{
     onboarding::{Step, onboarding_page, onboarding_row},
     settings::providers::PROVIDERS,
@@ -205,6 +205,12 @@ impl Onboarding {
                     let mux = self.mux.clone();
                     cx.defer(move |cx| mux.update(cx, |mux, _| mux.request_providers(false)));
                 }
+                let report = self
+                    .mux
+                    .read(cx)
+                    .host_providers(HostId::LOCAL)
+                    .filter(|report| !(report.checking && report.providers.is_empty()))
+                    .cloned();
                 let mut rows = self
                     .agents(cx)
                     .unwrap_or_default()
@@ -224,6 +230,62 @@ impl Onboarding {
                         None,
                         Some(hook.into_any_element()),
                     ));
+                } else if let Some(report) = report {
+                    rows.extend(PROVIDERS.into_iter().map(|provider| {
+                        let status = report
+                            .provider(provider)
+                            .cloned()
+                            .unwrap_or_else(|| zz_protocol::ProviderStatus::new(provider));
+                        let detail = match &status.task {
+                            zz_protocol::ProviderTask::Running { output } if !output.is_empty() => {
+                                Some(SharedString::from(output.clone()))
+                            }
+                            zz_protocol::ProviderTask::Failed { message } => {
+                                Some(SharedString::from(message.clone()))
+                            }
+                            _ => Some(SharedString::from("Not installed")),
+                        };
+                        let mux = self.mux.clone();
+                        let id =
+                            SharedString::from(format!("onboarding-install-{}", provider.as_str()));
+                        let control =
+                            provider_action(&status, report.checking).map(|action| match action {
+                                ProviderAction::Busy { label } => Button::new(id)
+                                    .label(label)
+                                    .small()
+                                    .loading(true)
+                                    .disabled(true)
+                                    .into_any_element(),
+                                ProviderAction::Copy { command } => Button::new(id)
+                                    .label("Copy")
+                                    .small()
+                                    .on_click(move |_, _, cx| {
+                                        cx.write_to_clipboard(ala::ClipboardItem::new_string(
+                                            command.clone(),
+                                        ));
+                                    })
+                                    .into_any_element(),
+                                ProviderAction::Update {
+                                    label,
+                                    primary,
+                                    disabled,
+                                } => {
+                                    let button = Button::new(id)
+                                        .label(label)
+                                        .small()
+                                        .disabled(disabled)
+                                        .on_click(move |_, _, cx| {
+                                            mux.read(cx).update_provider(HostId::LOCAL, provider);
+                                        });
+                                    if primary {
+                                        button.primary().into_any_element()
+                                    } else {
+                                        button.into_any_element()
+                                    }
+                                }
+                            });
+                        onboarding_row(provider.label(), detail, control)
+                    }));
                 }
                 rows
             }

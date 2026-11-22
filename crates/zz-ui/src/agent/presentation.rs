@@ -96,3 +96,18 @@ pub fn error_card_sign_in(
         ),
     )
 }
+
+pub fn error_card_with_actions(
+    error: &str,
+    stopped: bool,
+    actions: impl IntoIterator<Item = ala::AnyElement>,
+    cx: &App,
+) -> Div {
+    let actions = actions.into_iter().collect::<Vec<_>>();
+    let card = error_card(error, stopped, cx);
+    if actions.is_empty() {
+        card
+    } else {
+        card.child(penna::blocks::feedback::alert_actions(cx).children(actions))
+    }
+}

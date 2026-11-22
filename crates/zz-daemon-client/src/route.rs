@@ -13,6 +13,8 @@ pub struct DaemonRoute {
     socket: PathBuf,
     _ssh: Option<SshForward>,
     _tailnet: Option<TailnetForward>,
+    #[cfg(windows)]
+    _wsl: Option<crate::wsl::WslForward>,
 }
 
 impl DaemonRoute {
@@ -33,6 +35,8 @@ impl DaemonRoute {
                 socket: path.clone(),
                 _ssh: None,
                 _tailnet: None,
+                #[cfg(windows)]
+                _wsl: None,
             }),
             Endpoint::Tailnet(endpoint) => {
                 let forward = TailnetForward::start(endpoint)
@@ -41,7 +45,26 @@ impl DaemonRoute {
                     socket: forward.socket().to_owned(),
                     _ssh: None,
                     _tailnet: Some(forward),
+                    #[cfg(windows)]
+                    _wsl: None,
                 })
+            }
+            Endpoint::Wsl(endpoint) => {
+                #[cfg(windows)]
+                {
+                    let forward = crate::wsl::WslForward::start(endpoint)?;
+                    Ok(Self {
+                        socket: forward.local_socket().to_owned(),
+                        _ssh: None,
+                        _tailnet: None,
+                        _wsl: Some(forward),
+                    })
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = endpoint;
+                    Err(crate::EndpointError::UnsupportedPlatform.into())
+                }
             }
             Endpoint::Ssh(endpoint) => {
                 #[cfg(unix)]
@@ -56,6 +79,8 @@ impl DaemonRoute {
                     socket,
                     _ssh: forward,
                     _tailnet: None,
+                    #[cfg(windows)]
+                    _wsl: None,
                 })
             }
         }

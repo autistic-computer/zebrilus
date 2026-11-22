@@ -2952,6 +2952,12 @@ fn run_host_cli(host: &str, arguments: &[RawText]) -> ExitCode {
             );
             return exit_code_for(CliFailure::Usage);
         }
+        Ok(Endpoint::Wsl(endpoint)) => {
+            eprintln!(
+                "zz: this command runs on the host over ssh, and {host} is the WSL host {endpoint}"
+            );
+            return exit_code_for(CliFailure::Usage);
+        }
         Err(error) => {
             eprintln!("zz: {error}");
             return exit_code_for(CliFailure::Runtime);
@@ -3028,9 +3034,12 @@ pub(crate) fn configured_host_endpoint(name: &str) -> Result<Endpoint, String> {
 }
 
 fn host_connect_failure(name: &str, error: &DaemonError) -> String {
-    let hosts = zz_daemon_client::configured_fleet_hosts()
+    let mut hosts = zz_daemon_client::configured_fleet_hosts()
         .map(|(hosts, _)| hosts)
         .unwrap_or_default();
+    if !hosts.iter().any(|host| host.name == name) && !name.contains(['@', ':', '/']) {
+        hosts.extend(zz_daemon_client::wsl_hosts_beside(&hosts));
+    }
     let known = hosts
         .iter()
         .map(|host| host.name.as_str())

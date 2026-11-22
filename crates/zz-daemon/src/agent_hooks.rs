@@ -38,10 +38,8 @@ pub enum AgentHookChange {
 }
 
 pub fn agent_hook_lines(change: AgentHookChange) -> Result<Vec<Result<String, String>>, String> {
-    let home = std::env::var_os("HOME")
-        .filter(|home| !home.is_empty())
-        .map(PathBuf::from)
-        .ok_or_else(|| "HOME is not set".to_owned())?;
+    let home =
+        zz_daemon_client::home_directory().ok_or_else(|| "home directory is not set".to_owned())?;
     Ok(apply(&home, change))
 }
 

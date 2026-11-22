@@ -3,7 +3,7 @@ use ala::{
     prelude::*, px, relative,
 };
 use penna::{ActiveTheme as _, Colorize as _, Elevation, IconName};
-use zz_client::new_chat::{ChatPicker, FolderChoice, MachineChoice};
+use zz_client::new_chat::{ChatPicker, FolderChoice, MachineChoice, MachineChoiceState};
 use zz_protocol::{
     AgentProvider, DisplayPanesState, HostPlatform, LinuxDistro, PaneId, PaneIndicator, TmuxColour,
     WindowId,
@@ -1129,7 +1129,11 @@ pub(crate) fn chat_machines() -> Vec<MachineChoice> {
             name: name.to_owned(),
             remote,
             platform,
-            live,
+            state: if live {
+                MachineChoiceState::Live
+            } else {
+                MachineChoiceState::Offline
+            },
             current,
         },
     )
@@ -1143,7 +1147,7 @@ fn folder_picker_surface(
     enabled: bool,
     cx: &App,
 ) -> ala::Stateful<ala::Div> {
-    let rows = chat_picker_rows(7, picker, folders, &chat_machines(), enabled, cx)
+    let rows = chat_picker_rows(7, picker, folders, &chat_machines(), None, enabled, cx)
         .into_iter()
         .map(|row| match row {
             ChatPickerRow::Label(label) => label.into_any_element(),

@@ -63,6 +63,7 @@ mod terminal_features;
 pub mod transport;
 pub mod unmasked;
 pub mod user_data;
+pub mod wsl;
 
 #[cfg(any(unix, windows))]
 pub use askpass::run_helper;
@@ -79,7 +80,7 @@ pub use client::{
 };
 pub use endpoint::{
     Endpoint, EndpointError, RemoteInstall, RemoteInstalled, RemoteRestart, SshEndpoint,
-    TailnetEndpoint, run_socket_proxy, shell_quote,
+    TailnetEndpoint, WslEndpoint, run_socket_proxy, shell_quote,
 };
 #[cfg(any(unix, windows))]
 pub use endpoint::{install_remote, install_remote_batch, remote_cli_output, run_remote_cli};
@@ -89,7 +90,9 @@ pub use fleet_hosts::{
     write_fleet_host,
 };
 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
-pub use fleet_hosts::{fleet_hosts_with_tailnet, host_endpoint, tailnet_hosts_beside};
+pub use fleet_hosts::{
+    fleet_hosts_with_tailnet, host_endpoint, tailnet_hosts_beside, wsl_hosts_beside,
+};
 #[cfg(any(unix, windows))]
 pub use fleet_sync::{SyncLine, TrustReport, sync_fleet, trust_fleet_key};
 pub use host_failure::{DaemonBehind, HostFailure, InstallOffer, session_count, update_prompt};
@@ -113,6 +116,7 @@ pub use terminal_features::{
     terminal_features_list,
 };
 pub use transport::default_socket_path;
+pub use wsl::{install_wsl, probe_wsl};
 
 #[derive(Debug, Error)]
 pub enum DaemonError {

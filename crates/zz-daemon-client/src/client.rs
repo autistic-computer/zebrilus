@@ -220,6 +220,8 @@ pub struct CommandClient {
     _ssh_forward: Option<SshForward>,
     #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
     _tailnet_forward: Option<crate::tailnet::TailnetForward>,
+    #[cfg(windows)]
+    _wsl_forward: Option<crate::wsl::WslForward>,
     #[cfg(all(unix, not(any(target_os = "ios", target_os = "android"))))]
     unverified: Option<crate::endpoint::SshEndpoint>,
     #[cfg(all(unix, not(any(target_os = "ios", target_os = "android"))))]
@@ -568,6 +570,8 @@ impl CommandClient {
             _ssh_forward: None,
             #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
             _tailnet_forward: None,
+            #[cfg(windows)]
+            _wsl_forward: None,
             #[cfg(all(unix, not(any(target_os = "ios", target_os = "android"))))]
             unverified: None,
             #[cfg(all(unix, not(any(target_os = "ios", target_os = "android"))))]
@@ -618,6 +622,28 @@ impl CommandClient {
                     any(unix, windows),
                     not(any(target_os = "ios", target_os = "android"))
                 )))]
+                {
+                    let _ = endpoint;
+                    Err(crate::EndpointError::UnsupportedPlatform.into())
+                }
+            }
+            Endpoint::Wsl(endpoint) => {
+                #[cfg(windows)]
+                {
+                    let (forward, stream) = start_wsl_forward(endpoint)?;
+                    let mut client = Self::with_link(
+                        CommandRoute {
+                            socket: forward.local_socket().to_path_buf(),
+                            display: endpoint.to_string(),
+                            facts: EndpointFactsScope::PortableTerminalSize,
+                            send_origin: false,
+                        },
+                        CommandLink::exec(stream)?,
+                    );
+                    client._wsl_forward = Some(forward);
+                    Ok(client)
+                }
+                #[cfg(not(windows))]
                 {
                     let _ = endpoint;
                     Err(crate::EndpointError::UnsupportedPlatform.into())
@@ -1353,6 +1379,8 @@ pub struct InteractiveClient {
     ssh_forward: Option<SshForward>,
     #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
     tailnet_forward: Option<crate::tailnet::TailnetForward>,
+    #[cfg(windows)]
+    wsl_forward: Option<crate::wsl::WslForward>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     russh_forward: Option<RusshForward>,
 }
@@ -1461,6 +1489,37 @@ impl InteractiveClient {
                     target_os = "ios",
                     target_os = "android"
                 )))]
+                {
+                    let _ = endpoint;
+                    Err(crate::EndpointError::UnsupportedPlatform.into())
+                }
+            }
+            Endpoint::Wsl(endpoint) => {
+                #[cfg(windows)]
+                {
+                    let (forward, stream) = start_wsl_forward(endpoint)?;
+                    let connected = connect_stream_hello(
+                        ClientStream::Local(stream),
+                        endpoint,
+                        ClientKind::Interactive,
+                        short_device_name(),
+                        color_scheme,
+                        client_has_terminal,
+                        false,
+                        false,
+                        capabilities,
+                        if terminal_surface {
+                            EndpointFactsScope::PortableTerminalSize
+                        } else {
+                            EndpointFactsScope::None
+                        },
+                        attach,
+                    )?;
+                    let mut client = Self::from_connected(connected);
+                    client.wsl_forward = Some(forward);
+                    Ok(client)
+                }
+                #[cfg(not(windows))]
                 {
                     let _ = endpoint;
                     Err(crate::EndpointError::UnsupportedPlatform.into())
@@ -1699,6 +1758,32 @@ impl InteractiveClient {
                     target_os = "ios",
                     target_os = "android"
                 )))]
+                {
+                    let _ = endpoint;
+                    Err(crate::EndpointError::UnsupportedPlatform.into())
+                }
+            }
+            Endpoint::Wsl(endpoint) => {
+                #[cfg(windows)]
+                {
+                    let (forward, stream) = start_wsl_forward(endpoint)?;
+                    let connected = connect_stream_with_startup_owner(
+                        ClientStream::Local(stream),
+                        endpoint,
+                        ClientKind::Control,
+                        None,
+                        None,
+                        false,
+                        false,
+                        false,
+                        &[],
+                        EndpointFactsScope::None,
+                    )?;
+                    let mut client = Self::from_connected(connected);
+                    client.wsl_forward = Some(forward);
+                    Ok(client)
+                }
+                #[cfg(not(windows))]
                 {
                     let _ = endpoint;
                     Err(crate::EndpointError::UnsupportedPlatform.into())
@@ -2033,6 +2118,36 @@ impl InteractiveClient {
                     Err(crate::EndpointError::UnsupportedPlatform.into())
                 }
             }
+            Endpoint::Wsl(endpoint) => {
+                #[cfg(windows)]
+                {
+                    let (forward, stream) = start_wsl_forward(endpoint)?;
+                    let connected = connect_stream_with_startup_owner(
+                        ClientStream::Local(stream),
+                        endpoint,
+                        ClientKind::Interactive,
+                        device_name,
+                        color_scheme,
+                        client_has_terminal,
+                        false,
+                        false,
+                        extra_capabilities,
+                        if terminal_surface {
+                            EndpointFactsScope::PortableTerminalSize
+                        } else {
+                            EndpointFactsScope::None
+                        },
+                    )?;
+                    let mut client = Self::from_connected(connected);
+                    client.wsl_forward = Some(forward);
+                    Ok(client)
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = endpoint;
+                    Err(crate::EndpointError::UnsupportedPlatform.into())
+                }
+            }
             Endpoint::Ssh(endpoint) => {
                 #[cfg(any(target_os = "ios", target_os = "android"))]
                 {
@@ -2109,6 +2224,8 @@ impl InteractiveClient {
             ssh_forward: None,
             #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
             tailnet_forward: None,
+            #[cfg(windows)]
+            wsl_forward: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             russh_forward: None,
         }
@@ -3812,6 +3929,15 @@ fn start_tailnet_forward(
     let forward = crate::tailnet::TailnetForward::start(endpoint)
         .map_err(|error| tailnet_failure(endpoint, &error))?;
     let stream = LocalTransport::connect(forward.socket())?;
+    Ok((forward, stream))
+}
+
+#[cfg(windows)]
+fn start_wsl_forward(
+    endpoint: &crate::endpoint::WslEndpoint,
+) -> Result<(crate::wsl::WslForward, LocalStream), DaemonError> {
+    let forward = crate::wsl::WslForward::start(endpoint)?;
+    let stream = LocalTransport::connect(forward.local_socket())?;
     Ok((forward, stream))
 }
 

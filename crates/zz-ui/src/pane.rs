@@ -2271,15 +2271,31 @@ pub enum ChatPickerRow {
     Item(ChatPickerTarget, Box<Row>),
 }
 
+fn pane_picker_note(text: impl Into<SharedString>, warning: bool, cx: &App) -> Label {
+    let label = Label::new(TextStyle::Caption, text)
+        .px(px(12.0))
+        .pb(px(4.0))
+        .truncate();
+    if warning {
+        label.text_color(cx.theme().warning)
+    } else {
+        label.text_color(cx.theme().foreground.muted())
+    }
+}
+
 pub fn chat_picker_rows(
     pane: u64,
     picker: &zz_client::new_chat::ChatPicker,
     recents: &[zz_client::new_chat::FolderChoice],
     machines: &[zz_client::new_chat::MachineChoice],
+    providers: Option<&zz_protocol::ProvidersReport>,
     enabled: bool,
     cx: &App,
 ) -> Vec<ChatPickerRow> {
-    use zz_client::new_chat::{AGENT_CHOICES, MachineChoice};
+    use zz_client::new_chat::{
+        AGENT_CHOICES, ChatAgentStatus, MachineChoice, MachineChoiceState, any_agent_installed,
+        chat_agent_status,
+    };
     let mut rows = Vec::new();
     if !machines.is_empty() {
         rows.push(ChatPickerRow::Label(Box::new(pane_picker_label(
@@ -2287,16 +2303,25 @@ pub fn chat_picker_rows(
         ))));
         let next = MachineChoice::next(machines);
         rows.extend(machines.iter().enumerate().map(|(index, machine)| {
+            let note = match machine.state {
+                MachineChoiceState::Live => None,
+                MachineChoiceState::InstallZz => Some("install zz".into()),
+                MachineChoiceState::Installing => Some("installing…".into()),
+                MachineChoiceState::Offline => Some("offline".into()),
+            };
             let row = picker_item(
                 ElementId::NamedInteger(format!("chat-picker-machine-{index}").into(), pane),
                 machine.name.clone().into(),
                 machine_icon(machine),
-                (!machine.live).then(|| "offline".into()),
+                note,
                 (next == Some(index)).then_some("m"),
                 false,
-                enabled && machine.live,
+                enabled && machine.state.clickable(),
                 cx,
             )
+            .when(machine.state == MachineChoiceState::Installing, |row| {
+                row.child(crate::spinner::Spinner::new().small())
+            })
             .when(machine.current, |row| {
                 row.child(
                     crate::Icon::new(crate::IconName::Check)
@@ -2322,20 +2347,95 @@ pub fn chat_picker_rows(
         ),
         ChatPickerRow::Label(Box::new(pane_picker_label("Agent", cx))),
     ]);
-    rows.extend(AGENT_CHOICES.iter().enumerate().map(|(index, agent)| {
-        ChatPickerRow::Item(
-            ChatPickerTarget::Agent(index, *agent),
-            Box::new(pane_picker_row(
-                ElementId::NamedInteger(format!("chat-picker-{}", agent.program).into(), pane),
-                agent.title(),
-                agent_provider_icon(agent.provider()),
-                agent.shortcut,
-                picker.selected == index,
-                enabled,
-                cx,
+    if !any_agent_installed(providers) {
+        let other_machine = machines
+            .iter()
+            .any(|machine| !machine.current && machine.state.clickable());
+        let hint = if other_machine {
+            "None installed here — pick one to install, or switch machine"
+        } else {
+            "None installed yet — pick one to install, or open a terminal"
+        };
+        rows.push(ChatPickerRow::Label(Box::new(pane_picker_note(
+            hint, false, cx,
+        ))));
+    }
+    for (index, agent) in AGENT_CHOICES.iter().enumerate() {
+        let status = chat_agent_status(providers, agent.provider());
+        let selected = picker.selected == index;
+        match status {
+            ChatAgentStatus::Ready => rows.push(ChatPickerRow::Item(
+                ChatPickerTarget::Agent(index, *agent),
+                Box::new(pane_picker_row(
+                    ElementId::NamedInteger(format!("chat-picker-{}", agent.program).into(), pane),
+                    agent.title(),
+                    agent_provider_icon(agent.provider()),
+                    agent.shortcut,
+                    selected,
+                    enabled,
+                    cx,
+                )),
             )),
-        )
-    }));
+            ChatAgentStatus::Installable => rows.push(ChatPickerRow::Item(
+                ChatPickerTarget::Agent(index, *agent),
+                Box::new(picker_item(
+                    ElementId::NamedInteger(format!("chat-picker-{}", agent.program).into(), pane),
+                    agent.title().into(),
+                    agent_provider_icon(agent.provider()),
+                    Some("install".into()),
+                    Some(agent.shortcut),
+                    selected,
+                    enabled,
+                    cx,
+                )),
+            )),
+            ChatAgentStatus::Installing { output } => {
+                let row = picker_item(
+                    ElementId::NamedInteger(format!("chat-picker-{}", agent.program).into(), pane),
+                    agent.title().into(),
+                    agent_provider_icon(agent.provider()),
+                    Some("installing…".into()),
+                    None,
+                    selected,
+                    false,
+                    cx,
+                )
+                .child(crate::spinner::Spinner::new().small());
+                rows.push(ChatPickerRow::Item(
+                    ChatPickerTarget::Agent(index, *agent),
+                    Box::new(row),
+                ));
+                if !output.is_empty() {
+                    rows.push(ChatPickerRow::Label(Box::new(pane_picker_note(
+                        output, false, cx,
+                    ))));
+                }
+            }
+            ChatAgentStatus::Failed { message } => {
+                rows.push(ChatPickerRow::Item(
+                    ChatPickerTarget::Agent(index, *agent),
+                    Box::new(picker_item(
+                        ElementId::NamedInteger(
+                            format!("chat-picker-{}", agent.program).into(),
+                            pane,
+                        ),
+                        agent.title().into(),
+                        agent_provider_icon(agent.provider()),
+                        Some("retry install".into()),
+                        Some(agent.shortcut),
+                        selected,
+                        enabled,
+                        cx,
+                    )),
+                ));
+                if !message.is_empty() {
+                    rows.push(ChatPickerRow::Label(Box::new(pane_picker_note(
+                        message, true, cx,
+                    ))));
+                }
+            }
+        }
+    }
     let offers = picker.pane_offers();
     if !offers.is_empty() {
         rows.push(ChatPickerRow::Label(Box::new(pane_picker_label(

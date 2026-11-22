@@ -142,7 +142,7 @@ const MAX_SSH_RUNTIME_ROOT_BYTES: usize = 60;
 #[cfg(unix)]
 static FORWARD_COUNTER: AtomicU64 = AtomicU64::new(1);
 #[cfg(windows)]
-static FORWARD_COUNTER: AtomicU64 = AtomicU64::new(1);
+pub(crate) static FORWARD_COUNTER: AtomicU64 = AtomicU64::new(1);
 pub(crate) const PROXY_READY_MARKER: &[u8] = b"zz-proxy-1\n";
 #[cfg(windows)]
 const MAX_PROXY_PREAMBLE_BYTES: usize = 64 * 1024;
@@ -157,6 +157,14 @@ pub enum Endpoint {
     Local(PathBuf),
     Ssh(SshEndpoint),
     Tailnet(TailnetEndpoint),
+    Wsl(WslEndpoint),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WslEndpoint {
+    pub distro: String,
+    pub user: Option<String>,
+    pub remote_socket: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -197,6 +205,14 @@ pub enum EndpointError {
     SshFailed { target: String, reason: String },
     #[error("{reason}")]
     Tailnet { target: String, reason: String },
+    #[error("failed to spawn wsl.exe for {operation}: {source}")]
+    WslSpawn {
+        operation: &'static str,
+        #[source]
+        source: io::Error,
+    },
+    #[error("wsl for {target} failed: {reason}")]
+    WslFailed { target: String, reason: String },
     #[error("the SSH host key for {target} was not trusted")]
     HostKeyRejected { target: String },
     #[error("SSH authentication to {target} failed: {reason}")]
@@ -297,6 +313,12 @@ impl EndpointError {
             }
             Self::Tailnet { target, reason } => {
                 format!("Could not reach {target} over the tailnet: {reason}")
+            }
+            Self::WslSpawn { operation, source } => {
+                format!("Could not run wsl.exe for the {operation}: {source}")
+            }
+            Self::WslFailed { target, reason } => {
+                format!("Could not reach {target} in WSL: {reason}")
             }
             Self::HostKeyRejected { target } => {
                 format!("The SSH host key for {target} was not trusted.")
@@ -408,6 +430,9 @@ impl Endpoint {
         if let Some(value) = input.strip_prefix("tailnet://") {
             return parse_tailnet_endpoint(input, value).map(Self::Tailnet);
         }
+        if let Some(value) = input.strip_prefix("wsl://") {
+            return parse_wsl_endpoint(input, value).map(Self::Wsl);
+        }
         if let Some(path) = input.strip_prefix("unix://") {
             if !path.starts_with('/') {
                 return Err(parse_error(input, "unix endpoint path must be absolute"));
@@ -439,6 +464,7 @@ impl Endpoint {
             (Self::Tailnet(tailnet), Self::Ssh(ssh)) | (Self::Ssh(ssh), Self::Tailnet(tailnet)) => {
                 machine_label(&tailnet.peer) == machine_label(&ssh.host)
             }
+            (Self::Wsl(left), Self::Wsl(right)) => left.distro.eq_ignore_ascii_case(&right.distro),
             _ => self == other,
         }
     }
@@ -448,7 +474,7 @@ impl Endpoint {
         let host = match self {
             Self::Ssh(endpoint) => &endpoint.host,
             Self::Tailnet(endpoint) => &endpoint.peer,
-            Self::Local(_) => return false,
+            Self::Local(_) | Self::Wsl(_) => return false,
         };
         host.parse() == Ok(address)
     }
@@ -475,7 +501,22 @@ impl fmt::Display for Endpoint {
             Self::Local(path) => path.display().fmt(formatter),
             Self::Ssh(endpoint) => endpoint.fmt(formatter),
             Self::Tailnet(endpoint) => endpoint.fmt(formatter),
+            Self::Wsl(endpoint) => endpoint.fmt(formatter),
         }
+    }
+}
+
+impl fmt::Display for WslEndpoint {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("wsl://")?;
+        if let Some(user) = &self.user {
+            write!(formatter, "{user}@")?;
+        }
+        formatter.write_str(&self.distro)?;
+        if let Some(remote_socket) = &self.remote_socket {
+            remote_socket.display().fmt(formatter)?;
+        }
+        Ok(())
     }
 }
 
@@ -519,6 +560,53 @@ impl From<EndpointError> for DaemonError {
     fn from(error: EndpointError) -> Self {
         Self::Io(io::Error::other(error))
     }
+}
+
+fn parse_wsl_endpoint(input: &str, value: &str) -> Result<WslEndpoint, EndpointError> {
+    let (authority, remote_socket) = match value.split_once('/') {
+        Some((authority, path)) => (authority, Some(PathBuf::from(format!("/{path}")))),
+        None => (value, None),
+    };
+    if authority.is_empty() {
+        return Err(parse_error(input, "wsl distro is empty"));
+    }
+    let (user, distro) = match authority.split_once('@') {
+        Some((user, distro)) => {
+            if user.is_empty() {
+                return Err(parse_error(input, "wsl user is empty"));
+            }
+            if distro.contains('@') {
+                return Err(parse_error(
+                    input,
+                    "wsl authority contains multiple `@` signs",
+                ));
+            }
+            if user
+                .chars()
+                .any(|character| character.is_whitespace() || character.is_control())
+            {
+                return Err(parse_error(input, "wsl user contains invalid characters"));
+            }
+            (Some(user.to_owned()), distro)
+        }
+        None => (None, authority),
+    };
+    if distro.is_empty() {
+        return Err(parse_error(input, "wsl distro is empty"));
+    }
+    if distro.starts_with('-') {
+        return Err(parse_error(input, "wsl distro must not start with `-`"));
+    }
+    if distro.chars().any(|character| {
+        character.is_whitespace() || character.is_control() || matches!(character, '\\' | ':')
+    }) {
+        return Err(parse_error(input, "wsl distro contains invalid characters"));
+    }
+    Ok(WslEndpoint {
+        distro: distro.to_owned(),
+        user,
+        remote_socket,
+    })
 }
 
 fn parse_ssh_endpoint(input: &str, value: &str) -> Result<SshEndpoint, EndpointError> {
@@ -2091,10 +2179,10 @@ pub fn install_remote_batch(
 }
 
 #[cfg(any(unix, windows))]
-fn refuse_development_install(endpoint: &SshEndpoint) -> Result<(), EndpointError> {
+pub(crate) fn refuse_development_install_target(target: &str) -> Result<(), EndpointError> {
     if zz_protocol::app_identity::DEVELOPMENT {
         return Err(EndpointError::RemoteInstallFailed {
-            target: endpoint.to_string(),
+            target: target.to_owned(),
             reason: format!(
                 "{} looks for {} there, and no release ships it",
                 zz_protocol::app_identity::DISPLAY_NAME,
@@ -2103,6 +2191,11 @@ fn refuse_development_install(endpoint: &SshEndpoint) -> Result<(), EndpointErro
         });
     }
     Ok(())
+}
+
+#[cfg(any(unix, windows))]
+fn refuse_development_install(endpoint: &SshEndpoint) -> Result<(), EndpointError> {
+    refuse_development_install_target(&endpoint.to_string())
 }
 
 #[cfg(any(unix, windows))]
@@ -2749,14 +2842,14 @@ fn ssh_connect_command(endpoint: &SshEndpoint, session: SshSession<'_>, script: 
 }
 
 #[cfg(windows)]
-struct SshStderr {
+pub(crate) struct SshStderr {
     text: Arc<Mutex<String>>,
     drain: Option<thread::JoinHandle<()>>,
 }
 
 #[cfg(windows)]
 impl SshStderr {
-    fn drain(stderr: ChildStderr) -> Self {
+    pub(crate) fn drain(stderr: ChildStderr) -> Self {
         let text = Arc::new(Mutex::new(String::new()));
         let sink = Arc::clone(&text);
         let drain = thread::Builder::new()
@@ -2775,7 +2868,7 @@ impl SshStderr {
         Self { text, drain }
     }
 
-    fn settled(&mut self) -> String {
+    pub(crate) fn settled(&mut self) -> String {
         if let Some(drain) = self.drain.take() {
             let _ = drain.join();
         }
@@ -2918,7 +3011,7 @@ impl SshForward {
 }
 
 #[cfg(windows)]
-enum ProxyStart {
+pub(crate) enum ProxyStart {
     Ready(Vec<u8>),
     Exited(Vec<u8>),
 }
@@ -2926,6 +3019,15 @@ enum ProxyStart {
 #[cfg(windows)]
 fn await_proxy_ready(
     endpoint: &SshEndpoint,
+    stdout: &mut BufReader<ChildStdout>,
+    local_socket: &Path,
+) -> Result<ProxyStart, EndpointError> {
+    await_proxy_ready_for(&endpoint.to_string(), stdout, local_socket)
+}
+
+#[cfg(windows)]
+pub(crate) fn await_proxy_ready_for(
+    target: &str,
     stdout: &mut BufReader<ChildStdout>,
     local_socket: &Path,
 ) -> Result<ProxyStart, EndpointError> {
@@ -2937,7 +3039,7 @@ fn await_proxy_ready(
             stdout
                 .read_until(b'\n', &mut line)
                 .map_err(|source| EndpointError::ForwardIo {
-                    target: endpoint.to_string(),
+                    target: target.to_owned(),
                     action: "reading the proxy handshake for",
                     path: local_socket.to_owned(),
                     source,
@@ -2958,7 +3060,7 @@ fn await_proxy_ready(
         preamble.extend_from_slice(&line);
         if preamble.len() > MAX_PROXY_PREAMBLE_BYTES {
             return Err(EndpointError::SshFailed {
-                target: endpoint.to_string(),
+                target: target.to_owned(),
                 reason: "the remote kept writing to stdout instead of starting the zz proxy; \
                          check what its login shell prints"
                     .to_owned(),
@@ -2998,7 +3100,7 @@ fn connect_failure(
 }
 
 #[cfg(windows)]
-fn end_with_this_process(child: &Child) {
+pub(crate) fn end_with_this_process(child: &Child) {
     use std::{os::windows::io::AsRawHandle as _, sync::OnceLock};
 
     use windows::Win32::{
@@ -3050,7 +3152,7 @@ fn end_with_this_process(child: &Child) {
 }
 
 #[cfg(windows)]
-fn spawn_bridge(
+pub(crate) fn spawn_bridge(
     listener: LocalListener,
     mut stdin: ChildStdin,
     mut stdout: BufReader<ChildStdout>,
@@ -3183,6 +3285,34 @@ mod tests {
                 remote_socket: Some(PathBuf::from("/run/user/1000/zz/default.sock")),
             })
         );
+    }
+
+    #[test]
+    fn parses_wsl_uris_and_matches_distros_case_insensitively() {
+        let plain = Endpoint::parse("wsl://Ubuntu-24.04").unwrap();
+        assert_eq!(
+            plain,
+            Endpoint::Wsl(WslEndpoint {
+                distro: "Ubuntu-24.04".to_owned(),
+                user: None,
+                remote_socket: None,
+            })
+        );
+        assert_eq!(plain.to_string(), "wsl://Ubuntu-24.04");
+        let full = Endpoint::parse("wsl://me@ubuntu-24.04/tmp/zz.sock").unwrap();
+        assert_eq!(
+            full,
+            Endpoint::Wsl(WslEndpoint {
+                distro: "ubuntu-24.04".to_owned(),
+                user: Some("me".to_owned()),
+                remote_socket: Some(PathBuf::from("/tmp/zz.sock")),
+            })
+        );
+        assert_eq!(full.to_string(), "wsl://me@ubuntu-24.04/tmp/zz.sock");
+        assert!(plain.same_machine(&full));
+        for bad in ["wsl://", "wsl://-bad", "wsl://@ubuntu", "wsl://a@b@c"] {
+            assert!(Endpoint::parse(bad).is_err(), "accepted {bad}");
+        }
     }
 
     #[test]

@@ -32,8 +32,9 @@ pub(crate) async fn run_grok_runtime(
     channels: RuntimeChannels,
 ) -> Result<(), String> {
     let inherited = std::env::var("PATH").ok();
+    let resolved = agent_path();
     let agent = AcpAgent::new(
-        AcpAgentConfig::new(program(agent_path().or(inherited.as_deref()))?)
+        AcpAgentConfig::new(program(resolved.as_deref().or(inherited.as_deref()))?)
             .arg("agent")
             .arg("stdio"),
     );
@@ -42,8 +43,9 @@ pub(crate) async fn run_grok_runtime(
 
 pub(crate) fn home() -> Option<PathBuf> {
     std::env::var_os("GROK_HOME")
+        .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".grok")))
+        .or_else(|| zz_daemon_client::home_directory().map(|home| home.join(".grok")))
 }
 
 pub(crate) fn credit_usage(billing: &Value) -> Option<QuotaWindows> {

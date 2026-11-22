@@ -23,7 +23,9 @@ use zz_ui::agent::controls::{
 use zz_ui::agent::presentation::MAX_RENDERED_ERROR_BYTES;
 #[cfg(test)]
 use zz_ui::agent::presentation::rendered_error;
-use zz_ui::agent::presentation::{agent_welcome, error_card, error_card_sign_in};
+use zz_ui::agent::presentation::{
+    agent_welcome, error_card, error_card_sign_in, error_card_with_actions,
+};
 use zz_ui::agent::preview::ViewRequest;
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
 use zz_ui::agent::resume::{EmptyChat, HeaderMenu};
@@ -49,10 +51,13 @@ use zz_ui::{
 
 use crate::command::palette::palette_backend;
 use penna::{
-    ActiveTheme as _, Ground,
-    components::input::{
-        Escape, IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight, MoveUp,
-        OutdentInline,
+    ActiveTheme as _, Disableable as _, Ground,
+    components::{
+        button::{Button, ButtonVariants as _},
+        input::{
+            Escape, IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight, MoveUp,
+            OutdentInline,
+        },
     },
     h_flex,
 };
@@ -287,6 +292,8 @@ pub(crate) struct AgentView {
     menu_hidden: Option<std::time::Instant>,
     browse: Option<(HostId, u64)>,
     child_requests: HashMap<u64, PaneId>,
+    provider_status: Option<zz_protocol::ProviderStatus>,
+    reopen_after_install: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -430,11 +437,24 @@ impl AgentView {
         let listed = cx.subscribe(&mux, |view, _, event: &HostPathListUpdate, cx| {
             view.browse_listed(event, cx);
         });
+        let provider_status = {
+            let mux = mux.read(cx);
+            mux.host_providers(mux.attached_host())
+                .and_then(|report| report.provider(provider))
+                .cloned()
+        };
         let mux_observer = cx.observe(&mux, |view, mux, cx| {
             view.observe_login(&mux, cx);
             let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), view.pane);
             let active = mux.read(cx).active_pane() == Some(view.pane);
             let (account, accounts, quotas) = pane_accounts(mux.read(cx), view.pane);
+            let provider_status = {
+                let mux = mux.read(cx);
+                mux.host_providers(mux.attached_host())
+                    .and_then(|report| report.provider(view.pane_state.provider))
+                    .cloned()
+            };
+            let provider_changed = view.provider_status != provider_status;
             let accounts_changed = view.accounts.as_deref() != accounts;
             let quotas_changed = view.quotas != quotas;
             if view.floats != floats
@@ -442,6 +462,7 @@ impl AgentView {
                 || view.account != account
                 || accounts_changed
                 || quotas_changed
+                || provider_changed
             {
                 if accounts_changed {
                     view.accounts = accounts.map(<[_]>::to_vec);
@@ -449,10 +470,35 @@ impl AgentView {
                 if quotas_changed {
                     view.quotas = quotas.to_vec();
                 }
+                if provider_changed {
+                    view.provider_status = provider_status;
+                }
                 view.floats = floats;
                 view.active = active;
                 view.account = account;
                 cx.notify();
+            }
+            if view.reopen_after_install
+                && view
+                    .provider_status
+                    .as_ref()
+                    .is_some_and(zz_protocol::ProviderStatus::installed)
+            {
+                view.reopen_after_install = false;
+                let cwd = view.chat_cwd();
+                let provider = view.pane_state.provider;
+                let command = CommandInvocation::new(
+                    "select-pane-kind",
+                    [
+                        "-t".to_owned(),
+                        view.pane.to_string(),
+                        "-c".to_owned(),
+                        cwd,
+                        "agent".to_owned(),
+                        provider.as_str().to_owned(),
+                    ],
+                );
+                mux.read(cx).execute(command);
             }
             let folder = snapshot_folder(&mux, view.pane, cx);
             if let Some(cwd) = folder.clone().filter(|_| folder != view.folder_seen) {
@@ -510,6 +556,8 @@ impl AgentView {
             menu_hidden: None,
             browse: None,
             child_requests: HashMap::new(),
+            provider_status,
+            reopen_after_install: false,
             _subscriptions: vec![
                 printed,
                 listed,
@@ -1950,7 +1998,12 @@ impl AgentView {
         )
     }
 
-    fn render_error(&self, state: &AgentPaneState, cx: &ala::App) -> Option<impl IntoElement> {
+    fn render_error(
+        &self,
+        state: &AgentPaneState,
+        view: &Entity<Self>,
+        cx: &ala::App,
+    ) -> Option<impl IntoElement> {
         let runtime_error = state.error.clone();
         let error = runtime_error
             .clone()
@@ -1981,7 +2034,70 @@ impl AgentView {
                 cx,
             ));
         }
-        Some(error_card(&error, stopped, cx))
+        let missing = stopped
+            && (self
+                .provider_status
+                .as_ref()
+                .is_some_and(|status| !status.installed())
+                || error.contains("is not installed"));
+        if !missing {
+            return Some(error_card(&error, stopped, cx));
+        }
+        let provider = state.provider;
+        let ground = penna::blocks::feedback::alert_ground(cx);
+        let id = SharedString::from(format!("agent-install-{}", self.pane.0));
+        let (detail, button) = match self.provider_status.as_ref().map(|status| &status.task) {
+            Some(zz_protocol::ProviderTask::Running { output }) => (
+                if output.is_empty() {
+                    format!("Installing {}…", provider.label())
+                } else {
+                    output.clone()
+                },
+                Button::new(id)
+                    .label("Installing")
+                    .loading(true)
+                    .disabled(true)
+                    .on(ground),
+            ),
+            Some(zz_protocol::ProviderTask::Failed { message }) => {
+                let mux = self.mux.clone();
+                let view = view.downgrade();
+                (
+                    format!("{error}\n{message}"),
+                    Button::new(id)
+                        .label(format!("Retry install {}", provider.label()))
+                        .primary()
+                        .on(ground)
+                        .on_click(move |_, _, cx| {
+                            let host = mux.read(cx).attached_host();
+                            let _ = view.update(cx, |view, _| view.reopen_after_install = true);
+                            mux.read(cx).update_provider(host, provider);
+                        }),
+                )
+            }
+            _ => {
+                let mux = self.mux.clone();
+                let view = view.downgrade();
+                (
+                    error.to_string(),
+                    Button::new(id)
+                        .label(format!("Install {}", provider.label()))
+                        .primary()
+                        .on(ground)
+                        .on_click(move |_, _, cx| {
+                            let host = mux.read(cx).attached_host();
+                            let _ = view.update(cx, |view, _| view.reopen_after_install = true);
+                            mux.read(cx).update_provider(host, provider);
+                        }),
+                )
+            }
+        };
+        Some(error_card_with_actions(
+            &detail,
+            stopped,
+            [button.into_any_element()],
+            cx,
+        ))
     }
 
     fn render_completions(&self, view: &Entity<Self>, cx: &ala::App) -> Option<ala::AnyElement> {
@@ -2147,7 +2263,7 @@ impl AgentView {
                     .map(IntoElement::into_any_element),
             )
             .chain(
-                self.render_error(state, cx)
+                self.render_error(state, view, cx)
                     .map(IntoElement::into_any_element),
             )
             .chain(self.render_login(view, cx))
@@ -2215,6 +2331,12 @@ impl Render for AgentView {
         self.synchronize_row_focus(window, cx);
         self.request_resume(window, cx);
         let state = self.pane_state.clone();
+        if state.connection == AgentConnectionState::Failed
+            && self.mux.read(cx).providers_unrequested()
+        {
+            let mux = self.mux.clone();
+            cx.defer(move |cx| mux.update(cx, |mux, _| mux.request_providers(false)));
+        }
         let use_chat = self
             .controller
             .read(cx)
@@ -2585,6 +2707,8 @@ mod completion_tests {
                 menu_hidden: None,
                 browse: None,
                 child_requests: HashMap::new(),
+                provider_status: None,
+                reopen_after_install: false,
                 _subscriptions: Vec::new(),
             });
             view.read(cx).focus(cx).focus(window, cx);

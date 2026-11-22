@@ -754,17 +754,22 @@ pub(crate) fn known_hosts(cx: &App) -> Vec<HostEntry> {
 }
 
 fn same_machine(left: &Endpoint, right: &Endpoint) -> bool {
-    let (Endpoint::Tailnet(left), Endpoint::Tailnet(right)) = (left, right) else {
-        return false;
-    };
-    let machine = |peer: &str| {
-        if peer.parse::<std::net::IpAddr>().is_ok() {
-            peer.to_owned()
-        } else {
-            peer.split('.').next().unwrap_or(peer).to_ascii_lowercase()
+    match (left, right) {
+        (Endpoint::Tailnet(left), Endpoint::Tailnet(right)) => {
+            let machine = |peer: &str| {
+                if peer.parse::<std::net::IpAddr>().is_ok() {
+                    peer.to_owned()
+                } else {
+                    peer.split('.').next().unwrap_or(peer).to_ascii_lowercase()
+                }
+            };
+            machine(&left.peer) == machine(&right.peer)
         }
-    };
-    machine(&left.peer) == machine(&right.peer)
+        (Endpoint::Wsl(left), Endpoint::Wsl(right)) => {
+            left.distro.eq_ignore_ascii_case(&right.distro)
+        }
+        _ => false,
+    }
 }
 
 pub(crate) fn is_discovered(name: &str, cx: &App) -> bool {

@@ -920,7 +920,12 @@ impl SettingsView {
                 let remove_mux = self.mux.clone();
                 let found = config::is_discovered(&name, cx);
                 let (description, action) = if found {
-                    (format!("Found on Tailscale, {}", host.endpoint), "Hide")
+                    let source = if matches!(host.endpoint, zz_daemon_client::Endpoint::Wsl(_)) {
+                        "Found in WSL"
+                    } else {
+                        "Found on Tailscale"
+                    };
+                    (format!("{source}, {}", host.endpoint), "Hide")
                 } else {
                     (host.endpoint.to_string(), "Remove host")
                 };

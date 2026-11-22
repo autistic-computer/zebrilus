@@ -31,6 +31,11 @@ const CODEX_INSTALL: &str = "curl -fsSL https://chatgpt.com/codex/install.sh | s
 const ANTIGRAVITY_INSTALL: &str = "curl -fsSL https://antigravity.google/cli/install.sh | bash";
 const GROK_INSTALL: &str = "curl -fsSL https://x.ai/cli/install.sh | bash";
 const CURSOR_INSTALL: &str = "curl -fsS https://cursor.com/install | bash";
+const CLAUDE_WINDOWS_INSTALL: &str = "irm https://claude.ai/install.ps1 | iex";
+const CODEX_WINDOWS_INSTALL: &str = "irm https://chatgpt.com/codex/install.ps1 | iex";
+const ANTIGRAVITY_WINDOWS_INSTALL: &str = "irm https://antigravity.google/cli/install.ps1 | iex";
+const GROK_WINDOWS_INSTALL: &str = "irm https://x.ai/cli/install.ps1 | iex";
+const CURSOR_WINDOWS_INSTALL: &str = "irm 'https://cursor.com/install?win32=true' | iex";
 const ANTIGRAVITY_MANIFESTS: &str =
     "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests";
 
@@ -201,6 +206,7 @@ impl Shared {
             }
             Err(message) => Err(message),
         };
+        let search = self.provider_search();
         let found = detect(provider, search.as_ref());
         let latest = self.latest_release(provider, found.as_ref(), search.as_ref());
         let mut providers = self.providers.lock();
@@ -209,11 +215,19 @@ impl Shared {
         status.latest = latest;
         status.task = match outcome {
             Ok(_) if !status.installed() => ProviderTask::Failed {
-                message: format!(
-                    "The installer finished, but {} is not on the login PATH. Open a new shell \
-                     and check that ~/.local/bin is on PATH.",
-                    program(provider)
-                ),
+                message: if cfg!(windows) {
+                    format!(
+                        "The installer finished, but {} was not found on PATH. Open a new shell \
+                         or check that its install folder is on PATH.",
+                        program(provider)
+                    )
+                } else {
+                    format!(
+                        "The installer finished, but {} is not on the login PATH. Open a new shell \
+                         and check that ~/.local/bin is on PATH.",
+                        program(provider)
+                    )
+                },
             },
             Ok(_) if status.outdated() && status.version == before => ProviderTask::Failed {
                 message: format!(
@@ -296,14 +310,12 @@ pub(super) const fn program(provider: AgentProvider) -> &'static str {
 }
 
 fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .filter(|home| home.is_dir())
+    zz_daemon_client::home_directory().filter(|home| home.is_dir())
 }
 
 fn search_path() -> Option<OsString> {
     #[cfg(feature = "agent")]
-    let base = crate::agent::environment::agent_path().map(OsString::from);
+    let base = crate::agent::environment::agent_path().map(|path| OsString::from(path.as_ref()));
     #[cfg(not(feature = "agent"))]
     let base: Option<OsString> = None;
     let base = base.or_else(|| std::env::var_os("PATH"));
@@ -312,7 +324,13 @@ fn search_path() -> Option<OsString> {
         .map(|path| std::env::split_paths(path).collect::<Vec<_>>())
         .unwrap_or_default();
     if let Some(home) = home() {
-        for extra in [home.join(".local/bin"), home.join(".claude/local")] {
+        for extra in [
+            home.join(".local/bin"),
+            home.join(".claude/local"),
+            home.join(".grok/bin"),
+            home.join(".cursor/bin"),
+            home.join(".antigravity/bin"),
+        ] {
             if !directories.contains(&extra) {
                 directories.push(extra);
             }
@@ -321,21 +339,37 @@ fn search_path() -> Option<OsString> {
     std::env::join_paths(directories).ok()
 }
 
-pub(super) fn locate(provider: AgentProvider, search: Option<&OsString>) -> Option<PathBuf> {
+fn locate_program(name: &str, search: &OsString) -> Option<PathBuf> {
     let names: &[String] = if cfg!(windows) {
         &[
-            format!("{}.exe", program(provider)),
-            format!("{}.cmd", program(provider)),
+            format!("{name}.exe"),
+            format!("{name}.cmd"),
+            format!("{name}.bat"),
         ]
     } else {
-        &[program(provider).to_owned()]
+        &[name.to_owned()]
     };
-    std::env::split_paths(search?).find_map(|directory| {
+    std::env::split_paths(search).find_map(|directory| {
         names
             .iter()
-            .map(|name| directory.join(name))
+            .map(|entry| directory.join(entry))
             .find(|candidate| executable(candidate))
     })
+}
+
+pub(super) fn locate(provider: AgentProvider, search: Option<&OsString>) -> Option<PathBuf> {
+    let search = search?;
+    if let Some(found) = locate_program(program(provider), search) {
+        return Some(found);
+    }
+    if provider == AgentProvider::Cursor {
+        return locate_program("agent", search).filter(|candidate| {
+            let real = fs::canonicalize(candidate).unwrap_or_else(|_| candidate.clone());
+            let lower = real.to_string_lossy().to_ascii_lowercase();
+            lower.contains("cursor-agent") || lower.contains(".cursor")
+        });
+    }
+    None
 }
 
 #[cfg(unix)]
@@ -399,7 +433,9 @@ fn owner(provider: AgentProvider, path: &Path, search: Option<&OsString>) -> Own
             }
         }
     }
-    if let (Some(prefix), Some(package)) = (npm_prefix(&real), npm_package(provider)) {
+    if let Some(package) = npm_package(provider)
+        && let Some(prefix) = npm_prefix(&real, package)
+    {
         return npm_owner(package, &prefix);
     }
     if let Some(owner) = homebrew(&real) {
@@ -419,25 +455,49 @@ const fn npm_package(provider: AgentProvider) -> Option<&'static str> {
     }
 }
 
-fn npm_prefix(real: &Path) -> Option<PathBuf> {
-    let text = real.to_str()?;
-    let (prefix, _) = text.split_once("/lib/node_modules/")?;
-    Some(PathBuf::from(prefix))
+fn npm_prefix(real: &Path, package: &str) -> Option<PathBuf> {
+    let text = real.to_string_lossy().replace('\\', "/");
+    if let Some((prefix, _)) = text.split_once("/lib/node_modules/") {
+        return Some(PathBuf::from(prefix));
+    }
+    if let Some((prefix, _)) = text.split_once("/node_modules/") {
+        return Some(PathBuf::from(prefix));
+    }
+    let parent = real.parent()?;
+    parent
+        .join("node_modules")
+        .join(package)
+        .is_dir()
+        .then(|| parent.to_path_buf())
 }
 
 fn npm_owner(package: &str, prefix: &Path) -> Owner {
-    let bin = prefix.join("bin");
-    let npm = bin.join("npm");
-    let npm = executable(&npm).then_some(npm);
-    if writable(&prefix.join("lib/node_modules")) {
+    let (bin, npm_path, modules) = if cfg!(windows) && prefix.join("node_modules").is_dir() {
+        (
+            prefix.to_path_buf(),
+            prefix.join("npm.cmd"),
+            prefix.join("node_modules"),
+        )
+    } else {
+        let bin = prefix.join("bin");
+        let npm = bin.join("npm");
+        (bin, npm, prefix.join("lib/node_modules"))
+    };
+    let npm = executable(&npm_path).then_some(npm_path);
+    if writable(&modules) {
         return Owner::Npm {
             bin: npm.map(|_| bin),
         };
     }
     let npm = npm.map_or_else(|| "npm".to_owned(), |npm| npm.display().to_string());
+    let command = if cfg!(windows) {
+        format!("{npm} install -g {package}@latest")
+    } else {
+        format!("sudo {npm} install -g {package}@latest")
+    };
     Owner::Manual(ManualUpdate {
         owner: format!("npm under {}", prefix.display()),
-        command: Some(format!("sudo {npm} install -g {package}@latest")),
+        command: Some(command),
     })
 }
 
@@ -502,8 +562,12 @@ fn system_owner(provider: AgentProvider, real: &Path, search: Option<&OsString>)
     if text.to_ascii_lowercase().contains("/winget/") {
         return manual(
             "winget",
-            (provider == AgentProvider::ClaudeCode)
-                .then(|| "winget upgrade Anthropic.ClaudeCode".to_owned()),
+            match provider {
+                AgentProvider::ClaudeCode => Some("winget upgrade Anthropic.ClaudeCode".to_owned()),
+                AgentProvider::Codex => Some("winget upgrade OpenAI.Codex".to_owned()),
+                AgentProvider::Grok => Some("winget upgrade xAI.GrokBuild".to_owned()),
+                AgentProvider::Antigravity | AgentProvider::Cursor => None,
+            },
         );
     }
     if text.starts_with("/nix/store/") {
@@ -660,6 +724,16 @@ fn fetch_latest(
     )
 }
 
+const fn windows_install_script(provider: AgentProvider) -> &'static str {
+    match provider {
+        AgentProvider::ClaudeCode => CLAUDE_WINDOWS_INSTALL,
+        AgentProvider::Codex => CODEX_WINDOWS_INSTALL,
+        AgentProvider::Antigravity => ANTIGRAVITY_WINDOWS_INSTALL,
+        AgentProvider::Grok => GROK_WINDOWS_INSTALL,
+        AgentProvider::Cursor => CURSOR_WINDOWS_INSTALL,
+    }
+}
+
 fn task_command(
     provider: AgentProvider,
     found: Option<&Found>,
@@ -667,10 +741,17 @@ fn task_command(
 ) -> Result<Command, String> {
     let mut command = match found {
         None if cfg!(windows) => {
-            return Err(format!(
-                "Install {} from its website on Windows.",
-                provider.label()
-            ));
+            let mut command = Command::new("powershell.exe");
+            command
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                ])
+                .arg(windows_install_script(provider));
+            command
         }
         None => {
             let mut command = Command::new("sh");
@@ -1067,6 +1148,28 @@ mod tests {
                 manual("the system (/usr/bin)", None)
             );
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_install_runs_vendor_powershell_scripts() {
+        let command = task_command(AgentProvider::ClaudeCode, None, None).expect("install command");
+        assert_eq!(command.get_program(), "powershell.exe");
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            args,
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                CLAUDE_WINDOWS_INSTALL,
+            ]
+        );
     }
 
     #[test]

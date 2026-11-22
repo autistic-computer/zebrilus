@@ -26,7 +26,7 @@ pub(crate) fn config_home() -> Option<PathBuf> {
     if cfg!(test) {
         return configured;
     }
-    configured.or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".claude")))
+    configured.or_else(|| zz_daemon_client::home_directory().map(|home| home.join(".claude")))
 }
 
 fn sanitize(path: &str) -> String {

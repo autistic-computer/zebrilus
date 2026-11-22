@@ -355,12 +355,7 @@ fn settled_title(
 }
 
 pub(crate) fn installed(path: Option<&str>, program: &str) -> Vec<PathBuf> {
-    path.map(std::env::split_paths)
-        .into_iter()
-        .flatten()
-        .map(|directory| directory.join(program))
-        .filter(|candidate| candidate.is_file())
-        .collect()
+    crate::agent::environment::find_executables(path, program)
 }
 
 fn to_agent(command: RuntimeCommand, effort_option: &str) -> RuntimeCommand {

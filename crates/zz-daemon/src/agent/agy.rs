@@ -35,8 +35,9 @@ pub(crate) async fn run_agy_runtime(
     channels: RuntimeChannels,
 ) -> Result<(), String> {
     let inherited = std::env::var("PATH").ok();
+    let resolved = agent_path();
     let agent = AcpAgent::new(
-        AcpAgentConfig::new(program(agent_path().or(inherited.as_deref()))?).arg(ACP),
+        AcpAgentConfig::new(program(resolved.as_deref().or(inherited.as_deref()))?).arg(ACP),
     );
     dialect::run(agent, DIALECT, config, provider, channels).await
 }

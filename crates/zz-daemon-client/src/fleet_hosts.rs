@@ -39,6 +39,8 @@ pub fn configured_fleet_hosts() -> io::Result<(Vec<HostEntry>, Vec<RejectedHost>
 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
 pub fn fleet_hosts_with_tailnet() -> io::Result<(Vec<HostEntry>, Vec<RejectedHost>)> {
     let (mut hosts, rejected) = configured_fleet_hosts()?;
+    let wsl = wsl_hosts_beside(&hosts);
+    hosts.extend(wsl);
     let found = tailnet_hosts_beside(&hosts);
     hosts.extend(found);
     Ok((hosts, rejected))
@@ -49,10 +51,29 @@ pub fn host_endpoint(name: &str) -> Result<Endpoint, String> {
     let (mut hosts, _) =
         configured_fleet_hosts().map_err(|error| format!("could not read zz/config: {error}"))?;
     if !hosts.iter().any(|host| host.name == name) && !name.contains(['@', ':', '/']) {
+        let wsl = wsl_hosts_beside(&hosts);
+        hosts.extend(wsl);
         let found = tailnet_hosts_beside(&hosts);
         hosts.extend(found);
     }
     resolve_fleet_host(&hosts, name)
+}
+
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+#[must_use]
+pub fn wsl_hosts_beside(configured: &[HostEntry]) -> Vec<HostEntry> {
+    let hidden = discover_config_path(&config_candidates())
+        .and_then(|path| read_config_source(&path).ok())
+        .map(|source| tailnet::Settings::from_config(&source).hide)
+        .unwrap_or_default();
+    crate::wsl::hosts(&hidden)
+        .into_iter()
+        .filter(|found| {
+            !configured
+                .iter()
+                .any(|host| host.name == found.name || host.endpoint.same_machine(&found.endpoint))
+        })
+        .collect()
 }
 
 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
@@ -91,6 +112,28 @@ pub struct AddHostRequest {
 
 pub fn parse_add_host(input: &str, existing: &[String]) -> Result<AddHostRequest, String> {
     let destination = input.trim();
+    if let Some(rest) = destination.strip_prefix("wsl://") {
+        if rest.is_empty() {
+            return Err("Enter a WSL distro, like `wsl://Ubuntu`.".to_owned());
+        }
+        if destination.chars().any(char::is_whitespace) {
+            return Err("A host destination must not contain spaces.".to_owned());
+        }
+        let Endpoint::Wsl(parsed) = Endpoint::parse(destination)
+            .map_err(|error| format!("{destination} is not a host: {error}"))?
+        else {
+            unreachable!("a wsl:// URI parses as a WSL endpoint");
+        };
+        let name = crate::wsl::distro_host_name(&parsed.distro);
+        validate_fleet_host(&name, destination)?;
+        if existing.contains(&name) {
+            return Err(format!("A host named `{name}` already exists."));
+        }
+        return Ok(AddHostRequest {
+            name,
+            endpoint: destination.to_owned(),
+        });
+    }
     let destination = destination.strip_prefix("ssh://").unwrap_or(destination);
     if destination.is_empty() {
         return Err(format!("Enter a host, like `{ADD_HOST_PLACEHOLDER}`."));
@@ -180,7 +223,7 @@ pub fn resolve_fleet_host(hosts: &[HostEntry], name: &str) -> Result<Endpoint, S
         }
         _ => {}
     }
-    if name.starts_with("tailnet://") {
+    if name.starts_with("tailnet://") || name.starts_with("wsl://") {
         return Endpoint::parse(name).map_err(|error| error.to_string());
     }
     let destination = name.strip_prefix("ssh://").unwrap_or(name);

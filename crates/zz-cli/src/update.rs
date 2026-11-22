@@ -104,7 +104,7 @@ pub(crate) fn run(arguments: &[String], socket_path: &Path) -> ExitCode {
                 .iter()
                 .map(|name| Target {
                     name: name.clone(),
-                    machine: crate::configured_host_endpoint(name).map(Machine::from),
+                    machine: crate::configured_host_endpoint(name).and_then(machine),
                 })
                 .collect::<Vec<_>>(),
         ),
@@ -117,7 +117,7 @@ pub(crate) fn run(arguments: &[String], socket_path: &Path) -> ExitCode {
                 })
                 .chain(hosts.into_iter().map(|host| Target {
                     name: host.name,
-                    machine: Ok(Machine::from(host.endpoint)),
+                    machine: machine(host.endpoint),
                 }))
                 .collect::<Vec<_>>(),
             ),
@@ -135,13 +135,15 @@ pub(crate) fn run(arguments: &[String], socket_path: &Path) -> ExitCode {
     }
 }
 
-impl From<Endpoint> for Machine {
-    fn from(endpoint: Endpoint) -> Self {
-        match endpoint {
-            Endpoint::Local(socket) => Self::Here(socket),
-            Endpoint::Ssh(endpoint) => Self::Ssh(endpoint),
-            Endpoint::Tailnet(endpoint) => Self::Tailnet(endpoint),
-        }
+const NO_WSL: &str =
+    "zz update does not reach a WSL distribution; update it with zz fleet install NAME";
+
+fn machine(endpoint: Endpoint) -> Result<Machine, String> {
+    match endpoint {
+        Endpoint::Local(socket) => Ok(Machine::Here(socket)),
+        Endpoint::Ssh(endpoint) => Ok(Machine::Ssh(endpoint)),
+        Endpoint::Tailnet(endpoint) => Ok(Machine::Tailnet(endpoint)),
+        Endpoint::Wsl(_) => Err(NO_WSL.to_owned()),
     }
 }
 
@@ -511,6 +513,7 @@ fn endpoint_daemon(endpoint: &Endpoint) -> Daemon {
         Endpoint::Local(socket) => local_daemon(socket),
         Endpoint::Tailnet(endpoint) => tailnet_daemon(endpoint),
         Endpoint::Ssh(endpoint) => ssh_daemon(endpoint),
+        Endpoint::Wsl(_) => Daemon::Unreachable(NO_WSL.to_owned()),
     }
 }
 

@@ -11,9 +11,10 @@ use penna::{
 use zz_client::{
     agent_launch::AgentLaunches,
     new_chat::{
-        AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, FolderChoice, MachineChoice,
-        agent_pane_command, agent_picker_place, close_picker_command, landing_chat_commands,
-        picker_folders, recent_folders, start_and_follow_agent_commands,
+        AGENT_CHOICES, AgentChoice, ChatAgentStatus, ChatKey, ChatPicker, FolderChoice,
+        MachineChoice, MachineChoiceState, agent_pane_command, agent_picker_place,
+        chat_agent_status, close_picker_command, landing_chat_commands, picker_folders,
+        recent_folders, start_and_follow_agent_commands,
     },
     pane_picker::{PaneChoice, PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
 };
@@ -144,7 +145,11 @@ impl PanePicker {
                     platform: connection.map_or(HostPlatform::Unknown, |connection| {
                         connection.core.host_platform()
                     }),
-                    live: connection.is_some_and(|connection| connection.connected),
+                    state: if connection.is_some_and(|connection| connection.connected) {
+                        MachineChoiceState::Live
+                    } else {
+                        MachineChoiceState::Offline
+                    },
                     current: page.connection.as_ref() == Some(&self.connection),
                 }
             })
@@ -153,7 +158,7 @@ impl PanePicker {
 
     fn choose_machine(&self, machines: &[MachineChoice], index: usize, cx: &mut Context<Self>) {
         if let Some(machine) = machines.get(index)
-            && machine.live
+            && machine.live()
             && !machine.current
             && let Ok(host) = u32::try_from(machine.host)
         {
@@ -180,6 +185,16 @@ impl PanePicker {
         let connection = self.connection.read(cx);
         if !connection.connected || connection.core.attached_read_only() {
             return;
+        }
+        match chat_agent_status(connection.core.providers(), agent.provider()) {
+            ChatAgentStatus::Ready => {}
+            ChatAgentStatus::Installable | ChatAgentStatus::Failed { .. } => {
+                self.connection.update(cx, |connection, cx| {
+                    connection.update_provider(agent.provider(), cx)
+                });
+                return;
+            }
+            ChatAgentStatus::Installing { .. } => return,
         }
         let folder = self.chat.folder(folders);
         let snapshot = connection.core.snapshot();
@@ -232,47 +247,62 @@ impl PanePicker {
         writable: bool,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
+        if self.connection.read(cx).providers_unrequested() {
+            let connection = self.connection.clone();
+            cx.defer(move |cx| {
+                connection.update(cx, |connection, cx| connection.request_providers(false, cx));
+            });
+        }
         let machines = self.machines(cx);
-        chat_picker_rows(self.id(), &self.chat, folders, &machines, writable, cx)
-            .into_iter()
-            .map(|row| match row {
-                ChatPickerRow::Label(label) => label.into_any_element(),
-                ChatPickerRow::Item(target, row) => row
-                    .on_mouse_move(cx.listener(move |this, _, _, cx| {
-                        let ChatPickerTarget::Agent(index, _) = target else {
+        let providers = self.connection.read(cx).core.providers().cloned();
+        chat_picker_rows(
+            self.id(),
+            &self.chat,
+            folders,
+            &machines,
+            providers.as_ref(),
+            writable,
+            cx,
+        )
+        .into_iter()
+        .map(|row| match row {
+            ChatPickerRow::Label(label) => label.into_any_element(),
+            ChatPickerRow::Item(target, row) => row
+                .on_mouse_move(cx.listener(move |this, _, _, cx| {
+                    let ChatPickerTarget::Agent(index, _) = target else {
+                        return;
+                    };
+                    if this.chat.selected != index {
+                        this.chat.selected = index;
+                        cx.notify();
+                    }
+                }))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _, _, cx| {
+                        let Some(folders) = this.folders(cx) else {
                             return;
                         };
-                        if this.chat.selected != index {
-                            this.chat.selected = index;
-                            cx.notify();
-                        }
-                    }))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |this, _, _, cx| {
-                            let Some(folders) = this.folders(cx) else {
-                                return;
-                            };
-                            match target {
-                                ChatPickerTarget::FolderLine => this.choose_folder(&folders, cx),
-                                ChatPickerTarget::Agent(_, agent) => {
-                                    this.start(agent, &folders, cx);
-                                }
-                                ChatPickerTarget::Machine(index) => {
-                                    let machines = this.machines(cx);
-                                    this.choose_machine(&machines, index, cx);
-                                }
-                                ChatPickerTarget::Terminal
-                                | ChatPickerTarget::Browser
-                                | ChatPickerTarget::Simulator => {}
+                        match target {
+                            ChatPickerTarget::FolderLine => this.choose_folder(&folders, cx),
+                            ChatPickerTarget::Agent(_, agent) => {
+                                this.start(agent, &folders, cx);
                             }
-                            cx.notify();
-                            cx.stop_propagation();
-                        }),
-                    )
-                    .into_any_element(),
-            })
-            .collect()
+                            ChatPickerTarget::Machine(index) => {
+                                let machines = this.machines(cx);
+                                this.choose_machine(&machines, index, cx);
+                            }
+                            ChatPickerTarget::Terminal
+                            | ChatPickerTarget::Browser
+                            | ChatPickerTarget::Simulator => {}
+                        }
+                        cx.notify();
+                        cx.stop_propagation();
+                    }),
+                )
+                .into_any_element(),
+        })
+        .collect()
     }
 
     fn sheet_id(&self) -> ElementId {

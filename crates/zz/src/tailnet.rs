@@ -102,7 +102,7 @@ fn own_scan(settings: Settings) -> DiscoveredHosts {
         _ => (None, None),
     };
     DiscoveredHosts {
-        entries: Vec::new(),
+        entries: zz_daemon_client::wsl::hosts(&settings.hide),
         summary: match &state {
             OwnState::Running { name, .. } => format!(
                 "Signed in as {name} with zz's own connection; add your other machines by name"
@@ -132,29 +132,36 @@ fn scan() -> DiscoveredHosts {
     }
     let enabled = settings.mode != Mode::Off;
     let mut link = None;
-    let (summary, entries) = if enabled {
+    let mut entries = zz_daemon_client::wsl::hosts(&settings.hide);
+    let summary = if enabled {
         match tailnet::status() {
-            Err(error) => (error.to_string(), Vec::new()),
-            Ok(status) => match status.unusable() {
-                Some(reason) => (reason, Vec::new()),
-                None => (
-                    {
-                        if !status.dns_name.is_empty() {
-                            link = Some(zz_daemon_client::tailnet_offer::host_link(
-                                &zz_daemon_client::TailnetEndpoint {
-                                    peer: status.dns_name.clone(),
-                                    port: Some(tailnet::PORT),
-                                },
-                            ));
+            Err(error) => error.to_string(),
+            Ok(status) => {
+                if let Some(reason) = status.unusable() {
+                    reason
+                } else {
+                    if !status.dns_name.is_empty() {
+                        link = Some(zz_daemon_client::tailnet_offer::host_link(
+                            &zz_daemon_client::TailnetEndpoint {
+                                peer: status.dns_name.clone(),
+                                port: Some(tailnet::PORT),
+                            },
+                        ));
+                    }
+                    for host in tailnet::hosts(&status, &settings) {
+                        if !entries.iter().any(|existing| {
+                            existing.name == host.name
+                                || existing.endpoint.same_machine(&host.endpoint)
+                        }) {
+                            entries.push(host);
                         }
-                        format!("Signed in to {} as {}", status.tailnet, status.host)
-                    },
-                    tailnet::hosts(&status, &settings),
-                ),
-            },
+                    }
+                    format!("Signed in to {} as {}", status.tailnet, status.host)
+                }
+            }
         }
     } else {
-        ("Off".to_owned(), Vec::new())
+        "Off".to_owned()
     };
     DiscoveredHosts {
         entries,

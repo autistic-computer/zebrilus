@@ -36,14 +36,30 @@ pub enum ProviderAction {
 
 #[must_use]
 pub fn home_relative(path: &str) -> String {
-    ["/Users/", "/home/"]
-        .iter()
-        .find_map(|root| {
-            let rest = path.strip_prefix(root)?;
-            let tail = rest.find('/').map_or("", |slash| &rest[slash..]);
-            Some(format!("~{tail}"))
-        })
-        .unwrap_or_else(|| path.to_owned())
+    if let Some(short) = ["/Users/", "/home/"].iter().find_map(|root| {
+        let rest = path.strip_prefix(root)?;
+        let tail = rest.find('/').map_or("", |slash| &rest[slash..]);
+        Some(format!("~{tail}"))
+    }) {
+        return short;
+    }
+    let bytes = path.as_bytes();
+    if bytes.len() >= 9 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+        let rest = &path[2..];
+        let lower = rest.to_ascii_lowercase();
+        if let Some(after) = lower
+            .strip_prefix("\\users\\")
+            .or_else(|| lower.strip_prefix("/users/"))
+        {
+            let tail_offset = rest.len() - after.len();
+            let user_and_tail = &rest[tail_offset..];
+            let tail = user_and_tail
+                .find(['\\', '/'])
+                .map_or("", |sep| &user_and_tail[sep..]);
+            return format!("~{tail}");
+        }
+    }
+    path.to_owned()
 }
 
 #[must_use]
@@ -322,5 +338,21 @@ mod tests {
             [(0, AgentProvider::Codex), (1, AgentProvider::Antigravity)]
         );
         assert_eq!([&mac, &xps, &current].map(has_update), [true, true, false]);
+    }
+
+    #[test]
+    fn home_relative_shortens_unix_and_windows_user_paths() {
+        assert_eq!(
+            home_relative("/Users/me/.local/bin/claude"),
+            "~/.local/bin/claude"
+        );
+        assert_eq!(
+            home_relative(r"C:\Users\me\.local\bin\claude.exe"),
+            r"~\.local\bin\claude.exe"
+        );
+        assert_eq!(
+            home_relative("C:/Users/me/AppData/Roaming/npm/codex.cmd"),
+            "~/AppData/Roaming/npm/codex.cmd"
+        );
     }
 }

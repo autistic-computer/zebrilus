@@ -2,7 +2,8 @@ use std::cmp::Reverse;
 
 use zz_protocol::{
     AgentProvider, CommandInvocation, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot,
-    SessionId, SessionSnapshot, WindowId, WindowSnapshot,
+    ProviderStatus, ProviderTask, ProvidersReport, SessionId, SessionSnapshot, WindowId,
+    WindowSnapshot,
 };
 
 use crate::{
@@ -229,6 +230,102 @@ pub fn landing_chat_commands(
         agent_pane_command(target, folder, agent, launches),
         command("attach-session", ["-t".to_owned(), session.to_string()]),
     ]
+}
+
+#[must_use]
+pub fn landing_pane_commands(
+    snapshot: &MuxSnapshot,
+    folder: &str,
+    kind: &str,
+) -> Vec<CommandInvocation> {
+    let Some(session) = session_for_folder(snapshot, folder) else {
+        let name = free_session_name(snapshot, folder);
+        let mut commands = vec![command(
+            "new-session",
+            [
+                "-d".to_owned(),
+                "-s".to_owned(),
+                name.clone(),
+                "-c".to_owned(),
+                folder.to_owned(),
+            ],
+        )];
+        if kind != "terminal" {
+            commands.push(command(
+                "select-pane-kind",
+                ["-t".to_owned(), format!("={name}:"), kind.to_owned()],
+            ));
+        }
+        commands.push(command(
+            "attach-session",
+            ["-t".to_owned(), format!("={name}")],
+        ));
+        return commands;
+    };
+    let target = session_target(session);
+    let mut commands = vec![command(
+        "new-window",
+        [
+            "-t".to_owned(),
+            target.clone(),
+            "-c".to_owned(),
+            folder.to_owned(),
+        ],
+    )];
+    if kind != "terminal" {
+        commands.push(command(
+            "select-pane-kind",
+            ["-t".to_owned(), target, kind.to_owned()],
+        ));
+    }
+    commands.push(command(
+        "attach-session",
+        ["-t".to_owned(), session.to_string()],
+    ));
+    commands
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ChatAgentStatus {
+    Ready,
+    Installable,
+    Installing { output: String },
+    Failed { message: String },
+}
+
+#[must_use]
+pub fn chat_agent_status(
+    report: Option<&ProvidersReport>,
+    provider: AgentProvider,
+) -> ChatAgentStatus {
+    let Some(report) = report.filter(|report| !(report.checking && report.providers.is_empty()))
+    else {
+        return ChatAgentStatus::Ready;
+    };
+    let Some(status) = report.provider(provider) else {
+        return ChatAgentStatus::Installable;
+    };
+    if status.installed() {
+        return ChatAgentStatus::Ready;
+    }
+    match &status.task {
+        ProviderTask::Running { output } => ChatAgentStatus::Installing {
+            output: output.clone(),
+        },
+        ProviderTask::Failed { message } => ChatAgentStatus::Failed {
+            message: message.clone(),
+        },
+        ProviderTask::Idle => ChatAgentStatus::Installable,
+    }
+}
+
+#[must_use]
+pub fn any_agent_installed(report: Option<&ProvidersReport>) -> bool {
+    let Some(report) = report.filter(|report| !(report.checking && report.providers.is_empty()))
+    else {
+        return true;
+    };
+    report.providers.iter().any(ProviderStatus::installed)
 }
 
 #[must_use]
@@ -537,23 +634,49 @@ pub enum ChatKey {
     Ignored,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MachineChoiceState {
+    #[default]
+    Live,
+    InstallZz,
+    Installing,
+    Offline,
+}
+
+impl MachineChoiceState {
+    #[must_use]
+    pub const fn is_live(self) -> bool {
+        matches!(self, Self::Live)
+    }
+
+    #[must_use]
+    pub const fn clickable(self) -> bool {
+        matches!(self, Self::Live | Self::InstallZz)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MachineChoice {
     pub host: u64,
     pub name: String,
     pub remote: bool,
     pub platform: zz_protocol::HostPlatform,
-    pub live: bool,
+    pub state: MachineChoiceState,
     pub current: bool,
 }
 
 impl MachineChoice {
     #[must_use]
+    pub const fn live(&self) -> bool {
+        self.state.is_live()
+    }
+
+    #[must_use]
     pub fn next(machines: &[Self]) -> Option<usize> {
         let current = machines.iter().position(|machine| machine.current)?;
         (1..machines.len())
             .map(|step| (current + step) % machines.len())
-            .find(|index| machines[*index].live)
+            .find(|index| machines[*index].live())
     }
 }
 
@@ -1353,7 +1476,11 @@ mod tests {
             name: String::new(),
             remote: true,
             platform: zz_protocol::HostPlatform::Unknown,
-            live,
+            state: if live {
+                MachineChoiceState::Live
+            } else {
+                MachineChoiceState::Offline
+            },
             current,
         };
         let machines = [
@@ -1366,6 +1493,75 @@ mod tests {
         assert_eq!(MachineChoice::next(&machines[1..]), Some(0));
         assert_eq!(MachineChoice::next(&machines[2..]), None);
         assert_eq!(MachineChoice::next(&machines[..2]), None);
+    }
+
+    #[test]
+    fn chat_agent_status_and_landing_pane_commands_cover_uninstalled_hosts() {
+        let empty = ProvidersReport {
+            checking: true,
+            providers: Vec::new(),
+        };
+        assert!(any_agent_installed(None));
+        assert!(any_agent_installed(Some(&empty)));
+        assert_eq!(
+            chat_agent_status(Some(&empty), AgentProvider::ClaudeCode),
+            ChatAgentStatus::Ready
+        );
+
+        let mut claude = ProviderStatus::new(AgentProvider::ClaudeCode);
+        claude.task = ProviderTask::Running {
+            output: "downloading".to_owned(),
+        };
+        let mut codex = ProviderStatus::new(AgentProvider::Codex);
+        codex.task = ProviderTask::Failed {
+            message: "blocked".to_owned(),
+        };
+        let report = ProvidersReport {
+            checking: false,
+            providers: vec![claude, codex],
+        };
+        assert!(!any_agent_installed(Some(&report)));
+        assert_eq!(
+            chat_agent_status(Some(&report), AgentProvider::ClaudeCode),
+            ChatAgentStatus::Installing {
+                output: "downloading".to_owned(),
+            }
+        );
+        assert_eq!(
+            chat_agent_status(Some(&report), AgentProvider::Codex),
+            ChatAgentStatus::Failed {
+                message: "blocked".to_owned(),
+            }
+        );
+        assert_eq!(
+            chat_agent_status(Some(&report), AgentProvider::Grok),
+            ChatAgentStatus::Installable
+        );
+
+        assert_eq!(
+            landing_pane_commands(&MuxSnapshot::default(), "~/dev/app", "terminal"),
+            [
+                command(
+                    "new-session",
+                    ["-d", "-s", "app", "-c", "~/dev/app"].map(str::to_owned)
+                ),
+                command("attach-session", ["-t", "=app"].map(str::to_owned)),
+            ]
+        );
+        assert_eq!(
+            landing_pane_commands(&MuxSnapshot::default(), "~/dev/app", "browser"),
+            [
+                command(
+                    "new-session",
+                    ["-d", "-s", "app", "-c", "~/dev/app"].map(str::to_owned)
+                ),
+                command(
+                    "select-pane-kind",
+                    ["-t", "=app:", "browser"].map(str::to_owned)
+                ),
+                command("attach-session", ["-t", "=app"].map(str::to_owned)),
+            ]
+        );
     }
 
     #[test]

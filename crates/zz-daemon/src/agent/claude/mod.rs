@@ -139,7 +139,8 @@ impl ClaudeCommand {
             }
         };
         let name = Path::new(program).file_name()?.to_str()?;
-        matches!(name, "claude" | "claude.exe").then(|| Self {
+        let lower = name.to_ascii_lowercase();
+        matches!(lower.as_str(), "claude" | "claude.exe" | "claude.cmd").then(|| Self {
             program: program.to_owned(),
             args: tokens.map(str::to_owned).collect(),
             env,
@@ -1103,7 +1104,7 @@ impl Runtime {
         if !self.command.allows_bypass() {
             command.arg(ALLOW_BYPASS);
         }
-        if let Some(path) = self.workspace.path(agent_path()) {
+        if let Some(path) = self.workspace.path(agent_path().as_deref()) {
             command.env("PATH", path);
         }
         for (name, value) in self.workspace.entries() {

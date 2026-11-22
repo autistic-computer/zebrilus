@@ -1,8 +1,8 @@
 use zz_config::{remove_fleet_host, write_fleet_host};
 use zz_daemon_client::{
     Endpoint, EndpointError, HostEntry, RejectedHost, RemoteInstall, configured_fleet_hosts,
-    install_remote, install_remote_batch, ssh_public_key, sync_fleet, trust_fleet_key,
-    validate_fleet_host,
+    install_remote, install_remote_batch, install_wsl, ssh_public_key, sync_fleet, trust_fleet_key,
+    validate_fleet_host, wsl_hosts_beside,
 };
 
 const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet install [--restart-daemon] (-a | <name>...)\n       zz fleet key\n       zz fleet list [-F <format> | --json]\n       zz fleet remove <name>\n       zz fleet sync\n       zz fleet trust <key>";
@@ -216,17 +216,24 @@ fn parse_fleet_install(arguments: &[String]) -> Result<(InstallHosts<'_>, bool),
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InstallTarget<'a> {
+    Ssh(&'a zz_daemon_client::SshEndpoint),
+    Wsl(&'a zz_daemon_client::WslEndpoint),
+}
+
 fn install_targets<'a>(
     selection: &InstallHosts<'_>,
     hosts: &'a [HostEntry],
     rejected: &[RejectedHost],
-) -> Result<Vec<(&'a str, &'a zz_daemon_client::SshEndpoint)>, String> {
-    let ssh = |host: &'a HostEntry| match &host.endpoint {
-        Endpoint::Ssh(endpoint) => Some((host.name.as_str(), endpoint)),
+) -> Result<Vec<(&'a str, InstallTarget<'a>)>, String> {
+    let installable = |host: &'a HostEntry| match &host.endpoint {
+        Endpoint::Ssh(endpoint) => Some((host.name.as_str(), InstallTarget::Ssh(endpoint))),
+        Endpoint::Wsl(endpoint) => Some((host.name.as_str(), InstallTarget::Wsl(endpoint))),
         Endpoint::Local(_) | Endpoint::Tailnet(_) => None,
     };
     let InstallHosts::Named(names) = selection else {
-        let targets = hosts.iter().filter_map(ssh).collect::<Vec<_>>();
+        let targets = hosts.iter().filter_map(installable).collect::<Vec<_>>();
         if targets.is_empty() {
             return Err(
                 "zz/config lists no ssh hosts; add one with zz fleet add <name> <ssh-destination>"
@@ -239,7 +246,7 @@ fn install_targets<'a>(
         .iter()
         .map(|name| {
             if let Some(host) = hosts.iter().find(|host| host.name == *name) {
-                return ssh(host).ok_or_else(|| format!("host-{name} is not an ssh host"));
+                return installable(host).ok_or_else(|| format!("host-{name} is not an ssh host"));
             }
             Err(rejected.iter().find(|host| host.name == *name).map_or_else(
                 || unknown_host(name, hosts, rejected),
@@ -273,15 +280,17 @@ fn install_line(
 }
 
 fn fleet_install(selection: &InstallHosts<'_>, restart_daemon: bool) -> Result<String, String> {
-    let (hosts, rejected) =
+    let (mut hosts, rejected) =
         configured_fleet_hosts().map_err(|error| format!("could not read zz/config: {error}"))?;
+    if matches!(selection, InstallHosts::Named(_)) {
+        let wsl = wsl_hosts_beside(&hosts);
+        hosts.extend(wsl);
+    }
     let targets = install_targets(selection, &hosts, &rejected)?;
-    let results = install_everywhere(&targets, |endpoint, batch| {
-        if batch {
-            install_remote_batch(endpoint, restart_daemon)
-        } else {
-            install_remote(endpoint, None, restart_daemon)
-        }
+    let results = install_everywhere(&targets, |target, batch| match target {
+        InstallTarget::Ssh(endpoint) if batch => install_remote_batch(endpoint, restart_daemon),
+        InstallTarget::Ssh(endpoint) => install_remote(endpoint, None, restart_daemon),
+        InstallTarget::Wsl(endpoint) => install_wsl(endpoint, restart_daemon),
     });
     let mut failed = false;
     for ((name, _), result) in targets.iter().zip(&results) {
@@ -305,14 +314,14 @@ fn fleet_install(selection: &InstallHosts<'_>, restart_daemon: bool) -> Result<S
 }
 
 fn install_everywhere<T: Send>(
-    targets: &[(&str, &zz_daemon_client::SshEndpoint)],
-    install: impl Fn(&zz_daemon_client::SshEndpoint, bool) -> Result<T, EndpointError> + Sync,
+    targets: &[(&str, InstallTarget<'_>)],
+    install: impl Fn(InstallTarget<'_>, bool) -> Result<T, EndpointError> + Sync,
 ) -> Vec<Result<T, EndpointError>> {
     let install = &install;
     let results = std::thread::scope(|scope| {
         let installs = targets
             .iter()
-            .map(|(_, endpoint)| scope.spawn(move || install(endpoint, true)))
+            .map(|(_, endpoint)| scope.spawn(move || install(*endpoint, true)))
             .collect::<Vec<_>>();
         installs
             .into_iter()
@@ -327,7 +336,7 @@ fn install_everywhere<T: Send>(
         .into_iter()
         .zip(targets)
         .map(|(result, (_, endpoint))| match result {
-            Err(error) if error.needs_sign_in() => install(endpoint, false),
+            Err(error) if error.needs_sign_in() => install(*endpoint, false),
             result => result,
         })
         .collect()
@@ -507,7 +516,7 @@ mod tests {
             value: "quic://gpu:9922".to_owned(),
             reason: "quic endpoints were removed; use ssh://".to_owned(),
         }];
-        fn names(targets: Vec<(&str, &zz_daemon_client::SshEndpoint)>) -> Vec<String> {
+        fn names(targets: Vec<(&str, InstallTarget<'_>)>) -> Vec<String> {
             targets
                 .into_iter()
                 .map(|(name, _)| name.to_owned())
@@ -611,9 +620,16 @@ mod tests {
             remote_socket: None,
         };
         let hosts = [endpoint("xps"), endpoint("yk"), endpoint("gone")];
-        let targets = [("xps", &hosts[0]), ("yk", &hosts[1]), ("gone", &hosts[2])];
+        let targets = [
+            ("xps", InstallTarget::Ssh(&hosts[0])),
+            ("yk", InstallTarget::Ssh(&hosts[1])),
+            ("gone", InstallTarget::Ssh(&hosts[2])),
+        ];
         let attempts = std::sync::Mutex::new(Vec::new());
         let results = install_everywhere(&targets, |endpoint, batch| {
+            let InstallTarget::Ssh(endpoint) = endpoint else {
+                unreachable!("only ssh hosts here");
+            };
             attempts
                 .lock()
                 .unwrap()
@@ -723,6 +739,7 @@ mod tests {
             .env("XDG_CONFIG_HOME", directory.path().join("config"))
             .env("XDG_DATA_HOME", directory.path().join("share"))
             .env("HOME", directory.path().join("home"))
+            .env("ZZ_WSL_DISCOVERY", "0")
             .status()
             .unwrap();
         assert!(status.success(), "isolated fleet add test failed");

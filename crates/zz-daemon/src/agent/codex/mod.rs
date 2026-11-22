@@ -105,7 +105,8 @@ impl CodexCommand {
             }
         };
         let name = Path::new(program).file_name()?.to_str()?;
-        matches!(name, "codex" | "codex.exe").then(|| Self {
+        let lower = name.to_ascii_lowercase();
+        matches!(lower.as_str(), "codex" | "codex.exe" | "codex.cmd").then(|| Self {
             program: program.to_owned(),
             args: tokens
                 .map(str::to_owned)
@@ -989,7 +990,7 @@ impl Runtime {
         } else {
             let mut command = Command::new(program);
             command.arg("app-server").args(&self.command.args);
-            if let Some(path) = self.workspace.path(agent_path()) {
+            if let Some(path) = self.workspace.path(agent_path().as_deref()) {
                 command.env("PATH", path);
             }
             for (name, value) in self.workspace.entries() {
@@ -1072,7 +1073,7 @@ impl Runtime {
         if self.workspace.pane.is_some() {
             set(crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, "1");
         }
-        if let Some(path) = self.workspace.path(agent_path()) {
+        if let Some(path) = self.workspace.path(agent_path().as_deref()) {
             set("PATH", &path);
         }
         Value::Object(config)
@@ -2720,8 +2721,9 @@ fn generated_title(text: &str) -> Option<String> {
 
 pub(crate) fn codex_home() -> Option<PathBuf> {
     std::env::var_os("CODEX_HOME")
+        .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
+        .or_else(|| zz_daemon_client::home_directory().map(|home| home.join(".codex")))
 }
 
 #[cfg(unix)]

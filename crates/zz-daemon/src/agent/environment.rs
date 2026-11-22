@@ -1,4 +1,6 @@
 use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
 };
@@ -8,7 +10,7 @@ use agent_client_protocol::AcpAgent;
 use zz_daemon_client::unmasked::SpawnUnmasked as _;
 
 pub(crate) fn with_platform_environment(agent: AcpAgent) -> AcpAgent {
-    with_executable_path(agent, executable_path())
+    with_executable_path(agent, executable_path().as_deref())
 }
 
 pub(crate) fn warm_adapter_cache(commands: &[String]) {
@@ -26,7 +28,7 @@ pub(crate) fn warm_adapter_cache(commands: &[String]) {
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null());
-            if let Some(path) = path {
+            if let Some(path) = path.as_deref() {
                 warm.env("PATH", path);
             }
             match warm.status_unmasked() {
@@ -210,46 +212,294 @@ fn with_executable_path(agent: AcpAgent, path: Option<&str>) -> AcpAgent {
 
 const CLAUDE_CODE_EXECUTABLE: &str = "CLAUDE_CODE_EXECUTABLE";
 
-fn installed_claude(path: Option<&str>) -> Option<std::path::PathBuf> {
-    std::env::split_paths(path?)
-        .map(|directory| directory.join("claude"))
-        .find(|candidate| is_executable_file(candidate))
+fn installed_claude(path: Option<&str>) -> Option<PathBuf> {
+    find_executables(path, "claude").into_iter().next()
 }
 
-pub(crate) fn agent_path() -> Option<&'static str> {
+pub(crate) fn agent_path() -> Option<Cow<'static, str>> {
     executable_path()
 }
 
-pub(crate) fn find_executable(program: &str) -> Option<std::path::PathBuf> {
-    let candidate = std::path::Path::new(program);
+pub(crate) fn find_executable(program: &str) -> Option<PathBuf> {
+    let candidate = Path::new(program);
     if candidate.components().count() > 1 {
-        return is_executable_file(candidate).then(|| candidate.to_path_buf());
+        return resolve_executable_path_candidate(candidate);
     }
     let inherited = std::env::var("PATH").ok();
-    let path = executable_path().or(inherited.as_deref())?;
-    std::env::split_paths(path)
-        .map(|directory| directory.join(program))
-        .find(|candidate| is_executable_file(candidate))
+    let resolved = executable_path();
+    let path = resolved.as_deref().or(inherited.as_deref())?;
+    find_executables(Some(path), program).into_iter().next()
+}
+
+pub(crate) fn find_executables(path: Option<&str>, program: &str) -> Vec<PathBuf> {
+    path.map(std::env::split_paths)
+        .into_iter()
+        .flatten()
+        .filter_map(|directory| resolve_executable_in_dir(&directory, program))
+        .collect()
+}
+
+pub(crate) fn resolve_executable_in_dir(directory: &Path, program: &str) -> Option<PathBuf> {
+    resolve_executable_path_candidate(&directory.join(program))
 }
 
 #[cfg(unix)]
-fn is_executable_file(candidate: &std::path::Path) -> bool {
+fn resolve_executable_path_candidate(candidate: &Path) -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt as _;
-    std::fs::metadata(candidate)
-        .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+    let executable = std::fs::metadata(candidate)
+        .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0);
+    executable.then(|| candidate.to_path_buf())
 }
 
 #[cfg(not(unix))]
-fn is_executable_file(candidate: &std::path::Path) -> bool {
-    candidate.with_extension("exe").is_file() || candidate.with_extension("cmd").is_file()
+fn resolve_executable_path_candidate(candidate: &Path) -> Option<PathBuf> {
+    const WINDOWS_EXTENSIONS: [&str; 4] = ["exe", "cmd", "bat", "com"];
+
+    let has_exec_ext = candidate
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            WINDOWS_EXTENSIONS
+                .iter()
+                .any(|known| extension.eq_ignore_ascii_case(known))
+        });
+    if has_exec_ext {
+        return candidate.is_file().then(|| candidate.to_path_buf());
+    }
+    for extension in WINDOWS_EXTENSIONS {
+        let mut with_ext = candidate.as_os_str().to_os_string();
+        with_ext.push(".");
+        with_ext.push(extension);
+        let path = PathBuf::from(with_ext);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    None
 }
 
 #[cfg(unix)]
-use login_shell::executable_path;
+fn executable_path() -> Option<Cow<'static, str>> {
+    login_shell::executable_path().map(Cow::Borrowed)
+}
 
-#[cfg(not(unix))]
-fn executable_path() -> Option<&'static str> {
+#[cfg(windows)]
+fn executable_path() -> Option<Cow<'static, str>> {
+    windows_path::executable_path().map(Cow::Owned)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn executable_path() -> Option<Cow<'static, str>> {
     None
+}
+
+#[cfg(any(windows, test))]
+mod windows_path {
+    use std::{
+        collections::HashSet,
+        env,
+        ffi::OsStr,
+        path::{Path, PathBuf},
+    };
+
+    #[cfg(windows)]
+    pub(super) fn executable_path() -> Option<String> {
+        let user = read_registry_path(windows_registry::CURRENT_USER, "Environment");
+        let machine = read_registry_path(
+            windows_registry::LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+        );
+        let extras = well_known_bins(
+            zz_daemon_client::home_directory().as_deref(),
+            env::var_os("LOCALAPPDATA").map(PathBuf::from).as_deref(),
+            env::var_os("APPDATA").map(PathBuf::from).as_deref(),
+        );
+        compose_windows_path(
+            user.as_deref(),
+            machine.as_deref(),
+            env::var_os("PATH").as_deref(),
+            &extras,
+            |name| env::var(name).ok(),
+        )
+    }
+
+    #[cfg(windows)]
+    fn read_registry_path(root: &windows_registry::Key, subkey: &str) -> Option<String> {
+        root.open(subkey)
+            .ok()
+            .and_then(|key| key.get_string("Path").ok())
+            .filter(|value| !value.is_empty())
+    }
+
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(super) fn well_known_bins(
+        home: Option<&Path>,
+        local_appdata: Option<&Path>,
+        appdata: Option<&Path>,
+    ) -> Vec<PathBuf> {
+        let mut dirs = Vec::new();
+        if let Some(home) = home {
+            dirs.extend([
+                home.join(".local").join("bin"),
+                home.join(".claude").join("local"),
+                home.join(".grok").join("bin"),
+                home.join(".cursor").join("bin"),
+                home.join(".antigravity").join("bin"),
+                home.join(".bun").join("bin"),
+                home.join(".volta").join("bin"),
+                home.join(".local").join("share").join("mise").join("shims"),
+            ]);
+        }
+        if let Some(local_appdata) = local_appdata {
+            dirs.extend([
+                local_appdata.join("Microsoft").join("WinGet").join("Links"),
+                local_appdata.join("cursor-agent"),
+                local_appdata.join("antigravity").join("bin"),
+                local_appdata.join("pnpm"),
+            ]);
+        }
+        if let Some(appdata) = appdata {
+            dirs.push(appdata.join("npm"));
+        }
+        dirs.retain(|dir| dir.is_dir());
+        dirs
+    }
+
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(super) fn expand_env_vars(value: &str, lookup: &impl Fn(&str) -> Option<String>) -> String {
+        let mut out = String::with_capacity(value.len());
+        let mut rest = value;
+        while let Some(start) = rest.find('%') {
+            out.push_str(&rest[..start]);
+            let after = &rest[start + 1..];
+            let Some(end) = after.find('%') else {
+                out.push('%');
+                out.push_str(after);
+                return out;
+            };
+            let name = &after[..end];
+            if !name.is_empty()
+                && let Some(expanded) = lookup(name)
+            {
+                out.push_str(&expanded);
+            } else {
+                out.push('%');
+                out.push_str(name);
+                out.push('%');
+            }
+            rest = &after[end + 1..];
+        }
+        out.push_str(rest);
+        out
+    }
+
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(super) fn compose_windows_path(
+        user: Option<&str>,
+        machine: Option<&str>,
+        inherited: Option<&OsStr>,
+        extras: &[PathBuf],
+        lookup: impl Fn(&str) -> Option<String>,
+    ) -> Option<String> {
+        let mut paths = Vec::<PathBuf>::new();
+        let mut seen = HashSet::<String>::new();
+        let mut push = |path: PathBuf| {
+            let text = path.to_string_lossy();
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                return;
+            }
+            let normalized = trimmed
+                .trim_end_matches(['\\', '/'])
+                .replace('/', "\\")
+                .to_ascii_lowercase();
+            if !normalized.is_empty() && seen.insert(normalized) {
+                paths.push(PathBuf::from(trimmed));
+            }
+        };
+
+        for raw in [user, machine].into_iter().flatten() {
+            let expanded = expand_env_vars(raw, &lookup);
+            for entry in expanded.split(';') {
+                push(PathBuf::from(entry));
+            }
+        }
+        if let Some(inherited) = inherited {
+            for entry in env::split_paths(inherited) {
+                push(entry);
+            }
+        }
+        for extra in extras {
+            push(extra.clone());
+        }
+
+        env::join_paths(paths)
+            .ok()?
+            .into_string()
+            .ok()
+            .filter(|path| !path.is_empty())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn expands_percent_variables_and_keeps_unknown_placeholders() {
+            let lookup = |name: &str| match name {
+                "USERPROFILE" => Some(r"C:\Users\me".to_owned()),
+                "LOCALAPPDATA" => Some(r"C:\Users\me\AppData\Local".to_owned()),
+                _ => None,
+            };
+            assert_eq!(
+                expand_env_vars(
+                    r"%USERPROFILE%\.local\bin;%LOCALAPPDATA%\WinGet;%MISSING%\bin",
+                    &lookup,
+                ),
+                r"C:\Users\me\.local\bin;C:\Users\me\AppData\Local\WinGet;%MISSING%\bin"
+            );
+        }
+
+        #[cfg(windows)]
+        #[test]
+        fn composes_user_machine_inherited_and_extra_paths_case_insensitively() {
+            let lookup = |name: &str| (name == "USERPROFILE").then(|| r"C:\Users\me".to_owned());
+            let result = compose_windows_path(
+                Some(r"%USERPROFILE%\.local\bin;C:\Tools\"),
+                Some(r"C:\Windows\System32;c:\tools"),
+                Some(OsStr::new(r"C:\WINDOWS\system32")),
+                &[
+                    PathBuf::from(r"C:\Users\me\.local\bin"),
+                    PathBuf::from(r"C:\Users\me\.grok\bin"),
+                ],
+                lookup,
+            )
+            .expect("composed path");
+            let entries: Vec<PathBuf> = env::split_paths(&result).collect();
+            assert_eq!(
+                entries,
+                [
+                    PathBuf::from(r"C:\Users\me\.local\bin"),
+                    PathBuf::from(r"C:\Tools\"),
+                    PathBuf::from(r"C:\Windows\System32"),
+                    PathBuf::from(r"C:\Users\me\.grok\bin"),
+                ]
+            );
+        }
+
+        #[cfg(windows)]
+        #[test]
+        fn windows_executable_lookup_returns_full_path_with_extension() {
+            let dir = tempfile::tempdir().expect("temp bin");
+            let cmd = dir.path().join("codex.cmd");
+            let exe = dir.path().join("claude.exe");
+            std::fs::write(&cmd, "@echo off\r\n").expect("cmd");
+            std::fs::write(&exe, b"MZ").expect("exe");
+            let path = dir.path().to_string_lossy().into_owned();
+            assert_eq!(super::super::find_executables(Some(&path), "codex"), [cmd]);
+            assert_eq!(super::super::find_executables(Some(&path), "claude"), [exe]);
+        }
+    }
 }
 
 #[cfg(unix)]

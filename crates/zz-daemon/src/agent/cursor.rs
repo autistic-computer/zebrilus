@@ -34,8 +34,9 @@ pub(crate) async fn run_cursor_runtime(
     channels: RuntimeChannels,
 ) -> Result<(), String> {
     let inherited = std::env::var("PATH").ok();
+    let resolved = agent_path();
     let agent = AcpAgent::new(
-        AcpAgentConfig::new(program(agent_path().or(inherited.as_deref()))?)
+        AcpAgentConfig::new(program(resolved.as_deref().or(inherited.as_deref()))?)
             .arg("acp")
             .env(NO_BROWSER, "1"),
     );
@@ -44,8 +45,9 @@ pub(crate) async fn run_cursor_runtime(
 
 fn home() -> Option<PathBuf> {
     std::env::var_os("CURSOR_CONFIG_DIR")
+        .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cursor")))
+        .or_else(|| zz_daemon_client::home_directory().map(|home| home.join(".cursor")))
 }
 
 fn never_asks() -> bool {

@@ -69,7 +69,7 @@ pub fn probe_host(endpoint: &SshEndpoint) -> HostProbe {
     }
 }
 
-fn host_probe_script() -> String {
+pub(crate) fn host_probe_script() -> String {
     format!(
         "{}; if command -v \"$zz_cli\" >/dev/null 2>&1; then \
          printf 'zz-probe-version=%s\\n' \"$(\"$zz_cli\" --version 2>/dev/null)\"; \
@@ -79,7 +79,12 @@ fn host_probe_script() -> String {
     )
 }
 
-fn host_probe_from(code: Option<i32>, stdout: &[u8], stderr: &[u8], status: &str) -> HostProbe {
+pub(crate) fn host_probe_from(
+    code: Option<i32>,
+    stdout: &[u8],
+    stderr: &[u8],
+    status: &str,
+) -> HostProbe {
     let stderr = String::from_utf8_lossy(stderr);
     if code == Some(SSH_FAILURE_STATUS) {
         return match SshFailure::classify(&stderr) {

@@ -2,7 +2,7 @@ use std::{process::ExitCode, thread};
 
 use zz_daemon_client::{
     CommandClient, Endpoint, HostEntry, HostProbe, HostStatus, RejectedHost,
-    fleet_hosts_with_tailnet, probe_host,
+    fleet_hosts_with_tailnet, probe_host, probe_wsl,
 };
 use zz_mux::{FormatJobTag, StatusContext, StatusHooks, expand_format_values, format_references};
 use zz_protocol::CommandInvocation;
@@ -91,6 +91,7 @@ fn rejected_lines(rejected: &[RejectedHost]) -> Vec<String> {
 fn probe_endpoint(endpoint: &Endpoint) -> HostProbe {
     match endpoint {
         Endpoint::Ssh(endpoint) => probe_host(endpoint),
+        Endpoint::Wsl(endpoint) => probe_wsl(endpoint),
         Endpoint::Local(path) if path.exists() => HostProbe {
             status: HostStatus::Ready,
             version: daemon_version(endpoint),
