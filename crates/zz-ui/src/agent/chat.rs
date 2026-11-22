@@ -66,7 +66,6 @@ pub struct ChatOpen {
     pub turns: Vec<TurnId>,
     pub runs: Vec<ItemId>,
     pub agent: Option<ItemId>,
-    pub arrivals: HashMap<ItemId, u64>,
     pub images: HashMap<ItemId, Arc<[Arc<Image>]>>,
     pub texts: HashMap<ItemId, SharedString>,
     pub previews: HashMap<ItemId, SharedString>,
@@ -260,9 +259,6 @@ impl ChatHooks<'_> {
     }
 }
 
-const REVEAL_MAX_MS: u64 = 900;
-const REVEAL_MIN_MS: u64 = 220;
-const REVEAL_MS_PER_CHAR: u64 = 2;
 const USER_FOLD_HEIGHT: f32 = 176.0;
 const USER_FOLD_SLACK: f32 = 48.0;
 const USER_FADE_HEIGHT: f32 = 64.0;
@@ -391,8 +387,6 @@ pub struct ChatPane {
     frame: ChatFrame,
     jump: bool,
     session: Option<String>,
-    known: HashSet<ItemId>,
-    primed: bool,
     retired: Vec<Arc<Image>>,
     shown: Rc<RefCell<HashSet<u64>>>,
     markdown: Option<Rc<ChatMarkdown>>,
@@ -413,8 +407,6 @@ impl Default for ChatPane {
             frame: ChatFrame::default(),
             jump: false,
             session: None,
-            known: HashSet::new(),
-            primed: false,
             retired: Vec::new(),
             shown: Rc::default(),
             markdown: None,
@@ -489,14 +481,6 @@ impl ChatPane {
         self.list.pause_following_tail();
     }
 
-    #[must_use]
-    pub fn revealing(&self, now: u64) -> bool {
-        self.open
-            .arrivals
-            .values()
-            .any(|at| now.saturating_sub(*at) < REVEAL_MAX_MS)
-    }
-
     pub fn sync(&mut self, view: &ChatView) {
         let session = match &view.session {
             SessionView::Ready { session } => Some(session.clone()),
@@ -507,8 +491,6 @@ impl ChatPane {
             self.retired
                 .extend(open.images.into_values().flat_map(|images| images.to_vec()));
             self.session = session;
-            self.known.clear();
-            self.primed = false;
             self.rows.clear();
             self.keys.clear();
             self.list.reset(0);
@@ -532,25 +514,13 @@ impl ChatPane {
                 .extract_if(|id, _| view.item(id).is_none_or(|item| item.body.images.is_empty()))
                 .flat_map(|(_, images)| images.to_vec()),
         );
-        let now = chat_rows::now_ms();
         for item in view.items.values() {
             if !item.body.images.is_empty() && !self.open.images.contains_key(&item.id) {
                 self.open
                     .images
                     .insert(item.id.clone(), decode_images(&item.body.images));
             }
-            if item.kind == ItemKind::Agent
-                && item.parent.is_none()
-                && self.known.insert(item.id.clone())
-                && self.primed
-            {
-                self.open.arrivals.insert(item.id.clone(), now);
-            }
         }
-        self.primed = true;
-        self.open
-            .arrivals
-            .retain(|_, at| now.saturating_sub(*at) < REVEAL_MAX_MS);
         self.sync_texts(view);
         self.sync_ui(view);
         self.sync_rows(view);
@@ -869,7 +839,7 @@ pub fn chat_surface<T: ChatHost>(
             return div().into_any_element();
         };
         pane.sync(view);
-        chat_live(view) || pane.revealing(now)
+        chat_live(view)
     };
     let phase = if live {
         spinner_phase(cx.entity_id(), cx)
@@ -1477,7 +1447,7 @@ impl Draw<'_, '_> {
 
     fn full_reply(&self, id: &ItemId) -> AnyElement {
         let streams = self.streams(id);
-        let text = self.shown_text(id);
+        let text = self.text(id);
         let text = if streams && text.len() <= super::MAX_STREAMING_MEND_BYTES {
             crate::mend::mend(&text).map_or(text, SharedString::from)
         } else {
@@ -1487,29 +1457,7 @@ impl Draw<'_, '_> {
     }
 
     fn streams(&self, id: &ItemId) -> bool {
-        self.open.arrivals.contains_key(id)
-            || self.view.item(id).is_some_and(|item| item.status.is_open())
-    }
-
-    fn shown_text(&self, id: &ItemId) -> SharedString {
-        let text = self.text(id);
-        let Some(at) = self.open.arrivals.get(id) else {
-            return text;
-        };
-        let length = u64::try_from(text.len()).unwrap_or(u64::MAX);
-        let duration = length
-            .saturating_mul(REVEAL_MS_PER_CHAR)
-            .clamp(REVEAL_MIN_MS, REVEAL_MAX_MS);
-        let elapsed = self.now.saturating_sub(*at);
-        if elapsed >= duration {
-            return text;
-        }
-        let mut cut = usize::try_from(length * elapsed / duration).unwrap_or(text.len());
-        while !text.is_char_boundary(cut) {
-            cut -= 1;
-        }
-        let cut = text[..cut].rfind(char::is_whitespace).unwrap_or_default();
-        text[..cut].to_owned().into()
+        self.view.item(id).is_some_and(|item| item.status.is_open())
     }
 
     fn live_line(
@@ -3726,31 +3674,6 @@ mod tests {
         pane.click(&ChatClick::Agent(ItemId::new("gone")));
         pane.sync(&view);
         assert_eq!(pane.open.agent, None);
-    }
-
-    #[test]
-    fn only_replies_that_arrive_after_the_first_look_type_in() {
-        let mut pane = ChatPane::default();
-        let mut view = ready("s1");
-        let reply = |view: &mut ChatView, id: &str| {
-            view.apply(&ChatEvent::ItemStarted {
-                item: ItemId::new(id),
-                turn: Some(TurnId(1)),
-                parent: None,
-                kind: ItemKind::Agent,
-                body: ItemBody::text("hello there"),
-                at: 3,
-            })
-            .expect("reply");
-        };
-        reply(&mut view, "old");
-        pane.sync(&view);
-        assert!(pane.open.arrivals.is_empty());
-        reply(&mut view, "new");
-        pane.sync(&view);
-        assert!(pane.open.arrivals.contains_key(&ItemId::new("new")));
-        assert!(!pane.open.arrivals.contains_key(&ItemId::new("old")));
-        assert!(pane.revealing(zz_client::chat_rows::now_ms()));
     }
 
     fn finished(view: &mut ChatView, item: &str, parent: Option<&str>, kind: ItemKind, at: u64) {
