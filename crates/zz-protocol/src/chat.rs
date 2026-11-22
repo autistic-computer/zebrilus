@@ -820,7 +820,11 @@ impl ChatLog {
             ChatEvent::SessionReady { session } => {
                 if !session.is_empty() {
                     if self.session.as_ref().is_some_and(|known| known != session) {
-                        *self = Self::default();
+                        *self = Self {
+                            queue: self.queue.take(),
+                            usage: self.usage.take(),
+                            ..Self::default()
+                        };
                     }
                     self.session = Some(session.clone());
                 }

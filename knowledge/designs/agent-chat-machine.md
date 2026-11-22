@@ -238,12 +238,11 @@ could tie to real Claude Code or Codex behavior.
   A failure is grouped by signature (sweep, path, first differing field) with a count and its
   smallest example. Each sweep ends with the exact list of signatures it finds today and fails
   when that list changes either way, so a listed signature is an open bug and fixing one means
-  deleting its line. Open on 2026-11-22: `ChatLog` drops the queue and usage on a session switch
-  while `ChatView` keeps them; `PaneLane::rebuild` keeps only the last `SessionReady` and the open
-  `TurnStarted`, so an approval or a running item that started before the cut is missing for the
-  asker; a chat reloaded from the journal has no turns, because the journal holds no turn marks
-  for Claude or Codex. The two Codex rollout fixtures have no driver that plays them and are not
-  taped, and agy, Grok and Cursor have no recordings.
+  deleting its line. Open on 2026-11-22: `PaneLane::rebuild` keeps only the last `SessionReady`
+  and the open `TurnStarted`, so an approval or a running item that started before the cut is
+  missing for the asker; a chat reloaded from the journal has no turns, because the journal holds
+  no turn marks for Claude or Codex. The two Codex rollout fixtures have no driver that plays them
+  and are not taped, and agy, Grok and Cursor have no recordings.
 
 # Next
 

@@ -903,7 +903,7 @@ fn every_cut_of_a_random_chat_compacts_to_the_view_a_live_client_holds() {
             cut.advance(&mut findings);
         }
     }
-    findings.finish(&["A | at the cut | queue", "A | at the cut | usage"]);
+    findings.finish(&[]);
 }
 
 #[test]
