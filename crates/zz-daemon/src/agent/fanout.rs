@@ -1012,6 +1012,7 @@ impl AgentFanout {
                 .map(|(seq, encoded)| (*seq, encoded.clone()))
                 .collect::<Vec<_>>();
             let Some(first_seq) = items.first().map(|(seq, _)| *seq) else {
+                publisher.send_agent_replay(generation, client, pane, Vec::new());
                 return;
             };
             let frames = split_frames(
@@ -1585,6 +1586,7 @@ mod tests {
     struct Recorder {
         broadcast: Mutex<Vec<(PaneId, u64, Vec<Vec<u8>>, Option<ClientId>)>>,
         direct: Mutex<Vec<(ClientId, PaneId, u64, Vec<Vec<u8>>)>>,
+        answered: Mutex<Vec<(ClientId, PaneId, usize)>>,
         states: Mutex<Vec<(PaneId, AgentPaneWire)>>,
         replies: Mutex<Vec<(ClientId, PaneId, u64, String)>>,
         update_gate: Mutex<Option<(Sender<()>, Receiver<()>)>>,
@@ -1664,6 +1666,7 @@ mod tests {
             pane: PaneId,
             frames: Vec<(u64, Vec<Vec<u8>>)>,
         ) {
+            self.answered.lock().push((client, pane, frames.len()));
             self.direct.lock().extend(
                 frames
                     .into_iter()
@@ -1911,7 +1914,12 @@ mod tests {
         assert_eq!(
             fixture.recorder.direct.lock().len(),
             1,
-            "a client already ahead of the ring is sent nothing"
+            "a client already ahead of the ring is sent no updates"
+        );
+        assert_eq!(
+            fixture.recorder.answered.lock().last(),
+            Some(&(ClientId(9), fixture.pane, 0)),
+            "but its replay is still answered, so it knows it has caught up"
         );
     }
 

@@ -795,10 +795,15 @@ impl AgentPane {
                 .inset_0(),
             );
         let use_chat = shows_chat(&self.transcript.lens.chat);
-        let chat = use_chat.then(|| self.render_chat(window, cx));
+        let loading = self.connection.read(cx).agent_loading(self.pane);
+        let chat = if loading {
+            Some(self.render_skeleton(cx))
+        } else {
+            use_chat.then(|| self.render_chat(window, cx))
+        };
         let provider = self.provider(cx);
         let connected = self.connection.read(cx).connected;
-        let empty = (!use_chat).then(|| {
+        let empty = (!use_chat && !loading).then(|| {
             let kind = agent_empty(connected, &state.phase, provider, self.settling(cx));
             let start = matches!(kind, AgentEmpty::Welcome(_)) && writable && !watch_only;
             let empty = match kind {

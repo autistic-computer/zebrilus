@@ -45,7 +45,9 @@ use zz_ui::{
         ask::{
             Approval, ApprovalAction, AskChoice, AskParts, AskSubject, PromptRow, approval_subject,
         },
-        chat::{ChatHost, ChatLook, ChatPane, HeldMessage, chat_surface, shows_chat},
+        chat::{
+            ChatHost, ChatLook, ChatPane, HeldMessage, chat_skeleton, chat_surface, shows_chat,
+        },
         composer_attachment,
         controls::{
             AccountAction, ComposerAction, ContextUsage, UsagePill, agent_model_picker,
@@ -2093,11 +2095,16 @@ impl Render for AgentPane {
             }
             .into_any_element()
         };
-        let chat = use_chat.then(|| self.render_chat(window, cx));
+        let loading = self.connection.read(cx).agent_loading(self.pane);
+        let chat = if loading {
+            Some(self.render_skeleton(cx))
+        } else {
+            use_chat.then(|| self.render_chat(window, cx))
+        };
         let provider = self
             .pane_snapshot(cx)
             .and_then(zz_client::window_summary::pane_agent);
-        let empty = (!use_chat).then(|| {
+        let empty = (!use_chat && !loading).then(|| {
             match agent_empty(connected, &state.phase, provider, self.settling(cx)) {
                 AgentEmpty::Welcome(provider) if writable && !watch_only => {
                     self.render_empty_chat(provider, cx)
@@ -2197,6 +2204,12 @@ impl AgentPane {
             children: self.children.clone(),
         };
         chat_surface(self, look, window, cx)
+    }
+
+    fn render_skeleton(&self, cx: &App) -> AnyElement {
+        let (top, bottom) = self.chat_insets();
+        chat_skeleton(self.phone.is_some(), top + self.header_inset(), bottom, cx)
+            .into_any_element()
     }
 }
 

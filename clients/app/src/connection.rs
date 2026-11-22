@@ -83,6 +83,7 @@ pub struct Connection {
     pub agent_events: HashMap<PaneId, Vec<(u64, Vec<u8>)>>,
     agent_cursors: HashMap<PaneId, AgentCursor>,
     agent_streams: HashMap<PaneId, u64>,
+    agent_replays: HashMap<PaneId, Option<u64>>,
     next_agent_stream: u64,
     watched_agents: BTreeSet<PaneId>,
     live_agents: BTreeSet<PaneId>,
@@ -212,6 +213,7 @@ impl Connection {
             agent_events: HashMap::new(),
             agent_cursors: HashMap::new(),
             agent_streams: HashMap::new(),
+            agent_replays: HashMap::new(),
             next_agent_stream: 0,
             watched_agents: BTreeSet::new(),
             live_agents: BTreeSet::new(),
@@ -312,11 +314,38 @@ impl Connection {
 
     #[must_use]
     pub fn agent_loading(&self, pane: PaneId) -> bool {
-        self.agent_live(pane)
-            && self
-                .agent_cursors
-                .get(&pane)
-                .is_none_or(|cursor| cursor.last_seq == 0)
+        if !self.agent_live(pane) {
+            return false;
+        }
+        if self.replays_through() {
+            return self.agent_replays.contains_key(&pane);
+        }
+        self.agent_cursors
+            .get(&pane)
+            .is_none_or(|cursor| cursor.last_seq == 0)
+    }
+
+    fn replays_through(&self) -> bool {
+        self.core
+            .capabilities()
+            .iter()
+            .any(|capability| capability == zz_protocol::AGENT_REPLAYED_CAPABILITY)
+    }
+
+    fn settle_agent_replay(&mut self, pane: PaneId) {
+        let caught_up = self
+            .agent_replays
+            .get(&pane)
+            .copied()
+            .flatten()
+            .is_some_and(|through| {
+                self.agent_cursors
+                    .get(&pane)
+                    .is_some_and(|cursor| cursor.last_seq >= through)
+            });
+        if caught_up {
+            self.agent_replays.remove(&pane);
+        }
     }
 
     fn watch_agent_panes(&mut self, cx: &mut Context<Self>) {
@@ -467,6 +496,7 @@ impl Connection {
         self.agent_events.remove(&pane);
         self.agent_cursors.remove(&pane);
         self.agent_streams.remove(&pane);
+        self.agent_replays.remove(&pane);
     }
 
     fn unwatches_agents(&self) -> bool {
@@ -489,6 +519,7 @@ impl Connection {
         self.agent_events.clear();
         self.agent_cursors.clear();
         self.agent_streams.clear();
+        self.agent_replays.clear();
         self.live_agents.clear();
     }
 
@@ -1781,9 +1812,16 @@ impl Connection {
                             cx,
                         );
                     }
+                    self.settle_agent_replay(*pane);
                 }
                 CoreEvent::AgentLagged { pane, .. } if self.agent_live(*pane) => {
                     self.request_agent_replay(*pane, cx);
+                }
+                CoreEvent::AgentReplayed { pane, through_seq } => {
+                    if let Some(through) = self.agent_replays.get_mut(pane) {
+                        *through = Some(*through_seq);
+                    }
+                    self.settle_agent_replay(*pane);
                 }
                 CoreEvent::PaneRemoved { pane } => {
                     self.history.forget(*pane);
@@ -2047,6 +2085,9 @@ impl Connection {
     }
 
     fn request_agent_replay(&mut self, pane: PaneId, cx: &mut Context<Self>) {
+        if self.replays_through() {
+            self.agent_replays.insert(pane, None);
+        }
         let from_seq = self.agent_cursor(pane).replay_from();
         self.send(ProtocolMessage::AgentReplay { pane, from_seq }, cx);
     }

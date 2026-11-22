@@ -35058,6 +35058,9 @@ impl Shared {
         else {
             return;
         };
+        let through_seq = frames.last().map_or(0, |(first_seq, items)| {
+            first_seq.saturating_add(items.len().saturating_sub(1) as u64)
+        });
         let mut encoded = Vec::with_capacity(frames.len());
         for (first_seq, items) in frames {
             let message = Self::event(EventPayload::AgentUpdates {
@@ -35071,7 +35074,13 @@ impl Shared {
             };
             encoded.push((first_seq, frame));
         }
-        subscriber.enqueue_agent_replay(pane, encoded);
+        if !encoded.is_empty() && !subscriber.enqueue_agent_replay(pane, encoded) {
+            return;
+        }
+        let _ = subscriber.enqueue_reliable(&Self::event(EventPayload::AgentReplayed {
+            pane,
+            through_seq,
+        }));
     }
 
     fn apply_agent_state(

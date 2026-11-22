@@ -5842,6 +5842,7 @@ mod tests {
             | CoreEvent::AgentUpdates { .. }
             | CoreEvent::AgentStateChanged { .. }
             | CoreEvent::AgentLagged { .. }
+            | CoreEvent::AgentReplayed { .. }
             | CoreEvent::AgentSessions { .. }
             | CoreEvent::ProvidersChanged
             | CoreEvent::AgentAccountsChanged

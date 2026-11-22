@@ -3523,6 +3523,10 @@ pub enum EventPayload {
         pane: PaneId,
         command: SimulatorCommand,
     },
+    AgentReplayed {
+        pane: PaneId,
+        through_seq: u64,
+    },
 }
 
 impl EventPayload {
@@ -3601,6 +3605,7 @@ impl EventPayload {
             Self::SimulatorPane { .. } | Self::SimulatorCommand { .. } => {
                 Some(crate::SIMULATOR_PANE_CAPABILITY)
             }
+            Self::AgentReplayed { .. } => Some(crate::AGENT_REPLAYED_CAPABILITY),
         }
     }
 

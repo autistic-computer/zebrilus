@@ -1413,8 +1413,12 @@ The full delivery contract is in the
   `Connection::show_agents`; a view pane's origin chat counts as drawn): one chat on the phone,
   every chat in the window on wider layouts. Any other chat is paused: its updates are dropped
   and its position stays where it was. So an attach asks only for the chats on screen, and
-  another chat of the session is fetched the first time it shows. Until its first items land the
-  chat reads Resuming the agent's session (`Connection::agent_loading`), not the empty new chat.
+  another chat of the session is fetched the first time it shows. Until its replay lands the
+  chat draws a skeleton (`zz_ui::agent::chat::chat_skeleton`: user bubbles over reply bars, in
+  the machine page's mini chat look) instead of filling in batch by batch
+  (`Connection::agent_loading`). With `agent-replayed-v1` that lasts until the cursor reaches the
+  daemon's `AgentReplayed`; with an older daemon, until the first items land. Replies show as their
+  chunks arrive, with no typing effect.
   A chat that was never shown still gets its `AgentState` as part of the attached session, so its
   face, marks, unseen dot and chimes do not need the replay. When it turns live
   again the client sends `AgentReplay` from its position plus one (`AgentCursor::resume_from`), so

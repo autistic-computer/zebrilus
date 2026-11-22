@@ -59,8 +59,8 @@ and `ProtocolMessage::AgentLogin` answer `agent-login-v1`, `ProtocolMessage::Ter
 and `TerminalThemesResponse` answer `terminal-themes-v1`, `ProtocolMessage::BrowserScreenshot`
 answers `browser-screenshot-v1`, `ProtocolMessage::AgentAttachFile` and `AgentFileAttached` answer `agent-files-v1`, `ProtocolMessage::FileReadRequest`, `FileReadResponse`,
 `FileWriteRequest` and `FileWriteResponse` answer `file-edit-v1`, `EventPayload::SimulatorPane`
-and `SimulatorCommand` answer `simulator-pane-v1`, and `ProtocolMessage::AgentUnwatch` answers
-`agent-unwatch-v1`.
+and `SimulatorCommand` answer `simulator-pane-v1`, `ProtocolMessage::AgentUnwatch` answers
+`agent-unwatch-v1`, and `EventPayload::AgentReplayed` answers `agent-replayed-v1`.
 
 The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only inside an epoch:
 
@@ -477,6 +477,11 @@ postcard cannot carry the ACP SDK's JSON-shaped types),
 `git: Option<AgentGitSummary { branch, changed_files, additions, deletions }>`; a branch is bounded
 to `MAX_AGENT_OPTION_BYTES` (4 KiB). `AgentLagged { pane, next_seq }` says the client's agent lane
 overflowed and was cleared, which the client answers with `AgentReplay` rather than dying.
+`AgentReplayed { pane, through_seq }`, gated by `agent-replayed-v1` (which the daemon also lists in
+its hello), follows every answer to an `AgentReplay`, to the asking client alone: the replay runs
+through `through_seq`, and zero means it carried nothing because the client was already caught up.
+It goes on the reliable queue, not the agent lane, so it can arrive before the last replay frame;
+the client waits until its cursor reaches `through_seq`.
 `AgentSessions { pane, request_id, result }` is the JSON reply to `AgentSessionOp::List`, bounded by
 `MAX_AGENT_RESULT_BYTES` (1 MiB) and sent only to the client that made the request. A session
 listing uses request ID zero; the daemon carries its requester out of band.

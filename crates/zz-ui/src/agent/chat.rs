@@ -273,6 +273,11 @@ const PREVIEW_FADE_HEIGHT: f32 = 96.0;
 const PIP_MIN_WIDTH: f32 = 280.0;
 const PIP_MAX_WIDTH: f32 = 520.0;
 const TOUCH_GUTTER: f32 = 16.0;
+const SKELETON_EXCHANGES: usize = 3;
+const SKELETON_BUBBLE: f32 = 0.64;
+const SKELETON_BUBBLE_BARS: [f32; 2] = [1.0, 0.55];
+const SKELETON_REPLY_BARS: [f32; 4] = [1.0, 0.85, 0.95, 0.6];
+const SKELETON_LINE: f32 = 22.0;
 const JUMP_GAP: f32 = 8.0;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1074,6 +1079,64 @@ pub fn shows_chat(view: &ChatView) -> bool {
 
 pub fn chat_live(view: &ChatView) -> bool {
     view.running().is_some() || view.open_items().next().is_some()
+}
+
+pub fn chat_skeleton(touch: bool, inset_top: Pixels, inset_bottom: Pixels, cx: &App) -> Div {
+    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Soft);
+    let gutter = px(if touch { TOUCH_GUTTER } else { 12.0 });
+    let bar = px(if touch { 10.0 } else { 8.0 });
+    let bars = move |widths: &'static [f32], color: ala::Hsla| {
+        widths.iter().map(move |width| {
+            div()
+                .h(px(SKELETON_LINE))
+                .flex()
+                .items_center()
+                .child(div().w(relative(*width)).h(bar).rounded_full().bg(color))
+        })
+    };
+    let exchange = |index: usize| {
+        let bubble = Card::new(("chat-skeleton-bubble", index), CardLook::Bubble)
+            .v_flex()
+            .w(relative(SKELETON_BUBBLE))
+            .children(bars(&SKELETON_BUBBLE_BARS, paint.active));
+        let bubble = if touch {
+            bubble.px(px(14.0)).py(px(10.0))
+        } else {
+            bubble.px_3().py_2()
+        };
+        v_flex()
+            .w_full()
+            .gap(gutter)
+            .child(h_flex().w_full().justify_end().child(bubble))
+            .child(
+                v_flex()
+                    .w_full()
+                    .children(bars(&SKELETON_REPLY_BARS, paint.hover)),
+            )
+    };
+    let bottom = if touch {
+        inset_bottom
+    } else {
+        px(COMPOSER_OUTER_PADDING)
+    };
+    div()
+        .absolute()
+        .inset_0()
+        .overflow_hidden()
+        .flex()
+        .flex_col()
+        .justify_end()
+        .pt(inset_top)
+        .pb(bottom)
+        .px(gutter)
+        .child(
+            v_flex()
+                .w_full()
+                .max_w(px(CHAT_CONTENT_MAX_WIDTH))
+                .mx_auto()
+                .gap(gutter * 2.0)
+                .children((0..SKELETON_EXCHANGES).map(exchange)),
+        )
 }
 
 pub fn chat_column(body: impl IntoElement) -> Div {

@@ -1700,6 +1700,7 @@ fn handle_core_event(
         | CoreEvent::AgentUpdates { .. }
         | CoreEvent::AgentStateChanged { .. }
         | CoreEvent::AgentLagged { .. }
+        | CoreEvent::AgentReplayed { .. }
         | CoreEvent::AgentSessions { .. }
         | CoreEvent::ProvidersChanged
         | CoreEvent::AgentAccountsChanged

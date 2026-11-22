@@ -4826,6 +4826,7 @@ impl MuxClient {
             | CoreEvent::ProvidersChanged
             | CoreEvent::AgentAccountsChanged
             | CoreEvent::AgentLoginChanged { .. }
+            | CoreEvent::AgentReplayed { .. }
             | CoreEvent::SimulatorChanged { .. } => {}
             CoreEvent::SimulatorCommand { pane, command } => {
                 self.simulator_commands.push((pane, command));

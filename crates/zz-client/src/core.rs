@@ -208,6 +208,10 @@ pub enum CoreEvent {
         pane: PaneId,
         next_seq: u64,
     },
+    AgentReplayed {
+        pane: PaneId,
+        through_seq: u64,
+    },
     AgentSessions {
         pane: PaneId,
         request_id: u64,
@@ -1273,6 +1277,10 @@ impl ClientCore {
             EventPayload::AgentLagged { pane, next_seq } => {
                 self.events
                     .push_back(CoreEvent::AgentLagged { pane, next_seq });
+            }
+            EventPayload::AgentReplayed { pane, through_seq } => {
+                self.events
+                    .push_back(CoreEvent::AgentReplayed { pane, through_seq });
             }
             EventPayload::AgentSessions {
                 pane,
