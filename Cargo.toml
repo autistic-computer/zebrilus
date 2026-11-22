@@ -117,6 +117,7 @@ objc2-io-surface = "0.3.2"
 objc2-metal = "0.3.2"
 objc2-quartz-core = { version = "0.3.2", default-features = false, features = ["std"] }
 objc2-user-notifications = "0.3"
+oslog = { version = "0.2.0", default-features = false, features = ["logger"] }
 parking_lot = "0.13.0"
 pathfinder_geometry = "0.5"
 plist = "1.10.1"

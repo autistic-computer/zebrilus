@@ -7,7 +7,7 @@ fn main() {
     use penna::{Theme, UiZoom};
     use std::{borrow::Cow, rc::Rc};
 
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    init_logging();
     let application = Application::with_platform(Rc::new(
         ala_platform::ios::IosPlatform::new().with_touch_gestures(true),
     ))
@@ -62,6 +62,41 @@ fn main() {
         })
         .detach();
     });
+}
+
+#[cfg(target_os = "ios")]
+struct StderrAndSystemLog {
+    stderr: env_logger::Logger,
+    system: oslog::OsLogger,
+}
+
+#[cfg(target_os = "ios")]
+impl log::Log for StderrAndSystemLog {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        self.stderr.enabled(metadata)
+    }
+
+    fn log(&self, record: &log::Record) {
+        if self.stderr.matches(record) {
+            self.stderr.log(record);
+            self.system.log(record);
+        }
+    }
+
+    fn flush(&self) {
+        self.stderr.flush();
+    }
+}
+
+#[cfg(target_os = "ios")]
+fn init_logging() {
+    let stderr =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).build();
+    let max_level = stderr.filter();
+    let system = oslog::OsLogger::new("dev.zz.ios");
+    if log::set_boxed_logger(Box::new(StderrAndSystemLog { stderr, system })).is_ok() {
+        log::set_max_level(max_level);
+    }
 }
 
 #[cfg(target_os = "ios")]
