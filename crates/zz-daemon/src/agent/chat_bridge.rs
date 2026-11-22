@@ -79,21 +79,8 @@ impl Shadow {
         self
     }
 
-    pub(crate) fn journal_marks(
-        &mut self,
-        journal: Option<&AgentJournal>,
-        provider: AgentProvider,
-        session: Option<&str>,
-    ) {
-        let marks = self.marks.as_mut().map(std::mem::take).unwrap_or_default();
-        let (Some(journal), Some(session)) = (journal, session) else {
-            return;
-        };
-        for mark in marks {
-            if let Err(error) = journal.append_for(provider, session, &mark) {
-                report_journal_error(session, &error.to_string());
-            }
-        }
+    pub(crate) fn take_marks(&mut self) -> Vec<Value> {
+        self.marks.as_mut().map(std::mem::take).unwrap_or_default()
     }
 
     pub(crate) fn answered(&mut self, request: u64, answer: Answer) {
@@ -739,6 +726,22 @@ pub(crate) fn turn_mark(turn: &str, at: Option<u64>) -> Value {
         mark["_meta"]["zz"]["at"] = Value::from(at);
     }
     mark
+}
+
+pub(crate) fn journal_marks(
+    journal: Option<&AgentJournal>,
+    provider: AgentProvider,
+    session: Option<&str>,
+    marks: &[Value],
+) {
+    let (Some(journal), Some(session)) = (journal, session) else {
+        return;
+    };
+    for mark in marks {
+        if let Err(error) = journal.append_for(provider, session, mark) {
+            report_journal_error(session, &error.to_string());
+        }
+    }
 }
 
 fn live_turn_mark(event: &ChatEvent) -> Option<Value> {

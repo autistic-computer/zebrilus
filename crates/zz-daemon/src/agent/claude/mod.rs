@@ -17,7 +17,7 @@ use async_channel::Sender;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use parking_lot::Mutex;
 
-use crate::agent::chat_bridge::{Shadow, chat_answer, chat_answers, without_images};
+use crate::agent::chat_bridge::{Shadow, chat_answer, chat_answers, journal_marks, without_images};
 use serde_json::{Map, Value, json};
 use zz_protocol::agent_stream::agent_verb;
 use zz_protocol::chat::ChatEvent;
@@ -646,15 +646,16 @@ impl Runtime {
     }
 
     async fn flush_chat(&self) -> Result<(), String> {
-        let events = {
+        let (marks, events) = {
             let mut shadow = self.chat.lock();
-            shadow.journal_marks(
-                self.journal.as_deref(),
-                self.provider,
-                self.session.as_ref().map(|session| session.id.as_str()),
-            );
-            shadow.drain()
+            (shadow.take_marks(), shadow.drain())
         };
+        journal_marks(
+            self.journal.as_deref(),
+            self.provider,
+            self.session.as_ref().map(|session| session.id.as_str()),
+            &marks,
+        );
         self.send_chat(events).await
     }
 
