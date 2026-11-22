@@ -5,7 +5,9 @@ case $PROVIDER in
   agy) BIN=agy MODEL=${MODEL-gemini-3.8-flash} VENDOR=(.gemini/antigravity-cli/conversations .gemini/antigravity-cli/brain .gemini/antigravity-cli/implicit) ;;
   grok) BIN=grok MODEL=${MODEL-grok-4.7-build-fast} VENDOR=(.grok/sessions) ;;
   cursor) BIN=cursor-agent MODEL=${MODEL-gpt-5.4-nano} VENDOR=(.cursor/acp-sessions) ;;
-  *) echo "usage: record.sh agy|grok|cursor open|hello|tools|stop|queue|reload" >&2; exit 2 ;;
+  claude) BIN=claude MODEL=${MODEL-haiku} VENDOR=(.claude/projects) ;;
+  codex) BIN=codex MODEL=${MODEL-gpt-6-luna} VENDOR=(.codex/sessions .codex/archived_sessions) ;;
+  *) echo "usage: record.sh agy|grok|cursor|claude|codex open|hello|tools|stop|queue|reload" >&2; exit 2 ;;
 esac
 case $SCENARIO in open | hello | tools | stop | queue | reload) ;; *) echo "unknown scenario $SCENARIO" >&2; exit 2 ;; esac
 ON_BLOCK=deny
@@ -22,29 +24,38 @@ TMO=${TMO:-180}
 mkdir -p /private/tmp/zz-tapes
 RUN=$(mktemp -d "/private/tmp/zz-tapes/$PROVIDER-$SCENARIO-XXXXXX")
 H=$RUN/home WS=$RUN/work SOCK=/tmp/zzt-${RUN##*-}.sock
-mkdir -p "$H/Library" "$WS" "$RUN/tapes" "$RUN/vendor"
+mkdir -p "$H/Library" "$WS" "$RUN/tapes" "$RUN/vendor" "$RUN/tmp"
 ln -s "$HOME/Library/Keychains" "$H/Library/Keychains"
 case $PROVIDER in
   grok) mkdir -p "$H/.grok" && ln -s "$HOME/.grok/auth.json" "$H/.grok/auth.json" ;;
   cursor) mkdir -p "$H/.cursor" && jq '.approvalMode = "allowlist"' "$HOME/.cursor/cli-config.json" > "$H/.cursor/cli-config.json" ;;
   agy) mkdir -p "$H/.gemini/antigravity-cli" ;;
+  claude) mkdir -p "$H/.claude" && printf '{\n  "model": "claude-haiku-5-5"\n}\n' > "$H/.claude/settings.json" ;;
+  codex) mkdir -p "$H/.codex" && ln -s "$HOME/.codex/auth.json" "$H/.codex/auth.json" &&
+    printf 'model = "%s"\n\n[features]\napps = false\nplugins = false\nremote_plugin = false\n' "$MODEL" > "$H/.codex/config.toml" ;;
 esac
+cd "$WS" || exit 2
 printf 'hello from the notes\nsecond line\n' > "$WS/notes.txt"
 printf 'one\ntwo\nthree\n' > "$WS/list.txt"
 printf '%s %s %s\n' "$PROVIDER" "$SCENARIO" "$MODEL" > "$RUN/meta"
 "$BIN" --version > "$RUN/version" 2>&1
 
 CLEAN_PATH=$(tr ':' '\n' <<<"$PATH" | rg -v 'zz-tmux-shim|/zz-tapes/' | paste -sd: -)
+case $PROVIDER in claude | codex) CLEAN_PATH="$(dirname "$(command -v "$BIN")"):/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" ;; esac
 Z() {
-  env -i HOME="$H" USER="$USER" LOGNAME="$USER" PATH="$CLEAN_PATH" SHELL=/bin/zsh TERM=xterm-256color \
-    LANG=en_US.UTF-8 TMPDIR="$TMPDIR" ZZ_SOCKET="$SOCK" ZZ_TRAY=0 ZZ_UPDATE_CHECK=0 NO_OPEN_BROWSER=1 \
-    CURSOR_AGENT_CLI_ASSUME_SSH=0 ZZ_AGENT_TAPE_DIR="$RUN/tapes" "$@"
+  env -i HOME="$H" USER="$USER" LOGNAME="$USER" PATH="$CLEAN_PATH" SHELL=/bin/zsh TERM=xterm-256color TZ=UTC \
+    LANG=en_US.UTF-8 TMPDIR="$RUN/tmp" ZZ_SOCKET="$SOCK" ZZ_TRAY=0 ZZ_UPDATE_CHECK=0 NO_OPEN_BROWSER=1 \
+    CURSOR_AGENT_CLI_ASSUME_SSH=0 DISABLE_AUTOUPDATER=1 ENABLE_CLAUDEAI_MCP_SERVERS=false ZZ_AGENT_TAPE_DIR="$RUN/tapes" "$@"
 }
 log() { printf '%s %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$RUN/rig.log"; }
 stop_daemon() {
   Z "$ZB" capture-pane -p -S - -t "${ME:-%0}" > "$RUN/chat.txt" 2>&1
   Z "$ZB" kill-server > /dev/null 2>&1
   rm -f "$SOCK"
+  [ "$PROVIDER" = codex ] && Z timeout 30 codex app-server daemon stop >> "$RUN/rig.log" 2>&1
+  for _ in $(seq 20); do pgrep -f "$RUN/" > /dev/null || break; sleep 0.5; done
+  pgrep -fl "$RUN/" >> "$RUN/left.txt" && pkill -f "$RUN/" && log "stopped processes left running, see left.txt"
+  rm -rf "$H/.codex/packages" "$H/.codex/tmp"
   for dir in "${VENDOR[@]}"; do [ -e "$H/$dir" ] && cp -R "$H/$dir" "$RUN/vendor/"; done
   log "run in $RUN"
 }
@@ -108,7 +119,7 @@ case $SCENARIO in
     ;;
   reload)
     ask 'Remember the word kumquat and reply with ok.' || fail "before reload"
-    SESSION=$(jq -r 'select(.dir == "out") | .msg.result.sessionId // empty' "$RUN"/tapes/*.ndjson | head -1)
+    SESSION=$(jq -r 'select(.dir == "out") | .msg | objects | (.result | objects | .sessionId // .thread.id) // .session_id // empty' "$RUN"/tapes/*.ndjson | head -1)
     [ -n "$SESSION" ] || fail "no session id"
     log "session $SESSION, closing $ME"
     Z "$ZB" kill-pane -t "$ME"

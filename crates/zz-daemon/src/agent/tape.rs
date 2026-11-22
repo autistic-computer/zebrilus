@@ -7,7 +7,7 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use parking_lot::Mutex;
@@ -66,6 +66,9 @@ impl Tape {
                 "program": program.to_string_lossy(),
                 "args": args.into_iter().map(OsStr::to_string_lossy).collect::<Vec<_>>(),
                 "cwd": cwd.map(|cwd| cwd.to_string_lossy().into_owned()),
+                "started": SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map_or(0, |since| u64::try_from(since.as_millis()).unwrap_or(u64::MAX)),
             }),
         );
         Some(tape)

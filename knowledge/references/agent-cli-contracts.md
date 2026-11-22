@@ -30,8 +30,8 @@ After a check, update the table: the version, the date, and how far the check we
 
 | CLI | Installed 2026-11-20 | Last checked against | How far |
 |---|---|---|---|
-| Claude Code (`claude`) | 2.1.330 (2026-11-21) | 2.1.292, 2026-10-07 | Full: the fixtures in `agent/claude/fixtures` were recorded on it. 2.1.330 passed the flag probe, the binary grep and the `auth status` keys below, and `get_settings` with no prompt sent showed the last `--model` and `--effort` applied. `resume.ndjson` (an agent resumed with `SendMessage`), `background.ndjson` (a background agent's approval across the end of its turn) and `nested.ndjson` (an approval from an agent a background agent started) were recorded on 2.1.330 |
-| Codex (`codex`) | 0.171.0 (shared daemon 0.171.0) | 0.159.0, 2026-10-07 | Full: `tools.ndjson` and `subagent.ndjson` in `agent/codex/fixtures`; `app-server-live.jsonl` is 0.166.0. 0.171.0 had the schema check and a binary grep, all names present, `thread/unsubscribe` included (2026-11-21), and a turn with no model call on a private app server for `turn/steer` refusals, `turn/start` during a turn and resuming a thread mid-turn |
+| Claude Code (`claude`) | 2.1.330 (2026-11-21) | 2.1.292, 2026-10-07 | Full: the fixtures in `agent/claude/fixtures` were recorded on it. 2.1.330 passed the flag probe, the binary grep and the `auth status` keys below, and `get_settings` with no prompt sent showed the last `--model` and `--effort` applied. `resume.ndjson` (an agent resumed with `SendMessage`), `background.ndjson` (a background agent's approval across the end of its turn) and `nested.ndjson` (an approval from an agent a background agent started) were recorded on 2.1.330. Live turns through the tape rig on 2026-11-22 (hello, tools with an approval, stop, queue, reload with `--resume`), each with its session transcript |
+| Codex (`codex`) | 0.171.0 (shared daemon 0.171.0) | 0.159.0, 2026-10-07 | Full: `tools.ndjson` and `subagent.ndjson` in `agent/codex/fixtures`; `app-server-live.jsonl` is 0.166.0. 0.171.0 had the schema check and a binary grep, all names present, `thread/unsubscribe` included (2026-11-21), and a turn with no model call on a private app server for `turn/steer` refusals, `turn/start` during a turn and resuming a thread mid-turn. Live turns through the tape rig on 2026-11-22 over a shared daemon in the scratch HOME (hello, tools with an approval, stop, queue, reload with `thread/resume`), each with its rollout file |
 | Antigravity (`agy`) | 1.5.14 (2026-11-22) | 1.5.14, 2026-11-22 | The ACP handshake, `agy acp --help` and the TUI flags on 1.5.14; live turns through the tape rig (hello, tools with approvals, stop, queue, reload). Its `initialize` still reports `agentInfo.version` 1.5.13. 1.5.13 had live turns including the artifact signal |
 | Grok Build (`grok`) | 1.0.92 (2026-11-21) | 1.0.92, 2026-11-22 | Live turns through the tape rig on 1.0.92 (hello, tools with an approval, stop, queue, reload), including `_meta.rules` and `_x.ai/billing` |
 | Cursor (`cursor-agent`) | 2026.11.19 | 2026.09.18, 2026-11-20 | Live turns on 2026.09.18. 2026.11.19 passed the initialize probe, the model list (`agent-catalog`) and, on 2026-11-22, `authenticate`, `session/new` and `session/load` through the tape rig; every prompt there ended at once with the reply "Add a payment method to continue", so no turn ran |
@@ -121,11 +121,15 @@ a few releases.
   program, arguments and folder, then every line zz sends (`in`) and the CLI prints (`out`), parsed
   as JSON or kept as text, and an `exit` line. Stderr is not recorded. Claude Code and Codex are
   taped at their pipes or Codex's shared-daemon socket (`child.rs`), the ACP providers at the
-  connection's line hook (`runtime.rs`). `bench/agents/tapes/record.sh <provider> <scenario>` runs
-  a private daemon with it in a scratch HOME and workspace and keeps the run under
-  `/private/tmp/zz-tapes/`. A raw tape holds the login, home paths, the host name and account and
-  billing fields until `bench/agents/tapes/scrub.py <raw> <out>` takes them out, so it never leaves
-  that folder unscrubbed. To replay an ACP tape, scrub it into
+  connection's line hook (`runtime.rs`). The `meta` line also carries `started`, the wall clock in
+  unix milliseconds, to place a tape line against a vendor transcript line.
+  `bench/agents/tapes/record.sh <provider> <scenario>` runs a private daemon with it in a scratch
+  HOME and workspace and keeps the run under `/private/tmp/zz-tapes/`, with Claude Code's session
+  transcript (and its `subagents/` folder) or Codex's rollout files copied from that HOME into
+  `vendor/`. A raw tape or vendor file holds the login, home paths, the host name, the account's
+  email and ids, plan names and rate-limit figures until `bench/agents/tapes/scrub.py <raw> <out>
+  [<raw> <out> ...]` takes them out, so it never leaves that folder unscrubbed. Scrub a run's tapes
+  and vendor files in one call, so the account ids they share get the same stand-ins. To replay an ACP tape, scrub it into
   `crates/zz-daemon/src/agent/fixtures/<provider>-<scenario>.ndjson`, add it to `RECORDED` in
   `agent/runtime/tape_tests.rs` and run `cargo test -p zz-daemon agent::`: the player checks what
   zz writes against the tape, and the cut-point sweeps run on it.

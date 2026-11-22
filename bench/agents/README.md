@@ -6,20 +6,29 @@ records what zz and an agent CLI say to each other.
 
 ## tapes/ - recordings of vendor frames
 
-`record.sh agy|grok|cursor open|hello|tools|stop|queue|reload` starts a private daemon from the
-worktree build (`cargo build -p zz-cli` and `cargo build -p zz-daemon-client --example
+`record.sh agy|grok|cursor|claude|codex open|hello|tools|stop|queue|reload` starts a private daemon
+from the worktree build (`cargo build -p zz-cli` and `cargo build -p zz-daemon-client --example
 agent_cancel`) on its own socket under `/tmp`, with a scratch HOME that links only the CLI's
-credentials (the keychain, Grok's `auth.json`, a copy of Cursor's `cli-config.json` set to ask
-before running tools) and `ZZ_AGENT_TAPE_DIR` set. It opens a chat in a scratch workspace with two
-small files, sends the scenario's prompts with `agent-send` and answers approvals only in `tools`,
-stops a turn with the `agent_cancel` example, reopens a chat with `--resume` for `reload`, then
-runs `kill-server` on that socket and keeps the tapes, the chat text and the CLI's own session
-files under `/private/tmp/zz-tapes/<provider>-<scenario>-*`. `open` starts the chat with no prompt,
-to see whether the CLI is signed in. `scrub.py <raw> <out>` rewrites the workspace, the homes, the
-login, the host name, emails, credentials, plan names and billing figures, prints what it
-replaced, and exits 1 when the output still holds any of them. A path split across two streamed
-chunks is not rewritten (`agy-tools` has one), and that exit check looks only for the login, the
-homes, the host name and emails.
+credentials (the keychain, Grok's and Codex's `auth.json`, a copy of Cursor's `cli-config.json` set
+to ask before running tools), a scratch `TMPDIR`, `TZ=UTC` and `ZZ_AGENT_TAPE_DIR` set. Claude Code
+runs on Haiku with the account's claude.ai connectors off (`ENABLE_CLAUDEAI_MCP_SERVERS=false`),
+Codex on `gpt-6-luna` with its apps and plugins off, both with a PATH of only the CLI's folder,
+Homebrew and the system. Codex goes through its shared app-server daemon, which zz starts in the
+scratch HOME (its socket is keyed to that HOME, so the user's own daemon is out of reach), and the
+rig stops it and anything else left under the run folder at the end. It opens a chat in a scratch
+workspace with two small files, sends the scenario's prompts with `agent-send` and answers approvals
+only in `tools`, stops a turn with the `agent_cancel` example, reopens a chat with `--resume` for
+`reload`, then runs `kill-server` on that socket and keeps the tapes, the chat text and the CLI's
+own session files (Claude Code's transcript, Codex's rollouts) under
+`/private/tmp/zz-tapes/<provider>-<scenario>-*`. `open` starts the chat with no prompt, to see
+whether the CLI is signed in. `scrub.py <raw> <out> [<raw> <out> ...]` rewrites the workspace, the
+homes, the worktree, the scratch sockets, the login, the host name, emails, credentials, account and
+organization ids, plan names and billing and rate-limit figures, blanks the request bodies Claude
+Code copies into its transcript, prints what it replaced, and exits 1 when the output still holds
+any of them. A path split across two streamed chunks is not rewritten (`agy-tools` and
+`claude-tools` have one), and that exit check looks for the login, the homes, the run folder, the
+worktree and its branch, the host name, the time zone, emails, the replaced ids, the account's
+connectors and the skill, plugin and MCP server names in the real HOME.
 
 ## browser/ - capability parity for browser panes
 
