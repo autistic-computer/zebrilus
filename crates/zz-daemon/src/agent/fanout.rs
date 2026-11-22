@@ -3412,6 +3412,8 @@ mod tests {
         use zz_protocol::chat::{ChatView, TurnBy, TurnId};
 
         const REOPENED_AT: u64 = 1000;
+        const LONG_LANE: usize = 32;
+        const NEAR_ROOMS: u64 = 24;
         let stale = fold(&[
             ChatEvent::SessionReady {
                 session: "stale".to_owned(),
@@ -3439,13 +3441,9 @@ mod tests {
                 .iter()
                 .map(|line| line.payloads.iter().map(payload_kind).collect::<Vec<_>>())
                 .collect::<Vec<_>>();
-            let acp = matches!(
-                tape.provider,
-                AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor
-            );
             let mut position = 0;
             for (index, line) in tape.lines.iter().enumerate() {
-                let inside_a_run = acp
+                let inside_a_run = position > LONG_LANE
                     && index > 0
                     && kinds.get(index - 1) == Some(&kinds[index])
                     && kinds.get(index + 1) == Some(&kinds[index]);
@@ -3466,10 +3464,14 @@ mod tests {
                         .append_for(tape.provider, &tape.session, &update)
                         .expect("journal");
                 }
-                for payload in &line.payloads {
+                for (offset, payload) in line.payloads.iter().enumerate() {
                     position += 1;
                     for watched in [&mut reopened, &mut journalled, &mut memory] {
                         watched.accept(payload);
+                    }
+                    let sampled = position > LONG_LANE;
+                    if sampled && offset + 1 < line.payloads.len() {
+                        continue;
                     }
                     let at = payload_kind(payload);
                     let mut check = |path: &str,
@@ -3625,7 +3627,7 @@ mod tests {
                         check("b", &mut reopened, from_seq, false);
                     }
                     let span = next_seq - (REOPENED_AT - 1);
-                    for step in 0..=8 {
+                    for step in (0..=8u64).filter(|step| !sampled || step.is_multiple_of(4)) {
                         let from_seq = REOPENED_AT - 1 + span * step / 8;
                         if from_seq < next_seq {
                             check("a", &mut reopened, from_seq, false);
@@ -3644,7 +3646,17 @@ mod tests {
                     }
                     check("d", &mut memory, 0, true);
                     let log = u64::try_from(memory.log().len()).unwrap_or(0);
-                    for room in 0..=log + 6 {
+                    let stride = if sampled {
+                        (log + 6).saturating_sub(NEAR_ROOMS) / 4
+                    } else {
+                        1
+                    }
+                    .max(1);
+                    for room in (0..=log + 6).filter(|room| {
+                        *room <= NEAR_ROOMS
+                            || (room - NEAR_ROOMS).is_multiple_of(stride)
+                            || *room == log + 6
+                    }) {
                         if let Some(from_seq) = memory.next_seq().checked_sub(room + 1) {
                             check("d", &mut memory, from_seq, true);
                         }

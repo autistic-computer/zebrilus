@@ -903,10 +903,15 @@ fn a_reload_from_the_journal_at_every_line_shows_the_live_chat() {
     for tape in tapes() {
         let mut events = Vec::new();
         let mut live = ChatView::default();
+        let mut ready = !resumed(tape);
         for (index, line) in tape.lines.iter().enumerate() {
             for event in line.payloads.iter().filter_map(chat_event) {
                 let _ = live.apply(event);
                 events.push(event.clone());
+            }
+            ready |= line.payloads.iter().any(session_ready);
+            if !ready {
+                continue;
             }
             let replayed = tape.reload(index);
             let reloaded = fold(&replayed);
@@ -935,7 +940,24 @@ fn a_reload_from_the_journal_at_every_line_shows_the_live_chat() {
             }
         }
     }
-    findings.finish(&["C | rows.len", "C | turns.len", "C | turns[].outcome"]);
+    findings.finish(&["C | rows.len", "C | rows[].status", "C | turns[].outcome"]);
+}
+
+fn session_ready(payload: &AgentStreamPayload) -> bool {
+    matches!(payload, AgentStreamPayload::SessionReady { .. })
+}
+
+fn resumed(tape: &Tape) -> bool {
+    tape.lines
+        .iter()
+        .flat_map(|line| line.payloads.iter())
+        .take_while(|payload| !session_ready(payload))
+        .any(|payload| {
+            matches!(
+                payload,
+                AgentStreamPayload::SessionReset { restoring: true }
+            )
+        })
 }
 
 fn resume_difference(ended: &ChatView, resumed: &ChatView) -> Option<Difference> {
@@ -1001,11 +1023,7 @@ fn a_second_process_shows_the_chat_the_first_one_ended_with() {
         let loaded = second
             .lines
             .iter()
-            .position(|line| {
-                line.payloads
-                    .iter()
-                    .any(|payload| matches!(payload, AgentStreamPayload::SessionReady { .. }))
-            })
+            .position(|line| line.payloads.iter().any(session_ready))
             .expect("the second process opens a session");
         let resumed = fold(
             second.lines[..=loaded]

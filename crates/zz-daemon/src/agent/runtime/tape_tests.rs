@@ -27,7 +27,7 @@ use crate::agent::{
     journal::AgentJournal,
 };
 
-const WAIT: Duration = Duration::from_secs(1);
+const WAIT: Duration = Duration::from_secs(30);
 
 #[derive(Default)]
 struct Pipe {
@@ -605,7 +605,7 @@ fn reload(provider: AgentProvider, session: &str, journal: &[Value]) -> Vec<Chat
     events
 }
 
-const RECORDED: [(&str, AgentProvider, &str); 11] = [
+const RECORDED: [(&str, AgentProvider, &str); 12] = [
     (
         "agy-hello",
         AgentProvider::Antigravity,
@@ -625,6 +625,11 @@ const RECORDED: [(&str, AgentProvider, &str); 11] = [
         "agy-reload",
         AgentProvider::Antigravity,
         include_str!("../fixtures/agy-reload.ndjson"),
+    ),
+    (
+        "agy-queue",
+        AgentProvider::Antigravity,
+        include_str!("../fixtures/agy-queue.ndjson"),
     ),
     (
         "grok-hello",

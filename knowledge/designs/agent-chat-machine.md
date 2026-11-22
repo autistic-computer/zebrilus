@@ -236,9 +236,26 @@ could tie to real Claude Code or Codex behavior.
 
   What the replays still reject is expected: a Claude `result` for a wake turn when the recording
   has no session state events, and a child's end that arrives after its parent was stopped.
+- The ACP tapes in `agent/fixtures` were recorded with the tape rig and scrubbed: agy and Grok
+  each have hello, tools, stop, queue and reload, and Cursor has hello and reload, where every
+  prompt got only the refusal "Add a payment method to continue". `runtime/tape_tests.rs` plays
+  each one through the real client: the raw `out` lines go over an in-memory pipe into
+  `run_agent_connection` inside `dialect::run_through` with the provider's own dialect, one task on
+  a local executor stepped until nothing can run. An `out` line goes in only after zz wrote the `in`
+  lines before it, with response ids rewritten to the ones zz used. The player injects through the
+  host channels only what a person or the host caused: prompts with the recorded text, stops,
+  permission answers with the recorded option, and setting changes. When a dialect asks for its
+  quota, the host's model setting after `SessionReady` and its queued prompt after
+  `PromptFinished` go in right after the poll that sent that payload if the tape shows them ahead
+  of the quota ask. The conformance check (`every_acp_tape_plays_through_the_real_driver`) needs
+  every tape line consumed and every `in` line written by zz with the recorded method and params,
+  ignoring ids, the rules text and the client version, and nothing written that the tape lacks. A
+  reload tape plays as two processes on one pane's journal, the second opened on the first one's
+  session.
 - Cut-point sweeps (`agent/cut_points.rs`) take each recording as a tape (`claude::tapes`,
-  `codex::tapes`: the payloads every recording line produced, and what the journal held after it)
-  and do something to the chat at every position, then compare with the uninterrupted view:
+  `codex::tapes`, `runtime::acp_tapes`: the payloads every recording line produced, and what the
+  journal held after it) and do something to the chat at every position, then compare with the
+  uninterrupted view:
   - Late attach (`every_cut_of_a_recording_compacts_to_the_view_a_live_client_holds`, and the same
     check on the random chats in `chat_tests.rs`): `Restart` plus `ChatLog::events()` at the cut,
     then the rest live, must equal the straight fold.
@@ -248,12 +265,21 @@ could tie to real Claude Code or Codex behavior.
     must give an equal view. The capped rebuild, tried at every cut size through `room`, must keep
     the phase, the running turn, the queue, the usage and every open item and request, come
     numbered from `from_seq + 1` to the lane's last number with no gap, and leave a viewer that was
-    current with the same chat and no gap.
+    current with the same chat and no gap. Past a lane's first 32 payloads the sweep samples: it
+    checks a line only after its last payload and skips a line inside a run of lines with the same
+    payload kinds, the ring path takes 3 of its 9 `from_seq` values, and the rebuild takes every
+    `room` up to 24 and 4 spread beyond.
   - Journal reload (`a_reload_from_the_journal_at_every_line_shows_the_live_chat`): what a real
     `AgentJournal` held at that line goes through each driver's history fallback into a fresh
     runtime. The turns, their outcomes and the rows in each must match the live ones, and every
     answered question must come back with the same item, question and answers. A turn or row still
-    running live is expected to read as ended, as `Shadow::replay_history` ends them.
+    running live is expected to read as ended, as `Shadow::replay_history` ends them. A process
+    opened on an earlier session is compared only from the line its session is ready, since its
+    chat stays empty while the provider replays the history.
+  - Reload (`a_second_process_shows_the_chat_the_first_one_ended_with`): on each two-process
+    tape, the chat once the second process has its session must have the turns, outcomes and rows
+    the first one ended with. The one allowance is a restore notice added to the background when the
+    provider refused to load the session.
 
   A failure is grouped by signature (sweep, path, first differing field) with a count and its
   smallest example. Each sweep ends with the exact list of signatures it finds today and fails
@@ -262,8 +288,12 @@ could tie to real Claude Code or Codex behavior.
   their own sends no `Restart`, so that client keeps its old chat; no recording reaches it. A chat
   reloaded from the journal shows an answered question with its question and answers but without
   its options, since only the tool update that carries the answer is journalled, and permission
-  cards and open questions are not journalled at all. The two Codex rollout fixtures have no driver
-  that plays them and are not taped, and agy, Grok and Cursor have no recordings.
+  cards and open questions are not journalled at all. A stopped ACP turn reloads from the journal as
+  completed, since the journal keeps session updates and not how a turn ended. The restore notice of
+  a provider that refused to load the session is journalled before the session is ready, so a reload
+  puts it inside the last restored turn instead of after it. A declined ACP tool call reloads as
+  failed, since the decline is not journalled. The two Codex rollout fixtures have no driver that
+  plays them and are not taped.
 
 # Next
 
