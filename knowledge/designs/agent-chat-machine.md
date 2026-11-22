@@ -122,8 +122,13 @@ the session's history and the bridge replays it through the machine. When the ve
 gone, Claude and Codex fall back to the journal, and the bridge opens a turn at every turn mark in
 it. The vendor history readers write those marks, and a live turn now journals its own start and
 end mark too (`Shadow::marking_turns`), so the fallback rebuilds the turns; journals written before
-2026-11-22 have none and reload with every row outside a turn. The fanout's journal replay leaves
-the marks out, as it does `config_option_update`.
+2026-11-22 have none and reload with every row outside a turn. An ACP provider that cannot load a
+session falls back to the journal too. There the bridge opens a turn at each run of user text, as
+it does for a loaded session, so an ACP turn journals only its end mark (`Transcript::ended_turns`,
+handed to the journal by `dialect::run_through`), and a turn that was stopped or failed reloads
+that way; an ACP journal written without them reloads every turn as completed. The fanout's
+journal replay leaves the marks out, as it does `config_option_update`, and the ACP dialect keeps
+the marks a fallback replays out of the stream it forwards.
 
 # Rules
 
@@ -288,10 +293,9 @@ could tie to real Claude Code or Codex behavior.
   their own sends no `Restart`, so that client keeps its old chat; no recording reaches it. A chat
   reloaded from the journal shows an answered question with its question and answers but without
   its options, since only the tool update that carries the answer is journalled, and permission
-  cards and open questions are not journalled at all. A stopped ACP turn reloads from the journal as
-  completed, since the journal keeps session updates and not how a turn ended. The restore notice of
-  a provider that refused to load the session is journalled before the session is ready, so a reload
-  puts it inside the last restored turn instead of after it. A declined ACP tool call reloads as
+  cards and open questions are not journalled at all. The restore notice of a provider that refused
+  to load the session is journalled, so every later reload shows one more of them. A declined ACP
+  tool call reloads as
   failed, since the decline is not journalled. The two Codex rollout fixtures have no driver that
   plays them and are not taped.
 

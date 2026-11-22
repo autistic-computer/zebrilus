@@ -12,6 +12,7 @@ use zz_protocol::{AgentAutoApprove, AgentProvider, QuotaWindows, chat::ChatEvent
 
 use crate::agent::{
     acp_chat::Transcript,
+    chat_bridge::{is_turn_mark, journal_marks},
     host::RuntimeChannels,
     runtime::{AgentSpawnConfig, RuntimeCommand, run_acp_agent, validate_payload},
     stream::AgentStreamPayload,
@@ -108,7 +109,7 @@ pub(crate) async fn run(
             let rules = crate::workspace_context(pane, session, true);
             serde_json::Map::from_iter([(key.to_owned(), Value::String(rules))])
         });
-    run_through(dialect, channels, move |inner| {
+    run_through(dialect, provider, channels, move |inner| {
         run_acp_agent(
             agent,
             config,
@@ -127,6 +128,7 @@ pub(crate) async fn run(
 
 pub(crate) async fn run_through<F>(
     dialect: Dialect,
+    provider: AgentProvider,
     channels: RuntimeChannels,
     runtime: impl FnOnce(RuntimeChannels) -> F,
 ) -> Result<(), String>
@@ -136,7 +138,11 @@ where
     let (command_tx, command_rx) = async_channel::bounded(1);
     let (control_tx, control_rx) = async_channel::bounded(1);
     let (event_tx, event_rx) = async_channel::bounded(1);
-    let transcript = Mutex::new(Transcript::default());
+    let transcript = Mutex::new(Transcript::marking());
+    let journal = channels.journal.clone();
+    let record = |(session, marks): (Option<String>, Vec<Value>)| {
+        journal_marks(journal.as_deref(), provider, session.as_deref(), &marks);
+    };
     let sign_in = Mutex::new(SignIn::default());
     let held_commands = command_tx.downgrade();
     let models = Mutex::new(Vec::<String>::new());
@@ -192,7 +198,11 @@ where
     };
     let answers = async {
         while let Ok(control) = controls.recv().await {
-            let chat = transcript.lock().control(&control);
+            let (chat, ended) = {
+                let mut transcript = transcript.lock();
+                (transcript.control(&control), transcript.ended_turns())
+            };
+            record(ended);
             if send_chat(&events, chat).await.is_err() || control_tx.send(control).await.is_err() {
                 break;
             }
@@ -261,11 +271,17 @@ where
             ) {
                 let _ = metered_tx.try_send(());
             }
-            let chat = transcript.lock().payload(&payload);
+            let (chat, ended) = {
+                let mut transcript = transcript.lock();
+                (transcript.payload(&payload), transcript.ended_turns())
+            };
+            record(ended);
+            let note =
+                matches!(&payload, AgentStreamPayload::Update { update } if is_turn_mark(update));
             let title = settled_title(&payload, &mut titled, dialect.stored_title);
             let payload = to_zz(payload, dialect, guard.as_ref().map(|guard| *guard.lock()));
             titled |= matches!(payload, AgentStreamPayload::TitleChanged { title: Some(_) });
-            if events.send(payload).await.is_err() {
+            if !note && events.send(payload).await.is_err() {
                 break;
             }
             if let Some(title) = title
@@ -294,7 +310,11 @@ where
     );
     let result = futures_lite::future::zip(runtime, inbound).await.0;
     if let Err(message) = &result {
-        let chat = transcript.lock().exited(message);
+        let (chat, ended) = {
+            let mut transcript = transcript.lock();
+            (transcript.exited(message), transcript.ended_turns())
+        };
+        record(ended);
         let _ = send_chat(&events, chat).await;
     }
     result

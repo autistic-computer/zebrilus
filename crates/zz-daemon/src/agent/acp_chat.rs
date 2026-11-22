@@ -4,7 +4,7 @@ use serde_json::Value;
 use zz_protocol::agent_stream::{AgentPromptOutcome, AgentStreamPayload};
 use zz_protocol::chat::ChatEvent;
 
-use super::chat_bridge::{Shadow, chat_answer, chat_answers, turn_mark};
+use super::chat_bridge::{Shadow, chat_answer, chat_answers, is_turn_mark, turn_mark};
 use super::runtime::RuntimeControl;
 use super::turn::{End, Fact};
 
@@ -28,15 +28,39 @@ pub(crate) struct Transcript {
     turn: Option<u64>,
     drawn: String,
     runs: u64,
+    marking: bool,
+    session: Option<String>,
 }
 
 impl Transcript {
+    pub(crate) fn marking() -> Self {
+        Self {
+            shadow: Shadow::default().marking_turns(),
+            marking: true,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn ended_turns(&mut self) -> (Option<String>, Vec<Value>) {
+        let marks = self
+            .shadow
+            .take_marks()
+            .into_iter()
+            .filter(|mark| mark["_meta"]["zz"]["turn"] != "started")
+            .collect();
+        (self.session.clone(), marks)
+    }
+
     pub(crate) fn payload(&mut self, payload: &AgentStreamPayload) -> Vec<ChatEvent> {
         let now = Instant::now();
         match payload {
             AgentStreamPayload::SessionReset { .. } => {
                 if self.live {
-                    *self = Self::default();
+                    *self = if self.marking {
+                        Self::marking()
+                    } else {
+                        Self::default()
+                    };
                     return vec![ChatEvent::Restart];
                 }
                 self.turn = None;
@@ -46,10 +70,14 @@ impl Transcript {
             AgentStreamPayload::SessionReady { session_id, .. }
             | AgentStreamPayload::SessionSwitched { session_id, .. } => {
                 self.live = true;
+                self.session = Some(session_id.clone());
                 self.shadow.turn(&Fact::SessionReady, Some(session_id), now);
             }
             AgentStreamPayload::Update { update } => {
                 let kind = update["sessionUpdate"].as_str().unwrap_or_default();
+                if !self.live && is_turn_mark(update) {
+                    self.drawn.clear();
+                }
                 if !DRAWN.contains(&kind) {
                     self.shadow.payload(payload);
                     return self.shadow.drain();

@@ -940,7 +940,7 @@ fn a_reload_from_the_journal_at_every_line_shows_the_live_chat() {
             }
         }
     }
-    findings.finish(&["C | rows.len", "C | rows[].status", "C | turns[].outcome"]);
+    findings.finish(&["C | rows[].status"]);
 }
 
 fn session_ready(payload: &AgentStreamPayload) -> bool {

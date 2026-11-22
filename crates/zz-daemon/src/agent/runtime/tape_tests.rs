@@ -263,6 +263,7 @@ impl Pane {
         let executor = smol::LocalExecutor::new();
         let task = executor.spawn(dialect::run_through(
             self.dialect,
+            provider,
             channels,
             move |inner| async move {
                 run_agent_connection(
