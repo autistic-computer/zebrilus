@@ -30,6 +30,10 @@ pub fn runtime_config() -> RuntimeConfig {
         remote_debugging_port: remote_debugging_port(
             env::var_os("ZZ_BROWSER_REMOTE_DEBUGGING_PORT").as_deref(),
         ),
+        ax_viewport_collapse: exactly_one(
+            env::var_os("ZZ_BROWSER_AX_VIEWPORT_COLLAPSE").as_deref(),
+        ),
+        ..RuntimeConfig::default()
     }
 }
 

@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet, btree_map::Entry},
     ops::RangeInclusive,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
     time::Instant,
@@ -14,7 +15,7 @@ use ala_cef::WinGpuTexture;
 use ala_cef::{
     BrowserError, BrowserEvent, BrowserGpuContext, BrowserRuntime, BrowserSession,
     CookieImportBatch, CookieImportResult, EditCommand, ElementPickerAppearance, KeyInput,
-    OsrFrame, PointerEvent, RuntimePhase, RuntimeSignal, SessionId, SessionPhase,
+    OsrFrame, PdfPrintResult, PointerEvent, RuntimePhase, RuntimeSignal, SessionId, SessionPhase,
     SiteDataClearResult, Viewport, WheelEvent,
 };
 use image::{Frame as ImageFrame, ImageBuffer, Rgba};
@@ -415,6 +416,10 @@ pub(crate) enum ControllerEvent {
         pane: PaneId,
         result: SiteDataClearResult,
     },
+    PdfPrinted {
+        pane: PaneId,
+        result: PdfPrintResult,
+    },
     BrowserDataFailed {
         pane: PaneId,
         message: Arc<str>,
@@ -625,6 +630,7 @@ pub struct BrowserController {
     sessions: BTreeMap<BrowserKey, BrowserSession>,
     latest_frames: BTreeMap<BrowserKey, BrowserPaneFrame>,
     pending_browsers: BTreeMap<BrowserKey, PendingBrowser>,
+    pending_cookie_imports: BTreeMap<BrowserKey, Vec<CookieImportBatch>>,
     gpu_contexts: BTreeMap<BrowserKey, BrowserGpuContext>,
     browser_egress: BTreeMap<BrowserKey, EgressSpec>,
     forced_readback: BTreeSet<BrowserKey>,
@@ -681,6 +687,7 @@ impl BrowserController {
                     sessions: BTreeMap::new(),
                     latest_frames: BTreeMap::new(),
                     pending_browsers: BTreeMap::new(),
+                    pending_cookie_imports: BTreeMap::new(),
                     gpu_contexts: BTreeMap::new(),
                     browser_egress: BTreeMap::new(),
                     forced_readback: BTreeSet::new(),
@@ -718,6 +725,7 @@ impl BrowserController {
                 sessions: BTreeMap::new(),
                 latest_frames: BTreeMap::new(),
                 pending_browsers: BTreeMap::new(),
+                pending_cookie_imports: BTreeMap::new(),
                 gpu_contexts: BTreeMap::new(),
                 browser_egress: BTreeMap::new(),
                 forced_readback: BTreeSet::new(),
@@ -1204,8 +1212,16 @@ impl BrowserController {
         if let Some(egress) = self.browser_egress.get(&opener_key).cloned() {
             self.browser_egress.insert(key, egress);
         }
-        self.forced_readback.insert(key);
-        self.register_session(key, session, false, cx);
+        if self.forced_readback.contains(&opener_key) {
+            self.forced_readback.insert(key);
+        }
+        let watch_first_frame = cfg!(target_os = "linux")
+            && !self.forced_readback.contains(&key)
+            && self
+                .runtime
+                .as_ref()
+                .is_some_and(BrowserRuntime::shared_texture_enabled);
+        self.register_session(key, session, watch_first_frame, cx);
         self.schedule_pump(0, cx);
         true
     }
@@ -1318,6 +1334,182 @@ impl BrowserController {
         self.queue_cef_work(move || browser.reload(), cx);
     }
 
+    pub(crate) fn reload_ignore_cache(&mut self, pane: PaneId, tab: TabId, cx: &mut Context<Self>) {
+        let Some(browser) = self
+            .sessions
+            .get(&(pane, tab))
+            .map(BrowserSession::command_sink)
+        else {
+            return;
+        };
+        self.queue_cef_work(move || browser.reload_ignore_cache(), cx);
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "CEF find takes explicit direction, case-sensitivity, and continuation flags"
+    )]
+    pub(crate) fn find(
+        &mut self,
+        pane: PaneId,
+        tab: TabId,
+        search_text: &str,
+        forward: bool,
+        match_case: bool,
+        find_next: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let key = (pane, tab);
+        self.mark_browser_activity(key);
+        let Some(browser) = self.sessions.get(&key).map(BrowserSession::command_sink) else {
+            return;
+        };
+        let search_text = search_text.to_owned();
+        self.queue_cef_work(
+            move || browser.find(&search_text, forward, match_case, find_next),
+            cx,
+        );
+    }
+
+    pub(crate) fn stop_finding(
+        &mut self,
+        pane: PaneId,
+        tab: TabId,
+        clear_selection: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(browser) = self
+            .sessions
+            .get(&(pane, tab))
+            .map(BrowserSession::command_sink)
+        else {
+            return;
+        };
+        self.queue_cef_work(move || browser.stop_finding(clear_selection), cx);
+    }
+
+    pub(crate) fn replace_misspelling(
+        &mut self,
+        pane: PaneId,
+        tab: TabId,
+        word: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let key = (pane, tab);
+        self.mark_browser_activity(key);
+        let Some(browser) = self.sessions.get(&key).map(BrowserSession::command_sink) else {
+            return;
+        };
+        let word = word.to_owned();
+        self.queue_cef_work(move || browser.replace_misspelling(&word), cx);
+    }
+
+    pub(crate) fn add_word_to_dictionary(
+        &mut self,
+        pane: PaneId,
+        tab: TabId,
+        word: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(browser) = self
+            .sessions
+            .get(&(pane, tab))
+            .map(BrowserSession::command_sink)
+        else {
+            return;
+        };
+        let word = word.to_owned();
+        self.queue_cef_work(move || browser.add_word_to_dictionary(&word), cx);
+    }
+
+    pub(crate) fn print_to_pdf(
+        &mut self,
+        pane: PaneId,
+        tab: TabId,
+        path: &Path,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.ensure_runtime_started(cx) {
+            cx.emit(ControllerEvent::BrowserDataFailed {
+                pane,
+                message: self.runtime_unavailable_message(),
+            });
+            return;
+        }
+        let Some(session) = self.sessions.get(&(pane, tab)) else {
+            cx.emit(ControllerEvent::BrowserDataFailed {
+                pane,
+                message: Arc::from("the browser is not ready"),
+            });
+            return;
+        };
+        let results = match session.print_to_pdf(path) {
+            Ok(results) => results,
+            Err(error) => {
+                cx.emit(ControllerEvent::BrowserDataFailed {
+                    pane,
+                    message: Arc::from(error.to_string()),
+                });
+                return;
+            }
+        };
+        cx.spawn(async move |this, cx| {
+            let event = match results.recv().await {
+                Ok(result) => ControllerEvent::PdfPrinted { pane, result },
+                Err(_) => ControllerEvent::BrowserDataFailed {
+                    pane,
+                    message: Arc::from("saving the page as PDF was interrupted"),
+                },
+            };
+            let _ = this.update(cx, |_, cx| cx.emit(event));
+        })
+        .detach();
+        self.schedule_pump(0, cx);
+    }
+
+    pub(crate) fn respond_file_dialog(
+        &mut self,
+        pane: PaneId,
+        tab: TabId,
+        id: u64,
+        paths: Option<&[PathBuf]>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(session) = self.sessions.get(&(pane, tab)) {
+            session.respond_file_dialog(id, paths);
+            self.schedule_pump(0, cx);
+        }
+    }
+
+    pub(crate) fn respond_js_dialog(
+        &mut self,
+        pane: PaneId,
+        tab: TabId,
+        id: u64,
+        accept: bool,
+        user_input: Option<&str>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(session) = self.sessions.get(&(pane, tab)) {
+            session.respond_js_dialog(id, accept, user_input);
+            self.schedule_pump(0, cx);
+        }
+    }
+
+    pub(crate) fn respond_download(
+        &mut self,
+        pane: PaneId,
+        tab: TabId,
+        id: u32,
+        path: Option<&Path>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(session) = self.sessions.get(&(pane, tab)) {
+            session.respond_download(id, path);
+            self.schedule_pump(0, cx);
+        }
+    }
+
     pub(crate) fn site_connection_secure(&self, pane: PaneId, tab: TabId) -> Option<bool> {
         self.sessions.get(&(pane, tab))?.site_connection_secure()
     }
@@ -1405,6 +1597,39 @@ impl BrowserController {
             });
             return;
         }
+        let key = (pane, tab);
+        let session_ready = self
+            .sessions
+            .get(&key)
+            .is_some_and(|session| session.phase() == SessionPhase::Ready);
+        if session_ready && self.runtime.is_some() {
+            self.start_cookie_import(pane, tab, batch, cx);
+            return;
+        }
+        if self.sessions.contains_key(&key)
+            || self.pending_browsers.contains_key(&key)
+            || self.detached_runtime_phase.is_some()
+        {
+            self.pending_cookie_imports
+                .entry(key)
+                .or_default()
+                .push(batch);
+            self.schedule_pump(0, cx);
+            return;
+        }
+        cx.emit(ControllerEvent::BrowserDataFailed {
+            pane,
+            message: Arc::from(BrowserError::NotReady.to_string()),
+        });
+    }
+
+    fn start_cookie_import(
+        &mut self,
+        pane: PaneId,
+        tab: TabId,
+        batch: CookieImportBatch,
+        cx: &mut Context<Self>,
+    ) {
         let result = self
             .sessions
             .get(&(pane, tab))
@@ -1413,7 +1638,7 @@ impl BrowserController {
                 self.runtime
                     .as_ref()
                     .ok_or(BrowserError::AlreadyShutdown)
-                    .and_then(|runtime| runtime.import_cookies(session.profile(), batch))
+                    .and_then(|runtime| runtime.import_cookies_for_session(session, batch))
             });
         let results = match result {
             Ok(results) => results,
@@ -1438,6 +1663,29 @@ impl BrowserController {
         })
         .detach();
         self.schedule_pump(0, cx);
+    }
+
+    fn drain_pending_cookie_imports(&mut self, cx: &mut Context<Self>) {
+        if self.runtime.is_none() || self.pending_cookie_imports.is_empty() {
+            return;
+        }
+        let ready_keys: Vec<BrowserKey> = self
+            .pending_cookie_imports
+            .keys()
+            .copied()
+            .filter(|key| {
+                self.sessions
+                    .get(key)
+                    .is_some_and(|session| session.phase() == SessionPhase::Ready)
+            })
+            .collect();
+        for key in ready_keys {
+            if let Some(batches) = self.pending_cookie_imports.remove(&key) {
+                for batch in batches {
+                    self.start_cookie_import(key.0, key.1, batch, cx);
+                }
+            }
+        }
     }
 
     pub(crate) fn clear_site_data(&mut self, pane: PaneId, tab: TabId, cx: &mut Context<Self>) {
@@ -1796,6 +2044,7 @@ impl BrowserController {
 
     fn close_tab_state(&mut self, key: BrowserKey) {
         self.pending_browsers.remove(&key);
+        self.pending_cookie_imports.remove(&key);
         self.browser_egress.remove(&key);
         self.discard_latest_frame(key);
         self.gpu_contexts.remove(&key);
@@ -1818,6 +2067,11 @@ impl BrowserController {
         keys.extend(self.latest_frames.range(range.clone()).map(|(key, _)| *key));
         keys.extend(
             self.pending_browsers
+                .range(range.clone())
+                .map(|(key, _)| *key),
+        );
+        keys.extend(
+            self.pending_cookie_imports
                 .range(range.clone())
                 .map(|(key, _)| *key),
         );
@@ -2002,6 +2256,7 @@ impl BrowserController {
         self.pump_generation = self.pump_generation.wrapping_add(1).max(1);
         self.wheel_decay_tasks.clear();
         self.pending_browsers.clear();
+        self.pending_cookie_imports.clear();
         self.first_frame_watchdogs.clear();
         self.recreate_after_close.clear();
         self.browser_egress.clear();
@@ -2180,6 +2435,7 @@ impl BrowserController {
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
                     crate::quit_signal::reclaim();
                     controller.replay_deferred_runtime_signals(cx);
+                    controller.drain_pending_cookie_imports(cx);
                     controller.schedule_pump(0, cx);
                 }
             });
@@ -2448,6 +2704,7 @@ impl BrowserController {
                 }
                 controller.replay_deferred_runtime_signals(cx);
                 controller.try_create_browsers(cx);
+                controller.drain_pending_cookie_imports(cx);
                 controller.drive_previews(cx);
                 controller.schedule_pump(0, cx);
             });
@@ -2472,6 +2729,7 @@ impl BrowserController {
             Ok(session) => session,
             Err(error) => {
                 self.pending_browsers.remove(&key);
+                self.pending_cookie_imports.remove(&key);
                 Self::fail_pane(key.0, error.to_string(), cx);
                 return;
             }
@@ -2590,6 +2848,14 @@ impl BrowserController {
                 BrowserEvent::TitleChanged { .. }
                 | BrowserEvent::FaviconChanged { .. }
                 | BrowserEvent::AddressChanged { .. }
+                | BrowserEvent::LoadingProgressChanged { .. }
+                | BrowserEvent::StatusMessageChanged { .. }
+                | BrowserEvent::FullscreenModeChanged { .. }
+                | BrowserEvent::FindResult { .. }
+                | BrowserEvent::FileDialogRequested { .. }
+                | BrowserEvent::JsDialogRequested { .. }
+                | BrowserEvent::DownloadRequested { .. }
+                | BrowserEvent::DownloadUpdated { .. }
                 | BrowserEvent::CursorChanged { .. }
                 | BrowserEvent::ImeCompositionChanged { .. }
                 | BrowserEvent::ElementPicked { .. }
@@ -2651,6 +2917,7 @@ impl BrowserController {
         }
         if arm_first_frame_watchdog {
             self.arm_first_frame_watchdog(key, cx);
+            self.drain_pending_cookie_imports(cx);
         }
         if let Some(reason) = readback_reason {
             self.request_readback_fallback(key, &reason);
@@ -2691,6 +2958,7 @@ impl BrowserController {
 
     fn fail_pending_browsers(&mut self, error: &str, cx: &mut Context<Self>) {
         let pending = std::mem::take(&mut self.pending_browsers);
+        self.pending_cookie_imports.clear();
         for (pane, _) in pending.keys() {
             Self::fail_pane(*pane, error.to_owned(), cx);
         }
@@ -3589,5 +3857,45 @@ mod tests {
         ] {
             assert_eq!(state.interval(), None);
         }
+    }
+
+    #[ala::test]
+    fn cookie_import_queues_while_session_is_initializing_and_clears_on_close(
+        cx: &mut TestAppContext,
+    ) {
+        let pane = PaneId(11);
+        let tab = TabId(1);
+        let controller = cx.update(|cx| {
+            cx.new(|cx| BrowserController::new(Err(BrowserError::AlreadyShutdown), cx))
+        });
+        let failed = Rc::new(RefCell::new(Vec::new()));
+        let observed = Rc::clone(&failed);
+        cx.update(|cx| {
+            cx.subscribe(&controller, move |_, event, _| {
+                if let ControllerEvent::BrowserDataFailed { message, .. } = event {
+                    observed.borrow_mut().push(message.to_string());
+                }
+            })
+            .detach();
+        });
+        let batch = ala_cef::parse_cookie_import(
+            r#"[{"name":"sid","value":"abc","domain":"example.com","path":"/"}]"#,
+        )
+        .expect("valid cookie batch");
+        controller.update(cx, |controller, cx| {
+            controller.detached_runtime_phase = Some(RuntimePhase::Initializing);
+            controller.import_cookies(pane, tab, batch, cx);
+            assert_eq!(
+                controller
+                    .pending_cookie_imports
+                    .get(&(pane, tab))
+                    .map(Vec::len),
+                Some(1)
+            );
+            controller.close_tab(pane, tab);
+            assert!(!controller.pending_cookie_imports.contains_key(&(pane, tab)));
+        });
+        cx.run_until_parked();
+        assert!(failed.borrow().is_empty());
     }
 }

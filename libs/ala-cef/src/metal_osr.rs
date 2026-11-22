@@ -1,8 +1,15 @@
-use std::{collections::BTreeSet, ptr::NonNull, sync::Arc};
+use std::{
+    collections::BTreeSet,
+    ptr::NonNull,
+    sync::{Arc, OnceLock},
+};
 
 use block2::RcBlock;
 use cef::{AcceleratedPaintInfo, ColorType};
-use objc2::{rc::Retained, runtime::ProtocolObject};
+use objc2::{
+    rc::{Retained, autoreleasepool},
+    runtime::ProtocolObject,
+};
 use objc2_core_foundation::{CFDictionary, CFNumber, CFRetained, CFType, Type};
 use objc2_io_surface::{
     IOSurfaceID, IOSurfaceRef, kIOSurfaceBytesPerElement, kIOSurfaceHeight, kIOSurfacePixelFormat,
@@ -26,6 +33,8 @@ const DESTINATION_POOL_SLOT_COUNT: usize = 5;
 const MAX_IN_FLIGHT_BLITS: usize = 2;
 const SOURCE_TEXTURE_CACHE_CAPACITY: usize = 10;
 const BGRA_PIXEL_FORMAT: i64 = 0x4247_5241;
+
+static SHARED_METAL_CONTEXT: OnceLock<Result<MetalContext, String>> = OnceLock::new();
 
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {}
@@ -54,6 +63,7 @@ struct PopupSurface {
     surface: DestinationSurface,
 }
 
+#[derive(Clone)]
 struct MetalContext {
     device: Retained<ProtocolObject<dyn MTLDevice>>,
     queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
@@ -157,12 +167,26 @@ pub(super) enum MetalFrameError {
 }
 
 impl MetalContext {
+    fn shared() -> Result<Self, String> {
+        SHARED_METAL_CONTEXT
+            .get_or_init(|| Self::new().map_err(|error| error.to_string()))
+            .clone()
+    }
+
     fn new() -> Result<Self, MetalFrameError> {
         let device = MTLCreateSystemDefaultDevice().ok_or(MetalFrameError::DeviceUnavailable)?;
         let queue = device
             .newCommandQueue()
             .ok_or(MetalFrameError::CommandQueueUnavailable)?;
         Ok(Self { device, queue })
+    }
+
+    fn storage_mode(&self) -> MTLStorageMode {
+        if self.device.hasUnifiedMemory() {
+            MTLStorageMode::Shared
+        } else {
+            MTLStorageMode::Managed
+        }
     }
 
     fn texture_for_surface(
@@ -221,7 +245,7 @@ impl MetalContext {
                 width,
                 height,
                 MTLPixelFormat::BGRA8Unorm,
-                MTLStorageMode::Shared,
+                self.storage_mode(),
             )
             .ok_or(MetalFrameError::DestinationTexture)?;
         Ok(DestinationSurface {
@@ -244,9 +268,12 @@ impl SourceTextureCache {
         let id = surface.id();
         self.entries
             .retain(|entry| entry.width == width && entry.height == height);
-        if let Some(entry) = self.entries.iter().find(|entry| entry.id == id) {
+        if let Some(index) = self.entries.iter().position(|entry| entry.id == id) {
             self.hits += 1;
-            return Some(entry.texture.clone());
+            let entry = self.entries.remove(index);
+            let texture = entry.texture.clone();
+            self.entries.push(entry);
+            return Some(texture);
         }
         let texture = context.texture_for_surface(
             surface,
@@ -319,9 +346,9 @@ fn accept_completed_sequence(last_published_sequence: &mut Option<u64>, sequence
 
 impl MetalFrameProducer {
     pub(super) fn new(viewport: Viewport) -> Self {
-        let (context, initialization_error) = match MetalContext::new() {
+        let (context, initialization_error) = match MetalContext::shared() {
             Ok(context) => (Some(context), None),
-            Err(error) => (None, Some(error.to_string())),
+            Err(error) => (None, Some(error)),
         };
         Self {
             state: Arc::new(Mutex::new(MetalFrameProducerState {
@@ -373,26 +400,17 @@ impl MetalFrameProducer {
         let width = layout.width.cast_unsigned();
         let height = layout.height.cast_unsigned();
         let mut state = self.state.lock();
-        let Some(context) = state.context.as_ref() else {
+        let Some(context) = state.context.clone() else {
             return Err(MetalFrameError::DeviceUnavailable);
         };
-        let context = MetalContext {
-            device: context.device.clone(),
-            queue: context.queue.clone(),
-        };
         let source_surface = RetainedSourceSurface(unsafe { CFRetained::retain(source_surface) });
-        let source_storage_mode = if context.device.hasUnifiedMemory() {
-            MTLStorageMode::Shared
-        } else {
-            MTLStorageMode::Managed
-        };
         let source_texture = context
             .texture_for_surface(
                 source_surface.as_ref(),
                 width,
                 height,
                 MTLPixelFormat::BGRA8Unorm,
-                source_storage_mode,
+                context.storage_mode(),
             )
             .ok_or(MetalFrameError::SourceTexture)?;
         if state
@@ -442,7 +460,9 @@ impl MetalFrameProducer {
         encoder.endEncoding();
         let completion_block = RcBlock::new(
             move |_command_buffer: NonNull<ProtocolObject<dyn MTLCommandBuffer>>| {
-                let _ = CFRetained::as_ptr(&source_surface.0);
+                autoreleasepool(|_| {
+                    let _ = CFRetained::as_ptr(&source_surface.0);
+                });
             },
         );
         unsafe {
@@ -496,7 +516,7 @@ impl MetalFrameProducer {
                 "duplicate accelerated frame sequence {sequence}"
             )));
         }
-        let Some(context) = state.context.as_ref() else {
+        let Some(context) = state.context.clone() else {
             return Err(MetalFrameError::Initialization(
                 state
                     .initialization_error
@@ -504,16 +524,8 @@ impl MetalFrameProducer {
                     .unwrap_or_else(|| MetalFrameError::DeviceUnavailable.to_string()),
             ));
         };
-        let context = MetalContext {
-            device: context.device.clone(),
-            queue: context.queue.clone(),
-        };
         let source_surface = RetainedSourceSurface(unsafe { CFRetained::retain(source_surface) });
-        let source_storage_mode = if context.device.hasUnifiedMemory() {
-            MTLStorageMode::Shared
-        } else {
-            MTLStorageMode::Managed
-        };
+        let source_storage_mode = context.storage_mode();
         let source_texture = state
             .sources
             .texture(
@@ -619,84 +631,89 @@ impl MetalFrameProducer {
         let producer_state = Arc::clone(&self.state);
         let completion_block = RcBlock::new(
             move |command_buffer: NonNull<ProtocolObject<dyn MTLCommandBuffer>>| {
-                let _ = CFRetained::as_ptr(&source_surface.0);
-                let command_buffer = unsafe { command_buffer.as_ref() };
-                let error = command_buffer
-                    .error()
-                    .map(|error| MetalFrameError::Blit(format!("{error:?}")));
-                let (outcome, presenter) = {
-                    let mut state = producer_state.lock();
-                    if !state.in_flight_sequences.remove(&sequence) {
-                        return;
-                    }
-                    if let Some(destinations) = state
-                        .destinations
-                        .as_mut()
-                        .filter(|destinations| destinations.generation == pool_generation)
-                        && let Some(destination) = destinations.surfaces.get_mut(destination_index)
-                        && destination.in_flight_sequence == Some(sequence)
-                    {
-                        destination.in_flight_sequence = None;
-                    }
-
-                    let outcome = if let Some(error) = error {
-                        if state
+                autoreleasepool(|_| {
+                    let _ = CFRetained::as_ptr(&source_surface.0);
+                    let command_buffer = unsafe { command_buffer.as_ref() };
+                    let error = command_buffer
+                        .error()
+                        .map(|error| MetalFrameError::Blit(format!("{error:?}")));
+                    let (outcome, presenter) = {
+                        let mut state = producer_state.lock();
+                        if !state.in_flight_sequences.remove(&sequence) {
+                            return;
+                        }
+                        if let Some(destinations) = state
                             .destinations
-                            .as_ref()
-                            .is_some_and(|destinations| destinations.generation == pool_generation)
+                            .as_mut()
+                            .filter(|destinations| destinations.generation == pool_generation)
+                            && let Some(destination) =
+                                destinations.surfaces.get_mut(destination_index)
+                            && destination.in_flight_sequence == Some(sequence)
                         {
-                            state.destinations = None;
+                            destination.in_flight_sequence = None;
                         }
-                        MetalFrameCompletion::Failed { sequence, error }
-                    } else if state.expected != expected {
-                        MetalFrameCompletion::Stale {
-                            sequence,
-                            reason: StalePoolFrame::Dimensions {
-                                expected_width: state.expected.device_width,
-                                expected_height: state.expected.device_height,
-                                actual_width: layout.width,
-                                actual_height: layout.height,
-                            },
-                        }
-                    } else if state
-                        .destinations
-                        .as_ref()
-                        .is_none_or(|destinations| destinations.generation != pool_generation)
-                    {
-                        MetalFrameCompletion::Stale {
-                            sequence,
-                            reason: StalePoolFrame::SupersededGeneration { pool_generation },
-                        }
-                    } else {
-                        let last_published_sequence = state.last_published_sequence;
-                        if accept_completed_sequence(&mut state.last_published_sequence, sequence) {
-                            MetalFrameCompletion::Frame(ProducedMetalFrame {
-                                logical_width: expected.logical_width,
-                                logical_height: expected.logical_height,
-                                device_width: layout.width,
-                                device_height: layout.height,
-                                pool_generation,
-                                sequence,
-                                io_surface: MacIoSurface::new(destination_surface.clone()),
-                            })
-                        } else {
+
+                        let outcome = if let Some(error) = error {
+                            if state.destinations.as_ref().is_some_and(|destinations| {
+                                destinations.generation == pool_generation
+                            }) {
+                                state.destinations = None;
+                            }
+                            MetalFrameCompletion::Failed { sequence, error }
+                        } else if state.expected != expected {
                             MetalFrameCompletion::Stale {
                                 sequence,
-                                reason: StalePoolFrame::OutOfOrder {
-                                    last_published_sequence: last_published_sequence
-                                        .unwrap_or(sequence),
-                                    sequence,
+                                reason: StalePoolFrame::Dimensions {
+                                    expected_width: state.expected.device_width,
+                                    expected_height: state.expected.device_height,
+                                    actual_width: layout.width,
+                                    actual_height: layout.height,
                                 },
                             }
-                        }
+                        } else if state
+                            .destinations
+                            .as_ref()
+                            .is_none_or(|destinations| destinations.generation != pool_generation)
+                        {
+                            MetalFrameCompletion::Stale {
+                                sequence,
+                                reason: StalePoolFrame::SupersededGeneration { pool_generation },
+                            }
+                        } else {
+                            let last_published_sequence = state.last_published_sequence;
+                            if accept_completed_sequence(
+                                &mut state.last_published_sequence,
+                                sequence,
+                            ) {
+                                MetalFrameCompletion::Frame(ProducedMetalFrame {
+                                    logical_width: expected.logical_width,
+                                    logical_height: expected.logical_height,
+                                    device_width: layout.width,
+                                    device_height: layout.height,
+                                    pool_generation,
+                                    sequence,
+                                    io_surface: MacIoSurface::new(destination_surface.clone()),
+                                })
+                            } else {
+                                MetalFrameCompletion::Stale {
+                                    sequence,
+                                    reason: StalePoolFrame::OutOfOrder {
+                                        last_published_sequence: last_published_sequence
+                                            .unwrap_or(sequence),
+                                        sequence,
+                                    },
+                                }
+                            }
+                        };
+                        (outcome, state.presenter.clone())
                     };
-                    (outcome, state.presenter.clone())
-                };
-                if let (Some(presenter), MetalFrameCompletion::Frame(frame)) = (presenter, &outcome)
-                {
-                    presenter(&frame.io_surface);
-                }
-                completion(outcome);
+                    if let (Some(presenter), MetalFrameCompletion::Frame(frame)) =
+                        (presenter, &outcome)
+                    {
+                        presenter(&frame.io_surface);
+                    }
+                    completion(outcome);
+                });
             },
         );
         unsafe {

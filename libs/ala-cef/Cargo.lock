@@ -191,6 +191,7 @@ dependencies = [
  "url",
  "wgpu",
  "windows",
+ "zbus",
  "zeroize",
 ]
 

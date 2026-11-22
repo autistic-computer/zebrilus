@@ -40,11 +40,13 @@ impl Layer {
         reason = "an IOSurfaceRef is toll-free bridged to the IOSurface object CALayer.contents takes"
     )]
     fn show(&self, surface: &MacIoSurface) {
-        let contents = unsafe { &*surface.as_ptr().cast::<AnyObject>() };
-        CATransaction::begin();
-        CATransaction::setDisableActions(true);
-        unsafe { self.0.setContents(Some(contents)) };
-        CATransaction::commit();
+        objc2::rc::autoreleasepool(|_| {
+            let contents = unsafe { &*surface.as_ptr().cast::<AnyObject>() };
+            CATransaction::begin();
+            CATransaction::setDisableActions(true);
+            unsafe { self.0.setContents(Some(contents)) };
+            CATransaction::commit();
+        });
     }
 
     #[allow(
@@ -208,6 +210,10 @@ impl Host {
             _ => false,
         }
     }
+
+    fn is_alive(&self) -> bool {
+        ala_view_superview(&self.view).is_some()
+    }
 }
 
 thread_local! {
@@ -248,6 +254,7 @@ pub(crate) fn place(
     };
     let key = Retained::as_ptr(&ala_view).addr();
     HOSTS.with_borrow_mut(|hosts| {
+        hosts.retain(|entry_key, host| *entry_key == key || host.is_alive());
         if hosts.get(&key).is_some_and(|host| !host.serves(&ala_view)) {
             hosts.remove(&key);
         }
@@ -305,6 +312,7 @@ fn finish_frame(window: &Window) {
     };
     let key = Retained::as_ptr(&ala_view).addr();
     let any_painted = HOSTS.with_borrow_mut(|hosts| {
+        hosts.retain(|entry_key, host| *entry_key == key || host.is_alive());
         let host = hosts.get_mut(&key)?;
         let mut any_painted = false;
         CATransaction::setDisableActions(true);

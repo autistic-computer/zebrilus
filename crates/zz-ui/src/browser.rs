@@ -3,7 +3,7 @@ use std::{rc::Rc, sync::Arc};
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Edge, Icon, IconName, PaintState,
     Selectable as _, Sizable as _, StyledExt as _,
-    button::{Button, ButtonLook},
+    button::{Button, ButtonLook, ButtonVariants as _},
     feedback::{alert_actions, inline_alert},
     input::{FieldLook, Input, InputContentType, InputState, field_chrome},
     menu::{PopupMenu, PopupMenuItem},
@@ -50,6 +50,7 @@ pub struct BrowserHeader {
     actions: PaneActions,
     toolbar: BrowserToolbar,
     trailing_inset: Pixels,
+    loading_progress: Option<f32>,
 }
 
 impl BrowserHeader {
@@ -69,6 +70,7 @@ impl BrowserHeader {
             actions,
             toolbar,
             trailing_inset: px(0.0),
+            loading_progress: None,
         }
     }
 
@@ -77,18 +79,27 @@ impl BrowserHeader {
         self.trailing_inset = inset;
         self
     }
+
+    #[must_use]
+    pub fn loading_progress(mut self, progress: Option<f32>) -> Self {
+        self.loading_progress = progress;
+        self
+    }
 }
 
 impl RenderOnce for BrowserHeader {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let Self {
             active,
             tabs,
             actions,
             toolbar,
             trailing_inset,
+            loading_progress,
         } = self;
         let show_separator = toolbar.show_separator;
+        let loading_progress =
+            loading_progress.filter(|value| value.is_finite() && *value > 0.0 && *value < 1.0);
         let chrome = px(crate::CHROME_GAP * 2.0) + trailing_inset + BROWSER_TAB_ROW_GAP;
         let tab_row = move |width: Pixels, cx: &App| {
             let fold = actions.fold(width - chrome, BROWSER_TABS_MIN_WIDTH);
@@ -137,6 +148,19 @@ impl RenderOnce for BrowserHeader {
                         .absolute()
                         .bottom_0()
                         .h(crate::RULE_WIDTH),
+                )
+            })
+            .when_some(loading_progress, |header, progress| {
+                header.child(
+                    div()
+                        .id("browser-loading-progress")
+                        .debug_selector(|| "browser-loading-progress".into())
+                        .absolute()
+                        .left_0()
+                        .bottom_0()
+                        .h(px(2.0))
+                        .w(ala::relative(progress))
+                        .bg(cx.theme().accent),
                 )
             })
     }
@@ -888,8 +912,12 @@ pub struct BrowserMenuActions {
     zoom_percent: Option<Rc<dyn Fn(&App) -> u16>>,
     import_chrome_data: BrowserProfileAction,
     import_cookies: BrowserMenuAction,
+    paste_cookies: BrowserMenuAction,
     clear_site_data: BrowserMenuAction,
+    find_in_page: BrowserMenuAction,
     reload: BrowserMenuAction,
+    hard_reload: BrowserMenuAction,
+    save_as_pdf: BrowserMenuAction,
     toggle_picker: BrowserMenuAction,
     dev_tools: BrowserMenuAction,
 }
@@ -908,8 +936,12 @@ impl Default for BrowserMenuActions {
             zoom_percent: None,
             import_chrome_data: Rc::new(|_, _, _| {}),
             import_cookies: Rc::clone(&noop),
+            paste_cookies: Rc::clone(&noop),
             clear_site_data: Rc::clone(&noop),
+            find_in_page: Rc::clone(&noop),
             reload: Rc::clone(&noop),
+            hard_reload: Rc::clone(&noop),
+            save_as_pdf: Rc::clone(&noop),
             toggle_picker: Rc::clone(&noop),
             dev_tools: noop,
         }
@@ -977,13 +1009,33 @@ impl BrowserMenuActions {
         self
     }
 
+    pub fn paste_cookies(mut self, action: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.paste_cookies = Rc::new(action);
+        self
+    }
+
     pub fn clear_site_data(mut self, action: impl Fn(&mut Window, &mut App) + 'static) -> Self {
         self.clear_site_data = Rc::new(action);
         self
     }
 
+    pub fn find_in_page(mut self, action: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.find_in_page = Rc::new(action);
+        self
+    }
+
     pub fn reload(mut self, action: impl Fn(&mut Window, &mut App) + 'static) -> Self {
         self.reload = Rc::new(action);
+        self
+    }
+
+    pub fn hard_reload(mut self, action: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.hard_reload = Rc::new(action);
+        self
+    }
+
+    pub fn save_as_pdf(mut self, action: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.save_as_pdf = Rc::new(action);
         self
     }
 
@@ -1047,7 +1099,7 @@ pub fn browser_action_menu(
             );
             if chromium {
                 profile_menu = profile_menu.separator().item(PopupMenuItem::label(
-                    "Chrome profiles · isolated zz storage",
+                    "Browser profiles · isolated zz storage",
                 ));
             } else if !profiles.is_empty() {
                 profile_menu = profile_menu.separator();
@@ -1055,13 +1107,13 @@ pub fn browser_action_menu(
 
             if chromium && profile_discovery == BrowserProfileDiscoveryState::Loading {
                 profile_menu = profile_menu
-                    .item(PopupMenuItem::new("Finding Chrome profiles…").disabled(true));
+                    .item(PopupMenuItem::new("Finding browser profiles…").disabled(true));
             } else if chromium
                 && profiles.is_empty()
                 && profile_discovery == BrowserProfileDiscoveryState::Ready
             {
                 profile_menu = profile_menu
-                    .item(PopupMenuItem::new("No Chrome profiles found").disabled(true));
+                    .item(PopupMenuItem::new("No browser profiles found").disabled(true));
             } else {
                 for profile in &profiles {
                     let action = Rc::clone(&profile_action);
@@ -1079,7 +1131,7 @@ pub fn browser_action_menu(
             if chromium && profile_discovery == BrowserProfileDiscoveryState::Failed {
                 let refresh_profiles = Rc::clone(&refresh_profiles);
                 profile_menu = profile_menu.separator().item(
-                    PopupMenuItem::new("Retry Chrome profile discovery")
+                    PopupMenuItem::new("Retry browser profile discovery")
                         .icon(IconName::Redo2)
                         .on_click(move |_, window, cx| refresh_profiles(window, cx)),
                 );
@@ -1092,7 +1144,10 @@ pub fn browser_action_menu(
     let zoom_out = Rc::clone(&actions.zoom_out);
     let reset_zoom = Rc::clone(&actions.reset_zoom);
     let clear_site_data = Rc::clone(&actions.clear_site_data);
+    let find_in_page = Rc::clone(&actions.find_in_page);
     let reload = Rc::clone(&actions.reload);
+    let hard_reload = Rc::clone(&actions.hard_reload);
+    let save_as_pdf = Rc::clone(&actions.save_as_pdf);
     let toggle_picker = Rc::clone(&actions.toggle_picker);
     let dev_tools = Rc::clone(&actions.dev_tools);
     let zoom_percent = actions.zoom_percent.clone();
@@ -1120,28 +1175,48 @@ pub fn browser_action_menu(
         menu
     };
 
-    let menu = menu
+    let mut menu = menu
         .item(
             PopupMenuItem::new("Clear site data…")
                 .icon(IconName::Xmark)
                 .disabled(!state.can_clear_site_data)
                 .on_click(move |_, window, cx| clear_site_data(window, cx)),
         )
-        .separator()
-        .item(
-            PopupMenuItem::new("Reload")
-                .icon(IconName::Redo2)
-                .on_click(move |_, window, cx| reload(window, cx)),
-        )
-        .item(
-            PopupMenuItem::new(if state.picker_active {
-                "Cancel element picker"
-            } else {
-                "Pick an element"
-            })
-            .icon(IconName::Inspector)
-            .on_click(move |_, window, cx| toggle_picker(window, cx)),
+        .separator();
+    if chromium {
+        menu = menu.item(
+            PopupMenuItem::new("Find in page…")
+                .icon(IconName::Search)
+                .on_click(move |_, window, cx| find_in_page(window, cx)),
         );
+    }
+    menu = menu.item(
+        PopupMenuItem::new("Reload")
+            .icon(IconName::Redo2)
+            .on_click(move |_, window, cx| reload(window, cx)),
+    );
+    if chromium {
+        menu = menu
+            .item(
+                PopupMenuItem::new("Hard reload")
+                    .icon(IconName::Redo2)
+                    .on_click(move |_, window, cx| hard_reload(window, cx)),
+            )
+            .item(
+                PopupMenuItem::new("Save page as PDF…")
+                    .icon(IconName::File)
+                    .on_click(move |_, window, cx| save_as_pdf(window, cx)),
+            );
+    }
+    menu = menu.item(
+        PopupMenuItem::new(if state.picker_active {
+            "Cancel element picker"
+        } else {
+            "Pick an element"
+        })
+        .icon(IconName::Inspector)
+        .on_click(move |_, window, cx| toggle_picker(window, cx)),
+    );
     if !chromium {
         return menu;
     }
@@ -1161,13 +1236,14 @@ fn chrome_import_items(
 ) -> PopupMenu {
     let import_chrome_data = Rc::clone(&actions.import_chrome_data);
     let import_cookies = Rc::clone(&actions.import_cookies);
+    let paste_cookies = Rc::clone(&actions.paste_cookies);
     let import_profiles = state.profiles.clone();
     let import_profile_discovery = state.profile_discovery;
     let can_import_chrome_data = state.can_import_chrome_data;
     let refresh_profiles = Rc::clone(&actions.refresh_profiles);
     menu.submenu_with_icon(
         Some(Icon::new(IconName::Globe)),
-        "Import Chrome data",
+        "Import browser data",
         window,
         cx,
         move |import_menu, _, _| {
@@ -1179,13 +1255,13 @@ fn chrome_import_items(
                     .item(PopupMenuItem::new("Not supported on this platform").disabled(true));
             }
             if import_profile_discovery == BrowserProfileDiscoveryState::Loading {
-                import_menu =
-                    import_menu.item(PopupMenuItem::new("Finding Chrome profiles…").disabled(true));
+                import_menu = import_menu
+                    .item(PopupMenuItem::new("Finding browser profiles…").disabled(true));
             } else if import_profiles.is_empty()
                 && import_profile_discovery == BrowserProfileDiscoveryState::Ready
             {
-                import_menu =
-                    import_menu.item(PopupMenuItem::new("No Chrome profiles found").disabled(true));
+                import_menu = import_menu
+                    .item(PopupMenuItem::new("No browser profiles found").disabled(true));
             } else {
                 for profile in &import_profiles {
                     let action = Rc::clone(&import_chrome_data);
@@ -1200,7 +1276,7 @@ fn chrome_import_items(
             if import_profile_discovery == BrowserProfileDiscoveryState::Failed {
                 let refresh_profiles = Rc::clone(&refresh_profiles);
                 import_menu = import_menu.separator().item(
-                    PopupMenuItem::new("Retry Chrome profile discovery")
+                    PopupMenuItem::new("Retry browser profile discovery")
                         .icon(IconName::Redo2)
                         .on_click(move |_, window, cx| refresh_profiles(window, cx)),
                 );
@@ -1208,10 +1284,27 @@ fn chrome_import_items(
             import_menu
         },
     )
-    .item(
-        PopupMenuItem::new("Import cookie file…")
-            .icon(IconName::File)
-            .on_click(move |_, window, cx| import_cookies(window, cx)),
+    .submenu_with_icon(
+        Some(Icon::new(IconName::File)),
+        "Import cookies",
+        window,
+        cx,
+        move |cookie_menu, _, _| {
+            let import_cookies = Rc::clone(&import_cookies);
+            let paste_cookies = Rc::clone(&paste_cookies);
+            cookie_menu
+                .min_w(px(240.0))
+                .item(
+                    PopupMenuItem::new("Import from file…")
+                        .icon(IconName::File)
+                        .on_click(move |_, window, cx| import_cookies(window, cx)),
+                )
+                .item(
+                    PopupMenuItem::new("Paste from clipboard")
+                        .icon(IconName::Copy)
+                        .on_click(move |_, window, cx| paste_cookies(window, cx)),
+                )
+        },
     )
 }
 
@@ -1242,6 +1335,178 @@ impl RenderOnce for BrowserErrorPanel {
             .id("browser-error")
             .max_w(px(360.0))
             .children(self.retry.map(|retry| alert_actions(cx).child(retry)))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BrowserFindAction {
+    ToggleCase,
+    Previous,
+    Next,
+    Close,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BrowserFindState {
+    pub case_sensitive: bool,
+    pub has_query: bool,
+    pub matches: Option<(i32, i32)>,
+}
+
+#[must_use]
+pub fn browser_find_result_text(has_query: bool, matches: Option<(i32, i32)>) -> String {
+    if !has_query {
+        return String::new();
+    }
+    match matches {
+        Some((active, total)) if total > 0 => format!("{active} of {total}"),
+        Some((_, 0)) => "No matches".to_owned(),
+        _ => String::new(),
+    }
+}
+
+pub fn browser_find_bar(
+    input: &Entity<InputState>,
+    state: BrowserFindState,
+    on_action: impl Fn(BrowserFindAction, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Panel {
+    let on_action = Rc::new(on_action);
+    let enabled = state.has_query && state.matches.is_some_and(|(_, total)| total > 0);
+    let ground = cx.theme().ground_of(PanelLook::Popover);
+    let button = |id: &'static str, icon: IconName, action: BrowserFindAction| {
+        let on_action = Rc::clone(&on_action);
+        Button::compact_icon(id, icon)
+            .ghost()
+            .look(ButtonLook::Flat)
+            .on(ground)
+            .on_click(move |_, window, cx| {
+                on_action(action, window, cx);
+                cx.stop_propagation();
+            })
+    };
+    Panel::new("browser-find", PanelLook::Popover)
+        .debug_selector(|| "browser-find".to_owned())
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap(px(4.0))
+        .w(px(360.0))
+        .max_w_full()
+        .p(px(4.0))
+        .occlude()
+        .font_family(cx.theme().font_family.clone())
+        .type_style(TextStyle::Body, cx)
+        .line_height(px(16.0))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+        .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
+        .on_mouse_up(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+        .on_mouse_up(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
+        .on_mouse_move(|_, _, cx| cx.stop_propagation())
+        .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+        .child(
+            div().flex_1().min_w(px(110.0)).child(
+                Input::new(input)
+                    .on(ground)
+                    .prefix(Icon::new(IconName::Search).size(px(13.0))),
+            ),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .gap(px(2.0))
+                .ml_auto()
+                .child(
+                    Label::new(
+                        TextStyle::Caption,
+                        browser_find_result_text(state.has_query, state.matches),
+                    )
+                    .px(px(4.0))
+                    .text_color(cx.theme().foreground.muted()),
+                )
+                .child(
+                    button(
+                        "browser-find-case",
+                        IconName::CaseSensitive,
+                        BrowserFindAction::ToggleCase,
+                    )
+                    .selected(state.case_sensitive)
+                    .tooltip(if state.case_sensitive {
+                        "Match case (on)"
+                    } else {
+                        "Match case"
+                    }),
+                )
+                .child(
+                    button(
+                        "browser-find-previous",
+                        IconName::ChevronUp,
+                        BrowserFindAction::Previous,
+                    )
+                    .disabled(!enabled)
+                    .tooltip("Previous match"),
+                )
+                .child(
+                    button(
+                        "browser-find-next",
+                        IconName::ChevronDown,
+                        BrowserFindAction::Next,
+                    )
+                    .disabled(!enabled)
+                    .tooltip("Next match"),
+                )
+                .child(
+                    button(
+                        "browser-find-close",
+                        IconName::Xmark,
+                        BrowserFindAction::Close,
+                    )
+                    .tooltip("Close find bar"),
+                ),
+        )
+}
+
+#[derive(IntoElement)]
+pub struct BrowserStatusChip {
+    message: SharedString,
+}
+
+impl BrowserStatusChip {
+    pub fn new(message: impl Into<SharedString>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl RenderOnce for BrowserStatusChip {
+    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
+        div()
+            .absolute()
+            .left(px(8.0))
+            .bottom(px(8.0))
+            .max_w(px(360.0))
+            .child(
+                Chip::empty("browser-status-chip")
+                    .debug_selector(|| "browser-status-chip".into())
+                    .look(ChipLook::Floating)
+                    .h(px(24.0))
+                    .px(px(8.0))
+                    .max_w_full()
+                    .type_style(TextStyle::Caption, cx)
+                    .child(
+                        div()
+                            .min_w_0()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .overflow_hidden()
+                            .child(self.message),
+                    ),
+            )
     }
 }
 
@@ -1850,5 +2115,109 @@ mod tests {
 
         cx.simulate_click(second.center(), Modifiers::none());
         assert_eq!(*accepted.lock().unwrap(), [1]);
+    }
+
+    #[test]
+    fn find_result_text_matches_query_and_counts() {
+        assert_eq!(browser_find_result_text(false, Some((1, 5))), "");
+        assert_eq!(browser_find_result_text(true, None), "");
+        assert_eq!(browser_find_result_text(true, Some((0, 0))), "No matches");
+        assert_eq!(browser_find_result_text(true, Some((2, 14))), "2 of 14");
+    }
+
+    #[ala::test]
+    fn header_progress_find_bar_and_status_chip_render_and_dispatch(cx: &mut TestAppContext) {
+        struct OverlayTest {
+            progress: Option<f32>,
+            address: Entity<InputState>,
+            find_input: Entity<InputState>,
+            actions: Arc<Mutex<Vec<BrowserFindAction>>>,
+        }
+
+        impl Render for OverlayTest {
+            fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+                let button = |id, icon| browser_toolbar_button(cx, id, icon, id, false, false);
+                let actions = Arc::clone(&self.actions);
+                div()
+                    .w(px(600.0))
+                    .h(px(300.0))
+                    .relative()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        BrowserHeader::new(
+                            true,
+                            BrowserTabStrip::new(vec![BrowserTabInfo::new(1, "Tab 1", "")], 0),
+                            PaneActions::new(Vec::new(), |_, _, _| {}),
+                            BrowserToolbar::new(
+                                button("b", IconName::ArrowLeft),
+                                button("f", IconName::ArrowRight),
+                                button("r", IconName::Redo2),
+                                browser_address(
+                                    &self.address,
+                                    browser_site_controls_button(cx),
+                                    window,
+                                    cx,
+                                ),
+                                button("p", IconName::Inspector),
+                                button("m", IconName::EllipsisVertical),
+                            ),
+                        )
+                        .loading_progress(self.progress),
+                    )
+                    .child(
+                        div()
+                            .relative()
+                            .flex_1()
+                            .child(browser_find_bar(
+                                &self.find_input,
+                                BrowserFindState {
+                                    case_sensitive: false,
+                                    has_query: true,
+                                    matches: Some((2, 14)),
+                                },
+                                move |action, _, _| actions.lock().unwrap().push(action),
+                                cx,
+                            ))
+                            .child(BrowserStatusChip::new("https://example.com/docs")),
+                    )
+            }
+        }
+
+        cx.update(crate::init);
+        let actions = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&actions);
+        let (view, cx) = cx.add_window_view(move |window, cx| OverlayTest {
+            progress: Some(0.5),
+            address: cx.new(|cx| InputState::new(window, cx)),
+            find_input: cx.new(|cx| InputState::new(window, cx)),
+            actions: captured,
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+
+        let bar = cx
+            .debug_bounds("browser-loading-progress")
+            .expect("loading progress renders while in flight");
+        assert_eq!(bar.size.width, px(300.0));
+        assert_eq!(bar.size.height, px(2.0));
+        let chip = cx
+            .debug_bounds("browser-status-chip")
+            .expect("status chip renders");
+        assert_eq!(chip.size.height, px(24.0));
+        assert!(cx.debug_bounds("browser-find").is_some());
+
+        view.update(cx, |view, cx| {
+            view.progress = Some(1.0);
+            cx.notify();
+        });
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        assert!(cx.debug_bounds("browser-loading-progress").is_none());
+        assert!(actions.lock().unwrap().is_empty());
     }
 }

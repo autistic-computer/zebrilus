@@ -251,11 +251,38 @@ impl BrowserKey {
             Self::Insert => 0x2d,
             Self::Delete => 0x2e,
             Self::Function(number @ 1..=24) => 0x70 + i32::from(number) - 1,
-            Self::Character(character) => {
-                i32::try_from(u32::from(character.to_ascii_uppercase())).unwrap_or(0)
-            }
+            Self::Character(character) => ascii_virtual_key_code(character),
             Self::Unidentified | Self::Function(_) => 0,
         }
+    }
+}
+
+const fn ascii_virtual_key_code(character: char) -> i32 {
+    match character {
+        '0' | ')' => 0x30,
+        '1' | '!' => 0x31,
+        '2' | '@' => 0x32,
+        '3' | '#' => 0x33,
+        '4' | '$' => 0x34,
+        '5' | '%' => 0x35,
+        '6' | '^' => 0x36,
+        '7' | '&' => 0x37,
+        '8' | '*' => 0x38,
+        '9' | '(' => 0x39,
+        'a'..='z' | 'A'..='Z' => character.to_ascii_uppercase() as i32,
+        ' ' => 0x20,
+        ';' | ':' => 0xba,
+        '=' | '+' => 0xbb,
+        ',' | '<' => 0xbc,
+        '-' | '_' => 0xbd,
+        '.' | '>' => 0xbe,
+        '/' | '?' => 0xbf,
+        '`' | '~' => 0xc0,
+        '[' | '{' => 0xdb,
+        '\\' | '|' => 0xdc,
+        ']' | '}' => 0xdd,
+        '\'' | '"' => 0xde,
+        _ => 0,
     }
 }
 
@@ -376,5 +403,11 @@ mod tests {
         assert_eq!(BrowserKey::ArrowLeft.windows_key_code(), 0x25);
         assert_eq!(BrowserKey::Function(12).windows_key_code(), 0x7b);
         assert_eq!(BrowserKey::Character('a').windows_key_code(), 0x41);
+        assert_eq!(BrowserKey::Character('.').windows_key_code(), 0xbe);
+        assert_eq!(BrowserKey::Character('-').windows_key_code(), 0xbd);
+        assert_eq!(BrowserKey::Character('\'').windows_key_code(), 0xde);
+        assert_eq!(BrowserKey::Character('(').windows_key_code(), 0x39);
+        assert_eq!(BrowserKey::Character('/').windows_key_code(), 0xbf);
+        assert_eq!(BrowserKey::Character('é').windows_key_code(), 0);
     }
 }

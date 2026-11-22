@@ -101,33 +101,37 @@ profiles. See [remote browser egress](/designs/remote-browser-egress.md).
 
 - `new-window --kind browser --profile Work [URL]` and `split-window --kind browser --profile Work [URL]` persist `Work` in
   the pane's `BrowserDescriptor`.
-- The browser menu displays the current profile. Its **Switch profile** submenu
-  offers the default zz profile plus stable Google Chrome profiles detected from
-  Chrome's `Local State` metadata; selecting an entry executes
+- The browser menu displays the current profile. Its **Profile** submenu
+  offers the default zz profile plus Chromium-family browser profiles detected
+  from each browser's `Local State` metadata; selecting an entry executes
   `set-browser-profile -t <pane> <name>`. The daemon updates the descriptor and
   only that pane is recreated against the selected context.
 - Each detected identity maps deterministically to a zz-owned name of the form
-  `chrome:<Chrome storage key>`. Selecting it creates that separate zz profile on
-  first use; returning to it restores only the state accumulated in zz.
-- **Import Chrome data** reuses the detected identities as read-only source
+  `chrome:<storage key>` (for stable Google Chrome) or
+  `<browser-slug>:<storage key>` for other Chromium browsers. Selecting it
+  creates that separate zz profile on first use; returning to it restores only
+  the state accumulated in zz.
+- **Import browser data** reuses the detected identities as read-only source
   profiles without switching the pane. The pane's current zz profile remains the
   cookie destination, and imported history remains app-owned rather than entering CEF.
 - Discovery begins in the background when the browser view mounts, not while a
   popup menu is open. Failures retain any sanitized cached labels and expose
-  **Retry Chrome profile discovery**; zz does not replace the OS permission flow
+  **Retry browser profile discovery**; zz does not replace the OS permission flow
   with a file chooser.
 
-## Installed Chrome discovery
+## Installed browser discovery
 
 `libs/ala-cef/src/chrome_import/profiles.rs` refreshes the chooser once in the background
-when the browser view mounts. It reads at most 16 MiB from the stable Google
-Chrome `Local State` file for the current OS:
+when the browser view mounts. It reads at most 16 MiB from each installed
+Chromium-family browser's `Local State` file (Google Chrome Stable/Beta/Canary,
+Chromium, Brave, Microsoft Edge, Vivaldi, Arc, plus Linux Flatpak and Snap
+installations of Chrome, Chromium, Brave, and Edge):
 
-| Platform | Metadata path |
+| Platform | Metadata roots |
 | --- | --- |
-| Linux | `$XDG_CONFIG_HOME/google-chrome/Local State` or `~/.config/google-chrome/Local State` |
-| macOS | `~/Library/Application Support/Google/Chrome/Local State` |
-| Windows | `%LOCALAPPDATA%\Google\Chrome\User Data\Local State` |
+| Linux | `$XDG_CONFIG_HOME` / `~/.config` (`google-chrome`, `google-chrome-beta`, `google-chrome-unstable`, `chromium`, `BraveSoftware/Brave-Browser`, `microsoft-edge`, `vivaldi`), plus Flatpak (`~/.var/app/*/config/...`) and Snap (`~/snap/*/current/.config/...`) |
+| macOS | `~/Library/Application Support/` (`Google/Chrome`, `Google/Chrome Beta`, `Google/Chrome Canary`, `Chromium`, `BraveSoftware/Brave-Browser`, `Microsoft Edge`, `Vivaldi`, `Arc/User Data`) |
+| Windows | `%LOCALAPPDATA%\` (`Google\Chrome\User Data`, `Google\Chrome Beta\User Data`, `Google\Chrome SxS\User Data`, `Chromium\User Data`, `BraveSoftware\Brave-Browser\User Data`, `Microsoft\Edge\User Data`, `Vivaldi\User Data`) |
 
 Only `profile.info_cache` display metadata and `profile.profiles_order` are
 used. Stable signed-in and signed-out entries are included; entries with
@@ -169,28 +173,34 @@ discovery after the user changes permission.
 - Persisted beside the root (never read by CEF): the bounded, user-only Chrome
   profile-label cache described above. It contains no Chrome browsing state or
   credential material.
-- Explicit **Import Chrome data** chooses a detected Chrome source profile, then
-  snapshots its cookie SQLite database plus available WAL/SHM sidecars into a
-  user-private temporary directory bounded to 512 MiB. Every usable unpartitioned
-  cookie is normalized in bounded chunks without a 10,000-row profile truncation,
-  deduplicated by name/domain/path (later expiry wins), and written to the pane's
-  current zz profile. Encrypted values are unlocked through macOS Keychain or Linux
-  Secret Service; those services may show their own consent prompt.
-- The same explicit action snapshots Chrome's `History` database read-only and
+- Explicit **Import browser data** chooses a detected browser source profile,
+  then snapshots its cookie SQLite database plus available `-wal` and `-journal`
+  sidecars (never `-shm`, recovering WAL in a writable temp copy with retries)
+  into a user-private temporary directory bounded to 512 MiB. Cookies are
+  normalized directly without a JSON round-trip, deduplicated by
+  `(domain, path, name, partition_key)` with newest update/creation/expiry
+  winning, and written to the pane's current zz profile (queued cleanly if the
+  session is still starting). Encrypted values are unlocked through per-browser
+  macOS Keychain entries, Linux Secret Service (`oo7`) or KDE KWallet 5/6
+  (`zbus`) with bounded timeouts, or Windows DPAPI `Local State` master keys
+  (`v10`/`v11`, while `v20` App-Bound cookies are skipped and counted explicitly
+  in `app_bound_skipped`). Those services may show their own consent prompt.
+- The same explicit action snapshots the source profile's `History` database and
   merges the newest 5,000 HTTP(S) URLs, titles, visit counts, typed counts, and
   visit times into the current logical zz profile, deduplicated by URL.
   Cookie and history snapshots, decrypted values, and derived keys are discarded
   after the operation; no raw rows or values enter diagnostics.
-- Explicit cookie-file import accepts Cookie-Editor JSON and Netscape
-  `cookies.txt`, normalizes supported records in `cookie.rs`, writes them only
-  through CEF's `CookieManager`, and flushes the profile store. Invalid,
-  expired, partitioned, or otherwise unrepresentable records are skipped and
-  counted; automatic Chrome imports pass through the same normalization and CEF
-  write path. Values and raw rows never enter diagnostics.
+- Explicit **Import cookies** offers **Import from file…** (Cookie-Editor JSON
+  and Netscape `cookies.txt`) and **Paste from clipboard**. Both normalize
+  records in `cookie.rs` with RFC 6265bis validation; unpartitioned cookies
+  write through CEF's `CookieManager` and CHIPS partitioned cookies write
+  through CDP `Network.setCookie` on the live session, then flush the profile
+  store. Invalid, expired, or unrepresentable records are skipped and counted.
+  Values and raw rows never enter diagnostics.
 - **Not** imported: cache, local storage, saved passwords, autofill data, or
-  partitioned cookies. Chrome profile switching still names isolated zz storage;
-  source selection for import never reuses Chrome's request context or writes to
-  Chrome's files.
+  Windows Chrome `v20` App-Bound cookies. Profile switching still names isolated
+  zz storage; source selection for import never reuses a browser's live request
+  context or writes to its files.
 
 ## Clearing current-site data
 

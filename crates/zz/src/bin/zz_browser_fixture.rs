@@ -1090,6 +1090,14 @@ impl SharedTextureSpikeView {
                 BrowserEvent::AddressChanged { .. }
                 | BrowserEvent::TitleChanged { .. }
                 | BrowserEvent::LoadingChanged { .. }
+                | BrowserEvent::LoadingProgressChanged { .. }
+                | BrowserEvent::StatusMessageChanged { .. }
+                | BrowserEvent::FullscreenModeChanged { .. }
+                | BrowserEvent::FindResult { .. }
+                | BrowserEvent::FileDialogRequested { .. }
+                | BrowserEvent::JsDialogRequested { .. }
+                | BrowserEvent::DownloadRequested { .. }
+                | BrowserEvent::DownloadUpdated { .. }
                 | BrowserEvent::CursorChanged { .. }
                 | BrowserEvent::ImeCompositionChanged { .. }
                 | BrowserEvent::ElementPicked { .. }
@@ -1541,6 +1549,14 @@ fn handle_session_events(
             BrowserEvent::AddressChanged { .. }
             | BrowserEvent::TitleChanged { .. }
             | BrowserEvent::LoadingChanged { .. }
+            | BrowserEvent::LoadingProgressChanged { .. }
+            | BrowserEvent::StatusMessageChanged { .. }
+            | BrowserEvent::FullscreenModeChanged { .. }
+            | BrowserEvent::FindResult { .. }
+            | BrowserEvent::FileDialogRequested { .. }
+            | BrowserEvent::JsDialogRequested { .. }
+            | BrowserEvent::DownloadRequested { .. }
+            | BrowserEvent::DownloadUpdated { .. }
             | BrowserEvent::CursorChanged { .. }
             | BrowserEvent::ImeCompositionChanged { .. }
             | BrowserEvent::ElementPicked { .. }

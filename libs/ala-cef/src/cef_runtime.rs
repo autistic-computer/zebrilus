@@ -57,10 +57,11 @@ use crate::page_zoom::CHROMIUM_ZOOM_STEP;
 use crate::{
     BrowserCookie, BrowserCookiePriority, BrowserCookieSameSite, BrowserCursor, BrowserEvent,
     BrowserGpuContext, BrowserKey, BrowserProfileError, BrowserProfilePaths, ContextMenuRequest,
-    CookieImportBatch, CookieImportResult, DEFAULT_BROWSER_PROFILE, EditCommand, EditFlags,
-    FrameMailbox, ImeCharacterBounds, KeyAction, KeyInput, Modifiers, OsrFrame, PointerButton,
-    PointerEvent, PointerPhase, RuntimePhase, SessionId, SessionPhase, SiteDataClearResult,
-    Viewport, WheelEvent,
+    CookieImportBatch, CookieImportResult, DEFAULT_BROWSER_PROFILE, DownloadProgress,
+    DownloadRequest, EditCommand, EditFlags, FileDialogKind, FileDialogRequest, FrameMailbox,
+    ImeCharacterBounds, JsDialogKind, JsDialogRequest, KeyAction, KeyInput, Modifiers, OsrFrame,
+    PdfPrintResult, PointerButton, PointerEvent, PointerPhase, RuntimePhase, SessionId,
+    SessionPhase, SiteDataClearResult, Viewport, WheelEvent,
     element_picker::{
         ElementPickOutcome, ElementPickState, PickGeometry, element_picker_start_script,
     },
@@ -102,6 +103,9 @@ pub struct RuntimeConfig {
     pub external_begin_frame: bool,
     pub begin_frame_adaptive: bool,
     pub remote_debugging_port: Option<u16>,
+    pub ax_viewport_collapse: bool,
+    pub keychain_service_name: Option<&'static str>,
+    pub keychain_account_name: Option<&'static str>,
 }
 
 impl Default for RuntimeConfig {
@@ -115,6 +119,9 @@ impl Default for RuntimeConfig {
             external_begin_frame: cfg!(target_os = "macos"),
             begin_frame_adaptive: false,
             remote_debugging_port: None,
+            ax_viewport_collapse: false,
+            keychain_service_name: None,
+            keychain_account_name: None,
         }
     }
 }
@@ -554,6 +561,9 @@ pub struct BrowserRuntime {
     shared_texture_enabled: bool,
     external_begin_frame_enabled: bool,
     begin_frame_adaptive_enabled: bool,
+    ax_viewport_collapse: bool,
+    keychain_service_name: Option<&'static str>,
+    keychain_account_name: Option<&'static str>,
     log_file: Option<PathBuf>,
     background_color: u32,
     #[cfg(target_os = "macos")]
@@ -714,6 +724,7 @@ impl BrowserRuntime {
             no_sandbox: 0,
             external_message_pump: 1,
             windowless_rendering_enabled: 1,
+            disable_signal_handlers: 1,
             root_cache_path: path_to_cef_string(&self.profile_paths.root),
             persist_session_cookies: 1,
             log_severity: LogSeverity::WARNING,
@@ -723,6 +734,14 @@ impl BrowserRuntime {
                 .map(path_to_cef_string)
                 .unwrap_or_default(),
             background_color: self.background_color,
+            keychain_service_name: self
+                .keychain_service_name
+                .map(CefString::from)
+                .unwrap_or_default(),
+            keychain_account_name: self
+                .keychain_account_name
+                .map(CefString::from)
+                .unwrap_or_default(),
             ..Default::default()
         };
         #[cfg(target_os = "macos")]
@@ -911,6 +930,9 @@ impl BrowserRuntime {
                         Some(global_error),
                     ) != 0
                 });
+                let _ = Self::with_error_string(|restore_error| {
+                    manager.set_preference(Some(&bool_name), None, Some(restore_error)) != 0
+                });
                 format!("set_ok={set} error={global_error:?}")
             },
         );
@@ -995,6 +1017,23 @@ impl BrowserRuntime {
         profile: &str,
         batch: CookieImportBatch,
     ) -> Result<Receiver<CookieImportResult>, BrowserError> {
+        self.import_cookies_inner(profile, None, batch)
+    }
+
+    pub fn import_cookies_for_session(
+        &self,
+        session: &BrowserSession,
+        batch: CookieImportBatch,
+    ) -> Result<Receiver<CookieImportResult>, BrowserError> {
+        self.import_cookies_inner(session.profile(), Some(session), batch)
+    }
+
+    fn import_cookies_inner(
+        &self,
+        profile: &str,
+        session: Option<&BrowserSession>,
+        batch: CookieImportBatch,
+    ) -> Result<Receiver<CookieImportResult>, BrowserError> {
         if self.phase() != RuntimePhase::Running {
             return Err(BrowserError::NotReady);
         }
@@ -1016,12 +1055,22 @@ impl BrowserRuntime {
             imported: 0,
             rejected: 0,
             skipped: batch.skipped,
+            app_bound_skipped: batch.app_bound_skipped,
             manager: manager.clone(),
             results,
             operation: ActiveCountGuard::new(Arc::clone(&self.active_data_operations)),
         }));
 
         for cookie in batch.cookies {
+            if cookie.partition_key.is_some() {
+                let injected = session.is_some_and(|session| {
+                    session.import_partitioned_cookie(&cookie, Arc::clone(&progress))
+                });
+                if !injected {
+                    finish_cookie_import(&progress, false);
+                }
+                continue;
+            }
             let Some(cef_cookie) = cef_cookie(&cookie) else {
                 finish_cookie_import(&progress, false);
                 continue;
@@ -1059,6 +1108,10 @@ impl BrowserRuntime {
             .filter(|profile| profile.ready)
             .ok_or(BrowserError::RequestContext)?;
         let request_context = profile_context.context.clone();
+        let frame_rate = windowless_frame_rate
+            .unwrap_or(self.windowless_frame_rate)
+            .clamp(1, MAX_BROWSER_FRAME_RATE);
+        let shared_texture = self.shared_texture_enabled && allow_shared_texture;
 
         let config = SessionConfig {
             profile: Arc::from(profile),
@@ -1068,6 +1121,10 @@ impl BrowserRuntime {
             active_data_operations: Arc::clone(&self.active_data_operations),
             #[cfg(not(target_os = "macos"))]
             gpu_context,
+            shared_texture_enabled: shared_texture,
+            windowless_frame_rate: frame_rate,
+            background_color: self.background_color,
+            ax_viewport_collapse: self.ax_viewport_collapse,
             external_begin_frame_enabled: self.external_begin_frame_enabled,
         };
         #[cfg(target_os = "macos")]
@@ -1076,17 +1133,12 @@ impl BrowserRuntime {
         let mut client = prepared.client(None);
 
         let window_info = WindowInfo {
-            shared_texture_enabled: i32::from(self.shared_texture_enabled && allow_shared_texture),
+            shared_texture_enabled: i32::from(shared_texture),
             external_begin_frame_enabled: i32::from(self.external_begin_frame_enabled),
             ..WindowInfo::default().set_as_windowless(Default::default())
         };
-        let browser_settings = BrowserSettings {
-            windowless_frame_rate: windowless_frame_rate
-                .unwrap_or(self.windowless_frame_rate)
-                .clamp(1, MAX_BROWSER_FRAME_RATE),
-            background_color: self.background_color,
-            ..Default::default()
-        };
+        let browser_settings =
+            build_browser_settings(frame_rate, self.background_color, self.ax_viewport_collapse);
         let url = CefString::from(initial_url);
         let mut context = prepared.config.request_context.clone();
         let Some(browser) = browser_host_create_browser_sync(
@@ -1145,9 +1197,108 @@ struct CookieImportProgress {
     imported: usize,
     rejected: usize,
     skipped: usize,
+    app_bound_skipped: usize,
     manager: CookieManager,
     results: Sender<CookieImportResult>,
     operation: ActiveCountGuard,
+}
+
+fn build_browser_settings(
+    windowless_frame_rate: i32,
+    background_color: u32,
+    ax_viewport_collapse: bool,
+) -> BrowserSettings {
+    BrowserSettings {
+        windowless_frame_rate: windowless_frame_rate.clamp(1, MAX_BROWSER_FRAME_RATE),
+        background_color,
+        chrome_status_bubble: State::DISABLED,
+        chrome_zoom_bubble: State::DISABLED,
+        ax_viewport_collapse: if ax_viewport_collapse {
+            State::ENABLED
+        } else {
+            State::DEFAULT
+        },
+        ..Default::default()
+    }
+}
+
+fn cdp_set_cookie_params(cookie: &BrowserCookie) -> Option<DictionaryValue> {
+    let params = dictionary_value_create()?;
+    let mut ok = params.set_string(
+        Some(&CefString::from("name")),
+        Some(&CefString::from(cookie.name.as_str())),
+    ) != 0
+        && params.set_string(
+            Some(&CefString::from("value")),
+            Some(&CefString::from(cookie.value.as_str())),
+        ) != 0
+        && params.set_string(
+            Some(&CefString::from("url")),
+            Some(&CefString::from(cookie.source_url.as_str())),
+        ) != 0
+        && params.set_string(
+            Some(&CefString::from("path")),
+            Some(&CefString::from(cookie.path.as_str())),
+        ) != 0
+        && params.set_bool(Some(&CefString::from("secure")), i32::from(cookie.secure)) != 0
+        && params.set_bool(
+            Some(&CefString::from("httpOnly")),
+            i32::from(cookie.http_only),
+        ) != 0;
+    if !cookie.domain.is_empty() {
+        ok &= params.set_string(
+            Some(&CefString::from("domain")),
+            Some(&CefString::from(cookie.domain.as_str())),
+        ) != 0;
+    }
+    if let Some(expires_micros) = cookie.expires_unix_micros {
+        let expires_secs = expires_micros as f64 / 1_000_000.0;
+        ok &= params.set_double(Some(&CefString::from("expires")), expires_secs) != 0;
+    }
+    let same_site = match cookie.same_site {
+        BrowserCookieSameSite::Unspecified => None,
+        BrowserCookieSameSite::NoRestriction => Some("None"),
+        BrowserCookieSameSite::Lax => Some("Lax"),
+        BrowserCookieSameSite::Strict => Some("Strict"),
+    };
+    if let Some(same_site) = same_site {
+        ok &= params.set_string(
+            Some(&CefString::from("sameSite")),
+            Some(&CefString::from(same_site)),
+        ) != 0;
+    }
+    let priority = match cookie.priority {
+        BrowserCookiePriority::Low => "Low",
+        BrowserCookiePriority::Medium => "Medium",
+        BrowserCookiePriority::High => "High",
+    };
+    ok &= params.set_string(
+        Some(&CefString::from("priority")),
+        Some(&CefString::from(priority)),
+    ) != 0;
+    if let Some(partition) = &cookie.partition_key {
+        let mut key = dictionary_value_create()?;
+        ok &= key.set_string(
+            Some(&CefString::from("topLevelSite")),
+            Some(&CefString::from(partition.top_level_site.as_str())),
+        ) != 0
+            && key.set_bool(
+                Some(&CefString::from("hasCrossSiteAncestor")),
+                i32::from(partition.has_cross_site_ancestor),
+            ) != 0
+            && params.set_dictionary(Some(&CefString::from("partitionKey")), Some(&mut key)) != 0;
+    }
+    ok.then_some(params)
+}
+
+#[derive(Deserialize)]
+struct CdpCookieSetResponse {
+    #[serde(default)]
+    success: bool,
+}
+
+fn decode_cdp_cookie_result(result: &[u8]) -> bool {
+    serde_json::from_slice::<CdpCookieSetResponse>(result).is_ok_and(|response| response.success)
 }
 
 #[derive(Clone)]
@@ -1240,6 +1391,7 @@ fn finish_cookie_import(progress: &Arc<Mutex<CookieImportProgress>>, success: bo
                     imported: progress.imported,
                     skipped: progress.skipped,
                     rejected: progress.rejected,
+                    app_bound_skipped: progress.app_bound_skipped,
                     persisted: false,
                 },
             )
@@ -1297,8 +1449,41 @@ impl BrowserCommandSink {
         self.browser.reload();
     }
 
+    pub fn reload_ignore_cache(&self) {
+        self.browser.reload_ignore_cache();
+    }
+
     pub fn stop_loading(&self) {
         self.browser.stop_load();
+    }
+
+    pub fn find(&self, search_text: &str, forward: bool, match_case: bool, find_next: bool) {
+        if let Some(host) = self.browser.host() {
+            host.find(
+                Some(&CefString::from(search_text)),
+                i32::from(forward),
+                i32::from(match_case),
+                i32::from(find_next),
+            );
+        }
+    }
+
+    pub fn stop_finding(&self, clear_selection: bool) {
+        if let Some(host) = self.browser.host() {
+            host.stop_finding(i32::from(clear_selection));
+        }
+    }
+
+    pub fn replace_misspelling(&self, word: &str) {
+        if let Some(host) = self.browser.host() {
+            host.replace_misspelling(Some(&CefString::from(word)));
+        }
+    }
+
+    pub fn add_word_to_dictionary(&self, word: &str) {
+        if let Some(host) = self.browser.host() {
+            host.add_word_to_dictionary(Some(&CefString::from(word)));
+        }
     }
 
     pub fn edit(&self, command: EditCommand) {
@@ -1348,6 +1533,10 @@ struct SessionConfig {
     active_data_operations: Arc<AtomicU64>,
     #[cfg(not(target_os = "macos"))]
     gpu_context: Option<BrowserGpuContext>,
+    shared_texture_enabled: bool,
+    windowless_frame_rate: i32,
+    background_color: u32,
+    ax_viewport_collapse: bool,
     external_begin_frame_enabled: bool,
 }
 
@@ -1394,7 +1583,16 @@ impl SessionConfig {
             d3d11_frames: d3d11_frames.clone(),
             shared_texture_fallback_notified: Arc::new(AtomicBool::new(false)),
             element_pick: element_pick.clone(),
+            picker_injected: Arc::new(AtomicBool::new(false)),
             pending_capture: Arc::clone(&pending_capture),
+            next_devtools_id: Arc::new(AtomicI32::new(1)),
+            pending_devtools: Arc::new(Mutex::new(BTreeMap::new())),
+            next_dialog_id: Arc::new(AtomicU64::new(1)),
+            pending_file_dialogs: Arc::new(Mutex::new(BTreeMap::new())),
+            pending_js_dialogs: Arc::new(Mutex::new(BTreeMap::new())),
+            pending_before_downloads: Arc::new(Mutex::new(BTreeMap::new())),
+            active_downloads: Arc::new(Mutex::new(BTreeMap::new())),
+            canceled_downloads: Arc::new(Mutex::new(std::collections::BTreeSet::new())),
             active_session: active_session.clone(),
             closing: Arc::new(AtomicBool::new(false)),
             popup: Arc::default(),
@@ -1444,8 +1642,10 @@ impl PreparedSession {
         let context_menu_handler = BridgedContextMenuHandler::new(self.bridge.clone());
         let request_handler =
             RequestHandlerBuilder::new(self.bridge.clone(), Arc::clone(&message_router));
-        let dialog_handler = DeniedDialogHandler::new();
-        let download_handler = DeniedDownloadHandler::new();
+        let dialog_handler = BridgedDialogHandler::new(self.bridge.clone());
+        let download_handler = BridgedDownloadHandler::new(self.bridge.clone());
+        let find_handler = BridgedFindHandler::new(self.bridge.clone());
+        let jsdialog_handler = BridgedJsdialogHandler::new(self.bridge.clone());
         let permission_handler = DeniedPermissionHandler::new();
         let keyboard_handler = ConsumedKeyboardHandler::new();
         BrowserClient::new(
@@ -1457,6 +1657,8 @@ impl PreparedSession {
             context_menu_handler,
             dialog_handler,
             download_handler,
+            find_handler,
+            jsdialog_handler,
             permission_handler,
             keyboard_handler,
             message_router,
@@ -1470,14 +1672,14 @@ impl PreparedSession {
             profile: self.config.profile,
             phase: SessionPhase::Creating,
             browser,
-            viewport: self.bridge.viewport,
-            page_zoom_factor: self.bridge.page_zoom_factor,
-            mailbox: self.bridge.mailbox,
+            viewport: self.bridge.viewport.clone(),
+            page_zoom_factor: self.bridge.page_zoom_factor.clone(),
+            mailbox: self.bridge.mailbox.clone(),
             events: self.events,
-            element_pick: self.bridge.element_pick,
+            element_pick: self.bridge.element_pick.clone(),
             picker_available: self.picker_available.load(Ordering::Acquire),
-            pending_capture: self.bridge.pending_capture,
-            pending_site_data_clears: BTreeMap::new(),
+            pending_capture: self.bridge.pending_capture.clone(),
+            bridge: self.bridge.clone(),
             _request_context: self.config.request_context,
             active_session: self.bridge.active_session,
             closing: self.bridge.closing,
@@ -1519,7 +1721,7 @@ pub struct BrowserSession {
     element_pick: ElementPickState,
     picker_available: bool,
     pending_capture: PendingCapture,
-    pending_site_data_clears: BTreeMap<i32, Registration>,
+    bridge: SessionBridge,
     _request_context: RequestContext,
     active_session: ActiveCountGuard,
     closing: Arc<AtomicBool>,
@@ -1642,6 +1844,42 @@ impl BrowserSession {
         self.events.clone()
     }
 
+    fn import_partitioned_cookie(
+        &self,
+        cookie: &BrowserCookie,
+        progress: Arc<Mutex<CookieImportProgress>>,
+    ) -> bool {
+        if self.phase != SessionPhase::Ready {
+            return false;
+        }
+        let Some(host) = self.browser.host() else {
+            return false;
+        };
+        let Some(mut params) = cdp_set_cookie_params(cookie) else {
+            return false;
+        };
+        let message_id = self.bridge.allocate_devtools_id();
+        let mut observer = CdpCookieObserver::new(
+            message_id,
+            Arc::new(AtomicBool::new(false)),
+            progress,
+            Arc::clone(&self.bridge.pending_devtools),
+        );
+        let Some(registration) = host.add_dev_tools_message_observer(Some(&mut observer)) else {
+            return false;
+        };
+        self.bridge
+            .pending_devtools
+            .lock()
+            .insert(message_id, registration);
+        let method = CefString::from("Network.setCookie");
+        if host.execute_dev_tools_method(message_id, Some(&method), Some(&mut params)) == 0 {
+            self.bridge.pending_devtools.lock().remove(&message_id);
+            return false;
+        }
+        true
+    }
+
     pub fn clear_site_data(&mut self) -> Result<Receiver<SiteDataClearResult>, BrowserError> {
         if self.phase != SessionPhase::Ready {
             return Err(BrowserError::NotReady);
@@ -1662,25 +1900,31 @@ impl BrowserSession {
         }
 
         let (results, result_rx) = async_channel::bounded(1);
-        let expected_id = Arc::new(AtomicI32::new(0));
+        let message_id = self.bridge.allocate_devtools_id();
         let operation = ActiveCountGuard::new(Arc::clone(&self.active_data_operations));
-        let mut observer = SiteDataClearObserver::new(Arc::clone(&expected_id), results, operation);
+        let mut observer = SiteDataClearObserver::new(
+            message_id,
+            results,
+            operation,
+            Arc::clone(&self.bridge.pending_devtools),
+        );
         let registration = host
             .add_dev_tools_message_observer(Some(&mut observer))
             .ok_or(BrowserError::BrowserData)?;
+        self.bridge
+            .pending_devtools
+            .lock()
+            .insert(message_id, registration);
         let method = CefString::from("Storage.clearDataForOrigin");
-        let message_id = host.execute_dev_tools_method(0, Some(&method), Some(&mut params));
-        if message_id == 0 {
+        if host.execute_dev_tools_method(message_id, Some(&method), Some(&mut params)) == 0 {
+            self.bridge.pending_devtools.lock().remove(&message_id);
             return Err(BrowserError::BrowserData);
         }
-        expected_id.store(message_id, Ordering::Release);
-        self.pending_site_data_clears
-            .insert(message_id, registration);
         Ok(result_rx)
     }
 
     pub fn finish_site_data_clear(&mut self, message_id: i32) {
-        self.pending_site_data_clears.remove(&message_id);
+        self.bridge.pending_devtools.lock().remove(&message_id);
     }
 
     pub fn evaluate_number(
@@ -1701,21 +1945,26 @@ impl BrowserSession {
             return Err(BrowserError::BrowserData);
         }
         let (results, result_rx) = async_channel::bounded(1);
-        let expected_id = Arc::new(AtomicI32::new(0));
+        let message_id = self.bridge.allocate_devtools_id();
         let operation = ActiveCountGuard::new(Arc::clone(&self.active_data_operations));
-        let mut observer =
-            EvaluateNumberObserver::new(Arc::clone(&expected_id), results, operation);
+        let mut observer = EvaluateNumberObserver::new(
+            message_id,
+            results,
+            operation,
+            Arc::clone(&self.bridge.pending_devtools),
+        );
         let registration = host
             .add_dev_tools_message_observer(Some(&mut observer))
             .ok_or(BrowserError::BrowserData)?;
+        self.bridge
+            .pending_devtools
+            .lock()
+            .insert(message_id, registration);
         let method = CefString::from("Runtime.evaluate");
-        let message_id = host.execute_dev_tools_method(0, Some(&method), Some(&mut params));
-        if message_id == 0 {
+        if host.execute_dev_tools_method(message_id, Some(&method), Some(&mut params)) == 0 {
+            self.bridge.pending_devtools.lock().remove(&message_id);
             return Err(BrowserError::BrowserData);
         }
-        expected_id.store(message_id, Ordering::Release);
-        self.pending_site_data_clears
-            .insert(message_id, registration);
         Ok((message_id, result_rx))
     }
 
@@ -1743,6 +1992,7 @@ impl BrowserSession {
             self.phase = SessionPhase::Crashed;
             self.mailbox.clear();
             self.element_pick.cancel();
+            self.bridge.cancel_pending_dialogs();
         }
     }
 
@@ -1752,6 +2002,8 @@ impl BrowserSession {
         self.active_session.finish();
         self.mailbox.clear();
         self.element_pick.cancel();
+        self.bridge.cancel_pending_dialogs();
+        self.bridge.pending_devtools.lock().clear();
     }
 
     pub fn navigate(&self, url: &str) {
@@ -1776,6 +2028,99 @@ impl BrowserSession {
 
     pub fn reload(&self) {
         self.browser.reload();
+    }
+
+    pub fn reload_ignore_cache(&self) {
+        self.browser.reload_ignore_cache();
+    }
+
+    pub fn find(&self, search_text: &str, forward: bool, match_case: bool, find_next: bool) {
+        if let Some(host) = self.browser.host() {
+            host.find(
+                Some(&CefString::from(search_text)),
+                i32::from(forward),
+                i32::from(match_case),
+                i32::from(find_next),
+            );
+        }
+    }
+
+    pub fn stop_finding(&self, clear_selection: bool) {
+        if let Some(host) = self.browser.host() {
+            host.stop_finding(i32::from(clear_selection));
+        }
+    }
+
+    pub fn replace_misspelling(&self, word: &str) {
+        if let Some(host) = self.browser.host() {
+            host.replace_misspelling(Some(&CefString::from(word)));
+        }
+    }
+
+    pub fn add_word_to_dictionary(&self, word: &str) {
+        if let Some(host) = self.browser.host() {
+            host.add_word_to_dictionary(Some(&CefString::from(word)));
+        }
+    }
+
+    pub fn set_ax_viewport_collapse(&self, enabled: bool) {
+        if let Some(host) = self.browser.host() {
+            host.set_ax_viewport_collapse(i32::from(enabled));
+        }
+    }
+
+    pub fn print_to_pdf(&self, path: &Path) -> Result<Receiver<PdfPrintResult>, BrowserError> {
+        if self.phase != SessionPhase::Ready {
+            return Err(BrowserError::NotReady);
+        }
+        let host = self.browser.host().ok_or(BrowserError::BrowserData)?;
+        let (results, result_rx) = async_channel::bounded(1);
+        let operation = ActiveCountGuard::new(Arc::clone(&self.active_data_operations));
+        let mut callback = BridgedPdfPrintCallback::new(results, operation);
+        let settings = PdfPrintSettings {
+            print_background: 1,
+            prefer_css_page_size: 1,
+            generate_tagged_pdf: 1,
+            generate_document_outline: 1,
+            ..Default::default()
+        };
+        let cef_path = path_to_cef_string(path);
+        host.print_to_pdf(Some(&cef_path), Some(&settings), Some(&mut callback));
+        Ok(result_rx)
+    }
+
+    pub fn respond_file_dialog(&self, id: u64, paths: Option<&[PathBuf]>) {
+        if let Some(dialog) = self.bridge.pending_file_dialogs.lock().remove(&id) {
+            dialog.complete(paths);
+        }
+    }
+
+    pub fn respond_js_dialog(&self, id: u64, accept: bool, user_input: Option<&str>) {
+        if let Some(dialog) = self.bridge.pending_js_dialogs.lock().remove(&id) {
+            dialog.complete(accept, user_input);
+        }
+    }
+
+    pub fn respond_download(&self, id: u32, path: Option<&Path>) {
+        let pending = self.bridge.pending_before_downloads.lock().remove(&id);
+        match (pending, path) {
+            (Some(download), Some(path)) => download.accept(path),
+            (Some(download), None) => {
+                self.bridge.canceled_downloads.lock().insert(id);
+                download.cancel_without_path();
+            }
+            (None, None) => {
+                self.cancel_download(id);
+            }
+            (None, Some(_)) => {}
+        }
+    }
+
+    pub fn cancel_download(&self, id: u32) {
+        self.bridge.canceled_downloads.lock().insert(id);
+        if let Some(callback) = self.bridge.active_downloads.lock().remove(&id) {
+            callback.cancel();
+        }
     }
 
     pub fn edit(&self, command: EditCommand) {
@@ -1825,11 +2170,14 @@ impl BrowserSession {
                 return false;
             }
         };
-        frame.execute_java_script(
-            Some(&CefString::from(script.as_str())),
-            Some(&CefString::from(script_url("element-picker.js").as_str())),
-            1,
-        );
+        let source = script_url("element-picker.js");
+        let source = CefString::from(source.as_str());
+        if !self.bridge.picker_injected.swap(true, Ordering::AcqRel) {
+            let bootstrap =
+                format!("if(!globalThis.{ELEMENT_PICKER_API}){{{ELEMENT_PICKER_SCRIPT}}}");
+            frame.execute_java_script(Some(&CefString::from(bootstrap.as_str())), Some(&source), 1);
+        }
+        frame.execute_java_script(Some(&CefString::from(script.as_str())), Some(&source), 1);
         true
     }
 
@@ -2037,6 +2385,7 @@ impl BrowserSession {
             return;
         }
         self.element_pick.cancel();
+        self.bridge.cancel_pending_dialogs();
         self.phase = SessionPhase::Closing;
         close_pending_popups(&self.popups);
         if let Some(host) = self.browser.host() {
@@ -2048,6 +2397,7 @@ impl BrowserSession {
 impl Drop for BrowserSession {
     fn drop(&mut self) {
         self.closing.store(true, Ordering::Release);
+        self.bridge.cancel_pending_dialogs();
         close_pending_popups(&self.popups);
         if !matches!(self.phase, SessionPhase::Closed | SessionPhase::Closing)
             && !self.active_session.0.finished.load(Ordering::Acquire)
@@ -2187,6 +2537,9 @@ fn bootstrap_args_with_paths(
         shared_texture_enabled,
         external_begin_frame_enabled,
         begin_frame_adaptive_enabled,
+        ax_viewport_collapse: config.ax_viewport_collapse,
+        keychain_service_name: config.keychain_service_name,
+        keychain_account_name: config.keychain_account_name,
         log_file: None,
         background_color: 0xff10_1318,
         #[cfg(target_os = "macos")]
@@ -2482,8 +2835,10 @@ fn key_character(key: BrowserKey) -> u16 {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = key;
-        0
+        match key {
+            BrowserKey::Enter => 0x000d,
+            _ => 0,
+        }
     }
 }
 
@@ -2705,6 +3060,7 @@ impl AcceleratedPaintObservationState {
 }
 
 impl AcceleratedPaintTracker {
+    #[cfg(test)]
     #[allow(
         clippy::large_types_passed_by_value,
         reason = "the observation moves into the tracker state; by-ref would clone it"
@@ -2714,6 +3070,19 @@ impl AcceleratedPaintTracker {
         type_: PaintElementType,
         observation: AcceleratedPaintObservationState,
     ) -> RecordedAcceleratedPaint {
+        self.record_with_attempt(type_, observation, false)
+    }
+
+    #[allow(
+        clippy::large_types_passed_by_value,
+        reason = "the observation moves into the tracker state; by-ref would clone it"
+    )]
+    fn record_with_attempt(
+        &self,
+        type_: PaintElementType,
+        observation: AcceleratedPaintObservationState,
+        record_gpu_attempt: bool,
+    ) -> RecordedAcceleratedPaint {
         let mut state = self.0.lock();
         state.callback_count = state.callback_count.wrapping_add(1).max(1);
         let callback = state.callback_count;
@@ -2721,6 +3090,9 @@ impl AcceleratedPaintTracker {
             PaintElementType::VIEW => state.view_count += 1,
             PaintElementType::POPUP => state.popup_count += 1,
             _ => {}
+        }
+        if record_gpu_attempt {
+            state.gpu_import_attempt_count += 1;
         }
 
         let identity = observation.platform.handle_identity;
@@ -2789,10 +3161,6 @@ impl AcceleratedPaintTracker {
             _ => {}
         }
         state.callback_count
-    }
-
-    fn record_gpu_import_attempt(&self) {
-        self.0.lock().gpu_import_attempt_count += 1;
     }
 
     fn record_gpu_frame_delivered(&self, pool_generation: u64) {
@@ -2900,6 +3268,7 @@ fn accelerated_paint_platform_info(info: &AcceleratedPaintInfo) -> AcceleratedPa
         .min(info.planes.len());
     let mut planes = [None; 4];
     let mut identity_planes = [AcceleratedPaintPlaneIdentity::default(); 4];
+    let trace_handles = log::log_enabled!(target: "ala_cef::accelerated_paint", log::Level::Trace);
     for (index, plane) in info.planes.iter().take(plane_count).enumerate() {
         planes[index] = Some(AcceleratedPaintPlaneDiagnostics {
             fd: plane.fd,
@@ -2907,7 +3276,7 @@ fn accelerated_paint_platform_info(info: &AcceleratedPaintInfo) -> AcceleratedPa
             offset: plane.offset,
             size: plane.size,
         });
-        let metadata = (plane.fd >= 0)
+        let metadata = (trace_handles && plane.fd >= 0)
             .then(|| {
                 let file = ManuallyDrop::new(unsafe { File::from_raw_fd(plane.fd) });
                 file.metadata()
@@ -3148,21 +3517,16 @@ struct DestinationTexturePool {
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
-    textures: [wgpu::Texture; 2],
+    textures: [wgpu::Texture; 3],
     next: usize,
-    blitter: wgpu::util::TextureBlitter,
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl DestinationTexturePool {
     fn new(device: &wgpu::Device, width: u32, height: u32, format: wgpu::TextureFormat) -> Self {
-        let create_texture = |index| {
+        let create_texture = |label| {
             device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(if index == 0 {
-                    "browser accelerated OSR destination 0"
-                } else {
-                    "browser accelerated OSR destination 1"
-                }),
+                label: Some(label),
                 size: wgpu::Extent3d {
                     width,
                     height,
@@ -3172,9 +3536,7 @@ impl DestinationTexturePool {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING
-                    | wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::COPY_DST,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             })
         };
@@ -3182,9 +3544,12 @@ impl DestinationTexturePool {
             width,
             height,
             format,
-            textures: [create_texture(0), create_texture(1)],
+            textures: [
+                create_texture("browser accelerated OSR destination 0"),
+                create_texture("browser accelerated OSR destination 1"),
+                create_texture("browser accelerated OSR destination 2"),
+            ],
             next: 0,
-            blitter: wgpu::util::TextureBlitter::new(device, format),
         }
     }
 
@@ -3206,12 +3571,12 @@ struct AcceleratedFrameProducerState {
     destination_generation: u64,
     destinations: Option<DestinationTexturePool>,
     popup: Option<PopupTexture>,
+    needs_validation: bool,
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 struct PopupTexture {
     texture: wgpu::Texture,
-    blitter: wgpu::util::TextureBlitter,
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -3229,12 +3594,9 @@ impl PopupTexture {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::COPY_SRC
-                    | wgpu::TextureUsages::COPY_DST,
+                usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             }),
-            blitter: wgpu::util::TextureBlitter::new(device, format),
         }
     }
 
@@ -3245,30 +3607,49 @@ impl PopupTexture {
     }
 }
 
+#[cfg(target_os = "linux")]
+type ImportedLinuxTexture = crate::linux_dmabuf::ImportedDmaBuf;
+
+#[cfg(all(
+    not(any(target_os = "macos", target_os = "windows")),
+    not(target_os = "linux")
+))]
+struct ImportedLinuxTexture {
+    texture: wgpu::Texture,
+}
+
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn import_accelerated_texture(
     gpu: &BrowserGpuContext,
     info: &AcceleratedPaintInfo,
     layout: &AcceleratedPoolLayout,
-) -> Result<wgpu::Texture, AcceleratedFrameError> {
-    let import_scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+    validate: bool,
+) -> Result<ImportedLinuxTexture, AcceleratedFrameError> {
+    let import_scope = validate.then(|| gpu.device.push_error_scope(wgpu::ErrorFilter::Validation));
     #[cfg(target_os = "linux")]
     let imported = crate::linux_dmabuf::import_texture(info, &gpu.device)
         .map_err(AcceleratedFrameError::Import);
     #[cfg(not(target_os = "linux"))]
-    let imported: Result<wgpu::Texture, _> = {
+    let imported: Result<ImportedLinuxTexture, _> = {
         let _ = info;
         Err(AcceleratedFrameError::Import(
             cef::osr_texture_import::TextureImportError::UnsupportedPlatform,
         ))
     };
-    let import_validation = pollster::block_on(import_scope.pop());
-    if let Some(error) = import_validation {
+    if let Some(scope) = import_scope
+        && let Some(error) = pollster::block_on(scope.pop())
+    {
         return Err(AcceleratedFrameError::WgpuValidation(error.to_string()));
     }
     let imported = imported?;
-    if imported.usage().contains(wgpu::TextureUsages::COPY_DST)
-        && !imported.usage().contains(wgpu::TextureUsages::COPY_SRC)
+    if imported
+        .texture
+        .usage()
+        .contains(wgpu::TextureUsages::COPY_DST)
+        && !imported
+            .texture
+            .usage()
+            .contains(wgpu::TextureUsages::COPY_SRC)
     {
         return Err(AcceleratedFrameError::HelperFallback);
     }
@@ -3276,12 +3657,15 @@ fn import_accelerated_texture(
     let width = layout.width.cast_unsigned();
     let height = layout.height.cast_unsigned();
     let format = layout.texture_format();
-    if imported.width() != width || imported.height() != height || imported.format() != format {
+    if imported.texture.width() != width
+        || imported.texture.height() != height
+        || imported.texture.format() != format
+    {
         return Err(AcceleratedFrameError::InvalidMetadata(format!(
             "imported texture is {}x{} {:?}, callback reports {}x{} {:?}",
-            imported.width(),
-            imported.height(),
-            imported.format(),
+            imported.texture.width(),
+            imported.texture.height(),
+            imported.texture.format(),
             width,
             height,
             format
@@ -3291,27 +3675,29 @@ fn import_accelerated_texture(
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn record_accelerated_copy(
-    device: &wgpu::Device,
-    encoder: &mut wgpu::CommandEncoder,
-    source: &wgpu::Texture,
+fn submit_accelerated_copy(
+    gpu: &BrowserGpuContext,
+    imported: &ImportedLinuxTexture,
     destination: &wgpu::Texture,
-    blitter: &wgpu::util::TextureBlitter,
-) {
-    if source.usage().contains(wgpu::TextureUsages::COPY_SRC) {
-        encoder.copy_texture_to_texture(
-            source.as_image_copy(),
-            destination.as_image_copy(),
-            wgpu::Extent3d {
-                width: source.width(),
-                height: source.height(),
-                depth_or_array_layers: 1,
-            },
-        );
-    } else {
-        let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
-        let destination_view = destination.create_view(&wgpu::TextureViewDescriptor::default());
-        blitter.copy(device, encoder, &source_view, &destination_view);
+    popup: Option<(crate::popup::PopupPlacement, &wgpu::Texture)>,
+) -> Result<(), AcceleratedFrameError> {
+    #[cfg(target_os = "linux")]
+    {
+        crate::linux_dmabuf::copy_imported_texture(
+            &gpu.device,
+            &gpu.queue,
+            imported,
+            destination,
+            popup,
+        )
+        .map_err(AcceleratedFrameError::Import)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (gpu, imported, destination, popup);
+        Err(AcceleratedFrameError::Import(
+            cef::osr_texture_import::TextureImportError::UnsupportedPlatform,
+        ))
     }
 }
 
@@ -3367,6 +3753,7 @@ impl AcceleratedFrameProducer {
                 destination_generation: 0,
                 destinations: None,
                 popup: None,
+                needs_validation: true,
             })),
         }
     }
@@ -3375,6 +3762,7 @@ impl AcceleratedFrameProducer {
         let mut state = self.state.lock();
         if state.pool.set_viewport(viewport) {
             state.destinations = None;
+            state.needs_validation = true;
         }
     }
 
@@ -3389,10 +3777,10 @@ impl AcceleratedFrameProducer {
             .as_ref()
             .ok_or(AcceleratedFrameError::DeviceUnavailable)?;
         let mut state = self.state.lock();
-        let imported = import_accelerated_texture(gpu, info, &layout)?;
-        let width = imported.width();
-        let height = imported.height();
-        let format = imported.format();
+        let imported = import_accelerated_texture(gpu, info, &layout, true)?;
+        let width = imported.texture.width();
+        let height = imported.texture.height();
+        let format = imported.texture.format();
         if state
             .popup
             .as_ref()
@@ -3402,24 +3790,13 @@ impl AcceleratedFrameProducer {
         }
         let popup = state.popup.as_ref().expect("popup texture was initialized");
         let scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let mut encoder = gpu
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("browser accelerated OSR popup copy"),
-            });
-        record_accelerated_copy(
-            &gpu.device,
-            &mut encoder,
-            &imported,
-            &popup.texture,
-            &popup.blitter,
-        );
-        gpu.queue.submit([encoder.finish()]);
-        if let Some(error) = pollster::block_on(scope.pop()) {
+        let result = submit_accelerated_copy(gpu, &imported, &popup.texture, None);
+        let validation = pollster::block_on(scope.pop());
+        if let Some(error) = validation {
             state.popup = None;
             return Err(AcceleratedFrameError::WgpuValidation(error.to_string()));
         }
-        Ok(())
+        result
     }
 
     fn produce(
@@ -3440,18 +3817,20 @@ impl AcceleratedFrameProducer {
             Err(stale_frame) => return Ok(AcceleratedFrameOutcome::Stale(stale_frame)),
         }
 
-        let import_started = diagnostic_timer();
-        let imported = import_accelerated_texture(gpu, info, &layout)?;
-        let import_us = diagnostic_elapsed_us(import_started);
         let width = layout.width.cast_unsigned();
         let height = layout.height.cast_unsigned();
         let format = layout.texture_format();
-
-        if state
+        let resized = state
             .destinations
             .as_ref()
-            .is_none_or(|destinations| !destinations.matches(width, height, format))
-        {
+            .is_none_or(|destinations| !destinations.matches(width, height, format));
+        let validate = state.needs_validation || resized;
+
+        let import_started = diagnostic_timer();
+        let imported = import_accelerated_texture(gpu, info, &layout, validate)?;
+        let import_us = diagnostic_elapsed_us(import_started);
+
+        if resized {
             state.destination_generation = state.destination_generation.wrapping_add(1).max(1);
             state.destinations = Some(DestinationTexturePool::new(
                 &gpu.device,
@@ -3468,54 +3847,36 @@ impl AcceleratedFrameProducer {
             .expect("destination textures were initialized");
         let destination_index = destinations.next;
         let destination = destinations.textures[destination_index].clone();
-        let copy_started = diagnostic_timer();
-        let blit_scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let mut encoder = gpu
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("browser accelerated OSR copy-on-receive"),
+        let popup_copy = popup
+            .zip(state.popup.as_ref())
+            .filter(|(_, popup)| popup.texture.format() == format)
+            .and_then(|(rect, popup)| {
+                crate::popup::popup_placement(
+                    rect,
+                    popup.texture.width(),
+                    popup.texture.height(),
+                    width,
+                    height,
+                )
+                .map(|placement| (placement, &popup.texture))
             });
-        record_accelerated_copy(
-            &gpu.device,
-            &mut encoder,
-            &imported,
-            &destination,
-            &destinations.blitter,
-        );
-        if let (Some(rect), Some(popup)) = (popup, state.popup.as_ref())
-            && popup.texture.format() == format
-            && let Some(placement) = crate::popup::popup_placement(
-                rect,
-                popup.texture.width(),
-                popup.texture.height(),
-                width,
-                height,
-            )
+        let copy_started = diagnostic_timer();
+        let blit_scope =
+            validate.then(|| gpu.device.push_error_scope(wgpu::ErrorFilter::Validation));
+        let copy_result = submit_accelerated_copy(gpu, &imported, &destination, popup_copy);
+        if let Some(scope) = blit_scope
+            && let Some(error) = pollster::block_on(scope.pop())
         {
-            encoder.copy_texture_to_texture(
-                popup.texture.as_image_copy(),
-                wgpu::TexelCopyTextureInfo {
-                    texture: &destination,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d {
-                        x: placement.x,
-                        y: placement.y,
-                        z: 0,
-                    },
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::Extent3d {
-                    width: placement.width,
-                    height: placement.height,
-                    depth_or_array_layers: 1,
-                },
-            );
-        }
-        gpu.queue.submit([encoder.finish()]);
-        if let Some(error) = pollster::block_on(blit_scope.pop()) {
             state.destinations = None;
+            state.needs_validation = true;
             return Err(AcceleratedFrameError::WgpuValidation(error.to_string()));
         }
+        if let Err(error) = copy_result {
+            state.destinations = None;
+            state.needs_validation = true;
+            return Err(error);
+        }
+        state.needs_validation = false;
         destinations.next = (destination_index + 1) % destinations.textures.len();
         let expected = state.pool.expected;
         log::trace!(
@@ -3555,13 +3916,111 @@ struct SessionBridge {
     d3d11_frames: D3d11FrameProducer,
     shared_texture_fallback_notified: Arc<AtomicBool>,
     element_pick: ElementPickState,
+    picker_injected: Arc<AtomicBool>,
     pending_capture: PendingCapture,
+    next_devtools_id: Arc<AtomicI32>,
+    pending_devtools: PendingDevTools,
+    next_dialog_id: Arc<AtomicU64>,
+    pending_file_dialogs: Arc<Mutex<BTreeMap<u64, PendingFileDialog>>>,
+    pending_js_dialogs: Arc<Mutex<BTreeMap<u64, PendingJsDialog>>>,
+    pending_before_downloads: Arc<Mutex<BTreeMap<u32, PendingBeforeDownload>>>,
+    active_downloads: Arc<Mutex<BTreeMap<u32, DownloadItemCallback>>>,
+    canceled_downloads: Arc<Mutex<std::collections::BTreeSet<u32>>>,
     active_session: ActiveCountGuard,
     closing: Arc<AtomicBool>,
     popup: Arc<Mutex<PopupState>>,
 }
 
 type PendingCapture = Arc<Mutex<Option<Registration>>>;
+type PendingDevTools = Arc<Mutex<BTreeMap<i32, Registration>>>;
+
+struct PendingFileDialog {
+    callback: Option<FileDialogCallback>,
+}
+
+impl PendingFileDialog {
+    fn new(callback: FileDialogCallback) -> Self {
+        Self {
+            callback: Some(callback),
+        }
+    }
+
+    fn complete(mut self, paths: Option<&[PathBuf]>) {
+        let Some(callback) = self.callback.take() else {
+            return;
+        };
+        match paths {
+            Some(paths) if !paths.is_empty() => {
+                let mut list = CefStringList::new();
+                for path in paths {
+                    let _ = list.append(&path.to_string_lossy());
+                }
+                callback.cont(Some(&mut list));
+            }
+            _ => callback.cancel(),
+        }
+    }
+}
+
+impl Drop for PendingFileDialog {
+    fn drop(&mut self) {
+        if let Some(callback) = self.callback.take() {
+            callback.cancel();
+        }
+    }
+}
+
+struct PendingJsDialog {
+    callback: Option<JsdialogCallback>,
+    default_accept: bool,
+}
+
+impl PendingJsDialog {
+    fn new(callback: JsdialogCallback, default_accept: bool) -> Self {
+        Self {
+            callback: Some(callback),
+            default_accept,
+        }
+    }
+
+    fn complete(mut self, accept: bool, user_input: Option<&str>) {
+        if let Some(callback) = self.callback.take() {
+            let input = user_input.map(CefString::from);
+            callback.cont(i32::from(accept), input.as_ref());
+        }
+    }
+}
+
+impl Drop for PendingJsDialog {
+    fn drop(&mut self) {
+        if let Some(callback) = self.callback.take() {
+            callback.cont(i32::from(self.default_accept), None);
+        }
+    }
+}
+
+struct PendingBeforeDownload {
+    callback: Option<BeforeDownloadCallback>,
+}
+
+impl PendingBeforeDownload {
+    fn new(callback: BeforeDownloadCallback) -> Self {
+        Self {
+            callback: Some(callback),
+        }
+    }
+
+    fn accept(mut self, path: &Path) {
+        if let Some(callback) = self.callback.take() {
+            let path = path_to_cef_string(path);
+            callback.cont(Some(&path), 0);
+        }
+    }
+
+    fn cancel_without_path(mut self) {
+        let _ = self.callback.take();
+    }
+}
 
 fn invalidate_view(browser: Option<&mut Browser>) {
     if let Some(host) = browser.and_then(|browser| browser.host()) {
@@ -3574,12 +4033,36 @@ impl SessionBridge {
         let _ = self.events.try_send(event);
     }
 
-    #[cfg(not(target_os = "windows"))]
+    fn allocate_devtools_id(&self) -> i32 {
+        loop {
+            let current = self.next_devtools_id.fetch_add(1, Ordering::Relaxed);
+            let next = current & i32::MAX;
+            if next > 0 {
+                return next;
+            }
+        }
+    }
+
+    fn allocate_dialog_id(&self) -> u64 {
+        self.next_dialog_id.fetch_add(1, Ordering::Relaxed)
+    }
+
+    fn cancel_pending_dialogs(&self) {
+        self.pending_file_dialogs.lock().clear();
+        self.pending_js_dialogs.lock().clear();
+        self.pending_before_downloads.lock().clear();
+        let active = std::mem::take(&mut *self.active_downloads.lock());
+        for callback in active.into_values() {
+            callback.cancel();
+        }
+        self.canceled_downloads.lock().clear();
+    }
+
     fn produce_popup(&self, info: &AcceleratedPaintInfo, browser: Option<&mut Browser>) {
         if self.popup.lock().rect().is_none() {
             return;
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let result = self
             .accelerated_frames
             .produce_popup(info)
@@ -3587,6 +4070,11 @@ impl SessionBridge {
         #[cfg(target_os = "macos")]
         let result = self
             .metal_frames
+            .produce_popup(info)
+            .map_err(|error| error.to_string());
+        #[cfg(target_os = "windows")]
+        let result = self
+            .d3d11_frames
             .produce_popup(info)
             .map_err(|error| error.to_string());
         match result {
@@ -3623,9 +4111,9 @@ impl SessionBridge {
         let Some(mut params) = screenshot_params(clip) else {
             return false;
         };
-        let expected_id = Arc::new(AtomicI32::new(0));
+        let message_id = self.allocate_devtools_id();
         let mut observer = ElementScreenshotObserver::new(
-            Arc::clone(&expected_id),
+            message_id,
             Arc::new(AtomicBool::new(false)),
             self.clone(),
             Arc::clone(text),
@@ -3633,13 +4121,12 @@ impl SessionBridge {
         let Some(registration) = host.add_dev_tools_message_observer(Some(&mut observer)) else {
             return false;
         };
+        *self.pending_capture.lock() = Some(registration);
         let method = CefString::from("Page.captureScreenshot");
-        let message_id = host.execute_dev_tools_method(0, Some(&method), Some(&mut params));
-        if message_id == 0 {
+        if host.execute_dev_tools_method(message_id, Some(&method), Some(&mut params)) == 0 {
+            self.pending_capture.lock().take();
             return false;
         }
-        expected_id.store(message_id, Ordering::Release);
-        *self.pending_capture.lock() = Some(registration);
         true
     }
 
@@ -3649,12 +4136,33 @@ impl SessionBridge {
         let scale_factor = osr_raster_scale(*self.viewport.lock());
         let flags = params.edit_state_flags().as_ref().0;
         let can = |flag: EditState| flags & flag.0 != 0;
+        let editable = params.is_editable() != 0;
+        let misspelled_word = editable
+            .then(|| owned_cef_string(&params.misspelled_word()))
+            .flatten();
+        let dictionary_suggestions = if misspelled_word.is_some() {
+            let mut list = CefStringList::new();
+            let _ = params.dictionary_suggestions(Some(&mut list));
+            list.into_iter()
+                .filter(|suggestion| !suggestion.is_empty())
+                .take(5)
+                .map(Arc::<str>::from)
+                .collect::<Vec<_>>()
+                .into()
+        } else {
+            Arc::from([])
+        };
         ContextMenuRequest {
             x: unscaled_osr_coordinate(params.xcoord(), scale_factor),
             y: unscaled_osr_coordinate(params.ycoord(), scale_factor),
             link_url: owned_cef_string(&params.link_url()),
+            src_url: owned_cef_string(&params.source_url()),
+            is_image: params.media_type() == ContextMenuMediaType::IMAGE
+                || params.has_image_contents() != 0,
             selection_text: owned_cef_string(&params.selection_text()),
-            editable: params.is_editable() != 0,
+            misspelled_word,
+            dictionary_suggestions,
+            editable,
             edit_flags: EditFlags {
                 can_cut: can(EditState::CM_EDITFLAG_CAN_CUT),
                 can_copy: can(EditState::CM_EDITFLAG_CAN_COPY),
@@ -4163,6 +4671,10 @@ cef::wrap_app! {
                 "disable-component-update",
                 "disable-breakpad",
                 "hide-crash-restore-bubble",
+                "disable-sync",
+                "disable-domain-reliability",
+                "disable-default-apps",
+                "no-pings",
             ] {
                 command_line.append_switch(Some(&CefString::from(switch)));
             }
@@ -4179,10 +4691,15 @@ cef::wrap_app! {
                 let existing =
                     CefString::from(&command_line.switch_value(Some(&disable_features)))
                         .to_string();
-                let merged = if existing.is_empty() {
-                    "ImmersiveReadAnything".to_owned()
+                let extra_features = if cfg!(target_os = "windows") {
+                    "ImmersiveReadAnything,MediaRouter,OptimizationHints,CalculateNativeWinOcclusion"
                 } else {
-                    format!("{existing},ImmersiveReadAnything")
+                    "ImmersiveReadAnything,MediaRouter,OptimizationHints"
+                };
+                let merged = if existing.is_empty() {
+                    extra_features.to_owned()
+                } else {
+                    format!("{existing},{extra_features}")
                 };
                 command_line.append_switch_with_value(
                     Some(&disable_features),
@@ -4234,11 +4751,6 @@ cef::wrap_render_process_handler! {
             if frame.is_main() == 0 {
                 return;
             }
-            frame.execute_java_script(
-                Some(&CefString::from(ELEMENT_PICKER_SCRIPT)),
-                Some(&CefString::from(script_url("element-picker.js").as_str())),
-                1,
-            );
             if parse_artifact_url(&CefString::from(&frame.url()).to_string()).is_some() {
                 let script = ARTIFACT_REPLY_SCRIPT.replace("PAGE_GLOBAL", page_global());
                 frame.execute_java_script(
@@ -4343,9 +4855,62 @@ struct CookieImportFlushCallback {
     }
 }
 
+cef::wrap_pdf_print_callback! {
+    struct BridgedPdfPrintCallback {
+        results: Sender<PdfPrintResult>,
+        operation: ActiveCountGuard,
+    }
+
+    impl PdfPrintCallback {
+        fn on_pdf_print_finished(&self, path: Option<&CefString>, ok: i32) {
+            if self.operation.finish() {
+                let _ = self.results.try_send(PdfPrintResult {
+                    path: Arc::from(path.map(ToString::to_string).unwrap_or_default()),
+                    success: ok != 0,
+                });
+            }
+        }
+    }
+}
+
+cef::wrap_dev_tools_message_observer! {
+    struct CdpCookieObserver {
+        expected_id: i32,
+        completed: Arc<AtomicBool>,
+        progress: Arc<Mutex<CookieImportProgress>>,
+        pending: PendingDevTools,
+    }
+
+    impl DevToolsMessageObserver {
+        fn on_dev_tools_method_result(
+            &self,
+            _browser: Option<&mut Browser>,
+            message_id: i32,
+            success: i32,
+            result: Option<&[u8]>,
+        ) {
+            if self.expected_id != message_id {
+                return;
+            }
+            if !self.completed.swap(true, Ordering::AcqRel) {
+                let ok = success != 0 && result.is_some_and(decode_cdp_cookie_result);
+                self.pending.lock().remove(&self.expected_id);
+                finish_cookie_import(&self.progress, ok);
+            }
+        }
+
+        fn on_dev_tools_agent_detached(&self, _browser: Option<&mut Browser>) {
+            if !self.completed.swap(true, Ordering::AcqRel) {
+                self.pending.lock().remove(&self.expected_id);
+                finish_cookie_import(&self.progress, false);
+            }
+        }
+    }
+}
+
 cef::wrap_dev_tools_message_observer! {
     struct ElementScreenshotObserver {
-        expected_id: Arc<AtomicI32>,
+        expected_id: i32,
         emitted: Arc<AtomicBool>,
         bridge: SessionBridge,
         text: Arc<str>,
@@ -4359,7 +4924,7 @@ cef::wrap_dev_tools_message_observer! {
             success: i32,
             result: Option<&[u8]>,
         ) {
-            if self.expected_id.load(Ordering::Acquire) != message_id {
+            if self.expected_id != message_id {
                 return;
             }
             let screenshot = (success != 0)
@@ -4388,10 +4953,11 @@ impl ElementScreenshotObserver {
 }
 
 cef::wrap_dev_tools_message_observer! {
-struct SiteDataClearObserver {
-        expected_id: Arc<AtomicI32>,
+    struct SiteDataClearObserver {
+        expected_id: i32,
         results: Sender<SiteDataClearResult>,
         operation: ActiveCountGuard,
+        pending: PendingDevTools,
     }
 
     impl DevToolsMessageObserver {
@@ -4402,9 +4968,8 @@ struct SiteDataClearObserver {
             success: i32,
             _result: Option<&[u8]>,
         ) {
-            if self.expected_id.load(Ordering::Acquire) == message_id
-                && self.operation.finish()
-            {
+            if self.expected_id == message_id && self.operation.finish() {
+                self.pending.lock().remove(&self.expected_id);
                 let _ = self.results.try_send(SiteDataClearResult {
                     message_id,
                     success: success != 0,
@@ -4414,8 +4979,9 @@ struct SiteDataClearObserver {
 
         fn on_dev_tools_agent_detached(&self, _browser: Option<&mut Browser>) {
             if self.operation.finish() {
+                self.pending.lock().remove(&self.expected_id);
                 let _ = self.results.try_send(SiteDataClearResult {
-                    message_id: self.expected_id.load(Ordering::Acquire),
+                    message_id: self.expected_id,
                     success: false,
                 });
             }
@@ -4443,9 +5009,10 @@ fn decode_evaluated_number(result: &[u8]) -> Option<f64> {
 
 cef::wrap_dev_tools_message_observer! {
     struct EvaluateNumberObserver {
-        expected_id: Arc<AtomicI32>,
+        expected_id: i32,
         results: Sender<Option<f64>>,
         operation: ActiveCountGuard,
+        pending: PendingDevTools,
     }
 
     impl DevToolsMessageObserver {
@@ -4456,9 +5023,8 @@ cef::wrap_dev_tools_message_observer! {
             success: i32,
             result: Option<&[u8]>,
         ) {
-            if self.expected_id.load(Ordering::Acquire) == message_id
-                && self.operation.finish()
-            {
+            if self.expected_id == message_id && self.operation.finish() {
+                self.pending.lock().remove(&self.expected_id);
                 let value = (success != 0)
                     .then(|| result.and_then(decode_evaluated_number))
                     .flatten();
@@ -4468,6 +5034,7 @@ cef::wrap_dev_tools_message_observer! {
 
         fn on_dev_tools_agent_detached(&self, _browser: Option<&mut Browser>) {
             if self.operation.finish() {
+                self.pending.lock().remove(&self.expected_id);
                 let _ = self.results.try_send(None);
             }
         }
@@ -4543,6 +5110,8 @@ cef::wrap_render_handler! {
                 self.bridge.accelerated_frames.clear_popup();
                 #[cfg(target_os = "macos")]
                 self.bridge.metal_frames.clear_popup();
+                #[cfg(target_os = "windows")]
+                self.bridge.d3d11_frames.clear_popup();
                 invalidate_view(browser);
             }
         }
@@ -4657,11 +5226,14 @@ cef::wrap_render_handler! {
                 );
                 return;
             };
+            let fallback_requested = self.bridge.shared_texture_fallback_requested();
             let observation = accelerated_paint_observation(type_, info);
-            let recorded = self
-                .bridge
-                .accelerated_paint
-                .record(type_, observation);
+            let record_gpu_attempt = !fallback_requested && type_ == PaintElementType::VIEW;
+            let recorded = self.bridge.accelerated_paint.record_with_attempt(
+                type_,
+                observation,
+                record_gpu_attempt,
+            );
             if log::log_enabled!(
                 target: "ala_cef::accelerated_paint",
                 log::Level::Trace
@@ -4692,14 +5264,11 @@ cef::wrap_render_handler! {
                     dirty_rects.map(|rects| rects.iter().map(|rect| (rect.x, rect.y, rect.width, rect.height)).collect::<Vec<_>>()),
                 );
             }
-            if self.bridge.shared_texture_fallback_requested() {
+            if fallback_requested {
                 return;
             }
             if type_ == PaintElementType::POPUP {
-                #[cfg(not(target_os = "windows"))]
                 self.bridge.produce_popup(info, browser);
-                #[cfg(target_os = "windows")]
-                let _ = browser;
                 return;
             }
             if type_ != PaintElementType::VIEW {
@@ -4709,7 +5278,6 @@ cef::wrap_render_handler! {
 
             #[cfg(target_os = "macos")]
             {
-                self.bridge.accelerated_paint.record_gpu_import_attempt();
                 let bridge = self.bridge.clone();
                 match self.bridge.metal_frames.produce(
                     info,
@@ -4731,9 +5299,11 @@ cef::wrap_render_handler! {
 
             #[cfg(target_os = "windows")]
             {
-                let _ = popup;
-                self.bridge.accelerated_paint.record_gpu_import_attempt();
-                match self.bridge.d3d11_frames.produce(info, recorded.callback) {
+                match self
+                    .bridge
+                    .d3d11_frames
+                    .produce(info, recorded.callback, popup)
+                {
                     Ok(D3d11FrameOutcome::Frame(frame)) => {
                         self.bridge.publish_d3d11_frame(frame);
                     }
@@ -4750,7 +5320,6 @@ cef::wrap_render_handler! {
 
             #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             {
-            self.bridge.accelerated_paint.record_gpu_import_attempt();
             match self
                 .bridge
                 .accelerated_frames
@@ -4884,20 +5453,28 @@ cef::wrap_download_image_callback! {
             _http_status_code: i32,
             image: Option<&mut Image>,
         ) {
-            let (mut width, mut height) = (0, 0);
-            let Some(data) = image.and_then(|image| {
-                image.as_png(1.0, 1, Some(&mut width), Some(&mut height))
-            }) else {
+            let Some(image) = image else {
                 return;
             };
-            let len = data.size();
-            if len == 0 || len > crate::MAX_FAVICON_BYTES {
-                return;
+            let mut png = None;
+            for scale in [2.0_f32, 1.0_f32] {
+                let (mut width, mut height) = (0, 0);
+                let Some(data) = image.as_png(scale, 1, Some(&mut width), Some(&mut height)) else {
+                    continue;
+                };
+                let len = data.size();
+                if len == 0 || len > crate::MAX_FAVICON_BYTES {
+                    continue;
+                }
+                let mut bytes = vec![0; len];
+                if data.data(Some(&mut bytes), 0) == len {
+                    png = Some(bytes);
+                    break;
+                }
             }
-            let mut png = vec![0; len];
-            if data.data(Some(&mut png), 0) != len {
+            let Some(png) = png else {
                 return;
-            }
+            };
             self.bridge.emit(BrowserEvent::FaviconChanged {
                 session: self.bridge.id,
                 url: self.url.clone(),
@@ -4945,7 +5522,7 @@ cef::wrap_display_handler! {
             let Some(browser) = browser else { return; };
             let Some(host) = browser.host() else { return; };
             let Some(frame) = browser.main_frame() else { return; };
-            let Some(icon_url) = icon_urls.and_then(|urls| std::mem::take(urls).into_iter().next()) else {
+            let Some(icon_url) = icon_urls.and_then(|urls| urls.clone().into_iter().next()) else {
                 return;
             };
             let mut callback = FaviconDownloadCallback::new(
@@ -4955,10 +5532,36 @@ cef::wrap_display_handler! {
             host.download_image(
                 Some(&CefString::from(icon_url.as_str())),
                 1,
-                32,
+                64,
                 0,
                 Some(&mut callback),
             );
+        }
+
+        fn on_fullscreen_mode_change(&self, _browser: Option<&mut Browser>, fullscreen: i32) {
+            self.bridge.emit(BrowserEvent::FullscreenModeChanged {
+                session: self.bridge.id,
+                fullscreen: fullscreen != 0,
+            });
+        }
+
+        fn on_status_message(&self, _browser: Option<&mut Browser>, value: Option<&CefString>) {
+            self.bridge.emit(BrowserEvent::StatusMessageChanged {
+                session: self.bridge.id,
+                message: Arc::from(value.map(ToString::to_string).unwrap_or_default()),
+            });
+        }
+
+        fn on_loading_progress_change(&self, _browser: Option<&mut Browser>, progress: f64) {
+            let progress = if progress.is_finite() {
+                (progress as f32).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            self.bridge.emit(BrowserEvent::LoadingProgressChanged {
+                session: self.bridge.id,
+                progress,
+            });
         }
 
         fn on_cursor_change(
@@ -4999,7 +5602,7 @@ cef::wrap_life_span_handler! {
             _popup_features: Option<&PopupFeatures>,
             window_info: Option<&mut WindowInfo>,
             client: Option<&mut Option<Client>>,
-            _settings: Option<&mut BrowserSettings>,
+            settings: Option<&mut BrowserSettings>,
             _extra_info: Option<&mut Option<DictionaryValue>>,
             _no_javascript_access: Option<&mut i32>,
         ) -> i32 {
@@ -5023,10 +5626,17 @@ cef::wrap_life_span_handler! {
                 foreground: popup_opens_in_foreground(target_disposition),
             };
             *window_info = WindowInfo {
-                shared_texture_enabled: 0,
+                shared_texture_enabled: i32::from(self.config.shared_texture_enabled),
                 external_begin_frame_enabled: i32::from(self.config.external_begin_frame_enabled),
                 ..WindowInfo::default().set_as_windowless(Default::default())
             };
+            if let Some(settings) = settings {
+                *settings = build_browser_settings(
+                    self.config.windowless_frame_rate,
+                    self.config.background_color,
+                    self.config.ax_viewport_collapse,
+                );
+            }
             *client = Some(prepared.client(Some(popup)));
             0
         }
@@ -5060,6 +5670,7 @@ cef::wrap_life_span_handler! {
 
         fn on_before_close(&self, browser: Option<&mut Browser>) {
             self.bridge.closing.store(true, Ordering::Release);
+            self.bridge.cancel_pending_dialogs();
             if let Some(popups) = self.popups.upgrade() {
                 close_pending_popups(&popups);
             }
@@ -5139,6 +5750,7 @@ cef::wrap_request_handler! {
                 frame.as_deref().cloned(),
             );
             if is_main {
+                self.bridge.picker_injected.store(false, Ordering::Release);
                 self.bridge.cancel_element_pick();
             }
             0
@@ -5171,7 +5783,9 @@ cef::wrap_request_handler! {
         ) {
             self.message_router
                 .on_render_process_terminated(browser.as_deref().cloned());
+            self.bridge.picker_injected.store(false, Ordering::Release);
             self.bridge.cancel_element_pick();
+            self.bridge.cancel_pending_dialogs();
             let detail = error_string.map_or_else(
                 || format!("renderer termination status {}", status.get_raw()),
                 ToString::to_string,
@@ -5214,22 +5828,65 @@ cef::wrap_context_menu_handler! {
 }
 
 cef::wrap_dialog_handler! {
-    struct DeniedDialogHandler;
+    struct BridgedDialogHandler {
+        bridge: SessionBridge,
+    }
 
     impl DialogHandler {
         fn on_file_dialog(
             &self,
             _browser: Option<&mut Browser>,
-            _mode: FileDialogMode,
-            _title: Option<&CefString>,
-            _default_file_path: Option<&CefString>,
+            mode: FileDialogMode,
+            title: Option<&CefString>,
+            default_file_path: Option<&CefString>,
             _accept_filters: Option<&mut CefStringList>,
             _accept_extensions: Option<&mut CefStringList>,
             _accept_descriptions: Option<&mut CefStringList>,
             callback: Option<&mut FileDialogCallback>,
         ) -> i32 {
-            if let Some(callback) = callback {
+            let Some(callback) = callback else {
+                return 1;
+            };
+            if self.bridge.closing.load(Ordering::Acquire) {
                 callback.cancel();
+                return 1;
+            }
+            let kind = if mode == FileDialogMode::OPEN_MULTIPLE {
+                FileDialogKind::OpenMultiple
+            } else if mode == FileDialogMode::OPEN_FOLDER {
+                FileDialogKind::OpenFolder
+            } else if mode == FileDialogMode::SAVE {
+                FileDialogKind::Save
+            } else {
+                FileDialogKind::Open
+            };
+            let id = self.bridge.allocate_dialog_id();
+            self.bridge
+                .pending_file_dialogs
+                .lock()
+                .insert(id, PendingFileDialog::new(callback.clone()));
+            let request = FileDialogRequest {
+                id,
+                kind,
+                title: title
+                    .map(ToString::to_string)
+                    .filter(|value| !value.is_empty())
+                    .map(Arc::from),
+                default_file_path: default_file_path
+                    .map(ToString::to_string)
+                    .filter(|value| !value.is_empty())
+                    .map(Arc::from),
+            };
+            if self
+                .bridge
+                .events
+                .try_send(BrowserEvent::FileDialogRequested {
+                    session: self.bridge.id,
+                    request,
+                })
+                .is_err()
+            {
+                self.bridge.pending_file_dialogs.lock().remove(&id);
             }
             1
         }
@@ -5237,7 +5894,9 @@ cef::wrap_dialog_handler! {
 }
 
 cef::wrap_download_handler! {
-    struct DeniedDownloadHandler;
+    struct BridgedDownloadHandler {
+        bridge: SessionBridge,
+    }
 
     impl DownloadHandler {
         fn can_download(
@@ -5246,7 +5905,247 @@ cef::wrap_download_handler! {
             _url: Option<&CefString>,
             _request_method: Option<&CefString>,
         ) -> i32 {
-            0
+            i32::from(!self.bridge.closing.load(Ordering::Acquire))
+        }
+
+        fn on_before_download(
+            &self,
+            _browser: Option<&mut Browser>,
+            download_item: Option<&mut DownloadItem>,
+            suggested_name: Option<&CefString>,
+            callback: Option<&mut BeforeDownloadCallback>,
+        ) -> i32 {
+            let (Some(item), Some(callback)) = (download_item, callback) else {
+                return 0;
+            };
+            if self.bridge.closing.load(Ordering::Acquire) {
+                return 0;
+            }
+            let id = item.id();
+            let suggested = suggested_name
+                .map(ToString::to_string)
+                .filter(|name| !name.is_empty())
+                .or_else(|| {
+                    let name = CefString::from(&item.suggested_file_name()).to_string();
+                    (!name.is_empty()).then_some(name)
+                })
+                .unwrap_or_else(|| "download".to_owned());
+            let url = CefString::from(&item.url()).to_string();
+            let total_bytes = item.total_bytes();
+            self.bridge
+                .pending_before_downloads
+                .lock()
+                .insert(id, PendingBeforeDownload::new(callback.clone()));
+            let request = DownloadRequest {
+                id,
+                url: Arc::from(url),
+                suggested_name: Arc::from(suggested),
+                total_bytes,
+            };
+            if self
+                .bridge
+                .events
+                .try_send(BrowserEvent::DownloadRequested {
+                    session: self.bridge.id,
+                    request,
+                })
+                .is_err()
+            {
+                self.bridge.pending_before_downloads.lock().remove(&id);
+                return 0;
+            }
+            1
+        }
+
+        fn on_download_updated(
+            &self,
+            _browser: Option<&mut Browser>,
+            download_item: Option<&mut DownloadItem>,
+            callback: Option<&mut DownloadItemCallback>,
+        ) {
+            let Some(item) = download_item else {
+                return;
+            };
+            let id = item.id();
+            if self.bridge.canceled_downloads.lock().contains(&id) {
+                if let Some(callback) = callback {
+                    callback.cancel();
+                }
+                if item.is_complete() != 0 || item.is_canceled() != 0 || item.is_interrupted() != 0 {
+                    self.bridge.canceled_downloads.lock().remove(&id);
+                    self.bridge.active_downloads.lock().remove(&id);
+                }
+                return;
+            }
+            let complete = item.is_complete() != 0;
+            let canceled = item.is_canceled() != 0;
+            let interrupted = item.is_interrupted() != 0;
+            if complete || canceled || interrupted {
+                self.bridge.active_downloads.lock().remove(&id);
+            } else if let Some(callback) = callback {
+                self.bridge
+                    .active_downloads
+                    .lock()
+                    .insert(id, callback.clone());
+            }
+            let full_path = CefString::from(&item.full_path()).to_string();
+            if full_path.is_empty() && !canceled && !interrupted {
+                return;
+            }
+            let file_name = Path::new(&full_path)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| CefString::from(&item.suggested_file_name()).to_string());
+            self.bridge.emit(BrowserEvent::DownloadUpdated {
+                session: self.bridge.id,
+                progress: DownloadProgress {
+                    id,
+                    file_name: Arc::from(file_name),
+                    full_path: Arc::from(full_path),
+                    received_bytes: item.received_bytes(),
+                    total_bytes: item.total_bytes(),
+                    percent_complete: item.percent_complete(),
+                    complete,
+                    canceled,
+                    interrupted,
+                },
+            });
+        }
+    }
+}
+
+cef::wrap_find_handler! {
+    struct BridgedFindHandler {
+        bridge: SessionBridge,
+    }
+
+    impl FindHandler {
+        fn on_find_result(
+            &self,
+            _browser: Option<&mut Browser>,
+            _identifier: i32,
+            count: i32,
+            _selection_rect: Option<&Rect>,
+            active_match_ordinal: i32,
+            final_update: i32,
+        ) {
+            self.bridge.emit(BrowserEvent::FindResult {
+                session: self.bridge.id,
+                count: count.max(0),
+                active_ordinal: active_match_ordinal.max(0),
+                final_update: final_update != 0,
+            });
+        }
+    }
+}
+
+cef::wrap_jsdialog_handler! {
+    struct BridgedJsdialogHandler {
+        bridge: SessionBridge,
+    }
+
+    impl JsdialogHandler {
+        fn on_jsdialog(
+            &self,
+            _browser: Option<&mut Browser>,
+            origin_url: Option<&CefString>,
+            dialog_type: JsdialogType,
+            message_text: Option<&CefString>,
+            default_prompt_text: Option<&CefString>,
+            callback: Option<&mut JsdialogCallback>,
+            suppress_message: Option<&mut i32>,
+        ) -> i32 {
+            let Some(callback) = callback else {
+                if let Some(suppress) = suppress_message {
+                    *suppress = 1;
+                }
+                return 0;
+            };
+            if self.bridge.closing.load(Ordering::Acquire) {
+                callback.cont(0, None);
+                return 1;
+            }
+            let kind = if dialog_type == JsdialogType::CONFIRM {
+                JsDialogKind::Confirm
+            } else if dialog_type == JsdialogType::PROMPT {
+                JsDialogKind::Prompt
+            } else {
+                JsDialogKind::Alert
+            };
+            let id = self.bridge.allocate_dialog_id();
+            self.bridge
+                .pending_js_dialogs
+                .lock()
+                .insert(id, PendingJsDialog::new(callback.clone(), false));
+            let request = JsDialogRequest {
+                id,
+                kind,
+                origin_url: Arc::from(origin_url.map(ToString::to_string).unwrap_or_default()),
+                message: Arc::from(message_text.map(ToString::to_string).unwrap_or_default()),
+                default_prompt: default_prompt_text
+                    .map(ToString::to_string)
+                    .filter(|value| !value.is_empty())
+                    .map(Arc::from),
+            };
+            if self
+                .bridge
+                .events
+                .try_send(BrowserEvent::JsDialogRequested {
+                    session: self.bridge.id,
+                    request,
+                })
+                .is_err()
+            {
+                self.bridge.pending_js_dialogs.lock().remove(&id);
+            }
+            1
+        }
+
+        fn on_before_unload_dialog(
+            &self,
+            _browser: Option<&mut Browser>,
+            message_text: Option<&CefString>,
+            is_reload: i32,
+            callback: Option<&mut JsdialogCallback>,
+        ) -> i32 {
+            let Some(callback) = callback else {
+                return 0;
+            };
+            if self.bridge.closing.load(Ordering::Acquire) {
+                callback.cont(1, None);
+                return 1;
+            }
+            let id = self.bridge.allocate_dialog_id();
+            self.bridge
+                .pending_js_dialogs
+                .lock()
+                .insert(id, PendingJsDialog::new(callback.clone(), true));
+            let request = JsDialogRequest {
+                id,
+                kind: JsDialogKind::BeforeUnload {
+                    is_reload: is_reload != 0,
+                },
+                origin_url: Arc::from(""),
+                message: Arc::from(message_text.map(ToString::to_string).unwrap_or_default()),
+                default_prompt: None,
+            };
+            if self
+                .bridge
+                .events
+                .try_send(BrowserEvent::JsDialogRequested {
+                    session: self.bridge.id,
+                    request,
+                })
+                .is_err()
+            {
+                self.bridge.pending_js_dialogs.lock().remove(&id);
+            }
+            1
+        }
+
+        fn on_reset_dialog_state(&self, _browser: Option<&mut Browser>) {
+            self.bridge.pending_js_dialogs.lock().clear();
         }
     }
 }
@@ -5326,6 +6225,8 @@ cef::wrap_client! {
         context_menu_handler: ContextMenuHandler,
         dialog_handler: DialogHandler,
         download_handler: DownloadHandler,
+        find_handler: FindHandler,
+        jsdialog_handler: JsdialogHandler,
         permission_handler: PermissionHandler,
         keyboard_handler: KeyboardHandler,
         message_router: Arc<BrowserSideRouter>,
@@ -5362,6 +6263,14 @@ cef::wrap_client! {
 
         fn download_handler(&self) -> Option<DownloadHandler> {
             Some(self.download_handler.clone())
+        }
+
+        fn find_handler(&self) -> Option<FindHandler> {
+            Some(self.find_handler.clone())
+        }
+
+        fn jsdialog_handler(&self) -> Option<JsdialogHandler> {
+            Some(self.jsdialog_handler.clone())
         }
 
         fn permission_handler(&self) -> Option<PermissionHandler> {
@@ -6051,13 +6960,30 @@ mod tests {
             d3d11_frames: D3d11FrameProducer::new(None, viewport),
             shared_texture_fallback_notified: Arc::new(AtomicBool::new(false)),
             element_pick: ElementPickState::default(),
+            picker_injected: Arc::new(AtomicBool::new(false)),
             pending_capture: PendingCapture::default(),
+            next_devtools_id: Arc::new(AtomicI32::new(1)),
+            pending_devtools: Arc::new(Mutex::new(BTreeMap::new())),
+            next_dialog_id: Arc::new(AtomicU64::new(1)),
+            pending_file_dialogs: Arc::new(Mutex::new(BTreeMap::new())),
+            pending_js_dialogs: Arc::new(Mutex::new(BTreeMap::new())),
+            pending_before_downloads: Arc::new(Mutex::new(BTreeMap::new())),
+            active_downloads: Arc::new(Mutex::new(BTreeMap::new())),
+            canceled_downloads: Arc::new(Mutex::new(std::collections::BTreeSet::new())),
             active_session: ActiveCountGuard::new(Arc::new(AtomicU64::new(0))),
             closing: Arc::new(AtomicBool::new(false)),
             popup: Arc::default(),
         };
 
         assert!(!bridge.shared_texture_fallback_requested());
+        assert_eq!(bridge.allocate_devtools_id(), 1);
+        assert_eq!(bridge.allocate_devtools_id(), 2);
+        assert!(decode_cdp_cookie_result(br#"{"success":true}"#));
+        assert!(!decode_cdp_cookie_result(br#"{"success":false}"#));
+        let settings = build_browser_settings(60, 0xff10_1318, true);
+        assert_eq!(settings.chrome_status_bubble, State::DISABLED);
+        assert_eq!(settings.chrome_zoom_bubble, State::DISABLED);
+        assert_eq!(settings.ax_viewport_collapse, State::ENABLED);
         bridge.request_shared_texture_fallback("first import failed");
         bridge.request_shared_texture_fallback("late validation failure");
         assert!(bridge.shared_texture_fallback_requested());

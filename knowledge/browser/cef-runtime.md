@@ -298,13 +298,15 @@ context for that name and builds a `BrowserClient` aggregating handlers wrapped 
 | Handler | Responsibility |
 | --- | --- |
 | `RenderHandlerBuilder` | `view_rect`/`screen_info`/`screen_point`, readback `on_paint`, and accelerated `on_accelerated_paint`. |
-| `DisplayHandlerBuilder` | Address, title, and cursor change → `BrowserEvent`. |
-| `LifeSpanHandlerBuilder` | `on_after_created`/`on_before_close`, windowless popup creation → `PopupCreated` for adoption into a tab. |
+| `DisplayHandlerBuilder` | Address, title, favicon, cursor, loading progress, link-hover status message, and fullscreen changes → `BrowserEvent`. |
+| `LifeSpanHandlerBuilder` | `on_after_created`/`on_before_close`, windowless popup creation → `PopupCreated` for adoption into a tab (inheriting shared textures). |
 | `LoadHandlerBuilder` | Loading-state and load-error events. |
 | `RequestHandlerBuilder` | `on_before_browse`, open-URL-from-tab → `PopupRequested` event, renderer-terminated event. |
-| `Denied{ContextMenu,Dialog,Download,Permission}Handler` | Cancel/deny privileged operations instead of falling through to an engine default. |
-| `ImportCookieCallback` / `CookieImportFlushCallback` | Aggregate partial cookie-import results and flush the persistent store. |
-| `SiteDataClearObserver` | Match the submitted DevTools message ID and complete current-origin site-data clearing. |
+| `ContextMenuHandler` | Captures link/image URLs, edit flags, and spellcheck suggestions into `ContextMenuRequested` (cancelling Chromium's native menu). |
+| `Bridged{Dialog,Download,Find,Jsdialog}Handler` | Bridges `<input type="file">`, downloads, native find-in-page, and JS `alert`/`confirm`/`prompt`/`beforeunload` dialogs to `zz` with drop-safe cancel guards. |
+| `DeniedPermissionHandler` | Denies privileged permission requests instead of falling through to an engine default. |
+| `ImportCookieCallback` / `CdpCookieObserver` / `CookieImportFlushCallback` | Aggregate `CookieManager` + CDP `Network.setCookie` (CHIPS) cookie-import results and flush the persistent store. |
+| `SiteDataClearObserver` / `BridgedPdfPrintCallback` | Complete current-origin site-data clearing and Print-to-PDF export. |
 
 A CEF **message router** (`BrowserSideRouter`/`RendererSideRouter`) is created per
 session and reused by the [element picker](/browser/element-picker.md).

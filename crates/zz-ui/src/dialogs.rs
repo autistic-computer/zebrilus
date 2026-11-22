@@ -39,6 +39,61 @@ pub fn browser_clear_site_data_alert(alert: AlertDialog, cx: &App) -> AlertDialo
         )
 }
 
+pub fn browser_js_alert_dialog(
+    alert: AlertDialog,
+    title: impl Into<SharedString>,
+    message: impl Into<SharedString>,
+) -> AlertDialog {
+    alert
+        .title(title.into())
+        .description(message.into())
+        .button_props(
+            DialogButtonProps::default()
+                .ok_text("OK")
+                .show_cancel(false),
+        )
+}
+
+pub fn browser_js_confirm_dialog(
+    alert: AlertDialog,
+    title: impl Into<SharedString>,
+    message: impl Into<SharedString>,
+    ok_text: impl Into<SharedString>,
+    cancel_text: impl Into<SharedString>,
+) -> AlertDialog {
+    alert
+        .title(title.into())
+        .description(message.into())
+        .button_props(
+            DialogButtonProps::default()
+                .ok_text(ok_text)
+                .cancel_text(cancel_text)
+                .show_cancel(true),
+        )
+}
+
+pub fn browser_js_prompt_dialog(
+    dialog: Dialog,
+    title: impl Into<SharedString>,
+    message: &str,
+    input: &Entity<InputState>,
+    cx: &App,
+) -> Dialog {
+    prompt_dialog(
+        dialog,
+        title,
+        DialogButtonProps::default()
+            .ok_text("OK")
+            .cancel_text("Cancel")
+            .show_cancel(true),
+    )
+    .child(
+        prompt_body()
+            .child(prompt_question(message, cx))
+            .child(Input::new(input)),
+    )
+}
+
 pub fn import_configuration_file_alert(
     alert: AlertDialog,
     title: impl Into<SharedString>,

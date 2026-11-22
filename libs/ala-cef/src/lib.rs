@@ -49,14 +49,16 @@ pub use artifact::{
     host_local_page, is_local_page, local_scheme, parse_artifact_url,
 };
 pub use cookie::{
-    BrowserCookie, BrowserCookiePriority, BrowserCookieSameSite, CookieImportBatch,
-    CookieImportError, CookieImportResult, MAX_COOKIE_IMPORT_BYTES, MAX_COOKIE_IMPORT_COUNT,
-    SiteDataClearResult, parse_cookie_import,
+    BrowserCookie, BrowserCookiePartitionKey, BrowserCookiePriority, BrowserCookieSameSite,
+    CookieImportBatch, CookieImportError, CookieImportResult, MAX_COOKIE_IMPORT_BYTES,
+    MAX_COOKIE_IMPORT_COUNT, SiteDataClearResult, parse_cookie_import,
 };
 #[cfg(not(target_family = "wasm"))]
 pub use element_picker::ElementPickerAppearance;
 pub use event::{
-    BrowserCursor, BrowserEvent, ContextMenuRequest, EditFlags, MAX_FAVICON_BYTES, SessionId,
+    BrowserCursor, BrowserEvent, ContextMenuRequest, DownloadProgress, DownloadRequest, EditFlags,
+    FileDialogKind, FileDialogRequest, JsDialogKind, JsDialogRequest, MAX_FAVICON_BYTES,
+    PdfPrintResult, SessionId,
 };
 #[cfg(feature = "host")]
 pub use frame::{

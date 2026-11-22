@@ -7,6 +7,8 @@ use url::Url;
 
 pub const MAX_COOKIE_IMPORT_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_COOKIE_IMPORT_COUNT: usize = 10_000;
+const MAX_COOKIE_NAME_AND_VALUE_BYTES: usize = 4096;
+const UNIX_MILLIS_THRESHOLD_SECS: f64 = 1_000_000_000_000.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BrowserCookieSameSite {
@@ -25,6 +27,12 @@ pub enum BrowserCookiePriority {
     High,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BrowserCookiePartitionKey {
+    pub top_level_site: String,
+    pub has_cross_site_ancestor: bool,
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct BrowserCookie {
     pub source_url: String,
@@ -37,12 +45,14 @@ pub struct BrowserCookie {
     pub expires_unix_micros: Option<i64>,
     pub same_site: BrowserCookieSameSite,
     pub priority: BrowserCookiePriority,
+    pub partition_key: Option<BrowserCookiePartitionKey>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct CookieImportBatch {
     pub cookies: Vec<BrowserCookie>,
     pub skipped: usize,
+    pub app_bound_skipped: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +60,7 @@ pub struct CookieImportResult {
     pub imported: usize,
     pub skipped: usize,
     pub rejected: usize,
+    pub app_bound_skipped: usize,
     pub persisted: bool,
 }
 
@@ -110,9 +121,30 @@ struct JsonCookie {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RowError {
+pub(crate) enum RowError {
     Invalid,
     Unsupported,
+}
+
+#[cfg(feature = "chrome-import")]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "cookie normalization accepts Chromium schema attributes directly"
+)]
+pub(crate) struct RawCookieInput<'a> {
+    pub name: String,
+    pub value: String,
+    pub domain: &'a str,
+    pub host_only: bool,
+    pub path: Option<&'a str>,
+    pub secure: bool,
+    pub http_only: bool,
+    pub expires_unix_micros: Option<i64>,
+    pub same_site: BrowserCookieSameSite,
+    pub priority: BrowserCookiePriority,
+    pub source_scheme: Option<&'a str>,
+    pub source_port: Option<i32>,
+    pub partition_key: Option<BrowserCookiePartitionKey>,
 }
 
 pub fn parse_cookie_import(input: &str) -> Result<CookieImportBatch, CookieImportError> {
@@ -163,9 +195,7 @@ fn parse_json(input: &str, now_unix_micros: i64) -> Result<CookieImportBatch, Co
 }
 
 fn json_cookie(row: JsonCookie, now_unix_micros: i64) -> Result<BrowserCookie, RowError> {
-    if row.partitioned || row.partition_key.is_some() {
-        return Err(RowError::Unsupported);
-    }
+    let partition_key = parse_json_partition_key(row.partition_key.as_ref(), row.partitioned)?;
 
     let parsed_url = row
         .url
@@ -195,15 +225,12 @@ fn json_cookie(row: JsonCookie, now_unix_micros: i64) -> Result<BrowserCookie, R
     let (host, domain) = normalize_cookie_domain(&raw_domain, host_only)?;
 
     let path = normalize_cookie_path(row.path.as_deref())?;
-    let secure = row.secure
-        || parsed_url
-            .as_ref()
-            .is_some_and(|url| url.scheme() == "https")
-        || row
-            .source_scheme
-            .as_deref()
-            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("secure"));
-    let scheme = source_scheme(row.source_scheme.as_deref(), secure)?;
+    let secure = row.secure;
+    let scheme = source_scheme(
+        row.source_scheme.as_deref(),
+        parsed_url.as_ref().map(Url::scheme),
+        secure,
+    )?;
     let port = row
         .source_port
         .filter(|port| *port > 0)
@@ -221,9 +248,14 @@ fn json_cookie(row: JsonCookie, now_unix_micros: i64) -> Result<BrowserCookie, R
         return Err(RowError::Unsupported);
     }
 
-    if row.name.is_empty() || contains_nul(&row.name) || contains_nul(&row.value) {
-        return Err(RowError::Invalid);
-    }
+    validate_cookie_fields(
+        &row.name,
+        &row.value,
+        host_only,
+        &path,
+        secure,
+        partition_key.is_some(),
+    )?;
     let same_site = same_site(row.same_site.as_deref())?;
     if same_site == BrowserCookieSameSite::NoRestriction && !secure {
         return Err(RowError::Unsupported);
@@ -240,6 +272,53 @@ fn json_cookie(row: JsonCookie, now_unix_micros: i64) -> Result<BrowserCookie, R
         expires_unix_micros,
         same_site,
         priority: priority(row.priority.as_deref())?,
+        partition_key,
+    })
+}
+
+#[cfg(feature = "chrome-import")]
+pub(crate) fn normalize_raw_cookie(
+    input: RawCookieInput<'_>,
+    now_unix_micros: i64,
+) -> Result<BrowserCookie, RowError> {
+    let partition_key = input
+        .partition_key
+        .map(|key| normalize_partition_key(&key.top_level_site, key.has_cross_site_ancestor))
+        .transpose()?;
+    let (host, domain) = normalize_cookie_domain(input.domain, input.host_only)?;
+    let path = normalize_cookie_path(input.path)?;
+    let scheme = source_scheme(input.source_scheme, None, input.secure)?;
+    let port = input.source_port.filter(|port| *port > 0);
+    let source_url = cookie_source_url(&host, &path, scheme, port)?;
+    if input
+        .expires_unix_micros
+        .is_some_and(|expires| expires <= now_unix_micros)
+    {
+        return Err(RowError::Unsupported);
+    }
+    validate_cookie_fields(
+        &input.name,
+        &input.value,
+        input.host_only,
+        &path,
+        input.secure,
+        partition_key.is_some(),
+    )?;
+    if input.same_site == BrowserCookieSameSite::NoRestriction && !input.secure {
+        return Err(RowError::Unsupported);
+    }
+    Ok(BrowserCookie {
+        source_url,
+        name: input.name,
+        value: input.value,
+        domain,
+        path,
+        secure: input.secure,
+        http_only: input.http_only,
+        expires_unix_micros: input.expires_unix_micros,
+        same_site: input.same_site,
+        priority: input.priority,
+        partition_key,
     })
 }
 
@@ -287,12 +366,11 @@ fn netscape_cookie(line: &str, now_unix_micros: i64) -> Result<BrowserCookie, Ro
         return Err(RowError::Invalid);
     }
 
-    let (host, domain) = normalize_cookie_domain(raw_domain, !include_subdomains)?;
-    if name.is_empty() || contains_nul(&name) || contains_nul(&value) {
-        return Err(RowError::Invalid);
-    }
+    let host_only = !include_subdomains;
+    let (host, domain) = normalize_cookie_domain(raw_domain, host_only)?;
+    validate_cookie_fields(&name, &value, host_only, &path, secure, false)?;
     let expires_unix_micros = match expiration {
-        0 => None,
+        -1 | 0 => None,
         value if value > 0 => Some(value.checked_mul(1_000_000).ok_or(RowError::Invalid)?),
         _ => return Err(RowError::Invalid),
     };
@@ -311,6 +389,7 @@ fn netscape_cookie(line: &str, now_unix_micros: i64) -> Result<BrowserCookie, Ro
         expires_unix_micros,
         same_site: BrowserCookieSameSite::Unspecified,
         priority: BrowserCookiePriority::Medium,
+        partition_key: None,
     })
 }
 
@@ -321,7 +400,113 @@ fn finish_batch(
     if cookies.is_empty() {
         return Err(CookieImportError::NoUsableCookies { skipped });
     }
-    Ok(CookieImportBatch { cookies, skipped })
+    Ok(CookieImportBatch {
+        cookies,
+        skipped,
+        app_bound_skipped: 0,
+    })
+}
+
+fn parse_json_partition_key(
+    value: Option<&Value>,
+    partitioned: bool,
+) -> Result<Option<BrowserCookiePartitionKey>, RowError> {
+    let parsed = match value {
+        None | Some(Value::Null) => None,
+        Some(Value::String(site)) => {
+            let site = site.trim();
+            if site.is_empty() {
+                None
+            } else {
+                Some(normalize_partition_key(site, false)?)
+            }
+        }
+        Some(Value::Object(object)) => {
+            let site = object
+                .get("topLevelSite")
+                .or_else(|| object.get("top_level_site"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|site| !site.is_empty());
+            match site {
+                None => None,
+                Some(site) => {
+                    let has_cross_site_ancestor = object
+                        .get("hasCrossSiteAncestor")
+                        .or_else(|| object.get("has_cross_site_ancestor"))
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
+                    Some(normalize_partition_key(site, has_cross_site_ancestor)?)
+                }
+            }
+        }
+        Some(_) => return Err(RowError::Invalid),
+    };
+    if partitioned && parsed.is_none() {
+        return Err(RowError::Unsupported);
+    }
+    Ok(parsed)
+}
+
+pub(crate) fn normalize_partition_key(
+    top_level_site: &str,
+    has_cross_site_ancestor: bool,
+) -> Result<BrowserCookiePartitionKey, RowError> {
+    let parsed = Url::parse(top_level_site.trim()).map_err(|_| RowError::Invalid)?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+        return Err(RowError::Invalid);
+    }
+    let origin = parsed.origin().ascii_serialization();
+    if origin == "null" {
+        return Err(RowError::Invalid);
+    }
+    Ok(BrowserCookiePartitionKey {
+        top_level_site: origin,
+        has_cross_site_ancestor,
+    })
+}
+
+fn validate_cookie_fields(
+    name: &str,
+    value: &str,
+    host_only: bool,
+    path: &str,
+    secure: bool,
+    partitioned: bool,
+) -> Result<(), RowError> {
+    if name.is_empty()
+        || name.len().saturating_add(value.len()) > MAX_COOKIE_NAME_AND_VALUE_BYTES
+        || !is_valid_cookie_name(name)
+        || !is_valid_cookie_value(value)
+    {
+        return Err(RowError::Invalid);
+    }
+    if partitioned && !secure {
+        return Err(RowError::Unsupported);
+    }
+    let lower_prefix = name.get(..9).unwrap_or(name);
+    if lower_prefix.len() >= 9 && lower_prefix[..9].eq_ignore_ascii_case("__secure-") && !secure {
+        return Err(RowError::Unsupported);
+    }
+    let host_prefix = name.get(..7).unwrap_or(name);
+    if host_prefix.len() >= 7
+        && host_prefix[..7].eq_ignore_ascii_case("__host-")
+        && (!secure || !host_only || path != "/")
+    {
+        return Err(RowError::Unsupported);
+    }
+    Ok(())
+}
+
+fn is_valid_cookie_name(name: &str) -> bool {
+    name.bytes()
+        .all(|byte| !matches!(byte, 0x00..=0x20 | 0x7f | b';' | b'='))
+}
+
+fn is_valid_cookie_value(value: &str) -> bool {
+    value
+        .bytes()
+        .all(|byte| byte == b'\t' || !matches!(byte, 0x00..=0x1f | 0x7f))
 }
 
 fn normalize_cookie_path(path: Option<&str>) -> Result<String, RowError> {
@@ -329,7 +514,11 @@ fn normalize_cookie_path(path: Option<&str>) -> Result<String, RowError> {
     if path.is_empty() {
         return Ok("/".to_owned());
     }
-    if !path.starts_with('/') || contains_nul(path) {
+    if !path.starts_with('/')
+        || path
+            .bytes()
+            .any(|byte| matches!(byte, 0x00..=0x1f | 0x7f | b';'))
+    {
         return Err(RowError::Invalid);
     }
     Ok(path.to_owned())
@@ -345,9 +534,29 @@ fn parse_bool(value: &str) -> Result<bool, RowError> {
     }
 }
 
-fn source_scheme(explicit: Option<&str>, secure: bool) -> Result<&'static str, RowError> {
+fn source_scheme(
+    explicit: Option<&str>,
+    url_scheme: Option<&str>,
+    secure: bool,
+) -> Result<&'static str, RowError> {
+    if secure {
+        if let Some(value) = explicit
+            && !value.eq_ignore_ascii_case("secure")
+            && !value.eq_ignore_ascii_case("https")
+            && !value.eq_ignore_ascii_case("nonsecure")
+            && !value.eq_ignore_ascii_case("non_secure")
+            && !value.eq_ignore_ascii_case("http")
+        {
+            return Err(RowError::Unsupported);
+        }
+        return Ok("https");
+    }
     match explicit {
-        None => Ok(if secure { "https" } else { "http" }),
+        None => Ok(if url_scheme == Some("https") {
+            "https"
+        } else {
+            "http"
+        }),
         Some(value)
             if value.eq_ignore_ascii_case("secure") || value.eq_ignore_ascii_case("https") =>
         {
@@ -358,7 +567,7 @@ fn source_scheme(explicit: Option<&str>, secure: bool) -> Result<&'static str, R
                 || value.eq_ignore_ascii_case("non_secure")
                 || value.eq_ignore_ascii_case("http") =>
         {
-            Ok(if secure { "https" } else { "http" })
+            Ok("http")
         }
         Some(_) => Err(RowError::Unsupported),
     }
@@ -380,7 +589,7 @@ fn normalize_cookie_domain(raw: &str, host_only: bool) -> Result<(String, String
         return Err(RowError::Invalid);
     }
     let host = parsed.host_str().ok_or(RowError::Invalid)?.to_owned();
-    if !host_only && is_ip_literal(&host) {
+    if !host_only && (is_ip_literal(&host) || !host.contains('.')) {
         return Err(RowError::Unsupported);
     }
     let domain = if host_only {
@@ -419,15 +628,26 @@ fn cookie_source_url(
 }
 
 fn expiration_micros(seconds: f64) -> Result<Option<i64>, RowError> {
-    if seconds == 0.0 {
+    if !seconds.is_finite() {
+        return Err(RowError::Invalid);
+    }
+    if seconds == 0.0 || seconds == -1.0 {
         return Ok(None);
     }
+    if seconds < 0.0 {
+        return Err(RowError::Invalid);
+    }
+    let seconds = if seconds > UNIX_MILLIS_THRESHOLD_SECS {
+        seconds / 1_000.0
+    } else {
+        seconds
+    };
     let duration = Duration::try_from_secs_f64(seconds).map_err(|_| RowError::Invalid)?;
     let micros = i64::try_from(duration.as_micros()).map_err(|_| RowError::Invalid)?;
     Ok(Some(micros))
 }
 
-fn current_unix_micros() -> i64 {
+pub(crate) fn current_unix_micros() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()
@@ -438,7 +658,10 @@ fn current_unix_micros() -> i64 {
 fn same_site(value: Option<&str>) -> Result<BrowserCookieSameSite, RowError> {
     match value.map(str::trim).filter(|value| !value.is_empty()) {
         None => Ok(BrowserCookieSameSite::Unspecified),
-        Some(value) if value.eq_ignore_ascii_case("unspecified") => {
+        Some(value)
+            if value.eq_ignore_ascii_case("unspecified")
+                || value.eq_ignore_ascii_case("extended") =>
+        {
             Ok(BrowserCookieSameSite::Unspecified)
         }
         Some(value)
@@ -464,10 +687,6 @@ fn priority(value: Option<&str>) -> Result<BrowserCookiePriority, RowError> {
     }
 }
 
-fn contains_nul(value: &str) -> bool {
-    value.contains('\0')
-}
-
 fn is_ip_literal(domain: &str) -> bool {
     domain
         .trim_matches(['[', ']'])
@@ -480,7 +699,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_cookie_editor_json_and_counts_unsupported_rows() {
+    fn parses_cookie_editor_json_including_chips_and_empty_partition_keys() {
         let input = r#"[
             {
                 "domain": ".example.com",
@@ -489,21 +708,30 @@ mod tests {
                 "httpOnly": true,
                 "name": "session",
                 "path": "/account",
+                "partitionKey": {},
                 "sameSite": "no_restriction",
                 "secure": true,
                 "value": "secret"
             },
             {
-                "domain": "partitioned.example",
-                "name": "partitioned",
+                "domain": "embed.example",
+                "name": "chips",
+                "partitionKey": { "topLevelSite": "https://example.com", "hasCrossSiteAncestor": true },
+                "secure": true,
+                "value": "token"
+            },
+            {
+                "domain": "embed.example",
+                "name": "insecure-chips",
                 "partitionKey": { "topLevelSite": "https://example.com" },
-                "value": "ignored"
+                "secure": false,
+                "value": "rejected"
             }
         ]"#;
 
         let batch = parse_cookie_import(input).expect("parse cookie export");
         assert_eq!(batch.skipped, 1);
-        assert_eq!(batch.cookies.len(), 1);
+        assert_eq!(batch.cookies.len(), 2);
         let cookie = &batch.cookies[0];
         assert_eq!(cookie.source_url, "https://example.com/account");
         assert_eq!(cookie.domain, ".example.com");
@@ -513,6 +741,39 @@ mod tests {
         assert_eq!(cookie.expires_unix_micros, Some(1_893_456_000_250_000));
         assert_eq!(cookie.same_site, BrowserCookieSameSite::NoRestriction);
         assert_eq!(cookie.priority, BrowserCookiePriority::Medium);
+        assert_eq!(cookie.partition_key, None);
+
+        let chips = &batch.cookies[1];
+        assert_eq!(
+            chips.partition_key,
+            Some(BrowserCookiePartitionKey {
+                top_level_site: "https://example.com".to_owned(),
+                has_cross_site_ancestor: true,
+            })
+        );
+    }
+
+    #[test]
+    fn preserves_non_secure_attribute_for_https_origin_and_handles_negative_one_session_expiry() {
+        let input = r#"[
+            {
+                "domain": "app.example.com",
+                "url": "https://app.example.com/dashboard",
+                "sourceScheme": "secure",
+                "name": "prefs",
+                "path": "/",
+                "secure": false,
+                "expires": -1,
+                "value": "compact"
+            }
+        ]"#;
+
+        let batch = parse_cookie_import(input).expect("parse https non-secure cookie");
+        assert_eq!(batch.cookies.len(), 1);
+        let cookie = &batch.cookies[0];
+        assert!(!cookie.secure);
+        assert_eq!(cookie.source_url, "https://app.example.com/");
+        assert_eq!(cookie.expires_unix_micros, None);
     }
 
     #[test]
@@ -557,33 +818,20 @@ mod tests {
     }
 
     #[test]
-    fn skips_expired_insecure_none_and_malformed_rows() {
-        let input = concat!(
-            "expired.example\tFALSE\t/\tFALSE\t1\texpired\tvalue\n",
-            "example.com\tFALSE\t/\tFALSE\t0\textra\ttab\tvalue\n",
-            "example.com\tFALSE\t/\tFALSE\t0\tvalid\tvalue\n",
-        );
-        let batch = parse_cookie_import(input).expect("parse partial Netscape export");
-        assert_eq!(batch.cookies.len(), 1);
-        assert_eq!(batch.skipped, 2);
-
+    fn skips_invalid_rfc_cookies_prefixes_and_expired_rows() {
         let json = r#"[
-            {
-                "domain": "example.com",
-                "name": "insecure-none",
-                "sameSite": "none",
-                "secure": false,
-                "value": "secret"
-            },
-            {
-                "domain": "example.com",
-                "name": "valid",
-                "value": "secret"
-            }
+            { "domain": "example.com", "name": "insecure-none", "sameSite": "none", "secure": false, "value": "x" },
+            { "domain": "example.com", "name": "__Secure-bad", "secure": false, "value": "x" },
+            { "domain": ".example.com", "name": "__Host-domain", "hostOnly": false, "secure": true, "path": "/", "value": "x" },
+            { "domain": "example.com", "name": "bad;name", "value": "x" },
+            { "domain": "example.com", "name": "ctl", "value": "bad\nvalue" },
+            { "domain": ".localhost", "hostOnly": false, "name": "dotlocal", "value": "x" },
+            { "domain": "example.com", "name": "valid", "value": "secret" }
         ]"#;
         let batch = parse_cookie_import(json).expect("parse partial JSON export");
         assert_eq!(batch.cookies.len(), 1);
-        assert_eq!(batch.skipped, 1);
+        assert_eq!(batch.cookies[0].name, "valid");
+        assert_eq!(batch.skipped, 6);
     }
 
     #[test]
@@ -593,17 +841,6 @@ mod tests {
         let batch = parse_cookie_import(input).expect("parse Netscape export");
         assert_eq!(batch.cookies.len(), 1);
         assert!(batch.cookies[0].value.is_empty());
-    }
-
-    #[test]
-    fn skips_invalid_rows_without_exposing_contents() {
-        let input = concat!(
-            "broken\trow\n",
-            "example.com\tFALSE\t/\tFALSE\t0\tvalid\tvalue\n",
-        );
-        let batch = parse_cookie_import(input).expect("parse partial export");
-        assert_eq!(batch.cookies.len(), 1);
-        assert_eq!(batch.skipped, 1);
     }
 
     #[test]

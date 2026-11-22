@@ -302,9 +302,23 @@ impl TuiBrowserProvider {
                             "browser pane {pane} load failed ({code}): {description}"
                         );
                     }
+                    BrowserEvent::FileDialogRequested { request, .. } => {
+                        session.browser.respond_file_dialog(request.id, None);
+                    }
+                    BrowserEvent::JsDialogRequested { request, .. } => {
+                        session.browser.respond_js_dialog(request.id, false, None);
+                    }
+                    BrowserEvent::DownloadRequested { request, .. } => {
+                        session.browser.respond_download(request.id, None);
+                    }
                     BrowserEvent::TitleChanged { .. }
                     | BrowserEvent::FaviconChanged { .. }
                     | BrowserEvent::LoadingChanged { .. }
+                    | BrowserEvent::LoadingProgressChanged { .. }
+                    | BrowserEvent::StatusMessageChanged { .. }
+                    | BrowserEvent::FullscreenModeChanged { .. }
+                    | BrowserEvent::FindResult { .. }
+                    | BrowserEvent::DownloadUpdated { .. }
                     | BrowserEvent::FrameReady { .. }
                     | BrowserEvent::CursorChanged { .. }
                     | BrowserEvent::ImeCompositionChanged { .. }
@@ -372,6 +386,14 @@ impl TuiBrowserProvider {
                     | BrowserEvent::TitleChanged { .. }
                     | BrowserEvent::FaviconChanged { .. }
                     | BrowserEvent::LoadingChanged { .. }
+                    | BrowserEvent::LoadingProgressChanged { .. }
+                    | BrowserEvent::StatusMessageChanged { .. }
+                    | BrowserEvent::FullscreenModeChanged { .. }
+                    | BrowserEvent::FindResult { .. }
+                    | BrowserEvent::FileDialogRequested { .. }
+                    | BrowserEvent::JsDialogRequested { .. }
+                    | BrowserEvent::DownloadRequested { .. }
+                    | BrowserEvent::DownloadUpdated { .. }
                     | BrowserEvent::FrameReady { .. }
                     | BrowserEvent::SharedTextureFailed { .. }
                     | BrowserEvent::LoadFailed { .. }

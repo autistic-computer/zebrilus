@@ -5,7 +5,7 @@ use ala::windows::{
         Foundation::HANDLE,
         Graphics::{
             Direct3D11::{
-                D3D11_BIND_SHADER_RESOURCE, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
+                D3D11_BIND_SHADER_RESOURCE, D3D11_BOX, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
                 ID3D11Device1, ID3D11DeviceContext, ID3D11Texture2D,
             },
             Dxgi::Common::{
@@ -23,6 +23,7 @@ use thiserror::Error;
 use crate::{
     BrowserGpuContext, Viewport, WinGpuTexture,
     cef_runtime::{AcceleratedPoolLayout, ExpectedFrameSize, StalePoolFrame},
+    popup::{PopupPlacement, PopupRect, popup_placement},
 };
 
 const DESTINATION_POOL_SLOT_COUNT: usize = 5;
@@ -38,6 +39,14 @@ struct D3d11FrameProducerState {
     context: Option<D3d11Context>,
     initialization_error: Option<String>,
     destinations: Option<DestinationTexturePool>,
+    popup: Option<PopupTexture>,
+}
+
+struct PopupTexture {
+    width: u32,
+    height: u32,
+    format: DXGI_FORMAT,
+    texture: ID3D11Texture2D,
 }
 
 struct D3d11Context {
@@ -184,9 +193,34 @@ impl D3d11Context {
         unsafe_code,
         reason = "recording and submitting D3D11 device-context work is unsafe"
     )]
-    fn copy_and_flush(&self, destination: &ID3D11Texture2D, source: &ID3D11Texture2D) {
+    fn copy_and_flush(
+        &self,
+        destination: &ID3D11Texture2D,
+        source: &ID3D11Texture2D,
+        popup: Option<(PopupPlacement, &ID3D11Texture2D)>,
+    ) {
         unsafe {
             self.device_context.CopyResource(destination, source);
+            if let Some((placement, popup_texture)) = popup {
+                let src_box = D3D11_BOX {
+                    left: 0,
+                    top: 0,
+                    front: 0,
+                    right: placement.width,
+                    bottom: placement.height,
+                    back: 1,
+                };
+                self.device_context.CopySubresourceRegion(
+                    destination,
+                    0,
+                    placement.x,
+                    placement.y,
+                    0,
+                    popup_texture,
+                    0,
+                    Some(&raw const src_box),
+                );
+            }
             self.device_context.Flush();
         }
     }
@@ -243,6 +277,7 @@ impl D3d11FrameProducer {
                 context,
                 initialization_error,
                 destinations: None,
+                popup: None,
             })),
         }
     }
@@ -256,10 +291,74 @@ impl D3d11FrameProducer {
         }
     }
 
+    pub(super) fn clear_popup(&self) {
+        self.state.lock().popup = None;
+    }
+
+    pub(super) fn produce_popup(&self, info: &AcceleratedPaintInfo) -> Result<(), D3d11FrameError> {
+        let layout = AcceleratedPoolLayout::from_info(info)
+            .map_err(|error| D3d11FrameError::InvalidMetadata(error.to_string()))?;
+        if info.shared_texture_handle.is_null() {
+            return Err(D3d11FrameError::InvalidMetadata(
+                "CEF supplied a null shared texture handle".to_owned(),
+            ));
+        }
+
+        let mut state = self.state.lock();
+        let Some(context) = state.context.as_ref() else {
+            return Err(D3d11FrameError::Initialization(
+                state
+                    .initialization_error
+                    .clone()
+                    .unwrap_or_else(|| D3d11FrameError::DeviceUnavailable.to_string()),
+            ));
+        };
+        let context = D3d11Context {
+            device: context.device.clone(),
+            device_context: context.device_context.clone(),
+        };
+        context.check_device()?;
+
+        let width = layout.width.cast_unsigned();
+        let height = layout.height.cast_unsigned();
+        let imported = context.open_shared(info.shared_texture_handle)?;
+        let source = D3d11Context::describe(&imported);
+        if source.Width != width || source.Height != height {
+            return Err(D3d11FrameError::SourceMismatch {
+                expected_width: width,
+                expected_height: height,
+                actual_width: source.Width,
+                actual_height: source.Height,
+                actual_format: source.Format,
+            });
+        }
+        let format = supported_destination_format(source.Format)?;
+        if state.popup.as_ref().is_none_or(|popup| {
+            popup.width != width || popup.height != height || popup.format != format
+        }) {
+            state.popup = Some(PopupTexture {
+                width,
+                height,
+                format,
+                texture: context.create_destination(width, height, format)?,
+            });
+        }
+        let popup_texture = state
+            .popup
+            .as_ref()
+            .expect("popup texture was initialized")
+            .texture
+            .clone();
+        context.copy_and_flush(&popup_texture, &imported, None);
+        drop(imported);
+        Ok(())
+    }
+
     pub(super) fn produce(
         &self,
         info: &AcceleratedPaintInfo,
         sequence: u64,
+        popup: Option<PopupRect>,
     ) -> Result<D3d11FrameOutcome, D3d11FrameError> {
         let layout = AcceleratedPoolLayout::from_info(info)
             .map_err(|error| D3d11FrameError::InvalidMetadata(error.to_string()))?;
@@ -330,8 +429,21 @@ impl D3d11FrameProducer {
         let pool_generation = destinations.generation;
         destinations.next = (destination_index + 1) % destinations.textures.len();
         let expected = state.expected;
+        let popup_copy = popup
+            .zip(state.popup.as_ref())
+            .filter(|(_, popup)| popup.format == format)
+            .and_then(|(rect, popup)| {
+                popup_placement(rect, popup.width, popup.height, width, height)
+                    .map(|placement| (placement, popup.texture.clone()))
+            });
 
-        context.copy_and_flush(&destination, &imported);
+        context.copy_and_flush(
+            &destination,
+            &imported,
+            popup_copy
+                .as_ref()
+                .map(|(placement, texture)| (*placement, texture)),
+        );
         drop(imported);
 
         Ok(D3d11FrameOutcome::Frame(ProducedD3d11Frame {

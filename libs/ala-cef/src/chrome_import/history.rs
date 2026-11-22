@@ -1,15 +1,16 @@
 use std::{
     collections::HashSet,
-    fs, io,
+    io,
     path::{Path, PathBuf},
 };
 
-use rusqlite::{Connection, OpenFlags};
-use tempfile::TempDir;
 use thiserror::Error;
 use url::Url;
 
-use super::{cookie::source_storage_key, profiles::chrome_user_data_dir};
+use super::{
+    fs_util::{AsSqliteError, SqliteSnapshotError, with_sqlite_snapshot},
+    profiles::{ResolvedBrowserProfile, resolve_profile_source},
+};
 
 const CHROMIUM_EPOCH_OFFSET_MICROS: i64 = 11_644_473_600_000_000;
 const MAX_HISTORY_DATABASE_BYTES: u64 = 512 * 1024 * 1024;
@@ -33,23 +34,45 @@ pub struct ImportLimits {
 
 #[derive(Debug, Error)]
 pub enum ChromeHistoryImportError {
-    #[error("the selected Chrome profile is invalid")]
+    #[error("the selected browser profile is invalid")]
     InvalidProfile,
-    #[error("Chrome's history database was not found")]
+    #[error("the browser history database was not found")]
     DatabaseNotFound,
-    #[error("Chrome's history database is unexpectedly large ({0} bytes)")]
+    #[error("the browser is holding its history database open — close it first and try again")]
+    DatabaseLocked,
+    #[error("the browser history database is unexpectedly large ({0} bytes)")]
     DatabaseTooLarge(u64),
-    #[error("Chrome did not have importable history in the selected profile")]
+    #[error("the selected browser profile did not have importable history")]
     NoHistory,
-    #[error("could not read Chrome's history database: {0}")]
+    #[error("could not read the browser history database: {0}")]
     Io(#[from] io::Error),
-    #[error("could not query Chrome's history database: {0}")]
+    #[error("could not query the browser history database: {0}")]
     Database(#[from] rusqlite::Error),
 }
 
 impl ChromeHistoryImportError {
     pub fn is_permission_denied(&self) -> bool {
         matches!(self, Self::Io(error) if error.kind() == io::ErrorKind::PermissionDenied)
+    }
+}
+
+impl From<SqliteSnapshotError> for ChromeHistoryImportError {
+    fn from(error: SqliteSnapshotError) -> Self {
+        match error {
+            SqliteSnapshotError::DatabaseLocked => Self::DatabaseLocked,
+            SqliteSnapshotError::DatabaseTooLarge(bytes) => Self::DatabaseTooLarge(bytes),
+            SqliteSnapshotError::Io(error) => Self::Io(error),
+            SqliteSnapshotError::Database(error) => Self::Database(error),
+        }
+    }
+}
+
+impl AsSqliteError for ChromeHistoryImportError {
+    fn as_sqlite_error(&self) -> Option<&rusqlite::Error> {
+        match self {
+            Self::Database(error) => Some(error),
+            _ => None,
+        }
     }
 }
 
@@ -62,15 +85,20 @@ pub fn import_history(
     source_profile: &str,
     limits: ImportLimits,
 ) -> Result<ChromeHistoryImport, ChromeHistoryImportError> {
-    let storage_key =
-        source_storage_key(source_profile).map_err(|_| ChromeHistoryImportError::InvalidProfile)?;
-    let database = chrome_history_database(storage_key)?;
+    let resolved =
+        resolve_profile_source(source_profile).ok_or(ChromeHistoryImportError::InvalidProfile)?;
+    let database = browser_history_database(&resolved)?;
     import_history_database(&database, limits)
 }
 
-fn chrome_history_database(storage_key: &str) -> Result<PathBuf, ChromeHistoryImportError> {
-    let root = chrome_user_data_dir().ok_or(ChromeHistoryImportError::DatabaseNotFound)?;
-    let database = root.join(storage_key).join("History");
+fn browser_history_database(
+    resolved: &ResolvedBrowserProfile,
+) -> Result<PathBuf, ChromeHistoryImportError> {
+    let root = resolved
+        .browser
+        .user_data_dir()
+        .ok_or(ChromeHistoryImportError::DatabaseNotFound)?;
+    let database = root.join(&resolved.storage_key).join("History");
     match database.try_exists() {
         Ok(true) => Ok(database),
         Ok(false) => Err(ChromeHistoryImportError::DatabaseNotFound),
@@ -82,29 +110,33 @@ fn import_history_database(
     database: &Path,
     limits: ImportLimits,
 ) -> Result<ChromeHistoryImport, ChromeHistoryImportError> {
-    let (_snapshot, snapshot_path) = snapshot_database(database)?;
-    let connection = Connection::open_with_flags(
-        snapshot_path,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )?;
     let max_count = limits.max_count;
     let sql = format!(
         "SELECT url, title, visit_count, typed_count, last_visit_time \
          FROM urls WHERE url LIKE 'http%' \
          ORDER BY last_visit_time DESC LIMIT {max_count}"
     );
-    let mut statement = connection.prepare(&sql)?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, i64>(4)?,
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+    let rows = with_sqlite_snapshot(
+        database,
+        "chrome-history-",
+        "History",
+        MAX_HISTORY_DATABASE_BYTES,
+        |connection| {
+            let mut statement = connection.prepare(&sql)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, i64>(4)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok::<_, ChromeHistoryImportError>(rows)
+        },
+    )?;
 
     let mut pages = Vec::with_capacity(rows.len());
     let mut seen = HashSet::new();
@@ -146,53 +178,6 @@ fn chromium_time_to_unix_seconds(value: i64) -> Option<u64> {
     u64::try_from(unix_micros.div_euclid(1_000_000)).ok()
 }
 
-fn snapshot_database(database: &Path) -> Result<(TempDir, PathBuf), ChromeHistoryImportError> {
-    let database_bytes = fs::metadata(database)?.len();
-    if database_bytes > MAX_HISTORY_DATABASE_BYTES {
-        return Err(ChromeHistoryImportError::DatabaseTooLarge(database_bytes));
-    }
-
-    let directory = tempfile::Builder::new()
-        .prefix("chrome-history-")
-        .tempdir()?;
-    let snapshot = directory.path().join("History");
-    let mut snapshot_bytes = fs::copy(database, &snapshot)?;
-    if snapshot_bytes > MAX_HISTORY_DATABASE_BYTES {
-        return Err(ChromeHistoryImportError::DatabaseTooLarge(snapshot_bytes));
-    }
-    for suffix in ["-wal", "-shm"] {
-        let source = sidecar_path(database, suffix);
-        let target = sidecar_path(&snapshot, suffix);
-        match fs::metadata(&source) {
-            Ok(metadata) => {
-                let expected_bytes = snapshot_bytes.saturating_add(metadata.len());
-                if expected_bytes > MAX_HISTORY_DATABASE_BYTES {
-                    return Err(ChromeHistoryImportError::DatabaseTooLarge(expected_bytes));
-                }
-                match fs::copy(source, target) {
-                    Ok(copied) => {
-                        snapshot_bytes = snapshot_bytes.saturating_add(copied);
-                        if snapshot_bytes > MAX_HISTORY_DATABASE_BYTES {
-                            return Err(ChromeHistoryImportError::DatabaseTooLarge(snapshot_bytes));
-                        }
-                    }
-                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                    Err(error) => return Err(error.into()),
-                }
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error.into()),
-        }
-    }
-    Ok((directory, snapshot))
-}
-
-fn sidecar_path(database: &Path, suffix: &str) -> PathBuf {
-    let mut path = database.as_os_str().to_owned();
-    path.push(suffix);
-    PathBuf::from(path)
-}
-
 fn truncate_utf8(value: &str, max_bytes: usize) -> String {
     if value.len() <= max_bytes {
         return value.to_owned();
@@ -206,7 +191,7 @@ fn truncate_utf8(value: &str, max_bytes: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use rusqlite::params;
+    use rusqlite::{Connection, params};
     use tempfile::tempdir;
 
     use super::*;
@@ -312,17 +297,5 @@ mod tests {
         let truncated = truncate_utf8(&title, TEST_LIMITS.max_title_bytes);
         assert_eq!(truncated.len(), TEST_LIMITS.max_title_bytes - 1);
         assert!(truncated.is_char_boundary(truncated.len()));
-    }
-
-    #[test]
-    fn identifies_permission_denied_io_errors() {
-        let denied = ChromeHistoryImportError::from(std::io::Error::from(
-            std::io::ErrorKind::PermissionDenied,
-        ));
-        let missing =
-            ChromeHistoryImportError::from(std::io::Error::from(std::io::ErrorKind::NotFound));
-
-        assert!(denied.is_permission_denied());
-        assert!(!missing.is_permission_denied());
     }
 }

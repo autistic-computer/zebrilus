@@ -1,6 +1,13 @@
 use std::{
-    cell::Cell, collections::HashMap, fs::File, io::Read as _, ops::Range, path::Path, rc::Rc,
-    sync::Arc, time::Duration,
+    cell::Cell,
+    collections::HashMap,
+    fs::File,
+    io::Read as _,
+    ops::Range,
+    path::{Path, PathBuf},
+    rc::Rc,
+    sync::Arc,
+    time::Duration,
 };
 use zz_ui::pane_look::pane_color;
 use zz_ui::shell::window_drag_handle;
@@ -21,9 +28,11 @@ use ala::{
 use ala_cef::WinGpuTexture;
 use ala_cef::{
     BrowserCursor, BrowserEvent, BrowserGpuContext, BrowserKey, ContextMenuRequest,
-    CookieImportBatch, EditCommand, ElementPickerAppearance, ImeCharacterBounds, KeyInput,
-    MAX_COOKIE_IMPORT_BYTES, Modifiers, PointerButton, PointerEvent, PointerPhase, RuntimePhase,
-    SessionId, Viewport, WheelEvent, chrome_import, ime_range_bounds, parse_cookie_import,
+    CookieImportBatch, DownloadProgress, DownloadRequest, EditCommand, ElementPickerAppearance,
+    FileDialogKind, FileDialogRequest, ImeCharacterBounds, JsDialogKind, JsDialogRequest, KeyInput,
+    MAX_COOKIE_IMPORT_BYTES, Modifiers, PdfPrintResult, PointerButton, PointerEvent, PointerPhase,
+    RuntimePhase, SessionId, Viewport, WheelEvent, chrome_import, ime_range_bounds,
+    parse_cookie_import,
 };
 #[cfg(target_os = "macos")]
 use core_video::pixel_buffer::CVPixelBuffer;
@@ -44,14 +53,18 @@ use zz_protocol::{
 };
 use zz_terminal::{KeyAction as TerminalKeyAction, KeyInput as TerminalKeyInput};
 use zz_ui::browser::{
-    BrowserActionMenuState, BrowserEmptyHint, BrowserErrorPanel, BrowserHeader, BrowserMenuActions,
-    BrowserMenuEngine, BrowserMenuProfile, BrowserPickStatus, BrowserProfileDiscoveryState,
-    BrowserSiteMenuState, BrowserTabInfo, BrowserTabStrip, BrowserToolbar, browser_action_menu,
-    browser_address, browser_omnibox_panel, browser_omnibox_row, browser_recent_row,
+    BrowserActionMenuState, BrowserEmptyHint, BrowserErrorPanel, BrowserFindAction,
+    BrowserFindState, BrowserHeader, BrowserMenuActions, BrowserMenuEngine, BrowserMenuProfile,
+    BrowserPickStatus, BrowserProfileDiscoveryState, BrowserSiteMenuState, BrowserStatusChip,
+    BrowserTabInfo, BrowserTabStrip, BrowserToolbar, browser_action_menu, browser_address,
+    browser_find_bar, browser_omnibox_panel, browser_omnibox_row, browser_recent_row,
     browser_site_controls_button, browser_site_menu, browser_start_surface, browser_toolbar_button,
 };
-use zz_ui::dialogs::browser_clear_site_data_alert;
-use zz_ui::pane::{PaneActions, PaneDrag, PaneDragSource};
+use zz_ui::dialogs::{
+    browser_clear_site_data_alert, browser_js_alert_dialog, browser_js_confirm_dialog,
+    browser_js_prompt_dialog,
+};
+use zz_ui::pane::{PaneActions, PaneDrag, PaneDragSource, PaneOverlayCorner, pane_overlay_stack};
 
 #[cfg(target_os = "macos")]
 use crate::browser::macos_surface::MacBrowserSurfaceCache;
@@ -107,6 +120,7 @@ ala::actions!(
         GoBack,
         GoForward,
         Reload,
+        HardReload,
         FocusAddress,
         OmniboxNext,
         OmniboxPrevious,
@@ -197,6 +211,8 @@ fn browser_chrome_bindings(chords: &[ChromeChord]) -> Vec<KeyBinding> {
                 ChromeAction::BrowserBack => chord.binding(GoBack, context),
                 ChromeAction::BrowserForward => chord.binding(GoForward, context),
                 ChromeAction::BrowserReload => chord.binding(Reload, context),
+                ChromeAction::BrowserHardReload => chord.binding(HardReload, context),
+                ChromeAction::BrowserFind => chord.binding(crate::menus::Find, context),
                 ChromeAction::BrowserFocusAddress => chord.binding(FocusAddress, context),
                 ChromeAction::BrowserElementSelector => chord.binding(
                     ConfiguredElementSelector {
@@ -255,6 +271,7 @@ struct BrowserTab {
     url: String,
     title: String,
     loading: bool,
+    loading_progress: Option<f32>,
     can_go_back: bool,
     can_go_forward: bool,
     page_zoom_factor: f64,
@@ -271,6 +288,7 @@ impl BrowserTab {
             url,
             title: String::new(),
             loading: false,
+            loading_progress: None,
             can_go_back: false,
             can_go_forward: false,
             page_zoom_factor: 1.0,
@@ -309,6 +327,7 @@ struct ChromeState {
     opacity: f32,
     trailing_inset: Pixels,
     shows_empty_state: bool,
+    loading_progress: Option<f32>,
     can_go_back: bool,
     can_go_forward: bool,
     element_pick_active: bool,
@@ -396,6 +415,13 @@ pub(crate) struct BrowserView {
     page_zoom_percent: u16,
     title: String,
     loading: bool,
+    loading_progress: Option<f32>,
+    status_message: Option<SharedString>,
+    find_input: Entity<InputState>,
+    find_open: bool,
+    find_case_sensitive: bool,
+    find_matches: Option<(i32, i32)>,
+    active_downloads: HashMap<u32, String>,
     can_go_back: bool,
     can_go_forward: bool,
     tabs: Vec<BrowserTab>,
@@ -562,6 +588,11 @@ impl BrowserView {
                 .default_value(address_value)
                 .context_menu(true)
         });
+        let find_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Find in page")
+                .context_menu(true)
+        });
         let chrome = cx.new({
             let browser = cx.entity().downgrade();
             let address = address.clone();
@@ -574,6 +605,7 @@ impl BrowserView {
                 opacity: 1.0,
                 trailing_inset: px(0.0),
                 shows_empty_state: is_blank_url(&initial_url),
+                loading_progress: None,
                 can_go_back: false,
                 can_go_forward: false,
                 element_pick_active: false,
@@ -628,6 +660,16 @@ impl BrowserView {
                     }
                 }
                 InputEvent::PasteImages(_) => {}
+            },
+        );
+        let find_subscription = cx.subscribe_in(
+            &find_input,
+            window,
+            |view, _, event: &InputEvent, _, cx| match event {
+                InputEvent::Focus => view.select_pane(cx),
+                InputEvent::Change => view.update_find(cx),
+                InputEvent::PressEnter { shift } => view.step_find(!*shift, cx),
+                InputEvent::Blur | InputEvent::PasteImages(_) => {}
             },
         );
         let controller_subscription = cx.subscribe_in(
@@ -757,6 +799,13 @@ impl BrowserView {
             page_zoom_percent: 100,
             title: "Browser".to_owned(),
             loading: false,
+            loading_progress: None,
+            status_message: None,
+            find_input,
+            find_open: false,
+            find_case_sensitive: false,
+            find_matches: None,
+            active_downloads: HashMap::new(),
             can_go_back: false,
             can_go_forward: false,
             tabs,
@@ -775,6 +824,7 @@ impl BrowserView {
             ime_bounds: Arc::default(),
             _subscriptions: vec![
                 address_subscription,
+                find_subscription,
                 controller_subscription,
                 focus_in,
                 focus_out,
@@ -803,7 +853,9 @@ impl BrowserView {
     }
 
     pub(crate) fn pane_focus_handle(&self, cx: &App) -> FocusHandle {
-        if self.address_editing || self.shows_empty_state() {
+        if self.find_open {
+            self.find_input.read(cx).focus_handle(cx)
+        } else if self.address_editing || self.shows_empty_state() {
             self.address.read(cx).focus_handle(cx)
         } else {
             self.focus_handle.clone()
@@ -1283,6 +1335,7 @@ impl BrowserView {
                 BrowserEvent::AddressChanged { url, .. } => {
                     log::debug!("browser main-frame address changed to {}", display_url(url));
                     self.current_url = url.to_string();
+                    self.status_message = None;
                     if !self.address_editing {
                         let display = if is_blank_url(url) {
                             String::new()
@@ -1319,9 +1372,55 @@ impl BrowserView {
                         self.mark_history_use_started(self.active_tab);
                         self.error = None;
                     } else {
+                        self.loading_progress = None;
                         let url = self.current_url.clone();
                         self.complete_history_use(self.active_tab, &url, self.error.is_none(), cx);
                     }
+                }
+                BrowserEvent::LoadingProgressChanged { progress, .. } => {
+                    let next = normalize_loading_progress(*progress);
+                    if self.loading_progress == next {
+                        return;
+                    }
+                    self.loading_progress = next;
+                }
+                BrowserEvent::StatusMessageChanged { message, .. } => {
+                    let next =
+                        (!message.is_empty()).then(|| SharedString::from(message.to_string()));
+                    if self.status_message == next {
+                        return;
+                    }
+                    self.status_message = next;
+                }
+                BrowserEvent::FindResult {
+                    active_ordinal,
+                    count,
+                    ..
+                } => {
+                    if !self.find_open || self.find_input.read(cx).value().is_empty() {
+                        return;
+                    }
+                    let next = Some((*active_ordinal, *count));
+                    if self.find_matches == next {
+                        return;
+                    }
+                    self.find_matches = next;
+                }
+                BrowserEvent::FileDialogRequested { request, .. } => {
+                    self.handle_file_dialog(self.active_tab, request, window, cx);
+                    return;
+                }
+                BrowserEvent::JsDialogRequested { request, .. } => {
+                    self.handle_js_dialog(self.active_tab, request, window, cx);
+                    return;
+                }
+                BrowserEvent::DownloadRequested { request, .. } => {
+                    self.handle_download_request(self.active_tab, request, window, cx);
+                    return;
+                }
+                BrowserEvent::DownloadUpdated { progress, .. } => {
+                    self.handle_download_updated(progress, cx);
+                    return;
                 }
                 BrowserEvent::FrameReady { .. } if self.visible => {
                     #[cfg(target_os = "macos")]
@@ -1347,12 +1446,16 @@ impl BrowserView {
                         return;
                     }
                 }
-                BrowserEvent::SharedTextureFailed { .. } | BrowserEvent::FrameReady { .. } => {
+                BrowserEvent::FullscreenModeChanged { .. }
+                | BrowserEvent::SharedTextureFailed { .. }
+                | BrowserEvent::FrameReady { .. } => {
                     return;
                 }
                 BrowserEvent::LoadFailed {
                     description, url, ..
                 } => {
+                    self.loading_progress = None;
+                    self.status_message = None;
                     self.error = Some(Arc::from(format!("{}: {}", display_url(url), description)));
                     self.recoverable = true;
                 }
@@ -1367,6 +1470,8 @@ impl BrowserView {
                 BrowserEvent::RenderProcessTerminated { status, .. } => {
                     self.pending_history_uses.remove(&self.active_tab);
                     self.element_pick_active = false;
+                    self.loading_progress = None;
+                    self.status_message = None;
                     self.error = Some(Arc::from(format!("Renderer stopped: {status}")));
                     self.recoverable = true;
                 }
@@ -1415,6 +1520,8 @@ impl BrowserView {
                 BrowserEvent::Closed { .. } => {
                     self.pending_history_uses.remove(&self.active_tab);
                     self.element_pick_active = false;
+                    self.loading_progress = None;
+                    self.status_message = None;
                 }
                 BrowserEvent::ElementPickCancelled { .. } => {
                     self.element_pick_active = false;
@@ -1425,6 +1532,9 @@ impl BrowserView {
             }
             ControllerEvent::SiteDataCleared { pane, result } if *pane == self.pane => {
                 self.handle_site_data_clear_result(controller, *result, cx);
+            }
+            ControllerEvent::PdfPrinted { pane, result } if *pane == self.pane => {
+                self.handle_pdf_print_result(result, cx);
             }
             ControllerEvent::BrowserDataFailed { pane, message } if *pane == self.pane => {
                 self.emit_notification(message.to_string(), ClientMessageKind::Error, cx);
@@ -1439,6 +1549,7 @@ impl BrowserView {
             | ControllerEvent::TabClosed { .. }
             | ControllerEvent::CookiesImported { .. }
             | ControllerEvent::SiteDataCleared { .. }
+            | ControllerEvent::PdfPrinted { .. }
             | ControllerEvent::BrowserDataFailed { .. }
             | ControllerEvent::BrowserFailed { .. } => return,
         }
@@ -1464,6 +1575,25 @@ impl BrowserView {
         if matches!(event, BrowserEvent::Closed { .. }) {
             self.pending_history_uses.remove(&tab);
             return true;
+        }
+        match event {
+            BrowserEvent::FileDialogRequested { request, .. } => {
+                self.handle_file_dialog(tab, request, window, cx);
+                return false;
+            }
+            BrowserEvent::JsDialogRequested { request, .. } => {
+                self.handle_js_dialog(tab, request, window, cx);
+                return false;
+            }
+            BrowserEvent::DownloadRequested { request, .. } => {
+                self.handle_download_request(tab, request, window, cx);
+                return false;
+            }
+            BrowserEvent::DownloadUpdated { progress, .. } => {
+                self.handle_download_updated(progress, cx);
+                return false;
+            }
+            _ => {}
         }
         let Some(entry) = self.tabs.iter_mut().find(|entry| entry.id == tab) else {
             return false;
@@ -1495,12 +1625,18 @@ impl BrowserView {
                     started_load = true;
                     entry.error = None;
                 } else {
+                    entry.loading_progress = None;
                     completed_load = Some((entry.url.clone(), entry.error.is_none()));
                 }
+            }
+            BrowserEvent::LoadingProgressChanged { progress, .. } => {
+                entry.loading_progress = normalize_loading_progress(*progress);
+                return false;
             }
             BrowserEvent::LoadFailed {
                 description, url, ..
             } => {
+                entry.loading_progress = None;
                 entry.error = Some(Arc::from(format!(
                     "Could not load {}: {}",
                     display_url(url),
@@ -1528,21 +1664,45 @@ impl BrowserView {
         cx: &mut Context<Self>,
     ) {
         let ignored = result.skipped + result.rejected;
+        let app_bound = result.app_bound_skipped;
         if result.imported > 0 {
             self.pending_history_uses.remove(&self.active_tab);
             controller.update(cx, |controller, cx| {
                 controller.reload(self.pane, self.active_tab, cx);
             });
         }
+        let app_bound_note = if app_bound > 0 {
+            format!("; {app_bound} Chrome v20 app-bound skipped — use Import cookies to copy them")
+        } else {
+            String::new()
+        };
         let (message, kind) = if result.imported == 0 {
-            (
-                format!("Chromium rejected all {ignored} cookies"),
-                ClientMessageKind::Error,
-            )
+            if app_bound > 0 && ignored == 0 {
+                (
+                    format!(
+                        "All {app_bound} cookies use Chrome v20 App-Bound Encryption — use Import cookies → Paste from clipboard or Import from file"
+                    ),
+                    ClientMessageKind::Error,
+                )
+            } else {
+                (
+                    format!("Chromium rejected all {ignored} cookies{app_bound_note}"),
+                    ClientMessageKind::Error,
+                )
+            }
         } else if !result.persisted {
             (
                 format!(
-                    "Imported {} cookies, but could not flush the profile{}",
+                    "Imported {} cookies, but could not flush the profile{}{app_bound_note}",
+                    result.imported,
+                    ignored_suffix(ignored)
+                ),
+                ClientMessageKind::Warning,
+            )
+        } else if app_bound > 0 {
+            (
+                format!(
+                    "Imported {} cookies{}{app_bound_note}",
                     result.imported,
                     ignored_suffix(ignored)
                 ),
@@ -1559,6 +1719,22 @@ impl BrowserView {
             )
         };
         self.emit_notification(message, kind, cx);
+    }
+
+    fn handle_pdf_print_result(&self, result: &PdfPrintResult, cx: &mut Context<Self>) {
+        if result.success {
+            let name = Path::new(result.path.as_ref())
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("page.pdf");
+            self.emit_notification(
+                format!("Saved PDF to {name}"),
+                ClientMessageKind::Success,
+                cx,
+            );
+        } else {
+            self.emit_notification("Could not save page as PDF", ClientMessageKind::Error, cx);
+        }
     }
 
     fn handle_site_data_clear_result(
@@ -1760,6 +1936,17 @@ impl BrowserView {
         cx.notify();
     }
 
+    fn on_hard_reload(&mut self, cx: &mut Context<Self>) {
+        self.cancel_element_pick(cx);
+        self.pending_history_uses.remove(&self.active_tab);
+        self.error = None;
+        self.controller.update(cx, |controller, cx| {
+            controller.reload_ignore_cache(self.pane, self.active_tab, cx);
+        });
+        cx.stop_propagation();
+        cx.notify();
+    }
+
     fn on_retry(&mut self, cx: &mut Context<Self>) {
         if self.recoverable {
             self.recreate_session(cx);
@@ -1803,6 +1990,7 @@ impl BrowserView {
         tab.url.clone_from(&self.current_url);
         tab.title.clone_from(&self.title);
         tab.loading = self.loading;
+        tab.loading_progress = self.loading_progress;
         tab.can_go_back = self.can_go_back;
         tab.can_go_forward = self.can_go_forward;
         tab.page_zoom_factor = self.page_zoom_factor;
@@ -1818,6 +2006,15 @@ impl BrowserView {
             return;
         };
         self.cancel_element_pick(cx);
+        if self.find_open {
+            self.find_open = false;
+            self.find_matches = None;
+            let previous = self.active_tab;
+            self.controller.update(cx, |controller, cx| {
+                controller.stop_finding(self.pane, previous, true, cx);
+            });
+        }
+        self.status_message = None;
         self.context_menu = None;
         self.omnibox.reset();
         self.save_active_tab_state();
@@ -1827,6 +2024,7 @@ impl BrowserView {
         self.current_url = entry.url.clone();
         self.title = entry.title.clone();
         self.loading = entry.loading;
+        self.loading_progress = entry.loading_progress;
         self.can_go_back = entry.can_go_back;
         self.can_go_forward = entry.can_go_forward;
         self.page_zoom_factor = entry.page_zoom_factor;
@@ -2057,6 +2255,139 @@ impl BrowserView {
         self.on_reload(cx);
     }
 
+    fn on_hard_reload_action(&mut self, _: &HardReload, _: &mut Window, cx: &mut Context<Self>) {
+        self.on_hard_reload(cx);
+    }
+
+    fn on_find_action(
+        &mut self,
+        _: &crate::menus::Find,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_find(window, cx);
+        cx.stop_propagation();
+    }
+
+    fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.find_open = true;
+        let query = self.find_input.read(cx).value().to_string();
+        let end = query.len();
+        self.find_input.update(cx, |input, cx| {
+            input.set_selected_range(0..end, cx);
+        });
+        self.find_input.read(cx).focus_handle(cx).focus(window, cx);
+        if !query.is_empty() {
+            let match_case = self.find_case_sensitive;
+            self.controller.update(cx, |controller, cx| {
+                controller.find(
+                    self.pane,
+                    self.active_tab,
+                    &query,
+                    true,
+                    match_case,
+                    false,
+                    cx,
+                );
+            });
+        }
+        cx.notify();
+    }
+
+    fn close_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.find_open {
+            return;
+        }
+        self.find_open = false;
+        self.find_matches = None;
+        self.controller.update(cx, |controller, cx| {
+            controller.stop_finding(self.pane, self.active_tab, true, cx);
+        });
+        self.focus_page(window, cx);
+        cx.notify();
+    }
+
+    fn update_find(&mut self, cx: &mut Context<Self>) {
+        if !self.find_open {
+            return;
+        }
+        let query = self.find_input.read(cx).value().to_string();
+        if query.is_empty() {
+            self.find_matches = None;
+            self.controller.update(cx, |controller, cx| {
+                controller.stop_finding(self.pane, self.active_tab, true, cx);
+            });
+        } else {
+            let match_case = self.find_case_sensitive;
+            self.controller.update(cx, |controller, cx| {
+                controller.find(
+                    self.pane,
+                    self.active_tab,
+                    &query,
+                    true,
+                    match_case,
+                    false,
+                    cx,
+                );
+            });
+        }
+        cx.notify();
+    }
+
+    fn step_find(&mut self, forward: bool, cx: &mut Context<Self>) {
+        let query = self.find_input.read(cx).value().to_string();
+        if query.is_empty() {
+            return;
+        }
+        let match_case = self.find_case_sensitive;
+        self.controller.update(cx, |controller, cx| {
+            controller.find(
+                self.pane,
+                self.active_tab,
+                &query,
+                forward,
+                match_case,
+                true,
+                cx,
+            );
+        });
+    }
+
+    fn toggle_find_case(&mut self, cx: &mut Context<Self>) {
+        self.find_case_sensitive = !self.find_case_sensitive;
+        self.update_find(cx);
+    }
+
+    fn render_find_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+        let has_query = !self.find_input.read(cx).value().is_empty();
+        let state = BrowserFindState {
+            case_sensitive: self.find_case_sensitive,
+            has_query,
+            matches: self.find_matches,
+        };
+        let view = cx.entity();
+        browser_find_bar(
+            &self.find_input,
+            state,
+            move |action, window, cx| {
+                view.update(cx, |view, cx| match action {
+                    BrowserFindAction::ToggleCase => view.toggle_find_case(cx),
+                    BrowserFindAction::Previous => view.step_find(false, cx),
+                    BrowserFindAction::Next => view.step_find(true, cx),
+                    BrowserFindAction::Close => view.close_find(window, cx),
+                });
+            },
+            cx,
+        )
+        .on_action(
+            cx.listener(|view, _: &penna::components::input::Escape, window, cx| {
+                view.close_find(window, cx);
+                cx.stop_propagation();
+            }),
+        )
+        .into_any_element()
+    }
+
     fn on_focus_address(&mut self, _: &FocusAddress, window: &mut Window, cx: &mut Context<Self>) {
         self.address.read(cx).focus_handle(cx).focus(window, cx);
         cx.stop_propagation();
@@ -2153,6 +2484,9 @@ impl BrowserView {
         self.cancel_element_pick(cx);
         self.pending_history_uses.remove(&self.active_tab);
         self.error = None;
+        self.loading_progress = None;
+        self.status_message = None;
+        self.find_matches = None;
         self.reset_frame_state();
         let url = self.current_url.clone();
         let request = browser_session_request(
@@ -2439,6 +2773,11 @@ impl BrowserView {
             cx.notify();
             return;
         }
+        if self.find_open {
+            self.close_find(window, cx);
+            cx.stop_propagation();
+            return;
+        }
         if !self.address_editing {
             return;
         }
@@ -2495,7 +2834,10 @@ impl BrowserView {
         let position = bounds.origin + pane_offset(request.x, request.y);
         let browser = cx.entity().downgrade();
         let action_context = self.focus_handle.clone();
+        let misspelled_word = request.misspelled_word.clone();
+        let dictionary_suggestions = request.dictionary_suggestions.clone();
         let link = request.link_url.clone();
+        let image_src = request.is_image.then(|| request.src_url.clone()).flatten();
         let has_selection = request.selection_text.is_some();
         let editable = request.editable;
         let flags = request.edit_flags;
@@ -2505,15 +2847,62 @@ impl BrowserView {
 
         let menu = PopupMenu::build(window, cx, move |mut menu, _, _| {
             menu = menu.action_context(action_context);
+            if let Some(misspelled) = misspelled_word {
+                for suggestion in dictionary_suggestions.iter().take(5) {
+                    let word = suggestion.clone();
+                    menu = menu.item(browser_menu_item_owned(
+                        suggestion.to_string(),
+                        true,
+                        &browser,
+                        move |view, cx| view.replace_misspelling(&word, cx),
+                    ));
+                }
+                let word = misspelled.clone();
+                menu = menu
+                    .item(browser_menu_item(
+                        "Add to dictionary",
+                        true,
+                        &browser,
+                        move |view, cx| view.add_word_to_dictionary(&word, cx),
+                    ))
+                    .separator();
+            }
             if let Some(link) = link {
-                let address = link.clone();
+                let open_here = link.clone();
+                let open_new = link.clone();
+                let address = link;
                 menu = menu
                     .item(browser_menu_item("Open link", true, &browser, {
-                        move |view, cx| view.submit_address(&link, cx)
+                        move |view, cx| view.submit_address(&open_here, cx)
                     }))
+                    .item(browser_window_menu_item(
+                        "Open link in new tab",
+                        true,
+                        &browser,
+                        move |view, window, cx| view.open_tab(Some(&open_new), true, window, cx),
+                    ))
                     .item(
                         PopupMenuItem::new("Copy link address").on_click(move |_, _, cx| {
                             cx.write_to_clipboard(ClipboardItem::new_string(address.to_string()));
+                        }),
+                    )
+                    .separator();
+            }
+            if let Some(src) = image_src {
+                let open_image = src.clone();
+                let copy_image = src;
+                menu = menu
+                    .item(browser_window_menu_item(
+                        "Open image in new tab",
+                        true,
+                        &browser,
+                        move |view, window, cx| view.open_tab(Some(&open_image), true, window, cx),
+                    ))
+                    .item(
+                        PopupMenuItem::new("Copy image address").on_click(move |_, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(
+                                copy_image.to_string(),
+                            ));
                         }),
                     )
                     .separator();
@@ -2575,6 +2964,12 @@ impl BrowserView {
                 &browser,
                 BrowserView::on_reload,
             ))
+            .item(browser_menu_item(
+                "Hard reload",
+                true,
+                &browser,
+                BrowserView::on_hard_reload,
+            ))
             .separator()
             .item(browser_menu_item(
                 "Inspect element",
@@ -2606,6 +3001,318 @@ impl BrowserView {
         self.controller.update(cx, |controller, _| {
             controller.inspect_element_at(self.pane, self.active_tab, x, y);
         });
+    }
+
+    fn replace_misspelling(&mut self, word: &str, cx: &mut Context<Self>) {
+        self.controller.update(cx, |controller, cx| {
+            controller.replace_misspelling(self.pane, self.active_tab, word, cx);
+        });
+    }
+
+    fn add_word_to_dictionary(&mut self, word: &str, cx: &mut Context<Self>) {
+        self.controller.update(cx, |controller, cx| {
+            controller.add_word_to_dictionary(self.pane, self.active_tab, word, cx);
+        });
+    }
+
+    fn paste_cookies(&mut self, cx: &mut Context<Self>) {
+        let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
+            self.emit_notification(
+                "Clipboard does not contain text to import as cookies",
+                ClientMessageKind::Error,
+                cx,
+            );
+            return;
+        };
+        if text.len() > MAX_COOKIE_IMPORT_BYTES {
+            self.emit_notification(
+                "Clipboard cookie text is too large to import",
+                ClientMessageKind::Error,
+                cx,
+            );
+            return;
+        }
+        match parse_cookie_import(&text) {
+            Ok(batch) => {
+                let pane = self.pane;
+                let tab = self.active_tab;
+                self.controller.update(cx, |controller, cx| {
+                    controller.import_cookies(pane, tab, batch, cx);
+                });
+            }
+            Err(error) => {
+                self.emit_notification(
+                    format!("Could not import cookies: {error}"),
+                    ClientMessageKind::Error,
+                    cx,
+                );
+            }
+        }
+    }
+
+    fn prompt_save_pdf(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let suggested = suggested_pdf_name(&self.title, &self.current_url);
+        let selected = cx.prompt_for_new_path(&default_downloads_dir(), Some(&suggested));
+        let view = cx.entity();
+        cx.spawn_in(window, async move |_, window| {
+            let path = selected.await.ok()?.ok()??;
+            window
+                .update(|_, cx| {
+                    view.update(cx, |view, cx| {
+                        let pane = view.pane;
+                        let tab = view.active_tab;
+                        view.controller.update(cx, |controller, cx| {
+                            controller.print_to_pdf(pane, tab, &path, cx);
+                        });
+                    });
+                })
+                .ok()
+        })
+        .detach();
+    }
+
+    fn handle_file_dialog(
+        &self,
+        tab: TabId,
+        request: &FileDialogRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let controller = self.controller.downgrade();
+        let pane = self.pane;
+        let id = request.id;
+        match request.kind {
+            FileDialogKind::Save => {
+                let (dir, suggested) =
+                    save_dialog_defaults(request.default_file_path.as_deref().map(Path::new));
+                let selected = cx.prompt_for_new_path(&dir, suggested.as_deref());
+                cx.spawn_in(window, async move |_, window| {
+                    let path = selected.await.ok().and_then(Result::ok).flatten();
+                    let _ = window.update(|_, cx| {
+                        if let Some(controller) = controller.upgrade() {
+                            controller.update(cx, |controller, cx| {
+                                let paths = path.map(|path| vec![path]);
+                                controller.respond_file_dialog(pane, tab, id, paths.as_deref(), cx);
+                            });
+                        }
+                    });
+                })
+                .detach();
+            }
+            FileDialogKind::Open | FileDialogKind::OpenMultiple | FileDialogKind::OpenFolder => {
+                let kind = request.kind;
+                let prompt = request
+                    .title
+                    .as_deref()
+                    .filter(|title| !title.is_empty())
+                    .map(|title| title.to_owned().into());
+                let selected = cx.prompt_for_paths(PathPromptOptions {
+                    files: kind != FileDialogKind::OpenFolder,
+                    directories: kind == FileDialogKind::OpenFolder,
+                    multiple: kind == FileDialogKind::OpenMultiple,
+                    prompt,
+                });
+                cx.spawn_in(window, async move |_, window| {
+                    let paths = selected
+                        .await
+                        .ok()
+                        .and_then(Result::ok)
+                        .flatten()
+                        .filter(|paths| !paths.is_empty());
+                    let _ = window.update(|_, cx| {
+                        if let Some(controller) = controller.upgrade() {
+                            controller.update(cx, |controller, cx| {
+                                controller.respond_file_dialog(pane, tab, id, paths.as_deref(), cx);
+                            });
+                        }
+                    });
+                })
+                .detach();
+            }
+        }
+    }
+
+    fn handle_js_dialog(
+        &self,
+        tab: TabId,
+        request: &JsDialogRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let reply = JsDialogReply {
+            answered: Rc::new(Cell::new(false)),
+            controller: self.controller.downgrade(),
+            pane: self.pane,
+            tab,
+            id: request.id,
+        };
+        let title = js_dialog_title(request.kind, &request.origin_url);
+        let message = if matches!(request.kind, JsDialogKind::BeforeUnload { .. })
+            && request.message.is_empty()
+        {
+            "Changes you made may not be saved.".to_owned()
+        } else {
+            request.message.to_string()
+        };
+        match request.kind {
+            JsDialogKind::Alert => {
+                window.open_alert_dialog(cx, move |alert, _, _| {
+                    let ok = reply.clone();
+                    let close = reply.clone();
+                    browser_js_alert_dialog(alert, title.clone(), message.clone())
+                        .on_ok(move |_, _, cx| {
+                            ok.respond(true, None, cx);
+                            true
+                        })
+                        .on_close(move |_, _, cx| {
+                            close.respond(true, None, cx);
+                        })
+                });
+            }
+            JsDialogKind::Confirm | JsDialogKind::BeforeUnload { .. } => {
+                let ok_text = match request.kind {
+                    JsDialogKind::BeforeUnload { is_reload: true } => "Reload",
+                    JsDialogKind::BeforeUnload { is_reload: false } => "Leave",
+                    _ => "OK",
+                };
+                window.open_alert_dialog(cx, move |alert, _, _| {
+                    let ok = reply.clone();
+                    let cancel = reply.clone();
+                    let close = reply.clone();
+                    browser_js_confirm_dialog(
+                        alert,
+                        title.clone(),
+                        message.clone(),
+                        ok_text,
+                        "Cancel",
+                    )
+                    .on_ok(move |_, _, cx| {
+                        ok.respond(true, None, cx);
+                        true
+                    })
+                    .on_cancel(move |_, _, cx| {
+                        cancel.respond(false, None, cx);
+                        true
+                    })
+                    .on_close(move |_, _, cx| {
+                        close.respond(false, None, cx);
+                    })
+                });
+            }
+            JsDialogKind::Prompt => {
+                let default_prompt = request
+                    .default_prompt
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_owned();
+                let input = cx.new(|cx| InputState::new(window, cx).default_value(default_prompt));
+                let dialog_input = input.clone();
+                window.open_dialog(cx, move |dialog, _, cx| {
+                    let confirm_input = dialog_input.clone();
+                    let ok = reply.clone();
+                    let cancel = reply.clone();
+                    let close = reply.clone();
+                    browser_js_prompt_dialog(dialog, title.clone(), &message, &dialog_input, cx)
+                        .on_ok(move |_, _, cx| {
+                            ok.respond(true, Some(confirm_input.read(cx).value().as_ref()), cx);
+                            true
+                        })
+                        .on_cancel(move |_, _, cx| {
+                            cancel.respond(false, None, cx);
+                            true
+                        })
+                        .on_close(move |_, _, cx| {
+                            close.respond(false, None, cx);
+                        })
+                });
+                input.read(cx).focus_handle(cx).focus(window, cx);
+            }
+        }
+    }
+
+    fn handle_download_request(
+        &self,
+        tab: TabId,
+        request: &DownloadRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let suggested = if request.suggested_name.is_empty() {
+            "download".to_owned()
+        } else {
+            request.suggested_name.to_string()
+        };
+        let id = request.id;
+        let selected = cx.prompt_for_new_path(&default_downloads_dir(), Some(&suggested));
+        let view = cx.entity();
+        let controller = self.controller.downgrade();
+        let pane = self.pane;
+        cx.spawn_in(window, async move |_, window| {
+            let path = selected.await.ok().and_then(Result::ok).flatten();
+            let _ = window.update(|_, cx| match path {
+                Some(path) => {
+                    let name = path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .map_or_else(|| suggested.clone(), str::to_owned);
+                    view.update(cx, |view, cx| {
+                        view.active_downloads.insert(id, name.clone());
+                        view.emit_notification(
+                            format!("Downloading {name}…"),
+                            ClientMessageKind::Info,
+                            cx,
+                        );
+                        view.controller.update(cx, |controller, cx| {
+                            controller.respond_download(pane, tab, id, Some(&path), cx);
+                        });
+                    });
+                }
+                None => {
+                    if let Some(controller) = controller.upgrade() {
+                        controller.update(cx, |controller, cx| {
+                            controller.respond_download(pane, tab, id, None, cx);
+                        });
+                    }
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn handle_download_updated(&mut self, progress: &DownloadProgress, cx: &mut Context<Self>) {
+        if progress.complete {
+            let name = self
+                .active_downloads
+                .remove(&progress.id)
+                .unwrap_or_else(|| {
+                    if progress.file_name.is_empty() {
+                        Path::new(progress.full_path.as_ref())
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or("file")
+                            .to_owned()
+                    } else {
+                        progress.file_name.to_string()
+                    }
+                });
+            self.emit_notification(format!("Downloaded {name}"), ClientMessageKind::Success, cx);
+        } else if progress.interrupted {
+            if let Some(name) = self.active_downloads.remove(&progress.id) {
+                self.emit_notification(
+                    format!("Download interrupted: {name}"),
+                    ClientMessageKind::Error,
+                    cx,
+                );
+            }
+        } else if progress.canceled
+            && let Some(name) = self.active_downloads.remove(&progress.id)
+        {
+            self.emit_notification(
+                format!("Download canceled: {name}"),
+                ClientMessageKind::Info,
+                cx,
+            );
+        }
     }
 
     fn emit_notification(
@@ -2663,11 +3370,7 @@ impl BrowserView {
         let background = cx.background_executor().clone();
         let view = cx.entity();
         let destination_profile = self.profile.clone();
-        self.emit_notification(
-            "Reading cookies and history from Chrome…",
-            ClientMessageKind::Info,
-            cx,
-        );
+        self.emit_notification("Reading cookies and history…", ClientMessageKind::Info, cx);
         cx.spawn_in(window, async move |_, window| {
             let (history_result, cookie_result) = background
                 .spawn(async move {
@@ -2812,9 +3515,9 @@ impl BrowserView {
                                 view.emit_notification(error, ClientMessageKind::Error, cx);
                             } else {
                                 let message = match view.chrome_profiles.len() {
-                                    0 => "No Chrome profiles found".to_owned(),
-                                    1 => "Loaded 1 Chrome profile".to_owned(),
-                                    count => format!("Loaded {count} Chrome profiles"),
+                                    0 => "No browser profiles found".to_owned(),
+                                    1 => "Loaded 1 browser profile".to_owned(),
+                                    count => format!("Loaded {count} browser profiles"),
                                 };
                                 view.emit_notification(message, ClientMessageKind::Success, cx);
                             }
@@ -3373,6 +4076,10 @@ impl Render for BrowserChromeView {
         .dropdown_menu(move |menu, window, cx| {
             let open_url = menu_url.clone();
             let copy_url = menu_url.clone();
+            let multiple_browsers =
+                chrome_import::profiles::DetectedChromeProfile::has_multiple_browsers(
+                    &menu_chrome_profiles,
+                );
             let current_profile_label = menu_chrome_profiles
                 .iter()
                 .find(|profile| profile.profile == menu_profile)
@@ -3384,7 +4091,7 @@ impl Render for BrowserChromeView {
                             menu_profile.clone()
                         }
                     },
-                    chrome_import::profiles::DetectedChromeProfile::menu_label,
+                    |profile| profile.menu_label_for_list(multiple_browsers),
                 );
             let state = BrowserActionMenuState {
                 engine: BrowserMenuEngine::Chromium,
@@ -3394,7 +4101,10 @@ impl Render for BrowserChromeView {
                 profiles: menu_chrome_profiles
                     .iter()
                     .map(|profile| {
-                        BrowserMenuProfile::new(profile.profile.clone(), profile.menu_label())
+                        BrowserMenuProfile::new(
+                            profile.profile.clone(),
+                            profile.menu_label_for_list(multiple_browsers),
+                        )
                     })
                     .collect(),
                 profile_discovery: match menu_discovery {
@@ -3419,8 +4129,12 @@ impl Render for BrowserChromeView {
             let zoom_percent_browser = menu_browser.clone();
             let chrome_import_browser = menu_browser.clone();
             let file_import_browser = menu_browser.clone();
+            let paste_import_browser = menu_browser.clone();
             let clear_browser = menu_browser.clone();
+            let find_browser = menu_browser.clone();
             let reload_browser = menu_browser.clone();
+            let hard_reload_browser = menu_browser.clone();
+            let save_pdf_browser = menu_browser.clone();
             let picker_browser = menu_browser.clone();
             let dev_tools_browser = menu_browser.clone();
             let actions = BrowserMenuActions::new()
@@ -3487,6 +4201,11 @@ impl Render for BrowserChromeView {
                         });
                     }
                 })
+                .paste_cookies(move |_, cx| {
+                    if let Some(browser) = paste_import_browser.upgrade() {
+                        browser.update(cx, BrowserView::paste_cookies);
+                    }
+                })
                 .clear_site_data(move |window, cx| {
                     if let Some(browser) = clear_browser.upgrade() {
                         browser.update(cx, |_, cx| {
@@ -3494,9 +4213,24 @@ impl Render for BrowserChromeView {
                         });
                     }
                 })
+                .find_in_page(move |window, cx| {
+                    if let Some(browser) = find_browser.upgrade() {
+                        browser.update(cx, |view, cx| view.open_find(window, cx));
+                    }
+                })
                 .reload(move |_, cx| {
                     if let Some(browser) = reload_browser.upgrade() {
                         browser.update(cx, BrowserView::on_reload);
+                    }
+                })
+                .hard_reload(move |_, cx| {
+                    if let Some(browser) = hard_reload_browser.upgrade() {
+                        browser.update(cx, BrowserView::on_hard_reload);
+                    }
+                })
+                .save_as_pdf(move |window, cx| {
+                    if let Some(browser) = save_pdf_browser.upgrade() {
+                        browser.update(cx, |view, cx| view.prompt_save_pdf(window, cx));
                     }
                 })
                 .toggle_picker(move |window, cx| {
@@ -3682,7 +4416,8 @@ impl Render for BrowserChromeView {
                     BrowserToolbar::new(back, forward, reload, address, picker, more)
                         .show_separator(!self.state.shows_empty_state),
                 )
-                .trailing_inset(self.state.trailing_inset),
+                .trailing_inset(self.state.trailing_inset)
+                .loading_progress(self.state.loading_progress),
             )
     }
 }
@@ -3725,6 +4460,7 @@ impl Render for BrowserView {
             opacity: self.chrome_opacity,
             trailing_inset: self.header_trailing_inset,
             shows_empty_state,
+            loading_progress: self.loading_progress,
             can_go_back: self.can_go_back,
             can_go_forward: self.can_go_forward,
             element_pick_active: self.element_pick_active,
@@ -3928,8 +4664,17 @@ impl Render for BrowserView {
             content = content.child(self.render_empty_state(surface_radii, cx));
         }
 
+        if self.find_open {
+            content = content.child(
+                pane_overlay_stack(PaneOverlayCorner::TopRight, [self.render_find_bar(cx)])
+                    .left(px(8.0)),
+            );
+        }
+
         if self.element_pick_active {
             content = content.child(BrowserPickStatus::new("Select an element · Esc to cancel"));
+        } else if !shows_native_state && let Some(status) = self.status_message.clone() {
+            content = content.child(BrowserStatusChip::new(status));
         }
 
         let omnibox_results = self.render_omnibox_results(cx);
@@ -3955,6 +4700,8 @@ impl Render for BrowserView {
                 .on_action(cx.listener(Self::on_go_back))
                 .on_action(cx.listener(Self::on_go_forward))
                 .on_action(cx.listener(Self::on_reload_action))
+                .on_action(cx.listener(Self::on_hard_reload_action))
+                .on_action(cx.listener(Self::on_find_action))
                 .on_action(cx.listener(Self::on_focus_address))
                 .on_action(cx.listener(Self::on_omnibox_next))
                 .on_action(cx.listener(Self::on_omnibox_previous))
@@ -4016,8 +4763,121 @@ fn pane_offset(x: i32, y: i32) -> Point<Pixels> {
     point(px(x as f32), px(y as f32))
 }
 
+#[derive(Clone)]
+struct JsDialogReply {
+    answered: Rc<Cell<bool>>,
+    controller: WeakEntity<BrowserController>,
+    pane: PaneId,
+    tab: TabId,
+    id: u64,
+}
+
+impl JsDialogReply {
+    fn respond(&self, accept: bool, user_input: Option<&str>, cx: &mut App) {
+        if self.answered.replace(true) {
+            return;
+        }
+        if let Some(controller) = self.controller.upgrade() {
+            controller.update(cx, |controller, cx| {
+                controller.respond_js_dialog(self.pane, self.tab, self.id, accept, user_input, cx);
+            });
+        }
+    }
+}
+
+fn normalize_loading_progress(progress: f32) -> Option<f32> {
+    (progress.is_finite() && progress > 0.0 && progress < 1.0).then_some(progress)
+}
+
+fn default_downloads_dir() -> PathBuf {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from);
+    if let Some(home) = home {
+        let downloads = home.join("Downloads");
+        if downloads.is_dir() {
+            return downloads;
+        }
+        if home.is_dir() {
+            return home;
+        }
+    }
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn save_dialog_defaults(default_file_path: Option<&Path>) -> (PathBuf, Option<String>) {
+    let Some(path) = default_file_path else {
+        return (default_downloads_dir(), None);
+    };
+    let dir = path
+        .parent()
+        .filter(|parent| parent.is_dir())
+        .map_or_else(default_downloads_dir, Path::to_path_buf);
+    let suggested = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned);
+    (dir, suggested)
+}
+
+fn suggested_pdf_name(title: &str, url: &str) -> String {
+    let raw = if !title.trim().is_empty() && title != "Browser" {
+        title.trim().to_owned()
+    } else {
+        url::Url::parse(url)
+            .ok()
+            .and_then(|parsed| parsed.host_str().map(str::to_owned))
+            .unwrap_or_else(|| "page".to_owned())
+    };
+    let cleaned: String = raw
+        .chars()
+        .take(80)
+        .map(|ch| {
+            if ch.is_control() || matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+            {
+                '-'
+            } else {
+                ch
+            }
+        })
+        .collect();
+    let stem = cleaned.trim_matches(|ch: char| ch.is_whitespace() || ch == '.' || ch == '-');
+    let stem = if stem.is_empty() { "page" } else { stem };
+    if stem
+        .rsplit_once('.')
+        .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("pdf"))
+    {
+        stem.to_owned()
+    } else {
+        format!("{stem}.pdf")
+    }
+}
+
+fn js_dialog_title(kind: JsDialogKind, origin_url: &str) -> String {
+    if matches!(kind, JsDialogKind::BeforeUnload { .. }) {
+        return "Leave site?".to_owned();
+    }
+    url::Url::parse(origin_url)
+        .ok()
+        .and_then(|parsed| parsed.host_str().map(str::to_owned))
+        .map_or_else(
+            || "This page says".to_owned(),
+            |host| format!("{host} says"),
+        )
+}
+
 fn browser_menu_item(
     label: &'static str,
+    enabled: bool,
+    browser: &WeakEntity<BrowserView>,
+    action: impl Fn(&mut BrowserView, &mut Context<BrowserView>) + 'static,
+) -> PopupMenuItem {
+    browser_menu_item_owned(label, enabled, browser, action)
+}
+
+fn browser_menu_item_owned(
+    label: impl Into<SharedString>,
     enabled: bool,
     browser: &WeakEntity<BrowserView>,
     action: impl Fn(&mut BrowserView, &mut Context<BrowserView>) + 'static,
@@ -4028,6 +4888,22 @@ fn browser_menu_item(
         .on_click(move |_, _, cx| {
             if let Some(browser) = browser.upgrade() {
                 browser.update(cx, |view, cx| action(view, cx));
+            }
+        })
+}
+
+fn browser_window_menu_item(
+    label: &'static str,
+    enabled: bool,
+    browser: &WeakEntity<BrowserView>,
+    action: impl Fn(&mut BrowserView, &mut Window, &mut Context<BrowserView>) + 'static,
+) -> PopupMenuItem {
+    let browser = browser.clone();
+    PopupMenuItem::new(label)
+        .disabled(!enabled)
+        .on_click(move |_, window, cx| {
+            if let Some(browser) = browser.upgrade() {
+                browser.update(cx, |view, cx| action(view, window, cx));
             }
         })
 }
@@ -4369,6 +5245,8 @@ mod tests {
             (TypeId::of::<SelectLastTab>(), "last-tab"),
             (TypeId::of::<FocusAddress>(), "focus-address"),
             (TypeId::of::<Reload>(), "reload"),
+            (TypeId::of::<HardReload>(), "hard-reload"),
+            (TypeId::of::<crate::menus::Find>(), "find"),
             (TypeId::of::<GoBack>(), "back"),
             (TypeId::of::<GoForward>(), "forward"),
             (TypeId::of::<OmniboxNext>(), "omnibox-next"),
@@ -4461,6 +5339,8 @@ mod tests {
             ("cmd-9", "last-tab"),
             ("cmd-l", "focus-address"),
             ("cmd-r", "reload"),
+            ("cmd-shift-r", "hard-reload"),
+            ("cmd-f", "find"),
             ("cmd-[", "back"),
             ("cmd-]", "forward"),
             ("cmd-shift-c", "element-selector"),
@@ -4502,6 +5382,8 @@ mod tests {
             ("ctrl-9", "last-tab"),
             ("ctrl-l", "focus-address"),
             ("ctrl-r", "reload"),
+            ("ctrl-shift-r", "hard-reload"),
+            ("ctrl-f", "find"),
             ("f5", "reload"),
             ("alt-left", "back"),
             ("alt-right", "forward"),
