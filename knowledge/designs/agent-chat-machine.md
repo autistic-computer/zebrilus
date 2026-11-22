@@ -105,10 +105,12 @@ chat event in order, with text appends and body changes folded into the item's s
 latest queue and usage kept. The journal path ends with `Restart` and that whole log, which folds to
 the same view (the random test checks it at every event). The rebuild from memory has to fit the
 numbers the asker skips and 4.5 MiB, so it sends `Restart`, the events of the log still in effect
-(`ChatLog::in_effect`: the last session start and end, the running turn, every open item with the
-whole tree it sits in, every open request, the turns those started in, the queue and the usage) and
-then the newest events that fit, all in their original order. When the events still in effect do
-not fit, it sends no chat at all and the asker keeps the chat it had. The log grows with items and
+(`ChatLog::in_effect`: the last session start and end, the running turn, every open item and the
+item of every open request with their parents, every open request, the turns those started in, the
+queue and the usage) and then the newest events that fit, all in their original order. A rebuilt
+chat can show an old turn holding only its still-open rows, and an open item without its finished
+children. When the events still in effect do not fit, it sends no chat at all and the asker keeps
+the chat it had. The log grows with items and
 turns, not with streamed text, and keeps pasted images only on the last 8 items that have them.
 `ChatView` applies the same rule as it folds events, so a connected client's view holds no more
 images than a replay would give it. A daemon restart needs no journal for this: the driver restores

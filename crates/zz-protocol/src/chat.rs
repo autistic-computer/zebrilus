@@ -902,27 +902,14 @@ impl ChatLog {
             .open_requests()
             .map(|request| request.id)
             .collect::<HashSet<_>>();
-        let mut stack = view
-            .open_items()
-            .map(|item| &item.id)
-            .chain(
-                view.open_requests()
-                    .filter_map(|request| request.item.as_ref()),
-            )
-            .filter_map(|id| {
-                let mut item = view.item(id)?;
-                while let Some(parent) = item.parent.as_ref().and_then(|parent| view.item(parent)) {
-                    item = parent;
-                }
-                Some(item.id.clone())
-            })
-            .collect::<Vec<_>>();
         let mut items = HashSet::new();
-        while let Some(id) = stack.pop() {
-            if let Some(item) = view.item(&id)
-                && items.insert(id)
-            {
-                stack.extend(item.children.iter().cloned());
+        for id in view.open_items().map(|item| &item.id).chain(
+            view.open_requests()
+                .filter_map(|request| request.item.as_ref()),
+        ) {
+            let mut next = view.item(id);
+            while let Some(item) = next.filter(|item| items.insert(item.id.clone())) {
+                next = item.parent.as_ref().and_then(|parent| view.item(parent));
             }
         }
         let mut turns = view

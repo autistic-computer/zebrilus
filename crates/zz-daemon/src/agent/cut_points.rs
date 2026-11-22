@@ -264,7 +264,7 @@ fn item_difference(
     group: &str,
     expected: &ItemView,
     got: &ItemView,
-    batches: bool,
+    whole: bool,
 ) -> Option<Difference> {
     let (field, here) = (
         format!("{group}[]"),
@@ -286,18 +286,29 @@ fn item_difference(
             body.activity,
             status,
             turn,
-            parent,
-            children,
-            background,
-            started_at,
-            ended_at
+            parent
         ]
     )
+    .or_else(|| {
+        if !whole && within(&expected.children, &got.children) {
+            return None;
+        }
+        first_field!(field, here, expected, got, [children])
+    })
+    .or_else(|| {
+        first_field!(
+            field,
+            here,
+            expected,
+            got,
+            [background, started_at, ended_at]
+        )
+    })
     .or_else(|| {
         let summary = |item: &ItemView| {
             item.summary
                 .as_ref()
-                .map(|summary| (batches.then_some(summary.batch), summary.text.clone()))
+                .map(|summary| (whole.then_some(summary.batch), summary.text.clone()))
         };
         same(
             &format!("{field}.summary"),
