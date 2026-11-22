@@ -881,10 +881,11 @@ fn reload_difference(live: &ChatView, reloaded: &ChatView) -> Option<Difference>
             })
     })
     .or_else(|| {
+        let background = rows(reloaded, &reloaded.background, false);
         rows_difference(
             "background",
-            &rows(live, &live.background, true),
-            &rows(reloaded, &reloaded.background, false),
+            &without_the_restore_notice(rows(live, &live.background, true)),
+            &background,
         )
     })
     .or_else(|| {
@@ -994,20 +995,16 @@ fn resume_difference(ended: &ChatView, resumed: &ChatView) -> Option<Difference>
         rows_difference(
             "background",
             &background,
-            &without_the_restore_notice(&background, rows(resumed, &resumed.background, false)),
+            &without_the_restore_notice(rows(resumed, &resumed.background, false)),
         )
     })
 }
 
-fn without_the_restore_notice(ended: &[Row], mut resumed: Vec<Row>) -> Vec<Row> {
-    if resumed.len() == ended.len() + 1
-        && resumed
-            .last()
-            .is_some_and(|row| row.kind == ItemKind::Notice)
-    {
-        resumed.pop();
-    }
-    resumed
+fn without_the_restore_notice(mut rows: Vec<Row>) -> Vec<Row> {
+    rows.retain(|row| {
+        row.kind != ItemKind::Notice || !row.text.ends_with(super::runtime::RESTORE_NOTICE)
+    });
+    rows
 }
 
 #[test]

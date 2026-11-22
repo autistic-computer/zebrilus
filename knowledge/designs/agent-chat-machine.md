@@ -283,7 +283,9 @@ could tie to real Claude Code or Codex behavior.
     answered question must come back with the same item, question and answers. A turn or row still
     running live is expected to read as ended, as `Shadow::replay_history` ends them. A process
     opened on an earlier session is compared only from the line its session is ready, since its
-    chat stays empty while the provider replays the history.
+    chat stays empty while the provider replays the history. The notice a provider gets when it
+    refuses to load a session is about that one restore and is not journalled, so the live chat
+    may hold that notice and the reload must not.
   - Reload (`a_second_process_shows_the_chat_the_first_one_ended_with`): on each two-process
     tape, the chat once the second process has its session must have the turns, outcomes and rows
     the first one ended with. The one allowance is a restore notice added to the background when the
@@ -296,9 +298,8 @@ could tie to real Claude Code or Codex behavior.
   their own sends no `Restart`, so that client keeps its old chat; no recording reaches it. A chat
   reloaded from the journal shows an answered question with its question and answers but without
   its options, since only the tool update that carries the answer is journalled, and permission
-  cards and open questions are not journalled at all. The restore notice of a provider that refused
-  to load the session is journalled, so every later reload shows one more of them. The two Codex
-  rollout fixtures have no driver that plays them and are not taped.
+  cards and open questions are not journalled at all. The two Codex rollout fixtures have no driver
+  that plays them and are not taped.
 
 # Next
 

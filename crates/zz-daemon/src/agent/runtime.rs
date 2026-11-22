@@ -77,6 +77,8 @@ const MAX_STAGED_UPDATE_BYTES: usize = 2 * MAX_AGENT_UPDATES_BYTES;
 const MAX_PENDING_PERMISSIONS: usize = 64;
 const MAX_PENDING_PERMISSION_BYTES: usize = MAX_PENDING_PERMISSIONS * MAX_AGENT_PERMISSION_BYTES;
 const JOURNAL_RETENTION_DAYS: u64 = 30;
+pub(crate) const RESTORE_NOTICE: &str =
+    "could not restore the earlier session, so it starts fresh without that context.";
 
 #[derive(Debug)]
 pub(crate) enum RuntimeCommand {
@@ -1132,7 +1134,6 @@ pub(crate) async fn run_agent_connection(
                                 session = Some(session_id);
                                 if lost {
                                     let notice = restore_notice(provider)?;
-                                    record_update(journal.as_deref(), provider, &live, &notice);
                                     send_payload(&event_tx, update_payload(&notice)?).await?;
                                 }
                             }
@@ -2004,10 +2005,7 @@ pub(crate) fn prompt_updates(
 fn restore_notice(provider: AgentProvider) -> Result<SessionUpdate, agent_client_protocol::Error> {
     let id = getrandom::u64()
         .map_err(|error| agent_client_protocol::Error::internal_error().data(error.to_string()))?;
-    let text = format!(
-        "{} could not restore the earlier session, so it starts fresh without that context.",
-        provider.label()
-    );
+    let text = format!("{} {RESTORE_NOTICE}", provider.label());
     Ok(SessionUpdate::AgentMessageChunk(
         ContentChunk::new(ContentBlock::Text(TextContent::new(text)))
             .message_id(MessageId::new(format!("zz-notice-{id:016x}")))
