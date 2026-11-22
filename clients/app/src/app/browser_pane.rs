@@ -788,19 +788,20 @@ impl BrowserPane {
     fn refresh_phone_rows(&mut self, cx: &mut Context<Self>) {
         let query = self.address.read(cx).value().trim().to_owned();
         let url = &self.tabs[self.active].url;
-        self.phone_rows = if !self.address_open || query == *url {
-            Vec::new()
-        } else if query.is_empty() {
-            history::recent(&self.host, &self.profile_name, SUGGESTED_ROWS, cx)
-                .into_iter()
-                .map(|page| page_row(&page.title, &page.url))
-                .collect()
-        } else {
-            history::suggestions(&self.host, &self.profile_name, &query, SUGGESTED_ROWS, cx)
-                .into_iter()
-                .map(|suggestion| page_row(&suggestion.title, &suggestion.url))
-                .collect()
-        };
+        self.phone_rows =
+            if !self.address_open || query == *url || (query.is_empty() && url == "about:blank") {
+                Vec::new()
+            } else if query.is_empty() {
+                history::recent(&self.host, &self.profile_name, SUGGESTED_ROWS, cx)
+                    .into_iter()
+                    .map(|page| page_row(&page.title, &page.url))
+                    .collect()
+            } else {
+                history::suggestions(&self.host, &self.profile_name, &query, SUGGESTED_ROWS, cx)
+                    .into_iter()
+                    .map(|suggestion| page_row(&suggestion.title, &suggestion.url))
+                    .collect()
+            };
         if self.phone_rows.is_empty() {
             self.suggestions_hole.set(None);
         }
