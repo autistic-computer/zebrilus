@@ -142,7 +142,7 @@ pub(crate) async fn run_codex_runtime(
         next_request: 0,
         permissions: HashMap::new(),
         turns: TurnState::default(),
-        chat: Mutex::new(Shadow::default().codex()),
+        chat: Mutex::new(Shadow::default().codex().marking_turns()),
         visuals: Mutex::new(Visuals::default()),
         last_turn: 0,
         deferred_cancels: HashSet::new(),
@@ -522,7 +522,15 @@ impl Runtime {
     }
 
     async fn flush_chat(&self) -> Result<(), String> {
-        let events = self.chat.lock().drain();
+        let events = {
+            let mut shadow = self.chat.lock();
+            shadow.journal_marks(
+                self.journal.as_deref(),
+                self.provider,
+                self.session.as_ref().map(|session| session.id.as_str()),
+            );
+            shadow.drain()
+        };
         self.send_chat(events).await
     }
 

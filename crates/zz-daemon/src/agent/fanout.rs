@@ -20,6 +20,7 @@ use zz_protocol::{
 };
 
 use crate::agent::{
+    chat_bridge::is_turn_mark,
     host::{
         AgentConnectionPhase, AgentHost, AgentPaneSpec, AgentPaneState, AgentTurnFailure,
         AgentTurnWaiter, HostCommand, PromptSource, QueuedPrompt,
@@ -1078,7 +1079,9 @@ impl AgentFanout {
         let mut payloads = vec![AgentStreamPayload::SessionReset { restoring: true }];
         payloads.extend(lane.ready.clone());
         payloads.extend(replay.into_iter().filter_map(|(_, entry)| match entry {
-            JournalEntry::Update(update) if update["sessionUpdate"] == "config_option_update" => {
+            JournalEntry::Update(update)
+                if update["sessionUpdate"] == "config_option_update" || is_turn_mark(&update) =>
+            {
                 None
             }
             JournalEntry::Update(update) => Some(AgentStreamPayload::Update { update }),
@@ -3397,6 +3400,16 @@ mod tests {
                                 return items.len();
                             }
                         };
+                        if items.iter().any(|item| {
+                            matches!(&item.payload, AgentStreamPayload::Update { update } if is_turn_mark(update))
+                        }) {
+                            findings.add(
+                                format!("B | {path} | sends a turn mark"),
+                                at.clone(),
+                                rank,
+                                || example("a journalled turn mark reached the asker"),
+                            );
+                        }
                         if cursor != next_seq - 1 {
                             findings.add(
                                 format!("B | {path} | replay ends short of the lane"),

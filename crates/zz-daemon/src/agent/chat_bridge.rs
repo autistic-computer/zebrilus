@@ -7,14 +7,16 @@ use zz_machine::Machine;
 use zz_protocol::agent_stream::{AgentImage, AgentQuestion, AgentStreamPayload};
 use zz_protocol::chat::{
     Answer, Ask, AskOption, ChatEvent, ItemBody, ItemId, ItemKind, ItemStatus, OptionKind,
-    PlanStep, QuestionAnswer, RequestId, StepStatus, Usage,
+    PlanStep, QuestionAnswer, RequestId, StepStatus, TurnOutcome, Usage,
 };
 use zz_protocol::{
-    AgentQuestionAnswer, MAX_AGENT_IMAGE_FORMAT_BYTES, MAX_AGENT_PROMPT_BYTES,
+    AgentProvider, AgentQuestionAnswer, MAX_AGENT_IMAGE_FORMAT_BYTES, MAX_AGENT_PROMPT_BYTES,
     MAX_AGENT_PROMPT_IMAGES,
 };
 
 use super::chat::{ChatMachine, ChatState, Ctx, Effect, Fact, Reject};
+use super::journal::AgentJournal;
+use super::runtime::report_journal_error;
 use super::turn::{self, End, Outcome, TurnMachine};
 
 const HISTORY_LIMIT: usize = 20_000;
@@ -49,6 +51,7 @@ pub(crate) struct Shadow {
     replayed: u64,
     replayed_command: Option<String>,
     session: Option<String>,
+    marks: Option<Vec<Value>>,
 }
 
 impl Shadow {
@@ -68,6 +71,29 @@ impl Shadow {
     pub(crate) fn codex(mut self) -> Self {
         self.codex = true;
         self
+    }
+
+    #[must_use]
+    pub(crate) fn marking_turns(mut self) -> Self {
+        self.marks = Some(Vec::new());
+        self
+    }
+
+    pub(crate) fn journal_marks(
+        &mut self,
+        journal: Option<&AgentJournal>,
+        provider: AgentProvider,
+        session: Option<&str>,
+    ) {
+        let marks = self.marks.as_mut().map(std::mem::take).unwrap_or_default();
+        let (Some(journal), Some(session)) = (journal, session) else {
+            return;
+        };
+        for mark in marks {
+            if let Err(error) = journal.append_for(provider, session, &mark) {
+                report_journal_error(session, &error.to_string());
+            }
+        }
     }
 
     pub(crate) fn answered(&mut self, request: u64, answer: Answer) {
@@ -687,6 +713,11 @@ impl Shadow {
                         ChatEvent::SessionEnded { .. } => self.bodies.clear(),
                         _ => {}
                     }
+                    if !self.replaying
+                        && let Some(marks) = self.marks.as_mut()
+                    {
+                        marks.extend(live_turn_mark(&event));
+                    }
                     if self.keep {
                         self.events.push(event.clone());
                     }
@@ -708,6 +739,29 @@ pub(crate) fn turn_mark(turn: &str, at: Option<u64>) -> Value {
         mark["_meta"]["zz"]["at"] = Value::from(at);
     }
     mark
+}
+
+fn live_turn_mark(event: &ChatEvent) -> Option<Value> {
+    match event {
+        ChatEvent::TurnStarted { at, .. } => Some(turn_mark("started", Some(*at))),
+        ChatEvent::TurnEnded { outcome, at, .. } => {
+            let end = match outcome {
+                TurnOutcome::Completed { .. } => "completed",
+                TurnOutcome::Cancelled | TurnOutcome::Dropped => "cancelled",
+                TurnOutcome::Failed { .. } => "failed",
+            };
+            let mut mark = turn_mark(end, Some(*at));
+            if let TurnOutcome::Failed { message } = outcome {
+                mark["_meta"]["zz"]["error"] = Value::from(message.as_str());
+            }
+            Some(mark)
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn is_turn_mark(update: &Value) -> bool {
+    update["sessionUpdate"] == "session_info_update" && update["_meta"]["zz"]["turn"].is_string()
 }
 
 pub(crate) fn attach_images(

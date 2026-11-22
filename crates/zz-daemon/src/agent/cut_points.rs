@@ -7,7 +7,8 @@ use serde_json::Value;
 use zz_protocol::AgentProvider;
 use zz_protocol::agent_stream::AgentStreamPayload;
 use zz_protocol::chat::{
-    ChatEvent, ChatLog, ChatView, ItemId, ItemKind, ItemStatus, ItemView, RequestView, TurnView,
+    Answer, Ask, ChatEvent, ChatLog, ChatView, ItemId, ItemKind, ItemStatus, ItemView,
+    RequestClose, RequestView, TurnOutcome, TurnView,
 };
 
 use super::journal::AgentJournal;
@@ -763,21 +764,6 @@ fn rows(view: &ChatView, ids: &[ItemId], settle: bool) -> Vec<Row> {
         .collect()
 }
 
-fn top_level(view: &ChatView, events: &[ChatEvent]) -> Vec<ItemId> {
-    let mut ids = Vec::<ItemId>::new();
-    for event in events {
-        if let ChatEvent::ItemStarted {
-            item, parent: None, ..
-        } = event
-            && view.item(item).is_some_and(|view| view.parent.is_none())
-            && !ids.contains(item)
-        {
-            ids.push(item.clone());
-        }
-    }
-    ids
-}
-
 fn rows_difference(at: &str, expected: &[Row], got: &[Row]) -> Option<Difference> {
     expected
         .iter()
@@ -811,22 +797,39 @@ fn rows_difference(at: &str, expected: &[Row], got: &[Row]) -> Option<Difference
         })
 }
 
-fn answered_in_terminal(view: &ChatView) -> Vec<String> {
+fn answered_questions(view: &ChatView) -> Vec<String> {
     view.requests
         .iter()
-        .filter(|request| request.id.0 >= 1 << 48)
-        .map(|request| {
-            short(&(
-                &request.item,
-                &request.ask,
-                request.blocking,
-                &request.close,
-            ))
+        .filter_map(|request| {
+            let Ask::Questions { questions } = &request.ask else {
+                return None;
+            };
+            let Some(RequestClose::Answered {
+                answer: Answer::Questions { answers },
+            }) = &request.close
+            else {
+                return None;
+            };
+            let asked = questions
+                .iter()
+                .map(|question| {
+                    let answer = answers
+                        .iter()
+                        .find(|answer| answer.question == question.id)
+                        .map(|answer| answer.answers.clone())
+                        .unwrap_or_default();
+                    (question.question.as_str(), answer)
+                })
+                .collect::<Vec<_>>();
+            Some(short(&(&request.item, asked)))
         })
         .collect()
 }
 
-fn strict_reload_difference(live: &ChatView, reloaded: &ChatView) -> Option<Difference> {
+fn reload_difference(live: &ChatView, reloaded: &ChatView) -> Option<Difference> {
+    let ended = TurnOutcome::Completed {
+        stop_reason: "end_turn".to_owned(),
+    };
     same(
         "turns.len",
         "turns",
@@ -842,8 +845,8 @@ fn strict_reload_difference(live: &ChatView, reloaded: &ChatView) -> Option<Diff
                 same(
                     "turns[].outcome",
                     &format!("turns[{index}].outcome"),
-                    &turn.outcome,
-                    &other.outcome,
+                    turn.outcome.as_ref().unwrap_or(&ended),
+                    other.outcome.as_ref().unwrap_or(&ended),
                 )
                 .or_else(|| {
                     rows_difference(
@@ -863,29 +866,10 @@ fn strict_reload_difference(live: &ChatView, reloaded: &ChatView) -> Option<Diff
     })
     .or_else(|| {
         same(
+            "answered questions",
             "requests",
-            "requests",
-            &answered_in_terminal(live),
-            &answered_in_terminal(reloaded),
-        )
-    })
-}
-
-fn flat_reload_difference(
-    live: (&ChatView, &[ChatEvent]),
-    reloaded: (&ChatView, &[ChatEvent]),
-) -> Option<Difference> {
-    rows_difference(
-        "rows",
-        &rows(live.0, &top_level(live.0, live.1), true),
-        &rows(reloaded.0, &top_level(reloaded.0, reloaded.1), false),
-    )
-    .or_else(|| {
-        same(
-            "requests",
-            "requests",
-            &answered_in_terminal(live.0),
-            &answered_in_terminal(reloaded.0),
+            &answered_questions(live),
+            &answered_questions(reloaded),
         )
     })
 }
@@ -923,26 +907,10 @@ fn a_reload_from_the_journal_at_every_line_shows_the_live_chat() {
                     || format!("{} line {index}: {} skipped", tape.name, reloaded.skipped),
                 );
             }
-            if let Some(diff) = strict_reload_difference(&live, &reloaded) {
-                findings.add(
-                    format!("C | strict | {}", diff.field),
-                    at.clone(),
-                    rank,
-                    || example(&diff),
-                );
-            }
-            if let Some(diff) = flat_reload_difference((&live, &events), (&reloaded, &replayed)) {
-                findings.add(
-                    format!("C | rows without turns | {}", diff.field),
-                    at,
-                    rank,
-                    || example(&diff),
-                );
+            if let Some(diff) = reload_difference(&live, &reloaded) {
+                findings.add(format!("C | {}", diff.field), at, rank, || example(&diff));
             }
         }
     }
-    findings.finish(&[
-        "C | rows without turns | requests",
-        "C | strict | turns.len",
-    ]);
+    findings.finish(&[]);
 }

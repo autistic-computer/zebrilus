@@ -40,7 +40,7 @@ fn fresh(thread: &str) -> (Runtime, Receiver<AgentStreamPayload>) {
         next_request: 0,
         permissions: HashMap::new(),
         turns: TurnState::default(),
-        chat: Mutex::new(Shadow::recording().codex()),
+        chat: Mutex::new(Shadow::recording().codex().marking_turns()),
         visuals: Mutex::new(crate::agent::visualize::Visuals::default()),
         last_turn: 0,
         deferred_cancels: HashSet::new(),

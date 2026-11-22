@@ -42,7 +42,7 @@ fn fresh() -> (Runtime, Receiver<AgentStreamPayload>) {
         permissions: HashMap::new(),
         background_asks: HashSet::new(),
         turns: TurnState::default(),
-        chat: Mutex::new(Shadow::recording()),
+        chat: Mutex::new(Shadow::recording().marking_turns()),
         last_turn: 0,
         deferred_cancels: HashSet::new(),
         tasks: Vec::new(),

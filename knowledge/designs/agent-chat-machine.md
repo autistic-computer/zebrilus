@@ -111,8 +111,13 @@ then the newest events that fit, all in their original order. When the events st
 not fit, it sends no chat at all and the asker keeps the chat it had. The log grows with items and
 turns, not with streamed text, and keeps pasted images only on the last 8 items that have them.
 `ChatView` applies the same rule as it folds events, so a connected client's view holds no more
-images than a replay would give it. A daemon restart needs no journal for this: the driver restores the session's
-history and the bridge replays it through the machine.
+images than a replay would give it. A daemon restart needs no journal for this: the driver restores
+the session's history and the bridge replays it through the machine. When the vendor's history is
+gone, Claude and Codex fall back to the journal, and the bridge opens a turn at every turn mark in
+it. The vendor history readers write those marks, and a live turn now journals its own start and
+end mark too (`Shadow::marking_turns`), so the fallback rebuilds the turns; journals written before
+2026-11-22 have none and reload with every row outside a turn. The fanout's journal replay leaves
+the marks out, as it does `config_option_update`.
 
 # Rules
 
@@ -238,16 +243,19 @@ could tie to real Claude Code or Codex behavior.
     the phase, the running turn, the queue, the usage and every open item and request.
   - Journal reload (`a_reload_from_the_journal_at_every_line_shows_the_live_chat`): what a real
     `AgentJournal` held at that line goes through each driver's history fallback into a fresh
-    runtime, and the rows must match the live ones.
+    runtime. The turns, their outcomes and the rows in each must match the live ones, and every
+    answered question must come back with the same item, question and answers. A turn or row still
+    running live is expected to read as ended, as `Shadow::replay_history` ends them.
 
   A failure is grouped by signature (sweep, path, first differing field) with a count and its
   smallest example. Each sweep ends with the exact list of signatures it finds today and fails
   when that list changes either way, so a listed signature is an open bug and fixing one means
   deleting its line. Open on 2026-11-22: a rebuild whose events still in effect do not fit the
-  numbers the asker skips sends no `Restart`, so that client keeps its old chat; a chat reloaded
-  from the journal has no turns, because the journal holds no turn marks for Claude or Codex. The
-  two Codex rollout fixtures have no driver that plays them and are not taped, and agy, Grok and
-  Cursor have no recordings.
+  numbers the asker skips sends no `Restart`, so that client keeps its old chat. A chat reloaded
+  from the journal shows an answered question with its question and answers but without its
+  options, since only the tool update that carries the answer is journalled, and permission cards
+  and open questions are not journalled at all. The two Codex rollout fixtures have no driver that
+  plays them and are not taped, and agy, Grok and Cursor have no recordings.
 
 # Next
 

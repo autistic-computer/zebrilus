@@ -234,7 +234,7 @@ pub(crate) async fn run_claude_runtime(
         permissions: HashMap::new(),
         background_asks: HashSet::new(),
         turns: TurnState::default(),
-        chat: Mutex::default(),
+        chat: Mutex::new(Shadow::default().marking_turns()),
         last_turn: 0,
         deferred_cancels: HashSet::new(),
         tasks: Vec::new(),
@@ -646,7 +646,15 @@ impl Runtime {
     }
 
     async fn flush_chat(&self) -> Result<(), String> {
-        let events = self.chat.lock().drain();
+        let events = {
+            let mut shadow = self.chat.lock();
+            shadow.journal_marks(
+                self.journal.as_deref(),
+                self.provider,
+                self.session.as_ref().map(|session| session.id.as_str()),
+            );
+            shadow.drain()
+        };
         self.send_chat(events).await
     }
 
