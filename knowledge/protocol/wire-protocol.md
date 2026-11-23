@@ -491,9 +491,9 @@ daemon's whole map of panes another chat opened, child to opener (`MuxEngine::ag
 pane id. A client also gets it on its own, when not empty, before the tree it gets on hello,
 attach and `TreeSync`. It always comes before the first tree that holds a new child: the daemon
 records the parent under the same `ServerState` lock that creates the pane (`record_agent_parents`
-in `execute`, and for a reopen the host travels to that point in `REOPENED_CHILD_HOST`), and it
-enqueues the map to every subscriber while that lock is still held, so a tree computed after the
-pane exists is enqueued after the map. `ClientCore::agent_parent` answers from it.
+in `execute`; `select-child-chat` passes the host it reopens a child for to that `new-pane` as
+`ExecutionContext::agent_parent`), and it enqueues the map to every subscriber while that lock is
+still held, so a tree computed after the pane exists is enqueued after the map. `ClientCore::agent_parent` answers from it.
 `AgentSessions { pane, request_id, result }` is the JSON reply to `AgentSessionOp::List`, bounded by
 `MAX_AGENT_RESULT_BYTES` (1 MiB) and sent only to the client that made the request. A session
 listing uses request ID zero; the daemon carries its requester out of band.

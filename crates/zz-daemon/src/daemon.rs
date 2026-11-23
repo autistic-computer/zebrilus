@@ -34251,20 +34251,19 @@ impl Shared {
             }
         }
         args.push(record.provider.command_name().to_owned());
-        REOPENED_CHILD_HOST.set(Some(host));
-        let created = self.execute(
+        let mut context = ExecutionContext::default();
+        context.set_agent_parent(Some(host));
+        self.execute(
             ClientId(u64::MAX),
             ClientKind::Command,
-            &mut ExecutionContext::default(),
+            &mut context,
             &CommandInvocation::new("new-pane", args),
-        );
-        REOPENED_CHILD_HOST.set(None);
-        created?
-            .output
-            .to_string()
-            .trim()
-            .parse::<PaneId>()
-            .map_err(|_| ServerError::Internal(format!("could not reopen {child}")).into())
+        )?
+        .output
+        .to_string()
+        .trim()
+        .parse::<PaneId>()
+        .map_err(|_| ServerError::Internal(format!("could not reopen {child}")).into())
     }
 
     fn approve_child_tools(&self, pane: PaneId) {
@@ -44942,11 +44941,6 @@ fn simulator_panes(inner: &ServerState) -> BTreeMap<PaneId, SimulatorDescriptor>
 }
 
 #[cfg(feature = "agent")]
-thread_local! {
-    static REOPENED_CHILD_HOST: Cell<Option<PaneId>> = const { Cell::new(None) };
-}
-
-#[cfg(feature = "agent")]
 fn record_agent_parents(
     inner: &mut ServerState,
     client: ClientId,
@@ -44966,7 +44960,7 @@ fn record_agent_parents(
             continue;
         };
         let opened = matches!(kind, PaneKindSnapshot::Agent(_)) && std::mem::take(&mut first_chat);
-        let reopened = opened.then(|| REOPENED_CHILD_HOST.take()).flatten();
+        let reopened = context.agent_parent().filter(|_| opened);
         let parent = reopened.or_else(|| {
             caller.filter(|caller| {
                 caller != pane
