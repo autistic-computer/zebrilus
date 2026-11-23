@@ -11751,7 +11751,6 @@ version = "0.29.0"
 dependencies = [
  "agent-client-protocol",
  "ala",
- "ala-cef",
  "ala-platform",
  "async-channel",
  "base64 0.23.1",
@@ -11791,6 +11790,7 @@ dependencies = [
  "windows",
  "windows-registry",
  "x11rb",
+ "zz-browser-runtime",
  "zz-cli",
  "zz-client",
  "zz-config",
@@ -11849,6 +11849,21 @@ dependencies = [
  "zz-protocol",
  "zz-terminal",
  "zz-ui",
+]
+
+[[package]]
+name = "zz-browser-runtime"
+version = "0.29.0"
+dependencies = [
+ "ala-cef",
+ "async-channel",
+ "log",
+ "parking_lot 0.13.0",
+ "rustix",
+ "sha2 0.11.1",
+ "tempfile",
+ "thiserror 2.0.21",
+ "zz-daemon-client",
 ]
 
 [[package]]

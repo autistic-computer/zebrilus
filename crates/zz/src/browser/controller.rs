@@ -2478,7 +2478,8 @@ impl BrowserController {
     }
 
     fn schedule_pump_after(&mut self, requested: Duration, cx: &mut Context<Self>) {
-        if self.shutting_down
+        if !ala_cef::USES_EXTERNAL_MESSAGE_PUMP
+            || self.shutting_down
             || self.runtime.as_ref().is_none_or(|runtime| {
                 matches!(
                     runtime.phase(),

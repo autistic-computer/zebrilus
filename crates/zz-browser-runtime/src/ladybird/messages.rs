@@ -1,0 +1,50 @@
+pub(super) mod server {
+    pub const MAGIC: u32 = 0x2518_ccc4;
+    pub const INITIALIZE: u32 = 1;
+    pub const INITIALIZE_RESPONSE: u32 = 2;
+    pub const CREATE_VIEW: u32 = 3;
+    pub const CREATE_VIEW_RESPONSE: u32 = 4;
+    pub const UI_DID_START: u32 = 7;
+    pub const DESTROY_VIEW: u32 = 115;
+    pub const VIEW_SET_VIEWPORT: u32 = 116;
+    pub const VIEW_SET_SYSTEM_VISIBILITY_STATE: u32 = 130;
+    pub const VIEW_SET_HAS_SYSTEM_FOCUS: u32 = 138;
+    pub const VIEW_LOAD: u32 = 125;
+    pub const VIEW_STOP_LOADING: u32 = 143;
+    pub const VIEW_RELOAD: u32 = 142;
+    pub const VIEW_TRAVERSE_THE_HISTORY_BY_DELTA: u32 = 56;
+    pub const RELEASE_BACKING_STORE: u32 = 120;
+    pub const VIEW_COMMIT_TEXT_FROM_INPUT_METHOD: u32 = 177;
+    pub const VIEW_ENQUEUE_KEY_EVENT: u32 = 121;
+    pub const VIEW_ENQUEUE_MOUSE_EVENT: u32 = 122;
+    pub const VIEW_SET_DISPLAY_METADATA: u32 = 155;
+    pub const VIEW_FIND_IN_PAGE: u32 = 127;
+    pub const VIEW_FIND_IN_PAGE_NEXT_MATCH: u32 = 159;
+    pub const VIEW_FIND_IN_PAGE_PREVIOUS_MATCH: u32 = 160;
+    pub const VIEW_FIND_IN_PAGE_END: u32 = 161;
+    pub const VIEW_ALERT_CLOSED: u32 = 170;
+    pub const VIEW_CONFIRM_CLOSED: u32 = 171;
+    pub const VIEW_PROMPT_CLOSED: u32 = 172;
+    pub const VIEW_UNDO: u32 = 144;
+    pub const VIEW_REDO: u32 = 145;
+    pub const VIEW_SELECT_ALL: u32 = 148;
+    pub const VIEW_ZOOM_IN: u32 = 152;
+    pub const VIEW_ZOOM_OUT: u32 = 153;
+    pub const VIEW_RESET_ZOOM: u32 = 154;
+}
+pub(super) mod client {
+    pub const MAGIC: u32 = 0x6578_21bc;
+    pub const VIEW_INSTALL_BACKING_STORES: u32 = 87;
+    pub const VIEW_ADD_BACKING_STORES: u32 = 88;
+    pub const VIEW_RETIRE_BACKING_STORES: u32 = 89;
+    pub const VIEW_CLEAR_BACKING_STORES: u32 = 94;
+    pub const VIEW_PRESENT_BACKING_STORE: u32 = 90;
+    pub const VIEW_URL_CHANGE: u32 = 112;
+    pub const VIEW_TITLE_CHANGE: u32 = 111;
+    pub const VIEW_STATE_CHANGED: u32 = 104;
+    pub const VIEW_CRASH_OVERLAY_STATE_CHANGE: u32 = 150;
+    pub const VIEW_REQUEST_ALERT: u32 = 121;
+    pub const VIEW_REQUEST_CONFIRM: u32 = 122;
+    pub const VIEW_REQUEST_PROMPT: u32 = 123;
+    pub const VIEW_CLOSE: u32 = 108;
+}

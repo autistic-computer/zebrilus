@@ -10,7 +10,9 @@ default-run = "zz"
 
 [features]
 default = ["desktop", "agent-pane"]
-desktop = []
+desktop = ["browser-shell", "ala-cef/chromium"]
+ladybird = ["browser-shell", "ala-cef/ladybird"]
+browser-shell = []
 agent-pane = ["dep:agent-client-protocol", "zz-ui/agent"]
 editor-pane = ["dep:fff-search", "dep:ignore", "zz-ui/editor"]
 hotreload = ["dep:dioxus-devtools", "ala/hot-reload"]
@@ -18,7 +20,7 @@ hotreload = ["dep:dioxus-devtools", "ala/hot-reload"]
 [[bin]]
 name = "zz"
 path = "src/main.rs"
-required-features = ["desktop"]
+required-features = ["browser-shell"]
 
 [[bin]]
 name = "zz_helper"
@@ -33,7 +35,7 @@ required-features = ["desktop"]
 [[bin]]
 name = "zz_external_texture_fixture"
 path = "src/bin/zz_external_texture_fixture.rs"
-required-features = ["desktop"]
+required-features = ["browser-shell"]
 
 [dependencies]
 zz-cli.workspace = true
@@ -47,7 +49,7 @@ dioxus-devtools = { version = "=0.7.10", default-features = false, optional = tr
 env_logger.workspace = true
 ala = { workspace = true, features = ["default"] }
 ala-platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
-ala-cef = { workspace = true, features = ["cef-runtime", "chrome-import"] }
+ala-cef = { package = "zz-browser-runtime", path = "../zz-browser-runtime", default-features = false }
 fff-search = { version = "=0.11.0", optional = true }
 ignore = { workspace = true, optional = true }
 image = { workspace = true, features = ["bmp", "gif", "ico", "jpeg", "png", "pnm", "tiff", "webp"] }
