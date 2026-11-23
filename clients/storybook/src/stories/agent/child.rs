@@ -14,7 +14,7 @@ use zz_protocol::{
 };
 
 use zz_ui::agent::{
-    chat::{ChatHooks, ChatMarkdown, chat_child_card},
+    chat::{ChatHooks, ChatMarkdown, ChatOpen, chat_child_card},
     refs::ChatRefs,
 };
 
@@ -333,6 +333,166 @@ pub fn child_transcript(window: &mut Window, cx: &mut App) -> AnyView {
             "open, ask, allow, finish, a message for a pane it never opened, then a second send that asks",
             Thread::new(script).vendor("claude").refs(refs),
         )],
+        window,
+        cx,
+    )
+}
+
+const PEER: PaneId = PaneId(12);
+const PEER_TITLE: &str = "Model-invoking hook and zz prompt";
+const FINDINGS: &str = "Four findings are still open, each with the file and line that decides it, then two small ones, then what should stay as is.";
+const PEER_REPLY: &str = "%6's list arrived and matches what I relayed; its delivery also reproduced a new bug.\n\nThe mention scan runs on every prompt that reaches a chat, not only on what the user typed, so a quoted prompt got two notes attached. I will start on that once child-chats has its report in, and send you the diff before landing it.";
+
+fn peer_hosts() -> Vec<zz_ui::target::TargetHost> {
+    let mut hosts = story_hosts();
+    hosts[0].sessions[0].windows[0]
+        .panes
+        .push(zz_ui::target::TargetPane {
+            id: PEER,
+            title: String::new(),
+            program: Some("claude".into()),
+            icon: zz_ui::CLAUDE_ICON,
+            chat: Some(zz_ui::target::TargetChat {
+                title: PEER_TITLE.into(),
+                icon: zz_ui::CLAUDE_ICON,
+            }),
+        });
+    hosts
+}
+
+fn send(script: &mut Script, id: &str, pane: PaneId, summary: &str) {
+    tool(
+        script,
+        id,
+        format!("zz agent-send -t {pane} '{FINDINGS}'"),
+        ReplyNotice::Sent {
+            pane,
+            route: ReplyRoute::Back,
+        }
+        .to_string(),
+    );
+    script.summarize(&[id], summary);
+}
+
+fn peer_exchange(replied: bool) -> Script {
+    let mut script = Script::new();
+    script.turn("let %12 know about your findings. its fixing stuff");
+    send(&mut script, "send", PEER, "Sent findings to %12");
+    script
+        .reply(
+            "a1",
+            "Sent to %12: the four open findings with code pointers, the two small ones, and what should stay as is.",
+        )
+        .finish(completed());
+    if replied {
+        script
+            .turn(
+                &AgentReport::Finished {
+                    pane: PEER,
+                    provider: AgentProvider::ClaudeCode,
+                    text: PEER_REPLY.to_owned(),
+                }
+                .to_string(),
+            )
+            .reply(
+                "a2",
+                "It confirms the list and found the quoted-prompt bug.",
+            )
+            .finish(completed());
+    }
+    script
+}
+
+fn peer_reports() -> Script {
+    let claude = AgentProvider::ClaudeCode;
+    let gone = PaneId(13);
+    let mut script = Script::new();
+    script.turn("ask %12 and %13 whether the queue order matters");
+    send(
+        &mut script,
+        "send-1",
+        PEER,
+        "Asked %12 about the queue order",
+    );
+    send(&mut script, "send-2", gone, "Asked about the queue order");
+    script.reply("a1", "Asked both.").finish(completed());
+    script
+        .turn(
+            &AgentAsk {
+                pane: PEER,
+                provider: claude,
+                what: format!("execute {COMMAND}"),
+                answers: AskAnswers::AllowDeny,
+                request: Some(4),
+            }
+            .to_string(),
+        )
+        .reply("a2", "Waiting on you for that one.")
+        .finish(completed());
+    script
+        .turn(
+            &AgentReport::Stopped {
+                pane: PEER,
+                provider: claude,
+                reason: "cancelled".to_owned(),
+                text: String::new(),
+            }
+            .to_string(),
+        )
+        .reply("a3", "It stopped before it answered.")
+        .finish(completed());
+    script
+        .turn(
+            &AgentReport::Failed {
+                pane: gone,
+                provider: AgentProvider::Codex,
+                message: ERROR.to_owned(),
+            }
+            .to_string(),
+        )
+        .reply("a4", "The other one failed.")
+        .finish(completed());
+    script
+        .turn(
+            &AgentReport::Closed {
+                pane: gone,
+                provider: AgentProvider::Codex,
+            }
+            .to_string(),
+        )
+        .reply("a5", "And it is closed now.")
+        .finish(completed());
+    script
+}
+
+pub fn peer_rows(window: &mut Window, cx: &mut App) -> AnyView {
+    let refs = || ChatRefs {
+        hosts: peer_hosts(),
+        cwd: None,
+        open: Arc::new(|_, _, _| {}),
+        view: None,
+        page: None,
+    };
+    let thread = |script| Thread::new(script).vendor("codex").refs(refs());
+    threads(
+        vec![
+            (
+                "Waiting: the chip's dot works",
+                thread(peer_exchange(false)),
+            ),
+            ("Replied", thread(peer_exchange(true))),
+            (
+                "Expanded",
+                thread(peer_exchange(true)).opened(ChatOpen {
+                    runs: vec![ItemId::new("u:story-2")],
+                    ..ChatOpen::default()
+                }),
+            ),
+            (
+                "An ask, stopped, failed and closed; %13 is gone",
+                thread(peer_reports()),
+            ),
+        ],
         window,
         cx,
     )

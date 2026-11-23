@@ -23,6 +23,7 @@ use penna::{
 use zz_client::{
     chat_rows::{self, AgentState, ChildFold, Fold, RunLabel, Unit},
     child_card::{ChildCard, ChildState, PEEK_LINES, PeekLine, PeekMark, Verdict, current_pane},
+    peer::{Peer, PeerMessage, PeerNote, PeerSent, PeerState, around_pane},
     program::Program,
     window_summary::{Attention, provider_program},
 };
@@ -322,6 +323,12 @@ impl Row {
                     .map_or(RowKey::Empty, |id| RowKey::Item(id.clone())),
                 Unit::Ask(request) | Unit::Record(request) => RowKey::Request(*request),
                 Unit::Child(card) => RowKey::Child(card.anchor.clone()),
+                Unit::Sent(sent) => sent
+                    .run
+                    .items
+                    .first()
+                    .map_or(RowKey::Empty, |id| RowKey::Item(id.clone())),
+                Unit::Peer(note) => RowKey::Item(note.item.clone()),
             },
         }
     }
@@ -336,6 +343,8 @@ fn holds(unit: &Unit, id: &ItemId) -> bool {
         | Unit::Notice(held)
         | Unit::Page(held) => held == id,
         Unit::Run(run) => run.items.contains(id),
+        Unit::Sent(sent) => sent.run.items.contains(id),
+        Unit::Peer(note) => note.item == *id,
         Unit::Agents(ids) => ids.contains(id),
         Unit::Ask(_) | Unit::Record(_) | Unit::Child(_) => false,
     }
@@ -1350,11 +1359,7 @@ impl Draw<'_, '_> {
     fn turn(&self, turn: &TurnView) -> AnyElement {
         let rows = chat_rows::turn_rows(self.view, turn, self.now, self.fold);
         let live = turn.is_open();
-        let lead = rows
-            .shown
-            .iter()
-            .take_while(|unit| matches!(unit, Unit::User(_)))
-            .count();
+        let lead = rows.shown.iter().take_while(|unit| unit.leads()).count();
         let expanded = self.open.turns.contains(&turn.id);
         let fold = rows.fold.filter(|_| !rows.folded.is_empty());
         let moving = live && !self.view.waiting();
@@ -1553,6 +1558,8 @@ impl Draw<'_, '_> {
                     cx,
                 )
             }
+            Unit::Sent(sent) => self.sent(sent, live),
+            Unit::Peer(note) => self.peer_note(note),
             Unit::Notice(id) => notice_row(self.view, id, self.hooks.touch, cx),
             Unit::Ask(request) => self.view.request(*request).map_or_else(
                 || div().into_any_element(),
@@ -1605,6 +1612,168 @@ impl Draw<'_, '_> {
             .w_full()
             .child(row)
             .when(expanded, |column| column.child(self.steps(&run.items)))
+            .into_any_element()
+    }
+
+    fn sent(&self, sent: &PeerSent, live: bool) -> AnyElement {
+        let cx = self.cx;
+        let first = sent.run.items.first().cloned().unwrap_or_default();
+        let touch = self.hooks.touch;
+        let spin = matches!(sent.run.label, RunLabel::Live { .. }) && live;
+        let glyph = if spin {
+            penna::blocks::chat::spinner(self.phase)
+        } else {
+            Icon::new(IconName::Chat)
+        };
+        let label = run_label(&sent.run.label);
+        let chip = peer_chip(
+            SharedString::from(format!("chat-peer-chip-{}", first.as_str())),
+            &sent.peer,
+            sent_attention(sent.state),
+            self.hooks,
+            cx,
+        );
+        let (before, after) = around_pane(&label, sent.peer.pane).unwrap_or((&label, ""));
+        let opens = chat_rows::run_shows(self.view, &sent.run.items);
+        let expanded = opens && self.open.runs.contains(&first);
+        let row = peer_line(
+            SharedString::from(format!("chat-peer-sent-{}", first.as_str())),
+            touch,
+            cx,
+        )
+        .child(peer_glyph(glyph, touch, cx))
+        .children(peer_text(before.trim(), 1.0))
+        .child(chip)
+        .children(peer_text(after.trim(), PEER_TAIL_YIELD))
+        .when(opens, |row| {
+            let foreground = cx.theme().foreground;
+            row.hover(move |row| row.text_color(foreground))
+                .child(peer_end(
+                    Icon::new(penna::blocks::chat::disclosure_icon(expanded)),
+                    touch,
+                    cx,
+                ))
+        });
+        let row = if opens {
+            self.hooks.clickable(row, ChatClick::Run(first))
+        } else {
+            row
+        };
+        v_flex()
+            .w_full()
+            .child(row)
+            .when(expanded, |column| column.child(self.steps(&sent.run.items)))
+            .into_any_element()
+    }
+
+    fn peer_note(&self, note: &PeerNote) -> AnyElement {
+        let cx = self.cx;
+        let theme = cx.theme();
+        let touch = self.hooks.touch;
+        let body = note.body();
+        let expanded = body.is_some() && self.open.runs.contains(&note.item);
+        let chip = peer_chip(
+            SharedString::from(format!("chat-peer-from-{}", note.item.as_str())),
+            &note.peer,
+            note_attention(note.state),
+            self.hooks,
+            cx,
+        );
+        let (word, tint) = match &note.message {
+            PeerMessage::Replied { .. } => (Some("Reply from"), None),
+            PeerMessage::Stopped { .. } => (Some("Stopped"), None),
+            PeerMessage::Failed { .. } => (Some("Failed"), Some(theme.danger)),
+            PeerMessage::Closed | PeerMessage::Asks { .. } => (None, None),
+        };
+        let after = match &note.message {
+            PeerMessage::Closed => Some("was closed"),
+            PeerMessage::Asks { .. } => Some("asks"),
+            _ => None,
+        };
+        let time = note.time().map(|time| {
+            div()
+                .flex_none()
+                .type_style(TextStyle::Caption, cx)
+                .font_features(TABULAR.clone())
+                .text_color(theme.foreground.faint())
+                .child(time)
+        });
+        let line = note.line().filter(|_| !expanded).map(|line| {
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .text_ellipsis()
+                .whitespace_nowrap()
+                .type_style(TextStyle::Small, cx)
+                .text_color(theme.foreground.muted())
+                .child(line.to_owned())
+        });
+        let row = peer_line(
+            SharedString::from(format!("chat-peer-note-{}", note.item.as_str())),
+            touch,
+            cx,
+        )
+        .child(peer_glyph(
+            Icon::new(IconName::CornerDownRight).when_some(tint, Styled::text_color),
+            touch,
+            cx,
+        ))
+        .children(word.map(|word| {
+            div()
+                .flex_none()
+                .when_some(tint, Styled::text_color)
+                .child(word)
+        }))
+        .child(chip)
+        .children(after.map(|after| div().flex_none().child(after)))
+        .children(time)
+        .children(line)
+        .when(expanded, |row| {
+            row.child(div().flex_1()).child(
+                peer_end(Icon::new(IconName::ChevronDown), touch, cx)
+                    .text_color(theme.foreground.faint()),
+            )
+        });
+        let row = match body {
+            Some(_) => {
+                let foreground = theme.foreground;
+                self.hooks
+                    .clickable(
+                        row.hover(move |row| row.text_color(foreground)),
+                        ChatClick::Run(note.item.clone()),
+                    )
+                    .into_any_element()
+            }
+            None => row.into_any_element(),
+        };
+        v_flex()
+            .w_full()
+            .child(row)
+            .children(body.filter(|_| expanded).map(|body| {
+                div()
+                    .relative()
+                    .w_full()
+                    .mb(px(4.0))
+                    .pt(px(2.0))
+                    .pl(px(PEER_BODY_INDENT))
+                    .child(
+                        div()
+                            .absolute()
+                            .top(px(2.0))
+                            .bottom(px(2.0))
+                            .left(px(PEER_RULE_LEFT))
+                            .w(px(1.0))
+                            .bg(theme.divider_color()),
+                    )
+                    .child(markdown(
+                        &note.item,
+                        body.to_owned().into(),
+                        false,
+                        self.hooks,
+                        cx,
+                    ))
+            }))
             .into_any_element()
     }
 
@@ -1937,6 +2106,8 @@ fn agent_title(item: &zz_protocol::chat::ItemView) -> String {
 
 const AGENT_ROW_GROUP: &str = "chat-agent-row";
 const VENDOR_TILE: f32 = 22.0;
+const TILE_MARK_SHARE: f32 = 13.0 / VENDOR_TILE;
+const TILE_CORNER_SHARE: f32 = 6.0 / VENDOR_TILE;
 
 fn agent_attention(state: Option<&AgentState>) -> Attention {
     match state {
@@ -1962,9 +2133,11 @@ fn agent_tile(
     vendor: Option<&'static Program>,
     attention: Attention,
     ground: penna::Ground,
+    tile: f32,
     cx: &App,
 ) -> Div {
-    let size = px(VENDOR_TILE);
+    let size = px(tile);
+    let mark = px((tile * TILE_MARK_SHARE).round());
     let tile = match vendor.filter(|_| crate::program::program_colors(cx)) {
         Some(program) => crate::program::program_tile(program, size, 0.0, cx),
         None => div()
@@ -1973,14 +2146,14 @@ fn agent_tile(
             .flex()
             .items_center()
             .justify_center()
-            .rounded(px(6.0))
+            .rounded(size * TILE_CORNER_SHARE)
             .bg(cx.theme().paint(Tone::Neutral, Emphasis::Soft).fill)
             .child(
                 vendor
                     .and_then(|program| {
-                        crate::program::program_mark(program, px(13.0), cx.theme().foreground, None)
+                        crate::program::program_mark(program, mark, cx.theme().foreground, None)
                     })
-                    .unwrap_or_else(|| Icon::new(IconName::Bot).size(px(13.0)).into_any_element()),
+                    .unwrap_or_else(|| Icon::new(IconName::Bot).size(mark).into_any_element()),
             ),
     };
     tile.relative()
@@ -1994,7 +2167,7 @@ fn vendor_tile(
     ground: penna::Ground,
     cx: &App,
 ) -> Stateful<Div> {
-    agent_tile(vendor, agent_attention(state), ground, cx)
+    agent_tile(vendor, agent_attention(state), ground, VENDOR_TILE, cx)
         .id(id)
         .when_some(agent_status(state), |tile, status| {
             tile.role(ala::Role::Image)
@@ -2027,6 +2200,197 @@ const fn child_attention(state: &ChildState) -> Attention {
     }
 }
 
+const PEER_TILE: f32 = 16.0;
+const PEER_CHIP: f32 = 20.0;
+const PEER_CHIP_LEAD: f32 = 3.0;
+const PEER_CHIP_TRAIL: f32 = 6.0;
+const PEER_CHIP_GAP: f32 = 5.0;
+const PEER_CHIP_CORNER: f32 = 6.0;
+const PEER_BODY_INDENT: f32 = 21.0;
+const PEER_RULE_LEFT: f32 = 6.0;
+const PEER_TAIL_YIELD: f32 = 1000.0;
+
+const fn sent_attention(state: PeerState) -> Attention {
+    match state {
+        PeerState::Working | PeerState::Asking | PeerState::Answered => Attention::Working,
+        PeerState::Replied => Attention::Done,
+        PeerState::Failed => Attention::Failed,
+        PeerState::Stopped | PeerState::Closed => Attention::None,
+    }
+}
+
+const fn note_attention(state: PeerState) -> Attention {
+    match state {
+        PeerState::Asking => Attention::NeedsYou,
+        PeerState::Replied => Attention::Done,
+        PeerState::Failed => Attention::Failed,
+        PeerState::Working | PeerState::Answered | PeerState::Stopped | PeerState::Closed => {
+            Attention::None
+        }
+    }
+}
+
+fn peer_line(id: impl Into<ala::ElementId>, touch: bool, cx: &App) -> Stateful<Div> {
+    h_flex()
+        .id(id)
+        .flex_none()
+        .w_full()
+        .min_w_0()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .map(|row| {
+            if touch {
+                row.min_h(px(penna::blocks::touch::TOUCH_TARGET))
+                    .gap(Space::S12)
+                    .type_style(TextStyle::TouchSmall, cx)
+                    .line_height(px(TOUCH_PEER_LINE))
+            } else {
+                row.h(px(penna::blocks::chat::ACTIVITY_ROW_HEIGHT))
+                    .gap_2()
+                    .type_style(TextStyle::Body, cx)
+                    .line_height(px(penna::blocks::chat::ACTIVITY_ROW_LINE_HEIGHT))
+            }
+        })
+        .font_family(cx.theme().font_family.clone())
+        .text_color(penna::blocks::chat::activity_color(cx))
+}
+
+const TOUCH_PEER_LINE: f32 = 20.0;
+
+fn peer_glyph(glyph: Icon, touch: bool, cx: &App) -> Div {
+    peer_mark(
+        glyph,
+        penna::blocks::chat::ACTIVITY_ROW_FONT_SIZE,
+        touch,
+        cx,
+    )
+}
+
+fn peer_end(glyph: Icon, touch: bool, cx: &App) -> Div {
+    peer_mark(glyph, ACTIVITY_DISCLOSURE_SIZE, touch, cx)
+}
+
+fn peer_mark(glyph: Icon, desktop: f32, touch: bool, cx: &App) -> Div {
+    let (font, size) = if touch {
+        (
+            TextStyle::TouchSmall.design_px(),
+            penna::blocks::chat::TOUCH_ACTIVITY_GLYPH,
+        )
+    } else {
+        (penna::blocks::chat::ACTIVITY_ROW_FONT_SIZE, desktop)
+    };
+    div()
+        .flex_none()
+        .relative()
+        .top(crate::icon::cap_center_drop(px(font), px(size), cx))
+        .child(glyph.size(px(size)))
+}
+
+fn peer_text(text: &str, shrink: f32) -> Option<Div> {
+    (!text.is_empty()).then(|| {
+        div()
+            .min_w_0()
+            .flex_shrink(shrink)
+            .overflow_hidden()
+            .text_ellipsis()
+            .whitespace_nowrap()
+            .child(text.to_owned())
+    })
+}
+
+struct PeerFace {
+    title: String,
+    program: Option<&'static Program>,
+    target: Option<crate::target::ResolvedTarget>,
+}
+
+fn peer_face(peer: &Peer, hooks: &ChatHooks<'_>) -> PeerFace {
+    let refs = hooks.refs();
+    let pane = refs.and_then(|refs| {
+        refs.hosts
+            .iter()
+            .filter(|host| host.here)
+            .flat_map(|host| &host.sessions)
+            .flat_map(|session| &session.windows)
+            .flat_map(|window| &window.panes)
+            .find(|pane| pane.id == peer.pane)
+    });
+    let target = refs
+        .zip(pane)
+        .and_then(|(refs, _)| {
+            refs.resolve_link(&format!("{}{}", super::refs::REF_SCHEME, peer.pane))
+        })
+        .filter(|target| target.target == crate::target::RefTarget::Pane(peer.pane));
+    let title = target
+        .as_ref()
+        .map(|target| target.label.clone())
+        .filter(|title| !title.trim().is_empty())
+        .unwrap_or_else(|| peer.pane.to_string());
+    PeerFace {
+        title,
+        program: peer.agent.and_then(provider_program).or_else(|| {
+            pane.and_then(|pane| pane.program.as_deref())
+                .and_then(Program::by_id)
+        }),
+        target,
+    }
+}
+
+fn peer_chip(
+    id: impl Into<ala::ElementId>,
+    peer: &Peer,
+    attention: Attention,
+    hooks: &ChatHooks<'_>,
+    cx: &App,
+) -> Stateful<Div> {
+    let theme = cx.theme();
+    let face = peer_face(peer, hooks);
+    let ground = hooks.ground.unwrap_or_else(|| theme.ground());
+    let chip = h_flex()
+        .id(id)
+        .flex_shrink_1()
+        .min_w_0()
+        .h(px(PEER_CHIP))
+        .pl(px(PEER_CHIP_LEAD))
+        .pr(px(PEER_CHIP_TRAIL))
+        .gap(px(PEER_CHIP_GAP))
+        .items_center()
+        .rounded(px(PEER_CHIP_CORNER))
+        .bg(theme.paint(Tone::Neutral, Emphasis::Soft).fill)
+        .text_color(theme.foreground)
+        .role(ala::Role::Link)
+        .aria_label(face.title.clone())
+        .child(agent_tile(face.program, attention, ground, PEER_TILE, cx))
+        .child(
+            Label::new(
+                if hooks.touch {
+                    TextStyle::TouchSmall
+                } else {
+                    TextStyle::Body
+                },
+                face.title,
+            )
+            .strong()
+            .when(!hooks.touch, |label| {
+                label.line_height(px(penna::blocks::chat::ACTIVITY_ROW_LINE_HEIGHT))
+            })
+            .min_w_0()
+            .overflow_hidden()
+            .text_ellipsis()
+            .whitespace_nowrap(),
+        );
+    match (face.target, hooks.refs()) {
+        (Some(target), Some(refs)) => {
+            let open = Arc::clone(&refs.open);
+            chip.click_cursor().on_click(move |_, window, cx| {
+                cx.stop_propagation();
+                open(&target, window, cx);
+            })
+        }
+        _ => chip,
+    }
+}
+
 #[must_use]
 pub fn chat_child_card(
     card: &ChildCard,
@@ -2054,6 +2418,7 @@ pub fn chat_child_card(
         provider_program(card.agent),
         child_attention(&card.state),
         ground,
+        VENDOR_TILE,
         cx,
     );
     let mark = div()

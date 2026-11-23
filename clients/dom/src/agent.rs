@@ -1586,6 +1586,23 @@ fn chat_unit_json(
             "agent": provider_id(card.agent),
             "state": format!("{:?}", card.state),
         })),
+        Unit::Sent(sent) => chat_unit_json(
+            lens,
+            &Unit::Run(sent.run.clone()),
+            now,
+            live,
+            copy_id,
+            rewind,
+        ),
+        Unit::Peer(note) => {
+            let text = lens.transcript.chat.item(&note.item)?.body.text.clone();
+            let html = lens.chat_html(&format!("n:{}", note.item.as_str()), &text, false);
+            Some(json!({
+                "kind": "notice",
+                "id": note.item.as_str(),
+                "html": html,
+            }))
+        }
         Unit::Ask(_) | Unit::Page(_) => None,
     }
 }

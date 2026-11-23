@@ -1653,7 +1653,19 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
                 text("a4")
             ],
             vec![text("a5")],
-            vec![user("u6"), text("a6")],
+            vec![
+                Unit::Peer(Box::new(crate::peer::PeerNote {
+                    item: ItemId::new("u6"),
+                    peer: crate::peer::Peer {
+                        pane: PaneId(9),
+                        agent: Some(codex),
+                    },
+                    waited: None,
+                    state: crate::peer::PeerState::Closed,
+                    message: crate::peer::PeerMessage::Closed,
+                })),
+                text("a6"),
+            ],
             vec![
                 user("u7"),
                 run("send2"),
@@ -1711,4 +1723,266 @@ fn a_finished_turn_keeps_a_row_for_each_page_it_edited() {
         ]
     );
     assert_eq!(rows.folded.len(), 1);
+}
+
+fn exchange(turns: &[(&str, String, Option<(&str, String, String)>)]) -> ChatView {
+    let mut view = ChatView::default();
+    let mut at = 0;
+    let apply = |view: &mut ChatView, event: ChatEvent| {
+        view.apply(&event).expect("valid event");
+    };
+    apply(
+        &mut view,
+        ChatEvent::SessionReady {
+            session: "s".to_owned(),
+        },
+    );
+    for (index, (user, prompt, tool)) in turns.iter().enumerate() {
+        let turn = TurnId(index as u64 + 1);
+        let mut item = |view: &mut ChatView, id: &str, kind, body| {
+            at += 1000;
+            for event in [
+                ChatEvent::ItemStarted {
+                    item: ItemId::new(id),
+                    turn: Some(turn),
+                    parent: None,
+                    kind,
+                    body,
+                    at,
+                },
+                ChatEvent::ItemEnded {
+                    item: ItemId::new(id),
+                    status: ItemStatus::Completed,
+                    at,
+                },
+            ] {
+                apply(view, event);
+            }
+        };
+        apply(
+            &mut view,
+            ChatEvent::TurnStarted {
+                turn,
+                by: TurnBy::User {
+                    prompt: index as u64 + 1,
+                },
+                at: 0,
+            },
+        );
+        item(
+            &mut view,
+            user,
+            ItemKind::User,
+            ItemBody::text(prompt.clone()),
+        );
+        if let Some((id, command, output)) = tool {
+            let body = ItemBody {
+                target: Some(command.clone()),
+                text: output.clone(),
+                ..ItemBody::default()
+            };
+            item(&mut view, id, ItemKind::Execute, body);
+        }
+        item(
+            &mut view,
+            &format!("a{}", index + 1),
+            ItemKind::Agent,
+            ItemBody::text("ok"),
+        );
+        apply(
+            &mut view,
+            ChatEvent::TurnEnded {
+                turn,
+                outcome: completed(),
+                at: 0,
+            },
+        );
+    }
+    view
+}
+
+#[test]
+fn a_message_to_a_chat_this_chat_never_opened_reads_as_a_sent_row_and_a_reply_row() {
+    use crate::chat_rows::{Run, child_fold};
+    use crate::peer::{Peer, PeerMessage, PeerNote, PeerSent, PeerState};
+    use zz_protocol::{
+        AgentProvider, PaneId,
+        agent_mention::{AgentReport, ReplyNotice, ReplyRoute},
+    };
+
+    let pane = PaneId(12);
+    let reply = "Your list matches mine.\nOne new bug: notes on quoted prompts.";
+    let view = exchange(&[
+        (
+            "u1",
+            "let %12 know".to_owned(),
+            Some((
+                "send",
+                "zz agent-send -t %12 'four findings'".to_owned(),
+                ReplyNotice::Sent {
+                    pane,
+                    route: ReplyRoute::Back,
+                }
+                .to_string(),
+            )),
+        ),
+        (
+            "u2",
+            AgentReport::Finished {
+                pane,
+                provider: AgentProvider::ClaudeCode,
+                text: reply.to_owned(),
+            }
+            .to_string(),
+            None,
+        ),
+    ]);
+    let fold = child_fold(&view);
+    let shown = view
+        .turns
+        .iter()
+        .map(|turn| turn_rows(&view, turn, 0, &fold).shown)
+        .collect::<Vec<_>>();
+    let peer = Peer {
+        pane,
+        agent: Some(AgentProvider::ClaudeCode),
+    };
+    assert_eq!(
+        shown,
+        [
+            vec![
+                Unit::User(ItemId::new("u1")),
+                Unit::Sent(Box::new(PeerSent {
+                    run: Run {
+                        items: ids(&["send"]),
+                        label: RunLabel::Done {
+                            summary: "Ran zz agent-send -t %12 'four findings'".to_owned(),
+                        },
+                    },
+                    peer,
+                    state: PeerState::Replied,
+                })),
+                Unit::Text(ItemId::new("a1")),
+            ],
+            vec![
+                Unit::Peer(Box::new(PeerNote {
+                    item: ItemId::new("u2"),
+                    peer,
+                    waited: Some(2000),
+                    state: PeerState::Replied,
+                    message: PeerMessage::Replied {
+                        reply: reply.to_owned(),
+                    },
+                })),
+                Unit::Text(ItemId::new("a2")),
+            ],
+        ]
+    );
+    assert_eq!(
+        crate::peer::around_pane("Sent findings to %12 now", pane),
+        Some(("Sent findings to ", " now"))
+    );
+    assert_eq!(crate::peer::around_pane("Ran %123", pane), None);
+}
+
+#[test]
+fn a_message_to_a_chat_this_chat_opened_still_folds_into_its_card() {
+    use crate::chat_rows::child_fold;
+    use crate::child_card::{ChildCard, ChildState};
+    use zz_protocol::{
+        AgentProvider, PaneId,
+        agent_mention::{AgentReport, ReplyNotice, ReplyRoute},
+    };
+
+    let pane = PaneId(12);
+    let claude = AgentProvider::ClaudeCode;
+    let view = exchange(&[
+        (
+            "u1",
+            "open claude".to_owned(),
+            Some((
+                "open",
+                "zz new-pane -d --kind agent claude 'read turn.rs'".to_owned(),
+                ReplyNotice::Opened {
+                    verb: "new-pane".to_owned(),
+                    pane,
+                    provider: claude,
+                    route: Some(ReplyRoute::Back),
+                }
+                .to_string(),
+            )),
+        ),
+        (
+            "u2",
+            "let %12 know".to_owned(),
+            Some((
+                "send",
+                "zz agent-send -t %12 'four findings'".to_owned(),
+                ReplyNotice::Sent {
+                    pane,
+                    route: ReplyRoute::Back,
+                }
+                .to_string(),
+            )),
+        ),
+        (
+            "u3",
+            AgentReport::Finished {
+                pane,
+                provider: claude,
+                text: "all green".to_owned(),
+            }
+            .to_string(),
+            None,
+        ),
+    ]);
+    let fold = child_fold(&view);
+    let shown = view
+        .turns
+        .iter()
+        .map(|turn| turn_rows(&view, turn, 0, &fold).shown)
+        .collect::<Vec<_>>();
+    let card = |anchor: &str, latest, reply: &str, started_at, ended_at| {
+        Unit::Child(Box::new(ChildCard {
+            anchor: ItemId::new(anchor),
+            pane,
+            agent: claude,
+            latest,
+            state: ChildState::Done {
+                reply: reply.to_owned(),
+            },
+            started_at,
+            ended_at: Some(ended_at),
+            decisions: Vec::new(),
+        }))
+    };
+    let run = |id: &str, summary: &str| {
+        Unit::Run(crate::chat_rows::Run {
+            items: ids(&[id]),
+            label: RunLabel::Done {
+                summary: summary.to_owned(),
+            },
+        })
+    };
+    assert_eq!(
+        shown,
+        [
+            vec![
+                Unit::User(ItemId::new("u1")),
+                run(
+                    "open",
+                    "Ran zz new-pane -d --kind agent claude 'read turn.rs'"
+                ),
+                card("open", false, "", 2000, 5000),
+                Unit::Text(ItemId::new("a1")),
+            ],
+            vec![
+                Unit::User(ItemId::new("u2")),
+                run("send", "Ran zz agent-send -t %12 'four findings'"),
+                card("send", true, "all green", 5000, 7000),
+                Unit::Text(ItemId::new("a2")),
+            ],
+            vec![Unit::Text(ItemId::new("a3"))],
+        ]
+    );
 }

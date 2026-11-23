@@ -37,6 +37,7 @@ pub mod pane_picker;
 pub mod pane_separator;
 pub mod path_insert;
 pub mod path_rank;
+pub mod peer;
 pub mod pick;
 pub mod place;
 pub mod prefix_keys;
