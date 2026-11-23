@@ -60,6 +60,7 @@ pub enum AppearancePageItem<T = Infallible> {
     Glass,
     UiFontFamily,
     MonoFontFamily,
+    ChatFontFamily,
     TextSize,
     Density,
     IncreaseContrast,
@@ -85,6 +86,7 @@ impl<T: Copy> AppearancePageItem<T> {
             Self::IncreaseContrast => "Increase contrast",
             Self::UiFontFamily => "UI font",
             Self::MonoFontFamily => "Mono font",
+            Self::ChatFontFamily => "Chat font",
             Self::TextSize => "Text size",
             Self::Density => "Density",
             Self::Motion => "Motion",
@@ -111,6 +113,7 @@ pub fn appearance_page_items<T>() -> Vec<AppearancePageItem<T>> {
         AppearancePageItem::Glass,
         AppearancePageItem::UiFontFamily,
         AppearancePageItem::MonoFontFamily,
+        AppearancePageItem::ChatFontFamily,
         AppearancePageItem::Group { title: SIZE },
         AppearancePageItem::TextSize,
         AppearancePageItem::Density,
@@ -483,6 +486,7 @@ pub struct AvailableFonts(pub Arc<dyn ala::PlatformTextSystem>);
 impl ala::Global for AvailableFonts {}
 
 pub const SYSTEM_DEFAULT_FONT: &str = "System default";
+pub const UI_FONT_DEFAULT: &str = "UI font";
 
 pub fn ui_font_select(
     selected: Option<&str>,
@@ -490,6 +494,15 @@ pub fn ui_font_select(
     cx: &mut App,
 ) -> Entity<SelectState<Vec<SettingsSelectItem>>> {
     font_select(SYSTEM_DEFAULT_FONT.into(), selected, window, cx)
+}
+
+pub fn chat_font_select(
+    default_title: impl Into<SharedString>,
+    selected: Option<&str>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<SelectState<Vec<SettingsSelectItem>>> {
+    font_select(default_title.into(), selected, window, cx)
 }
 
 pub fn mono_font_select(
@@ -531,7 +544,9 @@ fn font_select(
         || cx.text_system().all_font_names(),
         |fonts| fonts.0.all_font_names(),
     );
-    families.retain(|family| !family.starts_with('.') && !family.trim().is_empty());
+    families.retain(|family| {
+        !family.starts_with('.') && !family.trim().is_empty() && family != default_title.as_ref()
+    });
     families.sort_by_cached_key(|family| family.to_lowercase());
     families.dedup();
     let items: Vec<_> = std::iter::once(SettingsSelectItem::new(default_title, ""))
@@ -553,7 +568,10 @@ pub struct AppearanceControls {
     accent: Entity<ColorPickerState>,
     ui_font: RefCell<Option<(FontSelect, Subscription)>>,
     mono_font: RefCell<Option<(FontSelect, Vec<MenuScope>, Subscription)>>,
+    chat_font: RefCell<Option<(FontSelect, Subscription)>>,
+    ui_default: SharedString,
     mono_default: SharedString,
+    chat_default: SharedString,
     zoom: FocusHandle,
     on_change: OnChange,
     _accent: Subscription,
@@ -582,7 +600,10 @@ impl AppearanceControls {
             accent,
             ui_font: RefCell::default(),
             mono_font: RefCell::default(),
+            chat_font: RefCell::default(),
+            ui_default: SYSTEM_DEFAULT_FONT.into(),
             mono_default: SYSTEM_DEFAULT_FONT.into(),
+            chat_default: UI_FONT_DEFAULT.into(),
             zoom: cx.focus_handle(),
             on_change,
             _accent: subscription,
@@ -590,8 +611,20 @@ impl AppearanceControls {
     }
 
     #[must_use]
+    pub fn ui_default(mut self, title: impl Into<SharedString>) -> Self {
+        self.ui_default = title.into();
+        self
+    }
+
+    #[must_use]
     pub fn mono_default(mut self, title: impl Into<SharedString>) -> Self {
         self.mono_default = title.into();
+        self
+    }
+
+    #[must_use]
+    pub fn chat_default(mut self, title: impl Into<SharedString>) -> Self {
+        self.chat_default = title.into();
         self
     }
 
@@ -615,6 +648,12 @@ impl AppearanceControls {
                 select.set_selected_value(&font, window, cx);
             });
         }
+        if let Some((select, _)) = &*self.chat_font.borrow() {
+            let font = appearance.chat_font().to_owned();
+            select.update(cx, |select, cx| {
+                select.set_selected_value(&font, window, cx);
+            });
+        }
     }
 
     fn ui_font_select(
@@ -626,7 +665,12 @@ impl AppearanceControls {
         if let Some((select, _)) = &*self.ui_font.borrow() {
             return select.clone();
         }
-        let select = ui_font_select(Some(appearance.ui_font()), window, cx);
+        let select = font_select(
+            self.ui_default.clone(),
+            Some(appearance.ui_font()),
+            window,
+            cx,
+        );
         let changed = Rc::clone(&self.on_change);
         let subscription = window.subscribe(
             &select,
@@ -668,6 +712,35 @@ impl AppearanceControls {
         );
         *self.mono_font.borrow_mut() = Some((select.clone(), scopes.clone(), subscription));
         (select, scopes)
+    }
+
+    fn chat_font_select(
+        &self,
+        appearance: &Appearance,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> FontSelect {
+        if let Some((select, _)) = &*self.chat_font.borrow() {
+            return select.clone();
+        }
+        let select = chat_font_select(
+            self.chat_default.clone(),
+            Some(appearance.chat_font()),
+            window,
+            cx,
+        );
+        let changed = Rc::clone(&self.on_change);
+        let subscription = window.subscribe(
+            &select,
+            cx,
+            move |_, event: &SelectEvent<Vec<SettingsSelectItem>>, window, cx| {
+                if let SelectEvent::Confirm(Some(family)) = event {
+                    changed(AppearanceChange::ChatFont(family.clone()), window, cx);
+                }
+            },
+        );
+        *self.chat_font.borrow_mut() = Some((select.clone(), subscription));
+        select
     }
 
     fn change(
@@ -783,7 +856,19 @@ pub fn kit_row<T: Copy>(
                 crate::blocks::settings::settings_select_box(cx).child(
                     Select::new(&select)
                         .title(title)
-                        .placeholder(SYSTEM_DEFAULT_FONT)
+                        .placeholder(controls.ui_default.clone())
+                        .search_placeholder("Search fonts")
+                        .on(crate::blocks::settings::settings_card_ground(cx)),
+                ),
+            )
+        }
+        AppearancePageItem::ChatFontFamily => {
+            let select = controls.chat_font_select(appearance, window, cx);
+            entry.control(
+                crate::blocks::settings::settings_select_box(cx).child(
+                    Select::new(&select)
+                        .title(title)
+                        .placeholder(controls.chat_default.clone())
                         .search_placeholder("Search fonts")
                         .on(crate::blocks::settings::settings_card_ground(cx)),
                 ),

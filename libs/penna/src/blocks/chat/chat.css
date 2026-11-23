@@ -158,6 +158,7 @@
   min-width: 0;
   max-width: 100%;
   padding: 8px 12px;
+  font-family: var(--penna-chat-font, var(--penna-font));
   font-size: var(--penna-text-read-body-size);
   font-weight: var(--penna-text-read-body-weight);
   line-height: var(--penna-text-read-body-line);
@@ -185,6 +186,7 @@
   align-items: flex-start;
   gap: 8px;
   width: 100%;
+  font-family: var(--penna-chat-font, var(--penna-font));
   font-size: var(--penna-text-read-body-size);
   font-weight: var(--penna-text-read-body-weight);
   line-height: var(--penna-text-read-body-line);

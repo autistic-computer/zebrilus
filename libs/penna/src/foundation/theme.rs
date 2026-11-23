@@ -73,6 +73,7 @@ pub struct Theme {
     pub font_size: Pixels,
     pub mono_font_family: SharedString,
     pub mono_font_size: Pixels,
+    pub chat_font_family: Option<SharedString>,
     pub radius: Pixels,
     pub control_radius: Option<Pixels>,
     contrast: f32,
@@ -305,6 +306,13 @@ impl Theme {
         }
     }
 
+    #[must_use]
+    pub fn chat_font(&self) -> SharedString {
+        self.chat_font_family
+            .clone()
+            .unwrap_or_else(|| self.font_family.clone())
+    }
+
     #[inline]
     pub fn editor_background(&self) -> Hsla {
         self.highlight_theme
@@ -335,6 +343,7 @@ impl From<&ThemeColor> for Theme {
             font_size: px(BASE_UI_FONT_SIZE),
             mono_font_family: platform_mono_font_family(),
             mono_font_size: px(13.),
+            chat_font_family: None,
             radius: px(DEFAULT_RADIUS),
             control_radius: None,
             contrast: 1.0,

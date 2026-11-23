@@ -117,11 +117,15 @@ pub fn single_line(text: SharedString) -> SharedString {
 }
 
 pub fn transcript_text<E: Styled>(element: E, cx: &App) -> E {
-    element.type_style(TextStyle::ReadBody, cx)
+    element
+        .type_style(TextStyle::ReadBody, cx)
+        .font_family(cx.theme().chat_font())
 }
 
 pub fn touch_transcript_text<E: Styled>(element: E, cx: &App) -> E {
-    element.type_style(TextStyle::TouchBody, cx)
+    element
+        .type_style(TextStyle::TouchBody, cx)
+        .font_family(cx.theme().chat_font())
 }
 
 #[must_use]

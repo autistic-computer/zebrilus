@@ -667,6 +667,7 @@ fn write_root(css: &mut String, theme: &Theme) {
     };
     let mono = theme.mono_font_family.as_ref();
     let font = theme.font_family.as_ref();
+    let chat = theme.chat_font();
     let mut root = vec![
         ("color-scheme".to_owned(), theme.mode.name().to_owned()),
         ("--penna-bg".to_owned(), color(theme.background)),
@@ -775,6 +776,7 @@ fn write_root(css: &mut String, theme: &Theme) {
             shadows(&theme.lifted_shadows()),
         ),
         ("--penna-font".to_owned(), font_stack(font, false)),
+        ("--penna-chat-font".to_owned(), font_stack(&chat, false)),
         ("--penna-mono".to_owned(), font_stack(mono, true)),
         (
             "--penna-font-size".to_owned(),

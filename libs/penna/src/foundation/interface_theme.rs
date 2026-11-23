@@ -751,6 +751,7 @@ pub struct Appearance {
     pub contrast: f32,
     pub ui_font_family: String,
     pub mono_font_family: String,
+    pub chat_font_family: String,
     pub zoom: f32,
     pub motion: crate::foundation::motion::Motion,
     pub density: crate::Density,
@@ -765,6 +766,7 @@ impl Default for Appearance {
             contrast: 1.0,
             ui_font_family: String::new(),
             mono_font_family: String::new(),
+            chat_font_family: String::new(),
             zoom: 1.0,
             motion: crate::foundation::motion::Motion::Default,
             density: crate::Density::Regular,
@@ -787,6 +789,7 @@ pub enum AppearanceChange {
     Contrast(f32),
     UiFont(String),
     MonoFont(String),
+    ChatFont(String),
     Zoom(f32),
     Motion(crate::foundation::motion::Motion),
     Density(crate::Density),
@@ -856,6 +859,10 @@ impl Appearance {
         &self.mono_font_family
     }
 
+    pub fn chat_font(&self) -> &str {
+        &self.chat_font_family
+    }
+
     pub fn import(&mut self, theme: &InterfaceTheme) {
         self.overrides = ThemeOverrides::from_theme(theme);
         self.ui_font_family = theme.face.as_deref().unwrap_or("").to_owned();
@@ -865,6 +872,7 @@ impl Appearance {
         self.overrides = ThemeOverrides::default();
         self.ui_font_family.clear();
         self.mono_font_family.clear();
+        self.chat_font_family.clear();
     }
 
     pub fn change(&mut self, change: AppearanceChange) {
@@ -883,6 +891,7 @@ impl Appearance {
             AppearanceChange::Contrast(contrast) => self.contrast = contrast,
             AppearanceChange::UiFont(family) => self.ui_font_family = family,
             AppearanceChange::MonoFont(family) => self.mono_font_family = family,
+            AppearanceChange::ChatFont(family) => self.chat_font_family = family,
             AppearanceChange::Zoom(zoom) => self.zoom = zoom,
             AppearanceChange::Motion(motion) => self.motion = motion,
             AppearanceChange::Density(density) => self.density = density,
@@ -915,9 +924,13 @@ impl Appearance {
         } else {
             crate::foundation::platform_mono_font_family()
         };
+        let chat = self.chat_font();
+        let chat = (!chat.is_empty() && cx.text_system().has_font(chat))
+            .then(|| SharedString::from(chat.to_owned()));
         let theme = Theme::global_mut(cx);
         theme.font_family = family;
         theme.mono_font_family = mono;
+        theme.chat_font_family = chat;
         theme.set_contrast(self.contrast);
         self.density.set();
         self.pointer.set();
@@ -1184,7 +1197,7 @@ mod tests {
             serde_json::from_str::<Appearance>("{}").unwrap(),
             Appearance::default()
         );
-        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"frost":0.75,"ui_font_family":"Inter","mono_font_family":"Lilex","zoom":1.25,"motion":"fast","density":"comfortable","pointer":"arrow","sidebar":true}"#;
+        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"frost":0.75,"ui_font_family":"Inter","mono_font_family":"Lilex","chat_font_family":"Georgia","zoom":1.25,"motion":"fast","density":"comfortable","pointer":"arrow","sidebar":true}"#;
         let appearance = serde_json::from_str::<Appearance>(source).unwrap();
         assert_eq!(
             appearance,
@@ -1201,6 +1214,7 @@ mod tests {
                 contrast: 1.5,
                 ui_font_family: "Inter".into(),
                 mono_font_family: "Lilex".into(),
+                chat_font_family: "Georgia".into(),
                 zoom: 1.25,
                 motion: crate::foundation::motion::Motion::Fast,
                 density: crate::Density::Comfortable,
@@ -1219,6 +1233,7 @@ mod tests {
         let mut appearance = Appearance {
             ui_font_family: "Inter".into(),
             mono_font_family: "Berkeley Mono".into(),
+            chat_font_family: "Georgia".into(),
             ..Appearance::default()
         };
         assert_eq!(appearance.shown_theme(), *platform_theme());
@@ -1258,10 +1273,12 @@ mod tests {
         assert_eq!(appearance.controls(), Controls::Rounded);
         assert_eq!(appearance.ui_font(), "Lilex");
         assert_eq!(appearance.mono_font(), "Berkeley Mono");
+        assert_eq!(appearance.chat_font(), "Georgia");
 
         appearance.change(AppearanceChange::ResetLook);
         assert_eq!(appearance.overrides, ThemeOverrides::default());
         assert_eq!(appearance.mono_font(), "");
+        assert_eq!(appearance.chat_font(), "");
         assert_eq!(appearance.shown_theme(), *platform_theme());
     }
 
