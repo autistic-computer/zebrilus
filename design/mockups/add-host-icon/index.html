@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Add host icon</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-page { display: grid; gap: 32px; max-width: 1560px; margin: 0 auto; padding: 40px 32px 96px; }
+  .zz-page h1 { margin: 0; font-size: var(--penna-text-title-size); line-height: var(--penna-text-title-line); font-weight: 600; }
+  .zz-page h2 { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+  .zz-intro p { margin: 4px 0 0; max-width: 110ch; color: var(--penna-fg-muted); }
+
+  .zz-takes { display: grid; grid-template-columns: repeat(2, max-content); gap: 40px 56px; align-items: start; }
+  .zz-take { display: grid; gap: 10px; }
+  .zz-fig { display: flex; gap: 16px; align-items: flex-start; }
+  .zz-cap { margin: 0; max-width: 700px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-cap b { margin-right: 6px; color: var(--penna-fg); font-weight: 600; }
+  .zz-tag { display: block; margin-bottom: 4px; font-size: 11px; line-height: 14px; color: var(--penna-fg-muted); }
+
+  .zz-snip { flex: none; width: 256px; }
+  .zz-snip > .zz-nav[data-penna] { padding: 12px 0; border-radius: calc(12px * var(--penna-corner-grow, 1)); corner-shape: superellipse(var(--penna-window-k, 2)); }
+  .zz-nav[data-penna="sidebar"] { display: flex; flex-direction: column; gap: 0; padding: 0; --zz-ground: var(--penna-fill); }
+  .zz-actions { display: flex; flex: none; flex-direction: column; padding: 0 8px 8px 0; }
+  .zz-action[data-penna] { height: 32px; margin: 0 var(--penna-row-inset); padding: 0 10px; gap: 8px; font-size: 13px; line-height: 16px; --penna-icon-size: 16px; cursor: var(--penna-click-cursor); }
+  .zz-list { display: flex; flex-direction: column; padding-right: 8px; }
+  .zz-host { display: flex; flex: none; align-items: center; gap: 8px; height: 30px; padding: 0 16px; font-size: 13px; font-weight: 600; line-height: 16px; color: color-mix(in oklab, var(--penna-fg) 85%, transparent); }
+  .zz-host > [data-icon] { color: var(--penna-fg-muted); --penna-icon-size: 16px; }
+
+  .zz-sizes { display: grid; grid-template-columns: auto auto auto; gap: 10px 12px; align-items: center; justify-items: center; padding-top: 18px; color: var(--penna-fg); font-size: 11px; }
+  .zz-sizes > span { color: var(--penna-fg-muted); justify-self: end; font-variant-numeric: tabular-nums; }
+  .zz-sizes > [data-size="16"] { --penna-icon-size: 16px; }
+  .zz-sizes > [data-size="14"] { --penna-icon-size: 14px; }
+  .zz-big { flex: none; display: grid; gap: 4px; }
+  .zz-big > svg { display: block; width: 96px; height: 96px; color: var(--penna-fg); }
+
+  .zz-modes { display: flex; gap: 24px; align-items: flex-start; }
+  .zz-modes iframe { display: block; width: 400px; border: 0; }
+
+  .zz-column { display: flex; gap: 12px; align-items: flex-start; padding: 16px; background: var(--penna-bg); }
+  .zz-column[hidden] { display: none; }
+  .zz-column .zz-actions { padding-bottom: 0; }
+  .zz-ids { display: flex; flex-direction: column; padding-top: 12px; }
+  .zz-lineid { display: flex; align-items: center; height: 32px; font-size: 11px; color: var(--penna-fg-muted); }
+  .zz-gapline { flex: none; height: 1px; margin: 4px 14px; background: var(--penna-divider); }
+  .zz-ids > .zz-gapline { margin: 4px 0; background: none; }
+  html:has(.zz-column:not([hidden])) body { background: var(--penna-bg); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Add host icon</h1>
+    <p>Candidates for the sidebar's Add host row, under New chat. Each one: the row at rest and hovered at real size, the glyph at 16 and 14 next to chat-plus, and the glyph at 96 on the 24 grid. New glyphs use the kit's own corner rounding at the default theme.</p>
+  </div>
+  <div class="zz-takes" data-takes></div>
+  <section data-take="lineup" class="zz-take">
+    <h2>Lineup</h2>
+    <div class="zz-modes">
+      <iframe data-mode="dark" title="Lineup, dark"></iframe>
+      <iframe data-mode="light" title="Lineup, light"></iframe>
+    </div>
+  </section>
+  <section data-take="column" data-solo hidden class="zz-column"></section>
+</main>
+<script>
+(() => {
+  const RADIUS = 6;
+  const SMOOTHING = 4;
+  const CORNER = 0.45;
+  const SAMPLES = 16;
+  const num = (value) => {
+    const text = value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+    return text === "-0" ? "0" : text;
+  };
+  const outline = (points, closed, cap = CORNER) => {
+    let d = "";
+    const emit = (x, y) => { d += `${d ? "L" : "M"}${num(x)} ${num(y)}`; };
+    const count = points.length;
+    points.forEach(([x, y, scale = 0], index) => {
+      const inner = closed || (index > 0 && index + 1 < count);
+      if (!inner || scale <= 0) return emit(x, y);
+      const [px, py] = points[(index + count - 1) % count];
+      const [nx, ny] = points[(index + 1) % count];
+      const incoming = Math.hypot(px - x, py - y);
+      const outgoing = Math.hypot(nx - x, ny - y);
+      const r = Math.min(RADIUS * scale, cap * Math.min(incoming, outgoing));
+      const back = [(px - x) / incoming, (py - y) / incoming];
+      const ahead = [(nx - x) / outgoing, (ny - y) / outgoing];
+      for (let step = 0; step <= SAMPLES; step++) {
+        const theta = (Math.PI / 2) * (1 - step / SAMPLES);
+        const along = 1 - Math.max(Math.cos(theta), 0) ** (2 / SMOOTHING);
+        const across = 1 - Math.max(Math.sin(theta), 0) ** (2 / SMOOTHING);
+        emit(x + back[0] * r * along + ahead[0] * r * across, y + back[1] * r * along + ahead[1] * r * across);
+      }
+    });
+    return closed ? `${d}Z` : d;
+  };
+  const draw = ([kind, ...args]) => {
+    const stroke = (d) => `<path d="${d}"/>`;
+    if (kind === "line") return stroke(`M${num(args[0])} ${num(args[1])}L${num(args[2])} ${num(args[3])}`);
+    if (kind === "path") return stroke(outline(args, false));
+    if (kind === "shape") return stroke(outline(args, true));
+    if (kind === "rect") {
+      const [x0, y0, x1, y1, s = 1] = args;
+      return stroke(outline([[x0, y0, s], [x1, y0, s], [x1, y1, s], [x0, y1, s]], true));
+    }
+    if (kind === "circle") return `<circle cx="${num(args[0])}" cy="${num(args[1])}" r="${num(args[2])}"/>`;
+    return "";
+  };
+  const body = (parts) => parts.map(draw).join("");
+  const svg = (parts) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${body(parts)}</svg>`;
+
+  const KIT = {
+    "chat-plus": [["shape", [2, 3, 0.67], [22, 3, 0.67], [22, 17, 0.67], [7.5, 17, 0.12], [2, 21.5, 0.12]], ["line", 12, 7, 12, 13], ["line", 9, 10, 15, 10]],
+    "server-plus": [["rect", 2, 2, 22, 10, 0.33], ["line", 6, 6, 8, 6], ["line", 11, 6, 18, 6], ["rect", 2, 13, 13, 21, 0.33], ["line", 6, 17, 8, 17], ["line", 18, 14, 18, 20], ["line", 15, 17, 21, 17]],
+    "plus": [["line", 4, 12, 20, 12], ["line", 12, 4, 12, 20]],
+  };
+  const NEW = {
+    "laptop-plus": [["path", [4.5, 15.5], [4.5, 4, 0.33], [19.5, 4, 0.33], [19.5, 15.5]], ["shape", [4.5, 15.5], [19.5, 15.5], [22, 18.25, 0.1], [22, 21, 0.15], [2, 21, 0.15], [2, 18.25, 0.1]], ["line", 12, 7, 12, 12.5], ["line", 9.25, 9.75, 14.75, 9.75]],
+    "monitor-plus": [["rect", 2, 3, 22, 17, 0.67], ["line", 12, 17, 12, 21], ["line", 8, 21, 16, 21], ["line", 12, 7, 12, 13], ["line", 9, 10, 15, 10]],
+    "server-one-plus": [["rect", 2, 3.5, 22, 11.5, 0.33], ["line", 6, 7.5, 8, 7.5], ["line", 12, 14.5, 12, 21.5], ["line", 8.5, 18, 15.5, 18]],
+    "terminal-plus": [["path", [3.5, 6.5], [9, 12, 0.08], [3.5, 17.5]], ["line", 16.5, 8.5, 16.5, 15.5], ["line", 13, 12, 20, 12]],
+    "laptop-lid-plus": [["rect", 4, 4, 20, 16, 0.33], ["line", 2, 20, 22, 20], ["line", 12, 7, 12, 13], ["line", 9, 10, 15, 10]],
+  };
+  const PARTS = { ...KIT, ...NEW };
+
+  const TAKES = [
+    { take: "today", icon: "server-plus", caption: "<b>today</b>server-plus from the kit. Two boxes, three ticks and a plus; at 16 the half-width lower box and the plus fuse into a lopsided clump, and it pictures a rack." },
+    { take: "plus", icon: "plus", caption: "<b>plus</b>The set's plus. Clean and centered, but a lone plus spans 16 of 24 units, so it reads lighter than chat-plus and says nothing about machines." },
+    { take: "laptop-plus", icon: "laptop-plus", caption: "<b>laptop-plus</b>The set's laptop, camera dot and trackpad line swapped for a plus in the lid. Reads as a laptop at 16, but the deck carries most of the ink, so it sits bottom-heavy and the plus is small." },
+    { take: "monitor-plus", icon: "monitor-plus", caption: "<b>monitor-plus</b>A display on a stand with chat-plus's exact plus in the screen. Reads at 16 with the same box, weight and center as New chat above it; fits a desktop or a remote box as well as a laptop." },
+    { take: "server-one", icon: "server-one-plus", caption: "<b>server-one</b>One full-width server bar with its tick and a plus under it. At 16 the bar and the small plus read as a sign on a post, and it is still a rack." },
+    { take: "terminal-plus", icon: "terminal-plus", caption: "<b>terminal-plus</b>The prompt chevron and a plus. Reads as \"new terminal\", which zz panes already mean by this mark, and it is lighter than chat-plus. Not for Add host." },
+    { take: "laptop-lid", icon: "laptop-lid-plus", caption: "<b>laptop-lid</b>Mine. The lid as a rounded screen over one base line wider than it, plus in the lid. Fewer strokes than laptop-plus and a bigger plus; the overhanging base is all that says laptop." },
+  ];
+
+  const icons = document.createElement("style");
+  icons.textContent = Object.entries(NEW).map(([name, parts]) => `[data-icon="${name}"] { --penna-icon: url("data:image/svg+xml,${encodeURIComponent(svg(parts))}"); }`).join("\n");
+  const MAC = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12.131 7.193c-.79 0-2.013-.898-3.3-.867c-1.7.022-3.258.986-4.134 2.512c-1.764 3.062-.455 7.586 1.266 10.075c.844 1.212 1.84 2.575 3.16 2.533c1.267-.054 1.742-.823 3.279-.823c1.526 0 1.958.823 3.3.79c1.364-.022 2.23-1.233 3.063-2.457c.963-1.407 1.363-2.771 1.385-2.846c-.033-.011-2.652-1.018-2.683-4.048c-.022-2.533 2.067-3.745 2.164-3.799c-1.191-1.742-3.019-1.937-3.658-1.98c-1.667-.13-3.062.908-3.842.908zM14.946 4.638c.703-.843 1.167-2.022 1.038-3.192c-1.006.043-2.218.671-2.943 1.515c-.65.747-1.212 1.948-1.061 3.095c1.115.087 2.263-.573 2.966-1.418'/></svg>";
+  icons.textContent += `\n[data-icon="zz-macos"] { --penna-icon: url("data:image/svg+xml,${encodeURIComponent(MAC)}"); }`;
+  document.head.append(icons);
+
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const row = (icon, label, hover = false) => `<div class="zz-action" data-penna="sidebar.row" role="button"${hover ? ` data-state="hover"` : ""}>${ic(icon)}<span data-penna-text>${label}</span></div>`;
+  const snip = (icon, hover) => `<div class="zz-snip"><span class="zz-tag">${hover ? "Hovered" : "At rest"}</span><nav class="zz-nav" data-penna="sidebar"><div class="zz-actions">${row("chat-plus", "New chat")}${row(icon, "Add host", hover)}</div><div class="zz-list"><div class="zz-host">${ic("zz-macos")}<span data-penna-text>macbook</span></div></div></nav></div>`;
+  const sizes = (icon) => `<div class="zz-sizes"><span>16</span><i data-icon="chat-plus" data-size="16"></i><i data-icon="${icon}" data-size="16"></i><span>14</span><i data-icon="chat-plus" data-size="14"></i><i data-icon="${icon}" data-size="14"></i></div>`;
+  const grid = Array.from({ length: 23 }, (_, i) => `M${i + 1} 0V24M0 ${i + 1}H24`).join("");
+  const big = (icon) => `<div class="zz-big"><span class="zz-tag">96 on the 24 grid</span><svg viewBox="0 0 24 24"><rect width="24" height="24" fill="none" stroke="currentColor" stroke-opacity="0.2" stroke-width="0.08"/><path d="${grid}" fill="none" stroke="currentColor" stroke-opacity="0.14" stroke-width="0.05"/><path d="M12 0V24M0 12H24" fill="none" stroke="currentColor" stroke-opacity="0.16" stroke-width="0.06"/><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${body(PARTS[icon])}</g></svg></div>`;
+
+  document.querySelector("[data-takes]").innerHTML = TAKES.map(({ take, icon, caption }) =>
+    `<section data-take="${take}" class="zz-take"><div class="zz-fig">${snip(icon, false)}${snip(icon, true)}${sizes(icon)}${big(icon)}</div><p class="zz-cap">${caption}</p></section>`).join("");
+
+  const column = document.querySelector('[data-take="column"]');
+  column.innerHTML = `<div class="zz-snip"><nav class="zz-nav" data-penna="sidebar"><div class="zz-actions">${row("chat-plus", "New chat")}<div class="zz-gapline"></div>${TAKES.map(({ icon }) => row(icon, "Add host")).join("")}</div></nav></div><div class="zz-ids"><span class="zz-lineid">chat-plus</span><span class="zz-gapline"></span>${TAKES.map(({ take }) => `<span class="zz-lineid">${take}</span>`).join("")}</div>`;
+
+  const params = new URLSearchParams(location.search);
+  const theme = params.get("theme");
+  for (const frame of document.querySelectorAll(".zz-modes iframe")) {
+    const query = new URLSearchParams({ only: "column", mode: frame.dataset.mode });
+    if (theme) query.set("theme", theme);
+    frame.src = `${location.pathname}?${query}&bare`;
+    frame.addEventListener("load", () => { frame.style.height = `${frame.contentDocument.querySelector(".zz-column").offsetHeight}px`; });
+  }
+
+  const only = params.get("only");
+  if (only) {
+    document.querySelector(".zz-intro").style.display = "none";
+    for (const section of document.querySelectorAll("[data-take]")) {
+      section.hidden = section.dataset.take !== only;
+      section.style.display = section.dataset.take === only ? "" : "none";
+    }
+    if (only === "column") {
+      const page = document.querySelector(".zz-page");
+      page.style.padding = "0";
+      page.style.gap = "0";
+    }
+  }
+})();
+</script>
+</body>
+</html>
