@@ -252,10 +252,12 @@ pub struct PipStage {
     active: Option<PaneId>,
     floats: BTreeSet<PaneId>,
     stashed: BTreeSet<PaneId>,
+    children: BTreeSet<PaneId>,
+    revealed: BTreeSet<PaneId>,
 }
 
 impl PipStage {
-    pub fn observe(&mut self, window: &WindowSnapshot) {
+    pub fn observe(&mut self, window: &WindowSnapshot, child: impl Fn(PaneId) -> bool) {
         let floats = window
             .floating
             .iter()
@@ -263,6 +265,11 @@ impl PipStage {
                 float.visible && window.modal.is_none_or(|modal| modal.pane != float.pane)
             })
             .map(|float| float.pane)
+            .collect::<BTreeSet<_>>();
+        let children = floats
+            .iter()
+            .copied()
+            .filter(|pane| child(*pane))
             .collect::<BTreeSet<_>>();
         let chats = if self.window == Some(window.id) {
             floats
@@ -283,6 +290,7 @@ impl PipStage {
             window.id,
             window.active_pane,
             floats,
+            children,
             |pane| window.floating.iter().any(|float| float.pane == pane),
             |pane| window.panes.contains_key(&pane),
         );
@@ -294,11 +302,14 @@ impl PipStage {
         window: WindowId,
         active: PaneId,
         floats: BTreeSet<PaneId>,
+        children: BTreeSet<PaneId>,
         floating: impl Fn(PaneId) -> bool,
         alive: impl Fn(PaneId) -> bool,
     ) {
         if self.window == Some(window) {
             self.stashed
+                .retain(|pane| floats.contains(pane) || !self.floats.contains(pane));
+            self.revealed
                 .retain(|pane| floats.contains(pane) || !self.floats.contains(pane));
             if self.active != Some(active) {
                 let tiled = !floating(active);
@@ -311,9 +322,13 @@ impl PipStage {
                 }
             }
         }
+        if children.contains(&active) {
+            self.revealed.insert(active);
+        }
         self.window = Some(window);
         self.active = Some(active);
         self.floats = floats;
+        self.children = children;
     }
 
     pub fn stash(&mut self, pane: PaneId) {
@@ -325,7 +340,19 @@ impl PipStage {
     }
 
     #[must_use]
+    pub fn hidden(&self, pane: PaneId) -> bool {
+        self.children.contains(&pane)
+            && (self.stashed.contains(&pane) || !self.revealed.contains(&pane))
+    }
+
+    #[must_use]
     pub fn arrange(&self, cards: &[PipCard], canvas: Size<Pixels>, peek: Pixels) -> Vec<PipPlaced> {
+        let cards = cards
+            .iter()
+            .filter(|card| !self.hidden(card.pane))
+            .copied()
+            .collect::<Vec<_>>();
+        let cards = cards.as_slice();
         let sides = cards
             .iter()
             .map(|card| {
@@ -1012,21 +1039,96 @@ mod tests {
         let floats = BTreeSet::from([PaneId(5), PaneId(6)]);
         let floating = |pane: PaneId| pane.0 >= 5;
         let alive = |pane: PaneId| pane.0 != 9;
-        stage.focus(window, PaneId(5), floats.clone(), floating, alive);
-        stage.focus(window, PaneId(1), floats.clone(), floating, alive);
+        stage.focus(
+            window,
+            PaneId(5),
+            floats.clone(),
+            BTreeSet::new(),
+            floating,
+            alive,
+        );
+        stage.focus(
+            window,
+            PaneId(1),
+            floats.clone(),
+            BTreeSet::new(),
+            floating,
+            alive,
+        );
         let cards = [card(5, 588.0, 468.0), card(6, 20.0, 20.0)];
         let placed = stage.arrange(&cards, CANVAS, px(34.0));
         assert_eq!(placed[0].stashed, Some(PipSide::Right));
         assert_eq!(placed[0].frame.left(), CANVAS.width - px(PEEK));
         assert_eq!(placed[1].stashed, Some(PipSide::Left));
         assert_eq!(placed[1].frame.right(), px(PEEK));
-        stage.focus(window, PaneId(6), floats.clone(), floating, alive);
+        stage.focus(
+            window,
+            PaneId(6),
+            floats.clone(),
+            BTreeSet::new(),
+            floating,
+            alive,
+        );
         let placed = stage.arrange(&cards, CANVAS, px(34.0));
         assert_eq!(placed[0].stashed, Some(PipSide::Right));
         assert_eq!(placed[1].stashed, None);
         let more = BTreeSet::from([PaneId(5), PaneId(6), PaneId(7)]);
-        stage.focus(window, PaneId(6), more.clone(), floating, alive);
+        stage.focus(
+            window,
+            PaneId(6),
+            more.clone(),
+            BTreeSet::new(),
+            floating,
+            alive,
+        );
         assert!(!stage.stashed.contains(&PaneId(7)));
+    }
+
+    #[test]
+    fn a_child_pip_stays_out_of_sight_until_focused_and_stashes_with_no_peek() {
+        let mut stage = PipStage::default();
+        let window = WindowId(1);
+        let floats = BTreeSet::from([PaneId(5), PaneId(6)]);
+        let children = BTreeSet::from([PaneId(6)]);
+        let floating = |pane: PaneId| pane.0 >= 5;
+        let alive = |_: PaneId| true;
+        let cards = [card(5, 588.0, 20.0), card(6, 20.0, 20.0)];
+        let shown = |stage: &PipStage| {
+            stage
+                .arrange(&cards, CANVAS, px(34.0))
+                .into_iter()
+                .map(|placed| (placed.pane, placed.stashed, placed.frame.left()))
+                .collect::<Vec<_>>()
+        };
+        stage.focus(
+            window,
+            PaneId(1),
+            floats.clone(),
+            children.clone(),
+            floating,
+            alive,
+        );
+        assert_eq!(shown(&stage), [(PaneId(5), None, px(588.0))]);
+        stage.focus(
+            window,
+            PaneId(6),
+            floats.clone(),
+            children.clone(),
+            floating,
+            alive,
+        );
+        assert_eq!(
+            shown(&stage),
+            [(PaneId(5), None, px(588.0)), (PaneId(6), None, px(20.0))]
+        );
+        stage.stash(PaneId(5));
+        stage.stash(PaneId(6));
+        assert_eq!(
+            shown(&stage),
+            [(PaneId(5), Some(PipSide::Right), CANVAS.width - px(PEEK))]
+        );
+        stage.focus(window, PaneId(6), floats, children, floating, alive);
+        assert_eq!(shown(&stage).len(), 1);
     }
 
     #[test]
@@ -1051,9 +1153,30 @@ mod tests {
         let floats = BTreeSet::from([PaneId(5)]);
         let floating = |pane: PaneId| pane.0 >= 5;
         let alive = |pane: PaneId| pane.0 != 9;
-        stage.focus(WindowId(1), PaneId(9), floats.clone(), floating, alive);
-        stage.focus(WindowId(1), PaneId(1), floats.clone(), floating, alive);
-        stage.focus(WindowId(2), PaneId(2), floats.clone(), floating, alive);
+        stage.focus(
+            WindowId(1),
+            PaneId(9),
+            floats.clone(),
+            BTreeSet::new(),
+            floating,
+            alive,
+        );
+        stage.focus(
+            WindowId(1),
+            PaneId(1),
+            floats.clone(),
+            BTreeSet::new(),
+            floating,
+            alive,
+        );
+        stage.focus(
+            WindowId(2),
+            PaneId(2),
+            floats.clone(),
+            BTreeSet::new(),
+            floating,
+            alive,
+        );
         assert!(stage.stashed.is_empty());
     }
 

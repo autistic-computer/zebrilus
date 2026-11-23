@@ -3392,6 +3392,10 @@ impl AppView {
         let landing = pip.release(velocity);
         if landing.stash.is_some() {
             self.pip_stage.stash(pane);
+            let mux = self.mux.read(cx);
+            if let Some(parent) = mux.agent_parent(mux.attached_host(), pane) {
+                mux.execute(pane_select_command(parent));
+            }
         }
         self.pane_motion
             .fling(pane, velocity, landing.stash.is_none());
@@ -4499,7 +4503,7 @@ impl AppView {
         let floats = window_snapshot
             .floating
             .iter()
-            .filter(|float| float.visible)
+            .filter(|float| float.visible && !self.pip_stage.hidden(float.pane))
             .collect::<Vec<_>>();
         let cards = floats
             .iter()
@@ -5107,7 +5111,10 @@ impl Render for AppView {
             .and_then(|drag| self.pane_drop_preview_element(drag, cx));
         self.settle_pip_landing(cx);
         if let Some(active_window) = active_window {
-            self.pip_stage.observe(active_window);
+            let mux = self.mux.read(cx);
+            let host = mux.attached_host();
+            self.pip_stage
+                .observe(active_window, |pane| mux.agent_parent(host, pane).is_some());
             self.pane_motion.begin(
                 active_window.id,
                 window.viewport_size(),

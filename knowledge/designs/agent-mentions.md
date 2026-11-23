@@ -680,8 +680,10 @@ Recorded for the UI lane, which built them in `crates/zz-ui` and `crates/zz`:
   header counts every decision (allowed in green). The latest card reads the pending request and
   closed state from the child's own chat. The peek shows the tool steps of the child's last turn;
   the reply is drawn as markdown; a closed card shows no time; a denial shows as `denied by NAME`.
-- **PiP.** An agent chat opened without focus starts stashed, and the card collapses to its header
-  while the child is in view.
+- **PiP.** On the desktop a child is not drawn as a float until it is the active pane, which the
+  card's click makes it; stashing or throwing it hides it again with no strip
+  ([PiP panes](/designs/pip-panes.md#piles-and-stashing)). The card collapses to its header while
+  the child is in view.
 - **Quiet.** A child plays no sound and posts no banner when it finishes, fails or asks; the
   desktop learns it is a child from `AgentParents` and drops its edges in
   `zz_client::attention::announced`. Its sidebar badge stays.

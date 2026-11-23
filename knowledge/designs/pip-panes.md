@@ -147,9 +147,15 @@ somewhere else without telling tmux.
   the nearer side edge until 60 px of it show, content and all; a pile keeps its fan. Clicking that
   strip, or focusing the PiP any other way, brings it back. A new PiP, closing the focused pane, and
   switching windows stash nothing, so a PiP opened beside the pane you type in stays in view. One
-  exception: an agent chat opened without focus (`new-pane -d --kind agent`, the way a host chat
-  opens a child) starts stashed, so a child does not cover the chat that opened it; focusing it
-  brings it out like any stashed PiP (`crates/zz-ui/src/pip.rs`).
+  exception: an agent chat opened without focus (`new-pane -d --kind agent`) starts stashed;
+  focusing it brings it out like any stashed PiP (`crates/zz-ui/src/pip.rs`).
+- **Child chats.** On the desktop a float whose pane another chat opened (the client's
+  `AgentParents` map) is not drawn at all, from its first frame on any window: no PiP and no
+  60 px strip. Its card in the opener's chat is its home. Once it is the active pane (the card's
+  `select-child-chat`, a sidebar row) it is a normal PiP, until it is stashed: a tiled pane taking
+  focus or a throw past the side edge hides it again with no strip, and a throw also focuses the
+  chat that opened it, so keys do not go to a pane out of sight. `PipStage::hidden` decides;
+  `floating_layer` skips those floats and `show_pips` leaves them out, so the card stays open.
 
 `PipStage` only places the targets; `PaneMotion` springs every change, and a held PiP follows the
 pointer. The stash lives in each client, so a reload or another client shows the PiPs in place.
