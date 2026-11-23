@@ -33963,6 +33963,7 @@ impl Shared {
                         text,
                         images: Vec::new(),
                     },
+                    request.map(|request| (from, request)),
                 )
             });
             if !injected {
@@ -125549,6 +125550,87 @@ bind - split-window -v -c "#{pane_current_path}"
                     .iter()
                     .all(|pane| inner.engine.state.pane(*pane).is_none())
             });
+        }
+
+        #[test]
+        fn an_ask_answered_while_its_host_was_busy_never_reaches_the_host() {
+            let workspace = workspace_with(&[Behavior::AskPermission]);
+            let host = workspace.agent;
+            run_as(
+                &workspace,
+                ClientId(97),
+                None,
+                "set-option",
+                &["-g", "agent-auto-approve", "off"],
+            )
+            .expect("auto-approve off");
+            let pending = |pane: PaneId| {
+                workspace
+                    .runtime
+                    .wire_state(pane)
+                    .and_then(|state| state.pending_permission)
+                    .map(|permission| permission.request_id)
+            };
+            let queued = || {
+                workspace
+                    .runtime
+                    .wire_state(host)
+                    .map_or(0, |state| state.queued_prompts)
+            };
+            workspace.prompt("work").expect("host prompt");
+            wait_until("the host's own ask", || pending(host).is_some());
+            for child in ["%2", "%3"] {
+                run_as(
+                    &workspace,
+                    ClientId(99),
+                    Some(host),
+                    "new-pane",
+                    &["-d", "--kind", "agent", "codex", "run it"],
+                )
+                .expect("new-pane from a chat");
+                let child = child.parse().expect("pane id");
+                wait_until("the child's ask", || pending(child).is_some());
+            }
+            wait_until("both asks queued behind the host's turn", || queued() == 2);
+            run_as(
+                &workspace,
+                ClientId(97),
+                None,
+                "agent-respond",
+                &["-t", "%2", "--allow"],
+            )
+            .expect("answer %2 in its own pane");
+            wait_until("%2's report queued too", || queued() == 3);
+            run_as(
+                &workspace,
+                ClientId(97),
+                None,
+                "agent-respond",
+                &["-t", "%1", "--allow"],
+            )
+            .expect("end the host's turn");
+            wait_until("the host's next turn", || {
+                received(&workspace, host).len() == 2
+            });
+            run_as(
+                &workspace,
+                ClientId(97),
+                None,
+                "agent-respond",
+                &["-t", "%1", "--allow"],
+            )
+            .expect("end the host's second turn");
+            wait_until("the host's third turn", || {
+                received(&workspace, host).len() == 3
+            });
+            assert_eq!(
+                received(&workspace, host),
+                [
+                    "work",
+                    "[zz] %3 (codex) asks: run it\nzz agent-respond -t %3 --allow\nzz agent-respond -t %3 --deny",
+                    "[zz] %2 (codex) finished:\nturn 0\n\nIf this answers the user, answer the user now and send nothing to %2. Only if something is missing: zz agent-send -t %2 'TEXT'",
+                ]
+            );
         }
 
         #[test]

@@ -415,7 +415,11 @@ Each step lands alone.
      pane's inbox, is not counted against the 4 queued prompts, keeps the byte cap (over it, it is
      logged and dropped), and is never handed back to a composer when a queue is reclaimed.
      Deliveries to one caller leave one queue in order, drained by one thread at a time
-     (`Shared::deliver_to_chat`); an ask whose request is answered before its turn is dropped.
+     (`Shared::deliver_to_chat`). An ask whose request is answered before its turn is dropped:
+     `deliver_one` checks before it injects, and the injected prompt carries the request and a
+     weak handle to the asking chat's state (`RelayedAsk`), so the host checks again when the ask
+     reaches the front of its queue (`PanePump::dispatch_next`) and skips it if the request is no
+     longer pending. Reports are never dropped.
    - A caller flipped to a terminal gets the message through the existing terminal delivery
      (`deliver_to_terminal_pane`), as `--notify` does. A caller that is gone or is neither a chat
      nor a terminal is logged and dropped.

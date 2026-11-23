@@ -23,7 +23,7 @@ use crate::agent::{
     chat_bridge::is_zz_note,
     host::{
         AgentConnectionPhase, AgentHost, AgentPaneSpec, AgentPaneState, AgentTurnFailure,
-        AgentTurnWaiter, HostCommand, PromptSource, QueuedPrompt,
+        AgentTurnWaiter, HostCommand, PromptSource, QueuedPrompt, RelayedAsk,
     },
     journal::{AgentJournal, ChildRecord, JournalEntry},
     runtime::AgentSpawnConfig,
@@ -300,6 +300,7 @@ impl AgentRuntime {
             waiter,
             source,
             note,
+            ask: None,
         };
         match self.host.command(pane, HostCommand::Prompt(queued)) {
             Ok(()) => true,
@@ -311,13 +312,22 @@ impl AgentRuntime {
         }
     }
 
-    pub(crate) fn inject(&self, pane: PaneId, prompt: AgentPrompt) -> bool {
+    pub(crate) fn inject(
+        &self,
+        pane: PaneId,
+        prompt: AgentPrompt,
+        ask: Option<(PaneId, u64)>,
+    ) -> bool {
         let _lifecycle = self.lifecycle.lock();
         let queued = QueuedPrompt {
             prompt,
             waiter: None,
             source: PromptSource::Injected,
             note: None,
+            ask: ask.map(|(asker, request)| RelayedAsk {
+                request,
+                asker: self.host.pane_state(asker),
+            }),
         };
         self.host.command(pane, HostCommand::Prompt(queued)).is_ok()
     }

@@ -4,7 +4,7 @@ use std::{
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
-    sync::{Arc, atomic::AtomicU64},
+    sync::{Arc, Weak, atomic::AtomicU64},
     thread::{self, JoinHandle},
 };
 
@@ -243,6 +243,25 @@ pub(crate) struct QueuedPrompt {
     pub(crate) waiter: Option<AgentTurnWaiter>,
     pub(crate) source: PromptSource,
     pub(crate) note: Option<String>,
+    pub(crate) ask: Option<RelayedAsk>,
+}
+
+#[derive(Debug)]
+pub(crate) struct RelayedAsk {
+    pub(crate) request: u64,
+    pub(crate) asker: Weak<Mutex<AgentPaneState>>,
+}
+
+impl RelayedAsk {
+    fn answered(&self) -> bool {
+        self.asker.upgrade().is_none_or(|state| {
+            !state
+                .lock()
+                .pending_permissions
+                .iter()
+                .any(|pending| pending.request_id == self.request)
+        })
+    }
 }
 
 fn waiting_prompts(queue: &VecDeque<QueuedPrompt>) -> usize {
@@ -279,6 +298,7 @@ impl From<AgentPrompt> for QueuedPrompt {
             waiter: None,
             source: PromptSource::Composer,
             note: None,
+            ask: None,
         }
     }
 }
@@ -659,6 +679,14 @@ impl AgentHost {
                     unreachable!()
                 }
             })
+    }
+
+    pub(crate) fn pane_state(&self, pane: PaneId) -> Weak<Mutex<AgentPaneState>> {
+        self.registry
+            .panes
+            .lock()
+            .get(&pane)
+            .map_or_else(Weak::new, |handle| Arc::downgrade(&handle.state))
     }
 
     pub(crate) fn set_auto_approve(&self, pane: PaneId, tier: AgentAutoApprove) {
@@ -1481,7 +1509,9 @@ impl PanePump {
             }
         }
         if self.state.lock().phase.accepts_prompt() {
-            self.dispatch(queued);
+            if !self.answered_ask(&queued) {
+                self.dispatch(queued);
+            }
             return;
         }
         let queued_bytes = self.queue.iter().fold(0usize, |total, queued| {
@@ -1579,6 +1609,7 @@ impl PanePump {
                     waiter: self.active_waiter.take(),
                     source,
                     note,
+                    ask: None,
                 });
                 self.reclaim_queue();
             }
@@ -1586,11 +1617,28 @@ impl PanePump {
     }
 
     fn dispatch_next(&mut self) {
-        let Some(queued) = self.queue.pop_front() else {
+        while let Some(queued) = self.queue.pop_front() {
+            if self.answered_ask(&queued) {
+                continue;
+            }
+            self.publish_queue_depth();
+            self.dispatch(queued);
             return;
-        };
+        }
         self.publish_queue_depth();
-        self.dispatch(queued);
+    }
+
+    fn answered_ask(&self, queued: &QueuedPrompt) -> bool {
+        let Some(ask) = queued.ask.as_ref().filter(|ask| ask.answered()) else {
+            return false;
+        };
+        log::info!(
+            target: "zz::agent",
+            "request {} was answered before {} took its ask; dropped it",
+            ask.request,
+            self.pane
+        );
+        true
     }
 
     fn reclaim_queue(&mut self) {
@@ -2252,6 +2300,7 @@ mod tests {
                 }),
                 source: PromptSource::Composer,
                 note: None,
+                ask: None,
             }));
             reply
         }
@@ -3270,6 +3319,7 @@ mod tests {
                 waiter: None,
                 source,
                 note: None,
+                ask: None,
             })
         };
         fixture.prompt("busy");
@@ -3324,6 +3374,7 @@ mod tests {
             }),
             source: PromptSource::Composer,
             note: None,
+            ask: None,
         }));
         let Err(AgentTurnFailure::Blocked { permission, reply }) =
             result.recv_timeout(DEADLINE).expect("blocked waiter")
@@ -3643,6 +3694,7 @@ mod tests {
                 }),
                 source: PromptSource::Composer,
                 note: None,
+                ask: None,
             })
             .unwrap();
         pump.observe(AgentStreamPayload::SessionReset { restoring: true });
