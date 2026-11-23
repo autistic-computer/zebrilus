@@ -25,6 +25,7 @@ pub mod dialogs;
 #[cfg(feature = "editor")]
 pub mod editor;
 pub mod files;
+pub mod fonts;
 pub mod interface_theme;
 pub mod mend;
 pub mod mention;

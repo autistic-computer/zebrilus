@@ -19,32 +19,36 @@ fn main() {
     application.on_reopen(open_workspace);
     application.run(|cx: &mut App| {
         cx.text_system()
-            .add_fonts(vec![
-                Cow::Borrowed(include_bytes!(
-                    "../../web/assets/fonts/inter/InterVariable.ttf"
-                )),
-                Cow::Borrowed(include_bytes!(
-                    "../../web/assets/fonts/inter/InterVariable-Italic.ttf"
-                )),
-                Cow::Borrowed(include_bytes!(
-                    "../../web/assets/fonts/lilex/Lilex-Regular.ttf"
-                )),
-                Cow::Borrowed(include_bytes!(
-                    "../../web/assets/fonts/lilex/Lilex-Bold.ttf"
-                )),
-                Cow::Borrowed(include_bytes!(
-                    "../../web/assets/fonts/lilex/Lilex-Italic.ttf"
-                )),
-                Cow::Borrowed(include_bytes!(
-                    "../../web/assets/fonts/lilex/Lilex-BoldItalic.ttf"
-                )),
-            ])
+            .add_fonts(
+                zz_ui::fonts::plumula()
+                    .into_iter()
+                    .chain([
+                        Cow::Borrowed(
+                            include_bytes!("../../web/assets/fonts/lilex/Lilex-Regular.ttf")
+                                .as_slice(),
+                        ),
+                        Cow::Borrowed(
+                            include_bytes!("../../web/assets/fonts/lilex/Lilex-Bold.ttf")
+                                .as_slice(),
+                        ),
+                        Cow::Borrowed(
+                            include_bytes!("../../web/assets/fonts/lilex/Lilex-Italic.ttf")
+                                .as_slice(),
+                        ),
+                        Cow::Borrowed(
+                            include_bytes!("../../web/assets/fonts/lilex/Lilex-BoldItalic.ttf")
+                                .as_slice(),
+                        ),
+                    ])
+                    .collect(),
+            )
             .expect("load interface fonts");
         zz_ui::init(cx);
         zz_app::ios_preview::show_html_in_chats(cx);
         cx.bind_keys(input::raw_key_bindings());
         let theme = Theme::global_mut(cx);
-        theme.font_family = "Inter Variable".into();
+        theme.font_family = zz_ui::fonts::UI_FONT.into();
+        theme.chat_font_family = Some(zz_ui::fonts::CHAT_FONT.into());
         theme.mono_font_family = "Lilex".into();
         theme.radius = px(6.);
         cx.set_global(UiZoom(1.0));

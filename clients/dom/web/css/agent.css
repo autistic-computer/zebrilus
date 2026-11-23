@@ -141,6 +141,14 @@
   min-width: 0;
 }
 
+.agent-answer,
+.agent-bubble,
+.agent-reply-popover,
+.agent-notice,
+.agent-thought {
+  font-family: var(--penna-chat-font, var(--penna-font));
+}
+
 .agent-bubble {
   display: flex;
   flex-direction: column;

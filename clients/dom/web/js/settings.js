@@ -35,7 +35,8 @@ const PALETTE_LAYOUTS = [
   ["flat", "Flat"],
 ];
 const MONO_FONTS = ["Lilex", "Menlo", "SF Mono", "Monaco", "JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", "DejaVu Sans Mono", "Ubuntu Mono", "Courier New"];
-const UI_FONTS = ["Inter Variable", "SF Pro Text", "Helvetica Neue", "Arial", "Segoe UI", "Roboto", "Ubuntu", "Cantarell", ...MONO_FONTS];
+const UI_FONTS = ["Plumula Serif", "SF Pro Text", "Helvetica Neue", "Arial", "Segoe UI", "Roboto", "Ubuntu", "Cantarell", ...MONO_FONTS];
+const CHAT_FONTS = ["Plumula Sans", "New York", "Charter", "Iowan Old Style", "Palatino", "Georgia", "Times New Roman", ...UI_FONTS.slice(1)];
 
 function h(tag, props = {}, ...children) {
   const element = document.createElement(tag);
@@ -504,8 +505,8 @@ function interfacePage() {
         title: "UI font",
         control: choose({
           value: picks.font,
-          placeholder: "System default",
-          items: [{ title: "System default", value: "" }, ...availableFonts(UI_FONTS).map((font) => ({ title: font, value: font, font }))],
+          placeholder: "Plumula Sans",
+          items: [{ title: "Plumula Sans", value: "" }, ...availableFonts(UI_FONTS).map((font) => ({ title: font, value: font, font }))],
           onpick: (value) => set({ ui_font_family: value }),
         }),
       }),
@@ -516,6 +517,15 @@ function interfacePage() {
           placeholder: "Terminal font",
           items: [{ title: "Terminal font", value: "" }, ...availableFonts(MONO_FONTS).map((font) => ({ title: font, value: font, font }))],
           onpick: (value) => set({ mono_font_family: value }),
+        }),
+      }),
+      entry({
+        title: "Chat font",
+        control: choose({
+          value: picks.chat,
+          placeholder: "Plumula Serif",
+          items: [{ title: "Plumula Serif", value: "" }, ...availableFonts(CHAT_FONTS).map((font) => ({ title: font, value: font, font }))],
+          onpick: (value) => set({ chat_font_family: value }),
         }),
       }),
       entry({

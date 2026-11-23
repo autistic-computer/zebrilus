@@ -6,20 +6,30 @@ use penna::{Root, Theme, UiZoom};
 
 fn launch(cx: &mut App) {
     cx.text_system()
-        .add_fonts(vec![
-            Cow::Borrowed(include_bytes!("../assets/fonts/inter/InterVariable.ttf")),
-            Cow::Borrowed(include_bytes!(
-                "../assets/fonts/inter/InterVariable-Italic.ttf"
-            )),
-            Cow::Borrowed(include_bytes!("../assets/fonts/lilex/Lilex-Regular.ttf")),
-            Cow::Borrowed(include_bytes!("../assets/fonts/lilex/Lilex-Bold.ttf")),
-            Cow::Borrowed(include_bytes!("../assets/fonts/lilex/Lilex-Italic.ttf")),
-            Cow::Borrowed(include_bytes!("../assets/fonts/lilex/Lilex-BoldItalic.ttf")),
-        ])
+        .add_fonts(
+            zz_ui::fonts::plumula()
+                .into_iter()
+                .chain([
+                    Cow::Borrowed(
+                        include_bytes!("../assets/fonts/lilex/Lilex-Regular.ttf").as_slice(),
+                    ),
+                    Cow::Borrowed(
+                        include_bytes!("../assets/fonts/lilex/Lilex-Bold.ttf").as_slice(),
+                    ),
+                    Cow::Borrowed(
+                        include_bytes!("../assets/fonts/lilex/Lilex-Italic.ttf").as_slice(),
+                    ),
+                    Cow::Borrowed(
+                        include_bytes!("../assets/fonts/lilex/Lilex-BoldItalic.ttf").as_slice(),
+                    ),
+                ])
+                .collect(),
+        )
         .expect("failed to load the interface fonts");
     zz_ui::init(cx);
     let theme = Theme::global_mut(cx);
-    theme.font_family = "Inter Variable".into();
+    theme.font_family = zz_ui::fonts::UI_FONT.into();
+    theme.chat_font_family = Some(zz_ui::fonts::CHAT_FONT.into());
     theme.mono_font_family = "Lilex".into();
     theme.radius = px(12.25);
     cx.set_global(UiZoom(1.0));

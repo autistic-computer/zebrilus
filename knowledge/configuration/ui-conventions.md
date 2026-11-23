@@ -458,7 +458,10 @@ Native entrypoints set `penna::blocks::appearance::AvailableFonts` from their al
 (`ui_font_select`, which the kit's UI font row uses) queries that catalog directly to avoid offering ala
 fallback names that are not installed; without it, as in the thin clients, it lists the text system's names.
 Mono font (`ui-mono-font-family`) sits under it and uses the same catalog (`mono_font_select`), with
-`monospaced_scopes` opening its list on Monospaced; its default item is Terminal font.
+`monospaced_scopes` opening its list on Monospaced; its default item is Terminal font. Chat font
+(`ui-chat-font-family`) follows it with the full catalog and Plumula Serif as its default item.
+`transcript_text` and `touch_transcript_text` in penna's chat block set `Theme::chat_font()` on the
+prose they wrap, and the HTML kit reads it as `--penna-chat-font`.
 
 # UI zoom and scalable metrics
 
@@ -518,8 +521,9 @@ role that rounds, and gapped pane corners (`Theme::pane_radius()`), and survives
 Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), which
 `penna::Root::new` sets. `apply_zz_overrides` then layers zz's own values over it:
 
-- `font_family` from `ui-font-family` when present, else the platform file's face
+- `font_family` from `ui-font-family` (Plumula Sans with no line), else the platform file's face
   (`Appearance::ui_font()`), else the system UI font;
+- `chat_font_family` from `ui-chat-font-family` when installed, else Plumula Serif;
 - `mono_font_family` from `ui-mono-font-family` when installed, else the terminal's resolved primary
   family, so Agent Markdown and code blocks match the terminal typeface until Mono font picks
   another, else the platform's code face;

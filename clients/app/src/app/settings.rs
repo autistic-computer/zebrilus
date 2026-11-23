@@ -66,6 +66,11 @@ pub(super) const SECTIONS: [SettingsSection; 9] = [
 ];
 
 const PHONE_MAX_ZOOM: f32 = 1.35;
+const BUNDLED_UI_FONT: bool = cfg!(any(
+    target_family = "wasm",
+    target_os = "ios",
+    target_os = "android"
+));
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Setting {
@@ -272,21 +277,23 @@ impl Preferences {
         self.apply_pane_frame(cx);
         let available_fonts = cx.text_system().all_font_names();
         let wanted_font = self.shown_ui_font();
-        let ui_font = if available_fonts
-            .iter()
-            .any(|family| family.eq_ignore_ascii_case(wanted_font))
-        {
+        let available = |wanted: &str| {
+            available_fonts
+                .iter()
+                .any(|family| family.eq_ignore_ascii_case(wanted))
+        };
+        let ui_font = if available(wanted_font) {
             wanted_font.to_owned()
-        } else if cfg!(any(
-            target_family = "wasm",
-            target_os = "ios",
-            target_os = "android"
-        )) {
-            "Inter Variable".to_owned()
+        } else if BUNDLED_UI_FONT {
+            zz_ui::fonts::UI_FONT.to_owned()
         } else {
             ".SystemUIFont".to_owned()
         };
-        Theme::global_mut(cx).font_family = ui_font.into();
+        let theme = Theme::global_mut(cx);
+        theme.font_family = ui_font.into();
+        if theme.chat_font_family.is_none() && available(zz_ui::fonts::CHAT_FONT) {
+            theme.chat_font_family = Some(zz_ui::fonts::CHAT_FONT.into());
+        }
         cx.set_global(self.terminal_display());
         let terminal =
             localized_font_appearance(&connection.read(cx).core, &available_fonts, "Lilex", cx);
@@ -462,7 +469,13 @@ impl Controls {
             window,
             cx,
         )
-        .mono_default("Terminal font");
+        .ui_default(if BUNDLED_UI_FONT {
+            zz_ui::fonts::UI_FONT
+        } else {
+            penna::blocks::appearance::SYSTEM_DEFAULT_FONT
+        })
+        .mono_default("Terminal font")
+        .chat_default(zz_ui::fonts::CHAT_FONT);
         let pane_values = [
             preferences.pane_inactive_opacity,
             preferences.pane_glow_strength,

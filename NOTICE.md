@@ -82,10 +82,10 @@ each face.
 | Font | Ships in | Copyright |
 | --- | --- | --- |
 | [Lilex](https://github.com/mishamyrt/Lilex) | Browser and ala iOS clients | The Lilex Project Authors |
-| [Inter](https://github.com/rsms/inter) | Browser client | The Inter Project Authors |
 | [Fantasque Sans Mono](https://github.com/belluzj/fantasque-sans) | zzmux.sh | Jany Belluz |
 
-The desktop clients ship no fonts; they render with the system text stack.
+Plumula Sans and Plumula Serif, the interface and chat faces in every client, are autistic.computer's
+own, also under the SIL Open Font License 1.1 (`crates/zz-ui/assets/fonts/plumula/LICENSE.txt`).
 
 ## Icons
 

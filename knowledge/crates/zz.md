@@ -208,7 +208,7 @@ Multiplexer, Browser, Terminal, Hosts, Agents, System, About:
 | Section | Contents |
 |---------|----------|
 | Appearance | Theme (a Mode segmented control for `theme-mode`, the Accent swatches for `chrome-accent`, the Tint and Tint strength sliders for `chrome-tint-hue` and `chrome-tint`), Terminal (a live preview, Light theme and Dark theme, Window follows the theme for `chrome-terminal-colors`, Background opacity), Sidebar (`program-colors`), Contrast (`chrome-contrast` as Increase contrast, `minimum-contrast` as Terminal text contrast) |
-| Interface | Material (Glass for `interface-glass`, a switch that also blurs the window; the Controls segmented control for `control-shape`, Corner radius for `widget-corner-radius`), Text (the system UI font picker, Mono font for `ui-mono-font-family`, opening on Monospaced, transient UI zoom as Text size, `chrome-density` as Density), Behavior (`pointing-hand` as Pointing hand, `motion` as Motion), Window (macOS app-icon pickers, Linux `window-corner-radius`) |
+| Interface | Material (Glass for `interface-glass`, a switch that also blurs the window; the Controls segmented control for `control-shape`, Corner radius for `widget-corner-radius`), Text (the UI font picker, Mono font for `ui-mono-font-family`, opening on Monospaced, Chat font for `ui-chat-font-family`, transient UI zoom as Text size, `chrome-density` as Density), Behavior (`pointing-hand` as Pointing hand, `motion` as Motion), Window (macOS app-icon pickers, Linux `window-corner-radius`) |
 | Editor | Editor-pane typography and display controls, when compiled in |
 | Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners that follow Interface's Corner radius up to 16 at 100% (`Theme::pane_radius()`), and the rim from the theme's glass (a hairline the outline's width without glass). PiPs take the same corner and follow Glass like a menu |
 | Multiplexer | Navigation, split shortcuts, Options rows, Import from tmux (one button over the system file picker), and the `zz/mux.conf` path with Reload |
@@ -312,7 +312,8 @@ per-component plumbing.
 
 `apply_zz_overrides` then writes what zz adds over the theme:
 
-- `font_family` from `Appearance::ui_font()`: `ui-font-family`, else the platform file's face, else the system UI font;
+- `font_family` from `Appearance::ui_font()`: `ui-font-family` (Plumula Sans with no line), else the platform file's face, else the system UI font;
+- `chat_font_family` from `ui-chat-font-family` when installed, else Plumula Serif; chat prose reads it through `Theme::chat_font()`, which falls back to `font_family`;
 - `mono_font_family` from `ui-mono-font-family` when installed, else the terminal's resolved primary
   family, so Agent Markdown, tool previews, and code blocks match the terminal typeface until Mono
   font picks another;

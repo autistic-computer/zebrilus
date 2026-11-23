@@ -37,7 +37,7 @@ wasm-bindgen target/dom-theme/wasm32-unknown-unknown/release/zz_dom_theme.wasm \
 cp -R clients/dom/web/. "$OUT/"
 cp libs/penna/web/penna.css libs/penna/web/kit.js libs/penna/src/components/slider/slider.css libs/penna/src/components/segmented/segmented.css libs/penna/src/components/segmented/segmented.js design/zz.css "$OUT/kit/"
 cp -R design/tokens "$OUT/kit/tokens"
-cp clients/web/assets/fonts/lilex/*.ttf clients/web/assets/fonts/inter/*.ttf "$OUT/fonts/"
+cp clients/web/assets/fonts/lilex/*.ttf crates/zz-ui/assets/fonts/plumula/*-Variable.ttf "$OUT/fonts/"
 cp assets/zz-light-512.png assets/zz-dark-512.png assets/zz-dev-light-512.png assets/zz-dev-dark-512.png "$OUT/img/"
 cp crates/zz-ui/assets/icons/*.svg "$OUT/img/icons/"
 for svgz in crates/zz-ui/assets/programs/*.svgz; do

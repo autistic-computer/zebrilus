@@ -112,6 +112,7 @@ pub enum ConfigKey {
     InterfaceGlass,
     UiFontFamily,
     UiMonoFontFamily,
+    UiChatFontFamily,
     AppIcon,
 }
 
@@ -159,6 +160,7 @@ impl ConfigKey {
             Self::InterfaceGlass => "interface-glass",
             Self::UiFontFamily => "ui-font-family",
             Self::UiMonoFontFamily => "ui-mono-font-family",
+            Self::UiChatFontFamily => "ui-chat-font-family",
             Self::AppIcon => "app-icon",
         }
     }
@@ -206,6 +208,7 @@ impl ConfigKey {
             "interface-glass" => Some(Self::InterfaceGlass),
             "ui-font-family" => Some(Self::UiFontFamily),
             "ui-mono-font-family" => Some(Self::UiMonoFontFamily),
+            "ui-chat-font-family" => Some(Self::UiChatFontFamily),
             "app-icon" => Some(Self::AppIcon),
             _ => None,
         }
@@ -256,11 +259,12 @@ impl ConfigKey {
             | Self::ChromeDensity
             | Self::UiFontFamily
             | Self::UiMonoFontFamily
+            | Self::UiChatFontFamily
             | Self::AppIcon => None,
         }
     }
 
-    pub const LOOK: [Self; 8] = [
+    pub const LOOK: [Self; 9] = [
         Self::ChromeAccent,
         Self::ChromeTint,
         Self::ChromeTintHue,
@@ -269,6 +273,7 @@ impl ConfigKey {
         Self::InterfaceGlass,
         Self::UiFontFamily,
         Self::UiMonoFontFamily,
+        Self::UiChatFontFamily,
     ];
 }
 
@@ -317,13 +322,17 @@ impl Default for BrowserConfig {
 pub struct UiFontConfig {
     pub family: ConfigValue<Option<String>>,
     pub mono_family: ConfigValue<Option<String>>,
+    pub chat_family: ConfigValue<Option<String>>,
 }
+
+pub const DEFAULT_UI_FONT_FAMILY: &str = "Plumula Sans";
 
 impl Default for UiFontConfig {
     fn default() -> Self {
         Self {
-            family: ConfigValue::from_default(None),
+            family: ConfigValue::from_default(Some(DEFAULT_UI_FONT_FAMILY.to_owned())),
             mono_family: ConfigValue::from_default(None),
+            chat_family: ConfigValue::from_default(None),
         }
     }
 }
@@ -481,6 +490,7 @@ impl AppConfig {
             | ConfigKey::InterfaceGlass
             | ConfigKey::UiFontFamily
             | ConfigKey::UiMonoFontFamily
+            | ConfigKey::UiChatFontFamily
             | ConfigKey::AppIcon => None,
         }
     }
@@ -987,8 +997,15 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
-        if key == ConfigKey::UiMonoFontFamily {
-            let target = &mut parsed.ui_font.mono_family;
+        if matches!(
+            key,
+            ConfigKey::UiMonoFontFamily | ConfigKey::UiChatFontFamily
+        ) {
+            let target = if key == ConfigKey::UiMonoFontFamily {
+                &mut parsed.ui_font.mono_family
+            } else {
+                &mut parsed.ui_font.chat_family
+            };
             target.provenance = ConfigProvenance::Override;
             match parse_config_string(value).and_then(|family| {
                 validate_ui_font_family(&family).map_err(str::to_owned)?;
@@ -1155,6 +1172,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::ChromeDensity
             | ConfigKey::UiFontFamily
             | ConfigKey::UiMonoFontFamily
+            | ConfigKey::UiChatFontFamily
             | ConfigKey::AppIcon => {
                 unreachable!("handled above")
             }
@@ -1779,13 +1797,30 @@ pub fn set_ui_mono_font_family(family: Option<&str>) -> io::Result<()> {
 }
 
 pub fn write_ui_mono_font_family_at(path: &Path, family: Option<&str>) -> io::Result<bool> {
+    write_optional_font_family_at(path, ConfigKey::UiMonoFontFamily, family)
+}
+
+pub fn set_ui_chat_font_family(family: Option<&str>) -> io::Result<()> {
+    let path = config_path_for_write()?;
+    write_ui_chat_font_family_at(&path, family).map(drop)
+}
+
+pub fn write_ui_chat_font_family_at(path: &Path, family: Option<&str>) -> io::Result<bool> {
+    write_optional_font_family_at(path, ConfigKey::UiChatFontFamily, family)
+}
+
+fn write_optional_font_family_at(
+    path: &Path,
+    key: ConfigKey,
+    family: Option<&str>,
+) -> io::Result<bool> {
     if let Some(family) = family {
         validate_ui_font_family(family)
             .map_err(|message| io::Error::new(ErrorKind::InvalidInput, message))?;
     }
     write_config_edit_at(
         path,
-        ConfigKey::UiMonoFontFamily.as_str(),
+        key.as_str(),
         family.map(quoted_config_string).as_deref(),
     )
 }

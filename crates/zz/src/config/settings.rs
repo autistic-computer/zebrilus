@@ -184,7 +184,8 @@ impl SettingsView {
             window,
             cx,
         )
-        .mono_default(TERMINAL_FONT);
+        .mono_default(TERMINAL_FONT)
+        .chat_default(zz_ui::fonts::CHAT_FONT);
         let window_corner_radius = numeric_value_input(
             ConfigKey::WindowCornerRadius,
             observed.window_corner_radius.value,
@@ -2325,6 +2326,7 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
         AppearanceChange::ResetLook => {
             let mut edits = config::look_edits(&interface_theme::ThemeOverrides::default(), None);
             edits.push((ConfigKey::UiMonoFontFamily, None));
+            edits.push((ConfigKey::UiChatFontFamily, None));
             (ConfigKey::ChromeAccent, config::set_config_keys(&edits))
         }
         AppearanceChange::Accent(accent) => {
@@ -2366,6 +2368,10 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
         AppearanceChange::MonoFont(family) => (
             ConfigKey::UiMonoFontFamily,
             config::set_ui_mono_font_family((!family.is_empty()).then_some(family.as_str())),
+        ),
+        AppearanceChange::ChatFont(family) => (
+            ConfigKey::UiChatFontFamily,
+            config::set_ui_chat_font_family((!family.is_empty()).then_some(family.as_str())),
         ),
         AppearanceChange::Zoom(zoom) => {
             crate::ui_scale::set_percent(zoom * 100.0, cx);
@@ -2628,6 +2634,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::InterfaceGlass
         | ConfigKey::UiFontFamily
         | ConfigKey::UiMonoFontFamily
+        | ConfigKey::UiChatFontFamily
         | ConfigKey::AppIcon
         | ConfigKey::ChromeAccent
         | ConfigKey::ChromeDensity => {
@@ -2858,6 +2865,10 @@ mod tests {
                         vec![
                             SettingsSelectItem::new("System default", ""),
                             SettingsSelectItem::new(family.clone(), family.clone()),
+                            SettingsSelectItem::new(
+                                zz_config::DEFAULT_UI_FONT_FAMILY,
+                                zz_config::DEFAULT_UI_FONT_FAMILY,
+                            ),
                         ],
                         Some(IndexPath::new(0)),
                         window,
@@ -2890,7 +2901,7 @@ mod tests {
                     .read(cx)
                     .selected_value()
                     .map(String::as_str),
-                Some(""),
+                Some(zz_config::DEFAULT_UI_FONT_FAMILY),
             );
         });
     }

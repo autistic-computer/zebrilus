@@ -441,6 +441,7 @@ pub(crate) fn appearance(cx: &App) -> Appearance {
         contrast: resolved.chrome_contrast.value,
         ui_font_family: ui_font_family(cx).value.unwrap_or_default(),
         mono_font_family: ui_mono_font_family(cx).value.unwrap_or_default(),
+        chat_font_family: ui_chat_font_family(cx).value.unwrap_or_default(),
         zoom: penna::UiZoom::get(cx),
         motion: interface_theme::kit_motion(resolved.motion.value),
         density: interface_theme::kit_density(resolved.chrome_density.value),
@@ -686,6 +687,14 @@ pub(crate) fn ui_mono_font_family(cx: &App) -> ConfigValue<Option<String>> {
         .unwrap_or_default()
         .0
         .mono_family
+}
+
+pub(crate) fn ui_chat_font_family(cx: &App) -> ConfigValue<Option<String>> {
+    cx.try_global::<UiFontConfig>()
+        .cloned()
+        .unwrap_or_default()
+        .0
+        .chat_family
 }
 
 pub(crate) fn browser_config(cx: &App) -> BrowserConfig {
@@ -2241,6 +2250,19 @@ mod tests {
             });
         }
 
+        for family in [Some("Georgia"), None] {
+            zz_config::write_ui_chat_font_family_at(&path, family).expect("write chat font");
+            cx.update(|cx| {
+                install_config(Some(&path), Some(load_config(&path)), cx);
+                crate::theme::refresh_current_theme(cx);
+                assert_eq!(
+                    penna::Theme::global(cx).chat_font(),
+                    family.unwrap_or(zz_ui::fonts::CHAT_FONT)
+                );
+                assert_eq!(appearance(cx).chat_font(), family.unwrap_or_default());
+            });
+        }
+
         write_ui_font_family_at(&path, Some("Arial")).expect("write another override");
         write_config_edit_at(&path, ConfigKey::UiFontFamily.as_str(), None)
             .expect("reset override");
@@ -2250,7 +2272,7 @@ mod tests {
             assert_eq!(ui_font_family(cx).provenance, ConfigProvenance::Default);
             assert_eq!(
                 penna::Theme::global(cx).font_family,
-                ala::Font::default().family
+                zz_config::DEFAULT_UI_FONT_FAMILY
             );
             let parsed = parse_config("ui-font-family = Arial\n");
             install_config(Some(&path), Some(Ok(parsed)), cx);
@@ -2259,7 +2281,7 @@ mod tests {
             assert_eq!(ui_font_family(cx), UiFontConfig::default().family);
             assert_eq!(
                 penna::Theme::global(cx).font_family,
-                ala::Font::default().family
+                zz_config::DEFAULT_UI_FONT_FAMILY
             );
         });
     }
@@ -3000,6 +3022,7 @@ mod tests {
             "interface-glass",
             "ui-font-family",
             "ui-mono-font-family",
+            "ui-chat-font-family",
             "app-icon",
         ];
         for key in named {

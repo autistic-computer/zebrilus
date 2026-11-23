@@ -23,16 +23,15 @@
 }
 
 @font-face {
-  font-family: "Inter Variable";
-  font-weight: 100 900;
-  src: url(../fonts/InterVariable.ttf);
+  font-family: "Plumula Sans";
+  font-weight: 300 800;
+  src: url(../fonts/PlumulaSans-Variable.ttf);
 }
 
 @font-face {
-  font-family: "Inter Variable";
-  font-weight: 100 900;
-  font-style: italic;
-  src: url(../fonts/InterVariable-Italic.ttf);
+  font-family: "Plumula Serif";
+  font-weight: 300 800;
+  src: url(../fonts/PlumulaSerif-Variable.ttf);
 }
 
 html,

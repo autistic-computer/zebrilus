@@ -132,6 +132,14 @@ fn apply_zz_overrides(cx: &mut App) {
         .map(SharedString::from)
         .or(terminal_mono_font_family)
         .unwrap_or_else(penna::foundation::platform_mono_font_family);
+    let chat_font_family = config::ui_chat_font_family(cx)
+        .value
+        .filter(|family| cx.text_system().has_font(family))
+        .or_else(|| {
+            let family = zz_ui::fonts::CHAT_FONT;
+            cx.text_system().has_font(family).then(|| family.to_owned())
+        })
+        .map(SharedString::from);
     let chrome_contrast = config::chrome_contrast(cx);
     let glass_on = glass_on(cx);
     let (window_opacity, backdrop) = match glass_look(cx) {
@@ -151,6 +159,7 @@ fn apply_zz_overrides(cx: &mut App) {
 
     theme.font_family = ui_font_family;
     theme.mono_font_family = mono_font_family;
+    theme.chat_font_family = chat_font_family;
 
     theme.set_contrast(chrome_contrast);
     if !glass_on {

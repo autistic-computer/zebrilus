@@ -15,7 +15,7 @@ use zz_ui::{
 };
 
 const HUE_STOPS: u16 = 12;
-const WEB_UI_FONT: &str = "Inter Variable";
+const WEB_UI_FONT: &str = zz_ui::fonts::UI_FONT;
 
 fn decode(json: &str) -> Result<Preferences, JsError> {
     Preferences::decode(json).map_err(|error| JsError::new(&error.to_string()))
@@ -330,6 +330,16 @@ fn kit(preferences: &Preferences, mode: ThemeMode) -> Theme {
     kit.font_family = if font.is_empty() { WEB_UI_FONT } else { font }
         .to_owned()
         .into();
+    let chat = preferences.appearance.chat_font();
+    kit.chat_font_family = Some(
+        if chat.is_empty() {
+            zz_ui::fonts::CHAT_FONT
+        } else {
+            chat
+        }
+        .to_owned()
+        .into(),
+    );
     let mono = preferences.appearance.mono_font();
     if !mono.is_empty() {
         kit.mono_font_family = mono.to_owned().into();
@@ -430,6 +440,7 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
         "glass": glass,
         "font": preferences.shown_ui_font(),
         "mono": appearance.mono_font(),
+        "chat": appearance.chat_font(),
         "limits": {
             "radius": interface_theme::MAX_CORNER_RADIUS,
         },

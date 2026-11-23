@@ -173,8 +173,9 @@ The client-local schema includes these scalar settings and chrome colors.
 | `browser-remote-debugging-port` | `0` (off) | Bare integer: `0` or `1024..=65535` | Loopback CDP endpoint; `ZZ_BROWSER_REMOTE_DEBUGGING_PORT` overrides this value at CEF startup. Restart the client after changing an initialized runtime. The Browser page's **Agents** switch writes `9222` or removes the key; other ports are file-only |
 | `browser-search-provider` | `google` | `google`, `duckduckgo`, `brave` | Where a Browser pane's address bar sends an entry that is not an address. The iOS and Android clients keep their own choice in their preferences as `search_engine`, set in Settings › Advanced › Browser |
 | `browser-egress` | `true` | `true` or `false` | Whether a Browser pane opened while attached to a remote ssh host routes its traffic through that host; panes already open keep the route they were created with |
-| `ui-font-family` | the platform's (the system font) | Installed font family, or `.SystemUIFont` | Interface text across desktop windows; applies live and stays separate from terminal and editor fonts. Pasting a theme file with a `face` writes it here |
+| `ui-font-family` | `Plumula Sans` | Installed font family, or `.SystemUIFont` | Interface text across desktop windows; applies live and stays separate from terminal and editor fonts. Pasting a theme file with a `face` writes it here |
 | `ui-mono-font-family` | the terminal font | Installed font family | Interface's Mono font: code blocks and inline code in Markdown, the editor, tool previews and every other monospaced line outside the terminal. Its list opens on Monospaced. Terminal font removes the line, and Reset look removes it too; a theme file never sets it |
+| `ui-chat-font-family` | `Plumula Serif` | Installed font family | Interface's Chat font: the prose of agent chats, both your messages and the agent's, its thoughts and notices, and Markdown view panes. Code in them keeps the Mono font. Plumula Serif removes the line, and Reset look removes it too; a theme file never sets it |
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
 | `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations (surface steps, fills, dividers and muted text) and adds no edges; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as Increase contrast, a slider from 0% (1.0) to 100% (2.0), written with two decimals. |
@@ -237,7 +238,7 @@ the next minute boundary, then requests one redraw per minute while the bar and 
 `time-date` renders `%H:%M · %b %d`.
 
 `widget-corner-radius`, `control-shape`, `interface-glass`, `chrome-accent`, `chrome-tint`,
-`chrome-tint-hue`, `ui-font-family`, `ui-mono-font-family`, `chrome-contrast`, and `theme-mode`
+`chrome-tint-hue`, `ui-font-family`, `ui-mono-font-family`, `ui-chat-font-family`, `chrome-contrast`, and `theme-mode`
 land on the **zz-ui theme** rather than being read per-frame by a renderer:
 `zz::theme` activates `config::shown_theme`, the platform's theme file with the keys the file sets
 applied over it (see Interface themes for the order), which puts its colors and knobs on the `Theme` global,
@@ -261,11 +262,12 @@ its own right, and smoothing one turns it into a lozenge. The squircle therefore
 rectangles, and the larger `widget-corner-radius` is, the more visible it gets (the corner departs
 from a circular arc by roughly a fifth of the radius, so it is sub-pixel below about 4px).
 
-`ui-font-family` and `ui-mono-font-family` live in `UiFontConfig`, and `interface-glass` in `GlassConfig`, both apart from
+`ui-font-family`, `ui-mono-font-family` and `ui-chat-font-family` live in `UiFontConfig`, and `interface-glass` in `GlassConfig`, both apart from
 `AppConfig` so it can remain `Copy`. Interface settings lists font families from ala's
-cross-platform text system. Selecting System default writes `.SystemUIFont`; Reset removes the
-current override. With no line, the font is `Appearance::ui_font()`: the platform theme file's
-`face`, which no file sets, so the system font. The 500 ms config watcher reapplies the family
+cross-platform text system. Every client bundles Plumula Sans and Plumula Serif
+(`zz_ui::fonts::plumula`, the static weights on the desktop and the variable fonts on the web, iOS
+and Android). With no line the UI font is Plumula Sans; selecting System default writes
+`.SystemUIFont`, and Reset removes the current override. The 500 ms config watcher reapplies the family
 to `Theme.font_family` and redraws open windows. Quoted names preserve spaces, Unicode, quotes, and
 backslashes. Pasting a theme file writes its `face` here, or removes the key when it has none.
 Terminal, editor, and code-block fonts use their existing monospace settings.

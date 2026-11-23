@@ -63,7 +63,7 @@ height from `--penna-control-md`, so they follow the density. The CSS comes from
 wasm build of zz-app's `Preferences` and penna's `theme_css`, so accent, tint, radius, control
 shape, glass, contrast, font and a pasted theme file all come out of the same Rust as the ala
 client. `data-penna-theme` names the platform's theme file, `default` in the browser. With no UI font
-picked the tokens name Inter Variable, as the ala web client does.
+picked the tokens name Plumula Sans, and with no chat font Plumula Serif, as the ala web client does.
 
 ## Keeping in sync
 

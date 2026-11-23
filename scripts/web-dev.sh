@@ -53,5 +53,6 @@ cargo watch \
     --watch crates/zz-ui/src \
     "${ala_watch[@]}" \
     --watch clients/web/assets/fonts \
+    --watch crates/zz-ui/assets/fonts \
     --watch scripts/build-web-wasm.sh \
     --shell "$WEB_ROOT/scripts/build-web-wasm.sh"

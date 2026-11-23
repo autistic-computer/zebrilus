@@ -65,6 +65,7 @@ pub fn interface_page_items(macos: bool) -> Vec<AppearancePageItem> {
         Item::Group { title: "Text" },
         Item::UiFontFamily,
         Item::MonoFontFamily,
+        Item::ChatFontFamily,
         Item::TextSize,
         Item::Density,
         Item::Group { title: "Behavior" },

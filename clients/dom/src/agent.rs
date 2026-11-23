@@ -1803,7 +1803,7 @@ fn render_mermaid_svg(source: &str, theme_json: &str) -> Value {
         });
     let options = pele::RenderOptions {
         font_size: 13.0,
-        font_family: pick("font", "Inter Variable, system-ui, sans-serif"),
+        font_family: pick("font", "Plumula Sans, system-ui, sans-serif"),
         font_family_mono: pick("mono", "Lilex, ui-monospace, monospace"),
         id_prefix: "zz-mermaid".to_owned(),
         max_width: Some(640.0),

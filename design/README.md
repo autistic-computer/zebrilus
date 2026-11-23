@@ -79,7 +79,7 @@ theme, through `penna::foundation::theme_css`. Mockups name roles, not colors, t
 - Glass: the blur, tint and color boost match; the rim (glint, contour, fresnel) is box-shadows. Edge
   refraction is an SVG lens that only Chromium draws.
 - Left out: chroma presets, tint, contrast, accent and zoom settings, and user theme files.
-- Fonts: `system-ui`, which is SF on macOS like desktop zz. Thin clients use Inter.
+- Fonts: `system-ui`, which is SF on macOS. zz itself uses Plumula Sans, and Plumula Serif in chats.
 
 ## Mockups
 

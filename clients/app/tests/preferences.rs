@@ -107,6 +107,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
             contrast: 1.4,
             ui_font_family: "Inter Variable".into(),
             mono_font_family: String::new(),
+            chat_font_family: String::new(),
             zoom: 1.35,
             motion: penna::foundation::motion::Motion::Default,
             density: penna::Density::Regular,
@@ -127,6 +128,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     expected["pointer"] = "hand".into();
     expected["motion"] = "default".into();
     expected["mono_font_family"] = "".into();
+    expected["chat_font_family"] = "".into();
     expected["which_key_delay"] = 400.0.into();
     expected["chrome_keys"] = serde_json::json!([]);
     expected["search_engine"] = "google".into();

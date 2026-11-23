@@ -79,7 +79,7 @@ cp "$WEB_ROOT/clients/web/web/style.css" "$WEB_DIST/style.css"
 WEB_ICON=zz
 if [[ "$WEB_DEV_BUILD" == 1 ]]; then WEB_ICON=zz-dev; fi
 cp "$WEB_ROOT/assets/linux/hicolor/256x256/apps/$WEB_ICON.png" "$WEB_DIST/favicon.png"
-cp "$WEB_ROOT/clients/web/assets/fonts/inter/LICENSE.txt" "$WEB_DIST/licenses/inter.txt"
+cp "$WEB_ROOT/crates/zz-ui/assets/fonts/plumula/LICENSE.txt" "$WEB_DIST/licenses/plumula.txt"
 cp "$WEB_ROOT/clients/web/assets/fonts/lilex/LICENSE.txt" "$WEB_DIST/licenses/lilex.txt"
 
 echo "browser client ready: $WEB_DIST"

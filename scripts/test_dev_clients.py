@@ -40,7 +40,7 @@ class DevelopmentClientTests(unittest.TestCase):
             shutil.copy2(SCRIPTS / name, self.root / "scripts" / name)
         (self.root / "Cargo.toml").write_text('version = "1.2.3"\n')
         for file in ("clients/web/web/index.html", "clients/web/web/main.js", "clients/web/web/style.css",
-                     "assets/linux/hicolor/256x256/apps/zz.png", "assets/linux/hicolor/256x256/apps/zz-dev.png", "clients/web/assets/fonts/inter/LICENSE.txt",
+                     "assets/linux/hicolor/256x256/apps/zz.png", "assets/linux/hicolor/256x256/apps/zz-dev.png", "crates/zz-ui/assets/fonts/plumula/LICENSE.txt",
                      "clients/web/assets/fonts/lilex/LICENSE.txt"):
             path = self.root / file
             path.parent.mkdir(parents=True, exist_ok=True)

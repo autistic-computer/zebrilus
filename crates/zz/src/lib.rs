@@ -251,6 +251,9 @@ fn run_app(
     application
         .with_assets(Assets)
         .run(move |cx: &mut App| {
+            if let Err(error) = cx.text_system().add_fonts(zz_ui::fonts::plumula()) {
+                log::warn!("failed to load the interface fonts: {error:#}");
+            }
             cx.set_global(fonts);
             cx.set_global(profile);
             diagnostics::start_main_thread_watchdog(cx);

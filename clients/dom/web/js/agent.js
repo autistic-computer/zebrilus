@@ -98,7 +98,7 @@ function mermaidTheme() {
     warning,
     danger,
     series: [accent, success, warning, danger],
-    font: styles.getPropertyValue("--penna-font").trim() || "Inter Variable, system-ui, sans-serif",
+    font: styles.getPropertyValue("--penna-font").trim() || "Plumula Sans, system-ui, sans-serif",
     mono: styles.getPropertyValue("--penna-mono").trim() || "Lilex, ui-monospace, monospace",
     radius: parseFloat(styles.getPropertyValue("--penna-radius")) || 8,
   };
