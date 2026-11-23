@@ -24,7 +24,7 @@ use zz_ui::settings::{
 
 use zz_protocol::{
     AgentAccount, AgentLogin, AgentLoginBrowser, AgentLoginStep,
-    AgentProvider::{self, Antigravity, ClaudeCode, Codex, Grok},
+    AgentProvider::{self, Antigravity, ClaudeCode, Codex, Cursor, Grok},
     ManualUpdate, ProviderStatus, ProviderTask, ProvidersReport,
 };
 use zz_ui::agent::login::login_card_keyed;
@@ -341,7 +341,7 @@ fn page(
     picked: usize,
     height: f32,
     cx: &App,
-) -> impl IntoElement {
+) -> ala::Stateful<ala::Div> {
     let reports = machines
         .iter()
         .enumerate()
@@ -457,7 +457,12 @@ fn agents_states(_: &mut Window, cx: &mut App) -> AnyElement {
         });
     });
     let installing = quiet(|providers| {
-        providers[0].version = Some("2.1.329-beta.1".to_owned());
+        providers.push(provider(
+            Cursor,
+            "/home/me",
+            "2026.11.19-f005e9c1a7b3d2e4f6a8b0c2",
+            Some("2026.11.21-0a1b2c3d4e5f6a7b8c9d0e1f"),
+        ));
         let mut grok = ProviderStatus::new(Grok);
         grok.latest = Some("1.0.93".to_owned());
         grok.task = ProviderTask::Running {
@@ -521,7 +526,7 @@ fn agents_states(_: &mut Window, cx: &mut App) -> AnyElement {
             framed_card("agents-package-manager", &package_manager, None, cx),
         )
         .state(
-            "installing Grok, a beta Claude Code behind",
+            "installing Grok, a long Cursor version behind",
             framed_card("agents-installing", &installing, None, cx),
         )
         .state(
@@ -535,6 +540,10 @@ fn agents_states(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "ten machines: the picker scrolls sideways",
             page("agents-many", &many, 1, 470.0, cx),
+        )
+        .state(
+            "the narrowest settings column, 480 wide",
+            page("agents-narrow", &fleet(), 1, 470.0, cx).w(px(480.0)),
         )
         .state(
             "nothing behind anywhere",

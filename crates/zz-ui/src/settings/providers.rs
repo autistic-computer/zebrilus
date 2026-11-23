@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, ClipboardItem, IntoElement, ParentElement as _, SharedString, Styled as _,
-    Window, div, prelude::*, px,
+    AnyElement, App, ClipboardItem, IntoElement, ParentElement as _, Role, SharedString,
+    Styled as _, Window, div, prelude::*, px,
 };
 use zz_protocol::{AgentAccount, AgentProvider, ProviderStatus, ProviderTask, ProvidersReport};
 
@@ -19,7 +19,7 @@ use crate::{
     v_flex,
 };
 use penna::{
-    Label, Size, Space, TextStyle, blocks::notification::Notification,
+    AuthoredElement as _, Label, Size, Space, TextStyle, blocks::notification::Notification,
     components::segmented::SegmentedControl,
 };
 
@@ -32,8 +32,8 @@ use zz_client::providers::{
 };
 
 const AGENT_COLUMN: f32 = 150.0;
-const VERSION_COLUMN: f32 = 120.0;
-const ACTIONS_COLUMN: f32 = 132.0;
+const VERSION_MAX: f32 = 280.0;
+const HEADER_TRIM: f32 = 4.0;
 const COLUMN_GAP: f32 = 10.0;
 const ROW_CONTROL: f32 = 24.0;
 const NOTE_RISE: f32 = 2.0;
@@ -184,7 +184,9 @@ pub fn machine_card(
             let (installed, missing): (Vec<_>, Vec<_>) = provider_rows(report)
                 .into_iter()
                 .partition(ProviderStatus::installed);
+            let signs_in = auth.is_some_and(|auth| auth.signs_in);
             stack
+                .children((!installed.is_empty()).then(|| header_row(&id, signs_in, cx)))
                 .children(
                     installed.iter().map(|status| {
                         agent_row(&id, status, report.checking, auth, &on_update, cx)
@@ -237,6 +239,29 @@ fn notes_under(notes: Vec<(String, NoteTone)>, cx: &App) -> Option<impl IntoElem
     })
 }
 
+fn header_row(id: &SharedString, signs_in: bool, cx: &App) -> SettingEntry {
+    let label = |column: &'static str| {
+        div()
+            .author_id(SharedString::from(format!("providers-head-{id}-{column}")))
+            .role(Role::ColumnHeader)
+            .child(muted(TextStyle::Caption, column, cx))
+    };
+    SettingEntry::bare().child(
+        h_flex()
+            .w_full()
+            .my(px(-HEADER_TRIM))
+            .gap(px(COLUMN_GAP))
+            .child(label("Agent").flex_none().w(px(AGENT_COLUMN)))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .when(signs_in, |this| this.child(label("Account"))),
+            )
+            .child(label("Version").flex_none()),
+    )
+}
+
 fn agent_row(
     id: &SharedString,
     status: &ProviderStatus,
@@ -263,6 +288,17 @@ fn agent_row(
     };
     let auth_id = SharedString::from(format!("providers-auth-{id}-{}", provider.as_str()));
     let signed_out = matches!(signed, Some(None));
+    let sign_in = (signed_out && login.is_none())
+        .then(|| auth_button(ProviderAuthAction::SignIn))
+        .flatten()
+        .map(|click| {
+            Button::new(auth_id.clone())
+                .small()
+                .label("Sign in")
+                .on(ground)
+                .on_click(click)
+        });
+    let running = matches!(status.task, ProviderTask::Running { .. });
     let accounts = match (&status.task, signed) {
         (ProviderTask::Running { output }, _) => (!output.is_empty()).then(|| {
             task_line(output.clone(), NoteTone::Muted, cx)
@@ -287,19 +323,17 @@ fn agent_row(
                 })
                 .into_any_element(),
         ),
-        (_, Some(None)) => Some(muted(TextStyle::Small, SIGNED_OUT, cx).into_any_element()),
+        (_, Some(None)) => Some(
+            h_flex()
+                .min_w_0()
+                .gap(px(COLUMN_GAP))
+                .child(muted(TextStyle::Small, SIGNED_OUT, cx).flex_none())
+                .children(sign_in)
+                .into_any_element(),
+        ),
         (_, None) => None,
     };
-    let sign_in = (signed_out && login.is_none())
-        .then(|| auth_button(ProviderAuthAction::SignIn))
-        .flatten()
-        .map(|click| {
-            Button::new(auth_id.clone())
-                .small()
-                .label("Sign in")
-                .on(ground)
-                .on_click(click)
-        });
+    let version = SharedString::from(version_label(status));
     let path = status.path.as_deref().map(home_relative);
     let name = h_flex()
         .id(SharedString::from(format!(
@@ -321,15 +355,27 @@ fn agent_row(
         });
     let line = row()
         .child(name)
-        .child(h_flex().flex_1().min_w_0().children(accounts))
-        .child(version_text(status, cx).w(px(VERSION_COLUMN)))
         .child(
             h_flex()
-                .flex_none()
-                .min_w(px(ACTIONS_COLUMN))
-                .justify_end()
+                .flex_1()
+                .when(running || !signed_out, Styled::min_w_0)
+                .children(accounts),
+        )
+        .child(
+            h_flex()
+                .min_w_0()
                 .gap(px(COLUMN_GAP))
-                .children(sign_in)
+                .child(
+                    version_text(status, cx)
+                        .flex_shrink(1.0)
+                        .min_w_0()
+                        .id(SharedString::from(format!(
+                            "providers-version-{id}-{}",
+                            provider.as_str()
+                        )))
+                        .max_w(px(VERSION_MAX))
+                        .tooltip(move |window, cx| Tooltip::new(version.clone()).build(window, cx)),
+                )
                 .children(action(id, status, checking, on_update, cx).map(crate::Sizable::small)),
         );
     SettingEntry::bare().child(
