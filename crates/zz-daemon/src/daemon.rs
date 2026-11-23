@@ -4918,6 +4918,8 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("tools", DaemonCommandDispatch::Tools),
     ("fleet", DaemonCommandDispatch::LocalCli),
     ("list-hosts", DaemonCommandDispatch::LocalCli),
+    ("update", DaemonCommandDispatch::LocalCli),
+    ("build-info", DaemonCommandDispatch::LocalCli),
     ("restart-server", DaemonCommandDispatch::RestartServer),
     ("update-server", DaemonCommandDispatch::UpdateServer),
     ("tailnet", DaemonCommandDispatch::Tailnet),
@@ -8837,7 +8839,7 @@ impl Shared {
                     })
                     .map_err(|error| ServerError::InvalidCommand(error).into()),
                     DaemonCommandDispatch::LocalCli => Err(ServerError::InvalidCommand(format!(
-                        "{canonical} reads this machine's zz/config; run it from a shell as `zz {canonical}`"
+                        "{canonical} runs in the zz CLI of the machine it acts for; run it from a shell as `zz {canonical}`"
                     ))
                     .into()),
                     DaemonCommandDispatch::RestartServer => self.restart_server(
@@ -53554,7 +53556,12 @@ host's; `events` and `agent-send --progress` stream from it. Logins use zz’s o
 key after the first, and `--host all` never prompts. A call that changes state
 and stalls 15 s exits 1 and may have run there: check before retrying. When a
 machine joins, run `zz fleet add NAME DEST`, then `zz fleet sync`; run
-`zz fleet install NAME` for a missing or old zz.
+`zz fleet install NAME` for a missing zz. `zz update NAME` installs a newer build
+there beside its package, with no sudo, and `--restart -y` moves its daemon onto
+it, which ends that host's sessions; `zz update --check -a` prints what every
+machine runs, and `zz build-info` prints this build's version and wire floors.
+A tailnet host gets `zz update-server` and `zz restart-server` from it, sent to
+its daemon.
 
 ## CLI contract
 
@@ -86047,6 +86054,10 @@ set-option -g @alias-mixed-next yes
             "refresh-client",
             "fleet",
             "list-hosts",
+            "update",
+            "build-info",
+            "update-server",
+            "restart-server",
         ];
         const MUX_VERBS: &[&str] = &[
             "set-hook",

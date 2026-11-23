@@ -68,7 +68,12 @@ host's; `events` and `agent-send --progress` stream from it. Logins use zz’s o
 key after the first, and `--host all` never prompts. A call that changes state
 and stalls 15 s exits 1 and may have run there: check before retrying. When a
 machine joins, run `zz fleet add NAME DEST`, then `zz fleet sync`; run
-`zz fleet install NAME` for a missing or old zz.
+`zz fleet install NAME` for a missing zz. `zz update NAME` installs a newer build
+there beside its package, with no sudo, and `--restart -y` moves its daemon onto
+it, which ends that host's sessions; `zz update --check -a` prints what every
+machine runs, and `zz build-info` prints this build's version and wire floors.
+A tailnet host gets `zz update-server` and `zz restart-server` from it, sent to
+its daemon.
 
 ## CLI contract
 

@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Daemon update . a zz-owned headless copy and zz update
-description: "Plan to update the headless zz (CLI and daemon) on any machine without touching the package that installed the desktop app. Each machine keeps one zz-owned copy of the headless binary at a fixed path under its data directory, a packaged zz hands over to it when it is newer, and `zz update` installs it on this machine or on named hosts over the connection zz already has: the remote CLI for ssh hosts, a daemon command for tailnet hosts. Restart stays a separate, explicit step, and an app never restarts a daemon newer than itself. Nothing is built."
-status: Approved 2026-11-23; reviewed by two agents; build started, nothing on main yet
+description: "Plan to update the headless zz (CLI and daemon) on any machine without touching the package that installed the desktop app. Each machine keeps one zz-owned copy of the headless binary at a fixed path under its data directory, a packaged zz hands over to it when it is newer, and `zz update` installs it on this machine or on named hosts over the connection zz already has: the remote CLI for ssh hosts, a daemon command for tailnet hosts. Restart stays a separate, explicit step, and an app never restarts a daemon newer than itself. Built, not merged."
+status: Approved 2026-11-23; steps 1 to 6 and 8 built on the daemon-update branch, not merged; step 2 and step 7 landed on main; checked on one Mac with a loopback ssh host, not yet on xps, alienware or win-desktop
 tags:
 - update
 - daemon

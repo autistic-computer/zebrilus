@@ -4,7 +4,7 @@ title: Session persistence & daemon lifecycle
 description: Why mux state and terminals outlive ala windows, which GUI state is disk-backed, which browser descriptors can restore, what the agent lens rebuilds, and how attach, detach, eviction, per-client state, and local transport work when several devices share one session.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [daemon, persistence, attach, detach, transport, lifecycle, multi-client]
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-11-23T00:00:00-03:00
 ---
 
 # Overview
@@ -36,6 +36,7 @@ so terminal signals aimed at the launching client (Ctrl+C, tty hangup) never rea
 | Owner-only | `restrict_socket_permissions` sets Unix `0o600`; the Windows pipe is user-SID scoped |
 | Stay alive | Serves connections until `request_shutdown` sets `stopping`; **outlives GUI detach** while sessions exist |
 | Stop | `kill-server` (never auto-starts a daemon), or nothing-left-to-serve: zero sessions **and** zero interactive clients (`subscribers`), armed once the daemon has created a session; `SocketGuard::Drop` unlinks the Unix socket |
+| Restart | `restart-server` (and `zz update --restart`) ends every session, then the same process execs the newest zz on the same socket, holding the start lock across the gap; the successor starts empty |
 | Recover | `terminate_incompatible_daemon` safely stops a daemon on another wire epoch (`PROTOCOL_VERSION`), once the person accepts the restart prompt or runs `kill-server`. A daemon that is only older inside the epoch, and meets the client's revision floor, keeps running: a client never sends it a message it lacks the capability for ([wire protocol](/protocol/wire-protocol.md#wire-epochs)) |
 
 zz deliberately diverges from tmux's `exit-empty` here by default. tmux can key on sessions alone
@@ -113,6 +114,22 @@ The signal stop is deliberately paranoid so it never kills an unrelated process:
   executable basename as exactly `zz (deleted)`. Recovery accepts that one name while still requiring
   the socket peer PID, private identity PID/start time, owner, and `daemon` command-line checks; missing
   executable metadata and deleted-name lookalikes remain unsafe.
+
+## Restarting onto a newer build
+
+`zz update` installs a newer headless build as the machine's zz-owned copy without touching the
+running daemon, so sessions keep running on the old build until someone asks for a restart.
+`zz update --restart` (or `restart-server` sent to the daemon) says how many sessions end, asks
+unless `-y`, and ends them all: there is no session restore. The successor is the owned copy when
+it is newer than the daemon, else the daemon's own binary, on the same socket with a fresh server
+id; on Unix it is the same process after `exec`, and the start lock held across the gap keeps a
+reconnecting client from starting a second daemon. It starts with no sessions and stays up under
+the default rule above, since a daemon that never held a session is not armed; a config that sets
+`exit-empty on` or `exit-unattached on` stops it as soon as nobody is attached, and
+`zz update --restart` says so before it asks. When the new build is on another wire epoch, a
+desktop app still on the old one cannot attach until it updates too. A daemon that lacks
+`restart-server` gets `kill-server` on this machine and over ssh; a tailnet host never does, since
+nothing could start it again.
 
 # Attach and detach
 
