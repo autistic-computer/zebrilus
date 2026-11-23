@@ -781,7 +781,7 @@ fn run_command_mode(
         && host != ALL_HOSTS
         && matches!(
             canonical_command(&command),
-            "fleet" | "list-hosts" | "tools" | "protocol-version" | "--version"
+            "fleet" | "list-hosts" | "tools" | "protocol-version" | "build-info" | "--version"
         )
     {
         return Some(run_host_cli(host, arguments));
@@ -884,6 +884,14 @@ fn run_command_mode(
                 }
             },
         );
+    }
+    if command == "build-info" {
+        if !invocation.args.is_empty() {
+            eprintln!("zz: usage: zz build-info");
+            return Some(exit_code_for(CliFailure::Usage));
+        }
+        println!("{}", zz_config::owned::BuildInfo::current());
+        return Some(ExitCode::SUCCESS);
     }
 
     if host.is_some() && matches!(command.as_str(), "daemon" | "proxy") {
@@ -2900,10 +2908,12 @@ fn fan_out_refusal(command_chain: &[CommandInvocation]) -> Option<(String, ExitC
             exit_code_for(CliFailure::Server(&error)),
         ))
     };
-    for invocation in command_chain
-        .iter()
-        .filter(|invocation| !matches!(invocation.name.as_str(), "protocol-version" | "--version"))
-    {
+    for invocation in command_chain.iter().filter(|invocation| {
+        !matches!(
+            invocation.name.as_str(),
+            "protocol-version" | "build-info" | "--version"
+        )
+    }) {
         if let Err(error) = zz_mux::validate_static_command_chain(std::slice::from_ref(invocation))
         {
             return refuse(error);

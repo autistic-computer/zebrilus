@@ -666,7 +666,9 @@ pub(crate) fn status_cache_callbacks(request: &StatusRequest) -> Option<Vec<Stri
         } else if zz_mux::format_variable_is_known(name)
             || matches!(
                 name,
-                "pane_kind"
+                "zz_version"
+                    | "zz_revision"
+                    | "pane_kind"
                     | "agent_state"
                     | "agent_pending_permission"
                     | "agent_parent"
@@ -2892,6 +2894,8 @@ impl StatusHooks for DaemonFormatHooks<'_> {
             return self.copy_mode_variable(name, context, &line_option);
         }
         match name {
+            "zz_version" => Some(env!("CARGO_PKG_VERSION").to_owned()),
+            "zz_revision" => Some(zz_protocol::REVISION.to_string()),
             "config_files" => self
                 .variables
                 .and_then(|variables| variables.get(name))

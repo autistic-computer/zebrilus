@@ -85566,6 +85566,29 @@ set-option -g @alias-mixed-next yes
     }
 
     #[test]
+    fn formats_expand_the_zz_version_and_revision() {
+        let shared = Arc::new(Shared::new(1));
+        let mailbox = OutboundMailbox::new();
+        let (client, _) =
+            shared.register_subscribed(ClientKind::Command, None, None, Arc::clone(&mailbox));
+        let mut context = ExecutionContext::default();
+        let output = shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut context,
+                &CommandInvocation::new("display-message", ["-p", "#{zz_version}|#{zz_revision}"]),
+            )
+            .expect("display-message")
+            .output;
+
+        assert_eq!(
+            output,
+            format!("{}|{}", env!("CARGO_PKG_VERSION"), zz_protocol::REVISION)
+        );
+    }
+
+    #[test]
     fn agent_send_reply_flags_and_policies_validate_usage() {
         for args in [
             vec!["--json"],

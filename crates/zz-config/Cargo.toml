@@ -8,7 +8,7 @@ description = "Shared configuration parsing and persistence for zz clients"
 publish = false
 
 [features]
-update = ["dep:semver", "dep:sha2", "dep:ureq"]
+update = ["dep:sha2", "dep:ureq"]
 
 [dependencies]
 zz-client.workspace = true
@@ -19,7 +19,7 @@ zz-terminal.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 log.workspace = true
-semver = { version = "1", optional = true }
+semver = "1"
 sha2 = { version = "0.11", optional = true }
 ureq = { version = "3", optional = true }
 
