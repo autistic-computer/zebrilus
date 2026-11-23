@@ -78,6 +78,8 @@ mod watchers;
 pub use exec::exec_resume_kind;
 pub(crate) mod path_listing;
 mod providers;
+mod restart;
+pub use restart::{Restart, Stopped};
 use zz_daemon_client::{
     DaemonError, DaemonIdentityGuard, default_mux_config, diagnostic_elapsed_us, diagnostic_timer,
     discover_tmux_config, home_directory, mux_config_write_path, terminal_colour_count,
@@ -242,6 +244,8 @@ const MAX_PASTED_IMAGES_PER_PANE: usize = 8;
 const MAX_PASTED_IMAGE_BYTES_PER_PANE: usize = 24 * 1024 * 1024;
 const SHUTDOWN_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
 const SHUTDOWN_WRITER_TIMEOUT: Duration = Duration::from_secs(2);
+#[cfg(windows)]
+const RESTART_BIND_RETRY: Duration = Duration::from_secs(10);
 #[cfg(unix)]
 const SIGNAL_SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 #[cfg(unix)]
@@ -1777,6 +1781,10 @@ pub struct Daemon {
     server_id: Option<u64>,
     initial_client_working_directory: Option<PathBuf>,
     bootstrap_ready_fd: Option<i32>,
+    #[cfg(unix)]
+    start_lock_fd: Option<i32>,
+    #[cfg(windows)]
+    bind_retry: bool,
 }
 
 impl Daemon {
@@ -1790,7 +1798,25 @@ impl Daemon {
             server_id: None,
             initial_client_working_directory: None,
             bootstrap_ready_fd: None,
+            #[cfg(unix)]
+            start_lock_fd: None,
+            #[cfg(windows)]
+            bind_retry: false,
         }
+    }
+
+    #[cfg(unix)]
+    #[must_use]
+    pub fn with_start_lock_fd(mut self, fd: i32) -> Self {
+        self.start_lock_fd = Some(fd);
+        self
+    }
+
+    #[cfg(windows)]
+    #[must_use]
+    pub fn with_bind_retry(mut self) -> Self {
+        self.bind_retry = true;
+        self
     }
 
     #[must_use]
@@ -1841,9 +1867,21 @@ impl Daemon {
         &self,
         ready: impl FnOnce(u64) -> R,
     ) -> Result<(), DaemonError> {
+        self.serve_with_ready(ready).map(drop)
+    }
+
+    pub fn serve(&self) -> Result<Stopped, DaemonError> {
+        self.serve_with_ready(|_| ())
+    }
+
+    fn serve_with_ready<R>(&self, ready: impl FnOnce(u64) -> R) -> Result<Stopped, DaemonError> {
         let mut bootstrap_ready = BootstrapReady::adopt(self.bootstrap_ready_fd);
+        #[cfg(unix)]
+        let start_lock =
+            prepare_socket(&self.socket_path, &mut bootstrap_ready, self.start_lock_fd)?;
+        #[cfg(windows)]
         let start_lock = prepare_socket(&self.socket_path, &mut bootstrap_ready)?;
-        let listener = LocalTransport::bind(&self.socket_path).map_err(|error| {
+        let listener = self.bind().map_err(|error| {
             if error.kind() == ErrorKind::AddrInUse {
                 DaemonError::AlreadyRunning(self.socket_path.clone())
             } else {
@@ -1865,13 +1903,32 @@ impl Daemon {
         )
     }
 
+    #[cfg(unix)]
+    fn bind(&self) -> std::io::Result<<LocalTransport as Transport>::Listener> {
+        LocalTransport::bind(&self.socket_path)
+    }
+
+    #[cfg(windows)]
+    fn bind(&self) -> std::io::Result<<LocalTransport as Transport>::Listener> {
+        let deadline = Instant::now() + RESTART_BIND_RETRY;
+        loop {
+            match LocalTransport::bind(&self.socket_path) {
+                Err(error) if self.bind_retry && Instant::now() < deadline => {
+                    log::debug!("waiting for the restarted daemon's pipe: {error}");
+                    thread::sleep(Duration::from_millis(100));
+                }
+                result => return result,
+            }
+        }
+    }
+
     fn run_foreground_listener<T: Transport, R>(
         &self,
         listener: T::Listener,
         socket_guards: (SocketGuard, DaemonIdentityGuard),
         endpoint: impl std::fmt::Display,
         ready: impl FnOnce(u64) -> R,
-    ) -> Result<(), DaemonError>
+    ) -> Result<Stopped, DaemonError>
     where
         T::Listener: Send + 'static,
     {
@@ -1916,16 +1973,18 @@ impl Daemon {
                 return Err(DaemonError::Thread(error.to_string()));
             }
         };
-        if self.load_user_config {
+        let tailnet = if self.load_user_config {
             let tailnet_shared = Arc::clone(&shared);
-            if let Err(error) = crate::tailnet::spawn(
+            crate::tailnet::spawn(
                 self.socket_path.clone(),
                 self.socket_path == zz_daemon_client::transport::platform_socket_path(),
                 move || tailnet_shared.stopping.load(Ordering::Acquire),
-            ) {
-                log::warn!("could not start the tailnet listener: {error}");
-            }
-        }
+            )
+            .inspect_err(|error| log::warn!("could not start the tailnet listener: {error}"))
+            .ok()
+        } else {
+            None
+        };
         let complete_startup = || {
             shared.log_diagnostic_snapshot("startup");
             log::info!("zz daemon listening at {endpoint}");
@@ -1995,17 +2054,45 @@ impl Daemon {
             shared.announce_shutdown();
             shared.drain_client_writers_for_shutdown(SHUTDOWN_WRITER_TIMEOUT);
         }
+        let restart = shutdown_result.is_ok() && shared.restart_requested.load(Ordering::Acquire);
+        if restart && let Some(tailnet) = tailnet {
+            shared.stopping.store(true, Ordering::Release);
+            let _ = tailnet.join();
+        }
+        #[cfg(unix)]
+        let start_lock = restart
+            .then(|| StartLock::acquire(start_lock_path(&self.socket_path)))
+            .and_then(|lock| {
+                lock.inspect_err(|error| {
+                    log::warn!("restarting without the start lock: {error}");
+                })
+                .ok()
+            });
         socket_guard.release();
         drop(socket_guard);
         drop(listener);
         drop(identity_guard);
+        #[cfg(unix)]
+        if restart {
+            drop(shared.tmux_shim.lock().take());
+        }
         shutdown_result?;
         #[cfg(feature = "agent")]
         shared.shutdown_agents();
         shared.log_diagnostic_snapshot("shutdown");
-        log::info!("zz daemon stopped");
+        log::info!(
+            "zz daemon {}",
+            if restart { "restarting" } else { "stopped" }
+        );
         log::logger().flush();
-        Ok(())
+        Ok(if restart {
+            Stopped::Restart(Restart {
+                #[cfg(unix)]
+                lock: start_lock,
+            })
+        } else {
+            Stopped::Exit
+        })
     }
 }
 
@@ -4781,6 +4868,7 @@ enum DaemonCommandDispatch {
     DebugMarker,
     Tools,
     LocalCli,
+    RestartServer,
     Buffer,
     ListClients,
     ShowMessages,
@@ -4828,6 +4916,7 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("tools", DaemonCommandDispatch::Tools),
     ("fleet", DaemonCommandDispatch::LocalCli),
     ("list-hosts", DaemonCommandDispatch::LocalCli),
+    ("restart-server", DaemonCommandDispatch::RestartServer),
     ("tailnet", DaemonCommandDispatch::Tailnet),
     ("set-buffer", DaemonCommandDispatch::Buffer),
     ("setb", DaemonCommandDispatch::Buffer),
@@ -4962,6 +5051,7 @@ struct SharedServer {
     startup_changed: Condvar,
     startup_config_causes: Mutex<Option<Vec<String>>>,
     exit_empty_armed: AtomicBool,
+    restart_requested: AtomicBool,
     server_id: u64,
     mux_config_selection: Mutex<(bool, Option<Vec<PathBuf>>)>,
     zz_mux_config_path: Mutex<Option<PathBuf>>,
@@ -5935,6 +6025,7 @@ impl Shared {
             startup_changed: Condvar::new(),
             startup_config_causes: Mutex::new(None),
             exit_empty_armed: AtomicBool::new(false),
+            restart_requested: AtomicBool::new(false),
             server_id,
             mux_config_selection: Mutex::new((load_user_config, None)),
             zz_mux_config_path: Mutex::new(None),
@@ -8746,6 +8837,15 @@ impl Shared {
                         "{canonical} reads this machine's zz/config; run it from a shell as `zz {canonical}`"
                     ))
                     .into()),
+                    DaemonCommandDispatch::RestartServer => self.restart_server(
+                        client,
+                        kind,
+                        context,
+                        &command.args,
+                        mux_source,
+                        invoking_client_terminal,
+                        queue_execution,
+                    ),
                     DaemonCommandDispatch::Buffer => self.buffer_command_for_client(
                         Some(client),
                         kind,
@@ -54820,13 +54920,50 @@ fn post_admission_callback_error(error: DaemonError) -> DaemonError {
 }
 
 #[cfg(unix)]
+#[derive(Debug)]
 struct StartLock {
     path: PathBuf,
     _file: fs::File,
 }
 
 #[cfg(unix)]
+fn start_lock_path(socket: &Path) -> PathBuf {
+    let mut path = socket.as_os_str().to_owned();
+    path.push(".lock");
+    PathBuf::from(path)
+}
+
+#[cfg(unix)]
 impl StartLock {
+    #[allow(
+        unsafe_code,
+        reason = "the restarting daemon handed this descriptor over exec and nothing else owns it"
+    )]
+    fn adopt(path: PathBuf, fd: i32) -> Option<Self> {
+        use std::os::{
+            fd::{BorrowedFd, FromRawFd as _},
+            unix::fs::MetadataExt as _,
+        };
+
+        if fd < 0 {
+            return None;
+        }
+        let held = fs::File::from(
+            unsafe { BorrowedFd::borrow_raw(fd) }
+                .try_clone_to_owned()
+                .ok()?,
+        )
+        .metadata()
+        .ok()?;
+        let current = fs::metadata(&path).ok()?;
+        if (held.dev(), held.ino()) != (current.dev(), current.ino()) {
+            return None;
+        }
+        let file = unsafe { fs::File::from_raw_fd(fd) };
+        rustix::io::fcntl_setfd(&file, rustix::io::FdFlags::CLOEXEC).ok()?;
+        Some(Self { path, _file: file })
+    }
+
     fn acquire(path: PathBuf) -> Result<Self, DaemonError> {
         use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
 
@@ -54860,13 +54997,19 @@ impl Drop for StartLock {
 }
 
 #[cfg(unix)]
-fn prepare_socket(path: &Path, ready: &mut BootstrapReady) -> Result<StartLock, DaemonError> {
+fn prepare_socket(
+    path: &Path,
+    ready: &mut BootstrapReady,
+    handed_lock: Option<i32>,
+) -> Result<StartLock, DaemonError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut lock_path = path.as_os_str().to_owned();
-    lock_path.push(".lock");
-    let lock = StartLock::acquire(PathBuf::from(lock_path))?;
+    let lock_path = start_lock_path(path);
+    let lock = match handed_lock.and_then(|fd| StartLock::adopt(lock_path.clone(), fd)) {
+        Some(lock) => lock,
+        None => StartLock::acquire(lock_path)?,
+    };
     let deadline = Instant::now() + Duration::from_secs(3);
     while path.exists() {
         match daemon_answers_at(path) {

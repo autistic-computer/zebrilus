@@ -668,6 +668,7 @@ pub(crate) fn status_cache_callbacks(request: &StatusRequest) -> Option<Vec<Stri
                 name,
                 "zz_version"
                     | "zz_revision"
+                    | "zz_exit_rule"
                     | "pane_kind"
                     | "agent_state"
                     | "agent_pending_permission"
@@ -2896,6 +2897,20 @@ impl StatusHooks for DaemonFormatHooks<'_> {
         match name {
             "zz_version" => Some(env!("CARGO_PKG_VERSION").to_owned()),
             "zz_revision" => Some(zz_protocol::REVISION.to_string()),
+            "zz_exit_rule" => Some(
+                context
+                    .engine()
+                    .map_or("", |engine| {
+                        if engine.exit_unattached_explicit() == Some(true) {
+                            "exit-unattached"
+                        } else if engine.exit_empty_explicit() == Some(true) {
+                            "exit-empty"
+                        } else {
+                            ""
+                        }
+                    })
+                    .to_owned(),
+            ),
             "config_files" => self
                 .variables
                 .and_then(|variables| variables.get(name))

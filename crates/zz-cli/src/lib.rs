@@ -33,7 +33,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use zz_daemon::Daemon;
+use zz_daemon::{Daemon, Stopped};
 use zz_daemon_client::{
     CommandClient, CommandOutcome, DaemonError, Endpoint, ExecChain, ExecChainEnd, ExecClassifier,
     InteractiveClient, classify_local_connect_error, terminate_incompatible_daemon,
@@ -97,6 +97,10 @@ pub struct StartupOptions {
 const DAEMON_BOOTSTRAP_SERVER_ID_ARGUMENT: &str = "--bootstrap-server-id";
 const DAEMON_BOOTSTRAP_READY_FD_ARGUMENT: &str = "--bootstrap-ready-fd";
 const DAEMON_BOOTSTRAP_CLIENT_CWD_ARGUMENT: &str = "--bootstrap-client-cwd";
+#[cfg(unix)]
+const DAEMON_START_LOCK_FD_ARGUMENT: &str = "--start-lock-fd";
+#[cfg(windows)]
+const DAEMON_RETRY_BIND_ARGUMENT: &str = "--retry-bind";
 const DAEMON_READY_DEADLINE: Duration = Duration::from_secs(6);
 static DAEMON_SPAWN_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 static HANDED_OVER_FROM: std::sync::OnceLock<String> = std::sync::OnceLock::new();
@@ -967,11 +971,29 @@ fn run_command_mode(
     }
 
     if command == "daemon" {
-        let bootstrap = match parse_daemon_bootstrap_arguments(&invocation.args) {
-            Ok(bootstrap) => bootstrap,
-            Err(error) => {
-                eprintln!("zz daemon: {}", error.message());
-                return Some(exit_code_for(CliFailure::Usage));
+        #[cfg(unix)]
+        let handoff = match invocation.args.as_slice() {
+            [flag, fd] if flag == DAEMON_START_LOCK_FD_ARGUMENT => fd.parse::<i32>().ok(),
+            _ => None,
+        };
+        #[cfg(windows)]
+        let handoff = matches!(
+            invocation.args.as_slice(),
+            [flag] if flag == DAEMON_RETRY_BIND_ARGUMENT
+        );
+        #[cfg(unix)]
+        let handed_off = handoff.is_some();
+        #[cfg(windows)]
+        let handed_off = handoff;
+        let bootstrap = if handed_off {
+            DaemonBootstrapArguments::default()
+        } else {
+            match parse_daemon_bootstrap_arguments(&invocation.args) {
+                Ok(bootstrap) => bootstrap,
+                Err(error) => {
+                    eprintln!("zz daemon: {}", error.message());
+                    return Some(exit_code_for(CliFailure::Usage));
+                }
             }
         };
         #[cfg(not(windows))]
@@ -988,8 +1010,19 @@ fn run_command_mode(
         if let Some(fd) = bootstrap.ready_fd {
             daemon = daemon.with_bootstrap_ready_fd(fd);
         }
-        return Some(match daemon.run_foreground() {
-            Ok(()) | Err(DaemonError::AlreadyRunning(_)) => ExitCode::SUCCESS,
+        #[cfg(unix)]
+        if let Some(fd) = handoff {
+            daemon = daemon.with_start_lock_fd(fd);
+        }
+        #[cfg(windows)]
+        if handoff {
+            daemon = daemon.with_bind_retry();
+        }
+        return Some(match daemon.serve() {
+            Ok(Stopped::Exit) | Err(DaemonError::AlreadyRunning(_)) => ExitCode::SUCCESS,
+            Ok(Stopped::Restart(restart)) => {
+                restart_daemon(socket_path, mux_config_files, &restart)
+            }
             Err(error) => {
                 eprintln!("zz daemon: {error}");
                 exit_code_for(CliFailure::Runtime)
@@ -2390,6 +2423,69 @@ fn spawn_daemon(
     #[cfg(unix)]
     ready.wait(DAEMON_READY_DEADLINE);
     Ok(server_id)
+}
+
+fn restart_daemon(
+    socket_path: &Path,
+    mux_config_files: &[PathBuf],
+    restart: &zz_daemon::Restart,
+) -> ExitCode {
+    use zz_config::owned::{self, BuildInfo};
+
+    let this = BuildInfo::current();
+    let Some(executable) = owned::installed()
+        .filter(|copy| copy.info.version > this.version)
+        .map(|copy| copy.binary)
+        .or_else(|| std::env::current_exe().ok())
+    else {
+        log::error!(target: "zz::diagnostics::process", "found no zz to restart the daemon with");
+        return exit_code_for(CliFailure::Runtime);
+    };
+    let mut command = Command::new(&executable);
+    command.arg(diagnostics::SOCKET_ARGUMENT).arg(socket_path);
+    for config in mux_config_files {
+        command.arg("-f").arg(config);
+    }
+    command.arg("daemon");
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+
+        if let Some(fd) = restart.inheritable_lock_fd() {
+            command
+                .arg(DAEMON_START_LOCK_FD_ARGUMENT)
+                .arg(fd.to_string());
+        }
+        diagnostics::configure_spawned_process(&mut command);
+        let error = command.exec();
+        log::error!(
+            target: "zz::diagnostics::process",
+            "could not restart the daemon path={} error={error}",
+            executable.display(),
+        );
+        exit_code_for(CliFailure::Runtime)
+    }
+    #[cfg(windows)]
+    {
+        let _ = restart;
+        command
+            .arg(DAEMON_RETRY_BIND_ARGUMENT)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        diagnostics::configure_spawned_process(&mut command);
+        match command.spawn_unmasked() {
+            Ok(_) => ExitCode::SUCCESS,
+            Err(error) => {
+                log::error!(
+                    target: "zz::diagnostics::process",
+                    "could not restart the daemon path={} error={error}",
+                    executable.display(),
+                );
+                exit_code_for(CliFailure::Runtime)
+            }
+        }
+    }
 }
 
 fn reap_when_exited(mut child: std::process::Child) {

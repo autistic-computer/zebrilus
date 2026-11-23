@@ -52,9 +52,10 @@ pub use agent_hooks::{AgentHookChange, agent_hook_lines, change_agent_hooks};
 pub use daemon::file_edit::read_text_file;
 pub use daemon::path_listing::path_walk_enters;
 pub use daemon::{
-    CommandStdinSink, Daemon, WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, WORKSPACE_STUB_SKILL,
-    agent_send_reads_stdin, append_stdin_payload, command_stdin_sink, exec_resume_kind,
-    load_buffer_reads_stdin, send_text_reads_stdin, workspace_context, workspace_tools,
+    CommandStdinSink, Daemon, Restart, Stopped, WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE,
+    WORKSPACE_STUB_SKILL, agent_send_reads_stdin, append_stdin_payload, command_stdin_sink,
+    exec_resume_kind, load_buffer_reads_stdin, send_text_reads_stdin, workspace_context,
+    workspace_tools,
 };
 
 #[cfg(unix)]
