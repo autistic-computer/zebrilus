@@ -5425,6 +5425,11 @@ impl MuxEngine {
     }
 
     #[must_use]
+    pub const fn agent_parents(&self) -> &BTreeMap<PaneId, PaneId> {
+        &self.agent_parents
+    }
+
+    #[must_use]
     pub fn agent_children(&self, parent: PaneId) -> Vec<PaneId> {
         self.agent_parents
             .iter()

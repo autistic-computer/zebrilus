@@ -4,7 +4,7 @@ title: zz wire protocol (v125)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-11-20T00:00:00-03:00
+timestamp: 2026-11-23T00:00:00-03:00
 ---
 
 # Overview
@@ -60,7 +60,8 @@ and `TerminalThemesResponse` answer `terminal-themes-v1`, `ProtocolMessage::Brow
 answers `browser-screenshot-v1`, `ProtocolMessage::AgentAttachFile` and `AgentFileAttached` answer `agent-files-v1`, `ProtocolMessage::FileReadRequest`, `FileReadResponse`,
 `FileWriteRequest` and `FileWriteResponse` answer `file-edit-v1`, `EventPayload::SimulatorPane`
 and `SimulatorCommand` answer `simulator-pane-v1`, `ProtocolMessage::AgentUnwatch` answers
-`agent-unwatch-v1`, and `EventPayload::AgentReplayed` answers `agent-replayed-v1`.
+`agent-unwatch-v1`, `EventPayload::AgentReplayed` answers `agent-replayed-v1`, and
+`EventPayload::AgentParents` answers `agent-parents-v1`.
 
 The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only inside an epoch:
 
@@ -74,7 +75,8 @@ The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only
   names one of these. It holds `agent-quotas-v1` (`AGENT_QUOTAS_CAPABILITY`) and
   `terminal-themes-v1` (`TERMINAL_THEMES_CAPABILITY`) and `file-edit-v1` (`FILE_EDIT_CAPABILITY`),
   which are in `CAPABILITY_NAMES` too, for the requests the answers follow. `simulator-pane-v1`
-  (`SIMULATOR_PANE_CAPABILITY`) is here only: nothing a client sends is gated by it.
+  (`SIMULATOR_PANE_CAPABILITY`) and `agent-parents-v1` (`AGENT_PARENTS_CAPABILITY`) are here only:
+  nothing a client sends is gated by them.
 - `OPT_IN_CLIENT_CAPABILITY_NAMES` is what a client can decode only when it says so: the daemon
   accepts these names like the ones above, but no hello sends them by itself. A client names one
   in the extra capabilities it hands `connect_stream_hello` (`InteractiveClient::connect_with_capabilities`)
@@ -482,6 +484,16 @@ its hello), follows every answer to an `AgentReplay`, to the asking client alone
 through `through_seq`, and zero means it carried nothing because the client was already caught up.
 It goes on the reliable queue, not the agent lane, so it can arrive before the last replay frame;
 the client waits until its cursor reaches `through_seq`.
+`AgentParents { parents: BTreeMap<PaneId, PaneId> }`, gated by `agent-parents-v1`, is the
+daemon's whole map of panes another chat opened, child to opener (`MuxEngine::agent_parents`, what
+`#{agent_parent}` reads). Every subscriber gets it whenever the map changes: a chat opens a child
+(or a child chat opens any pane), a child closes, or `select-child-chat` reopens one under a new
+pane id. A client also gets it on its own, when not empty, before the tree it gets on hello,
+attach and `TreeSync`. It always comes before the first tree that holds a new child: the daemon
+records the parent under the same `ServerState` lock that creates the pane (`record_agent_parents`
+in `execute`, and for a reopen the host travels to that point in `REOPENED_CHILD_HOST`), and it
+enqueues the map to every subscriber while that lock is still held, so a tree computed after the
+pane exists is enqueued after the map. `ClientCore::agent_parent` answers from it.
 `AgentSessions { pane, request_id, result }` is the JSON reply to `AgentSessionOp::List`, bounded by
 `MAX_AGENT_RESULT_BYTES` (1 MiB) and sent only to the client that made the request. A session
 listing uses request ID zero; the daemon carries its requester out of band.

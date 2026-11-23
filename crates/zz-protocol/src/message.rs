@@ -3527,6 +3527,9 @@ pub enum EventPayload {
         pane: PaneId,
         through_seq: u64,
     },
+    AgentParents {
+        parents: BTreeMap<PaneId, PaneId>,
+    },
 }
 
 impl EventPayload {
@@ -3606,6 +3609,7 @@ impl EventPayload {
                 Some(crate::SIMULATOR_PANE_CAPABILITY)
             }
             Self::AgentReplayed { .. } => Some(crate::AGENT_REPLAYED_CAPABILITY),
+            Self::AgentParents { .. } => Some(crate::AGENT_PARENTS_CAPABILITY),
         }
     }
 

@@ -784,6 +784,9 @@ impl Shared {
         force: bool,
     ) {
         let _order = self.snapshot_order.lock();
+        if force {
+            send_agent_parents(&self.inner.lock(), outbound);
+        }
         let frames = self
             .compact_tree_messages(client, force)
             .into_iter()

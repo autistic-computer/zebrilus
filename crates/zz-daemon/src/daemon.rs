@@ -7129,6 +7129,7 @@ impl Shared {
         let sent = (snapshot.content_digest(), snapshot.generation);
         {
             let _order = self.snapshot_order.lock();
+            send_agent_parents(&self.inner.lock(), outbound);
             if !outbound.enqueue_attached(&ProtocolMessage::Attached {
                 session,
                 snapshot,
@@ -9641,6 +9642,8 @@ impl Shared {
         let mut agent_briefs: Vec<(PaneId, String)> = Vec::new();
         #[cfg(feature = "agent")]
         let mut agent_panes_closed = Vec::new();
+        #[cfg(feature = "agent")]
+        let agent_children;
         let mut relocated_terminal_views = Vec::new();
         let mut retired_command_outputs = Vec::new();
         let mut deferred_terminal_commands = Vec::new();
@@ -11908,6 +11911,16 @@ impl Shared {
                     }
                 }
             }
+            #[cfg(feature = "agent")]
+            {
+                agent_children = record_agent_parents(
+                    &mut inner,
+                    client,
+                    context,
+                    command_name,
+                    &execution.effects,
+                );
+            }
             if let Some((pane, format, active_session, format_client)) = pane_format_output {
                 if let Some(terminal) = inner.terminals.get(&pane).cloned()
                     && !split_caller_stream
@@ -12334,6 +12347,9 @@ impl Shared {
                 self.open_agent_pane(pane, replaced);
                 self.request_pane_location(pane);
             }
+            for pane in agent_children {
+                self.approve_child_tools(pane);
+            }
             if matches!(command_name, "new-pane" | "split-window" | "new-window") {
                 let created = execution.effects.iter().find_map(|effect| match effect {
                     MuxEffect::PaneCreated {
@@ -12345,7 +12361,6 @@ impl Shared {
                 });
                 self.open_created_chat(client, context, command_name, created, agent_briefs);
             }
-            self.adopt_child_chat_panes(client, context, &execution.effects);
             self.close_orphaned_chats(&removed_panes);
         }
         #[cfg(not(feature = "agent"))]
@@ -29041,6 +29056,7 @@ impl Shared {
             } = &mut *inner;
             window_latest_clients.retain(|window, _| engine.state.windows.contains_key(window));
             release_chooser_zooms(&mut inner);
+            publish_agent_parents(&mut inner);
             let simulators = changed_simulator_panes(&mut inner);
             let generation = inner.engine.state.generation();
             let tracked = owns_generation || inner.last_published_mux_generation == generation;
@@ -33977,9 +33993,6 @@ impl Shared {
             return;
         };
         let caller = self.chat_caller(client, context, Some(pane));
-        if let Some(caller) = caller {
-            self.set_agent_parent(pane, caller);
-        }
         let mut queued = false;
         if let Some(runtime) = self.agent_runtime() {
             for (pane, text) in briefs {
@@ -34238,57 +34251,26 @@ impl Shared {
             }
         }
         args.push(record.provider.command_name().to_owned());
+        REOPENED_CHILD_HOST.set(Some(host));
         let created = self.execute(
             ClientId(u64::MAX),
             ClientKind::Command,
             &mut ExecutionContext::default(),
             &CommandInvocation::new("new-pane", args),
-        )?;
-        let pane = created
+        );
+        REOPENED_CHILD_HOST.set(None);
+        created?
             .output
             .to_string()
             .trim()
             .parse::<PaneId>()
-            .map_err(|_| ServerError::Internal(format!("could not reopen {child}")))?;
-        self.set_agent_parent(pane, host);
-        Ok(pane)
+            .map_err(|_| ServerError::Internal(format!("could not reopen {child}")).into())
     }
 
-    fn set_agent_parent(&self, pane: PaneId, parent: PaneId) {
-        let tier = {
-            let mut inner = self.inner.lock();
-            inner.engine.set_agent_parent(pane, parent);
-            child_auto_approve(&inner.engine, pane)
-        };
+    fn approve_child_tools(&self, pane: PaneId) {
+        let tier = child_auto_approve(&self.inner.lock().engine, pane);
         if let (Some(tier), Some(runtime)) = (tier, self.open_agent_runtime()) {
             runtime.set_auto_approve(pane, tier);
-        }
-    }
-
-    fn adopt_child_chat_panes(
-        &self,
-        client: ClientId,
-        context: &ExecutionContext,
-        effects: &[MuxEffect],
-    ) {
-        let created = effects
-            .iter()
-            .filter_map(|effect| match effect {
-                MuxEffect::PaneCreated { pane, .. } => Some(*pane),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        if created.is_empty() {
-            return;
-        }
-        let Some(caller) = self.chat_caller(client, context, None) else {
-            return;
-        };
-        if self.inner.lock().engine.agent_parent(caller).is_none() {
-            return;
-        }
-        for pane in created {
-            self.set_agent_parent(pane, caller);
         }
     }
 
@@ -36473,6 +36455,7 @@ struct ServerState {
     cold_bootstrap: ColdBootstrapLease,
     last_published_mux_generation: u64,
     published_simulators: BTreeMap<PaneId, SimulatorDescriptor>,
+    published_agent_parents: BTreeMap<PaneId, PaneId>,
     appearance: Arc<TerminalAppearance>,
     published_style_appearance: Option<Arc<TerminalAppearance>>,
     appearance_provenance: AppearanceProvenance,
@@ -44956,6 +44939,79 @@ fn simulator_panes(inner: &ServerState) -> BTreeMap<PaneId, SimulatorDescriptor>
             _ => None,
         })
         .collect()
+}
+
+#[cfg(feature = "agent")]
+thread_local! {
+    static REOPENED_CHILD_HOST: Cell<Option<PaneId>> = const { Cell::new(None) };
+}
+
+#[cfg(feature = "agent")]
+fn record_agent_parents(
+    inner: &mut ServerState,
+    client: ClientId,
+    context: &ExecutionContext,
+    command_name: &str,
+    effects: &[MuxEffect],
+) -> Vec<PaneId> {
+    let caller = inner
+        .client(context.replay_client().unwrap_or(client))
+        .and_then(|client| client.origin)
+        .filter(|origin| is_agent_chat(inner, *origin));
+    let opens = matches!(command_name, "new-pane" | "split-window" | "new-window");
+    let mut first_chat = true;
+    let mut children = Vec::new();
+    for effect in effects {
+        let MuxEffect::PaneCreated { pane, kind, .. } = effect else {
+            continue;
+        };
+        let opened = matches!(kind, PaneKindSnapshot::Agent(_)) && std::mem::take(&mut first_chat);
+        let reopened = opened.then(|| REOPENED_CHILD_HOST.take()).flatten();
+        let parent = reopened.or_else(|| {
+            caller.filter(|caller| {
+                caller != pane
+                    && ((opened && opens) || inner.engine.agent_parent(*caller).is_some())
+            })
+        });
+        if let Some(parent) = parent {
+            inner.engine.set_agent_parent(*pane, parent);
+            children.push(*pane);
+        }
+    }
+    publish_agent_parents(inner);
+    children
+}
+
+fn publish_agent_parents(inner: &mut ServerState) {
+    if *inner.engine.agent_parents() == inner.published_agent_parents {
+        return;
+    }
+    inner.published_agent_parents = inner.engine.agent_parents().clone();
+    let message = Shared::event(EventPayload::AgentParents {
+        parents: inner.published_agent_parents.clone(),
+    });
+    let Ok(encoded) = zz_protocol::encode_protocol_message(&message).map(Arc::<[u8]>::from) else {
+        return;
+    };
+    for subscriber in inner
+        .clients
+        .values()
+        .filter_map(|client| client.subscriber.as_ref())
+    {
+        let _ = subscriber.enqueue_reliable_frame(&message, Arc::clone(&encoded).into(), true);
+    }
+}
+
+fn send_agent_parents(inner: &ServerState, outbound: &OutboundMailbox) {
+    let parents = inner.engine.agent_parents();
+    if !parents.is_empty() {
+        Shared::send_event(
+            outbound,
+            EventPayload::AgentParents {
+                parents: parents.clone(),
+            },
+        );
+    }
 }
 
 fn changed_simulator_panes(inner: &mut ServerState) -> Vec<(PaneId, SimulatorDescriptor)> {
@@ -125625,6 +125681,108 @@ bind - split-window -v -c "#{pane_current_path}"
                 received(&workspace, host)[1],
                 "[zz] %3 (codex) asks: execute run it\nzz agent-respond -t %3 --allow\nzz agent-respond -t %3 --deny"
             );
+        }
+
+        #[test]
+        fn a_client_learns_a_child_chat_before_any_tree_that_holds_it() {
+            let workspace = workspace(Behavior::Chunk);
+            let host = workspace.agent;
+            let capable = OutboundMailbox::new();
+            capable.accept_client_capabilities(&[zz_protocol::AGENT_PARENTS_CAPABILITY.to_owned()]);
+            let (watcher, _) = workspace.shared.register_subscribed(
+                ClientKind::Interactive,
+                None,
+                None,
+                Arc::clone(&capable),
+            );
+            workspace
+                .shared
+                .attach(watcher, workspace.session)
+                .expect("attach");
+            take_reliable_messages(&capable);
+            let mut unaware = take_reliable_messages(&workspace.mailbox);
+            let parents = |messages: &[ProtocolMessage]| {
+                messages
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(at, message)| match message {
+                        ProtocolMessage::Event(Event {
+                            payload: EventPayload::AgentParents { parents },
+                            ..
+                        }) => Some((at, parents.clone())),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let first_tree_with = |messages: &[ProtocolMessage], pane: PaneId| {
+                messages
+                    .iter()
+                    .position(|message| {
+                        matches!(
+                            message,
+                            ProtocolMessage::Event(Event {
+                                payload: EventPayload::Snapshot(snapshot),
+                                ..
+                            }) if snapshot
+                                .sessions
+                                .iter()
+                                .flat_map(|session| &session.windows)
+                                .any(|window| window.panes.contains_key(&pane))
+                        )
+                    })
+                    .expect("a tree with the pane")
+            };
+
+            run_as(
+                &workspace,
+                ClientId(99),
+                Some(host),
+                "new-pane",
+                &["-d", "--kind", "agent", "claude", "reply with ok"],
+            )
+            .expect("new-pane from a chat");
+            let opened = take_reliable_messages(&capable);
+            unaware.extend(take_reliable_messages(&workspace.mailbox));
+            let tree = first_tree_with(&opened, PaneId(2));
+            let (at, first) = parents(&opened).into_iter().next().expect("the parents");
+            assert_eq!(first, BTreeMap::from([(PaneId(2), host)]));
+            assert!(at < tree, "parents at {at}, tree at {tree}");
+
+            wait_until("the child's session in its record", || {
+                workspace
+                    .shared
+                    .child_record(host, PaneId(2))
+                    .is_some_and(|record| record.session.is_some())
+            });
+            take_reliable_messages(&capable);
+            run_as(&workspace, ClientId(97), None, "kill-pane", &["-t", "%2"]).expect("kill-pane");
+            let closed = take_reliable_messages(&capable);
+            unaware.extend(take_reliable_messages(&workspace.mailbox));
+            assert_eq!(
+                parents(&closed)
+                    .into_iter()
+                    .map(|(_, parents)| parents)
+                    .collect::<Vec<_>>(),
+                [BTreeMap::new()]
+            );
+
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(97),
+                    None,
+                    "select-child-chat",
+                    &["-t", "%1", "%2"],
+                ),
+                Ok("%3".to_owned())
+            );
+            let reopened = take_reliable_messages(&capable);
+            unaware.extend(take_reliable_messages(&workspace.mailbox));
+            let tree = first_tree_with(&reopened, PaneId(3));
+            let (at, first) = parents(&reopened).into_iter().next().expect("the parents");
+            assert_eq!(first, BTreeMap::from([(PaneId(3), host)]));
+            assert!(at < tree, "parents at {at}, tree at {tree}");
+            assert_eq!(parents(&unaware), []);
         }
 
         #[test]
