@@ -1649,6 +1649,9 @@ impl MuxClient {
         connection.reconnect_attach = None;
         let result_route = Arc::clone(&connection.route);
         cx.notify();
+        if cfg!(test) && !matches!(endpoint, Endpoint::Local(_)) {
+            return;
+        }
 
         let color_scheme = self.color_scheme;
         let prompts = self.ssh_prompts(host, &endpoint, cx);

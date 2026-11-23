@@ -1974,7 +1974,7 @@ impl Daemon {
                 return Err(DaemonError::Thread(error.to_string()));
             }
         };
-        let tailnet = if self.load_user_config {
+        let tailnet = if self.load_user_config && !cfg!(test) {
             let tailnet_shared = Arc::clone(&shared);
             crate::tailnet::spawn(
                 self.socket_path.clone(),

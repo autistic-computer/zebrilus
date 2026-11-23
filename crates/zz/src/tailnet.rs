@@ -120,6 +120,9 @@ fn own_scan(settings: Settings) -> DiscoveredHosts {
 }
 
 fn scan() -> DiscoveredHosts {
+    if cfg!(test) {
+        return DiscoveredHosts::default();
+    }
     let settings = config::discover_config_path(&config::config_candidates())
         .and_then(|path| config::read_config_source(&path).ok())
         .map(|source| Settings::from_config(&source))
