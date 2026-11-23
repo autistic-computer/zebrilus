@@ -1,0 +1,1073 @@
+{
+  "date": "2026-11-23",
+  "warmup": [
+    "cef",
+    "ladybird"
+  ],
+  "order_within_pair": {
+    "odd": [
+      "ladybird",
+      "cef"
+    ],
+    "even": [
+      "cef",
+      "ladybird"
+    ]
+  },
+  "included_pairs": [
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "inclusion_rule": "Both desktops at or below 1 MiB SwapPss at all three memory checkpoints. Retain both runs of excluded pairs here.",
+  "packages": {
+    "cef_runtime_bytes": 340077052,
+    "ladybird_runtime_bytes": 291726544,
+    "cef_desktop_bytes": 108554552,
+    "ladybird_desktop_bytes": 107752120,
+    "common_cli_bytes": 42490040,
+    "cef_engine_tar_zstd3_bytes": 140394287,
+    "ladybird_engine_tar_zstd3_bytes": 112476623
+  },
+  "pairs": {
+    "1": {
+      "cef": {
+        "terminal": {
+          "pss_mib": 206.6,
+          "swap_pss_mib": 17.42,
+          "cpu_s": 1.02,
+          "processes": [
+            "zz"
+          ]
+        },
+        "host_load_1m": 2.85498046875,
+        "first_page_ms": 1321,
+        "page": [
+          786,
+          608,
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+          null
+        ],
+        "one_pane": {
+          "pss_mib": 564.21,
+          "swap_pss_mib": 52.43,
+          "cpu_s": 2.54,
+          "processes": [
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz"
+          ]
+        },
+        "libcef_mapped": true,
+        "second_page_ms": 99,
+        "split": [
+          139,
+          608
+        ],
+        "two_panes": {
+          "pss_mib": 594.97,
+          "swap_pss_mib": 53.04,
+          "cpu_s": 3.18,
+          "processes": [
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz"
+          ]
+        },
+        "animation_viewport": [
+          384,
+          608
+        ],
+        "animation_fps": 60.15,
+        "animation_p95_ms": 16.7,
+        "animation_cpu_s": 1.27,
+        "js_ms": 15.899999976158142,
+        "dom_layout_ms": 51.20000001788139,
+        "scroll_viewport": [
+          786,
+          608
+        ],
+        "scroll_fps": 60.18,
+        "scroll_p95_ms": 16.7,
+        "scroll_cpu_s": 1.31,
+        "host_swap_pages": {
+          "pswpin": 125794,
+          "pswpout": 416589
+        }
+      },
+      "ladybird": {
+        "terminal": {
+          "pss_mib": 233.02,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 0.89,
+          "processes": [
+            "zz"
+          ]
+        },
+        "host_load_1m": 3.19384765625,
+        "first_page_ms": 129,
+        "page": [
+          786,
+          608,
+          "Mozilla/5.0 (X11; Linux x86_64) Ladybird/2026.47.7 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+          null
+        ],
+        "one_pane": {
+          "pss_mib": 416.46,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.07,
+          "processes": [
+            "zz",
+            "Hub",
+            "RequestServer",
+            "Compositor",
+            "WebContent",
+            "WebContent",
+            "RequestServer",
+            "ImageDecoder"
+          ]
+        },
+        "libcef_mapped": false,
+        "capture_px": [
+          786,
+          608
+        ],
+        "second_page_ms": 83,
+        "split": [
+          213,
+          608
+        ],
+        "two_panes": {
+          "pss_mib": 435.2,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.42,
+          "processes": [
+            "zz",
+            "Hub",
+            "RequestServer",
+            "Compositor",
+            "WebContent",
+            "RequestServer",
+            "ImageDecoder",
+            "WebContent"
+          ]
+        },
+        "animation_viewport": [
+          384,
+          608
+        ],
+        "animation_fps": 59.87,
+        "animation_p95_ms": 16.7,
+        "animation_cpu_s": 0.9,
+        "js_ms": 4.5999999940395355,
+        "dom_layout_ms": 67.90000000596046,
+        "scroll_viewport": [
+          786,
+          608
+        ],
+        "scroll_fps": 60.13,
+        "scroll_p95_ms": 16.7,
+        "scroll_cpu_s": 1.69,
+        "host_swap_pages": {
+          "pswpin": 13819,
+          "pswpout": 0
+        }
+      }
+    },
+    "2": {
+      "cef": {
+        "terminal": {
+          "pss_mib": 229.91,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.25,
+          "processes": [
+            "zz"
+          ]
+        },
+        "host_load_1m": 3.14794921875,
+        "first_page_ms": 613,
+        "page": [
+          786,
+          608,
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+          null
+        ],
+        "one_pane": {
+          "pss_mib": 662.11,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 2.41,
+          "processes": [
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz"
+          ]
+        },
+        "libcef_mapped": true,
+        "second_page_ms": 99,
+        "split": [
+          155,
+          608
+        ],
+        "two_panes": {
+          "pss_mib": 699.8,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 2.99,
+          "processes": [
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz"
+          ]
+        },
+        "animation_viewport": [
+          384,
+          608
+        ],
+        "animation_fps": 60.14,
+        "animation_p95_ms": 16.8,
+        "animation_cpu_s": 1.29,
+        "js_ms": 11.400000005960464,
+        "dom_layout_ms": 46.69999998807907,
+        "scroll_viewport": [
+          786,
+          608
+        ],
+        "scroll_fps": 60.11,
+        "scroll_p95_ms": 16.7,
+        "scroll_cpu_s": 1.25,
+        "host_swap_pages": {
+          "pswpin": 57194,
+          "pswpout": 91512
+        }
+      },
+      "ladybird": {
+        "terminal": {
+          "pss_mib": 230.43,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.05,
+          "processes": [
+            "zz"
+          ]
+        },
+        "host_load_1m": 3.900390625,
+        "first_page_ms": 249,
+        "page": [
+          786,
+          608,
+          "Mozilla/5.0 (X11; Linux x86_64) Ladybird/2026.47.7 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+          null
+        ],
+        "one_pane": {
+          "pss_mib": 413.37,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.3,
+          "processes": [
+            "zz",
+            "Hub",
+            "RequestServer",
+            "Compositor",
+            "WebContent",
+            "WebContent",
+            "RequestServer",
+            "ImageDecoder"
+          ]
+        },
+        "libcef_mapped": false,
+        "capture_px": [
+          786,
+          608
+        ],
+        "second_page_ms": 76,
+        "split": [
+          212,
+          608
+        ],
+        "two_panes": {
+          "pss_mib": 433.15,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.71,
+          "processes": [
+            "zz",
+            "Hub",
+            "RequestServer",
+            "Compositor",
+            "WebContent",
+            "RequestServer",
+            "ImageDecoder",
+            "WebContent"
+          ]
+        },
+        "animation_viewport": [
+          384,
+          608
+        ],
+        "animation_fps": 59.89,
+        "animation_p95_ms": 16.7,
+        "animation_cpu_s": 1.06,
+        "js_ms": 4.5999999940395355,
+        "dom_layout_ms": 59.5,
+        "scroll_viewport": [
+          786,
+          608
+        ],
+        "scroll_fps": 60.05,
+        "scroll_p95_ms": 16.7,
+        "scroll_cpu_s": 1.88,
+        "host_swap_pages": {
+          "pswpin": 88794,
+          "pswpout": 3
+        }
+      }
+    },
+    "3": {
+      "cef": {
+        "terminal": {
+          "pss_mib": 232.46,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 0.99,
+          "processes": [
+            "zz"
+          ]
+        },
+        "host_load_1m": 3.29541015625,
+        "first_page_ms": 442,
+        "page": [
+          786,
+          608,
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+          null
+        ],
+        "one_pane": {
+          "pss_mib": 661.32,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 2.11,
+          "processes": [
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz"
+          ]
+        },
+        "libcef_mapped": true,
+        "second_page_ms": 90,
+        "split": [
+          135,
+          608
+        ],
+        "two_panes": {
+          "pss_mib": 704.35,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 2.71,
+          "processes": [
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz"
+          ]
+        },
+        "animation_viewport": [
+          384,
+          608
+        ],
+        "animation_fps": 60.14,
+        "animation_p95_ms": 16.8,
+        "animation_cpu_s": 1.15,
+        "js_ms": 11.400000005960464,
+        "dom_layout_ms": 46.29999998211861,
+        "scroll_viewport": [
+          786,
+          608
+        ],
+        "scroll_fps": 59.94,
+        "scroll_p95_ms": 16.7,
+        "scroll_cpu_s": 1.24,
+        "host_swap_pages": {
+          "pswpin": 2245,
+          "pswpout": 0
+        }
+      },
+      "ladybird": {
+        "terminal": {
+          "pss_mib": 232.69,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 0.97,
+          "processes": [
+            "zz"
+          ]
+        },
+        "host_load_1m": 3.5703125,
+        "first_page_ms": 129,
+        "page": [
+          786,
+          608,
+          "Mozilla/5.0 (X11; Linux x86_64) Ladybird/2026.47.7 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+          null
+        ],
+        "one_pane": {
+          "pss_mib": 415.8,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.15,
+          "processes": [
+            "zz",
+            "Hub",
+            "RequestServer",
+            "Compositor",
+            "WebContent",
+            "WebContent",
+            "RequestServer",
+            "ImageDecoder"
+          ]
+        },
+        "libcef_mapped": false,
+        "capture_px": [
+          786,
+          608
+        ],
+        "second_page_ms": 78,
+        "split": [
+          213,
+          608
+        ],
+        "two_panes": {
+          "pss_mib": 434.6,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.55,
+          "processes": [
+            "zz",
+            "Hub",
+            "RequestServer",
+            "Compositor",
+            "WebContent",
+            "RequestServer",
+            "ImageDecoder",
+            "WebContent"
+          ]
+        },
+        "animation_viewport": [
+          384,
+          608
+        ],
+        "animation_fps": 59.87,
+        "animation_p95_ms": 16.7,
+        "animation_cpu_s": 1.03,
+        "js_ms": 4.300000011920929,
+        "dom_layout_ms": 64.59999999403954,
+        "scroll_viewport": [
+          786,
+          608
+        ],
+        "scroll_fps": 60.09,
+        "scroll_p95_ms": 16.7,
+        "scroll_cpu_s": 1.83,
+        "host_swap_pages": {
+          "pswpin": 48338,
+          "pswpout": 320
+        }
+      }
+    },
+    "4": {
+      "cef": {
+        "terminal": {
+          "pss_mib": 231.75,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 0.99,
+          "processes": [
+            "zz"
+          ]
+        },
+        "host_load_1m": 3.05712890625,
+        "first_page_ms": 377,
+        "page": [
+          786,
+          608,
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+          null
+        ],
+        "one_pane": {
+          "pss_mib": 663.23,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 2.11,
+          "processes": [
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz"
+          ]
+        },
+        "libcef_mapped": true,
+        "second_page_ms": 105,
+        "split": [
+          157,
+          608
+        ],
+        "two_panes": {
+          "pss_mib": 702.76,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 2.68,
+          "processes": [
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz"
+          ]
+        },
+        "animation_viewport": [
+          384,
+          608
+        ],
+        "animation_fps": 60.15,
+        "animation_p95_ms": 16.8,
+        "animation_cpu_s": 1.23,
+        "js_ms": 8.700000017881393,
+        "dom_layout_ms": 53.69999998807907,
+        "scroll_viewport": [
+          786,
+          608
+        ],
+        "scroll_fps": 60.02,
+        "scroll_p95_ms": 16.7,
+        "scroll_cpu_s": 1.27,
+        "host_swap_pages": {
+          "pswpin": 7333,
+          "pswpout": 0
+        }
+      },
+      "ladybird": {
+        "terminal": {
+          "pss_mib": 225.39,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 0.93,
+          "processes": [
+            "zz"
+          ]
+        },
+        "host_load_1m": 3.07080078125,
+        "first_page_ms": 184,
+        "page": [
+          786,
+          608,
+          "Mozilla/5.0 (X11; Linux x86_64) Ladybird/2026.47.7 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+          null
+        ],
+        "one_pane": {
+          "pss_mib": 408.91,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.14,
+          "processes": [
+            "zz",
+            "Hub",
+            "RequestServer",
+            "Compositor",
+            "WebContent",
+            "WebContent",
+            "RequestServer",
+            "ImageDecoder"
+          ]
+        },
+        "libcef_mapped": false,
+        "capture_px": [
+          786,
+          608
+        ],
+        "second_page_ms": 88,
+        "split": [
+          214,
+          608
+        ],
+        "two_panes": {
+          "pss_mib": 426.74,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.51,
+          "processes": [
+            "zz",
+            "Hub",
+            "RequestServer",
+            "Compositor",
+            "WebContent",
+            "RequestServer",
+            "ImageDecoder",
+            "WebContent"
+          ]
+        },
+        "animation_viewport": [
+          384,
+          608
+        ],
+        "animation_fps": 59.91,
+        "animation_p95_ms": 16.7,
+        "animation_cpu_s": 1.01,
+        "js_ms": 4.800000011920929,
+        "dom_layout_ms": 64.19999998807907,
+        "scroll_viewport": [
+          786,
+          608
+        ],
+        "scroll_fps": 60.13,
+        "scroll_p95_ms": 16.7,
+        "scroll_cpu_s": 1.81,
+        "host_swap_pages": {
+          "pswpin": 10021,
+          "pswpout": 7
+        }
+      }
+    },
+    "5": {
+      "cef": {
+        "terminal": {
+          "pss_mib": 224.74,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.08,
+          "processes": [
+            "zz"
+          ]
+        },
+        "host_load_1m": 2.888671875,
+        "first_page_ms": 408,
+        "page": [
+          786,
+          608,
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+          null
+        ],
+        "one_pane": {
+          "pss_mib": 654.47,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 2.26,
+          "processes": [
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz"
+          ]
+        },
+        "libcef_mapped": true,
+        "second_page_ms": 106,
+        "split": [
+          130,
+          608
+        ],
+        "two_panes": {
+          "pss_mib": 691.85,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 2.8,
+          "processes": [
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz"
+          ]
+        },
+        "animation_viewport": [
+          384,
+          608
+        ],
+        "animation_fps": 60.0,
+        "animation_p95_ms": 16.7,
+        "animation_cpu_s": 1.13,
+        "js_ms": 4.5999999940395355,
+        "dom_layout_ms": 45.30000001192093,
+        "scroll_viewport": [
+          786,
+          608
+        ],
+        "scroll_fps": 59.95,
+        "scroll_p95_ms": 16.8,
+        "scroll_cpu_s": 1.19,
+        "host_swap_pages": {
+          "pswpin": 824,
+          "pswpout": 0
+        }
+      },
+      "ladybird": {
+        "terminal": {
+          "pss_mib": 226.22,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 0.98,
+          "processes": [
+            "zz"
+          ]
+        },
+        "host_load_1m": 3.0556640625,
+        "first_page_ms": 133,
+        "page": [
+          786,
+          608,
+          "Mozilla/5.0 (X11; Linux x86_64) Ladybird/2026.47.7 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+          null
+        ],
+        "one_pane": {
+          "pss_mib": 408.93,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.16,
+          "processes": [
+            "zz",
+            "Hub",
+            "RequestServer",
+            "Compositor",
+            "WebContent",
+            "WebContent",
+            "RequestServer",
+            "ImageDecoder"
+          ]
+        },
+        "libcef_mapped": false,
+        "capture_px": [
+          786,
+          608
+        ],
+        "second_page_ms": 80,
+        "split": [
+          214,
+          608
+        ],
+        "two_panes": {
+          "pss_mib": 428.04,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.59,
+          "processes": [
+            "zz",
+            "Hub",
+            "RequestServer",
+            "Compositor",
+            "WebContent",
+            "RequestServer",
+            "ImageDecoder",
+            "WebContent"
+          ]
+        },
+        "animation_viewport": [
+          384,
+          608
+        ],
+        "animation_fps": 59.91,
+        "animation_p95_ms": 16.7,
+        "animation_cpu_s": 1.05,
+        "js_ms": 4.700000017881393,
+        "dom_layout_ms": 68.80000001192093,
+        "scroll_viewport": [
+          786,
+          608
+        ],
+        "scroll_fps": 60.03,
+        "scroll_p95_ms": 16.7,
+        "scroll_cpu_s": 1.86,
+        "host_swap_pages": {
+          "pswpin": 1420,
+          "pswpout": 5
+        }
+      }
+    },
+    "6": {
+      "cef": {
+        "terminal": {
+          "pss_mib": 225.93,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.0,
+          "processes": [
+            "zz"
+          ]
+        },
+        "host_load_1m": 2.751953125,
+        "first_page_ms": 368,
+        "page": [
+          786,
+          608,
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+          null
+        ],
+        "one_pane": {
+          "pss_mib": 658.37,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 2.06,
+          "processes": [
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz"
+          ]
+        },
+        "libcef_mapped": true,
+        "second_page_ms": 91,
+        "split": [
+          141,
+          608
+        ],
+        "two_panes": {
+          "pss_mib": 696.8,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 2.59,
+          "processes": [
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz",
+            "zz"
+          ]
+        },
+        "animation_viewport": [
+          384,
+          608
+        ],
+        "animation_fps": 59.91,
+        "animation_p95_ms": 16.7,
+        "animation_cpu_s": 1.18,
+        "js_ms": 8.600000023841858,
+        "dom_layout_ms": 47.80000001192093,
+        "scroll_viewport": [
+          786,
+          608
+        ],
+        "scroll_fps": 59.96,
+        "scroll_p95_ms": 16.8,
+        "scroll_cpu_s": 1.12,
+        "host_swap_pages": {
+          "pswpin": 1867,
+          "pswpout": 39
+        }
+      },
+      "ladybird": {
+        "terminal": {
+          "pss_mib": 223.84,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.0,
+          "processes": [
+            "zz"
+          ]
+        },
+        "host_load_1m": 2.66259765625,
+        "first_page_ms": 188,
+        "page": [
+          786,
+          608,
+          "Mozilla/5.0 (X11; Linux x86_64) Ladybird/2026.47.7 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+          null
+        ],
+        "one_pane": {
+          "pss_mib": 404.12,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.2,
+          "processes": [
+            "zz",
+            "Hub",
+            "RequestServer",
+            "Compositor",
+            "WebContent",
+            "WebContent",
+            "RequestServer",
+            "ImageDecoder"
+          ]
+        },
+        "libcef_mapped": false,
+        "capture_px": [
+          786,
+          608
+        ],
+        "second_page_ms": 73,
+        "split": [
+          212,
+          608
+        ],
+        "two_panes": {
+          "pss_mib": 420.62,
+          "swap_pss_mib": 0.0,
+          "cpu_s": 1.63,
+          "processes": [
+            "zz",
+            "Hub",
+            "RequestServer",
+            "Compositor",
+            "WebContent",
+            "RequestServer",
+            "ImageDecoder",
+            "WebContent"
+          ]
+        },
+        "animation_viewport": [
+          384,
+          608
+        ],
+        "animation_fps": 59.75,
+        "animation_p95_ms": 16.7,
+        "animation_cpu_s": 0.99,
+        "js_ms": 14.799999982118607,
+        "dom_layout_ms": 73.90000000596046,
+        "scroll_viewport": [
+          786,
+          608
+        ],
+        "scroll_fps": 60.0,
+        "scroll_p95_ms": 16.7,
+        "scroll_cpu_s": 1.91,
+        "host_swap_pages": {
+          "pswpin": 548,
+          "pswpout": 10673
+        }
+      }
+    }
+  },
+  "cef_readback_control": {
+    "terminal": {
+      "pss_mib": 229.03,
+      "swap_pss_mib": 0.0,
+      "cpu_s": 0.99,
+      "processes": [
+        "zz"
+      ]
+    },
+    "host_load_1m": 2.9384765625,
+    "first_page_ms": 332,
+    "page": [
+      786,
+      608,
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      null
+    ],
+    "one_pane": {
+      "pss_mib": 667.53,
+      "swap_pss_mib": 0.0,
+      "cpu_s": 2.1,
+      "processes": [
+        "zz",
+        "zz",
+        "zz",
+        "zz",
+        "zz",
+        "zz",
+        "zz",
+        "zz",
+        "zz",
+        "zz"
+      ]
+    },
+    "libcef_mapped": true,
+    "capture_px": [
+      786,
+      608
+    ],
+    "second_page_ms": 95,
+    "split": [
+      151,
+      608
+    ],
+    "two_panes": {
+      "pss_mib": 721.39,
+      "swap_pss_mib": 0.0,
+      "cpu_s": 2.61,
+      "processes": [
+        "zz",
+        "zz",
+        "zz",
+        "zz",
+        "zz",
+        "zz",
+        "zz",
+        "zz",
+        "zz",
+        "zz",
+        "zz"
+      ]
+    },
+    "animation_viewport": [
+      384,
+      608
+    ],
+    "animation_fps": 59.96,
+    "animation_p95_ms": 16.7,
+    "animation_cpu_s": 1.27,
+    "js_ms": 7.4000000059604645,
+    "dom_layout_ms": 47.20000001788139,
+    "scroll_viewport": [
+      786,
+      608
+    ],
+    "scroll_fps": 60.0,
+    "scroll_p95_ms": 16.7,
+    "scroll_cpu_s": 1.68,
+    "host_swap_pages": {
+      "pswpin": 4275,
+      "pswpout": 4805
+    }
+  }
+}

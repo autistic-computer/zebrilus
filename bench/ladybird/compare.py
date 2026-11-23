@@ -24,6 +24,7 @@ input,button{font:inherit}canvas{display:block;margin-top:24px;max-width:100%}
 const note=(name,value)=>fetch('/event/'+name,{method:'POST',body:JSON.stringify(value)});
 const stored=localStorage.getItem('pane-proof');
 localStorage.setItem('pane-proof','seen');
+if (location.pathname === '/separate') note('profile', stored);
 const box=document.querySelector('input'), ctx=document.querySelector('canvas').getContext('2d');
 box.oninput=()=>{document.title=box.value;note('input',box.value)};
 next.onclick=()=>{document.title='Clicked';note('click',true)};
@@ -331,10 +332,10 @@ def run(binary, cli, hub, directory, readback):
                 "browser",
                 "--profile",
                 "separate",
-                base + "/static",
+                base + "/separate",
             )
-            separate, _ = event(server, "ready")
-            assert separate[3] is None, "Named profiles shared local storage"
+            stored, _ = event(server, "profile")
+            assert stored is None, "Named profiles shared local storage"
             result["host_swap_pages"] = {
                 key: end - start_swap[key] for key, end in swap_counters().items()
             }
