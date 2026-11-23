@@ -53503,7 +53503,7 @@ Flip a terminal running Claude Code, Codex, Antigravity or Grok into a chat on t
 
 ### `zz agent-account [-t %N] [--now | --when-idle] ID|default`
 
-Switch the machine's login of the chat's CLI (Claude Code or Codex) to another account and resume every chat of that CLI on it. zz keeps the CLI's one login in the CLI's own place and holds the other accounts' logins aside, so the CLI opened outside zz switches too. IDs are the slots `zz agent-accounts` lists (`a1`, `a2`, ...); `default`, or the account already in use, changes nothing. While any chat of that CLI runs something, a Codex turn included, it fails with an error that starts with `busy:`; `--now` switches anyway and stops it, and `--when-idle` switches once none runs, unless another `agent-account` for that CLI comes first.
+Switch the machine's login of the chat's CLI (Claude Code or Codex) to another account and resume every chat of that CLI on it. The CLI keeps its one login in its own place and the other accounts' logins are held aside, so the CLI switches too when opened outside zz. IDs are the slots `zz agent-accounts` lists (`a1`, `a2`, ...); `default`, or the account already in use, changes nothing. While any chat of that CLI runs something, a Codex turn included, it fails with an error that starts with `busy:`; `--now` switches anyway and stops it, and `--when-idle` switches once none runs, unless another `agent-account` for that CLI comes first.
 
 `zz select-pane-kind --resume ID --fork [--at MESSAGE] agent claude|codex` opens a chat on a copy of a session, through that message's turn when `--at` names one.
 
@@ -85853,6 +85853,7 @@ set-option -g @alias-mixed-next yes
             "agent-respond",
             "flip-agent",
             "agent-account",
+            "agent-accounts",
             "send-last-output",
             "show-last-output",
             "send-text",
