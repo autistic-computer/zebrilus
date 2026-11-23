@@ -249,9 +249,10 @@ impl AgentRuntime {
         pane: PaneId,
         prompt: AgentPrompt,
         waiter: Option<AgentTurnWaiter>,
+        source: PromptSource,
         note: Option<String>,
     ) -> bool {
-        self.prompt_from(pane, prompt, waiter, PromptSource::Command, note)
+        self.prompt_from(pane, prompt, waiter, source, note)
     }
 
     pub(crate) fn answer_question(

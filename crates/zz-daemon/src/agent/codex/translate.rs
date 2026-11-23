@@ -1247,12 +1247,13 @@ mod tests {
             text: text.to_owned(),
             ..Default::default()
         };
-        let input = crate::agent::codex::turn_input(&prompt("@+codex fix it"), None);
+        let note = zz_protocol::agent_mention::mention_note("@+codex fix it").expect("note");
+        let input = crate::agent::codex::turn_input(&prompt("@+codex fix it"), Some(&note));
         assert_eq!(
             input,
             json!([
                 { "type": "text", "text": "@+codex fix it", "text_elements": [] },
-                { "type": "text", "text": zz_protocol::agent_mention::mention_note("@+codex fix it"), "text_elements": [] },
+                { "type": "text", "text": note, "text_elements": [] },
             ])
         );
         let item = json!({ "type": "userMessage", "id": "m1", "content": input });

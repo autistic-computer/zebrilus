@@ -3062,7 +3062,7 @@ pub(crate) fn turn_input(prompt: &AgentPrompt, note: Option<&str>) -> Value {
     if !prompt.text.is_empty() {
         input.push(json!({ "type": "text", "text": prompt.text, "text_elements": [] }));
     }
-    if let Some(note) = zz_protocol::agent_mention::hidden_note(&prompt.text, note) {
+    if let Some(note) = note {
         input.push(json!({ "type": "text", "text": note, "text_elements": [] }));
     }
     for image in &prompt.images {

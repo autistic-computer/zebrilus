@@ -139,9 +139,9 @@ reaches the pane that holds the child now (`Shared::moved_child`) and counts tow
 messages per child (`child_key`); with no pane holding it, it fails with `%N was closed; open a new
 chat with: zz new-pane -d --kind agent NAME 'BRIEF'`.
 
-**The mention note.** A prompt whose text holds an agent token (`@+claude`, `@+codex`, either with
-`/MODEL`) or a chat token (`@HOST:%N`, the shape only the composer's Chats rows write) reaches the
-agent with an instruction built from those tokens (`zz_protocol::agent_mention::mention_note`,
+**The mention note.** A prompt the user wrote whose text holds an agent token (`@+claude`,
+`@+codex`, either with `/MODEL`) or a chat token (`@HOST:%N`, the shape only the composer's Chats
+rows write) reaches the agent with an instruction built from those tokens (`zz_protocol::agent_mention::mention_note`,
 one sentence per distinct token): for `@+codex`, `The user tagged codex: codex does this task, not
 you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end
 your turn. Do not do the task yourself. Its reply and any permission asks come back to you as
@@ -152,8 +152,12 @@ you as a message.` A chat opened by a chat gets a second note with its brief
 finish with the answer. You cannot open other agents or message %P; if you need something, say so
 in your reply.`, and for a Codex child `If a command fails with "Operation not permitted", rerun it
 with escalated permissions even if your brief says to stop on failure; the approval is answered for you.` The daemon carries that note on the queued
-prompt (`QueuedPrompt::note`, `RuntimeCommand::Prompt`'s `note`), never in the text.
-`hidden_note` joins the two. Neither note joins the user's text: Claude
+prompt (`QueuedPrompt::note`, `RuntimeCommand::Prompt`'s `note`), never in the text. The host
+builds the note once when it starts the turn (`PromptSource::note`): for a prompt from the composer
+or from a command a client that is not a chat ran (`Composer`, `Command`), `hidden_note` joins the
+two; for one a chat sent (`Chat`: its `agent-send` or a brief it wrote) or one zz injected (reports
+and asks) only the child note goes, so a tag quoted in text the user never typed reaches no chat as
+a note. The drivers send the note they are given. Neither note joins the user's text: Claude
 Code gets it as a second content block wrapped in `<system-reminder>`, Codex as a second text item
 in `turn/start`'s `input`, and other ACP agents as a second text block in the prompt request. The
 stream's own echo of the prompt has only the user's text, and the transcript readers drop the

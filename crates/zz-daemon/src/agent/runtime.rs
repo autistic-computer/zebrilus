@@ -1453,7 +1453,6 @@ pub(crate) async fn run_agent_connection(
                             continue;
                         };
                         let prompt_events = event_tx.clone();
-                        let note = zz_protocol::agent_mention::hidden_note(&prompt.text, note.as_deref());
                         let blocks = prompt_blocks(prompt);
                         let (cancel_tx, cancel_rx) = async_channel::bounded::<()>(1);
                         let deferred = {

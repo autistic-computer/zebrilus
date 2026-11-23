@@ -275,7 +275,17 @@ fn waiting_prompts(queue: &VecDeque<QueuedPrompt>) -> usize {
 pub(crate) enum PromptSource {
     Composer,
     Command,
+    Chat,
     Injected,
+}
+
+impl PromptSource {
+    fn note(self, text: &str, extra: Option<&str>) -> Option<String> {
+        match self {
+            Self::Composer | Self::Command => zz_protocol::agent_mention::hidden_note(text, extra),
+            Self::Chat | Self::Injected => extra.map(str::to_owned),
+        }
+    }
 }
 
 impl QueuedPrompt {
@@ -1570,7 +1580,8 @@ impl PanePump {
 
     fn dispatch(&mut self, queued: QueuedPrompt) {
         let source = queued.source;
-        let note = queued.note.clone();
+        let extra = queued.note;
+        let note = source.note(&queued.prompt.text, extra.as_deref());
         self.next_turn_id = self.next_turn_id.saturating_add(1).max(1);
         let turn_id = self.next_turn_id;
         self.active_turn = Some(turn_id);
@@ -1601,14 +1612,14 @@ impl PanePump {
                     state.phase = AgentConnectionPhase::Ready;
                     settle_turn(&mut state);
                 }
-                let RuntimeCommand::Prompt { prompt, note, .. } = error.into_inner() else {
+                let RuntimeCommand::Prompt { prompt, .. } = error.into_inner() else {
                     return;
                 };
                 self.queue.push_front(QueuedPrompt {
                     prompt,
                     waiter: self.active_waiter.take(),
                     source,
-                    note,
+                    note: extra,
                     ask: None,
                 });
                 self.reclaim_queue();

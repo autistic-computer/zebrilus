@@ -147,7 +147,7 @@ use zz_protocol::{
 use crate::agent::{
     environment::AgentWorkspaceEnvironment,
     fanout::{AgentPublisher, AgentRequestReply, AgentRuntime, AgentToolCall},
-    host::{AgentPaneSpec, AgentTurnFailure, HostCommand, PermissionResponse},
+    host::{AgentPaneSpec, AgentTurnFailure, HostCommand, PermissionResponse, PromptSource},
     runtime::{AgentSpawnConfig, load_persistent_journal},
     stream::{AgentImage, AgentPrompt, AgentSessionSummary},
 };
@@ -17272,6 +17272,7 @@ impl Shared {
                     images: Vec::new(),
                 },
                 waiter,
+                caller.map_or(PromptSource::Command, |_| PromptSource::Chat),
                 None,
             ) {
                 return Err(self.untaken_prompt(pane).into());
@@ -34013,6 +34014,7 @@ impl Shared {
                         images: Vec::new(),
                     },
                     waiter,
+                    caller.map_or(PromptSource::Command, |_| PromptSource::Chat),
                     note,
                 );
                 if !queued {
@@ -34785,6 +34787,7 @@ impl Shared {
                 images: Vec::new(),
             },
             Some(waiter),
+            PromptSource::Command,
             None,
         ) {
             return Err(ServerError::PaneExited(pane).into());
@@ -34936,6 +34939,11 @@ impl Shared {
                     images: Vec::new(),
                 },
                 Some(waiter),
+                if chat_caller {
+                    PromptSource::Chat
+                } else {
+                    PromptSource::Command
+                },
                 None,
             ),
             None => runtime.join(pane, waiter),
@@ -53489,7 +53497,7 @@ Open a new chat as a float. `split-window` and `new-window` take the same `--kin
 
 Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends, and it approves its own tool calls unless `agent-auto-approve` is `off`, so only a question it asks comes to you, with the `agent-respond` lines that answer it. Do not wait or poll. The chat you open gets a note with its brief, kept out of its transcript, saying which chat opened it and that its final message is its reply. It cannot open chats of its own (it is told to do the work itself or say what it needs), and closing your pane closes it and every pane it opened. If the user closes it and opens it again, `zz agent-send -t %N` still reaches it by the id you were given; while it stays closed, the send fails with `%N was closed; open a new chat with: zz new-pane -d --kind agent codex 'BRIEF'`. A message reads `[zz] %N (codex) finished:` or `stopped (REASON):`, then the reply and `If this answers the user, answer the user now and send nothing to %N. Only if something is missing: zz agent-send -t %N 'TEXT'`; `failed: MESSAGE` and `Tell the user, or try again with: zz agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it, one `--option ID REQUEST_ID  # LABEL` line per choice of a question and `--answer 'TEXT' REQUEST_ID` for one that wants typed text; each line ends with the id of the request it answers, so once that request is answered or gone it fails with `has no pending request` instead of answering another one.
 
-A prompt that names an agent with `@+claude`, `@+codex`, `@+agy`, `@+grok`, `@+cursor` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a note, kept out of the transcript, that tells you to hand the task over with the exact command (`zz new-pane -d --kind agent codex 'BRIEF'`, or `zz agent-send -t %N 'TEXT'` for a chat) and end your turn.
+A prompt the user wrote that names an agent with `@+claude`, `@+codex`, `@+agy`, `@+grok`, `@+cursor` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a note, kept out of the transcript, that tells you to hand the task over with the exact command (`zz new-pane -d --kind agent codex 'BRIEF'`, or `zz agent-send -t %N 'TEXT'` for a chat) and end your turn.
 
 A chat answers the same reads as a terminal. `#{pane_current_command}` is `claude`, `codex`, `agy`, `grok` or `cursor-agent`. `#{agent_state}` is `starting`, `idle`, `working`, `needs-approval`, `needs-input` or `failed`, and `#{agent_pending_permission}` is the pending request ID or empty, in `list-panes -F`, `display-message -p` and `inspect`. `capture-pane -p -t %N` prints the chat's last turn as text: `> ` and the prompt, one line per tool call (its kind and title), then the reply; `-S -` prints the whole chat, and an empty chat prints nothing. While a turn runs, stderr says `capture-pane: %N's turn is still running`. `wait-pane` on a chat fails with `%N is an agent chat; wait for its turn with: zz agent-send -t %N --wait ''`, and `show-last-output` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`. Typing into a chat fails and names the verb to use: `send-keys`, `send-text`, `paste-buffer` and `run-pane` fail with `%N is an agent chat; send with: zz agent-send -t %N TEXT`, and `pipe-pane` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`.
 
@@ -125630,6 +125638,115 @@ bind - split-window -v -c "#{pane_current_path}"
                     "work",
                     "[zz] %3 (codex) asks: run it\nzz agent-respond -t %3 --allow 3\nzz agent-respond -t %3 --deny 3",
                     "[zz] %2 (codex) finished:\nturn 0\n\nIf this answers the user, answer the user now and send nothing to %2. Only if something is missing: zz agent-send -t %2 'TEXT'",
+                ]
+            );
+        }
+
+        #[test]
+        fn only_a_prompt_the_user_wrote_gets_a_mention_note() {
+            let workspace = workspace(Behavior::Chunk);
+            let host = workspace.agent;
+            let seen = Arc::new(Mutex::new(Vec::<(String, String, Option<String>)>::new()));
+            let record = Arc::clone(&seen);
+            workspace.runtime.set_runner_factory(Box::new(move |spec| {
+                let pane = spec.workspace.pane.clone().unwrap_or_default();
+                let record = Arc::clone(&record);
+                let inner =
+                    fixture_runner_at_host_tier(AgentProvider::Codex, Behavior::Chunk, true);
+                Box::new(move |mut channels: crate::agent::host::RuntimeChannels| {
+                    let (forward, commands) = async_channel::unbounded();
+                    let upstream = std::mem::replace(&mut channels.commands, commands);
+                    Box::pin(futures_lite::future::race(inner(channels), async move {
+                        while let Ok(command) = upstream.recv().await {
+                            if let crate::agent::runtime::RuntimeCommand::Prompt {
+                                prompt,
+                                note,
+                                ..
+                            } = &command
+                            {
+                                record.lock().push((
+                                    pane.clone(),
+                                    prompt.text.clone(),
+                                    note.clone(),
+                                ));
+                            }
+                            if forward.send(command).await.is_err() {
+                                break;
+                            }
+                        }
+                        Ok(())
+                    }))
+                })
+            }));
+            let tagged = "@+codex fix it";
+            let mention = "The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages.";
+            let wait = |count: usize| wait_until("the prompt", || seen.lock().len() == count);
+            run_as(
+                &workspace,
+                ClientId(97),
+                None,
+                "new-pane",
+                &["-d", "-t", "%1", "--kind", "agent", "codex"],
+            )
+            .expect("a chat with no parent");
+            workspace
+                .shared
+                .agent_message(
+                    workspace.client,
+                    ProtocolMessage::AgentPrompt {
+                        pane: PaneId(2),
+                        text: tagged.to_owned(),
+                        images: Vec::new(),
+                    },
+                )
+                .expect("the user's prompt");
+            wait(1);
+            run_as(
+                &workspace,
+                ClientId(99),
+                Some(host),
+                "agent-send",
+                &["-t", "%2", tagged],
+            )
+            .expect("a chat's message");
+            wait(2);
+            let finished = format!(
+                "[zz] %9 (codex) finished:\n{tagged}\n\nIf this answers the user, answer the user now and send nothing to %9. Only if something is missing: zz agent-send -t %9 'TEXT'"
+            );
+            workspace.shared.deliver_to_chat(
+                PaneId(2),
+                ChatDelivery {
+                    from: PaneId(9),
+                    request: None,
+                    text: finished.clone(),
+                },
+            );
+            wait(3);
+            run_as(
+                &workspace,
+                ClientId(99),
+                Some(host),
+                "new-pane",
+                &["-d", "--kind", "agent", "codex", "@+claude look at it"],
+            )
+            .expect("a child with a brief");
+            wait(4);
+            let entry = |pane: &str, text: &str, note: Option<&str>| {
+                (pane.to_owned(), text.to_owned(), note.map(str::to_owned))
+            };
+            assert_eq!(
+                *seen.lock(),
+                [
+                    entry("%2", tagged, Some(mention)),
+                    entry("%2", tagged, None),
+                    entry("%2", &finished, None),
+                    entry(
+                        "%3",
+                        "@+claude look at it",
+                        Some(
+                            "%1 (codex) opened this chat. Your final message is sent to it as your reply, so finish with the answer. You cannot open other agents or message %1; if you need something, say so in your reply. If a command fails with \"Operation not permitted\", rerun it with escalated permissions even if your brief says to stop on failure; the approval is answered for you."
+                        ),
+                    ),
                 ]
             );
         }

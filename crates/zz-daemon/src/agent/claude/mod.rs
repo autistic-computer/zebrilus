@@ -2615,8 +2615,8 @@ fn prompt_content(prompt: &crate::agent::stream::AgentPrompt, note: Option<&str>
     if !prompt.text.is_empty() {
         content.push(json!({ "type": "text", "text": prompt.text }));
     }
-    if let Some(note) = zz_protocol::agent_mention::hidden_note(&prompt.text, note) {
-        content.push(json!({ "type": "text", "text": translate::note_block(&note) }));
+    if let Some(note) = note {
+        content.push(json!({ "type": "text", "text": translate::note_block(note) }));
     }
     for image in &prompt.images {
         content.push(json!({
@@ -2642,12 +2642,13 @@ mod tests {
             text: text.to_owned(),
             ..Default::default()
         };
-        let content = prompt_content(&prompt("@+codex fix it"), None);
+        let note = zz_protocol::agent_mention::mention_note("@+codex fix it").expect("note");
+        let content = prompt_content(&prompt("@+codex fix it"), Some(&note));
         assert_eq!(
             content,
             json!([
                 { "type": "text", "text": "@+codex fix it" },
-                { "type": "text", "text": format!("<system-reminder>\n{}\n</system-reminder>", zz_protocol::agent_mention::mention_note("@+codex fix it").expect("note")) },
+                { "type": "text", "text": format!("<system-reminder>\n{note}\n</system-reminder>") },
             ])
         );
         let frame = json!({ "type": "user", "message": { "role": "user", "content": content } });
