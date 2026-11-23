@@ -7,6 +7,7 @@ pub(super) mod server {
     pub const UI_DID_START: u32 = 7;
     pub const DESTROY_VIEW: u32 = 115;
     pub const VIEW_SET_VIEWPORT: u32 = 116;
+    pub const VIEW_SET_PRESENTS_FROM_CPU_MEMORY: u32 = 131;
     pub const VIEW_SET_SYSTEM_VISIBILITY_STATE: u32 = 130;
     pub const VIEW_SET_HAS_SYSTEM_FOCUS: u32 = 138;
     pub const VIEW_LOAD: u32 = 125;

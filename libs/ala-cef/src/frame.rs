@@ -219,7 +219,10 @@ pub struct WinGpuFrame {
 }
 
 #[cfg(all(
-    feature = "cef-runtime",
+    any(
+        feature = "cef-runtime",
+        all(target_os = "linux", feature = "linux-dmabuf")
+    ),
     not(any(target_os = "macos", target_os = "windows"))
 ))]
 pub(crate) struct GpuFrameSubmission {
@@ -233,7 +236,10 @@ pub(crate) struct GpuFrameSubmission {
     pub texture: wgpu::Texture,
 }
 
-#[cfg(feature = "cef-runtime")]
+#[cfg(any(
+    feature = "cef-runtime",
+    all(target_os = "linux", feature = "linux-dmabuf")
+))]
 #[derive(Clone, Copy)]
 struct GpuPublishFields {
     session: SessionId,
@@ -512,7 +518,10 @@ impl FrameMailbox {
     }
 
     #[cfg(all(
-        feature = "cef-runtime",
+        any(
+            feature = "cef-runtime",
+            all(target_os = "linux", feature = "linux-dmabuf")
+        ),
         not(any(target_os = "macos", target_os = "windows"))
     ))]
     pub(crate) fn publish_gpu(
@@ -675,7 +684,10 @@ impl FrameMailbox {
         ))
     }
 
-    #[cfg(feature = "cef-runtime")]
+    #[cfg(any(
+        feature = "cef-runtime",
+        all(target_os = "linux", feature = "linux-dmabuf")
+    ))]
     fn publish_gpu_tier(
         &self,
         label: &str,
@@ -887,7 +899,10 @@ pub struct FrameMailboxDiagnostics {
     pub win_gpu_taken: u64,
 }
 
-#[cfg(feature = "cef-runtime")]
+#[cfg(any(
+    feature = "cef-runtime",
+    all(target_os = "linux", feature = "linux-dmabuf")
+))]
 fn validate_frame_dimensions(width: i32, height: i32) -> Result<(), FrameError> {
     frame_byte_len(width, height).map(|_| ())
 }

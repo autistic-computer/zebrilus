@@ -9,7 +9,7 @@ publish = false
 [features]
 default = ["chromium"]
 chromium = ["ala-cef/cef-runtime"]
-ladybird = ["dep:rustix", "dep:sha2"]
+ladybird = ["dep:rustix", "dep:sha2", "ala-cef/linux-dmabuf"]
 
 [dependencies]
 ala-cef = { workspace = true, features = ["host", "chrome-import"] }

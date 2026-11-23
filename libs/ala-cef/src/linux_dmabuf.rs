@@ -1,18 +1,20 @@
+use crate::{BrowserGpuContext, FrameMailbox, SessionId, frame::GpuFrameSubmission};
+use std::io;
+use std::os::fd::AsFd;
+#[cfg(feature = "cef-runtime")]
 use std::{
     fs::File,
     mem::ManuallyDrop,
-    os::{
-        fd::{AsRawFd, BorrowedFd, FromRawFd as _, IntoRawFd},
-        unix::fs::MetadataExt as _,
-    },
+    os::{fd::FromRawFd as _, unix::fs::MetadataExt as _},
 };
 
 use ash::vk;
+#[cfg(feature = "cef-runtime")]
 use cef::osr_texture_import::TextureImportError;
+#[cfg(feature = "cef-runtime")]
 use cef::{AcceleratedPaintInfo, ColorType};
+use std::os::fd::{AsRawFd, BorrowedFd, IntoRawFd};
 use wgpu::hal::api::Vulkan;
-
-use crate::popup::PopupPlacement;
 
 pub(crate) const EXTERNAL_TEXTURE_STATE: wgpu::TextureUses =
     wgpu::TextureUses::COPY_SRC.union(wgpu::TextureUses::RESOURCE);
@@ -41,12 +43,11 @@ impl Drop for ImportedImage<'_> {
     }
 }
 
-fn vulkan_error(operation: &str, result: vk::Result) -> TextureImportError {
-    TextureImportError::VulkanError {
-        operation: format!("{operation}: {result:?}"),
-    }
+fn vulkan_error(operation: &str, result: vk::Result) -> io::Error {
+    io::Error::other(format!("{operation}: {result:?}"))
 }
 
+#[cfg(feature = "cef-runtime")]
 pub(crate) fn import_texture(
     info: &AcceleratedPaintInfo,
     device: &wgpu::Device,
@@ -104,16 +105,49 @@ pub(crate) fn import_texture(
             allocation = Some(identity);
         }
     }
+    let layouts: Vec<_> = planes
+        .iter()
+        .map(|plane| vk::SubresourceLayout {
+            offset: plane.offset,
+            row_pitch: u64::from(plane.stride),
+            ..Default::default()
+        })
+        .collect();
+    let fd = unsafe { BorrowedFd::borrow_raw(planes[0].fd) };
+    import_image(
+        device,
+        width,
+        height,
+        format,
+        vk_format,
+        info.modifier,
+        &layouts,
+        fd,
+        false,
+    )
+    .map_err(|error| TextureImportError::PlatformError {
+        message: error.to_string(),
+    })
+}
+
+fn import_image(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+    vk_format: vk::Format,
+    modifier: u64,
+    layouts: &[vk::SubresourceLayout],
+    fd: BorrowedFd<'_>,
+    same_device: bool,
+) -> io::Result<ImportedDmaBuf> {
     let size = wgpu::Extent3d {
         width,
         height,
         depth_or_array_layers: 1,
     };
-    let hal_device = unsafe { device.as_hal::<Vulkan>() }.ok_or_else(|| {
-        TextureImportError::HardwareUnavailable {
-            reason: "Device is not using Vulkan".to_owned(),
-        }
-    })?;
+    let hal_device = unsafe { device.as_hal::<Vulkan>() }
+        .ok_or_else(|| io::Error::other("Device is not using Vulkan"))?;
     let enabled_extensions = hal_device.enabled_device_extensions();
     if [
         ash::khr::external_memory_fd::NAME,
@@ -123,28 +157,20 @@ pub(crate) fn import_texture(
     .iter()
     .any(|extension| !enabled_extensions.contains(extension))
     {
-        return Err(TextureImportError::HardwareUnavailable {
-            reason: "Vulkan DMA-BUF extensions are unavailable".to_owned(),
-        });
+        return Err(io::Error::other(
+            "Vulkan DMA-BUF extensions are unavailable",
+        ));
     }
     let external_queue_family =
-        if enabled_extensions.contains(&ash::ext::queue_family_foreign::NAME) {
+        if !same_device && enabled_extensions.contains(&ash::ext::queue_family_foreign::NAME) {
             vk::QUEUE_FAMILY_FOREIGN_EXT
         } else {
             vk::QUEUE_FAMILY_EXTERNAL
         };
     let raw_device = hal_device.raw_device();
-    let layouts: Vec<_> = planes
-        .iter()
-        .map(|plane| vk::SubresourceLayout {
-            offset: plane.offset,
-            row_pitch: u64::from(plane.stride),
-            ..Default::default()
-        })
-        .collect();
     let mut modifier = vk::ImageDrmFormatModifierExplicitCreateInfoEXT::default()
-        .drm_format_modifier(info.modifier)
-        .plane_layouts(&layouts);
+        .drm_format_modifier(modifier)
+        .plane_layouts(layouts);
     let mut external_image = vk::ExternalMemoryImageCreateInfo::default()
         .handle_types(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT);
     let image_info = vk::ImageCreateInfo::default()
@@ -170,11 +196,7 @@ pub(crate) fn import_texture(
         memory: None,
     };
     let requirements = unsafe { raw_device.get_image_memory_requirements(imported.image) };
-    let fd = unsafe { BorrowedFd::borrow_raw(planes[0].fd) }
-        .try_clone_to_owned()
-        .map_err(|error| TextureImportError::PlatformError {
-            message: format!("Duplicate DMA-BUF descriptor: {error}"),
-        })?;
+    let fd = fd.try_clone_to_owned()?;
     let external_memory = ash::khr::external_memory_fd::Device::new(
         hal_device.shared_instance().raw_instance(),
         raw_device,
@@ -190,9 +212,7 @@ pub(crate) fn import_texture(
     .map_err(|error| vulkan_error("query DMA-BUF memory types", error))?;
     let memory_types = requirements.memory_type_bits & fd_properties.memory_type_bits;
     if memory_types == 0 {
-        return Err(TextureImportError::InvalidHandle(
-            "DMA-BUF has no compatible memory type".to_owned(),
-        ));
+        return Err(io::Error::other("DMA-BUF has no compatible memory type"));
     }
     let mut import_fd = vk::ImportMemoryFdInfoKHR::default()
         .handle_type(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT)
@@ -213,7 +233,7 @@ pub(crate) fn import_texture(
         hal_device.texture_from_raw(
             imported.image,
             &wgpu::hal::TextureDescriptor {
-                label: Some("CEF DMA-BUF"),
+                label: Some("Browser DMA-BUF"),
                 size,
                 mip_level_count: 1,
                 sample_count: 1,
@@ -235,7 +255,7 @@ pub(crate) fn import_texture(
         device.create_texture_from_hal::<Vulkan>(
             hal_texture,
             &wgpu::TextureDescriptor {
-                label: Some("CEF DMA-BUF"),
+                label: Some("Browser DMA-BUF"),
                 size,
                 mip_level_count: 1,
                 sample_count: 1,
@@ -258,20 +278,16 @@ pub(crate) fn copy_imported_texture(
     queue: &wgpu::Queue,
     imported: &ImportedDmaBuf,
     destination: &wgpu::Texture,
-    popup: Option<(PopupPlacement, &wgpu::Texture)>,
-) -> Result<(), TextureImportError> {
+    popup: Option<(wgpu::Origin3d, wgpu::Extent3d, &wgpu::Texture)>,
+) -> io::Result<wgpu::SubmissionIndex> {
     let (raw_device, local_queue_family, image) = unsafe {
-        let hal_device =
-            device
-                .as_hal::<Vulkan>()
-                .ok_or_else(|| TextureImportError::HardwareUnavailable {
-                    reason: "Device is not using Vulkan".to_owned(),
-                })?;
-        let hal_texture = imported.texture.as_hal::<Vulkan>().ok_or_else(|| {
-            TextureImportError::HardwareUnavailable {
-                reason: "Imported texture is not backed by Vulkan".to_owned(),
-            }
-        })?;
+        let hal_device = device
+            .as_hal::<Vulkan>()
+            .ok_or_else(|| io::Error::other("Device is not using Vulkan"))?;
+        let hal_texture = imported
+            .texture
+            .as_hal::<Vulkan>()
+            .ok_or_else(|| io::Error::other("Imported texture is not backed by Vulkan"))?;
         (
             hal_device.raw_device().clone(),
             hal_device.queue_family_index(),
@@ -294,26 +310,18 @@ pub(crate) fn copy_imported_texture(
     copy.copy_texture_to_texture(
         imported.texture.as_image_copy(),
         destination.as_image_copy(),
-        imported.texture.size(),
+        destination.size(),
     );
-    if let Some((placement, popup_texture)) = popup {
+    if let Some((origin, size, popup_texture)) = popup {
         copy.copy_texture_to_texture(
             popup_texture.as_image_copy(),
             wgpu::TexelCopyTextureInfo {
                 texture: destination,
                 mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: placement.x,
-                    y: placement.y,
-                    z: 0,
-                },
+                origin,
                 aspect: wgpu::TextureAspect::All,
             },
-            wgpu::Extent3d {
-                width: placement.width,
-                height: placement.height,
-                depth_or_array_layers: 1,
-            },
+            size,
         );
     }
     copy.transition_resources(
@@ -334,8 +342,7 @@ pub(crate) fn copy_imported_texture(
         false,
     )?;
 
-    queue.submit([acquire, copy.finish(), release]);
-    Ok(())
+    Ok(queue.submit([acquire, copy.finish(), release]))
 }
 
 fn ownership_transfer(
@@ -345,7 +352,7 @@ fn ownership_transfer(
     from_queue_family: u32,
     to_queue_family: u32,
     acquire: bool,
-) -> Result<wgpu::CommandBuffer, TextureImportError> {
+) -> io::Result<wgpu::CommandBuffer> {
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some(if acquire {
             "CEF Vulkan ownership acquire"
@@ -379,8 +386,8 @@ fn ownership_transfer(
 
     unsafe {
         encoder.as_hal_mut::<Vulkan, _, _>(|hal_encoder| {
-            let hal_encoder = hal_encoder.ok_or_else(|| TextureImportError::PlatformError {
-                message: "Failed to record Vulkan external ownership transfer".to_owned(),
+            let hal_encoder = hal_encoder.ok_or_else(|| {
+                io::Error::other("Failed to record Vulkan external ownership transfer")
             })?;
             raw_device.cmd_pipeline_barrier(
                 hal_encoder.raw_handle(),
@@ -399,8 +406,142 @@ fn ownership_transfer(
                 &[],
                 &[barrier],
             );
-            Ok::<_, TextureImportError>(())
+            Ok::<_, io::Error>(())
         })?;
     }
     Ok(encoder.finish())
+}
+
+pub struct SharedDmaBuf {
+    source: ImportedDmaBuf,
+    gpu: BrowserGpuContext,
+}
+
+impl BrowserGpuContext {
+    pub fn vulkan_device_identity(&self) -> Option<[u8; 32]> {
+        let hal = unsafe { self.device.as_hal::<Vulkan>() }?;
+        let required = [
+            ash::khr::external_memory_fd::NAME,
+            ash::ext::external_memory_dma_buf::NAME,
+            ash::ext::image_drm_format_modifier::NAME,
+        ];
+        if !required
+            .iter()
+            .all(|ext| hal.enabled_device_extensions().contains(ext))
+        {
+            return None;
+        }
+        let mut id = vk::PhysicalDeviceIDProperties::default();
+        let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut id);
+        unsafe {
+            hal.shared_instance()
+                .raw_instance()
+                .get_physical_device_properties2(hal.raw_physical_device(), &mut properties);
+        }
+        let mut bytes = [0; 32];
+        bytes[..16].copy_from_slice(&id.device_uuid);
+        bytes[16..].copy_from_slice(&id.driver_uuid);
+        Some(bytes)
+    }
+
+    pub fn import_bgra_dmabuf(
+        &self,
+        file: &std::fs::File,
+        width: u32,
+        height: u32,
+        modifier: u64,
+        pitch: u32,
+        offset: u32,
+    ) -> io::Result<SharedDmaBuf> {
+        let limit = self.device.limits().max_texture_dimension_2d;
+        if width == 0 || height == 0 || width > limit || height > limit || pitch == 0 {
+            return Err(io::Error::other("Invalid DMA-BUF dimensions or pitch"));
+        }
+        let layout = vk::SubresourceLayout {
+            offset: u64::from(offset),
+            row_pitch: u64::from(pitch),
+            ..Default::default()
+        };
+        let source = import_image(
+            &self.device,
+            width,
+            height,
+            wgpu::TextureFormat::Bgra8Unorm,
+            vk::Format::B8G8R8A8_UNORM,
+            modifier,
+            &[layout],
+            file.as_fd(),
+            true,
+        )?;
+        Ok(SharedDmaBuf {
+            source,
+            gpu: self.clone(),
+        })
+    }
+}
+
+impl SharedDmaBuf {
+    pub fn publish(
+        &self,
+        mailbox: &FrameMailbox,
+        session: SessionId,
+        width: u32,
+        height: u32,
+        scale: f64,
+        generation: u64,
+        sequence: u64,
+    ) -> io::Result<Option<u64>> {
+        if width == 0
+            || height == 0
+            || width > self.source.texture.width()
+            || height > self.source.texture.height()
+            || !scale.is_finite()
+            || scale <= 0.0
+        {
+            return Err(io::Error::other("Invalid DMA-BUF presentation size"));
+        }
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let destination = self.gpu.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Browser pane frame"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.source.texture.format(),
+            usage: wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let submission = copy_imported_texture(
+            &self.gpu.device,
+            &self.gpu.queue,
+            &self.source,
+            &destination,
+            None,
+        )?;
+        self.gpu
+            .device
+            .poll(wgpu::PollType::Wait {
+                submission_index: Some(submission),
+                timeout: Some(std::time::Duration::from_secs(2)),
+            })
+            .map_err(io::Error::other)?;
+        mailbox
+            .publish_gpu(GpuFrameSubmission {
+                session,
+                logical_width: (f64::from(width) / scale).round().max(1.0) as u32,
+                logical_height: (f64::from(height) / scale).round().max(1.0) as u32,
+                device_width: width.cast_signed(),
+                device_height: height.cast_signed(),
+                pool_generation: generation,
+                sequence,
+                texture: destination,
+            })
+            .map_err(io::Error::other)
+    }
 }

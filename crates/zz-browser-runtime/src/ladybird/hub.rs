@@ -2,7 +2,10 @@ use super::{
     messages::{client, server},
     wire::{Fields, Message, Reader, invalid, send},
 };
-use ala_cef::{BrowserEvent, FrameMailbox, JsDialogKind, JsDialogRequest, SessionId};
+use ala_cef::{
+    BrowserEvent, BrowserGpuContext, FrameMailbox, JsDialogKind, JsDialogRequest, SessionId,
+    SharedDmaBuf,
+};
 use async_channel::Sender;
 use parking_lot::Mutex;
 use sha2::{Digest, Sha256};
@@ -27,6 +30,7 @@ use std::{
 use zz_daemon_client::unmasked::SpawnUnmasked as _;
 
 pub(super) struct Hub {
+    pub identity: Option<[u8; 32]>,
     queue: mpsc::Sender<Work>,
     socket: UnixStream,
 }
@@ -52,6 +56,7 @@ impl Page {
         mailbox: FrameMailbox,
         url: Arc<Mutex<String>>,
         count: Arc<AtomicU64>,
+        gpu: Option<BrowserGpuContext>,
     ) -> Self {
         let mut request = vec![0];
         request.extend(scale.to_le_bytes());
@@ -63,7 +68,10 @@ impl Page {
             events,
             mailbox,
             url,
-            stores: Stores::default(),
+            stores: Stores {
+                gpu,
+                ..Stores::default()
+            },
             view: None,
             request,
             pending: Vec::new(),
@@ -90,7 +98,7 @@ enum Work {
 }
 
 impl Hub {
-    pub fn launch(path: &Path, profile: &Path) -> io::Result<Self> {
+    pub fn launch(path: &Path, profile: &Path, identity: Option<[u8; 32]>) -> io::Result<Self> {
         let (socket, remote) = UnixStream::pair()?;
         let mut reader = Reader::new(socket.try_clone()?);
         let writer = socket.try_clone()?;
@@ -101,13 +109,28 @@ impl Hub {
             "zz-{:016x}",
             u64::from_le_bytes(path_digest[..8].try_into().map_err(|_| invalid())?)
         );
-        let mut child = Command::new(path)
+        let mut command = Command::new(path);
+        if let Some(identity) = identity {
+            use std::fmt::Write as _;
+            let mut info = vec![0_u8; 26];
+            info.push(1);
+            info.extend(32_u32.to_le_bytes());
+            info.extend(identity);
+            info.extend(0_u32.to_le_bytes());
+            let mut encoded = String::from("--ui-info=");
+            for byte in info {
+                write!(encoded, "{byte:02x}").expect("writing to a String");
+            }
+            command.arg(encoded);
+        } else {
+            command.arg("--force-cpu-painting");
+        }
+        let mut child = command
             .arg("--profile")
             .arg(name)
             .env("XDG_CONFIG_HOME", profile.join("config"))
             .env("XDG_DATA_HOME", profile.join("data"))
             .env("XDG_CACHE_HOME", profile.join("cache"))
-            .args(["--force-cpu-painting"])
             .arg(format!("--ui-pid={}", std::process::id()))
             .env("SOCKET_TAKEOVER", "ipc:0")
             .stdin(Stdio::from(OwnedFd::from(remote)))
@@ -161,7 +184,11 @@ impl Hub {
             let _ = child.kill();
             let _ = child.wait();
         });
-        Ok(Self { queue, socket })
+        Ok(Self {
+            identity,
+            queue,
+            socket,
+        })
     }
     pub fn open(&self, page: Page) -> io::Result<()> {
         self.queue
@@ -252,6 +279,15 @@ impl Dispatch {
                     let id = self.creating.pop_front().ok_or_else(invalid)?;
                     if let Some(page) = self.pages.get_mut(&id) {
                         page.view = Some(view);
+                        if page.stores.gpu.is_none() {
+                            let mut body = view.to_le_bytes().to_vec();
+                            body.push(1);
+                            send(
+                                &mut self.socket,
+                                server::VIEW_SET_PRESENTS_FROM_CPU_MEMORY,
+                                &body,
+                            )?;
+                        }
                         self.views.insert(view, id);
                         let _ = page.events.try_send(BrowserEvent::Created { session: id });
                         for (msg, data) in std::mem::take(&mut page.pending) {
@@ -279,10 +315,18 @@ impl Dispatch {
 
 #[derive(Default)]
 struct Stores {
-    buffers: HashMap<u32, Bitmap>,
+    buffers: HashMap<u32, BackingStore>,
+    gpu: Option<BrowserGpuContext>,
+    generation: u64,
+    sequence: u64,
     front: Option<u32>,
     page: u64,
     navigation: Option<(bool, bool, bool)>,
+}
+
+enum BackingStore {
+    Cpu(Bitmap),
+    Gpu(SharedDmaBuf),
 }
 
 struct Bitmap {
@@ -342,27 +386,85 @@ impl Stores {
                     self.front = ids.first().copied();
                 }
                 for (id, file) in ids.into_iter().zip(msg.files) {
-                    if body.field(2)? != [0, 1] {
+                    let backing = body.field(1)?[0];
+                    if backing == 0 && body.field(1)? != [1] {
                         return Err(invalid());
                     }
-                    let width = body.u32()? as usize;
-                    let height = body.u32()? as usize;
-                    let format = body.u32()?;
-                    let _alpha = body.u32()?;
+                    let width = body.u32()?;
+                    let height = body.u32()?;
                     if !(1..=16384).contains(&width)
                         || !(1..=16384).contains(&height)
-                        || width * height > 32 * 1024 * 1024
-                        || !matches!(format, 1 | 2)
+                        || u64::from(width) * u64::from(height) > 32 * 1024 * 1024
                     {
                         return Err(invalid());
                     }
-                    self.buffers.insert(
-                        id,
-                        Bitmap {
-                            file,
-                            width,
-                            height,
-                        },
+                    let format = body.u32()?;
+                    let store = match backing {
+                        0 => {
+                            let _alpha = body.u32()?;
+                            if !matches!(format, 1 | 2) {
+                                return Err(invalid());
+                            }
+                            BackingStore::Cpu(Bitmap {
+                                file,
+                                width: width as usize,
+                                height: height as usize,
+                            })
+                        }
+                        1 => {
+                            let modifier = body.u64()?;
+                            if format != u32::from_le_bytes(*b"AR24")
+                                || body.u64()? != 1
+                                || body.u32()? != 0
+                            {
+                                return Err(invalid());
+                            }
+                            let offset = body.u32()?;
+                            let pitch = body.u32()?;
+                            if body.u64()? != 1 {
+                                return Err(invalid());
+                            }
+                            let Some(gpu) = self.gpu.as_ref() else {
+                                continue;
+                            };
+                            match gpu
+                                .import_bgra_dmabuf(&file, width, height, modifier, pitch, offset)
+                            {
+                                Ok(texture) => BackingStore::Gpu(texture),
+                                Err(error) => {
+                                    log::warn!(
+                                        "Ladybird DMA-BUF import failed, requesting bitmap stores: {error}"
+                                    );
+                                    self.gpu = None;
+                                    self.buffers.clear();
+                                    let mut request = msg.payload[8..16].to_vec();
+                                    request.push(1);
+                                    send(
+                                        writer,
+                                        server::VIEW_SET_PRESENTS_FROM_CPU_MEMORY,
+                                        &request,
+                                    )?;
+                                    continue;
+                                }
+                            }
+                        }
+                        _ => return Err(invalid()),
+                    };
+                    self.buffers.insert(id, store);
+                }
+                if install {
+                    self.generation = self.generation.wrapping_add(1);
+                    log::debug!(
+                        "Ladybird backing stores installed: {}",
+                        if self
+                            .buffers
+                            .values()
+                            .any(|s| matches!(s, BackingStore::Gpu(_)))
+                        {
+                            "dma-buf"
+                        } else {
+                            "bitmap"
+                        }
                     );
                 }
                 return Ok(None);
@@ -383,15 +485,36 @@ impl Stores {
                 let id = body.u32()?;
                 let width = body.u32()?;
                 let height = body.u32()?;
+                let scale = f64::from_bits(body.u64()?);
                 let mut generation = None;
                 let mut release = id;
                 if page == self.page
                     && let Some(bitmap) = self.buffers.get(&id)
                 {
-                    let pixels = bitmap.copy(width as usize, height as usize)?;
-                    generation = mailbox
-                        .publish(session, width as i32, height as i32, pixels, None)
-                        .map_err(io::Error::other)?;
+                    self.sequence = self.sequence.wrapping_add(1);
+                    generation = match bitmap {
+                        BackingStore::Cpu(bitmap) => {
+                            let pixels = bitmap.copy(width as usize, height as usize)?;
+                            mailbox
+                                .publish(
+                                    session,
+                                    width.cast_signed(),
+                                    height.cast_signed(),
+                                    pixels,
+                                    None,
+                                )
+                                .map_err(io::Error::other)?
+                        }
+                        BackingStore::Gpu(frame) => frame.publish(
+                            mailbox,
+                            session,
+                            width,
+                            height,
+                            scale,
+                            self.generation,
+                            self.sequence,
+                        )?,
+                    };
                     release = self.front.replace(id).unwrap_or(id);
                 }
                 let mut response = page.to_le_bytes().to_vec();

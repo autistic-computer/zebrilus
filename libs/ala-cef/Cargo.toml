@@ -25,7 +25,8 @@ host = [
     "dep:pollster",
     "dep:wgpu",
 ]
-cef-runtime = ["host", "dep:cef", "dep:ash"]
+linux-dmabuf = ["host", "dep:ash"]
+cef-runtime = ["host", "dep:cef", "linux-dmabuf"]
 chrome-import = [
     "dep:aes",
     "dep:aes-gcm",

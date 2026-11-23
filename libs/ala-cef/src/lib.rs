@@ -38,9 +38,11 @@ pub use readback_texture::ReadbackTexture;
 )]
 mod cef_runtime;
 
-#[cfg(all(feature = "cef-runtime", target_os = "linux"))]
+#[cfg(all(feature = "linux-dmabuf", target_os = "linux"))]
 #[allow(unsafe_code)]
 mod linux_dmabuf;
+#[cfg(all(feature = "linux-dmabuf", target_os = "linux"))]
+pub use linux_dmabuf::SharedDmaBuf;
 
 #[cfg(feature = "host")]
 pub use artifact::{

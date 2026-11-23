@@ -70,6 +70,8 @@ impl BrowserMessagePump {
 }
 
 pub struct BrowserRuntime {
+    gpu_painting: bool,
+    shared_texture: bool,
     frame_rate: Option<i32>,
     paths: BrowserProfilePaths,
     phase: RuntimePhase,
@@ -91,6 +93,8 @@ pub fn bootstrap_with_profile_paths(
     paths: BrowserProfilePaths,
 ) -> Result<BrowserBootstrap, BrowserError> {
     Ok(BrowserBootstrap::Runtime(BrowserRuntime {
+        gpu_painting: config.gpu && env::var_os("ZZ_LADYBIRD_GPU").is_some_and(|v| v == "1"),
+        shared_texture: config.shared_texture,
         frame_rate: config.frame_rate,
         paths,
         phase: RuntimePhase::Uninitialized,
@@ -125,7 +129,7 @@ impl BrowserRuntime {
     pub fn set_log_file(&mut self, _: PathBuf) {}
     pub fn set_remote_debugging_port(&mut self, _: Option<u16>) {}
     pub fn shared_texture_enabled(&self) -> bool {
-        false
+        self.gpu_painting && self.shared_texture
     }
     pub fn external_begin_frame_enabled(&self) -> bool {
         false
@@ -191,8 +195,8 @@ impl BrowserRuntime {
         viewport: Viewport,
         zoom: f64,
         fps: Option<i32>,
-        _: Option<BrowserGpuContext>,
-        _: bool,
+        gpu: Option<BrowserGpuContext>,
+        allow_shared_texture: bool,
     ) -> Result<BrowserSession, BrowserError> {
         if self.phase != RuntimePhase::Running {
             return Err(BrowserError::NotReady);
@@ -215,11 +219,16 @@ impl BrowserRuntime {
             .paths
             .ensure_profile(profile)
             .map_err(io::Error::other)?;
+        let gpu = gpu.filter(|_| self.gpu_painting);
+        let identity = gpu
+            .as_ref()
+            .and_then(BrowserGpuContext::vulkan_device_identity);
+        let shared = self.shared_texture_enabled() && allow_shared_texture;
         let hub = match self.hubs.entry(profile.clone()) {
             std::collections::hash_map::Entry::Occupied(entry) => Arc::clone(entry.get()),
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                Arc::clone(entry.insert(Arc::new(Hub::launch(&path, &dir.join("ladybird"))?)))
-            }
+            std::collections::hash_map::Entry::Vacant(entry) => Arc::clone(entry.insert(Arc::new(
+                Hub::launch(&path, &dir.join("ladybird"), identity)?,
+            ))),
         };
         let address = Arc::new(Mutex::new(String::new()));
         let page = Page::new(
@@ -230,6 +239,7 @@ impl BrowserRuntime {
             mailbox.clone(),
             Arc::clone(&address),
             Arc::clone(&self.count),
+            gpu.filter(|_| shared && identity.is_some() && hub.identity == identity),
         );
         if let Err(err) = hub.open(page) {
             self.hubs.remove(&profile);

@@ -3683,6 +3683,21 @@ fn submit_accelerated_copy(
 ) -> Result<(), AcceleratedFrameError> {
     #[cfg(target_os = "linux")]
     {
+        let popup = popup.map(|(p, texture)| {
+            (
+                wgpu::Origin3d {
+                    x: p.x,
+                    y: p.y,
+                    z: 0,
+                },
+                wgpu::Extent3d {
+                    width: p.width,
+                    height: p.height,
+                    depth_or_array_layers: 1,
+                },
+                texture,
+            )
+        });
         crate::linux_dmabuf::copy_imported_texture(
             &gpu.device,
             &gpu.queue,
@@ -3690,7 +3705,14 @@ fn submit_accelerated_copy(
             destination,
             popup,
         )
-        .map_err(AcceleratedFrameError::Import)
+        .map(|_| ())
+        .map_err(|e| {
+            AcceleratedFrameError::Import(
+                cef::osr_texture_import::TextureImportError::PlatformError {
+                    message: e.to_string(),
+                },
+            )
+        })
     }
     #[cfg(not(target_os = "linux"))]
     {
