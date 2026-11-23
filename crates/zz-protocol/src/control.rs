@@ -245,6 +245,11 @@ impl HostPlatform {
             Self::Linux(LinuxDistro::Other) => "linux",
         })
     }
+
+    #[must_use]
+    pub const fn runs_agents(self) -> bool {
+        !matches!(self, Self::Windows)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]

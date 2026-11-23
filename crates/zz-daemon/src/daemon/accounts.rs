@@ -157,7 +157,11 @@ impl Shared {
         let add = parse_agent_accounts_args(args)?;
         #[cfg(not(all(feature = "agent", unix)))]
         {
-            let _ = (client, context, add);
+            let _ = context;
+            if add.is_none() {
+                self.publish_to_client(client, EventPayload::AgentAccounts(Vec::new()));
+                return Ok(Execution::default());
+            }
             Err(ServerError::InvalidCommand(
                 "agent-accounts needs zz built with agent support, on macOS or Linux".to_owned(),
             )

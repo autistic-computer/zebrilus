@@ -1226,7 +1226,7 @@ impl Connection {
     }
 
     pub fn request_agent_accounts(&mut self, cx: &mut Context<Self>) {
-        if self.connected {
+        if self.connected && self.core.host_platform().runs_agents() {
             self.command("agent-accounts", Vec::new(), cx);
         }
     }

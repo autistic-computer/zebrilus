@@ -3298,6 +3298,9 @@ impl MuxClient {
     }
 
     pub(crate) fn request_agent_accounts(&self, host: HostId) {
+        if !self.host_platform(host).runs_agents() {
+            return;
+        }
         self.execute_on_host(
             host,
             CommandInvocation::new("agent-accounts", Vec::<String>::new()),
@@ -6092,6 +6095,42 @@ mod tests {
                 minimum: 2
             }
         );
+    }
+
+    #[ala::test]
+    fn a_windows_host_is_never_asked_for_agent_accounts(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::config::set_fleet_hosts_for_test(Vec::new(), cx);
+            let mux = cx.new(|cx| {
+                MuxClient::new(
+                    Err(DaemonError::Thread("fixture".to_owned())),
+                    zz_daemon_client::default_socket_path(),
+                    cx,
+                )
+            });
+            for (platform, expected) in [
+                (zz_protocol::HostPlatform::Windows, vec!["providers"]),
+                (
+                    zz_protocol::HostPlatform::Linux(zz_protocol::LinuxDistro::Arch),
+                    vec!["providers", "agent-accounts"],
+                ),
+            ] {
+                let sent = mux.update(cx, |mux, _| {
+                    let fake = install_fake_connection(mux, HostId::LOCAL);
+                    mux.connections
+                        .get_mut(&HostId::LOCAL)
+                        .expect("host connection")
+                        .platform = platform;
+                    mux.request_providers(true);
+                    fake.commands
+                        .borrow()
+                        .iter()
+                        .map(|command| command.name.clone())
+                        .collect::<Vec<_>>()
+                });
+                assert_eq!(sent, expected, "{platform:?}");
+            }
+        });
     }
 
     #[ala::test]
