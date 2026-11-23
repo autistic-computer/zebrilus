@@ -6,6 +6,8 @@ This Linux x86-64 spike embeds the first Ladybird alpha, 2026.47.7, in zz's exis
 
 ## Measurements
 
+A separate controlled benchmark attributes memory and CPU to the zz desktop, terminal, Ladybird helpers and stock Qt frontend at two matched viewport sizes. [Browser resource baseline](baseline.md)
+
 The first browser pane added 183 MiB above the terminal-only desktop with Ladybird and 431 MiB with CEF. Opening a second pane kept the same Hub. The first loopback page became ready 224 ms sooner with Ladybird. Scrolling a full pane cost 50% more process CPU, and building 800 rows and forcing ten layouts took 38% longer. Both engines delivered JavaScript animation callbacks near 60 Hz on the scrolling fixture.
 
 Values are medians from five paired release runs, with minimum and maximum in parentheses. Pair 1 paged out up to 53 MiB of the CEF process tree. The summary uses pairs 2 through 6, where both engines stayed below 1 MiB of proportional swap at all three memory checkpoints. All six pairs are available for inspection. [Raw samples](../../bench/ladybird/samples.json)
