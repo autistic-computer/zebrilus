@@ -37,6 +37,7 @@ const ACTIONS_COLUMN: f32 = 132.0;
 const COLUMN_GAP: f32 = 10.0;
 const ROW_CONTROL: f32 = 24.0;
 const NOTE_RISE: f32 = 2.0;
+const RING_ROOM: f32 = 3.0;
 
 type ProviderAction = Rc<dyn Fn(AgentProvider, &mut Window, &mut App)>;
 type OnProviderAuth = Rc<dyn Fn(AgentProvider, ProviderAuthAction, &mut Window, &mut App)>;
@@ -134,7 +135,8 @@ pub fn machine_picker(
     (machines.len() > 1).then(|| {
         h_flex()
             .id("settings-agents-machines")
-            .w_full()
+            .m(-px(RING_ROOM))
+            .p(px(RING_ROOM))
             .overflow_x_scroll()
             .restrict_scroll_to_axis()
             .child(
@@ -320,12 +322,7 @@ fn agent_row(
     let line = row()
         .child(name)
         .child(h_flex().flex_1().min_w_0().children(accounts))
-        .child(
-            div()
-                .flex_none()
-                .w(px(VERSION_COLUMN))
-                .child(version_text(status, cx)),
-        )
+        .child(version_text(status, cx).w(px(VERSION_COLUMN)))
         .child(
             h_flex()
                 .flex_none()
@@ -559,7 +556,7 @@ fn account_row(
         .children(button)
 }
 
-fn version_text(status: &ProviderStatus, cx: &App) -> impl IntoElement {
+fn version_text(status: &ProviderStatus, cx: &App) -> ala::Div {
     h_flex()
         .flex_none()
         .gap(px(5.0))
@@ -574,6 +571,8 @@ fn version_text(status: &ProviderStatus, cx: &App) -> impl IntoElement {
             Label::new(TextStyle::Caption, version_label(status))
                 .mono()
                 .muted()
+                .min_w_0()
+                .truncate()
                 .on(settings_card_ground(cx)),
         )
 }

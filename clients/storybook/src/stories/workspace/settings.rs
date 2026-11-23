@@ -457,6 +457,7 @@ fn agents_states(_: &mut Window, cx: &mut App) -> AnyElement {
         });
     });
     let installing = quiet(|providers| {
+        providers[0].version = Some("2.1.329-beta.1".to_owned());
         let mut grok = ProviderStatus::new(Grok);
         grok.latest = Some("1.0.93".to_owned());
         grok.task = ProviderTask::Running {
@@ -520,7 +521,7 @@ fn agents_states(_: &mut Window, cx: &mut App) -> AnyElement {
             framed_card("agents-package-manager", &package_manager, None, cx),
         )
         .state(
-            "installing Grok",
+            "installing Grok, a beta Claude Code behind",
             framed_card("agents-installing", &installing, None, cx),
         )
         .state(
