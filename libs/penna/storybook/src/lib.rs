@@ -314,10 +314,18 @@ mod web {
             .add_fonts(vec![
                 super::Cow::Borrowed(include_bytes!("../fonts/inter/InterVariable.ttf")),
                 super::Cow::Borrowed(include_bytes!("../fonts/inter/InterVariable-Italic.ttf")),
-                super::Cow::Borrowed(include_bytes!("../fonts/commit-mono/CommitMono-400-Regular.ttf")),
-                super::Cow::Borrowed(include_bytes!("../fonts/commit-mono/CommitMono-700-Regular.ttf")),
-                super::Cow::Borrowed(include_bytes!("../fonts/commit-mono/CommitMono-400-Italic.ttf")),
-                super::Cow::Borrowed(include_bytes!("../fonts/commit-mono/CommitMono-700-Italic.ttf")),
+                super::Cow::Borrowed(include_bytes!(
+                    "../fonts/commit-mono/CommitMono-400-Regular.ttf"
+                )),
+                super::Cow::Borrowed(include_bytes!(
+                    "../fonts/commit-mono/CommitMono-700-Regular.ttf"
+                )),
+                super::Cow::Borrowed(include_bytes!(
+                    "../fonts/commit-mono/CommitMono-400-Italic.ttf"
+                )),
+                super::Cow::Borrowed(include_bytes!(
+                    "../fonts/commit-mono/CommitMono-700-Italic.ttf"
+                )),
             ])
             .expect("failed to load the interface fonts");
         (catalog().init)(cx);
