@@ -452,6 +452,7 @@ mod tests {
                     id: "answer-1".to_owned(),
                     label: "Dark red".to_owned(),
                 }]),
+                request: Some(7),
             }
             .to_string(),
         );

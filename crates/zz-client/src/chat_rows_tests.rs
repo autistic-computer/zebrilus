@@ -1461,6 +1461,7 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
                 provider: codex,
                 what: "execute cargo test".to_owned(),
                 answers: AskAnswers::AllowDeny,
+                request: Some(7),
             }
             .to_string(),
             vec![

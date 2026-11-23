@@ -485,6 +485,7 @@ pub struct AgentAsk {
     pub provider: AgentProvider,
     pub what: String,
     pub answers: AskAnswers,
+    pub request: Option<u64>,
 }
 
 impl fmt::Display for AgentAsk {
@@ -492,37 +493,26 @@ impl fmt::Display for AgentAsk {
         let pane = self.pane;
         write_header(formatter, pane, self.provider)?;
         write!(formatter, " asks: {}", self.what)?;
-        let deny = AgentRespond {
+        let respond = |decision| AgentRespond {
             pane,
-            decision: AgentDecision::Deny,
-            request: None,
+            decision,
+            request: self.request,
         };
+        let deny = respond(AgentDecision::Deny);
         match &self.answers {
             AskAnswers::AllowDeny => {
-                let allow = AgentRespond {
-                    pane,
-                    decision: AgentDecision::Allow,
-                    request: None,
-                };
+                let allow = respond(AgentDecision::Allow);
                 write!(formatter, "\n{allow}\n{deny}")
             }
             AskAnswers::Options(options) => {
                 for option in options {
-                    let pick = AgentRespond {
-                        pane,
-                        decision: AgentDecision::Option(option.id.clone()),
-                        request: None,
-                    };
+                    let pick = respond(AgentDecision::Option(option.id.clone()));
                     write!(formatter, "\n{pick}  # {}", option.label)?;
                 }
                 write!(formatter, "\n{deny}")
             }
             AskAnswers::FreeText => {
-                let answer = AgentRespond {
-                    pane,
-                    decision: AgentDecision::Answer("TEXT".to_owned()),
-                    request: None,
-                };
+                let answer = respond(AgentDecision::Answer("TEXT".to_owned()));
                 write!(formatter, "\n{answer}\n{deny}")
             }
         }
@@ -536,7 +526,11 @@ impl AgentAsk {
         let (pane, provider, tail) = header(lines.next()?)?;
         let what = tail.strip_prefix("asks: ")?.to_owned();
         let rest = lines.collect::<Vec<_>>();
-        let respond = |line: &str| AgentRespond::parse(line).filter(|respond| respond.pane == pane);
+        let request = AgentRespond::parse(rest.last()?)?.request;
+        let respond = |line: &str| {
+            AgentRespond::parse(line)
+                .filter(|respond| respond.pane == pane && respond.request == request)
+        };
         let denies = |line: &str| respond(line).is_some_and(|r| r.decision == AgentDecision::Deny);
         let answers = match rest.as_slice() {
             [allow, deny]
@@ -578,6 +572,7 @@ impl AgentAsk {
             provider,
             what,
             answers,
+            request,
         })
     }
 }
@@ -775,7 +770,7 @@ mod tests {
         let asks = [
             (
                 AskAnswers::AllowDeny,
-                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --allow\nzz agent-respond -t %4 --deny",
+                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --allow 9\nzz agent-respond -t %4 --deny 9",
             ),
             (
                 AskAnswers::Options(vec![
@@ -788,11 +783,11 @@ mod tests {
                         label: "Dark red".to_owned(),
                     },
                 ]),
-                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --option answer-0  # Blue\nzz agent-respond -t %4 --option answer-1  # Dark red\nzz agent-respond -t %4 --deny",
+                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --option answer-0 9  # Blue\nzz agent-respond -t %4 --option answer-1 9  # Dark red\nzz agent-respond -t %4 --deny 9",
             ),
             (
                 AskAnswers::FreeText,
-                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --answer 'TEXT'\nzz agent-respond -t %4 --deny",
+                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --answer 'TEXT' 9\nzz agent-respond -t %4 --deny 9",
             ),
         ];
         for (answers, text) in asks {
@@ -801,10 +796,22 @@ mod tests {
                 provider: codex,
                 what: "execute cargo test".to_owned(),
                 answers,
+                request: Some(9),
             };
             assert_eq!(ask.to_string(), text);
             assert_eq!(AgentAsk::parse(text), Some(ask));
         }
+        let earlier = "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --allow\nzz agent-respond -t %4 --deny";
+        assert_eq!(
+            AgentAsk::parse(earlier).map(|ask| (ask.answers, ask.request)),
+            Some((AskAnswers::AllowDeny, None))
+        );
+        assert_eq!(
+            AgentAsk::parse(
+                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --allow 8\nzz agent-respond -t %4 --deny 9"
+            ),
+            None
+        );
         let opened = |route| ReplyNotice::Opened {
             verb: "new-pane".to_owned(),
             pane,

@@ -239,12 +239,13 @@ fn tool(script: &mut Script, id: &str, command: String, output: String) {
 pub fn child_transcript(window: &mut Window, cx: &mut App) -> AnyView {
     let pane = PaneId(4);
     let codex = AgentProvider::Codex;
-    let ask = |what: &str| {
+    let ask = |what: &str, request: u64| {
         AgentAsk {
             pane,
             provider: codex,
             what: what.to_owned(),
             answers: AskAnswers::AllowDeny,
+            request: Some(request),
         }
         .to_string()
     };
@@ -265,14 +266,14 @@ pub fn child_transcript(window: &mut Window, cx: &mut App) -> AnyView {
         .to_string(),
     );
     script.finish(completed());
-    script.turn(&ask(&format!("execute {COMMAND}")));
+    script.turn(&ask(&format!("execute {COMMAND}"), 1));
     tool(
         &mut script,
         "allow",
         AgentRespond {
             pane,
             decision: AgentDecision::Allow,
-            request: None,
+            request: Some(1),
         }
         .to_string(),
         String::new(),
@@ -317,7 +318,7 @@ pub fn child_transcript(window: &mut Window, cx: &mut App) -> AnyView {
     );
     script.reply("a5", "Asked codex again.").finish(completed());
     script
-        .turn(&ask("execute cargo test -p zz-daemon resume"))
+        .turn(&ask("execute cargo test -p zz-daemon resume", 2))
         .reply("a6", "Waiting on you for that one.")
         .finish(completed());
     let refs = ChatRefs {

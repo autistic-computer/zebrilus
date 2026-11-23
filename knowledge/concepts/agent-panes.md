@@ -79,10 +79,11 @@ agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do no
 `AgentReport::parse` strips those trailing lines, so a client gets only the reply text. A chat with
 a parent runs on the `all` auto-approve tier unless the global `agent-auto-approve` is `off`
 (`child_auto_approve`: `agent_pane_spec` reads it whenever the chat's host opens, and
-`Shared::set_agent_parent` sets it on a host already open, since a new or reopened chat's host
-opens before its parent is recorded), so it answers its own tool permissions. While that turn waits
-on a question, or on a permission under `off`, the waiter's `asks` sink sends one `[zz] %N (codex)
-asks: kind title` message per request id with the `zz agent-respond` lines that answer it. Every string here, the stderr lines
+`Shared::approve_child_tools` sets it on a host already open; the parent is recorded under the lock
+that creates the pane, before its host opens), so it answers its own tool permissions. While that
+turn waits on a question, or on a permission under `off`, the waiter's `asks` sink sends one
+`[zz] %N (codex) asks: kind title` message per request id with the `zz agent-respond` lines that
+answer it, each ending with that request id. Every string here, the stderr lines
 included, is built and parsed by `zz_protocol::agent_mention` (`AgentReport`, `AgentAsk`,
 `ReplyNotice`, `AgentRespond`), so clients read them with the same code. Deliveries to one caller
 go out in the order they were made, from one queue per caller (`Shared::deliver_to_chat`), and an

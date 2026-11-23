@@ -52980,6 +52980,7 @@ fn agent_ask(
         provider,
         what,
         answers,
+        request: Some(permission.request_id),
     }
 }
 
@@ -53486,7 +53487,7 @@ Claude Code, Codex, Antigravity and Grok run two ways in a pane, and a pane flip
 
 Open a new chat as a float. `split-window` and `new-window` take the same `--kind agent` words and give the chat a split beside the target or a window of its own. `--model`, `--effort`, `--account` and `--resume` go before the provider or right after it. The words after them are the brief, sent as the chat's first prompt once its session is up, with the same checks and 1 MiB cap as `agent-send` TEXT; no brief opens an empty chat. Without `-c` the chat starts in the folder a terminal made the same way would. `-P -F '#{pane_id}'` prints the new pane, which takes `agent-send` at once: `zz new-pane -d -P -F '#{pane_id}' --kind agent codex 'review the diff in this folder'`. A missing or unknown provider, or a bad flag value, exits 2. Every create prints one line on stderr, `new-pane: opened %N (codex)` (with the verb's own name); with a brief it goes on `; its reply comes back to you as a message; end your turn now` when run from a chat, and `; read its reply with: zz agent-send -t %N --wait ''` when run from anywhere else.
 
-Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends, and it approves its own tool calls unless `agent-auto-approve` is `off`, so only a question it asks comes to you, with the `agent-respond` lines that answer it. Do not wait or poll. The chat you open gets a note with its brief, kept out of its transcript, saying which chat opened it and that its final message is its reply. It cannot open chats of its own (it is told to do the work itself or say what it needs), and closing your pane closes it and every pane it opened. If the user closes it and opens it again, `zz agent-send -t %N` still reaches it by the id you were given; while it stays closed, the send fails with `%N was closed; open a new chat with: zz new-pane -d --kind agent codex 'BRIEF'`. A message reads `[zz] %N (codex) finished:` or `stopped (REASON):`, then the reply and `If this answers the user, answer the user now and send nothing to %N. Only if something is missing: zz agent-send -t %N 'TEXT'`; `failed: MESSAGE` and `Tell the user, or try again with: zz agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it, one `--option ID  # LABEL` line per choice of a question and `--answer 'TEXT'` for one that wants typed text.
+Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends, and it approves its own tool calls unless `agent-auto-approve` is `off`, so only a question it asks comes to you, with the `agent-respond` lines that answer it. Do not wait or poll. The chat you open gets a note with its brief, kept out of its transcript, saying which chat opened it and that its final message is its reply. It cannot open chats of its own (it is told to do the work itself or say what it needs), and closing your pane closes it and every pane it opened. If the user closes it and opens it again, `zz agent-send -t %N` still reaches it by the id you were given; while it stays closed, the send fails with `%N was closed; open a new chat with: zz new-pane -d --kind agent codex 'BRIEF'`. A message reads `[zz] %N (codex) finished:` or `stopped (REASON):`, then the reply and `If this answers the user, answer the user now and send nothing to %N. Only if something is missing: zz agent-send -t %N 'TEXT'`; `failed: MESSAGE` and `Tell the user, or try again with: zz agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it, one `--option ID REQUEST_ID  # LABEL` line per choice of a question and `--answer 'TEXT' REQUEST_ID` for one that wants typed text; each line ends with the id of the request it answers, so once that request is answered or gone it fails with `has no pending request` instead of answering another one.
 
 A prompt that names an agent with `@+claude`, `@+codex`, `@+agy`, `@+grok`, `@+cursor` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a note, kept out of the transcript, that tells you to hand the task over with the exact command (`zz new-pane -d --kind agent codex 'BRIEF'`, or `zz agent-send -t %N 'TEXT'` for a chat) and end your turn.
 
@@ -125046,7 +125047,7 @@ bind - split-window -v -c "#{pane_current_path}"
             let ask = agent_ask(PaneId(2), AgentProvider::Codex, &permission).to_string();
             assert_eq!(
                 ask,
-                "[zz] %2 (codex) asks: Which color?\nzz agent-respond -t %2 --option answer-0  # Dark blue\nzz agent-respond -t %2 --option answer-1  # Red\nzz agent-respond -t %2 --deny"
+                "[zz] %2 (codex) asks: Which color?\nzz agent-respond -t %2 --option answer-0 7  # Dark blue\nzz agent-respond -t %2 --option answer-1 7  # Red\nzz agent-respond -t %2 --deny 7"
             );
             let line = ask.lines().nth(1).expect("option line");
             let words = std::process::Command::new("/bin/sh")
@@ -125059,7 +125060,7 @@ bind - split-window -v -c "#{pane_current_path}"
             let parsed = parse_agent_respond_args(&args).expect("agent-respond takes the line");
             assert_eq!(parsed.target.as_deref(), Some("%2"));
             assert_eq!(parsed.option.as_deref(), Some("answer-0"));
-            assert_eq!(parsed.request_id, None);
+            assert_eq!(parsed.request_id, Some(7));
         }
 
         #[test]
@@ -125627,7 +125628,7 @@ bind - split-window -v -c "#{pane_current_path}"
                 received(&workspace, host),
                 [
                     "work",
-                    "[zz] %3 (codex) asks: run it\nzz agent-respond -t %3 --allow\nzz agent-respond -t %3 --deny",
+                    "[zz] %3 (codex) asks: run it\nzz agent-respond -t %3 --allow 3\nzz agent-respond -t %3 --deny 3",
                     "[zz] %2 (codex) finished:\nturn 0\n\nIf this answers the user, answer the user now and send nothing to %2. Only if something is missing: zz agent-send -t %2 'TEXT'",
                 ]
             );
@@ -125670,7 +125671,7 @@ bind - split-window -v -c "#{pane_current_path}"
             assert_eq!(
                 received(&workspace, host),
                 [
-                    "[zz] %2 (codex) asks: run it\nzz agent-respond -t %2 --allow\nzz agent-respond -t %2 --deny",
+                    "[zz] %2 (codex) asks: run it\nzz agent-respond -t %2 --allow 1\nzz agent-respond -t %2 --deny 1",
                     "[zz] %2 (codex) finished:\nturn 0\n\nIf this answers the user, answer the user now and send nothing to %2. Only if something is missing: zz agent-send -t %2 'TEXT'",
                 ]
             );
@@ -125756,7 +125757,25 @@ bind - split-window -v -c "#{pane_current_path}"
             });
             assert_eq!(
                 received(&workspace, host)[1],
-                "[zz] %3 (codex) asks: execute run it\nzz agent-respond -t %3 --allow\nzz agent-respond -t %3 --deny"
+                "[zz] %3 (codex) asks: execute run it\nzz agent-respond -t %3 --allow 1\nzz agent-respond -t %3 --deny 1"
+            );
+            assert_eq!(
+                run_as(
+                    &workspace,
+                    ClientId(97),
+                    None,
+                    "agent-respond",
+                    &["-t", "%3", "--allow", "99"],
+                ),
+                Err("%3 has no pending request (already answered, or none was asked)".to_owned())
+            );
+            assert_eq!(
+                workspace
+                    .runtime
+                    .wire_state(PaneId(3))
+                    .and_then(|state| state.pending_permission)
+                    .map(|permission| permission.request_id),
+                Some(1)
             );
         }
 

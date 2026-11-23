@@ -227,13 +227,14 @@ that names the verb to use, and not "pane has exited":
 # Messages into the host
 
 A reply or an ask arrives in the calling chat as a queued prompt: it runs now if the chat is idle,
-else behind what it is doing. Each one ends with the command to run next, so the host needs no ids
-and no memory of the syntax.
+else behind what it is doing. Each one ends with the command to run next, so the host needs no
+memory of the syntax. An ask's lines end with the id of the request they answer, so a late answer
+fails with `has no pending request` rather than answering a newer request of the same chat.
 
 ```
 [zz] %4 (codex) asks: Bash cargo test -p zz-daemon
-zz agent-respond -t %4 --allow
-zz agent-respond -t %4 --deny
+zz agent-respond -t %4 --allow 12
+zz agent-respond -t %4 --deny 12
 ```
 
 ```
@@ -264,7 +265,7 @@ Tell the user, or try again with: zz agent-send -t %4 'TEXT'
 The trailing lines came from the second stress test batch; `AgentReport::parse` strips them, so a
 client reads only the reply text.
 
-An ask with options lists one `zz agent-respond -t %4 --option ID  # LABEL` line per option
+An ask with options lists one `zz agent-respond -t %4 --option ID REQUEST_ID  # LABEL` line per option
 instead of allow and deny (the label is a shell comment, so the whole line runs as written).
 
 The injected prompt carries the pane it came from, so clients draw it as a child row and not as a

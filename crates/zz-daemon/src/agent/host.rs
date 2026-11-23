@@ -150,7 +150,7 @@ fn select_permission(
         Some(id) => pending
             .iter()
             .find(|pending| pending.request_id == id)
-            .ok_or_else(|| format!("unknown permission request: {id}"))?,
+            .ok_or_else(|| "no pending permission".to_owned())?,
         None => pending
             .first()
             .ok_or_else(|| "no pending permission".to_owned())?,
@@ -3260,7 +3260,7 @@ mod tests {
         );
         assert_eq!(
             select_permission(&pending, Some(99), &PermissionChoice::Allow),
-            Err("unknown permission request: 99".to_owned())
+            Err("no pending permission".to_owned())
         );
     }
 
