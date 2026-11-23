@@ -128,11 +128,21 @@ a few releases.
   transcript (and its `subagents/` folder) or Codex's rollout files copied from that HOME into
   `vendor/`. A raw tape or vendor file holds the login, home paths, the host name, the account's
   email and ids, plan names and rate-limit figures until `bench/agents/tapes/scrub.py <raw> <out>
-  [<raw> <out> ...]` takes them out, so it never leaves that folder unscrubbed. Scrub a run's tapes
-  and vendor files in one call, so the account ids they share get the same stand-ins. To replay an ACP tape, scrub it into
-  `crates/zz-daemon/src/agent/fixtures/<provider>-<scenario>.ndjson`, add it to `RECORDED` in
-  `agent/runtime/tape_tests.rs` and run `cargo test -p zz-daemon agent::`: the player checks what
-  zz writes against the tape, and the cut-point sweeps run on it.
+  [<raw> <out> ...]` takes them out, so it never leaves that folder unscrubbed. Scrub a run's
+  tapes and vendor files in one call, so the account ids they share get the same stand-ins. The
+  scrub also moves timestamps to UTC (`+00:00`) and keeps, of each Claude Code transcript
+  attachment other than `queued_command`, only `type`, `uuid`, `parentUuid`, `timestamp` and the
+  attachment's own type: `sessions::transcript` reads the same updates from the blanked file, and
+  the rest holds the CLI's own prompt and skill listings. Codex rollouts stay under
+  `/private/tmp/zz-tapes/` and are not fixtures, since zz reads a rollout only for its metadata
+  and they hold Codex's base instructions and tool definitions. To replay a tape, scrub it into
+  `crates/zz-daemon/src/agent/fixtures/<provider>-<scenario>.ndjson` (a Claude Code transcript
+  beside it as `<provider>-<scenario>.transcript.jsonl`), add it to `RECORDED` in
+  `agent/runtime/tape_tests.rs` for an ACP provider or to `NATIVE` in
+  `agent/claude/replay_tests.rs` or `agent/codex/replay_tests.rs`, and run `cargo test -p
+  zz-daemon agent::`: the ACP player checks what zz writes against the tape, the Claude Code and
+  Codex drivers play it through their own runtimes, a Claude Code transcript is reloaded at every
+  line, and the cut-point sweeps run on all of them.
 * **Every provider: a chat on a private daemon.** Build the CLI (`ZZ_DEV_BUILD=1 cargo build -p
   zz-cli`), run it with `--socket /tmp/<name>.sock`, make a pane an agent with
   `select-pane-kind -t %0 -c DIR agent <provider>`, then `agent-send -t %0 --wait --final`. Read the

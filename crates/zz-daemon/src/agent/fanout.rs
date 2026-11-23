@@ -3412,7 +3412,7 @@ mod tests {
         use zz_protocol::chat::{ChatView, TurnBy, TurnId};
 
         const REOPENED_AT: u64 = 1000;
-        const LONG_LANE: usize = 32;
+        const LONG_LANE: usize = 16;
         const NEAR_ROOMS: u64 = 24;
         let stale = fold(&[
             ChatEvent::SessionReady {
@@ -3664,6 +3664,9 @@ mod tests {
                 }
             }
         }
-        findings.finish(&[]);
+        findings.finish(&[
+            "B | a | sends a journal note",
+            "B | b | sends a journal note",
+        ]);
     }
 }

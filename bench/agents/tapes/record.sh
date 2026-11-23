@@ -101,7 +101,7 @@ case $SCENARIO in
   tools) ask 'In this folder: read notes.txt, write its first line to copy.txt, run ls, then run cat missing.txt (it fails). Reply in one short sentence.' || fail "tools" ;;
   stop)
     log "prompt: count"
-    Z "$ZB" agent-send -t "$ME" 'Count from 1 to 300, one number per line.' >> "$RUN/rig.log" 2>&1
+    Z "$ZB" agent-send -t "$ME" "Count from 1 to ${COUNT:-300}, one number per line." >> "$RUN/rig.log" 2>&1
     working || fail "the turn did not start"
     sleep 4
     log "stop"

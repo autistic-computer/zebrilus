@@ -260,6 +260,31 @@ could tie to real Claude Code or Codex behavior.
   ignoring ids, the rules text and the client version, and nothing written that the tape lacks. A
   reload tape plays as two processes on one pane's journal, the second opened on the first one's
   session.
+- The Claude Code and Codex tapes in `agent/fixtures` come from the same rig: hello, tools, queue
+  and reload for both, and stop for Codex, each Claude tape with its scrubbed session transcript
+  beside it. `claude::replay_tests::native` and `codex::replay_tests::native` play each process on
+  a fresh runtime with a real journal, as `launch` and `spawn` leave it. A prompt goes in as the
+  host sends it (Claude's `prompt` steps with the recorded uuid in place of a fresh one, Codex's
+  `RuntimeCommand::Prompt`), a stop and an answer to an ask as `RuntimeControl`, and every `out`
+  line to `Runtime::frame` or `Runtime::message`. A request zz sent is registered under its
+  recorded id with the matching `Outgoing`, so its recorded answer reaches the runtime's own
+  handler; requests the runtime issues itself run on ids no answer uses. An `exit` line changes
+  nothing, since the rig's processes ended by `kill-pane` or `kill-server`. A second process may
+  replace the journal before its session is ready (Codex rebuilds it from the app server's
+  history), so a tape keeps one journal per rewrite and still fails on a rewrite after that.
+- Claude Code reloads from its own transcript
+  (`a_session_reloads_from_its_own_transcript_at_every_line`): for every prefix of each fixture
+  transcript, `Runtime::initialized` reads it through `sessions::transcript` into a fresh runtime.
+  `sessions::config_home` takes its folder only from `CLAUDE_CONFIG_DIR` or `HOME`, so the test
+  runs itself again in a child process with `CLAUDE_CONFIG_DIR` set rather than change the test
+  process's environment. Every row a prefix shows must sit in the live chat at the end of the
+  tape in the same order with the same kind, title and target, and once closed the same text and
+  status, with nothing skipped; the full transcript must give the live turns, outcomes and rows
+  exactly, and the second process of `claude-reload` must show what the first ended with. Two
+  rules loosen it: a text row is matched by its message and its place among that message's rows,
+  since `Translator::block_key` names a streamed block by its index and a whole one by its count;
+  and a row a prefix cuts before its result reads as interrupted, as `Shadow::replay_history`
+  ends it, so only its kind, title and target are compared.
 - Cut-point sweeps (`agent/cut_points.rs`) take each recording as a tape (`claude::tapes`,
   `codex::tapes`, `runtime::acp_tapes`: the payloads every recording line produced, and what the
   journal held after it) and do something to the chat at every position, then compare with the
@@ -273,7 +298,7 @@ could tie to real Claude Code or Codex behavior.
     must give an equal view. The capped rebuild, tried at every cut size through `room`, must keep
     the phase, the running turn, the queue, the usage and every open item and request, come
     numbered from `from_seq + 1` to the lane's last number with no gap, and leave a viewer that was
-    current with the same chat and no gap. Past a lane's first 32 payloads the sweep samples: it
+    current with the same chat and no gap. Past a lane's first 16 payloads the sweep samples: it
     checks a line only after its last payload and skips a line inside a run of lines with the same
     payload kinds, the ring path takes 3 of its 9 `from_seq` values, and the rebuild takes every
     `room` up to 24 and 4 spread beyond.
@@ -298,8 +323,10 @@ could tie to real Claude Code or Codex behavior.
   their own sends no `Restart`, so that client keeps its old chat; no recording reaches it. A chat
   reloaded from the journal shows an answered question with its question and answers but without
   its options, since only the tool update that carries the answer is journalled, and permission
-  cards and open questions are not journalled at all. The two Codex rollout fixtures have no driver
-  that plays them and are not taped.
+  cards and open questions are not journalled at all. A Claude Code or Codex session restored
+  from history sends zz's own turn marks to every viewer as updates, which the ACP dialect and
+  the fanout's journal replay keep back. The two Codex rollout fixtures have no driver that plays
+  them and are not taped.
 
 # Next
 

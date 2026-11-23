@@ -18,13 +18,14 @@ pub(crate) struct Tape {
     pub(crate) provider: AgentProvider,
     pub(crate) session: String,
     pub(crate) lines: Vec<Line>,
-    journal: Vec<Value>,
+    journal: Vec<Vec<Value>>,
     reload: fn(AgentProvider, &str, &[Value]) -> Vec<ChatEvent>,
 }
 
 pub(crate) struct Line {
     pub(crate) label: String,
     pub(crate) payloads: Vec<AgentStreamPayload>,
+    epoch: usize,
     held: usize,
     tail: Option<Value>,
 }
@@ -41,7 +42,7 @@ impl Tape {
 
     pub(crate) fn journal_at(&self, line: usize) -> Vec<Value> {
         let line = &self.lines[line];
-        let mut held = self.journal[..line.held.saturating_sub(1)].to_vec();
+        let mut held = self.journal[line.epoch][..line.held.saturating_sub(1)].to_vec();
         held.extend(line.tail.clone());
         held
     }
@@ -58,6 +59,8 @@ pub(crate) struct Taping {
     journal: Arc<AgentJournal>,
     lines: Vec<Line>,
     held: Vec<Value>,
+    epochs: Vec<Vec<Value>>,
+    ready: bool,
     _directory: Option<tempfile::TempDir>,
 }
 
@@ -83,6 +86,8 @@ impl Taping {
             journal,
             lines: Vec::new(),
             held: Vec::new(),
+            epochs: Vec::new(),
+            ready: false,
             _directory: None,
         }
     }
@@ -97,14 +102,19 @@ impl Taping {
             .held_for(self.provider, &self.session)
             .expect("read the journal");
         let settled = self.held.len().saturating_sub(1);
-        assert!(
-            held.len() >= settled && held[..settled] == self.held[..settled],
-            "{}: the journal rewrote a settled record",
-            self.name
-        );
+        if held.len() < settled || held[..settled] != self.held[..settled] {
+            assert!(
+                !self.ready,
+                "{}: the journal rewrote a settled record",
+                self.name
+            );
+            self.epochs.push(std::mem::take(&mut self.held));
+        }
+        self.ready |= payloads.iter().any(session_ready);
         self.lines.push(Line {
             label: entry.map_or_else(|| "setup".to_owned(), label),
             payloads,
+            epoch: self.epochs.len(),
             held: held.len(),
             tail: held.last().cloned(),
         });
@@ -112,7 +122,7 @@ impl Taping {
     }
 
     pub(crate) fn finish(
-        self,
+        mut self,
         emitted: &[ChatEvent],
         reload: fn(AgentProvider, &str, &[Value]) -> Vec<ChatEvent>,
     ) -> Tape {
@@ -132,7 +142,10 @@ impl Taping {
             provider: self.provider,
             session: self.session,
             lines: self.lines,
-            journal: self.held,
+            journal: {
+                self.epochs.push(self.held);
+                self.epochs
+            },
             reload,
         }
     }
@@ -961,7 +974,94 @@ fn resumed(tape: &Tape) -> bool {
         })
 }
 
-fn resume_difference(ended: &ChatView, resumed: &ChatView) -> Option<Difference> {
+fn shown<'a>(view: &'a ChatView, ids: &'a [ItemId], into: &mut Vec<&'a ItemView>) {
+    for item in ids.iter().filter_map(|id| view.item(id)) {
+        into.push(item);
+        shown(view, &item.children, into);
+    }
+}
+
+fn shown_rows(view: &ChatView) -> Vec<&ItemView> {
+    let mut rows = Vec::new();
+    for turn in &view.turns {
+        shown(view, &turn.items, &mut rows);
+    }
+    shown(view, &view.background, &mut rows);
+    rows
+}
+
+fn block_stem(id: &ItemId) -> &str {
+    let id = id.as_str();
+    if !(id.starts_with("a:") || id.starts_with("r:")) {
+        return id;
+    }
+    id.rfind([':', '#'])
+        .filter(|at| *at > 1 && id[at + 1..].chars().all(|digit| digit.is_ascii_digit()))
+        .map_or(id, |at| &id[..at])
+}
+
+fn keyed<'a>(rows: &[&'a ItemView]) -> Vec<(&'a str, usize)> {
+    let mut seen = BTreeMap::<&str, usize>::new();
+    rows.iter()
+        .map(|row| {
+            let stem = block_stem(&row.id);
+            let nth = seen.entry(stem).or_default();
+            *nth += 1;
+            (stem, *nth)
+        })
+        .collect()
+}
+
+fn left_open_by_the_cut(row: &ItemView) -> bool {
+    row.status.is_open() || matches!(row.status, ItemStatus::Interrupted)
+}
+
+pub(crate) fn partial_reload_difference(
+    live: &ChatView,
+    reloaded: &ChatView,
+) -> Option<Difference> {
+    if reloaded.skipped > 0 {
+        return same("skipped", "skipped", &0, &reloaded.skipped);
+    }
+    let order = shown_rows(live);
+    let live_keys = keyed(&order);
+    let rows = shown_rows(reloaded);
+    let mut last = None;
+    for (row, key) in rows.iter().zip(keyed(&rows)) {
+        let at = format!("row {}", row.id.as_str());
+        let Some(position) = live_keys.iter().position(|other| *other == key) else {
+            return Some(presence(
+                "rows[] not in the live chat",
+                &at,
+                "a live row",
+                &short(&(row.kind, &row.body.title)),
+            ));
+        };
+        if last.is_some_and(|last| position < last) {
+            return Some(presence(
+                "rows[] order",
+                &at,
+                "the live order",
+                "an earlier live row after a later one",
+            ));
+        }
+        last = Some(position);
+        let other = order[position];
+        let closed = !left_open_by_the_cut(row);
+        let found = first_field!("rows[]", at, other, row, [kind, body.title, body.target])
+            .or_else(|| {
+                closed
+                    .then(|| first_field!("rows[]", at, other, row, [body.text, status]))
+                    .flatten()
+            });
+        if found.is_some() {
+            return found;
+        }
+    }
+    None
+}
+
+pub(crate) fn resume_difference(ended: &ChatView, resumed: &ChatView) -> Option<Difference> {
     same(
         "turns.len",
         "turns",
@@ -1007,6 +1107,21 @@ fn without_the_restore_notice(mut rows: Vec<Row>) -> Vec<Row> {
     rows
 }
 
+pub(crate) fn resumed_view(second: &Tape) -> (usize, ChatView) {
+    let loaded = second
+        .lines
+        .iter()
+        .position(|line| line.payloads.iter().any(session_ready))
+        .expect("the second process opens a session");
+    let view = fold(
+        second.lines[..=loaded]
+            .iter()
+            .flat_map(|line| line.payloads.iter())
+            .filter_map(chat_event),
+    );
+    (loaded, view)
+}
+
 #[test]
 fn a_second_process_shows_the_chat_the_first_one_ended_with() {
     let mut findings = Findings::new("R resume");
@@ -1017,17 +1132,7 @@ fn a_second_process_shows_the_chat_the_first_one_ended_with() {
             .find(|tape| tape.name == name)
             .expect("the second process");
         let ended = fold(&first.events());
-        let loaded = second
-            .lines
-            .iter()
-            .position(|line| line.payloads.iter().any(session_ready))
-            .expect("the second process opens a session");
-        let resumed = fold(
-            second.lines[..=loaded]
-                .iter()
-                .flat_map(|line| line.payloads.iter())
-                .filter_map(chat_event),
-        );
+        let (loaded, resumed) = resumed_view(second);
         findings.checked();
         if let Some(diff) = resume_difference(&ended, &resumed) {
             findings.add(

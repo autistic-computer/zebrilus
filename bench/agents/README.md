@@ -17,15 +17,16 @@ Homebrew and the system. Codex goes through its shared app-server daemon, which 
 scratch HOME (its socket is keyed to that HOME, so the user's own daemon is out of reach), and the
 rig stops it and anything else left under the run folder at the end. It opens a chat in a scratch
 workspace with two small files, sends the scenario's prompts with `agent-send` and answers approvals
-only in `tools`, stops a turn with the `agent_cancel` example, reopens a chat with `--resume` for
-`reload`, then runs `kill-server` on that socket and keeps the tapes, the chat text and the CLI's
-own session files (Claude Code's transcript, Codex's rollouts) under
-`/private/tmp/zz-tapes/<provider>-<scenario>-*`. `open` starts the chat with no prompt, to see
-whether the CLI is signed in. `scrub.py <raw> <out> [<raw> <out> ...]` rewrites the workspace, the
-homes, the worktree, the scratch sockets, the login, the host name, emails, credentials, account and
-organization ids, plan names and billing and rate-limit figures, blanks the request bodies Claude
-Code copies into its transcript, prints what it replaced, and exits 1 when the output still holds
-any of them. A path split across two streamed chunks is not rewritten (`agy-tools` and
+only in `tools`, stops a turn with the `agent_cancel` example (`stop` counts to `COUNT`, 300 by
+default), reopens a chat with `--resume` for `reload`, then runs `kill-server` on that socket and
+keeps the tapes, the chat text and the CLI's own session files (Claude Code's transcript, Codex's
+rollouts) under `/private/tmp/zz-tapes/<provider>-<scenario>-*`. `open` starts the chat with no
+prompt, to see whether the CLI is signed in. `scrub.py <raw> <out> [<raw> <out> ...]` rewrites the
+workspace, the homes, the worktree, the scratch sockets, the login, the host name, emails,
+credentials, account and organization ids, plan names and billing and rate-limit figures, blanks the
+request bodies Claude Code copies into its transcript and the bodies of its attachments other than
+`queued_command`, moves timestamps to UTC, prints what it replaced, and exits 1 when the output
+still holds any of them. A path split across two streamed chunks is not rewritten (`agy-tools` and
 `claude-tools` have one), and that exit check looks for the login, the homes, the run folder, the
 worktree and its branch, the host name, the time zone, emails, the replaced ids, the account's
 connectors and the skill, plugin and MCP server names in the real HOME.

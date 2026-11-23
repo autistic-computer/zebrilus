@@ -866,73 +866,7 @@ impl Runtime {
                 turn_id,
                 prompt,
                 note,
-            } => {
-                self.last_turn = self.last_turn.max(turn_id);
-                if let Some(name) = self.refused_command(&prompt.text) {
-                    self.emit(AgentStreamPayload::PromptAccepted { turn_id })
-                        .await?;
-                    return self
-                        .finish(
-                            turn_id,
-                            AgentPromptOutcome::Failed {
-                                message: format!(
-                                    "/{name} only works in Claude Code's own screen; flip the pane to the CLI to use it"
-                                ),
-                            },
-                        )
-                        .await;
-                }
-                if self.deferred_cancels.remove(&turn_id) {
-                    self.emit(AgentStreamPayload::PromptAccepted { turn_id })
-                        .await?;
-                    return self.finish(turn_id, cancelled()).await;
-                }
-                if self.session.is_none() || self.process.is_none() {
-                    return self
-                        .emit(AgentStreamPayload::PaneFailed {
-                            message: "agent session is not ready".to_owned(),
-                        })
-                        .await;
-                }
-                let content = prompt_content(&prompt, note.as_deref());
-                let text = prompt.text.clone();
-                let uuid = new_uuid();
-                let fact = Fact::Prompt {
-                    turn: turn_id,
-                    command: Some(uuid.clone()),
-                };
-                if let Some(reject) = self.apply(&fact).await? {
-                    self.emit(AgentStreamPayload::PromptAccepted { turn_id })
-                        .await?;
-                    let message = if reject == Reject::Offline {
-                        "agent session is not ready"
-                    } else {
-                        "a turn is already running"
-                    };
-                    return self
-                        .finish(
-                            turn_id,
-                            AgentPromptOutcome::Failed {
-                                message: message.to_owned(),
-                            },
-                        )
-                        .await;
-                }
-                for update in prompt_echo(&prompt_blocks(prompt), &MessageId::new(uuid.clone()))? {
-                    self.update(update, true).await?;
-                }
-                self.send(&json!({
-                    "type": "user",
-                    "uuid": uuid,
-                    "session_id": "",
-                    "parent_tool_use_id": null,
-                    "message": { "role": "user", "content": content },
-                    "origin": { "kind": "human" },
-                }));
-                self.ask_title(&text);
-                self.emit(AgentStreamPayload::PromptAccepted { turn_id })
-                    .await
-            }
+            } => self.prompt(turn_id, prompt, note, new_uuid()).await,
             RuntimeCommand::Authenticate { .. } => {
                 self.emit(AgentStreamPayload::AuthenticationFailed {
                     message: "Claude Code signs in with `claude /login` in a terminal".to_owned(),
@@ -1353,6 +1287,79 @@ impl Runtime {
             .await?;
         }
         Ok(())
+    }
+
+    async fn prompt(
+        &mut self,
+        turn_id: u64,
+        prompt: AgentPrompt,
+        note: Option<String>,
+        uuid: String,
+    ) -> Result<(), String> {
+        self.last_turn = self.last_turn.max(turn_id);
+        if let Some(name) = self.refused_command(&prompt.text) {
+            self.emit(AgentStreamPayload::PromptAccepted { turn_id })
+                .await?;
+            return self
+                .finish(
+                    turn_id,
+                    AgentPromptOutcome::Failed {
+                        message: format!(
+                            "/{name} only works in Claude Code's own screen; flip the pane to the CLI to use it"
+                        ),
+                    },
+                )
+                .await;
+        }
+        if self.deferred_cancels.remove(&turn_id) {
+            self.emit(AgentStreamPayload::PromptAccepted { turn_id })
+                .await?;
+            return self.finish(turn_id, cancelled()).await;
+        }
+        if self.session.is_none() || self.process.is_none() {
+            return self
+                .emit(AgentStreamPayload::PaneFailed {
+                    message: "agent session is not ready".to_owned(),
+                })
+                .await;
+        }
+        let content = prompt_content(&prompt, note.as_deref());
+        let text = prompt.text.clone();
+        let fact = Fact::Prompt {
+            turn: turn_id,
+            command: Some(uuid.clone()),
+        };
+        if let Some(reject) = self.apply(&fact).await? {
+            self.emit(AgentStreamPayload::PromptAccepted { turn_id })
+                .await?;
+            let message = if reject == Reject::Offline {
+                "agent session is not ready"
+            } else {
+                "a turn is already running"
+            };
+            return self
+                .finish(
+                    turn_id,
+                    AgentPromptOutcome::Failed {
+                        message: message.to_owned(),
+                    },
+                )
+                .await;
+        }
+        for update in prompt_echo(&prompt_blocks(prompt), &MessageId::new(uuid.clone()))? {
+            self.update(update, true).await?;
+        }
+        self.send(&json!({
+            "type": "user",
+            "uuid": uuid,
+            "session_id": "",
+            "parent_tool_use_id": null,
+            "message": { "role": "user", "content": content },
+            "origin": { "kind": "human" },
+        }));
+        self.ask_title(&text);
+        self.emit(AgentStreamPayload::PromptAccepted { turn_id })
+            .await
     }
 
     async fn history(

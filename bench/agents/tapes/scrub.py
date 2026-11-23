@@ -8,6 +8,7 @@ import socket
 import subprocess
 import sys
 import urllib.parse
+from datetime import datetime, timedelta
 from pathlib import Path
 
 CREDENTIAL = re.compile(r"(?i)(token|secret|authorization|api_?key|cookie|password)")
@@ -17,6 +18,7 @@ SERVICE = re.compile(r"(?i)service_?tier")
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+\.)+[A-Za-z]{2,}")
 DAEMON_SOCKET = re.compile(r"(/private)?/tmp/codex-daemon-\d+/[0-9a-f]{16,}")
 CONNECTORS = re.compile(r"claude\.ai [A-Z]|mcp__claude_ai_|mcp__codex_apps__|openai-curated")
+OFFSET = re.compile(r"(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(\.\d+)?([+-])(\d{2}):(\d{2})")
 PERIOD_START = "2026-01-01T00:00:00.000+00:00"
 PERIOD_END = "2026-01-08T00:00:00.000+00:00"
 RESET_AT = 1767225600
@@ -51,7 +53,8 @@ FIGURES = {
 }
 RESETS = ("resetsAt", "resets_at")
 REQUEST_BODIES = {"api-request-blob": "message", "api-request-shape": "shape"}
-SHIPPED = {"computer-use"}
+CHAIN = ("type", "uuid", "parentUuid", "timestamp")
+SHIPPED = {"computer-use", "zz-workspace"}
 
 counts = collections.Counter()
 removed = set()
@@ -108,6 +111,8 @@ def text(value, rules):
         counts[label] += replaced
     value, replaced = DAEMON_SOCKET.subn("/tmp/codex-daemon/socket", value)
     counts["path codex daemon socket"] += replaced
+    value, replaced = OFFSET.subn(utc, value)
+    counts["time zone offset"] += replaced
 
     def mail(match):
         if match.group(0).endswith("@example.com"):
@@ -118,8 +123,18 @@ def text(value, rules):
     return EMAIL.sub(mail, value)
 
 
+def utc(match):
+    day, clock, fraction, sign, hours, minutes = match.groups()
+    if hours == minutes == "00":
+        return match.group(0)
+    offset = timedelta(hours=int(hours), minutes=int(minutes))
+    local = datetime.fromisoformat(f"{day}T{clock}")
+    moved = local - offset if sign == "+" else local + offset
+    return f"{moved.isoformat(timespec='seconds')}{fraction or ''}+00:00"
+
+
 def drop(value, size=4):
-    if isinstance(value, str) and len(value) >= size:
+    if isinstance(value, str) and len(value) >= size and value != "REDACTED":
         removed.add(value)
 
 
@@ -151,7 +166,7 @@ def walk(value, rules, key=None, parent=None):
     if key in ("start", "end") and parent == "currentPeriod" and isinstance(value, str):
         counts["field currentPeriod"] += 1
         return PERIOD_START if key == "start" else PERIOD_END
-    if key == "name" and parent == "tier" and isinstance(value, str):
+    if key == "name" and parent == "tier" and isinstance(value, str) and value != "REDACTED":
         counts["field tier.name"] += 1
         drop(value)
         return "REDACTED"
@@ -184,10 +199,19 @@ def identities(value, found, key=None):
 
 
 def request_body(record):
-    field = REQUEST_BODIES.get(record.get("type")) if isinstance(record, dict) else None
+    if not isinstance(record, dict):
+        return record
+    field = REQUEST_BODIES.get(record.get("type"))
     if field and record.get(field) not in (None, "REDACTED"):
         counts[f"request body {record['type']}"] += 1
         record = {**record, field: "REDACTED"}
+    attachment = record.get("attachment")
+    if record.get("type") == "attachment" and isinstance(attachment, dict) and attachment.get("type") != "queued_command":
+        kept = {key: record[key] for key in CHAIN if key in record}
+        kept["attachment"] = {"type": attachment.get("type")}
+        if kept != record:
+            counts[f"attachment body {attachment.get('type')}"] += 1
+        record = kept
     return record
 
 

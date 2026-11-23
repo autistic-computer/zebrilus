@@ -407,7 +407,7 @@ pub(crate) fn tapes() -> Vec<Tape> {
             run_line(runtime, entry, false, &mut turn);
         })
     };
-    vec![
+    let mut tapes = vec![
         run("claude hello", include_str!("fixtures/hello.ndjson")),
         run("claude tools", include_str!("fixtures/tools.ndjson")),
         run("claude steer", include_str!("fixtures/steer.ndjson")),
@@ -422,7 +422,243 @@ pub(crate) fn tapes() -> Vec<Tape> {
             include_str!("fixtures/nested.ndjson"),
             play_line,
         ),
-    ]
+    ];
+    #[cfg(unix)]
+    for (file, recording) in NATIVE {
+        tapes.extend(native(
+            file,
+            recording,
+            &tempfile::tempdir().expect("journal directory"),
+        ));
+    }
+    tapes
+}
+
+#[cfg(unix)]
+const NATIVE: [(&str, &str); 4] = [
+    (
+        "claude-hello",
+        include_str!("../fixtures/claude-hello.ndjson"),
+    ),
+    (
+        "claude-tools",
+        include_str!("../fixtures/claude-tools.ndjson"),
+    ),
+    (
+        "claude-queue",
+        include_str!("../fixtures/claude-queue.ndjson"),
+    ),
+    (
+        "claude-reload",
+        include_str!("../fixtures/claude-reload.ndjson"),
+    ),
+];
+
+#[cfg(unix)]
+fn segments(recording: &str) -> Vec<Vec<Value>> {
+    let mut segments: Vec<Vec<Value>> = Vec::new();
+    for line in recording.lines() {
+        let entry: Value = serde_json::from_str(line).expect("recorded line");
+        if entry["dir"] == "meta" || segments.is_empty() {
+            segments.push(Vec::new());
+        }
+        segments.last_mut().expect("segment").push(entry);
+    }
+    segments
+}
+
+#[cfg(unix)]
+fn launched(meta: &Value) -> Launch {
+    let args = meta["msg"]["args"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>();
+    let after = |flag: &str| {
+        args.iter()
+            .position(|arg| *arg == flag)
+            .and_then(|at| args.get(at + 1))
+            .map(|id| (*id).to_owned())
+    };
+    after("--resume").map_or_else(
+        || Launch::New(after("--session-id").expect("recorded session id")),
+        Launch::Resume,
+    )
+}
+
+#[cfg(unix)]
+fn launch(launch: Launch, journal: &Arc<AgentJournal>) -> (Runtime, Receiver<AgentStreamPayload>) {
+    let (mut runtime, receiver) = fresh();
+    runtime.journal = Some(Arc::clone(journal));
+    runtime.session = None;
+    runtime.ready_sent = false;
+    runtime.next_request = 1 << 32;
+    attach_sink(&mut runtime);
+    let resume = matches!(launch, Launch::Resume(_));
+    runtime.resumed_quiet = resume;
+    runtime.settings.asks = true;
+    runtime.starting = Some(Starting {
+        start: Start::Open { resume },
+        launch,
+        cwd: PathBuf::from("/work"),
+    });
+    (runtime, receiver)
+}
+
+#[cfg(unix)]
+pub(crate) fn native(
+    file: &'static str,
+    recording: &str,
+    directory: &tempfile::TempDir,
+) -> Vec<Tape> {
+    let journal = Arc::new(AgentJournal::open(directory.path()).expect("open journal"));
+    let segments = segments(recording);
+    let count = segments.len();
+    segments
+        .iter()
+        .enumerate()
+        .map(|(index, segment)| {
+            let name: &'static str = if count == 1 {
+                file
+            } else {
+                Box::leak(format!("{file} {}/{count}", index + 1).into_boxed_str())
+            };
+            let launch_as = launched(&segment[0]);
+            let session = launch_as.session_id().to_owned();
+            let mut taping = Taping::sharing(
+                name,
+                AgentProvider::ClaudeCode,
+                &session,
+                Arc::clone(&journal),
+            );
+            let (mut runtime, receiver) = launch(launch_as, &journal);
+            taping.line(None, drain(&receiver));
+            let mut turn = 0;
+            for entry in segment {
+                drive(&mut runtime, entry, &session, &mut turn);
+                taping.line(Some(entry), drain(&receiver));
+            }
+            let emitted = runtime.chat.lock().events.clone();
+            taping.finish(&emitted, reload)
+        })
+        .collect()
+}
+
+#[cfg(unix)]
+fn recorded_request(request: &Value, session: &str) -> Option<Outgoing> {
+    Some(match request["subtype"].as_str()? {
+        "initialize" => Outgoing::Initialize,
+        "interrupt" => Outgoing::Interrupt,
+        "get_settings" => Outgoing::Applied,
+        "get_usage" => Outgoing::Usage,
+        "generate_session_title" => Outgoing::Title {
+            session: session.to_owned(),
+        },
+        "set_model" => Outgoing::Setting {
+            option_id: "model".to_owned(),
+            value: request["model"].as_str()?.to_owned(),
+        },
+        "set_permission_mode" => Outgoing::Mode {
+            mode_id: request["mode"].as_str()?.to_owned(),
+        },
+        "stop_task" => Outgoing::StopTask,
+        _ => return None,
+    })
+}
+
+#[cfg(unix)]
+fn asked(runtime: &Runtime, claude: &str) -> Option<u64> {
+    runtime
+        .permissions
+        .iter()
+        .find(|(_, permission)| {
+            matches!(permission,
+                Permission::Approval { claude_id, .. }
+                | Permission::Plan { claude_id, .. }
+                | Permission::Question { claude_id, .. } if claude_id == claude)
+        })
+        .map(|(request_id, _)| *request_id)
+}
+
+#[cfg(unix)]
+fn answered_with(response: &Value) -> Option<String> {
+    match response["behavior"].as_str() {
+        Some("allow") if response.get("updatedPermissions").is_some() => {
+            Some("allow_always".to_owned())
+        }
+        Some("allow") => Some("allow".to_owned()),
+        _ if response["interrupt"] == true => None,
+        _ => Some("reject".to_owned()),
+    }
+}
+
+#[cfg(unix)]
+fn drive(runtime: &mut Runtime, entry: &Value, session: &str, turn: &mut u64) {
+    let message = &entry["msg"];
+    match (entry["dir"].as_str(), message["type"].as_str()) {
+        (Some("in"), Some("user")) if message["priority"] == "now" => {
+            run_line(runtime, entry, false, turn);
+        }
+        (Some("in"), Some("user")) => {
+            *turn += 1;
+            let content = &message["message"]["content"];
+            let text = content.as_str().map_or_else(
+                || {
+                    content
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|block| block["text"].as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                },
+                str::to_owned,
+            );
+            let prompt = AgentPrompt {
+                owner: zz_protocol::ClientInstanceId::default(),
+                text,
+                images: Vec::new(),
+            };
+            let uuid = message["uuid"].as_str().expect("recorded uuid").to_owned();
+            smol::block_on(runtime.prompt(*turn, prompt, None, uuid)).expect("prompt");
+        }
+        (Some("in"), Some("control_request")) => {
+            let request = &message["request"];
+            if request["subtype"] == "interrupt" {
+                smol::block_on(runtime.control(RuntimeControl::Cancel {
+                    turn_id: *turn,
+                    session_id: None,
+                }))
+                .expect("cancel");
+            }
+            if let (Some(id), Some(outgoing)) = (
+                message["request_id"].as_str(),
+                recorded_request(request, session),
+            ) {
+                runtime
+                    .requests
+                    .insert(id.to_owned(), (outgoing, Instant::now() + CONTROL_TIMEOUT));
+            }
+        }
+        (Some("in"), Some("control_response")) => {
+            let response = &message["response"];
+            if let Some(request_id) = response["request_id"]
+                .as_str()
+                .and_then(|claude| asked(runtime, claude))
+            {
+                smol::block_on(runtime.control(RuntimeControl::RespondPermission {
+                    request_id,
+                    option_id: answered_with(&response["response"]),
+                }))
+                .expect("answer");
+            }
+        }
+        (Some("out"), Some(_)) => {
+            smol::block_on(runtime.frame(message.clone())).expect("frame");
+        }
+        _ => {}
+    }
 }
 
 fn tape(name: &'static str, recording: &str, mut step: impl FnMut(&mut Runtime, &Value)) -> Tape {
@@ -956,4 +1192,108 @@ fn recordings_in_a_folder_drive_the_chat_machine() {
             Err(_) => eprintln!("== {name}: PANIC"),
         }
     }
+}
+
+#[cfg(unix)]
+const TRANSCRIPTS: [&str; 4] = [
+    include_str!("../fixtures/claude-hello.transcript.jsonl"),
+    include_str!("../fixtures/claude-tools.transcript.jsonl"),
+    include_str!("../fixtures/claude-queue.transcript.jsonl"),
+    include_str!("../fixtures/claude-reload.transcript.jsonl"),
+];
+
+#[cfg(unix)]
+fn reloaded_from(config: &Path, session: &str, transcript: &str) -> zz_protocol::chat::ChatView {
+    let folder = config.join("projects").join("-work");
+    std::fs::create_dir_all(&folder).expect("project folder");
+    std::fs::write(folder.join(format!("{session}.jsonl")), transcript).expect("transcript");
+    let (mut runtime, _receiver) = fresh();
+    runtime.session = None;
+    runtime.starting = Some(Starting {
+        start: Start::Open { resume: true },
+        launch: Launch::Resume(session.to_owned()),
+        cwd: PathBuf::from("/work"),
+    });
+    smol::block_on(runtime.initialized(&json!({}))).expect("reload");
+    let events = runtime.chat.lock().events.clone();
+    crate::agent::cut_points::fold(&events)
+}
+
+#[cfg(unix)]
+#[test]
+fn a_session_reloads_from_its_own_transcript_at_every_line() {
+    use crate::agent::cut_points::{
+        Findings, fold, partial_reload_difference, resume_difference, resumed_view,
+    };
+
+    const CHILD: &str = "ZZ_TEST_CLAUDE_TRANSCRIPTS";
+    let Some(config) = std::env::var_os(CHILD).map(PathBuf::from) else {
+        let config = tempfile::tempdir().expect("config directory");
+        let status = Command::new(std::env::current_exe().expect("test binary"))
+            .args([
+                "--exact",
+                "agent::claude::replay_tests::a_session_reloads_from_its_own_transcript_at_every_line",
+                "--test-threads=1",
+                "--nocapture",
+            ])
+            .env(CHILD, config.path())
+            .env("CLAUDE_CONFIG_DIR", config.path())
+            .status()
+            .expect("isolated Claude config directory");
+        assert!(status.success());
+        return;
+    };
+    let mut transcripts = Findings::new("T transcript reload");
+    let mut reloads = Findings::new("R resume from the transcript");
+    for ((file, recording), transcript) in NATIVE.iter().zip(TRANSCRIPTS) {
+        let session = launched(&segments(recording)[0][0]).session_id().to_owned();
+        reloaded_from(&config, &session, transcript);
+        let directory = tempfile::tempdir().expect("journal directory");
+        let tapes = native(file, recording, &directory);
+        let live = fold(&tapes[0].events());
+        let lines = transcript.lines().collect::<Vec<_>>();
+        for k in 0..=lines.len() {
+            let mut prefix = lines[..k].join("\n");
+            prefix.push('\n');
+            let reloaded = reloaded_from(&config, &session, &prefix);
+            transcripts.checked();
+            let full = k == lines.len();
+            let difference = if full {
+                resume_difference(&live, &reloaded)
+                    .or_else(|| partial_reload_difference(&live, &reloaded))
+            } else {
+                partial_reload_difference(&live, &reloaded)
+            };
+            if let Some(diff) = difference {
+                let scope = if full { "full" } else { "prefix" };
+                transcripts.add(
+                    format!("T | {scope} | {}", diff.field),
+                    (*file).to_owned(),
+                    (lines.len(), k),
+                    || {
+                        format!(
+                            "{file} transcript lines {k}/{}: {}",
+                            lines.len(),
+                            diff.describe()
+                        )
+                    },
+                );
+            }
+        }
+        reloaded_from(&config, &session, transcript);
+        if let [first, second] = &tapes[..] {
+            let (loaded, resumed) = resumed_view(second);
+            reloads.checked();
+            if let Some(diff) = resume_difference(&fold(&first.events()), &resumed) {
+                reloads.add(
+                    format!("R | {}", diff.field),
+                    second.name.to_owned(),
+                    (second.lines.len(), loaded),
+                    || format!("{} line {loaded}: {}", second.name, diff.describe()),
+                );
+            }
+        }
+    }
+    transcripts.finish(&[]);
+    reloads.finish(&[]);
 }

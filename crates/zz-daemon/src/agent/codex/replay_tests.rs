@@ -3,6 +3,8 @@ use zz_protocol::chat::{
     Answer, ItemId, ItemKind, ItemStatus, QuestionAnswer, RequestClose, RequestId, TurnOutcome,
 };
 
+use zz_protocol::ClientInstanceId;
+
 use super::*;
 use crate::agent::cut_points::{Tape, Taping};
 
@@ -153,7 +155,7 @@ pub(crate) fn tapes() -> Vec<Tape> {
             run_line(runtime, entry, &mut prompts);
         })
     };
-    vec![
+    let mut tapes = vec![
         run(
             "codex tools",
             include_str!("fixtures/tools.ndjson"),
@@ -170,7 +172,227 @@ pub(crate) fn tapes() -> Vec<Tape> {
             LIVE_THREAD,
             feed,
         ),
-    ]
+    ];
+    #[cfg(unix)]
+    for (file, recording) in NATIVE {
+        tapes.extend(native(file, recording));
+    }
+    tapes
+}
+
+#[cfg(unix)]
+const NATIVE: [(&str, &str); 5] = [
+    (
+        "codex-hello",
+        include_str!("../fixtures/codex-hello.ndjson"),
+    ),
+    (
+        "codex-tools",
+        include_str!("../fixtures/codex-tools.ndjson"),
+    ),
+    ("codex-stop", include_str!("../fixtures/codex-stop.ndjson")),
+    (
+        "codex-queue",
+        include_str!("../fixtures/codex-queue.ndjson"),
+    ),
+    (
+        "codex-reload",
+        include_str!("../fixtures/codex-reload.ndjson"),
+    ),
+];
+
+#[cfg(unix)]
+fn segments(recording: &str) -> Vec<Vec<Value>> {
+    let mut segments: Vec<Vec<Value>> = Vec::new();
+    for line in recording.lines() {
+        let entry: Value = serde_json::from_str(line).expect("recorded line");
+        if entry["dir"] == "meta" || segments.is_empty() {
+            segments.push(Vec::new());
+        }
+        segments.last_mut().expect("segment").push(entry);
+    }
+    segments
+}
+
+#[cfg(unix)]
+fn opened_thread(segment: &[Value]) -> (Option<String>, String) {
+    let resumed = segment
+        .iter()
+        .find(|entry| entry["dir"] == "in" && entry["msg"]["method"] == "thread/resume")
+        .and_then(|entry| entry["msg"]["params"]["threadId"].as_str())
+        .map(str::to_owned);
+    let started = segment
+        .iter()
+        .filter(|entry| entry["dir"] == "out")
+        .filter_map(|entry| entry["msg"]["result"]["thread"].as_object())
+        .find(|thread| thread["ephemeral"] != true)
+        .and_then(|thread| thread["id"].as_str())
+        .map(str::to_owned);
+    let thread = resumed.clone().or(started).expect("recorded thread");
+    (resumed, thread)
+}
+
+#[cfg(unix)]
+fn native(file: &'static str, recording: &str) -> Vec<Tape> {
+    let directory = tempfile::tempdir().expect("journal directory");
+    let journal = Arc::new(AgentJournal::open(directory.path()).expect("open journal"));
+    let segments = segments(recording);
+    let count = segments.len();
+    segments
+        .iter()
+        .enumerate()
+        .map(|(index, segment)| {
+            let name: &'static str = if count == 1 {
+                file
+            } else {
+                Box::leak(format!("{file} {}/{count}", index + 1).into_boxed_str())
+            };
+            let (resume, thread) = opened_thread(segment);
+            let mut taping =
+                Taping::sharing(name, AgentProvider::Codex, &thread, Arc::clone(&journal));
+            let (mut runtime, receiver) = fresh(&thread);
+            runtime.journal = Some(Arc::clone(&journal));
+            runtime.session = None;
+            runtime.ready_sent = false;
+            runtime.initialized = false;
+            runtime.next_request = 1 << 32;
+            runtime.process = Some(
+                Process::launch(
+                    &mut Command::new("/bin/cat"),
+                    AgentProvider::Codex,
+                    "replay sink",
+                    runtime.generation,
+                    &runtime.child_tx,
+                    &runtime.stderr,
+                )
+                .expect("sink"),
+            );
+            runtime.starting = Some(Starting {
+                start: Start::Open,
+                cwd: PathBuf::from("/work"),
+                resume,
+                before: None,
+                live: false,
+            });
+            taping.line(None, payloads(&receiver));
+            let mut driven = Driven::default();
+            for entry in segment {
+                driven.drive(&mut runtime, entry);
+                taping.line(Some(entry), payloads(&receiver));
+            }
+            let emitted = runtime.chat.lock().events.clone();
+            taping.finish(&emitted, reload)
+        })
+        .collect()
+}
+
+#[cfg(unix)]
+#[derive(Default)]
+struct Driven {
+    turn: u64,
+    opened: Value,
+}
+
+#[cfg(unix)]
+impl Driven {
+    fn drive(&mut self, runtime: &mut Runtime, entry: &Value) {
+        let message = &entry["msg"];
+        let params = &message["params"];
+        let cwd = PathBuf::from("/work");
+        if entry["dir"] == "out" {
+            if let Some(thread) = message["result"]["thread"].as_object()
+                && thread["ephemeral"] != true
+            {
+                self.opened = Value::Object(thread.clone());
+            }
+            smol::block_on(runtime.message(message.clone())).expect("message");
+            return;
+        }
+        if entry["dir"] != "in" {
+            return;
+        }
+        let main = runtime
+            .thread_id()
+            .is_some_and(|thread| params["threadId"] == thread);
+        let outgoing = match message["method"].as_str() {
+            Some("initialize") => Some(Outgoing::Initialize),
+            Some("model/list") => Some(Outgoing::Models),
+            Some("config/read") => Some(Outgoing::Instructions),
+            Some("thread/start") if params["ephemeral"] != true => Some(Outgoing::Thread {
+                start: Start::Open,
+                cwd,
+            }),
+            Some("thread/resume") => Some(Outgoing::Thread {
+                start: Start::Open,
+                cwd,
+            }),
+            Some("thread/read") => Some(Outgoing::History {
+                start: Start::Open,
+                thread: self.opened.clone(),
+                cwd,
+            }),
+            Some("thread/backgroundTerminals/list") => Some(Outgoing::Terminals),
+            Some("turn/start") if main => {
+                self.turn += 1;
+                let text = params["input"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|input| input["text"].as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                smol::block_on(runtime.command(RuntimeCommand::Prompt {
+                    turn_id: self.turn,
+                    prompt: AgentPrompt {
+                        owner: ClientInstanceId::default(),
+                        text,
+                        images: Vec::new(),
+                    },
+                    note: None,
+                }))
+                .expect("prompt");
+                Some(Outgoing::Turn { turn_id: self.turn })
+            }
+            Some("turn/interrupt") if main => {
+                smol::block_on(runtime.control(RuntimeControl::Cancel {
+                    turn_id: self.turn,
+                    session_id: None,
+                }))
+                .expect("cancel");
+                Some(Outgoing::Quiet)
+            }
+            None => {
+                self.answer(runtime, message);
+                None
+            }
+            _ => None,
+        };
+        if let (Some(outgoing), Some(id)) = (outgoing, message["id"].as_u64()) {
+            runtime
+                .requests
+                .insert(id, (outgoing, Instant::now() + REQUEST_TIMEOUT));
+        }
+    }
+
+    fn answer(&self, runtime: &mut Runtime, message: &Value) {
+        let Some((request_id, reply)) = runtime
+            .permissions
+            .iter()
+            .find(|(_, pending)| pending.rpc_id == message["id"])
+            .map(|(request_id, pending)| (*request_id, &pending.reply))
+        else {
+            return;
+        };
+        let option_id = ["allow", "allow_always", "reject"]
+            .into_iter()
+            .find(|option| decision(reply, option) == message["result"])
+            .map(str::to_owned);
+        smol::block_on(runtime.control(RuntimeControl::RespondPermission {
+            request_id,
+            option_id,
+        }))
+        .expect("answer");
+    }
 }
 
 fn tape(
