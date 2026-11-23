@@ -4,7 +4,7 @@ A glyph from the kit's set beside a label, or alone on an icon button in a bar w
 
 ## Set
 
-107 glyphs in 8 groups (chrome, actions, things, navigation, keys, status, people and agents, theme) on a 24 grid with a 1.5 stroke and no fill. Corners follow half the theme radius and redraw when the theme changes.
+109 glyphs in 8 groups (chrome, actions, things, navigation, keys, status, people and agents, theme) on a 24 grid with a 1.5 stroke and no fill. Corners follow half the theme radius and redraw when the theme changes.
 
 ```figure uses=icon
 <div class="docs-show" data-gap="wide">

@@ -29,6 +29,7 @@
     {"name": "arrow-down", "variant": "ArrowDown", "group": "Navigation", "solar": "arrow-down", "parts": [["line", 12, 4, 12, 18.75], ["path", [6, 14], [12, 20], [18, 14]]]},
     {"name": "arrow-left", "variant": "ArrowLeft", "group": "Navigation", "solar": "arrow-left", "parts": [["line", 20, 12, 5.25, 12], ["path", [10, 6], [4, 12], [10, 18]]]},
     {"name": "arrow-right", "variant": "ArrowRight", "group": "Navigation", "solar": "arrow-right", "parts": [["line", 4, 12, 18.75, 12], ["path", [14, 6], [20, 12], [14, 18]]]},
+    {"name": "corner-down-right", "variant": "CornerDownRight", "group": "Navigation", "parts": [["path", [4.25, 4.5], [4.25, 15, 1], [18.5, 15]], ["path", [15.25, 10.5], [19.75, 15, 1], [15.25, 19.5]]], "note": "A reply: down from the top left, then right into the line it introduces; the key-return glyph mirrored."},
     {"name": "chevron-up", "variant": "ChevronUp", "group": "Navigation", "solar": "alt-arrow-up", "parts": [["path", [19, 15], [12, 9], [5, 15]]]},
     {"name": "chevron-down", "variant": "ChevronDown", "group": "Navigation", "solar": "alt-arrow-down", "parts": [["path", [19, 9], [12, 15], [5, 9]]]},
     {"name": "chevron-left", "variant": "ChevronLeft", "group": "Navigation", "solar": "alt-arrow-left", "parts": [["path", [15, 5], [9, 12], [15, 19]]]},
