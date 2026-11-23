@@ -39,20 +39,22 @@ headless platform *args:
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{ platform }}/$(uname -s)" in
-        mac/Darwin) os=macos ;;
-        linux/Linux) os=linux ;;
-        *) echo "just headless requires mac on macOS or linux on Linux" >&2; exit 2 ;;
+        mac/Darwin) os=macos binary=zz_cli ;;
+        linux/Linux) os=linux binary=zz_cli ;;
+        windows/MINGW*|windows/MSYS*) os=windows binary=zz_cli.exe ;;
+        *) echo "just headless requires mac on macOS, linux on Linux or windows on Windows" >&2; exit 2 ;;
     esac
     case "$os/$(uname -m)" in
         linux/x86_64|linux/amd64) arch=x86_64 ;;
         linux/aarch64|linux/arm64) arch=aarch64 ;;
         macos/arm64|macos/aarch64) arch=arm64 ;;
+        windows/x86_64|windows/amd64) arch=x64 ;;
         *) echo "unsupported headless architecture: $(uname -m)" >&2; exit 2 ;;
     esac
     version="$(sed -nE 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -1)"
     [[ -n "$version" ]] || { echo "workspace version is missing from Cargo.toml" >&2; exit 1; }
     cargo build --release -p zz-cli {{ args }}
-    scripts/package-headless.sh target/release/zz_cli "dist/zz-$version-headless-$os-$arch.tar.gz"
+    scripts/package-headless.sh "target/release/$binary" "dist/zz-$version-headless-$os-$arch.tar.gz"
 
 [doc("Deploy zzmux.sh, which serves only install.sh.")]
 site:

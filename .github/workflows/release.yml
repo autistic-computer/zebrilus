@@ -275,6 +275,7 @@ jobs:
             echo "ZZ_VERSION_INFO=${version%%-*}"
             echo "ZZ_ZIP=dist/zz-$version-windows-x64.zip"
             echo "ZZ_SETUP=dist/zz-$version-windows-x64-setup.exe"
+            echo "ZZ_HEADLESS=dist/zz-$version-headless-windows-x64.tar.gz"
           } >> "$GITHUB_ENV"
 
       - uses: mlugg/setup-zig@v2.2.1
@@ -291,13 +292,20 @@ jobs:
       - name: Build the CEF bundle
         run: cargo xtask bundle-cef --release --output dist/zz
 
-      - name: Sign the bundled executables
+      - name: Build the headless binary
+        run: cargo build --release -p zz-cli
+
+      - name: Sign the bundled and headless executables
         if: ${{ env.WINDOWS_CERTIFICATE_PFX_BASE64 != '' }}
         shell: pwsh
         run: |
           $binaries = @('dist/zz/zz.exe', 'dist/zz/zz.dll') |
             Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
-          ./scripts/sign-windows.ps1 @binaries
+          ./scripts/sign-windows.ps1 @binaries target/release/zz_cli.exe
+
+      - name: Package the headless tarball
+        shell: bash
+        run: scripts/package-headless.sh target/release/zz_cli.exe "$ZZ_HEADLESS"
 
       - name: Package the archive
         shell: pwsh
@@ -328,7 +336,8 @@ jobs:
         run: |
           (cd dist && sha256sum "$(basename "$ZZ_ZIP")" > "$(basename "$ZZ_ZIP").sha256")
           (cd dist && sha256sum "$(basename "$ZZ_SETUP")" > "$(basename "$ZZ_SETUP").sha256")
-          cat "$ZZ_ZIP.sha256" "$ZZ_SETUP.sha256"
+          (cd dist && sha256sum "$(basename "$ZZ_HEADLESS")" > "$(basename "$ZZ_HEADLESS").sha256")
+          cat "$ZZ_ZIP.sha256" "$ZZ_SETUP.sha256" "$ZZ_HEADLESS.sha256"
 
       - name: Attach the artifacts to the GitHub release
         if: github.event_name == 'push'
@@ -337,7 +346,8 @@ jobs:
         shell: bash
         run: |
           gh release upload "$GITHUB_REF_NAME" \
-            "$ZZ_ZIP" "$ZZ_ZIP.sha256" "$ZZ_SETUP" "$ZZ_SETUP.sha256" --clobber
+            "$ZZ_ZIP" "$ZZ_ZIP.sha256" "$ZZ_SETUP" "$ZZ_SETUP.sha256" \
+            "$ZZ_HEADLESS" "$ZZ_HEADLESS.sha256" --clobber
 
   publish:
     name: Publish

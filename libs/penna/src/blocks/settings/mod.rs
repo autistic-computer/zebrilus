@@ -829,9 +829,18 @@ pub struct SettingEntry {
     children: Vec<AnyElement>,
     on_click: Option<(ElementId, EntryClick)>,
     id: Option<ElementId>,
+    bare: bool,
 }
 
 impl SettingEntry {
+    #[must_use]
+    pub fn bare() -> Self {
+        Self {
+            bare: true,
+            ..Self::new("")
+        }
+    }
+
     pub fn new(title: impl Into<SharedString>) -> Self {
         Self {
             title: title.into(),
@@ -844,6 +853,7 @@ impl SettingEntry {
             children: Vec::new(),
             on_click: None,
             id: None,
+            bare: false,
         }
     }
 
@@ -911,77 +921,79 @@ impl RenderOnce for SettingEntry {
         let disabled = self.disabled;
         let position = self.position;
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
-        let heading = if coarse {
-            let description = self
-                .description
-                .map(|description| settings_description(description, cx));
-            let lead = if self.title_icon.is_some() {
-                crate::rems_from_px(crate::Size::Medium.icon_px() + Space::S8.design_px())
-            } else {
-                ala::rems(0.0)
-            };
-            let measure = title_widths(&self.title, window, cx);
-            let floor = lead + measure.word;
-            let line = (self.title_actions.is_none()).then_some(lead + measure.line);
-            div()
-                .flex()
-                .flex_col()
-                .gap(Space::GAP_TIGHT)
-                .child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .items_center()
-                        .gap_x(Space::S16)
-                        .gap_y(Space::S8)
-                        .child(
-                            div()
-                                .flex()
-                                .flex_basis(floor)
-                                .min_w(floor)
-                                .flex_grow(LABEL_GROW)
-                                .flex_shrink_0()
-                                .when_some(line, ala::Styled::max_w)
-                                .items_center()
-                                .gap(Space::S8)
-                                .when_some(self.title_icon, |this, icon| {
-                                    this.child(icon.with_size(crate::Size::Medium))
-                                })
-                                .child(
-                                    div()
-                                        .min_w_0()
-                                        .type_style(crate::TextStyle::Body, cx)
-                                        .child(self.title),
-                                )
-                                .when_some(self.title_actions, ala::ParentElement::child),
-                        )
-                        .when_some(self.control, |this, control| {
-                            this.child(
+        let heading = (!self.bare).then(|| {
+            if coarse {
+                let description = self
+                    .description
+                    .map(|description| settings_description(description, cx));
+                let lead = if self.title_icon.is_some() {
+                    crate::rems_from_px(crate::Size::Medium.icon_px() + Space::S8.design_px())
+                } else {
+                    ala::rems(0.0)
+                };
+                let measure = title_widths(&self.title, window, cx);
+                let floor = lead + measure.word;
+                let line = (self.title_actions.is_none()).then_some(lead + measure.line);
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(Space::GAP_TIGHT)
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap_x(Space::S16)
+                            .gap_y(Space::S8)
+                            .child(
                                 div()
                                     .flex()
-                                    .flex_grow_1()
+                                    .flex_basis(floor)
+                                    .min_w(floor)
+                                    .flex_grow(LABEL_GROW)
                                     .flex_shrink_0()
+                                    .when_some(line, ala::Styled::max_w)
                                     .items_center()
-                                    .justify_end()
-                                    .child(control),
+                                    .gap(Space::S8)
+                                    .when_some(self.title_icon, |this, icon| {
+                                        this.child(icon.with_size(crate::Size::Medium))
+                                    })
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .type_style(crate::TextStyle::Body, cx)
+                                            .child(self.title),
+                                    )
+                                    .when_some(self.title_actions, ala::ParentElement::child),
                             )
-                        }),
-                )
-                .children(description)
-        } else {
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap(Space::S16)
-                .child(
-                    SettingCopy::new(self.title)
-                        .when_some(self.description, SettingCopy::description)
-                        .when_some(self.title_icon, SettingCopy::title_icon)
-                        .when_some(self.title_actions, SettingCopy::title_actions),
-                )
-                .when_some(self.control, ala::ParentElement::child)
-        };
+                            .when_some(self.control, |this, control| {
+                                this.child(
+                                    div()
+                                        .flex()
+                                        .flex_grow_1()
+                                        .flex_shrink_0()
+                                        .items_center()
+                                        .justify_end()
+                                        .child(control),
+                                )
+                            }),
+                    )
+                    .children(description)
+            } else {
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(Space::S16)
+                    .child(
+                        SettingCopy::new(self.title)
+                            .when_some(self.description, SettingCopy::description)
+                            .when_some(self.title_icon, SettingCopy::title_icon)
+                            .when_some(self.title_actions, SettingCopy::title_actions),
+                    )
+                    .when_some(self.control, ala::ParentElement::child)
+            }
+        });
 
         let theme = cx.theme();
         let card = theme.layer(
@@ -1007,7 +1019,7 @@ impl RenderOnce for SettingEntry {
                 this.opacity(0.5)
                     .child(div().absolute().inset_0().occlude())
             })
-            .child(heading)
+            .children(heading)
             .children(self.children);
 
         let press = self.on_click.as_ref().map(|(id, _)| {

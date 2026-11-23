@@ -1,4 +1,6 @@
-use zz_protocol::{AgentProvider, ProviderStatus, ProviderTask, ProvidersReport};
+use zz_protocol::{AgentAccount, AgentProvider, ProviderStatus, ProviderTask, ProvidersReport};
+
+use crate::agent_settings::{SIGNED_IN, account_name, plan_name};
 
 pub const PROVIDERS: [AgentProvider; 5] = [
     AgentProvider::ClaudeCode,
@@ -120,6 +122,84 @@ pub fn provider_notes(status: &ProviderStatus) -> Vec<(String, NoteTone)> {
 }
 
 #[must_use]
+pub fn row_notes(status: &ProviderStatus) -> Vec<(String, NoteTone)> {
+    let mut notes = Vec::new();
+    if let Some(manual) = status.manual.as_ref().filter(|_| status.outdated()) {
+        notes.push((
+            manual
+                .command
+                .clone()
+                .unwrap_or_else(|| format!("Installed by {}. Update it there.", manual.owner)),
+            NoteTone::Muted,
+        ));
+    }
+    if let ProviderTask::Failed { message } = &status.task {
+        notes.push((message.clone(), NoteTone::Warning));
+    }
+    notes
+}
+
+#[must_use]
+pub fn accounts_text(accounts: &[AgentAccount], provider: AgentProvider) -> Option<String> {
+    let signed_in = accounts
+        .iter()
+        .filter(|account| account.provider == provider && account.signed_in)
+        .collect::<Vec<_>>();
+    match signed_in.as_slice() {
+        [] => None,
+        [account] => {
+            let name = account_name(account);
+            let plan = account
+                .plan
+                .as_deref()
+                .map(plan_name)
+                .filter(|plan| !plan.is_empty());
+            Some(match plan {
+                Some(plan) if name == SIGNED_IN => plan,
+                Some(plan) => format!("{name} · {plan}"),
+                None => name,
+            })
+        }
+        many => Some(
+            many.iter()
+                .map(|account| account_name(account))
+                .collect::<Vec<_>>()
+                .join(", "),
+        ),
+    }
+}
+
+#[must_use]
+pub fn has_update(report: &ProvidersReport) -> bool {
+    report.providers.iter().any(ProviderStatus::outdated)
+}
+
+#[must_use]
+pub fn update_all<'a, H: Copy + 'a>(
+    reports: impl IntoIterator<Item = (H, &'a ProvidersReport)>,
+) -> Vec<(H, AgentProvider)> {
+    reports
+        .into_iter()
+        .flat_map(|(host, report)| {
+            report
+                .providers
+                .iter()
+                .filter(|status| {
+                    status.installed()
+                        && matches!(
+                            provider_action(status, report.checking),
+                            Some(ProviderAction::Update {
+                                disabled: false,
+                                ..
+                            })
+                        )
+                })
+                .map(move |status| (host, status.provider))
+        })
+        .collect()
+}
+
+#[must_use]
 pub fn provider_rows(report: &ProvidersReport) -> Vec<ProviderStatus> {
     PROVIDERS
         .into_iter()
@@ -159,5 +239,88 @@ mod tests {
         assert_eq!(provider_action(&grok, false), None);
         assert!(!version_current(&grok));
         assert_eq!(version_text(&grok), "Unknown version");
+    }
+
+    fn account(provider: AgentProvider, email: &str, plan: Option<&str>) -> AgentAccount {
+        AgentAccount {
+            provider,
+            id: None,
+            signed_in: true,
+            email: Some(email.to_owned()),
+            organization: Some("Acme".to_owned()),
+            plan: plan.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn accounts_text_names_one_account_with_its_plan_and_several_by_email() {
+        let claude = AgentProvider::ClaudeCode;
+        let mut accounts = vec![
+            account(claude, "me@example.com", Some("max_20x")),
+            account(AgentProvider::Codex, "me@example.com", Some("pro")),
+        ];
+        assert_eq!(
+            accounts_text(&accounts, claude).as_deref(),
+            Some("me@example.com · Max 20x")
+        );
+        accounts.push(account(claude, "work@acme.example", Some("max_20x")));
+        assert_eq!(
+            accounts_text(&accounts, claude).as_deref(),
+            Some("me@example.com, work@acme.example")
+        );
+        for account in &mut accounts {
+            account.signed_in = false;
+        }
+        assert_eq!(accounts_text(&accounts, claude), None);
+    }
+
+    fn status(provider: AgentProvider, version: &str, latest: &str) -> ProviderStatus {
+        ProviderStatus {
+            path: Some(format!("/home/me/.local/bin/{}", provider.as_str())),
+            version: Some(version.to_owned()),
+            latest: Some(latest.to_owned()),
+            ..ProviderStatus::new(provider)
+        }
+    }
+
+    #[test]
+    fn update_all_takes_only_agents_zz_can_update_and_the_dot_marks_any_behind() {
+        let mut running = status(AgentProvider::ClaudeCode, "2.1.329", "2.1.330");
+        running.task = ProviderTask::Running {
+            output: String::new(),
+        };
+        let mut manual = status(AgentProvider::Codex, "0.167.0", "0.171.0");
+        manual.manual = Some(zz_protocol::ManualUpdate {
+            owner: "pacman".to_owned(),
+            command: Some("sudo pacman -Syu openai-codex".to_owned()),
+        });
+        let xps = ProvidersReport {
+            checking: false,
+            providers: vec![
+                running,
+                manual,
+                status(AgentProvider::Antigravity, "1.5.13", "1.5.14"),
+            ],
+        };
+        let mac = ProvidersReport {
+            checking: true,
+            providers: vec![
+                status(AgentProvider::ClaudeCode, "2.1.330", "2.1.330"),
+                status(AgentProvider::Codex, "0.167.0", "0.171.0"),
+                ProviderStatus {
+                    latest: Some("1.0.93".to_owned()),
+                    ..ProviderStatus::new(AgentProvider::Grok)
+                },
+            ],
+        };
+        let current = ProvidersReport {
+            checking: false,
+            providers: vec![status(AgentProvider::ClaudeCode, "2.1.330", "2.1.330")],
+        };
+        assert_eq!(
+            update_all([(0, &mac), (1, &xps), (2, &current)]),
+            [(0, AgentProvider::Codex), (1, AgentProvider::Antigravity)]
+        );
+        assert_eq!([&mac, &xps, &current].map(has_update), [true, true, false]);
     }
 }
