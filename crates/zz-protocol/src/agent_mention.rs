@@ -145,11 +145,9 @@ pub fn mention_note(text: &str) -> Option<String> {
 pub fn child_note(parent: PaneId, parent_provider: AgentProvider, child: AgentProvider) -> String {
     let name = parent_provider.command_name();
     let escalate = if child == AgentProvider::Codex {
-        format!(
-            " If a command fails with \"Operation not permitted\", rerun it with escalated permissions even if your brief says to stop on failure; {parent} is asked to approve it."
-        )
+        " If a command fails with \"Operation not permitted\", rerun it with escalated permissions even if your brief says to stop on failure; the approval is answered for you."
     } else {
-        String::new()
+        ""
     };
     format!(
         "{parent} ({name}) opened this chat. Your final message is sent to it as your reply, so finish with the answer. You cannot open other agents or message {parent}; if you need something, say so in your reply.{escalate}"
@@ -897,7 +895,7 @@ mod tests {
         let child = child_note(PaneId(1), AgentProvider::ClaudeCode, AgentProvider::Codex);
         assert_eq!(
             child,
-            "%1 (claude) opened this chat. Your final message is sent to it as your reply, so finish with the answer. You cannot open other agents or message %1; if you need something, say so in your reply. If a command fails with \"Operation not permitted\", rerun it with escalated permissions even if your brief says to stop on failure; %1 is asked to approve it."
+            "%1 (claude) opened this chat. Your final message is sent to it as your reply, so finish with the answer. You cannot open other agents or message %1; if you need something, say so in your reply. If a command fails with \"Operation not permitted\", rerun it with escalated permissions even if your brief says to stop on failure; the approval is answered for you."
         );
         assert_eq!(
             child_note(PaneId(1), AgentProvider::Codex, AgentProvider::ClaudeCode),

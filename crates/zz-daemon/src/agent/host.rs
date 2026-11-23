@@ -404,6 +404,7 @@ struct PaneHandle {
     prompts: Sender<QueuedPrompt>,
     close: Sender<()>,
     state: Arc<Mutex<AgentPaneState>>,
+    auto_approve: Arc<Mutex<AgentAutoApprove>>,
     thread: JoinHandle<()>,
 }
 
@@ -569,6 +570,7 @@ impl AgentHost {
         let runtime_auto_approve = Arc::new(Mutex::new(
             spec.auto_approve.unwrap_or(self.config.lock().auto_approve),
         ));
+        let auto_approve = Arc::clone(&runtime_auto_approve);
         let state = Arc::new(Mutex::new(AgentPaneState::new(&spec)));
         let pane_state = Arc::clone(&state);
         let sink = Arc::clone(&self.sink);
@@ -616,6 +618,7 @@ impl AgentHost {
                 prompts: prompt_tx,
                 close: close_tx,
                 state,
+                auto_approve,
                 thread,
             },
         );
@@ -656,6 +659,12 @@ impl AgentHost {
                     unreachable!()
                 }
             })
+    }
+
+    pub(crate) fn set_auto_approve(&self, pane: PaneId, tier: AgentAutoApprove) {
+        if let Some(handle) = self.registry.panes.lock().get(&pane) {
+            *handle.auto_approve.lock() = tier;
+        }
     }
 
     pub(crate) fn close(&self, pane: PaneId) -> Option<JoinHandle<()>> {

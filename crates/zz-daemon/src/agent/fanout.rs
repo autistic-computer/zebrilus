@@ -14,8 +14,8 @@ use parking_lot::{Condvar, Mutex};
 use serde_json::Value;
 use zz_protocol::chat::{ChatEvent, ChatLog};
 use zz_protocol::{
-    AgentPaneWire, AgentPermissionWire, AgentProvider, ClientId, ClientInstanceId,
-    MAX_AGENT_PROMPT_BYTES, MAX_AGENT_QUEUED_PROMPTS, MAX_AGENT_RESULT_BYTES,
+    AgentAutoApprove, AgentPaneWire, AgentPermissionWire, AgentProvider, ClientId,
+    ClientInstanceId, MAX_AGENT_PROMPT_BYTES, MAX_AGENT_QUEUED_PROMPTS, MAX_AGENT_RESULT_BYTES,
     MAX_AGENT_UPDATES_BYTES, PaneId, QuotaWindows,
 };
 
@@ -367,6 +367,10 @@ impl AgentRuntime {
     pub(crate) fn reconfigure(&self, config: AgentSpawnConfig) {
         let _lifecycle = self.lifecycle.lock();
         self.host.reconfigure(config);
+    }
+
+    pub(crate) fn set_auto_approve(&self, pane: PaneId, tier: AgentAutoApprove) {
+        self.host.set_auto_approve(pane, tier);
     }
 
     #[cfg(test)]

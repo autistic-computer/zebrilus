@@ -4,7 +4,7 @@ title: Agent panes and the flip
 description: How a pane runs Claude Code, Codex, Antigravity, Grok or Cursor as a chat (PaneKind::Agent over the vendor drivers, Antigravity, Grok and Cursor over their own ACP servers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (one native login per CLI that zz swaps machine-wide with agent-account, parking the others, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, reopening a chat another chat opened on its session (select-child-chat), what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, antigravity, grok, cursor, driver, stream]
-timestamp: 2026-11-21T00:00:00-03:00
+timestamp: 2026-11-23T00:00:00-03:00
 ---
 
 # Overview
@@ -76,9 +76,13 @@ the final text (or the full text when the final part is empty, last 64 KiB), `st
 user, answer the user now and send nothing to %N. Only if something is missing: zz agent-send -t
 %N 'TEXT'`; `failed: message` followed by `Tell the user, or try again with: zz
 agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`
-`AgentReport::parse` strips those trailing lines, so a client gets only the reply text. While that turn waits on a permission
-or a question, the waiter's `asks` sink sends one `[zz] %N (codex) asks: kind title` message per
-request id with the `zz agent-respond` lines that answer it. Every string here, the stderr lines
+`AgentReport::parse` strips those trailing lines, so a client gets only the reply text. A chat with
+a parent runs on the `all` auto-approve tier unless the global `agent-auto-approve` is `off`
+(`child_auto_approve`: `agent_pane_spec` reads it whenever the chat's host opens, and
+`Shared::set_agent_parent` sets it on a host already open, since a new or reopened chat's host
+opens before its parent is recorded), so it answers its own tool permissions. While that turn waits
+on a question, or on a permission under `off`, the waiter's `asks` sink sends one `[zz] %N (codex)
+asks: kind title` message per request id with the `zz agent-respond` lines that answer it. Every string here, the stderr lines
 included, is built and parsed by `zz_protocol::agent_mention` (`AgentReport`, `AgentAsk`,
 `ReplyNotice`, `AgentRespond`), so clients read them with the same code. Deliveries to one caller
 go out in the order they were made, from one queue per caller (`Shared::deliver_to_chat`), and an
@@ -146,7 +150,7 @@ you as a message.` A chat opened by a chat gets a second note with its brief
 (`child_note`): `%P (NAME) opened this chat. Your final message is sent to it as your reply, so
 finish with the answer. You cannot open other agents or message %P; if you need something, say so
 in your reply.`, and for a Codex child `If a command fails with "Operation not permitted", rerun it
-with escalated permissions even if your brief says to stop on failure; %P is asked to approve it.` The daemon carries that note on the queued
+with escalated permissions even if your brief says to stop on failure; the approval is answered for you.` The daemon carries that note on the queued
 prompt (`QueuedPrompt::note`, `RuntimeCommand::Prompt`'s `note`), never in the text.
 `hidden_note` joins the two. Neither note joins the user's text: Claude
 Code gets it as a second content block wrapped in `<system-reminder>`, Codex as a second text item
