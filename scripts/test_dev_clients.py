@@ -53,6 +53,7 @@ class DevelopmentClientTests(unittest.TestCase):
             path.chmod(0o755)
         self.environment = dict(os.environ, TEST_ROOT=str(self.root), PATH=f"{tools}:{os.environ['PATH']}",
                                 ZZ_SOCKET="/stable/default.sock", ZZ_DEV_BUILD="inherited", ZZ_PANE="stable-pane",
+                                WEB_SYNTAX_HIGHLIGHTING="0",
                                 XDG_RUNTIME_DIR=str(self.root / "runtime"))
 
     def run_script(self, script, *arguments, **environment):

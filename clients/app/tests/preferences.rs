@@ -1,5 +1,5 @@
 use zz_app::preferences::Preferences;
-use zz_ui::interface_theme::{Appearance, ThemeModeSetting, ThemeOverrides, platform_theme};
+use zz_ui::interface_theme::{self, Appearance, ThemeModeSetting, ThemeOverrides, platform_theme};
 
 #[test]
 fn preferences_reject_invalid_themes_modes_and_numeric_values() {
@@ -102,7 +102,8 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
                 accent: Some("#ff8800".into()),
                 tint: Some(0.25),
                 tint_hue: Some(145.0),
-                ..ThemeOverrides::default()
+                controls: Some(interface_theme::Controls::Rounded),
+                glass: Some(interface_theme::Glass::Liquid),
             },
             contrast: 1.4,
             ui_font_family: "Inter Variable".into(),
@@ -128,6 +129,8 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     expected["pointer"] = "hand".into();
     expected["motion"] = "default".into();
     expected["mono_font_family"] = "".into();
+    expected["controls"] = "rounded".into();
+    expected["glass"] = "liquid".into();
     expected["chat_font_family"] = "".into();
     expected["which_key_delay"] = 400.0.into();
     expected["chrome_keys"] = serde_json::json!([]);

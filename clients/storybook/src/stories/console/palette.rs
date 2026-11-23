@@ -855,6 +855,7 @@ pub(crate) fn chat_backend() -> Rc<dyn PaletteBackend> {
             model: "gpt-6.1-sol".to_owned(),
             effort: String::new(),
         },
+        ..AgentLaunches::default()
     };
     Rc::new_cyclic(|me| StoryBackend {
         launches: Some(launches),

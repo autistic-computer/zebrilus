@@ -62,7 +62,7 @@ if [[ "${WEB_SYNTAX_HIGHLIGHTING:-1}" == 1 ]]; then
     )
 fi
 ZZ_DEV_BUILD="$WEB_DEV_BUILD" rustup run "$WEB_TOOLCHAIN" cargo build --locked --lib "${WEB_BUILD_ARGS[@]}" \
-    "${WEB_SYNTAX_ARGS[@]}" \
+    ${WEB_SYNTAX_ARGS[@]+"${WEB_SYNTAX_ARGS[@]}"} \
     --manifest-path "$WEB_MANIFEST" \
     --target-dir "$WEB_TARGET" \
     --target wasm32-unknown-unknown

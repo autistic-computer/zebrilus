@@ -20,10 +20,13 @@ const MAX_TRANSCRIPT_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_TITLE_CHARS: usize = 200;
 
 pub(crate) fn config_home() -> Option<PathBuf> {
-    std::env::var_os("CLAUDE_CONFIG_DIR")
+    let configured = std::env::var_os("CLAUDE_CONFIG_DIR")
         .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".claude")))
+        .map(PathBuf::from);
+    if cfg!(test) {
+        return configured;
+    }
+    configured.or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".claude")))
 }
 
 fn sanitize(path: &str) -> String {
