@@ -260,9 +260,8 @@ could tie to real Claude Code or Codex behavior.
   ignoring ids, the rules text and the client version, and nothing written that the tape lacks. A
   reload tape plays as two processes on one pane's journal, the second opened on the first one's
   session.
-- The Claude Code and Codex tapes in `agent/fixtures` come from the same rig: hello, tools, queue
-  and reload for both, and stop for Codex, each Claude tape with its scrubbed session transcript
-  beside it. `claude::replay_tests::native` and `codex::replay_tests::native` play each process on
+- The Claude Code and Codex tapes in `agent/fixtures` come from the same rig: hello, tools, stop,
+  queue and reload for both, each Claude tape with its scrubbed session transcript beside it. `claude::replay_tests::native` and `codex::replay_tests::native` play each process on
   a fresh runtime with a real journal, as `launch` and `spawn` leave it. A prompt goes in as the
   host sends it (Claude's `prompt` steps with the recorded uuid in place of a fresh one, Codex's
   `RuntimeCommand::Prompt`), a stop and an answer to an ask as `RuntimeControl`, and every `out`

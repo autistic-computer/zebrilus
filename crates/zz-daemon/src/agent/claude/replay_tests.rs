@@ -435,7 +435,7 @@ pub(crate) fn tapes() -> Vec<Tape> {
 }
 
 #[cfg(unix)]
-const NATIVE: [(&str, &str); 4] = [
+const NATIVE: [(&str, &str); 5] = [
     (
         "claude-hello",
         include_str!("../fixtures/claude-hello.ndjson"),
@@ -443,6 +443,10 @@ const NATIVE: [(&str, &str); 4] = [
     (
         "claude-tools",
         include_str!("../fixtures/claude-tools.ndjson"),
+    ),
+    (
+        "claude-stop",
+        include_str!("../fixtures/claude-stop.ndjson"),
     ),
     (
         "claude-queue",
@@ -1195,9 +1199,10 @@ fn recordings_in_a_folder_drive_the_chat_machine() {
 }
 
 #[cfg(unix)]
-const TRANSCRIPTS: [&str; 4] = [
+const TRANSCRIPTS: [&str; 5] = [
     include_str!("../fixtures/claude-hello.transcript.jsonl"),
     include_str!("../fixtures/claude-tools.transcript.jsonl"),
+    include_str!("../fixtures/claude-stop.transcript.jsonl"),
     include_str!("../fixtures/claude-queue.transcript.jsonl"),
     include_str!("../fixtures/claude-reload.transcript.jsonl"),
 ];
