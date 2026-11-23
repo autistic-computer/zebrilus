@@ -1948,9 +1948,7 @@ impl MuxClient {
         connection.reconnect_generation = reconnect_generation;
         connection.ssh_auth_declined = declined;
         connection.asked_to_sign_in = asked_to_sign_in;
-        let too_old = (host == HostId::LOCAL)
-            .then(|| client_too_old_text(&state))
-            .flatten();
+        let too_old = client_too_old_text(&state);
         let next_attempt = reconnect_attempt
             .filter(|_| !declined && too_old.is_none())
             .and_then(|attempt| {
@@ -7659,6 +7657,73 @@ mod tests {
                 );
             });
         });
+    }
+
+    #[ala::test]
+    fn an_attached_remote_that_outgrew_this_zz_stops_reconnecting(cx: &mut TestAppContext) {
+        let newer = PROTOCOL_VERSION + 1;
+        for (error, state, text) in [
+            (
+                DaemonError::IncompatibleDaemon {
+                    daemon: Some(newer),
+                    client: PROTOCOL_VERSION,
+                },
+                HostState::Incompatible {
+                    local: PROTOCOL_VERSION,
+                    remote: Some(newer),
+                },
+                format!(
+                    "This zz is too old for the running daemon. It speaks protocol \
+                     v{PROTOCOL_VERSION}, and the daemon speaks v{newer}. Update zz."
+                ),
+            ),
+            (
+                DaemonError::Server(ServerError::ClientTooOld {
+                    client: 40,
+                    minimum: 41,
+                }),
+                HostState::ClientTooOld {
+                    client: 40,
+                    minimum: 41,
+                },
+                "This zz is too old for the running daemon. It is revision 40, and the daemon \
+                 needs revision 41 or newer. Update zz."
+                    .to_owned(),
+            ),
+        ] {
+            cx.update(|cx| {
+                crate::config::set_fleet_hosts_for_test(
+                    vec![test_host("remote", "unix:///tmp/zz-outgrown-remote.sock")],
+                    cx,
+                );
+                let mux = cx.new(|cx| {
+                    MuxClient::new(
+                        Err(DaemonError::Thread("fixture".to_owned())),
+                        zz_daemon_client::default_socket_path(),
+                        cx,
+                    )
+                });
+                let remote = mux.read(cx).registry.get_by_name("remote").unwrap().0;
+                mux.update(cx, |mux, cx| {
+                    install_fake_connection(mux, HostId::LOCAL);
+                    install_fake_connection(mux, remote);
+                    mux.attached_host = remote;
+                    seed_attachment(mux, SessionId(9), MuxSnapshot::default());
+                    mux.handle_host_disconnected(remote, cx);
+
+                    let connection = mux.connections.get_mut(&remote).unwrap();
+                    assert_eq!(connection.state, HostState::Reconnecting { attempt: 1 });
+                    connection.bump_reconnect_generation();
+                    connection.state = HostState::Connecting;
+                    connection.reconnect_attempt_in_flight = Some(1);
+                    mux.handle_connect_result(remote, Err(error), cx);
+
+                    assert_eq!(mux.connections[&remote].state, state);
+                    assert_eq!(mux.error.as_deref(), Some(text.as_str()));
+                    assert!(mux.attached_client_too_old());
+                });
+            });
+        }
     }
 
     #[ala::test]
