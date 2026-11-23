@@ -20,6 +20,8 @@ use zz_protocol::{
 use crate::update::{Progress, UpdateError, download};
 
 pub const OPT_OUT_ENV: &str = "ZZ_OWNED_COPY";
+pub const HANDOVER_ENV: &str = "ZZ_OWNED_HANDOVER";
+const PINNED_ENV: &str = "ZZ_TMUX_EXECUTABLE";
 const BASE_URL_ENV: &str = "ZZ_UPDATE_BASE_URL";
 const RELEASE_DOWNLOADS: &str = "https://github.com/autistic-computer/zebrilus/releases/download";
 const BINARY: &str = if cfg!(windows) { "zz.exe" } else { "zz" };
@@ -385,6 +387,35 @@ fn asset_url(origin: &str, version: &Version, asset: &str) -> String {
     format!("{}/v{version}/{asset}", origin.trim_end_matches('/'))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Launch {
+    pub pinned: bool,
+    pub opted_out: bool,
+    pub handed_over: bool,
+    pub bootstrap: bool,
+}
+
+impl Launch {
+    pub fn from_env(bootstrap: bool) -> Self {
+        Self {
+            pinned: env::var_os(PINNED_ENV).is_some(),
+            opted_out: env::var_os(OPT_OUT_ENV).is_some_and(|value| value == "0"),
+            handed_over: env::var_os(HANDOVER_ENV).is_some(),
+            bootstrap,
+        }
+    }
+}
+
+pub fn hands_over(this: &BuildInfo, owned: &BuildInfo, launch: Launch) -> bool {
+    if launch.pinned || launch.opted_out || launch.handed_over || owned.version <= this.version {
+        return false;
+    }
+    !launch.bootstrap
+        || (owned.epoch == this.epoch
+            && owned.revision >= this.min_daemon_revision
+            && owned.min_client_revision <= this.revision)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -449,6 +480,86 @@ mod tests {
             }
         });
         origin
+    }
+
+    #[test]
+    fn a_packaged_zz_hands_over_only_to_a_newer_copy_it_can_start_with() {
+        let this = BuildInfo {
+            min_daemon_revision: 3,
+            ..build("0.30.0", 125, 9, 1)
+        };
+        let shell = Launch {
+            pinned: false,
+            opted_out: false,
+            handed_over: false,
+            bootstrap: false,
+        };
+        let local_client = Launch {
+            bootstrap: true,
+            ..shell
+        };
+        let newer = build("0.31.0", 125, 10, 1);
+        let next_epoch = build("0.31.0", 126, 1, 1);
+        let cases = [
+            ("newer, same epoch", &newer, shell, true),
+            (
+                "newer, same epoch, local client",
+                &newer,
+                local_client,
+                true,
+            ),
+            ("newer, next epoch", &next_epoch, shell, true),
+            (
+                "newer, next epoch, local client",
+                &next_epoch,
+                local_client,
+                false,
+            ),
+            (
+                "newer, below the daemon floor, local client",
+                &build("0.31.0", 125, 2, 1),
+                local_client,
+                false,
+            ),
+            (
+                "newer, needs a newer client, local client",
+                &build("0.31.0", 125, 10, 10),
+                local_client,
+                false,
+            ),
+            ("older", &build("0.29.0", 125, 9, 1), shell, false),
+            ("same version", &build("0.30.0", 125, 9, 1), shell, false),
+            (
+                "ZZ_TMUX_EXECUTABLE set",
+                &newer,
+                Launch {
+                    pinned: true,
+                    ..shell
+                },
+                false,
+            ),
+            (
+                "ZZ_OWNED_COPY=0",
+                &newer,
+                Launch {
+                    opted_out: true,
+                    ..shell
+                },
+                false,
+            ),
+            (
+                "already handed over",
+                &newer,
+                Launch {
+                    handed_over: true,
+                    ..shell
+                },
+                false,
+            ),
+        ];
+        for (case, owned, launch, expected) in cases {
+            assert_eq!(hands_over(&this, owned, launch), expected, "{case}");
+        }
     }
 
     #[test]

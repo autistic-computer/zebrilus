@@ -162,7 +162,13 @@ fn remove() -> Result<(), String> {
 }
 
 fn check(socket_path: &Path, version: Option<Version>, beta: bool) {
-    println!("this zz: {}", BuildInfo::current().version);
+    let this = BuildInfo::current().version;
+    match crate::handed_over_from() {
+        Some(packaged) => {
+            println!("this zz: {this}, the owned copy, started by the packaged zz {packaged}");
+        }
+        None => println!("this zz: {this}"),
+    }
     match owned::installed() {
         Some(copy) => println!(
             "owned copy: {} ({})",

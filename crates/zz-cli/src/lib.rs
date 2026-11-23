@@ -99,6 +99,7 @@ const DAEMON_BOOTSTRAP_READY_FD_ARGUMENT: &str = "--bootstrap-ready-fd";
 const DAEMON_BOOTSTRAP_CLIENT_CWD_ARGUMENT: &str = "--bootstrap-client-cwd";
 const DAEMON_READY_DEADLINE: Duration = Duration::from_secs(6);
 static DAEMON_SPAWN_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+static HANDED_OVER_FROM: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 pub enum Startup {
     Application(PathBuf),
@@ -205,10 +206,24 @@ struct TmuxLabelCreationError {
 
 #[must_use]
 pub fn run_startup(socket_path: &Path, options: StartupOptions) -> Startup {
+    #[cfg(unix)]
+    let handover_failure = if options.origin == CommandLineOrigin::Launcher {
+        hand_over_to_owned_copy()
+    } else {
+        None
+    };
     diagnostics::init(bare_command_line_opens_application(
         options.origin,
         launched_by_launch_services(),
     ));
+    #[cfg(unix)]
+    if let Some((binary, error)) = handover_failure {
+        log::warn!(
+            target: "zz::diagnostics::process",
+            "could not hand over to the owned copy path={} error={error}",
+            binary.display(),
+        );
+    }
     let arguments =
         match application_arguments(diagnostics::application_args(), socket_path.to_path_buf()) {
             Ok(arguments) => arguments,
@@ -299,6 +314,45 @@ pub fn run_startup(socket_path: &Path, options: StartupOptions) -> Startup {
         }
         Startup::Application(socket_path)
     }
+}
+
+#[cfg(unix)]
+fn hand_over_to_owned_copy() -> Option<(PathBuf, io::Error)> {
+    use std::os::unix::process::CommandExt as _;
+    use zz_config::owned::{self, BuildInfo, Launch};
+
+    let launch = Launch::from_env(
+        std::env::args_os().any(|argument| argument == DAEMON_BOOTSTRAP_SERVER_ID_ARGUMENT),
+    );
+    if let Some(packaged) = std::env::var_os(owned::HANDOVER_ENV) {
+        #[allow(
+            unsafe_code,
+            reason = "startup runs on one thread and nothing has read the environment yet"
+        )]
+        unsafe {
+            std::env::remove_var(owned::HANDOVER_ENV);
+        }
+        let _ = HANDED_OVER_FROM.set(packaged.to_string_lossy().into_owned());
+    }
+    let this = BuildInfo::current();
+    let copy = owned::installed()?;
+    if !owned::hands_over(&this, &copy.info, launch) {
+        return None;
+    }
+    let mut arguments = std::env::args_os();
+    let mut command = Command::new(&copy.binary);
+    if let Some(program) = arguments.next() {
+        command.arg0(program);
+    }
+    let error = command
+        .args(arguments)
+        .env(owned::HANDOVER_ENV, this.version.to_string())
+        .exec();
+    Some((copy.binary, error))
+}
+
+pub(crate) fn handed_over_from() -> Option<&'static str> {
+    HANDED_OVER_FROM.get().map(String::as_str)
 }
 
 fn application_working_directory(
@@ -3362,6 +3416,10 @@ pub fn launch_application(socket_path: &Path) -> ExitCode {
 }
 
 pub fn daemon_executable() -> io::Result<PathBuf> {
+    #[cfg(windows)]
+    if let Some(copy) = owned_daemon_executable() {
+        return Ok(copy);
+    }
     let executable = std::env::current_exe()?;
     match executable.canonicalize() {
         Ok(executable) => Ok(daemon_executable_from(&executable)),
@@ -3370,6 +3428,15 @@ pub fn daemon_executable() -> io::Result<PathBuf> {
         #[cfg(not(target_os = "linux"))]
         Err(error) => Err(error),
     }
+}
+
+#[cfg(windows)]
+fn owned_daemon_executable() -> Option<PathBuf> {
+    use zz_config::owned::{self, BuildInfo, Launch};
+
+    let copy = owned::installed()?;
+    owned::hands_over(&BuildInfo::current(), &copy.info, Launch::from_env(true))
+        .then_some(copy.binary)
 }
 
 #[cfg(any(not(target_os = "macos"), test))]
