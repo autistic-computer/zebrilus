@@ -9,8 +9,9 @@ use std::{
 
 use ala::{
     AnyElement, App, ClipboardItem, Context, Div, FollowMode, Global, Image, ImageFormat,
-    IntoElement, ListAlignment, ListSizingBehavior, ListState, Pixels, ScrollHandle, SharedString,
-    Stateful, Subscription, Window, canvas, div, list, prelude::*, px, relative,
+    IntoElement, ListAlignment, ListOffset, ListSizingBehavior, ListState, MouseButton, Pixels,
+    Point, ScrollHandle, SharedString, Stateful, Subscription, Window, canvas, div, list,
+    prelude::*, px, relative,
 };
 use penna::{
     Card, CardLook, Label, Sizable as _, Space, TextStyle,
@@ -279,6 +280,9 @@ const SKELETON_BUBBLE_BARS: [f32; 2] = [1.0, 0.55];
 const SKELETON_REPLY_BARS: [f32; 4] = [1.0, 0.85, 0.95, 0.6];
 const SKELETON_LINE: f32 = 22.0;
 const JUMP_GAP: f32 = 8.0;
+const COMPOSER_CLEARANCE: f32 = 16.0;
+const FOLLOW_SLACK: f32 = 24.0;
+const DRAG_SLOP: f32 = 4.0;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Row {
@@ -383,9 +387,29 @@ impl ChatFrame {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Hold {
+    #[default]
+    Idle,
+    Await(Option<TurnId>),
+    Measure(TurnId),
+    Set(TurnId),
+    Pinned,
+}
+
+#[derive(Clone, Default)]
+struct ReplyMarks {
+    turn: Rc<Cell<Option<(TurnId, Pixels)>>>,
+    reply: Rc<Cell<Option<(TurnId, Pixels)>>>,
+}
+
 pub struct ChatPane {
     pub open: ChatOpen,
     list: ListState,
+    hold: Hold,
+    last_turn: Option<TurnId>,
+    marks: ReplyMarks,
+    press: Option<Point<Pixels>>,
     rows: Vec<Row>,
     keys: Vec<RowKey>,
     background_live: bool,
@@ -403,9 +427,14 @@ impl Default for ChatPane {
     fn default() -> Self {
         let list = ListState::new(0, ListAlignment::Top, px(1_200.0));
         list.set_follow_mode(FollowMode::Tail);
+        list.set_follow_slack(px(FOLLOW_SLACK));
         Self {
             open: ChatOpen::default(),
             list,
+            hold: Hold::Idle,
+            last_turn: None,
+            marks: ReplyMarks::default(),
+            press: None,
             rows: Vec::new(),
             keys: Vec::new(),
             background_live: false,
@@ -483,7 +512,10 @@ impl ChatPane {
                 return;
             }
         }
-        self.list.pause_following_tail();
+        if self.list.is_following_tail() {
+            self.list.hold_here();
+            self.hold = Hold::Pinned;
+        }
     }
 
     pub fn sync(&mut self, view: &ChatView) {
@@ -499,8 +531,10 @@ impl ChatPane {
             self.rows.clear();
             self.keys.clear();
             self.list.reset(0);
-            self.follow();
+            self.hold = Hold::Idle;
+            self.list.set_follow_mode(FollowMode::Tail);
         }
+        self.last_turn = view.turns.last().map(|turn| turn.id);
         self.open
             .turns
             .retain(|turn| view.turns.iter().any(|held| held.id == *turn));
@@ -698,7 +732,77 @@ impl ChatPane {
     }
 
     pub fn follow(&mut self) {
-        self.list.set_follow_mode(FollowMode::Tail);
+        self.hold = Hold::Await(self.last_turn);
+        self.press = None;
+        self.list.set_frozen(false);
+        self.list.glide_to_end();
+    }
+
+    fn update_hold(&mut self, view: &ChatView) {
+        let last = self
+            .rows
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(index, row)| match row {
+                Row::Turn(turn) => view.turns.get(*turn).map(|turn| (index, turn)),
+                Row::Background(_) => None,
+            });
+        let tracking = self.list.is_following_tail() || self.list.is_gliding();
+        self.hold = match self.hold {
+            Hold::Await(after) => match last {
+                Some((_, turn)) if Some(turn.id) != after && turn.is_open() => {
+                    if tracking {
+                        Hold::Measure(turn.id)
+                    } else {
+                        Hold::Idle
+                    }
+                }
+                _ => self.hold,
+            },
+            Hold::Measure(id) | Hold::Set(id) => {
+                let released =
+                    matches!(self.hold, Hold::Set(_)) && self.list.follow_hold().is_none();
+                match last.filter(|(_, turn)| turn.id == id) {
+                    Some((index, _)) if !released && tracking => {
+                        match self.marks.reply.get().filter(|(mark, _)| *mark == id) {
+                            Some((_, offset)) => {
+                                self.list.set_follow_hold(Some(ListOffset {
+                                    item_ix: index,
+                                    offset_in_item: offset,
+                                }));
+                                Hold::Set(id)
+                            }
+                            None => self.hold,
+                        }
+                    }
+                    _ => {
+                        if !released {
+                            self.list.set_follow_hold(None);
+                        }
+                        Hold::Idle
+                    }
+                }
+            }
+            Hold::Pinned if self.list.follow_hold().is_none() => Hold::Idle,
+            hold => hold,
+        };
+    }
+
+    fn press(&mut self, at: Point<Pixels>) {
+        self.press = Some(at);
+        self.list.set_frozen(true);
+    }
+
+    fn let_go(&mut self, at: Point<Pixels>) {
+        let Some(start) = self.press.take() else {
+            return;
+        };
+        self.list.set_frozen(false);
+        let moved = at - start;
+        if f32::from(moved.x).hypot(f32::from(moved.y)) > DRAG_SLOP {
+            self.list.pause_following_tail();
+        }
     }
 
     pub fn scroll_to_top(&mut self) {
@@ -759,7 +863,9 @@ impl ChatPane {
 
     #[must_use]
     pub fn shows_jump(&self) -> bool {
-        self.away() && self.list.is_scrolled_to_end() == Some(false)
+        (self.away() || self.list.follow_hold().is_some())
+            && !self.list.is_gliding()
+            && self.list.is_scrolled_to_end() == Some(false)
     }
 
     fn draw<'a, 'h>(
@@ -775,6 +881,7 @@ impl ChatPane {
             phase: self.frame.phase,
             hooks,
             fold: &self.fold,
+            marks: &self.marks,
             cx,
         }
     }
@@ -844,6 +951,7 @@ pub fn chat_surface<T: ChatHost>(
             return div().into_any_element();
         };
         pane.sync(view);
+        pane.update_hold(view);
         chat_live(view)
     };
     let phase = if live {
@@ -959,7 +1067,7 @@ pub fn chat_surface<T: ChatHost>(
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .size_full()
     .pt(look.inset_top + Space::S12.rems().to_pixels(window.rem_size()))
-    .pb(bottom);
+    .pb(bottom + px(COMPOSER_CLEARANCE));
     let jump = {
         let entity = entity.clone();
         move |_: &ala::ClickEvent, _: &mut Window, cx: &mut App| {
@@ -970,12 +1078,34 @@ pub fn chat_surface<T: ChatHost>(
             cx.stop_propagation();
         }
     };
+    let pressed = entity.clone();
+    let released = entity.clone();
+    let released_out = entity.clone();
     let column = div()
         .relative()
         .flex_1()
         .min_w_0()
         .h_full()
         .text_color(cx.theme().foreground)
+        .capture_any_mouse_down(move |event, _, cx| {
+            if event.button == MouseButton::Left {
+                pressed.update(cx, |host, _| host.chat_pane().press(event.position));
+            }
+        })
+        .capture_any_mouse_up(move |event, _, cx| {
+            if event.button == MouseButton::Left {
+                released.update(cx, |host, cx| {
+                    host.chat_pane().let_go(event.position);
+                    cx.notify();
+                });
+            }
+        })
+        .on_mouse_up_out(MouseButton::Left, move |event, _, cx| {
+            released_out.update(cx, |host, cx| {
+                host.chat_pane().let_go(event.position);
+                cx.notify();
+            });
+        })
         .children(
             crate::agent::html_frame_clip(
                 Some(crate::agent::HtmlFrameBand {
@@ -1118,7 +1248,7 @@ pub fn chat_skeleton(touch: bool, inset_top: Pixels, inset_bottom: Pixels, cx: &
         inset_bottom
     } else {
         px(COMPOSER_OUTER_PADDING)
-    };
+    } + px(COMPOSER_CLEARANCE);
     div()
         .absolute()
         .inset_0()
@@ -1184,6 +1314,7 @@ pub fn chat_thread(
     cx: &App,
 ) -> Div {
     let fold = chat_rows::child_fold(view);
+    let marks = ReplyMarks::default();
     let draw = Draw {
         view,
         now,
@@ -1191,6 +1322,7 @@ pub fn chat_thread(
         phase,
         hooks,
         fold: &fold,
+        marks: &marks,
         cx,
     };
     let live = chat_rows::background_live(view);
@@ -1210,6 +1342,7 @@ struct Draw<'a, 'h> {
     phase: f32,
     hooks: &'a ChatHooks<'h>,
     fold: &'a ChildFold,
+    marks: &'a ReplyMarks,
     cx: &'a App,
 }
 
@@ -1232,11 +1365,39 @@ impl Draw<'_, '_> {
             _ => None,
         };
         let settled = rows.shown.len() - usize::from(tail.is_some());
+        let id = turn.id;
+        let mark = |cell: &Rc<Cell<Option<(TurnId, Pixels)>>>,
+                    from: Option<Rc<Cell<Option<(TurnId, Pixels)>>>>| {
+            let cell = Rc::clone(cell);
+            canvas(
+                move |bounds, _, _| {
+                    let top = bounds.top();
+                    match &from {
+                        Some(from) => {
+                            if let Some((turn, start)) = from.get().filter(|(turn, _)| *turn == id)
+                            {
+                                cell.set(Some((turn, top - start)));
+                            }
+                        }
+                        None => cell.set(Some((id, top))),
+                    }
+                },
+                |_, (), _, _| {},
+            )
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_0()
+        };
         let reply = v_flex()
             .id(("chat-reply", turn.id.0))
             .group(REPLY_GROUP)
+            .relative()
             .w_full()
             .gap_3()
+            .when(live, |column| {
+                column.child(mark(&self.marks.reply, Some(Rc::clone(&self.marks.turn))))
+            })
             .when_some(fold, |column, fold| {
                 column.child(self.hooks.clickable(
                     fold_row(turn.id, fold, expanded, self.hooks.touch, self.cx),
@@ -1300,8 +1461,10 @@ impl Draw<'_, '_> {
             });
         v_flex()
             .id(("chat-turn", turn.id.0))
+            .relative()
             .w_full()
             .gap_3()
+            .when(live, |column| column.child(mark(&self.marks.turn, None)))
             .children(rows.shown[..lead].iter().map(|unit| self.unit(unit, live)))
             .child(reply)
             .into_any_element()
@@ -2172,6 +2335,7 @@ pub fn chat_agent_body(
 ) -> Option<(SharedString, Div)> {
     let item = view.item(id)?;
     let fold = ChildFold::default();
+    let marks = ReplyMarks::default();
     let draw = Draw {
         view,
         now,
@@ -2179,6 +2343,7 @@ pub fn chat_agent_body(
         phase,
         hooks,
         fold: &fold,
+        marks: &marks,
         cx,
     };
     let state = chat_rows::agent_state(view, id);
@@ -2201,6 +2366,7 @@ pub fn chat_agent_pip(
     let id = open.agent.as_ref()?;
     let item = view.item(id)?;
     let fold = ChildFold::default();
+    let marks = ReplyMarks::default();
     let draw = Draw {
         view,
         now,
@@ -2208,6 +2374,7 @@ pub fn chat_agent_pip(
         phase,
         hooks,
         fold: &fold,
+        marks: &marks,
         cx,
     };
     let state = chat_rows::agent_state(view, id);
@@ -3708,11 +3875,16 @@ mod tests {
         pane.click(&ChatClick::Turn(TurnId(1)));
         pane.sync(&first);
         assert_eq!(pane.open.agent, Some(ItemId::new("a")));
-        assert!(pane.away());
+        assert!(!pane.away());
+        assert!(
+            pane.list.follow_hold().is_some(),
+            "an expand holds the view in place"
+        );
         pane.sync(&ready("s2"));
         assert_eq!(pane.open.agent, None);
         assert!(pane.open.turns.is_empty());
         assert!(!pane.away(), "a new session lands on its latest message");
+        assert_eq!(pane.list.follow_hold(), None);
     }
 
     #[test]

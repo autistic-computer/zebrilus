@@ -1351,6 +1351,29 @@ calls:
   reply into the composer, and two
   panes showing the same item keep their own preview toggles.
 
+## Scrolling
+
+The transcript is ala's `list` in `FollowMode::Tail`, driven by `ChatPane`:
+
+- **Follow, then hold.** After you send (or press Jump to latest), the next turn that opens is
+  followed until the first line of its reply reaches the top of the transcript, then the view holds
+  there so you read the reply from its start (`Hold`, `ListState::set_follow_hold`). Two zero-size
+  canvases in a live turn measure where its reply starts inside the row (`ReplyMarks`). A chat
+  opened mid-turn, or a turn started from elsewhere, just follows the tail.
+- **Jump to latest** shows while you are away from the end or held above it, and hides during the
+  glide. It and sending glide to the end in 280 ms with an ease-out (`ListState::glide_to_end`), at
+  most one and a half screens of travel; reduced motion snaps.
+- **Your scroll wins.** Any wheel or scrollbar move drops the hold. Scrolling up stops following;
+  scrolling back down to within 24 px of the end follows again (`set_follow_slack`).
+- **Pressing holds still.** While the left button is down in the transcript the list does not move
+  (`set_frozen`). Releasing after a drag of more than 4 px, a text selection, stops following so the
+  selection stays on screen; a click releases as it was.
+- **Expanding keeps your place.** Opening a turn, a run or a long message while following pins the
+  view where it is (`ListState::hold_here`) instead of stopping follow; closing one scrolls by what it
+  lost so the control stays under the pointer.
+- The last row clears the composer by 28 px: the composer overlaps the list's 12 px bottom padding,
+  so the list adds 16 more (`COMPOSER_CLEARANCE`) over the row's own 12.
+
 # Previews and the view pane
 
 A chat opens what it previews in one floating `view` pane (`PaneKindSnapshot::View`), a pane with
