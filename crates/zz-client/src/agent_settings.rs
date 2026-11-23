@@ -316,7 +316,7 @@ pub fn account_detail(account: &AgentAccount) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
-fn plan_name(plan: &str) -> String {
+pub(crate) fn plan_name(plan: &str) -> String {
     let words = plan
         .split('_')
         .filter(|word| !word.is_empty())

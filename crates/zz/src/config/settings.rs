@@ -125,6 +125,7 @@ pub(crate) struct SettingsView {
     terminal_preview: Option<Entity<terminal_preview::TerminalPreview>>,
     hosts_state: Option<HostsSectionState>,
     login_codes: BTreeMap<(HostId, zz_protocol::AgentProvider), zz_ui::agent::login::CodeField>,
+    agents_host: HostId,
     section: SettingsSection,
     focus_handle: FocusHandle,
     _subscriptions: Vec<Subscription>,
@@ -256,6 +257,7 @@ impl SettingsView {
             terminal_preview: None,
             hosts_state: None,
             login_codes: BTreeMap::new(),
+            agents_host: HostId::LOCAL,
             section: SettingsSection::Appearance,
             focus_handle: cx.focus_handle(),
             _subscriptions: subscriptions,
@@ -1104,11 +1106,11 @@ impl SettingsView {
     }
 
     fn agents_section(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        use std::rc::Rc;
-        use zz_client::agent_login::{CardAction, LoginAccount, settled};
-        use zz_ui::agent::login::{CodeField, LoginEvent, login_card_keyed};
+        use zz_client::agent_login::{CardAction, settled};
+        use zz_client::providers::update_all;
+        use zz_ui::agent::login::{CodeField, LoginEvent};
         use zz_ui::settings::providers::{
-            PROVIDERS, ProviderAuthAction, ProvidersAuth, ProvidersHost, providers_stack_with_auth,
+            AgentsMachine, PROVIDERS, ProvidersHost, agents_heading, agents_hook, machine_picker,
         };
 
         let mut settled_logins = Vec::new();
@@ -1199,95 +1201,126 @@ impl SettingsView {
             }
         }
         self.login_codes.retain(|key, _| active_keys.contains(key));
+        if !hosts.iter().any(|(host, ..)| *host == self.agents_host) {
+            self.agents_host = HostId::LOCAL;
+        }
+        let picked = hosts
+            .iter()
+            .position(|(host, ..)| *host == self.agents_host)
+            .unwrap_or_default();
+        let targets = update_all(hosts.iter().filter_map(|(host, _, shown, ..)| match shown {
+            ProvidersHost::Report(report) => Some((*host, report)),
+            ProvidersHost::Offline(_) | ProvidersHost::Waiting => None,
+        }));
+        let host_ids = hosts.iter().map(|(host, ..)| *host).collect::<Vec<_>>();
+        let mut machines = Vec::with_capacity(hosts.len());
+        let mut card = None;
+        for (index, (host, title, shown, signs_in, accounts, logins)) in
+            hosts.into_iter().enumerate()
+        {
+            if index == picked {
+                card =
+                    Some(self.agents_card(host, &shown, signs_in, accounts.as_deref(), logins, cx));
+            }
+            machines.push(AgentsMachine {
+                title: title.into(),
+                host: shown,
+            });
+        }
+        let update_mux = self.mux.clone();
+        let update_all = (!targets.is_empty()).then_some(move |_: &mut Window, cx: &mut App| {
+            let mux = update_mux.read(cx);
+            for (host, provider) in &targets {
+                mux.update_provider(*host, *provider);
+            }
+        });
+        let check_mux = self.mux.clone();
         let entity = cx.entity().downgrade();
-        let stacks = hosts
-            .into_iter()
-            .map(|(host, title, shown, signs_in, accounts, logins)| {
-                let mux = self.mux.clone();
-                let auth_mux = self.mux.clone();
-                let login_entity = entity.clone();
-                let login_cards = logins
-                    .into_iter()
-                    .filter_map(|(provider, login)| {
-                        let entity = login_entity.clone();
-                        let field = self.login_codes.get(&(host, provider));
-                        let key = format!("settings-{host:?}-{}", provider.as_str());
-                        let card = login_card_keyed(
-                            &key,
-                            &login,
-                            field,
-                            move |event, window, cx| {
-                                entity
-                                    .update(cx, |settings, cx| {
-                                        settings.provider_login_event(
-                                            host, provider, event, window, cx,
-                                        );
-                                    })
-                                    .ok();
-                            },
-                            cx,
-                        )?;
-                        Some((provider, card))
-                    })
-                    .collect::<BTreeMap<_, _>>();
-                let login_cards = std::cell::RefCell::new(login_cards);
-                let auth = ProvidersAuth {
-                    signs_in,
-                    accounts: accounts.as_deref(),
-                    on_auth: Rc::new(move |provider, action, _, cx| {
-                        let account = match action {
-                            ProviderAuthAction::SignIn => LoginAccount::Default,
-                            ProviderAuthAction::AddAccount => LoginAccount::New,
-                        };
-                        auth_mux
-                            .read(cx)
-                            .start_provider_login(host, provider, account);
-                    }),
-                    login: Rc::new(move |provider, _| login_cards.borrow_mut().remove(&provider)),
+        Self::scroll_column("settings-agents")
+            .child(agents_heading(
+                update_all,
+                move |_, cx| check_mux.update(cx, |mux, _| mux.request_providers(true)),
+                cx,
+            ))
+            .children(machine_picker(&machines, picked, move |index, _, cx| {
+                let Some(host) = host_ids.get(index).copied() else {
+                    return;
                 };
-                providers_stack_with_auth(
-                    format!("{host:?}"),
-                    title,
-                    &shown,
-                    Some(&auth),
-                    move |provider, _, cx| {
-                        mux.read(cx).update_provider(host, provider);
+                entity
+                    .update(cx, |settings, cx| {
+                        settings.agents_host = host;
+                        cx.notify();
+                    })
+                    .ok();
+            }))
+            .children(card)
+            .child(agents_hook(crate::config::agent_setup::set_up_agents, cx))
+            .into_any_element()
+    }
+
+    fn agents_card(
+        &self,
+        host: HostId,
+        shown: &zz_ui::settings::providers::ProvidersHost,
+        signs_in: bool,
+        accounts: Option<&[zz_protocol::AgentAccount]>,
+        logins: BTreeMap<zz_protocol::AgentProvider, zz_protocol::AgentLogin>,
+        cx: &mut Context<Self>,
+    ) -> zz_ui::settings::SettingsStack {
+        use std::rc::Rc;
+        use zz_client::agent_login::LoginAccount;
+        use zz_ui::agent::login::login_card_keyed;
+        use zz_ui::settings::providers::{ProviderAuthAction, ProvidersAuth, machine_card};
+
+        let entity = cx.entity().downgrade();
+        let mux = self.mux.clone();
+        let auth_mux = self.mux.clone();
+        let login_cards = logins
+            .into_iter()
+            .filter_map(|(provider, login)| {
+                let entity = entity.clone();
+                let field = self.login_codes.get(&(host, provider));
+                let key = format!("settings-{host:?}-{}", provider.as_str());
+                let card = login_card_keyed(
+                    &key,
+                    &login,
+                    field,
+                    move |event, window, cx| {
+                        entity
+                            .update(cx, |settings, cx| {
+                                settings.provider_login_event(host, provider, event, window, cx);
+                            })
+                            .ok();
                     },
                     cx,
-                )
+                )?;
+                Some((provider, card))
             })
-            .collect::<Vec<_>>();
-        Self::scroll_column("settings-agents")
-            .child(settings_page_title(SettingsSection::Agents, cx))
-            .child(
-                SettingsStack::titled("Coding agents").child(
-                    SettingEntry::new("Claude Code and Codex")
-                        .description(
-                            "A startup hook so the ones in terminal panes know they run in zz",
-                        )
-                        .control(
-                            Button::new("settings-agent-setup")
-                                .label("Set up")
-                                .on(settings_card_ground(cx))
-                                .on_click(|_, window, cx| {
-                                    crate::config::agent_setup::set_up_agents(window, cx);
-                                }),
-                        ),
-                ),
-            )
-            .children(stacks)
-            .child(
-                h_flex().justify_end().child(
-                    Button::new("settings-providers-check")
-                        .label("Check again")
-                        .on_click(cx.listener(|settings, _, _, cx| {
-                            settings
-                                .mux
-                                .update(cx, |mux, _| mux.request_providers(true));
-                        })),
-                ),
-            )
-            .into_any_element()
+            .collect::<BTreeMap<_, _>>();
+        let login_cards = std::cell::RefCell::new(login_cards);
+        let auth = ProvidersAuth {
+            signs_in,
+            accounts,
+            on_auth: Rc::new(move |provider, action, _, cx| {
+                let account = match action {
+                    ProviderAuthAction::SignIn => LoginAccount::Default,
+                    ProviderAuthAction::AddAccount => LoginAccount::New,
+                };
+                auth_mux
+                    .read(cx)
+                    .start_provider_login(host, provider, account);
+            }),
+            login: Rc::new(move |provider, _| login_cards.borrow_mut().remove(&provider)),
+        };
+        machine_card(
+            format!("{host:?}"),
+            shown,
+            Some(&auth),
+            move |provider, _, cx| {
+                mux.read(cx).update_provider(host, provider);
+            },
+            cx,
+        )
     }
 
     fn provider_login_event(

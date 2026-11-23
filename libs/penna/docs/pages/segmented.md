@@ -76,6 +76,8 @@ One or two words each, about the same length.
 | `.on_select(handler)` | `change` | Gets the picked index |
 | `.xsmall()` … `.touch()`, `.with_size(size)` | `data-size` | Size; medium by default |
 | `.full_width()` | `data-width="full"` | Equal-width segments filling the container |
+| `.dots(indices)` | `.penna-segment-dot` after the label | An accent dot after those segments' labels |
+| `.dimmed(indices)` | `data-dim` on `.penna-segment` | Those labels at half strength, still pickable |
 | `.disabled(true)` | `aria-disabled="true"` | Off |
 | `.on(ground)` | `data-ground` on parent | Paints for the surface under it |
 | | `pennaSegmented.wire(root)` | Wires dynamically inserted controls |

@@ -495,7 +495,7 @@ opens.
   one too (`LoginAccount::of`). Signed-out error cards in a chat pane also offer an inline Sign in
   button (`error_card_sign_in` / `phone_error_card_sign_in`), and Settings → Agents shows each
   installed provider's sign-in state with Sign in / Add account and the inline login card
-  (`providers_stack_with_auth`). On iPhone the same rows sit on the plus sheet's Account page.
+  (`machine_card` on the desktop, `providers_stack_with_auth` on the web and phone). On iPhone the same rows sit on the plus sheet's Account page.
 - **Browser.** `--browser local` only from the desktop on its own machine
   (`agent_login::browser(host == HostId::LOCAL)` in `MuxClient::start_agent_login`); the desktop on
   a remote host, iPad, iPhone, Android and the web send `elsewhere`. On `OpenUrl` or `PasteCode`

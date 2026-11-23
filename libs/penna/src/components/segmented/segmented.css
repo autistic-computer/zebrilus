@@ -184,6 +184,23 @@
   white-space: nowrap;
 }
 
+.penna-segmented .penna-segment:has(> .penna-segment-dot) {
+  gap: var(--penna-space-6);
+}
+
+.penna-segmented .penna-segment[data-dim] > .penna-label {
+  opacity: 0.5;
+}
+
+.penna-segmented .penna-segment-dot {
+  position: relative;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--penna-accent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .penna-segmented .penna-segment-pill {
     transition: none;
