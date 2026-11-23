@@ -18,7 +18,10 @@ use zz_protocol::{
 
 use crate::{
     agent::{attachment, launch},
-    mux::client::{AgentRequest, MuxClient},
+    mux::{
+        client::{AgentRequest, MuxClient},
+        hosts::HostId,
+    },
 };
 
 const MAX_SESSION_UPDATE_TAG_BYTES: usize = 64;
@@ -342,6 +345,7 @@ pub struct AgentController {
     pending_composer: BTreeMap<PaneId, String>,
     pending_images: BTreeMap<PaneId, Vec<Arc<Image>>>,
     retained_panes: BTreeSet<PaneId>,
+    parked: BTreeMap<(HostId, PaneId), (AgentThread, PaneViewport)>,
     shown_images: BTreeMap<u64, ShownImage>,
     shutting_down: bool,
     moves: u64,
@@ -367,6 +371,7 @@ impl AgentController {
             pending_composer: BTreeMap::new(),
             pending_images: BTreeMap::new(),
             retained_panes: BTreeSet::new(),
+            parked: BTreeMap::new(),
             shown_images: BTreeMap::new(),
             shutting_down: false,
             moves: 0,
@@ -461,6 +466,32 @@ impl AgentController {
         if provider_changed {
             self.viewports.entry(pane).or_default().last_applied = 0;
         }
+    }
+
+    pub(crate) fn park_pane(&mut self, host: HostId, pane: PaneId) {
+        self.retained_panes.remove(&pane);
+        if let Some(thread) = self.panes.remove(&pane) {
+            let viewport = self.viewports.remove(&pane).unwrap_or_default();
+            self.parked.insert((host, pane), (thread, viewport));
+        }
+    }
+
+    pub(crate) fn unpark_pane(&mut self, host: HostId, pane: PaneId) {
+        if let Some((thread, viewport)) = self.parked.remove(&(host, pane)) {
+            self.panes.insert(pane, thread);
+            self.viewports.insert(pane, viewport);
+            self.retained_panes.insert(pane);
+        }
+    }
+
+    pub(crate) fn retain_parked(&mut self, parkable: &BTreeSet<(HostId, PaneId)>) {
+        self.parked.retain(|key, _| parkable.contains(key));
+    }
+
+    pub(crate) fn last_applied(&self, pane: PaneId) -> u64 {
+        self.viewports
+            .get(&pane)
+            .map_or(0, |viewport| viewport.last_applied)
     }
 
     pub(crate) fn retain_panes(

@@ -35089,30 +35089,37 @@ impl Shared {
         state: AgentPaneWire,
     ) -> Option<PendingHookEvent> {
         let facts = agent_chat_facts(&state);
-        let event = {
+        let (event, status_changed) = {
             let mut inner = self.inner.lock();
-            inner
-                .engine
-                .set_agent_chat(pane, Some(facts.clone()))
-                .then(|| {
-                    PendingHookEvent::live_pane("agent-state-changed", pane, &inner.engine).map(
-                        |mut event| {
-                            event.variables.extend([
-                                ("agent_state".to_owned(), facts.state.to_owned()),
-                                (
-                                    "agent_pending_permission".to_owned(),
-                                    facts
-                                        .pending_permission
-                                        .map(|id| id.to_string())
-                                        .unwrap_or_default(),
-                                ),
-                            ]);
-                            event
-                        },
-                    )
-                })
-                .flatten()
+            if inner.engine.set_agent_chat(pane, Some(facts.clone())) {
+                let status_changed = pane_summary::apply_pane_status(
+                    &mut inner,
+                    pane,
+                    pane_summary::agent_state_status(Some(facts.state)),
+                    unix_timestamp(),
+                );
+                let event = PendingHookEvent::live_pane("agent-state-changed", pane, &inner.engine)
+                    .map(|mut event| {
+                        event.variables.extend([
+                            ("agent_state".to_owned(), facts.state.to_owned()),
+                            (
+                                "agent_pending_permission".to_owned(),
+                                facts
+                                    .pending_permission
+                                    .map(|id| id.to_string())
+                                    .unwrap_or_default(),
+                            ),
+                        ]);
+                        event
+                    });
+                (event, status_changed)
+            } else {
+                (None, false)
+            }
         };
+        if status_changed {
+            self.request_publish(timers::PublishReason::Tree);
+        }
         let options =
             serde_json::from_str::<serde_json::Value>(&state.config_options).unwrap_or_default();
         let options = options.as_array().map(Vec::as_slice).unwrap_or_default();

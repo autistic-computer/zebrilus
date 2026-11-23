@@ -4075,12 +4075,12 @@ impl MuxClient {
     }
 
     #[cfg(feature = "agent-pane")]
-    pub(crate) fn watch_agent(&mut self, pane: PaneId) {
+    pub(crate) fn watch_agent(&mut self, pane: PaneId, from_seq: u64) {
         self.watched_agents.insert(pane);
         if !self.agent_cursors.contains_key(&pane)
-            && self.send_agent_request(pane, AgentRequest::Replay { from_seq: 0 })
+            && self.send_agent_request(pane, AgentRequest::Replay { from_seq })
         {
-            self.agent_cursors.insert(pane, 0);
+            self.agent_cursors.insert(pane, from_seq);
             self.agent_replays_pending.insert(pane);
         }
     }
@@ -8584,8 +8584,8 @@ mod tests {
                 mux.apply_agent_updates(pane, 1, vec![agent_blob(1)]);
                 assert!(applied_agent_seqs(mux, pane).is_empty());
 
-                mux.watch_agent(pane);
-                mux.watch_agent(pane);
+                mux.watch_agent(pane, 0);
+                mux.watch_agent(pane, 0);
                 assert_eq!(
                     sink.borrow().as_slice(),
                     [(pane, AgentRequest::Replay { from_seq: 0 })],
@@ -8597,7 +8597,7 @@ mod tests {
                 mux.apply_agent_updates(pane, 3, vec![agent_blob(3)]);
                 assert!(applied_agent_seqs(mux, pane).is_empty());
 
-                mux.watch_agent(pane);
+                mux.watch_agent(pane, 0);
                 assert_eq!(
                     sink.borrow().last(),
                     Some(&(pane, AgentRequest::Replay { from_seq: 0 })),
