@@ -584,6 +584,14 @@ CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
   its last value; a probe answer replaces the record. Records are never dropped while the daemon
   runs, and clients get every account's, so a chat moved to an account used before shows its last
   figures at once, before its own `get_usage` answer comes in.
+- **One login per record.** A record belongs to the login the account probe last saw signed in on
+  that slot, by email and organization (`Accounts::note_owner`). When a probe or a finished sign-in
+  reads a different login there (the CLI's own login switched with `claude auth login` outside zz,
+  or an account directory signed in as someone else), the record is dropped before anything new is
+  merged, so a window the new login has not started (Claude's `get_usage` answers `five_hour:
+  null` until the first turn) no longer shows the old login's figure under the new email. Until the
+  next probe the old record stays, and after the drop the slot shows no limits until a turn or a chat
+  start reports them.
 - **To clients.** `EventPayload::AgentQuotas(Vec<AgentQuota { provider, account, windows }>)`,
   gated by `agent-quotas-v1` ([wire protocol](/protocol/wire-protocol.md#adding-a-message-inside-an-epoch)),
   goes to the `agent-accounts` watchers on every plain call and whenever a record changes, the

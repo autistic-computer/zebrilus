@@ -34,13 +34,32 @@ const RPC_EXIT: Duration = Duration::from_secs(2);
 const ACP_AUTH_REQUIRED: i64 = -32000;
 
 #[cfg(all(feature = "agent", unix))]
+type AccountKey = (AgentProvider, Option<String>);
+
+#[cfg(all(feature = "agent", unix))]
 #[derive(Default)]
 pub(super) struct Accounts {
     pub(super) list: Option<Vec<AgentAccount>>,
-    quotas: BTreeMap<(AgentProvider, Option<String>), QuotaWindows>,
+    quotas: BTreeMap<AccountKey, QuotaWindows>,
+    owners: BTreeMap<AccountKey, (String, Option<String>)>,
     watchers: BTreeSet<ClientId>,
     refreshing: bool,
     again: bool,
+}
+
+#[cfg(all(feature = "agent", unix))]
+impl Accounts {
+    fn note_owner(&mut self, account: &AgentAccount) -> bool {
+        let (true, Some(email)) = (account.signed_in, account.email.clone()) else {
+            return false;
+        };
+        let key = (account.provider, account.id.clone());
+        let owner = (email, account.organization.clone());
+        match self.owners.insert(key.clone(), owner.clone()) {
+            Some(before) if before != owner => self.quotas.remove(&key).is_some(),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -360,6 +379,7 @@ impl Shared {
             let changed = accounts.list.as_ref() != Some(&list);
             let mut quotas_changed = false;
             for (account, quota) in list.iter().zip(quotas) {
+                quotas_changed |= accounts.note_owner(account);
                 let Some(quota) = quota else {
                     continue;
                 };
@@ -388,8 +408,9 @@ impl Shared {
         let quota_changed = {
             let mut accounts = self.agent_accounts.lock();
             let key = (account.provider, account.id.clone());
-            let quota_changed =
-                quota.is_some_and(|quota| accounts.quotas.insert(key, quota) != Some(quota));
+            let forgot = accounts.note_owner(&account);
+            let quota_changed = forgot
+                | quota.is_some_and(|quota| accounts.quotas.insert(key, quota) != Some(quota));
             let Some(list) = accounts.list.as_mut() else {
                 drop(accounts);
                 if quota_changed {
@@ -1038,6 +1059,34 @@ mod tests {
         );
         let none = serde_json::json!({ "account": null, "requiresOpenaiAuth": true });
         assert_eq!(codex_account(&none), signed_out(AgentProvider::Codex));
+    }
+
+    #[test]
+    fn a_new_login_in_the_same_slot_drops_the_usage_measured_before_it() {
+        let login = |email: &str, signed_in| AgentAccount {
+            provider: AgentProvider::ClaudeCode,
+            id: None,
+            signed_in,
+            email: Some(email.to_owned()),
+            organization: Some(format!("{email}'s Organization")),
+            plan: Some("max".to_owned()),
+        };
+        let week = QuotaWindows {
+            five_hour: None,
+            week: Some(zz_protocol::QuotaWindow {
+                used: 0.4,
+                resets_at: Some(1_800_000_000),
+            }),
+        };
+        let key = (AgentProvider::ClaudeCode, None);
+        let mut accounts = Accounts::default();
+        assert!(!accounts.note_owner(&login("old@example.com", true)));
+        accounts.quotas.insert(key.clone(), week);
+        assert!(!accounts.note_owner(&login("old@example.com", true)));
+        assert!(!accounts.note_owner(&login("new@example.com", false)));
+        assert_eq!(accounts.quotas.get(&key), Some(&week));
+        assert!(accounts.note_owner(&login("new@example.com", true)));
+        assert_eq!(accounts.quotas.get(&key), None);
     }
 
     #[test]
