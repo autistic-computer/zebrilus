@@ -1,6 +1,6 @@
 # Label
 
-One run of interface text in a text style. For documents and chat, use text.
+One run of interface text in a text style. For documents and chat, use [text](text.html).
 
 ## Kinds
 
@@ -19,7 +19,7 @@ One run of interface text in a text style. For documents and chat, use text.
 - **Muted**: descriptions and details.
 - **Faint**: placeholders and disabled text only.
 - **Tone**: a word that is a status.
-- **Strong**: 500, or 600 in headings and reading text.
+- **Strong**: 500, or 600 in headings, `touch-title` and reading text.
 - **Code**: the code face at the same size.
 
 ```rust
@@ -54,20 +54,30 @@ Just the text, no box. Its style sets size, line height and weight together. It 
 </div>
 ```
 
-Most text is body. The reading and touch styles are on Typography.
+Most text is body. The reading and touch styles are on [Typography](typography.html).
 
-## States
+## States and ground
 
-A label takes no input. Inside a disabled control it is faint; an error is a danger word.
+A label takes no input. Inside a disabled control it is faint; an error is a danger word. On a raised surface, `.on(ground)` computes muted and toned ink against that surface so contrast holds.
 
-## Content
+```figure uses=panel,label
+<div class="penna-panel penna-inline" data-penna="panel" data-ground data-gap="group" data-wrap style="padding: var(--penna-inset-card); --penna-r: var(--penna-radius)">
+  <span class="penna-type" data-type="body" data-penna-text>On panel</span>
+  <span class="penna-type" data-type="body" data-muted data-penna-text>Muted detail</span>
+  <span class="penna-type" data-type="body" data-tone="success" data-penna-text>Connected</span>
+  <span class="penna-type" data-type="body" data-tone="warning" data-penna-text>Reconnecting</span>
+  <span class="penna-type" data-type="body" data-tone="danger" data-penna-text>Offline</span>
+</div>
+```
 
-Sentence case. Two or three text styles in a view.
+## Content and placement
+
+Sentence case, with no closing period on a single line. Faint sits under 4.5:1 on purpose, so never use it for text people need to read. Place a label `gap-tight` 4 from what it names, and keep two or three styles in a view.
 
 ```figure uses=label
 <div class="docs-dodont">
-  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><span class="penna-stack" data-gap="tight"><span class="penna-type" data-type="body" data-strong data-penna-text>Paired computers</span><span class="penna-type" data-type="small" data-muted data-penna-text>Keyboard and pointer follow the cursor.</span></span></div><figcaption>A name and a muted line</figcaption></figure>
-  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><span class="penna-stack" data-gap="tight"><span class="penna-type" data-type="title" data-penna-text>Paired computers</span><span class="penna-type" data-type="lead" data-strong data-penna-text>Keyboard and pointer</span><span class="penna-type" data-type="caption" data-muted data-penna-text>follow the cursor.</span></span></div><figcaption>Don't stack a style per line</figcaption></figure>
+  <figure data-verdict="do"><div class="docs-dodont-panel" data-penna="panel" data-ground><i class="docs-mark" data-icon="circle-check"></i><span class="penna-stack" data-gap="tight"><span class="penna-type" data-type="body" data-strong data-penna-text>Paired computers</span><span class="penna-type" data-type="small" data-muted data-penna-text>Keyboard and pointer follow the cursor.</span></span></div><figcaption>A name and a muted line</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel" data-penna="panel" data-ground><i class="docs-mark" data-icon="circle-x"></i><span class="penna-stack" data-gap="tight"><span class="penna-type" data-type="title" data-penna-text>Paired computers</span><span class="penna-type" data-type="lead" data-strong data-penna-text>Keyboard and pointer</span><span class="penna-type" data-type="caption" data-muted data-penna-text>follow the cursor.</span></span></div><figcaption>Don't stack a style per line</figcaption></figure>
 </div>
 ```
 
@@ -75,10 +85,10 @@ Sentence case. Two or three text styles in a view.
 
 | Rust | HTML | Does |
 | --- | --- | --- |
-| `Label::new(style, text)` | `.penna-type`, `data-type` | Text in a style |
+| `Label::new(style, text)` | `.penna-type`, `data-type`, `data-penna-text` | Text in a style |
 | `.muted()` | `data-muted` | Muted ink |
 | `.faint()` | `data-faint` | Faint ink |
-| `.tone(tone)` | `data-tone` | Ink in a tone |
+| `.tone(tone)` | `data-tone` (`primary`, `danger`, `warning`, `success`, `accent`) | Ink in a tone |
 | `.strong()` | `data-strong` | Heavier weight |
 | `.mono()` | `data-mono` | Code face at the style's size |
 | `.truncate()` | `data-truncate` | One line, ends in an ellipsis |

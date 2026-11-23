@@ -8,6 +8,11 @@
     const element = document.createElement("div");
     element.className = "penna-scrollbar";
     element.dataset.axis = axis;
+    element.setAttribute("role", "scrollbar");
+    element.setAttribute("aria-orientation", axis);
+    element.setAttribute("aria-valuemin", "0");
+    element.setAttribute("aria-valuemax", "100");
+    element.setAttribute("aria-valuenow", "0");
     const thumb = document.createElement("div");
     thumb.className = "penna-scroll-thumb";
     const fill = document.createElement("div");
@@ -29,6 +34,10 @@
     const bars = Object.fromEntries(
       axes.map((axis) => {
         const element = scroll.querySelector(`:scope > .penna-scrollbar[data-axis="${axis}"]`) ?? scroll.appendChild(bar(axis, scroll.dataset.bar));
+        element.setAttribute("role", "scrollbar");
+        element.setAttribute("aria-orientation", axis);
+        element.setAttribute("aria-valuemin", "0");
+        element.setAttribute("aria-valuemax", "100");
         return [axis, { axis, element, thumb: element.querySelector(".penna-scroll-thumb"), start: 0, length: 0, full: 0, margin: 0, content: 0, container: 0, inset: 0 }];
       }),
     );
@@ -65,6 +74,8 @@
         Object.assign(info, { start, length: end - start - inset * 2, full: length, margin, content, container, inset });
         info.thumb.style.setProperty("--penna-thumb-start", `${start}px`);
         info.thumb.style.setProperty("--penna-thumb-length", `${info.length}px`);
+        const range = Math.max(1, content - container);
+        info.element.setAttribute("aria-valuenow", String(Math.round((offset(axis) / range) * 100)));
       }
     }
 

@@ -77,7 +77,7 @@
     if (states.length) field.dataset.state = states.join(" ");
     else field.removeAttribute("data-state");
     field.setAttribute("role", "button");
-    if (disabled(field)) field.removeAttribute("tabindex");
+    if (disabled(field) || field.hasAttribute("data-still")) field.removeAttribute("tabindex");
     else field.tabIndex = 0;
     if (live) {
       field.replaceChildren(text(PROMPT));
@@ -151,6 +151,7 @@
   function bind(field) {
     if (pinned.has(field)) return;
     pinned.set(field, new Set((field.dataset.state || "").split(/\s+/).filter(Boolean)));
+    if (field.hasAttribute("data-still")) return;
     field.addEventListener("pointerdown", (event) => {
       if (event.button !== 0 || disabled(field)) return;
       event.preventDefault();
@@ -174,7 +175,7 @@
     root.querySelectorAll(FIELDS).forEach((field) => {
       bind(field);
       const kept = pinned.get(field);
-      if (kept.delete("recording")) record(field);
+      if (!field.hasAttribute("data-still") && kept.delete("recording")) record(field);
       else paint(field);
     });
   }

@@ -1,15 +1,18 @@
+(() => {
 const COMMIT = 0.48;
 const FLING = 2;
 const SHADOW_ROOM = 32;
 
 function sheetExtent(sheet) {
   const panel = sheet.querySelector(".penna-sheet-panel");
+  if (!panel) return 0;
   const rest = parseFloat(getComputedStyle(sheet).getPropertyValue("--penna-sheet-rest")) || 0;
   return panel.offsetHeight + rest + SHADOW_ROOM;
 }
 
 function sheetMove(sheet, offset) {
   const extent = sheetExtent(sheet);
+  if (!extent) return;
   sheet.style.setProperty("--penna-sheet-offset", `${offset}px`);
   sheet.style.setProperty("--penna-sheet-fade", `${Math.max(0, 1 - Math.max(0, offset) / extent)}`);
 }
@@ -34,18 +37,26 @@ function sheetOpen(sheet) {
 
 function sheetDrag(sheet) {
   const panel = sheet.querySelector(".penna-sheet-panel");
+  if (!panel) return;
   const content = sheet.querySelector(".penna-sheet-content");
   let drag = null;
   panel.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || event.target.closest("button")) return;
-    drag = { id: event.pointerId, y: event.clientY, offset: 0, samples: [[event.timeStamp, event.clientY]], moved: false, inContent: content.contains(event.target) };
+    drag = {
+      id: event.pointerId,
+      y: event.clientY,
+      offset: 0,
+      samples: [[event.timeStamp, event.clientY]],
+      moved: false,
+      inContent: Boolean(content?.contains(event.target)),
+    };
   });
   window.addEventListener("pointermove", (event) => {
     if (!drag || event.pointerId !== drag.id) return;
-    let delta = event.clientY - drag.y;
+    const delta = event.clientY - drag.y;
     if (!drag.moved) {
       if (Math.abs(delta) < 4) return;
-      if (drag.inContent && (delta < 0 || content.scrollTop > 0)) {
+      if (drag.inContent && content && (delta < 0 || content.scrollTop > 0)) {
         drag = null;
         return;
       }
@@ -80,8 +91,9 @@ function sheetDrag(sheet) {
 }
 
 function sheetSetup(sheet) {
+  if (sheet.hasAttribute("data-still")) return;
   sheetDrag(sheet);
-  sheet.querySelector(".penna-sheet-scrim").addEventListener("click", () => sheetClose(sheet));
+  sheet.querySelector(".penna-sheet-scrim")?.addEventListener("click", () => sheetClose(sheet));
   sheet.querySelectorAll("[data-sheet-close]").forEach((button) => button.addEventListener("click", () => sheetClose(sheet)));
 }
 
@@ -102,15 +114,31 @@ function modalOpen(modal) {
 }
 
 function modalSetup(modal) {
+  if (modal.hasAttribute("data-still")) return;
   const close = () => modalClose(modal);
-  modal.querySelector(".penna-modal-scrim").addEventListener("click", close);
+  modal.querySelector(".penna-modal-scrim")?.addEventListener("click", close);
   modal.querySelectorAll("[data-sheet-close]").forEach((button) => button.addEventListener("click", close));
 }
 
 document.querySelectorAll(".penna-sheet").forEach(sheetSetup);
 document.querySelectorAll(".penna-modal").forEach(modalSetup);
+document.querySelectorAll("[data-sheet-open]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const target = document.getElementById(button.dataset.sheetOpen);
+    if (target) sheetOpen(target);
+  });
+});
+document.querySelectorAll("[data-modal-open]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const target = document.getElementById(button.dataset.modalOpen);
+    if (target) modalOpen(target);
+  });
+});
 
 new MutationObserver(() => {
-  document.querySelectorAll(".penna-sheet[data-closed]").forEach(sheetOpen);
-  document.querySelectorAll(".penna-modal[data-closed]").forEach(modalOpen);
+  document.querySelectorAll(".penna-sheet[data-closed]:not([data-reopenable])").forEach(sheetOpen);
+  document.querySelectorAll(".penna-modal[data-closed]:not([data-reopenable])").forEach(modalOpen);
 }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-penna-theme", "data-penna-mode"] });
+
+globalThis.pennaSheet = { open: sheetOpen, close: sheetClose, openModal: modalOpen, closeModal: modalClose };
+})();

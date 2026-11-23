@@ -1,7 +1,7 @@
 .penna-a2ui {
   display: flex;
   flex-direction: column;
-  gap: var(--penna-gap-group);
+  gap: var(--penna-gap-related);
   width: 100%;
   font-family: var(--penna-font);
 }
@@ -28,7 +28,7 @@
 .penna-a2ui-stat {
   display: flex;
   flex-direction: column;
-  gap: var(--penna-space-2);
+  gap: var(--penna-gap-tight);
   padding: var(--penna-inset-card);
 }
 
@@ -54,10 +54,6 @@
 .penna-a2ui-card {
   display: flex;
   flex-direction: column;
-  gap: var(--penna-space-12);
+  gap: var(--penna-gap-related);
   padding: var(--penna-inset-card);
-}
-
-.penna-a2ui-card[data-held] {
-  opacity: 0.72;
 }

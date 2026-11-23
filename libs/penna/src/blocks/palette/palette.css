@@ -48,9 +48,11 @@
 
 .penna-palette-pills {
   display: flex;
+  flex: 0 1 auto;
   min-width: 0;
   align-items: center;
   gap: 6px;
+  overflow: hidden;
 }
 
 .penna-palette-pill.penna-badge[data-penna] {
@@ -104,6 +106,10 @@
   gap: min(2px, var(--penna-row-inset) * 1000);
 }
 
+.penna-palette-surface[data-input-last] > .penna-palette-rows {
+  padding: 8px var(--penna-row-inset) 0;
+}
+
 .penna-palette-footer {
   position: relative;
   display: flex;
@@ -117,6 +123,13 @@
   font-size: var(--penna-text-micro-size);
   line-height: 16px;
   color: var(--penna-fg-muted);
+}
+
+.penna-palette-footer-leading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
 }
 
 .penna-palette-footer > .penna-palette-rule[data-penna] {
@@ -274,8 +287,7 @@
   --penna-palette-dot: var(--penna-success);
 }
 
-.penna-palette-dot[data-status="running"],
-.penna-palette-dot[data-status="busy"] {
+.penna-palette-dot[data-status="running"] {
   --penna-palette-dot: var(--penna-fg-muted);
 }
 

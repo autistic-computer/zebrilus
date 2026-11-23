@@ -68,6 +68,16 @@
   --penna-icon-size: 16px;
 }
 
+.penna-select[data-size="touch-large"] > .penna-select-trigger {
+  gap: var(--penna-space-8);
+  height: var(--penna-control-touch-lg);
+  padding: 0 var(--penna-space-12);
+  font-size: var(--penna-text-touch-body-size);
+  font-weight: var(--penna-text-touch-body-weight);
+  line-height: var(--penna-text-touch-body-line);
+  --penna-icon-size: 20px;
+}
+
 .penna-select[data-open] > .penna-select-trigger {
   pointer-events: none;
 }

@@ -1,5 +1,8 @@
-.penna-well[data-penna="well"] {
+:where(.penna-well[data-penna="well"]) {
   display: block;
+}
+
+.penna-well[data-penna="well"] {
   --penna-well-wash: var(--penna-fill);
 }
 

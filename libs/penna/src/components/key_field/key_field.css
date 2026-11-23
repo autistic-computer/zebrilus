@@ -52,6 +52,14 @@
   line-height: var(--penna-text-touch-body-line);
 }
 
+.penna-key-field[data-size="touch-large"] {
+  height: var(--penna-control-touch-lg);
+  padding: 0 var(--penna-space-12);
+  font-size: var(--penna-text-touch-body-size);
+  font-weight: var(--penna-text-touch-body-weight);
+  line-height: var(--penna-text-touch-body-line);
+}
+
 .penna-key-field[data-state~="recording"] {
   justify-content: flex-start;
 }

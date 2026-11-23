@@ -756,7 +756,7 @@ Placement: in the flow of content, as wide as its column. A heading or a line of
 
 Phone: `.touch(true)`. Step values and labels are `body`, since nothing on a phone is under 13, the legend `touch-small`, and at most six labels are written.
 
-Status: built natively (`src/components/chart/mod.rs`, the `charts` story). Not built: an HTML twin, a docs page, a keyboard path to the values.
+Status: built natively (`src/components/chart/mod.rs`, the `charts` story), HTML twin (`chart.css`, `chart.js`), and docs page (`docs/pages/chart.md`). Not built: a keyboard path to the values.
 
 ### Checkbox and radio
 
@@ -911,6 +911,7 @@ Sizes, the Icon column of the control ladder (`Size::icon_px`):
 | `xsmall`, `small` | 12 | `caption` and `small`, menu rows included |
 | `medium` | 14 | `body`; list and tree rows keep 14 beside `lead` |
 | `large`, `xlarge`, `touch` | 16 | `lead` and `heading` |
+| `touch-large` | 20 | `touch-body` |
 | `Size(px)` | that px | custom shapes, such as the title bar's 17 |
 
 With no size an icon is `medium` (14), natively and in HTML.
@@ -1304,7 +1305,7 @@ Placement: under the text it measures, as wide as that text's column, never with
 
 HTML: `.penna-progress` with `role="progressbar"`, `aria-label`, `data-size` (`xsmall` to `touch`), and either `--penna-value` (a percentage) with `aria-valuenow`, `aria-valuemin="0"`, `aria-valuemax="1"` and `aria-valuetext`, or `data-indeterminate`. It holds one `.penna-progress-fill`. `progress.css` eases a change of `--penna-value` over 220ms, sweeps the fill under `data-indeterminate` and holds both still under `prefers-reduced-motion`. The line is `data-kind="line"`.
 
-Status: matches; the line is HTML only.
+Status: matches.
 
 ### Row
 
@@ -2438,7 +2439,7 @@ Placement: in a chat, inside a `card.figure` with no inset, as wide as the reply
 
 Phone (`set_touch`, Phone rules 2 and 6): text is `touch-body`, captions, table headers and mono `touch-small`, a heading `touch-body` at 600. Buttons are `control-touch` 44 and share their row's width, none narrower than 120, so two sit side by side and a third wraps. Inputs and selects are `control-touch-lg` 56 and as wide as the block. A segmented control is `control-touch` and full width. A grid has at most two columns. A stat's value stays `title`.
 
-Status: built natively, with the `ui-blocks` story (every component, held, chart, phone, list template, compact form, problems). zz draws it in agent chats on the desktop and the thin clients. Not built: an HTML twin and a docs page; tone bound to data; checks on a field's value.
+Status: built natively, with the `ui-blocks` story (every component, held, chart, phone, list template, compact form, problems) and docs page (`ui-block.md`). zz draws it in agent chats on the desktop and the thin clients. Not built: full HTML/JS twin; tone bound to data; checks on a field's value.
 
 ## Work order
 
@@ -2467,6 +2468,6 @@ Status: built natively, with the `ui-blocks` story (every component, held, chart
 | 21 | Phone components: the `control-touch-lg` rung, phone buttons and fields on the touch rungs, touch rows outside sheets, phone tile states and window content, press and hold, the action bar, the zoom card, a 44 sheet close and the phone empty state | phone buttons grow from about 32 to 44 and 56, tiles lose their buttons, text in tiles grows to 17 and 15 | in progress: the 56 rung, the 56 button and field, touch rows, the row group, the section header and the phone container corner built in penna; the rest, and zz's screens on them, not built |
 | 22 | Inside a pane: the pill's tile words and pane menu, the keyboard rule, the confirm and rename modals, the chat on a phone (composer row, plus sheet, ask card, queued row, touch transcript rows, hold a message), the 44 key row with pinned ends, the stack menu for the pill and the key row with hold, slide and release, and the browser's pill stack, address field, progress line and tabs sheet | the phone chat loses its chips, key caps and 24 buttons; terminal keys grow to 44 and the arrow pad stays in view; the pill menu's chips grow to 52, the chord card turns into chips, and holding the pill opens its menu; the phone browser loses its top bar | built, but for address suggestions |
 | 23 | Glass looks: Glass stays on or off, with one look for light and one for dark that holds the three legibility rules over black and white backdrops; Frost goes | the Frost slider goes; light glass turns much lighter and calmer, dark glass dims and caps the backdrop | built |
-| 24 | UI blocks: a surface that draws a spec with kit components and owns its layout, a held state, a phone look, and a chart component with fixed series colors | agents' replies can hold stats, forms and charts; nothing else moves | built natively; HTML twins and docs pages not built |
+| 24 | UI blocks: a surface that draws a spec with kit components and owns its layout, a held state, a phone look, and a chart component with fixed series colors | agents' replies can hold stats, forms and charts; nothing else moves | built natively; full HTML/JS twin not built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

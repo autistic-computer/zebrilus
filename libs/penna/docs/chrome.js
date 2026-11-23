@@ -8,23 +8,158 @@
     Blocks: "layout-dashboard",
   };
 
-  const lookRoot = document.querySelector("[data-docs-look]");
+  const SIDEBAR_KEY = "penna-docs-sidebar";
+  const NAV_SCROLL_KEY = "penna-docs-nav-scroll";
+  const mobileMq = window.matchMedia("(max-width: 760px)");
+
+  const shell = document.querySelector(".docs-shell");
+  const side = document.querySelector(".penna-docs-side");
+  const sideScroll = document.querySelector("[data-docs-scroll]");
+  const paneBar = document.querySelector(".docs-pane-bar");
+  const collapseButtons = [...document.querySelectorAll("[data-docs-collapse]")];
+  const closeButtons = [...document.querySelectorAll("[data-docs-close]")];
+  const menuButtons = [...document.querySelectorAll("[data-docs-menu]")];
+
+  const lookRoot = document.querySelector(".docs-look-pop[data-docs-look]");
   const lookTrigger = lookRoot?.querySelector("[data-docs-look-trigger]");
   const lookPanel = lookRoot?.querySelector(".docs-look-panel") ?? lookRoot?.panel;
   const modeControl = lookPanel?.querySelector('[data-docs-opt="mode"]');
   const glassControl = lookPanel?.querySelector('[data-docs-opt="glass"]');
   const densityControl = lookPanel?.querySelector('[data-docs-opt="density"]');
 
-  const searchTrigger = document.querySelector("[data-docs-search]");
+  const searchTriggers = [...document.querySelectorAll("[data-docs-search]")];
   const backdrop = document.querySelector("[data-docs-palette]");
   const surface = backdrop?.querySelector(".penna-palette-surface");
   const input = backdrop?.querySelector(".docs-palette-input");
   const rowsHost = backdrop?.querySelector(".penna-palette-rows");
 
-  const searchKbd = searchTrigger?.querySelector("[data-kbd]");
-  if (searchKbd && window.pennaKbd && !window.pennaKbd.mac) {
-    searchKbd.dataset.kbd = "ctrl-k";
-    window.pennaKbd.fill(searchTrigger);
+  if (window.pennaKbd && !window.pennaKbd.mac) {
+    searchTriggers.forEach((trigger) => {
+      const kbd = trigger.querySelector("[data-kbd]");
+      if (kbd) {
+        kbd.dataset.kbd = "ctrl-k";
+        window.pennaKbd.fill(trigger);
+      }
+    });
+  }
+
+  function isSideCollapsed() {
+    return document.documentElement.dataset.docsSidebar === "collapsed";
+  }
+
+  function updateSideFades() {
+    if (!sideScroll) return;
+    const overflow = sideScroll.scrollHeight - sideScroll.clientHeight > 2;
+    sideScroll.toggleAttribute("data-fade-top", overflow && sideScroll.scrollTop > 4);
+    sideScroll.toggleAttribute(
+      "data-fade-bottom",
+      overflow && sideScroll.scrollTop + sideScroll.clientHeight < sideScroll.scrollHeight - 4,
+    );
+  }
+
+  function revealActiveRow(restore) {
+    if (!sideScroll) return;
+    if (restore) {
+      try {
+        const saved = Number(sessionStorage.getItem(NAV_SCROLL_KEY));
+        if (Number.isFinite(saved) && saved >= 0) sideScroll.scrollTop = saved;
+      } catch {}
+    }
+    const active = sideScroll.querySelector('.penna-sidebar-row[aria-current="page"]');
+    if (active && sideScroll.clientHeight > 0) {
+      const hostRect = sideScroll.getBoundingClientRect();
+      const rowRect = active.getBoundingClientRect();
+      const rowTop = rowRect.top - hostRect.top + sideScroll.scrollTop;
+      const rowBottom = rowTop + rowRect.height;
+      const padTop = 20;
+      const padBottom = 36;
+      if (rowTop < sideScroll.scrollTop + padTop || rowBottom > sideScroll.scrollTop + sideScroll.clientHeight - padBottom) {
+        sideScroll.scrollTop = Math.max(0, rowTop - (sideScroll.clientHeight - rowRect.height) / 2);
+      }
+    }
+    updateSideFades();
+  }
+
+  function settleChrome(root) {
+    if (!root) return;
+    requestAnimationFrame(() => {
+      window.pennaKit?.roundAll?.(root);
+      window.pennaKit?.ceilText?.(root);
+      updateSideFades();
+    });
+  }
+
+  function syncSidebarState() {
+    const collapsed = isSideCollapsed();
+    collapseButtons.forEach((button) => button.setAttribute("aria-expanded", String(!collapsed)));
+    if (side) side.inert = !mobileMq.matches && collapsed;
+  }
+
+  function setSideCollapsed(collapsed) {
+    if (collapsed) {
+      document.documentElement.dataset.docsSidebar = "collapsed";
+      setLookOpen(false);
+    } else {
+      delete document.documentElement.dataset.docsSidebar;
+    }
+    try {
+      localStorage.setItem(SIDEBAR_KEY, collapsed ? "collapsed" : "expanded");
+    } catch {}
+    syncSidebarState();
+    settleChrome(collapsed ? paneBar : side);
+    if (!collapsed) {
+      setTimeout(() => {
+        revealActiveRow(false);
+        settleChrome(side);
+      }, 200);
+    }
+  }
+
+  collapseButtons.forEach((button) => {
+    button.addEventListener("click", () => setSideCollapsed(!isSideCollapsed()));
+  });
+
+  closeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      side?.removeAttribute("data-open");
+      menuButtons.forEach((menu) => menu.setAttribute("aria-expanded", "false"));
+    });
+  });
+
+  mobileMq.addEventListener("change", syncSidebarState);
+
+  if (sideScroll) {
+    sideScroll.addEventListener(
+      "scroll",
+      () => {
+        updateSideFades();
+        try {
+          sessionStorage.setItem(NAV_SCROLL_KEY, String(Math.round(sideScroll.scrollTop)));
+        } catch {}
+      },
+      { passive: true },
+    );
+    sideScroll.addEventListener("click", (event) => {
+      if (event.target.closest(".penna-sidebar-row")) {
+        try {
+          sessionStorage.setItem(NAV_SCROLL_KEY, String(Math.round(sideScroll.scrollTop)));
+        } catch {}
+      }
+    });
+    if (typeof ResizeObserver === "function") {
+      new ResizeObserver(updateSideFades).observe(sideScroll);
+    }
+  }
+
+  if (side && typeof MutationObserver === "function") {
+    new MutationObserver(() => {
+      if (side.hasAttribute("data-open")) {
+        requestAnimationFrame(() => {
+          revealActiveRow(false);
+          settleChrome(side);
+        });
+      }
+    }).observe(side, { attributes: true, attributeFilter: ["data-open"] });
   }
 
   function currentDensity() {
@@ -119,6 +254,7 @@
   function commands() {
     const nextMode = pennaKit.choice.mode === "dark" ? "light" : "dark";
     const glassOn = currentGlass();
+    const collapsed = isSideCollapsed();
     return [
       {
         kind: "action",
@@ -130,6 +266,14 @@
           pennaKit.choice.mode = nextMode;
           pennaKit.apply();
         },
+      },
+      {
+        kind: "action",
+        title: collapsed ? "Show sidebar" : "Hide sidebar",
+        detail: "Navigation rail",
+        icon: "panel-left",
+        keywords: "sidebar nav toggle collapse expand hide show",
+        run: () => setSideCollapsed(!collapsed),
       },
       {
         kind: "action",
@@ -416,6 +560,10 @@
   function openPalette() {
     if (!backdrop || !input) return;
     setLookOpen(false);
+    if (side?.hasAttribute("data-open")) {
+      side.removeAttribute("data-open");
+      menuButtons.forEach((menu) => menu.setAttribute("aria-expanded", "false"));
+    }
     lastFocused = document.activeElement;
     backdrop.hidden = false;
     input.value = "";
@@ -434,7 +582,7 @@
     lastFocused = null;
   }
 
-  searchTrigger?.addEventListener("click", openPalette);
+  searchTriggers.forEach((trigger) => trigger.addEventListener("click", openPalette));
 
   backdrop?.addEventListener("click", (event) => {
     if (event.target === backdrop) closePalette();
@@ -464,32 +612,49 @@
     }
   });
 
-  document.addEventListener("keydown", (event) => {
-    const key = event.key.toLowerCase();
-    if ((event.metaKey || event.ctrlKey) && key === "k") {
-      event.preventDefault();
-      if (backdrop && !backdrop.hidden) closePalette();
-      else openPalette();
-      return;
-    }
-    if (event.key === "Escape" && lookRoot?.hasAttribute("data-open")) {
-      event.preventDefault();
-      setLookOpen(false);
-      lookTrigger?.focus();
-      return;
-    }
-    if (
-      event.key === "/" &&
-      !event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      backdrop?.hidden &&
-      !(event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"]'))
-    ) {
-      event.preventDefault();
-      openPalette();
-    }
-  });
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      const key = event.key.toLowerCase();
+      if ((event.metaKey || event.ctrlKey) && key === "k") {
+        event.preventDefault();
+        if (backdrop && !backdrop.hidden) closePalette();
+        else openPalette();
+        return;
+      }
+      if (event.key === "Escape" && backdrop && !backdrop.hidden) {
+        event.preventDefault();
+        event.stopPropagation();
+        closePalette();
+        return;
+      }
+      if (event.key === "Escape" && lookRoot?.hasAttribute("data-open")) {
+        event.preventDefault();
+        event.stopPropagation();
+        setLookOpen(false);
+        lookTrigger?.focus();
+        return;
+      }
+      if (
+        event.key === "/" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        backdrop?.hidden &&
+        !(event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"]'))
+      ) {
+        event.preventDefault();
+        openPalette();
+      }
+    },
+    true,
+  );
 
   syncAppearance();
+  syncSidebarState();
+  revealActiveRow(true);
+  requestAnimationFrame(() => {
+    shell?.toggleAttribute("data-side-ready", true);
+    updateSideFades();
+  });
 })();

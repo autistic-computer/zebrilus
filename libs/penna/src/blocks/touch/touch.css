@@ -548,7 +548,8 @@
   font-family: var(--penna-font);
 }
 
-.penna-empty > [data-icon] {
+.penna-empty > [data-icon],
+.penna-empty > .penna-touch-spinner {
   margin-bottom: var(--penna-space-8);
   color: var(--penna-muted);
   --penna-icon-size: 32px;
@@ -697,13 +698,13 @@
   --penna-icon-size: 20px;
 }
 
-.penna-stack {
+.penna-stack:has(> .penna-stack-column) {
   position: absolute;
   inset: 0;
   font-family: var(--penna-font);
 }
 
-.penna-stack:not([data-open]) {
+.penna-stack:has(> .penna-stack-column):not([data-open]) {
   display: none;
 }
 

@@ -290,6 +290,10 @@
   height: var(--penna-control-touch);
 }
 
+.penna-number[data-penna][data-size="touch-large"] {
+  height: var(--penna-control-touch-lg);
+}
+
 .penna-number[data-bare] {
   background: none;
   border: 0;

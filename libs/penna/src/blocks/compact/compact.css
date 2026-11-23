@@ -741,7 +741,11 @@
 }
 
 .penna-machine-card[data-waiting][data-penna] {
-  background: color-mix(in oklab, var(--penna-warning) 14%, var(--penna-bg));
+  background: color-mix(in oklab, var(--penna-warning) 14%, var(--penna-fill));
+}
+
+:is(.penna-machine-card, .penna-window-card):is(:active, [data-state~="active"]) > .penna-press {
+  opacity: 1;
 }
 
 .penna-machine-card[data-dimmed] > :is(.penna-machine-top, .penna-machine-bottom) > :first-child {
@@ -759,7 +763,7 @@
   color: var(--penna-warning-ink);
   font-size: var(--penna-text-touch-small-size);
   line-height: var(--penna-text-touch-small-line);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .penna-machine-bottom {
@@ -776,7 +780,7 @@
   text-overflow: ellipsis;
   font-size: var(--penna-text-touch-body-size);
   line-height: var(--penna-text-touch-body-line);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .penna-machine-line {
@@ -825,7 +829,7 @@
 }
 
 .penna-window-card[data-waiting][data-penna] {
-  background: color-mix(in oklab, var(--penna-warning) 14%, var(--penna-bg));
+  background: color-mix(in oklab, var(--penna-warning) 14%, var(--penna-fill));
 }
 
 .penna-window-row {
@@ -849,7 +853,7 @@
   text-overflow: ellipsis;
   font-size: var(--penna-text-touch-body-size);
   line-height: var(--penna-text-touch-body-line);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .penna-window-row-detail {

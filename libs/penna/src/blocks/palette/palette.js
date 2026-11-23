@@ -18,7 +18,7 @@
 
   function wireToggles(root = document) {
     root.querySelectorAll(".penna-palette-disclosure[data-toggle]").forEach((disclosure) => {
-      if (disclosure.pennaPalette) return;
+      if (disclosure.pennaPalette || disclosure.closest("[data-still]")) return;
       disclosure.pennaPalette = true;
       disclosure.addEventListener("mousedown", (event) => event.preventDefault());
       disclosure.addEventListener("click", (event) => {
@@ -32,26 +32,37 @@
     });
   }
 
+  function revealRow(list, row) {
+    if (!list || !row) return;
+    const top = row.offsetTop;
+    const bottom = top + row.offsetHeight;
+    if (top < list.scrollTop) list.scrollTop = top;
+    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+  }
+
   function moveSelection(list, step) {
-    const rows = [...list.querySelectorAll(".penna-palette-row")];
+    const rows = [...list.querySelectorAll(".penna-palette-row")].filter((row) => !row.hidden);
     if (!rows.length) return;
     const at = rows.findIndex((row) => row.getAttribute("aria-selected") === "true");
-    const next = Math.min(Math.max((at < 0 ? -1 : at) + step, 0), rows.length - 1);
+    const next = at < 0 ? (step > 0 ? 0 : rows.length - 1) : (at + step + rows.length) % rows.length;
     rows.forEach((row, index) => {
       const selected = index === next;
       row.setAttribute("aria-selected", String(selected));
       row.toggleAttribute("data-state", false);
       if (selected) row.setAttribute("data-state", "selected");
     });
-    rows[next].scrollIntoView({ block: "nearest" });
+    revealRow(list, rows[next]);
   }
 
   document.addEventListener("keydown", (event) => {
     const surface = event.target.closest?.(".penna-palette-surface");
-    const list = surface?.querySelector(".penna-palette-rows");
+    if (!surface || surface.hasAttribute("data-still")) return;
+    const list = surface.querySelector(".penna-palette-rows");
     if (!list) return;
-    if (event.key === "ArrowDown") moveSelection(list, 1);
-    else if (event.key === "ArrowUp") moveSelection(list, -1);
+    const down = event.key === "ArrowDown" || (event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "n");
+    const up = event.key === "ArrowUp" || (event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "p");
+    if (down) moveSelection(list, 1);
+    else if (up) moveSelection(list, -1);
     else return;
     event.preventDefault();
   });

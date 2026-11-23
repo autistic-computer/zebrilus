@@ -328,6 +328,7 @@ fn copy_assets(root: &Path, assets: &Path) -> io::Result<()> {
     fs::copy(root.join("docs/sizes.js"), assets.join("sizes.js"))?;
     fs::copy(root.join("docs/phone.js"), assets.join("phone.js"))?;
     fs::copy(root.join("docs/look.js"), assets.join("look.js"))?;
+    fs::copy(root.join("docs/button.js"), assets.join("button.js"))?;
     fs::copy(root.join("docs/logo.svg"), assets.join("logo.svg"))?;
     Ok(())
 }
@@ -812,7 +813,8 @@ fn document(site: &Site, pages: &[Page], current: usize, logo: &str, native: boo
     html.push_str("<link rel=\"stylesheet\" href=\"assets/glass-off.css\" />\n");
     html.push_str("<link rel=\"stylesheet\" href=\"assets/site.css\" />\n");
     html.push_str(
-        "<script src=\"assets/web/kit.js\" data-tokens=\"assets/web/tokens/\" data-switcher=\"off\"></script>\n",
+        "<script src=\"assets/web/kit.js\" data-tokens=\"assets/web/tokens/\" data-switcher=\"off\"></script>\n\
+         <script>try{if(localStorage.getItem(\"penna-docs-sidebar\")===\"collapsed\")document.documentElement.dataset.docsSidebar=\"collapsed\"}catch{}</script>\n",
     );
     let scripts = SCRIPTS
         .iter()
@@ -850,6 +852,9 @@ fn document(site: &Site, pages: &[Page], current: usize, logo: &str, native: boo
     if page.body.contains("data-docs-look") {
         html.push_str("<script src=\"assets/look.js\" defer></script>\n");
     }
+    if page.body.contains("data-docs-button") {
+        html.push_str("<script src=\"assets/button.js\" defer></script>\n");
+    }
     let storybook = if native {
         format!(" data-docs-storybook=\"{STORYBOOK}\"")
     } else {
@@ -865,12 +870,14 @@ fn document(site: &Site, pages: &[Page], current: usize, logo: &str, native: boo
     };
     let _ = write!(
         html,
-        "</head>\n<body>\n<div class=\"penna-docs-layout\"{storybook}>\n{}\n<div class=\"penna-docs-body\">\n\
+        "</head>\n<body>\n<div class=\"penna-docs-layout docs-shell\"{storybook}>\n\
          <aside class=\"penna-docs-side\" data-penna=\"sidebar\" data-ground>{}</aside>\n\
+         <div class=\"docs-side-scrim\" data-docs-scrim aria-hidden=\"true\"></div>\n\
+         <div class=\"docs-canvas\">\n{}\n\
          <main class=\"penna-docs-main\"><article class=\"penna-docs-page\" data-page=\"{}\">\n{}{}{}</article></main>\n\
          </div>\n</div>\n{}\n</body>\n</html>\n",
-        header(site, pages, current, logo),
-        nav(site, pages, current),
+        sidebar(site, pages, current, logo),
+        pane_bar(site, pages, current, logo),
         escape(&page.slug),
         eyebrow,
         page.body,
@@ -917,32 +924,17 @@ fn current_attrs(current: bool) -> &'static str {
     }
 }
 
-fn header(site: &Site, pages: &[Page], current: usize, logo: &str) -> String {
-    let page = &pages[current];
-    let group_title = &site.groups[page.group].title;
-    let group_href = pages
-        .iter()
-        .find(|entry| entry.group == page.group)
-        .map_or_else(|| "index.html".to_owned(), |entry| file_name(&entry.slug));
-    let crumb = if current == 0 {
-        format!(
-            "<nav class=\"docs-crumb\" aria-label=\"Breadcrumb\">\
-             <span class=\"docs-crumb-sep\" aria-hidden=\"true\">/</span>\
-             <span class=\"docs-crumb-now\" data-penna-text>{}</span></nav>",
-            escape(&page.title)
-        )
-    } else {
-        format!(
-            "<nav class=\"docs-crumb\" aria-label=\"Breadcrumb\">\
-             <span class=\"docs-crumb-sep\" aria-hidden=\"true\">/</span>\
-             <a class=\"docs-crumb-link\" href=\"{}\"><span data-penna-text>{}</span></a>\
-             <span class=\"docs-crumb-sep\" aria-hidden=\"true\">/</span>\
-             <span class=\"docs-crumb-now\" data-penna-text>{}</span></nav>",
-            group_href,
-            escape(group_title),
-            escape(&page.title)
-        )
-    };
+fn group_icon(title: &str) -> &'static str {
+    match title {
+        "Getting started" => "sparkle",
+        "Foundations" => "palette",
+        "Components" => "layers",
+        "Blocks" => "layout-dashboard",
+        _ => "folder",
+    }
+}
+
+fn sidebar(site: &Site, pages: &[Page], current: usize, logo: &str) -> String {
     let mode_seg = segments_with(
         ["Dark", "Light"].into_iter(),
         "Mode",
@@ -954,14 +946,19 @@ fn header(site: &Site, pages: &[Page], current: usize, logo: &str) -> String {
         " data-size=\"small\" data-docs-opt=\"density\"",
     );
     format!(
-        "<header class=\"penna-docs-header\" data-penna=\"bar\" role=\"toolbar\">\
-         <div class=\"penna-docs-rule\" data-penna=\"rule.bar\"></div>\
-         <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Pages\" aria-expanded=\"false\" data-docs-menu><i data-icon=\"panel-left\"></i></button>\
-         <div class=\"penna-docs-start\"><a class=\"penna-docs-brand\" href=\"index.html\"><span class=\"penna-docs-mark\" aria-hidden=\"true\">{logo}</span><span data-penna-text>{}</span></a>{crumb}</div>\
-         <div class=\"penna-docs-spacer\"></div>\
-         <div class=\"docs-header-actions\">\
+        "<div class=\"docs-side-top\">\
+         <div class=\"docs-side-bar\">\
+         <a class=\"penna-docs-brand\" href=\"index.html\"><span class=\"penna-docs-mark\" aria-hidden=\"true\">{logo}</span><span data-penna-text>{}</span></a>\
+         <button class=\"penna-button docs-side-collapse\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Hide sidebar\" aria-expanded=\"true\" data-tooltip=\"Hide sidebar\" data-docs-collapse><i data-icon=\"panel-left\"></i></button>\
+         <button class=\"penna-button docs-side-close\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Close navigation\" data-docs-close><i data-icon=\"xmark\"></i></button>\
+         </div>\
          <button class=\"penna-button penna-docs-search docs-search-btn\" data-penna=\"field\" data-size=\"small\" type=\"button\" aria-label=\"Search docs\" aria-haspopup=\"dialog\" data-docs-search><i data-icon=\"search\"></i><span class=\"docs-search-label\" data-penna-text>Search docs…</span><span class=\"penna-docs-spacer\"></span><kbd class=\"penna-kbd docs-search-kbd\" data-penna=\"keycap\" data-size=\"small\" data-kbd=\"cmd-k\"></kbd></button>\
-         <div class=\"penna-popover docs-look-pop\" data-anchor=\"right\" data-docs-look>\
+         </div>\
+         <div class=\"docs-side-scroll\" data-docs-scroll>{}</div>\
+         <div class=\"docs-side-foot\">\
+         <button class=\"penna-button docs-foot-mode\" data-penna=\"button.quiet\" data-size=\"small\" type=\"button\" aria-label=\"Light or dark\" data-docs-mode><i data-icon=\"sun\" data-docs-mode-icon=\"dark\"></i><i data-icon=\"moon\" data-docs-mode-icon=\"light\"></i><span class=\"penna-label\" data-penna-text data-docs-mode-icon=\"dark\">Light mode</span><span class=\"penna-label\" data-penna-text data-docs-mode-icon=\"light\">Dark mode</span></button>\
+         <div class=\"docs-foot-actions\">\
+         <div class=\"penna-popover docs-look-pop\" data-anchor=\"bottom\" data-docs-look>\
          <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Appearance\" aria-expanded=\"false\" aria-haspopup=\"dialog\" data-tooltip=\"Appearance\" data-docs-look-trigger><i data-icon=\"sliders\"></i></button>\
          <div class=\"penna-popover-panel docs-look-panel\" data-penna=\"popover\" data-ground role=\"dialog\" aria-label=\"Appearance\">\
          <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Mode</span>{mode_seg}</div>\
@@ -970,10 +967,55 @@ fn header(site: &Site, pages: &[Page], current: usize, logo: &str) -> String {
          <div class=\"docs-look-foot\"><a class=\"docs-look-more\" href=\"look.html\"><span data-penna-text>All look knobs</span><i data-icon=\"arrow-right\"></i></a></div>\
          </div></div>\
          <a class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" aria-label=\"Source\" data-tooltip=\"Source\" href=\"{}\" target=\"_blank\" rel=\"noopener\"><i data-icon=\"git-branch\"></i></a>\
-         <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Light or dark\" data-tooltip=\"Light or dark\" data-docs-mode><i data-icon=\"sun\" data-docs-mode-icon=\"dark\"></i><i data-icon=\"moon\" data-docs-mode-icon=\"light\"></i></button>\
-         </div></header>",
+         </div></div>",
         escape(&site.title),
+        nav(site, pages, current),
         escape(&site.source)
+    )
+}
+
+fn pane_bar(site: &Site, pages: &[Page], current: usize, logo: &str) -> String {
+    let page = &pages[current];
+    let group_title = &site.groups[page.group].title;
+    let group_href = pages
+        .iter()
+        .find(|entry| entry.group == page.group)
+        .map_or_else(|| "index.html".to_owned(), |entry| file_name(&entry.slug));
+    let crumb = if current == 0 {
+        format!(
+            "<nav class=\"docs-crumb\" aria-label=\"Breadcrumb\">\
+             <span class=\"docs-crumb-sep docs-crumb-lead\" aria-hidden=\"true\">/</span>\
+             <span class=\"docs-crumb-link\" data-penna-text>{}</span>\
+             <span class=\"docs-crumb-sep\" aria-hidden=\"true\">/</span>\
+             <span class=\"docs-crumb-now\" data-penna-text>{}</span></nav>",
+            escape(group_title),
+            escape(&page.title)
+        )
+    } else {
+        format!(
+            "<nav class=\"docs-crumb\" aria-label=\"Breadcrumb\">\
+             <span class=\"docs-crumb-sep docs-crumb-lead\" aria-hidden=\"true\">/</span>\
+             <a class=\"docs-crumb-link\" href=\"{}\"><span data-penna-text>{}</span></a>\
+             <span class=\"docs-crumb-sep\" aria-hidden=\"true\">/</span>\
+             <span class=\"docs-crumb-now\" data-penna-text>{}</span></nav>",
+            group_href,
+            escape(group_title),
+            escape(&page.title)
+        )
+    };
+    format!(
+        "<header class=\"docs-pane-bar\" role=\"toolbar\">\
+         <div class=\"docs-pane-start\">\
+         <button class=\"penna-button docs-pane-menu\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Pages\" aria-expanded=\"false\" data-docs-menu><i data-icon=\"panel-left\"></i></button>\
+         <button class=\"penna-button docs-pane-expand\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Show sidebar\" aria-expanded=\"false\" data-tooltip=\"Show sidebar\" data-docs-collapse><i data-icon=\"panel-left\"></i></button>\
+         <a class=\"penna-docs-brand docs-pane-brand\" href=\"index.html\"><span class=\"penna-docs-mark\" aria-hidden=\"true\">{logo}</span><span data-penna-text>{}</span></a>\
+         {crumb}\
+         </div>\
+         <div class=\"docs-pane-end\">\
+         <button class=\"penna-button penna-docs-search docs-search-btn docs-pane-search\" data-penna=\"field\" data-size=\"small\" type=\"button\" aria-label=\"Search docs\" aria-haspopup=\"dialog\" data-docs-search><i data-icon=\"search\"></i><span class=\"docs-search-label\" data-penna-text>Search docs…</span><span class=\"penna-docs-spacer\"></span><kbd class=\"penna-kbd docs-search-kbd\" data-penna=\"keycap\" data-size=\"small\" data-kbd=\"cmd-k\"></kbd></button>\
+         <button class=\"penna-button docs-pane-mode\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Light or dark\" data-tooltip=\"Light or dark\" data-docs-mode><i data-icon=\"sun\" data-docs-mode-icon=\"dark\"></i><i data-icon=\"moon\" data-docs-mode-icon=\"light\"></i></button>\
+         </div></header>",
+        escape(&site.title)
     )
 }
 
@@ -1023,11 +1065,19 @@ fn pager(site: &Site, pages: &[Page], current: usize) -> String {
 }
 
 fn nav(site: &Site, pages: &[Page], current: usize) -> String {
+    let current_group = pages[current].group;
     let mut html = String::from("<nav class=\"penna-docs-nav\" aria-label=\"Documentation\">");
     for (index, entry) in site.groups.iter().enumerate() {
+        let count = entry.pages.len();
+        let active_group = if index == current_group {
+            " data-current-group"
+        } else {
+            ""
+        };
         let _ = write!(
             html,
-            "<div class=\"penna-sidebar-heading\"><span data-penna-text>{}</span></div>",
+            "<div class=\"penna-sidebar-heading docs-nav-heading\"{active_group}><i data-icon=\"{}\" aria-hidden=\"true\"></i><span data-penna-text>{}</span><span class=\"docs-nav-count\">{count}</span></div>",
+            group_icon(&entry.title),
             escape(&entry.title)
         );
         for (position, page) in pages
@@ -1316,7 +1366,9 @@ impl Builder {
         }
         for look in code.value.split("data-look=\"").skip(1) {
             let name = &look[..look.find('"').unwrap_or(0)];
-            add_look(name)?;
+            if LOOKS.iter().any(|(known, _)| *known == name) {
+                add_look(name)?;
+            }
         }
         let body = match story_ref(code) {
             Some(reference) => {

@@ -93,8 +93,10 @@
   document.querySelectorAll(".penna-popover[data-open]").forEach((popover) => {
     triggerOf(popover)?.setAttribute("aria-expanded", "true");
     fit(popover);
-    popover.previousFocus = document.activeElement;
-    panelOf(popover)?.focus({ preventScroll: true });
+    if (popover.dataset.closable !== "false") {
+      popover.previousFocus = document.activeElement;
+      panelOf(popover)?.focus({ preventScroll: true });
+    }
   });
 
   window.visualViewport?.addEventListener("resize", fitAll);

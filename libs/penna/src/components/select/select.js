@@ -201,6 +201,14 @@ function filter(select) {
   highlight(select, !query && shown.includes(index) ? index : shown[0] ?? -1);
 }
 
+function revealRow(container, row) {
+  if (!container || !row) return;
+  const top = row.offsetTop;
+  const bottom = top + row.offsetHeight;
+  if (top < container.scrollTop) container.scrollTop = top;
+  else if (bottom > container.scrollTop + container.clientHeight) container.scrollTop = bottom - container.clientHeight;
+}
+
 function highlight(select, index) {
   const list = menu(select);
   if (!list) return;
@@ -210,14 +218,15 @@ function highlight(select, index) {
     else item.removeAttribute("data-state");
   });
   const row = list.querySelectorAll('[data-penna="menu-item"]')[index];
-  row?.scrollIntoView({ block: "nearest" });
+  revealRow(list.querySelector(".penna-select-rows") ?? list, row);
 }
 
-function buildMenu(select) {
+function buildMenu(select, focus = true) {
   menu(select)?.remove();
   const list = document.createElement("div");
   list.className = "penna-menu penna-select-menu";
   list.dataset.penna = "popover";
+  list.dataset.ground = "";
   const search = searchable(select);
   const scoped = scopes(select).length > 0;
   if (scoped) select.dataset.scope = String(openingScope(select));
@@ -288,18 +297,18 @@ function buildMenu(select) {
   if (search) globalThis.pennaInput?.wire(list);
   if (scoped) globalThis.pennaSegmented?.wire(list);
   if (search || scoped) list.style.width = `${list.getBoundingClientRect().width}px`;
-  if (search) list.querySelector(".penna-select-search input").focus({ preventScroll: true });
+  if (search && focus) list.querySelector(".penna-select-search input").focus({ preventScroll: true });
   if (scoped) filter(select);
   else highlight(select, index);
   return list;
 }
 
-function open(select) {
+function open(select, focus = true) {
   if (select.hasAttribute("data-open") || select.getAttribute("aria-disabled") === "true") return;
   select.toggleAttribute("data-open", true);
   select.setAttribute("aria-expanded", "true");
   paintTrigger(select);
-  buildMenu(select);
+  buildMenu(select, focus);
 }
 
 function close(select) {
@@ -372,7 +381,7 @@ function wire(select) {
   });
   if (select.hasAttribute("data-open")) {
     select.removeAttribute("data-open");
-    open(select);
+    open(select, false);
   }
 }
 

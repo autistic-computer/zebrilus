@@ -1,3 +1,4 @@
+(() => {
 function treeGuides(depths) {
   const done = [];
   const open = [];
@@ -42,29 +43,49 @@ function treeSelect(tree, row) {
   tree.querySelectorAll(".penna-tree-row").forEach((other) => {
     other.setAttribute("aria-selected", String(other === row));
     other.tabIndex = other === row ? 0 : -1;
+    if (other !== row && other.dataset.state) {
+      const rest = other.dataset.state.split(/\s+/).filter((s) => s && s !== "focused");
+      if (rest.length) other.dataset.state = rest.join(" ");
+      else other.removeAttribute("data-state");
+    }
   });
   treeDraw(tree);
 }
 
 function treeInit(element) {
-  element.addEventListener("click", (event) => {
-    const row = event.target.closest(".penna-tree-row");
-    if (!row) return;
-    treeSelect(element, row);
-    row.focus({ preventScroll: true });
-  });
-  element.addEventListener("keydown", (event) => {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    const rows = [...element.querySelectorAll(".penna-tree-row")];
-    const index = rows.findIndex((row) => row.getAttribute("aria-selected") === "true");
-    const next = rows[Math.min(Math.max(index + (event.key === "ArrowDown" ? 1 : -1), 0), rows.length - 1)];
-    event.preventDefault();
-    treeSelect(element, next);
-    next.focus({ preventScroll: true });
-  });
-  const first = element.querySelector('.penna-tree-row[aria-selected="true"]') || element.querySelector(".penna-tree-row");
-  if (first) first.tabIndex = 0;
+  if (!element.hasAttribute("data-still")) {
+    element.addEventListener("click", (event) => {
+      const row = event.target.closest(".penna-tree-row");
+      if (!row) return;
+      treeSelect(element, row);
+      row.focus({ preventScroll: true });
+    });
+    element.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      const rows = [...element.querySelectorAll(".penna-tree-row")];
+      const index = rows.findIndex((row) => row.getAttribute("aria-selected") === "true");
+      const next = rows[Math.min(Math.max(index + (event.key === "ArrowDown" ? 1 : -1), 0), rows.length - 1)];
+      event.preventDefault();
+      treeSelect(element, next);
+      next.focus({ preventScroll: true });
+    });
+    const first = element.querySelector('.penna-tree-row[aria-selected="true"]') || element.querySelector(".penna-tree-row");
+    if (first) first.tabIndex = 0;
+  }
   treeDraw(element);
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => treeDraw(element)).observe(element);
+  }
+}
+
+function drawAll() {
+  document.querySelectorAll(".penna-tree").forEach(treeDraw);
 }
 
 document.querySelectorAll(".penna-tree").forEach(treeInit);
+new MutationObserver(() => requestAnimationFrame(drawAll)).observe(document.documentElement, {
+  attributes: true,
+  attributeFilter: ["data-density"],
+});
+document.addEventListener("load", (event) => event.target.id === "penna-tokens" && requestAnimationFrame(drawAll), true);
+})();

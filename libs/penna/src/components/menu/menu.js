@@ -163,7 +163,7 @@
       } else if (kind === "stepper") {
         row.setAttribute("aria-label", `${item.label}: ${item.format(item.value)}; Left and Right adjust, Enter resets`);
         const button = (id, attrs, children) =>
-          make("button", "penna-button", { type: "button", tabindex: "-1", "data-id": "penna-input-clear", "data-penna": "button.quiet", "data-flat": true, "data-size": "small", "data-id": `${id}-${ix}`, ...attrs }, children);
+          make("button", "penna-button", { type: "button", tabindex: "-1", "data-penna": "button.quiet", "data-flat": true, "data-size": "small", "data-id": `${id}-${ix}`, ...attrs }, children);
         const value = text(item.format(item.value));
         const group = make("span", "penna-popup-stepper", { "data-penna": "field" }, [
           button("menu-step-down", { "data-shape": "icon", "aria-label": `Decrease ${item.label}`, "data-tooltip": `Decrease ${item.label}`, "data-step": "down" }, [glyph("minus")]),

@@ -1,14 +1,14 @@
 # Tabs
 
-Switches between open things in one place: windows, pages, tasks. To pick a view of one thing use a segmented control.
+Switches between open things in one place: windows, pages, tasks. To pick a view of one thing use a [segmented control](segmented.html).
 
 ## Looks
 
 ```figure uses=tab
 <div class="docs-show" data-gap="wide">
-  <div class="docs-cell"><div class="docs-show" role="tablist"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>logs</span></span></div></div><span class="docs-note">Window</span></div>
-  <div class="docs-cell"><div class="docs-show" role="tablist"><div class="penna-tab" role="tab" data-penna="tab.page" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>Docs</span></span></div><div class="penna-tab" role="tab" data-penna="tab.page" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>Issues</span></span></div></div><span class="docs-note">Page</span></div>
-  <div class="docs-cell"><div class="docs-show" role="tablist"><div class="penna-tab" role="tab" data-penna="tab.tray" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>build</span></span></div><div class="penna-tab" role="tab" data-penna="tab.tray" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>tests</span></span></div></div><span class="docs-note">Tray</span></div>
+  <div class="docs-cell"><div class="docs-show" role="tablist"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="selected" aria-selected="true" tabindex="0"><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" aria-selected="false" tabindex="-1"><span class="penna-tab-label"><span class="penna-text" data-penna-text>logs</span></span></div></div><span class="docs-note">Window</span></div>
+  <div class="docs-cell"><div class="docs-show" role="tablist"><div class="penna-tab" role="tab" data-penna="tab.page" data-state="selected" aria-selected="true" tabindex="0"><span class="penna-tab-label"><span class="penna-text" data-penna-text>Docs</span></span></div><div class="penna-tab" role="tab" data-penna="tab.page" aria-selected="false" tabindex="-1"><span class="penna-tab-label"><span class="penna-text" data-penna-text>Issues</span></span></div></div><span class="docs-note">Page</span></div>
+  <div class="docs-cell"><div class="docs-show" role="tablist"><div class="penna-tab" role="tab" data-penna="tab.tray" data-state="selected" aria-selected="true" tabindex="0"><span class="penna-tab-label"><span class="penna-text" data-penna-text>build</span></span></div><div class="penna-tab" role="tab" data-penna="tab.tray" aria-selected="false" tabindex="-1"><span class="penna-tab-label"><span class="penna-text" data-penna-text>tests</span></span></div></div><span class="docs-note">Tray</span></div>
   <div class="docs-cell"><div class="penna-pane-header" data-penna="bar.pane"><div class="penna-tab penna-title-tab" role="tab" data-penna="button.title" data-size="small" data-still><span class="penna-tab-path"><span class="penna-text" data-penna-text>~/dev/zebrilus</span></span></div></div><span class="docs-note">Title</span></div>
 </div>
 ```
@@ -16,11 +16,13 @@ Switches between open things in one place: windows, pages, tasks. To pick a view
 - **Window**: windows in the title bar.
 - **Page**: pages in a browser, drawn like window tabs.
 - **Tray**: tasks over a composer.
-- **Title**: a pane's title in its header.
+- **Title**: a pane's title in its header (`space-8` inset, muted path).
 
 ```rust
 let state = if open { PaintState::Selected } else { PaintState::Rest };
 Tab::new(("tab", ix), TabLook::Window)
+    .flex()
+    .items_center()
     .state(state)
     .px(Space::S10)
     .child(Label::new(TextStyle::Small, title))
@@ -28,16 +30,17 @@ Tab::new(("tab", ix), TabLook::Window)
 
 ## Anatomy
 
-```figure uses=tab
+```figure uses=tab,button
 <div class="docs-show" data-gap="wide">
-  <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-size="xlarge" data-state="selected" aria-selected="true" data-still><i data-icon="terminal"></i><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span><span class="penna-tab-aside"><span class="penna-text" data-penna-text>zz</span></span></div><span class="docs-note">Icon, label, aside</span></div>
+  <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-size="xlarge" data-state="selected" aria-selected="true" data-still><i data-icon="terminal"></i><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span><span class="penna-tab-aside"><span class="penna-text" data-penna-text>zz</span></span></div><span class="docs-note">Enlarged (40 px): icon, label, aside</span></div>
+  <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-state="selected" aria-selected="true" data-still style="padding-right: 4px"><span class="penna-tab-label"><span class="penna-text" data-penna-text>logs</span></span><button class="penna-button" data-penna="icon-button" data-inside data-state="hover" type="button" aria-label="Close" style="--penna-inside-rows: 28px"><i data-icon="window-close"></i></button></div><span class="docs-note">Inside close button (4 px inset)</span></div>
 </div>
 ```
 
-1. **Container**: the size sets its height, the look its fill and corners.
+1. **Container**: the size sets its height, the look its fill and corners, with a 1.5 px focus ring outside.
 2. **Icon**: optional, 12 beside a `small` label.
 3. **Label**: `small`, short.
-4. **Aside**: optional, muted: a count or the program.
+4. **Aside or close button**: optional muted count/program, or a concentric `.inside(around, height)` close button 4 px from the trailing edge.
 
 Inset and content are yours; the stories use 10 at the sides. A tab is as wide as its content; give tabs one width to make them equal.
 
@@ -45,18 +48,21 @@ Inset and content are yours; the stories use 10 at the sides. A tab is as wide a
 
 ```figure uses=tab
 <div class="docs-show" data-gap="wide">
-  <div class="docs-cell"><div class="penna-tab-strip" data-penna="tab.strip" role="tablist"><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>notes</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>build</span></span></div></div></div>
+  <div class="docs-cell"><div class="penna-tab-strip" data-penna="tab.strip" role="tablist"><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-state="selected" aria-selected="true" tabindex="0"><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" aria-selected="false" tabindex="-1"><span class="penna-tab-label"><span class="penna-text" data-penna-text>notes</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" aria-selected="false" tabindex="-1"><span class="penna-tab-label"><span class="penna-text" data-penna-text>build</span></span></div></div><span class="docs-note">Multiple tabs in a strip</span></div>
+  <div class="docs-cell"><div class="penna-tab-strip" data-penna="tab.strip" role="tablist"><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div></div><span class="docs-note">Lone tab drops the track</span></div>
 </div>
 ```
 
-Window tabs, and a browser's page tabs, sit in one strip: a wash with no edge, 2 between tabs, as tall as its tabs and sharing their corner. When glass is on, the open tab takes the glass highlight. With one tab there is no strip, just the tab at its own height.
+Window tabs and browser page tabs sit in one strip: a wash with no edge, 2 between tabs, as tall as its tabs and sharing their corner. When glass is on, the open tab takes the glass highlight. With one tab there is no strip, just the tab at its own height.
 
 ```rust
 let on = TabStrip::ground(bar, windows.len(), cx);
 TabStrip::new("windows", TabLook::Window)
     .on(bar)
     .with_size(px(28.0))
-    .children(windows.iter().map(|w| Tab::new(w.id, TabLook::Window).on(on).with_size(px(28.0))))
+    .children(windows.iter().map(|w| {
+        Tab::new(w.id, TabLook::Window).on(on).with_size(px(28.0))
+    }))
 ```
 
 ## Sizes
@@ -73,7 +79,7 @@ TabStrip::new("windows", TabLook::Window)
 </div>
 ```
 
-Large is the default. Only the height changes. One size per bar.
+Large 32 is the default; medium 28 follows density. Only the height changes. One size per bar.
 
 ## States
 
@@ -83,15 +89,14 @@ Large is the default. Only the height changes. One size per bar.
   <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="hover" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Hover</span></div>
   <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="hover active" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Pressed</span></div>
   <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Selected</span></div>
-  <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="focused" tabindex="0"><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Focused</span></div>
+  <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="focused" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Focused</span></div>
   <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="selected focused" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Selected, focused</span></div>
   <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="disabled" aria-disabled="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Off</span></div>
 </div>
 ```
 
-- The app sets the state; a tab lights on hover and press at rest.
-- Focus is a ring, never a fill. The bar owns focus and the arrow keys.
-- In HTML, Left, Right, Home and End move along a tab list.
+- The app sets the state (`Selected` and `Current` paint the same); a tab lights on hover and press at rest or while focused unless `.interactive(false)` is set.
+- Focus is a ring, never a fill. The bar owns focus and arrow keys; in HTML, Left, Right, Home and End move along a `role="tablist"`.
 
 ## Selection
 
@@ -99,8 +104,8 @@ One open tab per bar.
 
 ```figure uses=tab
 <div class="docs-dodont">
-  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><div class="penna-tab" role="tab" data-penna="tab.window" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>logs</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>build</span></span></div></div><figcaption>One selected</figcaption></figure>
-  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><div class="penna-tab" role="tab" data-penna="tab.window" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>logs</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>build</span></span></div></div><figcaption>Don't light two</figcaption></figure>
+  <figure data-verdict="do"><div class="docs-dodont-panel" data-penna="panel" data-ground><i class="docs-mark" data-icon="circle-check"></i><div class="docs-show" role="tablist"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>logs</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>build</span></span></div></div></div><figcaption>One selected</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel" data-penna="panel" data-ground><i class="docs-mark" data-icon="circle-x"></i><div class="docs-show" role="tablist"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>logs</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>build</span></span></div></div></div><figcaption>Don't light two</figcaption></figure>
 </div>
 ```
 
@@ -111,10 +116,10 @@ One open tab per bar.
 | `Tab::new(id, look)` | `.penna-tab[role="tab"][data-penna]` | Tab in a look |
 | `TabStrip::new(id, look)` | `.penna-tab-strip[data-penna="tab.strip"]` | Strip holding two or more tabs |
 | `TabStrip::ground(bar, count, cx)` | none | Ground for tabs inside a strip |
-| `.state(state)` | `data-state`, `aria-selected`, `aria-disabled` | State from the app |
-| `.focused(true)` | `data-state="focused"` | Focus ring over any state |
-| `.with_size(size)`, `.small()` … `.touch()` | `data-size` | Height; large by default |
-| `.interactive(false)` | `data-still` | State only |
-| `.on(ground)` | none | Paints on a ground |
-| `.on_click(handler)` | `click` | Switches |
+| `.state(state)` | `data-state`, `aria-selected`, `aria-disabled` | State from the app (`Selected`, `Current`, `Disabled`) |
+| `.focused(true)` | `data-state="focused"`, `data-state="selected focused"` | Focus ring over any state |
+| `.with_size(size)`, `.xsmall()`, `.small()`, `.large()` … `.touch_large()` | `data-size` | Height on `Tab` and `TabStrip`; large default (`with_size(Size::Medium)` for 28) |
+| `.interactive(false)` | `data-still` | State only, no hover or press |
+| `.on(ground)` | `data-ground` on parent | Paints `Tab` or `TabStrip` on a ground |
+| `.on_click(handler)` | `click` | Switches tab |
 | none | `role="tablist"`, `tabindex` | Arrow, Home and End keys |

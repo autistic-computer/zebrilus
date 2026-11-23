@@ -37,7 +37,7 @@
   --penna-toggle-thumb: 18px;
 }
 
-.penna-toggle:is([data-size="xlarge"], [data-size="touch"]) {
+.penna-toggle:is([data-size="xlarge"], [data-size="touch"], [data-size="touch-large"]) {
   --penna-toggle-w: 44px;
   --penna-toggle-h: 26px;
   --penna-toggle-thumb: 22px;
