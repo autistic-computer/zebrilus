@@ -53258,6 +53258,8 @@ Target panes by id (`-t %N`), never `session:%N`. Keep the ids that creating com
 
 Run a command in another pane with `zz run-pane -t %N -- CMD` (prints its output and exits with its status); read a pane with `zz capture-pane -p -J -t %N -S -`. If a `zz` command fails with "Operation not permitted", a sandbox kept it from the daemon: rerun it with escalated permissions.
 
+Give a task to another agent with `zz new-pane -d --kind agent claude|codex|agy|grok|cursor [--model M] [--effort E] 'BRIEF'`: it opens a chat on the brief and prints how its reply reaches you. zz passes `--model` and `--effort` to that agent's CLI unchecked, so write them the way that CLI names them.
+
 Other machines: `zz list-hosts` names them and `zz --host NAME VERB -t %N` runs a verb there; pane IDs are per host. Run `zz tools --skill` for the full guide.
 "#;
 
@@ -85922,7 +85924,10 @@ set-option -g @alias-mixed-next yes
         assert!(text.contains("zz list-hosts") && text.contains("zz --host NAME VERB -t %N"));
         assert!(!text.contains("{pane}") && !text.contains("{session}"));
         assert!(!text.contains("```html preview"));
-        assert!(text.len() < 1600, "context grew to {} bytes", text.len());
+        assert!(
+            text.contains("--kind agent claude|codex|agy|grok|cursor [--model M] [--effort E]")
+        );
+        assert!(text.len() < 1900, "context grew to {} bytes", text.len());
         let agent = workspace_context("%4", "work", true);
         assert!(agent.starts_with(&text) && !agent.contains("```html preview"));
         assert!(!text.contains("```ui") && agent.contains("```ui"));
@@ -85932,7 +85937,7 @@ set-option -g @alias-mixed-next yes
         assert!(agent.contains("starting with `<!doctype html>`, in a plain ```html block"));
         assert!(agent.contains("use your own question tool") && agent.contains("never the user"));
         assert!(
-            agent.len() < 5200,
+            agent.len() < 5550,
             "agent context grew to {} bytes",
             agent.len()
         );
