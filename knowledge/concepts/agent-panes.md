@@ -353,11 +353,11 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
 
 ## Listing and adding accounts
 
-`agent-accounts [--add claude|codex] [--account id|default] [--pane target-pane]
+`agent-accounts [--add claude|codex|agy|grok|cursor] [--account id|default] [--pane target-pane]
 [--browser local|elsewhere] [--terminal]` (`crates/zz-daemon/src/daemon/accounts.rs`, internal, like
 `providers`) answers on the client event stream with `EventPayload::AgentAccounts(Vec<AgentAccount>)`
 (wire 122) and, for a sign-in, `EventPayload::AgentLogin`, never on stdout. `--account`, `--pane`,
-`--browser` and `--terminal` need `--add`.
+`--browser` and `--terminal` need `--add`. Antigravity, Grok and Cursor keep one login (`default` / `id: None`) and reject named `--account <id>`.
 
 - **The list.** One `AgentAccount { provider, id, signed_in, email, organization, plan }` per
   account of each CLI installed on the daemon's host (found as `providers` finds it: the login-shell
@@ -365,20 +365,19 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
   provider, signed in or not; after it come the accounts under `accounts/<cli>/` that are signed in,
   in id order (`accounts::ids`: a2 before a10). A signed-out account is left out, and a CLI that is
   not installed has no rows.
-- **Who is signed in.** Each account is asked in its own thread with the account's variable set,
-  and the default with the variable left as the daemon has it; zz reads no token. Claude Code runs
-  `claude auth status --json` and reads its stdout only: `loggedIn`, `email`, `orgName`, and for
-  `plan` the `planTier` (`max_20x`) when present, else `subscriptionType` (`max`); it exits 1 when
-  signed out and still prints the JSON. Codex starts `codex app-server` on stdio, sends
-  `initialize`, `initialized` and `account/read` with `refreshToken: false`
-  (`agent_fork::codex_request`, the fork's handshake), and is signed in when `account` is not null:
-  `email`, `workspaceName` as the organization and `planType` as the plan; an API key login is
-  signed in with no email or plan. The server's stdin is closed, it gets 2 s to exit, and then its
-  process group is killed. Both probes drop the parent Claude Code session variables and `ZZ_PANE`,
-  `ZZ_SESSION`, `TMUX` and `TMUX_PANE` (and for an account the login overrides above) and give up
-  after 10 s. A probe that fails, times out or gets no `loggedIn` from Claude Code leaves the
-  status unknown (`identify` gives `None`): the list shows it as signed out, and a sign-in never
-  picks it.
+- **Who is signed in.** Installed providers and their accounts are probed in parallel threads,
+  with the account's variable set for named accounts and the daemon's environment for the default;
+  zz reads no token. Claude Code runs `claude auth status --json` (`loggedIn`, `email`, `orgName`,
+  `planTier` / `subscriptionType`). Codex starts `codex app-server` on stdio (`account/read` with
+  `refreshToken: false` and `account/rateLimits/read`). Antigravity starts `agy acp` on stdio and
+  sends `initialize` + `session/list` (`-32000` is signed out; a result is signed in). Grok starts
+  `grok agent stdio` and sends `initialize` + `_x.ai/billing` (`-32000` is signed out; a result
+  gives `subscription_tier` as `plan` and weekly quota via `credit_usage`). Cursor runs
+  `cursor-agent status --format json` (skipping any leading tip line before `{`) and reads
+  `isAuthenticated` and `userInfo.email`. Every probe drops the parent Claude Code session
+  variables and `ZZ_PANE`, `ZZ_SESSION`, `TMUX` and `TMUX_PANE` (and for an account the login
+  overrides above). A probe that fails or times out leaves the status unknown (`identify` gives
+  `None`): the list shows it as signed out, and a sign-in never picks it.
   An account directory is linked (`accounts::prepare`) before its probe, so a Codex home has its
   state databases before its first app server.
 - **Watching.** A plain call adds the client to the watchers, sends the list the daemon already has
@@ -430,6 +429,16 @@ CLI opens the flow, exchanges the code and writes the credentials into the accou
   `{loginId, verificationUrl, userCode}`). The notification `account/login/completed {loginId,
   success, error}` ends it. An error that says device code login is not enabled becomes
   `DeviceCodeDisabled`, one that says it timed out `TimedOut`. Checked on codex-cli 0.169.0.
+- **Antigravity.** `agy acp --login` with `NO_BROWSER=1` (both local and elsewhere): prints the
+  Google OAuth URL, enters `PasteCode { url }`, writes the pasted authorization code or redirect
+  URL to stdin, and exits 0 on success. On the local desktop `zz` opens the URL automatically.
+- **Grok.** Local: `grok login --oauth` prints the OAuth URL on stderr (`OpenUrl { url }`) and
+  opens the local browser itself (so the desktop does not double-open it); elsewhere: `grok login
+  --device-auth` prints the device URL and code on stderr (`DeviceCode { url, code }`). Exits 0 on
+  success.
+- **Cursor.** `cursor-agent login` with `NO_OPEN_BROWSER=1` and `CURSOR_AGENT_CLI_ASSUME_SSH=0`
+  (both local and elsewhere): prints the `loginDeepControl` URL (`OpenUrl { url }`) and polls the
+  Cursor server until exit 0. No separate code flow is needed.
 - **Steps.** `AgentLoginStep` in `zz_protocol::providers`: `Starting`, `OpenUrl { url }` (local
   browser, waiting), `DeviceCode { url, code }`, `PasteCode { url }`, `Verifying` (a pasted code is
   being exchanged, or the account is being probed), `Done { email, organization, plan, pane }`,
@@ -485,22 +494,27 @@ opens.
 
 - **Entry points.** In the usage pill's menu Add account starts a sign-in for a new account, and a
   signed-out account's row reads Sign in at its end; picking it signs that account in, the default
-  one too (`LoginAccount::of`). On iPhone the same rows sit on the plus sheet's Account page.
+  one too (`LoginAccount::of`). Signed-out error cards in a chat pane also offer an inline Sign in
+  button (`error_card_sign_in` / `phone_error_card_sign_in`), and Settings → Agents shows each
+  installed provider's sign-in state with Sign in / Add account and the inline login card
+  (`providers_stack_with_auth`). On iPhone the same rows sit on the plus sheet's Account page.
 - **Browser.** `--browser local` only from the desktop on its own machine
   (`agent_login::browser(host == HostId::LOCAL)` in `MuxClient::start_agent_login`); the desktop on
-  a remote host, iPad, iPhone, Android and the web send `elsewhere`. On `OpenUrl` with a local
-  browser the desktop opens the link in the system browser once per login id
-  (`MuxClient::observe_agent_login`).
+  a remote host, iPad, iPhone, Android and the web send `elsewhere`. On `OpenUrl` or `PasteCode`
+  with a local browser the desktop opens the link in the system browser once per login id
+  (`MuxClient::observe_agent_login`), except for Grok where `grok login --oauth` opens the browser
+  itself.
 - **The card.** `zz_client::agent_login::card` turns a step into what to show (title, glyph, line,
   link, code, field, actions, and whether X cancels or closes); `zz_ui::agent::login::login_card`
-  draws it for the desktop (`AgentView::render_login`, `crates/zz/src/agent/view/harness.rs`) and
-  zz-app (`AgentPane::render_login`, `clients/app/src/app/agent_pane/login.rs`) in the composer's
-  prefix, right above the field, in the chat whose pane the sign-in names, wherever it was started.
-  It has the busy card's look (`ChipLook::Floating`, 10 px in, a 13 px glyph 7 px from a 13/16
-  title) and leaves the chat usable.
-  - Starting and Verifying: "Sign in to Claude" (or ChatGPT) with the spinner.
-  - `OpenUrl`: "Sign in to Claude in your browser", the link row (a 32 px well: globe, the URL
-    without its scheme in mono, Copy link, Open again) and Use a code instead, which restarts the
+  draws it for the desktop (`AgentView::render_login`, `crates/zz/src/agent/view/harness.rs`),
+  zz-app (`AgentPane::render_login`, `clients/app/src/app/agent_pane/login.rs`), and Settings →
+  Agents (`login_card_keyed`) in the composer's prefix or inline inside the provider's Settings
+  entry. It has the busy card's look (`ChipLook::Floating`, 10 px in, a 13 px glyph 7 px from a
+  13/16 title) and leaves the chat usable.
+  - Starting and Verifying: "Sign in to Claude" (or ChatGPT, Google, Grok, Cursor) with the spinner.
+  - `OpenUrl`: "Sign in to … in your browser", the link row (a 32 px well: globe, the URL without
+    its scheme in mono, Copy link, Open again), and Use a code instead when on a local browser for
+    providers that offer a separate code flow (Claude Code, Codex, Grok), which restarts the
     sign-in as `elsewhere`.
   - `PasteCode`: the link row, a field for the code and Continue; Enter sends too. The field is an
     `InputState` of its own (`CodeField`), made for that login id and dropped when the step moves
@@ -509,9 +523,9 @@ opens.
     or a preference.
   - `DeviceCode`: the link row and the code in a 64 px well, 26 px mono, with Copy code.
   - `Failed`: "Couldn't sign in to ..." and one line (`failure_line`: not installed, device code
-    sign-in is off for this account, the sign-in timed out, or the CLI's own text), Sign in in a
-    terminal (`--terminal`) and Retry, both with the same account and browser; when the account the
-    failed sign-in made is gone from the list they start a new one (`agent_login::retry`).
+    sign-in is off for this account, the sign-in timed out, or the CLI's own text), Retry (plus Use
+    a code instead when a local browser flow failed on a provider that supports it), keeping the
+    same account (`agent_login::retry`) without opening a terminal window.
   - `Done` with the chat moved, or no chat: the client dismisses the login, the card goes and the
     usage pill's menu opens on the new account (`UsagePill::open`, a one-time `Popover::open`).
     `Done` with the chat busy: "Added <email>", "Switching now stops what is running.", Switch when

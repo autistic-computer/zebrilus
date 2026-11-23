@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
 use ala::{
-    App, ClipboardItem, IntoElement, ParentElement as _, SharedString, Styled as _, Window,
-    prelude::*, px,
+    AnyElement, App, ClipboardItem, IntoElement, ParentElement as _, SharedString, Styled as _,
+    Window, prelude::*, px,
 };
-use zz_protocol::{AgentProvider, ProviderStatus, ProvidersReport};
+use zz_protocol::{AgentAccount, AgentProvider, ProviderStatus, ProvidersReport};
 
 use super::{SettingEntry, SettingsStack, settings_card_ground};
 use crate::{
@@ -16,6 +16,7 @@ use crate::{
 };
 use penna::{Label, TextStyle, blocks::notification::Notification};
 
+use zz_client::agent_settings::{self, SIGNED_IN, SIGNED_OUT};
 pub use zz_client::providers::PROVIDERS;
 use zz_client::providers::{
     NoteTone, ProviderAction as Action, provider_action, provider_description, provider_notes,
@@ -23,6 +24,21 @@ use zz_client::providers::{
 };
 
 type ProviderAction = Rc<dyn Fn(AgentProvider, &mut Window, &mut App)>;
+type OnProviderAuth = Rc<dyn Fn(AgentProvider, ProviderAuthAction, &mut Window, &mut App)>;
+type ProviderLogin = Rc<dyn Fn(AgentProvider, &App) -> Option<AnyElement>>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProviderAuthAction {
+    SignIn,
+    AddAccount,
+}
+
+pub struct ProvidersAuth<'a> {
+    pub signs_in: bool,
+    pub accounts: Option<&'a [AgentAccount]>,
+    pub on_auth: OnProviderAuth,
+    pub login: ProviderLogin,
+}
 
 pub fn agent_setup_notification(
     result: &Result<String, String>,
@@ -63,6 +79,18 @@ pub fn providers_stack(
     on_update: impl Fn(AgentProvider, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> SettingsStack {
+    providers_stack_with_auth(id, title, host, None, on_update, cx)
+}
+
+#[must_use]
+pub fn providers_stack_with_auth(
+    id: impl Into<SharedString>,
+    title: impl Into<SharedString>,
+    host: &ProvidersHost,
+    auth: Option<&ProvidersAuth<'_>>,
+    on_update: impl Fn(AgentProvider, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> SettingsStack {
     let id = id.into();
     let on_update: ProviderAction = Rc::new(on_update);
     let stack = SettingsStack::titled(title);
@@ -81,7 +109,7 @@ pub fn providers_stack(
                 .provider(provider)
                 .cloned()
                 .unwrap_or_else(|| ProviderStatus::new(provider));
-            provider_entry(&id, &status, report.checking, &on_update, cx)
+            provider_entry(&id, &status, report.checking, auth, &on_update, cx)
         })),
     }
 }
@@ -90,6 +118,7 @@ fn provider_entry(
     id: &SharedString,
     status: &ProviderStatus,
     checking: bool,
+    auth: Option<&ProvidersAuth<'_>>,
     on_update: &ProviderAction,
     cx: &App,
 ) -> SettingEntry {
@@ -107,7 +136,104 @@ fn provider_entry(
     for (note, tone) in provider_notes(status) {
         entry = entry.child(task_line(note, tone, cx));
     }
+    if let Some(auth) = auth.filter(|auth| auth.signs_in && status.installed()) {
+        if let Some(card) = (auth.login)(provider, cx) {
+            entry = entry.child(card);
+        } else if let Some(accounts) = auth.accounts {
+            let primary_update = matches!(
+                provider_action(status, checking),
+                Some(Action::Update { primary: true, .. })
+            );
+            entry = entry.child(account_row(
+                id,
+                provider,
+                accounts,
+                !primary_update,
+                &auth.on_auth,
+                cx,
+            ));
+        }
+    }
     entry
+}
+
+fn account_row(
+    id: &SharedString,
+    provider: AgentProvider,
+    accounts: &[AgentAccount],
+    primary_sign_in: bool,
+    on_auth: &OnProviderAuth,
+    cx: &App,
+) -> impl IntoElement {
+    let signed_in = accounts
+        .iter()
+        .filter(|account| account.provider == provider && account.signed_in)
+        .collect::<Vec<_>>();
+    let (summary, is_signed_in) = match signed_in.as_slice() {
+        [] => (SIGNED_OUT.to_owned(), false),
+        [account] => {
+            let name = agent_settings::account_name(account);
+            let detail = agent_settings::account_detail(account);
+            let label = match detail {
+                Some(detail) if name == SIGNED_IN => detail,
+                Some(detail) => format!("{name} · {detail}"),
+                None => name,
+            };
+            (label, true)
+        }
+        many => (
+            many.iter()
+                .map(|account| agent_settings::account_name(account))
+                .collect::<Vec<_>>()
+                .join(", "),
+            true,
+        ),
+    };
+    let button = if !is_signed_in {
+        let on_auth = Rc::clone(on_auth);
+        let button = Button::new(SharedString::from(format!(
+            "providers-auth-{id}-{}",
+            provider.as_str()
+        )))
+        .compact()
+        .label("Sign in")
+        .on(settings_card_ground(cx))
+        .on_click(move |_, window, cx| on_auth(provider, ProviderAuthAction::SignIn, window, cx));
+        Some(if primary_sign_in {
+            button.primary()
+        } else {
+            button
+        })
+    } else if provider.accounts() {
+        let on_auth = Rc::clone(on_auth);
+        Some(
+            Button::new(SharedString::from(format!(
+                "providers-auth-{id}-{}",
+                provider.as_str()
+            )))
+            .compact()
+            .label("Add account")
+            .on(settings_card_ground(cx))
+            .on_click(move |_, window, cx| {
+                on_auth(provider, ProviderAuthAction::AddAccount, window, cx);
+            }),
+        )
+    } else {
+        None
+    };
+    let summary = Label::new(TextStyle::Caption, summary).min_w_0().truncate();
+    let summary = if is_signed_in {
+        summary.muted().on(settings_card_ground(cx))
+    } else {
+        summary.text_color(cx.theme().warning)
+    };
+    h_flex()
+        .w_full()
+        .items_center()
+        .justify_between()
+        .gap(px(10.0))
+        .child(summary)
+        .children(button)
 }
 
 fn version_text(status: &ProviderStatus, cx: &App) -> impl IntoElement {

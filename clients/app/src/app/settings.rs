@@ -706,7 +706,7 @@ impl AppShell {
     }
 
     pub(super) fn render_settings(
-        &self,
+        &mut self,
         section: SettingsSection,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -718,6 +718,9 @@ impl AppShell {
         } else {
             SettingsSection::Appearance
         };
+        if section == SettingsSection::Agents {
+            self.sync_provider_logins(window, cx);
+        }
         if !narrow {
             let page = self.settings_page(section, None, cx);
             return self.plated("web-settings-pane", page, window, cx);

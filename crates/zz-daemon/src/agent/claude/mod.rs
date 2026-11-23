@@ -869,7 +869,7 @@ impl Runtime {
             } => self.prompt(turn_id, prompt, note, new_uuid()).await,
             RuntimeCommand::Authenticate { .. } => {
                 self.emit(AgentStreamPayload::AuthenticationFailed {
-                    message: "Claude Code signs in with `claude /login` in a terminal".to_owned(),
+                    message: "Claude Code is signed out.".to_owned(),
                 })
                 .await
             }

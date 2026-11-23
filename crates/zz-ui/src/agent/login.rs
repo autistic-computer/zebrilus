@@ -83,11 +83,11 @@ impl CodeField {
 
 type OnLogin = Rc<dyn Fn(LoginEvent, &mut Window, &mut App)>;
 
-fn glyph(glyph: CardGlyph, pane: PaneId, cx: &App) -> AnyElement {
+fn glyph(glyph: CardGlyph, key: &str, cx: &App) -> AnyElement {
     let muted = cx.theme().foreground.muted();
     match glyph {
         CardGlyph::Working => Spinner::new()
-            .id(("agent-login-spinner", pane.0))
+            .id(SharedString::from(format!("agent-login-spinner-{key}")))
             .with_size(px(CARD_GLYPH))
             .color(muted)
             .into_any_element(),
@@ -133,6 +133,10 @@ fn copy(text: String) -> impl Fn(&ala::ClickEvent, &mut Window, &mut App) + 'sta
 }
 
 pub fn link_row(pane: PaneId, url: &str, cx: &App) -> AnyElement {
+    link_row_keyed(&pane.0.to_string(), url, cx)
+}
+
+fn link_row_keyed(key: &str, url: &str, cx: &App) -> AnyElement {
     let muted = cx.theme().foreground.muted();
     let open = url.to_owned();
     let drop = icon::cap_center_drop(px(TextStyle::Small.design_px()), px(CARD_GLYPH), cx);
@@ -168,7 +172,7 @@ pub fn link_row(pane: PaneId, url: &str, cx: &App) -> AnyElement {
         )
         .child(
             row_icon(
-                ("agent-login-copy-link", pane.0),
+                SharedString::from(format!("agent-login-copy-link-{key}")),
                 IconName::Copy,
                 "Copy link",
                 cx,
@@ -177,7 +181,7 @@ pub fn link_row(pane: PaneId, url: &str, cx: &App) -> AnyElement {
         )
         .child(
             row_icon(
-                ("agent-login-open-link", pane.0),
+                SharedString::from(format!("agent-login-open-link-{key}")),
                 IconName::ExternalLink,
                 "Open again",
                 cx,
@@ -190,7 +194,7 @@ pub fn link_row(pane: PaneId, url: &str, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn code_tile(pane: PaneId, code: &str, cx: &App) -> AnyElement {
+fn code_tile(key: &str, code: &str, cx: &App) -> AnyElement {
     well(cx)
         .relative()
         .flex()
@@ -203,7 +207,7 @@ fn code_tile(pane: PaneId, code: &str, cx: &App) -> AnyElement {
         .child(
             div().absolute().right(INSIDE_GAP).child(
                 row_icon(
-                    ("agent-login-copy-code", pane.0),
+                    SharedString::from(format!("agent-login-copy-code-{key}")),
                     IconName::Copy,
                     "Copy code",
                     cx,
@@ -214,19 +218,15 @@ fn code_tile(pane: PaneId, code: &str, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn action_button(pane: PaneId, action: CardAction, on: &OnLogin, cx: &App) -> Button {
+fn action_button(key: &str, action: CardAction, on: &OnLogin, cx: &App) -> Button {
     let on = Rc::clone(on);
     Button::new(SharedString::from(format!(
-        "agent-login-{}-{}",
-        pane.0,
+        "agent-login-{key}-{}",
         action.label()
     )))
     .label(action.label())
     .compact()
     .on(cx.theme().ground_of(PanelLook::Inline))
-    .when(action == CardAction::Terminal, |button| {
-        button.icon(IconName::SquareTerminal)
-    })
     .map(|button| {
         if action.primary() {
             button.primary()
@@ -246,10 +246,22 @@ pub fn login_card(
     on_event: impl Fn(LoginEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Option<AnyElement> {
-    let pane = login.pane?;
+    let key = login
+        .pane
+        .map_or_else(|| format!("id-{}", login.id), |pane| pane.0.to_string());
+    login_card_keyed(&key, login, field, on_event, cx)
+}
+
+pub fn login_card_keyed(
+    key: &str,
+    login: &AgentLogin,
+    field: Option<&CodeField>,
+    on_event: impl Fn(LoginEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Option<AnyElement> {
     let card = agent_login::card(login)?;
-    Some(card_view(
-        pane,
+    Some(card_view_keyed(
+        key,
         &card,
         field.map(|field| &field.input),
         on_event,
@@ -264,6 +276,16 @@ pub fn card_view(
     on_event: impl Fn(LoginEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> AnyElement {
+    card_view_keyed(&pane.0.to_string(), card, field, on_event, cx)
+}
+
+fn card_view_keyed(
+    key: &str,
+    card: &LoginCard,
+    field: Option<&Entity<InputState>>,
+    on_event: impl Fn(LoginEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> AnyElement {
     let on: OnLogin = Rc::new(on_event);
     let close = {
         let on = Rc::clone(&on);
@@ -271,13 +293,18 @@ pub fn card_view(
             CardClose::Cancel => "Cancel",
             CardClose::Dismiss => "Close",
         };
-        card_close(("agent-login-close", pane.0), tooltip, cx).on_click(move |_, window, cx| {
+        card_close(
+            SharedString::from(format!("agent-login-close-{key}")),
+            tooltip,
+            cx,
+        )
+        .on_click(move |_, window, cx| {
             cx.stop_propagation();
             on(LoginEvent::Close, window, cx);
         })
     };
     let head = card_head(
-        glyph(card.glyph, pane, cx),
+        glyph(card.glyph, key, cx),
         card.title.clone(),
         card.detail.clone(),
         close,
@@ -292,13 +319,13 @@ pub fn card_view(
             .gap(px(6.0))
             .children(
                 lead.into_iter()
-                    .map(|action| action_button(pane, action, &on, cx)),
+                    .map(|action| action_button(key, action, &on, cx)),
             )
             .child(div().flex_1())
             .children(
                 trail
                     .into_iter()
-                    .map(|action| action_button(pane, action, &on, cx)),
+                    .map(|action| action_button(key, action, &on, cx)),
             )
     });
     let field = card.paste.then_some(field).flatten().map(|input| {
@@ -307,27 +334,30 @@ pub fn card_view(
             .font_family(cx.theme().mono_font_family.clone())
             .on(cx.theme().ground_of(PanelLook::Inline))
     });
-    Panel::new(("agent-login", pane.0), PanelLook::Inline)
-        .inset(px(COMPOSER_INSET))
-        .rows(row())
-        .debug_selector(|| "agent-login-card".into())
-        .flex()
-        .flex_col()
-        .items_stretch()
-        .gap(px(GAP))
-        .w_full()
-        .h_auto()
-        .p(px(COMPOSER_INSET))
-        .font_family(cx.theme().font_family.clone())
-        .type_style(TextStyle::Body, cx)
-        .line_height(px(CARD_LINE))
-        .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .child(head)
-        .children(card.url.as_deref().map(|url| link_row(pane, url, cx)))
-        .children(card.code.as_deref().map(|code| code_tile(pane, code, cx)))
-        .children(field)
-        .children(actions)
-        .into_any_element()
+    Panel::new(
+        SharedString::from(format!("agent-login-{key}")),
+        PanelLook::Inline,
+    )
+    .inset(px(COMPOSER_INSET))
+    .rows(row())
+    .debug_selector(|| "agent-login-card".into())
+    .flex()
+    .flex_col()
+    .items_stretch()
+    .gap(px(GAP))
+    .w_full()
+    .h_auto()
+    .p(px(COMPOSER_INSET))
+    .font_family(cx.theme().font_family.clone())
+    .type_style(TextStyle::Body, cx)
+    .line_height(px(CARD_LINE))
+    .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+    .child(head)
+    .children(card.url.as_deref().map(|url| link_row_keyed(key, url, cx)))
+    .children(card.code.as_deref().map(|code| code_tile(key, code, cx)))
+    .children(field)
+    .children(actions)
+    .into_any_element()
 }
 
 #[cfg(test)]

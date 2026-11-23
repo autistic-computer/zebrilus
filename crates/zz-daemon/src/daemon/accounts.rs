@@ -2,6 +2,7 @@ use super::*;
 #[cfg(all(feature = "agent", unix))]
 use std::{
     ffi::OsString,
+    io::{BufRead as _, BufReader},
     process::{Child, Command, Stdio},
 };
 
@@ -14,15 +15,23 @@ use zz_protocol::QuotaWindows;
 use zz_protocol::{AgentAccount, AgentQuota};
 
 #[cfg(all(feature = "agent", unix))]
-const PROVIDERS: [AgentProvider; 2] = [AgentProvider::ClaudeCode, AgentProvider::Codex];
+const PROVIDERS: [AgentProvider; 5] = [
+    AgentProvider::ClaudeCode,
+    AgentProvider::Codex,
+    AgentProvider::Antigravity,
+    AgentProvider::Grok,
+    AgentProvider::Cursor,
+];
 #[cfg(all(feature = "agent", unix))]
 const STATUS_TIMEOUT: Duration = Duration::from_secs(10);
 #[cfg(all(feature = "agent", unix))]
 const MAX_STATUS_BYTES: usize = 64 * 1024;
 #[cfg(all(feature = "agent", unix))]
-const CODEX_REPLY: Duration = Duration::from_secs(5);
+const RPC_REPLY: Duration = Duration::from_secs(5);
 #[cfg(all(feature = "agent", unix))]
-const CODEX_EXIT: Duration = Duration::from_secs(2);
+const RPC_EXIT: Duration = Duration::from_secs(2);
+#[cfg(all(feature = "agent", unix))]
+const ACP_AUTH_REQUIRED: i64 = -32000;
 
 #[cfg(all(feature = "agent", unix))]
 #[derive(Default)]
@@ -64,22 +73,11 @@ pub(super) fn parse_agent_accounts_args(
     for option in parsed.options {
         match option {
             zz_protocol::TmuxOption::Value("--add", value) => {
-                let added = value
-                    .parse::<AgentProvider>()
-                    .map_err(ServerError::CommandParse)?;
-                let login = match added {
-                    AgentProvider::Antigravity => Some("agy"),
-                    AgentProvider::Grok => Some("grok login"),
-                    AgentProvider::Cursor => Some("cursor-agent login"),
-                    AgentProvider::ClaudeCode | AgentProvider::Codex => None,
-                };
-                if let Some(login) = login {
-                    return Err(ServerError::InvalidCommand(format!(
-                        "agent-accounts: sign in to {} by running {login} in a terminal",
-                        added.label()
-                    )));
-                }
-                provider = Some(added);
+                provider = Some(
+                    value
+                        .parse::<AgentProvider>()
+                        .map_err(ServerError::CommandParse)?,
+                );
             }
             zz_protocol::TmuxOption::Value("--account", zz_protocol::DEFAULT_AGENT_ACCOUNT) => {
                 account = AccountChoice::Default;
@@ -115,6 +113,12 @@ pub(super) fn parse_agent_accounts_args(
         }
         return Ok(None);
     };
+    if !provider.accounts() && matches!(account, AccountChoice::Named(_)) {
+        return Err(ServerError::InvalidCommand(format!(
+            "agent-accounts: {} keeps one account",
+            provider.label()
+        )));
+    }
     Ok(Some(AddAccount {
         provider,
         account,
@@ -312,11 +316,28 @@ impl Shared {
 
     fn refresh_agent_accounts_once(&self) -> bool {
         let search = self.provider_search();
-        let (list, quotas): (Vec<_>, Vec<_>) = PROVIDERS
+        let located = PROVIDERS
             .into_iter()
             .filter_map(|provider| {
-                providers::locate(provider, search.as_ref()).map(|program| {
-                    provider_accounts(provider, &program, search.as_ref())
+                providers::locate(provider, search.as_ref()).map(|program| (provider, program))
+            })
+            .collect::<Vec<_>>();
+        let probed = thread::scope(|scope| {
+            located
+                .into_iter()
+                .map(|(provider, program)| {
+                    let search = search.as_ref();
+                    (
+                        provider,
+                        scope.spawn(move || provider_accounts(provider, &program, search)),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .flat_map(|(provider, handle)| {
+                    handle
+                        .join()
+                        .unwrap_or_default()
                         .into_iter()
                         .map(move |(id, probe)| {
                             probe.unwrap_or_else(|| {
@@ -330,10 +351,10 @@ impl Shared {
                             })
                         })
                 })
-            })
-            .flatten()
-            .filter(|(account, _)| account.id.is_none() || account.signed_in)
-            .unzip();
+                .filter(|(account, _)| account.id.is_none() || account.signed_in)
+                .collect::<Vec<_>>()
+        });
+        let (list, quotas): (Vec<_>, Vec<_>) = probed.into_iter().unzip();
         let (changed, quotas_changed, again) = {
             let mut accounts = self.agent_accounts.lock();
             let changed = accounts.list.as_ref() != Some(&list);
@@ -424,7 +445,9 @@ impl Shared {
         let login: &[&str] = match provider {
             AgentProvider::ClaudeCode => &["claude", "auth", "login"],
             AgentProvider::Codex => &["codex", "login"],
-            AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => return,
+            AgentProvider::Antigravity => &["agy", "acp", "--login"],
+            AgentProvider::Grok => &["grok", "login"],
+            AgentProvider::Cursor => &["cursor-agent", "login"],
         };
         let login = login
             .iter()
@@ -472,6 +495,13 @@ pub(super) fn pick_account(
 ) -> Result<PickedAccount, String> {
     use crate::agent::accounts;
 
+    if !provider.accounts() {
+        return Ok(PickedAccount {
+            id: None,
+            home: None,
+            fresh: false,
+        });
+    }
     match choice {
         AccountChoice::Default => Ok(PickedAccount {
             id: None,
@@ -520,9 +550,13 @@ fn provider_accounts(
     program: &Path,
     search: Option<&OsString>,
 ) -> Vec<(Option<String>, Option<(AgentAccount, Option<QuotaWindows>)>)> {
-    let ids = std::iter::once(None)
-        .chain(crate::agent::accounts::ids(provider).into_iter().map(Some))
-        .collect::<Vec<_>>();
+    let ids = if provider.accounts() {
+        std::iter::once(None)
+            .chain(crate::agent::accounts::ids(provider).into_iter().map(Some))
+            .collect::<Vec<_>>()
+    } else {
+        vec![None]
+    };
     thread::scope(|scope| {
         ids.into_iter()
             .map(|id| {
@@ -607,11 +641,158 @@ pub(super) fn identify(
                 return None;
             }
         },
-        AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => {
-            (signed_out(provider), None)
+        AgentProvider::Antigravity => {
+            command.arg("acp");
+            match acp_probe(command, "session/list") {
+                Ok(Ok(_)) => (
+                    AgentAccount {
+                        signed_in: true,
+                        ..signed_out(AgentProvider::Antigravity)
+                    },
+                    None,
+                ),
+                Ok(Err(AcpProbeError::AuthRequired)) => {
+                    (signed_out(AgentProvider::Antigravity), None)
+                }
+                Ok(Err(AcpProbeError::Other(error))) | Err(error) => {
+                    log::info!(target: "zz::agent", "agy acp session/list: {error}");
+                    return None;
+                }
+            }
+        }
+        AgentProvider::Grok => {
+            command.args(["agent", "stdio"]);
+            match acp_probe(command, "_x.ai/billing") {
+                Ok(Ok(result)) => grok_billing(&result),
+                Ok(Err(AcpProbeError::AuthRequired)) => (signed_out(AgentProvider::Grok), None),
+                Ok(Err(AcpProbeError::Other(error))) | Err(error) => {
+                    log::info!(target: "zz::agent", "grok agent stdio _x.ai/billing: {error}");
+                    return None;
+                }
+            }
+        }
+        AgentProvider::Cursor => {
+            command.args(["status", "--format", "json"]);
+            let deadline = Instant::now() + STATUS_TIMEOUT;
+            let account =
+                match crate::bounded_command::run_output_until(command, MAX_STATUS_BYTES, deadline)
+                {
+                    Ok(output) => cursor_status(&output.stdout)?,
+                    Err(error) => {
+                        log::info!(target: "zz::agent", "cursor-agent status: {error}");
+                        return None;
+                    }
+                };
+            (account, None)
         }
     };
     Some((AgentAccount { id, ..account }, quota))
+}
+
+#[cfg(all(feature = "agent", unix))]
+enum AcpProbeError {
+    AuthRequired,
+    Other(String),
+}
+
+#[cfg(all(feature = "agent", unix))]
+fn acp_probe(
+    mut command: Command,
+    method: &str,
+) -> Result<Result<serde_json::Value, AcpProbeError>, String> {
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let mut child = command
+        .spawn_unmasked()
+        .map_err(|error| error.to_string())?;
+    let outcome = acp_exchange(&mut child, method);
+    stop(&mut child);
+    outcome
+}
+
+#[cfg(all(feature = "agent", unix))]
+fn acp_exchange(
+    child: &mut Child,
+    method: &str,
+) -> Result<Result<serde_json::Value, AcpProbeError>, String> {
+    let mut input = child.stdin.take().ok_or("no stdin")?;
+    let output = child.stdout.take().ok_or("no stdout")?;
+    let (sender, replies) = mpsc::channel();
+    thread::spawn(move || {
+        for line in BufReader::new(output).lines().map_while(Result::ok) {
+            if let Ok(message) = serde_json::from_str::<serde_json::Value>(&line)
+                && sender.send(message).is_err()
+            {
+                break;
+            }
+        }
+    });
+    let deadline = Instant::now() + RPC_REPLY;
+    let mut send = |message: serde_json::Value| {
+        writeln!(input, "{message}")
+            .and_then(|()| input.flush())
+            .map_err(|error| error.to_string())
+    };
+    let reply = |id: u64| -> Result<Result<serde_json::Value, AcpProbeError>, String> {
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err("no answer from the agent".to_owned());
+            }
+            let message = replies
+                .recv_timeout(remaining)
+                .map_err(|_| "no answer from the agent".to_owned())?;
+            if message["id"] != id {
+                continue;
+            }
+            if let Some(error) = message.get("error") {
+                return Ok(Err(if is_acp_auth_required(error) {
+                    AcpProbeError::AuthRequired
+                } else {
+                    AcpProbeError::Other(error["message"].as_str().unwrap_or("refused").to_owned())
+                }));
+            }
+            return Ok(Ok(message["result"].clone()));
+        }
+    };
+    send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": 1,
+            "clientCapabilities": {},
+            "clientInfo": { "name": "zz", "version": env!("CARGO_PKG_VERSION") },
+        },
+    }))?;
+    match reply(1)? {
+        Ok(_) => {}
+        Err(AcpProbeError::AuthRequired) => return Ok(Err(AcpProbeError::AuthRequired)),
+        Err(AcpProbeError::Other(error)) => return Err(error),
+    }
+    send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": method,
+        "params": {},
+    }))?;
+    reply(2)
+}
+
+#[cfg(all(feature = "agent", unix))]
+fn is_acp_auth_required(error: &serde_json::Value) -> bool {
+    if error["code"].as_i64() == Some(ACP_AUTH_REQUIRED) {
+        return true;
+    }
+    let message = error["message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    message.contains("authentication required")
+        || message.contains("not authenticated")
+        || message.contains("unauthenticated")
 }
 
 #[cfg(all(feature = "agent", unix))]
@@ -638,7 +819,7 @@ fn codex_account_read(
                 &serde_json::json!({ "excludeResetCreditDetails": true }),
             ),
         ],
-        CODEX_REPLY,
+        RPC_REPLY,
     );
     stop(&mut child);
     let mut replies = replies?.into_iter();
@@ -657,7 +838,7 @@ fn codex_account_read(
 
 #[cfg(all(feature = "agent", unix))]
 fn stop(child: &mut Child) {
-    let deadline = Instant::now() + CODEX_EXIT;
+    let deadline = Instant::now() + RPC_EXIT;
     while Instant::now() < deadline && matches!(child.try_wait(), Ok(None)) {
         thread::sleep(Duration::from_millis(20));
     }
@@ -707,6 +888,38 @@ fn codex_account(result: &serde_json::Value) -> AgentAccount {
         plan: text(account, "planType"),
         ..signed_out(AgentProvider::Codex)
     }
+}
+
+#[cfg(all(feature = "agent", unix))]
+fn cursor_status(stdout: &[u8]) -> Option<AgentAccount> {
+    let start = stdout.iter().position(|byte| *byte == b'{')?;
+    let status = serde_json::from_slice::<serde_json::Value>(&stdout[start..]).ok()?;
+    let signed_in = status["isAuthenticated"]
+        .as_bool()
+        .or_else(|| status["status"].as_str().map(|s| s == "authenticated"))?;
+    let user = &status["userInfo"];
+    Some(AgentAccount {
+        signed_in,
+        email: signed_in.then(|| text(user, "email")).flatten(),
+        organization: signed_in
+            .then(|| text(user, "teamName").or_else(|| text(user, "organization")))
+            .flatten(),
+        plan: signed_in
+            .then(|| text(user, "membershipType").or_else(|| text(user, "plan")))
+            .flatten(),
+        ..signed_out(AgentProvider::Cursor)
+    })
+}
+
+#[cfg(all(feature = "agent", unix))]
+fn grok_billing(result: &serde_json::Value) -> (AgentAccount, Option<QuotaWindows>) {
+    let account = AgentAccount {
+        signed_in: true,
+        plan: text(result, "subscription_tier"),
+        ..signed_out(AgentProvider::Grok)
+    };
+    let quota = crate::agent::grok::credit_usage(result);
+    (account, quota)
 }
 
 #[cfg(all(feature = "agent", unix))]
@@ -777,6 +990,9 @@ mod tests {
             (AgentProvider::ClaudeCode, &garbled),
             (AgentProvider::ClaudeCode, &missing),
             (AgentProvider::Codex, &missing),
+            (AgentProvider::Antigravity, &garbled),
+            (AgentProvider::Grok, &garbled),
+            (AgentProvider::Cursor, &garbled),
         ] {
             assert_eq!(
                 identify(provider, program, None, None),
@@ -829,5 +1045,80 @@ mod tests {
         assert_eq!(login_account(&[("a1", true), ("a2", false)]), "a2");
         assert_eq!(login_account(&[("a1", true), ("a2", true)]), "a3");
         assert_eq!(login_account(&[]), "a1");
+    }
+
+    #[test]
+    fn cursor_status_skips_the_tip_and_reads_email_and_signed_out_state() {
+        let signed_in = b"Tip: You can start the Cursor CLI with `agent` (same as `cursor-agent`).\n\
+{\"status\":\"authenticated\",\"isAuthenticated\":true,\"userInfo\":{\"email\":\"me@example.com\"}}";
+        assert_eq!(
+            cursor_status(signed_in),
+            Some(AgentAccount {
+                provider: AgentProvider::Cursor,
+                id: None,
+                signed_in: true,
+                email: Some("me@example.com".to_owned()),
+                organization: None,
+                plan: None,
+            })
+        );
+        let signed_out = br#"{"status":"unauthenticated","isAuthenticated":false}"#;
+        assert_eq!(
+            cursor_status(signed_out),
+            Some(super::signed_out(AgentProvider::Cursor))
+        );
+    }
+
+    #[test]
+    fn grok_billing_reads_the_plan_and_weekly_quota() {
+        let billing = serde_json::json!({
+            "subscription_tier": "SuperGrok Plus",
+            "config": {
+                "creditUsagePercent": 42.0,
+                "currentPeriod": {
+                    "type": "USAGE_PERIOD_TYPE_WEEKLY",
+                    "end": "2026-11-28T00:00:00Z",
+                },
+            },
+        });
+        let (account, quota) = grok_billing(&billing);
+        assert_eq!(
+            account,
+            AgentAccount {
+                provider: AgentProvider::Grok,
+                id: None,
+                signed_in: true,
+                email: None,
+                organization: None,
+                plan: Some("SuperGrok Plus".to_owned()),
+            }
+        );
+        assert!(quota.and_then(|q| q.week).is_some());
+    }
+
+    #[test]
+    fn single_account_providers_accept_default_and_reject_named_accounts() {
+        let parse = |args: &[&str]| {
+            let args = args
+                .iter()
+                .map(|arg| RawText::from(*arg))
+                .collect::<Vec<_>>();
+            parse_agent_accounts_args(&args)
+        };
+        assert_eq!(
+            parse(&["--add", "grok"]).unwrap().map(|add| add.provider),
+            Some(AgentProvider::Grok)
+        );
+        assert_eq!(
+            parse(&["--add", "cursor", "--account", "default"])
+                .unwrap()
+                .map(|add| add.provider),
+            Some(AgentProvider::Cursor)
+        );
+        assert_eq!(
+            parse(&["--add", "agy"]).unwrap().map(|add| add.provider),
+            Some(AgentProvider::Antigravity)
+        );
+        assert!(parse(&["--add", "grok", "--account", "work"]).is_err());
     }
 }

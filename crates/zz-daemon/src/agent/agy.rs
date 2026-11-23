@@ -20,7 +20,7 @@ const USAGE_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_USAGE_BYTES: usize = 64 * 1024;
 pub(crate) const DIALECT: Dialect = Dialect {
     effort_option: "thought_level",
-    signed_out: "Antigravity is signed out. Sign in by running `agy` in a terminal.",
+    signed_out: "Antigravity is signed out.",
     stored_title: |_| None,
     sign_in: None,
     model_name: None,

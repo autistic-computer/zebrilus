@@ -837,7 +837,7 @@ pub(super) fn kill_group(child: &mut std::process::Child) {
     let _ = child.wait();
 }
 
-fn plain(line: &str) -> String {
+pub(super) fn plain(line: &str) -> String {
     let mut output = String::with_capacity(line.len());
     let mut characters = line.chars().peekable();
     while let Some(character) = characters.next() {

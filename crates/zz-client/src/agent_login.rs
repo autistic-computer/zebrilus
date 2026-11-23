@@ -102,13 +102,6 @@ pub fn retry(
 }
 
 #[must_use]
-pub fn in_terminal(login: &AgentLogin, accounts: &[AgentAccount]) -> CommandInvocation {
-    let mut command = retry(login, accounts, login.browser);
-    command.args.push("--terminal".into());
-    command
-}
-
-#[must_use]
 pub fn submit_code(login: &AgentLogin, code: &str) -> Option<ProtocolMessage> {
     if !matches!(login.step, AgentLoginStep::PasteCode { .. }) {
         return None;
@@ -145,6 +138,32 @@ pub fn reduce(logins: &mut Vec<AgentLogin>, login: AgentLogin) -> bool {
 #[must_use]
 pub fn for_pane(logins: &[AgentLogin], pane: PaneId) -> Option<&AgentLogin> {
     logins.iter().find(|login| login.pane == Some(pane))
+}
+
+#[must_use]
+pub fn for_provider(logins: &[AgentLogin], provider: AgentProvider) -> Option<&AgentLogin> {
+    logins
+        .iter()
+        .find(|login| login.provider == provider && login.pane.is_none())
+}
+
+#[must_use]
+pub const fn supports_code_flow(provider: AgentProvider) -> bool {
+    matches!(
+        provider,
+        AgentProvider::ClaudeCode | AgentProvider::Codex | AgentProvider::Grok
+    )
+}
+
+#[must_use]
+pub fn is_signed_out_error(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("is signed out")
+        || lower.contains("authentication required")
+        || lower.contains("not logged in")
+        || lower.contains("not authenticated")
+        || lower.contains("unauthenticated")
+        || lower.contains("please run /login")
 }
 
 #[must_use]
@@ -194,7 +213,6 @@ pub enum CardGlyph {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CardAction {
     UseCode,
-    Terminal,
     Retry,
     Continue,
     SwitchWhenIdle,
@@ -206,7 +224,6 @@ impl CardAction {
     pub const fn label(self) -> &'static str {
         match self {
             Self::UseCode => "Use a code instead",
-            Self::Terminal => "Sign in in a terminal",
             Self::Retry => "Retry",
             Self::Continue => "Continue",
             Self::SwitchWhenIdle => crate::agent_flip::WHEN_IDLE_LABEL,
@@ -221,7 +238,7 @@ impl CardAction {
 
     #[must_use]
     pub const fn leads(self) -> bool {
-        matches!(self, Self::UseCode | Self::Terminal)
+        matches!(self, Self::UseCode)
     }
 }
 
@@ -263,7 +280,11 @@ pub fn card(login: &AgentLogin) -> Option<LoginCard> {
         AgentLoginStep::Starting | AgentLoginStep::Verifying => working(sign_in),
         AgentLoginStep::OpenUrl { url } => LoginCard {
             url: Some(url.clone()),
-            actions: vec![CardAction::UseCode],
+            actions: (login.browser == AgentLoginBrowser::Local
+                && supports_code_flow(login.provider))
+            .then_some(CardAction::UseCode)
+            .into_iter()
+            .collect(),
             ..working(format!("{sign_in} in your browser"))
         },
         AgentLoginStep::PasteCode { url } => LoginCard {
@@ -277,14 +298,24 @@ pub fn card(login: &AgentLogin) -> Option<LoginCard> {
             code: Some(code.clone()),
             ..working(sign_in)
         },
-        AgentLoginStep::Failed(failure) => LoginCard {
-            title: format!("Couldn\u{2019}t sign in to {service}"),
-            glyph: CardGlyph::Failed,
-            detail: Some(failure_line(failure, login.provider)),
-            actions: vec![CardAction::Terminal, CardAction::Retry],
-            close: CardClose::Dismiss,
-            ..working(String::new())
-        },
+        AgentLoginStep::Failed(failure) => {
+            let mut actions = Vec::new();
+            if login.browser == AgentLoginBrowser::Local
+                && supports_code_flow(login.provider)
+                && !matches!(failure, AgentLoginFailure::NotInstalled)
+            {
+                actions.push(CardAction::UseCode);
+            }
+            actions.push(CardAction::Retry);
+            LoginCard {
+                title: format!("Couldn\u{2019}t sign in to {service}"),
+                glyph: CardGlyph::Failed,
+                detail: Some(failure_line(failure, login.provider)),
+                actions,
+                close: CardClose::Dismiss,
+                ..working(String::new())
+            }
+        }
         AgentLoginStep::Done {
             email,
             pane: Some(AgentLoginPane::Busy),
@@ -415,7 +446,7 @@ mod tests {
     }
 
     #[test]
-    fn retry_and_the_terminal_keep_the_account_and_a_code_goes_only_into_its_own_message() {
+    fn retry_keeps_the_account_and_a_code_goes_only_into_its_own_message() {
         let failed = login(AgentLoginStep::Failed(AgentLoginFailure::TimedOut));
         let listed = [AgentAccount {
             provider: AgentProvider::Codex,
@@ -438,7 +469,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            args(&in_terminal(&failed, &listed)),
+            args(&retry(&failed, &listed, AgentLoginBrowser::Elsewhere)),
             [
                 "agent-accounts",
                 "--add",
@@ -448,8 +479,7 @@ mod tests {
                 "--pane",
                 "%4",
                 "--browser",
-                "elsewhere",
-                "--terminal"
+                "elsewhere"
             ]
         );
         assert_eq!(submit_code(&failed, "abc"), None);
@@ -464,6 +494,46 @@ mod tests {
             }))
         );
         assert_eq!(submit_code(&paste, "   "), None);
+    }
+
+    #[test]
+    fn card_actions_stay_in_gui_and_offer_code_only_where_supported() {
+        let cursor = AgentLogin {
+            id: 1,
+            provider: AgentProvider::Cursor,
+            account: None,
+            pane: None,
+            browser: AgentLoginBrowser::Local,
+            step: AgentLoginStep::OpenUrl {
+                url: "https://cursor.com/loginDeepControl".to_owned(),
+            },
+        };
+        assert_eq!(card(&cursor).unwrap().actions, []);
+
+        let grok = AgentLogin {
+            provider: AgentProvider::Grok,
+            ..cursor.clone()
+        };
+        assert_eq!(card(&grok).unwrap().actions, [CardAction::UseCode]);
+
+        let failed_local = AgentLogin {
+            step: AgentLoginStep::Failed(AgentLoginFailure::TimedOut),
+            ..grok
+        };
+        assert_eq!(
+            card(&failed_local).unwrap().actions,
+            [CardAction::UseCode, CardAction::Retry]
+        );
+
+        let failed_cursor = AgentLogin {
+            step: AgentLoginStep::Failed(AgentLoginFailure::TimedOut),
+            ..cursor
+        };
+        assert_eq!(card(&failed_cursor).unwrap().actions, [CardAction::Retry]);
+
+        assert!(is_signed_out_error("Grok is signed out."));
+        assert!(is_signed_out_error("Authentication required"));
+        assert!(!is_signed_out_error("Connection timed out"));
     }
 
     #[test]

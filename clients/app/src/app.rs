@@ -155,6 +155,10 @@ pub struct AppShell {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fleet_watch: Vec<Subscription>,
     agent_setup: Vec<(ala::WeakEntity<Connection>, Subscription)>,
+    provider_login_codes: std::collections::BTreeMap<
+        (ala::EntityId, zz_protocol::AgentProvider),
+        zz_ui::agent::login::CodeField,
+    >,
     host_ids: compact::HostIds,
     roster: Entity<Roster>,
     connection_status: String,
@@ -554,6 +558,7 @@ impl AppShell {
             #[cfg(any(target_os = "ios", target_os = "android"))]
             fleet_watch: vec![host_notices],
             agent_setup: Vec::new(),
+            provider_login_codes: std::collections::BTreeMap::new(),
             host_ids: compact::HostIds::default(),
             roster,
             connection_status: String::new(),

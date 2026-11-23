@@ -1209,6 +1209,7 @@ impl Connection {
         if self.connected && (force || !self.providers_requested) {
             self.providers_requested = true;
             self.command("providers", Vec::new(), cx);
+            self.request_agent_accounts(cx);
         }
     }
 
@@ -1272,6 +1273,31 @@ impl Connection {
             self.core.capabilities(),
         );
         self.invoke(command, cx);
+    }
+
+    pub fn start_provider_login(
+        &mut self,
+        provider: zz_protocol::AgentProvider,
+        account: zz_client::agent_login::LoginAccount<'_>,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.connected || self.core.attached_read_only() || !self.signs_in() {
+            return;
+        }
+        let command = zz_client::agent_login::start(
+            provider,
+            account,
+            None,
+            zz_protocol::AgentLoginBrowser::Elsewhere,
+        );
+        self.invoke(command, cx);
+    }
+
+    pub fn provider_login(
+        &self,
+        provider: zz_protocol::AgentProvider,
+    ) -> Option<&zz_protocol::AgentLogin> {
+        zz_client::agent_login::for_provider(self.core.agent_logins(), provider)
     }
 
     pub fn dismiss_agent_login(&mut self, login: u64, cx: &mut Context<Self>) {

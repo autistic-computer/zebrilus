@@ -14,7 +14,7 @@ use crate::agent::{
 
 pub(crate) const DIALECT: Dialect = Dialect {
     effort_option: "reasoning_effort",
-    signed_out: "Grok is signed out. Sign in by running `grok login` in a terminal.",
+    signed_out: "Grok is signed out.",
     stored_title,
     sign_in: None,
     model_name: None,
@@ -46,7 +46,7 @@ pub(crate) fn home() -> Option<PathBuf> {
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".grok")))
 }
 
-fn credit_usage(billing: &Value) -> Option<QuotaWindows> {
+pub(crate) fn credit_usage(billing: &Value) -> Option<QuotaWindows> {
     let config = &billing["config"];
     let window = QuotaWindow {
         used: (config["creditUsagePercent"].as_f64()? / 100.0) as f32,

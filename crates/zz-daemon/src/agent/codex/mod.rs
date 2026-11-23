@@ -821,7 +821,7 @@ impl Runtime {
             RuntimeCommand::Verb { prompt } => self.verb(prompt).await,
             RuntimeCommand::Authenticate { .. } => {
                 self.emit(AgentStreamPayload::AuthenticationFailed {
-                    message: "Codex signs in with `codex login` in a terminal".to_owned(),
+                    message: "Codex is signed out.".to_owned(),
                 })
                 .await
             }

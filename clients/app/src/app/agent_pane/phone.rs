@@ -749,7 +749,37 @@ impl AgentPane {
             ));
         }
         prefix.extend(self.shown_error(state).map(|(error, failed)| {
-            zz_ui::agent::presentation::phone_error_card(error, failed, self.ground, cx)
+            let read = self.connection.read(cx);
+            if self.login.is_none()
+                && zz_client::agent_login::is_signed_out_error(error)
+                && writable
+                && read.signs_in()
+                && let Some(provider) = self.provider(cx)
+            {
+                let connection = self.connection.clone();
+                let pane = self.pane;
+                let account =
+                    agent_settings::pane_account(read.core.snapshot(), pane).map(str::to_owned);
+                zz_ui::agent::presentation::phone_error_card_sign_in(
+                    ("phone-agent-error-sign-in", pane.0),
+                    error,
+                    failed,
+                    self.ground,
+                    move |_, cx| {
+                        connection.update(cx, |connection, cx| {
+                            connection.start_agent_login(
+                                provider,
+                                LoginAccount::of(account.as_deref()),
+                                pane,
+                                cx,
+                            );
+                        });
+                    },
+                    cx,
+                )
+            } else {
+                zz_ui::agent::presentation::phone_error_card(error, failed, self.ground, cx)
+            }
         }));
         let prompting = other.is_none() && card.is_none();
         if prompting {

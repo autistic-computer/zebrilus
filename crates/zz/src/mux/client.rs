@@ -3276,6 +3276,7 @@ impl MuxClient {
                 host,
                 CommandInvocation::new("providers", Vec::<String>::new()),
             );
+            self.request_agent_accounts(host);
         }
     }
 
@@ -3336,12 +3337,38 @@ impl MuxClient {
         self.execute_on_host(host, command);
     }
 
+    pub(crate) fn start_provider_login(
+        &self,
+        host: HostId,
+        provider: zz_protocol::AgentProvider,
+        account: zz_client::agent_login::LoginAccount<'_>,
+    ) {
+        if !self.host_signs_in(host) {
+            return;
+        }
+        let command = zz_client::agent_login::start(
+            provider,
+            account,
+            None,
+            zz_client::agent_login::browser(host == HostId::LOCAL),
+        );
+        self.execute_on_host(host, command);
+    }
+
     pub(crate) fn host_agent_login(
         &self,
         host: HostId,
         pane: PaneId,
     ) -> Option<&zz_protocol::AgentLogin> {
         zz_client::agent_login::for_pane(&self.connections.get(&host)?.agent_logins, pane)
+    }
+
+    pub(crate) fn host_provider_login(
+        &self,
+        host: HostId,
+        provider: zz_protocol::AgentProvider,
+    ) -> Option<&zz_protocol::AgentLogin> {
+        zz_client::agent_login::for_provider(&self.connections.get(&host)?.agent_logins, provider)
     }
 
     pub(crate) fn dismiss_agent_login(&mut self, host: HostId, login: u64) {
@@ -3376,8 +3403,10 @@ impl MuxClient {
         };
         let open = match &login.step {
             zz_protocol::AgentLoginStep::OpenUrl { url }
+            | zz_protocol::AgentLoginStep::PasteCode { url }
                 if host == HostId::LOCAL
                     && login.browser == zz_protocol::AgentLoginBrowser::Local
+                    && login.provider != zz_protocol::AgentProvider::Grok
                     && connection.opened_logins.insert(login.id) =>
             {
                 Some(url.clone())

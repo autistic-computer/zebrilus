@@ -17,6 +17,7 @@ use super::accounts::{AccountChoice, AddAccount};
 use crate::agent::login::{Ctx, Effect, Fact, LoginMachine, LoginState, PaneCondition, Prompt};
 
 const STDERR_LINES: usize = 3;
+const EXIT_WAIT: Duration = Duration::from_secs(2);
 const CLAUDE_INITIALIZE: &str = "zz-login-1";
 const CLAUDE_AUTHENTICATE: &str = "zz-login-2";
 const CLAUDE_COMPLETE: &str = "zz-login-3";
@@ -40,6 +41,7 @@ enum Input {
     Cancel,
     Restart(AgentLoginBrowser),
     Line { generation: u64, line: Value },
+    Text { generation: u64, line: String },
     Closed { generation: u64 },
 }
 
@@ -290,10 +292,14 @@ impl Driver {
                     .as_mut()
                     .filter(|cli| cli.generation == generation)
                     .and_then(|cli| cli.read(&line)),
+                Ok(Input::Text { generation, line }) => cli
+                    .as_mut()
+                    .filter(|cli| cli.generation == generation)
+                    .and_then(|cli| cli.read_text(&line)),
                 Ok(Input::Closed { generation }) => cli
                     .as_mut()
                     .filter(|cli| cli.generation == generation)
-                    .map(|cli| Fact::Failed(cli.closed())),
+                    .map(Cli::closed),
             };
             pending.extend(fact);
             if self.shared.strong_count() == 0 {
@@ -426,6 +432,7 @@ struct Cli {
     stderr: Arc<Mutex<VecDeque<String>>>,
     login: Option<String>,
     state: Option<String>,
+    device_url: Option<String>,
 }
 
 impl Cli {
@@ -440,6 +447,7 @@ impl Cli {
 
         let mut command = Command::new(&account.program);
         providers::prepare(&mut command, account.search.as_ref(), None);
+        command.env_remove("NONINTERACTIVE");
         for name in crate::PARENT_CLAUDE_SESSION_ENVIRONMENT
             .iter()
             .chain(&["ZZ_PANE", "ZZ_SESSION", "TMUX", "TMUX_PANE"])
@@ -450,77 +458,136 @@ impl Cli {
         if let Some(home) = &account.home {
             accounts::run_on(&mut command, provider, home);
         }
-        match provider {
-            AgentProvider::ClaudeCode => command.args([
-                "-p",
-                "--output-format",
-                "stream-json",
-                "--input-format",
-                "stream-json",
-                "--verbose",
-                "--strict-mcp-config",
-                "--no-session-persistence",
-            ]),
-            AgentProvider::Codex => command.arg("app-server"),
+        let text_mode = match provider {
+            AgentProvider::ClaudeCode => {
+                command.args([
+                    "-p",
+                    "--output-format",
+                    "stream-json",
+                    "--input-format",
+                    "stream-json",
+                    "--verbose",
+                    "--strict-mcp-config",
+                    "--no-session-persistence",
+                ]);
+                false
+            }
+            AgentProvider::Codex => {
+                command.arg("app-server");
+                false
+            }
             AgentProvider::Antigravity => {
-                return Err("Sign in to Antigravity by running agy in a terminal.".to_owned());
+                command.args(["acp", "--login"]).env("NO_BROWSER", "1");
+                true
             }
             AgentProvider::Grok => {
-                return Err("Sign in to Grok by running grok login in a terminal.".to_owned());
+                let flag = match browser {
+                    AgentLoginBrowser::Local => "--oauth",
+                    AgentLoginBrowser::Elsewhere => "--device-auth",
+                };
+                command.args(["login", flag]);
+                true
             }
             AgentProvider::Cursor => {
-                return Err(
-                    "Sign in to Cursor by running cursor-agent login in a terminal.".to_owned(),
-                );
+                command
+                    .arg("login")
+                    .env("NO_OPEN_BROWSER", "1")
+                    .env("CURSOR_AGENT_CLI_ASSUME_SSH", "0");
+                true
             }
         };
-        command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let mut child = command.spawn_unmasked().map_err(|error| {
-            format!("Could not run {}: {error}", command.get_program().display())
-        })?;
-        let (Some(stdin), Some(stdout), Some(stderr)) =
-            (child.stdin.take(), child.stdout.take(), child.stderr.take())
-        else {
-            providers::kill_group(&mut child);
-            return Err(format!("{} gave no pipes", provider.label()));
-        };
-        let lines = outbox.clone();
-        let read = thread::Builder::new()
-            .name("zz-agent-login-out".to_owned())
-            .spawn(move || {
-                for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                    if let Ok(line) = serde_json::from_str::<Value>(&line)
-                        && lines.send(Input::Line { generation, line }).is_err()
-                    {
-                        return;
-                    }
-                }
-                let _ = lines.send(Input::Closed { generation });
-            });
         let tail = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_LINES)));
-        let errors = Arc::clone(&tail);
-        let errs = thread::Builder::new()
-            .name("zz-agent-login-err".to_owned())
-            .spawn(move || {
-                for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-                    let line = providers::bounded(line.trim());
-                    if line.is_empty() {
-                        continue;
+        let (child, stdin) = if text_mode {
+            let (reader, writer) = std::io::pipe().map_err(|error| error.to_string())?;
+            let writer_err = writer.try_clone().map_err(|error| error.to_string())?;
+            command
+                .stdin(Stdio::piped())
+                .stdout(writer)
+                .stderr(writer_err);
+            let mut child = command.spawn_unmasked().map_err(|error| {
+                format!("Could not run {}: {error}", command.get_program().display())
+            })?;
+            drop(command);
+            let Some(stdin) = child.stdin.take() else {
+                providers::kill_group(&mut child);
+                return Err(format!("{} gave no stdin", provider.label()));
+            };
+            let lines = outbox.clone();
+            let errors = Arc::clone(&tail);
+            let read = thread::Builder::new()
+                .name("zz-agent-login-out".to_owned())
+                .spawn(move || {
+                    let mut reader = BufReader::new(reader);
+                    let mut buffer = Vec::new();
+                    loop {
+                        buffer.clear();
+                        match reader.read_until(b'\n', &mut buffer) {
+                            Ok(0) | Err(_) => break,
+                            Ok(_) => {
+                                for part in String::from_utf8_lossy(&buffer).split('\r') {
+                                    let line = providers::plain(part);
+                                    if line.is_empty() {
+                                        continue;
+                                    }
+                                    push_tail(&errors, providers::bounded(&line));
+                                    if lines.send(Input::Text { generation, line }).is_err() {
+                                        return;
+                                    }
+                                }
+                            }
+                        }
                     }
-                    let mut tail = errors.lock();
-                    if tail.len() == STDERR_LINES {
-                        tail.pop_front();
+                    let _ = lines.send(Input::Closed { generation });
+                });
+            if let Err(error) = read {
+                providers::kill_group(&mut child);
+                return Err(error.to_string());
+            }
+            (child, stdin)
+        } else {
+            command
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            let mut child = command.spawn_unmasked().map_err(|error| {
+                format!("Could not run {}: {error}", command.get_program().display())
+            })?;
+            let (Some(stdin), Some(stdout), Some(stderr)) =
+                (child.stdin.take(), child.stdout.take(), child.stderr.take())
+            else {
+                providers::kill_group(&mut child);
+                return Err(format!("{} gave no pipes", provider.label()));
+            };
+            let lines = outbox.clone();
+            let read = thread::Builder::new()
+                .name("zz-agent-login-out".to_owned())
+                .spawn(move || {
+                    for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                        if let Ok(line) = serde_json::from_str::<Value>(&line)
+                            && lines.send(Input::Line { generation, line }).is_err()
+                        {
+                            return;
+                        }
                     }
-                    tail.push_back(line);
-                }
-            });
-        if let Err(error) = read.and(errs) {
-            providers::kill_group(&mut child);
-            return Err(error.to_string());
-        }
+                    let _ = lines.send(Input::Closed { generation });
+                });
+            let errors = Arc::clone(&tail);
+            let errs = thread::Builder::new()
+                .name("zz-agent-login-err".to_owned())
+                .spawn(move || {
+                    for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                        let line = providers::bounded(line.trim());
+                        if !line.is_empty() {
+                            push_tail(&errors, line);
+                        }
+                    }
+                });
+            if let Err(error) = read.and(errs) {
+                providers::kill_group(&mut child);
+                return Err(error.to_string());
+            }
+            (child, stdin)
+        };
         let mut cli = Self {
             provider,
             browser,
@@ -529,35 +596,83 @@ impl Cli {
             stderr: tail,
             login: None,
             state: None,
+            device_url: None,
         };
-        let first = match provider {
-            AgentProvider::ClaudeCode => {
-                claude_request(CLAUDE_INITIALIZE, &json!({ "subtype": "initialize" }))
+        if !text_mode {
+            let first = match provider {
+                AgentProvider::ClaudeCode => {
+                    claude_request(CLAUDE_INITIALIZE, &json!({ "subtype": "initialize" }))
+                }
+                AgentProvider::Codex => json!({
+                    "id": CODEX_INITIALIZE,
+                    "method": "initialize",
+                    "params": { "clientInfo": { "name": "zz", "version": env!("CARGO_PKG_VERSION") } },
+                }),
+                AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => {
+                    Value::Null
+                }
+            };
+            if let Err(error) = cli.send(&first) {
+                cli.stop();
+                return Err(error);
             }
-            AgentProvider::Codex => json!({
-                "id": CODEX_INITIALIZE,
-                "method": "initialize",
-                "params": { "clientInfo": { "name": "zz", "version": env!("CARGO_PKG_VERSION") } },
-            }),
-            AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor => Value::Null,
-        };
-        if let Err(error) = cli.send(&first) {
-            cli.stop();
-            return Err(error);
         }
         Ok(cli)
     }
 
     fn send(&mut self, message: &Value) -> Result<(), String> {
+        let mut line = message.to_string();
+        line.push('\n');
+        self.write_line(&line)
+    }
+
+    fn write_line(&mut self, line: &str) -> Result<(), String> {
         let Some((_, stdin)) = self.process.as_mut() else {
             return Err(format!("{} is not running", self.provider.label()));
         };
-        let mut line = message.to_string();
-        line.push('\n');
         stdin
             .write_all(line.as_bytes())
             .and_then(|()| stdin.flush())
             .map_err(|error| format!("could not write to {}: {error}", self.provider.label()))
+    }
+
+    fn read_text(&mut self, line: &str) -> Option<Fact> {
+        match self.provider {
+            AgentProvider::Antigravity => {
+                let url = extract_url(line)?;
+                Some(Fact::Prompted(Prompt::PasteCode { url }))
+            }
+            AgentProvider::Cursor => {
+                let url = extract_url(line)?;
+                Some(Fact::Prompted(Prompt::Browser { url }))
+            }
+            AgentProvider::Grok => match self.browser {
+                AgentLoginBrowser::Local => {
+                    let url = extract_url(line)?;
+                    Some(Fact::Prompted(Prompt::Browser { url }))
+                }
+                AgentLoginBrowser::Elsewhere => {
+                    if let Some(url) = extract_url(line) {
+                        if let Some(code) = query_value(&url, "user_code").filter(|c| !c.is_empty())
+                        {
+                            return Some(Fact::Prompted(Prompt::DeviceCode {
+                                code: code.to_owned(),
+                                url,
+                            }));
+                        }
+                        self.device_url = Some(url);
+                        return None;
+                    }
+                    let url = self.device_url.as_ref()?;
+                    let code = extract_device_code(line)?;
+                    Some(Fact::Prompted(Prompt::DeviceCode {
+                        url: url.clone(),
+                        code,
+                    }))
+                }
+            },
+            AgentProvider::ClaudeCode | AgentProvider::Codex => None,
+        }
     }
 
     fn read(&mut self, line: &Value) -> Option<Fact> {
@@ -629,19 +744,28 @@ impl Cli {
     }
 
     fn send_code(&mut self, code: &AgentLoginCode) -> Result<(), String> {
-        let (authorization, state) = match code.expose().split_once('#') {
-            Some((authorization, state)) => (authorization, Some(state)),
-            None => (code.expose(), self.state.as_deref()),
-        };
-        let request = claude_request(
-            CLAUDE_COMPLETE,
-            &json!({
-                "subtype": "claude_oauth_callback",
-                "authorizationCode": authorization,
-                "state": state,
-            }),
-        );
-        self.send(&request)
+        match self.provider {
+            AgentProvider::ClaudeCode => {
+                let (authorization, state) = match code.expose().split_once('#') {
+                    Some((authorization, state)) => (authorization, Some(state)),
+                    None => (code.expose(), self.state.as_deref()),
+                };
+                let request = claude_request(
+                    CLAUDE_COMPLETE,
+                    &json!({
+                        "subtype": "claude_oauth_callback",
+                        "authorizationCode": authorization,
+                        "state": state,
+                    }),
+                );
+                self.send(&request)
+            }
+            AgentProvider::Antigravity => self.write_line(&format!("{}\n", code.expose())),
+            AgentProvider::Codex | AgentProvider::Grok | AgentProvider::Cursor => Err(format!(
+                "{} does not take a pasted code",
+                self.provider.label()
+            )),
+        }
     }
 
     fn read_codex(&mut self, line: &Value) -> Result<Option<Fact>, String> {
@@ -702,19 +826,34 @@ impl Cli {
         Ok(Some(Fact::Prompted(prompt)))
     }
 
-    fn closed(&mut self) -> AgentLoginFailure {
-        if let Some((mut child, _)) = self.process.take() {
+    fn closed(&mut self) -> Fact {
+        let text_mode = matches!(
+            self.provider,
+            AgentProvider::Antigravity | AgentProvider::Grok | AgentProvider::Cursor
+        );
+        if let Some((mut child, stdin)) = self.process.take() {
+            drop(stdin);
+            if text_mode {
+                let deadline = Instant::now() + EXIT_WAIT;
+                while Instant::now() < deadline {
+                    match child.try_wait() {
+                        Ok(Some(status)) if status.success() => return Fact::SignedIn,
+                        Ok(Some(_)) | Err(_) => break,
+                        Ok(None) => thread::sleep(Duration::from_millis(20)),
+                    }
+                }
+            }
             providers::kill_group(&mut child);
         }
         let tail = Vec::from(std::mem::take(&mut *self.stderr.lock())).join("\n");
-        AgentLoginFailure::Cli(if tail.is_empty() {
+        Fact::Failed(AgentLoginFailure::Cli(if tail.is_empty() {
             format!(
                 "{} quit before the sign-in finished.",
                 self.provider.label()
             )
         } else {
             tail
-        })
+        }))
     }
 
     fn stop(&mut self) {
@@ -744,6 +883,31 @@ fn codex_failure(error: &str) -> AgentLoginFailure {
     } else {
         AgentLoginFailure::Cli(providers::bounded(error))
     }
+}
+
+fn push_tail(tail: &Mutex<VecDeque<String>>, line: String) {
+    let mut tail = tail.lock();
+    if tail.len() == STDERR_LINES {
+        tail.pop_front();
+    }
+    tail.push_back(line);
+}
+
+fn extract_url(line: &str) -> Option<String> {
+    let start = line.find("https://").or_else(|| line.find("http://"))?;
+    let token = line[start..].split_whitespace().next()?;
+    let trimmed = token.trim_end_matches(['.', ',', ')', ']', '>', '"', '\'']);
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+fn extract_device_code(line: &str) -> Option<String> {
+    let token = line.trim();
+    let valid = (4..=20).contains(&token.len())
+        && token.contains('-')
+        && token
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'-');
+    valid.then(|| token.to_owned())
 }
 
 fn query_value<'url>(url: &'url str, key: &str) -> Option<&'url str> {
@@ -965,6 +1129,263 @@ done
                 .list
                 .iter()
                 .any(|list| format!("{list:?}").contains(CODE))
+        );
+        assert!(shared.agent_logins.lock().running.is_empty());
+    }
+
+    #[test]
+    fn text_cli_logins_drive_antigravity_grok_and_cursor() {
+        const AGY: &str = r#"
+printf '%s\n' "$*" >> "$LOG/agy.args"
+if [ "$2" = --login ]; then
+  printf 'Open this link in a browser to log in with Google:\n\n  https://accounts.google.example/o/oauth2/auth?state=agy-1\n\nThen paste the authorization code:\n'
+  IFS= read -r pasted
+  printf '%s\n' "$pasted" >> "$LOG/agy.in"
+  exit 0
+fi
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"initialize"'*) printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1}}' ;;
+    *'"method":"session/list"'*) printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"sessions":[]}}' ; exit 0 ;;
+  esac
+done
+"#;
+        const GROK: &str = r#"
+printf '%s\n' "$*" >> "$LOG/grok.args"
+if [ "$1" = login ]; then
+  if [ "$2" = --device-auth ]; then
+    printf 'To sign in, open this URL in your browser:\n\n  https://accounts.x.ai/oauth2/device?user_code=HV6P-88JE\n\nConfirm this code in your browser:\n\n  HV6P-88JE\n' >&2
+  else
+    printf 'Signing in with Grok...\n\nOpen this URL to sign in:\n  https://auth.x.ai/oauth2/authorize?state=g-1\n' >&2
+  fi
+  sleep 0.2
+  exit 0
+fi
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"initialize"'*) printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1}}' ;;
+    *'"method":"_x.ai/billing"'*) printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"subscription_tier":"SuperGrok Plus","config":{"creditUsagePercent":25.0,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2026-11-28T00:00:00Z"}}}}' ; exit 0 ;;
+  esac
+done
+"#;
+        const CURSOR: &str = r#"
+printf '%s\n' "$*" >> "$LOG/cursor.args"
+if [ "$1" = status ]; then
+  printf 'Tip: You can start the Cursor CLI with `agent`.\n{"status":"authenticated","isAuthenticated":true,"userInfo":{"email":"me@example.com"}}\n'
+  exit 0
+fi
+printf 'Open a browser and navigate to this link: https://cursor.example/loginDeepControl?uuid=c-1\n'
+sleep 0.2
+exit 0
+"#;
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        let log = dir.path().join("log");
+        fs::create_dir_all(&bin).unwrap();
+        fs::create_dir_all(&log).unwrap();
+        script(&bin.join("agy"), &log, AGY);
+        script(&bin.join("grok"), &log, GROK);
+        script(&bin.join("cursor-agent"), &log, CURSOR);
+        for tool in ["sh", "sleep"] {
+            let source = ["/bin", "/usr/bin"]
+                .iter()
+                .map(|root| Path::new(root).join(tool))
+                .find(|path| path.exists())
+                .unwrap();
+            std::os::unix::fs::symlink(source, bin.join(tool)).unwrap();
+        }
+        let shared = Arc::new(Shared::new(1));
+        shared.providers.lock().search = Some(bin.clone().into_os_string());
+        shared.agent_accounts.lock().list = Some(Vec::new());
+        let mailbox = OutboundMailbox::new();
+        mailbox.accept_client_capabilities(&[AGENT_LOGIN_CAPABILITY.to_owned()]);
+        let (client, _) =
+            shared.register_subscribed(ClientKind::Interactive, None, None, Arc::clone(&mailbox));
+        let start = |provider: &str, browser: &str| {
+            shared
+                .execute(
+                    client,
+                    ClientKind::Interactive,
+                    &mut ExecutionContext::default(),
+                    &CommandInvocation::new(
+                        "agent-accounts",
+                        ["--add", provider, "--browser", browser],
+                    ),
+                )
+                .unwrap();
+        };
+        let login = |id, provider, browser, step| AgentLogin {
+            id,
+            provider,
+            account: None,
+            pane: None,
+            browser,
+            step,
+        };
+        let mut seen = Vec::new();
+
+        start("agy", "local");
+        assert_eq!(
+            steps(&mailbox, &mut seen),
+            [
+                login(
+                    1,
+                    AgentProvider::Antigravity,
+                    AgentLoginBrowser::Local,
+                    AgentLoginStep::Starting
+                ),
+                login(
+                    1,
+                    AgentProvider::Antigravity,
+                    AgentLoginBrowser::Local,
+                    AgentLoginStep::PasteCode {
+                        url: "https://accounts.google.example/o/oauth2/auth?state=agy-1".to_owned(),
+                    }
+                ),
+            ]
+        );
+        shared.agent_login_request(AgentLoginRequest::Code {
+            login: 1,
+            code: AgentLoginCode::new(CODE).unwrap(),
+        });
+        assert_eq!(
+            steps(&mailbox, &mut seen),
+            [
+                login(
+                    1,
+                    AgentProvider::Antigravity,
+                    AgentLoginBrowser::Local,
+                    AgentLoginStep::Verifying
+                ),
+                login(
+                    1,
+                    AgentProvider::Antigravity,
+                    AgentLoginBrowser::Local,
+                    AgentLoginStep::Done {
+                        email: None,
+                        organization: None,
+                        plan: None,
+                        pane: None,
+                    }
+                ),
+            ]
+        );
+        assert_eq!(fs::read_to_string(log.join("agy.in")).unwrap().trim(), CODE);
+        assert!(!format!("{seen:?}").contains(CODE));
+
+        start("grok", "elsewhere");
+        assert_eq!(
+            steps(&mailbox, &mut seen),
+            [
+                login(
+                    2,
+                    AgentProvider::Grok,
+                    AgentLoginBrowser::Elsewhere,
+                    AgentLoginStep::Starting
+                ),
+                login(
+                    2,
+                    AgentProvider::Grok,
+                    AgentLoginBrowser::Elsewhere,
+                    AgentLoginStep::DeviceCode {
+                        url: "https://accounts.x.ai/oauth2/device?user_code=HV6P-88JE".to_owned(),
+                        code: "HV6P-88JE".to_owned(),
+                    }
+                ),
+                login(
+                    2,
+                    AgentProvider::Grok,
+                    AgentLoginBrowser::Elsewhere,
+                    AgentLoginStep::Verifying
+                ),
+                login(
+                    2,
+                    AgentProvider::Grok,
+                    AgentLoginBrowser::Elsewhere,
+                    AgentLoginStep::Done {
+                        email: None,
+                        organization: None,
+                        plan: Some("SuperGrok Plus".to_owned()),
+                        pane: None,
+                    }
+                ),
+            ]
+        );
+
+        start("grok", "local");
+        assert_eq!(
+            steps(&mailbox, &mut seen),
+            [
+                login(
+                    3,
+                    AgentProvider::Grok,
+                    AgentLoginBrowser::Local,
+                    AgentLoginStep::Starting
+                ),
+                login(
+                    3,
+                    AgentProvider::Grok,
+                    AgentLoginBrowser::Local,
+                    AgentLoginStep::OpenUrl {
+                        url: "https://auth.x.ai/oauth2/authorize?state=g-1".to_owned(),
+                    }
+                ),
+                login(
+                    3,
+                    AgentProvider::Grok,
+                    AgentLoginBrowser::Local,
+                    AgentLoginStep::Verifying
+                ),
+                login(
+                    3,
+                    AgentProvider::Grok,
+                    AgentLoginBrowser::Local,
+                    AgentLoginStep::Done {
+                        email: None,
+                        organization: None,
+                        plan: Some("SuperGrok Plus".to_owned()),
+                        pane: None,
+                    }
+                ),
+            ]
+        );
+
+        start("cursor", "elsewhere");
+        assert_eq!(
+            steps(&mailbox, &mut seen),
+            [
+                login(
+                    4,
+                    AgentProvider::Cursor,
+                    AgentLoginBrowser::Elsewhere,
+                    AgentLoginStep::Starting
+                ),
+                login(
+                    4,
+                    AgentProvider::Cursor,
+                    AgentLoginBrowser::Elsewhere,
+                    AgentLoginStep::OpenUrl {
+                        url: "https://cursor.example/loginDeepControl?uuid=c-1".to_owned(),
+                    }
+                ),
+                login(
+                    4,
+                    AgentProvider::Cursor,
+                    AgentLoginBrowser::Elsewhere,
+                    AgentLoginStep::Verifying
+                ),
+                login(
+                    4,
+                    AgentProvider::Cursor,
+                    AgentLoginBrowser::Elsewhere,
+                    AgentLoginStep::Done {
+                        email: Some("me@example.com".to_owned()),
+                        organization: None,
+                        plan: None,
+                        pane: None,
+                    }
+                ),
+            ]
         );
         assert!(shared.agent_logins.lock().running.is_empty());
     }

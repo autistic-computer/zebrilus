@@ -235,6 +235,7 @@ Driver: `agent/agy.rs` on the shared ACP runtime (`dialect.rs`, `runtime.rs`).
 | Mode ids `default`, `accept-edits`, `auto`, `plan` | `agent_settings.rs` | Wrong risk badge on the mode | None |
 | The TUI keeps `…/conversations/<uuid>.db` open | `cli_session.rs` | Flip from the TUI opens a fresh chat | Test |
 | The signed-out error starts with `Authentication required` | `dialect.rs` | The raw error shows instead of the sign-in hint. Not confirmed that agy sends this text | Grok-shaped test |
+| `agy acp` `session/list` answers `-32000` (`Authentication required`) when signed out and a result when signed in; `agy acp --login` with `NO_BROWSER=1` prints the Google OAuth URL on stdout, reads the pasted code or redirect URL on stdin, and exits 0 on success | `daemon/accounts.rs`, `daemon/agent_login.rs` | Account status reads signed out or login stops parsing the link | Fake CLI test; checked on 1.5.14 |
 | The latest release is `version` in `<updater>/manifests/<os>_<arch>.json` (`darwin`, `linux`, `windows`; `amd64`, `arm64`), the manifest agy's updater and install script read | `daemon/providers.rs` | Settings shows the installed version with no check and no Update | Test |
 
 ## Grok Build
@@ -249,6 +250,7 @@ Driver: `agent/grok.rs` on the shared ACP runtime.
 | `$GROK_HOME/sessions/*/<uuid>/summary.json` keys `generated_title`, `session_summary`, `current_model_id`, `reasoning_effort` | `grok.rs`, `cli_session.rs` | Untitled resumed chats; flip opens on the wrong model | None |
 | `$GROK_HOME/active_sessions.json`, an array of `{session_id, pid}` | `cli_session.rs` | Flip from the TUI opens a fresh chat | Test |
 | The signed-out error starts with `Authentication required` | `dialect.rs` | Raw error instead of the sign-in hint | Test |
+| `grok agent stdio` `_x.ai/billing` answers `-32000` (`Authentication required`) when signed out and `subscription_tier` + `config` when signed in; `grok login --oauth` prints the OAuth URL on stderr and opens the browser itself; `grok login --device-auth` prints the device URL (`?user_code=…`) and code on stderr and exits 0 on success | `daemon/accounts.rs`, `daemon/agent_login.rs` | Account status reads signed out or login stops parsing the link or device code | Fake CLI test; checked on 1.0.92 |
 | `grok update --check --json` prints `latestVersion` | `daemon/providers.rs` | Settings shows the installed version with no check and no Update | Test |
 
 ## Cursor
@@ -263,6 +265,7 @@ Driver: `agent/cursor.rs` on the shared ACP runtime. Cursor has no flip.
 | `~/.cursor/acp-sessions/<id>/meta.json` key `title` | `cursor.rs` | Untitled resumed chats | None |
 | `cursor/ask_question` and `cursor/create_plan` get "method not found" | `runtime.rs` | Unknown: what Cursor does then has not been seen | None |
 | `cursor-agent about --format json` prints `latestVersion` | `daemon/providers.rs` | Settings shows the installed version with no check and no Update | Test |
+| `cursor-agent status --format json` (with `CURSOR_AGENT_CLI_ASSUME_SSH=0`, optionally preceded by a tip line before `{`) prints `isAuthenticated` and `userInfo.email`; `cursor-agent login` with `NO_OPEN_BROWSER=1` and `CURSOR_AGENT_CLI_ASSUME_SSH=0` prints the `loginDeepControl` URL and exits 0 on success | `daemon/accounts.rs`, `daemon/agent_login.rs` | Account status reads signed out or login stops parsing the link | Fake CLI test; checked on 2026.11.19 |
 | `CURSOR_AGENT_CLI_ASSUME_SSH=0` skips the keychain probe every command runs first when `SSH_CONNECTION`, `SSH_CLIENT` or `SSH_TTY` is set | `daemon/providers.rs` | From a daemon started over ssh with the keychain locked, the version, the latest check and Update all exit 1 with "Your macOS login keychain is locked" | Test fakes the probe |
 
 ## Every ACP provider

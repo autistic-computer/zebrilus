@@ -124,6 +124,7 @@ pub(crate) struct SettingsView {
     terminal_config_editor: Option<ConfigFileEditor>,
     terminal_preview: Option<Entity<terminal_preview::TerminalPreview>>,
     hosts_state: Option<HostsSectionState>,
+    login_codes: BTreeMap<(HostId, zz_protocol::AgentProvider), zz_ui::agent::login::CodeField>,
     section: SettingsSection,
     focus_handle: FocusHandle,
     _subscriptions: Vec<Subscription>,
@@ -253,6 +254,7 @@ impl SettingsView {
             terminal_config_editor: None,
             terminal_preview: None,
             hosts_state: None,
+            login_codes: BTreeMap::new(),
             section: SettingsSection::Appearance,
             focus_handle: cx.focus_handle(),
             _subscriptions: subscriptions,
@@ -1100,49 +1102,160 @@ impl SettingsView {
             .into_any_element()
     }
 
-    fn agents_section(&self, cx: &mut Context<Self>) -> AnyElement {
-        use zz_ui::settings::providers::{ProvidersHost, providers_stack};
+    fn agents_section(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        use std::rc::Rc;
+        use zz_client::agent_login::{CardAction, LoginAccount, settled};
+        use zz_ui::agent::login::{CodeField, LoginEvent, login_card_keyed};
+        use zz_ui::settings::providers::{
+            PROVIDERS, ProviderAuthAction, ProvidersAuth, ProvidersHost, providers_stack_with_auth,
+        };
 
-        let mux = self.mux.read(cx);
-        let hosts = mux
-            .fleet_hosts()
-            .map(|(host, name, state, _)| {
-                let shown = match state {
-                    HostState::Connected => mux
-                        .host_providers(host)
-                        .cloned()
-                        .map_or(ProvidersHost::Waiting, ProvidersHost::Report),
-                    state => ProvidersHost::Offline(state.label().into()),
-                };
-                let title = if host == HostId::LOCAL {
-                    if cfg!(target_os = "macos") {
-                        "This Mac"
+        let mut settled_logins = Vec::new();
+        let hosts = {
+            let mux = self.mux.read(cx);
+            mux.fleet_hosts()
+                .map(|(host, name, state, _)| {
+                    let connected = matches!(state, HostState::Connected);
+                    let shown = match state {
+                        HostState::Connected => mux
+                            .host_providers(host)
+                            .cloned()
+                            .map_or(ProvidersHost::Waiting, ProvidersHost::Report),
+                        state => ProvidersHost::Offline(state.label().into()),
+                    };
+                    let title = if host == HostId::LOCAL {
+                        if cfg!(target_os = "macos") {
+                            "This Mac"
+                        } else {
+                            "This computer"
+                        }
+                        .to_owned()
                     } else {
-                        "This computer"
+                        name.to_owned()
+                    };
+                    let signs_in = connected && mux.host_signs_in(host);
+                    let accounts = connected
+                        .then(|| {
+                            mux.host_agent_accounts(host)
+                                .map(<[zz_protocol::AgentAccount]>::to_vec)
+                        })
+                        .flatten();
+                    let mut logins = BTreeMap::new();
+                    if connected {
+                        for provider in PROVIDERS {
+                            if let Some(login) = mux.host_provider_login(host, provider) {
+                                if settled(login) {
+                                    settled_logins.push((host, login.id));
+                                } else {
+                                    logins.insert(provider, login.clone());
+                                }
+                            }
+                        }
                     }
-                    .to_owned()
-                } else {
-                    name.to_owned()
-                };
-                (host, title, shown)
-            })
-            .collect::<Vec<_>>();
-        if mux.providers_unrequested() {
+                    (host, title, shown, signs_in, accounts, logins)
+                })
+                .collect::<Vec<_>>()
+        };
+        if !settled_logins.is_empty() {
+            let mux = self.mux.clone();
+            cx.defer(move |cx| {
+                mux.update(cx, |mux, _| {
+                    for (host, id) in settled_logins {
+                        mux.dismiss_agent_login(host, id);
+                    }
+                });
+            });
+        }
+        if self.mux.read(cx).providers_unrequested() {
             let mux = self.mux.clone();
             cx.defer(move |cx| mux.update(cx, |mux, _| mux.request_providers(false)));
         }
-        let stacks = hosts.into_iter().map(|(host, title, shown)| {
-            let mux = self.mux.clone();
-            providers_stack(
-                format!("{host:?}"),
-                title,
-                &shown,
-                move |provider, _, cx| {
-                    mux.read(cx).update_provider(host, provider);
-                },
-                cx,
-            )
-        });
+        let mut active_keys = Vec::new();
+        for (host, _, _, _, _, logins) in &hosts {
+            let host = *host;
+            for (&provider, login) in logins {
+                let key = (host, provider);
+                active_keys.push(key);
+                let mut slot = self.login_codes.remove(&key);
+                CodeField::sync(
+                    &mut slot,
+                    Some(login),
+                    window,
+                    cx,
+                    move |settings, window, cx| {
+                        settings.provider_login_event(
+                            host,
+                            provider,
+                            LoginEvent::Action(CardAction::Continue),
+                            window,
+                            cx,
+                        );
+                    },
+                );
+                if let Some(field) = slot {
+                    self.login_codes.insert(key, field);
+                }
+            }
+        }
+        self.login_codes.retain(|key, _| active_keys.contains(key));
+        let entity = cx.entity().downgrade();
+        let stacks = hosts
+            .into_iter()
+            .map(|(host, title, shown, signs_in, accounts, logins)| {
+                let mux = self.mux.clone();
+                let auth_mux = self.mux.clone();
+                let login_entity = entity.clone();
+                let login_cards = logins
+                    .into_iter()
+                    .filter_map(|(provider, login)| {
+                        let entity = login_entity.clone();
+                        let field = self.login_codes.get(&(host, provider));
+                        let key = format!("settings-{host:?}-{}", provider.as_str());
+                        let card = login_card_keyed(
+                            &key,
+                            &login,
+                            field,
+                            move |event, window, cx| {
+                                entity
+                                    .update(cx, |settings, cx| {
+                                        settings.provider_login_event(
+                                            host, provider, event, window, cx,
+                                        );
+                                    })
+                                    .ok();
+                            },
+                            cx,
+                        )?;
+                        Some((provider, card))
+                    })
+                    .collect::<BTreeMap<_, _>>();
+                let login_cards = std::cell::RefCell::new(login_cards);
+                let auth = ProvidersAuth {
+                    signs_in,
+                    accounts: accounts.as_deref(),
+                    on_auth: Rc::new(move |provider, action, _, cx| {
+                        let account = match action {
+                            ProviderAuthAction::SignIn => LoginAccount::Default,
+                            ProviderAuthAction::AddAccount => LoginAccount::New,
+                        };
+                        auth_mux
+                            .read(cx)
+                            .start_provider_login(host, provider, account);
+                    }),
+                    login: Rc::new(move |provider, _| login_cards.borrow_mut().remove(&provider)),
+                };
+                providers_stack_with_auth(
+                    format!("{host:?}"),
+                    title,
+                    &shown,
+                    Some(&auth),
+                    move |provider, _, cx| {
+                        mux.read(cx).update_provider(host, provider);
+                    },
+                    cx,
+                )
+            })
+            .collect::<Vec<_>>();
         Self::scroll_column("settings-agents")
             .child(settings_page_title(SettingsSection::Agents, cx))
             .child(
@@ -1174,6 +1287,81 @@ impl SettingsView {
                 ),
             )
             .into_any_element()
+    }
+
+    fn provider_login_event(
+        &mut self,
+        host: HostId,
+        provider: zz_protocol::AgentProvider,
+        event: zz_ui::agent::login::LoginEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use zz_client::agent_login::{CardAction, CardClose, cancel, card, restart, retry};
+        use zz_protocol::AgentLoginBrowser;
+        use zz_ui::agent::login::LoginEvent;
+
+        let Some(login) = self
+            .mux
+            .read(cx)
+            .host_provider_login(host, provider)
+            .cloned()
+        else {
+            return;
+        };
+        let Some(card) = card(&login) else {
+            return;
+        };
+        let accounts = self
+            .mux
+            .read(cx)
+            .host_agent_accounts(host)
+            .unwrap_or_default()
+            .to_vec();
+        let dismiss = |settings: &mut Self, cx: &mut Context<Self>| {
+            settings
+                .mux
+                .update(cx, |mux, _| mux.dismiss_agent_login(host, login.id));
+            settings.login_codes.remove(&(host, provider));
+            cx.notify();
+        };
+        match event {
+            LoginEvent::Close if card.close == CardClose::Cancel => {
+                self.mux.read(cx).send_agent_login(host, &cancel(&login));
+            }
+            LoginEvent::Close => dismiss(self, cx),
+            LoginEvent::Action(CardAction::UseCode) => {
+                if login.finished() {
+                    dismiss(self, cx);
+                    self.mux.read(cx).execute_on_host(
+                        host,
+                        retry(&login, &accounts, AgentLoginBrowser::Elsewhere),
+                    );
+                } else {
+                    self.mux
+                        .read(cx)
+                        .execute_on_host(host, restart(&login, AgentLoginBrowser::Elsewhere));
+                }
+            }
+            LoginEvent::Action(CardAction::Retry) => {
+                dismiss(self, cx);
+                self.mux
+                    .read(cx)
+                    .execute_on_host(host, retry(&login, &accounts, login.browser));
+            }
+            LoginEvent::Action(CardAction::Continue) => {
+                if let Some(message) = self
+                    .login_codes
+                    .get(&(host, provider))
+                    .and_then(|field| field.take(&login, window, cx))
+                {
+                    self.mux.read(cx).send_agent_login(host, &message);
+                }
+            }
+            LoginEvent::Action(CardAction::SwitchWhenIdle | CardAction::SwitchNow) => {
+                dismiss(self, cx);
+            }
+        }
     }
 
     fn advanced_section(resolved: &AppConfig, cx: &Context<Self>) -> AnyElement {
@@ -1723,7 +1911,7 @@ impl Render for SettingsView {
             SettingsSection::Editor => self.editor_section(&resolved, cx),
             SettingsSection::Panes => self.panes_section(&resolved, cx),
             SettingsSection::Hosts => self.hosts_section(cx),
-            SettingsSection::Agents => self.agents_section(cx),
+            SettingsSection::Agents => self.agents_section(window, cx),
             SettingsSection::Advanced => Self::advanced_section(&resolved, cx),
             SettingsSection::Terminal => self.config_file_section(ConfigFileKind::Terminal, cx),
             SettingsSection::Multiplexer => self.config_file_section(ConfigFileKind::Mux, cx),

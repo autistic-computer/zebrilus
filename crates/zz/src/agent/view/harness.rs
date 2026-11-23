@@ -1,7 +1,7 @@
 use ala::{AnyElement, Context, Entity, Window};
 use zz_client::agent_flip::FlipMode;
 use zz_client::agent_login::{
-    CardAction, CardClose, LoginAccount, cancel, card, in_terminal, restart, retry, settled,
+    CardAction, CardClose, LoginAccount, cancel, card, restart, retry, settled,
 };
 use zz_protocol::{AgentLoginBrowser, AgentLoginStep};
 use zz_ui::agent::login::{LoginEvent, login_card};
@@ -274,21 +274,23 @@ impl AgentView {
             }
             LoginEvent::Close => dismiss(self, cx),
             LoginEvent::Action(CardAction::UseCode) => {
-                self.mux
-                    .read(cx)
-                    .execute_on_host(host, restart(&login, AgentLoginBrowser::Elsewhere));
+                if login.finished() {
+                    dismiss(self, cx);
+                    self.mux.read(cx).execute_on_host(
+                        host,
+                        retry(&login, &accounts, AgentLoginBrowser::Elsewhere),
+                    );
+                } else {
+                    self.mux
+                        .read(cx)
+                        .execute_on_host(host, restart(&login, AgentLoginBrowser::Elsewhere));
+                }
             }
             LoginEvent::Action(CardAction::Retry) => {
                 dismiss(self, cx);
                 self.mux
                     .read(cx)
                     .execute_on_host(host, retry(&login, &accounts, login.browser));
-            }
-            LoginEvent::Action(CardAction::Terminal) => {
-                dismiss(self, cx);
-                self.mux
-                    .read(cx)
-                    .execute_on_host(host, in_terminal(&login, &accounts));
             }
             LoginEvent::Action(CardAction::Continue) => {
                 if let Some(message) = self

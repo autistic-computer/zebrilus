@@ -29,7 +29,7 @@ use zz_client::agent_lens::{
     agent_empty, agent_placeholder, conversation_changed, pending_permissions, prompt_not_ready,
     restore_reclaim_id, restored_prompts, track_usage, turn_running,
 };
-use zz_client::agent_login::{CardAction, LoginAccount};
+use zz_client::agent_login::{CardAction, LoginAccount, is_signed_out_error};
 use zz_client::agent_settings::{
     self, ComposerSetter, LensSettings, composer_setter, fork_chat_command, real_session,
     source_message,
@@ -55,7 +55,7 @@ use zz_ui::{
             watch_composer,
         },
         login::{CodeField, LoginEvent},
-        presentation::{agent_welcome, error_card},
+        presentation::{agent_welcome, error_card, error_card_sign_in},
         preview::ViewRequest,
         question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
         refs::{ChatRefs, open_path},
@@ -1848,6 +1848,38 @@ impl AgentPane {
 
     fn render_error(&self, state: &zz_protocol::AgentPaneWire, cx: &App) -> Option<AnyElement> {
         let (error, failed) = self.shown_error(state)?;
+        let read = self.connection.read(cx);
+        if self.login.is_none()
+            && is_signed_out_error(error)
+            && read.connected
+            && !read.core.attached_read_only()
+            && read.signs_in()
+            && let Some(provider) = self.provider(cx)
+        {
+            let connection = self.connection.clone();
+            let pane = self.pane;
+            let account =
+                agent_settings::pane_account(read.core.snapshot(), pane).map(str::to_owned);
+            return Some(
+                error_card_sign_in(
+                    ("agent-error-sign-in", pane.0),
+                    error,
+                    failed,
+                    move |_, cx| {
+                        connection.update(cx, |connection, cx| {
+                            connection.start_agent_login(
+                                provider,
+                                LoginAccount::of(account.as_deref()),
+                                pane,
+                                cx,
+                            );
+                        });
+                    },
+                    cx,
+                )
+                .into_any_element(),
+            );
+        }
         Some(error_card(error, failed, cx).into_any_element())
     }
 }

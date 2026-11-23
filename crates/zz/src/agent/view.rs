@@ -22,7 +22,7 @@ use zz_ui::agent::controls::{
 use zz_ui::agent::presentation::MAX_RENDERED_ERROR_BYTES;
 #[cfg(test)]
 use zz_ui::agent::presentation::rendered_error;
-use zz_ui::agent::presentation::{agent_welcome, error_card};
+use zz_ui::agent::presentation::{agent_welcome, error_card, error_card_sign_in};
 use zz_ui::agent::preview::ViewRequest;
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
 use zz_ui::agent::resume::{EmptyChat, HeaderMenu};
@@ -55,7 +55,7 @@ use penna::{
     h_flex,
 };
 use zz_client::agent_lens::AGENT_REFUSES_IMAGES;
-use zz_client::agent_login::CardAction;
+use zz_client::agent_login::{CardAction, LoginAccount, is_signed_out_error};
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId, ViewContent};
 use zz_ui::agent::login::{CodeField, LoginEvent};
 use zz_ui::agent::{composer_attachment, plan_progress, view::composer_image_view};
@@ -1788,6 +1788,31 @@ impl AgentView {
             .clone()
             .or_else(|| self.submission_error.clone())?;
         let stopped = runtime_error.is_some() && state.connection == AgentConnectionState::Failed;
+        let host = self.mux.read(cx).attached_host();
+        if self.login.is_none()
+            && is_signed_out_error(&error)
+            && self.mux.read(cx).host_signs_in(host)
+        {
+            let mux = self.mux.clone();
+            let provider = state.provider;
+            let account = self.account.clone();
+            let pane = self.pane;
+            return Some(error_card_sign_in(
+                ("agent-error-sign-in", pane.0),
+                &error,
+                stopped,
+                move |_, cx| {
+                    let mux = mux.read(cx);
+                    mux.start_agent_login(
+                        mux.attached_host(),
+                        provider,
+                        LoginAccount::of(account.as_deref()),
+                        pane,
+                    );
+                },
+                cx,
+            ));
+        }
         Some(error_card(&error, stopped, cx))
     }
 

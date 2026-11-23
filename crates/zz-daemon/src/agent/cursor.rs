@@ -16,7 +16,7 @@ const SHORT_COMMAND: &str = "agent";
 const NO_BROWSER: &str = "NO_OPEN_BROWSER";
 pub(crate) const DIALECT: Dialect = Dialect {
     effort_option: "effort",
-    signed_out: "Cursor is signed out. Sign in by running `cursor-agent login` in a terminal.",
+    signed_out: "Cursor is signed out.",
     stored_title,
     sign_in: Some("cursor_login"),
     model_name: Some(model_name),

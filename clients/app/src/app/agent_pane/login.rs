@@ -1,8 +1,6 @@
 use ala::{AnyElement, Context, Window};
 use zz_client::agent_flip::FlipMode;
-use zz_client::agent_login::{
-    self, CardAction, CardClose, cancel, card, in_terminal, restart, retry, settled,
-};
+use zz_client::agent_login::{self, CardAction, CardClose, cancel, card, restart, retry, settled};
 use zz_protocol::{AgentLoginBrowser, AgentLoginStep};
 use zz_ui::agent::login::{LoginEvent, login_card};
 use zz_ui::agent::phone::{CHAT_SHEET, PlusPage};
@@ -98,24 +96,23 @@ impl AgentPane {
                 }
             }
             LoginEvent::Action(CardAction::UseCode) => {
-                self.connection.update(cx, |connection, cx| {
-                    connection.invoke(restart(&login, AgentLoginBrowser::Elsewhere), cx);
-                });
+                if login.finished() {
+                    dismiss(self, cx);
+                    self.connection.update(cx, |connection, cx| {
+                        connection
+                            .invoke(retry(&login, &accounts, AgentLoginBrowser::Elsewhere), cx);
+                    });
+                } else {
+                    self.connection.update(cx, |connection, cx| {
+                        connection.invoke(restart(&login, AgentLoginBrowser::Elsewhere), cx);
+                    });
+                }
             }
             LoginEvent::Action(CardAction::Retry) => {
                 dismiss(self, cx);
                 self.connection.update(cx, |connection, cx| {
                     connection.invoke(retry(&login, &accounts, login.browser), cx);
                 });
-            }
-            LoginEvent::Action(CardAction::Terminal) => {
-                dismiss(self, cx);
-                self.connection.update(cx, |connection, cx| {
-                    connection.invoke(in_terminal(&login, &accounts), cx);
-                });
-                if self.sheet.is_some() {
-                    penna::blocks::sheet::close_sheet(CHAT_SHEET, cx);
-                }
             }
             LoginEvent::Action(CardAction::Continue) => {
                 if let Some(message) = self
