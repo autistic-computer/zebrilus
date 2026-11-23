@@ -304,6 +304,12 @@ impl WorkspaceSidebar {
         let statuses = self.agent_pane_statuses();
         let watched = self.watched_pane(cx).map(|pane| (attached_host, pane));
         let edges = self.tracker.observe(&statuses, watched);
+        let edges = {
+            let mux = self.mux.read(cx);
+            attention::announced(&edges, |(host, pane)| {
+                mux.agent_parent(host, pane).is_some()
+            })
+        };
         if let Some(chime) = loudest(&edges) {
             crate::agent::sound::play(chime, cx);
         }

@@ -682,6 +682,9 @@ Recorded for the UI lane, which built them in `crates/zz-ui` and `crates/zz`:
   the reply is drawn as markdown; a closed card shows no time; a denial shows as `denied by NAME`.
 - **PiP.** An agent chat opened without focus starts stashed, and the card collapses to its header
   while the child is in view.
+- **Quiet.** A child plays no sound and posts no banner when it finishes, fails or asks; the
+  desktop learns it is a child from `AgentParents` and drops its edges in
+  `zz_client::attention::announced`. Its sidebar badge stays.
 
 # Reopening a child
 

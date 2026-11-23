@@ -162,6 +162,18 @@ pub struct AttentionEdge<K> {
 }
 
 #[must_use]
+pub fn announced<K: Copy>(
+    edges: &[AttentionEdge<K>],
+    child: impl Fn(K) -> bool,
+) -> Vec<AttentionEdge<K>> {
+    edges
+        .iter()
+        .filter(|edge| !child(edge.pane))
+        .copied()
+        .collect()
+}
+
+#[must_use]
 pub fn loudest<K>(edges: &[AttentionEdge<K>]) -> Option<Chime> {
     edges
         .iter()
@@ -495,6 +507,27 @@ mod tests {
                 assert_ne!(data, chime_wav(*other), "{chime:?} and {other:?}");
             }
         }
+    }
+
+    #[test]
+    fn a_child_chat_that_finishes_keeps_its_badge_and_makes_no_sound() {
+        use AgentPaneStatus::{Idle, Working};
+        let child = |pane: PaneId| pane == PaneId(2);
+        let mut tracker = AgentAttentionTracker::default();
+        tracker.observe(&statuses(&[(1, Working), (2, Working)]), None);
+        let edges = tracker.observe(&statuses(&[(1, Working), (2, Idle)]), None);
+        assert_eq!(announced(&edges, child), []);
+        assert_eq!(tracker.badge(PaneId(2), Idle), Some(AgentBadge::Finished));
+        let edges = tracker.observe(&statuses(&[(1, Idle), (2, Idle)]), None);
+        assert_eq!(
+            announced(&edges, child),
+            [AttentionEdge {
+                pane: PaneId(1),
+                status: Idle,
+                chime: Chime::Done,
+            }]
+        );
+        assert_eq!(loudest(&announced(&edges, child)), Some(Chime::Done));
     }
 
     #[test]

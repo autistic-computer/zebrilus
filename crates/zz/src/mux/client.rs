@@ -3885,6 +3885,14 @@ impl MuxClient {
         self.core.simulator(pane).cloned()
     }
 
+    #[must_use]
+    pub fn agent_parent(&self, host: HostId, pane: PaneId) -> Option<PaneId> {
+        self.connections
+            .get(&host)?
+            .background_core
+            .agent_parent(pane)
+    }
+
     pub(crate) fn take_terminal_commands(&mut self, pane: PaneId) -> Vec<TerminalUiCommand> {
         self.terminal_commands.remove(&pane).unwrap_or_default()
     }
@@ -4496,6 +4504,7 @@ impl MuxClient {
                     | EventPayload::ClientView(_)
                     | EventPayload::KeyTablesChanged { .. }
                     | EventPayload::KeyTablesPatched { .. }
+                    | EventPayload::AgentParents { .. }
             )
             && let Some(connection) = self.connections.get_mut(&host)
         {
@@ -4510,7 +4519,8 @@ impl MuxClient {
                     | EventPayload::TreeDelta(_)
                     | EventPayload::ClientView(_)
                     | EventPayload::KeyTablesChanged { .. }
-                    | EventPayload::KeyTablesPatched { .. }) => {
+                    | EventPayload::KeyTablesPatched { .. }
+                    | EventPayload::AgentParents { .. }) => {
                         if let Some(connection) = self.connections.get_mut(&host) {
                             connection
                                 .background_core
