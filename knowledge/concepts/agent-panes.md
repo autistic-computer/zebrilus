@@ -129,7 +129,8 @@ session starts, folder, the model and effort it last showed and the account it i
 journal as `<key>.children.json`, so they outlive a daemon restart and the opener being resumed in
 another pane; they go when the opener's session is deleted (`AgentJournal::remove_for`), not when
 its pane closes. `select-child-chat [-t HOST] %N` (internal, for the card a host draws) takes any
-id the child has had, selects the child's window and pane and prints the pane: the recorded pane
+id the child has had, selects the child's window and pane and prints the pane in its reply, never
+in an attached client's command output view: the recorded pane
 while it still runs that session, else any live chat on that session, else a new float in the
 host's window resumed on the session with the same provider, folder, model, effort and account,
 no brief, and the host as parent. A child closed before its session started fails with `%N was

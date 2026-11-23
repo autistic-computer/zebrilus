@@ -7688,7 +7688,7 @@ impl Shared {
             && !output.is_empty()
             && !matches!(
                 canonical_command(&command.name),
-                "new-session" | "tailnet" | "html"
+                "new-session" | "tailnet" | "html" | "select-child-chat"
             )
             && let Err(error) =
                 self.open_command_output(client, context.pane, command.name.clone(), output)
@@ -125408,6 +125408,54 @@ bind - split-window -v -c "#{pane_current_path}"
                         .to_owned()
                 )
             );
+        }
+
+        #[test]
+        fn a_child_card_click_answers_the_pane_id_without_a_command_output_view() {
+            let workspace = workspace(Behavior::Chunk);
+            let host = workspace.agent;
+            run_as(
+                &workspace,
+                ClientId(99),
+                Some(host),
+                "new-pane",
+                &["-d", "--kind", "agent", "claude", "reply with ok"],
+            )
+            .expect("child chat");
+            wait_until("the child's session in its record", || {
+                workspace
+                    .shared
+                    .child_record(host, PaneId(2))
+                    .is_some_and(|record| record.session.is_some())
+            });
+            let click = || {
+                let mut context =
+                    ExecutionContext::for_pane(&workspace.shared.inner.lock().engine.state, host)
+                        .expect("host context");
+                let response = workspace.shared.execute_command_request(
+                    workspace.client,
+                    ClientKind::Interactive,
+                    &mut context,
+                    1,
+                    &CommandInvocation::new("select-child-chat", ["-t", "%1", "%2"]),
+                );
+                let output = match response {
+                    CommandResponse::Success { output, .. } => output.to_string(),
+                    other @ CommandResponse::Error { .. } => {
+                        panic!("select-child-chat failed: {other:?}")
+                    }
+                };
+                let viewing = workspace
+                    .shared
+                    .inner
+                    .lock()
+                    .client(workspace.client)
+                    .is_some_and(|client| client.command_output.is_some());
+                (output, viewing)
+            };
+            assert_eq!(click(), ("%2".to_owned(), false));
+            run_as(&workspace, ClientId(97), None, "kill-pane", &["-t", "%2"]).expect("kill");
+            assert_eq!(click(), ("%3".to_owned(), false));
         }
 
         #[test]
