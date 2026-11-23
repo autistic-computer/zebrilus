@@ -1060,12 +1060,6 @@ impl Runtime {
                 self.command.program
             )
         })?;
-        let account = self
-            .workspace
-            .account
-            .as_ref()
-            .map(|account| accounts::prepare(AgentProvider::ClaudeCode, account))
-            .transpose()?;
         let mut command = Command::new(program);
         command.args(BASE_ARGS);
         match launch {
@@ -1115,8 +1109,8 @@ impl Runtime {
         for (name, value) in self.workspace.entries() {
             command.env(name, value);
         }
-        if let Some(home) = &account {
-            accounts::run_on(&mut command, AgentProvider::ClaudeCode, home);
+        if self.workspace.managed_login {
+            accounts::strip_logins(&mut command, AgentProvider::ClaudeCode);
         }
         command.env("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS", "1");
         command.env("CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES", "1");
@@ -3108,7 +3102,7 @@ while read -r line; do :; done
 
     #[cfg(unix)]
     #[test]
-    fn an_account_pane_runs_claude_on_its_config_directory_and_no_other() {
+    fn a_managed_login_runs_claude_without_inherited_login_variables() {
         use std::os::unix::fs::PermissionsExt as _;
 
         const CHILD: &str = "ZZ_TEST_ACCOUNT_LOGIN_OVERRIDES";
@@ -3116,7 +3110,7 @@ while read -r line; do :; done
             let status = Command::new(std::env::current_exe().expect("test binary"))
                 .args([
                     "--exact",
-                    "agent::claude::tests::an_account_pane_runs_claude_on_its_config_directory_and_no_other",
+                    "agent::claude::tests::a_managed_login_runs_claude_without_inherited_login_variables",
                     "--test-threads=1",
                 ])
                 .env(CHILD, "1")
@@ -3131,50 +3125,26 @@ while read -r line; do :; done
         std::fs::write(&program, FAKE_ACCOUNT_CLAUDE).expect("fake claude");
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
             .expect("executable");
-        let home = directory.path().join("a1");
-        std::fs::create_dir(&home).expect("account home");
-        let account = |id: &str, home: PathBuf| AgentWorkspaceEnvironment {
-            account: Some(accounts::Account {
-                id: id.to_owned(),
-                home: Some(home),
-            }),
+        let config = std::env::var("CLAUDE_CONFIG_DIR");
+        let config = config.as_deref().unwrap_or("unset");
+
+        let managed = AgentWorkspaceEnvironment {
+            managed_login: true,
             ..AgentWorkspaceEnvironment::default()
         };
-
-        let (ready, seen) = opened_with(&program, account("a1", home.clone()));
+        let (ready, seen) = opened_with(&program, managed);
         assert!(
             matches!(ready, AgentStreamPayload::Ready { .. }),
             "{ready:?}"
         );
-        assert_eq!(seen, Some(format!("{}\nunset", home.display())));
+        assert_eq!(seen, Some(format!("{config}\nunset")));
 
         let (ready, seen) = opened_with(&program, AgentWorkspaceEnvironment::default());
         assert!(
             matches!(ready, AgentStreamPayload::Ready { .. }),
             "{ready:?}"
         );
-        assert_eq!(
-            seen,
-            Some(format!(
-                "{}\nzz-test-key",
-                std::env::var("CLAUDE_CONFIG_DIR")
-                    .as_deref()
-                    .unwrap_or("unset")
-            ))
-        );
-
-        let missing = directory.path().join("a2");
-        let (failed, seen) = opened_with(&program, account("a2", missing.clone()));
-        assert_eq!(
-            failed,
-            AgentStreamPayload::PaneFailed {
-                message: format!(
-                    "Claude Code account a2 has no directory at {}; add the account again or move this chat to another with agent-account",
-                    missing.display()
-                )
-            }
-        );
-        assert_eq!(seen, None, "nothing runs on the default account");
+        assert_eq!(seen, Some(format!("{config}\nzz-test-key")));
     }
 
     #[cfg(unix)]

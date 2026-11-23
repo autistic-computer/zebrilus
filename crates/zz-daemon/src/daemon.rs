@@ -33411,6 +33411,16 @@ mod source_hook_queue_tests;
 #[cfg(all(test, unix))]
 mod chooser_keys_tests;
 
+#[cfg(all(feature = "agent", unix))]
+fn managed_login(provider: zz_protocol::AgentProvider) -> bool {
+    crate::agent::logins::manages(provider)
+}
+
+#[cfg(all(feature = "agent", not(unix)))]
+fn managed_login(_: zz_protocol::AgentProvider) -> bool {
+    false
+}
+
 #[cfg(feature = "agent")]
 impl Shared {
     fn agent_runtime(self: &Arc<Self>) -> Option<Arc<AgentRuntime>> {
@@ -33482,7 +33492,7 @@ impl Shared {
                 tmux_pane: None,
                 tools,
                 tools_executable,
-                account: None,
+                managed_login: false,
             },
         }
     }
@@ -34477,10 +34487,7 @@ impl Shared {
                 socket: None,
                 tmux: session.map(|session| tmux_environment(&self.socket_path, Some(session))),
                 tmux_pane: Some(pane.to_string()),
-                account: descriptor
-                    .account
-                    .as_deref()
-                    .map(|id| crate::agent::accounts::Account::resolve(descriptor.provider, id)),
+                managed_login: managed_login(descriptor.provider),
                 ..AgentWorkspaceEnvironment::default()
             },
         })
@@ -36488,7 +36495,7 @@ struct ServerState {
     #[cfg(all(feature = "agent", unix))]
     armed_flips: BTreeSet<PaneId>,
     #[cfg(all(feature = "agent", unix))]
-    armed_accounts: BTreeMap<PaneId, Option<String>>,
+    armed_accounts: BTreeMap<zz_protocol::AgentProvider, String>,
     #[cfg(feature = "agent")]
     cli_exits: BTreeMap<PaneId, u32>,
     #[cfg(feature = "agent")]
@@ -53420,7 +53427,7 @@ Flip a terminal running Claude Code, Codex, Antigravity or Grok into a chat on t
 
 ### `zz agent-account [-t %N] [--now | --when-idle] ID|default`
 
-Move a chat to another account and resume the same session there. An account is a directory in zz's data directory (`accounts/claude/ID` or `accounts/codex/ID`) that shares sessions, settings and skills with the CLI's own directory and keeps its own login; everything the daemon runs for the pane gets `CLAUDE_CONFIG_DIR` or `CODEX_HOME` pointing at it. `default` goes back to the CLI's own login. While anything runs, a Codex turn included, it fails with an error that starts with `busy:`; `--now` moves anyway and stops it, and `--when-idle` moves once nothing runs, unless another `agent-account` for the pane comes first. A chat whose account directory is gone fails instead of running on another login. Flips keep the account: the CLI starts with the variable set, and a CLI started with an account's directory flips into a chat on that account. Forks and side chats opened from a chat stay on its account.
+Switch the machine's login of the chat's CLI (Claude Code or Codex) to another account and resume every chat of that CLI on it. zz keeps the CLI's one login in the CLI's own place and holds the other accounts' logins aside, so the CLI opened outside zz switches too. IDs are the slots `zz agent-accounts` lists (`a1`, `a2`, ...); `default`, or the account already in use, changes nothing. While any chat of that CLI runs something, a Codex turn included, it fails with an error that starts with `busy:`; `--now` switches anyway and stops it, and `--when-idle` switches once none runs, unless another `agent-account` for that CLI comes first.
 
 `zz select-pane-kind --resume ID --fork [--at MESSAGE] agent claude|codex` opens a chat on a copy of a session, through that message's turn when `--at` names one.
 
@@ -125192,7 +125199,7 @@ bind - split-window -v -c "#{pane_current_path}"
 
         #[cfg(unix)]
         #[test]
-        fn a_child_record_follows_the_account_its_chat_moved_to() {
+        fn a_child_record_follows_the_account_its_chats_moved_to() {
             let workspace = workspace(Behavior::Chunk);
             let host = workspace.agent;
             run_as(
@@ -125219,10 +125226,8 @@ bind - split-window -v -c "#{pane_current_path}"
             assert_eq!(account(&workspace), None);
             workspace
                 .shared
-                .switch_agent_account(child, Some("zz-moved-here".to_owned()));
-            assert_eq!(account(&workspace), Some("zz-moved-here".to_owned()));
-            workspace.shared.switch_agent_account(child, None);
-            assert_eq!(account(&workspace), None);
+                .relaunch_agent_chats(AgentProvider::ClaudeCode, || Some("a2".to_owned()));
+            assert_eq!(account(&workspace), Some("a2".to_owned()));
         }
 
         #[test]

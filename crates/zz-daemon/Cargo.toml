@@ -12,6 +12,7 @@ default = ["agent", "tailnet-own"]
 tailnet-own = ["dep:zz-tailnet"]
 agent = [
     "dep:agent-client-protocol",
+    "dep:sha2",
     "dep:async-channel",
     "dep:base64",
     "dep:futures-lite",
@@ -33,6 +34,7 @@ httparse = { version = "1.10.1", optional = true }
 ignore.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2 = { version = "0.11", optional = true }
 smol = { workspace = true, optional = true }
 crossbeam-channel.workspace = true
 libc.workspace = true

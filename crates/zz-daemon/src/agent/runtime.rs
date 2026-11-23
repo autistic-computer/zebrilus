@@ -43,11 +43,10 @@ use zz_protocol::{
 };
 
 use crate::agent::{
-    accounts,
     chat_bridge::attach_images,
     child::fit_update,
     environment::{
-        AgentWorkspaceEnvironment, with_account, with_platform_environment,
+        AgentWorkspaceEnvironment, with_login, with_platform_environment,
         with_workspace_environment,
     },
     journal::{AgentJournal, JournalEntry},
@@ -344,16 +343,10 @@ pub(crate) async fn run_acp_agent(
     event_tx: Sender<AgentStreamPayload>,
     session_meta: Option<Meta>,
 ) -> Result<(), String> {
-    let account = config
-        .workspace
-        .account
-        .as_ref()
-        .map(|account| accounts::prepare(provider, account))
-        .transpose()?;
-    let agent = with_account(
+    let agent = with_login(
         with_platform_environment(agent),
         provider,
-        account.as_deref(),
+        &config.workspace,
     );
     let stderr = StderrTail::default();
     let debug_stderr = stderr.clone();

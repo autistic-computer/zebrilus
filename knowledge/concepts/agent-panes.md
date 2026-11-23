@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code, Codex, Antigravity, Grok or Cursor as a chat (PaneKind::Agent over the vendor drivers, Antigravity, Grok and Cursor over their own ACP servers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, reopening a chat another chat opened on its session (select-child-chat), what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
+description: How a pane runs Claude Code, Codex, Antigravity, Grok or Cursor as a chat (PaneKind::Agent over the vendor drivers, Antigravity, Grok and Cursor over their own ACP servers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (one native login per CLI that zz swaps machine-wide with agent-account, parking the others, and agent-accounts to list who is signed in and sign one in, either by the daemon driving the CLI's own login and the chat showing its steps in a card above the composer or in a terminal window, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, reopening a chat another chat opened on its session (select-child-chat), what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, antigravity, grok, cursor, driver, stream]
 timestamp: 2026-11-21T00:00:00-03:00
@@ -37,7 +37,7 @@ over.
 | `cwd` | the folder the driver runs in; filled from `-c`, else the terminal or donor pane's folder, else the daemon's |
 | `session_id` | the vendor session to resume; the driver's session goes back into it, so a `/clear` or a fork shows here |
 | `model`, `effort` | what the driver is set to once its session is ready (`SetConfigOption` after `SessionReady`) |
-| `account` | the [account](#accounts) the pane runs on (wire 122); `None` is the CLI's own login |
+| `account` | the [account](#accounts) slot the chat runs on (wire 122): the provider's active slot, which the daemon writes; `None` before zz records any |
 
 **Opening one.** `select-pane-kind [-t pane] [-c dir] [--resume id] [--model m] [--effort e]
 [--account id] agent <claude|codex>` (`--resume id` may also follow the provider) turns a picker, or a terminal,
@@ -157,7 +157,7 @@ recognising it with `is_hidden_note`.
 
 **Codex chats run `zz` outside the sandbox.** Before it starts Codex for a chat, the driver writes
 `rules/zz.rules` (`prefix_rule(pattern = ["zz"], decision = "allow")`, the file `zz tools
---install-hooks` writes) into the Codex home the chat runs on, the account's or `$CODEX_HOME`,
+--install-hooks` writes) into `$CODEX_HOME` or `~/.codex`,
 when that file is missing (`agent_hooks::ensure_codex_rule`); an existing file, edited or not, is
 left alone. Codex then runs a command made only of `zz` segments outside its sandbox without asking,
 so the first `zz` reaches the daemon socket. Codex reads rules when it starts, so a shared app
@@ -189,8 +189,8 @@ command (`zz_client::agent_settings::fork_chat_command`, sent by the desktop and
   <message>] [--model <m>] [--effort <e>] [--account <id>] agent <claude|codex>`
 
 The float takes no title of its own: the fork's session title names it, as for any chat. It
-carries the source pane's account (`zz_client::agent_settings::pane_account`), so the copy runs on
-the same login.
+carries the source pane's account (`zz_client::agent_settings::pane_account`); every chat of a
+provider runs on the same login anyway.
 
 # Chat titles
 
@@ -268,88 +268,78 @@ A chat is named after its session, the name each CLI gives its own sessions.
 
 # Accounts
 
-A pane can run on an account: a directory zz keeps per provider,
-`<data>/zz/accounts/claude/<id>` or `<data>/zz/accounts/codex/<id>` (`zz-dev` for dev builds;
-`<data>` is `~/Library/Application Support` on macOS and `$XDG_DATA_HOME` or `~/.local/share` on
-Linux), created 0700 (`crates/zz-daemon/src/agent/accounts.rs`). Ids are
-`[a-z0-9][a-z0-9_-]{0,31}`. Everything the daemon runs for the pane gets `CLAUDE_CONFIG_DIR` or
-`CODEX_HOME` set to it, and the CLI keeps that account's login there. A pane with no account
-leaves both variables as the daemon has them, since `CLAUDE_CONFIG_DIR=~/.claude` set explicitly
-picks a different Keychain item than leaving it unset. zz never reads or writes tokens.
+Claude Code and Codex keep one login each, in their own place, and every chat of that CLI runs on
+it, as does the CLI opened anywhere else on the machine. zz holds the logins not in use and swaps
+the chosen one in (`crates/zz-daemon/src/agent/logins.rs`; the design is
+[agent-account-swap](/designs/agent-account-swap.md)). zz keeps no config folder per account and
+sets no `CLAUDE_CONFIG_DIR` or `CODEX_HOME` of its own. Antigravity, Grok and Cursor keep their one
+login.
 
-- **Shared by link.** An account directory links everything but the login into the default
-  directory (`~/.claude`, or `$CODEX_HOME` or `~/.codex`, as `accounts::default_home` resolves
-  them), so sessions, settings, skills and the Codex state databases are one set for every
-  account, and the daemon's readers (session lists, titles, transcript replay, the Claude peer
-  registry, `agent_fork`) keep reading the default directory. Claude Code links `projects`,
-  `settings.json`, `settings.local.json`, `skills`, `agents`, `commands`, `output-styles`,
-  `plugins`, `history.jsonl`, `file-history`, `session-env`, `plans`, `paste-cache`, `uploads`,
-  `todos`, `tasks`, `sessions`, `teams`, `dev-mods`, `scripts`, `CLAUDE.md` and
-  `keybindings.json`. Codex links `sessions`, `archived_sessions`, `session_index.jsonl` and its
-  `.lock`, `thread-writer-locks`, `rollout-migrations`, `.sqlite-maintenance.lock`, `config.toml`,
-  `AGENTS.md`, `skills`, `agents`, `plugins`, `hooks.json`, `keybindings.json`, `history.jsonl`,
-  `attachments` and `worktrees`, and every `state_*`, `thread_history_*`, `goals_*` and `queue_*`
-  `.sqlite` file (never its `-wal`, `-shm` or `-journal`). Logins (`.credentials.json`,
-  `.claude.json`, `auth.json`), caches, logs, memories and the Codex daemon files stay per account.
-  `accounts::link` runs when an account is created and before every spawn on it, adds only the
-  links that are missing, and never replaces or removes an entry.
-- **Seed.** A new Claude Code account gets `.claude.json` from the global config
-  (`~/.claude.json`, or `.claude.json` in the daemon's `CLAUDE_CONFIG_DIR`): `hasCompletedOnboarding`,
-  `mcpServers` and each project's `hasTrustDialogAccepted`, nothing else, so the TUI skips
-  onboarding and the trust dialog. A missing or broken global config seeds
-  `{"hasCompletedOnboarding": true}`.
-- **Spawn.** `agent_pane_spec` puts the descriptor's account (`accounts::Account`: the id and its
-  resolved directory) on the pane's `AgentWorkspaceEnvironment`, outside `entries()`, which also
-  feeds Codex's `thread_config`. Before spawning, `accounts::prepare` checks the directory and
-  links it. The Claude Code driver sets `CLAUDE_CONFIG_DIR` beside the workspace entries, so a
-  configured command's own environment still wins. The Codex driver starts the app server daemon
-  for the account with `CODEX_HOME` set and connects to
-  `<dir>/app-server-control/app-server-control.sock`, one daemon per home; its per-pane
-  `codex app-server` fallback gets `CODEX_HOME` too. An ACP adapter gets the variable unless its
-  command sets it. A named account whose directory is missing fails the pane with
-  `Claude Code account a1 has no directory at <dir>; ...` and runs nothing on another login.
-- **No login from the environment.** A credential in the environment comes before the login in
-  the config directory, so a daemon started with `ANTHROPIC_API_KEY` set would run every account
-  pane on that key. Everything that runs for an account (the driver, the app server daemon and its
-  fallback, an ACP adapter, the identity probe, the flip's CLI and the login window) goes without
-  `accounts::login_overrides`: for Claude Code `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`,
-  `CLAUDE_CODE_OAUTH_TOKEN`, and `CLAUDE_CODE_USER_EMAIL`, `CLAUDE_CODE_ACCOUNT_UUID` and
-  `CLAUDE_CODE_ORGANIZATION_UUID`, which a daemon started inside a hosted session inherits and the
-  CLI writes into a fresh account's `.claude.json`; for Codex `CODEX_ACCESS_TOKEN`,
-  `OPENAI_FEDERATION_RULE_ID` and `OPENAI_IDENTITY_TOKEN_FILE`, each of which wins over
-  `auth.json` (codex-cli 0.167: `login status` and the app server's `account/read` follow them),
-  where `OPENAI_API_KEY` and `CODEX_API_KEY` do not. `accounts::run_on` removes them from a
-  `Command` before the command's own environment applies, so a configured value still wins; an
-  ACP adapter runs under `/usr/bin/env -u ...` for each one its command does not set; the shell
-  lines start with `unset ...;`. The default account keeps the daemon's environment as it is.
-- **Flips.** Chat to CLI runs the CLI as `unset ...; CLAUDE_CONFIG_DIR=<dir> claude --resume ...`
-  (or `CODEX_HOME=<dir> codex resume ...`) inside the user's interactive shell
-  (`cli_session::interactive_shell`), so the variable reaches the TUI after the shell's startup
-  files and the user's aliases still apply. CLI to chat reads the variable from the TUI's process (`process_info::environment`:
-  `/proc/<pid>/environ` on Linux, the strings after argv in `KERN_PROCARGS2` on macOS) and, when it
-  names an account directory (`accounts::account_of`), adds `--account`. macOS shows no environment
-  for Apple-signed binaries, which the CLIs are not. A chat whose account directory is missing
-  refuses to flip to the CLI.
-- **Switching a live chat.** `agent-account [-t pane] <id|default>`
-  (`crates/zz-daemon/src/daemon/agent_account.rs`). Anything running fails it with an error that
-  starts with `busy:`, using the flip's `chat_running`, which for Codex also counts a running turn,
-  since that turn lives in the old home's app server. `--now` moves it anyway (the reopen stops
-  what runs), and `--when-idle` waits in the daemon, checking every 250 ms as an armed flip does,
-  and moves it once nothing runs; another `agent-account` for the pane, or the pane no longer
-  being a chat, drops the wait, which no client shows. Otherwise the daemon closes the driver and
-  waits (`AgentRuntime::close_for_reopen`), sets the account (`MuxState::update_agent`), and opens
-  the pane again on its session. The reopened stream carries on from the old one's sequence
-  numbers, so a client keeps its cursor and takes the resume as a session reset.
-- **`default`** means no account everywhere: `agent-account default` and `select-pane-kind
-  --account default` both run the CLI's own login, and `valid_agent_account` refuses `default`, so
-  a directory of that name is never listed, created or flipped into.
+- **Slots.** A slot is one login of one provider, named `a1`, `a2`, ... (`Logins::next_id`). One
+  slot per provider is active: its login sits in the CLI's store. The others are parked.
+- **The CLI's store.** Claude Code on macOS: the Keychain item `Claude Code-credentials` (with
+  `-<first 8 hex of sha256 of CLAUDE_CONFIG_DIR>` when the daemon has that variable), account the
+  user name; on Linux `<config>/.credentials.json`. Codex: `auth.json` in `$CODEX_HOME` or
+  `~/.codex`.
+- **Parked logins.** macOS: Keychain items of service `zz-agent-login`, account
+  `<data dir>|<provider>|<slot>`; Linux: `<data>/zz/accounts/parked/<provider>/<slot>`, 0600.
+  `/usr/bin/security` reads them with `find-generic-password -w` and writes them with
+  `add-generic-password -U ... -X <hex>` on the stdin of `security -i`, so a login never reaches an
+  argument list. Every write is read back. `<data>` is `~/Library/Application Support` on macOS and
+  `$XDG_DATA_HOME` or `~/.local/share` on Linux, `zz-dev` for dev builds.
+- **The record.** `<data>/zz/accounts/logins.json` (0600, no secret): per provider the active slot
+  and each slot's email, organization and plan, read when the slot was signed in or adopted.
+  `logins::guard` serializes every change to it and to the stores.
+- **Who a login is.** A sign-in through zz names its slot from the probe right after the CLI stored
+  it. Codex's `account/read` derives the account from `auth.json`, so every listing checks it, and a
+  login put there from outside zz becomes its own slot (`logins::reconcile`). Claude Code's
+  `auth status`, `initialize` and `get_status` read the cached `oauthAccount` in `.claude.json`,
+  which any process sharing that folder rewrites (the Claude desktop app writes its own account
+  there), so zz reads a Claude identity from it once, when it adopts a login, and never again.
+- **Adoption.** The first listing of a provider with no record makes one
+  (`logins::migrate`): each folder of the old design under `<data>/zz/accounts/<cli>/<id>` becomes
+  a parked slot with its id, its login read from its own Keychain item or file and its name from
+  `auth status` or `account/read` run on that folder; the folders stay where they are. Whenever a
+  provider has no active slot and its CLI reads as signed in, that login becomes the active slot
+  under the next free id (`logins::adopt`; Codex reuses a slot with the same identity).
+- **Chats follow the active slot.** Every listing, swap and sign-in sets each chat's
+  `descriptor.account` to the active slot (`Shared::align_agent_accounts`). A chat whose provider has
+  an active slot starts without the login overrides below (`managed_login`).
+- **No login from the environment.** A credential in the environment comes before the stored
+  login, so a daemon started with `ANTHROPIC_API_KEY` set would run every chat on that key. Once zz
+  manages a provider, its driver, the Codex app server daemon and its fallback, an ACP adapter and
+  the sign-in run without `accounts::login_overrides`: for Claude Code `ANTHROPIC_AUTH_TOKEN`,
+  `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_USER_EMAIL`,
+  `CLAUDE_CODE_ACCOUNT_UUID` and `CLAUDE_CODE_ORGANIZATION_UUID`, which a daemon started inside a
+  hosted session inherits; for Codex `CODEX_ACCESS_TOKEN`, `OPENAI_FEDERATION_RULE_ID` and
+  `OPENAI_IDENTITY_TOKEN_FILE`, each of which wins over `auth.json` (codex-cli 0.167). A configured
+  command's own value still wins; an ACP adapter runs under `/usr/bin/env -u ...` for each one its
+  command does not set.
+- **Switching.** `agent-account [-t pane] [--now | --when-idle] <slot|default>`
+  (`crates/zz-daemon/src/daemon/agent_account.rs`) moves the machine's login of the pane's
+  provider. `default`, or the slot already active, changes nothing; Antigravity, Grok and Cursor
+  refuse a slot. While any chat of the provider runs something it fails with an error that starts
+  with `busy:` (the flip's `chat_running`, which for Codex also counts a running turn); `--now`
+  goes anyway, `--when-idle` waits in the daemon, checking every 250 ms, until no chat of the
+  provider runs (another `agent-account` for the provider drops the wait). The swap
+  (`Shared::switch_agent_login`, `logins::swap`) first settles the record as a listing does, so a
+  login zz has not recorded yet becomes a slot instead of being overwritten, then closes every open
+  chat of the provider and waits
+  for its process, parks the login in the store under the active slot (the latest renewed copy),
+  writes the chosen slot's login into the store and reads it back, deletes its parked copy, marks it
+  active, restarts the Codex app server daemon (`codex app-server daemon restart`, when its socket
+  exists) so it reads the new `auth.json`, and reopens the chats on their sessions. A failed write
+  puts the old login back. A Claude Code or Codex run outside zz during a swap keeps its old token
+  in memory and may write a renewed copy back later.
+- **Flips.** Chat to CLI runs `claude --resume ...` or `codex resume ...` inside the user's
+  interactive shell (`cli_session::interactive_shell`); both sides use the one stored login.
 - **In the chat.** The composer footer's usage pill shows the account's limits, switches the
   account and signs one in (see [the footer](#the-empty-chat-and-the-footer) and
   [signing in](#in-the-chat)).
 - **Rate limits.** What each account has used of its 5-hour and weekly limits; see
   [below](#rate-limits).
-- **Not built yet.** Removing an account. A signed-out account directory is reused by the next add,
-  and a sign-in the daemon drives removes the directory it created when it fails or is cancelled.
+- **Not built yet.** Removing a slot, signing a slot out, and noticing that a Claude Code login
+  changed outside zz.
 
 ## Listing and adding accounts
 
@@ -357,47 +347,44 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
 [--browser local|elsewhere] [--terminal]` (`crates/zz-daemon/src/daemon/accounts.rs`, internal, like
 `providers`) answers on the client event stream with `EventPayload::AgentAccounts(Vec<AgentAccount>)`
 (wire 122) and, for a sign-in, `EventPayload::AgentLogin`, never on stdout. `--account`, `--pane`,
-`--browser` and `--terminal` need `--add`. Antigravity, Grok and Cursor keep one login (`default` / `id: None`) and reject named `--account <id>`.
+`--browser` and `--terminal` need `--add`.
 
 - **The list.** One `AgentAccount { provider, id, signed_in, email, organization, plan }` per
   account of each CLI installed on the daemon's host (found as `providers` finds it: the login-shell
-  PATH plus `~/.local/bin`). `id: None` is the CLI's own login and always comes first for its
-  provider, signed in or not; after it come the accounts under `accounts/<cli>/` that are signed in,
-  in id order (`accounts::ids`: a2 before a10). A signed-out account is left out, and a CLI that is
-  not installed has no rows.
-- **Who is signed in.** Installed providers and their accounts are probed in parallel threads,
-  with the account's variable set for named accounts and the daemon's environment for the default;
-  zz reads no token. Claude Code runs `claude auth status --json` (`loggedIn`, `email`, `orgName`,
-  `planTier` / `subscriptionType`). Codex starts `codex app-server` on stdio (`account/read` with
+  PATH plus `~/.local/bin`). For Claude Code and Codex it is the slots of the record in id order
+  (a2 before a10, `logins::listed`): the active one signed in when the CLI reads as signed in, a
+  parked one when zz holds its login, with the name the record keeps; a provider with no active slot
+  also gets its CLI's own login as `id: None` first. Antigravity, Grok and Cursor have one row,
+  `id: None`. A signed-out slot is left out, and a CLI that is not installed has no rows.
+- **Who is signed in.** Installed providers are probed in parallel threads, each CLI on its own
+  store; zz reads no token for this. Claude Code runs `claude auth status --json` (`loggedIn`,
+  `email`, `orgName`, `planTier` / `subscriptionType`). Codex starts `codex app-server` on stdio (`account/read` with
   `refreshToken: false` and `account/rateLimits/read`). Antigravity starts `agy acp` on stdio and
   sends `initialize` + `session/list` (`-32000` is signed out; a result is signed in). Grok starts
   `grok agent stdio` and sends `initialize` + `_x.ai/billing` (`-32000` is signed out; a result
   gives `subscription_tier` as `plan` and weekly quota via `credit_usage`). Cursor runs
   `cursor-agent status --format json` (skipping any leading tip line before `{`) and reads
   `isAuthenticated` and `userInfo.email`. Every probe drops the parent Claude Code session
-  variables and `ZZ_PANE`, `ZZ_SESSION`, `TMUX` and `TMUX_PANE` (and for an account the login
-  overrides above). A probe that fails or times out leaves the status unknown (`identify` gives
-  `None`): the list shows it as signed out, and a sign-in never picks it.
-  An account directory is linked (`accounts::prepare`) before its probe, so a Codex home has its
-  state databases before its first app server.
+  variables and `ZZ_PANE`, `ZZ_SESSION`, `TMUX` and `TMUX_PANE`. A probe that fails or times out
+  leaves the status unknown (`identify` gives `None`): an active slot keeps showing signed in, a
+  CLI's own login shows signed out. The probe is also where adoption and the Codex identity check
+  run (`accounts::settle`).
 - **Watching.** A plain call adds the client to the watchers, sends the list the daemon already has
   (nothing before the first probe ends), and refreshes in a worker thread; a call during a refresh
   asks for one more pass. The whole list goes to every watcher still connected when it changes.
   Every plain call refreshes, which is how a login that finished shows up: the daemon does not
   follow the login window.
-- **Which account.** `--add` subscribes the caller too. `--account default` signs in the CLI's own
-  login, `--account <id>` an existing account directory (signed out or not). Without `--account`
-  the daemon asks that CLI's accounts, picks the first account it read as signed out, else the
-  lowest `aN` not taken (`a1`, `a2`, ...), and creates or completes it (`accounts::create`: 0700,
-  links, Claude seed; `accounts::pick_account`).
+- **Which account.** `--add` subscribes the caller too. `--account <id>` names the slot a sign-in
+  should fill; otherwise the probe after the sign-in picks it (see
+  [below](#signing-in-without-a-terminal)). Antigravity, Grok and Cursor keep one login (`default`
+  / `id: None`) and reject a named `--account`.
 - **Two ways to sign in.** A caller that declared `agent-login-v1` in its hello gets a sign-in the
   daemon drives ([below](#signing-in-without-a-terminal)). A caller without it, a one-shot CLI
   connection (it opens with `Exec` and declares nothing), and any `--terminal` call get the
-  terminal window: a new window named after the provider and id (`default` for the CLI's own
-  login) in the caller's session, running `claude auth login` or `codex login` through the user's
-  interactive shell with `CLAUDE_CONFIG_DIR` or `CODEX_HOME` set for a named account
-  (`cli_session::interactive_shell`). The login there is the CLI's own; zz types nothing into it
-  and does not follow it.
+  terminal window: a new window named `<provider> login` in the caller's session, running `claude
+  auth login` or `codex login` through the user's interactive shell
+  (`cli_session::interactive_shell`). The login there is the CLI's own on its own store; zz types
+  nothing into it, does not follow it and keeps no slot for it.
 - **Clients.** zz-client's core keeps the last list (`ClientCore::agent_accounts`) and emits
   `CoreEvent::AgentAccountsChanged`. The desktop keeps one list per host beside the providers report
   (`MuxClient::host_agent_accounts`, `request_agent_accounts`, `start_agent_login`); zz-app reads the
@@ -408,8 +395,9 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
 
 The daemon runs the CLI's own login on a pipe nobody sees and reports each step to the clients
 (`crates/zz-daemon/src/daemon/agent_login.rs`). zz has no OAuth client of its own: the unmodified
-CLI opens the flow, exchanges the code and writes the credentials into the account's directory
-(or the CLI's own place for `default`). zz never reads, stores or logs a token.
+CLI opens the flow, exchanges the code and writes the login into its own store. zz never logs a
+token; for Claude Code and Codex it copies the stored login aside before the sign-in and parks
+logins as [Accounts](#accounts) says.
 
 - **Browser.** `--browser local` says the client's browser runs on the daemon's machine (the
   desktop on its local daemon), so the CLI's callback on `localhost` can catch the redirect.
@@ -446,20 +434,26 @@ CLI opens the flow, exchanges the code and writes the credentials into the accou
   `AgentLoginFailure::message` words each) and `Cancelled`.
 - **The machine.** `agent::login::LoginMachine` on zz-machine decides; a driver thread per login
   owns the CLI process, feeds it facts (the CLI's answers, the client's code, cancel or restart, a
-  tick) and runs its effects (launch, stop the CLI, send the code, probe, switch the pane, remove
-  the directory). Starting has 1 minute to show a link and exchanging a pasted code 1 minute to
+  tick) and runs its effects (launch, stop the CLI, send the code, probe, discard the copy). Starting has 1 minute to show a link and exchanging a pasted code 1 minute to
   finish; a link waits 15 minutes. A step is published when it or the browser changes; a final one
   only after its effects ran.
 - **One per provider.** A daemon runs one sign-in per provider. Another `--add` for that provider
   while it runs restarts it in the other browser mode when `--browser` differs (same login id,
   account and pane, a new CLI process) and otherwise sends the requester the current step.
-- **Done.** The daemon probes that account again as the list does, puts the answer in the list and
-  publishes `AgentAccounts`. With `--pane` naming an agent chat of the same provider, an idle chat
-  moves to the account as `agent-account -t` moves it (`switch_agent_account`, which reopens it
-  even when it already was on that account, so a chat that failed for want of a login picks it
-  up) and `pane` is `Switched`; a busy one is left alone and `pane` is `Busy`.
-- **Failed or cancelled.** The CLI is killed with its process group. An account directory this
-  sign-in created is removed; one it reused, or `default`, is kept.
+- **Before it starts.** For Claude Code and Codex the daemon settles the record as a listing does,
+  then copies the login in the store under the active slot (`logins::begin_sign_in`).
+- **Done.** The daemon probes the CLI again as the list does. For Claude Code and Codex
+  `logins::finish_sign_in` picks the slot: the one `--account` named, else the one with the same
+  email and organization (its old login is dropped, which is how a wrong name gets fixed), else
+  the next free id. When no chat of the provider runs anything, the new slot becomes active, the
+  copy is dropped if it was the same slot, and every open chat of the provider reopens on it
+  (`Shared::relaunch_agent_chats`, which also restarts the Codex app server daemon). When one runs,
+  the new login is parked under its slot and the copied one goes back into the store. The answer
+  goes into the list. With `--pane` naming an agent chat of the same provider, `pane` is
+  `Switched`, or `Busy` when the new login was parked; Antigravity, Grok and Cursor reopen their
+  chats the same way when none is busy.
+- **Failed or cancelled.** The CLI is killed with its process group. The copy is dropped, and put
+  back into the store first if the store is empty.
 - **The pasted code.** It travels as `ProtocolMessage::AgentLogin(AgentLoginRequest::Code)`, never
   as a command argument, so it stays out of command history. `AgentLoginCode` prints as
   `AgentLoginCode(..)` in `Debug`, so the client's and daemon's trace logs never show it. The driver
@@ -551,8 +545,8 @@ opens.
 Quota belongs to an account, not a pane: up to two windows, the 5-hour one and the week, each a
 used fraction and a reset time (`QuotaWindows`, `QuotaWindow { used, resets_at }` in
 `zz_protocol::providers`). zz calls no usage endpoint and reads no token; it keeps what the CLIs
-emit or answer, in the daemon's memory only, one record per provider and account (`None` is the
-CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
+emit or answer, in the daemon's memory only, one record per provider and account (a slot, or
+`None` for a CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
 
 - **Claude Code** writes `rate_limit_event` on its stream once per turn, with
   `rate_limit_info.unifiedWindows.five_hour` and `seven_day`, each `utilization` (0 to 1) and
@@ -586,8 +580,8 @@ CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
   figures at once, before its own `get_usage` answer comes in.
 - **One login per record.** A record belongs to the login the account probe last saw signed in on
   that slot, by email and organization (`Accounts::note_owner`). When a probe or a finished sign-in
-  reads a different login there (the CLI's own login switched with `claude auth login` outside zz,
-  or an account directory signed in as someone else), the record is dropped before anything new is
+  reads a different login there (a Codex login changed outside zz, or a slot signed in again as
+  someone else), the record is dropped before anything new is
   merged, so a window the new login has not started (Claude's `get_usage` answers `five_hour:
   null` until the first turn) no longer shows the old login's figure under the new email. Until the
   next probe the old record stays, and after the drop the slot shows no limits until a turn or a chat

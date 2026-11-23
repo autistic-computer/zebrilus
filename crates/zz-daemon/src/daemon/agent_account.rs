@@ -1,5 +1,7 @@
 use super::agent_flip::FlipWhenBusy;
 use super::*;
+#[cfg(all(feature = "agent", unix))]
+use zz_protocol::AgentProvider;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct AgentAccountArgs {
@@ -78,23 +80,41 @@ impl Shared {
         }
         #[cfg(all(feature = "agent", unix))]
         {
-            use crate::agent::accounts;
+            use crate::agent::logins;
 
-            let descriptor = self.agent_descriptor(pane)?;
-            self.inner.lock().armed_accounts.remove(&pane);
-            if descriptor.account == args.account {
+            let provider = self.agent_descriptor(pane)?.provider;
+            let Some(target) = args.account else {
+                return Ok(Execution::default());
+            };
+            let label = provider.label();
+            if !logins::swaps(provider) {
+                return Err(ServerError::InvalidCommand(format!(
+                    "agent-account: {label} keeps one account"
+                ))
+                .into());
+            }
+            self.inner.lock().armed_accounts.remove(&provider);
+            let record = logins::load(provider).unwrap_or_default();
+            if record.active() == Some(target.as_str()) {
+                if !self
+                    .align_agent_accounts(provider, record.active())
+                    .is_empty()
+                {
+                    self.publish_snapshot_state();
+                }
                 return Ok(Execution::default());
             }
-            if let Some(id) = args.account.as_deref() {
-                let provider = descriptor.provider;
-                accounts::existing(provider, &accounts::Account::resolve(provider, id))
-                    .map_err(ServerError::InvalidCommand)?;
+            if record.slot(&target).is_none() {
+                return Err(ServerError::InvalidCommand(format!(
+                    "agent-account: {label} has no account {target}"
+                ))
+                .into());
             }
-            if let Some(busy) = self.agent_busy(pane) {
+            if let Some(busy) = self.provider_busy(provider) {
                 match args.when_busy {
                     FlipWhenBusy::Now => {}
                     FlipWhenBusy::WhenIdle => {
-                        self.arm_account(pane, args.account);
+                        self.arm_account(provider, target);
                         return Ok(Execution::default());
                     }
                     FlipWhenBusy::Refuse | FlipWhenBusy::Cancel => {
@@ -103,17 +123,16 @@ impl Shared {
                 }
             }
             let shared = Arc::downgrade(&self.server_owner());
-            let account = args.account;
             let spawned = std::thread::Builder::new()
                 .name("zz-agent-account".to_owned())
                 .spawn(move || {
                     if let Some(shared) = shared.upgrade() {
-                        shared.switch_agent_account(pane, account);
+                        shared.switch_agent_login(provider, &target);
                     }
                 });
             if let Err(error) = spawned {
                 return Err(ServerError::Internal(format!(
-                    "could not move {pane} to another account: {error}"
+                    "could not switch the {label} account: {error}"
                 ))
                 .into());
             }
@@ -140,22 +159,98 @@ impl Shared {
     }
 
     #[cfg(all(feature = "agent", unix))]
-    fn agent_busy(&self, pane: PaneId) -> Option<String> {
-        use crate::agent::cli_session;
-
-        let state = self
-            .open_agent_runtime()
-            .and_then(|runtime| runtime.wire_state(pane))
-            .unwrap_or_default();
-        cli_session::busy(&cli_session::chat_running(&state))
+    pub(super) fn provider_chats(&self, provider: AgentProvider) -> Vec<PaneId> {
+        self.inner
+            .lock()
+            .engine
+            .state
+            .windows
+            .values()
+            .flat_map(|window| window.panes.iter())
+            .filter(|(_, state)| {
+                matches!(&state.kind, PaneKind::Agent(descriptor) if descriptor.provider == provider)
+            })
+            .map(|(pane, _)| *pane)
+            .collect()
     }
 
     #[cfg(all(feature = "agent", unix))]
-    fn arm_account(self: &Arc<Self>, pane: PaneId, account: Option<String>) {
+    pub(super) fn provider_busy(&self, provider: AgentProvider) -> Option<String> {
+        use crate::agent::cli_session;
+
+        let runtime = self.open_agent_runtime()?;
+        self.provider_chats(provider).into_iter().find_map(|pane| {
+            let state = runtime.wire_state(pane).unwrap_or_default();
+            cli_session::busy(&cli_session::chat_running(&state))
+        })
+    }
+
+    #[cfg(all(feature = "agent", unix))]
+    pub(super) fn align_agent_accounts(
+        &self,
+        provider: AgentProvider,
+        active: Option<&str>,
+    ) -> Vec<PaneId> {
+        let Some(active) = active else {
+            return Vec::new();
+        };
+        let chats = self.provider_chats(provider);
+        let mut inner = self.inner.lock();
+        chats
+            .into_iter()
+            .filter(|pane| {
+                inner
+                    .engine
+                    .state
+                    .update_agent(*pane, |agent| agent.account = Some(active.to_owned()))
+                    .unwrap_or(false)
+            })
+            .collect()
+    }
+
+    #[cfg(all(feature = "agent", unix))]
+    pub(super) fn relaunch_agent_chats(
+        self: &Arc<Self>,
+        provider: AgentProvider,
+        change: impl FnOnce() -> Option<String>,
+    ) {
+        let chats = self.provider_chats(provider);
+        let open = {
+            let inner = self.inner.lock();
+            chats
+                .into_iter()
+                .filter(|pane| inner.agent_panes.contains(pane))
+                .collect::<Vec<_>>()
+        };
+        if let Some(runtime) = self.open_agent_runtime() {
+            for pane in &open {
+                runtime.close_and_wait(*pane);
+            }
+        }
+        let active = change();
+        if provider == AgentProvider::Codex
+            && let Some(program) = providers::locate(provider, self.provider_search().as_ref())
+        {
+            crate::agent::codex::restart_managed_daemon(&program);
+        }
+        let moved = self.align_agent_accounts(provider, active.as_deref());
+        if !moved.is_empty() {
+            self.publish_snapshot_state();
+            for pane in moved {
+                self.note_child_descriptor(pane);
+            }
+        }
+        for pane in open {
+            self.open_agent_pane(pane, None);
+        }
+    }
+
+    #[cfg(all(feature = "agent", unix))]
+    fn arm_account(self: &Arc<Self>, provider: AgentProvider, target: String) {
         self.inner
             .lock()
             .armed_accounts
-            .insert(pane, account.clone());
+            .insert(provider, target.clone());
         let shared = Arc::downgrade(&self.server_owner());
         let spawned = std::thread::Builder::new()
             .name("zz-agent-account-armed".to_owned())
@@ -165,49 +260,46 @@ impl Shared {
                     let Some(shared) = shared.upgrade() else {
                         return;
                     };
-                    if shared.inner.lock().armed_accounts.get(&pane) != Some(&account) {
+                    if shared.inner.lock().armed_accounts.get(&provider) != Some(&target) {
                         return;
                     }
-                    if shared.agent_descriptor(pane).is_err() {
-                        shared.inner.lock().armed_accounts.remove(&pane);
-                        return;
-                    }
-                    if shared.agent_busy(pane).is_none() {
-                        shared.inner.lock().armed_accounts.remove(&pane);
-                        shared.switch_agent_account(pane, account);
+                    if shared.provider_busy(provider).is_none() {
+                        shared.inner.lock().armed_accounts.remove(&provider);
+                        shared.switch_agent_login(provider, &target);
                         return;
                     }
                 }
             });
         if let Err(error) = spawned {
-            log::warn!(target: "zz::agent", "could not wait to move {pane} to another account: {error}");
-            self.inner.lock().armed_accounts.remove(&pane);
+            log::warn!(target: "zz::agent", "could not wait to switch the {} account: {error}", provider.label());
+            self.inner.lock().armed_accounts.remove(&provider);
         }
     }
 
     #[cfg(all(feature = "agent", unix))]
-    pub(super) fn switch_agent_account(self: &Arc<Self>, pane: PaneId, account: Option<String>) {
-        if let Some(runtime) = self.open_agent_runtime() {
-            runtime.close_and_wait(pane);
+    pub(super) fn switch_agent_login(self: &Arc<Self>, provider: AgentProvider, target: &str) {
+        use crate::agent::logins;
+
+        let search = self.provider_search();
+        if let Some(program) = providers::locate(provider, search.as_ref()) {
+            let native = super::accounts::identify(provider, &program, search.as_ref(), None)
+                .map(|(account, _)| account);
+            super::accounts::settle(provider, &program, search.as_ref(), native.as_ref());
         }
-        let changed = self
-            .inner
-            .lock()
-            .engine
-            .state
-            .update_agent(pane, |agent| agent.account = account);
-        match changed {
-            Ok(true) => {
-                self.publish_snapshot_state();
-                self.note_child_descriptor(pane);
+        self.relaunch_agent_chats(provider, || {
+            let _guard = logins::guard();
+            let mut record = logins::load(provider).unwrap_or_default();
+            match logins::swap(&logins::System, provider, &mut record, target) {
+                Ok(()) => {
+                    if let Err(error) = logins::store(provider, &record) {
+                        log::warn!(target: "zz::agent", "could not record the {} accounts: {error}", provider.label());
+                    }
+                }
+                Err(error) => log::warn!(target: "zz::agent", "{error}"),
             }
-            Ok(false) => {}
-            Err(error) => {
-                log::warn!(target: "zz::agent", "could not move {pane} to another account: {error}");
-                return;
-            }
-        }
-        self.open_agent_pane(pane, None);
+            record.active
+        });
+        self.refresh_agent_accounts();
     }
 }
 

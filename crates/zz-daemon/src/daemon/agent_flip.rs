@@ -58,7 +58,6 @@ pub(super) enum FlipStep {
     ToChat {
         provider: AgentProvider,
         session: crate::agent::cli_session::CliSession,
-        account: Option<String>,
     },
     ToCli {
         cwd: Option<PathBuf>,
@@ -77,11 +76,7 @@ impl FlipStep {
     pub(super) fn command(&self, pane: PaneId) -> CommandInvocation {
         let mut args = vec!["-t".to_owned(), pane.to_string()];
         match self {
-            Self::ToChat {
-                provider,
-                session,
-                account,
-            } => {
+            Self::ToChat { provider, session } => {
                 if let Some(cwd) = &session.cwd {
                     args.extend(["-c".to_owned(), cwd.display().to_string()]);
                 }
@@ -89,7 +84,6 @@ impl FlipStep {
                     ("--resume", &session.session_id),
                     ("--model", &session.model),
                     ("--effort", &session.effort),
-                    ("--account", account),
                 ] {
                     if let Some(value) = value {
                         args.extend([option.to_owned(), value.clone()]);
@@ -243,7 +237,7 @@ impl Shared {
 #[cfg(all(feature = "agent", unix))]
 impl Shared {
     pub(super) fn flip_plan(&self, pane: PaneId) -> Result<FlipPlan, ServerError> {
-        use crate::agent::{accounts, cli_session};
+        use crate::agent::cli_session;
 
         let (kind, pane_pid, cwd, foreground) = {
             let inner = self.inner.lock();
@@ -274,14 +268,6 @@ impl Shared {
                     return Err(no_flip(pane, descriptor.provider));
                 }
                 let provider = descriptor.provider;
-                let account = descriptor
-                    .account
-                    .as_deref()
-                    .map(|id| {
-                        accounts::existing(provider, &accounts::Account::resolve(provider, id))
-                    })
-                    .transpose()
-                    .map_err(ServerError::InvalidCommand)?;
                 let state = self
                     .open_agent_runtime()
                     .and_then(|runtime| runtime.wire_state(pane))
@@ -290,26 +276,22 @@ impl Shared {
                 let model = model.or(descriptor.model);
                 let effort = effort.or(descriptor.effort);
                 let session = state.session_id.clone().or(descriptor.session_id);
-                let running = if provider == AgentProvider::Codex
-                    && self.codex_chat_on_shared_server(account.as_deref())
-                {
-                    Vec::new()
-                } else {
-                    cli_session::chat_running(&state)
-                };
+                let running =
+                    if provider == AgentProvider::Codex && self.codex_chat_on_shared_server() {
+                        Vec::new()
+                    } else {
+                        cli_session::chat_running(&state)
+                    };
                 Ok(FlipPlan {
                     running,
                     step: FlipStep::ToCli {
                         cwd: descriptor.cwd,
-                        command: cli_session::interactive_shell(
-                            account.as_deref().map(|home| (provider, home)),
-                            &cli_session::cli_command(
-                                provider,
-                                session.as_deref(),
-                                model.as_deref(),
-                                effort.as_deref(),
-                            ),
-                        ),
+                        command: cli_session::interactive_shell(&cli_session::cli_command(
+                            provider,
+                            session.as_deref(),
+                            model.as_deref(),
+                            effort.as_deref(),
+                        )),
                     },
                 })
             }
@@ -368,22 +350,9 @@ impl Shared {
                     }
                     AgentProvider::Cursor => return Err(no_flip(pane, provider)),
                 };
-                let account = session
-                    .pid
-                    .and_then(|pid| {
-                        zz_daemon_client::process_info::environment(
-                            pid,
-                            accounts::variable(provider)?,
-                        )
-                    })
-                    .and_then(|home| accounts::account_of(provider, Path::new(&home)));
                 Ok(FlipPlan {
                     running: session.running.clone(),
-                    step: FlipStep::ToChat {
-                        provider,
-                        session,
-                        account,
-                    },
+                    step: FlipStep::ToChat { provider, session },
                 })
             }
             _ => Err(ServerError::InvalidTarget(format!(
@@ -392,12 +361,12 @@ impl Shared {
         }
     }
 
-    fn codex_chat_on_shared_server(&self, account: Option<&Path>) -> bool {
+    fn codex_chat_on_shared_server(&self) -> bool {
         crate::agent::codex::CodexCommand::parse(
             self.agent_spawn_config().command_for(AgentProvider::Codex),
         )
         .is_some_and(|command| crate::agent::codex::uses_managed_daemon(&command))
-            && crate::agent::codex::managed_socket(account).is_some()
+            && crate::agent::codex::managed_socket().is_some()
     }
 
     fn start_flip(self: &Arc<Self>, pane: PaneId, step: FlipStep) {
