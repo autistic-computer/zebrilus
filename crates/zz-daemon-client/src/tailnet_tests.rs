@@ -349,3 +349,25 @@ fn tailnet_endpoints_parse_and_print() {
         assert!(Endpoint::parse(input).is_err(), "accepted {input}");
     }
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn tailscale_runs_only_under_this_accounts_home() {
+    let account = Path::new("/Users/fabrico");
+    assert_eq!(
+        foreign_home(Some(Path::new("/Users/fabrico")), account),
+        None
+    );
+    assert_eq!(
+        foreign_home(Some(Path::new("/Users/fabrico/")), account),
+        None
+    );
+    assert_eq!(
+        foreign_home(Some(Path::new("/tmp/zz-live-home")), account),
+        Some("HOME is /tmp/zz-live-home, not this account's home /Users/fabrico".to_owned())
+    );
+    assert_eq!(
+        foreign_home(None, account),
+        Some("HOME is not set".to_owned())
+    );
+}
