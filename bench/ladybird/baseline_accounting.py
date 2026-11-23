@@ -28,7 +28,10 @@ def tree(root_pid, daemon_pid, headless):
         elif pid == root_pid:
             role = "host"
         else:
-            role = "host/" + proc.name()
+            kind = next(
+                (arg[7:] for arg in proc.cmdline() if arg.startswith("--type=")), None
+            )
+            role = "engine/" + kind if kind else "host/" + proc.name()
         result[(pid, proc.create_time())] = (role, proc)
     return result
 

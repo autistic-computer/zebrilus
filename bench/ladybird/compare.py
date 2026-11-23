@@ -260,12 +260,24 @@ def run(binary, cli, hub, directory, readback):
             assert result["libcef_mapped"] == ("Ladybird" not in info[2])
             if readback or "Ladybird" in info[2]:
                 path = directory / "pane.png"
-                command("capture-browser", "-t", first, "-o", str(path))
-                with Image.open(path) as img:
-                    assert img.convert("RGB").getpixel((10, 10)) == (25, 75, 112), (
-                        "Unexpected browser pixels"
-                    )
-                    result["capture_px"] = img.size
+                capture = command(
+                    "capture-browser", "-t", first, "-o", str(path), check=False
+                )
+                if capture.returncode:
+                    if (
+                        readback
+                        or env.get("ZZ_LADYBIRD_GPU") != "1"
+                        or "no CPU-readable frame"
+                        not in capture.stderr + capture.stdout
+                    ):
+                        raise RuntimeError(capture.stderr + capture.stdout)
+                    result["capture_transport"] = "gpu"
+                else:
+                    with Image.open(path) as img:
+                        assert img.convert("RGB").getpixel((10, 10)) == (25, 75, 112), (
+                            "Unexpected browser pixels"
+                        )
+                        result["capture_px"] = img.size
             command("send-keys", "-t", first, "-l", "spike")
             text, _ = event(server, "input")
             while text != "spike":

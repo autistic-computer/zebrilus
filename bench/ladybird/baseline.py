@@ -11,6 +11,7 @@ import os
 import platform
 import queue
 import random
+import shutil
 import statistics
 import subprocess
 import sys
@@ -18,11 +19,19 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from xml.etree import ElementTree
 
 import psutil
 from baseline_accounting import counters, delta, memory, pressure, quiet, tree
 from PIL import Image
 
+GPU_HOSTS = {
+    "cpu": "zz",
+    "gpu-readback": "zz",
+    "dma-buf": "zz",
+    "qt-gpu": "qt",
+    "cef": "zz",
+}
 MODES = ("headless", "qt", "zz")
 PHASES = ("idle", "canvas", "scroll", "integer", "layout")
 CHECKSUMS = {
@@ -40,7 +49,7 @@ class Fixture(http.server.BaseHTTPRequestHandler):
             data = json.dumps(command).encode()
             mime = "application/json"
         elif self.path == "/":
-            data, mime = PAGE, "text/html; charset=utf-8"
+            data, mime = self.server.page, "text/html; charset=utf-8"
         else:
             data, mime = b"", "image/x-icon"
         self.send_response(200)
@@ -61,8 +70,9 @@ class Fixture(http.server.BaseHTTPRequestHandler):
 
 
 @contextlib.contextmanager
-def fixture():
+def fixture(page=PAGE):
     with http.server.ThreadingHTTPServer(("127.0.0.1", 0), Fixture) as server:
+        server.page = page
         server.commands = queue.Queue()
         server.events = queue.Queue()
         worker = threading.Thread(
@@ -105,6 +115,7 @@ def isolated_env(folder, parent):
         "ZZ_SESSION",
         "ZZ_PANE",
         "ZZ_SOCKET",
+        "ZZ_LADYBIRD_GPU",
         "ZZ_BROWSER_GPU",
         "ZZ_BROWSER_SHARED_TEXTURE",
         "TMUX",
@@ -124,7 +135,7 @@ def isolated_env(folder, parent):
     return env
 
 
-def launch_zz(bundle, env, sock, log, outer):
+def launch_zz(bundle, env, sock, log, outer, desktop=None):
     config = Path(env["XDG_CONFIG_HOME"]) / "zz-dev"
     data = Path(env["XDG_DATA_HOME"]) / "zz-dev"
     config.mkdir()
@@ -140,7 +151,10 @@ def launch_zz(bundle, env, sock, log, outer):
     (data / "import-prompted-v2").touch()
     env["ZZ_LADYBIRD_HUB"] = str(bundle / "runtime/libexec/Hub")
     return subprocess.Popen(
-        [bundle / "zz", "--socket", sock, "app"], env=env, stdout=log, stderr=log
+        [desktop or bundle / "zz", "--socket", sock, "app"],
+        env=env,
+        stdout=log,
+        stderr=log,
     )
 
 
@@ -257,7 +271,35 @@ def phase(root, daemon, mode, kwin, name, server, frames, milliseconds, viewport
     return result
 
 
+def gpu_memory(members):
+    if not shutil.which("nvidia-smi"):
+        return None
+    xml = subprocess.check_output(["nvidia-smi", "-q", "-x"], timeout=8)
+    roles = {p.pid: role for role, p in members.values()}
+    totals = {}
+    for proc in ElementTree.fromstring(xml).findall("gpu/processes/process_info"):
+        role = roles.get(int(proc.findtext("pid")))
+        if role is None:
+            continue
+        value, unit = proc.findtext("used_memory").split()
+        if unit != "MiB":
+            raise ValueError(f"Unexpected NVIDIA process memory unit {unit}")
+        totals[role] = totals.get(role, 0) + int(value)
+    return totals
+
+
 def screen_probe(env, path, point=None):
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            return capture_pixel(env, path, point)
+        except ValueError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.1)
+
+
+def capture_pixel(env, path, point):
     subprocess.run(
         ["spectacle", "-b", "-n", "-f", "-o", str(path)],
         env=env,
@@ -286,10 +328,15 @@ def screen_probe(env, path, point=None):
 
 
 def trial(args, parent, kwin, mode, size, outer, label, calibrate=False):
+    arm = mode
+    mode = GPU_HOSTS.get(arm, arm)
+    optical = args.presented_seconds and not calibrate
+    if optical:
+        import presented
     start_health = quiet()
     with (
         tempfile.TemporaryDirectory(prefix="zz-lb-", dir="/tmp") as tmp,
-        fixture() as server,
+        fixture(presented.PAGE if optical else PAGE) as server,
         (args.output / f"{label}.log").open("w") as log,
     ):
         folder = Path(tmp)
@@ -304,11 +351,20 @@ def trial(args, parent, kwin, mode, size, outer, label, calibrate=False):
             HISTFILE="/dev/null",
             ZDOTDIR=str(home),
         )
+        if arm == "cef":
+            env.update(
+                XDG_CURRENT_DESKTOP="zz-bench",
+                DESKTOP_SESSION="zz-bench",
+                KDE_FULL_SESSION="",
+            )
+        if arm in ("gpu-readback", "dma-buf"):
+            env["ZZ_LADYBIRD_GPU"] = "1"
+            env["ZZ_BROWSER_SHARED_TEXTURE"] = "1" if arm == "dma-buf" else "0"
         sock = folder / "s"
         url = f"http://127.0.0.1:{server.server_port}/"
         daemon = None
         result = {
-            "mode": mode,
+            "mode": arm,
             "viewport": size,
             "preflight": start_health,
             "phases": {},
@@ -316,7 +372,14 @@ def trial(args, parent, kwin, mode, size, outer, label, calibrate=False):
         pressure_start = pressure()
         opened = time.monotonic()
         if mode == "zz":
-            app = launch_zz(args.bundle, env, sock, log, outer)
+            app = launch_zz(
+                args.bundle,
+                env,
+                sock,
+                log,
+                outer,
+                args.cef_desktop if arm == "cef" else None,
+            )
         else:
             profile = folder / "profile"
             (profile / "config").mkdir(parents=True)
@@ -344,7 +407,7 @@ def trial(args, parent, kwin, mode, size, outer, label, calibrate=False):
                 [
                     binary,
                     *options,
-                    "--force-cpu-painting",
+                    *([] if arm == "qt-gpu" else ["--force-cpu-painting"]),
                     "--profile-path",
                     profile,
                     url,
@@ -359,23 +422,26 @@ def trial(args, parent, kwin, mode, size, outer, label, calibrate=False):
                 result["launch_to_attached_ms"] = round(
                     (time.monotonic() - opened) * 1000, 2
                 )
-                if not calibrate:
+                if not calibrate and not optical:
                     time.sleep(1.5)
                     result["phases"]["terminal"] = phase(
                         app.pid, daemon, mode, kwin, "terminal", None, 0, 3000, size
                     )
                 opened = time.monotonic()
-                cli(
+                pane = cli(
                     args.bundle,
                     env,
                     sock,
                     "new-window",
+                    "-P",
+                    "-F",
+                    "#{pane_id}",
                     "-t",
                     session,
                     "--kind",
                     "browser",
                     url,
-                )
+                ).stdout.strip()
             try:
                 ready, ready_time = event(server, "/ready", 30)
             except queue.Empty as error:
@@ -386,20 +452,61 @@ def trial(args, parent, kwin, mode, size, outer, label, calibrate=False):
             result["ready"] = ready
             if calibrate:
                 return ready["geometry"]
-            if (
-                ready["geometry"] != [*size, 1, "visible"]
-                or "Ladybird/2026.47.7" not in ready["ua"]
+            if ready["geometry"] != [*size, 1, "visible"] or (
+                ("Ladybird/2026.47.7" in ready["ua"]) == (arm == "cef")
             ):
                 raise ValueError(f"Unexpected initial page: {ready}")
             prove_pixels = label.startswith("0-") and mode != "headless"
-            if prove_pixels:
+            if prove_pixels and not args.gpu_comparison:
                 result["canvas_pixel"] = screen_probe(
                     env, args.output / f"{label}-canvas.png"
                 )
             time.sleep(1.5)
+            if prove_pixels and args.gpu_comparison and not optical:
+                try:
+                    capture_pixel(env, args.output / f"{label}-initial.png", None)
+                    result["initial_canvas_visible"] = True
+                except ValueError as error:
+                    result["initial_canvas_visible"] = False
+                    result["initial_canvas_error"] = str(error)
             members = tree(app.pid, daemon, mode == "headless")
-            if sum(role == "engine/Hub" for role, p in members.values()) != 1:
+            if args.cef_desktop:
+                snapshot = cli(
+                    args.bundle,
+                    env,
+                    sock,
+                    "capture-browser",
+                    "-t",
+                    pane,
+                    "-o",
+                    str(folder / "transport.png"),
+                    check=False,
+                )
+                if (
+                    snapshot.returncode == 0
+                    or "no CPU-readable frame" not in snapshot.stderr + snapshot.stdout
+                ):
+                    raise ValueError(
+                        f"Expected GPU frame transport for {arm}: {snapshot.stderr} {snapshot.stdout}"
+                    )
+                result["gpu_transport_confirmed"] = True
+            if arm == "cef":
+                if "/libcef.so" not in Path(f"/proc/{app.pid}/maps").read_text():
+                    raise ValueError("CEF control did not load libcef")
+            elif sum(role == "engine/Hub" for role, p in members.values()) != 1:
                 raise RuntimeError("Expected exactly one Hub")
+            if arm in ("cpu", "gpu-readback", "dma-buf", "qt-gpu"):
+                compositor = next(
+                    p for role, p in members.values() if role == "engine/Compositor"
+                )
+                result["compositor_options"] = [
+                    arg
+                    for arg in compositor.cmdline()
+                    if "gpu" in arg or "paint" in arg
+                ]
+                hub = next(p for role, p in members.values() if role == "engine/Hub")
+                if ("--force-cpu-painting" in hub.cmdline()) != (arm == "cpu"):
+                    raise ValueError(f"Unexpected Hub painting mode for {arm}")
             if mode == "zz":
                 shells = [p for role, p in members.values() if role == "support/pty"]
                 if len(shells) != 1 or not Path(shells[0].exe()).samefile("/bin/sh"):
@@ -410,6 +517,17 @@ def trial(args, parent, kwin, mode, size, outer, label, calibrate=False):
                 {"role": role, "name": p.name(), "pid": p.pid}
                 for role, p in members.values()
             ]
+            if optical:
+                result["presentation"] = presented.measure(
+                    env,
+                    folder,
+                    args.capture,
+                    server,
+                    size,
+                    args.presented_seconds,
+                    args.output / f"{label}-viewport.png",
+                )
+                return result
             for name in PHASES:
                 if name in CHECKSUMS:
                     time.sleep(0.3)
@@ -424,11 +542,33 @@ def trial(args, parent, kwin, mode, size, outer, label, calibrate=False):
                     args.idle_ms,
                     size,
                 )
+                if args.gpu_comparison and name in ("idle", "scroll"):
+                    result["phases"][name]["gpu_memory_mib"] = gpu_memory(members)
+                if prove_pixels and args.gpu_comparison and name == "canvas":
+                    check = screen_probe(env, args.output / f"{label}-canvas.png")
+                    marker_offset = 7 * args.frames % (size[0] - 80)
+                    scroll_point = (
+                        check["point"][0] - marker_offset,
+                        check["point"][1],
+                    )
+                    result["canvas_pixel"] = check
+            if arm in ("dma-buf", "gpu-readback", "cpu"):
+                for name in ("canvas", "scroll"):
+                    reads = result["phases"][name]["read_bytes"]["host"]
+                    full_frames = args.frames * size[0] * size[1] * 4
+                    if (arm == "dma-buf" and reads >= full_frames / 20) or (
+                        arm != "dma-buf" and reads < full_frames / 2
+                    ):
+                        raise ValueError(
+                            f"{arm} {name}: unexpected host reads {reads} for {full_frames} bytes of frames"
+                        )
             if prove_pixels:
                 result["scroll_pixel"] = screen_probe(
                     env,
                     args.output / f"{label}-scroll.png",
-                    result["canvas_pixel"]["point"],
+                    scroll_point
+                    if args.gpu_comparison
+                    else result["canvas_pixel"]["point"],
                 )
             result["host_counters"] = {
                 k: v - pressure_start[k] for k, v in pressure().items()
@@ -442,7 +582,9 @@ def trial(args, parent, kwin, mode, size, outer, label, calibrate=False):
 
 def calibrate_size(args, env, kwin, mode, size):
     outer = (
-        (size[0] + 294, size[1] + 112) if mode == "zz" else (size[0] + 6, size[1] + 115)
+        (size[0] + 294, size[1] + 112)
+        if mode in ("zz", "cef")
+        else (size[0] + 6, size[1] + 115)
     )
     for i in range(4):
         w, h, dpr, visible = trial(
@@ -484,6 +626,22 @@ def suite(args, env, kwin):
         if sha(args.stock / "lib" / name) != digest:
             raise ValueError(f"Different Ladybird library: {name}")
     sizes = args.sizes or SIZES
+    modes = (
+        ("cpu", "gpu-readback", "dma-buf", "qt-gpu") if args.gpu_comparison else MODES
+    )
+
+    if args.cef_desktop:
+        modes = ("dma-buf", "cef")
+
+    def chrome(arm):
+        if arm == "cef":
+            return arm
+        return "zz" if GPU_HOSTS.get(arm) == "zz" else arm
+
+    windows = (
+        "zz",
+        "cef" if args.cef_desktop else "qt-gpu" if args.gpu_comparison else "qt",
+    )
     manifest = args.output / "environment.json"
     ledger = args.output / "blocks.jsonl"
     previous = json.loads(manifest.read_text()) if args.resume else None
@@ -492,7 +650,7 @@ def suite(args, env, kwin):
         if previous
         else calibrate_size(args, env, kwin, m, s)
         for s in sizes
-        for m in ("zz", "qt")
+        for m in windows
     }
     meta = {
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -527,6 +685,28 @@ def suite(args, env, kwin):
         "seed": args.seed,
         "outer": {f"{m}-{s[0]}x{s[1]}": v for (m, s), v in outer.items()},
     }
+    if args.gpu_comparison:
+        meta["modes"] = list(modes)
+        meta["gpu"] = (
+            subprocess.check_output(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=name,driver_version,memory.total",
+                    "--format=csv,noheader",
+                ],
+                text=True,
+            ).splitlines()
+            if shutil.which("nvidia-smi")
+            else []
+        )
+    if args.presented_seconds:
+        import presented
+
+        meta["presentation_seconds"] = args.presented_seconds
+        meta["fixture_sha256"] = hashlib.sha256(presented.PAGE).hexdigest()
+    if args.cef_desktop:
+        meta["cef_desktop_sha256"] = sha(args.cef_desktop)
+        meta["libcef_sha256"] = sha(args.cef_desktop.parent / "libcef.so")
     completed = set()
     if previous is not None:
         meta["utc"] = previous["utc"]
@@ -551,7 +731,7 @@ def suite(args, env, kwin):
         if pending_sizes:
             resumed = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
             for size in pending_sizes:
-                for mode in ("qt", "zz"):
+                for mode in windows:
                     geometry = trial(
                         args,
                         env,
@@ -580,15 +760,23 @@ def suite(args, env, kwin):
     else:
         manifest.write_text(json.dumps(meta, indent=2) + "\n")
     rng = random.Random(args.seed)
-    orders = list(itertools.permutations(MODES))
-    rng.shuffle(orders)
+    if args.cef_desktop:
+        orders = list(itertools.permutations(modes))
+        rng.shuffle(orders)
+    elif args.gpu_comparison:
+        labels = list(modes)
+        rng.shuffle(labels)
+        orders = [[labels[(v + i) % 4] for v in (0, 1, 3, 2)] for i in range(4)]
+    else:
+        orders = list(itertools.permutations(modes))
+        rng.shuffle(orders)
     with ledger.open("a" if args.resume else "x") as out:
         for block in range(args.blocks + 1):
             for size in sizes if block % 2 == 0 else sizes[::-1]:
                 if (block, size) in completed:
                     continue
                 order = (
-                    MODES
+                    modes
                     if block == 0
                     else orders[(block - 1 + sizes.index(size)) % len(orders)]
                 )
@@ -604,9 +792,19 @@ def suite(args, env, kwin):
                         label = f"{prefix}{attempt}-{mode}"
                         print(label, flush=True)
                         runs[mode] = trial(
-                            args, env, kwin, mode, size, outer.get((mode, size)), label
+                            args,
+                            env,
+                            kwin,
+                            mode,
+                            size,
+                            outer.get((chrome(mode), size)),
+                            label,
                         )
-                    peak = max(swap_peak(run) for run in runs.values())
+                    peak = (
+                        max((swap_peak(run) for run in runs.values()), default=0)
+                        if not args.presented_seconds
+                        else None
+                    )
                     row = {
                         "block": block,
                         "warmup": block == 0,
@@ -614,11 +812,11 @@ def suite(args, env, kwin):
                         "order": order,
                         "size": size,
                         "max_swap_pss_kib": peak,
-                        "accepted": peak <= 1024 and block > 0,
+                        "accepted": (peak is None or peak <= 1024) and block > 0,
                         "runs": runs,
                     }
                     print(json.dumps(row, separators=(",", ":")), file=out, flush=True)
-                    if peak <= 1024 or block == 0:
+                    if peak is None or peak <= 1024 or block == 0:
                         break
                 else:
                     raise RuntimeError(
@@ -636,6 +834,17 @@ def main():
         action="store_true",
         help="Continue a saved run with the same settings and binaries",
     )
+    parser.add_argument(
+        "--gpu-comparison",
+        action="store_true",
+        help="Compare CPU, GPU readback, DMA-BUF and stock GPU presentation",
+    )
+    parser.add_argument(
+        "--cef-desktop",
+        type=Path,
+        help="Compare DMA-BUF directly with this release CEF zz executable",
+    )
+    parser.add_argument("--presented-seconds", type=int, default=0)
     parser.add_argument("--blocks", type=int, default=6)
     parser.add_argument("--frames", type=int, default=240)
     parser.add_argument("--idle-ms", type=int, default=4000)
@@ -648,6 +857,13 @@ def main():
     )
     parser.add_argument("--private-bus", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.cef_desktop:
+        args.cef_desktop = args.cef_desktop.resolve()
+        args.gpu_comparison = True
+    if args.presented_seconds and (
+        not args.gpu_comparison or not 2 <= args.presented_seconds <= 30
+    ):
+        parser.error("presentation tests require --gpu-comparison and 2..30 seconds")
     if args.blocks < 0 or not 16 <= args.frames <= 480 or not 0 < args.idle_ms <= 20000:
         parser.error("blocks must be nonnegative, frames 16..480 and idle-ms 1..20000")
     if args.sizes and (
@@ -677,6 +893,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=args.resume)
     with (
         tempfile.TemporaryDirectory(prefix="zz-lb-display-", dir="/tmp") as tmp,
+        contextlib.ExitStack() as services,
         (args.output / ".lock").open("a") as lock,
         (args.output / "kwin.log").open("a") as log,
     ):
@@ -685,6 +902,46 @@ def main():
         env = isolated_env(folder, os.environ)
         env.pop("WAYLAND_DISPLAY", None)
         env.update(XDG_RUNTIME_DIR=tmp, QT_QPA_PLATFORM="wayland")
+        if args.cef_desktop:
+
+            def unmount_documents():
+                documents = folder / "doc"
+                if documents.is_mount():
+                    subprocess.run(["fusermount3", "-uz", documents], check=True)
+
+            services.callback(unmount_documents)
+            (Path(env["XDG_CONFIG_HOME"]) / "kwalletrc").write_text(
+                "[Wallet]\nEnabled=false\nFirst Use=false\n"
+            )
+            subprocess.run(
+                [
+                    "dbus-update-activation-environment",
+                    "XDG_CONFIG_HOME",
+                    "XDG_DATA_HOME",
+                    "XDG_CACHE_HOME",
+                    "XDG_RUNTIME_DIR",
+                    "QT_QPA_PLATFORM",
+                    "WAYLAND_DISPLAY=baseline",
+                ],
+                env=env,
+                check=True,
+            )
+        if args.presented_seconds:
+            import presented
+
+            args.capture = presented.build_capture(folder)
+            env.pop("PIPEWIRE_REMOTE", None)
+            env.update(PIPEWIRE_RUNTIME_DIR=tmp, XDG_STATE_HOME=tmp)
+            pipewire = subprocess.Popen(["pipewire"], env=env, stdout=log, stderr=log)
+            services.callback(stop, pipewire)
+            deadline = time.monotonic() + 8
+            while not (folder / "pipewire-0").exists():
+                if pipewire.poll() is not None or time.monotonic() > deadline:
+                    raise RuntimeError("Private PipeWire failed to start")
+                time.sleep(0.05)
+            services.callback(
+                stop, subprocess.Popen(["wireplumber"], env=env, stdout=log, stderr=log)
+            )
         kwin = subprocess.Popen(
             [
                 "kwin_wayland",
