@@ -108,6 +108,10 @@ pub fn mentions(text: &str) -> Vec<Mention> {
         .collect()
 }
 
+const AGENT_REPLIES: &str = "Its reply and any questions come back to you as messages.";
+const AGENT_REPLIES_BEFORE: &str =
+    "Its reply and any permission asks come back to you as messages.";
+
 impl Mention {
     #[must_use]
     pub fn instruction(&self) -> String {
@@ -119,7 +123,7 @@ impl Mention {
                     .map(|model| format!(" --model {model}"))
                     .unwrap_or_default();
                 format!(
-                    "The user tagged {name}: {name} does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent {name}{model} 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages."
+                    "The user tagged {name}: {name} does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent {name}{model} 'BRIEF' and end your turn. Do not do the task yourself. {AGENT_REPLIES}"
                 )
             }
             Self::Chat { host, pane } => format!(
@@ -180,7 +184,8 @@ fn note_line(line: &str) -> bool {
             .split_once(&marker)
             .and_then(|(_, rest)| rest.split_once(" 'BRIEF'"))
             .map(|(model, _)| model.to_owned());
-        return Mention::Agent { provider, model }.instruction() == line;
+        let current = Mention::Agent { provider, model }.instruction();
+        return current == line || current.replace(AGENT_REPLIES, AGENT_REPLIES_BEFORE) == line;
     }
     if let Some((token, _)) = line.split_once(" is another chat, not you") {
         return Mention::parse(token)
@@ -892,8 +897,8 @@ mod tests {
                 },
             ]
         );
-        let codex = "The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages.";
-        let claude = "The user tagged claude: claude does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent claude --model opus 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages.";
+        let codex = "The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any questions come back to you as messages.";
+        let claude = "The user tagged claude: claude does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent claude --model opus 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any questions come back to you as messages.";
         let chat = "@macbook:%2 is another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to you as a message.";
         assert_eq!(mention_note("@+codex fix it").as_deref(), Some(codex));
         let both = mention_note("@+claude/opus and @+codex, ask @macbook:%2 and @+codex again")
@@ -911,6 +916,9 @@ mod tests {
         let hidden = hidden_note("@+claude/opus and @macbook:%2", Some(&child)).expect("note");
         assert_eq!(hidden, format!("{child}\n{claude}\n{chat}"));
         assert!(is_hidden_note(&hidden));
+        assert!(is_hidden_note(
+            "The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages."
+        ));
         assert!(!is_hidden_note(
             "The user tagged codex: please do it yourself."
         ));

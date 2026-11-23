@@ -353,7 +353,7 @@ cycle limit, and whether a child may create children is [open](#open).
   [What an agent knows](#what-an-agent-knows)), so an untaught agent can hand work over too:
 
 ```
-The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages.
+The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any questions come back to you as messages.
 @macbook:%2 is another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to you as a message.
 ```
 
@@ -757,8 +757,11 @@ names its ask's request id.
 - The two failures are the ones the second batch left as they are: a Codex child runs a command
   once in its read-only sandbox before any ask exists (m4c), and a host tells the user that the
   child refused instead of following up (m8b).
-- The mention note for an agent token still ends `Its reply and any permission asks come back to
-  you as messages.`, which is no longer true by default. No run tripped on it.
+- The mention note for an agent token ended `Its reply and any permission asks come back to you
+  as messages.`, which is no longer true by default. No run tripped on it; it now ends `Its reply
+  and any questions come back to you as messages.`, and a note with the old sentence is still
+  hidden on replay. The rerun of the scenarios whose host gets that note is in the same results
+  file.
 
 # UI choices
 

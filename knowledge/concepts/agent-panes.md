@@ -144,8 +144,9 @@ chat with: zz new-pane -d --kind agent NAME 'BRIEF'`.
 rows write) reaches the agent with an instruction built from those tokens (`zz_protocol::agent_mention::mention_note`,
 one sentence per distinct token): for `@+codex`, `The user tagged codex: codex does this task, not
 you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end
-your turn. Do not do the task yourself. Its reply and any permission asks come back to you as
-messages.` (with `--model MODEL` when the token names one), and for `@macbook:%2`, `@macbook:%2 is
+your turn. Do not do the task yourself. Its reply and any questions come back to you as
+messages.` (with `--model MODEL` when the token names one; a note recorded before 2026-11-23 ends
+`any permission asks` instead and is still hidden on replay), and for `@macbook:%2`, `@macbook:%2 is
 another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to
 you as a message.` A chat opened by a chat gets a second note with its brief
 (`child_note`): `%P (NAME) opened this chat. Your final message is sent to it as your reply, so

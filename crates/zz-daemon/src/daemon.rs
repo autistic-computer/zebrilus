@@ -125862,7 +125862,7 @@ bind - split-window -v -c "#{pane_current_path}"
                 })
             }));
             let tagged = "@+codex fix it";
-            let mention = "The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages.";
+            let mention = "The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any questions come back to you as messages.";
             let wait = |count: usize| wait_until("the prompt", || seen.lock().len() == count);
             run_as(
                 &workspace,
