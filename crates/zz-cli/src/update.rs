@@ -232,12 +232,29 @@ fn here_target(request: &Request) -> Result<Version, String> {
     }
 }
 
-fn host_target(request: &Request) -> Result<Version, String> {
-    match (&request.version, request.beta) {
-        (Some(version), _) => Ok(version.clone()),
-        (None, true) => newest(Channel::Beta),
-        (None, false) => Ok(BuildInfo::current().version),
-    }
+fn run_versions(
+    request: &Request,
+    current: &Version,
+    here_installs: bool,
+    newest: impl Fn(Channel) -> Result<Version, String>,
+) -> Result<(Version, Option<Version>), String> {
+    let named = match (&request.version, request.beta) {
+        (Some(version), _) => Some(version.clone()),
+        (None, true) => Some(newest(Channel::Beta)?),
+        (None, false) => None,
+    };
+    let here = if here_installs {
+        Some(match &named {
+            Some(version) => version.clone(),
+            None => newest(Channel::of(current))?,
+        })
+    } else {
+        None
+    };
+    let hosts = named
+        .or_else(|| here.clone())
+        .unwrap_or_else(|| current.clone());
+    Ok((hosts, here))
 }
 
 fn run_here(socket_path: &Path, request: &Request) -> Result<(), String> {
@@ -260,16 +277,17 @@ fn run_here(socket_path: &Path, request: &Request) -> Result<(), String> {
 }
 
 fn run_targets(request: &Request, targets: &[Target]) -> Result<(), String> {
-    let host_version = host_target(request)?;
-    let here_needed = request.mode != Mode::Remove
+    let here_installs = request.mode != Mode::Remove
+        && (request.mode == Mode::Check || bundle_refusal().is_none())
         && targets
             .iter()
             .any(|target| matches!(target.machine, Ok(Machine::Here(_))));
-    let here_version = if here_needed {
-        Some(here_target(request)?)
-    } else {
-        None
-    };
+    let (host_version, here_version) = run_versions(
+        request,
+        &BuildInfo::current().version,
+        here_installs,
+        newest,
+    )?;
     let run = Run {
         request,
         host_version: &host_version,
@@ -378,14 +396,15 @@ fn install_here(
         Err(error) => return Err(error.to_string()),
     };
     let daemon = local_daemon(socket_path);
-    let tail = if request.restart && daemon_behind(&daemon, &copy.version) {
+    let epoch = BuildInfo::current().epoch;
+    let tail = if request.restart && daemon_behind(&daemon, &copy.version, epoch) {
         confirm(
             &restart_notice(THIS_MACHINE, &daemon, Some(copy.epoch)),
             request.yes,
         )?;
         restart_here(socket_path, &daemon)?
     } else {
-        daemon_tail(&daemon, &copy.version)
+        daemon_tail(&daemon, &copy.version, epoch)
     };
     Ok(format!("{head}; {tail}"))
 }
@@ -509,8 +528,22 @@ fn tailnet_daemon(endpoint: &TailnetEndpoint) -> Daemon {
     }
 }
 
+fn remote_arguments(endpoint: &SshEndpoint, arguments: &[&str]) -> Vec<String> {
+    endpoint
+        .remote_socket
+        .iter()
+        .flat_map(|socket| {
+            [
+                crate::diagnostics::SOCKET_ARGUMENT.to_owned(),
+                socket.to_string_lossy().into_owned(),
+            ]
+        })
+        .chain(arguments.iter().map(|argument| (*argument).to_owned()))
+        .collect()
+}
+
 fn ssh_daemon(endpoint: &SshEndpoint) -> Daemon {
-    let arguments = ["display-message", "-p", DAEMON_FACTS].map(str::to_owned);
+    let arguments = remote_arguments(endpoint, &["display-message", "-p", DAEMON_FACTS]);
     match zz_daemon_client::remote_cli_output(endpoint, &arguments) {
         Ok(output) if output.status.success() => {
             parse_daemon_facts(&String::from_utf8_lossy(&output.stdout))
@@ -574,10 +607,12 @@ fn ssh_install(
 }
 
 fn ssh_update(endpoint: &SshEndpoint, host: &str, arguments: &[&str]) -> Result<String, String> {
-    let arguments = std::iter::once("update")
-        .chain(arguments.iter().copied())
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
+    let arguments = remote_arguments(
+        endpoint,
+        &std::iter::once("update")
+            .chain(arguments.iter().copied())
+            .collect::<Vec<_>>(),
+    );
     let output = zz_daemon_client::remote_cli_output(endpoint, &arguments)
         .map_err(|error| error.to_string())?;
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -616,8 +651,9 @@ fn tailnet_install(
         } => owned.clone(),
         _ => version.clone(),
     };
-    if !(run.request.restart && daemon_behind(&before, &owned)) {
-        return Ok(format!("{head}; {}", daemon_tail(&before, &owned)));
+    let epoch = BuildInfo::current().epoch;
+    if !(run.request.restart && daemon_behind(&before, &owned, epoch)) {
+        return Ok(format!("{head}; {}", daemon_tail(&before, &owned, epoch)));
     }
     let epoch = match after {
         Daemon::Running { owned_epoch, .. } => owned_epoch,
@@ -684,10 +720,11 @@ fn lacks_command(error: &str, command: &str) -> bool {
     })
 }
 
-fn daemon_behind(daemon: &Daemon, target: &Version) -> bool {
+fn daemon_behind(daemon: &Daemon, target: &Version, epoch: u16) -> bool {
     match daemon {
         Daemon::Running { version, .. } => version.as_ref().is_none_or(|version| version < target),
-        Daemon::OtherEpoch(_) => true,
+        Daemon::OtherEpoch(Some(other)) => *other < epoch,
+        Daemon::OtherEpoch(None) => true,
         Daemon::Missing | Daemon::Unreachable(_) => false,
     }
 }
@@ -762,8 +799,11 @@ fn check_line(daemon: &Daemon, owned: Option<&Option<Version>>, target: &Version
     format!("{daemon_part}; {owned_part}; target zz {target}")
 }
 
-fn daemon_tail(daemon: &Daemon, target: &Version) -> String {
+fn daemon_tail(daemon: &Daemon, target: &Version, epoch: u16) -> String {
     match daemon {
+        Daemon::OtherEpoch(Some(other)) if *other > epoch => {
+            format!("daemon on epoch {other} is newer than this zz")
+        }
         Daemon::Missing => "no daemon running".to_owned(),
         Daemon::Running {
             version: Some(version),
@@ -960,6 +1000,35 @@ mod tests {
         for (line, expected) in cases {
             assert_eq!(parse(&arguments(line)), expected, "zz update {line}");
         }
+
+        let newest = |channel| {
+            Ok(super::tests::version(match channel {
+                Channel::Stable => "0.31.0",
+                Channel::Beta => "0.32.0-beta.1",
+            }))
+        };
+        let current = version("0.30.0");
+        let versions = |line: &str, here_installs| {
+            let request = parse(&arguments(line)).expect("a request");
+            run_versions(&request, &current, here_installs, newest).expect("versions")
+        };
+        let one = |text: &str| (version(text), Some(version(text)));
+        let hosts_only = |text: &str| (version(text), None);
+        let runs = [
+            ("-a", true, one("0.31.0")),
+            ("-a", false, hosts_only("0.30.0")),
+            ("xps alienware", false, hosts_only("0.30.0")),
+            ("-a --version 0.32.0", true, one("0.32.0")),
+            ("-a --beta", true, one("0.32.0-beta.1")),
+            ("--beta xps", false, hosts_only("0.32.0-beta.1")),
+        ];
+        for (line, here_installs, expected) in runs {
+            assert_eq!(
+                versions(line, here_installs),
+                expected,
+                "zz update {line}, this machine installs: {here_installs}"
+            );
+        }
     }
 
     #[test]
@@ -971,7 +1040,7 @@ mod tests {
                     "alienware",
                     &format!(
                         "zz 0.31.0 installed; {}",
-                        daemon_tail(&running(Some("0.30.0"), 3), &target)
+                        daemon_tail(&running(Some("0.30.0"), 3), &target, 125)
                     ),
                 ),
                 "alienware: zz 0.31.0 installed; daemon still 0.30.0 with 3 sessions, restart with --restart",
@@ -981,7 +1050,7 @@ mod tests {
                     "xps",
                     &format!(
                         "already zz 0.31.0; {}",
-                        daemon_tail(&running(None, 1), &target)
+                        daemon_tail(&running(None, 1), &target, 125)
                     ),
                 ),
                 "xps: already zz 0.31.0; daemon still on an older zz with 1 session, restart with --restart",
@@ -991,7 +1060,7 @@ mod tests {
                     "win-desktop",
                     &format!(
                         "zz 0.31.0 installed; {}",
-                        daemon_tail(&Daemon::Missing, &target)
+                        daemon_tail(&Daemon::Missing, &target, 125)
                     ),
                 ),
                 "win-desktop: zz 0.31.0 installed; no daemon running",
@@ -1021,6 +1090,40 @@ mod tests {
         for (line, expected) in cases {
             assert_eq!(line, expected);
         }
+        assert_eq!(
+            host_line(
+                THIS_MACHINE,
+                &format!(
+                    "already zz 0.31.0; {}",
+                    daemon_tail(&Daemon::OtherEpoch(Some(126)), &target, 125)
+                ),
+            ),
+            "this machine: already zz 0.31.0; daemon on epoch 126 is newer than this zz"
+        );
+        assert_eq!(
+            [Some(126), Some(124), None].map(|epoch| daemon_behind(
+                &Daemon::OtherEpoch(epoch),
+                &target,
+                125
+            )),
+            [false, true, true]
+        );
+        let work = SshEndpoint {
+            user: None,
+            host: "xps".to_owned(),
+            port: None,
+            remote_socket: Some(PathBuf::from("/run/user/1000/zz/work.sock")),
+        };
+        assert_eq!(
+            remote_arguments(&work, &["update", "--version", "0.31.0"]),
+            [
+                "--socket",
+                "/run/user/1000/zz/work.sock",
+                "update",
+                "--version",
+                "0.31.0"
+            ]
+        );
         assert_eq!(
             restart_notice("alienware", &running(Some("0.30.0"), 3), Some(126)),
             [

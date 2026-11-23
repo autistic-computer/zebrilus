@@ -130,8 +130,9 @@ The cost is one small file read per `zz` invocation, and one `exec` when the own
    dies. A second install fails with "an update is already running".
 2. Delete what an earlier run left: `.staging-*` and `zz.old-*`. A file that cannot be deleted (a
    running `zz.exe` on Windows) stays for the next run.
-3. Refuse a version that is not newer than the binary doing the install: "already zz {v}", or
-   "zz {v} is older than this zz; `zz update --remove` goes back to the packaged one".
+3. Refuse a version that is not newer than the binary doing the install, or that the owned copy
+   already has: "already zz {v}", or "zz {v} is older than this zz; `zz update --remove` goes back
+   to the packaged one".
 4. Fetch `https://github.com/autistic-computer/zebrilus/releases/download/v{v}/{asset}` and its
    `.sha256`, hash while streaming and compare. A mismatch deletes the download and fails. A
    release with no asset for this machine fails with "zz {v} has no headless build for
@@ -164,7 +165,7 @@ the packaged zz runs.
 - `ZZ_UPDATE_BASE_URL` replaces the download origin (`…/releases/download`) for tests and mirrors.
 - The version is validated as semver before it reaches a URL. There is no `--url` and no file
   argument.
-- The code is one module with no feature gate, used by both the CLI and the daemon. Proposed home:
+- The code is one module with no feature gate, used by both the CLI and the daemon:
   `zz_config::owned`.
 
 ## 4. `zz update` is one CLI verb with one route per transport
@@ -176,10 +177,11 @@ zz update [--check | --remove] [--version V | --beta] [--restart [-y]] [-a | <ho
 | Target | Route |
 | --- | --- |
 | this machine | the CLI runs `install` in its own process; no daemon needed |
-| ssh host | the remote CLI runs the same verb: `run_remote_cli(["update", ...])` |
-| tailnet host | the daemon runs it: `update-server [--version V]` over `Exec` |
+| ssh host | the remote CLI runs the same verb: `remote_cli_output(["update", ...])`, with `--socket` first when the host names a remote socket |
+| tailnet host | the daemon runs it: `update-server --version V`, or `update-server --remove`, over `Exec` |
 
-- `-a` is this machine and every configured host. Hosts run in parallel and print one line each, as
+- `-a` is this machine and every host `zz list-hosts` shows, discovered tailnet peers included.
+  Machines run in parallel and print one line each, as
   `zz fleet install` does: `alienware: zz 0.31.0 installed; daemon still 0.30.0 with 3 sessions,
   restart with --restart`.
 - `update-server` is a new daemon command: a name in `DAEMON_COMMAND_NAMES` and a spec in
@@ -195,14 +197,18 @@ zz update [--check | --remove] [--version V | --beta] [--restart [-y]] [-a | <ho
   the asking machine moves to the new epoch (`zz update -a --version V` from the old build), or by
   hand.
 - The version: the newest release on the build's channel for this machine, and the asking
-  machine's version for a host, so `zz update xps` means "bring xps to my version". `--version`
-  names one. `--beta` is the newest beta, for this machine or a host. Finding the newest release
-  happens on the asking machine, so a host is always sent a version.
+  machine's version for a host, so `zz update xps` means "bring xps to my version". When this
+  machine takes part in the run and is not skipped (`-a`), hosts get the version it installs, so
+  one run leaves every machine on one version. `--version` names one. `--beta` is the newest beta,
+  for this machine or a host. Finding the newest release happens on the asking machine, so a host
+  is always sent a version.
 - `--remove` deletes the owned copy under the same lock, so the packaged zz runs from the next
   start.
-- `zz update` refuses on a zz Dev build, and on a macOS bundle install with "this Mac's zz updates
-  through the app": privacy grants follow the app bundle, and the headless macOS asset is not
-  signed with our identity. A headless install on macOS is allowed.
+- `zz update` refuses on a zz Dev build. On a macOS bundle install it installs and removes nothing
+  on this machine, with "this Mac's zz updates through the app": privacy grants follow the app
+  bundle, and the headless macOS asset is not signed with our identity. `--check` and host targets
+  still run there, and `-a` skips this machine with that line. A headless install on macOS is
+  allowed.
 - `zz fleet install` stays for putting zz on a machine that has none.
 
 ## 5. Every daemon can say what it is
@@ -210,27 +216,29 @@ zz update [--check | --remove] [--version V | --beta] [--restart [-y]] [-a | <ho
 - New format variables `#{zz_version}` and `#{zz_revision}`. An older daemon expands them to
   nothing, which reads as "older than this feature".
 - `zz update --check [-a | <host>...]` changes nothing and prints, per machine: the running
-  daemon's version and revision, the owned copy, the packaged version where the route can see it,
-  the target version, and its session count.
+  daemon's version and revision, its session count, the owned copy and the target version. The
+  packaged version shows only for this machine, when it handed over to the owned copy.
 - `zz list-hosts` fills `host_version` from the running daemon when the host answers.
 
 ## 6. Restart is asked for, and the daemon replaces itself
 
-`--restart` runs after a successful install.
+`--restart` runs after a successful install, or alone when the owned copy is already newer than the
+running daemon. On several machines it needs `-y`.
 
 - It prints "This ends N sessions on {host}." and asks, unless `-y`. Without a terminal and without
   `-y` it refuses.
 - New daemon command `restart-server`. In order: send the command's reply, stop sessions and jobs,
   stop the tailnet node and wait for its thread (`tailnet::spawn` drops the handle today; with
   `tailnet = own` its stop runs too, so the dial socket is cleaned), drop the listener, remove the
-  socket, the identity file and the pin guards, then start the owned copy, directly and not
-  through the handover rule. On Unix that is an `exec` of the copy; on Windows it starts the copy
-  and exits.
+  socket, the identity file and the pin guards, then start the owned copy when it is newer than
+  the daemon, else the daemon's own binary, directly and not through the handover rule. On Unix
+  that is an `exec`; on Windows it starts the successor and exits.
 - The successor gets the same socket and config arguments, a fresh server id and no bootstrap
   arguments. On Unix the start lock (`StartLock`, `prepare_socket`) is held from before the socket
   is removed until the successor has bound it, so a reconnecting app cannot start another binary
-  in between. Windows has no start lock: the successor retries binding the pipe and the tailnet
-  port for up to 10 s while the old process exits.
+  in between. Windows has no start lock: the successor retries binding the pipe for up to 10 s
+  while the old process exits, and the tailnet listener retries a failed bind every 500 ms for the
+  first 10 s of every daemon start.
 - Tailnet keys and the allow list stay on disk, so the host keeps its name and its peers. The web
   gateway is a separate process; its connections drop and it reconnects.
 - The successor starts with no sessions. Under the default idle rule it stays up until it has held
@@ -241,6 +249,9 @@ zz update [--check | --remove] [--version V | --beta] [--restart [-y]] [-a | <ho
   nothing could start it again. Its line says to restart it there.
 - When the target is on another epoch than the running daemon, the line before the question adds
   "The desktop app on {host} is on epoch N and cannot attach to it until it updates."
+- On this machine, a daemon on an older epoch, which this zz cannot send `restart-server`, is
+  stopped by pid as the recovery path does. A daemon on a newer epoch is never stopped: its line
+  says "daemon on epoch N is newer than this zz".
 
 ## 7. An app never restarts a daemon newer than itself
 
@@ -322,6 +333,37 @@ and the plan follows them:
 - macOS bundle installs stay out.
 - The data directory, not the cache.
 - A restarted daemon starts empty; no made-up session.
+
+# As built
+
+Built differently from the text above, or decided where it was silent:
+
+- `restart-server` runs the same path as `kill-server` to stop sessions and jobs, then
+  `Daemon::serve` returns `Stopped::Restart` holding the start lock, and the `daemon` verb starts
+  the successor: an `exec` with `--start-lock-fd N` on Unix, which the successor adopts instead of
+  taking the lock again, or a new process with `--retry-bind` on Windows.
+- The successor is the owned copy only when it is newer than the daemon, so a package that moved
+  past the copy is never downgraded by a restart.
+- The tailnet listener retries a failed bind every 500 ms for the first 10 s of every daemon start,
+  not only after a restart.
+- `update-server --remove` removes a tailnet host's owned copy; `update-server --version V`
+  installs.
+- Format variables beside `zz_version` and `zz_revision`: `zz_exit_rule` (`exit-empty` or
+  `exit-unattached` when set on, else empty), `zz_owned_version` and `zz_owned_epoch` (empty with no
+  owned copy).
+- `-a` covers every host `zz list-hosts` shows, discovered tailnet peers included, not only hosts in
+  `zz/config`.
+- `--restart` on several machines needs `-y`, since no machine but this one has a terminal to ask
+  in.
+- The handover marker is `ZZ_OWNED_HANDOVER`. Its value is the version that handed over, which
+  `zz update --check` prints.
+- `update` and `build-info` are catalogued like `fleet`, so `zz --help` lists them and a daemon
+  that receives them says they run in the CLI.
+
+Never run yet: everything on Windows (it is not even compile-checked here; the pipe retry was
+type-checked under the host's configuration only), `update-server` and `restart-server` over a real
+tailnet, a real ssh host (only a loopback ssh stand-in on one Mac), and a desktop app attached to a
+daemon while it restarts.
 
 # Open
 
