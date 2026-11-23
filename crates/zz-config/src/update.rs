@@ -6,8 +6,9 @@ use serde::Deserialize;
 mod install;
 
 pub use install::{
-    Assets, Facts, Progress, Staged, Target, UpdateError, apply, assets_for, clear_staged, detect,
-    homebrew_cask, prepare, staged, staged_for, tarball_prefix, target_of,
+    ApplyOutcome, Assets, Facts, InstallPlan, ManualUpdate, Progress, Staged, Target, UpdateError,
+    apply, assets_for, clear_staged, detect, homebrew_cask, manual_of, plan, plan_for, prepare,
+    staged, staged_for, tarball_prefix, target_of,
 };
 
 const RELEASES_API: &str =

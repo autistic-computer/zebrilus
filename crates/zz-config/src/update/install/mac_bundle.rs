@@ -9,6 +9,74 @@ use zz_daemon_client::unmasked::SpawnUnmasked as _;
 
 use super::{BUNDLE_NAME, LOG_TARGET, UpdateError, remove_path, run, writable};
 
+const ELEVATED_SWAP_SCRIPT: &str = r#"set -eu
+rm -rf -- "$3"
+moved=0
+if [ -e "$1" ] || [ -L "$1" ]; then
+    mv -- "$1" "$3"
+    moved=1
+fi
+if ! mv -- "$2" "$1"; then
+    if [ "$moved" = 1 ]; then
+        mv -- "$3" "$1" || true
+    fi
+    exit 1
+fi
+rm -rf -- "$3" || true
+"#;
+
+const APPLESCRIPT_ELEVATE: &str = concat!(
+    "on run argv\n",
+    "do shell script \"sh -c \" & quoted form of (item 1 of argv) ",
+    "& \" _ \" & quoted form of (item 2 of argv) ",
+    "& \" \" & quoted form of (item 3 of argv) ",
+    "& \" \" & quoted form of (item 4 of argv) ",
+    "with administrator privileges\n",
+    "end run"
+);
+
+pub(super) fn elevated_swap(
+    current: &Path,
+    staged: &Path,
+    aside: &Path,
+) -> Result<(), UpdateError> {
+    let mut command = Command::new("osascript");
+    command
+        .arg("-e")
+        .arg(APPLESCRIPT_ELEVATE)
+        .arg("--")
+        .arg(ELEVATED_SWAP_SCRIPT)
+        .arg(current)
+        .arg(staged)
+        .arg(aside);
+    let output = command
+        .output_unmasked()
+        .map_err(|source| UpdateError::io("run", "osascript", source))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr_all = String::from_utf8_lossy(&output.stderr);
+    if is_authorization_cancelled(&stderr_all) {
+        return Err(UpdateError::Cancelled);
+    }
+    let stderr = stderr_all
+        .lines()
+        .map(str::trim)
+        .rfind(|line| !line.is_empty())
+        .unwrap_or_default()
+        .to_owned();
+    Err(UpdateError::Tool {
+        program: "osascript".to_owned(),
+        status: output.status,
+        stderr,
+    })
+}
+
+fn is_authorization_cancelled(stderr: &str) -> bool {
+    let lower = stderr.to_ascii_lowercase();
+    lower.contains("user canceled") || lower.contains("(-128)")
+}
+
 pub(super) fn stage(
     running: &Path,
     image: &Path,

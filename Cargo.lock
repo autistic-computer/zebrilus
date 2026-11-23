@@ -11904,6 +11904,7 @@ name = "zz-config"
 version = "0.29.0"
 dependencies = [
  "log",
+ "rustix",
  "semver",
  "serde",
  "serde_json",

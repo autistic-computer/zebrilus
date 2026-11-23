@@ -1294,13 +1294,14 @@ impl SettingsView {
     fn updates_stack(&self, cx: &Context<Self>) -> SettingsStack {
         use crate::{
             mux::hosts::HostId,
-            update::{self, CheckState, Stage},
+            update::{self, CheckState, InstallPlan, ManualUpdate, Stage},
         };
 
         let mux = self.mux.read(cx);
         let resolved = config::resolved_config(cx);
         let status = update::status(cx);
         let check = status.as_ref().map(|status| &status.check);
+        let plan = status.as_ref().and_then(|status| status.plan.as_ref());
         let checking = matches!(check, Some(CheckState::Checking));
         let check_button = Button::new("settings-update-check")
             .label(if checking { "Checking…" } else { "Check now" })
@@ -1315,9 +1316,16 @@ impl SettingsView {
                 .on(settings_card_ground(cx))
                 .on_click(move |_, _, cx| cx.open_url(&url))
         };
+        let copy_button = |id: &'static str, command: String| {
+            Button::new(id)
+                .icon(penna::IconName::Copy)
+                .label("Copy command")
+                .on(settings_card_ground(cx))
+                .on_click(move |_, _, cx| update::copy_command(&command, cx))
+        };
         let install = status.as_ref().and_then(|status| status.install.as_ref());
         let bar = install.and_then(|(_, stage)| stage.bar());
-        let (state, control): (SharedString, Option<AnyElement>) =
+        let (state, note_line, control): (SharedString, Option<Label>, Option<AnyElement>) =
             match (status.as_ref(), check, install) {
                 (_, _, Some((version, stage))) => match stage {
                     Stage::Downloading { received, total } => (
@@ -1326,6 +1334,7 @@ impl SettingsView {
                             update::download_text(*received, *total)
                         )
                         .into(),
+                        None,
                         Some(
                             Button::new("settings-update-cancel")
                                 .label("Cancel")
@@ -1334,9 +1343,26 @@ impl SettingsView {
                                 .into_any_element(),
                         ),
                     ),
-                    Stage::Verifying => (format!("Verifying zz {version}").into(), None),
-                    Stage::Staging => (format!("Preparing zz {version}").into(), None),
-                    Stage::Restarting => (format!("Installing zz {version}").into(), None),
+                    Stage::Running { detail } => (
+                        format!("Updating zz {version}").into(),
+                        (!detail.is_empty()).then(|| {
+                            Label::new(TextStyle::Caption, detail.clone())
+                                .mono()
+                                .muted()
+                                .min_w_0()
+                                .on(settings_card_ground(cx))
+                        }),
+                        Some(
+                            Button::new("settings-update-cancel")
+                                .label("Cancel")
+                                .on(settings_card_ground(cx))
+                                .on_click(|_, _, cx| update::cancel(cx))
+                                .into_any_element(),
+                        ),
+                    ),
+                    Stage::Verifying => (format!("Verifying zz {version}").into(), None, None),
+                    Stage::Staging => (format!("Preparing zz {version}").into(), None, None),
+                    Stage::Restarting => (format!("Installing zz {version}").into(), None, None),
                     Stage::Ready(_) => {
                         let release = match check {
                             Some(CheckState::Available(release)) if release.version == *version => {
@@ -1351,6 +1377,7 @@ impl SettingsView {
                                 None => ready,
                             }
                             .into(),
+                            None,
                             Some(
                                 h_flex()
                                     .gap_2()
@@ -1368,40 +1395,74 @@ impl SettingsView {
                             ),
                         )
                     }
-                    Stage::Failed(message) => (
+                    Stage::Failed { message, command } => (
                         format!("The update failed: {message}").into(),
-                        Some(
-                            Button::new("settings-update-retry")
-                                .primary()
-                                .label("Try again")
+                        command.as_ref().map(|command| {
+                            Label::new(TextStyle::Caption, command.clone())
+                                .mono()
+                                .min_w_0()
                                 .on(settings_card_ground(cx))
-                                .on_click(|_, window, cx| update::install(window, cx))
+                        }),
+                        Some(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("settings-update-retry")
+                                        .primary()
+                                        .label("Try again")
+                                        .on(settings_card_ground(cx))
+                                        .on_click(|_, window, cx| update::install(window, cx)),
+                                )
+                                .children(command.as_ref().map(|command| {
+                                    copy_button("settings-update-copy-failed", command.clone())
+                                }))
                                 .into_any_element(),
                         ),
                     ),
                 },
                 (Some(status), Some(CheckState::Available(release)), None) => {
                     let out = format!("zz {} is out, you have {}", release.version, status.current);
-                    (
-                        match update::daemon_note(release, mux) {
-                            Some(note) => format!("{out}. {note}"),
-                            None => out,
-                        }
-                        .into(),
-                        Some(
-                            h_flex()
-                                .gap_2()
-                                .child(
-                                    Button::new("settings-update-install")
-                                        .primary()
-                                        .label(format!("Update to {}", release.version))
-                                        .on(settings_card_ground(cx))
-                                        .on_click(|_, window, cx| update::install(window, cx)),
-                                )
-                                .child(notes_button(release.url.clone()))
-                                .into_any_element(),
+                    let with_note = |base: String| match update::daemon_note(release, mux) {
+                        Some(note) => format!("{base}. {note}"),
+                        None => base,
+                    };
+                    match plan {
+                        Some(InstallPlan::Manual(ManualUpdate { owner, command })) => (
+                            with_note(format!("{out}. Installed by {owner}")).into(),
+                            command.as_ref().map(|command| {
+                                Label::new(TextStyle::Caption, command.clone())
+                                    .mono()
+                                    .min_w_0()
+                                    .on(settings_card_ground(cx))
+                            }),
+                            Some(
+                                h_flex()
+                                    .gap_2()
+                                    .children(command.as_ref().map(|command| {
+                                        copy_button("settings-update-copy", command.clone())
+                                    }))
+                                    .child(notes_button(release.url.clone()))
+                                    .into_any_element(),
+                            ),
                         ),
-                    )
+                        Some(InstallPlan::InApp(_)) | None => (
+                            with_note(out).into(),
+                            None,
+                            Some(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        Button::new("settings-update-install")
+                                            .primary()
+                                            .label(format!("Update to {}", release.version))
+                                            .on(settings_card_ground(cx))
+                                            .on_click(|_, window, cx| update::install(window, cx)),
+                                    )
+                                    .child(notes_button(release.url.clone()))
+                                    .into_any_element(),
+                            ),
+                        ),
+                    }
                 }
                 (Some(status), Some(CheckState::UpToDate), None) => (
                     format!(
@@ -1410,16 +1471,18 @@ impl SettingsView {
                         status.channel.label()
                     )
                     .into(),
+                    None,
                     Some(check_button),
                 ),
                 (_, Some(CheckState::Failed(error)), None) => (
                     format!("The check failed: {error}").into(),
+                    None,
                     Some(check_button),
                 ),
                 (_, Some(CheckState::Checking), None) => {
-                    ("Asking GitHub".into(), Some(check_button))
+                    ("Asking GitHub".into(), None, Some(check_button))
                 }
-                _ => ("Not checked yet".into(), Some(check_button)),
+                _ => ("Not checked yet".into(), None, Some(check_button)),
             };
         let daemon = mux.daemon_behind(HostId::LOCAL).map(|behind| {
             let restart_mux = self.mux.clone();
@@ -1453,6 +1516,7 @@ impl SettingsView {
                     Some(control) => entry.control(control),
                     None => entry,
                 }
+                .children(note_line)
                 .children(bar.map(|bar| bar.element("Update")))
             })
             .children(daemon)

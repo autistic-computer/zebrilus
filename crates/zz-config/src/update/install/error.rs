@@ -1,5 +1,7 @@
 use std::{error::Error, fmt, io, path::PathBuf, process::ExitStatus};
 
+use semver::Version;
+
 #[derive(Debug)]
 pub enum UpdateError {
     Unavailable,
@@ -12,6 +14,10 @@ pub enum UpdateError {
     },
     Signature(String),
     NotWritable(PathBuf),
+    TapBehind {
+        manager: &'static str,
+        version: Version,
+    },
     Tool {
         program: String,
         status: ExitStatus,
@@ -52,6 +58,10 @@ impl fmt::Display for UpdateError {
                 write!(f, "the update failed its signature check: {message}")
             }
             Self::NotWritable(path) => write!(f, "cannot write to {}", path.display()),
+            Self::TapBehind { manager, version } => write!(
+                f,
+                "{manager} does not have zz {version} yet; try again in a few minutes"
+            ),
             Self::Tool {
                 program,
                 status,

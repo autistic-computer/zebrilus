@@ -75,9 +75,13 @@ timestamp: 2026-11-11T00:00:00-03:00
 > (`apply`, which puts the old one back if the swap fails) and relaunches it through ala's restart;
 > that quit skips `quit-daemon-on-exit`, so the sessions keep running and the new app attaches to
 > the same daemon. A staged update for the latest release survives a quit: the next check goes
-> straight to ready, and a stale one is removed. Homebrew, pacman and deb installs, and an install
-> the app cannot write to, keep the old route: the package manager or install.sh in a terminal
-> window, or the release page.
+> straight to ready, and a stale one is removed. Homebrew casks run `brew upgrade --cask` in the
+> background with streaming progress and verify the upgraded version; unwritable macOS bundles
+> stage in cache and elevate only the swap through the system admin prompt; Linux `.deb` installs
+> download and verify the package in-app and elevate through `pkexec`; Windows downloads and
+> verifies the setup installer in-app. Package-manager installs that cannot be driven headlessly
+> (such as Arch/AUR `pacman` or Nix) show a copy-command or release-page action instead of opening
+> a terminal window.
 
 The daemon holds every session, so restarting it ends them. Today a client update almost always
 forces that restart, because the client and the daemon must be built from the same protocol version.

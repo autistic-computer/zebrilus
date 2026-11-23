@@ -8,9 +8,9 @@ use std::{
     time::Duration,
 };
 
-use ala::{AnyElement, App, AsyncApp, Entity, Global, Window, prelude::*};
+use ala::{AnyElement, App, AsyncApp, ClipboardItem, Entity, Global, Window, prelude::*};
 use penna::{
-    WindowExt as _,
+    IconName,
     blocks::notification::Notification,
     components::{
         button::{Button, ButtonVariants as _},
@@ -19,12 +19,11 @@ use penna::{
     h_flex, v_flex,
 };
 use semver::Version;
-pub(crate) use zz_config::update::{Channel, Release};
 use zz_config::update::{
-    Facts, Progress as Step, Staged, Target, UpdateError, apply, assets_for, checks_enabled,
-    clear_staged, detect, fetch_latest, homebrew_cask, prepare, staged, staged_for, tarball_prefix,
+    ApplyOutcome, Progress as Step, Staged, Target, UpdateError, apply, checks_enabled,
+    clear_staged, detect, fetch_latest, plan, prepare, staged, staged_for,
 };
-use zz_protocol::CommandInvocation;
+pub(crate) use zz_config::update::{Channel, InstallPlan, ManualUpdate, Release};
 
 use crate::{
     config,
@@ -36,10 +35,10 @@ use crate::{
     window::toast,
 };
 
-const INSTALL_SCRIPT_URL: &str = "https://zzmux.sh/install.sh";
 const INITIAL_DELAY: Duration = Duration::from_secs(10);
 const CHECK_INTERVAL: Duration = Duration::from_hours(24);
 const TOAST_KEY: &str = "update-available";
+const COPIED_TOAST_KEY: &str = "update-copied";
 const PROGRESS_ID: &str = "update-progress";
 const DISMISSED_FILE_NAME: &str = "update-dismissed";
 const LOG_TARGET: &str = "zz::update";
@@ -62,19 +61,32 @@ enum Trigger {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Stage {
-    Downloading { received: u64, total: Option<u64> },
+    Downloading {
+        received: u64,
+        total: Option<u64>,
+    },
+    Running {
+        detail: String,
+    },
     Verifying,
     Staging,
     Ready(Staged),
     Restarting,
-    Failed(String),
+    Failed {
+        message: String,
+        command: Option<String>,
+    },
 }
 
 impl Stage {
     const fn busy(&self) -> bool {
         matches!(
             self,
-            Self::Downloading { .. } | Self::Verifying | Self::Staging | Self::Restarting
+            Self::Downloading { .. }
+                | Self::Running { .. }
+                | Self::Verifying
+                | Self::Staging
+                | Self::Restarting
         )
     }
 
@@ -84,10 +96,12 @@ impl Stage {
                 received,
                 total: Some(total),
             } if *total > 0 => Some(Bar::Filled(fraction(*received, *total))),
-            Self::Downloading { .. } | Self::Verifying | Self::Staging | Self::Restarting => {
-                Some(Bar::Sweeping)
-            }
-            Self::Ready(_) | Self::Failed(_) => None,
+            Self::Downloading { .. }
+            | Self::Running { .. }
+            | Self::Verifying
+            | Self::Staging
+            | Self::Restarting => Some(Bar::Sweeping),
+            Self::Ready(_) | Self::Failed { .. } => None,
         }
     }
 }
@@ -112,14 +126,16 @@ struct Install {
     release: Release,
     stage: Stage,
     cancel: Arc<AtomicBool>,
+    fallback_command: Option<String>,
 }
 
 impl Install {
-    fn new(release: Release, stage: Stage) -> Self {
+    fn new(release: Release, stage: Stage, fallback_command: Option<String>) -> Self {
         Self {
             release,
             stage,
             cancel: Arc::new(AtomicBool::new(false)),
+            fallback_command,
         }
     }
 }
@@ -128,6 +144,7 @@ pub(crate) struct UpdateState {
     mux: Entity<MuxClient>,
     current: Version,
     check: CheckState,
+    plan: Option<InstallPlan>,
     dismissed: Option<Version>,
     install: Option<Install>,
 }
@@ -138,6 +155,7 @@ pub(crate) struct Status {
     pub current: Version,
     pub channel: Channel,
     pub check: CheckState,
+    pub plan: Option<InstallPlan>,
     pub install: Option<(Version, Stage)>,
 }
 
@@ -147,6 +165,7 @@ pub(crate) fn status(cx: &App) -> Option<Status> {
         current: state.current.clone(),
         channel: Channel::of(&state.current),
         check: state.check.clone(),
+        plan: state.plan.clone(),
         install: state
             .install
             .as_ref()
@@ -199,6 +218,16 @@ pub(crate) fn download_text(received: u64, total: Option<u64>) -> String {
     }
 }
 
+pub(crate) fn copy_command(command: &str, cx: &mut App) {
+    cx.write_to_clipboard(ClipboardItem::new_string(command.to_owned()));
+    toast::push(
+        Notification::success(command.to_owned())
+            .title("Copied update command")
+            .key(COPIED_TOAST_KEY),
+        cx,
+    );
+}
+
 fn fraction(received: u64, total: u64) -> f32 {
     let permille = received.min(total).saturating_mul(1000) / total;
     f32::from(u16::try_from(permille).unwrap_or(1000)) / 1000.0
@@ -216,6 +245,7 @@ pub(crate) fn start(mux: Entity<MuxClient>, cx: &mut App) {
         mux,
         current,
         check: CheckState::Unchecked,
+        plan: None,
         dismissed: read_dismissed(),
         install: None,
     });
@@ -246,7 +276,7 @@ pub(crate) fn check_now(cx: &mut App) {
         .detach();
 }
 
-pub(crate) fn install(window: &mut Window, cx: &mut App) {
+pub(crate) fn install(_window: &mut Window, cx: &mut App) {
     let Some(state) = cx.try_global::<UpdateState>() else {
         return;
     };
@@ -259,33 +289,29 @@ pub(crate) fn install(window: &mut Window, cx: &mut App) {
         return;
     };
     let release = release.clone();
-    if let Some(target) = detect().filter(|target| assets_for(&release, target).is_some()) {
-        download(release, target, cx);
-        return;
-    }
     let channel = Channel::of(&state.current);
-    let mux = state.mux.clone();
-    let plan = install_plan(&release, channel, &Environment::detect());
-    log::info!(target: LOG_TARGET, "applying update to {} via {plan:?}", release.version);
-    match plan {
-        InstallPlan::Terminal(command)
-            if mux.read(cx).attached_session().is_some() && !config::quit_daemon_on_exit(cx) =>
-        {
-            let script = terminal_script(&command);
-            mux.read(cx).execute(CommandInvocation::new(
-                "new-window",
-                ["-n", "update", "sh", "-c", script.as_str()],
-            ));
+    let chosen = state
+        .plan
+        .clone()
+        .unwrap_or_else(|| plan(&release, channel));
+    match chosen {
+        InstallPlan::InApp(target) => start_install(release, target, cx),
+        InstallPlan::Manual(manual) => {
+            if let Some(command) = manual.command {
+                copy_command(&command, cx);
+            } else {
+                cx.open_url(&release.url);
+            }
         }
-        InstallPlan::Terminal(_) => cx.open_url(&release.url),
-        InstallPlan::Open(url) => cx.open_url(&url),
     }
-    window.dismiss_notification(TOAST_KEY, cx);
 }
 
 pub(crate) fn cancel(cx: &mut App) {
     if let Some(install) = install_mut(cx)
-        && matches!(install.stage, Stage::Downloading { .. })
+        && matches!(
+            install.stage,
+            Stage::Downloading { .. } | Stage::Running { .. }
+        )
     {
         install.cancel.store(true, Ordering::Relaxed);
     }
@@ -303,15 +329,27 @@ pub(crate) fn restart(cx: &mut App) {
     show_toast(Show::IfShowing, cx);
     log::info!(target: LOG_TARGET, "installing zz {} from {}", staged.version, staged.path.display());
     cx.spawn(async move |cx| {
+        let applying = staged.clone();
         let result = cx
             .background_executor()
-            .spawn(async move { apply(&staged) })
+            .spawn(async move { apply(&applying) })
             .await;
         cx.update(|cx| match result {
-            Ok(relaunch) => {
+            Ok(ApplyOutcome::Relaunch(relaunch)) => {
                 log::info!(target: LOG_TARGET, "relaunching {}", relaunch.display());
                 cx.set_restart_path(relaunch);
                 cx.restart();
+            }
+            Ok(ApplyOutcome::Quit) => {
+                log::info!(target: LOG_TARGET, "quitting for external installer");
+                cx.quit();
+            }
+            Err(UpdateError::Cancelled) => {
+                log::info!(target: LOG_TARGET, "update elevation cancelled");
+                if let Some(install) = install_mut(cx) {
+                    install.stage = Stage::Ready(staged);
+                }
+                show_toast(Show::Always, cx);
             }
             Err(error) => fail(&error, cx),
         });
@@ -326,15 +364,18 @@ fn install_mut(cx: &mut App) -> Option<&mut Install> {
     cx.global_mut::<UpdateState>().install.as_mut()
 }
 
-fn download(release: Release, target: Target, cx: &mut App) {
-    log::info!(target: LOG_TARGET, "downloading zz {} for {target:?}", release.version);
-    let install = Install::new(
-        release.clone(),
-        Stage::Downloading {
+fn start_install(release: Release, target: Target, cx: &mut App) {
+    log::info!(target: LOG_TARGET, "updating zz {} for {target:?}", release.version);
+    let initial = match &target {
+        Target::Homebrew { .. } => Stage::Running {
+            detail: String::new(),
+        },
+        _ => Stage::Downloading {
             received: 0,
             total: None,
         },
-    );
+    };
+    let install = Install::new(release.clone(), initial, target.fallback_command());
     let cancel = Arc::clone(&install.cancel);
     cx.global_mut::<UpdateState>().install = Some(install);
     show_toast(Show::Always, cx);
@@ -349,7 +390,7 @@ fn download(release: Release, target: Target, cx: &mut App) {
             cx.update(|cx| advance(step, cx));
         }
         let result = prepared.await;
-        cx.update(|cx| finish_download(result, cx));
+        cx.update(|cx| finish_install(result, cx));
     })
     .detach();
 }
@@ -363,27 +404,28 @@ fn advance(step: Step, cx: &mut App) {
     }
     install.stage = match step {
         Step::Downloading { received, total } => Stage::Downloading { received, total },
+        Step::Running { detail } => Stage::Running { detail },
         Step::Verifying => Stage::Verifying,
         Step::Staging => Stage::Staging,
     };
     show_toast(Show::IfShowing, cx);
 }
 
-fn finish_download(result: Result<Staged, UpdateError>, cx: &mut App) {
+fn finish_install(result: Result<Staged, UpdateError>, cx: &mut App) {
     if !cx.has_global::<UpdateState>() {
         return;
     }
     let state = cx.global_mut::<UpdateState>();
     match result {
         Ok(staged) => {
-            log::info!(target: LOG_TARGET, "zz {} is staged at {}", staged.version, staged.path.display());
+            log::info!(target: LOG_TARGET, "zz {} is ready at {}", staged.version, staged.path.display());
             if let Some(install) = state.install.as_mut() {
                 install.stage = Stage::Ready(staged);
             }
             show_toast(Show::Always, cx);
         }
         Err(UpdateError::Cancelled) => {
-            log::info!(target: LOG_TARGET, "update download cancelled");
+            log::info!(target: LOG_TARGET, "update cancelled");
             state.install = None;
             show_toast(Show::IfShowing, cx);
         }
@@ -394,7 +436,11 @@ fn finish_download(result: Result<Staged, UpdateError>, cx: &mut App) {
 fn fail(error: &UpdateError, cx: &mut App) {
     log::warn!(target: LOG_TARGET, "update failed: {error}");
     if let Some(install) = install_mut(cx) {
-        install.stage = Stage::Failed(error.to_string());
+        let command = install.fallback_command.clone();
+        install.stage = Stage::Failed {
+            message: error.to_string(),
+            command,
+        };
     }
     show_toast(Show::Always, cx);
 }
@@ -422,19 +468,22 @@ async fn run_check(trigger: Trigger, cx: &mut AsyncApp) {
             })
         })
     });
-    let (result, found) = cx
+    let (result, chosen, found) = cx
         .background_executor()
         .spawn(async move {
             let result = fetch_latest(channel);
-            let latest = match &result {
-                Ok(Some(release)) if release.version > current => Some(&release.version),
+            let available = match &result {
+                Ok(Some(release)) if release.version > current => Some(release),
                 _ => None,
             };
-            let found = idle.then(|| reconcile_staged(latest)).flatten();
-            (result, found)
+            let chosen = available.map(|release| plan(release, channel));
+            let found = idle
+                .then(|| reconcile_staged(available.map(|release| &release.version)))
+                .flatten();
+            (result, chosen, found)
         })
         .await;
-    cx.update(|cx| finish_check(result, found, trigger, cx));
+    cx.update(|cx| finish_check(result, chosen, found, trigger, cx));
 }
 
 fn reconcile_staged(latest: Option<&Version>) -> Option<Staged> {
@@ -459,6 +508,7 @@ fn set_check(check: CheckState, cx: &mut App) {
 
 fn finish_check(
     result: Result<Option<Release>, String>,
+    chosen: Option<InstallPlan>,
     found: Option<Staged>,
     trigger: Trigger,
     cx: &mut App,
@@ -470,7 +520,7 @@ fn finish_check(
     if state
         .install
         .as_ref()
-        .is_some_and(|install| matches!(install.stage, Stage::Failed(_)))
+        .is_some_and(|install| matches!(install.stage, Stage::Failed { .. }))
     {
         state.install = None;
     }
@@ -486,12 +536,18 @@ fn finish_check(
                 trigger == Trigger::Manual || state.dismissed.as_ref() != Some(&release.version);
             if let Some(staged) = found.filter(|staged| staged.version == release.version) {
                 log::info!(target: LOG_TARGET, "zz {} is already staged", staged.version);
-                state.install = Some(Install::new(release.clone(), Stage::Ready(staged)));
+                let fallback = staged.target.fallback_command();
+                state.install = Some(Install::new(
+                    release.clone(),
+                    Stage::Ready(staged),
+                    fallback,
+                ));
             }
             (CheckState::Available(release), offer)
         }
         Ok(Some(_)) => (CheckState::UpToDate, false),
     };
+    state.plan = chosen;
     state.check = check.clone();
 
     match &check {
@@ -532,6 +588,8 @@ enum Show {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Action {
     Update,
+    CopyCommand,
+    CopyFallback,
     WhatsNew,
     Dismiss,
     Cancel,
@@ -539,12 +597,14 @@ enum Action {
     Hide,
     TryAgain,
     ReleasePage,
+    ReleasePagePrimary,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 struct ToastView {
     title: String,
     message: Option<String>,
+    command: Option<String>,
     bar: Option<Bar>,
     actions: &'static [Action],
 }
@@ -553,40 +613,84 @@ fn toast_view(
     current: &Version,
     version: &Version,
     stage: Option<&Stage>,
+    plan: Option<&InstallPlan>,
     note: Option<String>,
 ) -> ToastView {
-    let view = |title: String, message: Option<String>, actions| ToastView {
+    let view = |title: String,
+                message: Option<String>,
+                command: Option<String>,
+                actions: &'static [Action]| ToastView {
         title,
         message,
+        command,
         bar: stage.and_then(Stage::bar),
         actions,
     };
+    let with_note = |base: String| match &note {
+        Some(note) => format!("{base} {note}"),
+        None => base,
+    };
     match stage {
-        None => view(
-            format!("zz {version} is available"),
-            Some(note.map_or_else(
-                || format!("You are running {current}."),
-                |note| format!("You are running {current}. {note}"),
-            )),
-            &[Action::Update, Action::WhatsNew, Action::Dismiss],
-        ),
+        None => match plan {
+            Some(InstallPlan::Manual(ManualUpdate { owner, command })) => match command {
+                Some(command) => view(
+                    format!("zz {version} is available"),
+                    Some(with_note(format!(
+                        "You are running {current}. Installed by {owner}. Run: {command}"
+                    ))),
+                    Some(command.clone()),
+                    &[Action::CopyCommand, Action::WhatsNew, Action::Dismiss],
+                ),
+                None => view(
+                    format!("zz {version} is available"),
+                    Some(with_note(format!(
+                        "You are running {current}. Installed by {owner}."
+                    ))),
+                    None,
+                    &[Action::ReleasePagePrimary, Action::Dismiss],
+                ),
+            },
+            Some(InstallPlan::InApp(_)) | None => view(
+                format!("zz {version} is available"),
+                Some(with_note(format!("You are running {current}."))),
+                None,
+                &[Action::Update, Action::WhatsNew, Action::Dismiss],
+            ),
+        },
         Some(Stage::Downloading { received, total }) => view(
             format!("Downloading zz {version}"),
             Some(download_text(*received, *total)),
+            None,
             &[Action::Cancel],
         ),
-        Some(Stage::Verifying) => view(format!("Verifying zz {version}"), None, &[]),
-        Some(Stage::Staging) => view(format!("Preparing zz {version}"), None, &[]),
+        Some(Stage::Running { detail }) => view(
+            format!("Updating zz {version}"),
+            Some(if detail.is_empty() {
+                "Running Homebrew…".to_owned()
+            } else {
+                detail.clone()
+            }),
+            None,
+            &[Action::Cancel],
+        ),
+        Some(Stage::Verifying) => view(format!("Verifying zz {version}"), None, None, &[]),
+        Some(Stage::Staging) => view(format!("Preparing zz {version}"), None, None, &[]),
         Some(Stage::Ready(_)) => view(
             format!("zz {version} is ready"),
             note,
+            None,
             &[Action::Restart, Action::Hide],
         ),
-        Some(Stage::Restarting) => view(format!("Installing zz {version}"), None, &[]),
-        Some(Stage::Failed(message)) => view(
+        Some(Stage::Restarting) => view(format!("Installing zz {version}"), None, None, &[]),
+        Some(Stage::Failed { message, command }) => view(
             "Update failed".to_owned(),
             Some(sentence(message)),
-            &[Action::TryAgain, Action::ReleasePage],
+            command.clone(),
+            if command.is_some() {
+                &[Action::TryAgain, Action::CopyFallback, Action::ReleasePage]
+            } else {
+                &[Action::TryAgain, Action::ReleasePage]
+            },
         ),
     }
 }
@@ -601,7 +705,13 @@ fn show_toast(show: Show, cx: &mut App) {
         (None, _) => return,
     };
     let note = daemon_note(release, state.mux.read(cx));
-    let view = toast_view(&state.current, &release.version, shown, note);
+    let view = toast_view(
+        &state.current,
+        &release.version,
+        shown,
+        state.plan.as_ref(),
+        note,
+    );
     let notification = toast(view, release.version.clone(), release.url.clone());
     match show {
         Show::Always => toast::push(notification, cx),
@@ -613,6 +723,7 @@ fn toast(view: ToastView, version: Version, url: String) -> Notification {
     let ToastView {
         title,
         message,
+        command,
         bar,
         actions,
     } = view;
@@ -632,9 +743,9 @@ fn toast(view: ToastView, version: Version, url: String) -> Notification {
             .when(!actions.is_empty(), |this| {
                 this.child(
                     h_flex().gap_2().pt_1().children(
-                        actions
-                            .iter()
-                            .map(|action| toast_button(*action, &version, &url)),
+                        actions.iter().map(|action| {
+                            toast_button(*action, &version, &url, command.as_deref())
+                        }),
                     ),
                 )
             })
@@ -642,7 +753,7 @@ fn toast(view: ToastView, version: Version, url: String) -> Notification {
     })
 }
 
-fn toast_button(action: Action, version: &Version, url: &str) -> AnyElement {
+fn toast_button(action: Action, version: &Version, url: &str, command: Option<&str>) -> AnyElement {
     let url = url.to_owned();
     let version = version.clone();
     match action {
@@ -650,11 +761,28 @@ fn toast_button(action: Action, version: &Version, url: &str) -> AnyElement {
             .primary()
             .label("Update")
             .on_click(|_, window, cx| install(window, cx)),
+        Action::CopyCommand => {
+            let copied = command.unwrap_or_default().to_owned();
+            Button::new("update-copy")
+                .primary()
+                .icon(IconName::Copy)
+                .label("Copy command")
+                .on_click(move |_, _, cx| copy_command(&copied, cx))
+        }
+        Action::CopyFallback => {
+            let copied = command.unwrap_or_default().to_owned();
+            Button::new("update-copy-fallback")
+                .ghost()
+                .icon(IconName::Copy)
+                .label("Copy command")
+                .on_click(move |_, _, cx| copy_command(&copied, cx))
+        }
         Action::WhatsNew => Button::new("update-notes")
             .ghost()
             .label("What's new")
             .on_click(move |_, _, cx| cx.open_url(&url)),
         Action::Dismiss => {
+            use penna::WindowExt as _;
             Button::new("update-later")
                 .ghost()
                 .label("Later")
@@ -672,10 +800,11 @@ fn toast_button(action: Action, version: &Version, url: &str) -> AnyElement {
             .label("Restart to update")
             .on_click(|_, _, cx| restart(cx)),
         Action::Hide => {
+            use penna::WindowExt as _;
             Button::new("update-hide")
                 .ghost()
                 .label("Later")
-                .on_click(|_, window, cx| {
+                .on_click(move |_, window, cx| {
                     window.dismiss_notification(TOAST_KEY, cx);
                 })
         }
@@ -685,6 +814,10 @@ fn toast_button(action: Action, version: &Version, url: &str) -> AnyElement {
             .on_click(|_, window, cx| install(window, cx)),
         Action::ReleasePage => Button::new("update-release-page")
             .ghost()
+            .label("Release page")
+            .on_click(move |_, _, cx| cx.open_url(&url)),
+        Action::ReleasePagePrimary => Button::new("update-release-page-primary")
+            .primary()
             .label("Release page")
             .on_click(move |_, _, cx| cx.open_url(&url)),
     }
@@ -729,134 +862,12 @@ fn write_dismissed(version: &Version) -> io::Result<()> {
     user_data::restrict_to_current_user(&path)
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct Environment {
-    facts: Facts,
-    homebrew: Option<(PathBuf, &'static str)>,
-    pacman_owned: bool,
-    aur_helper: Option<&'static str>,
-}
-
-impl Environment {
-    fn detect() -> Self {
-        let facts = Facts::current().unwrap_or_else(|| Facts {
-            os: std::env::consts::OS,
-            ..Facts::default()
-        });
-        Self {
-            homebrew: facts.homebrew.then(homebrew_cask).flatten(),
-            pacman_owned: fs::read_dir("/var/lib/pacman/local").is_ok_and(|entries| {
-                entries.flatten().any(|entry| {
-                    let name = entry.file_name();
-                    let name = name.to_string_lossy();
-                    name.starts_with("zz-bin-") || name.starts_with("zz-beta-bin-")
-                })
-            }),
-            aur_helper: ["paru", "yay"].into_iter().find(|helper| on_path(helper)),
-            facts,
-        }
-    }
-}
-
-fn on_path(program: &str) -> bool {
-    std::env::var_os("PATH")
-        .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(program).is_file()))
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum InstallPlan {
-    Terminal(String),
-    Open(String),
-}
-
-fn install_plan(release: &Release, channel: Channel, environment: &Environment) -> InstallPlan {
-    match environment.facts.os {
-        "macos" => match &environment.homebrew {
-            Some((prefix, cask)) => InstallPlan::Terminal(format!(
-                "{}/bin/brew upgrade --cask {cask}",
-                prefix.display()
-            )),
-            None => InstallPlan::Terminal(install_script_command(channel, None)),
-        },
-        "linux" if environment.facts.appimage.is_some() => InstallPlan::Open(release.url.clone()),
-        "linux" if environment.pacman_owned => match environment.aur_helper {
-            Some(helper) => InstallPlan::Terminal(format!(
-                "{helper} -S {}",
-                match channel {
-                    Channel::Stable => "zz-bin",
-                    Channel::Beta => "zz-beta-bin",
-                }
-            )),
-            None => InstallPlan::Open(release.url.clone()),
-        },
-        "linux" => InstallPlan::Terminal(install_script_command(
-            channel,
-            tarball_prefix(&environment.facts.executable),
-        )),
-        "windows" => InstallPlan::Open(format!(
-            "https://github.com/autistic-computer/zebrilus/releases/download/v{version}/zz-{version}-windows-x64-setup.exe",
-            version = release.version
-        )),
-        _ => InstallPlan::Open(release.url.clone()),
-    }
-}
-
-fn install_script_command(channel: Channel, prefix: Option<&std::path::Path>) -> String {
-    let mut arguments = Vec::new();
-    if channel == Channel::Beta {
-        arguments.push("--beta".to_owned());
-    }
-    if let Some(prefix) = prefix {
-        arguments.push(format!("--prefix '{}'", prefix.display()));
-    }
-    if arguments.is_empty() {
-        format!("curl -fsSL {INSTALL_SCRIPT_URL} | sh")
-    } else {
-        format!(
-            "curl -fsSL {INSTALL_SCRIPT_URL} | sh -s -- {}",
-            arguments.join(" ")
-        )
-    }
-}
-
-fn terminal_script(command: &str) -> String {
-    let quoted = command.replace('\'', "'\\''");
-    format!(
-        "printf '%s\\n' '$ {quoted}'\n\
-         {command}\n\
-         status=$?\n\
-         if [ \"$status\" -ne 0 ]; then printf '\\nzz update failed (exit %s).\\n' \"$status\"; fi\n\
-         printf '\\nPress Enter to close this window.\\n'\n\
-         read -r _\n"
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn version(text: &str) -> Version {
         Version::parse(text).expect("valid version")
-    }
-
-    fn offered() -> Release {
-        Release {
-            version: version("0.3.2"),
-            url: "https://github.com/autistic-computer/zebrilus/releases/tag/v0.3.2".to_owned(),
-            assets: Vec::new(),
-            wire: None,
-        }
-    }
-
-    fn environment(os: &'static str, executable: &str) -> Environment {
-        Environment {
-            facts: Facts {
-                os,
-                executable: PathBuf::from(executable),
-                ..Facts::default()
-            },
-            ..Environment::default()
-        }
     }
 
     #[test]
@@ -868,19 +879,60 @@ mod tests {
             version: next.clone(),
             target: Target::MacBundle {
                 app: PathBuf::from("/Applications/zz.app"),
+                elevated: false,
             },
             path: PathBuf::from("/Applications/.zz-update.app"),
         };
+        let manual_with_command = InstallPlan::Manual(ManualUpdate {
+            owner: "pacman (zz-bin)".to_owned(),
+            command: Some("paru -S zz-bin".to_owned()),
+        });
+        let manual_without_command = InstallPlan::Manual(ManualUpdate {
+            owner: "Nix".to_owned(),
+            command: None,
+        });
         let cases = [
             (
+                None,
                 None,
                 ToastView {
                     title: "zz 0.3.2 is available".to_owned(),
                     message: Some(
                         "You are running 0.3.1. The update keeps your sessions running.".to_owned(),
                     ),
+                    command: None,
                     bar: None,
                     actions: &[Action::Update, Action::WhatsNew, Action::Dismiss],
+                },
+            ),
+            (
+                None,
+                Some(&manual_with_command),
+                ToastView {
+                    title: "zz 0.3.2 is available".to_owned(),
+                    message: Some(
+                        "You are running 0.3.1. Installed by pacman (zz-bin). Run: paru -S zz-bin \
+                         The update keeps your sessions running."
+                            .to_owned(),
+                    ),
+                    command: Some("paru -S zz-bin".to_owned()),
+                    bar: None,
+                    actions: &[Action::CopyCommand, Action::WhatsNew, Action::Dismiss],
+                },
+            ),
+            (
+                None,
+                Some(&manual_without_command),
+                ToastView {
+                    title: "zz 0.3.2 is available".to_owned(),
+                    message: Some(
+                        "You are running 0.3.1. Installed by Nix. \
+                         The update keeps your sessions running."
+                            .to_owned(),
+                    ),
+                    command: None,
+                    bar: None,
+                    actions: &[Action::ReleasePagePrimary, Action::Dismiss],
                 },
             ),
             (
@@ -888,142 +940,85 @@ mod tests {
                     received: 84_400_000,
                     total: Some(186_000_000),
                 }),
+                None,
                 ToastView {
                     title: "Downloading zz 0.3.2".to_owned(),
                     message: Some("84 of 186 MB".to_owned()),
+                    command: None,
                     bar: Some(Bar::Filled(0.453)),
                     actions: &[Action::Cancel],
                 },
             ),
             (
-                Some(Stage::Downloading {
-                    received: 2_600_000,
-                    total: None,
+                Some(Stage::Running {
+                    detail: "==> Downloading zz".to_owned(),
                 }),
+                None,
                 ToastView {
-                    title: "Downloading zz 0.3.2".to_owned(),
-                    message: Some("3 MB".to_owned()),
+                    title: "Updating zz 0.3.2".to_owned(),
+                    message: Some("==> Downloading zz".to_owned()),
+                    command: None,
                     bar: Some(Bar::Sweeping),
                     actions: &[Action::Cancel],
                 },
             ),
             (
                 Some(Stage::Staging),
+                None,
                 ToastView {
                     title: "Preparing zz 0.3.2".to_owned(),
                     message: None,
+                    command: None,
                     bar: Some(Bar::Sweeping),
                     actions: &[],
                 },
             ),
             (
                 Some(Stage::Ready(staged)),
+                None,
                 ToastView {
                     title: "zz 0.3.2 is ready".to_owned(),
                     message: note(),
+                    command: None,
                     bar: None,
                     actions: &[Action::Restart, Action::Hide],
                 },
             ),
             (
-                Some(Stage::Failed("cannot write to /Applications".to_owned())),
+                Some(Stage::Failed {
+                    message: "cannot write to /Applications".to_owned(),
+                    command: None,
+                }),
+                None,
                 ToastView {
                     title: "Update failed".to_owned(),
                     message: Some("Cannot write to /Applications".to_owned()),
+                    command: None,
                     bar: None,
                     actions: &[Action::TryAgain, Action::ReleasePage],
                 },
             ),
+            (
+                Some(Stage::Failed {
+                    message: "Homebrew does not have zz 0.3.2 yet".to_owned(),
+                    command: Some("/opt/homebrew/bin/brew upgrade --cask zz".to_owned()),
+                }),
+                None,
+                ToastView {
+                    title: "Update failed".to_owned(),
+                    message: Some("Homebrew does not have zz 0.3.2 yet".to_owned()),
+                    command: Some("/opt/homebrew/bin/brew upgrade --cask zz".to_owned()),
+                    bar: None,
+                    actions: &[Action::TryAgain, Action::CopyFallback, Action::ReleasePage],
+                },
+            ),
         ];
-        for (stage, expected) in cases {
+        for (stage, plan, expected) in cases {
             assert_eq!(
-                toast_view(&current, &next, stage.as_ref(), note()),
+                toast_view(&current, &next, stage.as_ref(), plan, note()),
                 expected,
-                "{stage:?}"
+                "{stage:?} {plan:?}"
             );
         }
-    }
-
-    #[test]
-    fn macos_uses_the_installer_unless_homebrew_owns_the_app() {
-        let plain = environment("macos", "/Applications/zz.app/Contents/MacOS/zz");
-        assert_eq!(
-            install_plan(&offered(), Channel::Stable, &plain),
-            InstallPlan::Terminal("curl -fsSL https://zzmux.sh/install.sh | sh".to_owned())
-        );
-        assert_eq!(
-            install_plan(&offered(), Channel::Beta, &plain),
-            InstallPlan::Terminal(
-                "curl -fsSL https://zzmux.sh/install.sh | sh -s -- --beta".to_owned()
-            )
-        );
-        let brewed = Environment {
-            homebrew: Some((PathBuf::from("/opt/homebrew"), "zz@beta")),
-            ..plain
-        };
-        assert_eq!(
-            install_plan(&offered(), Channel::Beta, &brewed),
-            InstallPlan::Terminal("/opt/homebrew/bin/brew upgrade --cask zz@beta".to_owned())
-        );
-    }
-
-    #[test]
-    fn linux_routes_by_package_owner() {
-        let deb = environment("linux", "/usr/lib/zz/zz");
-        assert_eq!(
-            install_plan(&offered(), Channel::Stable, &deb),
-            InstallPlan::Terminal("curl -fsSL https://zzmux.sh/install.sh | sh".to_owned())
-        );
-        let tarball = environment("linux", "/home/me/.local/lib/zz/zz");
-        assert_eq!(
-            install_plan(&offered(), Channel::Beta, &tarball),
-            InstallPlan::Terminal(
-                "curl -fsSL https://zzmux.sh/install.sh | sh -s -- --beta --prefix '/home/me/.local'"
-                    .to_owned()
-            )
-        );
-        let aur = Environment {
-            pacman_owned: true,
-            aur_helper: Some("paru"),
-            ..environment("linux", "/usr/lib/zz/zz")
-        };
-        assert_eq!(
-            install_plan(&offered(), Channel::Stable, &aur),
-            InstallPlan::Terminal("paru -S zz-bin".to_owned())
-        );
-        let aur_without_helper = Environment {
-            aur_helper: None,
-            ..aur
-        };
-        assert_eq!(
-            install_plan(&offered(), Channel::Stable, &aur_without_helper),
-            InstallPlan::Open(offered().url)
-        );
-        let mut appimage = environment("linux", "/tmp/.mount_zz/usr/lib/zz/zz");
-        appimage.facts.appimage = Some(PathBuf::from("/home/me/Apps/zz.AppImage"));
-        assert_eq!(
-            install_plan(&offered(), Channel::Stable, &appimage),
-            InstallPlan::Open(offered().url)
-        );
-    }
-
-    #[test]
-    fn windows_opens_the_installer_download() {
-        let windows = environment("windows", "C:/Program Files/zz/zz.exe");
-        assert_eq!(
-            install_plan(&offered(), Channel::Stable, &windows),
-            InstallPlan::Open(
-                "https://github.com/autistic-computer/zebrilus/releases/download/v0.3.2/zz-0.3.2-windows-x64-setup.exe"
-                    .to_owned()
-            )
-        );
-    }
-
-    #[test]
-    fn terminal_script_keeps_the_window_open_and_reports_failure() {
-        let script = terminal_script("false");
-        assert!(script.contains("printf '%s\\n' '$ false'\nfalse\nstatus=$?\n"));
-        assert!(script.contains("zz update failed (exit %s)"));
-        assert!(script.ends_with("read -r _\n"));
     }
 }
