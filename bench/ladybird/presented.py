@@ -164,19 +164,31 @@ def measure(env, folder, capture, server, size, seconds, screenshot):
     samples = json.loads(output.read_text())
     ids = [(pts, v) for pts, v in samples if v >= 0]
     unique = list(dict.fromkeys(v for _, v in ids))
-    if (
-        engine["geometry"] != [*size, 1, "visible"]
-        or engine["y"] != 16 * ((engine["frames"] - 1) % 500 + 1)
-        or engine["tainted"]
-        or not unique
-        or unique != sorted(unique)
-        or unique[-1] >= engine["frames"]
-        or any(b < a for (_, a), (_, b) in itertools.pairwise(ids))
-        or any(v == -2 for _, v in samples)
-    ):
-        raise ValueError(
-            f"Invalid composited patterns: {engine}, {samples[:12]}, {samples[-6:]}"
+    problems = {
+        "geometry": engine["geometry"] != [*size, 1, "visible"],
+        "scroll": engine["y"] != 16 * ((engine["frames"] - 1) % 500 + 1),
+        "visibility": engine["tainted"],
+        "missing": len(unique) < 2,
+        "backwards": [
+            (b, v) for (_, prev), (b, v) in itertools.pairwise(ids) if v < prev
+        ],
+        "out_of_range": [(t, v) for t, v in ids if v >= engine["frames"]],
+        "unclassified": [t for t, v in samples if v == -2],
+    }
+    if any(problems.values()):
+        diagnostic = screenshot.with_suffix(".capture-failed.json")
+        diagnostic.write_text(
+            json.dumps(
+                {
+                    "engine": engine,
+                    "caps": caps,
+                    "region": [x, y, w, 8],
+                    "samples": samples,
+                    "problems": problems,
+                }
+            )
         )
+        raise ValueError(f"Invalid composited patterns: {problems}; see {diagnostic}")
     if (
         samples[0][1] != -1
         or samples[-1][1] != -1

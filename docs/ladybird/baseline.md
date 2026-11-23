@@ -1,6 +1,6 @@
 # Attributing browser resource use
 
-[Measured results](baseline-results.md) · [Raw trials and environment](../../bench/ladybird/baseline-samples.json.gz) · [Original CEF comparison](spike.md)
+[Measured results](baseline-results.md) · [Raw trials and environment](../../bench/ladybird/baseline-samples.json.gz) · [Original CEF comparison](spike.md) · [GPU-sharing follow-up](gpu.md)
 
 ## Findings
 

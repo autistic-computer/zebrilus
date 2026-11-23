@@ -64,7 +64,7 @@ The end-to-end harness starts a real desktop client on a private daemon, opens a
 
 ## Scope
 
-Linux x86-64 on Wayland was exercised. The wire IDs and field layouts follow one alpha tag. A subsequent Ladybird release needs a protocol check. macOS needs its own Hub transport and backing-store import. This adapter forces CPU painting and copies a full visible frame before GPU upload. The pinned source also defines a Vulkan DMA-BUF image variant. Importing that variant into ala is the next experiment for high-resolution or continuously animated panes. [Upstream shared image types](https://github.com/LadybirdBrowser/ladybird/blob/2026.47.7/Libraries/LibGfx/SharedImage.h)
+Linux x86-64 on Wayland was exercised. The wire IDs and field layouts follow one alpha tag. A subsequent Ladybird release needs a protocol check. macOS needs its own Hub transport and backing-store import. The original adapter forced CPU painting and copied each visible frame before acknowledging its backing store. The follow-up spike adds opt-in GPU sharing and measures composited scrolling. [GPU measurements](gpu.md) [Upstream shared image types](https://github.com/LadybirdBrowser/ladybird/blob/2026.47.7/Libraries/LibGfx/SharedImage.h)
 
 The spike omits Chromium DevTools, element picking, Chrome-cookie import, zz's custom local URL scheme and remote-host proxy egress. Downloads, file pickers, popups, accessibility trees, clipboard integration, pre-edit IME composition and media controls need further implementation. Login flows, WebRTC, DRM, crash recovery, macOS and Windows were outside the measured workload.
 

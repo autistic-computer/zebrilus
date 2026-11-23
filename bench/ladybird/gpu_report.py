@@ -127,7 +127,7 @@ def report(data):
     text = [
         f"# {name} {subject}",
         f"{meta['utc']} · {meta['cpu']} · {', '.join(meta['gpu'])} · {meta['kwin_version']}.",
-        f"{meta['blocks']} measured blocks and one discarded warm-up per viewport. {excluded} blocks rejected. Table entries are medians. Paired differences include the range across blocks.",
+        f"{meta['blocks']} measured blocks and one discarded warm-up per viewport. {excluded} completed blocks rejected. Table entries are medians. Paired differences include the range across blocks.",
     ]
     for size, items in blocks.items():
         text.append(f"## {size[0]} × {size[1]} CSS pixels")
@@ -320,6 +320,44 @@ def report(data):
                     ],
                 )
             )
+        if "cef" in runs:
+            text.append("### Page readiness and engine work")
+            rows = {}
+            for a, values in runs.items():
+                rows[a] = [
+                    {
+                        "ready": r["open_to_ready_ms"],
+                        "integer": r["phases"]["integer"]["work_ms"],
+                        "layout": r["phases"]["layout"]["work_ms"],
+                    }
+                    for r in values
+                ]
+            keys = ("ready", "integer", "layout")
+            text.append(
+                table(
+                    [
+                        "Arm",
+                        "Open to page ready (ms)",
+                        "96M integer iterations (ms)",
+                        "48 forced layouts (ms)",
+                    ],
+                    [
+                        [ARMS[a], *(middle(v, k, 1) for k in keys)]
+                        for a, v in rows.items()
+                    ],
+                )
+            )
+            text.append(
+                table(
+                    ["Paired difference", "Ready ms", "Integer ms", "Layout ms"],
+                    [
+                        [
+                            "DMA-BUF minus zz CEF",
+                            *(paired(rows["dma-buf"], rows["cef"], k, 1) for k in keys),
+                        ]
+                    ],
+                )
+            )
     return "\n\n".join(text) + "\n"
 
 
@@ -332,6 +370,13 @@ def main():
     campaigns = []
     for source in args.sources:
         data = load_sample(source)
+        if source.is_dir():
+            failures = {
+                p.name: json.loads(p.read_text())
+                for p in sorted(source.glob("*.capture-failed.json"))
+            }
+            if failures:
+                data["failed_presentations"] = failures
         campaigns.extend(data.get("campaigns", [data]))
     summary = "\n---\n\n".join(report(campaign) for campaign in campaigns)
     data = campaigns[0] if len(campaigns) == 1 else {"campaigns": campaigns}
