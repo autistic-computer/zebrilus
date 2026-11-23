@@ -22,12 +22,12 @@ use std::{
 };
 
 use zz_daemon_client::{
-    DaemonError, Endpoint, InteractiveClient, classify_local_connect_error, configured_fleet_hosts,
-    default_socket_path, short_device_name, terminate_incompatible_daemon,
+    DaemonError, Endpoint, HostFailure, InteractiveClient, classify_local_connect_error,
+    configured_fleet_hosts, default_socket_path, short_device_name, terminate_incompatible_daemon,
 };
 use zz_protocol::{
     AttachOperation, CommandInvocation, CommandResponse, PreparedCommand, PreparedCommandResult,
-    ProtocolMessage, ServerError,
+    ProtocolMessage,
 };
 
 use crate::browser::BrowserFrameProvider;
@@ -304,10 +304,10 @@ fn initial_connection(
                 .map_err(|restart| Error::message(format!("daemon start failed: {restart}")));
             }
             match error {
-                DaemonError::IncompatibleDaemon { .. } | DaemonError::DaemonTooOld { .. } => {}
-                DaemonError::Server(error @ ServerError::ClientTooOld { .. }) => {
+                error if HostFailure::classify(&error).client_too_old() => {
                     return Err(Error::message(error.to_string()));
                 }
+                DaemonError::IncompatibleDaemon { .. } | DaemonError::DaemonTooOld { .. } => {}
                 error => return Err(Error::message(error.to_string())),
             }
             if !interactive {

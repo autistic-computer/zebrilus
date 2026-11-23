@@ -515,6 +515,10 @@ pub(crate) enum StaleDaemonInfo {
 impl StaleDaemonInfo {
     const fn from_error(error: &DaemonError) -> Option<Self> {
         match *error {
+            DaemonError::IncompatibleDaemon {
+                daemon: Some(daemon),
+                client,
+            } if daemon > client => None,
             DaemonError::IncompatibleDaemon { daemon, .. } => Some(Self::Protocol { daemon }),
             DaemonError::DaemonTooOld { daemon, minimum } => {
                 Some(Self::Revision { daemon, minimum })
@@ -580,14 +584,25 @@ fn local_daemon_answers(socket_path: &Path) -> bool {
     LocalTransport::connect(socket_path).is_ok()
 }
 
-fn local_connect_error_text(error: &DaemonError) -> String {
-    match error {
-        DaemonError::Server(ServerError::ClientTooOld { client, minimum }) => format!(
+fn client_too_old_text(state: &HostState) -> Option<String> {
+    match *state {
+        HostState::ClientTooOld { client, minimum } => Some(format!(
             "This zz is too old for the running daemon. It is revision {client}, and the daemon \
              needs revision {minimum} or newer. Update zz."
-        ),
-        error => error.to_string(),
+        )),
+        HostState::Incompatible {
+            local,
+            remote: Some(remote),
+        } if remote > local => Some(format!(
+            "This zz is too old for the running daemon. It speaks protocol v{local}, and the \
+             daemon speaks v{remote}. Update zz."
+        )),
+        _ => None,
     }
+}
+
+fn local_connect_error_text(error: &DaemonError) -> String {
+    client_too_old_text(&connect_error_state(error)).unwrap_or_else(|| error.to_string())
 }
 
 #[cfg(test)]
@@ -1930,12 +1945,17 @@ impl MuxClient {
         connection.reconnect_generation = reconnect_generation;
         connection.ssh_auth_declined = declined;
         connection.asked_to_sign_in = asked_to_sign_in;
-        let next_attempt = reconnect_attempt.filter(|_| !declined).and_then(|attempt| {
-            (self.attached_host == host
-                || !asked_to_sign_in
-                || attempt < MAX_SIGN_IN_RECONNECT_ATTEMPTS)
-                .then(|| attempt.saturating_add(1))
-        });
+        let too_old = (host == HostId::LOCAL)
+            .then(|| client_too_old_text(&state))
+            .flatten();
+        let next_attempt = reconnect_attempt
+            .filter(|_| !declined && too_old.is_none())
+            .and_then(|attempt| {
+                (self.attached_host == host
+                    || !asked_to_sign_in
+                    || attempt < MAX_SIGN_IN_RECONNECT_ATTEMPTS)
+                    .then(|| attempt.saturating_add(1))
+            });
         if declined {
             connection.state = HostState::Unreachable {
                 reason: AUTH_DECLINED_REASON.to_owned(),
@@ -1947,6 +1967,11 @@ impl MuxClient {
         }
         let offer = connection.state.install_offer();
         self.connections.insert(host, connection);
+        if let Some(text) = too_old
+            && self.attached_host == host
+        {
+            self.error = Some(Arc::from(text));
+        }
         if let Some(attempt) = next_attempt {
             self.arm_reconnect(host, attempt, cx);
         }
@@ -2629,10 +2654,7 @@ impl MuxClient {
 
     #[must_use]
     pub(crate) fn attached_client_too_old(&self) -> bool {
-        matches!(
-            self.attached_connection().state,
-            HostState::ClientTooOld { .. }
-        )
+        client_too_old_text(&self.attached_connection().state).is_some()
     }
 
     pub(crate) fn dismiss_stale_daemon(&mut self, cx: &mut Context<Self>) {
@@ -6018,6 +6040,22 @@ mod tests {
             assert!(
                 reason.contains(expected),
                 "{reason:?} should say {expected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_an_older_or_unknown_daemon_epoch_is_offered_a_restart() {
+        let incompatible = |daemon| DaemonError::IncompatibleDaemon {
+            daemon,
+            client: 110,
+        };
+        assert_eq!(StaleDaemonInfo::from_error(&incompatible(Some(111))), None);
+        for daemon in [Some(109), Some(110), None] {
+            assert_eq!(
+                StaleDaemonInfo::from_error(&incompatible(daemon)),
+                Some(StaleDaemonInfo::Protocol { daemon }),
+                "{daemon:?}"
             );
         }
     }

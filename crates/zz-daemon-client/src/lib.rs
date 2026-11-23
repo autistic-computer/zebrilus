@@ -153,6 +153,9 @@ fn incompatible_daemon_message(daemon: Option<u16>, client: u16) -> String {
         Some(daemon) if daemon == client => format!(
             "the running zz daemon is an older build of protocol v{daemon} whose terminal frames this zz cannot read"
         ),
+        Some(daemon) if daemon > client => format!(
+            "this zz is too old for the running daemon: it speaks protocol v{client} and the daemon speaks v{daemon}; update zz"
+        ),
         Some(daemon) => {
             format!("the running zz daemon speaks protocol v{daemon}; this zz speaks v{client}")
         }

@@ -1994,10 +1994,12 @@ fn protocol_version_output(
 
 fn format_local_daemon_error(error: DaemonError) -> String {
     match error {
+        error if zz_daemon_client::HostFailure::classify(&error).client_too_old() => {
+            error.to_string()
+        }
         error @ (DaemonError::IncompatibleDaemon { .. } | DaemonError::DaemonTooOld { .. }) => {
             format!("{error}\nrun 'zz kill-server' to restart it (sessions will be lost)")
         }
-        DaemonError::Server(error @ ServerError::ClientTooOld { .. }) => error.to_string(),
         error => error.to_string(),
     }
 }
@@ -4990,6 +4992,17 @@ mod tests {
                 })
             ),
             "xps stopped answering for 15 s; the command may have run there, check before retrying"
+        );
+    }
+
+    #[test]
+    fn a_newer_daemon_epoch_is_reported_without_a_restart_hint() {
+        assert_eq!(
+            super::format_local_daemon_error(DaemonError::IncompatibleDaemon {
+                daemon: Some(111),
+                client: 110,
+            }),
+            "this zz is too old for the running daemon: it speaks protocol v110 and the daemon speaks v111; update zz"
         );
     }
 
