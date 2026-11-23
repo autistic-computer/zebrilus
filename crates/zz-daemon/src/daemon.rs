@@ -80,6 +80,7 @@ pub(crate) mod path_listing;
 mod providers;
 mod restart;
 pub use restart::{Restart, Stopped};
+mod update_server;
 use zz_daemon_client::{
     DaemonError, DaemonIdentityGuard, default_mux_config, diagnostic_elapsed_us, diagnostic_timer,
     discover_tmux_config, home_directory, mux_config_write_path, terminal_colour_count,
@@ -4869,6 +4870,7 @@ enum DaemonCommandDispatch {
     Tools,
     LocalCli,
     RestartServer,
+    UpdateServer,
     Buffer,
     ListClients,
     ShowMessages,
@@ -4917,6 +4919,7 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("fleet", DaemonCommandDispatch::LocalCli),
     ("list-hosts", DaemonCommandDispatch::LocalCli),
     ("restart-server", DaemonCommandDispatch::RestartServer),
+    ("update-server", DaemonCommandDispatch::UpdateServer),
     ("tailnet", DaemonCommandDispatch::Tailnet),
     ("set-buffer", DaemonCommandDispatch::Buffer),
     ("setb", DaemonCommandDispatch::Buffer),
@@ -8846,6 +8849,9 @@ impl Shared {
                         invoking_client_terminal,
                         queue_execution,
                     ),
+                    DaemonCommandDispatch::UpdateServer => {
+                        self.update_server(client, &command.args)
+                    }
                     DaemonCommandDispatch::Buffer => self.buffer_command_for_client(
                         Some(client),
                         kind,

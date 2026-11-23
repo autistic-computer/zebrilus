@@ -198,6 +198,9 @@ fn install_in(
         Ordering::Less => return Err(InstallError::Older(version.clone())),
         Ordering::Greater => {}
     }
+    if installed_in(directory).is_some_and(|copy| copy.info.version == *version) {
+        return Err(InstallError::Current(version.clone()));
+    }
     let staging = directory.join(format!("{STAGING}{}", std::process::id()));
     fs::create_dir(&staging).map_err(|source| UpdateError::io("create", &staging, source))?;
     let result = stage(&staging, origin, asset, version, progress).and_then(|info| {

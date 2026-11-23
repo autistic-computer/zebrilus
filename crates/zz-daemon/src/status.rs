@@ -669,6 +669,8 @@ pub(crate) fn status_cache_callbacks(request: &StatusRequest) -> Option<Vec<Stri
                 "zz_version"
                     | "zz_revision"
                     | "zz_exit_rule"
+                    | "zz_owned_version"
+                    | "zz_owned_epoch"
                     | "pane_kind"
                     | "agent_state"
                     | "agent_pending_permission"
@@ -2897,6 +2899,16 @@ impl StatusHooks for DaemonFormatHooks<'_> {
         match name {
             "zz_version" => Some(env!("CARGO_PKG_VERSION").to_owned()),
             "zz_revision" => Some(zz_protocol::REVISION.to_string()),
+            "zz_owned_version" => Some(
+                zz_config::owned::installed()
+                    .map(|copy| copy.info.version.to_string())
+                    .unwrap_or_default(),
+            ),
+            "zz_owned_epoch" => Some(
+                zz_config::owned::installed()
+                    .map(|copy| copy.info.epoch.to_string())
+                    .unwrap_or_default(),
+            ),
             "zz_exit_rule" => Some(
                 context
                     .engine()

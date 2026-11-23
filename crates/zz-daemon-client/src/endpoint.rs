@@ -1885,6 +1885,37 @@ pub fn run_remote_cli(
 ) -> Result<std::process::ExitStatus, EndpointError> {
     use std::io::IsTerminal as _;
 
+    let mut command = remote_cli_command(endpoint, arguments)?;
+    if !io::stdin().is_terminal() {
+        command.stdin(Stdio::null());
+    }
+    command
+        .status_unmasked()
+        .map_err(|source| EndpointError::SshSpawn {
+            operation: "remote command",
+            source,
+        })
+}
+
+#[cfg(any(unix, windows))]
+pub fn remote_cli_output(
+    endpoint: &SshEndpoint,
+    arguments: &[String],
+) -> Result<std::process::Output, EndpointError> {
+    remote_cli_command(endpoint, arguments)?
+        .stdin(Stdio::null())
+        .output_unmasked()
+        .map_err(|source| EndpointError::SshSpawn {
+            operation: "remote command",
+            source,
+        })
+}
+
+#[cfg(any(unix, windows))]
+fn remote_cli_command(
+    endpoint: &SshEndpoint,
+    arguments: &[String],
+) -> Result<Command, EndpointError> {
     #[cfg(unix)]
     let (control, answered) = riding_control(endpoint);
     #[cfg(not(unix))]
@@ -1903,16 +1934,7 @@ pub fn run_remote_cli(
         identity: identity.as_deref(),
         ..session
     };
-    let mut command = ssh_cli_command(endpoint, session, arguments);
-    if !io::stdin().is_terminal() {
-        command.stdin(Stdio::null());
-    }
-    command
-        .status_unmasked()
-        .map_err(|source| EndpointError::SshSpawn {
-            operation: "remote command",
-            source,
-        })
+    Ok(ssh_cli_command(endpoint, session, arguments))
 }
 
 #[cfg(unix)]

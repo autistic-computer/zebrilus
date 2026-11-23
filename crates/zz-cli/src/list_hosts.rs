@@ -1,9 +1,11 @@
 use std::{process::ExitCode, thread};
 
 use zz_daemon_client::{
-    Endpoint, HostEntry, HostProbe, HostStatus, RejectedHost, fleet_hosts_with_tailnet, probe_host,
+    CommandClient, Endpoint, HostEntry, HostProbe, HostStatus, RejectedHost,
+    fleet_hosts_with_tailnet, probe_host,
 };
 use zz_mux::{FormatJobTag, StatusContext, StatusHooks, expand_format_values, format_references};
+use zz_protocol::CommandInvocation;
 
 const DEFAULT_FORMAT: &str = "#{host_name}: #{host_url} #{host_state}\
                               #{?host_version, #{host_version},}#{?host_error, (#{host_error}),}";
@@ -91,7 +93,7 @@ fn probe_endpoint(endpoint: &Endpoint) -> HostProbe {
         Endpoint::Ssh(endpoint) => probe_host(endpoint),
         Endpoint::Local(path) if path.exists() => HostProbe {
             status: HostStatus::Ready,
-            version: String::new(),
+            version: daemon_version(endpoint),
             protocol: String::new(),
             error: String::new(),
         },
@@ -105,7 +107,7 @@ fn probe_endpoint(endpoint: &Endpoint) -> HostProbe {
             {
                 Ok(()) => HostProbe {
                     status: HostStatus::Ready,
-                    version: String::new(),
+                    version: daemon_version(&Endpoint::Tailnet(endpoint.clone())),
                     protocol: String::new(),
                     error: String::new(),
                 },
@@ -116,6 +118,18 @@ fn probe_endpoint(endpoint: &Endpoint) -> HostProbe {
 }
 
 const TAILNET_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+fn daemon_version(endpoint: &Endpoint) -> String {
+    CommandClient::connect_endpoint(endpoint, true)
+        .and_then(|mut client| {
+            client.execute(CommandInvocation::new(
+                "display-message",
+                ["-p", "#{zz_version}"],
+            ))
+        })
+        .map(|output| output.trim().to_owned())
+        .unwrap_or_default()
+}
 
 fn needs_probe(listing: Listing<'_>) -> bool {
     match listing {

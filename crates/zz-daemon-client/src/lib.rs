@@ -82,7 +82,7 @@ pub use endpoint::{
     TailnetEndpoint, run_socket_proxy, shell_quote,
 };
 #[cfg(any(unix, windows))]
-pub use endpoint::{install_remote, install_remote_batch, run_remote_cli};
+pub use endpoint::{install_remote, install_remote_batch, remote_cli_output, run_remote_cli};
 pub use fleet_hosts::{
     ADD_HOST_PLACEHOLDER, AddHostRequest, HostEntry, RejectedHost, apply_fleet_host_entry,
     atomic_write, configured_fleet_hosts, parse_add_host, resolve_fleet_host, validate_fleet_host,

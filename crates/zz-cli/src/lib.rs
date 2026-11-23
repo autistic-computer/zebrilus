@@ -870,6 +870,19 @@ fn run_command_mode(
         }
         return Some(agent_hooks::run(&invocation.args));
     }
+    if command == "update" {
+        if host == Some(ALL_HOSTS) {
+            eprintln!("zz: zz update -a updates this machine and every host");
+            return Some(exit_code_for(CliFailure::Usage));
+        }
+        let arguments = invocation
+            .args
+            .iter()
+            .map(ToString::to_string)
+            .chain(host.map(str::to_owned))
+            .collect::<Vec<_>>();
+        return Some(update::run(&arguments, socket_path));
+    }
     if host == Some(ALL_HOSTS) {
         return Some(run_on_every_host(arguments, &command_chain));
     }
@@ -951,18 +964,6 @@ fn run_command_mode(
         }
         println!("{}", zz_config::owned::BuildInfo::current());
         return Some(ExitCode::SUCCESS);
-    }
-    if command == "update" {
-        if host.is_some() {
-            eprintln!("zz: --host is not supported for `update`");
-            return Some(exit_code_for(CliFailure::Usage));
-        }
-        let arguments = invocation
-            .args
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
-        return Some(update::run(&arguments, socket_path));
     }
 
     if host.is_some() && matches!(command.as_str(), "daemon" | "proxy") {
@@ -2915,7 +2916,7 @@ fn connect_host_command_client(name: &str, read_only: bool) -> Result<CommandCli
         .map_err(|error| host_connect_failure(name, &error))
 }
 
-fn configured_host_endpoint(name: &str) -> Result<Endpoint, String> {
+pub(crate) fn configured_host_endpoint(name: &str) -> Result<Endpoint, String> {
     let (mut hosts, _) = zz_daemon_client::configured_fleet_hosts()
         .map_err(|error| format!("could not read zz/config: {error}"))?;
     if !hosts.iter().any(|host| host.name == name) && !name.contains(['@', ':', '/']) {

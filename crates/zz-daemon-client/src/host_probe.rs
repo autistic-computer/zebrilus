@@ -72,7 +72,9 @@ pub fn probe_host(endpoint: &SshEndpoint) -> HostProbe {
 fn host_probe_script() -> String {
     format!(
         "{}; if command -v \"$zz_cli\" >/dev/null 2>&1; then \
-         printf 'zz-probe-version=%s\\n' \"$(\"$zz_cli\" --version 2>/dev/null)\"; fi",
+         printf 'zz-probe-version=%s\\n' \"$(\"$zz_cli\" --version 2>/dev/null)\"; \
+         printf 'zz-probe-daemon=%s\\n' \
+         \"$(\"$zz_cli\" display-message -p '#{{zz_version}}' 2>/dev/null </dev/null)\"; fi",
         remote_socket_probe_script(None),
     )
 }
@@ -91,8 +93,12 @@ fn host_probe_from(code: Option<i32>, stdout: &[u8], stderr: &[u8], status: &str
         };
     }
     let stdout = String::from_utf8_lossy(stdout);
-    let version = probe_value(&stdout, "zz-probe-version=")
-        .and_then(|version| version.split_whitespace().last())
+    let version = probe_value(&stdout, "zz-probe-daemon=")
+        .filter(|version| !version.is_empty())
+        .or_else(|| {
+            probe_value(&stdout, "zz-probe-version=")
+                .and_then(|version| version.split_whitespace().last())
+        })
         .unwrap_or_default()
         .to_owned();
     let name = zz_protocol::app_identity::DIRECTORY;
