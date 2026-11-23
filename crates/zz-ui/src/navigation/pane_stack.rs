@@ -386,9 +386,18 @@ impl PaneStack {
             .max()
             .unwrap_or_default();
         let dot = status_dot(attention, px(size.tile()), self.ground.fill, cx);
-        let tile = if let Some(program) = front.and_then(|front| front.program).filter(|_| colors) {
-            self.face(program, layer.smoothing, dark, self.dimmed)
-                .tile(cx)
+        let program = self
+            .tiles
+            .get(slot)
+            .and_then(|tile| tile.program)
+            .filter(|_| colors);
+        let tile = if let Some(program) = program {
+            let face = self.face(program, layer.smoothing, dark, self.dimmed);
+            if front.is_some() {
+                face.tile(cx)
+            } else {
+                face.blank(cx)
+            }
         } else {
             let layer = Layer {
                 fill: self.dim(layer.fill),

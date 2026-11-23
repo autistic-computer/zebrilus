@@ -22,7 +22,7 @@ session headers. The data layer below is unchanged.
 
 The flat sidebar shows one row per window on every host: a title, a second line saying what the
 window is doing, an age on the right, and a pane stack (`navigation::pane_stack`, shared with the
-titlebar's pane deck): the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each tile outlined on its own (dark in both modes and lit like a program icon, with no theme hairline: a gray line outside and a white rim inside in light mode, a dark line and a faint rim in dark mode), so the one in front reads against the one behind. Pointing at it opens every pane in a row you can
+titlebar's pane deck): the focused pane's tile with its glyph in front and at most two tiles fanned out behind it in their own panes' program colors with no glyph (blank tiles where a pane has no program face or Program colors is off), each tile outlined on its own (dark in both modes and lit like a program icon, with no theme hairline: a gray line outside and a white rim inside in light mode, a dark line and a faint rim in dark mode), so the one in front reads against the one behind. Pointing at it opens every pane in a row you can
 click, drawn on the row itself with the title and description hidden under the tiles and fading
 back in past them. Line 2's lead carries what needs you, so the tiles have
 no status dot; folded host and session headers roll attention up. Every fact it needs now rides
@@ -140,7 +140,8 @@ the agreed mock; Done is in the foreground only while the finish is unseen.
 **Ages** are `short_age`: "now" under a minute, then minutes, hours and days. `age_label` shows
 nothing while `changed_at` is 0. **Tiles** put the active pane first, then layout order, each with
 its pane id, label and program (`pane_program`, below); the row draws the first with its glyph and
-a blank tile for each of the next two, and the open row offers every pane (`FlatEvent::OpenPane`).
+each of the next two in its own program's colors with no glyph (blank with no program face or with
+Program colors off), and the open row offers every pane (`FlatEvent::OpenPane`).
 **Rollups** count one attention per window and keep the newest change; a host merges its sessions.
 
 **Session headers** come from `navigation::session_label`, which every sidebar, the palettes and the

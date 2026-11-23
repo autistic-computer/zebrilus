@@ -101,13 +101,13 @@ pub const STORY: Story = Story {
         Section {
             id: "rows",
             name: "Window rows",
-            summary: "flat_window_row in every state the summary can produce. Line 1 names the window, line 2 says what it is doing or where it is, its lead in the tone of what needs you; the spinner is the front chat's turn in progress. The stack shows a face per pane, each with its own dot; point at it to open every pane.",
+            summary: "flat_window_row in every state the summary can produce. Line 1 names the window, line 2 says what it is doing or where it is, its lead in the tone of what needs you; the spinner is the front chat's turn in progress. The stack shows the front pane's face and up to two panes behind it in their own colors, each with its own dot; point at it to open every pane.",
             build: |_, cx| stateless(rows, cx),
         },
         Section {
             id: "stacks",
             name: "Tile stacks",
-            summary: "flat_tile_stack for one to five panes on the rest, hover, current and selected grounds. The front pane's tile leads with its glyph; up to two blank tiles fan out behind it, 7px apart, each with its own outline and its own dot, so the one in front reads against the one behind. Point at a stack to open every pane in a row.",
+            summary: "flat_tile_stack for one to five panes on the rest, hover, current and selected grounds. The front pane's tile leads with its glyph; up to two tiles fan out behind it, 7px apart, each in its own pane's program colors with no glyph (blank when that pane has no program face or Program colors is off), each with its own outline and its own dot, so the one in front reads against the one behind. Point at a stack to open every pane in a row.",
             build: |_, cx| stateless(stacks, cx),
         },
         Section {
