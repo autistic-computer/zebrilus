@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peer message in the timeline</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/badge/badge.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/card/card.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="/mockups/agent-mentions/mentions.css">
+<link rel="stylesheet" href="peer-message.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/mockups/agent-mentions/mentions.js"></script>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Peer message in the timeline</h1>
+  </div>
+  <div class="pm-takes" data-takes></div>
+  <section class="pm-compare" data-compare></section>
+</main>
+<script>
+(() => {
+  const { esc, ic, spin, tile, ref, you, step, quote, word, time, pipmark } = window.zzm;
+
+  const PEER = "Model-invoking hook and zz prompt";
+  const TAIL = "Lane A (build-info, shared downloader, zz update, handover) is still running.";
+  const ASK = `let ${ref(PEER)} know about your findings. its fixing stuff`;
+  const AFTER = "Sent to %12: the four open findings with code pointers, the two small ones, and what should stay as is.";
+  const SENT = "From the chat in %6 (daemon-update work). fabrico asked me to pass on what I found using child chats today, since you are fixing this area. I opened codex (%13) and agy (%14) as children and sent each a brief; codex answered, agy stalled on a permission ask that never reached me. Four findings are still open, each with the file and line that decides it, then two small ones, then what I think should stay as is.";
+  const REPLY = "%6's list arrived and matches what I relayed; its delivery also reproduced a new bug. New bug, seen live: %6's message quoted your earlier prompt, and zz attached two notes to it in my chat, one for each mention it found inside the quote, so my turn started with three prompts instead of one. The notes pointed at chats that never asked me anything. I checked the daemon log: both notes came from the mention scan, which runs on every prompt that reaches a chat, not only on what the user typed. Queued for when child-chats reports: 1. Re-check a relayed ask when it is dispatched, not when it is queued; the agy ask in %14 was already answered by the time it reached %6, and the stale copy is what stalled it. 2. Put the request id in the ask lines, so a reply can name the ask it answers and the daemon can drop duplicates instead of guessing from the text. 3. Mention notes only on user-typed prompts; a relayed or quoted message should arrive as text with no notes attached. What I left as is: the wait queue order, the reply notice wording, and the timeout on agent-send, since none of them played a part. I have not touched the mention scan yet; I will start on item 3 once child-chats has its report in, and send you the diff before landing it.";
+  const TOAST = "select-child-chat: invalid command: %12 is not a chat %6 opened";
+
+  const p = (text) => `<p>${esc(text)}</p>`;
+  const chat = (part, { toast = false, after = true, measure } = {}) =>
+    `<div class="pm-chat zz-chat">${toast ? `<div data-penna="toast">${ic("triangle-alert")}<div class="penna-message">${esc(TOAST)}</div></div>` : ""}${p(TAIL)}${you(ASK)}<div class="pm-part"${measure ? ` data-measure="${measure}"` : ""}>${part}</div>${after ? p(AFTER) : ""}</div>`;
+  const state = (label, html) => `<div class="pm-state"><span>${label}</span>${html}</div>`;
+  const take = (name, caption, body) => `<section class="pm-take" data-take="${name}"><p class="pm-cap">${caption}</p><div class="pm-states">${body}</div></section>`;
+  const sep = `<span class="zz-sep">·</span>`;
+  const go = `<i class="pm-go" data-icon="arrow-up-right"></i>`;
+
+  const card = ({ program, name, tone, wordText, wordTone, t, body }) =>
+    `<div class="pm-card penna-card" data-penna="card.activity" role="button"><div class="pm-head">${tile(program, tone)}<span class="pm-name">${name}</span>${sep}${word(wordText, wordTone)}<span class="zz-grow"></span>${time(t)}${pipmark}</div>${body}</div>`;
+  const today = card({ program: "claude", name: "claude", tone: "success", wordText: "done", wordTone: "normal", t: "55s", body: quote(REPLY) });
+
+  const rowHead = ({ tone, wordText, t, chev, wait }) =>
+    `<div class="pm-row-head">${tile("claude", tone, "small")}<span class="pm-title">${PEER}</span>${sep}${wait ? spin() : ""}${word(wordText)}${time(t)}${chev ? `<i class="pm-faint" data-icon="${chev}"></i>` : ""}<span class="zz-grow"></span>${go}</div>`;
+  const row = {
+    waiting: `<div class="pm-row" role="button">${rowHead({ tone: "accent", wordText: "working", t: "12s", wait: true })}</div>`,
+    replied: `<div class="pm-row" role="button">${rowHead({ tone: "success", wordText: "replied", t: "55s", chev: "chevron-right" })}<div class="pm-clamp">${esc(REPLY)}</div></div>`,
+    expanded: `<div class="pm-row" role="button">${rowHead({ tone: "success", wordText: "replied", t: "55s", chev: "chevron-down" })}<div class="pm-label">Sent</div><div class="pm-clamp" style="--pm-lines: 3">${esc(SENT)}</div><div class="pm-full">${esc(REPLY)}</div></div>`,
+  };
+
+  const outBubble = (wait) =>
+    `<div class="pm-bubble" data-out><div class="pm-bhead" role="button">to ${tile("claude", wait ? "accent" : "success", "small")}<span class="pm-title">${PEER}</span>${wait ? `${sep}${word("working")}` : ""}</div><div class="pm-btext">${esc(SENT)}</div></div>`;
+  const inBubble = `<div class="pm-bubble penna-card" data-penna="card.activity" data-in><div class="pm-bhead" role="button">${tile("claude", "success", "small")}<span class="pm-title">${PEER}</span>${time("55s")}</div><div class="pm-btext" style="--pm-lines: 4">${esc(REPLY)}</div><span class="pm-more">Show more</span></div>`;
+
+  const chip = (tone) => `<span class="pm-chip">${tile("claude", tone, "small")}<span>${PEER}</span></span>`;
+  const sentRow = (tone) => step("chat", `Sent findings to`, "", { end: chip(tone) });
+  const replyRow = (open) => `<div class="penna-chat-activity" data-clickable><span class="penna-chat-glyph">${ic("corner-down-right")}</span><span class="penna-chat-label">Reply from</span>${chip("success")}${time("55s")}${open ? `<span class="zz-grow"></span><i class="pm-faint" data-icon="chevron-down"></i>` : `<span class="pm-one">${esc(REPLY)}</span>`}</div>${open ? `<div class="pm-under">${esc(REPLY)}</div>` : ""}`;
+  const plain = {
+    waiting: `<div class="pm-plain">${sentRow("accent")}</div>`,
+    replied: `<div class="pm-plain">${sentRow("success")}${replyRow(false)}</div>`,
+    expanded: `<div class="pm-plain">${sentRow("success")}${replyRow(true)}</div>`,
+  };
+
+  const CHILD_REPLY = "build-info reads the version from the binary and from the host, and the shared downloader already checks the hash before it swaps. The only gap is zz update on a host with no daemon running: it exits 0 without doing anything, so the handover never starts.";
+  const child = card({ program: "codex", name: "codex", tone: "success", wordText: "done", wordTone: "normal", t: "3m 28s", body: `<div class="zz-quote" data-lines>${esc(CHILD_REPLY)}</div>` });
+  const childChat = `<div class="pm-chat zz-chat">${p(TAIL)}<div class="zz-steps">${step("square-terminal", "zz new-pane -d --kind agent codex")}</div><div class="pm-part" data-measure="child">${child}</div>${p("Codex confirms build-info and the downloader; the gap is zz update with no daemon.")}</div>`;
+
+  const picked = `<span class="pm-proposed">Picked</span>`;
+  document.querySelector("[data-takes]").innerHTML = [
+    take("today", "Today: a peer drawn as a child.", state("Replied", chat(today, { toast: true, measure: "today" }))),
+    take("row", `Take 1, message row: one tool-row line that focuses the peer chat.`, [
+      state("Waiting", chat(row.waiting)),
+      state("Replied", chat(row.replied, { measure: "row" })),
+      state("Expanded", chat(row.expanded)),
+    ].join("")),
+    take("bubbles", "Take 2, conversation: the sent message and the reply as bubbles.", [
+      state("Waiting", chat(outBubble(true))),
+      state("Replied", chat(`${outBubble(false)}${inBubble}`, { measure: "bubbles" })),
+    ].join("")),
+    take("plain", `${picked}Take 3, plain rows: a sent row and a reply row, no fold.`, [
+      state("Waiting", chat(plain.waiting)),
+      state("Replied", chat(plain.replied, { measure: "plain" })),
+      state("Expanded", chat(plain.expanded)),
+    ].join("")),
+    take("child", "A chat this chat opened keeps its card.", state("Done", childChat)),
+  ].join("");
+
+  const ROWS = [
+    ["today", "Today", "Fails: toast \"%12 is not a chat %6 opened\"", "Looks the same: tile, done, PiP icon, quoted reply", "Card with a working peek of the peer's steps"],
+    ["row", "Message row", "Whole row focuses the peer chat; the chevron alone expands", "No card fill, tool-row height, arrow up-right in place of the PiP icon, title in place of the program name", "One line: tile with working dot, spinner, \"working\", live time"],
+    ["bubbles", "Conversation", "Each header focuses the peer chat; Show more expands the reply", "Reads as messages, not as a task: right outlined bubble out, left bubble back", "Outgoing bubble only, \"working\" beside the title"],
+    ["plain", "Plain rows", "The chip focuses the peer chat; the reply row expands in place", "Two plain tool rows, the chat named by a chip, no card at all", "Sent row only, its chip with a working dot"],
+    ["child", "Child card", "Focuses the child; its PiP slides in", "This is the child card: program name, PiP icon, card fill","Card with a three-line peek of its steps"],
+  ];
+  document.querySelector("[data-compare]").innerHTML = `<table><thead><tr><th>Take</th><th>Collapsed height</th><th>Click</th><th>Against a child card at a glance</th><th>While waiting</th></tr></thead><tbody>${ROWS.map(([key, name, click, glance, waiting]) => `<tr><td>${name}</td><td data-h="${key}"></td><td>${click}</td><td>${glance}</td><td>${waiting}</td></tr>`).join("")}</tbody></table>`;
+
+  addEventListener("load", () => {
+    window.zzm.round();
+    requestAnimationFrame(() => {
+      for (const el of document.querySelectorAll("[data-measure]")) {
+        const cell = document.querySelector(`[data-h="${el.dataset.measure}"]`);
+        if (cell) cell.textContent = `${Math.round(el.getBoundingClientRect().height)} px`;
+      }
+    });
+  });
+
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.querySelector(".zz-intro").style.display = "none";
+    document.querySelector("[data-compare]").style.display = "none";
+    for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+  }
+})();
+</script>
+</body>
+</html>
