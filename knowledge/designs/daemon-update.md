@@ -147,14 +147,21 @@ the packaged zz runs.
 - **Transport.** The plan reuses the in-app downloader instead of writing a second one: `parse_releases`, `Channel`, `ReleaseWire`, the checksum parsing, the streaming hash
   and `download` (`crates/zz-config/src/update.rs`, `update/install/download.rs`) move out from
   behind the `update` feature, and the headless asset names join them. That puts `ureq` in zz-cli's
-  tree, so the `stage_headless` rule goes. TLS is already linked, so the cost should be small:
-  measure the headless binary before and after and record the difference here before merging.
+  tree, so the `stage_headless` rule goes. Measured on macOS arm64 with `cargo build --release -p
+  zz-cli`: 33,598,416 bytes before (93fda43ea), 34,228,032 bytes with the downloader, `tar`,
+  `zz_config::owned` and `zz update`, a difference of 629,616 bytes (0.60 MiB). ureq runs on the
+  rustls aws-lc-rs provider the tailnet node already links, without ureq's default `ring`: with
+  both providers on, rustls has no default and the tailnet's `ClientConfig::builder()` panics.
+  `stage_headless` now fails when anything turns on rustls's `ring` in zz-cli's tree.
   Unpacking uses `flate2`, already linked, and the `tar` crate. The other choice is the system's
   `curl` and `tar` behind the same function: no new dependency, a second download path to keep.
   The two reviews split on this; fabrico picked the shared downloader on 2026-11-23.
 - The checksum comes from the same release as the archive. It catches a broken download, not a
   forged release, which is what `install.sh` and the in-app installer give today.
-- `HTTPS_PROXY` is honored. A host with no route to the release fails, and its line says so.
+- `HTTPS_PROXY` is honored: the HTTP client reads `ALL_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY` and
+  `NO_PROXY` by default (ureq 3.5 `Proxy::try_from_env`). A host with no route to the release
+  fails, and its line says so.
+- `ZZ_UPDATE_BASE_URL` replaces the download origin (`…/releases/download`) for tests and mirrors.
 - The version is validated as semver before it reaches a URL. There is no `--url` and no file
   argument.
 - The code is one module with no feature gate, used by both the CLI and the daemon. Proposed home:
@@ -318,8 +325,7 @@ and the plan follows them:
 
 # Open
 
-1. The headless binary's size before and after `ureq`, to be recorded in decision 3.
-2. Whether a signed headless asset would let a macOS bundle install use an owned copy. Not checked.
+1. Whether a signed headless asset would let a macOS bundle install use an owned copy. Not checked.
 
 # Citations
 

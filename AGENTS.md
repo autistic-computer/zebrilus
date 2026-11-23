@@ -21,7 +21,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `crates/zz-mux` — tmux-compatible model: sessions, windows, panes, key tables
 - `crates/zz-protocol` — wire protocol between daemon and clients, plus the shared key contract (tables, engine, fold, command catalog)
 - `crates/zz-client` - sans-IO client core: protocol reduction, chrome keymap, daemon-backed convergence simulator
-- `crates/zz-config` - renderer-free application config, settings actions, preference persistence; behind its `update` feature, the update check and the in-app installer (`update::{detect, prepare, apply}`: find the install, download and verify a release, stage it beside the install, swap it in on restart)
+- `crates/zz-config` - renderer-free application config, settings actions, preference persistence; the update check and the release downloader (`update`); the zz-owned headless copy under the data directory (`owned`: `zz build-info`'s `BuildInfo`, and the install and remove `zz update` runs); behind its `update` feature, the in-app installer (`update::{detect, prepare, apply}`: find the install, download and verify a release, stage it beside the install, swap it in on restart)
 - `crates/zz-machine` - the shape of zz's pure state machines: a transition returns the next state, effects and rejects, and the state says when to wake; the agent turn machine (`zz-daemon/src/agent/turn.rs`) is built on it
 - `crates/zz-cli` — headless `zz_cli` binary: the CLI, raw-terminal attach, and the ssh-side entry point
 - `crates/zz-simulator` - screen and input access to a booted iOS simulator through Xcode's CoreSimulator and SimulatorKit (macOS only); `examples/probe.rs` attaches, counts frames and sends taps, swipes and keys

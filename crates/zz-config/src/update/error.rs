@@ -7,6 +7,7 @@ pub enum UpdateError {
     Unavailable,
     NoCacheDirectory,
     Network(String),
+    NotFound(String),
     UnreadableChecksum,
     ChecksumMismatch {
         expected: String,
@@ -32,7 +33,7 @@ pub enum UpdateError {
 }
 
 impl UpdateError {
-    pub(super) fn io(action: &'static str, path: impl Into<PathBuf>, source: io::Error) -> Self {
+    pub(crate) fn io(action: &'static str, path: impl Into<PathBuf>, source: io::Error) -> Self {
         Self::Io {
             action,
             path: path.into(),
@@ -48,7 +49,9 @@ impl fmt::Display for UpdateError {
                 f.write_str("this release has no download for this kind of install")
             }
             Self::NoCacheDirectory => f.write_str("could not find the user's cache directory"),
-            Self::Network(message) => write!(f, "could not download the update: {message}"),
+            Self::Network(message) | Self::NotFound(message) => {
+                write!(f, "could not download the update: {message}")
+            }
             Self::UnreadableChecksum => f.write_str("the release's checksum file is unreadable"),
             Self::ChecksumMismatch { expected, actual } => write!(
                 f,

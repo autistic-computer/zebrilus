@@ -19,6 +19,7 @@ mod fleet;
 mod fork_chat;
 mod list_hosts;
 mod tailnet;
+mod update;
 
 #[cfg(test)]
 use std::borrow::Cow;
@@ -892,6 +893,18 @@ fn run_command_mode(
         }
         println!("{}", zz_config::owned::BuildInfo::current());
         return Some(ExitCode::SUCCESS);
+    }
+    if command == "update" {
+        if host.is_some() {
+            eprintln!("zz: --host is not supported for `update`");
+            return Some(exit_code_for(CliFailure::Usage));
+        }
+        let arguments = invocation
+            .args
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        return Some(update::run(&arguments, socket_path));
     }
 
     if host.is_some() && matches!(command.as_str(), "daemon" | "proxy") {

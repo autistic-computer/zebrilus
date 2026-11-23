@@ -8,7 +8,7 @@ description = "Shared configuration parsing and persistence for zz clients"
 publish = false
 
 [features]
-update = ["dep:sha2", "dep:ureq"]
+update = []
 
 [dependencies]
 zz-client.workspace = true
@@ -20,8 +20,11 @@ serde.workspace = true
 serde_json.workspace = true
 log.workspace = true
 semver = "1"
-sha2 = { version = "0.11", optional = true }
-ureq = { version = "3", optional = true }
+sha2 = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+ureq = { version = "3", default-features = false, features = ["gzip", "rustls-no-provider", "rustls-webpki-roots"] }
+flate2 = "1"
+tar = "0.4"
 
 [target.'cfg(unix)'.dependencies]
 rustix.workspace = true

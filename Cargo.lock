@@ -11860,6 +11860,7 @@ dependencies = [
  "log",
  "mimalloc",
  "rustix",
+ "semver",
  "serde",
  "serde_json",
  "tempfile",
@@ -11903,12 +11904,15 @@ dependencies = [
 name = "zz-config"
 version = "0.30.0"
 dependencies = [
+ "flate2",
  "log",
  "rustix",
+ "rustls",
  "semver",
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "tar",
  "tempfile",
  "ureq",
  "zz-client",

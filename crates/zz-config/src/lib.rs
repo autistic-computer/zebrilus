@@ -24,7 +24,6 @@ pub mod import;
 pub mod keymap;
 pub mod mux_bindings;
 pub mod owned;
-#[cfg(feature = "update")]
 pub mod update;
 
 pub const CONFIG_DIRECTORY_NAME: &str = zz_protocol::app_identity::DIRECTORY;
