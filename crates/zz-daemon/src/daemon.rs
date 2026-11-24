@@ -18411,17 +18411,27 @@ impl Shared {
             .name("zz-browser-load".to_owned())
             .spawn(move || {
                 let started = Instant::now();
+                let mut loaded = None;
                 loop {
                     let Some(shared) = shared.upgrade() else {
                         return;
                     };
                     let load = BrowserLoad::read(&shared.inner.lock(), pane);
                     drop(shared);
-                    if let Some(result) =
-                        load_outcome(pane, load, before, started.elapsed(), timeout)
-                    {
-                        reply.try_send(result);
-                        return;
+                    match load_outcome(pane, load, before, started.elapsed(), timeout) {
+                        Some(Ok(())) => {
+                            if loaded.get_or_insert_with(Instant::now).elapsed()
+                                >= BROWSER_LOAD_SETTLE
+                            {
+                                reply.try_send(Ok(()));
+                                return;
+                            }
+                        }
+                        Some(error) => {
+                            reply.try_send(error);
+                            return;
+                        }
+                        None => loaded = None,
                     }
                     thread::sleep(BROWSER_LOAD_POLL);
                 }
@@ -53495,6 +53505,7 @@ fn file_path(verb: &str, path: &str) -> Result<PathBuf, ServerError> {
 const BROWSER_LOAD_TIMEOUT: Duration = Duration::from_secs(30);
 const BROWSER_LOAD_GRACE: Duration = Duration::from_millis(1500);
 const BROWSER_LOAD_POLL: Duration = Duration::from_millis(50);
+const BROWSER_LOAD_SETTLE: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct BrowserLoad {
@@ -54042,7 +54053,11 @@ and variables the pane's shell should expand. Several words are a program and it
 arguments, each quoted so the pane's shell gets them as you wrote them. With no
 pane to run in, `zz run-shell 'COMMAND'` runs a command line in a shell of the
 daemon's, prints its output and exits with its status; with `--host NAME` that is
-the way to run a command on another machine without making a pane there.
+the way to run a command on another machine without making a pane there. It prints
+stdout only, so end the command with `2>&1` to see its errors; it expands formats, so
+write `##{` for a literal `#{`; and on Windows the shell is `cmd`. `run-pane` needs a
+POSIX shell in the pane: in PowerShell, cmd, fish or nushell it refuses, and the way
+there is `send-text`, `send-keys Enter`, then `wait-pane --until TEXT`.
 Type it, verify the echo, then press Enter. Print the output between
 unique markers and return the child's exit code. Capture includes scrollback,
 capped to the last 10,000 logical lines; when the start scrolled past the pane's
@@ -54162,7 +54177,9 @@ Navigate a browser pane and return once the page has loaded, so a `capture-brows
 shows the new page. The window showing the pane reports the load: `#{@browser_loading}` is `1`
 while a page loads and `#{@browser_loaded}` counts the loads that finished. A navigation inside
 the page, which loads nothing, returns after 1.5 seconds. The timeout is 30 seconds by default
-and `0` waits forever; a page still loading then exits 124 and keeps loading. With no window on
+and `0` waits forever; a page still loading then exits 124 and keeps loading. A load counts
+once the pane has stayed loaded for 0.2 seconds, so one that ends as the navigation starts is
+not taken for the new page. With no window on
 the pane's session, or an app that does not report loads, it sets the URL and fails.
 
 ### `zz html [--float] [--reply] [-t %N] PATH|-`
@@ -54183,7 +54200,7 @@ Save the latest browser frame as a PNG and print its path. Use an absolute path 
 host: the window showing the pane sends the picture and the daemon writes it there, wherever
 that window runs. A desktop app talking to an older daemon writes the file on its own machine
 instead. A capture straight after `set-browser-url` can show the old page; navigate with
-`load-browser-url` to wait for the new one. On Linux, restart with `ZZ_BROWSER_SHARED_TEXTURE=0` if the GPU
+`load-browser-url` to wait for the new one. On Linux and Windows, restart the app with `ZZ_BROWSER_SHARED_TEXTURE=0` if the GPU
 path reports that readback is unavailable.
 
 ### `zz capture-simulator -t %N -o /absolute/out.png`

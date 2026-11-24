@@ -619,6 +619,18 @@ fn finish_wait_poll(shared: &Arc<Shared>, target: Arc<Target>, mut wait: Wait, g
 const RUN_PANE_SHELLS: &[&str] = &[
     "sh", "bash", "zsh", "dash", "ksh", "mksh", "ash", "yash", "busybox",
 ];
+const RUN_PANE_OTHER_SHELLS: &[&str] = &[
+    "pwsh",
+    "powershell",
+    "cmd",
+    "fish",
+    "nu",
+    "nushell",
+    "xonsh",
+    "elvish",
+    "csh",
+    "tcsh",
+];
 const RUN_PANE_START_GRACE: Duration = Duration::from_secs(2);
 const RUN_PANE_TYPE_FLOOR: Duration = Duration::from_millis(500);
 const RUN_PANE_LINE_LIMIT: usize = 1023;
@@ -813,10 +825,19 @@ fn start_run(shared: &Arc<Shared>, target: Arc<Target>, mut run: Run) {
             refuse_run(
                 shared,
                 &target,
-                &format!(
-                    "{} is running {program}, not a shell; nothing was typed",
-                    target.pane
-                ),
+                &if RUN_PANE_OTHER_SHELLS.contains(&program.as_str()) {
+                    format!(
+                        "{0} runs {program}, and run-pane needs a POSIX shell; nothing was typed. \
+                         Type with send-text -t {0}, press send-keys -t {0} Enter and wait with \
+                         wait-pane -t {0} --until TEXT, or run it with no pane: run-shell",
+                        target.pane
+                    )
+                } else {
+                    format!(
+                        "{} is running {program}, not a shell; nothing was typed",
+                        target.pane
+                    )
+                },
             );
             return;
         }
