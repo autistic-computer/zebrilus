@@ -176,6 +176,9 @@ pub fn describe(client: &mut Client, event: CoreEvent) -> Value {
                 AgentAttentionEdge::Failed => "failed",
             }),
         }),
+        CoreEvent::AgentReplayed { pane, through_seq } => {
+            json!({ "type": "agentReplayed", "pane": pane.0, "throughSeq": through_seq })
+        }
         CoreEvent::AgentLagged { pane, next_seq } => {
             client.agents.lagged(pane, next_seq);
             json!({ "type": "agentLagged", "pane": pane.0, "nextSeq": next_seq })
