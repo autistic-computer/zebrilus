@@ -204,7 +204,7 @@ impl AgentRuntime {
 
     pub(crate) fn close(&self, pane: PaneId) {
         let _lifecycle = self.lifecycle.lock();
-        let _ = self.host.close(pane);
+        let _ = self.host.end(pane);
         self.fanout.close_lane(pane);
     }
 
@@ -278,6 +278,13 @@ impl AgentRuntime {
         } else {
             Err("the chat is closed".to_owned())
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn queued_prompts(&self, pane: PaneId) -> usize {
+        self.host
+            .snapshot_state(pane)
+            .map_or(0, |state| state.queued_prompts)
     }
 
     pub(crate) fn waiting_prompts(&self, pane: PaneId) -> usize {
@@ -1412,7 +1419,7 @@ impl PaneLane {
     fn refresh_state(&mut self, state: &AgentPaneState) -> Option<AgentPaneWire> {
         let fingerprint = StateFingerprint {
             phase: state.phase,
-            queued: state.queued_prompts,
+            queued: state.own_prompts,
             permission: state
                 .pending_permissions
                 .first()
@@ -1553,7 +1560,7 @@ fn wire(state: &AgentPaneState) -> AgentPaneWire {
     };
     AgentPaneWire {
         phase,
-        queued_prompts: u32::try_from(state.queued_prompts).unwrap_or(u32::MAX),
+        queued_prompts: u32::try_from(state.own_prompts).unwrap_or(u32::MAX),
         session_id: state.session_id.clone(),
         title: state.title.clone(),
         error: state.error.clone(),
@@ -3186,7 +3193,7 @@ mod tests {
         );
 
         let mut running = state(AgentConnectionPhase::Running);
-        running.queued_prompts = 1;
+        running.own_prompts = 1;
         fixture.fanout.accept(fixture.pane, 1, &running, None);
         running.git = Some(zz_protocol::AgentGitSummary {
             branch: Some("main".to_owned()),

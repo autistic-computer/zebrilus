@@ -119,10 +119,10 @@ fn twenty_parked_agent_waits_add_zero_command_workers() {
         })
         .collect::<Vec<_>>();
     while !panes.iter().all(|pane| {
-        runtime.wire_state(*pane).is_some_and(|state| {
-            state.queued_prompts == 3
-                && matches!(state.phase, zz_protocol::AgentConnectionPhase::Running)
-        })
+        runtime.queued_prompts(*pane) == 3
+            && runtime.wire_state(*pane).is_some_and(|state| {
+                matches!(state.phase, zz_protocol::AgentConnectionPhase::Running)
+            })
     }) {
         assert!(Instant::now() < deadline);
         thread::sleep(Duration::from_millis(2));

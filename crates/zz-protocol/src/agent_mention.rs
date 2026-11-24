@@ -490,6 +490,13 @@ pub fn read_sender_fact(fact: &str) -> Option<(Sender, Option<String>)> {
     Some((sender, host.map(str::to_owned)))
 }
 
+#[must_use]
+pub fn is_relayed(text: &str) -> bool {
+    AgentReport::parse(text).is_some()
+        || RemoteReport::parse(text).is_some()
+        || AgentAsk::parse(text).is_some()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AgentReport {
     Finished {

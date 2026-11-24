@@ -25,6 +25,7 @@ fn fresh(thread: &str) -> (Runtime, Receiver<AgentStreamPayload>) {
         auto_approve: Arc::new(Mutex::new(AgentAutoApprove::Off)),
         permission_ids: Arc::new(AtomicU64::new(1)),
         journal: None,
+        ended: Arc::default(),
         events,
         child_tx,
         process: None,

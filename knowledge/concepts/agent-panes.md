@@ -136,6 +136,14 @@ A chat can send eight prompts to the same chat between user prompts, including
 the initial brief. For a chat caller a plain send reports its result back, and a
 blocking wait defaults to failing on a pending request.
 
+A reply or an ask from another chat goes into the caller's running turn when its agent can
+take a message mid-turn (Claude Code and Codex); a message that misses the turn, or a caller
+that cannot be steered, gets it as its next prompt. A pane's `queued_prompts` counts only what
+the user queued from the composer, and taking the queue back returns those and leaves the rest
+waiting. Closing a Codex chat for good interrupts the turn it would leave on the shared
+server; a flip or an account switch leaves the turn running. See `deliver_into_turn`, `unqueue`
+and `end` in `crates/zz-daemon/src/agent/host.rs`.
+
 A plain `zz --host NAME agent-send -t %N TEXT` from a chat can relay the result
 through its own daemon. The remote pane is identified by host and pane ID. A
 remote permission stays on its host. See `crates/zz-daemon/src/daemon/agent_relay.rs`,

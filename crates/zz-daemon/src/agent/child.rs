@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use zz_daemon_client::unmasked::SpawnUnmasked as _;
 use zz_protocol::{
     AgentProvider, MAX_AGENT_RESULT_BYTES,
-    agent_mention::{AgentAsk, AgentReport, RemoteReport, SentMessage},
+    agent_mention::{SentMessage, is_relayed},
 };
 
 use crate::agent::{
@@ -360,6 +360,11 @@ impl Process {
                             .send_blocking(ChildEvent::Line(generation, line))
                             .is_err()
                         {
+                            while let Ok(text) = sent.recv_blocking() {
+                                if socket.send(Message::text(text)).is_err() {
+                                    break;
+                                }
+                            }
                             let _ = socket.close(None);
                             let _ = socket.flush();
                             return;
@@ -547,16 +552,21 @@ impl Title {
 
 fn title_subject(prompt: &str) -> Option<String> {
     let prompt = prompt.trim();
-    if AgentReport::parse(prompt).is_some()
-        || RemoteReport::parse(prompt).is_some()
-        || AgentAsk::parse(prompt).is_some()
-    {
+    if is_relayed(prompt) {
         return None;
     }
     let sent = SentMessage::parse(prompt).map(|message| message.text);
     let subject = sent.as_deref().unwrap_or(prompt).trim();
     let bare_command = subject.starts_with('/') && !subject.contains(char::is_whitespace);
     (!subject.is_empty() && !bare_command).then(|| subject.to_owned())
+}
+
+pub(crate) fn verb_echo<'a>(name: &str, rest: &'a str, text: &'a str) -> &'a str {
+    if name == "steer" && is_relayed(rest) {
+        rest
+    } else {
+        text.trim()
+    }
 }
 
 pub(crate) fn clean_title(text: &str) -> Option<String> {
@@ -589,13 +599,13 @@ mod tests {
     fn a_title_comes_from_the_task_and_never_from_a_reply_or_a_bare_command() {
         let pane = zz_protocol::PaneId(13);
         let provider = AgentProvider::Codex;
-        let reply = AgentReport::Finished {
+        let reply = zz_protocol::agent_mention::AgentReport::Finished {
             pane,
             provider,
             text: "Updated both generators".to_owned(),
         }
         .to_string();
-        let ask = AgentAsk {
+        let ask = zz_protocol::agent_mention::AgentAsk {
             pane,
             provider,
             what: "execute cargo test".to_owned(),

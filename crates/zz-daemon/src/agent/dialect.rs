@@ -300,6 +300,7 @@ where
                 auto_approve: Arc::clone(&tier),
                 permission_ids: channels.permission_ids,
                 journal: channels.journal,
+                ended: channels.ended,
                 commands: command_rx,
                 controls: control_rx,
                 events: event_tx,

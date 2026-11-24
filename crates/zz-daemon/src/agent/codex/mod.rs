@@ -9,7 +9,7 @@ use std::{
     process::Command,
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -33,7 +33,7 @@ use crate::agent::{
     accounts,
     child::{
         ChildEvent, Input, Process, Rewind, Title, cancelled, clean_title, fit_update, next_input,
-        option, prompt_outcome, random_u64,
+        option, prompt_outcome, random_u64, verb_echo,
     },
     environment::{AgentWorkspaceEnvironment, agent_path, find_executable},
     host::RuntimeChannels,
@@ -131,6 +131,7 @@ pub(crate) async fn run_codex_runtime(
         auto_approve: channels.auto_approve,
         permission_ids: channels.permission_ids,
         journal: channels.journal,
+        ended: channels.ended,
         events: channels.events,
         child_tx,
         process: None,
@@ -431,6 +432,7 @@ struct Runtime {
     auto_approve: Arc<Mutex<AgentAutoApprove>>,
     permission_ids: Arc<AtomicU64>,
     journal: Option<Arc<AgentJournal>>,
+    ended: Arc<AtomicBool>,
     events: Sender<AgentStreamPayload>,
     child_tx: Sender<ChildEvent>,
     process: Option<Process>,
@@ -460,6 +462,12 @@ struct Runtime {
     instructions: Option<String>,
     title: Title,
     titler: Option<Titler>,
+}
+
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        self.stop_turn_left_behind();
+    }
 }
 
 struct Titler {
@@ -1633,7 +1641,7 @@ impl Runtime {
             json!({
                 "sessionUpdate": "user_message_chunk",
                 "messageId": echo,
-                "content": { "type": "text", "text": text.trim() },
+                "content": { "type": "text", "text": verb_echo(name, rest, text) },
             }),
             true,
         )
@@ -1722,7 +1730,27 @@ impl Runtime {
 
     async fn shutdown(&mut self) {
         let _ = self.cancel_permissions().await;
+        self.stop_turn_left_behind();
         self.process = None;
+    }
+
+    fn stop_turn_left_behind(&mut self) {
+        if !self.ended.load(Ordering::Acquire) {
+            return;
+        }
+        let turn = self
+            .turns
+            .turn()
+            .and_then(Turn::active_command)
+            .map(str::to_owned);
+        if let (Some(thread), Some(turn)) = (self.thread_id(), turn) {
+            self.next_request += 1;
+            self.send(&json!({
+                "method": "turn/interrupt",
+                "id": self.next_request,
+                "params": { "threadId": thread, "turnId": turn },
+            }));
+        }
     }
 
     async fn expire(&mut self) -> Result<(), String> {
@@ -3237,6 +3265,20 @@ done
         async_channel::Receiver<AgentStreamPayload>,
         impl std::future::Future<Output = Result<(), String>>,
     ) {
+        fake_codex_ending(directory, workspace, Arc::default())
+    }
+
+    #[cfg(unix)]
+    fn fake_codex_ending(
+        directory: &Path,
+        workspace: AgentWorkspaceEnvironment,
+        ended: Arc<AtomicBool>,
+    ) -> (
+        async_channel::Sender<RuntimeCommand>,
+        async_channel::Sender<RuntimeControl>,
+        async_channel::Receiver<AgentStreamPayload>,
+        impl std::future::Future<Output = Result<(), String>>,
+    ) {
         use std::os::unix::fs::PermissionsExt as _;
 
         let program = directory.join("codex");
@@ -3255,6 +3297,7 @@ done
                 auto_approve: Arc::new(Mutex::new(AgentAutoApprove::Off)),
                 permission_ids: Arc::new(AtomicU64::new(1)),
                 journal: None,
+                ended,
                 commands: command_rx,
                 controls: control_rx,
                 events,
@@ -3982,6 +4025,52 @@ done
     }
 
     #[cfg(unix)]
+    #[test]
+    fn a_chat_closed_for_good_stops_the_turn_it_leaves_on_the_server() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let ended = Arc::new(AtomicBool::new(false));
+        let (commands, _controls, events, runtime) = fake_codex_ending(
+            directory.path(),
+            AgentWorkspaceEnvironment::default(),
+            Arc::clone(&ended),
+        );
+        let driver = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: directory.path().to_path_buf(),
+                    resume_session: Some("t4".to_owned()),
+                })
+                .await
+                .expect("open");
+            until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::Activity { busy: true })
+            })
+            .await;
+            ended.store(true, Ordering::Release);
+            Ok(())
+        };
+        assert_eq!(
+            smol::block_on(futures_lite::future::or(driver, runtime)),
+            Ok(())
+        );
+        let log = directory.path().join("codex.log");
+        let interrupts = || {
+            std::fs::read_to_string(&log)
+                .unwrap_or_default()
+                .lines()
+                .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+                .filter(|request| request["method"] == "turn/interrupt")
+                .map(|request| request["params"].clone())
+                .collect::<Vec<_>>()
+        };
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while interrupts().is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(interrupts(), [json!({ "threadId": "t4", "turnId": "r1" })]);
+    }
+
+    #[cfg(unix)]
     const FAKE_NAMING_CODEX: &str = r#"#!/bin/sh
 [ "$1" = app-server ] || exit 2
 while IFS= read -r line; do
@@ -4035,6 +4124,7 @@ done
                 auto_approve: Arc::new(Mutex::new(AgentAutoApprove::Off)),
                 permission_ids: Arc::new(AtomicU64::new(1)),
                 journal: None,
+                ended: Arc::default(),
                 commands: command_rx,
                 controls: control_rx,
                 events,

@@ -36,7 +36,7 @@ numbers for a binary. `zz protocol-version` prints its wire epoch.
 | Constant | Value | Checked by |
 | --- | ---: | --- |
 | `PROTOCOL_VERSION` | 125 | Both sides on every envelope |
-| `REVISION` | 10 | The hello exchange advertises the sender's behavior revision |
+| `REVISION` | 11 | The hello exchange advertises the sender's behavior revision |
 | `MIN_DAEMON_REVISION` | 1 | A connecting hello client checks the daemon's reply |
 | `MIN_CLIENT_REVISION` | 1 | The daemon checks the client's hello |
 

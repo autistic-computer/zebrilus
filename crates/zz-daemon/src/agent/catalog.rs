@@ -52,6 +52,7 @@ async fn load_with_runner(cwd: PathBuf, runner: PaneRunner) -> Result<Value, Str
             auto_approve: Arc::new(Mutex::new(AgentAutoApprove::Off)),
             permission_ids: Arc::new(AtomicU64::new(1)),
             journal: None,
+            ended: Arc::default(),
             commands: command_rx,
             controls: control_rx,
             events,

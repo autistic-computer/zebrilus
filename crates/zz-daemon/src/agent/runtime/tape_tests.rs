@@ -248,6 +248,7 @@ impl Pane {
             auto_approve: Arc::clone(&self.tier),
             permission_ids: Arc::clone(&self.permission_ids),
             journal: Some(Arc::clone(&self.journal)),
+            ended: Arc::default(),
             commands: command_rx,
             controls: control_rx,
             events: event_tx,

@@ -4,7 +4,10 @@ use std::{
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
-    sync::{Arc, Weak, atomic::AtomicU64},
+    sync::{
+        Arc, Weak,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
     thread::{self, JoinHandle},
 };
 
@@ -17,6 +20,7 @@ use zz_protocol::agent_stream::agent_verb;
 use zz_protocol::{
     AgentAutoApprove, AgentGitSummary, AgentProvider, AgentQuestionAnswer, AgentTaskWire, ClientId,
     MAX_AGENT_PROMPT_BYTES, MAX_AGENT_QUEUED_PROMPTS, MAX_AGENT_TASKS, PaneId, QuotaWindows,
+    agent_mention::is_relayed,
 };
 
 use crate::agent::{
@@ -271,6 +275,13 @@ fn waiting_prompts(queue: &VecDeque<QueuedPrompt>) -> usize {
         .count()
 }
 
+fn own_prompts(queue: &VecDeque<QueuedPrompt>) -> usize {
+    queue
+        .iter()
+        .filter(|queued| queued.source == PromptSource::Composer)
+        .count()
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PromptSource {
     Composer,
@@ -370,6 +381,7 @@ pub(crate) struct AgentPaneState {
     pub(crate) session_id: Option<String>,
     pub(crate) cwd: PathBuf,
     pub(crate) queued_prompts: usize,
+    pub(crate) own_prompts: usize,
     pub(crate) waiting_prompts: usize,
     pub(crate) pending_permissions: Vec<AgentPendingPermission>,
     pub(crate) error: Option<String>,
@@ -391,6 +403,7 @@ impl AgentPaneState {
             session_id: spec.resume_session.clone(),
             cwd: spec.cwd.clone(),
             queued_prompts: 0,
+            own_prompts: 0,
             waiting_prompts: 0,
             pending_permissions: Vec::new(),
             error: None,
@@ -435,6 +448,7 @@ struct PaneHandle {
     close: Sender<()>,
     state: Arc<Mutex<AgentPaneState>>,
     auto_approve: Arc<Mutex<AgentAutoApprove>>,
+    ended: Arc<AtomicBool>,
     thread: JoinHandle<()>,
 }
 
@@ -457,6 +471,7 @@ pub(crate) struct RuntimeChannels {
     pub(crate) auto_approve: Arc<Mutex<AgentAutoApprove>>,
     pub(crate) permission_ids: Arc<AtomicU64>,
     pub(crate) journal: Option<Arc<AgentJournal>>,
+    pub(crate) ended: Arc<AtomicBool>,
     pub(crate) commands: Receiver<RuntimeCommand>,
     pub(crate) controls: Receiver<RuntimeControl>,
     pub(crate) events: Sender<AgentStreamPayload>,
@@ -612,6 +627,8 @@ impl AgentHost {
         let (close_tx, close_rx) = async_channel::bounded::<()>(1);
         let inbox = inbox_tx.clone();
         let pane_close = close_tx.clone();
+        let ended = Arc::new(AtomicBool::new(false));
+        let pane_ended = Arc::clone(&ended);
         let thread = std::thread::Builder::new()
             .name(format!("zz-agent-{}", pane.0))
             .spawn(move || {
@@ -625,6 +642,7 @@ impl AgentHost {
                     runner,
                     permission_ids,
                     journal,
+                    pane_ended,
                     inbox,
                     inbox_rx,
                     control_rx,
@@ -649,6 +667,7 @@ impl AgentHost {
                 close: close_tx,
                 state,
                 auto_approve,
+                ended,
                 thread,
             },
         );
@@ -711,6 +730,13 @@ impl AgentHost {
         Some(handle.thread)
     }
 
+    pub(crate) fn end(&self, pane: PaneId) -> Option<JoinHandle<()>> {
+        if let Some(handle) = self.registry.panes.lock().get(&pane) {
+            handle.ended.store(true, Ordering::Release);
+        }
+        self.close(pane)
+    }
+
     pub(crate) fn snapshot_state(&self, pane: PaneId) -> Option<AgentPaneState> {
         let panes = self.registry.panes.lock();
         panes.get(&pane).map(|handle| handle.state.lock().clone())
@@ -744,6 +770,7 @@ async fn run_pane(
     runner: PaneRunner,
     permission_ids: Arc<AtomicU64>,
     journal: Option<Arc<AgentJournal>>,
+    ended: Arc<AtomicBool>,
     inbox_tx: Sender<PaneInput>,
     inbox_rx: Receiver<PaneInput>,
     host_control_rx: Receiver<HostCommand>,
@@ -765,6 +792,7 @@ async fn run_pane(
                 auto_approve,
                 permission_ids,
                 journal,
+                ended,
                 commands: command_rx,
                 controls: runtime_control_rx,
                 events: event_tx,
@@ -1031,7 +1059,7 @@ impl PanePump {
             }
             HostCommand::Steer(prompt) => self.steer(prompt),
             HostCommand::Cancel => self.cancel(),
-            HostCommand::Unqueue => self.reclaim_queue(),
+            HostCommand::Unqueue => self.unqueue(),
             HostCommand::RespondPermission { response } => match response {
                 PermissionResponse::Exact {
                     request_id,
@@ -1211,6 +1239,16 @@ impl PanePump {
             (self.sink)(self.pane, self.generation, state, None);
             return;
         }
+        let payload = match payload {
+            AgentStreamPayload::PromptsReclaimed { prompts } => {
+                let prompts = self.requeue_relayed(prompts);
+                if prompts.is_empty() {
+                    return;
+                }
+                AgentStreamPayload::PromptsReclaimed { prompts }
+            }
+            payload => payload,
+        };
         if let AgentStreamPayload::QuotaChanged { quota } = payload {
             let state = {
                 let mut state = self.state.lock();
@@ -1524,12 +1562,15 @@ impl PanePump {
             }
             return;
         }
+        let injected = queued.source == PromptSource::Injected;
+        if injected && (self.answered_ask(&queued) || self.deliver_into_turn(&queued.prompt)) {
+            return;
+        }
         let queued_bytes = self.queue.iter().fold(0usize, |total, queued| {
             total.saturating_add(queued.prompt.byte_len())
         });
         let over_bytes =
             queued_bytes.saturating_add(queued.prompt.byte_len()) > MAX_AGENT_PROMPT_BYTES;
-        let injected = queued.source == PromptSource::Injected;
         if injected && over_bytes {
             log::warn!(
                 target: "zz::agent",
@@ -1548,16 +1589,32 @@ impl PanePump {
         self.publish_queue_depth();
     }
 
-    fn steer(&mut self, prompt: AgentPrompt) {
-        let steerable = {
-            let state = self.state.lock();
-            state.phase == AgentConnectionPhase::Running
-                && state
-                    .pending_permissions
-                    .iter()
-                    .all(AgentPendingPermission::outlives_turn)
-                && state.capabilities.verbs
+    fn steerable(&self) -> bool {
+        let state = self.state.lock();
+        state.phase == AgentConnectionPhase::Running
+            && state
+                .pending_permissions
+                .iter()
+                .all(AgentPendingPermission::outlives_turn)
+            && state.capabilities.verbs
+    }
+
+    fn deliver_into_turn(&self, prompt: &AgentPrompt) -> bool {
+        let text = prompt.text.trim();
+        if text.is_empty() || !prompt.images.is_empty() || !self.steerable() {
+            return false;
+        }
+        let steer = AgentPrompt {
+            text: format!("/steer {text}"),
+            ..prompt.clone()
         };
+        self.commands
+            .try_send(RuntimeCommand::Verb { prompt: steer })
+            .is_ok()
+    }
+
+    fn steer(&mut self, prompt: AgentPrompt) {
+        let steerable = self.steerable();
         let text = prompt.text.trim();
         if !steerable || text.is_empty() || !prompt.images.is_empty() {
             self.prompt(prompt.into());
@@ -1659,6 +1716,43 @@ impl PanePump {
         let queued = self.queue.drain(..).collect::<Vec<_>>();
         self.publish_queue_depth();
         self.reclaim_prompts(queued, &AgentTurnFailure::Reclaimed);
+    }
+
+    fn unqueue(&mut self) {
+        let (own, kept): (Vec<_>, Vec<_>) = self
+            .queue
+            .drain(..)
+            .partition(|queued| queued.source == PromptSource::Composer);
+        self.queue = kept.into();
+        if own.is_empty() {
+            return;
+        }
+        self.publish_queue_depth();
+        self.reclaim_prompts(own, &AgentTurnFailure::Reclaimed);
+    }
+
+    fn requeue_relayed(&mut self, prompts: Vec<AgentPrompt>) -> Vec<AgentPrompt> {
+        let (relayed, rest): (Vec<_>, Vec<_>) = prompts
+            .into_iter()
+            .partition(|prompt| is_relayed(&prompt.text));
+        if relayed.is_empty() {
+            return rest;
+        }
+        for prompt in relayed.into_iter().rev() {
+            self.queue.push_front(QueuedPrompt {
+                prompt,
+                waiter: None,
+                source: PromptSource::Injected,
+                note: None,
+                ask: None,
+            });
+        }
+        if self.state.lock().phase.accepts_prompt() {
+            self.dispatch_next();
+        } else {
+            self.publish_queue_depth();
+        }
+        rest
     }
 
     fn reclaim_prompts(&mut self, queued: Vec<QueuedPrompt>, failure: &AgentTurnFailure) {
@@ -2001,6 +2095,7 @@ impl PanePump {
         let state = {
             let mut state = self.state.lock();
             state.queued_prompts = self.queue.len();
+            state.own_prompts = own_prompts(&self.queue);
             state.waiting_prompts = waiting_prompts(&self.queue);
             state.clone()
         };
@@ -2582,6 +2677,120 @@ mod tests {
         let texts = chunk_texts(&fixture.recorder.payloads());
         assert_eq!(texts, ["prompt go left", "verb /steer go right"]);
         assert_eq!(fixture.state().queued_prompts, 0);
+        fixture.close();
+    }
+
+    #[test]
+    fn a_report_from_another_chat_rides_the_running_turn_and_a_missed_one_waits_its_turn() {
+        let fixture = Fixture::open_with_runner(Box::new(|channels| {
+            Box::pin(async move {
+                let send = |payload| channels.events.send(payload);
+                let text = |text: String| AgentStreamPayload::Update {
+                    update: serde_json::json!({
+                        "sessionUpdate": "agent_message_chunk",
+                        "content": { "type": "text", "text": text },
+                    }),
+                };
+                send(AgentStreamPayload::Ready {
+                    agent_name: "Codex".to_owned(),
+                    agent_key: "codex".to_owned(),
+                    auth_methods: Vec::new(),
+                    capabilities: AgentSessionCapabilities {
+                        verbs: true,
+                        ..AgentSessionCapabilities::default()
+                    },
+                })
+                .await
+                .map_err(|error| error.to_string())?;
+                send(AgentStreamPayload::SessionReady {
+                    session_id: "s".to_owned(),
+                    modes: None,
+                    config_options: None,
+                })
+                .await
+                .map_err(|error| error.to_string())?;
+                let mut running = None;
+                while let Ok(command) = channels.commands.recv().await {
+                    let payloads = match command {
+                        RuntimeCommand::Prompt {
+                            turn_id, prompt, ..
+                        } => {
+                            running = Some(turn_id);
+                            vec![text(format!("prompt {}", prompt.text))]
+                        }
+                        RuntimeCommand::Verb { prompt } if prompt.text.contains("missed") => {
+                            let missed = AgentPrompt {
+                                text: prompt.text.trim_start_matches("/steer ").to_owned(),
+                                ..prompt
+                            };
+                            let mut payloads = vec![AgentStreamPayload::PromptsReclaimed {
+                                prompts: vec![missed],
+                            }];
+                            payloads.extend(running.take().map(|turn_id| {
+                                AgentStreamPayload::PromptFinished {
+                                    turn_id,
+                                    outcome: AgentPromptOutcome::Finished {
+                                        stop_reason: serde_json::json!("end_turn"),
+                                    },
+                                }
+                            }));
+                            payloads
+                        }
+                        RuntimeCommand::Verb { prompt } => {
+                            vec![text(format!("verb {}", prompt.text))]
+                        }
+                        RuntimeCommand::Shutdown => break,
+                        _ => Vec::new(),
+                    };
+                    for payload in payloads {
+                        send(payload).await.map_err(|error| error.to_string())?;
+                    }
+                }
+                Ok(())
+            })
+        }));
+        let report = |text: &str| {
+            zz_protocol::agent_mention::AgentReport::Finished {
+                pane: PaneId(2),
+                provider: AgentProvider::Codex,
+                text: text.to_owned(),
+            }
+            .to_string()
+        };
+        let inject = |text: String| {
+            fixture.command(HostCommand::Prompt(QueuedPrompt {
+                prompt: AgentPrompt {
+                    owner: ClientInstanceId::default(),
+                    text,
+                    images: Vec::new(),
+                },
+                waiter: None,
+                source: PromptSource::Injected,
+                note: None,
+                ask: None,
+            }));
+        };
+        fixture.wait_for_session();
+        fixture.prompt("busy");
+        fixture.recorder.wait("the running turn", |payload| {
+            chunk_text(payload) == Some("prompt busy")
+        });
+        inject(report("done"));
+        let steered = format!("verb /steer {}", report("done"));
+        fixture
+            .recorder
+            .wait("the report inside the turn", |payload| {
+                chunk_text(payload) == Some(steered.as_str())
+            });
+        assert_eq!(fixture.state().queued_prompts, 0);
+        inject(report("missed"));
+        let prompted = format!("prompt {}", report("missed"));
+        let payloads = fixture
+            .recorder
+            .wait("the missed report as a turn", |payload| {
+                chunk_text(payload) == Some(prompted.as_str())
+            });
+        assert_eq!(queued_prompt_texts(&payloads), Vec::<String>::new());
         fixture.close();
     }
 
@@ -3317,7 +3526,7 @@ mod tests {
     }
 
     #[test]
-    fn reclaiming_a_queue_drops_injected_prompts_and_hands_back_the_rest() {
+    fn unqueueing_hands_back_what_the_user_queued_and_keeps_the_rest_waiting() {
         let fixture = Fixture::open(Behavior::Hang, AgentAutoApprove::Off);
         fixture.wait_for_session();
         let queued = |text: &str, source| {
@@ -3364,6 +3573,8 @@ mod tests {
             .map(|prompt| prompt.text)
             .collect::<Vec<_>>();
         assert_eq!(reclaimed, ["mine"]);
+        let state = fixture.state();
+        assert_eq!((state.queued_prompts, state.own_prompts), (2, 0));
     }
 
     #[test]
