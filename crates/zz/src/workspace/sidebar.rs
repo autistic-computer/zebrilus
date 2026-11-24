@@ -36,9 +36,9 @@ use zz_ui::navigation::{
     SidebarAction, WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH as TREE_INDENT_WIDTH,
     WORKSPACE_TREE_NODE_ICON_SIZE as TREE_NODE_ICON_SIZE, WorkspaceTreeInk,
     sidebar::{
-        TreeNavigation, TreeNavigationResult, TreeNavigationRow, TreeRowMenuItem,
-        tree_action_strip, tree_host_indicator, tree_host_marker, tree_navigation,
-        tree_node_marker, tree_row_menu,
+        HostUpdateMark, TreeNavigation, TreeNavigationResult, TreeNavigationRow, TreeRowMenuItem,
+        tree_action_strip, tree_host_indicator, tree_host_marker, tree_host_update_mark,
+        tree_navigation, tree_node_marker, tree_row_menu,
     },
     workspace_chrome_controls, workspace_layout_button, workspace_sidebar_action,
     workspace_sidebar_actions, workspace_sidebar_fade, workspace_sidebar_footer,
@@ -54,7 +54,7 @@ use crate::{
     keymap::ChromeChord,
     mux::{
         client::MuxClient,
-        hosts::{HostId, HostState, InstallOffer},
+        hosts::{HostId, HostState},
         nav::{
             HostIndicator, MuxTreeHost, MuxTreeModel, MuxTreePaneKind, MuxTreeWindow, TreeNode,
             TreeNodeKind, TreeTarget, activate_nav as activate_sidebar, active_tree_target,
@@ -1501,7 +1501,13 @@ fn render_tree_row(
         .items_center()
         .gap_1()
         .when_some(host_indicator, |this, indicator| {
-            this.child(render_host_indicator(index, indicator, cx))
+            this.child(render_host_indicator(
+                index,
+                node,
+                indicator,
+                &runtime.mux,
+                cx,
+            ))
         })
         .child(actions);
     let platform = match entry.node {
@@ -1582,10 +1588,38 @@ fn render_tree_row(
     )
 }
 
-fn render_host_indicator(index: usize, indicator: HostIndicator, cx: &mut App) -> AnyElement {
+fn render_host_indicator(
+    index: usize,
+    node: TreeNode,
+    indicator: HostIndicator,
+    mux: &Entity<MuxClient>,
+    cx: &mut App,
+) -> AnyElement {
     let (connecting, detail) = match indicator {
         HostIndicator::Connecting => (true, None),
         HostIndicator::Failed { detail } => (false, detail),
+        HostIndicator::Update { mark, tooltip } => {
+            let on_click = match node {
+                TreeNode::Host(host) if mark != HostUpdateMark::Blocked => {
+                    let mux = mux.clone();
+                    Some(Rc::new(move |window: &mut Window, cx: &mut App| {
+                        if host == HostId::LOCAL {
+                            crate::workspace::AppView::prompt_daemon_update(&mux, window, cx);
+                        } else {
+                            mux.update(cx, |mux, cx| mux.request_host_updates(&[host], cx));
+                        }
+                    }) as Rc<dyn Fn(&mut Window, &mut App)>)
+                }
+                _ => None,
+            };
+            return tree_host_update_mark(
+                ("workspace-tree-host-update", index),
+                mark,
+                tooltip,
+                on_click,
+                cx,
+            );
+        }
     };
     tree_host_indicator(
         ("workspace-tree-host-indicator", index),
@@ -1615,17 +1649,17 @@ fn render_tree_row_context_menu(
         && host != HostId::LOCAL
     {
         let name = entry.label.to_string();
-        if let Some(offer) = runtime
-            .tree_model
-            .host(host)
-            .and_then(MuxTreeHost::install_offer)
-        {
+        let tree_host = runtime.tree_model.host(host);
+        if let Some(offer) = tree_host.and_then(MuxTreeHost::install_offer) {
             let install_mux = runtime.mux.clone();
             items.push(TreeRowMenuItem::new(offer.label(), move |_, cx| {
-                install_mux.update(cx, |mux, cx| match offer {
-                    InstallOffer::Install => mux.install_zz_on_host(host, cx),
-                    InstallOffer::Update => mux.offer_update(host, cx),
-                });
+                install_mux.update(cx, |mux, cx| mux.install_zz_on_host(host, cx));
+            }));
+        }
+        if let Some(label) = tree_host.and_then(MuxTreeHost::update_label) {
+            let update_mux = runtime.mux.clone();
+            items.push(TreeRowMenuItem::new(label, move |_, cx| {
+                update_mux.update(cx, |mux, cx| mux.request_host_updates(&[host], cx));
             }));
         }
         let close_mux = runtime.mux.clone();

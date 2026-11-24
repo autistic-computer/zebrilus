@@ -1,6 +1,6 @@
 pub(crate) mod add_host;
+mod host_update;
 mod new_session;
-mod remote_install;
 pub(crate) mod sidebar;
 mod ssh_prompt;
 pub(crate) mod tree;

@@ -78,7 +78,7 @@ impl HostState {
         Some(format!("{}\n{step}", failure.summary()))
     }
 
-    fn failure(&self) -> Option<HostFailure> {
+    pub(crate) fn failure(&self) -> Option<HostFailure> {
         Some(match self {
             Self::Unreachable { reason } => HostFailure::Unreachable {
                 reason: reason.clone(),

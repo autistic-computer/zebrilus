@@ -90,6 +90,42 @@ pub fn tree_host_indicator(
         .into_any_element()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostUpdateMark {
+    Update,
+    Restart,
+    Blocked,
+    Failed,
+}
+
+pub fn tree_host_update_mark(
+    id: impl Into<ElementId>,
+    mark: HostUpdateMark,
+    tooltip: SharedString,
+    on_click: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+    cx: &App,
+) -> AnyElement {
+    let (icon, color) = match mark {
+        HostUpdateMark::Update => (IconName::RingUp, cx.theme().accent),
+        HostUpdateMark::Restart => (IconName::Restart, cx.theme().accent),
+        HostUpdateMark::Blocked => (IconName::RingUp, cx.theme().foreground.muted()),
+        HostUpdateMark::Failed => (IconName::TriangleAlert, cx.theme().warning),
+    };
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+        .when_some(on_click, |this, on_click| {
+            this.click_cursor().on_click(move |_, window, cx| {
+                cx.stop_propagation();
+                on_click(window, cx);
+            })
+        })
+        .child(Icon::new(icon).small().text_color(color))
+        .into_any_element()
+}
+
 pub fn tree_node_marker(
     icon: impl IntoElement,
     bell: bool,

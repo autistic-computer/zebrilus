@@ -10,8 +10,10 @@ use zz_protocol::{
     SessionId, WindowId,
 };
 
+use zz_ui::navigation::sidebar::HostUpdateMark;
+
 use super::{
-    client::MuxClient,
+    client::{HostUpdate, MuxClient},
     hosts::{HostId, HostState, InstallOffer},
 };
 
@@ -83,7 +85,7 @@ impl MuxTreeModel {
             mux.fleet_hosts(),
         );
         for host in &mut model.hosts {
-            host.daemon_behind = mux.daemon_behind(host.id).is_some();
+            host.update = mux.host_update(host.id);
         }
         model
     }
@@ -162,7 +164,7 @@ impl MuxTreeModel {
                     id: host,
                     name: name.to_owned(),
                     state: state.clone(),
-                    daemon_behind: false,
+                    update: None,
                     snapshot_loaded,
                     sessions,
                 }
@@ -407,7 +409,7 @@ pub struct MuxTreeHost {
     pub id: HostId,
     pub name: String,
     pub state: HostState,
-    pub daemon_behind: bool,
+    pub update: Option<HostUpdate>,
     pub snapshot_loaded: bool,
     pub sessions: Vec<MuxTreeSession>,
 }
@@ -415,7 +417,13 @@ pub struct MuxTreeHost {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HostIndicator {
     Connecting,
-    Failed { detail: Option<SharedString> },
+    Failed {
+        detail: Option<SharedString>,
+    },
+    Update {
+        mark: HostUpdateMark,
+        tooltip: SharedString,
+    },
 }
 
 impl MuxTreeHost {
@@ -433,13 +441,61 @@ impl MuxTreeHost {
     pub fn install_offer(&self) -> Option<InstallOffer> {
         self.state
             .install_offer()
-            .or_else(|| self.daemon_behind.then_some(InstallOffer::Update))
+            .filter(|offer| *offer == InstallOffer::Install)
+    }
+
+    #[must_use]
+    pub fn update_label(&self) -> Option<String> {
+        match self.update {
+            Some(HostUpdate::Outdated { .. }) => Some(format!(
+                "Update zz to {}",
+                zz_config::owned::BuildInfo::current().version
+            )),
+            Some(HostUpdate::RestartPending { .. }) => {
+                Some("Restart to finish the update".to_owned())
+            }
+            Some(HostUpdate::Updating { .. } | HostUpdate::CannotUpdate) | None => None,
+        }
+    }
+
+    fn update_indicator(&self) -> Option<HostIndicator> {
+        let version = zz_config::owned::BuildInfo::current().version;
+        let (mark, tooltip) = match self.update.as_ref()? {
+            HostUpdate::Updating { .. } => return Some(HostIndicator::Connecting),
+            HostUpdate::Outdated {
+                failed: Some(reason),
+                ..
+            }
+            | HostUpdate::RestartPending {
+                failed: Some(reason),
+                ..
+            } => (HostUpdateMark::Failed, reason.clone()),
+            HostUpdate::Outdated { daemon, .. } => (
+                HostUpdateMark::Update,
+                zz_daemon_client::outdated_tooltip(daemon.as_ref(), &version),
+            ),
+            HostUpdate::RestartPending { installed, .. } => (
+                HostUpdateMark::Restart,
+                zz_daemon_client::restart_pending_tooltip(installed),
+            ),
+            HostUpdate::CannotUpdate => (
+                HostUpdateMark::Blocked,
+                zz_daemon_client::cannot_update_text(&self.name),
+            ),
+        };
+        Some(HostIndicator::Update {
+            mark,
+            tooltip: tooltip.into(),
+        })
     }
 
     #[must_use]
     pub fn indicator(&self) -> Option<HostIndicator> {
+        if matches!(self.update, Some(HostUpdate::Updating { .. })) {
+            return Some(HostIndicator::Connecting);
+        }
         match self.state {
-            HostState::Connected if self.snapshot_loaded => None,
+            HostState::Connected if self.snapshot_loaded => self.update_indicator(),
             HostState::Connected
             | HostState::Connecting
             | HostState::Reconnecting { .. }

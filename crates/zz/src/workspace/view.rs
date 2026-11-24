@@ -90,7 +90,7 @@ use crate::{
     mux::{
         client::{
             AttachmentPreviewRequest, ClientNotification, ClientNotificationCleared,
-            KeyTableChanged, MuxClient, PathPickerUpdate, RemoteInstallOffer, SshPromptRequest,
+            HostUpdateQuestion, KeyTableChanged, MuxClient, PathPickerUpdate, SshPromptRequest,
             StaleDaemonInfo,
         },
         hosts::HostId,
@@ -1081,8 +1081,8 @@ impl AppView {
         cx.subscribe_in(
             &mux,
             window,
-            |_, mux, _: &RemoteInstallOffer, window, cx| {
-                super::remote_install::open(mux, window, cx);
+            |_, mux, question: &HostUpdateQuestion, window, cx| {
+                super::host_update::ask(mux, question, window, cx);
             },
         )
         .detach();
