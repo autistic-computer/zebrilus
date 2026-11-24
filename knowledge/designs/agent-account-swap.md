@@ -37,8 +37,9 @@ email, and zz showed the second account's name over the first one's usage.
 - Parked store: macOS Keychain items of service `zz-agent-login`, account
   `<data dir>|<provider>|<slot>`; Linux files `<data>/zz/accounts/parked/<provider>/<slot>`, 0600.
 - The record `<data>/zz/accounts/logins.json` (0600) lists each provider's slots with the email,
-  organization and plan zz read when the slot was signed in or adopted, and which slot is active.
-  It holds no secret.
+  organization and plan zz read when the slot was signed in or adopted, the account and
+  organization ids of a Claude Code login that carries them (the slot's owner), and which slot is
+  active. It holds no secret.
 
 # Who a login is
 
@@ -46,9 +47,21 @@ email, and zz showed the second account's name over the first one's usage.
   the CLI just fetched.
 - Codex's `account/read` derives the account from `auth.json` itself, so Codex identities are
   checked on every refresh, and a login someone else put in `auth.json` is adopted as its own slot.
-- Claude Code has no such check: `claude auth status`, `initialize` and `get_status` all read the
-  cached profile. After adoption zz never reads a Claude identity from the cache again, so a login
-  changed outside zz keeps the active slot's name until the user signs in through zz.
+- Claude Code's `claude auth status`, `initialize` and `get_status` all read the cached profile,
+  which any process sharing the config folder rewrites. The login itself says whose it is: one the
+  CLI signed in lately carries `claudeAiOauth.accountUuid` and `organizationUuid`, and the CLI adds
+  them to an older login after it fetches the profile. zz records them as the slot's owner and
+  reads them from the native login on every refresh:
+  - The cached profile names a login only when its `orgId` is the login's organization id. When
+    it is not, the slot keeps a name recorded for the same owner, and has none otherwise. A slot
+    with no owner yet loses its name when that name is the cache's, since the cache was just
+    shown to describe another login.
+  - Ids that differ from the active slot's owner, or that an earlier slot owns, mean the login
+    changed outside zz or was adopted under the wrong name. The slot that owns them becomes
+    active and its parked login is dropped, or a new slot is made.
+  - A sign-in reuses the slot that owns its ids before any name is compared.
+  - A login with no ids is taken as before: named from the cache once, at adoption or sign-in,
+    and never checked again.
 - A sign-in whose identity matches an existing slot reuses that slot (its old login is dropped),
   so signing in again is how a wrong name gets fixed.
 
@@ -92,9 +105,9 @@ On the first account refresh of a provider with no record:
   with the same id: its login is read from its own Keychain item or file, its name from its own
   `.claude.json` or from `account/read` with `CODEX_HOME` set to it. The folders are left in place.
 - The native login, when signed in, becomes the active slot under the next free id, named by the
-  probe (for Claude Code, from the cache, once).
+  probe (for Claude Code, from the cache, under the rule in "Who a login is").
 - Every chat of the provider gets the active slot as its descriptor's account.
 
 # Not built
 
-Removing a slot, signing a slot out, and noticing that a Claude Code login changed outside zz.
+Removing a slot, signing a slot out, and checking a Claude Code login that carries no ids.

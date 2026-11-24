@@ -63,7 +63,14 @@ B="$(readlink -f "$(command -v claude)")"; for s in can_use_tool command_lifecyc
 ```
 
 **Claude Code accounts.** `claude auth status --json | jq -c keys` must still list `loggedIn`,
-`email`, `orgName`, `planTier` (or `subscriptionType`) and `configDirectory`.
+`email`, `orgId`, `orgName`, `planTier` (or `subscriptionType`) and `configDirectory`. A login
+signed in on the installed version must still carry its ids: this prints `true` for it, and
+`false` for an older login the CLI has not added them to (on Linux, read
+`<config>/.credentials.json` instead):
+
+```bash
+security find-generic-password -a "$USER" -s "Claude Code-credentials" -w | jq -c '.claudeAiOauth | has("accountUuid") and has("organizationUuid")'
+```
 
 **Codex protocol.** Codex prints its own app-server schema. Check the names zz sends and reads
 against it (`--experimental`, because zz asks for the experimental API):
@@ -184,6 +191,7 @@ Driver: `agent/claude/` (`mod.rs` frames and flags, `translate.rs` rows, `sessio
 | A transcript's assistant entries carry `requestedModel`, the model the CLI asked for with its suffix (`claude-opus-5-5[1m]`), where `message.model` is the API's id without it; the flip from the TUI reads `requestedModel` first | `cli_session.rs` | The chat a TUI flips into runs the model without `[1m]`, the smaller context | Hand-written from 2.1.304 and 2.1.309 transcripts; 2.1.330 writes the field on every assistant entry (no `[1m]` session seen on it) |
 | `claude auth status --json` keys | `daemon/accounts.rs` | Every account reads as signed out | Sample JSON |
 | The stored login on macOS is the Keychain generic password of service `Claude Code-credentials` (`-<first 8 hex of sha256 of CLAUDE_CONFIG_DIR>` when that is set) and account `$USER`, written with `add-generic-password -U` (on the stdin of `security -i`, or as arguments when the line is over 4094 bytes) and read with `find-generic-password -w`; on Linux `<config>/.credentials.json`. The CLI reads it when it starts | `logins.rs` | A swap writes a login the CLI never reads, or reads back nothing and refuses | Hand-written; `security find-generic-password -s "Claude Code-credentials" -a "$USER"` (no `-w`) shows the item exists |
+| A stored login carries `claudeAiOauth.accountUuid` and `claudeAiOauth.organizationUuid` (written at sign-in, kept across token renewals, added to an older login after the CLI fetches the profile), and `auth status --json` gives the cached profile's `orgId` | `logins.rs`, `daemon/accounts.rs` | Gone from the login: zz takes the cached name unchecked and no longer notices a login changed outside zz. `orgId` gone: the same. Renamed ids read as a login with none | Hand-written; a login signed in on 2.1.330 carried both, read from the Keychain on 2026-11-24, and the save path in the 2.1.331 binary keeps them |
 | zz unsets `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` and the account id vars for a provider it manages | `accounts.rs`, `environment.rs` | A new override variable runs a chat on another account than the active slot | Hand-written |
 | Child CLIs must not act as nested sessions: zz unsets `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_MESSAGING_SOCKET` and the rest of the list in `lib.rs` | `lib.rs` | A new variable makes a pane's CLI think it runs inside another session | None; run `env` in a Bash tool call of a nested `claude` |
 | Peer registry `<config>/sessions/<pid>.json` (`sessionId`, `status`, `messagingSocketPath`) and sockets in `/tmp/cc-socks` | `claude_peers.rs`, `cli_session.rs` | Flip from the TUI opens a fresh chat; zz panes vanish from Claude Code's peer list | Hand-written |

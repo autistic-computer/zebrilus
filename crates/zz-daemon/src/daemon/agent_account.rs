@@ -283,7 +283,7 @@ impl Shared {
         let search = self.provider_search();
         if let Some(program) = providers::locate(provider, search.as_ref()) {
             let native = super::accounts::identify(provider, &program, search.as_ref(), None)
-                .map(|(account, _)| account);
+                .map(|(probe, _)| probe);
             super::accounts::settle(provider, &program, search.as_ref(), native.as_ref());
         }
         self.relaunch_agent_chats(provider, || {

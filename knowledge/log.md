@@ -5,6 +5,7 @@
 * Compacted the knowledge bundle. The full daily log from July 14 through November 24 is available in the [archived log](https://github.com/autistic-computer/zebrilus/blob/1ce632dce46bc0a4aa6167111f5625f3a7abaefd/knowledge/log.md) or locally with `git show 1ce632dce:knowledge/log.md`.
 * `zz copy-file` transfers a file between machines. `load-browser-url` waits for navigation to settle. Remote browser captures are written on the daemon's host. See the [command reference](/tmux/commands.md).
 * Chat messages and briefs identify their sender. The daemon relays a remote chat's reply to the calling chat. See [agent panes](/concepts/agent-panes.md).
+* A Claude Code login is checked against the account ids it carries: a cached name of another organization no longer labels it, and a login changed outside zz is noticed. See [account switching](/designs/agent-account-swap.md).
 
 ## 2026-11-23
 

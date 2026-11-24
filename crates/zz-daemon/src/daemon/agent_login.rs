@@ -239,7 +239,7 @@ impl Driver {
             providers::locate(provider, search.as_ref()).ok_or(AgentLoginFailure::NotInstalled)?;
         if logins::swaps(provider) {
             let native = super::accounts::identify(provider, &program, search.as_ref(), None)
-                .map(|(account, _)| account);
+                .map(|(probe, _)| probe);
             super::accounts::settle(provider, &program, search.as_ref(), native.as_ref());
             let _guard = logins::guard();
             let record = logins::load(provider).unwrap_or_default();
@@ -390,9 +390,16 @@ impl Driver {
 
     fn probe(&mut self, account: &Account) -> Fact {
         let provider = self.login.provider;
-        let (mut probed, quota) =
+        let (probe, quota) =
             super::accounts::identify(provider, &account.program, account.search.as_ref(), None)
-                .unwrap_or_else(|| (super::accounts::signed_out(provider), None));
+                .unwrap_or_else(|| {
+                    let probe = logins::Probe {
+                        account: super::accounts::signed_out(provider),
+                        organization: None,
+                    };
+                    (probe, None)
+                });
+        let mut probed = probe.account.clone();
         let Some(shared) = self.shared.upgrade() else {
             return Fact::Verified {
                 account: probed,
@@ -414,7 +421,7 @@ impl Driver {
                 provider,
                 &mut record,
                 self.copied.as_deref(),
-                &probed,
+                &probe,
                 self.asked.as_deref(),
                 busy,
             );
@@ -425,6 +432,11 @@ impl Driver {
             };
             if let Err(error) = logins::store(provider, &record) {
                 log::warn!(target: "zz::agent", "could not record the {} accounts: {error}", provider.label());
+            }
+            if let Some(slot) = record.slot(&id) {
+                probed.email.clone_from(&slot.email);
+                probed.organization.clone_from(&slot.organization);
+                probed.plan.clone_from(&slot.plan);
             }
             probed.id = Some(id.clone());
             self.login.account = Some(id);

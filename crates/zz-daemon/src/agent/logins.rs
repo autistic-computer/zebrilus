@@ -27,11 +27,47 @@ impl Login {
     pub(crate) fn bytes(&self) -> &[u8] {
         &self.0
     }
+
+    #[must_use]
+    pub(crate) fn owner(&self) -> Option<Owner> {
+        let login = serde_json::from_slice::<serde_json::Value>(&self.0).ok()?;
+        let id = |key: &str| {
+            login["claudeAiOauth"][key]
+                .as_str()
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned)
+        };
+        Some(Owner {
+            account: id("accountUuid")?,
+            organization: id("organizationUuid")?,
+        })
+    }
 }
 
 impl fmt::Debug for Login {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("Login(..)")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Owner {
+    pub(crate) account: String,
+    pub(crate) organization: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Probe {
+    pub(crate) account: AgentAccount,
+    pub(crate) organization: Option<String>,
+}
+
+impl Probe {
+    fn names(&self, owner: Option<&Owner>) -> bool {
+        match (owner, self.organization.as_deref()) {
+            (Some(owner), Some(named)) => owner.organization == named,
+            _ => true,
+        }
     }
 }
 
@@ -44,6 +80,8 @@ pub(crate) struct Slot {
     pub(crate) organization: Option<String>,
     #[serde(default)]
     pub(crate) plan: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) owner: Option<Owner>,
 }
 
 impl Slot {
@@ -53,6 +91,27 @@ impl Slot {
             email: account.email.clone(),
             organization: account.organization.clone(),
             plan: account.plan.clone(),
+            owner: None,
+        }
+    }
+
+    fn settled(id: &str, probe: &Probe, owner: Option<Owner>, before: Option<&Self>) -> Self {
+        if probe.names(owner.as_ref()) {
+            return Self {
+                owner,
+                ..Self::named(id, &probe.account)
+            };
+        }
+        let kept = before.filter(|before| match &before.owner {
+            Some(recorded) => Some(recorded) == owner.as_ref(),
+            None => !before.holds(&probe.account),
+        });
+        Self {
+            id: id.to_owned(),
+            email: kept.and_then(|slot| slot.email.clone()),
+            organization: kept.and_then(|slot| slot.organization.clone()),
+            plan: kept.and_then(|slot| slot.plan.clone()),
+            owner,
         }
     }
 
@@ -88,6 +147,32 @@ impl Logins {
             .iter()
             .find(|slot| slot.holds(account))
             .map(|slot| slot.id.as_str())
+    }
+
+    #[must_use]
+    pub(crate) fn owned_by(&self, owner: &Owner) -> Option<&str> {
+        self.slots
+            .iter()
+            .find(|slot| slot.owner.as_ref() == Some(owner))
+            .map(|slot| slot.id.as_str())
+    }
+
+    fn named_by(&self, probe: &Probe, owner: Option<&Owner>) -> Option<&str> {
+        if !probe.names(owner) {
+            return None;
+        }
+        self.slots
+            .iter()
+            .find(|slot| slot.holds(&probe.account) && (slot.owner.is_none() || owner.is_none()))
+            .map(|slot| slot.id.as_str())
+    }
+
+    fn learn(&mut self, id: &str, owner: Option<Owner>) {
+        if let Some(slot) = self.slots.iter_mut().find(|slot| slot.id == id)
+            && slot.owner.is_none()
+        {
+            slot.owner = owner;
+        }
     }
 
     #[must_use]
@@ -159,6 +244,7 @@ pub(crate) fn swap(
             .map_err(|error| {
                 format!("could not set the {label} account {active} aside: {error}")
             })?;
+        logins.learn(active, owner_of(provider, &current));
     }
     if let Err(error) = place_native(vault, provider, &incoming) {
         if let Some(active) = outgoing.as_deref()
@@ -173,7 +259,37 @@ pub(crate) fn swap(
         log::warn!(target: "zz::agent", "could not drop the parked {label} account {target}: {error}");
     }
     logins.active = Some(target.to_owned());
+    logins.learn(target, owner_of(provider, &incoming));
     Ok(())
+}
+
+fn owner_of(provider: AgentProvider, login: &Login) -> Option<Owner> {
+    (provider == AgentProvider::ClaudeCode)
+        .then(|| login.owner())
+        .flatten()
+}
+
+fn owner_at(vault: &dyn Vault, provider: AgentProvider, place: Place<'_>) -> Option<Owner> {
+    if provider != AgentProvider::ClaudeCode {
+        return None;
+    }
+    owner_of(provider, &vault.read(provider, place).ok().flatten()?)
+}
+
+fn learn_parked(vault: &dyn Vault, provider: AgentProvider, logins: &mut Logins) -> bool {
+    let unknown = logins
+        .slots
+        .iter()
+        .filter(|slot| slot.owner.is_none() && logins.active() != Some(slot.id.as_str()))
+        .map(|slot| slot.id.clone())
+        .collect::<Vec<_>>();
+    let mut learned = false;
+    for id in unknown {
+        let owner = owner_at(vault, provider, Place::Parked(&id));
+        learned |= owner.is_some();
+        logins.learn(&id, owner);
+    }
+    learned
 }
 
 fn place_native(vault: &dyn Vault, provider: AgentProvider, login: &Login) -> io::Result<()> {
@@ -221,16 +337,21 @@ pub(crate) fn finish_sign_in(
     provider: AgentProvider,
     logins: &mut Logins,
     copied: Option<&str>,
-    account: &AgentAccount,
+    probe: &Probe,
     asked: Option<&str>,
     busy: bool,
 ) -> Result<(String, Landing), String> {
     let label = provider.label();
-    let target = asked
-        .filter(|id| logins.slot(id).is_some())
-        .or_else(|| logins.holding(account))
+    let owner = owner_at(vault, provider, Place::Native);
+    let target = owner
+        .as_ref()
+        .and_then(|owner| logins.owned_by(owner))
+        .or_else(|| asked.filter(|id| logins.slot(id).is_some()))
+        .or_else(|| logins.named_by(probe, owner.as_ref()))
         .map_or_else(|| logins.next_id(), str::to_owned);
-    logins.upsert(Slot::named(&target, account));
+    let before = logins.slot(&target).filter(|slot| slot.owner.is_some());
+    let slot = Slot::settled(&target, probe, owner, before);
+    logins.upsert(slot);
     if busy && copied.is_some_and(|copied| copied != target) {
         let fresh = vault
             .read(provider, Place::Native)
@@ -248,6 +369,7 @@ pub(crate) fn finish_sign_in(
                 format!("could not put the {label} account {copied} back: {error}")
             })?;
             let _ = vault.remove(provider, Place::Parked(copied));
+            logins.active = Some(copied.to_owned());
         }
         return Ok((target, Landing::Parked));
     }
@@ -261,13 +383,20 @@ pub(crate) fn finish_sign_in(
     Ok((target, Landing::Active))
 }
 
-pub(crate) fn adopt(vault: &dyn Vault, logins: &mut Logins, account: &AgentAccount) -> String {
-    let provider = account.provider;
-    let known = (provider == AgentProvider::Codex)
-        .then(|| logins.holding(account))
-        .flatten();
+pub(crate) fn adopt(vault: &dyn Vault, logins: &mut Logins, probe: &Probe) -> String {
+    let provider = probe.account.provider;
+    let owner = owner_at(vault, provider, Place::Native);
+    let known = owner
+        .as_ref()
+        .and_then(|owner| logins.owned_by(owner))
+        .or_else(|| {
+            (provider == AgentProvider::Codex)
+                .then(|| logins.holding(&probe.account))
+                .flatten()
+        });
     let id = known.map_or_else(|| logins.next_id(), str::to_owned);
-    logins.upsert(Slot::named(&id, account));
+    let slot = Slot::settled(&id, probe, owner, logins.slot(&id));
+    logins.upsert(slot);
     logins.active = Some(id.clone());
     if let Err(error) = vault.remove(provider, Place::Parked(&id)) {
         log::warn!(target: "zz::agent", "could not drop the parked {} account {id}: {error}", provider.label());
@@ -275,29 +404,39 @@ pub(crate) fn adopt(vault: &dyn Vault, logins: &mut Logins, account: &AgentAccou
     id
 }
 
-pub(crate) fn reconcile(vault: &dyn Vault, logins: &mut Logins, native: &AgentAccount) -> bool {
+pub(crate) fn reconcile(vault: &dyn Vault, logins: &mut Logins, probe: &Probe) -> bool {
+    let native = &probe.account;
     if !native.signed_in {
         return false;
     }
-    let codex = native.provider == AgentProvider::Codex;
+    let provider = native.provider;
     let Some(slot) = logins.active().and_then(|id| logins.slot(id)).cloned() else {
-        adopt(vault, logins, native);
+        adopt(vault, logins, probe);
         return true;
     };
-    if !codex || native.email.is_none() {
-        return false;
-    }
-    if !slot.holds(native) {
-        log::info!(target: "zz::agent", "the Codex login changed outside zz; {} no longer holds it", slot.id);
+    let found = owner_at(vault, provider, Place::Native);
+    let learned = found.is_some() && slot.owner != found && learn_parked(vault, provider, logins);
+    let (moved, settled) = match (provider, found) {
+        (AgentProvider::Codex, _) if native.email.is_some() => {
+            (!slot.holds(native), Slot::named(&slot.id, native))
+        }
+        (_, Some(found)) => (
+            slot.owner.as_ref().is_some_and(|owner| *owner != found)
+                || logins.owned_by(&found).is_some_and(|id| id != slot.id),
+            Slot::settled(&slot.id, probe, Some(found), Some(&slot)),
+        ),
+        _ => return false,
+    };
+    if moved {
+        log::info!(target: "zz::agent", "the {} login changed outside zz; {} no longer holds it", provider.label(), slot.id);
         logins.active = None;
-        adopt(vault, logins, native);
+        adopt(vault, logins, probe);
         return true;
     }
-    let named = Slot::named(&slot.id, native);
-    if named == slot {
-        return false;
+    if settled == slot {
+        return learned;
     }
-    logins.upsert(named);
+    logins.upsert(settled);
     true
 }
 
@@ -305,7 +444,7 @@ pub(crate) fn migrate(
     vault: &dyn Vault,
     provider: AgentProvider,
     folders: &[(String, PathBuf)],
-    name: impl Fn(&Path) -> Option<AgentAccount>,
+    name: impl Fn(&Path) -> Option<Probe>,
 ) -> Logins {
     let label = provider.label();
     let mut logins = Logins::default();
@@ -318,14 +457,14 @@ pub(crate) fn migrate(
                 continue;
             }
         };
-        let Some(account) = name(home).filter(|account| account.signed_in) else {
+        let Some(probe) = name(home).filter(|probe| probe.account.signed_in) else {
             continue;
         };
         if let Err(error) = vault.write(provider, Place::Parked(id), &login) {
             log::warn!(target: "zz::agent", "could not keep the {label} account {id}: {error}");
             continue;
         }
-        logins.upsert(Slot::named(id, &account));
+        logins.upsert(Slot::settled(id, &probe, owner_of(provider, &login), None));
     }
     logins
 }
@@ -770,6 +909,36 @@ mod tests {
         }
     }
 
+    fn probe(email: &str, organization: Option<&str>) -> Probe {
+        Probe {
+            account: account(email),
+            organization: organization.map(str::to_owned),
+        }
+    }
+
+    fn stored(owner: &str, token: &str) -> String {
+        format!(
+            r#"{{"claudeAiOauth":{{"accessToken":"{token}","accountUuid":"{owner}-user","organizationUuid":"{owner}-org"}}}}"#
+        )
+    }
+
+    fn login(owner: &str, token: &str) -> Login {
+        Login(stored(owner, token).into_bytes())
+    }
+
+    fn slot(id: &str, email: Option<&str>, owner: Option<&str>) -> Slot {
+        Slot {
+            id: id.to_owned(),
+            email: email.map(str::to_owned),
+            organization: email.map(|email| format!("{email}'s Organization")),
+            plan: email.map(|_| "max".to_owned()),
+            owner: owner.map(|owner| Owner {
+                account: format!("{owner}-user"),
+                organization: format!("{owner}-org"),
+            }),
+        }
+    }
+
     fn holding(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         pairs
             .iter()
@@ -786,7 +955,7 @@ mod tests {
             .write(claude, Place::Native, &Login(b"work".to_vec()))
             .unwrap();
         assert_eq!(
-            adopt(&vault, &mut logins, &account("work@example.com")),
+            adopt(&vault, &mut logins, &probe("work@example.com", None)),
             "a1"
         );
 
@@ -799,7 +968,7 @@ mod tests {
             claude,
             &mut logins,
             copied.as_deref(),
-            &account("home@example.com"),
+            &probe("home@example.com", None),
             None,
             false,
         );
@@ -829,7 +998,7 @@ mod tests {
             claude,
             &mut logins,
             copied.as_deref(),
-            &account("work@example.com"),
+            &probe("work@example.com", None),
             None,
             true,
         );
@@ -840,6 +1009,99 @@ mod tests {
             holding(&[("native", "home"), ("a1", "work, again")])
         );
         assert_eq!(logins.slots.len(), 2);
+    }
+
+    #[test]
+    fn a_login_named_from_another_accounts_cache_gives_way_to_the_slot_that_owns_it() {
+        let claude = AgentProvider::ClaudeCode;
+        let (home, work) = ("home@example.com", "work@example.com");
+        let vault = Memory::default();
+        let mut logins = Logins {
+            active: Some("a2".to_owned()),
+            slots: vec![slot("a1", Some(home), None), slot("a2", Some(work), None)],
+        };
+        vault
+            .write(claude, Place::Parked("a1"), &login("home", "first"))
+            .unwrap();
+        vault
+            .write(claude, Place::Native, &Login(b"no ids".to_vec()))
+            .unwrap();
+        let cached = probe(work, Some("work-org"));
+        assert!(!reconcile(&vault, &mut logins, &cached));
+
+        vault
+            .write(claude, Place::Native, &login("home", "second"))
+            .unwrap();
+        assert!(reconcile(&vault, &mut logins, &cached));
+        assert_eq!(logins.active(), Some("a1"));
+        assert_eq!(
+            logins.slots,
+            [
+                slot("a1", Some(home), Some("home")),
+                slot("a2", Some(work), None)
+            ]
+        );
+        let second = stored("home", "second");
+        assert_eq!(vault.holds(), holding(&[("native", &second)]));
+
+        let copied = begin_sign_in(&vault, claude, &logins).unwrap();
+        vault
+            .write(claude, Place::Native, &login("work", "third"))
+            .unwrap();
+        let landed = finish_sign_in(
+            &vault,
+            claude,
+            &mut logins,
+            copied.as_deref(),
+            &cached,
+            None,
+            false,
+        );
+        assert_eq!(landed, Ok(("a2".to_owned(), Landing::Active)));
+        assert_eq!(
+            logins.slots,
+            [
+                slot("a1", Some(home), Some("home")),
+                slot("a2", Some(work), Some("work"))
+            ]
+        );
+        let third = stored("work", "third");
+        assert_eq!(
+            vault.holds(),
+            holding(&[("native", &third), ("a1", &second)])
+        );
+    }
+
+    #[test]
+    fn a_login_takes_its_name_only_from_a_cache_of_its_own_organization() {
+        let claude = AgentProvider::ClaudeCode;
+        let (home, work) = ("home@example.com", "work@example.com");
+        let vault = Memory::default();
+        let mut logins = Logins::default();
+        vault
+            .write(claude, Place::Native, &login("home", "first"))
+            .unwrap();
+        let stale = probe(work, Some("work-org"));
+        assert_eq!(adopt(&vault, &mut logins, &stale), "a1");
+        assert_eq!(logins.slots, [slot("a1", None, Some("home"))]);
+
+        let fresh = probe(home, Some("home-org"));
+        assert!(reconcile(&vault, &mut logins, &fresh));
+        assert_eq!(logins.slots, [slot("a1", Some(home), Some("home"))]);
+        assert!(!reconcile(&vault, &mut logins, &stale));
+
+        vault
+            .write(claude, Place::Native, &login("work", "second"))
+            .unwrap();
+        assert!(reconcile(&vault, &mut logins, &fresh));
+        assert_eq!(logins.active(), Some("a2"));
+        assert_eq!(
+            logins.slots,
+            [
+                slot("a1", Some(home), Some("home")),
+                slot("a2", None, Some("work"))
+            ]
+        );
     }
 
     #[cfg(target_os = "macos")]

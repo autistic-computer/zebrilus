@@ -494,11 +494,15 @@ fn provider_accounts(
 
     let native = identify(provider, program, search, None);
     if !logins::swaps(provider) {
-        return vec![native.unwrap_or_else(|| (signed_out(provider), None))];
+        return vec![native.map_or_else(
+            || (signed_out(provider), None),
+            |(probe, quota)| (probe.account, quota),
+        )];
     }
-    let account = native.as_ref().map(|(account, _)| account);
+    let probe = native.as_ref().map(|(probe, _)| probe);
     let quota = native.as_ref().and_then(|(_, quota)| *quota);
-    let record = settle(provider, program, search, account);
+    let record = settle(provider, program, search, probe);
+    let account = probe.map(|probe| &probe.account);
     logins::listed(&logins::System, provider, &record, account)
         .into_iter()
         .map(|listed| {
@@ -515,7 +519,7 @@ pub(super) fn settle(
     provider: AgentProvider,
     program: &Path,
     search: Option<&OsString>,
-    native: Option<&AgentAccount>,
+    native: Option<&crate::agent::logins::Probe>,
 ) -> crate::agent::logins::Logins {
     use crate::agent::{accounts, logins};
 
@@ -530,7 +534,7 @@ pub(super) fn settle(
             .map(|(home, id)| (id, home))
             .collect::<Vec<_>>();
         logins::migrate(&vault, provider, &folders, |home| {
-            identify(provider, program, search, Some(home)).map(|(account, _)| account)
+            identify(provider, program, search, Some(home)).map(|(probe, _)| probe)
         })
     });
     if let Some(native) = native {
@@ -548,8 +552,8 @@ pub(super) fn identify(
     program: &Path,
     search: Option<&OsString>,
     home: Option<&Path>,
-) -> Option<(AgentAccount, Option<QuotaWindows>)> {
-    use crate::agent::accounts;
+) -> Option<(crate::agent::logins::Probe, Option<QuotaWindows>)> {
+    use crate::agent::{accounts, logins::Probe};
 
     let mut command = Command::new(program);
     providers::prepare(&mut command, search, None);
@@ -568,7 +572,7 @@ pub(super) fn identify(
         AgentProvider::ClaudeCode => {
             command.args(["auth", "status", "--json"]);
             let deadline = Instant::now() + STATUS_TIMEOUT;
-            let account =
+            let probe =
                 match crate::bounded_command::run_output_until(command, MAX_STATUS_BYTES, deadline)
                 {
                     Ok(output) => claude_status(&output.stdout)?,
@@ -577,7 +581,7 @@ pub(super) fn identify(
                         return None;
                     }
                 };
-            (account, None)
+            return Some((probe, None));
         }
         AgentProvider::Codex => match codex_account_read(command) {
             Ok((result, limits)) => {
@@ -637,7 +641,13 @@ pub(super) fn identify(
             (account, None)
         }
     };
-    Some((account, quota))
+    Some((
+        Probe {
+            account,
+            organization: None,
+        },
+        quota,
+    ))
 }
 
 #[cfg(all(feature = "agent", unix))]
@@ -818,14 +828,17 @@ fn text(value: &serde_json::Value, key: &str) -> Option<String> {
 }
 
 #[cfg(all(feature = "agent", unix))]
-fn claude_status(stdout: &[u8]) -> Option<AgentAccount> {
+fn claude_status(stdout: &[u8]) -> Option<crate::agent::logins::Probe> {
     let status = serde_json::from_slice::<serde_json::Value>(stdout).ok()?;
-    Some(AgentAccount {
-        signed_in: status["loggedIn"].as_bool()?,
-        email: text(&status, "email"),
-        organization: text(&status, "orgName"),
-        plan: text(&status, "planTier").or_else(|| text(&status, "subscriptionType")),
-        ..signed_out(AgentProvider::ClaudeCode)
+    Some(crate::agent::logins::Probe {
+        account: AgentAccount {
+            signed_in: status["loggedIn"].as_bool()?,
+            email: text(&status, "email"),
+            organization: text(&status, "orgName"),
+            plan: text(&status, "planTier").or_else(|| text(&status, "subscriptionType")),
+            ..signed_out(AgentProvider::ClaudeCode)
+        },
+        organization: text(&status, "orgId"),
     })
 }
 
@@ -893,13 +906,16 @@ mod tests {
 }"#;
         assert_eq!(
             claude_status(signed_in),
-            Some(AgentAccount {
-                provider: AgentProvider::ClaudeCode,
-                id: None,
-                signed_in: true,
-                email: Some("me@example.com".to_owned()),
-                organization: Some("Example Org".to_owned()),
-                plan: Some("max_20x".to_owned()),
+            Some(crate::agent::logins::Probe {
+                account: AgentAccount {
+                    provider: AgentProvider::ClaudeCode,
+                    id: None,
+                    signed_in: true,
+                    email: Some("me@example.com".to_owned()),
+                    organization: Some("Example Org".to_owned()),
+                    plan: Some("max_20x".to_owned()),
+                },
+                organization: Some("0f1e".to_owned()),
             })
         );
         let signed_out = br#"{
@@ -910,8 +926,8 @@ mod tests {
   "loginExpiresAt": null
 }"#;
         assert_eq!(
-            claude_status(signed_out),
-            Some(super::signed_out(AgentProvider::ClaudeCode))
+            claude_status(signed_out).map(|probe| (probe.account, probe.organization)),
+            Some((super::signed_out(AgentProvider::ClaudeCode), None))
         );
     }
 
