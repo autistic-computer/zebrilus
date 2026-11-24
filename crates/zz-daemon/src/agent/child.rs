@@ -9,7 +9,10 @@ use std::{
 use async_channel::{Receiver, Sender};
 use serde_json::{Value, json};
 use zz_daemon_client::unmasked::SpawnUnmasked as _;
-use zz_protocol::{AgentProvider, MAX_AGENT_RESULT_BYTES};
+use zz_protocol::{
+    AgentProvider, MAX_AGENT_RESULT_BYTES,
+    agent_mention::{AgentAsk, AgentReport, RemoteReport, SentMessage},
+};
 
 use crate::agent::{
     runtime::{StderrTail, validate_payload},
@@ -529,17 +532,31 @@ impl Title {
     }
 
     pub(crate) fn ask(&mut self, prompt: &str) -> Option<String> {
-        let prompt = prompt.trim();
-        if self.current.is_some() || self.asked || prompt.is_empty() || prompt.starts_with('/') {
+        if self.current.is_some() || self.asked {
             return None;
         }
+        let subject = title_subject(prompt)?;
         self.asked = true;
-        Some(prompt.chars().take(MAX_TITLE_PROMPT_CHARS).collect())
+        Some(subject.chars().take(MAX_TITLE_PROMPT_CHARS).collect())
     }
 
     pub(crate) fn current(&self) -> Option<String> {
         self.current.clone()
     }
+}
+
+fn title_subject(prompt: &str) -> Option<String> {
+    let prompt = prompt.trim();
+    if AgentReport::parse(prompt).is_some()
+        || RemoteReport::parse(prompt).is_some()
+        || AgentAsk::parse(prompt).is_some()
+    {
+        return None;
+    }
+    let sent = SentMessage::parse(prompt).map(|message| message.text);
+    let subject = sent.as_deref().unwrap_or(prompt).trim();
+    let bare_command = subject.starts_with('/') && !subject.contains(char::is_whitespace);
+    (!subject.is_empty() && !bare_command).then(|| subject.to_owned())
 }
 
 pub(crate) fn clean_title(text: &str) -> Option<String> {
@@ -567,6 +584,45 @@ pub(crate) fn rewind_shortfall(prompts: usize) -> String {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_title_comes_from_the_task_and_never_from_a_reply_or_a_bare_command() {
+        let pane = zz_protocol::PaneId(13);
+        let provider = AgentProvider::Codex;
+        let reply = AgentReport::Finished {
+            pane,
+            provider,
+            text: "Updated both generators".to_owned(),
+        }
+        .to_string();
+        let ask = AgentAsk {
+            pane,
+            provider,
+            what: "execute cargo test".to_owned(),
+            answers: zz_protocol::agent_mention::AskAnswers::AllowDeny,
+            request: Some(3),
+        }
+        .to_string();
+        let brief = SentMessage {
+            sender: zz_protocol::agent_mention::Sender::Chat { pane, provider },
+            host: None,
+            text: "Fact-check the playbooks".to_owned(),
+        }
+        .to_string();
+        let mut title = Title::default();
+        assert_eq!(title.ask("/compact"), None);
+        assert_eq!(title.ask(&reply), None);
+        assert_eq!(title.ask(&ask), None);
+        assert_eq!(
+            title.ask("/goal sweep the knowledge folder"),
+            Some("/goal sweep the knowledge folder".to_owned())
+        );
+        assert_eq!(title.ask("a later prompt"), None);
+        assert_eq!(
+            Title::default().ask(&brief),
+            Some("Fact-check the playbooks".to_owned())
+        );
+    }
 
     #[test]
     fn a_managed_server_frame_as_large_as_a_stdio_line_arrives_whole() {
