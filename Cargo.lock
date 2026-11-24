@@ -11971,6 +11971,7 @@ dependencies = [
  "russh",
  "rustix",
  "security-framework-sys",
+ "semver",
  "serde_json",
  "sysinfo",
  "tempfile",

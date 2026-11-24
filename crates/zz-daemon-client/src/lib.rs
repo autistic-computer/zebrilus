@@ -95,7 +95,11 @@ pub use fleet_hosts::{
 };
 #[cfg(any(unix, windows))]
 pub use fleet_sync::{SyncLine, TrustReport, sync_fleet, trust_fleet_key};
-pub use host_failure::{DaemonBehind, HostFailure, InstallOffer, session_count, update_prompt};
+pub use host_failure::{
+    DaemonBehind, DaemonFacts, HostFailure, HostSeen, InstallOffer, UpdateRoute, UpdateState,
+    cannot_update_text, host_restart_question, host_update_question, outdated_tooltip,
+    restart_pending_tooltip, session_count, update_prompt,
+};
 #[cfg(any(unix, windows))]
 pub use host_probe::{HostProbe, HostStatus, probe_host};
 pub use lifecycle::{
