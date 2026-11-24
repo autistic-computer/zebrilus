@@ -103,6 +103,14 @@ pub fn describe(client: &mut Client, event: CoreEvent) -> Value {
             json!({ "type": "openUri", "pane": pane.0, "uri": uri })
         }
         CoreEvent::BrowserCommand { pane, command } => {
+            if let zz_protocol::BrowserCommand::Screenshot { request_id, .. } = &command {
+                client.send(&zz_protocol::ProtocolMessage::GuiResponse(
+                    zz_protocol::GuiResponse::Error {
+                        request_id: *request_id,
+                        message: "browser screenshots require the zz app".to_owned(),
+                    },
+                ));
+            }
             json!({ "type": "browserCommand", "pane": pane.0, "command": value(&command) })
         }
         CoreEvent::TerminalUiCommand { pane, command } => json!({
