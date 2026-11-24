@@ -9,6 +9,7 @@ use zz_protocol::{
     AgentProvider, PaneId,
     agent_mention::{
         AgentAsk, AgentDecision, AgentReport, AgentRespond, AskAnswers, ReplyNotice, ReplyRoute,
+        Sender, SentMessage,
     },
     chat::{ChatView, ItemBody, ItemId, ItemKind},
 };
@@ -465,6 +466,35 @@ fn peer_reports() -> Script {
     script
 }
 
+fn peer_messages() -> Script {
+    let sent = |sender, host: Option<&str>| {
+        SentMessage {
+            sender,
+            host: host.map(str::to_owned),
+            text: format!("Handoff: this conversation moves to you.\n\n{FINDINGS}"),
+        }
+        .to_string()
+    };
+    let claude = |pane| Sender::Chat {
+        pane,
+        provider: AgentProvider::ClaudeCode,
+    };
+    let mut script = Script::new();
+    script
+        .turn(&sent(claude(PEER), None))
+        .reply("a1", "Picked it up from the chat next door.")
+        .finish(completed());
+    script
+        .turn(&sent(claude(PaneId(3)), Some("alienware")))
+        .reply("a2", "Picked it up from the chat on alienware.")
+        .finish(completed());
+    script
+        .turn(&sent(Sender::Command { pane: None }, None))
+        .reply("a3", "A script sent that one.")
+        .finish(completed());
+    script
+}
+
 pub fn peer_rows(window: &mut Window, cx: &mut App) -> AnyView {
     let refs = || ChatRefs {
         hosts: peer_hosts(),
@@ -491,6 +521,10 @@ pub fn peer_rows(window: &mut Window, cx: &mut App) -> AnyView {
             (
                 "An ask, stopped, failed and closed; %13 is gone",
                 thread(peer_reports()),
+            ),
+            (
+                "Messages it got: from a chat here, a chat on another machine and a command",
+                thread(peer_messages()),
             ),
         ],
         window,

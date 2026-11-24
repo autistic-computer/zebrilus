@@ -303,7 +303,23 @@ fn command_failure(error: ServerError, output: RawText) -> DaemonError {
 }
 
 fn exec_environment(facts: EndpointFactsScope) -> ClientEnvironmentBlob {
-    exec_environment_with(scoped_environment(facts, std::env::vars_os()))
+    exec_environment_with(scoped_environment(facts, std::env::vars_os()).chain(sender(facts)))
+}
+
+fn sender(facts: EndpointFactsScope) -> Option<(OsString, OsString)> {
+    if !facts.is_remote() {
+        return None;
+    }
+    let pane = std::env::var("ZZ_PANE").ok()?.parse().ok()?;
+    let fact = zz_protocol::agent_mention::sender_fact(
+        pane,
+        std::env::var("ZZ_AGENT").ok().as_deref(),
+        short_device_name().as_deref(),
+    );
+    Some((
+        zz_protocol::agent_mention::SENDER_VARIABLE.into(),
+        fact.into(),
+    ))
 }
 
 const REMOTE_ENVIRONMENT: [&str; 5] = ["TERM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE"];
@@ -3226,7 +3242,7 @@ fn logical_current_dir() -> Option<PathBuf> {
 }
 
 fn client_environment(facts: EndpointFactsScope) -> Vec<RawText> {
-    client_environment_with(scoped_environment(facts, std::env::vars_os()))
+    client_environment_with(scoped_environment(facts, std::env::vars_os()).chain(sender(facts)))
 }
 
 fn client_environment_with<I, K, V>(environment: I) -> Vec<RawText>

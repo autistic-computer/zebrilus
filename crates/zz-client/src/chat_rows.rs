@@ -6,7 +6,9 @@ use crate::child_card::{ChildAsk, ChildCard, ChildState, Decision, Verdict};
 use crate::peer::{Peer, PeerMessage, PeerNote, PeerSent, PeerState};
 use zz_protocol::{
     AgentProvider, PaneId,
-    agent_mention::{AgentAsk, AgentReport, AgentRespond, ReplyNotice, wait_command},
+    agent_mention::{
+        AgentAsk, AgentReport, AgentRespond, ReplyNotice, Sender, SentMessage, wait_command,
+    },
     chat::{
         Answer, Ask, ChatView, ItemId, ItemKind, ItemStatus, ItemView, RequestClose, RequestId,
         RequestView, TurnId, TurnOutcome, TurnView,
@@ -676,6 +678,8 @@ pub fn child_fold(view: &ChatView) -> ChildFold {
                     exchange.card.state = ChildState::Asking(ChildAsk::of(&ask));
                 }
                 exchange.ask = Some(ask);
+            } else if let Some(message) = SentMessage::parse(text) {
+                peers.got(item, message);
             }
             continue;
         }
@@ -792,8 +796,9 @@ impl Peers {
         let agent = self
             .notes
             .values()
-            .find(|note| note.peer.pane == pane)
-            .and_then(|note| note.peer.agent);
+            .filter_map(PeerNote::here)
+            .find(|peer| peer.pane == pane)
+            .and_then(|peer| peer.agent);
         self.sent
             .insert(item.id.clone(), (Peer { pane, agent }, PeerState::Working));
         self.last.insert(pane, item.started_at);
@@ -821,16 +826,39 @@ impl Peers {
             item.id.clone(),
             PeerNote {
                 item: item.id.clone(),
-                peer: Peer {
+                peer: Some(Peer {
                     pane,
                     agent: Some(agent),
-                },
+                }),
                 waited: self
                     .last
                     .get(&pane)
                     .map(|sent| item.started_at.saturating_sub(*sent)),
                 state,
                 message,
+            },
+        );
+    }
+
+    fn got(&mut self, item: &ItemView, message: SentMessage) {
+        let peer = match message.sender {
+            Sender::Chat { pane, provider } => Some(Peer {
+                pane,
+                agent: Some(provider),
+            }),
+            Sender::Command { pane } => pane.map(|pane| Peer { pane, agent: None }),
+        };
+        self.notes.insert(
+            item.id.clone(),
+            PeerNote {
+                item: item.id.clone(),
+                peer,
+                waited: None,
+                state: PeerState::Replied,
+                message: PeerMessage::Sent {
+                    host: message.host,
+                    text: message.text,
+                },
             },
         );
     }

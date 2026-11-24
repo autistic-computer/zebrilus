@@ -1628,7 +1628,7 @@ impl Draw<'_, '_> {
         let label = run_label(&sent.run.label);
         let chip = peer_chip(
             SharedString::from(format!("chat-peer-chip-{}", first.as_str())),
-            &sent.peer,
+            peer_face(&sent.peer, self.hooks),
             sent_attention(sent.state),
             self.hooks,
             cx,
@@ -1674,13 +1674,14 @@ impl Draw<'_, '_> {
         let expanded = body.is_some() && self.open.runs.contains(&note.item);
         let chip = peer_chip(
             SharedString::from(format!("chat-peer-from-{}", note.item.as_str())),
-            &note.peer,
+            note_face(note, self.hooks),
             note_attention(note.state),
             self.hooks,
             cx,
         );
         let (word, tint) = match &note.message {
             PeerMessage::Replied { .. } => (Some("Reply from"), None),
+            PeerMessage::Sent { .. } => (Some("Message from"), None),
             PeerMessage::Stopped { .. } => (Some("Stopped"), None),
             PeerMessage::Failed { .. } => (Some("Failed"), Some(theme.danger)),
             PeerMessage::Closed | PeerMessage::Asks { .. } => (None, None),
@@ -2336,15 +2337,38 @@ fn peer_face(peer: &Peer, hooks: &ChatHooks<'_>) -> PeerFace {
     }
 }
 
+fn note_face(note: &PeerNote, hooks: &ChatHooks<'_>) -> PeerFace {
+    if let Some(peer) = note.here() {
+        return peer_face(&peer, hooks);
+    }
+    let name = note
+        .peer
+        .map_or_else(|| "a command".to_owned(), |peer| peer.pane.to_string());
+    let host = match &note.message {
+        PeerMessage::Sent { host, .. } => host.as_deref(),
+        _ => None,
+    };
+    PeerFace {
+        title: match host {
+            Some(host) => format!("{name} · {host}"),
+            None => name,
+        },
+        program: note
+            .peer
+            .and_then(|peer| peer.agent)
+            .and_then(provider_program),
+        target: None,
+    }
+}
+
 fn peer_chip(
     id: impl Into<ala::ElementId>,
-    peer: &Peer,
+    face: PeerFace,
     attention: Attention,
     hooks: &ChatHooks<'_>,
     cx: &App,
 ) -> Stateful<Div> {
     let theme = cx.theme();
-    let face = peer_face(peer, hooks);
     let ground = hooks.ground.unwrap_or_else(|| theme.ground());
     let chip = h_flex()
         .id(id)

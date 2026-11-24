@@ -17332,6 +17332,12 @@ impl Shared {
             parsed
         };
         #[cfg(feature = "agent")]
+        let payload = if agent_pane && !parsed.wait_only() {
+            self.sent_message(client, context, caller, payload)
+        } else {
+            payload
+        };
+        #[cfg(feature = "agent")]
         if agent_pane {
             if parsed.wait_only() {
                 if !matches!(kind, ClientKind::Command | ClientKind::Control) {
@@ -33611,6 +33617,7 @@ impl Shared {
             auto_approve: options.auto_approve,
             workspace: AgentWorkspaceEnvironment {
                 pane: None,
+                agent: None,
                 session: None,
                 socket: Some(self.socket_path.display().to_string()),
                 tmux: None,
@@ -33934,6 +33941,33 @@ impl Shared {
             .client(context.replay_client().unwrap_or(client))
             .and_then(|client| client.origin)?;
         (Some(origin) != target && is_agent_chat(&inner, origin)).then_some(origin)
+    }
+
+    fn sent_message(
+        &self,
+        client: ClientId,
+        context: &ExecutionContext,
+        caller: Option<PaneId>,
+        text: String,
+    ) -> String {
+        use zz_protocol::agent_mention::{SENDER_VARIABLE, Sender, SentMessage, read_sender_fact};
+        let (sender, host) = if let Some(pane) = caller {
+            let provider = self.agent_provider_of(pane);
+            (Sender::Chat { pane, provider }, None)
+        } else {
+            let inner = self.inner.lock();
+            let client = context.replay_client().unwrap_or(client);
+            let entry = inner.client(client);
+            if entry.is_some_and(|entry| entry.remote) {
+                client_environment_value(&inner, client, SENDER_VARIABLE)
+                    .and_then(read_sender_fact)
+                    .unwrap_or((Sender::Command { pane: None }, None))
+            } else {
+                let pane = entry.and_then(|entry| entry.origin);
+                (Sender::Command { pane }, None)
+            }
+        };
+        SentMessage { sender, host, text }.to_string()
     }
 
     fn agent_provider_of(&self, pane: PaneId) -> AgentProvider {
@@ -34585,6 +34619,7 @@ impl Shared {
             auto_approve: child_auto_approve(&inner.engine, pane),
             workspace: AgentWorkspaceEnvironment {
                 pane: Some(pane.to_string()),
+                agent: Some(descriptor.provider.command_name().to_owned()),
                 session: session.map(|session| session.to_string()),
                 socket: None,
                 tmux: session.map(|session| tmux_environment(&self.socket_path, Some(session))),
@@ -53513,6 +53548,7 @@ rather than held in variables.
 | Variable | Meaning |
 | --- | --- |
 | `ZZ_PANE` | Your own pane, e.g. `%3`. Do not send to yourself. |
+| `ZZ_AGENT` | Set in a chat: the agent it runs (`claude`, `codex`, `agy`, `grok`, `cursor-agent`). |
 | `ZZ_SESSION` | Your daemon session name. |
 | `ZZ_SOCKET` | The daemon endpoint; the CLI honors it. |
 
@@ -53628,6 +53664,8 @@ Switch the machine's login of the chat's CLI (Claude Code or Codex) to another a
 ### `zz agent-send [-t %N] [--submit | --notify | --wait [--progress] [--timeout SECS] [--on-block wait|fail|allow|deny] [--json | --final]] [--context PATH[:START[-END]]] [TEXT]`
 
 Send TEXT as a prompt to an agent pane (a chat), or to another agent in a terminal pane, typed into its input with Enter only when `--submit` is given. A terminal running Claude Code, Codex, Antigravity or Grok refuses it: flip the pane to chat first. Read stdin when TEXT is omitted: `git diff | zz agent-send -t %3`. `--context` adds a file/line header and fences the payload; text is capped at 1 MiB.
+
+A chat gets the prompt under a first line that names who sent it: `[zz] %N (claude) sent this, not the user:` from a chat, `[zz] a command in %N sent this:` from a terminal pane and `[zz] a command sent this:` from anywhere else, with ` on HOST` before `sent` when it came from another machine. The chat's clients draw it as a message from that sender, not as the user's prompt.
 
 `--submit` sends now and prints the chosen pane. `--wait`, `--notify`, `--final`, `--json` and `--on-block` follow the chat's turn. `--notify` runs from inside another terminal pane and, when the target's turn ends, posts its reply back into the calling pane; from a chat it is a plain send, since the reply comes back anyway. `--wait` waits for the turn and prints its reply on stdout (pane ID on stderr). A terminal pane falls back to waiting on `@agent_state`, and `--notify`, `--final` and `--on-block allow|deny` exit 2 there. Failure, cancellation, hand-back, or timeout exits non-zero. The timeout defaults to 600 seconds; `0` waits forever. A timeout leaves the turn running. `--json` prints one object with turn facts, `final_text`, and `transcript`. `--final` prints only the text after the last tool call or tool update. Both require `--wait`; combining them is a usage error. `--on-block wait` waits for permission. `--on-block fail` prints the pending permission JSON and exits 3 while the turn continues. `--on-block allow` approves the pending permission and `--on-block deny` rejects it.
 
@@ -125667,10 +125705,13 @@ bind - split-window -v -c "#{pane_current_path}"
                     capture(&["-p", "-t", "%1"]).ends_with(&format!("turn {turn}\n"))
                 });
             }
-            assert_eq!(capture(&["-p", "-t", "%1"]), "> two\n\nturn 1\n");
+            assert_eq!(
+                capture(&["-p", "-t", "%1"]),
+                "> [zz] a command sent this:\n  two\n\nturn 1\n"
+            );
             assert_eq!(
                 capture(&["-p", "-J", "-t", "%1", "-S", "-"]),
-                "> one\n\nturn 0\n\n> two\n\nturn 1\n"
+                "> [zz] a command sent this:\n  one\n\nturn 0\n\n> [zz] a command sent this:\n  two\n\nturn 1\n"
             );
         }
 
@@ -125970,7 +126011,11 @@ bind - split-window -v -c "#{pane_current_path}"
                 *seen.lock(),
                 [
                     entry("%2", tagged, Some(mention)),
-                    entry("%2", tagged, None),
+                    entry(
+                        "%2",
+                        &format!("[zz] %1 (codex) sent this, not the user:\n{tagged}"),
+                        None
+                    ),
                     entry("%2", &finished, None),
                     entry(
                         "%3",

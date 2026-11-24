@@ -153,7 +153,7 @@ const STORY: Story = Story {
         Section {
             id: "peer-rows",
             name: "Messages to another chat",
-            summary: "A chat this chat did not open is a peer and gets no card. The agent-send call stays a tool row and names the peer with a chip: its tile with a status dot, working until the reply arrives, and its chat title, or its pane id once it is gone. The reply comes back as one row: Reply from, the chip, the time since the send and the reply's first line; clicking the row opens the whole reply under it. A peer's ask, stop, failure or close reads the same way. Clicking a chip focuses that chat.",
+            summary: "A chat this chat did not open is a peer and gets no card. The agent-send call stays a tool row and names the peer with a chip: its tile with a status dot, working until the reply arrives, and its chat title, or its pane id once it is gone. The reply comes back as one row: Reply from, the chip, the time since the send and the reply's first line; clicking the row opens the whole reply under it. A peer's ask, stop, failure or close reads the same way. A message another agent or a command sent to this chat is a row too, not the user's bubble: Message from, the sender's chip (with the machine's name when it is another one) and the first line. Clicking a chip focuses that chat.",
             build: child::peer_rows,
         },
         Section {

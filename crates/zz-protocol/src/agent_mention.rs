@@ -342,6 +342,112 @@ fn write_header(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Sender {
+    Chat {
+        pane: PaneId,
+        provider: AgentProvider,
+    },
+    Command {
+        pane: Option<PaneId>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SentMessage {
+    pub sender: Sender,
+    pub host: Option<String>,
+    pub text: String,
+}
+
+const SENT_BY_CHAT: &str = " sent this, not the user:";
+const SENT_BY_COMMAND: &str = " sent this:";
+
+impl fmt::Display for SentMessage {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let tail = match self.sender {
+            Sender::Chat { pane, provider } => {
+                write_header(formatter, pane, provider)?;
+                SENT_BY_CHAT
+            }
+            Sender::Command { pane } => {
+                formatter.write_str("[zz] a command")?;
+                if let Some(pane) = pane {
+                    write!(formatter, " in {pane}")?;
+                }
+                SENT_BY_COMMAND
+            }
+        };
+        if let Some(host) = &self.host {
+            write!(formatter, " on {host}")?;
+        }
+        write!(formatter, "{tail}\n{}", self.text)
+    }
+}
+
+impl SentMessage {
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        let (line, text) = text.split_once('\n')?;
+        let line = line.trim().strip_prefix("[zz] ")?;
+        let (who, chat) = match line.strip_suffix(SENT_BY_CHAT) {
+            Some(who) => (who, true),
+            None => (line.strip_suffix(SENT_BY_COMMAND)?, false),
+        };
+        let (who, host) = match who.split_once(" on ") {
+            Some((who, host)) => (who, Some(host.to_owned())),
+            None => (who, None),
+        };
+        let sender = if chat {
+            let (pane, name) = who.split_once(" (")?;
+            Sender::Chat {
+                pane: pane.parse().ok()?,
+                provider: provider(name.strip_suffix(')')?)?,
+            }
+        } else if who == "a command" {
+            Sender::Command { pane: None }
+        } else {
+            Sender::Command {
+                pane: Some(who.strip_prefix("a command in ")?.parse().ok()?),
+            }
+        };
+        Some(Self {
+            sender,
+            host: host.filter(|host| !host.is_empty()),
+            text: text.to_owned(),
+        })
+    }
+}
+
+pub const SENDER_VARIABLE: &str = "ZZ_SENDER";
+
+#[must_use]
+pub fn sender_fact(pane: PaneId, agent: Option<&str>, host: Option<&str>) -> String {
+    let word = |word: Option<&str>| {
+        word.filter(|word| {
+            !word.is_empty()
+                && word
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || "-_.".contains(character))
+        })
+        .unwrap_or("-")
+        .to_owned()
+    };
+    format!("{pane} {} {}", word(agent), word(host))
+}
+
+#[must_use]
+pub fn read_sender_fact(fact: &str) -> Option<(Sender, Option<String>)> {
+    let mut words = fact.split(' ');
+    let pane = words.next()?.parse().ok()?;
+    let sender = match provider(words.next()?) {
+        Some(provider) => Sender::Chat { pane, provider },
+        None => Sender::Command { pane: Some(pane) },
+    };
+    let host = words.next().filter(|host| *host != "-" && !host.is_empty());
+    Some((sender, host.map(str::to_owned)))
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AgentReport {
     Finished {
         pane: PaneId,
@@ -887,6 +993,80 @@ mod tests {
                 decision: AgentDecision::Deny,
                 request: None,
             })
+        );
+    }
+
+    #[test]
+    fn a_sent_message_names_its_sender_on_the_first_line() {
+        let chat = SentMessage {
+            sender: Sender::Chat {
+                pane: PaneId(3),
+                provider: AgentProvider::ClaudeCode,
+            },
+            host: Some("alienware".to_owned()),
+            text: "Handoff: reply with the state.\nSecond line.".to_owned(),
+        };
+        assert_eq!(
+            chat.to_string(),
+            "[zz] %3 (claude) on alienware sent this, not the user:\nHandoff: reply with the state.\nSecond line."
+        );
+        assert_eq!(SentMessage::parse(&chat.to_string()), Some(chat));
+        for (sender, host, line) in [
+            (
+                Sender::Chat {
+                    pane: PaneId(3),
+                    provider: AgentProvider::Codex,
+                },
+                None,
+                "[zz] %3 (codex) sent this, not the user:",
+            ),
+            (
+                Sender::Command {
+                    pane: Some(PaneId(7)),
+                },
+                None,
+                "[zz] a command in %7 sent this:",
+            ),
+            (
+                Sender::Command { pane: None },
+                Some("alienware"),
+                "[zz] a command on alienware sent this:",
+            ),
+        ] {
+            let message = SentMessage {
+                sender,
+                host: host.map(str::to_owned),
+                text: "hi".to_owned(),
+            };
+            assert_eq!(message.to_string(), format!("{line}\nhi"));
+            assert_eq!(SentMessage::parse(&message.to_string()), Some(message));
+        }
+        let fact = sender_fact(PaneId(3), Some("claude"), Some("alienware"));
+        assert_eq!(fact, "%3 claude alienware");
+        assert_eq!(
+            read_sender_fact(&fact),
+            Some((
+                Sender::Chat {
+                    pane: PaneId(3),
+                    provider: AgentProvider::ClaudeCode,
+                },
+                Some("alienware".to_owned()),
+            ))
+        );
+        assert_eq!(
+            read_sender_fact(&sender_fact(PaneId(7), None, Some("bad host"))),
+            Some((
+                Sender::Command {
+                    pane: Some(PaneId(7))
+                },
+                None
+            ))
+        );
+        assert_eq!(SentMessage::parse("[zz] %3 (codex) finished:\nhi"), None);
+        assert_eq!(SentMessage::parse("a command sent this:\nhi"), None);
+        assert_eq!(
+            AgentReport::parse("[zz] %3 (codex) sent this, not the user:\nhi"),
+            None
         );
     }
 
